@@ -21,6 +21,8 @@ namespace Jetstream {
 struct IntelligenceProviderView {
     static constexpr const char* ChatCompletionsLabel = "Chat Completions";
     static constexpr const char* ResponsesLabel = "Responses";
+    static constexpr const char* KeychainLabel = "System Keychain";
+    static constexpr const char* EnvironmentLabel = "Environment Variable";
 
     struct Preset {
         std::string label;
@@ -58,6 +60,7 @@ struct IntelligenceProviderView {
         if (this->config.session != lastSession) {
             lastSession = this->config.session;
             apiKey.clear();
+            applyKeySource(this->config.editMode ? this->config.editProvider : Settings::Intelligence::Provider{});
             if (this->config.editMode) {
                 applyProvider(this->config.editProvider);
             } else {
@@ -177,10 +180,35 @@ struct IntelligenceProviderView {
             },
             .borderColorKey = "border",
         });
+        keySourceCombo.update({
+            .id = "intelligence-provider:key-source",
+            .options = {KeychainLabel, EnvironmentLabel},
+            .value = keySourceLabel(),
+            .disabled = this->config.saving,
+            .onChange = [this](const std::string& value) {
+                const auto next = value == EnvironmentLabel ? KeySource::Environment : KeySource::Keychain;
+                if (keySource == next) {
+                    return;
+                }
+                keySource = next;
+                markDirty();
+            },
+            .borderColorKey = "border",
+        });
+        keySourceInput.update({
+            .value = apiKeyEnv,
+            .hint = "OPENROUTER_API_KEY",
+            .submit = TextInput::Submit::OnEdit,
+            .disabled = this->config.saving,
+            .onChange = [this](const std::string& value) {
+                apiKeyEnv = value;
+                markDirty();
+            },
+            .borderColorKey = "border",
+        });
         keyInput.update({
             .value = apiKey,
-            .hint = this->config.editMode && !this->config.editProvider.apiKeyId.empty() ? "Stored in keychain"
-                                                                                         : "API key",
+            .hint = keyHint(),
             .submit = TextInput::Submit::OnEdit,
             .password = true,
             .disabled = this->config.saving,
@@ -210,10 +238,15 @@ struct IntelligenceProviderView {
                     .control = &modelsPathInput,
                 },
                 {
-                    .label = "API Key",
-                    .description = "Saved in the system keychain, never in the settings file. Leave blank for "
-                                   "endpoints without authentication.",
-                    .control = &keyInput,
+                    .label = "Key Source",
+                    .description = "Where the API key comes from.",
+                    .control = &keySourceCombo,
+                },
+                {
+                    .label = keySource == KeySource::Environment ? "Variable Name" : "API Key",
+                    .description = keyDescription(),
+                    .control = keySource == KeySource::Environment ? static_cast<Sakura::Component*>(&keySourceInput)
+                                                                   : static_cast<Sakura::Component*>(&keyInput),
                 },
             },
         });
@@ -224,7 +257,7 @@ struct IntelligenceProviderView {
             .disabled = !testEnabled(),
             .onClick = [this]() {
                 if (testEnabled() && this->config.onTest) {
-                    this->config.onTest(buildProvider(), apiKey, draftRevision);
+                    this->config.onTest(buildProvider(), keychainKey(), draftRevision);
                 }
             },
         });
@@ -246,7 +279,7 @@ struct IntelligenceProviderView {
             .rounding = Sakura::Rounding::Card,
             .onClick = [this]() {
                 if (saveEnabled() && this->config.onAdd) {
-                    this->config.onAdd(buildProvider(), apiKey);
+                    this->config.onAdd(buildProvider(), keychainKey());
                 }
             },
             .font = Sakura::Text::Font::SansBold,
@@ -283,6 +316,7 @@ struct IntelligenceProviderView {
         for (const auto& preset : config.presets) {
             if (preset.label == label) {
                 applyProvider(preset.provider);
+                applyKeySource(preset.provider);
                 typeLabel = label;
                 return;
             }
@@ -320,8 +354,44 @@ struct IntelligenceProviderView {
         if (!modelsPath.empty()) {
             provider.modelsPath = modelsPath;
         }
+        if (keySource == KeySource::Environment) {
+            provider.apiKeyEnv = apiKeyEnv;
+        }
         provider.requestReasoning = requestReasoning;
         return provider;
+    }
+
+    void applyKeySource(const Settings::Intelligence::Provider& provider) {
+        apiKeyEnv = provider.apiKeyEnv;
+        keySource = !apiKeyEnv.empty() ? KeySource::Environment : KeySource::Keychain;
+    }
+
+    std::string keySourceLabel() const {
+        return keySource == KeySource::Environment ? EnvironmentLabel : KeychainLabel;
+    }
+
+    std::string keychainKey() const {
+        return keySource == KeySource::Keychain ? apiKey : "";
+    }
+
+    bool keySourceValid() const {
+        return keySource != KeySource::Environment || !apiKeyEnv.empty();
+    }
+
+    std::string keyDescription() const {
+        if (keySource == KeySource::Environment) {
+            return "Externally managed. The key is read from this environment variable on each request "
+                   "and never saved.";
+        }
+        return "Saved in the system keychain, never in the settings file. Leave blank "
+               "for a custom endpoint without authentication.";
+    }
+
+    std::string keyHint() const {
+        if (config.editMode && !config.editProvider.apiKeyId.empty()) {
+            return "Stored in the keychain. Type to replace.";
+        }
+        return "API key";
     }
 
     bool nameTaken() const {
@@ -338,7 +408,7 @@ struct IntelligenceProviderView {
     }
 
     bool providerValid() const {
-        return config.isValid && config.isValid(buildProvider());
+        return config.isValid && config.isValid(buildProvider()) && keySourceValid();
     }
 
     bool testEnabled() const {
@@ -398,6 +468,11 @@ struct IntelligenceProviderView {
         };
     }
 
+    enum class KeySource {
+        Keychain,
+        Environment,
+    };
+
     Config config;
     std::optional<U64> lastSession;
     U64 draftRevision = 0;
@@ -409,6 +484,8 @@ struct IntelligenceProviderView {
     std::string chatPath;
     std::string modelsPath;
     std::string apiKey;
+    std::string apiKeyEnv;
+    KeySource keySource = KeySource::Keychain;
     SettingsBreadcrumb breadcrumb;
     SettingsHeader header;
     Sakura::Combo typeCombo;
@@ -418,7 +495,9 @@ struct IntelligenceProviderView {
     Sakura::Combo apiCombo;
     Sakura::TextInput chatPathInput;
     Sakura::TextInput modelsPathInput;
+    Sakura::Combo keySourceCombo;
     Sakura::TextInput keyInput;
+    Sakura::TextInput keySourceInput;
     SectionGroup apiGroup;
     StatusBadge testStatus;
     CompactButton testButton;

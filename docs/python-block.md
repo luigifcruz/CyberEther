@@ -110,7 +110,29 @@ def compute(ctx):
     ctx.outputs[0][...] = decode_symbol(ctx.inputs[0])
 ```
 
-The block and every downstream block are skipped for that cycle. All output tensors keep their fixed allocations, but their contents are not consumed downstream. The scheduler retries the block on the next cycle. Returning `None` (including an implicit return) or any other value completes the cycle normally. The global `SKIP` name is reserved for this behavior.
+The block emits an empty frame instead, and every downstream block drops its frames for that step without running. All output tensors keep their fixed allocations, but their contents are not consumed downstream. The block runs again on the next frame. Returning `None` (including an implicit return) or any other value completes the cycle normally. The global `SKIP` name is reserved for this behavior.
+
+### Waiting for a Later Cycle
+
+Return `YIELD(seconds)` when the block is not ready to read its inputs yet, for example a playback script that is ahead of real time:
+
+```python
+import time
+
+INTERVAL = 0.01
+due = 0.0
+
+def compute(ctx):
+    global due
+    now = time.monotonic()
+    if now < due:
+        return YIELD(due - now)
+
+    due = max(due, now) + INTERVAL
+    ctx.outputs[0][...] = ctx.inputs[0]
+```
+
+The block keeps its inputs unread, the blocks that depend on it wait, and the scheduler runs it again after the delay. The wait happens outside the compute cycle, so every other block and the display keep running. The block can run again before the delay ends, so check the condition on every call. A bare `YIELD` without a delay retries the next time the scheduler wakes. Calling `time.sleep()` inside `compute` instead stalls every flowgraph and the display until it returns. The global `YIELD` name is reserved for this behavior.
 
 ### CUDA Notes
 
@@ -196,7 +218,7 @@ The `ctx.metrics` mapping gives read-only access to metrics published by other b
 ```python
 def compute(ctx):
     progress = ctx.metrics.get_value("file_reader", "progress", default=0.0)
-    throughput = ctx.metrics.get_value("websocket", "throughput")
+    throughput = ctx.metrics.get_value("websocket_receiver", "throughput")
 ```
 
 The function takes a block name, a metric name, and an optional default. If the metric is missing or has not yet arrived, it returns the default instead of raising.

@@ -122,10 +122,15 @@ class MetalViewport final : public Viewport::Adapter<DeviceType::Metal> {
         platform->clock += seconds;
     }
 
-    void* nextDrawable() override {
+    MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable) override {
         platform->clock = std::ceil(platform->clock / kVsync) * kVsync;
         layer->setDrawableSize({kDisplay.x, kDisplay.y});
-        return static_cast<void*>(layer->nextDrawable());
+        drawable = layer->nextDrawable();
+        return drawable ? drawable->texture() : nullptr;
+    }
+
+    Extent2D<U64> getSwapchainExtent() const override {
+        return {static_cast<U64>(kDisplay.x), static_cast<U64>(kDisplay.y)};
     }
 
     RenderTest::TestPlatform* platform = nullptr;

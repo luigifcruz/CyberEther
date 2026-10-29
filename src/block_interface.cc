@@ -1,6 +1,7 @@
 #include <jetstream/detail/block_interface_impl.hh>
 
 #include <cmath>
+#include <map>
 #include <set>
 
 namespace Jetstream {
@@ -76,6 +77,31 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
         if (Parser::Get<std::string>(format, "source").empty()) {
             return invalid("a tensor control requires a 'source' config key.");
         }
+    }
+    std::map<std::string, F32> thresholds;
+    for (const auto* key : {"warning_above", "error_above", "warning_below", "error_below"}) {
+        if (!format.contains(key)) {
+            continue;
+        }
+        if (!metric || type != "progressbar") {
+            return invalid(std::string("'") + key + "' is only supported on progress bar metrics.");
+        }
+        F32 threshold = 0.0f;
+        if (Parser::Deserialize(format, key, threshold) != Result::SUCCESS || !std::isfinite(threshold)) {
+            return invalid(std::string("'") + key + "' must be a finite number.");
+        }
+        thresholds[key] = threshold;
+    }
+    const bool above = thresholds.contains("warning_above") || thresholds.contains("error_above");
+    const bool below = thresholds.contains("warning_below") || thresholds.contains("error_below");
+    if (above && below) {
+        return invalid("progress bar thresholds must all be above or all be below.");
+    }
+    if ((thresholds.contains("warning_above") && thresholds.contains("error_above") &&
+         thresholds["error_above"] < thresholds["warning_above"]) ||
+        (thresholds.contains("warning_below") && thresholds.contains("error_below") &&
+         thresholds["error_below"] > thresholds["warning_below"])) {
+        return invalid("the error threshold must be past the warning threshold.");
     }
     if (format.contains("collapsible")) {
         bool value;

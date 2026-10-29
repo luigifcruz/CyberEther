@@ -19,6 +19,8 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Arithmetic | `arithmetic` | Reduces a tensor along an axis using an arithmetic operation. |
 | Cast | `cast` | Casts the input to a type. |
 | Comparator | `comparator` | Compares inputs for numerical similarity. |
+| Complex Merge | `complex_merge` | Merges two signals into a complex one. |
+| Complex Split | `complex_split` | Splits a complex signal in two. |
 | Duplicate | `duplicate` | Copies and transfers signal data. |
 | Expand Dims | `expand_dims` | Inserts a new dimension of size 1 at a specified axis. |
 | Flatten | `flatten` | Flattens a tensor to one dimension. |
@@ -31,6 +33,7 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Range | `range` | Normalizes input using an affine range mapping. |
 | Remove Indices | `remove_indices` | Removes entries by index. |
 | Reshape | `reshape` | Changes the shape of a tensor. |
+| Signal Attributes | `signal_attributes` | Sets signal attributes. |
 | Signal Axes | `signal_axes` | Assigns signal roles to tensor dimensions. |
 | Slice | `slice` | Extracts a subset of a tensor. |
 | Squeeze Dims | `squeeze_dims` | Removes a dimension of size 1 at a specified axis. |
@@ -77,7 +80,14 @@ Sources and sinks: hardware, files, audio, and the network.
 | SDR | `sdr` | Receives samples from a USB radio. |
 | SDR Sweep | `sdr_sweep` | Sweeps a radio across a wide band. |
 | SoapySDR | `soapy` | Receives samples through an installed SoapySDR. |
-| WebSocket | `websocket` | Receives data streams over WebSocket. |
+| TCP Receiver | `tcp_receiver` | Receives data streams over TCP. |
+| TCP Transmitter | `tcp_transmitter` | Sends data streams over TCP. |
+| UDP Receiver | `udp_receiver` | Receives data streams over UDP. |
+| UDP Transmitter | `udp_transmitter` | Sends data streams over UDP. |
+| WebSocket Receiver | `websocket_receiver` | Receives data streams over WebSocket. |
+| WebSocket Transmitter | `websocket_transmitter` | Sends data streams over WebSocket. |
+| ZeroMQ Receiver | `zeromq_receiver` | Receives data streams over ZeroMQ. |
+| ZeroMQ Transmitter | `zeromq_transmitter` | Sends data streams over ZeroMQ. |
 
 ## Visualization
 

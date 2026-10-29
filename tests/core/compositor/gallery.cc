@@ -60,9 +60,9 @@ class GalleryServer {
 
     Gallery::Source source(std::optional<std::filesystem::path> folder = std::nullopt) {
         return {
-            .send = [this](const Platform::Http::Request& request) {
+            .send = [this](const Platform::Http::Client::Request& request) {
                 requests.push_back(request.host + request.path);
-                Platform::Http::Response response;
+                Platform::Http::Client::Response response;
                 const auto file = files.find(request.host + request.path);
                 response.status = file == files.end() ? 404 : 200;
                 if (file != files.end()) {

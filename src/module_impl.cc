@@ -2,6 +2,7 @@
 #include <jetstream/detail/module_context_impl.hh>
 #include <jetstream/detail/module_interface_impl.hh>
 #include <jetstream/detail/module_surface_impl.hh>
+#include <jetstream/scheduler_context.hh>
 
 #include <mutex>
 
@@ -80,6 +81,7 @@ Result Module::Impl::requestConfigChange(const Parser::Map& config) {
     }
     if (!config.empty()) {
         _configChangesPending->store(true);
+        Scheduler::Context::NotifyPendingCompute();
     }
     return Result::SUCCESS;
 }

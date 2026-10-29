@@ -10,6 +10,11 @@
 #include "jetstream/viewport/capture/vulkan.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+#include "jetstream/viewport/adapters/metal.hh"
+#include "jetstream/viewport/capture/metal.hh"
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <condition_variable>
@@ -104,7 +109,18 @@ Result Instance::Remote::removeClient(const std::string& sessionId) {
 }
 
 bool Instance::Remote::Impl::supported() const {
-    return this->viewportDevice == DeviceType::Vulkan;
+    switch (this->viewportDevice) {
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        case DeviceType::Vulkan:
+            return true;
+#endif
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+        case DeviceType::Metal:
+            return true;
+#endif
+        default:
+            return false;
+    }
 }
 
 Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
@@ -134,6 +150,15 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
     }
 
     // Get viewport size
+    this->size = {};
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if (this->viewportDevice == DeviceType::Metal) {
+        auto* metalAdapter = dynamic_cast<Viewport::Adapter<DeviceType::Metal>*>(this->viewport);
+        if (metalAdapter) {
+            this->size = metalAdapter->getSwapchainExtent();
+        }
+    }
+#endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     if (this->viewportDevice == DeviceType::Vulkan) {
         auto* vulkanAdapter = dynamic_cast<Viewport::Adapter<DeviceType::Vulkan>*>(this->viewport);
@@ -158,18 +183,23 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
     }
 
     // Create frame capture
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if (this->viewportDevice == DeviceType::Metal) {
+        this->frameCapture = std::make_unique<Viewport::FrameCaptureMetal>();
+    }
+#endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     if (this->viewportDevice == DeviceType::Vulkan) {
         this->frameCapture = std::make_unique<Viewport::FrameCaptureVulkan>();
-        if (this->frameCapture->create(this->viewport, inputMemoryDevice_) != Result::SUCCESS) {
-            this->rollbackCreate();
-            return Result::ERROR;
-        }
     }
 #endif
 
     if (!this->frameCapture) {
         JST_ERROR("[REMOTE] No frame capture available for device type.");
+        this->rollbackCreate();
+        return Result::ERROR;
+    }
+    if (this->frameCapture->create(this->viewport, inputMemoryDevice_) != Result::SUCCESS) {
         this->rollbackCreate();
         return Result::ERROR;
     }

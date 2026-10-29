@@ -32,6 +32,9 @@
 //
 
 #include "jetstream/viewport/platforms/headless/generic.hh"
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+#include "jetstream/viewport/platforms/headless/metal.hh"
+#endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
 #include "jetstream/viewport/platforms/headless/vulkan.hh"
 #endif

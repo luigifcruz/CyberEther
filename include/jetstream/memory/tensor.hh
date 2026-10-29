@@ -116,6 +116,9 @@ class JETSTREAM_API Tensor : public std::enable_shared_from_this<Tensor> {
     Buffer& buffer();
 
     const Index& id() const;
+    bool sharesStorage(const Tensor& other) const;
+    bool inheritsAttributes(const Tensor& other) const;
+    bool derivesAttributes() const;
 
     template<typename T, typename... Indices>
     constexpr T& at(Indices... indices) {

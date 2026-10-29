@@ -107,110 +107,192 @@ std::string BuildKernelConstants(const Tensor& input) {
 
 const char* ScalarTypeName(const DataType& dtype) {
     switch (dtype) {
+        case DataType::F32:
+        case DataType::CF32:
+            return "float";
+        case DataType::F64:
+        case DataType::CF64:
+            return "double";
         case DataType::I8:
+        case DataType::CI8:
             return "signed char";
         case DataType::U8:
+        case DataType::CU8:
             return "unsigned char";
         case DataType::I16:
+        case DataType::CI16:
             return "short";
         case DataType::U16:
+        case DataType::CU16:
             return "unsigned short";
         case DataType::I32:
+        case DataType::CI32:
             return "int";
         case DataType::U32:
+        case DataType::CU32:
             return "unsigned int";
+        case DataType::I64:
+        case DataType::CI64:
+            return "long long";
+        case DataType::U64:
+        case DataType::CU64:
+            return "unsigned long long";
         default:
             return nullptr;
     }
 }
 
-const char* ComplexTypeName(const DataType& dtype) {
+bool NeedsDoubleWork(const DataType& dtype) {
     switch (dtype) {
-        case DataType::CI8:
-            return "KernelComplex<signed char>";
-        case DataType::CU8:
-            return "KernelComplex<unsigned char>";
-        case DataType::CI16:
-            return "KernelComplex<short>";
-        case DataType::CU16:
-            return "KernelComplex<unsigned short>";
-        case DataType::CI32:
-            return "KernelComplex<int>";
-        case DataType::CU32:
-            return "KernelComplex<unsigned int>";
-        default:
-            return nullptr;
-    }
-}
-
-const char* ReciprocalExpression(const DataType& dtype) {
-    switch (dtype) {
-        case DataType::I8:
-        case DataType::U8:
-        case DataType::CI8:
-        case DataType::CU8:
-            return "(1.0f / 128.0f)";
-        case DataType::I16:
-        case DataType::U16:
-        case DataType::CI16:
-        case DataType::CU16:
-            return "(1.0f / 32768.0f)";
+        case DataType::F64:
+        case DataType::CF64:
         case DataType::I32:
-        case DataType::U32:
         case DataType::CI32:
+        case DataType::U32:
         case DataType::CU32:
-            return "(1.0f / 2147483648.0f)";
+        case DataType::I64:
+        case DataType::CI64:
+        case DataType::U64:
+        case DataType::CU64:
+            return true;
         default:
-            return nullptr;
+            return false;
     }
+}
+
+std::string MakeFloatLiteral(const F64 value, const bool doublePrecision) {
+    std::string literal = jst::fmt::format("{:.17g}", value);
+    if (literal.find_first_of(".e") == std::string::npos) {
+        literal += ".0";
+    }
+    return doublePrecision ? literal : literal + "f";
 }
 
 std::string BuildConversionDecls(const DataType& inputDtype,
-                                 const DataType& outputDtype) {
-    if (outputDtype == DataType::F32) {
-        const char* inputType = ScalarTypeName(inputDtype);
-        const char* reciprocal = ReciprocalExpression(inputDtype);
-        return jst::fmt::format(
-            "using InputValue = {};\n"
-            "using OutputValue = float;\n\n"
-            "__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {{\n"
-            "    return static_cast<float>(in) * {};\n"
-            "}}\n",
-            inputType,
-            reciprocal
+                                 const DataType& outputDtype,
+                                 const CastImpl::Scale& inputScale,
+                                 const CastImpl::Scale& outputScale) {
+    const bool doubleWork = NeedsDoubleWork(inputDtype) || NeedsDoubleWork(outputDtype);
+    const bool doubleOutput = outputDtype == DataType::F64 || outputDtype == DataType::CF64;
+    const bool inputComplex = IsDataTypeComplex(inputDtype);
+    const bool outputComplex = IsDataTypeComplex(outputDtype);
+
+    std::string decls = jst::fmt::format(
+        "using Work = {};\n"
+        "using InputScalar = {};\n"
+        "using OutputScalar = {};\n"
+        "using InputValue = {};\n"
+        "using OutputValue = {};\n\n",
+        doubleWork ? "double" : "float",
+        ScalarTypeName(inputDtype),
+        ScalarTypeName(outputDtype),
+        inputComplex ? "KernelComplex<InputScalar>" : "InputScalar",
+        outputComplex ? "KernelComplex<OutputScalar>" : "OutputScalar"
+    );
+
+    if (inputScale.integer) {
+        decls += jst::fmt::format(
+            "__device__ __forceinline__ long long Decode(const InputScalar value) {{\n"
+            "    return {};\n"
+            "}}\n\n",
+            inputScale.isUnsigned ?
+                jst::fmt::format("static_cast<long long>(static_cast<unsigned long long>(value) - {}ULL)",
+                                 U64{1} << (inputScale.bits - 1)) :
+                std::string("static_cast<long long>(value)")
         );
     }
 
-    if (inputDtype == DataType::F32) {
-        return R"(
-using InputValue = float;
-using OutputValue = KernelComplex<float>;
-
-__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {
-    OutputValue out;
-    out.real = in;
-    out.imag = 0.0f;
-    return out;
-}
-)";
+    if (outputScale.integer) {
+        decls += jst::fmt::format(
+            "__device__ __forceinline__ OutputScalar Encode(const long long value) {{\n"
+            "    return {};\n"
+            "}}\n\n",
+            outputScale.isUnsigned ?
+                jst::fmt::format("static_cast<OutputScalar>(static_cast<unsigned long long>(value) + {}ULL)",
+                                 U64{1} << (outputScale.bits - 1)) :
+                std::string("static_cast<OutputScalar>(value)")
+        );
     }
 
-    const char* inputType = ComplexTypeName(inputDtype);
-    const char* reciprocal = ReciprocalExpression(inputDtype);
+    decls += "__device__ __forceinline__ OutputScalar ConvertScalar(const InputScalar value) {\n";
 
-    return jst::fmt::format(
-        "using InputValue = {};\n"
-        "using OutputValue = KernelComplex<float>;\n\n"
-        "__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {{\n"
-        "    OutputValue out;\n"
-        "    out.real = static_cast<float>(in.real) * {};\n"
-        "    out.imag = static_cast<float>(in.imag) * {};\n"
-        "    return out;\n"
-        "}}\n",
-        inputType,
-        reciprocal,
-        reciprocal
-    );
+    if (!inputScale.integer && !outputScale.integer) {
+        decls += "    return static_cast<OutputScalar>(value);\n";
+    } else if (!outputScale.integer) {
+        decls += jst::fmt::format(
+            "    return static_cast<OutputScalar>(Decode(value)) * {};\n",
+            MakeFloatLiteral(1.0 / inputScale.fullScale, doubleOutput)
+        );
+    } else if (!inputScale.integer) {
+        const I64 outputMax = std::numeric_limits<I64>::max() >> (64 - outputScale.bits);
+        const std::string gain = MakeFloatLiteral(outputScale.fullScale, doubleWork);
+        decls += jst::fmt::format(
+            "    Work level = static_cast<Work>(value);\n"
+            "    if (level != level) {{\n"
+            "        level = 0;\n"
+            "    }}\n"
+            "    const Work scaled = {}(level * {});\n"
+            "    if (scaled >= {}) {{\n"
+            "        return Encode({}LL);\n"
+            "    }}\n"
+            "    if (scaled < -{}) {{\n"
+            "        return Encode(-{}LL - 1LL);\n"
+            "    }}\n"
+            "    return Encode(static_cast<long long>(scaled));\n",
+            doubleWork ? "rint" : "rintf",
+            gain, gain, outputMax, gain, outputMax
+        );
+    } else {
+        const I64 shift = static_cast<I64>(outputScale.bits) - static_cast<I64>(inputScale.bits);
+        if (shift >= 0) {
+            decls += jst::fmt::format(
+                "    return Encode(Decode(value) * {}LL);\n",
+                I64{1} << shift
+            );
+        } else {
+            const I64 outputMax = std::numeric_limits<I64>::max() >> (64 - outputScale.bits);
+            decls += jst::fmt::format(
+                "    const long long level = Decode(value);\n"
+                "    long long quotient = level >> {};\n"
+                "    const long long remainder = level - quotient * {}LL;\n"
+                "    if (remainder > {}LL || (remainder == {}LL && (quotient & 1LL))) {{\n"
+                "        quotient += 1LL;\n"
+                "    }}\n"
+                "    return Encode(quotient < {}LL ? quotient : {}LL);\n",
+                -shift, I64{1} << -shift, I64{1} << (-shift - 1), I64{1} << (-shift - 1),
+                outputMax, outputMax
+            );
+        }
+    }
+
+    decls += "}\n\n";
+
+    if (inputComplex) {
+        decls +=
+            "__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {\n"
+            "    OutputValue out;\n"
+            "    out.real = ConvertScalar(in.real);\n"
+            "    out.imag = ConvertScalar(in.imag);\n"
+            "    return out;\n"
+            "}\n";
+    } else if (outputComplex) {
+        decls += jst::fmt::format(
+            "__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {{\n"
+            "    OutputValue out;\n"
+            "    out.real = ConvertScalar(in);\n"
+            "    out.imag = {};\n"
+            "    return out;\n"
+            "}}\n",
+            outputScale.integer ? "Encode(0LL)" : "static_cast<OutputScalar>(0)"
+        );
+    } else {
+        decls +=
+            "__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {\n"
+            "    return ConvertScalar(in);\n"
+            "}\n";
+    }
+
+    return decls;
 }
 
 }  // namespace
@@ -248,23 +330,6 @@ Result CastImplNativeCuda::validate() {
         return Result::SUCCESS;
     }
 
-    const DataType inputDtype = candidateInput.dtype();
-    const bool supportedPair =
-        (validatedOutputDtype == DataType::F32 &&
-         (inputDtype == DataType::I8 || inputDtype == DataType::U8 ||
-          inputDtype == DataType::I16 || inputDtype == DataType::U16 ||
-          inputDtype == DataType::I32 || inputDtype == DataType::U32)) ||
-        (validatedOutputDtype == DataType::CF32 &&
-         (inputDtype == DataType::F32 ||
-          inputDtype == DataType::CI8 || inputDtype == DataType::CU8 ||
-          inputDtype == DataType::CI16 || inputDtype == DataType::CU16 ||
-          inputDtype == DataType::CI32 || inputDtype == DataType::CU32));
-    if (!supportedPair) {
-        JST_ERROR("[MODULE_CAST_NATIVE_CUDA] Unsupported conversion '{}' -> '{}'.",
-                  inputDtype, validatedOutputDtype);
-        return Result::ERROR;
-    }
-
     const U64 blockCount = validatedOutputElementCount / kThreadsPerBlock +
                            (validatedOutputElementCount % kThreadsPerBlock != 0);
     if (blockCount > kMaxGridSizeX) {
@@ -286,7 +351,8 @@ Result CastImplNativeCuda::create() {
 
     kernelPieces.clear();
     kernelPieces["KERNEL_CONSTANTS"] = BuildKernelConstants(input);
-    kernelPieces["CONVERSION_DECLS"] = BuildConversionDecls(input.dtype(), outputDtype);
+    kernelPieces["CONVERSION_DECLS"] = BuildConversionDecls(input.dtype(), outputDtype,
+                                                         inputScale, outputScale);
 
     return Result::SUCCESS;
 }

@@ -4,6 +4,10 @@ if cfg_lst.get('JETSTREAM_BACKEND_VULKAN_AVAILABLE', false)
     ])
 endif
 
+if cfg_lst.get('JETSTREAM_BACKEND_METAL_AVAILABLE', false)
+    src_lst += files('metal.cc')
+endif
+
 instance_remote_deps = [
     'JETSTREAM_LOADER_GSTREAMER_AVAILABLE',
     'JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE',

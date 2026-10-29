@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "jetstream/backend/base.hh"
+#include "jetstream/config.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/memory/attributes.hh"
 #include "jetstream/memory/tensor.hh"
@@ -437,6 +439,88 @@ TEST_CASE("Tensor value copies and clones have distinct semantics",
         REQUIRE_FALSE(source.validShape());
         REQUIRE(source.data() == nullptr);
     }
+}
+
+TEST_CASE("Tensor reports shared storage across views and borrowed memory",
+          "[core][memory][tensor][ownership]") {
+    Tensor source(DeviceType::CPU, DataType::F32, {4, 2});
+
+    SECTION("value copies, clones, and views share storage") {
+        Tensor alias = source;
+        Tensor clone = source.clone();
+        REQUIRE(clone.reshape({8}) == Result::SUCCESS);
+        Tensor slice = source.clone();
+        REQUIRE(slice.slice({Token(U64{1})}) == Result::SUCCESS);
+
+        REQUIRE(alias.sharesStorage(source));
+        REQUIRE(clone.sharesStorage(source));
+        REQUIRE(source.sharesStorage(slice));
+        REQUIRE(slice.sharesStorage(clone));
+    }
+
+    SECTION("borrowed pointers into the same memory share storage") {
+        Tensor borrowed;
+        REQUIRE(borrowed.create(source.data<F32>() + 2, DeviceType::CPU, DataType::F32, {2}) == Result::SUCCESS);
+
+        REQUIRE(borrowed.sharesStorage(source));
+        REQUIRE(source.sharesStorage(borrowed));
+    }
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    SECTION("borrowed host pointers into mapped device memory share storage") {
+        if (!Backend::Initialized(DeviceType::Metal)) {
+            REQUIRE(Backend::Initialize<DeviceType::Metal>({.headless = true}) == Result::SUCCESS);
+        }
+
+        Tensor gpu(DeviceType::Metal, DataType::F32, {4});
+        Tensor cpu;
+        REQUIRE(cpu.create(DeviceType::CPU, gpu) == Result::SUCCESS);
+        Tensor borrowed;
+        REQUIRE(borrowed.create(cpu.data(), DeviceType::CPU, DataType::F32, {4}) == Result::SUCCESS);
+        Tensor other(DeviceType::Metal, DataType::F32, {4});
+
+        REQUIRE(cpu.sharesStorage(gpu));
+        REQUIRE(borrowed.sharesStorage(gpu));
+        REQUIRE(gpu.sharesStorage(borrowed));
+        REQUIRE_FALSE(other.sharesStorage(gpu));
+        REQUIRE_FALSE(other.sharesStorage(borrowed));
+    }
+#endif
+
+    SECTION("independent allocations and empty tensors do not share storage") {
+        Tensor other(DeviceType::CPU, DataType::F32, {4, 2});
+        Tensor empty;
+
+        REQUIRE_FALSE(other.sharesStorage(source));
+        REQUIRE_FALSE(empty.sharesStorage(source));
+        REQUIRE_FALSE(source.sharesStorage(empty));
+        REQUIRE_FALSE(empty.sharesStorage(Tensor()));
+    }
+}
+
+TEST_CASE("Tensor reports attributes inherited from another tensor",
+          "[core][memory][tensor][attributes]") {
+    Tensor source(DeviceType::CPU, DataType::F32, {4});
+    Tensor derived(DeviceType::CPU, DataType::F32, {4});
+    Tensor chained(DeviceType::CPU, DataType::F32, {4});
+    Tensor unrelated(DeviceType::CPU, DataType::F32, {4});
+
+    REQUIRE(derived.propagateAttributes(source) == Result::SUCCESS);
+    REQUIRE(chained.propagateAttributes(derived) == Result::SUCCESS);
+
+    REQUIRE(derived.inheritsAttributes(source));
+    REQUIRE(chained.inheritsAttributes(derived));
+    REQUIRE(chained.inheritsAttributes(source));
+    REQUIRE_FALSE(source.inheritsAttributes(derived));
+    REQUIRE_FALSE(unrelated.inheritsAttributes(source));
+    REQUIRE_FALSE(Tensor().inheritsAttributes(source));
+
+    REQUIRE_FALSE(derived.derivesAttributes());
+    REQUIRE(derived.setDerivedAttribute("doubled", [] { return std::any(2.0f); }) == Result::SUCCESS);
+    REQUIRE(derived.derivesAttributes());
+    REQUIRE(derived.clone().derivesAttributes());
+    REQUIRE(chained.derivesAttributes());
+    REQUIRE_FALSE(Tensor().derivesAttributes());
 }
 
 TEST_CASE("Tensor copyFrom copies compatible CPU storage",

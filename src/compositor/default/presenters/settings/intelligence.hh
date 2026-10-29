@@ -135,6 +135,15 @@ struct IntelligenceSettingsPresenter {
             }
         };
 
+        config.mcp = {
+            .settings = agent.settings.mcp,
+            .url = agent.mcp.url,
+            .error = agent.mcp.error,
+        };
+        config.onMcpChange = [enqueue](const Settings::Intelligence::Mcp& value) {
+            enqueue(MailSetAgentMcp{.value = value});
+        };
+
         config.onOpenAddProvider = [enqueue]() {
             enqueue(MailOpenAgentProviderEditor{});
         };

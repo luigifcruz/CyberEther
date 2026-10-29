@@ -390,8 +390,9 @@ SignalViewSnapshot ComputeSignalViewSnapshot(const Registry::ModuleRegistration&
     Runtime runtime("signal_view", impl.device, impl.runtime);
     REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
     std::unordered_set<std::string> skipped;
+    std::unordered_set<std::string> stalled;
     std::unordered_set<std::string> failed;
-    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
     SignalViewSnapshot snapshot{
         .signalPoints = ReadSignalPoints(module),
@@ -848,9 +849,9 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     auto* presenter = module->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
 
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     std::fill_n(input.data<F32>(), input.size(), 0.4f);
-    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
     REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     REQUIRE(cursorText->get("cursor-y").fill == " ");
@@ -1072,7 +1073,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     const auto heldAmplitude = cursorText->get("cursor-y").fill;
     REQUIRE(heldAmplitude == amplitudeAt(5));
     std::fill_n(input.data<F32>(), input.size(), 0.9f);
-    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
     REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-y").fill == heldAmplitude);
     if (lineplot) REQUIRE(heldAmplitude != amplitudeAt(5));
@@ -1387,12 +1388,12 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     const auto& cursor = SignalViewImplAccess::canvasOf(*impl).cursor;
     const auto& interaction = SignalViewImplAccess::canvasOf(*impl).interaction;
 
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     for (U64 b = 0; b < 2; ++b) {
         input.data<F32>()[b * 2 + 0] = 0.25f;
         input.data<F32>()[b * 2 + 1] = 0.75f;
     }
-    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
     REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     const auto points = ReadSignalPoints(module);
     REQUIRE(points[1] == Catch::Approx(std::tanh(-1.0f)));
@@ -1536,11 +1537,11 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
                             &displayedUniforms);
         return bytes;
     };
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     F32 average = -0.8f;
     const auto compute = [&](F32 value) {
         std::fill_n(input.data<F32>(), input.size(), value);
-        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
         REQUIRE(skipped.empty());
         REQUIRE(failed.empty());
         average = 0.5f * average + 0.5f * (2.0f * value - 1.0f);
@@ -2013,12 +2014,12 @@ TEST_CASE("Signal view redraws its retained surface only on input and new data",
     auto& surface = flat ? *SignalViewImplAccess::canvasOf(*impl).renderSurface
                          : *SignalViewImplAccess::waterfall3dOf(*impl).surface();
 
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     F32 level = 0.1f;
     const auto compute = [&] {
         std::fill_n(input.data<F32>(), input.size(), level);
         level += 0.1f;
-        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
     };
 
     compute();
@@ -2166,9 +2167,9 @@ TEST_CASE("Signal View split reconfiguration preserves trace and waterfall histo
             REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
             Runtime runtime("plot", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
+            std::unordered_set<std::string> skipped, stalled, failed;
             for (U64 cycle = 0; cycle < 3; ++cycle) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
             const auto trace = ReadSignalPoints(module);
             const auto hold = ReadMaxHoldPoints(module);
@@ -2423,8 +2424,9 @@ TEST_CASE("Signal View spectral density keeps its own history ring under a linea
             Runtime runtime("signal_view", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             auto* impl = module->getImpl<Modules::SignalViewImpl>();
             REQUIRE(impl != nullptr);
@@ -2659,8 +2661,9 @@ TEST_CASE("Combined signal view keeps full-resolution traces and waterfall rows"
                             implementation.runtime);
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             const std::vector<F32> expected = {
                 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f,
@@ -2788,15 +2791,16 @@ TEST_CASE("Signal View preserves waterfall history across runtime rebuilds",
             std::vector<F32> expected(height * width, 0.0f);
             U64 expectedWriteIndex = 0;
             std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             ApplyReferenceRows(expected, expectedWriteIndex, cpuInput, height);
             REQUIRE(ReadWaterfallBins(module) == expected);
             REQUIRE(ReadWaterfallHistory(module).writeIndex == expectedWriteIndex);
 
             REQUIRE(runtime.destroy() == Result::SUCCESS);
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             ApplyReferenceRows(expected, expectedWriteIndex, cpuInput, height);
             REQUIRE(ReadWaterfallBins(module) == expected);
             REQUIRE(ReadWaterfallHistory(module).writeIndex == expectedWriteIndex);
@@ -2841,15 +2845,16 @@ TEST_CASE("Signal View reconfigure preserves applied waterfall state",
                             implementation.runtime);
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             Parser::Map recreate;
             recreate["waterfallHeight"] = U64{8};
             REQUIRE(module->reconfigure(recreate, true) == Result::SUCCESS);
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             REQUIRE(module->reconfigure(recreate) == Result::RECREATE);
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             const auto& applied =
                 static_cast<const Modules::SignalView&>(module->config());
             REQUIRE(applied.waterfallHeight == config.waterfallHeight);
@@ -2859,7 +2864,7 @@ TEST_CASE("Signal View reconfigure preserves applied waterfall state",
             REQUIRE(module->reconfigure(rejected) == Result::ERROR);
             REQUIRE(module->state() == Module::State::CREATED);
             REQUIRE(applied.waterfallHeight == config.waterfallHeight);
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             REQUIRE(runtime.destroy() == Result::SUCCESS);
             REQUIRE(module->destroy() == Result::SUCCESS);
         }
@@ -2947,7 +2952,7 @@ TEST_CASE("Waterfall emits complete averaged rows across batches and runtime reb
             REQUIRE(module->create("waterfall", config, inputs) == Result::SUCCESS);
             Runtime runtime("waterfall", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"waterfall", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
+            std::unordered_set<std::string> skipped, stalled, failed;
 
             for (U64 start = 0; start < 36; start += batches) {
                 for (U64 row = 0; row < batches; ++row) {
@@ -2956,7 +2961,7 @@ TEST_CASE("Waterfall emits complete averaged rows across batches and runtime reb
                                           element * input.stride(sampleAxis)] = sample(start + row, element);
                     }
                 }
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
                 const U64 total = (start + batches) / averaging;
                 const U64 first = total > height ? total - height : 0;
                 const auto bins = ReadWaterfallBins(module);
@@ -3027,8 +3032,8 @@ TEST_CASE("Waterfall group averages retain finite extreme amplitudes",
             REQUIRE(module->create("waterfall", config, inputs) == Result::SUCCESS);
             Runtime runtime("waterfall", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"waterfall", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            std::unordered_set<std::string> skipped, stalled, failed;
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             REQUIRE(ReadWaterfallBins(module) == std::vector<F32>{large, small, 0.0f, 0.0f});
             REQUIRE(runtime.destroy() == Result::SUCCESS);
             REQUIRE(module->destroy() == Result::SUCCESS);
@@ -3066,12 +3071,12 @@ TEST_CASE("Signal View applies independent lineplot and waterfall averaging stre
             REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
             Runtime runtime("plot", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            std::unordered_set<std::string> skipped, stalled, failed;
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             input.at<F32>(0) = 0.75f;
             input.at<F32>(1) = 0.25f;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             const F32 lineValue = std::tanh(-1.0f + 2.0f / static_cast<F32>(lineplotAveraging));
             RequirePoints(ReadSignalPoints(module), {-1.0f, lineValue, 1.0f, -lineValue});
             const std::vector<F32> expectedWaterfall = waterfallAveraging == 1
@@ -3119,13 +3124,13 @@ TEST_CASE("Waterfall averaging edits preserve history and discard affected parti
             REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
             Runtime runtime("plot", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
+            std::unordered_set<std::string> skipped, stalled, failed;
             const auto compute = [&](const F32 value, const std::optional<F32> expected = std::nullopt) {
                 CAPTURE(value, expected);
                 const auto previousHistory = ReadWaterfallHistory(module);
                 const auto previousBins = ReadWaterfallBins(module);
                 std::fill_n(input.data<F32>(), input.size(), value);
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
                 const auto history = ReadWaterfallHistory(module);
                 const auto bins = ReadWaterfallBins(module);
                 if (expected) {
@@ -3327,9 +3332,9 @@ TEST_CASE("Amplitude and Range feed true log averages to both Signal View traces
                     }
                 }
                 const U64 row = ReadWaterfallHistory(plot).writeIndex;
-                std::unordered_set<std::string> skipped, failed;
+                std::unordered_set<std::string> skipped, stalled, failed;
                 REQUIRE(runtime.compute({"amplitude", "range", "signal_view"},
-                                         skipped, failed) == Result::SUCCESS);
+                                         skipped, stalled, failed) == Result::SUCCESS);
                 REQUIRE(skipped.empty());
                 REQUIRE(failed.empty());
                 const auto points = ReadSignalPoints(plot);
@@ -3438,12 +3443,14 @@ TEST_CASE("Signal View averages keep updating after NaN and infinity inputs",
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             const auto compute = [&] {
                 if (implementation.device != DeviceType::CPU) {
                     REQUIRE(input.copyFrom(cpuInput) == Result::SUCCESS);
                 }
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
                 REQUIRE(skipped.empty());
                 REQUIRE(failed.empty());
                 for (const F32 value : ReadWaterfallBins(module)) {
@@ -3549,9 +3556,11 @@ TEST_CASE("Signal View clears lineplot history on range reconfiguration",
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 8; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
 
             const auto settledHold = ReadMaxHoldPoints(module);
@@ -3571,7 +3580,7 @@ TEST_CASE("Signal View clears lineplot history on range reconfiguration",
                 REQUIRE(resetHold[(index * 2) + 1] == -1.0f);
             }
 
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             const auto freshPoints = ReadSignalPoints(module);
             const auto freshHold = ReadMaxHoldPoints(module);
@@ -3626,9 +3635,11 @@ TEST_CASE("Signal View clears lineplot history on averaging reconfiguration",
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 8; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
 
             Parser::Map averaging;
@@ -3642,7 +3653,7 @@ TEST_CASE("Signal View clears lineplot history on averaging reconfiguration",
                 REQUIRE(resetHold[(index * 2) + 1] == -1.0f);
             }
 
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             const auto freshPoints = ReadSignalPoints(module);
             const auto freshHold = ReadMaxHoldPoints(module);
@@ -3698,9 +3709,11 @@ TEST_CASE("Signal View preserves waterfall history on averaging reconfiguration"
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 3; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
             REQUIRE(ReadWaterfallHistory(module).writeIndex == 2);
 
@@ -3762,9 +3775,11 @@ TEST_CASE("Signal View clears waterfall history on range reconfiguration",
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 3; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
             REQUIRE(ReadWaterfallHistory(module).writeIndex == 2);
 
@@ -3781,7 +3796,7 @@ TEST_CASE("Signal View clears waterfall history on range reconfiguration",
                 REQUIRE(value == 0.0f);
             }
 
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             const auto freshBins = ReadWaterfallBins(module);
             for (U64 row = 0; row < 4; ++row) {
                 for (U64 sample = 0; sample < 8; ++sample) {
@@ -3836,8 +3851,10 @@ TEST_CASE("Signal View max hold captures the first observation with averaging on
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             const auto hold = ReadMaxHoldPoints(module);
             for (U64 index = 0; index < input.shape(1); ++index) {
@@ -3890,9 +3907,11 @@ TEST_CASE("Signal View max hold captures the seeded trace after its configured w
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 4; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
 
             const auto hold = ReadMaxHoldPoints(module);

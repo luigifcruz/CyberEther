@@ -2126,7 +2126,16 @@ TEST_CASE("Node progress bars settle and repaint only when their value, overlay 
     overlay = "60%";
     CheckRepaintOnly(bench.frames, update);
     colorKey = "success_green";
-    CheckRepaintOnly(bench.frames, update);
+    bench.frames.timeStep = 0.1;
+    U64 repaints = 0;
+    for (U64 i = 0; i < 4; ++i) {
+        const auto stats = bench.frames.run(update);
+        CHECK_FALSE(stats.rebuilt);
+        CHECK_FALSE(stats.restructured);
+        repaints += stats.repainted ? 1 : 0;
+    }
+    CHECK(repaints >= 2);
+    CHECK(Retains(bench.frames, update));
     CHECK(bench.unchanged());
 }
 

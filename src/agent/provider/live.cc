@@ -108,7 +108,7 @@ struct Live::Impl {
     std::atomic<bool> orphaned{false};
     std::atomic<std::thread::id> ioId{};
     std::atomic<std::thread::id> readerId{};
-    std::unique_ptr<Platform::WebSocket> socket;
+    std::unique_ptr<Platform::WebSocket::Client> socket;
     std::mutex outboundMutex;
     std::vector<std::string> queuedOutbound;
 
@@ -542,7 +542,7 @@ struct Live::Impl {
     }
 
     bool openSocket() {
-        Platform::WebSocket::Config socketConfig;
+        Platform::WebSocket::Client::Config socketConfig;
         socketConfig.url = SocketUrl(host(), path());
 #if defined(JST_OS_BROWSER)
         socketConfig.protocols = {"realtime", "openai-insecure-api-key." + key};
@@ -554,7 +554,7 @@ struct Live::Impl {
         socketConfig.pingIntervalSeconds = kPingIntervalSeconds;
         socketConfig.bufferBytes = 1 << 20;
 
-        socket = std::make_unique<Platform::WebSocket>(std::move(socketConfig));
+        socket = std::make_unique<Platform::WebSocket::Client>(std::move(socketConfig));
         if (!socket->valid()) {
             socket.reset();
             reportError(jst::fmt::format("Invalid voice session URL '{}{}'.", host(), path()));

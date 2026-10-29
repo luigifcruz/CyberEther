@@ -1,3 +1,4 @@
+#include <chrono>
 #include <limits>
 #include <utility>
 
@@ -19,6 +20,7 @@ struct FileReaderImplNativeCpu : public FileReaderImpl,
     Result create() final;
 
     Result computeSubmit() override;
+    Result hasPendingCompute() override;
 };
 
 Result FileReaderImplNativeCpu::validate() {
@@ -48,10 +50,36 @@ Result FileReaderImplNativeCpu::create() {
     return Result::SUCCESS;
 }
 
-// TODO: Make the file reading asynchronous.
+Result FileReaderImplNativeCpu::hasPendingCompute() {
+    if (!streaming) {
+        return Result::SUCCESS;
+    }
+
+    if (!livePlaying) {
+        return streamFilled == 0 ? Result::SUCCESS : Result::TIMEOUT;
+    }
+
+    if (errored) {
+        return Result::ERROR;
+    }
+
+    if (ended || starved) {
+        return Result::TIMEOUT;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result FileReaderImplNativeCpu::computeSubmit() {
-    if (!dataFile.is_open() || !playing) {
+    if (!livePlaying) {
+        return (streaming && streamFilled != 0) ? Result::YIELD : Result::SUCCESS;
+    }
+
+    if (streaming) {
+        return readStream();
+    }
+
+    if (!dataFile.is_open()) {
         return Result::SUCCESS;
     }
 
@@ -62,7 +90,7 @@ Result FileReaderImplNativeCpu::computeSubmit() {
 
     if (remainingBytes == 0) {
         if (loop) {
-            dataFile.seekg(0, std::ios::beg);
+            dataFile.seekg(static_cast<std::streamoff>(recording.headerBytes), std::ios::beg);
             currentOffset = 0;
             currentPosition.publish(currentOffset);
             remainingBytes = totalSize;
@@ -72,6 +100,7 @@ Result FileReaderImplNativeCpu::computeSubmit() {
     }
 
     const U64 actualBytesToRead = std::min(bytesToRead, remainingBytes);
+    JST_CHECK(publishCapture(currentOffset / buffer.elementSize()));
 
     dataFile.read(reinterpret_cast<char*>(buffer.data()), actualBytesToRead);
     const U64 actualBytesRead = static_cast<U64>(dataFile.gcount());
@@ -79,7 +108,7 @@ Result FileReaderImplNativeCpu::computeSubmit() {
     currentPosition.publish(currentOffset);
 
     if (actualBytesRead > 0) {
-        updateBandwidth(actualBytesRead);
+        updateThroughput(actualBytesRead);
     }
 
     return Result::SUCCESS;

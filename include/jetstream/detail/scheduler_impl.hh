@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_SCHEDULER_IMPL_HH
 #define JETSTREAM_SCHEDULER_IMPL_HH
 
+#include <chrono>
 #include <functional>
 #include <unordered_map>
 
@@ -27,6 +28,11 @@ struct JETSTREAM_API Scheduler::Impl {
 
     virtual Result present(std::unordered_set<std::string>& failedModules) = 0;
     virtual Result compute(std::unordered_set<std::string>& failedModules) = 0;
+
+    static U64 BeginComputeRound();
+    static void ReportComputeProgress();
+    static void ReportComputeDeadline(std::chrono::steady_clock::time_point deadline);
+    static void WaitComputeRound(U64 epoch, std::chrono::milliseconds timeout);
 
  protected:
     std::shared_ptr<Instance> instance;

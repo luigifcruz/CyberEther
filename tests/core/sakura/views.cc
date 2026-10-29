@@ -3267,15 +3267,15 @@ TEST_CASE("Intelligence settings toggle features and manage providers and models
     };
     rig.show(SettingsSection::Intelligence);
 
-    CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 4);
-    CHECK(Find<Sakura::Badge>(rig.view.component()).size() == 3);
+    CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 5);
+    CHECK(Find<Sakura::Badge>(rig.view.component()).size() == 4);
     auto buttons = Buttons(rig.view.component());
     REQUIRE(buttons.size() == 5);
     for (auto* button : buttons) {
         CHECK(Press(rig.host, *button));
     }
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
-    REQUIRE(toggles.size() == 1);
+    REQUIRE(toggles.size() == 2);
     CHECK(Press(rig.host, *toggles[0]));
     CHECK(rig.calls == std::vector<std::string>{"add-provider", "edit:openai", "remove:openai", "add-model",
                                                  "remove-model:gpt", "enabled:false"});

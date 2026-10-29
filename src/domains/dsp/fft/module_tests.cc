@@ -934,8 +934,9 @@ TEST_CASE("FFT - CUDA Recreation Resets Execution Path",
             Runtime complexRuntime("test", impl.device, impl.runtime);
             REQUIRE(complexRuntime.create({{"test", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(complexRuntime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(complexRuntime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
             REQUIRE(complexRuntime.destroy() == Result::SUCCESS);
             REQUIRE(module->destroy() == Result::SUCCESS);
 
@@ -957,8 +958,9 @@ TEST_CASE("FFT - CUDA Recreation Resets Execution Path",
             Runtime realRuntime("test", impl.device, impl.runtime);
             REQUIRE(realRuntime.create({{"test", module}}) == Result::SUCCESS);
             skippedModules.clear();
+            stalledModules.clear();
             failedModules.clear();
-            REQUIRE(realRuntime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(realRuntime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
             Tensor output(DeviceType::CPU, module->outputs().at("signal").tensor);
             const F32 expected[] = {10.0f, -2.0f, 2.0f, -2.0f};

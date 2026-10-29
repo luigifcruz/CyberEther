@@ -108,14 +108,14 @@ bool Verified(const std::string& content, const std::string& digest) {
     return Digest(content) == digest;
 }
 
-Platform::Http::Response Get(const Gallery::Source& source,
+Platform::Http::Client::Response Get(const Gallery::Source& source,
                              const std::string& host,
                              const std::string& path,
                              const std::function<bool()>& cancelled) {
     if (!source.send) {
         return {};
     }
-    Platform::Http::Request request;
+    Platform::Http::Client::Request request;
     request.host = host;
     request.path = path;
     request.timeoutSeconds = kTimeoutSeconds;
@@ -294,7 +294,7 @@ std::optional<std::string> Download(const Gallery::Source& source,
                                     const std::function<bool()>& cancelled) {
     std::string host;
     std::string path;
-    auto file = SplitUrl(entry.url, host, path) ? Get(source, host, path, cancelled) : Platform::Http::Response{};
+    auto file = SplitUrl(entry.url, host, path) ? Get(source, host, path, cancelled) : Platform::Http::Client::Response{};
     if (file.error || file.status != 200 || (entry.size > 0 && file.body.size() != entry.size)) {
         JST_WARN("[GALLERY] Skipping flowgraph '{}' because its file could not be downloaded.", entry.slug);
         return std::nullopt;
@@ -310,7 +310,7 @@ std::optional<std::string> Download(const Gallery::Source& source,
 
 Gallery::Source Gallery::Source::Default() {
     return {
-        .send = &Platform::Http::Send,
+        .send = &Platform::Http::Client::Send,
         .folder = CacheFolder(),
     };
 }

@@ -124,6 +124,11 @@ struct DefaultCompositorState {
             U64 chatFocusRequests = 0;
         };
 
+        struct McpState {
+            std::string url;
+            std::string error;
+        };
+
         Settings::Intelligence settings;
         bool captureSupported = false;
         ProvidersState providers;
@@ -132,6 +137,7 @@ struct DefaultCompositorState {
         ChatState chat;
         VoiceState voice;
         UiState ui;
+        McpState mcp;
     };
 
     struct SystemState {

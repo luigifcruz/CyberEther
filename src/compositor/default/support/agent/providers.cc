@@ -3,6 +3,8 @@
 #include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
 
+#include "tools/text.hh"
+
 #include <algorithm>
 #include <span>
 #include <tuple>
@@ -174,8 +176,13 @@ AgentProviders::Provider AgentProviders::Normalize(Provider provider) {
     return provider;
 }
 
+bool AgentProviders::External(const Provider& provider) {
+    return !provider.apiKeyEnv.empty();
+}
+
 bool AgentProviders::Ready(const Provider& provider, Agent::Provider::Scope scope) {
-    return Agent::Provider::Profile::Find(Identify(provider)).ready(scope, !provider.apiKeyId.empty());
+    const bool hasKey = !provider.apiKeyId.empty() || External(provider);
+    return Agent::Provider::Profile::Find(Identify(provider)).ready(scope, hasKey);
 }
 
 bool AgentProviders::Transferable(const Provider& stored, const Provider& target) {
@@ -237,6 +244,13 @@ DefaultCompositorState::AgentState::ModelListResult AgentProviders::Models(std::
             break;
         }
 
+        std::string keyError;
+        if (External(provider) && Key(provider, &keyError).empty()) {
+            result.health[provider.name] = Agent::Provider::Error::Kind::MissingCredentials;
+            AppendProviderError(result.error, provider.name, keyError);
+            continue;
+        }
+
         std::vector<Agent::Provider::Model> models;
         Agent::Provider::Error error;
         const bool listed = Client(provider)->models(models, &error, cancelled) == Result::SUCCESS;
@@ -274,7 +288,17 @@ std::pair<bool, std::string> AgentProviders::Test(Provider provider, std::string
         return {false, "Connection test cancelled."};
     }
 
-    auto key = apiKey.empty() && stored ? Key(*stored) : std::move(apiKey);
+    std::string keyError;
+    auto key = std::move(apiKey);
+    if (key.empty() && External(provider)) {
+        key = Key(provider, &keyError);
+    } else if (key.empty() && stored) {
+        stored->apiKeyEnv.clear();
+        key = Key(*stored);
+    }
+    if (!keyError.empty()) {
+        return {false, keyError};
+    }
     const bool hasKey = !key.empty();
 
     auto config = Configure(provider);
@@ -298,7 +322,26 @@ std::pair<bool, std::string> AgentProviders::Test(Provider provider, std::string
     return {true, message};
 }
 
-std::string AgentProviders::Key(const Provider& provider) {
+std::string AgentProviders::Key(const Provider& provider, std::string* error) {
+    const auto missing = [&](std::string message) {
+        JST_WARN("[AGENT] {}", message);
+        if (error) {
+            *error = std::move(message);
+        }
+        return std::string{};
+    };
+
+    if (!provider.apiKeyEnv.empty()) {
+        std::string value;
+        if (Platform::EnvironmentVariable(provider.apiKeyEnv, value) != Result::SUCCESS || Text::IsBlank(value)) {
+            return missing(jst::fmt::format("Provider '{}' reads its API key from the environment variable {}, "
+                                            "which is not set.",
+                                            provider.name,
+                                            provider.apiKeyEnv));
+        }
+        return Text::TrimBlank(value);
+    }
+
     std::string secret;
     if (provider.apiKeyId.empty()) {
         return {};
@@ -328,6 +371,7 @@ Agent::Provider::Config AgentProviders::Configure(const Provider& value) {
         .api = Agent::Provider::Parse(provider.api, Agent::Provider::Api::ChatCompletions),
         .path = provider.chatPath,
         .modelsPath = provider.modelsPath,
+        .requireApiKey = External(provider),
         .timeoutSeconds = 300,
         .retries = 5,
         .requestReasoning = provider.requestReasoning,

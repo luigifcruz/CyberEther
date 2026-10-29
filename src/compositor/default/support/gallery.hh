@@ -23,7 +23,7 @@ class JETSTREAM_API Gallery {
     };
 
     struct Source {
-        std::function<Platform::Http::Response(const Platform::Http::Request&)> send;
+        std::function<Platform::Http::Client::Response(const Platform::Http::Client::Request&)> send;
         std::optional<std::filesystem::path> folder;
 
         static Source Default();

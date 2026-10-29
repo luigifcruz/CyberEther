@@ -62,6 +62,7 @@ core_test_domains = {
         'sakura/flowgraph_editor_views.cc',
         'sakura/flowgraph_node_view.cc',
         'sakura/flowgraph_pane.cc',
+        'sakura/metric_progress_bar.cc',
         'sakura/node_metadata.cc',
         'sakura/component.cc',
         'sakura/card.cc',
@@ -124,6 +125,7 @@ if not jst_is_windows
             'compositor/config_edits.cc',
             'compositor/live_markdown.cc',
             'compositor/agent_bridge.cc',
+            'compositor/agent_providers.cc',
             'compositor/agent_responsiveness.cc',
         ],
     }
@@ -158,6 +160,16 @@ if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
     endif
     core_test_domains += {
         'metal-program-cache': metal_program_cache_sources,
+    }
+endif
+if not jst_is_browser
+    core_test_domains += {
+        'platform': core_test_domains['platform'] + ['platform/socket.cc'],
+    }
+endif
+if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
+    core_test_domains += {
+        'render': core_test_domains['render'] + ['render/metal_capture.cc'],
     }
 endif
 if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_windows

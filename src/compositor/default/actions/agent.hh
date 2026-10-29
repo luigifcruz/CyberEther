@@ -46,7 +46,8 @@ struct AgentActions {
                               MailTestAgentProvider,
                               MailSetAgentVoiceBackend,
                               MailSetAgentVoiceModel,
-                              MailSetAgentVoiceName>;
+                              MailSetAgentVoiceName,
+                              MailSetAgentMcp>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -269,7 +270,9 @@ struct AgentActions {
         task.previousName = previousName;
         task.session = agent.providers.editSession;
 
-        if (!msg.apiKey.empty()) {
+        if (AgentProviders::External(provider)) {
+            provider.apiKeyId = previous.apiKeyId;
+        } else if (!msg.apiKey.empty()) {
             if (previous.apiKeyId.empty()) {
                 provider.apiKeyId = Random::HexToken();
             } else {
@@ -368,6 +371,11 @@ struct AgentActions {
 
     Result handle(const MailSetAgentVoiceName& msg) {
         state.agent.settings.voice.voice = msg.value;
+        return persist();
+    }
+
+    Result handle(const MailSetAgentMcp& msg) {
+        state.agent.settings.mcp = msg.value;
         return persist();
     }
 
@@ -610,8 +618,14 @@ struct AgentActions {
         const auto result = task.future.get();
         task.running = false;
         if (!result.success) {
-            callbacks.notify(Sakura::ToastType::Error, 5000, result.message);
-            return;
+            using Kind = DefaultCompositorState::AgentState::ProviderKeyTask::Kind;
+            const bool removingExternal = task.kind == Kind::Remove && AgentProviders::External(task.provider);
+            if (!removingExternal) {
+                callbacks.notify(Sakura::ToastType::Error, 5000, result.message);
+                return;
+            }
+            JST_WARN("[AGENT] {}", result.message);
+            callbacks.notify(Sakura::ToastType::Warning, 5000, result.message);
         }
 
         Result commit;

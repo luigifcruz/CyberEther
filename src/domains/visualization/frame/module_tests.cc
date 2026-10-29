@@ -151,10 +151,11 @@ TEST_CASE("Frame presents captured pixels with their captured auto range", "[mod
     Runtime runtime("test", DeviceType::CPU, RuntimeType::NATIVE);
     REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
     std::unordered_set<std::string> skipped;
+    std::unordered_set<std::string> stalled;
     std::unordered_set<std::string> failed;
     const auto compute = [&](const std::array<F32, 4>& values) {
         std::copy(values.begin(), values.end(), input.data<F32>());
-        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
         REQUIRE(failed.empty());
     };
     const auto range = [&] {
@@ -196,12 +197,12 @@ TEST_CASE("Frame redraws its retained surface only on input and new data",
     REQUIRE(frame);
     auto& surface = *(frame->*FrameImplAccess::renderSurfaceMember());
 
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     F32 level = 0.1f;
     const auto compute = [&] {
         std::fill_n(input.data<F32>(), input.size(), level);
         level += 0.1f;
-        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
     };
 
     compute();
@@ -247,9 +248,9 @@ TEST_CASE("Frame header shows only the zoom while attached and hides the readout
     REQUIRE(frame);
     const auto& text = *(frame->*FrameImplAccess::textMember());
 
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     std::fill_n(input.data<F32>(), input.size(), 0.5f);
-    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
     module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Move, .position = {0.5f, 0.5f}});
     REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     const std::string frameLabel = text.get("header").fill;

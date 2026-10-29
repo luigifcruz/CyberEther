@@ -11,7 +11,10 @@
 #include "../../model/ui.hh"
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/settings.hh"
 
+#include <algorithm>
+#include <cctype>
 #include <memory>
 #include <optional>
 #include <string>
@@ -44,6 +47,12 @@ struct IntelligenceSettingsView {
         std::optional<U64> voice;
     };
 
+    struct McpRow {
+        Settings::Intelligence::Mcp settings;
+        std::string url;
+        std::string error;
+    };
+
     struct Config {
         IntelligencePage page = IntelligencePage::Overview;
         IntelligenceProviderView::Config provider;
@@ -52,6 +61,7 @@ struct IntelligenceSettingsView {
         std::vector<ProviderRow> providers;
         std::vector<ModelRow> models;
         VoiceRow voice;
+        McpRow mcp;
         Sakura::Callback<void(IntelligencePage)> onNavigate;
         Sakura::Callback<void(bool)> onEnabledChange;
         Sakura::Callback<void(U64)> onVoiceBackendSelect;
@@ -62,6 +72,7 @@ struct IntelligenceSettingsView {
         Sakura::Callback<void(const std::string&)> onRemoveProvider;
         Sakura::Callback<void()> onOpenAddModel;
         Sakura::Callback<void(const ModelRow&)> onRemoveModel;
+        Sakura::Callback<void(const Settings::Intelligence::Mcp&)> onMcpChange;
     };
 
     void update(Config config) {
@@ -111,9 +122,11 @@ struct IntelligenceSettingsView {
             updateProviders();
             updateModels();
             updateVoice();
+            updateMcp();
             items.push_back({.child = &providersGroup});
             items.push_back({.child = &modelsGroup});
             items.push_back({.child = &voiceGroup});
+            items.push_back({.child = &mcpGroup});
         }
         stack.update({
             .spacing = Sakura::Spacing::XSmall,
@@ -297,6 +310,100 @@ struct IntelligenceSettingsView {
         });
     }
 
+    void updateMcp() {
+        using TextInput = Sakura::TextInput;
+
+        const auto& mcp = config.mcp;
+        mcpToggle.update({
+            .value = mcp.settings.enabled,
+            .onChange = [this](bool value) {
+                auto settings = config.mcp.settings;
+                settings.enabled = value;
+                changeMcp(settings);
+            },
+        });
+        mcpStatus.update({
+            .label = !mcp.url.empty() ? "Listening" : !mcp.error.empty() ? "Failed" : "Stopped",
+            .tone = !mcp.url.empty()   ? StatusBadge::Tone::Success
+                  : !mcp.error.empty() ? StatusBadge::Tone::Warning
+                                       : StatusBadge::Tone::Neutral,
+        });
+        mcpAddressInput.update({
+            .value = mcp.settings.address,
+            .submit = TextInput::Submit::OnCommit,
+            .onChange = [this](const std::string& value) {
+                auto settings = config.mcp.settings;
+                settings.address = value.empty() ? Settings::Intelligence::Mcp{}.address : value;
+                changeMcp(settings);
+            },
+            .borderColorKey = "border",
+        });
+        mcpPortInput.update({
+            .value = jst::fmt::format("{}", mcp.settings.port),
+            .submit = TextInput::Submit::OnCommit,
+            .onChange = [this](const std::string& value) {
+                U16 port = 0;
+                if (portValue(value, port)) {
+                    auto settings = config.mcp.settings;
+                    settings.port = port;
+                    changeMcp(settings);
+                }
+            },
+            .borderColorKey = "border",
+        });
+        mcpGroup.update({
+            .title = "MCP Server",
+            .description = "Lets external agents connect over the Model Context Protocol and use the same tools as "
+                           "the built-in assistant. Each call acts on the flowgraph focused in this window.",
+            .warning = "Do not expose the MCP server directly to the internet.",
+            .rows = {
+                {
+                    .label = "Enable MCP Server",
+                    .description = "Serve the agent tools at the address and port below.",
+                    .control = &mcpToggle,
+                },
+                {
+                    .label = "Status",
+                    .description = !mcp.url.empty()   ? "Listening on " + mcp.url
+                                 : !mcp.error.empty() ? mcp.error
+                                                      : "The server is not running.",
+                    .control = &mcpStatus,
+                },
+                {
+                    .label = "Address",
+                    .description = "The network address the server listens on. Use 0.0.0.0 to accept clients on "
+                                   "every interface.",
+                    .control = &mcpAddressInput,
+                },
+                {
+                    .label = "Port",
+                    .description = "The port that serves MCP clients.",
+                    .control = &mcpPortInput,
+                },
+            },
+        });
+    }
+
+    void changeMcp(const Settings::Intelligence::Mcp& settings) const {
+        if (config.onMcpChange) {
+            config.onMcpChange(settings);
+        }
+    }
+
+    static bool portValue(const std::string& label, U16& port) {
+        if (label.empty() || label.size() > 5 || !std::all_of(label.begin(), label.end(), [](unsigned char c) {
+            return std::isdigit(c);
+        })) {
+            return false;
+        }
+        const U64 value = std::stoull(label);
+        if (value == 0 || value > 65535) {
+            return false;
+        }
+        port = static_cast<U16>(value);
+        return true;
+    }
+
     static Sakura::Combo::Config selection(std::string id,
                                            const std::vector<std::string>& options,
                                            std::optional<U64> selected,
@@ -332,6 +439,11 @@ struct IntelligenceSettingsView {
     Sakura::Combo voiceNameCombo;
     StatusBadge voiceStatus;
     SectionGroup voiceGroup;
+    Sakura::Toggle mcpToggle;
+    StatusBadge mcpStatus;
+    Sakura::TextInput mcpAddressInput;
+    Sakura::TextInput mcpPortInput;
+    SectionGroup mcpGroup;
     IntelligenceProviderView providerPage;
     IntelligenceModelView modelPage;
     Sakura::Stack stack;

@@ -2,6 +2,10 @@ src_lst += files([
     'generic.cc',
 ])
 
+if cfg_lst.get('JETSTREAM_BACKEND_METAL_AVAILABLE', false)
+    src_lst += files('metal.cc')
+endif
+
 sum_lst = {}
 
 subdir('capture')

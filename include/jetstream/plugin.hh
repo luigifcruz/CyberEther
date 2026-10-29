@@ -35,7 +35,7 @@ class JETSTREAM_API Plugin {
 
 #define JETSTREAM_PLUGIN_ABI_SYMBOL "jetstream_plugin_abi"
 #define JETSTREAM_PLUGIN_ABI_MAGIC UINT32_C(0x4a535450)
-#define JETSTREAM_PLUGIN_ABI_VERSION UINT32_C(9)
+#define JETSTREAM_PLUGIN_ABI_VERSION UINT32_C(12)
 
 #ifdef __cplusplus
 extern "C" {

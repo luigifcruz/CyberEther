@@ -12,7 +12,7 @@ Everything is self-hosted. When streaming starts, CyberEther launches a small br
 
 ## Quick Start
 
-Remote Streaming needs the Vulkan renderer on the host. Linux and Windows use it by default. On macOS, where Metal is the default, start CyberEther with `--renderer vulkan`.
+Remote Streaming supports the Vulkan and Metal renderers, including headless mode. Linux and Windows use Vulkan by default, and macOS uses Metal. On macOS, the Auto encoder uses VideoToolbox hardware encoding when available.
 
 ### From the Desktop App
 
