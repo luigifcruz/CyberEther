@@ -118,6 +118,7 @@ struct JETSTREAM_API MouseEvent {
     bool positioned = true;
     ScrollPhase phase = ScrollPhase::None;
     bool precise = false;
+    bool smooth = false;
 };
 
 struct JETSTREAM_API FocusEvent {

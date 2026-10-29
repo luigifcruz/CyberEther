@@ -4,6 +4,10 @@
 #include "cocoa_pointer.hh"
 #endif
 
+#ifdef JST_OS_WINDOWS
+#include "windows_pointer.hh"
+#endif
+
 #ifdef JST_OS_BROWSER
 #include "browser_wheel.hh"
 #endif
@@ -231,6 +235,9 @@ struct GlfwInput::Impl {
 #ifdef JST_OS_MAC
     std::unique_ptr<CocoaPointer> pointer;
 #endif
+#ifdef JST_OS_WINDOWS
+    std::unique_ptr<WindowsPointer> pointer;
+#endif
 #ifdef JST_OS_BROWSER
     std::unique_ptr<BrowserWheel> wheel;
 #endif
@@ -248,6 +255,9 @@ struct GlfwInput::Impl {
         }
 #elif defined(JST_OS_BROWSER)
         event.precise = wheel && wheel->take(event.delta);
+#elif defined(JST_OS_WINDOWS)
+        viewport.input().push(Render::InputQueue::Modifiers{WindowsPointer::Modifiers()});
+        event.smooth = true;
 #endif
         return event;
     }
@@ -420,10 +430,21 @@ GlfwInput::GlfwInput(GLFWwindow* window, Generic& viewport) {
 #ifdef JST_OS_BROWSER
     impl->wheel = std::make_unique<BrowserWheel>();
 #endif
+#ifdef JST_OS_WINDOWS
+    impl->pointer = std::make_unique<WindowsPointer>(window, [input = impl.get()](const auto& scroll) {
+        double x = 0.0;
+        double y = 0.0;
+        glfwGetCursorPos(input->window, &x, &y);
+        Impl::OnCursor(input->window, x, y);
+        input->viewport.input().push(Render::InputQueue::Modifiers{scroll.modifiers});
+        input->viewport.input().push(Render::InputQueue::Wheel{
+            .delta = scroll.delta, .phase = scroll.phase, .precise = true});
+    });
+#endif
 }
 
 GlfwInput::~GlfwInput() {
-#ifdef JST_OS_MAC
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     impl->pointer.reset();
 #endif
 #ifdef JST_OS_BROWSER
@@ -454,6 +475,9 @@ GlfwInput::~GlfwInput() {
 void GlfwInput::poll() {
     impl->applyCursor();
     impl->applyClipboard();
+#ifdef JST_OS_WINDOWS
+    impl->pointer->poll();
+#endif
 #ifdef __EMSCRIPTEN__
     impl->readClipboard();
 #endif

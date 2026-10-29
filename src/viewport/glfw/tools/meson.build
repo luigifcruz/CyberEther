@@ -16,6 +16,7 @@ if jst_is_macos
 endif
 
 if jst_is_windows
-    src_lst += files('windows_titlebar.cc')
-    dep_lst += [cpp.find_library('dwmapi'), cpp.find_library('comctl32'), cpp.find_library('uxtheme')]
+    src_lst += files('windows_titlebar.cc', 'windows_pointer.cc')
+    dep_lst += [cpp.find_library('dwmapi'), cpp.find_library('comctl32'), cpp.find_library('uxtheme'),
+                cpp.find_library('ole32')]
 endif
