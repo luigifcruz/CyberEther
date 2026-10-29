@@ -253,7 +253,12 @@ struct GlfwInput::Impl {
     }
 
     void readClipboard() {
+        GLFWerrorfun previous = glfwSetErrorCallback(nullptr);
         const char* text = glfwGetClipboardString(nullptr);
+        glfwSetErrorCallback(previous);
+#ifndef __EMSCRIPTEN__
+        (void)glfwGetError(nullptr);
+#endif
         std::lock_guard lock(clipboardMutex);
         clipboard = text ? std::string(text) : std::string();
     }
