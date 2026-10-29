@@ -1,6 +1,7 @@
 #include "jetstream/render/devices/vulkan/buffer.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 #include "buffer_allocation.hh"
+#include "buffer_memory.hh"
 
 namespace Jetstream::Render {
 
@@ -77,32 +78,33 @@ Result Implementation::create() {
 
             // Allocate backing memory.
 
-            VkMemoryRequirements memoryRequirements;
-            vkGetBufferMemoryRequirements(device, created, &memoryRequirements);
-
-            VkMemoryAllocateInfo memoryAllocateInfo = {};
-            memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            memoryAllocateInfo.allocationSize = memoryRequirements.size;
-            memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
-                                                                         memoryRequirements.memoryTypeBits,
-                                                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-            JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &candidate), [&]{
+            VkMemoryDedicatedRequirements dedicated{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
+            VkMemoryRequirements2 requirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+            requirements.pNext = &dedicated;
+            VkBufferMemoryRequirementsInfo2 info{VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
+            info.buffer = created;
+            vkGetBufferMemoryRequirements2(device, &info, &requirements);
+            const auto type = Backend::FindMemoryType(physicalDevice,
+                                                      requirements.memoryRequirements.memoryTypeBits,
+                                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            const bool dedicatedPage = dedicated.requiresDedicatedAllocation ||
+                                       dedicated.prefersDedicatedAllocation;
+            JST_VK_CHECK(Detail::AllocateBufferMemory(device, created, type, requirements.memoryRequirements,
+                                                     dedicatedPage, suballocation), [&]{
                 JST_ERROR("[VULKAN] Failed to allocate buffer memory.");
             });
+            candidate = suballocation->memory;
             return Result::SUCCESS;
         }, [&](VkBuffer created, VkDeviceMemory allocated) {
-            JST_VK_CHECK(vkBindBufferMemory(device, created, allocated, 0), [&]{
+            JST_VK_CHECK(vkBindBufferMemory(device, created, allocated, suballocation->offset), [&]{
                 JST_ERROR("[VULKAN] Failed to bind memory to the buffer.");
             });
             return Result::SUCCESS;
-        }, [&](VkBuffer created, VkDeviceMemory allocated) {
+        }, [&](VkBuffer created, VkDeviceMemory) {
             if (created != VK_NULL_HANDLE) {
                 vkDestroyBuffer(device, created, nullptr);
             }
-            if (allocated != VK_NULL_HANDLE) {
-                vkFreeMemory(device, allocated, nullptr);
-            }
+            suballocation.reset();
         });
         JST_CHECK(allocation);
 
@@ -134,9 +136,7 @@ Result Implementation::destroy() {
         if (buffer != VK_NULL_HANDLE) {
             vkDestroyBuffer(device, buffer, nullptr);
         }
-        if (memory != VK_NULL_HANDLE) {
-            vkFreeMemory(device, memory, nullptr);
-        }
+        suballocation.reset();
     }
     buffer = VK_NULL_HANDLE;
     memory = VK_NULL_HANDLE;
