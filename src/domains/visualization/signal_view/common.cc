@@ -427,7 +427,7 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
     {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
-        cfg.multisampled = lineplot;
+        cfg.multisampled = false;
         cfg.retained = true;
         cfg.clearColor = interaction.theme.background;
         if (waterfall) {

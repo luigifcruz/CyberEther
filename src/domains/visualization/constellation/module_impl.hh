@@ -13,7 +13,7 @@
 
 namespace Jetstream::Modules {
 
-constexpr F32 kConstellationPointSize = 10.0f;
+constexpr F32 kConstellationPointSize = 4.0f;
 constexpr F32 kConstellationZoomSpeed = 0.15f;
 
 struct ConstellationImpl : public Module::Impl,
