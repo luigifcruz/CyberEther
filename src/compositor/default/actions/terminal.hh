@@ -11,6 +11,7 @@
 
 #include "jetstream/platform.hh"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -24,6 +25,9 @@
 namespace Jetstream {
 
 struct TerminalActions {
+    static constexpr I32 kMinZoom = -6;
+    static constexpr I32 kMaxZoom = 24;
+
     using Filter = std::tuple<MailOpenTerminal,
                               MailCloseTerminal,
                               MailCloseTerminalTab,
@@ -154,6 +158,9 @@ struct TerminalActions {
                 target.pointer(input);
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::Focus>) {
                 target.focus(input.value);
+            } else if constexpr (std::is_same_v<Input, MailTerminalInput::Zoom>) {
+                auto& zoom = terminal->second.zoom;
+                zoom = input.step == 0 ? 0 : std::clamp(zoom + input.step, kMinZoom, kMaxZoom);
             }
         }, msg.input);
         if (const auto* focus = std::get_if<MailTerminalInput::Focus>(&msg.input); focus && focus->value) {

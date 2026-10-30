@@ -734,6 +734,13 @@ bool Terminal::keyEvent(const KeyEvent& event) {
             }
             return true;
         }
+        const I32 step = event.key == KeyCode::Equal ? 1 : event.key == KeyCode::Minus ? -1 : 0;
+        if (step != 0 || event.key == KeyCode::Digit0) {
+            if (impl->config.onZoom) {
+                impl->config.onZoom(step);
+            }
+            return true;
+        }
     }
     if (modifiers.super || (modifiers.control && event.key == KeyCode::GraveAccent)) {
         return false;

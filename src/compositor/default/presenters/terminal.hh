@@ -42,6 +42,7 @@ struct TerminalPresenter {
                     .screen = &terminal.screen,
                     .revision = terminal.revision,
                     .focusRequest = terminal.focusRequests,
+                    .fontSize = Sakura::Typography::FontSize + static_cast<F32>(terminal.zoom),
                     .altSendsEscape = TerminalSession::AltSendsEscape(),
                     .onResize = [send](Sakura::Terminal::Grid grid) {
                         send(grid);
@@ -69,6 +70,9 @@ struct TerminalPresenter {
                     },
                     .onFocusChange = [send](bool focused) {
                         send(MailTerminalInput::Focus{.value = focused});
+                    },
+                    .onZoom = [send](I32 step) {
+                        send(MailTerminalInput::Zoom{.step = step});
                     },
                 },
                 .onClose = [enqueue, id]() {

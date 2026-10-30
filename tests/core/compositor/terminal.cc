@@ -1151,6 +1151,33 @@ TEST_CASE("Terminal sessions keep long graphemes without overflowing the cell bu
     CHECK(RowText(session.screen().lines[0]).rfind("A", 0) == 0);
 }
 
+TEST_CASE("Terminal zoom steps clamp to their limits and zero resets them", "[core][compositor][terminal][layout]") {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalRig rig;
+    rig.shell.set("/bin/sh");
+    REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
+    rig.actions.reconcile();
+    REQUIRE(rig.actions.sessions.contains(1));
+    const auto zoom = [&](I32 step) {
+        REQUIRE(rig.actions.handle(MailTerminalInput{.terminal = 1, .input = MailTerminalInput::Zoom{.step = step}}) ==
+                Result::SUCCESS);
+        return rig.state.terminal.items.at(1).zoom;
+    };
+    CHECK(zoom(1) == 1);
+    CHECK(zoom(-1) == 0);
+    for (I32 index = 0; index < 40; ++index) {
+        zoom(1);
+    }
+    CHECK(zoom(1) == TerminalActions::kMaxZoom);
+    for (I32 index = 0; index < 60; ++index) {
+        zoom(-1);
+    }
+    CHECK(zoom(-1) == TerminalActions::kMinZoom);
+    CHECK(zoom(0) == 0);
+}
+
 TEST_CASE("Terminal sessions publish the predominant background of the screen", kTags) {
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");

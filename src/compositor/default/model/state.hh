@@ -275,6 +275,7 @@ struct DefaultCompositorState {
             U64 revision = 0;
             U64 focusRequests = 0;
             U64 focusedAt = 0;
+            I32 zoom = 0;
         };
 
         std::map<U64, Item> items;

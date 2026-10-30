@@ -133,6 +133,7 @@ struct Terminal : public Component {
         Callback<void(Selection)> onSelect;
         Callback<void(const MouseEvent&)> onPointer;
         Callback<void(bool)> onFocusChange;
+        Callback<void(I32 step)> onZoom;
 
         bool operator==(const Config&) const = default;
     };

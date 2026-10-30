@@ -325,6 +325,10 @@ struct MailTerminalInput {
         bool value = false;
     };
 
+    struct Zoom {
+        I32 step = 0;
+    };
+
     using Input = std::variant<Sakura::Terminal::Grid,
                                KeyEvent,
                                Text,
@@ -333,7 +337,8 @@ struct MailTerminalInput {
                                ScrollTo,
                                Sakura::Terminal::Selection,
                                MouseEvent,
-                               Focus>;
+                               Focus,
+                               Zoom>;
 
     U64 terminal = 0;
     Input input;

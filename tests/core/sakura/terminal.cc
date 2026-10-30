@@ -45,6 +45,7 @@ struct Recorder {
     std::vector<Terminal::Selection> selections;
     std::vector<MouseEvent> pointers;
     std::vector<bool> focus;
+    std::vector<I32> zooms;
 
     Terminal::Config wire(const Terminal::Screen* screen, U64 revision) {
         return {
@@ -61,6 +62,7 @@ struct Recorder {
             .onSelect = [this](Terminal::Selection selection) { selections.push_back(selection); },
             .onPointer = [this](const MouseEvent& event) { pointers.push_back(event); },
             .onFocusChange = [this](bool focused) { focus.push_back(focused); },
+            .onZoom = [this](I32 step) { zooms.push_back(step); },
         };
     }
 };
@@ -558,6 +560,52 @@ TEST_CASE("Focused terminals send keys to the shell and keep copy, paste, and ap
     ClickFocus(place, std::nullopt);
     CHECK(FocusOwner(place) == nullptr);
     CHECK(recorder.focus == std::vector<bool>{true, false});
+}
+
+TEST_CASE("Command plus, minus, and zero zoom the terminal instead of reaching the shell", kTags) {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    Terminal terminal;
+    Place place(terminal, kBounds);
+    Frames frames(place, kScreen, scene.context());
+    REQUIRE(frames.settle([&] { terminal.update(recorder.wire(&screen, 1)); }));
+    REQUIRE(FocusOwner(place) == &terminal);
+
+    CHECK(Tap(place, KeyCode::Equal, {.super = true}));
+    CHECK(Tap(place, KeyCode::Equal, {.shift = true, .super = true}));
+    CHECK(Tap(place, KeyCode::Minus, {.super = true}));
+    CHECK(Tap(place, KeyCode::Digit0, {.super = true}));
+    CHECK(Tap(place, KeyCode::Equal, {.control = true, .shift = true}));
+    CHECK(recorder.zooms == std::vector<I32>{1, 1, -1, 0, 1});
+    CHECK(recorder.keys.empty());
+
+    CHECK(Tap(place, KeyCode::Minus));
+    CHECK(recorder.zooms.size() == 5);
+    CHECK(recorder.keys.size() == 1);
+}
+
+TEST_CASE("A larger terminal font size reports a smaller grid", kTags) {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    Terminal terminal;
+    Place place(terminal, kBounds);
+    Frames frames(place, kScreen, scene.context());
+    F32 fontSize = Sakura::Typography::FontSize;
+    const auto update = [&] {
+        auto config = recorder.wire(&screen, 1);
+        config.fontSize = fontSize;
+        terminal.update(std::move(config));
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(recorder.grids.size() == 1);
+
+    fontSize += 6.0f;
+    REQUIRE(frames.settle(update));
+    REQUIRE(recorder.grids.size() == 2);
+    CHECK(recorder.grids[1].cellHeight > recorder.grids[0].cellHeight);
+    CHECK(recorder.grids[1].columns < recorder.grids[0].columns);
 }
 
 TEST_CASE("Terminals take keyboard focus again when their focus request changes", kTags) {
