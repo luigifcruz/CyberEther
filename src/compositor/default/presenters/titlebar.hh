@@ -47,6 +47,7 @@ struct TitlebarPresenter {
         return TitlebarView::Config{
             .leadingInset = chrome.leadingInset,
             .height = chrome.height,
+            .trailingInset = chrome.trailingInset,
             .remoteStarted = context.state.remote.started,
             .updateAvailable = context.state.update.available,
             .updateReady = context.state.update.ready,

@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdlib>
+#include <limits>
 #include <utility>
 
 #include "jetstream/render/base/surface.hh"
@@ -23,7 +25,9 @@
 #include "jetstream/render/devices/vulkan/surface.hh"
 #include "jetstream/render/devices/vulkan/texture.hh"
 #include "jetstream/render/devices/vulkan/vertex.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
 #include "../../../src/render/devices/vulkan/buffer_allocation.hh"
+#include "../../../src/render/devices/vulkan/buffer_memory.hh"
 #include "../../../src/render/devices/vulkan/creation.hh"
 #endif
 
@@ -341,6 +345,114 @@ TEST_CASE("Vulkan buffer allocation failures only release initialized handles an
     Render::BufferImp<DeviceType::Vulkan> uncreated(Render::Buffer::Config{});
     REQUIRE(uncreated.destroy() == Result::SUCCESS);
     REQUIRE(uncreated.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Vulkan buffer pages align disjoint ranges and coalesce retired allocations",
+          "[core][render][vulkan][buffer-memory]") {
+    Render::Detail::BufferMemoryRanges ranges(4096);
+    const auto first = ranges.take(17, 1);
+    const auto second = ranges.take(33, 256);
+    const auto third = ranges.take(1000, 512);
+    REQUIRE(first == 0);
+    REQUIRE(second == 256);
+    REQUIRE(third == 512);
+    REQUIRE_FALSE(ranges.take(4096, 1));
+    REQUIRE_FALSE(ranges.take(0, 1));
+    REQUIRE_FALSE(ranges.take(1, 0));
+    REQUIRE_FALSE(ranges.take(std::numeric_limits<VkDeviceSize>::max(), 256));
+    ranges.release(*second, 33);
+    REQUIRE(ranges.take(33, 256) == second);
+    ranges.release(*first, 17);
+    ranges.release(*third, 1000);
+    ranges.release(*second, 33);
+    REQUIRE(ranges.take(4096, 1) == 0);
+    REQUIRE_FALSE(ranges.take(1, 1));
+}
+
+TEST_CASE("Vulkan buffer pages reuse interleaved frees without overlapping live buffers",
+          "[core][render][vulkan][buffer-memory]") {
+    Render::Detail::BufferMemoryRanges ranges(65536);
+    std::vector<VkDeviceSize> offsets;
+    for (size_t i = 0; i < 256; ++i) {
+        const auto offset = ranges.take(256, 256);
+        REQUIRE(offset == i * 256);
+        offsets.push_back(*offset);
+    }
+    REQUIRE_FALSE(ranges.take(256, 256));
+    for (size_t i = 0; i < offsets.size(); i += 2) {
+        ranges.release(offsets[i], 256);
+    }
+    for (size_t i = 0; i < offsets.size(); i += 2) {
+        REQUIRE(ranges.take(256, 256) == offsets[i]);
+    }
+    for (size_t i = offsets.size(); i-- > 0;) {
+        ranges.release(offsets[i], 256);
+    }
+    REQUIRE(ranges.take(65536, 256) == 0);
+}
+
+TEST_CASE("Vulkan buffer memory shares pages and releases them after the last buffer",
+          "[core][render][native][vulkan][buffer-memory-native]") {
+    if (!std::getenv("JETSTREAM_TEST_NATIVE_COMPONENTS")) {
+        SKIP("Set JETSTREAM_TEST_NATIVE_COMPONENTS=1 to run headless GPU regressions.");
+    }
+    const Backend::Config config{.validationEnabled = false, .headless = true};
+    REQUIRE(Backend::Initialize<DeviceType::Vulkan>(config) == Result::SUCCESS);
+    auto& backend = Backend::State<DeviceType::Vulkan>();
+    const auto device = backend->getDevice();
+    struct BoundBuffer {
+        VkDevice device;
+        VkBuffer buffer = VK_NULL_HANDLE;
+        std::shared_ptr<Render::Detail::BufferMemory> memory;
+
+        explicit BoundBuffer(VkDevice device) : device(device) {}
+
+        ~BoundBuffer() {
+            if (buffer != VK_NULL_HANDLE) {
+                vkDestroyBuffer(device, buffer, nullptr);
+            }
+        }
+    };
+    const auto create = [&](bool dedicated) {
+        auto buffer = std::make_unique<BoundBuffer>(device);
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = 1024;
+        info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        REQUIRE(vkCreateBuffer(device, &info, nullptr, &buffer->buffer) == VK_SUCCESS);
+        VkMemoryDedicatedRequirements dedicatedRequirements{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
+        VkMemoryRequirements2 requirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+        requirements.pNext = &dedicatedRequirements;
+        VkBufferMemoryRequirementsInfo2 request{VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2};
+        request.buffer = buffer->buffer;
+        vkGetBufferMemoryRequirements2(device, &request, &requirements);
+        const auto& required = requirements.memoryRequirements;
+        const auto type = Backend::FindMemoryType(backend->getPhysicalDevice(), required.memoryTypeBits,
+                                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        REQUIRE(Render::Detail::AllocateBufferMemory(device, buffer->buffer, type, required,
+                    dedicated || dedicatedRequirements.requiresDedicatedAllocation, buffer->memory) == VK_SUCCESS);
+        CHECK(buffer->memory->offset % required.alignment == 0);
+        const auto& memory = *buffer->memory;
+        REQUIRE(vkBindBufferMemory(device, buffer->buffer, memory.memory, memory.offset) == VK_SUCCESS);
+        return buffer;
+    };
+    auto first = create(false);
+    auto second = create(false);
+    const auto block = std::weak_ptr(first->memory->block);
+    if (first->memory->memory == second->memory->memory) {
+        CHECK(second->memory->offset >= first->memory->offset + first->memory->size);
+        const auto offset = first->memory->offset;
+        first.reset();
+        CHECK_FALSE(block.expired());
+        auto reused = create(false);
+        CHECK(reused->memory->memory == second->memory->memory);
+        CHECK(reused->memory->offset == offset);
+        auto dedicated = create(true);
+        CHECK(dedicated->memory->memory != second->memory->memory);
+        CHECK(dedicated->memory->offset == 0);
+    }
+    first.reset();
+    second.reset();
+    CHECK(block.expired());
 }
 
 TEST_CASE("Vulkan failed creation outputs never become owned rollback handles",

@@ -338,7 +338,8 @@ class TestWindow final : public RenderTest::Window {
         attached = false;
         viewport.content = {2.0f, 2.0f};
         viewport.policy = Render::WindowMetrics::Policy::ContentScale;
-        viewport.chrome = Render::TitlebarChrome{.integrated = true, .leadingInset = 80.0f, .height = 32.0f};
+        viewport.chrome = Render::TitlebarChrome{
+            .integrated = true, .leadingInset = 80.0f, .height = 32.0f, .trailingInset = 276.0f};
     }
 
     bool supportsCapture() const override { return true; }
@@ -2048,6 +2049,7 @@ TEST_CASE("Render window chrome defaults to the system frame", "[core][render][w
     const auto chrome = window.titlebarChrome();
     REQUIRE_FALSE(chrome.integrated);
     REQUIRE(chrome.leadingInset == 0.0f);
+    REQUIRE(chrome.trailingInset == 0.0f);
     REQUIRE(chrome.height == 0.0f);
 
     window.beginWindowDrag();
@@ -2098,6 +2100,7 @@ TEST_CASE("Render window chrome forwards to its viewport in logical units", "[co
     const auto chrome = window.titlebarChrome();
     REQUIRE(chrome.integrated);
     REQUIRE(chrome.leadingInset == 40.0f);
+    REQUIRE(chrome.trailingInset == 138.0f);
     REQUIRE(chrome.height == 16.0f);
 
     window.beginWindowDrag();

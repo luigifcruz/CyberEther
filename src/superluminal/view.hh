@@ -961,6 +961,15 @@ struct SuperluminalView {
                 .offset = {config.chrome.leadingInset + TitleInset, barCenter - TitleSize * 0.5f},
             }},
         });
+        barContent.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = 0.0f,
+            .centerCross = false,
+            .items = {
+                {.child = &barRow, .grow = 1.0f},
+                {.child = &nativeControlsSpace, .size = config.chrome.trailingInset},
+            },
+        });
         Sakura::Callback<void()> press;
         Sakura::Callback<void()> zoom;
         if (config.onBarPress) {
@@ -972,7 +981,7 @@ struct SuperluminalView {
             };
         }
         bar.update({
-            .content = &barRow,
+            .content = &barContent,
             .border = false,
             .colorKey = "background",
             .hoveredColorKey = "background",
@@ -1230,6 +1239,8 @@ struct SuperluminalView {
     Mosaic mosaicFrames;
     Sakura::Text barTitle;
     Sakura::Overlay barRow;
+    Sakura::Overlay nativeControlsSpace;
+    Sakura::Stack barContent;
     Sakura::Div bar;
     Sakura::Stack shell;
     Shell window;

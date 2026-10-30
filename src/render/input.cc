@@ -285,6 +285,7 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
         scroll.positioned = pointerPosition.has_value();
         scroll.phase = wheel->phase;
         scroll.precise = wheel->precise;
+        scroll.smooth = wheel->smooth;
         frameEvents.push_back(scroll);
         return true;
     }

@@ -49,6 +49,7 @@ struct WorkspaceShellView {
             .asideWidth = AgentChatView::Width,
             .tabBarHeight = titlebar.height(),
             .leadingInset = titlebar.leadingInset(),
+            .trailingInset = titlebar.trailingInset(),
             .onTabMenu = [this](const std::string& pane, Extent2D<F32> point) {
                 if (pane != StartTabView::PaneId && pane != SettingsView::PaneId && pane != DocsView::PaneId) {
                     titlebar.openTabMenu(pane, point);

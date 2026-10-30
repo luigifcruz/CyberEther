@@ -34,6 +34,7 @@ class JETSTREAM_API InputQueue {
         bool remote = false;
         ScrollPhase phase = ScrollPhase::None;
         bool precise = false;
+        bool smooth = false;
     };
 
     struct Key {
