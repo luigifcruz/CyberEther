@@ -2,7 +2,7 @@
 
 #include "fonts.hh"
 #include "harness.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 #include "component_harness.hh"
 
@@ -16,7 +16,6 @@
 #include "compositor/default/views/components/tooltip.hh"
 #include "compositor/default/views/file_picker.hh"
 #include "compositor/default/views/flowgraph/editor/picker.hh"
-#include "compositor/default/views/hud/info.hh"
 #include "compositor/default/views/hud/welcome.hh"
 #include "compositor/default/views/titlebar.hh"
 #include "compositor/default/views/workbench.hh"
@@ -322,7 +321,6 @@ struct PickerRig {
 };
 
 struct KeyedPickerRig {
-    SakuraTest::HeadlessUi ui{1.0f, ImVec2(1200.0f, 900.0f)};
     MonoFontWindow window;
     FlowgraphBlockPicker picker;
     Sakura::Overlay overlay;
@@ -362,7 +360,7 @@ struct KeyedPickerRig {
 
     FrameStats frame() {
         FrameStats stats;
-        ui.frame([&] {
+        window.frame([&] {
             stats = frames.run([&] {
                 update();
             });
@@ -383,7 +381,7 @@ struct KeyedPickerRig {
 
     bool settles() {
         bool settled = false;
-        ui.frame([&] {
+        window.frame([&] {
             settled = Settles(frames, [&] {
                 update();
             });
@@ -408,44 +406,10 @@ std::vector<FlowgraphBlockPicker::BlockOption> RoutedCatalog() {
     }};
 }
 
-class ChromeViewport final : public Viewport::Generic {
- public:
-    ChromeViewport() : Generic(Viewport::Config{}) {}
-
-    std::string id() const override { return "chrome"; }
-    std::string name() const override { return "Chrome"; }
-    DeviceType device() const override { return DeviceType::None; }
-
-    Result create() override { return Result::SUCCESS; }
-    Result destroy() override { return Result::SUCCESS; }
-    Result createImgui() override { return Result::SUCCESS; }
-    Result destroyImgui() override { return Result::SUCCESS; }
-
-    F32 scale(const F32&) const override { return 1.0f; }
-
-    Result waitEvents() override { return Result::SUCCESS; }
-    Result pollEvents() override { return Result::SUCCESS; }
-    bool keepRunning() override { return true; }
-
-    Render::TitlebarChrome titlebarChrome() const override {
-        return {.integrated = integrated, .leadingInset = 78.0f, .height = 52.0f};
-    }
-
-    void beginWindowDrag() override { ++drags; }
-    void zoomWindow() override { ++zooms; }
-
-    bool integrated = true;
-    U64 drags = 0;
-    U64 zooms = 0;
-};
-
 class ChromeWindow final : public SakuraTest::FakeWindow {
  public:
-    mutable ChromeViewport viewport;
-
- protected:
-    Viewport::Generic* underlyingViewport() const override {
-        return &viewport;
+    ChromeWindow() {
+        viewport.chrome = Render::TitlebarChrome{.integrated = true, .leadingInset = 78.0f, .height = 52.0f};
     }
 };
 
@@ -511,21 +475,19 @@ struct SettingsRig : ModalRig {
             .themes = {"Dark", "Light"},
             .currentThemeKey = "Dark",
             .renderer = "Metal",
-            .infoPanelEnabled = false,
             .backgroundParticles = true,
             .onThemeChange = [log](const std::string& value) { log("theme:" + value); },
             .onInterfaceScaleChange = [log](F32 value) { log("scale:" + std::to_string(value)); },
-            .onInfoPanelChange = [log](bool value) { log("info:" + Flag(value)); },
             .onBackgroundParticlesChange = [log](bool value) { log("particles:" + Flag(value)); },
         };
         config.remote = {
-            .brokerUrl = "https://broker.example",
+            .broker = {.address = "127.0.0.1", .port = 8686},
             .onCodecChange = [log](Instance::Remote::CodecType value) {
                 log("codec:" + std::to_string(static_cast<U32>(value)));
             },
             .onFramerateChange = [log](U32 value) { log("fps:" + std::to_string(value)); },
             .onEncoderChange = [log](Instance::Remote::EncoderType) { log("encoder"); },
-            .onAutoJoinSessionsChange = [log](bool value) { log("autojoin:" + Flag(value)); },
+            .onAutoApproveChange = [log](bool value) { log("approve:" + Flag(value)); },
         };
         config.runtime = {
             .pythonCandidates = {{.label = "Homebrew", .path = "/opt/homebrew/bin/python3"}},
@@ -631,7 +593,6 @@ Sakura::Context Shaded(Jetstream::Rect bounds) {
 }
 
 struct KeyedModalRig {
-    SakuraTest::HeadlessUi ui{1.0f, ImVec2(1600.0f, 1200.0f)};
     MonoFontWindow window;
     Sakura::ModalLayer modal;
     LayerHost host;
@@ -644,7 +605,7 @@ struct KeyedModalRig {
 
     FrameStats frame() {
         FrameStats stats;
-        ui.frame([&] {
+        window.frame([&] {
             stats = frames.run(update);
         });
         return stats;
@@ -652,7 +613,7 @@ struct KeyedModalRig {
 
     bool settles() {
         bool settled = false;
-        ui.frame([&] {
+        window.frame([&] {
             settled = Settles(frames, update);
         });
         return settled;
@@ -1086,7 +1047,6 @@ TEST_CASE("Title row settles under identical updates and while a menu is open", 
 
 TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views]") {
     using Action = TitlebarView::Action;
-    const ImGuiContextGuard imgui;
     std::vector<Action> actions;
     TitlebarView bar;
     bar.update({
@@ -1135,7 +1095,7 @@ TEST_CASE("Titlebar presenter uses integrated window chrome and routes bar press
     CHECK(window->viewport.zooms == 2);
     CHECK(mailbox.mails.empty());
 
-    window->viewport.integrated = false;
+    window->viewport.chrome->integrated = false;
     config = TitlebarPresenter(mailbox.context()).build();
     CHECK(config.leadingInset == 0.0f);
     CHECK(config.height == 0.0f);
@@ -1337,9 +1297,7 @@ TEST_CASE("Toggling checked menu state while the menus are closed settles withou
 
 TEST_CASE("New tab opens the start tab, which takes over the welcome screen and closes through mail",
           "[core][sakura][views]") {
-    const ImGuiContextGuard imgui;
     Mailbox mailbox;
-    mailbox.state.interface.infoPanelEnabled = false;
     const auto context = mailbox.context();
     TitlebarPresenter(context).build().onAction(TitlebarView::Action::NewTab);
     CHECK(mailbox.count<MailOpenStartTab>() == 1);
@@ -1365,6 +1323,22 @@ TEST_CASE("New tab opens the start tab, which takes over the welcome screen and 
     CHECK(mailbox.count<MailOpenFlowgraph>() == 1);
     config.startTab->onClose();
     CHECK(mailbox.count<MailCloseStartTab>() == 1);
+}
+
+TEST_CASE("Workbench enables particles only while the background is exposed", "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    mailbox.state.interface.backgroundParticles = true;
+    CHECK(WorkbenchPresenter(context).build().backgroundParticles);
+
+    mailbox.state.interface.startTab = true;
+    CHECK_FALSE(WorkbenchPresenter(context).build().backgroundParticles);
+
+    mailbox.state.interface.filePending = true;
+    CHECK(WorkbenchPresenter(context).build().backgroundParticles);
+
+    mailbox.state.interface.backgroundParticles = false;
+    CHECK_FALSE(WorkbenchPresenter(context).build().backgroundParticles);
 }
 
 TEST_CASE("Start tab pill close button calls its close callback and the shell settles as the tab opens and closes",
@@ -1645,22 +1619,6 @@ TEST_CASE("Remote sharing shows as a raised pill in the top right of the title r
     CHECK(rig.presses.empty());
 }
 
-TEST_CASE("Info HUD sits at the bottom left inside its margin", "[core][sakura][views]") {
-    Scene scene{kWide};
-    InfoHudView view;
-    view.update({.frameRate = 60.0f, .viewportName = "GLFW", .renderInfo = "Metal"});
-    Sakura::HudLayer huds;
-    huds.update({.huds = {view.hud()}});
-    LayerHost host({&huds});
-    host.place(scene.ctx, kWide);
-
-    const Jetstream::Rect panel = Peek::Frame(*view.hud().content);
-    CHECK(panel.x == 16.0f + 12.0f);
-    CHECK(panel.bottom() == 1200.0f - 16.0f - 12.0f);
-    CHECK(panel.width > 0.0f);
-    CHECK(Find<Sakura::Text>(huds).size() == 3);
-}
-
 TEST_CASE("Hint overlay action buttons call their actions", "[core][sakura][views]") {
     Scene scene{kWide};
     std::vector<std::string> calls;
@@ -1861,7 +1819,6 @@ TEST_CASE("Block picker settles under identical updates", "[core][sakura][views]
 
 TEST_CASE("Typing in the block search lists ranked matches and Enter creates the first one",
           "[core][sakura][views]") {
-    SakuraTest::HeadlessUi ui(1.0f, ImVec2(1200.0f, 900.0f));
     MonoFontWindow window;
     auto ctx = MakeContext({1200.0f, 900.0f});
     ctx.render = &window;
@@ -1885,7 +1842,7 @@ TEST_CASE("Typing in the block search lists ranked matches and Enter creates the
             {.child = &picker.popupComponent(), .anchor = Sakura::Anchor::TopRight, .offset = {-12.0f, 12.0f},
              .size = {240.0f, 34.0f}},
         }});
-        ui.frame([&] {
+        window.frame([&] {
             host.place(ctx, PickerRig::kBounds);
         });
     };
@@ -2142,22 +2099,22 @@ TEST_CASE("Settings navigation reports every section in order", "[core][sakura][
     CHECK(Peek::Frame(rig.view.component()).width == 856.0f);
 
     auto sections = Find<Sakura::NavigationItem>(rig.view.component());
-    REQUIRE(sections.size() == 7);
+    REQUIRE(sections.size() == 8);
     for (auto* section : sections) {
         CHECK(Press(rig.host, *section));
     }
     CHECK(rig.calls == std::vector<std::string>{"section:0", "section:1", "section:2", "section:3", "section:4",
-                                                 "section:5", "section:6"});
+                                                 "section:5", "section:6", "section:7"});
 }
 
 TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::General);
     CHECK(rig.combos().size() == 3);
-    CHECK(Find<Sakura::Checkbox>(rig.view.component()).size() == 2);
+    CHECK(Find<Sakura::Checkbox>(rig.view.component()).size() == 1);
 
     rig.show(SettingsSection::Remote);
-    CHECK(rig.combos().size() == 4);
+    CHECK(rig.combos().size() == 5);
     CHECK(Find<Sakura::Checkbox>(rig.view.component()).empty());
 
     rig.show(SettingsSection::Registry);
@@ -2168,17 +2125,16 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(Find<Sakura::TabBar>(rig.view.component()).size() == 1);
 }
 
-TEST_CASE("General settings report theme, scale, and panel toggles", "[core][sakura][views]") {
+TEST_CASE("General settings report theme, scale, and background particles", "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::General);
 
     rig.choose(0, 1);
     rig.choose(1, 0);
     auto checkboxes = Find<Sakura::Checkbox>(rig.view.component());
-    REQUIRE(checkboxes.size() == 2);
+    REQUIRE(checkboxes.size() == 1);
     CHECK(Press(rig.host, *checkboxes[0]));
-    CHECK(Press(rig.host, *checkboxes[1]));
-    CHECK(rig.calls == std::vector<std::string>{"theme:Light", "scale:" + std::to_string(0.5f), "info:true",
+    CHECK(rig.calls == std::vector<std::string>{"theme:Light", "scale:" + std::to_string(0.5f),
                                                  "particles:false"});
 }
 
@@ -2225,13 +2181,13 @@ TEST_CASE("Remote settings report codec, framerate, and approval while the encod
           "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::Remote);
-    REQUIRE(rig.combos().size() == 4);
+    REQUIRE(rig.combos().size() == 5);
 
+    rig.choose(2, 1);
+    rig.choose(1, 2);
+    rig.choose(3, 0);
     rig.choose(0, 1);
-    rig.choose(1, 0);
-    rig.choose(2, 2);
-    rig.choose(3, 1);
-    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "autojoin:true"});
+    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true"});
 }
 
 TEST_CASE("Runtime settings pick interpreters and browse for a custom path", "[core][sakura][views]") {
@@ -2527,8 +2483,9 @@ TEST_CASE("Benchmark module combo reports the chosen module", "[core][sakura][vi
 TEST_CASE("Remote modal starts streaming or opens the remote settings", "[core][sakura][views]") {
     ModalRig rig;
     Mailbox mailbox;
-    mailbox.state.remote.brokerUrl = "https://broker.example";
-    mailbox.state.remote.framerate = 60;
+    mailbox.state.remote.config.broker.address = "127.0.0.1";
+    mailbox.state.remote.config.broker.port = 9000;
+    mailbox.state.remote.config.video.framerate = 60;
     RemoteView view;
     view.update(RemoteStreamingModalPresenter(mailbox.context()).build());
     rig.show({.content = &view.component()});
@@ -2539,8 +2496,9 @@ TEST_CASE("Remote modal starts streaming or opens the remote settings", "[core][
     CHECK(Press(rig.host, *buttons[1]));
     REQUIRE(mailbox.mails.size() == 2);
     const auto& start = std::get<MailStartRemote>(mailbox.mails[0]);
-    CHECK(start.config.broker == "https://broker.example");
-    CHECK(start.config.framerate == 60);
+    CHECK(start.config.broker.address == "127.0.0.1");
+    CHECK(start.config.broker.port == 9000);
+    CHECK(start.config.video.framerate == 60);
     CHECK(std::get<MailOpenModal>(mailbox.mails[1]).settings == SettingsSection::Remote);
 }
 
@@ -2983,11 +2941,11 @@ TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without
         .currentThemeKey = "Dark",
         .renderer = "Metal",
         .onThemeChange = [&](const std::string& value) { config.general.currentThemeKey = value; },
-        .onInfoPanelChange = [&](bool value) { config.general.infoPanelEnabled = value; },
+        .onBackgroundParticlesChange = [&](bool value) { config.general.backgroundParticles = value; },
     };
     config.remote = {
-        .brokerUrl = "wss://broker",
-        .onBrokerUrlChange = [&](const std::string& value) { config.remote.brokerUrl = value; },
+        .broker = {.address = "127.0.0.1", .port = 8686},
+        .onBrokerChange = [&](const Instance::Remote::Config::Broker& value) { config.remote.broker = value; },
     };
     config.onSectionChange = [&](SettingsSection section) { config.section = section; };
     SettingsView view;
@@ -3003,7 +2961,7 @@ TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without
     const U64 rebuilds = rig.frames.rebuilds;
 
     auto sections = Find<Sakura::NavigationItem>(view.component());
-    REQUIRE(sections.size() == 7);
+    REQUIRE(sections.size() == 8);
     CheckHover(rig.host, step, *sections[1], away);
 
     for (const auto section : {SettingsSection::Remote, SettingsSection::Runtime}) {
@@ -3021,10 +2979,10 @@ TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without
     CHECK(rig.move(away).clean());
 
     auto checkboxes = Find<Sakura::Checkbox>(view.component());
-    REQUIRE(checkboxes.size() == 2);
+    REQUIRE(checkboxes.size() == 1);
     CheckHover(rig.host, step, *checkboxes[0], away);
     CHECK(Press(rig.host, *checkboxes[0]));
-    CHECK(config.general.infoPanelEnabled);
+    CHECK(config.general.backgroundParticles);
     CHECK(RepaintOnly(rig.frame()));
     CHECK(rig.settles());
     CHECK(rig.move(away).clean());
@@ -3055,18 +3013,31 @@ TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without
     CHECK(RepaintOnly(rig.frame()));
     CHECK(rig.settles());
     auto inputs = Find<Sakura::TextInput>(view.component());
-    REQUIRE(inputs.size() == 1);
+    REQUIRE_FALSE(inputs.empty());
     auto& broker = *inputs[0];
+    const auto shown = [&] {
+        const auto center = Center(broker);
+        return Peek::Clip(broker).contains(center.x, center.y);
+    };
+    const auto areas = Find<Sakura::ScrollArea>(view.component());
+    REQUIRE(areas.size() == 2);
+    const auto editor = Center(*areas[1]);
+    for (int notch = 0; notch < 40 && !shown(); ++notch) {
+        rig.host.send(Wheel(editor.x, editor.y, 0.0f, -1.0f));
+        CHECK_FALSE(rig.frame().rebuilt);
+    }
+    REQUIRE(shown());
+    CHECK(rig.settles());
     CHECK(RepaintOnly(rig.click(Center(broker))));
     CHECK(broker.focused());
     CHECK(rig.settles());
-    CHECK(RepaintOnly(rig.type("/x")));
-    CHECK(config.remote.brokerUrl == "wss://broker/x");
+    CHECK(RepaintOnly(rig.type("1")));
+    CHECK(config.remote.broker.address == "127.0.0.1");
     CHECK(rig.settles());
     CHECK(RepaintOnly(rig.click(away)));
     CHECK_FALSE(broker.focused());
     CHECK(rig.settles());
-    CHECK(config.remote.brokerUrl == "wss://broker/x");
+    CHECK(config.remote.broker.address == "127.0.0.11");
     CHECK(rig.frames.rebuilds == rebuilds);
 }
 
@@ -3165,7 +3136,6 @@ TEST_CASE("File picker hover, selection, navigation, filename typing, and scroll
 
 TEST_CASE("Workbench view accepts welcome, modal, and file pending configs without rendering",
           "[core][sakura][views]") {
-    const ImGuiContextGuard imgui;
     Mailbox mailbox;
     std::vector<TitlebarView::Action> actions;
     WorkbenchView view;
@@ -3185,19 +3155,6 @@ TEST_CASE("Workbench view accepts welcome, modal, and file pending configs witho
     config.filePending = true;
     CHECK_NOTHROW(view.update(config));
     CHECK(actions.empty());
-}
-
-TEST_CASE("HUD views settle under identical updates", "[core][sakura][views]") {
-    Scene scene{kWide};
-    InfoHudView info;
-    Sakura::HudLayer huds;
-    LayerHost host({&huds});
-    Frames frames(host, kWide, scene.ctx);
-    const auto update = [&] {
-        info.update({.frameRate = 60.0f, .viewportName = "GLFW", .renderInfo = "Metal"});
-        huds.update({.huds = {info.hud()}});
-    };
-    CHECK(Settles(frames, update));
 }
 
 TEST_CASE("Example and info views settle under identical updates",

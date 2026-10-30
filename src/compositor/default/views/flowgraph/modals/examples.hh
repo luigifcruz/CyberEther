@@ -3,7 +3,7 @@
 
 #include "../../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include <functional>
 #include <memory>

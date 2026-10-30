@@ -3,16 +3,24 @@
 #include "fonts.hh"
 #include "component_harness.hh"
 
-#include <jetstream/render/sakura/components/controls.hh>
+#include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/checkbox.hh>
+#include <jetstream/render/sakura/components/combo.hh>
+#include <jetstream/render/sakura/components/progress_bar.hh>
+#include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/qr_code.hh>
+#include <jetstream/render/sakura/components/status_bar.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
-#include <jetstream/render/tools/imgui.h>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include "harness.hh"
 #include "scene.hh"
 
+#include <algorithm>
 #include <limits>
 #include <string>
+#include <variant>
 #include <vector>
 
 using namespace Jetstream;
@@ -172,6 +180,45 @@ TEST_CASE("Button measure wraps the label in padding unless a size is given",
     CHECK(measure({.size = {120.0f, 40.0f}}) == Extent2D<F32>{240.0f, 80.0f});
 }
 
+TEST_CASE("Squeezed buttons clip their caption and disabled buttons fade it", "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::Button button;
+    button.update({.str = "A caption far wider than the button"});
+    Host host(button);
+    host.place(scene.ctx, {0.0f, 0.0f, 40.0f, 25.0f});
+
+    std::vector<DrawnLeaf> drawn;
+    CollectDrawn(button, drawn);
+    const auto caption = std::find_if(drawn.begin(), drawn.end(), [](const DrawnLeaf& leaf) {
+        return std::holds_alternative<Sakura::Label::Config>(leaf.config);
+    });
+    REQUIRE(caption != drawn.end());
+    REQUIRE(caption->clip.has_value());
+    CHECK(caption->clip->right() <= 40.0f);
+
+    CHECK(Find<Sakura::Text>(button).at(0)->config().opacity == 1.0f);
+    button.update({.str = "Open", .disabled = true});
+    CHECK(Find<Sakura::Text>(button).at(0)->config().opacity == 0.6f);
+    button.update({.str = "Open", .variant = Sakura::Button::Variant::Text, .disabled = true});
+    CHECK(Find<Sakura::Text>(button).at(0)->config().opacity == 1.0f);
+}
+
+TEST_CASE("Long status messages end before the toggle pill", "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::StatusBar bar;
+    const std::string status = "Invalid YAML. Fix the document before applying changes.";
+    bar.update({.id = "status", .status = status, .toggleText = "Console", .onToggle = [] {}});
+    Host host(bar);
+    host.place(scene.ctx, {0.0f, 0.0f, 200.0f, 24.0f});
+
+    const auto& message = Find<Sakura::Label>(bar).at(0)->config().instances.at(0);
+    CHECK(message.str != status);
+    CHECK(message.str.ends_with("..."));
+
+    host.place(scene.ctx, {0.0f, 0.0f, 90.0f, 24.0f});
+    CHECK_FALSE(Find<Sakura::Label>(bar).at(0)->config().instances.at(0).visible);
+}
+
 TEST_CASE("Navigation items fill the width and select on click", "[core][sakura][controls]") {
     const Scene scene;
     U64 selected = 0;
@@ -289,16 +336,51 @@ TEST_CASE("Combo opens a dropdown below itself and reports the chosen option", "
     host.place(scene.ctx, kScreen);
     CHECK_FALSE(host.popups.interactiveAt({150.0f, 150.0f}));
 
-    CHECK(host.click(150.0f, 112.0f));
-    host.place(scene.ctx, kScreen);
+    using Queue = Render::InputQueue;
+    InputDriver driver;
+    CHECK(driver.run(host, scene.ctx, kScreen, {
+        Queue::Pointer{Extent2D<F32>{150.0f, 112.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Button{MouseButton::Left, false},
+    }) > 1);
     CHECK(host.popups.interactiveAt({100.0f, 125.0f}));
     CHECK(host.popups.interactiveAt({299.0f, 209.0f}));
     CHECK_FALSE(host.popups.interactiveAt({150.0f, 210.0f}));
-
-    CHECK(host.click(150.0f, 167.0f));
-    CHECK(events == std::vector<std::string>{"select:1", "change:beta"});
     host.place(scene.ctx, kScreen);
+    CHECK(events.empty());
+
+    driver.run(host, scene.ctx, kScreen, {
+        Queue::Pointer{Extent2D<F32>{150.0f, 167.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Button{MouseButton::Left, false},
+    });
+    CHECK(events == std::vector<std::string>{"select:1", "change:beta"});
     CHECK_FALSE(host.popups.interactiveAt({150.0f, 150.0f}));
+    events.clear();
+
+    Sakura::Combo second;
+    second.update({
+        .id = "batched",
+        .options = {"alpha", "beta", "gamma"},
+        .value = "alpha",
+        .onChange = [&](const std::string& value) { events.push_back("change:" + value); },
+        .onSelect = [&](U64 index) { events.push_back("select:" + std::to_string(index)); },
+    });
+    LayerSlot batchedMount;
+    batchedMount.hold(second, {100.0f, 100.0f, 200.0f, 25.0f});
+    LayerHost batchedHost({&batchedMount});
+    batchedHost.place(scene.ctx, kScreen);
+    InputDriver batched;
+    batched.run(batchedHost, scene.ctx, kScreen, {
+        Queue::Pointer{Extent2D<F32>{150.0f, 112.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Button{MouseButton::Left, false},
+        Queue::Pointer{Extent2D<F32>{150.0f, 167.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Button{MouseButton::Left, false},
+    });
+    CHECK(events == std::vector<std::string>{"select:1", "change:beta"});
+    CHECK_FALSE(batchedHost.popups.interactiveAt({150.0f, 150.0f}));
 }
 
 TEST_CASE("Combo closes its dropdown on a second click and stays shut while disabled",
@@ -446,4 +528,69 @@ TEST_CASE("Text inputs take focus when clicked or configured to focus", "[core][
     pair.place(scene.ctx, bounds);
     CHECK(first.focused());
     CHECK_FALSE(second.focused());
+}
+
+TEST_CASE("Password text inputs draw a mask instead of their text", "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::TextInput input;
+    input.update({.value = "hunter2", .password = true});
+    Host host(input);
+    host.place(scene.ctx, {0.0f, 0.0f, 300.0f, 25.0f});
+
+    std::vector<std::string> drawn;
+    for (auto* label : Find<Sakura::Label>(input)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && !instance.str.empty()) {
+                drawn.push_back(instance.str);
+            }
+        }
+    }
+    REQUIRE_FALSE(drawn.empty());
+    for (const auto& str : drawn) {
+        CHECK(str.find("hunter") == std::string::npos);
+    }
+    CHECK(std::find(drawn.begin(), drawn.end(), "*******") != drawn.end());
+
+    input.update({.value = "hunter2"});
+    host.place(scene.ctx, {0.0f, 0.0f, 300.0f, 25.0f});
+    bool plain = false;
+    for (auto* label : Find<Sakura::Label>(input)) {
+        for (const auto& instance : label->config().instances) {
+            plain = plain || (instance.visible && instance.str == "hunter2");
+        }
+    }
+    CHECK(plain);
+}
+
+TEST_CASE("Disabled text inputs ignore clicks, show no cursor, and give up focus", "[core][sakura][controls]") {
+    const Scene scene;
+    std::vector<std::string> changes;
+    Sakura::TextInput input;
+    const auto configure = [&](bool disabled) {
+        input.update({.value = "alpha", .disabled = disabled,
+                      .onChange = [&](const std::string& value) { changes.push_back(value); }});
+    };
+    configure(false);
+    Host host(input);
+    const Rect bounds = {0.0f, 0.0f, 300.0f, 25.0f};
+    host.place(scene.ctx, bounds);
+    CHECK(Peek::CursorAt(input, {40.0f, 12.0f}) == SurfaceCursor::TextInput);
+    CHECK(host.click(40.0f, 12.0f));
+    REQUIRE(input.focused());
+
+    configure(true);
+    host.place(scene.ctx, bounds);
+    CHECK_FALSE(input.focused());
+    CHECK_FALSE(Peek::CursorAt(input, {40.0f, 12.0f}).has_value());
+    CHECK(Sakura::Access::cursor(host, {40.0f, 12.0f}) == SurfaceCursor::Default);
+    CHECK_FALSE(host.click(40.0f, 12.0f));
+    host.place(scene.ctx, bounds);
+    CHECK_FALSE(input.focused());
+    Type(host, "b");
+    CHECK(changes.empty());
+
+    configure(true);
+    input.update({.value = "alpha", .focus = true, .disabled = true});
+    host.place(scene.ctx, bounds);
+    CHECK_FALSE(input.focused());
 }

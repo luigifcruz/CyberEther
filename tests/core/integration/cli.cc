@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include "environment.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/config.hh"
 #include "jetstream/logger.hh"
@@ -109,73 +110,21 @@ class StreamCapture {
     bool finished_ = false;
 };
 
-#if defined(_WIN32)
-class EnvironmentGuard {
- public:
-    explicit EnvironmentGuard(const wchar_t* name) : name_(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~EnvironmentGuard() {
-        (void)_wputenv_s(name_.c_str(), previous_ ? previous_->c_str() : L"");
-    }
-
-    bool set(const std::wstring& value) const {
-        return _wputenv_s(name_.c_str(), value.c_str()) == 0;
-    }
-
- private:
-    std::wstring name_;
-    std::optional<std::wstring> previous_;
-};
-
-std::optional<std::wstring> EnvironmentValue(const wchar_t* name) {
-    if (const wchar_t* value = _wgetenv(name)) {
-        return value;
-    }
-    return std::nullopt;
-}
-#else
-class EnvironmentGuard {
- public:
-    explicit EnvironmentGuard(const char* name) : name_(name) {
-        if (const char* value = std::getenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~EnvironmentGuard() {
-        if (previous_) {
-            (void)setenv(name_.c_str(), previous_->c_str(), 1);
-        } else {
-            (void)unsetenv(name_.c_str());
-        }
-    }
-
-    bool set(const std::string& value) const {
-        return setenv(name_.c_str(), value.c_str(), 1) == 0;
-    }
-
- private:
-    std::string name_;
-    std::optional<std::string> previous_;
-};
+using EnvironmentGuard = TestSupport::ScopedEnvironment;
 
 std::optional<std::string> EnvironmentValue(const char* name) {
-    if (const char* value = std::getenv(name)) {
-        return value;
+    std::string value;
+    if (Jetstream::Platform::EnvironmentVariable(name, value) != Jetstream::Result::SUCCESS) {
+        return std::nullopt;
     }
-    return std::nullopt;
+    return value;
 }
-#endif
 
 class SettingsSandbox {
  public:
     SettingsSandbox()
 #if defined(_WIN32)
-        : appData_(L"APPDATA")
+        : appData_("APPDATA")
 #elif defined(__APPLE__)
         : fixedHome_("CFFIXED_USER_HOME")
 #else
@@ -209,12 +158,13 @@ class SettingsSandbox {
 
  private:
     bool ConfigureEnvironment(const std::filesystem::path& root) {
+        const auto path = Jetstream::Platform::PathToUtf8(root);
 #if defined(_WIN32)
-        return appData_.set(root.wstring());
+        return appData_.set(path);
 #elif defined(__APPLE__)
-        return fixedHome_.set(root.string());
+        return fixedHome_.set(path);
 #else
-        return home_.set(root.string()) && xdgConfigHome_.set(root.string());
+        return home_.set(path) && xdgConfigHome_.set(path);
 #endif
     }
 
@@ -508,26 +458,40 @@ TEST_CASE("CLI accepts every documented enum value", "[core][integration][cli]")
          "Dependency installation policy (current: allow)"},
         {"dependency policy deny", {"--dependency-policy=DENY", "--help"},
          "Dependency installation policy (current: deny)"},
-        {"codec h264", {"--remote", "--codec=H264", "--help"},
-         "Streaming codec (current: h264)"},
-        {"codec av1", {"--remote", "--codec=AV1", "--help"},
-         "Streaming codec (current: av1)"},
-        {"codec vp8", {"--remote", "--codec=VP8", "--help"},
-         "Streaming codec (current: vp8)"},
-        {"codec vp9", {"--remote", "--codec=VP9", "--help"},
-         "Streaming codec (current: vp9)"},
-        {"encoder auto", {"--remote", "--encoder=AUTO", "--help"},
-         "Streaming encoder (current: auto)"},
-        {"encoder software", {"--remote", "--encoder=SOFTWARE", "--help"},
-         "Streaming encoder (current: software)"},
-        {"encoder nvenc", {"--remote", "--encoder=NVENC", "--help"},
-         "Streaming encoder (current: nvenc)"},
-        {"encoder v4l2", {"--remote", "--encoder=V4L2", "--help"},
-         "Streaming encoder (current: v4l2)"},
-        {"encoder videotoolbox", {"--remote", "--encoder=VIDEOTOOLBOX", "--help"},
-         "Streaming encoder (current: videotoolbox)"},
-        {"encoder mediafoundation", {"--remote", "--encoder=MEDIAFOUNDATION", "--help"},
-         "Streaming encoder (current: mediafoundation)"},
+        {"codec h264", {"--remote", "--remote-codec=H264", "--help"},
+         "Video codec (current: h264)"},
+        {"codec av1", {"--remote", "--remote-codec=AV1", "--help"},
+         "Video codec (current: av1)"},
+        {"codec vp8", {"--remote", "--remote-codec=VP8", "--help"},
+         "Video codec (current: vp8)"},
+        {"codec vp9", {"--remote", "--remote-codec=VP9", "--help"},
+         "Video codec (current: vp9)"},
+        {"encoder auto", {"--remote", "--remote-encoder=AUTO", "--help"},
+         "Video encoder (current: auto)"},
+        {"encoder software", {"--remote", "--remote-encoder=SOFTWARE", "--help"},
+         "Video encoder (current: software)"},
+        {"encoder nvenc", {"--remote", "--remote-encoder=NVENC", "--help"},
+         "Video encoder (current: nvenc)"},
+        {"encoder v4l2", {"--remote", "--remote-encoder=V4L2", "--help"},
+         "Video encoder (current: v4l2)"},
+        {"encoder videotoolbox", {"--remote", "--remote-encoder=VIDEOTOOLBOX", "--help"},
+         "Video encoder (current: videotoolbox)"},
+        {"encoder mediafoundation", {"--remote", "--remote-encoder=MEDIAFOUNDATION", "--help"},
+         "Video encoder (current: mediafoundation)"},
+        {"transport auto", {"--remote", "--remote-media-transport=AUTO", "--help"},
+         "Media transport (current: auto)"},
+        {"transport udp", {"--remote", "--remote-media-transport=UDP", "--help"},
+         "Media transport (current: udp)"},
+        {"transport tcp", {"--remote", "--remote-media-transport=TCP", "--help"},
+         "Media transport (current: tcp)"},
+        {"media address", {"--remote", "--remote-media-address=127.0.0.1", "--help"},
+         "Media address (current: 127.0.0.1)"},
+        {"remote framerate", {"--remote", "--remote-framerate=24", "--help"},
+         "Video framerate (current: 24)"},
+        {"port range", {"--remote", "--remote-media-port-range=40000-40100", "--help"},
+         "Media port range (current: 40000-40100)"},
+        {"port range single", {"--remote", "--remote-media-port-range", "50000-50000", "--help"},
+         "Media port range (current: 50000-50000)"},
         {"format markdown", {"benchmark", "--format=MARKDOWN", "--help"},
          "Output format (current: markdown)"},
         {"format json", {"benchmark", "--format=JSON", "--help"},
@@ -573,19 +537,20 @@ TEST_CASE("CLI repeated options use last scalar and idempotent flag values",
             "75",
             "--remote",
             "--remote",
-            "--broker=https://first.example",
-            "--broker",
-            "https://second.example/path?key=value",
-            "--codec=h264",
-            "--codec",
+            "--remote-broker-public-url=https://first.example",
+            "--remote-broker-public-url",
+            "https://second.example:8443/",
+            "--remote-codec=h264",
+            "--remote-codec",
             "vp9",
-            "--encoder=auto",
-            "--encoder",
+            "--remote-encoder=auto",
+            "--remote-encoder",
             "software",
             "--headless",
             "--headless",
-            "--auto-join-sessions",
-            "--auto-join-sessions",
+            "--remote-auto-approve=off",
+            "--remote-auto-approve",
+            "ON",
             "--plugin=first.cep",
             "--plugin",
             "second.CEP",
@@ -597,9 +562,10 @@ TEST_CASE("CLI repeated options use last scalar and idempotent flag values",
             "Viewport size (current: 800x600)",
             "Interface scale factor (current: 2.5)",
             "Target frame rate (current: 75)",
-            "Broker URL (current: https://second.example/path?key=value)",
-            "Streaming codec (current: vp9)",
-            "Streaming encoder (current: software)"});
+            "Broker public URL (current: https://second.example:8443/)",
+            "Approve viewers automatically (current: on)",
+            "Video codec (current: vp9)",
+            "Video encoder (current: software)"});
     Expect("repeated benchmark format",
            {"benchmark", "--format=markdown", "--format", "csv", "--help"},
            0,
@@ -619,10 +585,10 @@ TEST_CASE("CLI accepts normalized, inline, and boundary values", "[core][integra
             "--scale=2",
             "--framerate=30",
             "--remote",
-            "--broker=https://example.com",
-            "--codec=H264",
-            "--encoder=AUTO",
-            "--auto-join-sessions",
+            "--remote-broker-public-url=https://example.com",
+            "--remote-codec=H264",
+            "--remote-encoder=AUTO",
+            "--remote-auto-approve=off",
             "--help"},
            0,
             {"Preferred graphics backend (current: metal)",
@@ -631,9 +597,26 @@ TEST_CASE("CLI accepts normalized, inline, and boundary values", "[core][integra
             "Viewport size (current: 640x480)",
             "Interface scale factor (current: 2.0)",
             "Target frame rate (current: 30)",
-            "Broker URL (current: https://example.com)",
-            "Streaming codec (current: h264)",
-            "Streaming encoder (current: auto)"});
+            "Broker public URL (current: https://example.com)",
+            "Approve viewers automatically (current: off)",
+            "Video codec (current: h264)",
+            "Video encoder (current: auto)"});
+    Expect("broker values",
+           {"--remote",
+            "--remote-broker-address=127.0.0.1",
+            "--remote-broker-port",
+            "0",
+            "--remote-broker-public-url=https://viewer.example:8443",
+            "--remote-broker-tls-cert=/certs/cert.pem",
+            "--remote-broker-tls-key",
+            "/certs/key.pem",
+            "--help"},
+           0,
+           {"Broker address (current: 127.0.0.1)",
+            "Broker port (current: 0)",
+            "Broker public URL (current: https://viewer.example:8443)",
+            "Broker TLS certificate (current: /certs/cert.pem)",
+            "Broker TLS key (current: /certs/key.pem)"});
     Expect("benchmark values",
            {"--format=JSON", "benchmark", "fft", "--plugin=benchmark.cep", "--help"},
            0,
@@ -665,7 +648,14 @@ TEST_CASE("CLI accepts normalized, inline, and boundary values", "[core][integra
             "Viewport size (current: 1920x1080)",
             "Interface scale factor (current: 1.0)",
             "Target frame rate (current: 60)",
-            "Broker URL (current: https://cyberether.org)"});
+            "Video framerate (current: 30)",
+            "Approve viewers automatically (current: off)",
+            "Broker address (current: 0.0.0.0)",
+            "Broker port (current: 8686)",
+            "Broker public URL (current: auto)",
+            "Broker TLS certificate (current: none)",
+            "Broker TLS key (current: none)",
+            "Media address (current: auto)"});
 }
 
 TEST_CASE("CLI rejects invalid syntax and command conflicts", "[core][integration][cli]") {
@@ -738,12 +728,34 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
         {"--python-runtime=", "Missing value for --python-runtime"},
         {"--renderer", "Missing value for --renderer"},
         {"--renderer=software", "Invalid value for --renderer"},
-        {"--broker", "Missing value for --broker"},
-        {"--broker=", "Missing value for --broker"},
-        {"--codec", "Missing value for --codec"},
-        {"--codec=invalid", "Invalid value for --codec"},
-        {"--encoder", "Missing value for --encoder"},
-        {"--encoder=invalid", "Invalid value for --encoder"},
+        {"--remote-codec", "Missing value for --remote-codec"},
+        {"--remote-codec=invalid", "Invalid value for --remote-codec"},
+        {"--remote-encoder", "Missing value for --remote-encoder"},
+        {"--remote-encoder=invalid", "Invalid value for --remote-encoder"},
+        {"--remote-media-address", "Missing value for --remote-media-address"},
+        {"--remote-framerate", "Missing value for --remote-framerate"},
+        {"--remote-framerate=0", "Invalid value for --remote-framerate"},
+        {"--remote-framerate=4294967296", "Invalid value for --remote-framerate"},
+        {"--remote-broker-address", "Missing value for --remote-broker-address"},
+        {"--remote-broker-port", "Missing value for --remote-broker-port"},
+        {"--remote-broker-port=65536", "Invalid value for --remote-broker-port"},
+        {"--remote-broker-port=-1", "Invalid value for --remote-broker-port"},
+        {"--remote-broker-port=http", "Invalid value for --remote-broker-port"},
+        {"--remote-broker-public-url", "Missing value for --remote-broker-public-url"},
+        {"--remote-broker-public-url=ws://example.com", "Invalid value for --remote-broker-public-url"},
+        {"--remote-broker-public-url=https://example.com/ce", "Invalid value for --remote-broker-public-url"},
+        {"--remote-broker-public-url=https://example.com?key=value", "Invalid value for --remote-broker-public-url"},
+        {"--remote-broker-tls-cert", "Missing value for --remote-broker-tls-cert"},
+        {"--remote-broker-tls-key", "Missing value for --remote-broker-tls-key"},
+        {"--remote-media-transport", "Missing value for --remote-media-transport"},
+        {"--remote-media-transport=quic", "Invalid value for --remote-media-transport"},
+        {"--remote-media-port-range", "Missing value for --remote-media-port-range"},
+        {"--remote-media-port-range=", "Missing value for --remote-media-port-range"},
+        {"--remote-media-port-range=40000", "Invalid value for --remote-media-port-range"},
+        {"--remote-media-port-range=40100-40000", "Invalid value for --remote-media-port-range"},
+        {"--remote-media-port-range=0-40000", "Invalid value for --remote-media-port-range"},
+        {"--remote-media-port-range=40000-65536", "Invalid value for --remote-media-port-range"},
+        {"--remote-media-port-range=+40000-40100", "Invalid value for --remote-media-port-range"},
         {"--format", "Missing value for --format"},
         {"--format=xml", "Invalid value for --format"},
         {"--help=true", "does not accept a value"},
@@ -751,16 +763,26 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
         {"--install=true", "does not accept a value"},
         {"--headless=true", "does not accept a value"},
         {"--remote=true", "does not accept a value"},
-        {"--auto-join-sessions=true", "does not accept a value"},
+        {"--remote-auto-approve", "Missing value for --remote-auto-approve"},
+        {"--remote-auto-approve=true", "Invalid value for --remote-auto-approve"},
     };
     for (const auto& [argument, message] : errors) {
         Expect(argument, {argument}, 2, {}, {message});
     }
 
-    Expect("broker dependency", {"--broker", "https://example.com"}, 2, {}, {"requires --remote"});
-    Expect("codec dependency", {"--codec", "h264"}, 2, {}, {"requires --remote"});
-    Expect("encoder dependency", {"--encoder", "auto"}, 2, {}, {"requires --remote"});
-    Expect("auto join dependency", {"--auto-join-sessions"}, 2, {}, {"requires --remote"});
+    Expect("codec dependency", {"--remote-codec", "h264"}, 2, {}, {"requires --remote"});
+    Expect("encoder dependency", {"--remote-encoder", "auto"}, 2, {}, {"requires --remote"});
+    Expect("auto approve dependency", {"--remote-auto-approve", "on"}, 2, {}, {"requires --remote"});
+    Expect("transport dependency", {"--remote-media-transport", "tcp"}, 2, {}, {"requires --remote"});
+    Expect("broker dependency", {"--remote-broker-port", "9000"}, 2, {}, {"requires --remote"});
+    Expect("media address dependency", {"--remote-media-address", "127.0.0.1"}, 2, {}, {"requires --remote"});
+    Expect("external broker removed", {"--remote", "--broker", "https://example.com"}, 2, {}, {"Unknown option: '--broker'."});
+    Expect("broker TLS pair",
+           {"--remote", "--remote-broker-tls-cert", "cert.pem"},
+           2,
+           {},
+           {"The broker needs both --remote-broker-tls-cert and --remote-broker-tls-key."});
+    Expect("port range dependency", {"--remote-media-port-range", "40000-40100"}, 2, {}, {"requires --remote"});
 }
 
 TEST_CASE("CLI validates numeric values", "[core][integration][cli]") {
@@ -850,27 +872,38 @@ TEST_CASE("CLI reports invalid retained remote settings before backend startup",
           "[core][integration][cli]") {
     SettingsGuard settings;
     Jetstream::Settings invalid = settings.previous();
-    invalid.remote.codec = "not-a-codec";
+    SECTION("codec") {
+        invalid.remote.video.codec = "not-a-codec";
+    }
+    SECTION("transport") {
+        invalid.remote.media.transport = "quic";
+    }
+    SECTION("port range") {
+        invalid.remote.media.minPort = 40100;
+        invalid.remote.media.maxPort = 40000;
+    }
+    SECTION("broker port") {
+        invalid.remote.broker.port = 70000;
+    }
     REQUIRE(Jetstream::Settings::Set(invalid, false) == Jetstream::Result::SUCCESS);
 
     const InvocationResult result = Invoke({"--remote"});
     CAPTURE(result.code, result.out, result.err);
     CHECK(result.code == 2);
     CHECK(result.err == UsageError(
-        "The configured CyberEther Remote codec or encoder is invalid."));
+        "The configured CyberEther Remote settings are invalid."));
     CHECK(result.sandboxUntouched);
 }
 
 TEST_CASE("CLI settings sandbox restores environment variables",
           "[core][integration][cli]") {
 #if defined(_WIN32)
-    const auto appData = EnvironmentValue(L"APPDATA");
+    const auto appData = EnvironmentValue("APPDATA");
     {
         SettingsSandbox nested;
-        CHECK(EnvironmentValue(L"APPDATA") ==
-              std::optional<std::wstring>(nested.root().wstring()));
+        CHECK(EnvironmentValue("APPDATA") == std::optional<std::string>(Jetstream::Platform::PathToUtf8(nested.root())));
     }
-    CHECK(EnvironmentValue(L"APPDATA") == appData);
+    CHECK(EnvironmentValue("APPDATA") == appData);
 #elif defined(__APPLE__)
     const auto fixedHome = EnvironmentValue("CFFIXED_USER_HOME");
     {
@@ -943,36 +976,32 @@ TEST_CASE("CLI releases backends on benchmark return and exception", "[core][int
 // ordering after every acquired resource without touching drivers, windows,
 // hardware, or the network.
 
-TEST_CASE("CLI rejects broker URLs unsupported by remote transport", "[core][integration][cli]") {
-    const InvocationResult result = Invoke({"--remote", "--broker=ftp://example.com", "--help"});
-    CAPTURE(result.code, result.out, result.err);
-    CHECK(result.sandboxUntouched);
-
-    CHECK(result.code == 2);
-    CHECK(result.out.empty());
-    CHECK(result.err.find("Invalid value for --broker") != std::string::npos);
-}
-
 TEST_CASE("CLI rejects invalid retained broker settings before backend startup",
           "[core][integration][cli]") {
     SettingsGuard settings;
     Jetstream::Settings invalid = settings.previous();
-    invalid.remote.brokerUrl = "ftp://example.com";
+    invalid.remote.broker.publicUrl = "ftp://example.com";
     REQUIRE(Jetstream::Settings::Set(invalid, false) == Jetstream::Result::SUCCESS);
 
     const InvocationResult result = Invoke({"--remote"});
     CAPTURE(result.code, result.out, result.err);
     CHECK(result.code == 2);
     CHECK(result.out.empty());
-    CHECK(result.err == UsageError(
-        "Invalid value for --broker: 'ftp://example.com'. Expected an HTTP or HTTPS URL."));
+    CHECK(result.err == UsageError("The configured CyberEther Remote settings are invalid."));
     CHECK(result.sandboxUntouched);
 }
 
 int main(int argc, char* argv[]) {
+#ifdef JST_OS_BROWSER
+    (void)argc;
+    (void)argv;
+    jst::fmt::print("[SKIP] Native CLI commands are not available in the browser entry point.\n");
+    return 77;
+#else
     SettingsSandbox sandbox;
     settingsSandbox = &sandbox;
     const int code = Catch::Session().run(argc, argv);
     settingsSandbox = nullptr;
     return code;
+#endif
 }

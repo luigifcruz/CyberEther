@@ -6,14 +6,15 @@
 #include <jetstream/render/sakura/components/text_editor.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
 #include "../detail/corner_mask.hh"
-#include "../detail/text_lines.hh"
 #include "../metrics.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -65,11 +66,12 @@ struct CodeEditor::Impl {
     bool editorStale = true;
     F32 syncedRatio = 0.0f;
     F32 barHeight = 0.0f;
+    std::optional<Extent2D<F32>> reportedOverflow;
 
     const std::string& consoleText() {
         if (joinedConsoleLines != config.consoleOutput) {
             joinedConsoleLines = config.consoleOutput;
-            joinedConsole = JoinLines(joinedConsoleLines);
+            joinedConsole = Jetstream::Text::JoinLines(joinedConsoleLines);
         }
         return joinedConsole;
     }
@@ -212,9 +214,12 @@ struct CodeEditor::Impl {
             case MouseEventType::Move: {
                 if (consoleResizing) {
                     self.requestCursor(SurfaceCursor::ResizeNS);
-                    consoleResizeHeightPixels = editorContentBottomPixels() - event.position.y -
-                                                consoleDividerHeightPixels() * 0.5f;
-                    self.invalidate(Dirty::Layout);
+                    const F32 height = editorContentBottomPixels() - event.position.y -
+                                       consoleDividerHeightPixels() * 0.5f;
+                    if (height != consoleResizeHeightPixels) {
+                        consoleResizeHeightPixels = height;
+                        self.invalidate(Dirty::Layout);
+                    }
                     return true;
                 }
                 return false;
@@ -364,6 +369,17 @@ void CodeEditor::layout(const Context& ctx) {
 
     layoutChild(ctx, impl->backgroundBox, frame());
     layoutChild(ctx, impl->textEditor, impl->editorAreaRect());
+    if (impl->config.onContentOverflow) {
+        const auto& metrics = impl->textEditor.metrics();
+        const Rect area = impl->editorAreaRect();
+        const F32 ratio = std::max(1e-3f, pixelRatio);
+        const Extent2D<F32> overflow = {(metrics.contentWidth - area.width) / ratio,
+                                        (metrics.contentHeight - area.height) / ratio};
+        if (impl->reportedOverflow != overflow) {
+            impl->reportedOverflow = overflow;
+            impl->config.onContentOverflow(overflow);
+        }
+    }
     if (consoleOn) {
         layoutChild(ctx, impl->consoleView, panel);
     }

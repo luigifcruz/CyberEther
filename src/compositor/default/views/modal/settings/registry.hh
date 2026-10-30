@@ -1,10 +1,11 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_REGISTRY_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_REGISTRY_HH
 
+#include "components/action_table.hh"
+
 #include "jetstream/render/sakura/base.hh"
 
 #include <functional>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,8 +35,6 @@ struct RegistrySettingsPanel {
 
     void update(Config config) {
         using Text = Sakura::Text;
-        using Stack = Sakura::Stack;
-        using Button = Sakura::Button;
 
         this->config = std::move(config);
         title.update({
@@ -73,65 +72,39 @@ struct RegistrySettingsPanel {
             .size = {Sakura::Fill, 34.0f},
             .onClick = this->config.onAddPlugin,
         });
-        emptyPluginText.update({
-            .str = "No plugins registered.",
-            .tone = Text::Tone::Disabled,
-        });
         emptyText.update({
             .str = "No registered blocks.",
             .tone = Text::Tone::Disabled,
         });
 
-        while (plugins.size() < this->config.plugins.size()) {
-            plugins.push_back(std::make_unique<PluginCells>());
-        }
-        std::vector<std::vector<Sakura::Component*>> cellRows;
-        if (this->config.plugins.empty()) {
-            cellRows.push_back({&emptyPluginText});
-        }
-        for (U64 i = 0; i < this->config.plugins.size(); ++i) {
-            const auto& plugin = this->config.plugins[i];
-            auto& cells = *plugins[i];
-            cells.name.update({
-                .str = plugin.name,
-                .wrapped = true,
-            });
-            cells.version.update({
-                .str = plugin.version,
-                .wrapped = true,
-            });
-            cells.status.update({
-                .str = plugin.status,
-                .tone = statusTone(plugin.status),
-                .wrapped = true,
-            });
-            cells.reload.update({
-                .str = "Reload",
-                .variant = Button::Variant::Text,
-                .onClick = [this, path = plugin.path]() {
-                    if (this->config.onReloadPlugin) {
-                        this->config.onReloadPlugin(path);
-                    }
+        std::vector<ActionTable::Row> pluginRows;
+        pluginRows.reserve(this->config.plugins.size());
+        for (const auto& plugin : this->config.plugins) {
+            pluginRows.push_back({
+                .cells = {
+                    {.str = plugin.name},
+                    {.str = plugin.version},
+                    {.str = plugin.status, .tone = statusTone(plugin.status)},
+                },
+                .actions = {
+                    {
+                        .str = "Reload",
+                        .onClick = [this, path = plugin.path]() {
+                            if (this->config.onReloadPlugin) {
+                                this->config.onReloadPlugin(path);
+                            }
+                        },
+                    },
+                    {
+                        .str = "Delete",
+                        .onClick = [this, path = plugin.path]() {
+                            if (this->config.onRemovePlugin) {
+                                this->config.onRemovePlugin(path);
+                            }
+                        },
+                    },
                 },
             });
-            cells.remove.update({
-                .str = "Delete",
-                .variant = Button::Variant::Text,
-                .onClick = [this, path = plugin.path]() {
-                    if (this->config.onRemovePlugin) {
-                        this->config.onRemovePlugin(path);
-                    }
-                },
-            });
-            cells.actions.update({
-                .axis = Stack::Axis::Horizontal,
-                .spacing = 16.0f,
-                .items = {
-                    {.child = &cells.reload},
-                    {.child = &cells.remove},
-                },
-            });
-            cellRows.push_back({&cells.name, &cells.version, &cells.status, &cells.actions});
         }
         pluginTable.update({
             .columns = {
@@ -140,14 +113,14 @@ struct RegistrySettingsPanel {
                 "Status",
                 "Action",
             },
-            .cellRows = std::move(cellRows),
             .fixedColumnWidths = {
                 0.0f,
                 80.0f,
                 110.0f,
                 128.0f,
             },
-            .wrapped = true,
+            .empty = "No plugins registered.",
+            .rows = std::move(pluginRows),
         });
 
         stack.update({
@@ -205,15 +178,6 @@ struct RegistrySettingsPanel {
         return rows;
     }
 
-    struct PluginCells {
-        Sakura::Text name;
-        Sakura::Text version;
-        Sakura::Text status;
-        Sakura::Button reload;
-        Sakura::Button remove;
-        Sakura::Stack actions;
-    };
-
     Config config;
     Sakura::Text title;
     Sakura::Text description;
@@ -224,9 +188,7 @@ struct RegistrySettingsPanel {
     Sakura::Text pluginTitle;
     Sakura::Text pluginDescription;
     Sakura::Button pluginButton;
-    Sakura::Text emptyPluginText;
-    std::vector<std::unique_ptr<PluginCells>> plugins;
-    Sakura::Table pluginTable;
+    ActionTable pluginTable;
     Sakura::Stack stack;
 };
 

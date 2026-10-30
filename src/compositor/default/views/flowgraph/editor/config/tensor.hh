@@ -129,7 +129,7 @@ struct FlowgraphConfigTensorField {
             return;
         }
         if (config.onApply) {
-            config.onApply(std::move(patch), false);
+            config.onApply(std::move(patch), false, {});
         }
     }
 

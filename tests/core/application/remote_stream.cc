@@ -4,6 +4,10 @@
 #include <algorithm>
 
 #include "../../../src/instance_remote_impl.hh"
+#include "jetstream/platform.hh"
+#include "jetstream/viewport/adapters/generic.hh"
+
+#include "../render/harness.hh"
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 #include "jetstream/backend/base.hh"
@@ -12,7 +16,16 @@
 #include <gst/app/gstappsink.h>
 #include <gst/app/gstappsrc.h>
 #include <gst/rtp/gstrtcpbuffer.h>
+#include <gst/video/video-event.h>
 #include <gst/video/video-info.h>
+
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/sha.h>
+#include <openssl/x509.h>
+
+#include <cstdio>
+#include <filesystem>
 
 using namespace Jetstream;
 using namespace std::chrono_literals;
@@ -40,7 +53,7 @@ struct Stream {
         gst_init(nullptr, nullptr);
         gst_init_static_plugins();
         remote.size = {320, 240};
-        remote.config.codec = Instance::Remote::CodecType::H264;
+        remote.config.video.codec = Instance::Remote::CodecType::H264;
         remote.inputMemoryDevice_ = DeviceType::CPU;
         remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
         REQUIRE(remote.startStream() == Result::SUCCESS);
@@ -66,42 +79,86 @@ struct Stream {
     ~Stream() { stop(); }
 };
 
-struct Broker {
-    httplib::Server server;
-    std::thread listener;
-    std::string origin;
-    std::atomic<unsigned> rooms = 0;
+std::string BrokerTokenHash(const std::string& token) {
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(token.data()), token.size(), digest);
+    std::string encoded(4 * ((sizeof(digest) + 2) / 3), '\0');
+    encoded.resize(EVP_EncodeBlock(reinterpret_cast<unsigned char*>(encoded.data()), digest, sizeof(digest)));
+    std::replace(encoded.begin(), encoded.end(), '+', '-');
+    std::replace(encoded.begin(), encoded.end(), '/', '_');
+    while (!encoded.empty() && encoded.back() == '=') {
+        encoded.pop_back();
+    }
+    return encoded;
+}
 
-    Broker() {
-        server.WebSocket("/api/v1/remote/signaller", [this](const httplib::Request&, httplib::ws::WebSocket& ws) {
-            ws.send(R"({"type":"welcome","peerId":"producer"})");
-            std::string payload;
-            while (ws.read(payload) == httplib::ws::Text) {
-                const auto message = nlohmann::json::parse(payload);
-                if (message.value("type", "") == "disconnect") {
-                    ws.close();
-                    return;
-                }
-                if (message.value("type", "") == "createRoom") {
-                    const auto room = std::to_string(++rooms);
-                    ws.send(nlohmann::json{{"type", "roomCreated"}, {"roomId", room},
-                                          {"consumerToken", "token-" + room},
-                                          {"clientDomain", origin + "/remote"}}.dump());
-                    ws.send(R"({"type":"roomState","waiting":["waiting"],"active":["viewer"]})");
-                }
-            }
-        });
-        const int port = server.bind_to_any_port("127.0.0.1");
-        REQUIRE(port > 0);
-        origin = "http://127.0.0.1:" + std::to_string(port);
-        listener = std::thread([this] { server.listen_after_bind(); });
+struct BrokerPeer {
+    std::unique_ptr<httplib::ws::WebSocketClient> client;
+
+    BrokerPeer(const std::string& origin, const std::string& query = "", const httplib::Headers& headers = {}) {
+        std::string url = "ws://" + origin.substr(7) + "/api/v1/remote/signaller" + query;
+        client = std::make_unique<httplib::ws::WebSocketClient>(url, headers);
+        client->set_read_timeout(3s);
     }
 
-    ~Broker() {
-        server.stop();
-        if (listener.joinable()) listener.join();
+    httplib::ws::Result connect() {
+        return client->connect();
+    }
+
+    void send(const nlohmann::json& message) {
+        REQUIRE(client->send(message.dump()));
+    }
+
+    nlohmann::json next(const std::string& type) {
+        std::string payload;
+        while (client->read(payload) == httplib::ws::Text) {
+            auto message = nlohmann::json::parse(payload);
+            if (message.value("type", "") == type) {
+                return message;
+            }
+        }
+        FAIL("Broker did not send '" << type << "'.");
+        return {};
+    }
+
+    bool closed() {
+        std::string payload;
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            const auto result = client->read(payload);
+            if (result != httplib::ws::Text && result != httplib::ws::Timeout) {
+                return true;
+            }
+        }
+        return false;
     }
 };
+
+void WriteSelfSignedCertificate(const std::filesystem::path& certificate, const std::filesystem::path& key) {
+    EVP_PKEY* pkey = EVP_EC_gen("P-256");
+    REQUIRE(pkey);
+    X509* x509 = X509_new();
+    REQUIRE(x509);
+    ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
+    X509_gmtime_adj(X509_getm_notBefore(x509), 0);
+    X509_gmtime_adj(X509_getm_notAfter(x509), 3600);
+    X509_set_pubkey(x509, pkey);
+    X509_NAME* name = X509_get_subject_name(x509);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>("localhost"), -1, -1, 0);
+    X509_set_issuer_name(x509, name);
+    REQUIRE(X509_sign(x509, pkey, EVP_sha256()) > 0);
+
+    FILE* file = std::fopen(certificate.string().c_str(), "wb");
+    REQUIRE(file);
+    CHECK(PEM_write_X509(file, x509) == 1);
+    std::fclose(file);
+    file = std::fopen(key.string().c_str(), "wb");
+    REQUIRE(file);
+    CHECK(PEM_write_PrivateKey(file, pkey, nullptr, nullptr, 0, nullptr, nullptr) == 1);
+    std::fclose(file);
+
+    X509_free(x509);
+    EVP_PKEY_free(pkey);
+}
 
 void Loopback(GstElement* webrtc) {
     GstWebRTCICE* ice = nullptr;
@@ -150,6 +207,7 @@ struct Peer {
     gulong receiverIce = 0;
     std::atomic<unsigned> packets = 0;
     std::atomic<unsigned> senderReports = 0;
+    bool loopbackSender = true;
 
     Peer(Stream& stream, std::string id) : remote(stream.remote), id(std::move(id)) {}
 
@@ -159,7 +217,9 @@ struct Peer {
         sender = GST_ELEMENT(gst_object_ref(session.webrtc));
         g_signal_handler_disconnect(sender, session.iceHandler);
         session.iceHandler = 0;
-        Loopback(sender);
+        if (loopbackSender) {
+            Loopback(sender);
+        }
         pipeline = gst_pipeline_new(nullptr);
         receiver = gst_element_factory_make("webrtcbin", nullptr);
         sink = gst_element_factory_make("appsink", nullptr);
@@ -253,28 +313,65 @@ struct PadProbe {
     }
 };
 
-struct InputContext {
-    ImGuiContext* context = ImGui::CreateContext();
+struct InputView {
+    const Render::InputState& input;
+    std::vector<Render::InputState::Event> collected;
 
-    InputContext() {
-        auto& io = ImGui::GetIO();
-        io.IniFilename = nullptr;
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
-        io.DisplaySize = {320.0f, 240.0f};
-        io.ConfigInputTrickleEventQueue = false;
-        io.Fonts->AddFontDefault();
+    bool keyDown(KeyCode key) const { return input.keyDown(key); }
+    bool windowFocused() const { return input.windowFocused(); }
+    const KeyModifiers& modifiers() const { return input.modifiers(); }
+    const std::array<bool, 3>& buttons() const { return input.buttons(); }
+    const std::optional<Extent2D<F32>>& pointer() const { return input.pointer(); }
+    const std::vector<Render::InputState::Event>& events() const { return collected; }
+};
+
+struct InputContext {
+    RenderTest::Window window;
+
+    explicit InputContext(bool macOS = false) {
+        window.viewport.macOS = macOS;
+        REQUIRE(window.open() == Result::SUCCESS);
     }
 
-    ~InputContext() { ImGui::DestroyContext(context); }
+    void attach(Instance::Remote::Impl& remote) {
+        remote.viewport = &window.viewport;
+    }
 
     template<typename Check>
     void frame(Instance::Remote::Impl& remote, Check check) {
         REQUIRE(remote.processInput() == Result::SUCCESS);
-        ImGui::NewFrame();
-        check(ImGui::GetIO());
-        ImGui::EndFrame();
+        InputView view{window.input(), {}};
+        do {
+            REQUIRE(window.inject({}) == Result::SUCCESS);
+            const auto& events = window.input().events();
+            view.collected.insert(view.collected.end(), events.begin(), events.end());
+        } while (window.input().hasPending());
+        check(view);
     }
 };
+
+U64 TextCount(const InputView& state) {
+    return RenderTest::Only<TextEvent>(state.events()).size();
+}
+
+char32_t FirstText(const InputView& state) {
+    const auto text = RenderTest::Only<TextEvent>(state.events());
+    return text.empty() ? 0 : text.front().codepoint;
+}
+
+F32 WheelY(const InputView& state) {
+    F32 total = 0.0f;
+    for (const auto& mouse : RenderTest::Only<MouseEvent>(state.events())) {
+        if (mouse.type == MouseEventType::Scroll) {
+            total += mouse.scroll.y;
+        }
+    }
+    return total;
+}
+
+F32 PointerX(const InputView& state) {
+    return state.pointer().has_value() ? state.pointer()->x : -1.0f;
+}
 
 void SendInput(Instance::Remote::Impl& remote, const std::string& sessionId, const nlohmann::json& input) {
     Instance::Remote::Impl::ControlChannelContext context{&remote, sessionId};
@@ -289,11 +386,11 @@ TEST_CASE("Only the first remote consumer can control the interface",
     const std::string sender = GENERATE("z-first", "a-second", "unknown");
     const bool controls = sender == "z-first";
     const bool macOS = GENERATE(false, true);
-    InputContext input;
-    ImGui::GetIO().ConfigMacOSXBehaviors = macOS;
+    InputContext input(macOS);
     Stream stream;
     stream.start();
     auto& remote = stream.remote;
+    input.attach(remote);
     REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
     REQUIRE(remote.createWebRtcSession("a-second", "second") == Result::SUCCESS);
 
@@ -301,26 +398,65 @@ TEST_CASE("Only the first remote consumer can control the interface",
     SendInput(remote, sender, {{"kind", "mouse"}, {"act", "down"}, {"button", 0}, {"x", 0.5}, {"y", 0.5}});
     SendInput(remote, sender, {{"kind", "wheel"}, {"deltaY", -100}});
     SendInput(remote, sender, {{"kind", "text"}, {"text", "x"}});
-    input.frame(remote, [&](const ImGuiIO& io) {
-        CHECK(ImGui::IsKeyDown(ImGuiKey_A) == controls);
-        // ImGui swaps Ctrl/Super and maps Ctrl+left click to right click on macOS.
-        CHECK(io.KeyCtrl == (controls && !macOS));
-        CHECK(io.KeySuper == (controls && macOS));
-        CHECK(io.MouseDown[0] == (controls && !macOS));
-        CHECK(io.MouseDown[1] == (controls && macOS));
-        CHECK(io.MouseWheel == (controls ? 1.0f : 0.0f));
-        CHECK(io.InputQueueCharacters.Size == (controls ? 1 : 0));
-        CHECK((io.MousePos.x == 160.0f) == controls);
+    input.frame(remote, [&](const InputView& state) {
+        CHECK(state.keyDown(KeyCode::A) == controls);
+        CHECK(state.modifiers().control == controls);
+        CHECK_FALSE(state.modifiers().super);
+        CHECK(state.buttons()[0] == (controls && !macOS));
+        CHECK(state.buttons()[1] == (controls && macOS));
+        CHECK(WheelY(state) == (controls ? 1.0f : 0.0f));
+        CHECK(TextCount(state) == (controls ? 1u : 0u));
+        CHECK((PointerX(state) == 160.0f) == controls);
     });
 
     Instance::Remote::Impl::ControlChannelContext context{&remote, sender};
     Instance::Remote::Impl::onChannelClosedCallback(nullptr, &context);
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_A));
-        CHECK_FALSE(io.KeyCtrl);
-        CHECK_FALSE(io.KeySuper);
-        CHECK_FALSE(io.MouseDown[0]);
-        CHECK_FALSE(io.MouseDown[1]);
+    input.frame(remote, [](const InputView& state) {
+        CHECK_FALSE(state.keyDown(KeyCode::A));
+        CHECK_FALSE(state.modifiers().control);
+        CHECK_FALSE(state.modifiers().super);
+        CHECK_FALSE(state.buttons()[0]);
+        CHECK_FALSE(state.buttons()[1]);
+    });
+}
+
+TEST_CASE("Remote pointer coordinates follow the viewport framebuffer scale",
+          "[core][application][remote][input]") {
+    InputContext input;
+    input.window.viewport.display = {800.0f, 600.0f};
+    input.window.viewport.scale = 2.0f;
+    Stream stream;
+    stream.start();
+    auto& remote = stream.remote;
+    input.attach(remote);
+    remote.size = {1600, 1200};
+    REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
+
+    SendInput(remote, "z-first", {{"kind", "mouse"}, {"act", "move"}, {"x", 0.5}, {"y", 0.5}});
+    input.frame(remote, [](const InputView& state) {
+        REQUIRE(state.pointer().has_value());
+        CHECK(state.pointer()->x == 400.0f);
+        CHECK(state.pointer()->y == 300.0f);
+    });
+}
+
+TEST_CASE("Remote control keeps working while the host window is unfocused",
+          "[core][application][remote][input]") {
+    InputContext input;
+    Stream stream;
+    stream.start();
+    auto& remote = stream.remote;
+    input.attach(remote);
+    REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
+
+    input.window.viewport.input().push(Render::InputQueue::Focus{false});
+    input.window.viewport.input().push(Render::InputQueue::Button{MouseButton::Left, true});
+    SendInput(remote, "z-first", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}, {"x", 0.5}, {"y", 0.5}});
+    SendInput(remote, "z-first", {{"kind", "keyboard"}, {"action", "down"}, {"code", "KeyA"}});
+    input.frame(remote, [](const InputView& state) {
+        CHECK(state.windowFocused());
+        CHECK(state.buttons()[0]);
+        CHECK(state.keyDown(KeyCode::A));
     });
 }
 
@@ -330,6 +466,7 @@ TEST_CASE("Remote control follows connection order and releases input on handoff
     Stream stream;
     stream.start();
     auto& remote = stream.remote;
+    input.attach(remote);
     REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
     REQUIRE(remote.createWebRtcSession("m-second", "second") == Result::SUCCESS);
     REQUIRE(remote.createWebRtcSession("a-third", "third") == Result::SUCCESS);
@@ -338,10 +475,10 @@ TEST_CASE("Remote control follows connection order and releases input on handoff
 
     SendInput(remote, "z-first", {{"kind", "keyboard"}, {"action", "down"}, {"code", "KeyA"}, {"shiftKey", true}});
     SendInput(remote, "z-first", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}, {"x", 0.5}, {"y", 0.5}});
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK(ImGui::IsKeyDown(ImGuiKey_A));
-        CHECK(io.KeyShift);
-        CHECK(io.MouseDown[0]);
+    input.frame(remote, [](const InputView& state) {
+        CHECK(state.keyDown(KeyCode::A));
+        CHECK(state.modifiers().shift);
+        CHECK(state.buttons()[0]);
     });
 
     // Already queued input from the departed controller and spectator input
@@ -354,14 +491,14 @@ TEST_CASE("Remote control follows connection order and releases input on handoff
     SendInput(remote, "a-third", {{"kind", "text"}, {"text", "viewer"}});
     SendInput(remote, "m-second", {{"kind", "keyboard"}, {"action", "down"}, {"code", "KeyB"}});
     SendInput(remote, "m-second", {{"kind", "text"}, {"text", "b"}});
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_A));
-        CHECK(ImGui::IsKeyDown(ImGuiKey_B));
-        CHECK_FALSE(io.KeyShift);
-        CHECK_FALSE(io.MouseDown[0]);
-        CHECK(io.MousePos.x == 160.0f);
-        CHECK(io.InputQueueCharacters.Size == 1);
-        if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'b');
+    input.frame(remote, [](const InputView& state) {
+        CHECK_FALSE(state.keyDown(KeyCode::A));
+        CHECK(state.keyDown(KeyCode::B));
+        CHECK_FALSE(state.modifiers().shift);
+        CHECK_FALSE(state.buttons()[0]);
+        CHECK(PointerX(state) == 160.0f);
+        CHECK(TextCount(state) == 1u);
+        CHECK(FirstText(state) == U'b');
     });
 
     // A reconnect joins at the back, even if it was the original controller.
@@ -369,39 +506,39 @@ TEST_CASE("Remote control follows connection order and releases input on handoff
     remote.destroyWebRtcSession("m-second");
     SendInput(remote, "z-first", {{"kind", "text"}, {"text", "reconnected"}});
     SendInput(remote, "a-third", {{"kind", "text"}, {"text", "c"}});
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_B));
-        CHECK(io.InputQueueCharacters.Size == 1);
-        if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'c');
+    input.frame(remote, [](const InputView& state) {
+        CHECK_FALSE(state.keyDown(KeyCode::B));
+        CHECK(TextCount(state) == 1u);
+        CHECK(FirstText(state) == U'c');
     });
 
     // Removing a spectator cannot release the controller's held input.
     SendInput(remote, "a-third", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}});
     remote.destroyWebRtcSession("z-first");
-    input.frame(remote, [](const ImGuiIO& io) { CHECK(io.MouseDown[0]); });
+    input.frame(remote, [](const InputView& state) { CHECK(state.buttons()[0]); });
 
     stream.stop();
     stream.start();
     REQUIRE(remote.createWebRtcSession("new-first", "new") == Result::SUCCESS);
     SendInput(remote, "new-first", {{"kind", "text"}, {"text", "d"}});
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK_FALSE(io.MouseDown[0]);
-        CHECK(io.InputQueueCharacters.Size == 1);
-        if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'd');
+    input.frame(remote, [](const InputView& state) {
+        CHECK_FALSE(state.buttons()[0]);
+        CHECK(TextCount(state) == 1u);
+        CHECK(FirstText(state) == U'd');
     });
 }
 
 TEST_CASE("Broker disconnect stops remote streaming and releases its room and input state",
           "[core][application][remote][broker]") {
     InputContext input;
-    Broker broker;
-    REQUIRE(WaitFor([&] { return broker.server.is_running(); }));
     Stream stream;
     auto& remote = stream.remote;
+    input.attach(remote);
     gst_init(nullptr, nullptr);
     gst_init_static_plugins();
-    remote.config.broker = broker.origin;
+    remote.config.broker = {.address = "127.0.0.1", .port = 0};
     remote.size = {320, 240};
+    std::string previousRoom;
 
     for (unsigned i = 1; i <= 2; ++i) {
         CAPTURE(i);
@@ -409,29 +546,38 @@ TEST_CASE("Broker disconnect stops remote streaming and releases its room and in
         remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
         REQUIRE(remote.createBroker() == Result::SUCCESS);
         remote.started_ = true;
-        REQUIRE(remote.roomId_ == std::to_string(i));
+        REQUIRE_FALSE(remote.roomId_.empty());
+        REQUIRE(remote.roomId_ != previousRoom);
+        previousRoom = remote.roomId_;
+
+        BrokerPeer viewer(remote.broker->origin(), "?tokenHash=" + BrokerTokenHash(remote.consumerToken));
+        REQUIRE(viewer.connect());
+        viewer.send({{"type", "setPeerStatus"}, {"roles", {"listener"}}, {"meta", {{"token", remote.consumerToken}}}});
+        viewer.next("sessionRegistered");
         REQUIRE(WaitFor([&] {
             std::lock_guard<std::mutex> lock(remote.remoteStateMutex);
-            return remote.clients_.size() == 1 && remote.waitlist_.size() == 1;
+            return remote.clients_.empty() && remote.waitlist_.size() == 1;
         }));
         REQUIRE(remote.createWebRtcSession("viewer", "loopback") == Result::SUCCESS);
         SendInput(remote, "viewer", {{"kind", "keyboard"}, {"action", "down"},
                                       {"code", "KeyA"}, {"shiftKey", true}});
         SendInput(remote, "viewer", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}});
-        input.frame(remote, [](const ImGuiIO& io) {
-            CHECK(ImGui::IsKeyDown(ImGuiKey_A));
-            CHECK(io.KeyShift);
-            CHECK(io.MouseDown[0]);
+        input.frame(remote, [](const InputView& state) {
+            CHECK(state.keyDown(KeyCode::A));
+            CHECK(state.modifiers().shift);
+            CHECK(state.buttons()[0]);
         });
-        REQUIRE(remote.captureFrame() == Result::SUCCESS);
+        REQUIRE(remote.captureFrame(true) == Result::SUCCESS);
         REQUIRE(remote.started_);
-        REQUIRE(remote.sendSignallerMessage({{"type", "disconnect"}}));
+        REQUIRE(remote.broker->destroy() == Result::SUCCESS);
         REQUIRE(WaitFor([&] { return !remote.signallerRunning; }));
-        REQUIRE(remote.captureFrame() == Result::SUCCESS);
+        CHECK(viewer.closed());
+        REQUIRE(remote.captureFrame(true) == Result::SUCCESS);
 
         CHECK_FALSE(remote.started_);
         CHECK_FALSE(remote.streaming);
         CHECK_FALSE(remote.pipeline);
+        CHECK_FALSE(remote.broker);
         CHECK_FALSE(remote.signallerClient);
         CHECK_FALSE(remote.signallerThread.joinable());
         CHECK(remote.sessions.empty());
@@ -441,10 +587,10 @@ TEST_CASE("Broker disconnect stops remote streaming and releases its room and in
         CHECK(remote.clients_.empty());
         CHECK(remote.waitlist_.empty());
         CHECK(remote.inputSessionOrder.empty());
-        input.frame(remote, [](const ImGuiIO& io) {
-            CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_A));
-            CHECK_FALSE(io.KeyShift);
-            CHECK_FALSE(io.MouseDown[0]);
+        input.frame(remote, [](const InputView& state) {
+            CHECK_FALSE(state.keyDown(KeyCode::A));
+            CHECK_FALSE(state.modifiers().shift);
+            CHECK_FALSE(state.buttons()[0]);
         });
         REQUIRE(remote.destroy() == Result::SUCCESS);
     }
@@ -465,26 +611,251 @@ TEST_CASE("Remote capture honors the configured frame rate without catch-up burs
         Result releaseFrame() override { return Result::SUCCESS; }
     };
     Instance::Remote::Impl remote;
-    remote.config.framerate = captureFps;
+    remote.config.video.framerate = captureFps;
     auto capture = std::make_unique<Capture>();
     auto* counter = capture.get();
     remote.frameCapture = std::move(capture);
     const auto start = std::chrono::steady_clock::time_point(1s);
     for (U32 frame = 0; frame < renderFps * 2; ++frame) {
         const auto now = start + std::chrono::nanoseconds(frame * GST_SECOND / renderFps);
-        REQUIRE(remote.captureFrame(now) == Result::SUCCESS);
+        REQUIRE(remote.captureFrame(true, now) == Result::SUCCESS);
     }
     CHECK(counter->frames == std::min(renderFps, captureFps) * 2);
 
     const auto before = counter->frames;
     const auto resumed = start + 10s;
-    REQUIRE(remote.captureFrame(resumed) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(true, resumed) == Result::SUCCESS);
     for (unsigned i = 0; i < 8; ++i) {
-        REQUIRE(remote.captureFrame(resumed + 1ms) == Result::SUCCESS);
+        REQUIRE(remote.captureFrame(true, resumed + 1ms) == Result::SUCCESS);
     }
     CHECK(counter->frames == before + 1);
-    REQUIRE(remote.captureFrame(resumed + std::chrono::nanoseconds(GST_SECOND / captureFps)) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(true, resumed + std::chrono::nanoseconds(GST_SECOND / captureFps)) == Result::SUCCESS);
     CHECK(counter->frames == before + 2);
+}
+
+TEST_CASE("Remote capture skips frames that presented nothing", "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { ++frames; return Result::SUCCESS; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    Instance::Remote::Impl remote;
+    remote.config.video.framerate = 60;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    REQUIRE(remote.captureFrame(false, start) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK(counter->frames == 0);
+    REQUIRE(remote.captureFrame(true, start + 2s) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+}
+
+TEST_CASE("A redraw inside the capture interval is captured once the interval elapses",
+          "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { ++frames; return Result::SUCCESS; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    RenderTest::Viewport viewport;
+    Instance::Remote::Impl remote;
+    remote.viewport = &viewport;
+    remote.config.video.framerate = 60;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    (void)viewport.consumeRedraw();
+
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    REQUIRE(remote.captureFrame(true, start) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    REQUIRE(remote.captureFrame(true, start + 1ms) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    REQUIRE(remote.captureFrame(false, start + 2ms) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(true, start + 1s + 1ms) == Result::SUCCESS);
+    CHECK(counter->frames == 2);
+
+    REQUIRE(remote.captureFrame(false, start + 2s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+    CHECK(counter->frames == 2);
+}
+
+TEST_CASE("A keyframe request on an idle window asks for a frame and captures it",
+          "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { ++frames; return Result::SUCCESS; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    RenderTest::Viewport viewport;
+    Instance::Remote::Impl remote;
+    remote.viewport = &viewport;
+    remote.config.video.framerate = 60;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    (void)viewport.consumeRedraw();
+
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    remote.requestKeyframe();
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(false, start) == Result::SUCCESS);
+    CHECK(counter->frames == 0);
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(true, start + 1ms) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+}
+
+TEST_CASE("A busy capture slot keeps the frame pending until a capture is accepted",
+          "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned attempts = 0;
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override {
+            if (++attempts == 1) {
+                return Result::SKIP;
+            }
+            ++frames;
+            return Result::SUCCESS;
+        }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    RenderTest::Viewport viewport;
+    Instance::Remote::Impl remote;
+    remote.viewport = &viewport;
+    remote.config.video.framerate = 60;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    (void)viewport.consumeRedraw();
+
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    REQUIRE(remote.captureFrame(true, start) == Result::SUCCESS);
+    CHECK(counter->frames == 0);
+    REQUIRE(remote.captureFrame(false, start + 1ms) == Result::SUCCESS);
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(true, start + 2ms) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+}
+
+TEST_CASE("Upstream encoder keyframe requests wake idle capture across stream restarts",
+          "[core][application][remote][stream][capture][keyframe]") {
+    RenderTest::Viewport viewport;
+    Stream stream;
+    auto& remote = stream.remote;
+    remote.viewport = &viewport;
+
+    for (unsigned i = 0; i < 2; ++i) {
+        CAPTURE(i);
+        stream.start(false);
+        remote.captureRequested = false;
+        remote.forceKeyframe = false;
+        (void)viewport.consumeRedraw();
+        GstPad* encoderSrc = gst_element_get_static_pad(remote.encoder, "src");
+        REQUIRE(encoderSrc);
+        const bool accepted = gst_pad_send_event(encoderSrc,
+            gst_video_event_new_upstream_force_key_unit(GST_CLOCK_TIME_NONE, TRUE, 0));
+        gst_object_unref(encoderSrc);
+        CHECK(accepted);
+        CHECK(remote.captureRequested.load());
+        CHECK(viewport.consumeRedraw());
+        stream.stop();
+    }
+}
+
+TEST_CASE("An idle remote viewer requests a fresh frame after connecting",
+          "[core][application][remote][stream][capture][keyframe]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { ++frames; return Result::SUCCESS; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    RenderTest::Viewport viewport;
+    std::atomic<bool> submitted = false;
+    Stream stream;
+    stream.start(false);
+    Peer viewer(stream, "viewer");
+    viewer.prepare();
+    auto& remote = stream.remote;
+    remote.viewport = &viewport;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    remote.handleStartSession({{"sessionId", viewer.id}, {"peerId", "loopback"}});
+    REQUIRE(remote.captureFrame(true) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+
+    stream.producer = std::thread([&] {
+        remote.pushNewFrame(stream.frame.data());
+        submitted = true;
+    });
+    std::unique_ptr<GstWebRTCSessionDescription, decltype(&gst_webrtc_session_description_free)>
+        offer(nullptr, gst_webrtc_session_description_free);
+    REQUIRE(WaitFor([&] {
+        GstWebRTCSessionDescription* desc = nullptr;
+        g_object_get(viewer.sender, "local-description", &desc, nullptr);
+        offer.reset(desc);
+        return offer != nullptr;
+    }));
+    REQUIRE(WaitFor([&] { return submitted.load(); }));
+    stream.producer.join();
+    remote.captureRequested = false;
+    (void)viewport.consumeRedraw();
+
+    SetDescription(viewer.receiver, "set-remote-description", offer.get());
+    Negotiate(viewer.receiver, viewer.sender, false);
+    REQUIRE(WaitFor([&] {
+        GstWebRTCPeerConnectionState state;
+        g_object_get(viewer.sender, "connection-state", &state, nullptr);
+        return state == GST_WEBRTC_PEER_CONNECTION_STATE_CONNECTED;
+    }));
+    REQUIRE(WaitFor([&] { return remote.captureRequested.load(); }));
+    bool redraw = false;
+    REQUIRE(WaitFor([&] {
+        redraw = redraw || viewport.consumeRedraw();
+        return redraw;
+    }));
+    REQUIRE(remote.captureFrame(true, remote.nextCaptureTime) == Result::SUCCESS);
+    CHECK(counter->frames == 2);
+    submitted = false;
+    stream.producer = std::thread([&] {
+        remote.pushNewFrame(stream.frame.data());
+        submitted = true;
+    });
+    REQUIRE(WaitFor([&] { return viewer.packets > 0; }));
+    REQUIRE(WaitFor([&] { return submitted.load(); }));
+    stream.producer.join();
 }
 
 TEST_CASE("Remote CPU encoding preserves the configured frame rate and source colorimetry",
@@ -492,7 +863,7 @@ TEST_CASE("Remote CPU encoding preserves the configured frame rate and source co
     const U32 framerate = GENERATE(30u, 60u);
     CAPTURE(framerate);
     Stream stream;
-    stream.remote.config.framerate = framerate;
+    stream.remote.config.video.framerate = framerate;
     stream.start();
     Peer viewer(stream, "viewer");
     viewer.connect();
@@ -843,7 +1214,7 @@ TEST_CASE("Remote NVENC shares the input CUDA context across stream restarts",
     Stream stream;
     auto& remote = stream.remote;
     remote.size = {320, 240};
-    remote.config.codec = Instance::Remote::CodecType::H264;
+    remote.config.video.codec = Instance::Remote::CodecType::H264;
     remote.inputMemoryDevice_ = DeviceType::CUDA;
     remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::HardwareNVENC;
     for (unsigned i = 0; i < 2; ++i) {
@@ -873,3 +1244,303 @@ TEST_CASE("Remote NVENC shares the input CUDA context across stream restarts",
     }
 }
 #endif
+
+
+TEST_CASE("Remote broker rejects incomplete or unreadable TLS configuration",
+          "[core][application][remote][broker]") {
+    Instance::Remote::Broker server;
+    CHECK(server.create({.address = "127.0.0.1", .port = 0, .certificate = "cert.pem"}) == Result::ERROR);
+    CHECK(server.create({.address = "127.0.0.1", .port = 0, .key = "key.pem"}) == Result::ERROR);
+    CHECK(server.create({.address = "127.0.0.1", .port = 0,
+                            .certificate = "missing-cert.pem", .key = "missing-key.pem"}) == Result::ERROR);
+    CHECK(server.create({.address = "127.0.0.1", .port = 0, .publicUrl = "ws://example.com"}) == Result::ERROR);
+    CHECK(server.origin().empty());
+}
+
+TEST_CASE("Remote broker admits, relays, and ends a viewer session",
+          "[core][application][remote][broker]") {
+    Instance::Remote::Broker server;
+    REQUIRE(server.create({.address = "127.0.0.1", .port = 0}) == Result::SUCCESS);
+    REQUIRE_FALSE(server.secure());
+    REQUIRE(server.origin().starts_with("http://127.0.0.1:"));
+    REQUIRE(server.publicOrigin() == server.origin());
+
+    httplib::Client http(server.origin());
+    http.set_decompress(false);
+    const auto page = http.Get("/remote");
+    REQUIRE(page);
+    CHECK(page->status == 200);
+    CHECK(page->get_header_value("Content-Type").starts_with("text/html"));
+    CHECK(page->get_header_value("Content-Encoding") == "gzip");
+    REQUIRE(page->body.size() == Resources::RemoteViewerPageGzipSize);
+    CHECK(static_cast<unsigned char>(page->body[0]) == 0x1f);
+    CHECK(static_cast<unsigned char>(page->body[1]) == 0x8b);
+
+    const httplib::Headers producerHeaders = {{"Authorization", "Bearer " + server.producerKey()}};
+
+    BrokerPeer anonymous(server.origin());
+    const auto unauthorized = anonymous.connect();
+    CHECK_FALSE(unauthorized);
+    CHECK(unauthorized.status() == 401);
+
+    BrokerPeer forged(server.origin(), "", {{"Authorization", "Bearer wrong"}});
+    const auto forbidden = forged.connect();
+    CHECK_FALSE(forbidden);
+    CHECK(forbidden.status() == 401);
+
+    BrokerPeer producer(server.origin(), "", producerHeaders);
+    REQUIRE(producer.connect());
+    const auto welcome = producer.next("welcome");
+    REQUIRE(welcome["peerId"].is_string());
+    const std::string producerId = welcome["peerId"];
+
+    producer.send({{"type", "createRoom"}});
+    const auto room = producer.next("roomCreated");
+    const std::string roomId = room["roomId"];
+    const std::string consumerToken = room["consumerToken"];
+    CHECK(room["clientDomain"] == server.publicOrigin() + "/remote");
+    CHECK_FALSE(room.contains("producerToken"));
+    CHECK(producer.next("roomState")["waiting"].empty());
+
+    producer.send({{"type", "ping"}});
+    producer.next("pong");
+
+    producer.send({{"type", "createRoom"}});
+    CHECK(producer.next("error")["code"] == "already_authenticated");
+
+    BrokerPeer stranger(server.origin(), "?tokenHash=" + BrokerTokenHash("wrong"));
+    const auto rejected = stranger.connect();
+    CHECK_FALSE(rejected);
+    CHECK(rejected.status() == 404);
+
+    BrokerPeer impostor(server.origin(), "", producerHeaders);
+    REQUIRE(impostor.connect());
+    impostor.next("welcome");
+    impostor.send({{"type", "createRoom"}});
+    CHECK(impostor.next("error")["code"] == "already_authenticated");
+
+    BrokerPeer viewer(server.origin(), "?tokenHash=" + BrokerTokenHash(consumerToken));
+    REQUIRE(viewer.connect());
+    const std::string viewerId = viewer.next("welcome")["peerId"];
+
+    viewer.send({{"type", "setPeerStatus"}, {"roles", {"listener"}}, {"meta", {{"token", "wrong"}}}});
+    CHECK(viewer.next("error")["code"] == "invalid_token");
+
+    viewer.send({{"type", "setPeerStatus"}, {"roles", {"listener"}}, {"meta", {{"token", consumerToken}}}});
+    const std::string sessionId = viewer.next("sessionRegistered")["sessionId"];
+    const auto waiting = producer.next("roomState");
+    REQUIRE(waiting["waiting"] == nlohmann::json::array({sessionId}));
+    CHECK(waiting["active"].empty());
+
+    viewer.send({{"type", "peer"}, {"sessionId", sessionId}, {"ice", {{"candidate", "early"}}}});
+    CHECK(viewer.next("error")["code"] == "session_not_started");
+
+    viewer.send({{"type", "approveSession"}, {"sessionId", sessionId}});
+    CHECK(viewer.next("error")["code"] == "unauthorized");
+
+    producer.send({{"type", "approveSession"}, {"sessionId", sessionId}});
+    CHECK(producer.next("roomState")["active"] == nlohmann::json::array({sessionId}));
+    const auto start = producer.next("startSession");
+    CHECK(start["sessionId"] == sessionId);
+    CHECK(start["peerId"] == viewerId);
+    CHECK(start["offer"].is_null());
+    const auto started = viewer.next("sessionStarted");
+    CHECK(started["sessionId"] == sessionId);
+    CHECK(started["peerId"] == producerId);
+
+    producer.send({{"type", "peer"}, {"sessionId", sessionId},
+                   {"sdp", {{"type", "offer"}, {"sdp", "v=0"}, {"extra", true}}}});
+    const auto offer = viewer.next("peer");
+    CHECK(offer["sdp"] == nlohmann::json({{"type", "offer"}, {"sdp", "v=0"}}));
+
+    viewer.send({{"type", "peer"}, {"sessionId", sessionId},
+                 {"ice", {{"candidate", "candidate:1 1 tcp 1 127.0.0.1 9 typ host tcptype passive"},
+                          {"sdpMLineIndex", 0}}}});
+    const auto candidate = producer.next("peer");
+    CHECK(candidate["ice"]["candidate"] == "candidate:1 1 tcp 1 127.0.0.1 9 typ host tcptype passive");
+    CHECK(candidate["ice"]["sdpMLineIndex"] == 0);
+
+    viewer.send({{"type", "peer"}, {"sessionId", sessionId},
+                 {"sdp", {{"type", "answer"}, {"sdp", "v=0"}}}, {"ice", {{"candidate", ""}}}});
+    CHECK(viewer.next("error")["code"] == "invalid_message");
+
+    viewer.send({{"type", "endSession"}, {"sessionId", sessionId}});
+    CHECK(viewer.next("endSession")["sessionId"] == sessionId);
+    CHECK(producer.next("roomState")["active"].empty());
+    CHECK(producer.next("endSession")["sessionId"] == sessionId);
+    CHECK(viewer.closed());
+
+    BrokerPeer pending(server.origin(), "?tokenHash=" + BrokerTokenHash(consumerToken));
+    REQUIRE(pending.connect());
+    pending.send({{"type", "setPeerStatus"}, {"roles", {"listener"}}, {"meta", {{"token", consumerToken}}}});
+    const std::string pendingId = pending.next("sessionRegistered")["sessionId"];
+
+    producer.client->close();
+    CHECK(pending.next("endSession")["sessionId"] == pendingId);
+    CHECK(pending.closed());
+    BrokerPeer late(server.origin(), "?tokenHash=" + BrokerTokenHash(consumerToken));
+    const auto gone = late.connect();
+    CHECK_FALSE(gone);
+    CHECK(gone.status() == 404);
+
+    BrokerPeer next(server.origin(), "", producerHeaders);
+    REQUIRE(next.connect());
+    next.next("welcome");
+    next.send({{"type", "createRoom"}});
+    CHECK(next.next("roomCreated")["roomId"] != roomId);
+
+    REQUIRE(server.destroy() == Result::SUCCESS);
+    CHECK(next.closed());
+}
+
+TEST_CASE("Remote streaming hosts its own broker",
+          "[core][application][remote][broker]") {
+    Stream stream;
+    auto& remote = stream.remote;
+    gst_init(nullptr, nullptr);
+    gst_init_static_plugins();
+    remote.config.broker = {.address = "127.0.0.1", .port = 0};
+    remote.size = {320, 240};
+    remote.inputMemoryDevice_ = DeviceType::CPU;
+    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+
+    REQUIRE(remote.createBroker() == Result::SUCCESS);
+    REQUIRE(remote.broker);
+    CHECK(remote.inviteUrl_ == remote.broker->publicOrigin() + "/remote#" + remote.consumerToken);
+    CHECK(remote.consumerToken.size() == 43);
+
+    REQUIRE(remote.destroy() == Result::SUCCESS);
+    CHECK_FALSE(remote.broker);
+    CHECK(remote.inviteUrl_.empty());
+}
+
+TEST_CASE("Remote streaming reaches its TLS broker over loopback",
+          "[core][application][remote][broker]") {
+    const auto directory = std::filesystem::temp_directory_path() /
+                           ("cyberether-broker-tls-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(directory);
+    WriteSelfSignedCertificate(directory / "cert.pem", directory / "key.pem");
+
+    Stream stream;
+    auto& remote = stream.remote;
+    gst_init(nullptr, nullptr);
+    gst_init_static_plugins();
+    remote.config.broker = {
+        .address = "127.0.0.1",
+        .port = 0,
+        .publicUrl = "https://viewer.example:8443/",
+        .certificate = (directory / "cert.pem").string(),
+        .key = (directory / "key.pem").string(),
+    };
+    remote.size = {320, 240};
+    remote.inputMemoryDevice_ = DeviceType::CPU;
+    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+
+    REQUIRE(remote.createBroker() == Result::SUCCESS);
+    REQUIRE(remote.broker);
+    CHECK(remote.broker->secure());
+    CHECK(remote.broker->origin().starts_with("https://127.0.0.1:"));
+    CHECK(remote.inviteUrl_ == "https://viewer.example:8443/remote#" + remote.consumerToken);
+
+    REQUIRE(remote.destroy() == Result::SUCCESS);
+    CHECK_FALSE(remote.broker);
+    std::filesystem::remove_all(directory);
+}
+
+TEST_CASE("Remote streaming starts with the broker bound to a network address",
+          "[core][application][remote][broker]") {
+    std::string address;
+    if (Platform::LocalNetworkAddress(address) != Result::SUCCESS) {
+        SKIP("No local network address is available.");
+    }
+
+    Stream stream;
+    auto& remote = stream.remote;
+    gst_init(nullptr, nullptr);
+    gst_init_static_plugins();
+    remote.config.broker = {.address = address, .port = 0};
+    remote.size = {320, 240};
+    remote.inputMemoryDevice_ = DeviceType::CPU;
+    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+
+    REQUIRE(remote.createBroker() == Result::SUCCESS);
+    CHECK(remote.broker->origin().starts_with("http://" + address + ":"));
+    CHECK(remote.inviteUrl_.starts_with("http://" + address + ":"));
+    REQUIRE(remote.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Remote broker shutdown interrupts peers that keep the socket busy",
+          "[core][application][remote][broker]") {
+    Instance::Remote::Broker server;
+    REQUIRE(server.create({.address = "127.0.0.1", .port = 0}) == Result::SUCCESS);
+
+    BrokerPeer producer(server.origin(), "", {{"Authorization", "Bearer " + server.producerKey()}});
+    producer.client->set_websocket_ping_interval(1);
+    REQUIRE(producer.connect());
+    producer.next("welcome");
+
+    std::atomic<bool> chatting = true;
+    std::thread chatter([&] {
+        while (chatting) {
+            producer.client->send(R"({"type":"ping"})");
+            std::this_thread::sleep_for(50ms);
+        }
+    });
+
+    std::this_thread::sleep_for(200ms);
+    const auto started = std::chrono::steady_clock::now();
+    REQUIRE(server.destroy() == Result::SUCCESS);
+    CHECK(std::chrono::steady_clock::now() - started < 3s);
+
+    chatting = false;
+    chatter.join();
+}
+
+TEST_CASE("Remote media address limits candidates to that address",
+          "[core][application][remote][media]") {
+    struct Candidates {
+        std::mutex mutex;
+        std::vector<std::string> values;
+    } candidates;
+
+    Stream stream;
+    stream.remote.config.media.address = "127.0.0.1";
+    stream.remote.config.media.transport = Instance::Remote::TransportType::TCP;
+    stream.start();
+
+    Peer peer(stream, "viewer");
+    peer.loopbackSender = false;
+    peer.prepare();
+    g_signal_connect(peer.sender, "on-ice-candidate", G_CALLBACK(+[](GstElement*, guint, gchar* candidate, gpointer data) {
+        auto* self = static_cast<Candidates*>(data);
+        std::lock_guard<std::mutex> lock(self->mutex);
+        if (candidate && *candidate) {
+            self->values.emplace_back(candidate);
+        }
+    }), &candidates);
+    peer.negotiate();
+
+    REQUIRE(WaitFor([&] { return peer.packets > 0; }, 10s));
+
+    std::lock_guard<std::mutex> lock(candidates.mutex);
+    REQUIRE_FALSE(candidates.values.empty());
+    for (const auto& candidate : candidates.values) {
+        CAPTURE(candidate);
+        std::string lower = candidate;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        CHECK(lower.find(" 127.0.0.1 ") != std::string::npos);
+        CHECK(lower.find(" tcp ") != std::string::npos);
+    }
+}
+
+TEST_CASE("Remote rejects a media address that is not an IP address",
+          "[core][application][remote][media]") {
+    Instance::Remote remote(nullptr);
+    Instance::Remote::Config config;
+    config.media.address = "localhost";
+    JST_LOG_LAST_ERROR().clear();
+    REQUIRE(remote.create(config) == Result::ERROR);
+    REQUIRE(JST_LOG_LAST_ERROR() == "[REMOTE] Invalid media address 'localhost'. Expected an IP address.");
+}

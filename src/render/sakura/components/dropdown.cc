@@ -5,7 +5,7 @@
 #include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/typography.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
 #include "../metrics.hh"
 #include "../detail/access.hh"
 #include "../detail/popup_layer.hh"
@@ -137,6 +137,7 @@ struct DropdownBody : public Component {
             const F32 bottom = static_cast<F32>(*selected) * stride + rowHeight;
             scrollY = std::max(0.0f, bottom - bounds.height);
         }
+        scrollY = std::clamp(scrollY, 0.0f, std::max(0.0f, contentHeight - bounds.height));
 
         scroll.update({
             .id = "dropdown:scroll",

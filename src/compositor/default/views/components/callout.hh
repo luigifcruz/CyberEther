@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_CALLOUT_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include <string>
 #include <utility>
@@ -27,8 +27,8 @@ struct Callout : public Sakura::Div {
         this->config = std::move(config);
         const std::string key = "banner_" + toneKey();
         text.update({
-            .str = (this->config.icon.empty() ? toneIcon() : this->config.icon) + " " +
-                   this->config.str,
+            .str = jst::fmt::format("{} {}", this->config.icon.empty() ? toneIcon() : this->config.icon,
+                                    this->config.str),
             .colorKey = key + "_text",
             .wrapped = true,
         });

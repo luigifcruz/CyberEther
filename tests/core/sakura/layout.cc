@@ -1,9 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/components/box.hh>
-#include <jetstream/render/sakura/components/layout.hh>
+#include <jetstream/render/sakura/components/div.hh>
+#include <jetstream/render/sakura/components/grid.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/overlay.hh>
+#include <jetstream/render/sakura/components/panel.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
-#include <jetstream/render/sakura/components/shell.hh>
+#include <jetstream/render/sakura/components/spacer.hh>
+#include <jetstream/render/sakura/components/split_view.hh>
+#include <jetstream/render/sakura/components/stack.hh>
 
 #include "component_harness.hh"
 
@@ -615,4 +621,38 @@ TEST_CASE("Panels and split views remount a child that came back from another ow
     splitFrames.run();
     CHECK(shown(splitRoot, left));
     CHECK(shown(splitRoot, right));
+}
+
+TEST_CASE("Dragging an inset scroller thumb in place keeps the scroll offset", "[core][sakura][layout]") {
+    const auto ctx = MakeContext();
+    Sakura::Scroller scroll;
+    Host host(scroll);
+    F32 scrollY = 0.0f;
+    const auto update = [&] {
+        scroll.update({.id = "scroll",
+                       .contentHeight = 900.0f,
+                       .scrollY = scrollY,
+                       .thickness = 12.0f,
+                       .thumbInset = 3.0f,
+                       .onScrollY = [&](F32 next) { scrollY = next; }});
+    };
+    update();
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 300.0f});
+
+    const Rect thumb = Direct<Sakura::Box>(scroll)[1]->config().instances.at(0).rect;
+    const F32 x = thumb.x + thumb.width * 0.5f;
+    const F32 y = thumb.y + 4.0f;
+    REQUIRE(host.send(Mouse(MouseEventType::Click, x, y)));
+    host.send(Mouse(MouseEventType::Move, x, y));
+    CHECK(scrollY == 0.0f);
+
+    host.send(Mouse(MouseEventType::Move, x, y + 1000.0f));
+    host.send(Mouse(MouseEventType::Release, x, y + 1000.0f));
+    update();
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 300.0f});
+    const F32 bottom = scrollY;
+    const Rect end = Direct<Sakura::Box>(scroll)[1]->config().instances.at(0).rect;
+    REQUIRE(host.send(Mouse(MouseEventType::Click, x, end.y + 4.0f)));
+    host.send(Mouse(MouseEventType::Move, x, end.y + 4.0f));
+    CHECK(scrollY == bottom);
 }

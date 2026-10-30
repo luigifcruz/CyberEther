@@ -114,7 +114,7 @@ struct Table::Impl {
     void flatten(const std::vector<Node>& nodes, U64 depth, const std::string& prefix) {
         for (const auto& node : nodes) {
             const std::string& segment = node.id.empty() ? node.label : node.id;
-            const std::string key = prefix + "/" + std::to_string(segment.size()) + ":" + segment;
+            const std::string key = jst::fmt::format("{}/{}:{}", prefix, segment.size(), segment);
             const bool expandable = !node.children.empty();
             const auto it = expanded.find(key);
             const bool open = expandable && (it != expanded.end() ? it->second : node.open);
@@ -181,6 +181,9 @@ struct Table::Impl {
         F32 fixed = 0.0f;
         F32 weightSum = 0.0f;
         widthOverrides.resize(count, 0.0f);
+        if (resizing.has_value() && *resizing + 1 >= count) {
+            resizing.reset();
+        }
         for (U64 column = 0; column < count; ++column) {
             if (widthOverrides[column] > 0.0f) {
                 widths[column] = Px(ctx, widthOverrides[column]);
@@ -358,16 +361,20 @@ void Table::layout(const Context& ctx) {
     std::vector<Box::Instance> bodyBackgrounds;
     std::vector<Box::Instance> bodyLines;
     std::vector<Polyline::Instance> arrows;
+    const F32 minRowHeight = std::max(1.0f, Px(ctx, Typography::FontSize) + 2.0f * padY);
+    const U64 rowCapacity = static_cast<U64>(std::ceil(static_cast<F32>(ctx.framebufferSize.y) / minRowHeight)) + 2;
+    const Rect visible = Intersect(body, clip());
     U64 bodyIndex = 0;
     for (U64 index = 0; index < impl->rows.size(); ++index) {
         const auto& row = impl->rows[index];
         const F32 top = impl->rowTop(bounds, index);
         const F32 height = impl->rowHeights[index];
         const Rect rowRect = {bounds.x, top, bounds.width, height};
+        const bool shown = top < visible.bottom() && top + height > visible.y;
         if (row.header) {
             headerBackground.push_back({.rect = rowRect, .backgroundColor = ctx.color("table_header_bg")});
-        } else {
-            const char* key = bodyIndex++ % 2 == 1 ? "table_row_bg_alt" : "table_row_bg";
+        } else if (const bool alternate = bodyIndex++ % 2 == 1; shown) {
+            const char* key = alternate ? "table_row_bg_alt" : "table_row_bg";
             bodyBackgrounds.push_back({.rect = rowRect, .backgroundColor = ctx.color(key)});
             if (!impl->config.nodes.empty() && impl->hoveredRow == index) {
                 bodyBackgrounds.push_back({.rect = rowRect, .backgroundColor = ctx.color("header_hovered")});
@@ -394,7 +401,7 @@ void Table::layout(const Context& ctx) {
                 impl->body.place(ctx, *cell, cellRect);
             }
         }
-        if (row.expandable) {
+        if (row.expandable && shown) {
             const F32 size = Px(ctx, Typography::FontSize);
             const F32 r = size * 0.40f * kArrowScale;
             const Extent2D<F32> center = {bounds.x + Px(ctx, kIndentSpacing) * static_cast<F32>(row.depth) + padX +
@@ -430,9 +437,12 @@ void Table::layout(const Context& ctx) {
     frameLines.push_back({.rect = {std::floor(bounds.right() - line), bounds.y, line, height}, .backgroundColor = strong});
 
     impl->headerBackground.update({.instances = std::move(headerBackground), .clip = boundsClip});
-    impl->bodyBackgrounds.update({.instances = std::move(bodyBackgrounds), .clip = bodyClip});
-    impl->bodyLines.update({.instances = std::move(bodyLines), .clip = bodyClip});
-    impl->arrows.update({.instances = std::move(arrows), .clip = bodyClip, .fringe = Fringe(ctx), .capacity = 256});
+    impl->bodyBackgrounds.update({.instances = std::move(bodyBackgrounds), .clip = bodyClip, .capacity = rowCapacity + 1});
+    impl->bodyLines.update({.instances = std::move(bodyLines), .clip = bodyClip, .capacity = rowCapacity});
+    impl->arrows.update({.instances = std::move(arrows),
+                         .clip = bodyClip,
+                         .fringe = Fringe(ctx),
+                         .capacity = 6 * rowCapacity});
     impl->frameLines.update({.instances = std::move(frameLines), .clip = boundsClip});
     layoutChild(ctx, impl->headerBackground, bounds);
     layoutChild(ctx, impl->frameLines, bounds);

@@ -87,7 +87,7 @@ inline std::string DescribeTile(const std::string& key) {
         return *config + " Config";
     }
     if (auto surface = ParseSurfaceTileKey(key)) {
-        return surface->first + " (" + surface->second + ")";
+        return jst::fmt::format("{} ({})", surface->first, surface->second);
     }
     return key;
 }

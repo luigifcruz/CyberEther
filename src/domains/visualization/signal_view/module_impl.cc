@@ -1,7 +1,6 @@
 #include "module_impl.hh"
 
 #include <algorithm>
-#include <any>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -16,6 +15,7 @@ Result SignalViewImpl::validate() {
     const bool hasLineplot = detail::SignalViewHasLineplot(config.mode);
     const bool hasWaterfall = detail::SignalViewHasWaterfall(config.mode);
     const bool hasWaterfall3D = detail::SignalViewHasWaterfall3D(config.mode);
+    const bool hasDensity = detail::SignalViewHasDensity(config);
 
     validatedNumberOfElements = 0;
     validatedNumberOfBatches = 0;
@@ -25,6 +25,7 @@ Result SignalViewImpl::validate() {
     validatedLineplotEnabled = false;
     validatedWaterfallEnabled = false;
     validatedWaterfall3dEnabled = false;
+    validatedDensityEnabled = false;
 
     if (!hasLineplot && !hasWaterfall) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid mode '{}'.", config.mode);
@@ -84,6 +85,11 @@ Result SignalViewImpl::validate() {
 
     if (hasWaterfall3D && config.waterfallHeight < 2) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] 3D waterfall needs at least 2 rows.");
+        return Result::ERROR;
+    }
+
+    if (hasDensity && config.persistence == 0) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Density persistence must be at least 1.");
         return Result::ERROR;
     }
 
@@ -182,6 +188,25 @@ Result SignalViewImpl::validate() {
         }
     }
 
+    if (hasDensity) {
+        const auto columns = detail::PlanDensityColumns(numberOfElements);
+        U64 cellCount = 0;
+        U64 historyCount = 0;
+        if (!Jetstream::detail::CheckedMultiply(columns.columns,
+                                                detail::kDensityLevels,
+                                                cellCount) ||
+            !Jetstream::detail::CheckedMultiply(numberOfElements,
+                                                detail::kDensityHistoryRows,
+                                                historyCount) ||
+            numberOfElements > std::numeric_limits<U32>::max() ||
+            cellCount > static_cast<U64>(std::numeric_limits<I32>::max()) ||
+            historyCount > static_cast<U64>(std::numeric_limits<I32>::max())) {
+            JST_ERROR("[MODULE_SIGNAL_VIEW] Density geometry exceeds the "
+                      "supported rendering range.");
+            return Result::ERROR;
+        }
+    }
+
     if (hasWaterfall3D) {
         U64 slotCount = 0;
         if (!Jetstream::detail::CheckedMultiply(numberOfElements - 1, 6, slotCount) ||
@@ -192,18 +217,8 @@ Result SignalViewImpl::validate() {
         }
     }
 
-    for (const auto* attribute : {"frequency", "sampleRate"}) {
-        if (!inputTensor.hasAttribute(attribute)) {
-            continue;
-        }
-        const std::any value = inputTensor.attribute(attribute);
-        const auto* scalar = std::any_cast<F32>(&value);
-        if (!scalar || !std::isfinite(*scalar)) {
-            JST_ERROR("[MODULE_SIGNAL_VIEW] Input {} metadata must be a finite F32.",
-                      attribute);
-            return Result::ERROR;
-        }
-    }
+    SignalViewFrequency frequency;
+    JST_CHECK(frequency.read(inputTensor));
 
     const U64 numberOfBatches = axes.batch
         ? inputTensor.shape(*axes.batch)
@@ -219,6 +234,7 @@ Result SignalViewImpl::validate() {
     validatedLineplotEnabled = hasLineplot;
     validatedWaterfallEnabled = hasWaterfall;
     validatedWaterfall3dEnabled = hasWaterfall3D;
+    validatedDensityEnabled = hasDensity;
 
     return Result::SUCCESS;
 }
@@ -239,19 +255,13 @@ Result SignalViewImpl::create() {
 
     input = inputs().at("signal").tensor;
 
-    if (input.hasAttribute("frequency")) {
-        const std::any value = input.attribute("frequency");
-        if (const auto* frequency = std::any_cast<F32>(&value)) {
-            JST_DEBUG("[MODULE_SIGNAL_VIEW] Input frequency: {:.02f} MHz",
-                      *frequency / 1e6f);
-        }
-    }
-    if (input.hasAttribute("sampleRate")) {
-        const std::any value = input.attribute("sampleRate");
-        if (const auto* sampleRate = std::any_cast<F32>(&value)) {
-            JST_DEBUG("[MODULE_SIGNAL_VIEW] Input sample rate: {:.02f} MHz",
-                      *sampleRate / 1e6f);
-        }
+    SignalViewFrequency frequency;
+    JST_CHECK(frequency.read(input));
+    if (frequency.valid) {
+        JST_DEBUG("[MODULE_SIGNAL_VIEW] Input frequency: {:.02f} MHz",
+                  frequency.center / 1e6f);
+        JST_DEBUG("[MODULE_SIGNAL_VIEW] Input sample rate: {:.02f} MHz",
+                  frequency.sampleRate / 1e6f);
     }
 
     numberOfElements = validatedNumberOfElements;
@@ -262,21 +272,29 @@ Result SignalViewImpl::create() {
     lineplotEnabled = validatedLineplotEnabled;
     waterfallEnabled = validatedWaterfallEnabled;
     waterfall3dEnabled = validatedWaterfall3dEnabled;
+    densityEnabled = validatedDensityEnabled;
     waterfallAveragingCount = 0;
     maxHoldWarmupBlocks = 0;
     lineplotAveragingInitialized = false;
     waterfallHistory = {};
+    densityHistory = {};
     updateSignalPointsFlag = false;
     updateHoldPointsFlag = false;
 
     lineplot.configure({
         .numberOfElements = numberOfElements,
-        .fill = fill,
+        .fill = fill && !densityEnabled,
         .maxHold = maxHold,
+        .overlay = densityEnabled,
     });
     waterfall.configure({
         .width = numberOfElements,
         .height = waterfallHeight,
+    });
+    densityMap.configure({
+        .width = numberOfElements,
+        .history = detail::kDensityHistoryRows,
+        .persistence = persistence,
     });
 
     const Buffer::Config renderStateConfig = renderStateBufferConfig();
@@ -308,6 +326,12 @@ Result SignalViewImpl::create() {
                                        renderStateConfig));
     }
 
+    if (densityEnabled) {
+        JST_CHECK(densityBins.create(device(), DataType::F32,
+                                     {detail::kDensityHistoryRows, numberOfElements},
+                                     renderStateConfig));
+    }
+
     return Result::SUCCESS;
 }
 
@@ -323,6 +347,7 @@ Result SignalViewImpl::reconfigure() {
         config.maxHold == maxHold &&
         config.fill == fill &&
         config.waterfallHeight == waterfallHeight &&
+        config.density == density &&
         config.xLabel == xLabel &&
         config.amplitudeLabel == amplitudeLabel &&
         config.waterfallLabel == waterfallLabel) {
@@ -340,6 +365,10 @@ Result SignalViewImpl::reconfigure() {
         rangeMin = config.rangeMin;
         rangeMax = config.rangeMax;
         colormap = config.colormap;
+        if (densityEnabled && config.persistence != persistence) {
+            densityMap.persistence(config.persistence);
+        }
+        persistence = config.persistence;
         if (lineplotAveragingChanged) {
             JST_CHECK(resetLineplotHistory());
         }
@@ -382,10 +411,17 @@ Result SignalViewImpl::resetHistoryState() {
         waterfallAveragingCount = 0;
     }
 
+    if (densityEnabled) {
+        densityHistory.clearDirty();
+        densityMap.reset();
+    }
+
     return Result::SUCCESS;
 }
 
 Result SignalViewImpl::createPresent() {
+    SignalViewFrequency frequency;
+    JST_CHECK(frequency.read(input));
     auto& window = render();
 
     if (!window) {
@@ -426,7 +462,11 @@ Result SignalViewImpl::createPresent() {
         JST_CHECK(waterfall.create(window, waterfallBins, colormap));
     }
 
-    JST_CHECK(canvas.create(window, canvasContext()));
+    if (densityEnabled) {
+        JST_CHECK(densityMap.create(window, densityBins));
+    }
+
+    JST_CHECK(canvas.create(window, canvasContext(frequency)));
 
     JST_CHECK(surfaceCreateManifest({
         .id = "default",
@@ -452,11 +492,14 @@ Result SignalViewImpl::destroyPresent() {
 }
 
 Result SignalViewImpl::present() {
+    SignalViewFrequency frequency;
+    JST_CHECK(frequency.read(input));
+
     if (waterfall3dEnabled) {
         bool viewChanged = false;
         JST_CHECK(waterfall3d.present(surfaceConsumeSurfaceEvents(),
                                       surfaceConsumeInputEvents(),
-                                      waterfallFrame(), waterfall3dLabels(), colormap,
+                                      waterfallFrame(), waterfall3dLabels(frequency), colormap,
                                       viewChanged));
         if (!waterfall3d.held()) {
             waterfallHistory.clearDirty();
@@ -471,7 +514,7 @@ Result SignalViewImpl::present() {
         return Result::SUCCESS;
     }
 
-    const auto context = canvasContext();
+    const auto context = canvasContext(frequency);
 
     JST_CHECK(canvas.processSurfaceEvents(surfaceConsumeSurfaceEvents()));
     surfaceSetCursor(canvas.processInputEvents(surfaceConsumeInputEvents(), context, {
@@ -496,6 +539,14 @@ Result SignalViewImpl::present() {
         JST_CHECK(waterfall.present(canvas.interaction, colormap));
     }
 
+    if (densityEnabled) {
+        if (!canvas.displayHeld) {
+            JST_CHECK(densityMap.update(densityFrame()));
+            densityHistory.clearDirty();
+        }
+        JST_CHECK(densityMap.present(canvas.interaction));
+    }
+
     if (lineplotEnabled) {
         if (updateSignalPointsFlag && !canvas.displayHeld) {
             JST_CHECK(lineplot.upload(signalPoints, updateHoldPointsFlag));
@@ -507,13 +558,14 @@ Result SignalViewImpl::present() {
     return canvas.present(context);
 }
 
-SignalViewCanvas::Context SignalViewImpl::canvasContext() {
+SignalViewCanvas::Context SignalViewImpl::canvasContext(const SignalViewFrequency& frequency) {
     return {
         .config = *this,
-        .frequency = SignalViewFrequencyOf(input),
+        .frequency = frequency,
         .numberOfElements = numberOfElements,
         .lineplot = lineplotEnabled ? &lineplot : nullptr,
         .waterfall = waterfallEnabled ? &waterfall : nullptr,
+        .density = densityEnabled ? &densityMap : nullptr,
     };
 }
 
@@ -525,8 +577,16 @@ WaterfallFrame SignalViewImpl::waterfallFrame() const {
     };
 }
 
-SignalViewWaterfall3DLabels SignalViewImpl::waterfall3dLabels() const {
-    const auto frequency = SignalViewFrequencyOf(input);
+WaterfallFrame SignalViewImpl::densityFrame() const {
+    return {
+        .writeIndex = densityHistory.writeIndex,
+        .dirty = densityHistory.dirtyPlan(detail::kDensityHistoryRows),
+        .elapsedRows = densityHistory.elapsedRows,
+    };
+}
+
+SignalViewWaterfall3DLabels SignalViewImpl::waterfall3dLabels(
+    const SignalViewFrequency& frequency) const {
     SignalViewWaterfall3DLabels labels;
     labels.frequency = xLabel;
     labels.time = waterfallLabel;

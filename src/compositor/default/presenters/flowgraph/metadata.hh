@@ -35,7 +35,7 @@ struct FlowgraphMetadataWindowPresenter {
         }
 
         const auto& flowgraph = context.state.flowgraph.items.at(flowgraphId);
-        const std::string filter = FlowgraphKeyValueDetail::NormalizeFilter(
+        const std::string filter = Text::ToLower(
             context.state.interface.flowgraphMetadataSearch);
 
         Sakura::Table::Nodes nodes;
@@ -44,7 +44,7 @@ struct FlowgraphMetadataWindowPresenter {
                                                              const std::string& prefix,
                                                              const std::string& block) {
             for (const auto& key : keys) {
-                const std::string displayKey = prefix.empty() ? key : prefix + "." + key;
+                const std::string displayKey = prefix.empty() ? key : jst::fmt::format("{}.{}", prefix, key);
                 if (!FlowgraphKeyValueDetail::KeyMatches(displayKey, filter)) {
                     continue;
                 }
@@ -85,7 +85,7 @@ struct FlowgraphMetadataWindowPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         return FlowgraphKeyValueWindow::Config{
             .id = "flowgraph-metadata-window",
-            .title = "Flowgraph Metadata (" + MakeFlowgraphTitle(flowgraphId, flowgraph) + ")",
+            .title = jst::fmt::format("Flowgraph Metadata ({})", MakeFlowgraphTitle(flowgraphId, flowgraph)),
             .search = context.state.interface.flowgraphMetadataSearch,
             .searchHint = "Search metadata keys...",
             .entryCount = FlowgraphKeyValueDetail::EntryCount(nodes.size(), totalEntries),

@@ -476,9 +476,25 @@ void Component::setChildren(const std::vector<Component*>& order) {
         impl->relayout();
         return;
     }
-    clearChildren();
+    const std::vector<Component*> current = children;
+    for (auto* child : current) {
+        if (child && std::find(order.begin(), order.end(), child) == order.end()) {
+            removeChild(*child);
+        }
+    }
+    std::vector<Component*> next;
+    next.reserve(order.size());
     for (auto* child : order) {
-        addChild(*child);
+        if (std::find(next.begin(), next.end(), child) == next.end()) {
+            addChild(*child);
+            next.push_back(child);
+        }
+    }
+    if (children != next) {
+        children = std::move(next);
+        ++impl->childGeneration;
+        impl->invalidate(Dirty::Order);
+        impl->relayout();
     }
 }
 
@@ -519,14 +535,7 @@ void Component::mountChildren(const std::vector<Component*>& active) {
     for (auto* child : impl->children) {
         if (!listed(child) && child->impl->visible) {
             cancelMouse(*child);
-            if (const auto& scope = impl->root().focusScope; scope && scope->owner) {
-                for (const Component* node = scope->owner; node; node = node->impl->parent) {
-                    if (node == child) {
-                        scope->owner->releaseFocus();
-                        break;
-                    }
-                }
-            }
+            releaseFocusWithin(*child);
         }
         child->setVisible(listed(child));
     }
@@ -761,6 +770,13 @@ void Component::releaseFocus() {
     ++scope->generation;
     impl->focusHandle.reset();
     focusChanged(false);
+}
+
+void Component::releaseFocusWithin(Component& child) {
+    const auto& scope = impl->root().focusScope;
+    if (scope && scope->owner && scope->owner->impl->within(&child)) {
+        scope->owner->releaseFocus();
+    }
 }
 
 bool Component::hasFocus() const {

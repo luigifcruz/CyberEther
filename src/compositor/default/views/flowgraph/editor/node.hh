@@ -7,10 +7,11 @@
 #include "menu.hh"
 #include "metrics/base.hh"
 
+#include "../../../model/meta.hh"
 #include "jetstream/block.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/texture.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -254,6 +255,8 @@ struct FlowgraphNode {
         F32 y = 0.0f;
         F32 width = 0.0f;
         F32 height = 0.0f;
+
+        bool operator==(const Layout&) const = default;
     };
 
     struct BlockData {
@@ -294,26 +297,12 @@ struct FlowgraphNode {
         std::function<void()> onDocumentation;
         std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
         std::function<void(F32, F32, F32, F32)> onLayout;
+        std::function<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
         std::function<void(bool)> onConfigCollapse;
         std::function<void(bool)> onConfigDetach;
     };
 
     static constexpr F32 MinimumNodeWidth = 120.0f;
-
-    static F32 DefaultNodeWidth(const Block::NodeSize& size) {
-        switch (size) {
-            case Block::NodeSize::XS:
-                return 120.0f;
-            case Block::NodeSize::M:
-                return 220.0f;
-            case Block::NodeSize::L:
-                return 320.0f;
-            case Block::NodeSize::XL:
-                return 460.0f;
-            default:
-                return 140.0f;
-        }
-    }
 
     static constexpr FlowgraphNodeHeightSpec SurfaceHeightSpec() {
         return {
@@ -324,14 +313,21 @@ struct FlowgraphNode {
     }
 
     void update(Config config) {
-        if (layoutChanged && geometry.has_value() && this->config.onLayout) {
-            layoutChanged = false;
-            this->config.onLayout(geometry->gridPosition.x,
-                                  geometry->gridPosition.y,
-                                  dimensions.x,
-                                  dimensions.y);
+        std::optional<Layout> previousLayout;
+        std::function<void(F32, F32, F32, F32)> previousOnLayout;
+        if (layoutChanged) {
+            previousLayout = this->config.block.layout;
+            previousOnLayout = this->config.onLayout;
         }
         this->config = std::move(config);
+        if (layoutChanged && geometry.has_value() && this->config.onLayout) {
+            layoutChanged = false;
+            const auto& current = this->config.block.layout;
+            const bool external = current != previousLayout && current != emittedLayout;
+            const auto& emit = external && previousOnLayout ? previousOnLayout : this->config.onLayout;
+            emittedLayout = Layout{geometry->gridPosition.x, geometry->gridPosition.y, dimensions.x, dimensions.y};
+            emit(emittedLayout->x, emittedLayout->y, emittedLayout->width, emittedLayout->height);
+        }
         auto& block = this->config.block;
         const U64 surfaceCount = block.surfaces.size();
         const bool hasSurfaces = surfaceCount > 0;
@@ -345,7 +341,9 @@ struct FlowgraphNode {
             : isCreating ? NodeEditor::NodeState::Loading
                          : isPending ? NodeEditor::NodeState::Pending : NodeEditor::NodeState::Normal;
 
-        fieldStack.update(std::move(block.configFields));
+        fieldStack.update(std::move(block.configFields), [this]() {
+            reportBounds();
+        });
         const bool hasFlexibleFields = fieldStack.hasFlexible();
 
         bool allSurfacesDetached = hasSurfaces;
@@ -474,6 +472,7 @@ struct FlowgraphNode {
                     this->dimensions.y = next.contentDimensions.y;
                 }
                 layoutChanged = true;
+                reportBounds();
             },
         };
 
@@ -561,6 +560,22 @@ struct FlowgraphNode {
     }
 
  private:
+    void reportBounds() const {
+        const auto& block = config.block;
+        if (!geometry.has_value() || block.state == Block::State::Creating || !config.onBounds) {
+            return;
+        }
+        const auto& next = *geometry;
+        const Extent2D<F32> inner = next.contentDimensions;
+        std::optional<Extent2D<F32>> content;
+        if (next.onscreen && !block.configCollapsed && !block.configDetached) {
+            content = fieldStack.content(inner, next.minimumHeight);
+        }
+        config.onBounds({next.gridPosition.x, next.gridPosition.y, next.dimensions.x, next.dimensions.y},
+                        inner,
+                        content);
+    }
+
     void updateContent(const BlockData& block, bool isCreating, bool configHidden) {
         using Stack = Sakura::NodeContentStack;
 
@@ -643,6 +658,7 @@ struct FlowgraphNode {
     bool menuOpen = false;
     bool inspectorOpen = false;
     bool layoutChanged = false;
+    std::optional<Layout> emittedLayout;
 };
 
 }  // namespace Jetstream

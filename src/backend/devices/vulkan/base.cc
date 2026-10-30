@@ -500,7 +500,6 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     {
         VkDescriptorPoolSize poolSizes[] = {
             { VK_DESCRIPTOR_TYPE_SAMPLER, 8192 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8192 },
             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 8192 },
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8192 },
             { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 8192 },

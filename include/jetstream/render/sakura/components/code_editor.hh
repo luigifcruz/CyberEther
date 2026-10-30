@@ -42,6 +42,7 @@ struct CodeEditor : public Component {
         F32 rounding = 0.0f;
         Callback<void(std::string)> onChange;
         Callback<void(std::string)> onSubmit;
+        Callback<void(Extent2D<F32>)> onContentOverflow;
 
         bool operator==(const Config&) const = default;
     };

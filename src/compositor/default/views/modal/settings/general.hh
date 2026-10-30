@@ -18,12 +18,10 @@ struct GeneralSettingsPanel {
         std::string currentThemeKey;
         F32 interfaceScale = 1.0f;
         std::string renderer;
-        bool infoPanelEnabled = false;
         bool backgroundParticles = false;
         std::function<void(const std::string&)> onThemeChange;
         std::function<void(F32)> onInterfaceScaleChange;
         std::function<void(DeviceType)> onRendererChange;
-        std::function<void(bool)> onInfoPanelChange;
         std::function<void(bool)> onBackgroundParticlesChange;
     };
 
@@ -120,21 +118,6 @@ struct GeneralSettingsPanel {
             },
         });
 
-        infoPanelField.update({
-            .description = "Display the info panel alongside the main workspace.",
-            .control = &infoPanelCheckbox,
-        });
-
-        infoPanelCheckbox.update({
-            .label = "Show info panel",
-            .value = this->config.infoPanelEnabled,
-            .onChange = [this](bool value) {
-                if (this->config.onInfoPanelChange) {
-                    this->config.onInfoPanelChange(value);
-                }
-            },
-        });
-
         particlesField.update({
             .description = "Animate floating particles in the workspace background.",
             .control = &particlesCheckbox,
@@ -158,7 +141,6 @@ struct GeneralSettingsPanel {
                 {.child = &themeField},
                 {.child = &scaleField},
                 {.child = &rendererField},
-                {.child = &infoPanelField},
                 {.child = &particlesField},
             },
         });
@@ -210,12 +192,10 @@ struct GeneralSettingsPanel {
     Sakura::Combo themeCombo;
     Sakura::Combo scaleCombo;
     Sakura::Combo rendererCombo;
-    Sakura::Checkbox infoPanelCheckbox;
     Sakura::Checkbox particlesCheckbox;
     Sakura::SettingField themeField;
     Sakura::SettingField scaleField;
     Sakura::SettingField rendererField;
-    Sakura::SettingField infoPanelField;
     Sakura::SettingField particlesField;
     Sakura::Stack stack;
     std::string renderer;

@@ -40,7 +40,7 @@ struct FlowgraphSurfacePresenter {
                 flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
 
                 block.surfaces.push_back({
-                    .id = nodeViewId + ":surface:" + manifest.id,
+                    .id = jst::fmt::format("{}:surface:{}", nodeViewId, manifest.id),
                     .texture = manifest.surface,
                     .height = static_cast<F32>(surfaceMeta.attachedHeight),
                     .detached = surfaceMeta.detached,

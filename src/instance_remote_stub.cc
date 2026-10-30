@@ -33,7 +33,7 @@ struct Instance::Remote::Impl {
         return Result::SUCCESS;
     }
 
-    Result captureFrame() {
+    Result captureFrame(bool) {
         return Result::SUCCESS;
     }
 
@@ -59,14 +59,6 @@ std::vector<Instance::Remote::EncoderType> Instance::Remote::available(CodecType
 }
 
 Result Instance::Remote::create(const Config& config) {
-    if (config.broker.empty()) {
-        JST_ERROR("[REMOTE] Missing broker address.");
-        return Result::ERROR;
-    }
-    if (!IsRemoteBrokerSchemeSupported(config.broker)) {
-        JST_ERROR("[REMOTE] Broker URL must use HTTP or HTTPS.");
-        return Result::ERROR;
-    }
     return impl->create(config);
 }
 
@@ -78,8 +70,8 @@ bool Instance::Remote::started() const {
     return impl->started_;
 }
 
-Result Instance::Remote::captureFrame() {
-    return impl->captureFrame();
+Result Instance::Remote::captureFrame(bool presented) {
+    return impl->captureFrame(presented);
 }
 
 const std::string& Instance::Remote::roomId() const {

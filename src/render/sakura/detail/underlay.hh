@@ -25,8 +25,8 @@ struct LiveRegion {
     Rect rect;
 };
 
-inline bool UnderlaysAvailable(bool eraseBlending, bool premultipliedComposite, const ColorRGBA<F32>& clearColor) {
-    return eraseBlending && premultipliedComposite && clearColor.a >= 1.0f;
+inline bool UnderlaysAvailable(bool eraseBlending, const ColorRGBA<F32>& clearColor) {
+    return eraseBlending && clearColor.a >= 1.0f;
 }
 
 inline std::optional<Underlay> MakeUnderlay(const std::shared_ptr<const Render::Texture>& texture,

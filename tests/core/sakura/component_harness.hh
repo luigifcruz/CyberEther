@@ -7,14 +7,13 @@
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
-#include <jetstream/render/sakura/components/root.hh>
-
-#include <jetstream/render/tools/imgui.h>
 
 #include "render/sakura/context.hh"
 #include "render/sakura/detail/access.hh"
 #include "render/sakura/detail/dock_drag.hh"
+#include "render/sakura/detail/input_router.hh"
 #include "render/sakura/detail/popup_layer.hh"
 #include "render/sakura/detail/root_component.hh"
 
@@ -67,11 +66,6 @@ inline void ClickFocus(Jetstream::Sakura::Component& root, std::optional<Extent2
 inline const Jetstream::Sakura::Component* FocusOwner(const Jetstream::Sakura::Component& root) {
     return Jetstream::Sakura::Access::focusOwner(root);
 }
-
-struct ImGuiContextGuard {
-    ImGuiContextGuard() { ImGui::CreateContext(); }
-    ~ImGuiContextGuard() { ImGui::DestroyContext(); }
-};
 
 inline Jetstream::Sakura::Context MakeContext(Extent2D<F32> size = {800.0f, 600.0f}) {
     Jetstream::Sakura::Context ctx;
@@ -720,6 +714,42 @@ inline const Jetstream::Sakura::Palette& DistinctPalette() {
     }();
     return palette;
 }
+
+struct InputDriver {
+    Jetstream::Render::InputState state;
+    Jetstream::Sakura::InputFrame frame;
+    Jetstream::Sakura::InputRouter router;
+    Jetstream::F64 clock = 1.0;
+
+    Jetstream::U64 run(LayerHost& host,
+                       const Jetstream::Sakura::Context& ctx,
+                       const Rect& screen,
+                       const std::vector<Jetstream::Render::InputQueue::Event>& batch) {
+        Jetstream::U64 frames = 0;
+        auto queued = batch;
+        do {
+            state.advance(clock, queued);
+            queued.clear();
+            clock += 1.0 / 60.0;
+            ++frames;
+            Jetstream::Sakura::Private::SampleInput(frame, state);
+            for (const auto& event : router.route(frame, screen).events) {
+                if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                    MouseEvent absolute = *mouse;
+                    absolute.position = {screen.x + mouse->position.x * screen.width,
+                                         screen.y + mouse->position.y * screen.height};
+                    host.send(absolute);
+                } else if (const auto* key = std::get_if<Jetstream::KeyEvent>(&event)) {
+                    Jetstream::Sakura::Access::key(host, *key);
+                } else if (const auto* text = std::get_if<Jetstream::TextEvent>(&event)) {
+                    Jetstream::Sakura::Access::text(host, *text);
+                }
+            }
+            host.place(ctx, screen);
+        } while (state.hasPending());
+        return frames;
+    }
+};
 
 }  // namespace SakuraTest
 

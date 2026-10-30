@@ -20,7 +20,7 @@ graph:
         ## What you are looking at
         - **The flat carpet** across the whole span is the noise floor.
         - **The fixed peak** at 1.000 MHz is the cosine. It never moves.
-        - **The diagonal line** in the waterfall is the chirp. Each sweep takes 2 seconds of signal time. The plot above averages 16 frames, which smooths the chirp into a faint ripple, so set **Lineplot Averaging** to 1 to see it as a moving peak. Nothing here waits for a wall clock, so the sweep runs as fast as your computer allows and may look faster than two seconds.
+        - **The diagonal line** in the waterfall is the chirp. Each sweep takes 2 seconds of signal time. The plot above averages 16 frames, which smooths the chirp into a faint ripple, so set **Spectrum Averaging** to 1 to see it as a moving peak. Nothing here waits for a wall clock, so the sweep runs as fast as your computer allows and may look faster than two seconds.
         
         Frequencies to the left of zero are real. These generators produce IQ pairs, and an IQ signal can carry a signed frequency. A real radio tuned to 100 MHz shows exactly the same picture with 100 MHz written at the center.
         
@@ -32,7 +32,7 @@ graph:
         5. Switch the **Cosine** generator's **Signal Type** to **Square**. A mirror peak appears at -1 MHz because square waves here are real-valued, not IQ. Extra peaks show up at odd multiples of 1 MHz, and the ones past the edge fold back into view. That fold is aliasing, the sampled world only has 5 MHz of room. Switch back to **Cosine**.
         
         ## Reading the numbers
-        The vertical scale is **dBFS**, decibels below a nominal full scale of 1.0. Doubling an amplitude adds 6 dB and multiplying it by 10 adds 20 dB. The chirp has **Amplitude** 10, so each frame it sits 20 dB above the tone, which the plot shows once **Lineplot Averaging** is 1. Nothing clips because these are floating point numbers. A real receiver fed a signal this strong would overload and spray false peaks everywhere.
+        The vertical scale is **dBFS**, decibels below a nominal full scale of 1.0. Doubling an amplitude adds 6 dB and multiplying it by 10 adds 20 dB. The chirp has **Amplitude** 10, so each frame it sits 20 dB above the tone, which the plot shows once **Spectrum Averaging** is 1. Nothing clips because these are floating point numbers. A real receiver fed a signal this strong would overload and spray false peaks everywhere.
         
         **Buffer Size** is both the number of samples generated per cycle and the FFT size downstream. With 8192 samples over 5 MHz each frequency bin is about 610 Hz wide. Raise it for finer detail and slower updates.
         

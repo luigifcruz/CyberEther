@@ -45,13 +45,18 @@ struct TitlebarPresenter {
             .remoteStarted = context.state.remote.started,
             .updateAvailable = context.state.update.available,
             .updateReady = context.state.update.ready,
+            .intelligenceEnabled = context.state.agent.settings.enabled,
+            .agentVisible = context.state.agent.ui.visible,
+            .voiceVisible = context.state.agent.ui.voiceVisible,
             .focusedFlowgraph = focusedFlowgraph,
             .flowgraphMetadataVisible = flowgraphMetadataVisible,
             .flowgraphEnvironmentVisible = flowgraphEnvironmentVisible,
             .debugTimingEnabled = context.state.debug.timingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
             .onAction = [enqueue, focusedFlowgraph, startTabFocused, canCheckForUpdates, missing,
-                         timing = context.state.debug.timingEnabled](TitlebarView::Action action) {
+                         timing = context.state.debug.timingEnabled,
+                         agentVisible = context.state.agent.ui.visible,
+                         voiceVisible = context.state.agent.ui.voiceVisible](TitlebarView::Action action) {
                 using Action = TitlebarView::Action;
                 switch (action) {
                     case Action::About:
@@ -71,6 +76,12 @@ struct TitlebarPresenter {
                         break;
                     case Action::RemoteStreaming:
                         enqueue(MailOpenModal{.content = ModalContent::RemoteStreaming});
+                        break;
+                    case Action::ToggleAgent:
+                        enqueue(MailSetAgentChatVisible{.value = !agentVisible});
+                        break;
+                    case Action::ToggleVoice:
+                        enqueue(MailSetAgentVoiceVisible{.value = !voiceVisible});
                         break;
                     case Action::GettingStarted:
                         enqueue(MailOpenUrl{.url = "https://cyberether.org/docs/quick-start", .notifyResult = true});

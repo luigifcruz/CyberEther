@@ -412,7 +412,7 @@ bool Transfer::Batch::contains(const std::shared_ptr<Buffer>& buffer) const {
     return buffer && pendingBuffers.contains(buffer.get());
 }
 
-bool Transfer::Batch::contains(const std::shared_ptr<Texture>& texture) const {
+bool Transfer::Batch::contains(const std::shared_ptr<const Texture>& texture) const {
     return texture && pendingTextures.contains(texture.get());
 }
 

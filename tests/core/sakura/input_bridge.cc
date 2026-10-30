@@ -1,10 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
-#include <jetstream/render/sakura/clipboard.hh>
-#include <jetstream/render/sakura/base.hh>
-#include <imgui_internal.h>
-
 #include "harness.hh"
 #include "scene.hh"
 #include "render/sakura/input.hh"
@@ -12,24 +8,22 @@
 #include "domains/visualization/frame/module_impl.hh"
 #include "domains/visualization/signal_view/waterfall_3d.hh"
 
+#include <jetstream/render/base/input.hh>
+#include <jetstream/render/sakura/base.hh>
+#include <jetstream/render/sakura/clipboard.hh>
+
 #include <algorithm>
 #include <limits>
+#include <string>
 #include <vector>
 
 using namespace Jetstream;
 
 namespace {
 
-template<typename Type>
-std::vector<Type> Only(const std::vector<Sakura::FrameEvent>& events) {
-    std::vector<Type> result;
-    for (const auto& event : events) {
-        if (const auto* typed = std::get_if<Type>(&event)) {
-            result.push_back(*typed);
-        }
-    }
-    return result;
-}
+using Queue = Render::InputQueue;
+
+using RenderTest::Only;
 
 struct FrameInputProbe : Modules::FrameImpl {
     Result validate() override { return Result::SUCCESS; }
@@ -59,24 +53,75 @@ struct WaterfallCameraMember {
 template struct InputMemberAccess<WaterfallInputMember, &Modules::SignalViewWaterfall3D::processInputEvents>;
 template struct InputMemberAccess<WaterfallCameraMember, &Modules::SignalViewWaterfall3D::cameraGoal>;
 
+struct Feed {
+    SakuraTest::FakeWindow window;
+    const Render::InputState& state = window.input();
+
+    void macOS(bool enabled) {
+        window.viewport.macOS = enabled;
+    }
+
+    void frame(const std::vector<Queue::Event>& events) {
+        REQUIRE(window.inject(events) == Result::SUCCESS);
+    }
+
+    SurfaceCursor cursor() {
+        return window.viewport.platform().cursor;
+    }
+
+    std::vector<Sakura::FrameEvent> settle(const std::vector<Queue::Event>& events, Sakura::InputFrame& frame) {
+        std::vector<Sakura::FrameEvent> collected;
+        this->frame(events);
+        while (true) {
+            Sakura::Private::SampleInput(frame, state);
+            collected.insert(collected.end(), frame.events.begin(), frame.events.end());
+            if (!state.hasPending()) {
+                break;
+            }
+            this->frame({});
+        }
+        return collected;
+    }
+};
+
+struct Routed {
+    std::vector<Sakura::FrameEvent> events;
+    Sakura::InputRouter::Output last;
+};
+
+Routed Route(Feed& feed, Sakura::InputFrame& frame, Sakura::InputRouter& router,
+             const std::vector<Queue::Event>& events, const Jetstream::Rect& screen) {
+    Routed routed;
+    feed.frame(events);
+    while (true) {
+        Sakura::Private::SampleInput(frame, feed.state);
+        routed.last = router.route(frame, screen);
+        routed.events.insert(routed.events.end(), routed.last.events.begin(), routed.last.events.end());
+        if (!feed.state.hasPending()) {
+            break;
+        }
+        feed.frame({});
+    }
+    return routed;
+}
+
 }  // namespace
 
-TEST_CASE("The ImGui bridge keeps native Control and Command names and modifiers on every platform",
+TEST_CASE("The input bridge keeps native Control and Command names and modifiers on every platform",
           "[core][sakura][input][bridge]") {
     const bool macOS = GENERATE(false, true);
-    SakuraTest::HeadlessUi ui;
-    auto& io = ImGui::GetIO();
-    io.ConfigInputTrickleEventQueue = false;
-    io.ConfigMacOSXBehaviors = macOS;
+    Feed feed;
+    feed.macOS(macOS);
     Sakura::InputFrame frame;
 
-    io.AddKeyEvent(ImGuiMod_Ctrl, true);
-    io.AddKeyEvent(ImGuiKey_LeftCtrl, true);
-    io.AddKeyEvent(ImGuiMod_Super, true);
-    io.AddKeyEvent(ImGuiKey_RightSuper, true);
-    io.AddKeyEvent(ImGuiMod_Alt, true);
-    io.AddKeyEvent(ImGuiMod_Shift, true);
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
+    feed.frame({
+        Queue::Modifiers{{.control = true}},
+        Queue::Key{KeyCode::LeftCtrl, true},
+        Queue::Modifiers{{.control = true, .super = true}},
+        Queue::Key{KeyCode::RightSuper, true},
+        Queue::Modifiers{{.control = true, .shift = true, .alt = true, .super = true}},
+    });
+    Sakura::Private::SampleInput(frame, feed.state);
 
     const auto keys = Only<KeyEvent>(frame.events);
     REQUIRE(keys.size() == 2);
@@ -91,8 +136,8 @@ TEST_CASE("The ImGui bridge keeps native Control and Command names and modifiers
     CHECK(frame.modifiers.alt);
     CHECK(frame.modifiers.super);
 
-    io.AddMouseWheelEvent(-2.0f, 1.0f);
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
+    feed.frame({Queue::Wheel{{-2.0f, 1.0f}}});
+    Sakura::Private::SampleInput(frame, feed.state);
     const auto mouse = Only<MouseEvent>(frame.events);
     REQUIRE(mouse.size() == 1);
     CHECK(mouse[0].type == MouseEventType::Scroll);
@@ -103,32 +148,35 @@ TEST_CASE("The ImGui bridge keeps native Control and Command names and modifiers
     CHECK(mouse[0].modifiers.super);
 }
 
-TEST_CASE("The ImGui bridge samples ordered input with native modifiers once per frame",
+TEST_CASE("The input bridge samples ordered input with native modifiers once per frame",
           "[core][sakura][input][bridge]") {
-    SakuraTest::HeadlessUi ui;
-    auto& io = ImGui::GetIO();
-    io.ConfigInputTrickleEventQueue = false;
-    io.ConfigMacOSXBehaviors = true;
+    Feed feed;
+    feed.macOS(true);
+    Sakura::Context ctx;
+    ctx.render = &feed.window;
     Sakura::InputFrame frame;
 
-    io.AddKeyEvent(ImGuiMod_Super, true);
-    io.AddKeyEvent(ImGuiKey_LeftSuper, true);
-    io.AddKeyEvent(ImGuiKey_S, true);
-    io.AddInputCharacter('x');
-    io.AddMouseWheelEvent(0.0f, 1.0f);
-    ui.setMouse({30.0f, 40.0f}, true);
-    ui.frame([&] {
-        Sakura::Private::SampleInput(frame);
-        Sakura::Private::ApplyCursor(SurfaceCursor::Hand);
-        CHECK(ImGui::GetMouseCursor() == ImGuiMouseCursor_Hand);
-    });
-    CHECK(frame.serial == 1);
+    const auto pressed = feed.settle({
+        Queue::Modifiers{{.super = true}},
+        Queue::Key{KeyCode::LeftSuper, true},
+        Queue::Key{KeyCode::S, true},
+        Queue::Text{U'x'},
+        Queue::Wheel{{0.0f, 1.0f}},
+        Queue::Pointer{Extent2D<F32>{30.0f, 40.0f}},
+        Queue::Button{MouseButton::Left, true},
+    }, frame);
+    Sakura::Private::ApplyCursor(ctx, SurfaceCursor::Hand);
+    CHECK(feed.cursor() == SurfaceCursor::Default);
+
+    const U64 serial = frame.serial;
+    CHECK(serial > 1);
     CHECK(frame.modifiers.super);
     CHECK_FALSE(frame.modifiers.control);
     CHECK(frame.pointer == Extent2D<F32>{30.0f, 40.0f});
     CHECK(frame.buttons[0]);
 
-    const auto mouse = Only<MouseEvent>(frame.events);
+    auto mouse = Only<MouseEvent>(pressed);
+    std::erase_if(mouse, [](const MouseEvent& event) { return event.type == MouseEventType::Move; });
     REQUIRE(mouse.size() == 2);
     const auto click = std::find_if(mouse.begin(), mouse.end(), [](const auto& event) {
         return event.type == MouseEventType::Click;
@@ -140,10 +188,11 @@ TEST_CASE("The ImGui bridge samples ordered input with native modifiers once per
     REQUIRE(scroll != mouse.end());
     CHECK(click->button == MouseButton::Left);
     CHECK(click->clicks == 1);
+    CHECK(click->position == Extent2D<F32>{30.0f, 40.0f});
     CHECK(click->modifiers.super);
     CHECK(scroll->scroll == Extent2D<F32>{0.0f, 1.0f});
 
-    const auto keys = Only<KeyEvent>(frame.events);
+    const auto keys = Only<KeyEvent>(pressed);
     REQUIRE(keys.size() == 2);
     CHECK(keys[0].key == KeyCode::LeftSuper);
     CHECK(keys[1].key == KeyCode::S);
@@ -151,77 +200,150 @@ TEST_CASE("The ImGui bridge samples ordered input with native modifiers once per
     CHECK(keys[1].modifiers.super);
     CHECK_FALSE(keys[1].repeat);
 
-    const auto text = Only<TextEvent>(frame.events);
+    const auto text = Only<TextEvent>(pressed);
     REQUIRE(text.size() == 1);
     CHECK(text[0].codepoint == U'x');
 
-    io.AddKeyEvent(ImGuiKey_S, false);
-    io.AddKeyEvent(ImGuiKey_LeftSuper, false);
-    io.AddKeyEvent(ImGuiMod_Super, false);
-    ui.setMouse({30.0f, 40.0f}, false);
-    ui.frame([&] {
-        Sakura::Private::SampleInput(frame);
-        Sakura::Private::ApplyCursor(SurfaceCursor::Default);
-        CHECK(ImGui::GetMouseCursor() == ImGuiMouseCursor_Arrow);
-    });
-    CHECK(frame.serial == 2);
+    const auto released = feed.settle({
+        Queue::Key{KeyCode::S, false},
+        Queue::Key{KeyCode::LeftSuper, false},
+        Queue::Modifiers{},
+        Queue::Button{MouseButton::Left, false},
+    }, frame);
+    CHECK(feed.cursor() == SurfaceCursor::Hand);
+    Sakura::Private::ApplyCursor(ctx, SurfaceCursor::Default);
+
+    CHECK(frame.serial > serial);
     CHECK_FALSE(frame.modifiers.super);
     CHECK_FALSE(frame.buttons[0]);
-    const auto released = Only<MouseEvent>(frame.events);
-    REQUIRE(released.size() == 1);
-    CHECK(released[0].type == MouseEventType::Release);
-    CHECK(Only<KeyEvent>(frame.events).size() == 2);
-    CHECK(Only<TextEvent>(frame.events).empty());
+    const auto releases = Only<MouseEvent>(released);
+    REQUIRE(releases.size() == 1);
+    CHECK(releases[0].type == MouseEventType::Release);
+    CHECK(Only<KeyEvent>(released).size() == 2);
+    CHECK(Only<TextEvent>(released).empty());
+
+    feed.frame({});
+    CHECK(feed.cursor() == SurfaceCursor::Default);
 }
 
-TEST_CASE("Queued pointer positions retain their order through sampling and routing",
-          "[core][sakura][surface][bridge]") {
-    SakuraTest::HeadlessUi ui;
-    auto& io = ImGui::GetIO();
-    io.ConfigInputTrickleEventQueue = false;
+TEST_CASE("The input bridge keeps each wheel delta, key and character in order with the modifiers held at the time",
+          "[core][sakura][input][bridge]") {
+    Feed feed;
     Sakura::InputFrame frame;
+
+    const auto events = feed.settle({
+        Queue::Wheel{{0.0f, 1.0f}},
+        Queue::Modifiers{{.shift = true}},
+        Queue::Wheel{{0.0f, -1.0f}},
+        Queue::Text{U'a'},
+        Queue::Key{KeyCode::B, true},
+        Queue::Modifiers{},
+        Queue::Key{KeyCode::B, false},
+    }, frame);
+
+    REQUIRE(events.size() == 5);
+    const auto* first = std::get_if<MouseEvent>(&events[0]);
+    const auto* second = std::get_if<MouseEvent>(&events[1]);
+    const auto* text = std::get_if<TextEvent>(&events[2]);
+    const auto* press = std::get_if<KeyEvent>(&events[3]);
+    const auto* release = std::get_if<KeyEvent>(&events[4]);
+    REQUIRE(first);
+    REQUIRE(second);
+    REQUIRE(text);
+    REQUIRE(press);
+    REQUIRE(release);
+    CHECK(first->scroll == Extent2D<F32>{0.0f, 1.0f});
+    CHECK_FALSE(first->modifiers.shift);
+    CHECK(second->scroll == Extent2D<F32>{0.0f, -1.0f});
+    CHECK(second->modifiers.shift);
+    CHECK(text->codepoint == U'a');
+    CHECK(text->modifiers.shift);
+    CHECK(press->key == KeyCode::B);
+    CHECK(press->type == KeyEventType::Press);
+    CHECK(press->modifiers.shift);
+    CHECK(release->type == KeyEventType::Release);
+    CHECK_FALSE(release->modifiers.shift);
+    CHECK_FALSE(frame.modifiers.shift);
+}
+
+TEST_CASE("The input bridge samples a frame once however often it is asked",
+          "[core][sakura][input][bridge]") {
+    Feed feed;
+    Sakura::InputFrame frame;
+
+    feed.frame({Queue::Text{U'x'}});
+    Sakura::Private::SampleInput(frame, feed.state);
+    Sakura::Private::SampleInput(frame, feed.state);
+    CHECK(frame.serial == 1);
+    CHECK(Only<TextEvent>(frame.events).size() == 1);
+    CHECK(frame.time == feed.state.time());
+    CHECK(frame.deltaTime == feed.state.deltaTime());
+
     Sakura::InputRouter router;
-    io.AddMousePosEvent(25.0f, 25.0f);
-    io.AddMouseButtonEvent(0, true);
-    io.AddKeyEvent(ImGuiKey_A, true);
-    io.AddInputCharacter('x');
-    io.AddMouseWheelEvent(0.0f, 1.0f);
-    io.AddMousePosEvent(250.0f, 25.0f);
-    io.AddMouseWheelEvent(0.0f, 2.0f);
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    REQUIRE(frame.events.size() == 7);
-    CHECK(std::get<MouseEvent>(frame.events[0]).type == MouseEventType::Move);
-    CHECK(std::get<MouseEvent>(frame.events[1]).position == Extent2D<F32>{25.0f, 25.0f});
-    CHECK(std::holds_alternative<KeyEvent>(frame.events[2]));
-    CHECK(std::holds_alternative<TextEvent>(frame.events[3]));
-    CHECK(std::get<MouseEvent>(frame.events[4]).position == Extent2D<F32>{25.0f, 25.0f});
-    CHECK(std::get<MouseEvent>(frame.events[5]).position == Extent2D<F32>{250.0f, 25.0f});
-    CHECK(std::get<MouseEvent>(frame.events[6]).position == Extent2D<F32>{250.0f, 25.0f});
+    const auto routed = router.route(frame, {0.0f, 0.0f, 100.0f, 100.0f});
+    CHECK(Only<TextEvent>(routed.events).size() == 1);
+    CHECK(router.route(frame, {0.0f, 0.0f, 100.0f, 100.0f}).events.empty());
 
-    const auto output = router.route(frame, {0.0f, 0.0f, 100.0f, 100.0f});
-    CHECK(output.active);
-    CHECK_FALSE(output.hovered);
-    CHECK_FALSE(output.outsideClick);
-    REQUIRE(output.events.size() == 6);
-    CHECK(std::get<MouseEvent>(output.events[1]).type == MouseEventType::Click);
-    CHECK(std::get<MouseEvent>(output.events[1]).position == Extent2D<F32>{0.25f, 0.25f});
-    CHECK(std::holds_alternative<KeyEvent>(output.events[2]));
-    CHECK(std::holds_alternative<TextEvent>(output.events[3]));
-    CHECK(std::get<MouseEvent>(output.events[4]).type == MouseEventType::Scroll);
-    CHECK(std::get<MouseEvent>(output.events[5]).position == Extent2D<F32>{2.5f, 0.25f});
+    feed.frame({});
+    Sakura::Private::SampleInput(frame, feed.state);
+    CHECK(frame.serial == 2);
+    CHECK(frame.events.empty());
+}
 
-    io.AddKeyEvent(ImGuiKey_A, false);
-    io.AddMousePosEvent(300.0f, 50.0f);
-    io.AddMouseButtonEvent(0, false);
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    const auto released = router.route(frame, {0.0f, 0.0f, 100.0f, 100.0f});
-    CHECK_FALSE(released.active);
-    const auto mouse = Only<MouseEvent>(released.events);
-    REQUIRE(mouse.size() == 2);
-    CHECK(mouse[0].type == MouseEventType::Move);
-    CHECK(mouse[1].type == MouseEventType::Release);
-    CHECK(mouse[1].position == Extent2D<F32>{3.0f, 0.5f});
-    CHECK_FALSE(mouse[1].cancel);
+TEST_CASE("The input bridge reports focus changes and stays inert while unfocused",
+          "[core][sakura][input][bridge]") {
+    Feed feed;
+    Sakura::InputFrame frame;
+
+    feed.frame({
+        Queue::Pointer{Extent2D<F32>{10.0f, 10.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Modifiers{{.shift = true}},
+    });
+    Sakura::Private::SampleInput(frame, feed.state);
+    CHECK(frame.windowFocused);
+    CHECK(frame.buttons[0]);
+
+    feed.frame({Queue::Focus{false}});
+    Sakura::Private::SampleInput(frame, feed.state);
+    CHECK_FALSE(frame.windowFocused);
+    CHECK_FALSE(frame.buttons[0]);
+    CHECK_FALSE(frame.pointer.has_value());
+    CHECK_FALSE(frame.modifiers.shift);
+    const auto lost = Only<FocusEvent>(frame.events);
+    REQUIRE(lost.size() == 1);
+    CHECK_FALSE(lost[0].focused);
+
+    feed.frame({Queue::Pointer{Extent2D<F32>{20.0f, 20.0f}}, Queue::Button{MouseButton::Left, true}});
+    Sakura::Private::SampleInput(frame, feed.state);
+    CHECK_FALSE(frame.windowFocused);
+    CHECK_FALSE(frame.pointer.has_value());
+    CHECK(frame.events.empty());
+
+    feed.frame({Queue::Focus{true}});
+    Sakura::Private::SampleInput(frame, feed.state);
+    CHECK(frame.windowFocused);
+    const auto regained = Only<FocusEvent>(frame.events);
+    REQUIRE(regained.size() == 1);
+    CHECK(regained[0].focused);
+}
+
+TEST_CASE("Sakura clipboard follows the window viewport and is empty without one",
+          "[core][sakura][input][bridge]") {
+    SakuraTest::FakeWindow window;
+    Sakura::SetClipboardText(&window, "alpha");
+    CHECK(window.viewport.platform().clipboard == "alpha");
+    window.viewport.platform().clipboard = "system";
+    CHECK(Sakura::GetClipboardText(&window) == "system");
+
+    window.attached = false;
+    CHECK(Sakura::GetClipboardText(&window).empty());
+    Sakura::SetClipboardText(&window, "beta");
+    CHECK(Sakura::GetClipboardText(&window).empty());
+    CHECK(window.viewport.platform().clipboard == "system");
+
+    Sakura::SetClipboardText(nullptr, "ignored");
+    CHECK(Sakura::GetClipboardText(nullptr).empty());
 }
 
 TEST_CASE("Input routing validates event types and button indices before accessing capture",
@@ -329,133 +451,6 @@ TEST_CASE("Input routing identifies manual frames and explicit source lifetimes 
     CHECK(Only<TextEvent>(router.route(second, rect).events).size() == 1);
 }
 
-TEST_CASE("Ordered click counts survive batching and respect ImGui time and distance thresholds",
-          "[core][sakura][surface][bridge]") {
-    SakuraTest::HeadlessUi ui;
-    auto& io = ImGui::GetIO();
-    io.ConfigInputTrickleEventQueue = false;
-    Sakura::InputFrame frame;
-    const auto click = [&] {
-        io.AddMouseButtonEvent(0, true);
-        io.AddMouseButtonEvent(0, false);
-    };
-    const auto counts = [&] {
-        std::vector<U8> result;
-        for (const auto& mouse : Only<MouseEvent>(frame.events)) {
-            if (mouse.type == MouseEventType::Click) result.push_back(mouse.clicks);
-        }
-        return result;
-    };
-    io.AddMousePosEvent(25, 25);
-    click();
-    click();
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    CHECK(counts() == std::vector<U8>{1, 2});
-    ui.setMouse({25, 25}, false);
-    click();
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    CHECK(counts() == std::vector<U8>{3});
-    io.DeltaTime = io.MouseDoubleClickTime + 0.1f;
-    click();
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    CHECK(counts() == std::vector<U8>{1});
-    io.DeltaTime = 1.0f / 60.0f;
-    io.AddMousePosEvent(25 + io.MouseDoubleClickMaxDist + 1, 25);
-    click();
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    CHECK(counts() == std::vector<U8>{1});
-    ui.setMouse({25 + io.MouseDoubleClickMaxDist + 1, 25}, false);
-    for (int index = 0; index < 260; ++index) click();
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    REQUIRE(counts().size() == 260);
-    CHECK(counts().back() == std::numeric_limits<U8>::max());
-}
-
-TEST_CASE("No-context sampling publishes cancellation and clipboard reads remain safe",
-          "[core][sakura][surface][bridge]") {
-    Sakura::InputFrame frame;
-    Sakura::InputRouter router;
-    {
-        SakuraTest::HeadlessUi ui;
-        ui.setMouse({25, 25}, true);
-        ui.frame([&] { Sakura::Private::SampleInput(frame); });
-        REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
-        auto& platform = ImGui::GetPlatformIO();
-        platform.Platform_GetClipboardTextFn = nullptr;
-        CHECK(Sakura::GetClipboardText().empty());
-        platform.Platform_GetClipboardTextFn = [](ImGuiContext*) -> const char* { return nullptr; };
-        CHECK(Sakura::GetClipboardText().empty());
-        platform.Platform_GetClipboardTextFn = [](ImGuiContext*) -> const char* { return "sample"; };
-        CHECK(Sakura::GetClipboardText() == "sample");
-    }
-    const U64 serial = frame.serial;
-    REQUIRE(ImGui::GetCurrentContext() == nullptr);
-    CHECK(Sakura::GetClipboardText().empty());
-    Sakura::Private::SampleInput(frame);
-    CHECK(frame.serial == serial + 1);
-    CHECK_FALSE(frame.windowFocused);
-    CHECK_FALSE(frame.pointer);
-    CHECK(frame.buttons == std::array<bool, 3>{});
-    CHECK(frame.source == nullptr);
-    CHECK(frame.sourceGeneration == 0);
-    CHECK(frame.sourceFrame == -1);
-    REQUIRE(frame.events.size() == 1);
-    CHECK(std::get<MouseEvent>(frame.events[0]).type == MouseEventType::Cancel);
-    const auto cancelled = router.route(frame, {0, 0, 100, 100});
-    CHECK_FALSE(cancelled.active);
-    CHECK_FALSE(cancelled.hovered);
-    REQUIRE(Only<MouseEvent>(cancelled.events).size() == 2);
-    CHECK(Only<MouseEvent>(cancelled.events)[0].cancel);
-}
-
-TEST_CASE("Sampler caches belong to context lifetimes even when context storage is reused",
-          "[core][sakura][surface][bridge]") {
-    struct Allocator {
-        ImGuiMemAllocFunc allocate;
-        ImGuiMemFreeFunc release;
-        void* user;
-        void* storage;
-        bool occupied = false;
-
-        ~Allocator() {
-            ImGui::SetAllocatorFunctions(allocate, release, user);
-            release(storage, user);
-        }
-    } allocator;
-    ImGui::GetAllocatorFunctions(&allocator.allocate, &allocator.release, &allocator.user);
-    allocator.storage = allocator.allocate(sizeof(ImGuiContext), allocator.user);
-    ImGui::SetAllocatorFunctions([](size_t size, void* user) -> void* {
-        auto& a = *static_cast<Allocator*>(user);
-        if (size == sizeof(ImGuiContext) && !a.occupied) {
-            a.occupied = true;
-            return a.storage;
-        }
-        return a.allocate(size, a.user);
-    }, [](void* pointer, void* user) {
-        auto& a = *static_cast<Allocator*>(user);
-        if (pointer == a.storage) a.occupied = false;
-        else a.release(pointer, a.user);
-    }, &allocator);
-    Sakura::InputFrame frame;
-    U64 generation = 0;
-    for (int lifetime = 0; lifetime < 2; ++lifetime) {
-        SakuraTest::HeadlessUi ui;
-        CHECK(ImGui::GetCurrentContext() == allocator.storage);
-        ImGui::GetIO().AddInputCharacter(lifetime == 0 ? 'a' : 'b');
-        ui.frame([&] { Sakura::Private::SampleInput(frame); });
-        CHECK(frame.sourceGeneration != generation);
-        generation = frame.sourceGeneration;
-        const auto text = Only<TextEvent>(frame.events);
-        REQUIRE(text.size() == 1);
-        CHECK(text[0].codepoint == (lifetime == 0 ? U'a' : U'b'));
-        Sakura::InputFrame other;
-        Sakura::Private::SampleInput(other);
-        CHECK(other.sourceGeneration == generation);
-        CHECK(other.serial == frame.serial);
-        CHECK(Only<TextEvent>(other.events).size() == 1);
-    }
-}
-
 TEST_CASE("Cancelled releases leave frame zoom and the waterfall camera unchanged",
           "[core][sakura][surface][bridge][consumer-cancel]") {
     FrameInputProbe frame;
@@ -505,261 +500,6 @@ TEST_CASE("Cancelled releases leave frame zoom and the waterfall camera unchange
                             layout, {100, 100}, 1.0f, true, commit));
     CHECK_FALSE(splitter.dragging);
     CHECK_FALSE(commit);
-}
-
-TEST_CASE("Default-trickle pointer leave and reentry preserve a subsequent click",
-          "[core][sakura][surface][bridge][pointer-reentry]") {
-    SakuraTest::HeadlessUi ui;
-    Sakura::InputFrame frame;
-    Sakura::InputRouter router;
-    ui.setMouse({25, 25}, false);
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    router.route(frame, {0, 0, 100, 100});
-    auto& io = ImGui::GetIO();
-    REQUIRE(io.ConfigInputTrickleEventQueue);
-    io.AddMousePosEvent(-std::numeric_limits<F32>::max(), -std::numeric_limits<F32>::max());
-    io.AddMousePosEvent(25, 25);
-    io.AddMouseButtonEvent(0, true);
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    REQUIRE(frame.events.size() == 3);
-    CHECK(std::get<MouseEvent>(frame.events[0]).type == MouseEventType::Cancel);
-    CHECK(std::get<MouseEvent>(frame.events[1]).type == MouseEventType::Move);
-    CHECK(std::get<MouseEvent>(frame.events[2]).type == MouseEventType::Click);
-    const auto output = router.route(frame, {0, 0, 100, 100});
-    CHECK(output.active);
-    CHECK(output.hovered);
-    REQUIRE(output.events.size() == 3);
-    CHECK(std::get<MouseEvent>(output.events[2]).type == MouseEventType::Click);
-    CHECK(std::get<MouseEvent>(output.events[2]).position == Extent2D<F32>{0.25f, 0.25f});
-}
-
-TEST_CASE("Cancellation preserves later key text and pointer events in the same batch",
-          "[core][sakura][surface][bridge][cancel-batch]") {
-    Sakura::InputFrame frame;
-    Sakura::InputRouter router;
-    frame.advance(0.1f);
-    frame.pointer = Extent2D<F32>{25, 25};
-    frame.buttons[0] = true;
-    frame.events = {KeyEvent{KeyEventType::Press, KeyCode::A, {}},
-                    MouseEvent{.type = MouseEventType::Click, .position = {25, 25}}};
-    REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
-    frame.advance(0.1f);
-    frame.buttons[0] = false;
-    frame.buttons[1] = true;
-    frame.events = {MouseEvent{.type = MouseEventType::Cancel},
-                    KeyEvent{KeyEventType::Press, KeyCode::B, {}}, TextEvent{U'x', {}},
-                    MouseEvent{.type = MouseEventType::Move, .position = {25, 25}},
-                    MouseEvent{.type = MouseEventType::Click, .button = MouseButton::Right, .position = {25, 25}}};
-    const auto output = router.route(frame, {0, 0, 100, 100});
-    CHECK(output.active);
-    REQUIRE(output.events.size() == 7);
-    CHECK(std::get<KeyEvent>(output.events[0]).type == KeyEventType::Release);
-    CHECK(std::get<MouseEvent>(output.events[1]).cancel);
-    CHECK(std::get<MouseEvent>(output.events[2]).type == MouseEventType::Cancel);
-    CHECK(std::get<KeyEvent>(output.events[3]).key == KeyCode::B);
-    CHECK(std::get<KeyEvent>(output.events[3]).type == KeyEventType::Press);
-    CHECK(std::get<TextEvent>(output.events[4]).codepoint == U'x');
-    CHECK(std::get<MouseEvent>(output.events[5]).type == MouseEventType::Move);
-    CHECK(std::get<MouseEvent>(output.events[6]).button == MouseButton::Right);
-
-    SakuraTest::HeadlessUi ui;
-    Sakura::InputFrame sampled;
-    Sakura::InputRouter sampledRouter;
-    ui.setMouse({25, 25}, false);
-    ui.frame([&] { Sakura::Private::SampleInput(sampled); });
-    sampledRouter.route(sampled, {0, 0, 100, 100});
-    auto& io = ImGui::GetIO();
-    io.ConfigInputTrickleEventQueue = false;
-    io.AddMousePosEvent(-std::numeric_limits<F32>::max(), -std::numeric_limits<F32>::max());
-    io.AddKeyEvent(ImGuiKey_B, true);
-    io.AddInputCharacter('x');
-    ui.frame([&] { Sakura::Private::SampleInput(sampled); });
-    const auto routed = sampledRouter.route(sampled, {0, 0, 100, 100});
-    REQUIRE(routed.events.size() == 3);
-    CHECK(std::get<MouseEvent>(routed.events[0]).type == MouseEventType::Cancel);
-    CHECK(std::get<KeyEvent>(routed.events[1]).type == KeyEventType::Press);
-    CHECK(std::get<TextEvent>(routed.events[2]).codepoint == U'x');
-    io.AddKeyEvent(ImGuiKey_B, false);
-    ui.setMouse({-std::numeric_limits<F32>::max(), -std::numeric_limits<F32>::max()}, false);
-    ui.frame([&] { Sakura::Private::SampleInput(sampled); });
-    REQUIRE(sampled.events.size() == 1);
-    CHECK(std::get<KeyEvent>(sampled.events[0]).type == KeyEventType::Release);
-    const auto released = sampledRouter.route(sampled, {0, 0, 100, 100});
-    REQUIRE(Only<KeyEvent>(released.events).size() == 1);
-    CHECK(Only<KeyEvent>(released.events)[0].type == KeyEventType::Release);
-}
-
-TEST_CASE("Flattened missing and nonfinite pointers cancel every owned button",
-          "[core][sakura][surface][bridge][flat-invalid]") {
-    const F32 invalid = GENERATE(-std::numeric_limits<F32>::max(),
-                                 std::numeric_limits<F32>::quiet_NaN(),
-                                 std::numeric_limits<F32>::infinity());
-    const bool vertical = GENERATE(false, true);
-    SakuraTest::HeadlessUi ui;
-    Sakura::InputFrame frame;
-    Sakura::InputRouter router;
-    ui.setMouse({25, 25}, true);
-    auto& io = ImGui::GetIO();
-    io.MouseDown[1] = true;
-    io.MouseDown[2] = true;
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    const auto pressed = router.route(frame, {0, 0, 100, 100});
-    REQUIRE(pressed.active);
-    REQUIRE(pressed.middle);
-    ui.frame([&] {
-        io.MousePos = vertical ? ImVec2(25, invalid) : ImVec2(invalid, 25);
-        Sakura::Private::SampleInput(frame);
-        io.MousePos = {25, 25};
-    });
-    REQUIRE_FALSE(frame.pointer);
-    const auto sampledMouse = Only<MouseEvent>(frame.events);
-    REQUIRE(sampledMouse.size() == 1);
-    CHECK(sampledMouse[0].type == MouseEventType::Cancel);
-    CHECK(frame.buttons == std::array<bool, 3>{true, true, true});
-    const auto cancelled = router.route(frame, {0, 0, 100, 100});
-    CHECK_FALSE(cancelled.active);
-    CHECK_FALSE(cancelled.middle);
-    CHECK_FALSE(cancelled.hovered);
-    const auto mouse = Only<MouseEvent>(cancelled.events);
-    REQUIRE(mouse.size() == 4);
-    for (U64 index = 0; index < 3; ++index) {
-        CHECK(mouse[index].type == MouseEventType::Release);
-        CHECK(mouse[index].button == static_cast<MouseButton>(index));
-        CHECK(mouse[index].cancel);
-    }
-    CHECK(mouse[3].type == MouseEventType::Cancel);
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    const auto recovered = router.route(frame, {0, 0, 100, 100});
-    CHECK_FALSE(recovered.active);
-    CHECK_FALSE(recovered.middle);
-
-    Sakura::InputFrame manual;
-    Sakura::InputRouter manualRouter;
-    manual.pointer = Extent2D<F32>{25, 25};
-    manual.buttons[0] = true;
-    manual.events = {MouseEvent{.type = MouseEventType::Click, .position = {25, 25}}};
-    REQUIRE(manualRouter.route(manual, {0, 0, 100, 100}).active);
-    manual.advance(0.1f);
-    if (invalid == -std::numeric_limits<F32>::max()) manual.pointer.reset();
-    else manual.pointer = vertical ? Extent2D<F32>{25, invalid} : Extent2D<F32>{invalid, 25};
-    const auto manualCancelled = manualRouter.route(manual, {0, 0, 100, 100});
-    CHECK_FALSE(manualCancelled.active);
-    REQUIRE(Only<MouseEvent>(manualCancelled.events).size() == 2);
-    CHECK(Only<MouseEvent>(manualCancelled.events)[0].cancel);
-}
-
-TEST_CASE("The ImGui bridge keeps each wheel delta, key and character in order with the modifiers held at the time",
-          "[core][sakura][input][bridge]") {
-    SakuraTest::HeadlessUi ui;
-    auto& io = ImGui::GetIO();
-    io.ConfigInputTrickleEventQueue = false;
-    io.ConfigMacOSXBehaviors = false;
-    Sakura::InputFrame frame;
-
-    io.AddMouseWheelEvent(0.0f, 1.0f);
-    io.AddKeyEvent(ImGuiMod_Shift, true);
-    io.AddMouseWheelEvent(0.0f, -1.0f);
-    io.AddInputCharacter('a');
-    io.AddKeyEvent(ImGuiKey_B, true);
-    io.AddKeyEvent(ImGuiMod_Shift, false);
-    io.AddKeyEvent(ImGuiKey_B, false);
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-
-    REQUIRE(frame.events.size() == 5);
-    const auto* first = std::get_if<MouseEvent>(&frame.events[0]);
-    const auto* second = std::get_if<MouseEvent>(&frame.events[1]);
-    const auto* text = std::get_if<TextEvent>(&frame.events[2]);
-    const auto* press = std::get_if<KeyEvent>(&frame.events[3]);
-    const auto* release = std::get_if<KeyEvent>(&frame.events[4]);
-    REQUIRE(first);
-    REQUIRE(second);
-    REQUIRE(text);
-    REQUIRE(press);
-    REQUIRE(release);
-    CHECK(first->scroll == Extent2D<F32>{0.0f, 1.0f});
-    CHECK_FALSE(first->modifiers.shift);
-    CHECK(second->scroll == Extent2D<F32>{0.0f, -1.0f});
-    CHECK(second->modifiers.shift);
-    CHECK(text->codepoint == U'a');
-    CHECK(text->modifiers.shift);
-    CHECK(press->key == KeyCode::B);
-    CHECK(press->type == KeyEventType::Press);
-    CHECK(press->modifiers.shift);
-    CHECK(release->type == KeyEventType::Release);
-    CHECK_FALSE(release->modifiers.shift);
-    CHECK_FALSE(frame.modifiers.shift);
-}
-
-TEST_CASE("Shutdown sampling is safe before or after the input source hook with reused context storage",
-          "[core][sakura][surface][bridge][shutdown-reentry]") {
-    const bool samplerFirst = GENERATE(false, true);
-    const bool initiallySampled = GENERATE(false, true);
-    struct Allocator {
-        ImGuiMemAllocFunc allocate;
-        ImGuiMemFreeFunc release;
-        void* user;
-        void* storage;
-        bool occupied = false;
-
-        ~Allocator() {
-            ImGui::SetAllocatorFunctions(allocate, release, user);
-            release(storage, user);
-        }
-    } allocator;
-    ImGui::GetAllocatorFunctions(&allocator.allocate, &allocator.release, &allocator.user);
-    allocator.storage = allocator.allocate(sizeof(ImGuiContext), allocator.user);
-    ImGui::SetAllocatorFunctions([](size_t size, void* user) -> void* {
-        auto& a = *static_cast<Allocator*>(user);
-        if (size == sizeof(ImGuiContext) && !a.occupied) {
-            a.occupied = true;
-            return a.storage;
-        }
-        return a.allocate(size, a.user);
-    }, [](void* pointer, void* user) {
-        auto& a = *static_cast<Allocator*>(user);
-        if (pointer == a.storage) a.occupied = false;
-        else a.release(pointer, a.user);
-    }, &allocator);
-    U64 generation = 0;
-    for (int lifetime = 0; lifetime < 2; ++lifetime) {
-        auto ui = std::make_unique<SakuraTest::HeadlessUi>();
-        REQUIRE(ImGui::GetCurrentContext() == allocator.storage);
-        Sakura::InputFrame sampled;
-        Sakura::InputFrame duringShutdown;
-        if (initiallySampled && samplerFirst) {
-            ui->frame([&] { Sakura::Private::SampleInput(sampled); });
-        }
-        ImGuiContextHook hook;
-        hook.Type = ImGuiContextHookType_Shutdown;
-        hook.UserData = &duringShutdown;
-        hook.Callback = [](ImGuiContext* context, ImGuiContextHook* hook) {
-            auto& frame = *static_cast<Sakura::InputFrame*>(hook->UserData);
-            const int hooks = context->Hooks.Size;
-            for (int call = 0; call < 2; ++call) {
-                Sakura::Private::SampleInput(frame);
-                CHECK_FALSE(frame.windowFocused);
-                CHECK_FALSE(frame.pointer);
-                CHECK(frame.buttons == std::array<bool, 3>{});
-                CHECK(frame.source == nullptr);
-                CHECK(frame.sourceGeneration == 0);
-                CHECK(frame.sourceFrame == -1);
-                REQUIRE(frame.events.size() == 1);
-                CHECK(std::get<MouseEvent>(frame.events[0]).type == MouseEventType::Cancel);
-                CHECK(context->Hooks.Size == hooks);
-            }
-        };
-        ImGui::AddContextHook(ImGui::GetCurrentContext(), &hook);
-        if (initiallySampled && !samplerFirst) {
-            ui->frame([&] { Sakura::Private::SampleInput(sampled); });
-        }
-        if (initiallySampled) {
-            CHECK(sampled.sourceGeneration != generation);
-            generation = sampled.sourceGeneration;
-        }
-        ui.reset();
-        CHECK(duringShutdown.serial == 2);
-        CHECK(ImGui::GetCurrentContext() == nullptr);
-    }
 }
 
 TEST_CASE("SignalView marker clearing followed by a cancelled left release preserves the clear",
@@ -878,27 +618,199 @@ TEST_CASE("Retained console resize cancellation discards its preview and ignores
     CHECK(changes == 0);
 }
 
-TEST_CASE("The ImGui bridge samples a frame once however often it is asked",
-          "[core][sakura][input][bridge]") {
-    SakuraTest::HeadlessUi ui;
-    auto& io = ImGui::GetIO();
-    io.ConfigInputTrickleEventQueue = false;
+TEST_CASE("Queued pointer positions retain their order through sampling and routing",
+          "[core][sakura][surface][bridge]") {
+    Feed feed;
     Sakura::InputFrame frame;
-
-    io.AddInputCharacter('x');
-    ui.frame([&] {
-        Sakura::Private::SampleInput(frame);
-        Sakura::Private::SampleInput(frame);
-    });
-    CHECK(frame.serial == 1);
-    CHECK(Only<TextEvent>(frame.events).size() == 1);
-
     Sakura::InputRouter router;
-    const auto routed = router.route(frame, {0.0f, 0.0f, 100.0f, 100.0f});
-    CHECK(Only<TextEvent>(routed.events).size() == 1);
-    CHECK(router.route(frame, {0.0f, 0.0f, 100.0f, 100.0f}).events.empty());
+    const Jetstream::Rect screen = {0.0f, 0.0f, 100.0f, 100.0f};
+    const auto pressed = Route(feed, frame, router, {
+        Queue::Pointer{Extent2D<F32>{25.0f, 25.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Key{KeyCode::A, true},
+        Queue::Text{'x'},
+        Queue::Wheel{{0.0f, 1.0f}},
+        Queue::Pointer{Extent2D<F32>{250.0f, 25.0f}},
+        Queue::Wheel{{0.0f, 2.0f}},
+    }, screen);
+    CHECK(pressed.last.active);
+    CHECK_FALSE(pressed.last.hovered);
+    CHECK_FALSE(pressed.last.outsideClick);
+    REQUIRE(pressed.events.size() == 6);
+    CHECK(std::get<MouseEvent>(pressed.events[0]).type == MouseEventType::Move);
+    CHECK(std::get<MouseEvent>(pressed.events[1]).type == MouseEventType::Click);
+    CHECK(std::get<MouseEvent>(pressed.events[1]).position == Extent2D<F32>{0.25f, 0.25f});
+    CHECK(std::holds_alternative<KeyEvent>(pressed.events[2]));
+    CHECK(std::holds_alternative<TextEvent>(pressed.events[3]));
+    CHECK(std::get<MouseEvent>(pressed.events[4]).type == MouseEventType::Scroll);
+    CHECK(std::get<MouseEvent>(pressed.events[4]).position == Extent2D<F32>{0.25f, 0.25f});
+    CHECK(std::get<MouseEvent>(pressed.events[5]).type == MouseEventType::Move);
+    CHECK(std::get<MouseEvent>(pressed.events[5]).position == Extent2D<F32>{2.5f, 0.25f});
 
-    ui.frame([&] { Sakura::Private::SampleInput(frame); });
-    CHECK(frame.serial == 2);
-    CHECK(frame.events.empty());
+    const auto released = Route(feed, frame, router, {
+        Queue::Key{KeyCode::A, false},
+        Queue::Pointer{Extent2D<F32>{300.0f, 50.0f}},
+        Queue::Button{MouseButton::Left, false},
+    }, screen);
+    CHECK_FALSE(released.last.active);
+    const auto mouse = Only<MouseEvent>(released.events);
+    REQUIRE(mouse.size() == 2);
+    CHECK(mouse[0].type == MouseEventType::Move);
+    CHECK(mouse[1].type == MouseEventType::Release);
+    CHECK(mouse[1].position == Extent2D<F32>{3.0f, 0.5f});
+    CHECK_FALSE(mouse[1].cancel);
+}
+
+TEST_CASE("Pointer leave and reentry preserve a subsequent click",
+          "[core][sakura][surface][bridge][pointer-reentry]") {
+    Feed feed;
+    Sakura::InputFrame frame;
+    Sakura::InputRouter router;
+    const Jetstream::Rect screen = {0.0f, 0.0f, 100.0f, 100.0f};
+    Route(feed, frame, router, {Queue::Hover{true}, Queue::Pointer{Extent2D<F32>{25.0f, 25.0f}}}, screen);
+    const auto routed = Route(feed, frame, router, {
+        Queue::Hover{false},
+        Queue::Pointer{Extent2D<F32>{25.0f, 25.0f}},
+        Queue::Button{MouseButton::Left, true},
+    }, screen);
+    CHECK(routed.last.active);
+    CHECK(routed.last.hovered);
+    const auto mouse = Only<MouseEvent>(routed.events);
+    REQUIRE_FALSE(mouse.empty());
+    CHECK(mouse.back().type == MouseEventType::Click);
+    CHECK(mouse.back().position == Extent2D<F32>{0.25f, 0.25f});
+}
+
+TEST_CASE("Cancellation preserves later key text and pointer events in the same batch",
+          "[core][sakura][surface][bridge][cancel-batch]") {
+    Sakura::InputFrame frame;
+    Sakura::InputRouter router;
+    frame.advance(0.1f);
+    frame.pointer = Extent2D<F32>{25, 25};
+    frame.buttons[0] = true;
+    frame.events = {KeyEvent{KeyEventType::Press, KeyCode::A, {}},
+                    MouseEvent{.type = MouseEventType::Click, .position = {25, 25}}};
+    REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
+    frame.advance(0.1f);
+    frame.buttons[0] = false;
+    frame.buttons[1] = true;
+    frame.events = {MouseEvent{.type = MouseEventType::Cancel},
+                    KeyEvent{KeyEventType::Press, KeyCode::B, {}}, TextEvent{U'x', {}},
+                    MouseEvent{.type = MouseEventType::Move, .position = {25, 25}},
+                    MouseEvent{.type = MouseEventType::Click, .button = MouseButton::Right, .position = {25, 25}}};
+    const auto output = router.route(frame, {0, 0, 100, 100});
+    CHECK(output.active);
+    REQUIRE(output.events.size() == 7);
+    CHECK(std::get<KeyEvent>(output.events[0]).type == KeyEventType::Release);
+    CHECK(std::get<MouseEvent>(output.events[1]).cancel);
+    CHECK(std::get<MouseEvent>(output.events[2]).type == MouseEventType::Cancel);
+    CHECK(std::get<KeyEvent>(output.events[3]).key == KeyCode::B);
+    CHECK(std::get<KeyEvent>(output.events[3]).type == KeyEventType::Press);
+    CHECK(std::get<TextEvent>(output.events[4]).codepoint == U'x');
+    CHECK(std::get<MouseEvent>(output.events[5]).type == MouseEventType::Move);
+    CHECK(std::get<MouseEvent>(output.events[6]).button == MouseButton::Right);
+
+    Feed feed;
+    Sakura::InputFrame sampled;
+    Sakura::InputRouter sampledRouter;
+    const Jetstream::Rect screen = {0.0f, 0.0f, 100.0f, 100.0f};
+    Route(feed, sampled, sampledRouter, {Queue::Hover{true}, Queue::Pointer{Extent2D<F32>{25.0f, 25.0f}}}, screen);
+    const auto routed = Route(feed, sampled, sampledRouter, {
+        Queue::Hover{false},
+        Queue::Key{KeyCode::B, true},
+        Queue::Text{'x'},
+    }, screen);
+    REQUIRE(routed.events.size() == 2);
+    CHECK(std::get<KeyEvent>(routed.events[0]).type == KeyEventType::Press);
+    CHECK(std::get<TextEvent>(routed.events[1]).codepoint == U'x');
+    const auto released = Route(feed, sampled, sampledRouter, {Queue::Key{KeyCode::B, false}}, screen);
+    REQUIRE(Only<KeyEvent>(released.events).size() == 1);
+    CHECK(Only<KeyEvent>(released.events)[0].type == KeyEventType::Release);
+}
+
+TEST_CASE("Missing and nonfinite pointers cancel every owned button",
+          "[core][sakura][surface][bridge][flat-invalid]") {
+    const F32 invalid = GENERATE(-std::numeric_limits<F32>::max(),
+                                 std::numeric_limits<F32>::quiet_NaN(),
+                                 std::numeric_limits<F32>::infinity());
+    const bool vertical = GENERATE(false, true);
+    Feed feed;
+    Sakura::InputFrame frame;
+    Sakura::InputRouter router;
+    const Jetstream::Rect screen = {0.0f, 0.0f, 100.0f, 100.0f};
+    const auto pressed = Route(feed, frame, router, {
+        Queue::Hover{true},
+        Queue::Pointer{Extent2D<F32>{25.0f, 25.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Button{MouseButton::Right, true},
+        Queue::Button{MouseButton::Middle, true},
+    }, screen);
+    REQUIRE(pressed.last.active);
+    REQUIRE(pressed.last.middle);
+
+    const bool missing = invalid == -std::numeric_limits<F32>::max();
+    const Queue::Event lost = missing ? Queue::Event{Queue::Pointer{}}
+                                      : Queue::Event{Queue::Pointer{vertical ? Extent2D<F32>{25.0f, invalid}
+                                                                             : Extent2D<F32>{invalid, 25.0f}}};
+    const auto cancelled = Route(feed, frame, router, {lost}, screen);
+    CHECK_FALSE(cancelled.last.active);
+    CHECK_FALSE(cancelled.last.middle);
+    CHECK_FALSE(cancelled.last.hovered);
+    const auto mouse = Only<MouseEvent>(cancelled.events);
+    REQUIRE(mouse.size() == 4);
+    for (U64 index = 0; index < 3; ++index) {
+        CHECK(mouse[index].type == MouseEventType::Release);
+        CHECK(mouse[index].button == static_cast<MouseButton>(index));
+        CHECK(mouse[index].cancel);
+    }
+    CHECK(mouse[3].type == MouseEventType::Cancel);
+    const auto recovered = Route(feed, frame, router, {}, screen);
+    CHECK_FALSE(recovered.last.active);
+    CHECK_FALSE(recovered.last.middle);
+
+    Sakura::InputFrame manual;
+    Sakura::InputRouter manualRouter;
+    manual.pointer = Extent2D<F32>{25, 25};
+    manual.buttons[0] = true;
+    manual.events = {MouseEvent{.type = MouseEventType::Click, .position = {25, 25}}};
+    REQUIRE(manualRouter.route(manual, {0, 0, 100, 100}).active);
+    manual.advance(0.1f);
+    if (invalid == -std::numeric_limits<F32>::max()) manual.pointer.reset();
+    else manual.pointer = vertical ? Extent2D<F32>{25, invalid} : Extent2D<F32>{invalid, 25};
+    const auto manualCancelled = manualRouter.route(manual, {0, 0, 100, 100});
+    CHECK_FALSE(manualCancelled.active);
+    REQUIRE(Only<MouseEvent>(manualCancelled.events).size() == 2);
+    CHECK(Only<MouseEvent>(manualCancelled.events)[0].cancel);
+}
+
+TEST_CASE("Sampling stamps the source generation and a missing source cancels held input",
+          "[core][sakura][input][bridge]") {
+    Feed feed;
+    Sakura::InputFrame frame;
+    Sakura::InputRouter router;
+    const Jetstream::Rect screen = {0.0f, 0.0f, 100.0f, 100.0f};
+    const auto pressed = Route(feed, frame, router, {
+        Queue::Hover{true},
+        Queue::Pointer{Extent2D<F32>{25.0f, 25.0f}},
+        Queue::Button{MouseButton::Left, true},
+    }, screen);
+    REQUIRE(pressed.last.active);
+    CHECK(frame.sourceGeneration == feed.state.generation());
+
+    Sakura::Private::ResetInput(frame);
+    CHECK(frame.source == nullptr);
+    CHECK(frame.sourceGeneration == 0);
+    CHECK_FALSE(frame.windowFocused);
+    CHECK_FALSE(frame.pointer.has_value());
+    CHECK(frame.buttons == std::array<bool, 3>{false, false, false});
+    const auto cancelled = router.route(frame, screen);
+    CHECK_FALSE(cancelled.active);
+    const auto mouse = Only<MouseEvent>(cancelled.events);
+    REQUIRE_FALSE(mouse.empty());
+    CHECK(mouse.front().type == MouseEventType::Release);
+    CHECK(mouse.front().cancel);
+
+    Sakura::Private::SampleInput(frame, feed.state);
+    CHECK(frame.source == &feed.state);
+    CHECK(frame.sourceGeneration == feed.state.generation());
 }

@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_WORKBENCH_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_WORKBENCH_HH
 
+#include "persist.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -90,10 +91,9 @@ struct WorkbenchActions {
         });
         RethemeSurfaces(state.flowgraph.surfaces, state.sakura.colorMap);
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.interface.themeKey = state.sakura.themeKey;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.interface.themeKey = state.sakura.themeKey;
+        }));
 
         return Result::SUCCESS;
     }

@@ -8,7 +8,7 @@
 
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
-#include "jetstream/render/tools/imstb_truetype.h"
+#include <stb_truetype.h>
 
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -23,7 +23,7 @@
 
 #include "jetstream/render/base.hh"
 #include "jetstream/render/components/font.hh"
-#include "jetstream/render/tools/imgui_internal.h"
+#include "render/tools/stb_decompress.hh"
 
 namespace Jetstream::Render::Components {
 
@@ -68,9 +68,9 @@ Result Font::create(Window* window) {
     // Decompress font.
 
     const U8* compressedData = static_cast<const uint8_t*>(config.data);
-    const U32 decompressedSize = stb_decompress_length(compressedData);
+    const U32 decompressedSize = Tools::stb_decompress_length(compressedData);
     std::vector<uint8_t> decompressedData(decompressedSize);
-    stb_decompress(decompressedData.data(), compressedData, decompressedSize);
+    Tools::stb_decompress(decompressedData.data(), compressedData, decompressedSize);
 
     // Load font.
 

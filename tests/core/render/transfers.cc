@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <exception>
+#include <future>
 #include <limits>
 #include <new>
 #include <optional>
@@ -19,6 +20,8 @@
 #include "jetstream/render/base/transfer.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/viewport/adapters/generic.hh"
+
+#include "harness.hh"
 
 using namespace Jetstream;
 
@@ -69,9 +72,13 @@ class TestTexture final : public Render::Texture {
         return Result::SUCCESS;
     }
     uint64_t raw() const override { return 0; }
+    Result underlyingDump(uint8_t* output) const override {
+        return dumpHandler ? dumpHandler(output) : Result::ERROR;
+    }
 
     void nextCreationResult(const Result result) { creationResult = result; }
 
+    std::function<Result(uint8_t*)> dumpHandler;
     U64 createCount = 0;
     U64 destroyCount = 0;
     std::function<Result()> creationHandler;
@@ -294,13 +301,16 @@ class TestSurface final : public Render::Surface {
     std::atomic<bool> destructionStarted = false;
 };
 
-class TestWindow final : public Render::Window {
+class TestWindow final : public RenderTest::Window {
  public:
-    TestWindow() : Window(Config{}) {}
+    TestWindow() {
+        attached = false;
+        viewport.content = {2.0f, 2.0f};
+        viewport.policy = Render::WindowMetrics::Policy::ContentScale;
+        viewport.chrome = Render::TitlebarChrome{.integrated = true, .leadingInset = 80.0f, .height = 32.0f};
+    }
 
-    constexpr DeviceType device() const override { return DeviceType::None; }
-    const Stats& stats() const override { return statsData; }
-    std::string info() const override { return "Test"; }
+    bool supportsCapture() const override { return true; }
 
     Result collectFrameTransfers(Render::Transfer::Batch& batch) const {
         return collectTransfers(batch);
@@ -328,14 +338,12 @@ class TestWindow final : public Render::Window {
     U64 outstandingSubmissions = 0;
     U64 registeredSurfaceCount() const { return surfaces.size(); }
 
-    void attachViewport(Viewport::Generic* viewport) {
-        attachedViewport = viewport;
-        updateScalingFactor(*viewport);
+    void attachViewport() {
+        attached = true;
+        updateMetrics(viewport);
     }
 
  protected:
-    Viewport::Generic* underlyingViewport() const override { return attachedViewport; }
-
     Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
         surfaces.push_back(std::dynamic_pointer_cast<TestSurface>(surface));
         return bindHandler ? bindHandler(surface) : Result::SUCCESS;
@@ -382,13 +390,11 @@ class TestWindow final : public Render::Window {
     }
 
  private:
-    Stats statsData{};
     Result creationResult = Result::SUCCESS;
     Result destructionResult = Result::SUCCESS;
     Result submissionResult = Result::SUCCESS;
     U64 destructions = 0;
     std::vector<std::shared_ptr<TestSurface>> surfaces;
-    Viewport::Generic* attachedViewport = nullptr;
 };
 
 class TestViewport final : public Viewport::Generic {
@@ -401,11 +407,6 @@ class TestViewport final : public Viewport::Generic {
 
     Result create() override { return Result::SUCCESS; }
     Result destroy() override { return Result::SUCCESS; }
-    Result createImgui() override { return Result::SUCCESS; }
-    Result destroyImgui() override { return Result::SUCCESS; }
-
-    F32 scale(const F32&) const override { return 2.0f; }
-
     Result waitEvents() override { return Result::SUCCESS; }
     Result pollEvents() override { return Result::SUCCESS; }
     bool keepRunning() override { return true; }
@@ -1970,7 +1971,7 @@ TEST_CASE("Render window chrome defaults to the system frame", "[core][render][w
     window.zoomWindow();
     REQUIRE(window.destroy() == Result::SUCCESS);
 
-    TestViewport viewport;
+    RenderTest::Viewport viewport;
     const auto fallback = viewport.Viewport::Generic::titlebarChrome();
     REQUIRE_FALSE(fallback.integrated);
     REQUIRE(fallback.leadingInset == 0.0f);
@@ -2001,10 +2002,10 @@ TEST_CASE("Integrated titlebar activation is opt in and forwards through the vie
 
 TEST_CASE("Render window chrome forwards to its viewport in logical units", "[core][render][window]") {
     TestWindow window;
-    TestViewport viewport;
+    auto& viewport = window.viewport;
 
     REQUIRE(window.create() == Result::SUCCESS);
-    window.attachViewport(&viewport);
+    window.attachViewport();
 
     const auto chrome = window.titlebarChrome();
     REQUIRE(chrome.integrated);
@@ -2306,6 +2307,78 @@ TEST_CASE("Concurrent binding can snapshot retirement records while backend clea
     REQUIRE(window.stop() == Result::SUCCESS);
     REQUIRE(window.destroy() == Result::SUCCESS);
     for (const auto& buffer : unrelated) REQUIRE(buffer->destroyCount == 1);
+}
+
+TEST_CASE("Texture capture synchronizes GPU work and excludes concurrent resize",
+          "[core][render][window][capture]") {
+    using namespace std::chrono_literals;
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {4, 3}});
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(texture) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+
+    bool synchronized = false;
+    bool dumpAfterSync = false;
+    window.synchronizeHandler = [&] {
+        synchronized = true;
+        return Result::SUCCESS;
+    };
+    std::promise<void> dumping;
+    auto dumpingStarted = dumping.get_future();
+    std::promise<void> releaseDump;
+    auto mayDump = releaseDump.get_future();
+    texture->dumpHandler = [&](uint8_t* output) {
+        dumpAfterSync = synchronized;
+        dumping.set_value();
+        if (mayDump.wait_for(2s) != std::future_status::ready) return Result::ERROR;
+        std::fill_n(output, texture->size().x * texture->size().y * 4, U8{73});
+        return Result::SUCCESS;
+    };
+
+    Extent2D<U64> size{};
+    std::vector<U8> pixels;
+    auto captured = std::async(std::launch::async, [&] { return window.capture(texture, size, pixels); });
+    REQUIRE(dumpingStarted.wait_for(2s) == std::future_status::ready);
+    std::promise<void> rendering;
+    auto renderingStarted = rendering.get_future();
+    auto resized = std::async(std::launch::async, [&] {
+        rendering.set_value();
+        JST_CHECK(window.begin());
+        texture->size({8, 6});
+        return window.end();
+    });
+    REQUIRE(renderingStarted.wait_for(2s) == std::future_status::ready);
+    CHECK(resized.wait_for(20ms) == std::future_status::timeout);
+    releaseDump.set_value();
+    REQUIRE(captured.get() == Result::SUCCESS);
+    REQUIRE(resized.get() == Result::SUCCESS);
+    CHECK(dumpAfterSync);
+    CHECK(size == Extent2D<U64>{4, 3});
+    CHECK(pixels == std::vector<U8>(4 * 3 * 4, 73));
+    CHECK(texture->size() == Extent2D<U64>{8, 6});
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Texture capture rejects unowned resources and failed GPU synchronization",
+          "[core][render][window][capture]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {4, 3}});
+    REQUIRE(window.create() == Result::SUCCESS);
+    bool dumped = false;
+    texture->dumpHandler = [&](uint8_t*) { dumped = true; return Result::SUCCESS; };
+    Extent2D<U64> size{};
+    std::vector<U8> pixels;
+    CHECK(window.capture(texture, size, pixels) == Result::ERROR);
+    CHECK_FALSE(dumped);
+    REQUIRE(window.bind(texture) == Result::SUCCESS);
+    window.synchronizeHandler = [] { return Result::ERROR; };
+    CHECK(window.capture(texture, size, pixels) == Result::ERROR);
+    CHECK_FALSE(dumped);
+    CHECK(pixels.empty());
+    window.synchronizeHandler = {};
+    REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Cancelled render frames release the window", "[core][render][window]") {

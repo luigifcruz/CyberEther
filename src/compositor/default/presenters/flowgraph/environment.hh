@@ -34,7 +34,7 @@ struct FlowgraphEnvironmentWindowPresenter {
         }
 
         const auto& flowgraph = context.state.flowgraph.items.at(flowgraphId);
-        const std::string filter = FlowgraphKeyValueDetail::NormalizeFilter(
+        const std::string filter = Text::ToLower(
             context.state.interface.flowgraphEnvironmentSearch);
 
         std::vector<std::string> keys;
@@ -61,7 +61,7 @@ struct FlowgraphEnvironmentWindowPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         return FlowgraphKeyValueWindow::Config{
             .id = "flowgraph-environment-window",
-            .title = "Flowgraph Environment (" + MakeFlowgraphTitle(flowgraphId, flowgraph) + ")",
+            .title = jst::fmt::format("Flowgraph Environment ({})", MakeFlowgraphTitle(flowgraphId, flowgraph)),
             .search = context.state.interface.flowgraphEnvironmentSearch,
             .searchHint = "Search environment keys...",
             .entryCount = FlowgraphKeyValueDetail::EntryCount(nodes.size(), keys.size()),

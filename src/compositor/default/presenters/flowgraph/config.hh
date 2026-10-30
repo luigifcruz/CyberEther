@@ -21,7 +21,7 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
     fields.reserve(block.interfaceConfigs.size());
     for (const auto& entry : block.interfaceConfigs) {
         FlowgraphConfigFieldConfig field{
-            .id = viewId + ":config:" + entry.name,
+            .id = jst::fmt::format("{}:config:{}", viewId, entry.name),
             .name = entry.name,
             .label = entry.label.empty() ? entry.name : entry.label,
             .help = entry.help,
@@ -82,11 +82,14 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigField
     auto fields = BuildFlowgraphConfigFields(viewId, block);
     ApplyLiveMarkdown(fields, flowgraphs, flowgraphId, blockName);
     for (auto& field : fields) {
-        field.onApply = [enqueue, flowgraphId, blockName](Parser::Map patch, const bool silent) {
+        field.onApply = [enqueue, flowgraphId, blockName](Parser::Map patch,
+                                                          const bool silent,
+                                                          std::function<void(Result)> onComplete) {
             enqueue(MailReconfigureBlock{flowgraphId,
                                          blockName,
                                          std::move(patch),
-                                         silent});
+                                         silent,
+                                         std::move(onComplete)});
         };
         field.onError = [enqueue](const Result result, const std::string& message) {
             enqueue(MailNotifyResult{.result = result, .message = message});

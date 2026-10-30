@@ -3,11 +3,7 @@
 
 #include <GLFW/glfw3.h>
 
-#include <string>
-#include <utility>
-#include <vector>
-
-#include "tools/imgui_impl_glfw.h"
+#include "tools/glfw_input.hh"
 
 #ifdef JST_OS_MAC
 #include "tools/cocoa_titlebar.hh"
@@ -69,21 +65,8 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
-    glfwSetWindowUserPointer(window, this);
-    glfwSetDropCallback(window, [](GLFWwindow* handle, int count, const char** paths) {
-        auto* viewport = static_cast<Implementation*>(glfwGetWindowUserPointer(handle));
-        if (!viewport || count <= 0 || !paths) {
-            return;
-        }
-        std::vector<std::string> files;
-        files.reserve(static_cast<U64>(count));
-        for (int i = 0; i < count; ++i) {
-            if (paths[i]) {
-                files.emplace_back(paths[i]);
-            }
-        }
-        (void)viewport->addFileDropEvent(std::move(files));
-    });
+    attachPlatform(std::make_unique<GlfwInput>(window, *this));
+    pumpPlatform();
 
     // Initialize variables.
     swapchain = VK_NULL_HANDLE;
@@ -121,6 +104,7 @@ Result Implementation::destroy() {
     // Destroy GLFW.
 
     titlebar.reset();
+    detachPlatform();
 
     glfwDestroyWindow(window);
     window = nullptr;
@@ -133,7 +117,9 @@ void Implementation::setIntegratedTitlebar(bool enabled) {
     Generic::setIntegratedTitlebar(enabled);
 #ifdef JST_OS_MAC
     if (enabled && window && !titlebar) {
-        titlebar = std::make_shared<CocoaTitlebar>(window);
+        titlebar = std::make_shared<CocoaTitlebar>(window, [this]() {
+            input().push(Render::InputQueue::Button{MouseButton::Left, false});
+        });
     } else if (!enabled) {
         titlebar.reset();
     }
@@ -250,12 +236,6 @@ Result Implementation::destroySwapchain() {
     return Result::SUCCESS;
 }
 
-Result Implementation::createImgui() {
-    ImGui_ImplGlfw_InitForVulkan(window, true);
-
-    return Result::SUCCESS;
-}
-
 Extent2D<F32> Implementation::displaySize() const {
     I32 width = 0;
     I32 height = 0;
@@ -264,29 +244,24 @@ Extent2D<F32> Implementation::displaySize() const {
     return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
-F32 Implementation::scale(const F32& scale) const {
-    I32 wWidth, wHeight;
-    glfwGetWindowSize(window, &wWidth, &wHeight);
+Extent2D<F32> Implementation::framebufferSize() const {
+    I32 width = 0;
+    I32 height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
 
-    I32 fWidth, fHeight;
-    glfwGetFramebufferSize(window, &fWidth, &fHeight);
-
-    F32 x, y;
-    glfwGetWindowContentScale(window, &x, &y);
-
-    // This is a X11/Windows fix. If the Framebuffer and Window sizes are the same
-    // but the Scale is different than 1, it means HIDPI is necessary.
-    if ((wWidth == fWidth) && (x > 1.0)) {
-        return scale * x;
-    } else {
-        return scale;
-    }
+    return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
-Result Implementation::destroyImgui() {
-    ImGui_ImplGlfw_Shutdown();
+Extent2D<F32> Implementation::contentScale() const {
+    F32 x = 1.0f;
+    F32 y = 1.0f;
+    glfwGetWindowContentScale(window, &x, &y);
 
-    return Result::SUCCESS;
+    return {x, y};
+}
+
+Render::WindowMetrics::Policy Implementation::scalePolicy() const {
+    return Render::WindowMetrics::Policy::ContentScale;
 }
 
 Result Implementation::nextDrawable(VkSemaphore& semaphore) {
@@ -321,8 +296,6 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     if (result != VK_SUCCESS) {
         return Result::ERROR;
     }
-
-    ImGui_ImplGlfw_NewFrame();
 
     return Result::SUCCESS;
 }
@@ -472,6 +445,7 @@ Result Implementation::waitEvents() {
             titlebar->poll();
         }
 #endif
+        pumpPlatform();
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(3));
     return Result::SUCCESS;
@@ -486,8 +460,13 @@ Result Implementation::pollEvents() {
             titlebar->poll();
         }
 #endif
+        pumpPlatform();
     }
     return Result::SUCCESS;
+}
+
+bool Implementation::retainedPresent() const {
+    return true;
 }
 
 bool Implementation::keepRunning() {

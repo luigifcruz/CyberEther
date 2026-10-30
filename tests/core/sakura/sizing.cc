@@ -146,6 +146,35 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
         .content = Own<Sakura::NodeContentStack>(owned, {.items = {{.child = probe()}, {.child = nodeField("Rate")}}}),
     }));
 
+    subjects.push_back(Make<Sakura::ModelPicker>("model picker", {
+        .models = {{.id = "a", .label = "Alpha", .detail = "local"}, {.id = "b", .label = "Beta"}},
+        .value = "a",
+        .efforts = {{.id = "low", .label = "Low"}, {.id = "high", .label = "High"}},
+        .effort = "high",
+    }));
+    subjects.push_back(Make<Sakura::ChatComposer>("chat composer", {
+        .style = {.placeholder = "Ask anything..."},
+        .selector = Sakura::ChatComposer::Selector{.options = {{.id = "a", .label = "Alpha"}}, .value = "a"},
+        .usage = Sakura::ChatComposer::Usage{.value = 0.4f, .title = "Context window:"},
+    }));
+    subjects.push_back(Make<Sakura::ModelPicker>("empty model picker", {}));
+    subjects.push_back(Make<Sakura::ChatComposer>("compact chat composer", {.style = {.compact = true}}));
+    subjects.push_back(Make<Sakura::ChatComposer>("tall chat composer", {
+        .style = {.minLines = 3.0f, .margin = {10.0f, 4.0f, 10.0f, 6.0f}},
+        .onClear = [] {},
+    }));
+    {
+        Sakura::Chat::Snapshot snapshot;
+        snapshot.messages.push_back({.role = Sakura::Chat::Role::User, .text = "Hello"});
+        snapshot.messages.push_back({.role = Sakura::Chat::Role::Assistant,
+                                     .parts = {{.kind = Sakura::Chat::PartKind::Markdown, .key = 0, .revision = 1,
+                                                .text = "Hi there."}}});
+        subjects.push_back(Make<Sakura::Chat>("narrow chat", {.id = "narrow", .snapshot = snapshot, .maxContentWidth = 320.0f}));
+        subjects.push_back(Make<Sakura::Chat>("large chat", {.id = "large", .snapshot = snapshot, .fontSize = 22.0f}));
+        subjects.push_back(Make<Sakura::Chat>("chat", {.id = "chat", .snapshot = std::move(snapshot)}));
+    }
+    subjects.push_back(Make<Sakura::Voice>("voice", {}));
+
     const std::vector<Extent2D<F32>> spaces = {
         {kInfinite, kInfinite}, {300.0f, kInfinite}, {kInfinite, 200.0f}, {300.0f, 200.0f}, {40.0f, 10.0f},
     };

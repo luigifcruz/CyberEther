@@ -1,5 +1,5 @@
 #include "syntax_highlighter.hh"
-#include "text_lines.hh"
+#include "tools/text.hh"
 
 #include <jetstream/logger.hh>
 
@@ -294,7 +294,7 @@ std::vector<std::vector<StyleId>> SyntaxHighlighter::highlight(const std::vector
     if (!ensureTreeSitter(language)) {
         return styles;
     }
-    const std::string source = JoinLines(lines);
+    const std::string source = Jetstream::Text::JoinLines(lines);
     TSTree* nextTree = ts_parser_parse_string(parser, nullptr, source.c_str(), static_cast<U32>(source.size()));
     if (!nextTree) {
         return styles;

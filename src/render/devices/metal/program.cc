@@ -2,6 +2,7 @@
 #include "jetstream/render/devices/metal/draw.hh"
 #include "jetstream/render/devices/metal/texture.hh"
 #include "jetstream/render/devices/metal/program.hh"
+#include "jetstream/backend/devices/metal/helpers.hh"
 
 #include "program_cache.hh"
 
@@ -22,22 +23,8 @@ NS::SharedPtr<MTL::Function> CachedFunction(MetalProgramCache::Device& cache, co
         return function;
     }
 
-    auto opts = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
-    opts->setFastMathEnabled(true);
-    opts->setLanguageVersion(MTL::LanguageVersion3_0);
-    opts->setLibraryType(MTL::LibraryTypeExecutable);
-
-    NS::Error* err = nullptr;
-    auto text = NS::TransferPtr(NS::String::alloc()->init(const_cast<U8*>(source.data()), source.size(), NS::UTF8StringEncoding, false));
-    auto library = NS::TransferPtr(cache.handle->newLibrary(text.get(), opts.get(), &err));
-    if (!library) {
-        JST_ERROR("Library error:\n{}", err ? err->description()->utf8String() : "unknown");
-        return {};
-    }
-
-    auto function = NS::TransferPtr(library->newFunction(NS::String::string("main0", NS::UTF8StringEncoding)));
+    auto function = NS::TransferPtr(Backend::LoadShader(source, cache.handle.get()));
     if (!function) {
-        JST_ERROR("[METAL] Failed to create shader function.");
         return {};
     }
 

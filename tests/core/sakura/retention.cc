@@ -1,22 +1,41 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/checkbox.hh>
 #include <jetstream/render/sakura/components/code_editor.hh>
+#include <jetstream/render/sakura/components/combo.hh>
 #include <jetstream/render/sakura/components/console.hh>
-#include <jetstream/render/sakura/components/controls.hh>
 #include <jetstream/render/sakura/components/curves.hh>
+#include <jetstream/render/sakura/components/div.hh>
+#include <jetstream/render/sakura/components/divider.hh>
+#include <jetstream/render/sakura/components/grid.hh>
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/label.hh>
-#include <jetstream/render/sakura/components/layout.hh>
+#include <jetstream/render/sakura/components/log_view.hh>
+#include <jetstream/render/sakura/components/markdown.hh>
 #include <jetstream/render/sakura/components/markdown_editor.hh>
+#include <jetstream/render/sakura/components/panel.hh>
+#include <jetstream/render/sakura/components/pill_button.hh>
+#include <jetstream/render/sakura/components/pill_field.hh>
+#include <jetstream/render/sakura/components/pill_stepper.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
+#include <jetstream/render/sakura/components/progress_bar.hh>
+#include <jetstream/render/sakura/components/qr_code.hh>
+#include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
-#include <jetstream/render/sakura/components/search.hh>
+#include <jetstream/render/sakura/components/search_catalog.hh>
+#include <jetstream/render/sakura/components/setting_field.hh>
+#include <jetstream/render/sakura/components/spacer.hh>
+#include <jetstream/render/sakura/components/split_view.hh>
+#include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/status_bar.hh>
+#include <jetstream/render/sakura/components/tab_bar.hh>
 #include <jetstream/render/sakura/components/table.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_editor.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
 
@@ -1269,6 +1288,101 @@ TEST_CASE("Text inputs settle under identical updates and repaint on value chang
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
     CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Text inputs repaint only when their password or disabled state changes",
+          "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::TextInput input;
+    Place place(input, {10.0f, 10.0f, 200.0f, 30.0f});
+    Frames frames(place, kScreen, scene.context());
+    bool password = false;
+    bool disabled = false;
+    const auto update = [&] {
+        input.update({.value = "secret", .password = password, .disabled = disabled});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    password = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+
+    disabled = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(QuietMoves(frames, update, {{50.0f, 20.0f}, {60.0f, 20.0f}}, [&](const MouseEvent& e) {
+        return place.send(e);
+    }));
+
+    disabled = false;
+    password = false;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Code editors report their content overflow only when it changes", "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::CodeEditor view;
+    Place place(view, {10.0f, 10.0f, 300.0f, 120.0f});
+    Frames frames(place, kScreen, scene.context());
+    frames.verify = false;
+    std::string value = "x = 1\n";
+    std::vector<Extent2D<F32>> reports;
+    const auto update = [&] {
+        view.update({.id = "code", .value = value, .height = 120.0f,
+                     .onContentOverflow = [&](Extent2D<F32> overflow) { reports.push_back(overflow); }});
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE_FALSE(reports.empty());
+    const U64 settled = reports.size();
+    const F32 first = reports.back().y;
+    CHECK(first < 0.0f);
+    CHECK(Retains(frames, update));
+    CHECK(reports.size() == settled);
+
+    for (int line = 0; line < 30; ++line) {
+        value += "y = 2\n";
+    }
+    CHECK(RepaintOnly(frames.run(update)));
+    REQUIRE(reports.size() == settled + 1);
+    CHECK(reports.back().y > 0.0f);
+    REQUIRE(frames.settle(update));
+    CHECK(reports.size() == settled + 1);
+}
+
+TEST_CASE("Markdown editors report their vertical content overflow only when it changes",
+          "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::MarkdownEditor view;
+    Place place(view, {10.0f, 10.0f, 300.0f, 160.0f});
+    Frames frames(place, kScreen, scene.context());
+    frames.verify = false;
+    std::string value = "# Note";
+    std::vector<Extent2D<F32>> reports;
+    const auto update = [&] {
+        view.update({.id = "note", .value = value,
+                     .onContentOverflow = [&](Extent2D<F32> overflow) { reports.push_back(overflow); }});
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE_FALSE(reports.empty());
+    const U64 settled = reports.size();
+    CHECK(reports.back().x == 0.0f);
+    CHECK(reports.back().y < 0.0f);
+    CHECK(Retains(frames, update));
+    CHECK(reports.size() == settled);
+
+    for (int line = 0; line < 30; ++line) {
+        value += "\n\nParagraph.";
+    }
+    frames.run(update);
+    REQUIRE(frames.settle(update));
+    CHECK(reports.size() > settled);
+    CHECK(reports.back().y > 0.0f);
+    const U64 grown = reports.size();
+    CHECK(Retains(frames, update));
+    CHECK(reports.size() == grown);
 }
 
 TEST_CASE("Typing the first character into an empty text input hides its hint without another layout trigger",

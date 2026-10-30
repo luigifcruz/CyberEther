@@ -3,7 +3,6 @@
 
 #include "context.hh"
 
-#include <jetstream/render/sakura/metrics.hh>
 #include <jetstream/render/sakura/surface.hh>
 
 #include <jetstream/render/sakura/typography.hh>
@@ -29,6 +28,20 @@ constexpr F32 kShadowDrop = 2.0f;
 constexpr F32 kScrollbarThickness = 8.0f;
 constexpr F32 kScrollbarMargin = 3.0f;
 constexpr F32 kWheelStep = 48.0f;
+constexpr F32 kInnerSpacing = 8.0f;
+constexpr F32 kNaturalControlWidth = 200.0f;
+constexpr F32 kScrollbarSize = 12.0f;
+constexpr F32 kScrollbarGrabInset = 3.0f;
+constexpr F32 kPillHeight = 34.0f;
+constexpr F32 kPillIconGap = 8.0f;
+constexpr F32 kPillShadowSoftness = 4.0f;
+constexpr F32 kPillShadowDrop = 1.0f;
+constexpr F32 kPillBorder = 1.5f;
+constexpr const char* kPillFill = "pill_field_bg";
+constexpr F32 kNodeFont = Typography::FontSize * Typography::ChromeScale;
+constexpr F32 kNodeFramePadX = 6.0f;
+constexpr F32 kNodeFramePadY = 3.0f;
+constexpr F32 kNodeUnitInset = 3.0f;
 
 inline F32 Px(const Context& ctx, F32 logical) {
     return logical * ctx.pixelRatio;
@@ -41,6 +54,18 @@ inline F32 Hairline(const Context& ctx) {
 inline ColorRGBA<F32> WithAlpha(ColorRGBA<F32> color, F32 alpha) {
     color.a *= std::clamp(alpha, 0.0f, 1.0f);
     return color;
+}
+
+inline F32 FontPx(const Context& ctx) {
+    return Px(ctx, Typography::FontSize);
+}
+
+inline F32 NodeFontOf(const Context& ctx) {
+    return ctx.fontSize > 0.0f ? ctx.fontSize : Typography::FontSize;
+}
+
+inline F32 NodeFrameHeight(const Context& ctx) {
+    return NodeFontOf(ctx) + 2.0f * kNodeFramePadY;
 }
 
 inline F32 FrameHeightPx(const Context& ctx) {
@@ -64,13 +89,25 @@ inline F32 ResolveLength(const Context& ctx, F32 size, F32 natural, F32 availabl
     return FitLength(length, available);
 }
 
+struct DisplayMetrics {
+    static constexpr F32 kSurfaceScale = 0.5f;
+
+    static Rect RootRegion(const Render::WindowMetrics& metrics, F32 topOffset);
+    static Rect RootClip(const Render::WindowMetrics& metrics, const Rect& region);
+    static Extent2D<U64> CanvasFramebuffer(const Render::WindowMetrics& metrics, const Extent2D<F32>& logical);
+    static Extent2D<F32> FramebufferToDisplay(const Render::WindowMetrics& metrics, const Extent2D<U64>& framebuffer);
+    static Extent2D<F32> LogicalSize(const Render::WindowMetrics& metrics, const Extent2D<F32>& display);
+    static Extent2D<F32> Snap(const Render::WindowMetrics& metrics, const Extent2D<F32>& display);
+    static F32 SurfaceScale(const Render::WindowMetrics& metrics);
+    static F32 PixelRatio(const SurfaceResize& resize);
+    static F32 LogicalHeight(const Render::WindowMetrics& metrics, U64 framebufferHeight);
+};
+
+const Render::WindowMetrics& Metrics(const Context& ctx);
 F32 ScalingFactor(const Context& ctx);
-F32 Unscale(const Context& ctx, F32 value);
-Extent2D<F32> Unscale(const Context& ctx, Extent2D<F32> value);
+F32 Scale(const Context& ctx, F32 value);
+Extent2D<F32> Scale(const Context& ctx, Extent2D<F32> value);
 Extent2D<F32> FramebufferScale(const Context& ctx);
-F32 SurfaceScale(const Context& ctx);
-Extent2D<F32> SnapToFramebuffer(const Context& ctx, const Extent2D<F32>& displayPosition);
-Extent2D<F32> FramebufferToDisplay(const Context& ctx, const Extent2D<U64>& framebufferSize);
 std::optional<SurfaceResize> ResolveSurfaceResize(const Context& ctx, const Extent2D<F32>& logicalSize);
 F32 LogicalViewportHeight(const Context& ctx);
 

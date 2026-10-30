@@ -16,11 +16,11 @@ graph:
         # Spectrum Analyzer
         **This example opens with no radio selected. Pick one first.**
         
-        1. Plug in your SDR and choose it in the **Device** dropdown on the **Soapy SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**. Choose **None** to disconnect.
+        1. Plug in your SDR and choose it in the **Device** dropdown on the **SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**. Choose **None** to disconnect.
         2. Type a local station into **Frequency** or leave it at 94.900 MHz, in the FM broadcast band.
         3. Watch the display. It starts a moment after you pick a device. There is no Start button, every block runs as soon as its inputs are ready.
         
-        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before CyberEther sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
         
         ## What you are looking at
         The top pane is the **spectrum**: frequency runs left to right and signal strength runs bottom to top. Each bump is a transmitter. The bottom pane is the **waterfall**: the same spectrum painted as a row of color, newest row at the top, older rows scrolling down. Blue is quiet and red is strong. A steady vertical stripe is a station that never stops talking. A short dash is a burst.
@@ -41,7 +41,7 @@ graph:
         **Samples** is the FFT size. With 2048 samples over 2 MHz, each bin is about 1 kHz wide. Doubling it sharpens the frequency detail and halves how often new rows arrive. Leave **Batches** and **Buffer Multiplier** alone unless you are tuning performance.
         
         ## Smoothing
-        - **Lineplot Averaging** smooths the trace over time. Higher is calmer but slower to react.
+        - **Spectrum Averaging** smooths the trace over time. Higher is calmer but slower to react.
         - **Waterfall Averaging** combines several spectra into each row, so the waterfall scrolls slower and looks cleaner.
         - **Waterfall Height** is how many rows of history are kept.
         
@@ -63,15 +63,13 @@ graph:
         y: 510.79816
         width: 412
         height: 368
-  - name: soapy
-    module: soapy
+  - name: sdr
+    module: sdr
     device: cpu
     runtime: native
     provider: generic
     config:
-      modulePath: ''
       deviceString: ''
-      streamString: ''
       antenna: ''
       frequency: 9.49e+07
       frequencyStep: 1000000
@@ -105,7 +103,7 @@ graph:
       amplitudeLabel: Amplitude (dBFS)
       waterfallLabel: Time
     input:
-      buffer: '${graph.soapy.output.signal}'
+      buffer: '${graph.sdr.output.signal}'
     meta:
       node:
         x: 497

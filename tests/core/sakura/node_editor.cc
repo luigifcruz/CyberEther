@@ -1,10 +1,12 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
 #include <jetstream/render/sakura/components/node/field.hh>
-#include <jetstream/render/sakura/components/node/inputs.hh>
-#include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/node/text_input.hh>
 #include <jetstream/render/sakura/typography.hh>
 
 #include "harness.hh"
@@ -53,7 +55,6 @@ struct Block {
 };
 
 struct Graph {
-    ImGuiContextGuard imgui;
     SakuraTest::FakeWindow window;
     NodeEditor editor;
     Host host{editor};
@@ -65,6 +66,7 @@ struct Graph {
     std::vector<Extent2D<F32>> menus;
     std::vector<Extent2D<F32>> doubleClicks;
     std::vector<std::vector<std::string>> copies;
+    std::optional<Rect> viewport;
     std::optional<Extent2D<F32>> center;
     U64 centerReports = 0;
 
@@ -144,8 +146,9 @@ struct Graph {
             .onCopyShortcut = [this](const std::vector<std::string>& ids) {
                 copies.push_back(ids);
             },
-            .onViewportGridCenterChange = [this](Extent2D<F32> point) {
-                center = point;
+            .onViewportGridChange = [this](Rect next) {
+                viewport = next;
+                center = Extent2D<F32>{next.x + next.width * 0.5f, next.y + next.height * 0.5f};
                 ++centerReports;
             },
         });
@@ -260,19 +263,24 @@ U64 Dirty(Graph& graph) {
 
 }  // namespace
 
-TEST_CASE("An idle editor reports the viewport center in grid coordinates",
+TEST_CASE("An idle editor reports the visible viewport in grid coordinates",
           "[core][sakura][node-editor]") {
     SECTION("At a pixel ratio of one") {
         Graph graph;
         graph.step();
         REQUIRE(graph.center.has_value());
         CheckPoint(*graph.center, 400.0f, 300.0f);
+        REQUIRE(graph.viewport.has_value());
+        CheckPoint({graph.viewport->x, graph.viewport->y}, 0.0f, 0.0f);
+        CheckPoint({graph.viewport->width, graph.viewport->height}, 800.0f, 600.0f);
     }
     SECTION("At a pixel ratio of two") {
         Graph graph(2.0f);
         graph.step();
         REQUIRE(graph.center.has_value());
         CheckPoint(*graph.center, 200.0f, 150.0f);
+        REQUIRE(graph.viewport.has_value());
+        CheckPoint({graph.viewport->width, graph.viewport->height}, 400.0f, 300.0f);
     }
 }
 
@@ -309,6 +317,48 @@ TEST_CASE("Dragging the empty canvas pans the grid by the pointer delta", "[core
     graph.move(700.0f, 100.0f);
     CheckPoint(*graph.center, 440.0f, 330.0f);
     CheckGeometry(graph.blocks[0]->last(), {40.0f, 40.0f}, {120.0f, 80.0f});
+}
+
+TEST_CASE("Stationary hover samples do not redraw an active graph interaction",
+          "[core][sakura][node-editor][retention][stationary]") {
+    const F32 ratio = GENERATE(1.0f, 2.0f);
+    Graph graph(ratio);
+    auto& node = graph.add("a", {40.0f, 40.0f});
+    node.content.consume = false;
+    REQUIRE(Settle(graph));
+    Extent2D<F32> point;
+    bool draggingNode = false;
+    SECTION("background pan") {
+        point = {600.0f, 400.0f};
+    }
+    SECTION("node drag") {
+        point = {45.0f * ratio, 45.0f * ratio};
+        draggingNode = true;
+    }
+    graph.press(point.x, point.y);
+    REQUIRE(Settle(graph));
+    const auto stationary = [&] {
+        for (U64 frame = 0; frame < 100; ++frame) {
+            graph.send(MouseEventType::Move, point.x, point.y);
+            INFO("idle frame " << frame);
+            CHECK(graph.step().clean());
+        }
+    };
+    stationary();
+    const auto center = *graph.center;
+    point.x += 20.0f * ratio;
+    point.y += 20.0f * ratio;
+    graph.move(point.x, point.y);
+    if (draggingNode) {
+        CheckPoint(node.last().gridPosition, 60.0f, 60.0f);
+    } else {
+        CheckPoint(*graph.center, center.x - 20.0f, center.y - 20.0f);
+    }
+    REQUIRE(Settle(graph));
+    stationary();
+    graph.release(point.x, point.y);
+    REQUIRE(Settle(graph));
+    stationary();
 }
 
 TEST_CASE("Panning at a pixel ratio of two moves the grid by half the pointer delta",
@@ -786,7 +836,6 @@ TEST_CASE("Hovering a wire requests its tooltip and the hover follows a moved no
 
 TEST_CASE("Lazily prepared wire tooltips appear after the delay and follow the pointer along the wire",
           "[core][sakura][node-editor]") {
-    ImGuiContextGuard imgui;
     SakuraTest::FakeWindow window;
     NodeEditor editor;
     LayerSlot slot;
@@ -938,6 +987,25 @@ TEST_CASE("Dragging a node past the viewport edge auto pans by the frame delta t
     graph.release(400.0f, 300.0f);
     graph.step();
     CheckPoint(*graph.center, 600.0f, 300.0f);
+}
+
+TEST_CASE("Stationary moves past the viewport edge keep auto panning once per frame",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    a.content.consume = false;
+    graph.step();
+
+    graph.press(100.0f, 100.0f);
+    graph.frames.ctx.deltaTime = 0.1f;
+    graph.move(900.0f, 300.0f);
+    CheckPoint(*graph.center, 500.0f, 300.0f);
+    for (U64 frame = 1; frame <= 3; ++frame) {
+        graph.move(900.0f, 300.0f);
+        CheckPoint(*graph.center, 500.0f + 100.0f * static_cast<F32>(frame), 300.0f);
+        CheckPoint(a.last().gridPosition, 940.0f + 100.0f * static_cast<F32>(frame), 240.0f);
+    }
+    graph.release(900.0f, 300.0f);
 }
 
 TEST_CASE("Panning or resizing past the viewport edge never auto pans", "[core][sakura][node-editor]") {
@@ -1187,6 +1255,78 @@ TEST_CASE("Node timing lines all fit, including the total after many module line
     REQUIRE(timing);
     CHECK(timing->config().instances.size() == 9);
     CHECK(timing->config().capacity >= 9);
+
+    const U64 capacity = timing->config().capacity;
+    const U64 rebuilds = graph.frames.rebuilds;
+    const auto lines = block.spec.timing;
+    block.spec.timing.clear();
+    REQUIRE(graph.frames.settle([&] { graph.update(); }));
+    block.spec.timing = lines;
+    REQUIRE(graph.frames.settle([&] { graph.update(); }));
+    CHECK(timing->config().capacity == capacity);
+    CHECK(graph.frames.rebuilds == rebuilds);
+}
+
+TEST_CASE("Covered parts of a node button ignore presses until its node rises above the cover",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    U64 clicks = 0;
+    Sakura::Button button;
+    button.update({.str = "Covered", .size = {Sakura::Fill, 40.0f}, .onClick = [&] { ++clicks; }});
+    Block& back = graph.add("back", {20.0f, 20.0f}, {220.0f, 0.0f});
+    back.content.consume = false;
+    back.field = &button;
+    Block& front = graph.add("front", {140.0f, 20.0f}, {200.0f, 200.0f}, ResizeAxes::XY);
+    graph.step();
+    graph.step();
+
+    const Rect frame = Peek::Frame(button);
+    REQUIRE_FALSE(frame.empty());
+    const F32 y = frame.y + frame.height * 0.5f;
+    const F32 exposed = front.last().gridPosition.x - 10.0f;
+    const F32 covered = front.last().gridPosition.x + 10.0f;
+    REQUIRE(exposed > frame.x);
+    REQUIRE(covered < frame.right());
+
+    graph.move(covered, y);
+    graph.click(covered, y);
+    CHECK(clicks == 0);
+
+    graph.move(exposed, y);
+    graph.press(exposed, y);
+    graph.move(covered, y);
+    graph.release(covered, y);
+    CHECK(clicks == 1);
+
+    graph.move(covered, y);
+    graph.click(covered, y);
+    CHECK(clicks == 2);
+}
+
+TEST_CASE("Node editors report which nodes are on screen and whether they are shown",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& near = graph.add("near", {20.0f, 20.0f});
+    Block& far = graph.add("far", {5000.0f, 5000.0f});
+    graph.step();
+    graph.step();
+    REQUIRE_FALSE(near.reports.empty());
+    REQUIRE_FALSE(far.reports.empty());
+    CHECK(near.last().onscreen);
+    CHECK_FALSE(far.last().onscreen);
+    CHECK(graph.editor.shown());
+
+    far.spec.gridPosition = {60.0f, 200.0f};
+    graph.step();
+    graph.step();
+    CHECK(far.last().onscreen);
+
+    graph.editor.setVisible(false);
+    graph.step();
+    CHECK_FALSE(graph.editor.shown());
+    graph.editor.setVisible(true);
+    graph.step();
+    CHECK(graph.editor.shown());
 }
 
 TEST_CASE("Clicking inside a focused node field moves the caret without blurring or committing it",
@@ -1518,7 +1658,9 @@ TEST_CASE("Pasting while another layer covers the pointer places the block at th
             .nodes = {{.id = "a", .header = false, .title = "a", .content = &stack, .resize = ResizeAxes::X,
                        .dimensions = {120.0f, 0.0f}, .gridPosition = Extent2D<F32>{40.0f, 40.0f}}},
             .onPasteShortcut = [&](Extent2D<F32> point) { pastes.push_back(point); },
-            .onViewportGridCenterChange = [&](Extent2D<F32> point) { center = point; },
+            .onViewportGridChange = [&](Rect next) {
+                center = Extent2D<F32>{next.x + next.width * 0.5f, next.y + next.height * 0.5f};
+            },
         });
     };
     REQUIRE(frames.settle(update));

@@ -12,6 +12,7 @@
 #include "remote.hh"
 #include "settings.hh"
 #include "workbench.hh"
+#include "agent.hh"
 
 #include "jetstream/logger.hh"
 
@@ -25,7 +26,7 @@ namespace Jetstream {
 
 class DefaultActions {
  public:
-    DefaultActions(DefaultCompositorState& state, DefaultCompositorCallbacks& callbacks) {
+    DefaultActions(DefaultCompositorState& state, DefaultCompositorCallbacks& callbacks, AgentRuntime& runtime) {
         workbench = std::make_shared<WorkbenchActions>(state, callbacks);
         settings = std::make_shared<SettingsActions>(state, callbacks);
         benchmark = std::make_shared<BenchmarkActions>(state, callbacks);
@@ -37,6 +38,7 @@ class DefaultActions {
         liveMarkdown = std::make_shared<LiveMarkdownActions>(state.flowgraph);
         metrics = std::make_shared<MetricActions>(state.flowgraph);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
+        agent = std::make_shared<AgentActions>(state, callbacks, runtime);
     }
 
     Result handle(const Mail& mail) {
@@ -66,6 +68,9 @@ class DefaultActions {
             return result;
         }
         if (Handle(*feedback, mail, result)) {
+            return result;
+        }
+        if (Handle(*agent, mail, result)) {
             return result;
         }
 
@@ -101,6 +106,14 @@ class DefaultActions {
         filePicker->cancel();
     }
 
+    void reconcileAgent() {
+        agent->reconcile();
+    }
+
+    void shutdownAgent() {
+        agent->shutdown();
+    }
+
  private:
     template<class Action, class... Signals>
     static bool Handle(Action& action, const Mail& mail, Result& result, std::tuple<Signals...>*) {
@@ -130,6 +143,7 @@ class DefaultActions {
     std::shared_ptr<LayoutActions> layouts;
     std::shared_ptr<WorkbenchActions> workbench;
     std::shared_ptr<FeedbackActions> feedback;
+    std::shared_ptr<AgentActions> agent;
 };
 
 }  // namespace Jetstream

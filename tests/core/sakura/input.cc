@@ -5,9 +5,9 @@
 
 #include <jetstream/render/sakura/clipboard.hh>
 #include <jetstream/render/sakura/components/box.hh>
-#include <jetstream/render/sakura/components/controls.hh>
 #include <jetstream/render/sakura/components/shortcuts.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include "render/sakura/input.hh"
 #include "render/sakura/detail/input_router.hh"
@@ -159,12 +159,12 @@ InputFrame Frame(U64 serial, std::optional<Extent2D<F32>> pointer, std::vector<F
     frame.source = &source;
     frame.serial = serial;
     frame.pointer = pointer;
-    for (auto& event : events) {
-        if (auto* mouse = std::get_if<MouseEvent>(&event); mouse && pointer) {
+    frame.events = std::move(events);
+    for (auto& event : frame.events) {
+        if (auto* mouse = std::get_if<MouseEvent>(&event); mouse && pointer.has_value()) {
             mouse->position = *pointer;
         }
     }
-    frame.events = std::move(events);
     return frame;
 }
 
@@ -418,7 +418,6 @@ TEST_CASE("Key dispatch stops cleanly when a handler destroys the component that
 
 TEST_CASE("A text grid destroyed while it takes focus stops before touching itself",
           "[core][sakura][input][focus]") {
-    const ImGuiContextGuard imgui;
     Tree tree;
     auto grid = std::make_unique<Sakura::TextGrid>();
     tree.b.adopt(*grid);
@@ -506,7 +505,6 @@ TEST_CASE("Clicks keep focus inside the owner and otherwise hand it to the neare
 
 TEST_CASE("Text inputs commit and blur in the same event that changes their focus",
           "[core][sakura][input][focus]") {
-    const ImGuiContextGuard imgui;
     std::vector<std::string> log;
     std::vector<std::string> changes;
     Node root("root", log, {0.0f, 0.0f, 300.0f, 25.0f});
@@ -702,7 +700,6 @@ TEST_CASE("Shortcuts settle with content and binding or enabled changes cause no
 
 TEST_CASE("A single line grid keeps editing keys and hands Up, Down, unclaimed Enter and Escape to its ancestors",
           "[core][sakura][input][text-grid]") {
-    const ImGuiContextGuard imgui;
     std::vector<std::string> log;
     Node root("root", log, {0.0f, 0.0f, 200.0f, 30.0f});
     Sakura::TextGrid grid;
@@ -734,7 +731,6 @@ TEST_CASE("A single line grid keeps editing keys and hands Up, Down, unclaimed E
 
 TEST_CASE("Text grid caret moves by line with Command and by word with Control or Option on every platform",
           "[core][sakura][input][text-grid]") {
-    const ImGuiContextGuard imgui;
     Sakura::TextGrid grid;
     Host host(grid);
     grid.update({.id = "words", .value = "alpha beta gamma", .editable = true, .fontSize = 15.0f});
@@ -764,7 +760,6 @@ TEST_CASE("Text grid caret moves by line with Command and by word with Control o
 
 TEST_CASE("Pasting follows the same single line and character rules as typing",
           "[core][sakura][input][text-grid]") {
-    const ImGuiContextGuard imgui;
     std::string value;
     Sakura::TextGrid grid;
     Host host(grid);
@@ -777,18 +772,232 @@ TEST_CASE("Pasting follows the same single line and character rules as typing",
         .onChange = [&](const std::string& next) { value = next; },
     };
     grid.update(config);
-    host.place(MakeContext({200.0f, 30.0f}), {0.0f, 0.0f, 200.0f, 30.0f});
+    SakuraTest::FakeWindow window;
+    auto ctx = MakeContext({200.0f, 30.0f});
+    ctx.render = &window;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 30.0f});
     grid.focus();
     REQUIRE(FocusOwner(host) == &grid);
 
-    Sakura::SetClipboardText("alpha\r\nbeta\ngamma");
+    Sakura::SetClipboardText(&window, "alpha\r\nbeta\ngamma");
     CHECK(Tap(host, KeyCode::V, {.super = true}));
     CHECK(value == "alpha beta gamma");
 
     config.characterFilter = [](U32 codepoint) { return codepoint >= '0' && codepoint <= '9'; };
     grid.update(config);
     REQUIRE(Tap(host, KeyCode::A, {.super = true}));
-    Sakura::SetClipboardText("1a2\n3");
+    Sakura::SetClipboardText(&window, "1a2\n3");
     CHECK(Tap(host, KeyCode::V, {.control = true}));
     CHECK(value == "123");
+}
+
+TEST_CASE("Copying and cutting write the selection to the window clipboard",
+          "[core][sakura][input][text-grid]") {
+    std::string value = "alpha beta";
+    Sakura::TextGrid grid;
+    Host host(grid);
+    Sakura::TextGrid::Config config{
+        .id = "copy",
+        .value = value,
+        .editable = true,
+        .fontSize = 15.0f,
+        .singleLine = true,
+        .onChange = [&](const std::string& next) { value = next; },
+    };
+    grid.update(config);
+    SakuraTest::FakeWindow window;
+    auto ctx = MakeContext({200.0f, 30.0f});
+    ctx.render = &window;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 30.0f});
+    grid.focus();
+    REQUIRE(FocusOwner(host) == &grid);
+
+    REQUIRE(Tap(host, KeyCode::A, {.super = true}));
+    CHECK(Tap(host, KeyCode::C, {.super = true}));
+    CHECK(Sakura::GetClipboardText(&window) == "alpha beta");
+    CHECK(value == "alpha beta");
+
+    Sakura::SetClipboardText(&window, "");
+    REQUIRE(Tap(host, KeyCode::A, {.control = true}));
+    CHECK(Tap(host, KeyCode::X, {.control = true}));
+    CHECK(Sakura::GetClipboardText(&window) == "alpha beta");
+    CHECK(value.empty());
+}
+
+TEST_CASE("Clicks without a pointer position count as outside clicks and are not routed",
+          "[core][sakura][input][router]") {
+    Sakura::InputFrame frame;
+    Sakura::InputRouter router;
+    frame.advance(0.1f);
+    frame.pointer.reset();
+    frame.buttons[0] = true;
+    frame.events = {MouseEvent{.type = MouseEventType::Click, .button = MouseButton::Left, .positioned = false}};
+    const auto left = router.route(frame, {0.0f, 0.0f, 100.0f, 100.0f});
+    CHECK(left.outsideClick);
+    CHECK_FALSE(left.active);
+    CHECK(Only<MouseEvent>(left.events).empty());
+
+    frame.advance(0.1f);
+    frame.buttons = {false, false, true};
+    frame.events = {MouseEvent{.type = MouseEventType::Click, .button = MouseButton::Middle, .positioned = false}};
+    const auto middle = router.route(frame, {0.0f, 0.0f, 100.0f, 100.0f});
+    CHECK_FALSE(middle.outsideClick);
+    CHECK(Only<MouseEvent>(middle.events).empty());
+}
+
+TEST_CASE("A press, move and release in one frame route at their own positions",
+          "[core][sakura][input][router]") {
+    using Queue = Jetstream::Render::InputQueue;
+    const auto run = [](const Rect& screen) {
+        Jetstream::Render::InputState state;
+        Sakura::InputFrame frame;
+        Sakura::InputRouter router;
+        std::vector<MouseEvent> mouse;
+        Sakura::InputRouter::Output output;
+        bool outsideClick = false;
+        F64 clock = 1.0;
+        std::vector<Queue::Event> batch = {
+            Queue::Pointer{Extent2D<F32>{10.0f, 10.0f}},
+            Queue::Button{MouseButton::Left, true},
+            Queue::Pointer{Extent2D<F32>{90.0f, 90.0f}},
+            Queue::Button{MouseButton::Left, false},
+        };
+        do {
+            state.advance(clock, batch);
+            batch.clear();
+            clock += 1.0 / 60.0;
+            Sakura::Private::SampleInput(frame, state);
+            output = router.route(frame, screen);
+            outsideClick |= output.outsideClick;
+            const auto routed = Only<MouseEvent>(output.events);
+            mouse.insert(mouse.end(), routed.begin(), routed.end());
+        } while (state.hasPending());
+        return std::tuple{mouse, output, outsideClick};
+    };
+
+    const auto [mouse, output, outsideClick] = run({0.0f, 0.0f, 100.0f, 100.0f});
+    REQUIRE(mouse.size() == 4);
+    CHECK(mouse[0].type == MouseEventType::Move);
+    CHECK(mouse[0].position == Extent2D<F32>{0.1f, 0.1f});
+    CHECK(mouse[1].type == MouseEventType::Click);
+    CHECK(mouse[1].position == Extent2D<F32>{0.1f, 0.1f});
+    CHECK(mouse[2].type == MouseEventType::Move);
+    CHECK(mouse[2].position == Extent2D<F32>{0.9f, 0.9f});
+    CHECK(mouse[3].type == MouseEventType::Release);
+    CHECK(mouse[3].position == Extent2D<F32>{0.9f, 0.9f});
+    CHECK(output.hovered);
+    CHECK_FALSE(output.active);
+    CHECK_FALSE(outsideClick);
+
+    const auto [away, awayOutput, awayOutside] = run({50.0f, 50.0f, 100.0f, 100.0f});
+    CHECK(awayOutside);
+    CHECK(std::none_of(away.begin(), away.end(), [](const auto& event) {
+        return event.type == MouseEventType::Click || event.type == MouseEventType::Release;
+    }));
+    CHECK(awayOutput.hovered);
+}
+
+TEST_CASE("Pointer validity follows input from the state to the router", "[core][sakura][input][router]") {
+    using Queue = Jetstream::Render::InputQueue;
+    const Rect screen = {0.0f, 0.0f, 100.0f, 100.0f};
+    const auto run = [&](const std::vector<Queue::Event>& batch) {
+        Jetstream::Render::InputState state;
+        Sakura::InputFrame frame;
+        Sakura::InputRouter router;
+        std::vector<MouseEvent> routed;
+        F64 clock = 1.0;
+        auto queued = batch;
+        do {
+            state.advance(clock, queued);
+            queued.clear();
+            clock += 1.0 / 60.0;
+            Sakura::Private::SampleInput(frame, state);
+            const auto output = router.route(frame, screen);
+            const auto mouse = Only<MouseEvent>(output.events);
+            routed.insert(routed.end(), mouse.begin(), mouse.end());
+        } while (state.hasPending());
+        return routed;
+    };
+
+    const auto wheel = run({
+        Queue::Pointer{Extent2D<F32>{50.0f, 50.0f}},
+        Queue::Pointer{},
+        Queue::Wheel{{0.0f, 1.0f}},
+    });
+    CHECK(std::none_of(wheel.begin(), wheel.end(), [](const auto& event) {
+        return event.type == MouseEventType::Scroll;
+    }));
+
+    const auto release = run({
+        Queue::Pointer{Extent2D<F32>{50.0f, 50.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Pointer{},
+        Queue::Button{MouseButton::Left, false},
+    });
+    const auto click = std::find_if(release.begin(), release.end(), [](const auto& event) {
+        return event.type == MouseEventType::Click;
+    });
+    const auto released = std::find_if(release.begin(), release.end(), [](const auto& event) {
+        return event.type == MouseEventType::Release;
+    });
+    REQUIRE(click != release.end());
+    REQUIRE(released != release.end());
+    CHECK(click->position == Extent2D<F32>{0.5f, 0.5f});
+    CHECK(released->cancel);
+    CHECK(std::none_of(release.begin(), release.end(), [](const auto& event) {
+        return event.type == MouseEventType::Release && !event.cancel;
+    }));
+    CHECK(std::any_of(release.begin(), release.end(), [](const auto& event) {
+        return event.type == MouseEventType::Cancel;
+    }));
+}
+
+TEST_CASE("Masked text grids never write their text to the clipboard",
+          "[core][sakura][input][text-grid]") {
+    std::string value = "secret";
+    Sakura::TextGrid grid;
+    Host host(grid);
+    grid.update({
+        .id = "masked",
+        .value = value,
+        .editable = true,
+        .fontSize = 15.0f,
+        .singleLine = true,
+        .masked = true,
+        .onChange = [&](const std::string& next) { value = next; },
+    });
+    SakuraTest::FakeWindow window;
+    auto ctx = MakeContext({200.0f, 30.0f});
+    ctx.render = &window;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 30.0f});
+    grid.focus();
+    REQUIRE(FocusOwner(host) == &grid);
+
+    Sakura::SetClipboardText(&window, "untouched");
+    REQUIRE(Tap(host, KeyCode::A, {.control = true}));
+    Tap(host, KeyCode::C, {.control = true});
+    CHECK(Sakura::GetClipboardText(&window) == "untouched");
+    Tap(host, KeyCode::X, {.control = true});
+    CHECK(Sakura::GetClipboardText(&window) == "untouched");
+    CHECK(value == "secret");
+
+    Sakura::SetClipboardText(&window, "typed");
+    CHECK(Tap(host, KeyCode::V, {.control = true}));
+    CHECK(value == "typed");
+
+    Type(host, "(\"[");
+    CHECK(value == "typed(\"[");
+    Type(host, ")");
+    CHECK(value == "typed(\"[)");
+
+    Tap(host, KeyCode::LeftArrow);
+    Tap(host, KeyCode::Backspace);
+    CHECK(value == "typed(\")");
+
+    grid.update({.id = "masked", .value = "    ", .editable = true, .fontSize = 15.0f, .singleLine = true,
+                 .masked = true, .onChange = [&](const std::string& next) { value = next; }});
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 30.0f});
+    Tap(host, KeyCode::End);
+    Tap(host, KeyCode::Backspace);
+    CHECK(value == "   ");
 }

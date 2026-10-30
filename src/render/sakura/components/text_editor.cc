@@ -343,6 +343,10 @@ void TextEditor::update(Config config) {
     });
 }
 
+const TextGrid::Metrics& TextEditor::metrics() const {
+    return impl->grid.metrics();
+}
+
 Extent2D<F32> TextEditor::measure(const Context& ctx, Extent2D<F32> available) {
     return FitExtent(measureChild(this->impl->grid, ctx, available), available);
 }

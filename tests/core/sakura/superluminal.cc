@@ -49,8 +49,7 @@ class PlotTexture final : public Render::Texture {
 
 struct ScaledFontWindow : FontWindow {
     explicit ScaledFontWindow(F32 scale) {
-        _scalingFactor = scale;
-        _previousScalingFactor = scale;
+        rescale(scale);
         load("default_mono", jbmm_compressed_data);
     }
 };
@@ -1011,7 +1010,6 @@ TEST_CASE("Superluminal plot tiles forward input, cursor and resizes when their 
 TEST_CASE("Superluminal tiles and plot surfaces scale with a pixel ratio of two",
           "[core][sakura][superluminal][pixel-ratio]") {
     const auto measure = [](F32 ratio) {
-        ImGuiContextGuard imgui;
         ScaledFontWindow window(ratio);
         auto ctx = MakeContext({kWide.width * ratio, kWide.height * ratio});
         ctx.render = &window;

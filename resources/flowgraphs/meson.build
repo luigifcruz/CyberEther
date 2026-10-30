@@ -8,6 +8,7 @@ if py.found()
             meson.project_source_root() / 'examples/flowgraphs/python-qpsk.yml',
             meson.project_source_root() / 'examples/flowgraphs/overlap-add-fold.yml',
             meson.project_source_root() / 'examples/flowgraphs/spectrum-analyzer.yml',
+            meson.project_source_root() / 'examples/flowgraphs/sdr-sweep.yml',
             meson.project_source_root() / 'examples/flowgraphs/flight-tracker.yml',
         ]),
         output : ['examples.cc'],

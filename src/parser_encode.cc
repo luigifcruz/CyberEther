@@ -21,7 +21,12 @@ static std::string ComplexToString(const T& complex) {
                             std::abs(complex.imag()));
 }
 
-Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
+static Result EncodeTyped(const std::any& variable, std::string& encoded, const bool log) {
+    if (variable.type() == typeid(std::nullptr_t)) {
+        encoded = "null";
+        return Result::SUCCESS;
+    }
+
     if (variable.type() == typeid(std::string)) {
         const auto& stringValue = std::any_cast<std::string>(variable);
         encoded = jst::fmt::format("{}", stringValue);
@@ -166,8 +171,8 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
         return Result::SUCCESS;
     }
 
-    if (variable.type() == typeid(Map)) {
-        const auto& map = std::any_cast<const Map&>(variable);
+    if (variable.type() == typeid(Parser::Map)) {
+        const auto& map = std::any_cast<const Parser::Map&>(variable);
 
         std::vector<std::string> keys;
         keys.reserve(map.size());
@@ -180,7 +185,7 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
         entries.reserve(keys.size());
         for (const auto& key : keys) {
             std::string entry;
-            JST_CHECK(TypedToString(map.at(key), entry));
+            JST_CHECK(EncodeTyped(map.at(key), entry, log));
             entries.push_back(jst::fmt::format("{}: {}", key, entry));
         }
 
@@ -188,14 +193,14 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
         return Result::SUCCESS;
     }
 
-    if (variable.type() == typeid(Sequence)) {
-        const auto& sequence = std::any_cast<const Sequence&>(variable);
+    if (variable.type() == typeid(Parser::Sequence)) {
+        const auto& sequence = std::any_cast<const Parser::Sequence&>(variable);
 
         std::vector<std::string> entries;
         entries.reserve(sequence.size());
         for (const auto& value : sequence) {
             std::string entry;
-            JST_CHECK(TypedToString(value, entry));
+            JST_CHECK(EncodeTyped(value, entry, log));
             entries.push_back(std::move(entry));
         }
 
@@ -203,9 +208,19 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
         return Result::SUCCESS;
     }
 
-    JST_ERROR("[PARSER] Failed to serialize variable. Check if the input and output are compatible.");
-    JST_TRACE("[PARSER] Variable type: {}", variable.type().name());
+    if (log) {
+        JST_ERROR("[PARSER] Failed to serialize variable. Check if the input and output are compatible.");
+        JST_TRACE("[PARSER] Variable type: {}", variable.type().name());
+    }
     return Result::ERROR;
+}
+
+Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
+    return EncodeTyped(variable, encoded, true);
+}
+
+bool Parser::TryTypedToString(const std::any& variable, std::string& encoded) {
+    return EncodeTyped(variable, encoded, false) == Result::SUCCESS;
 }
 
 }  // namespace Jetstream

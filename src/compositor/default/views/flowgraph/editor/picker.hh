@@ -2,9 +2,10 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_PICKER_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include "jetstream/types.hh"
+#include "tools/value.hh"
 
 #include <algorithm>
 #include <functional>

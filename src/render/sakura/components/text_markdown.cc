@@ -4,14 +4,14 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
+#include <jetstream/render/tools/icons_fa.hh>
 
 #include "../context.hh"
 #include "../detail/helpers.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
-#include "../detail/text_lines.hh"
 #include "../detail/syntax_highlighter.hh"
 #include "../detail/text_metrics.hh"
 #include "../metrics.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <array>
@@ -26,6 +26,9 @@
 #include <vector>
 
 namespace Jetstream::Sakura {
+
+using Jetstream::Text::SplitLines;
+using Jetstream::Text::JoinLines;
 
 namespace {
 
@@ -103,11 +106,12 @@ constexpr U64 kGridLineSegments = 32;
 constexpr const char* kBodyFont = TextMarkdown::BodyFont;
 constexpr const char* kCodeFont = Typography::MonoFont;
 
-constexpr std::array<std::pair<std::string_view, StyleId>, 4> kInlineDelimiters = {{
-    {"`", Style::Code},
+constexpr std::array<std::pair<std::string_view, StyleId>, 5> kEmphasisDelimiters = {{
     {"***", Style::BoldItalic},
     {"**", Style::Bold},
     {"__", Style::Bold},
+    {"*", Style::Italic},
+    {"_", Style::Italic},
 }};
 
 struct TableSource {
@@ -477,17 +481,30 @@ void ParseInline(const std::string& line, StyleId baseStyle, std::string& displa
             emit(line[k], s);
         }
     };
-    const auto delimited = [&](U64 i, std::string_view open, StyleId s) -> U64 {
-        if (line.compare(i, open.size(), open) != 0) {
+    const auto isSpace = [](char ch) {
+        return ch == ' ' || ch == '\t';
+    };
+    const auto isWord = [](char ch) {
+        return std::isalnum(static_cast<unsigned char>(ch)) != 0;
+    };
+    const auto emphasis = [&](U64 i, std::string_view mark, StyleId s) -> U64 {
+        const U64 len = mark.size();
+        const bool underscore = mark.front() == '_';
+        if (line.compare(i, len, mark) != 0 || i + len >= n || isSpace(line[i + len])) {
             return 0;
         }
-        const U64 j = s == Style::Code ? line.find(open, i + open.size())
-                                       : FindUnescaped(line, open, i + open.size());
-        if (j == std::string::npos) {
+        if (underscore && i > 0 && isWord(line[i - 1])) {
             return 0;
         }
-        emitRange(i + open.size(), j, s);
-        return j + open.size();
+        for (U64 j = FindUnescaped(line, mark, i + len + 1); j != std::string::npos;
+             j = FindUnescaped(line, mark, j + 1)) {
+            if (isSpace(line[j - 1]) || (underscore && j + len < n && isWord(line[j + len]))) {
+                continue;
+            }
+            emitRange(i + len, j, s);
+            return j + len;
+        }
+        return 0;
     };
 
     U64 i = 0;
@@ -498,9 +515,17 @@ void ParseInline(const std::string& line, StyleId baseStyle, std::string& displa
             i += 2;
             continue;
         }
+        if (c == '`') {
+            const U64 j = line.find('`', i + 1);
+            if (j != std::string::npos) {
+                emitRange(i + 1, j, Style::Code);
+                i = j + 1;
+                continue;
+            }
+        }
         U64 resume = 0;
-        for (const auto& [open, style] : kInlineDelimiters) {
-            resume = delimited(i, open, style);
+        for (const auto& [mark, style] : kEmphasisDelimiters) {
+            resume = emphasis(i, mark, style);
             if (resume != 0) {
                 break;
             }
@@ -508,14 +533,6 @@ void ParseInline(const std::string& line, StyleId baseStyle, std::string& displa
         if (resume != 0) {
             i = resume;
             continue;
-        }
-        if (c == '*' || c == '_') {
-            const U64 j = FindUnescaped(line, std::string_view(&c, 1), i + 1);
-            if (j != std::string::npos && j > i + 1) {
-                emitRange(i + 1, j, Style::Italic);
-                i = j + 1;
-                continue;
-            }
         }
         if (c == '[') {
             const U64 close = FindUnescaped(line, "]", i + 1);
@@ -927,7 +944,7 @@ struct DocumentBuilder {
             addLine(std::move(display), scale, gap, block.indent, std::move(styles), std::move(links),
                     TextGrid::RowMode::Next, block.indent);
         };
-        addCalloutLine(std::string(kCalloutIcons[block.tone]) + "  " + kCalloutTitles[block.tone], Style::Bold,
+        addCalloutLine(jst::fmt::format("{}  {}", kCalloutIcons[block.tone], kCalloutTitles[block.tone]), Style::Bold,
                        kCalloutTitleScale, block.topGap, true);
         if (!block.text.empty()) {
             F32 gap = body * kCalloutTitleGapEmRatio;
@@ -1182,19 +1199,6 @@ struct TextMarkdown::Impl {
                !config.styleBackgroundColorKeys[id - 1].empty();
     }
 
-    std::vector<U8> fontAvailability() const {
-        std::vector<U8> available;
-        if (!textMetrics.window) {
-            return available;
-        }
-        available.reserve(config.styleFonts.size() + 1);
-        available.push_back(textMetrics.window->hasFont(kBodyFont) ? 1 : 0);
-        for (const auto& fontName : config.styleFonts) {
-            available.push_back(textMetrics.window->hasFont(fontName) ? 1 : 0);
-        }
-        return available;
-    }
-
     bool fontsReady() const {
         const F32 body = config.fontSize;
         if (textMetrics.measure(kBodyFont, "0", body) <= 0.0f) {
@@ -1237,7 +1241,7 @@ struct TextMarkdown::Impl {
     }
 
     TextGrid::WidthLayout layoutForTextWidth(F32 textWidth) {
-        auto fonts = fontAvailability();
+        auto fonts = FontAvailability(textMetrics.window, kBodyFont, config.styleFonts);
         if (!(tablesLayoutValid && tablesLayoutWidth == textWidth && tablesLayoutFonts == fonts)) {
             layoutTables(textWidth);
             layoutStats(textWidth);
@@ -1711,11 +1715,22 @@ struct TextMarkdown::Impl {
         }
     }
 
+    static bool offscreen(const DecorationFrame& frame, const Deco& deco) {
+        if (!frame.clip.has_value() || deco.kind == Deco::Kind::Table || deco.kind == Deco::Kind::Stats) {
+            return false;
+        }
+        const F32 pad = frame.body;
+        return frame.lineBottom(deco.last) + pad <= frame.clip->y || frame.lineTop(deco.first) - pad >= frame.clip->bottom();
+    }
+
     DecorationPools buildDecorations(const DecorationFrame& frame) const {
         DecorationPools pools;
         for (const auto& deco : document.decos) {
             if (pools.full()) {
                 break;
+            }
+            if (offscreen(frame, deco)) {
+                continue;
             }
             switch (deco.kind) {
                 case Deco::Kind::Rule: addRule(frame, deco, pools); break;

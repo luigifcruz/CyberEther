@@ -36,9 +36,7 @@ class Headless<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     Result create();
     Result destroy();
 
-    Result createImgui();
-    Result destroyImgui();
-    F32 scale(const F32& scale) const;
+    Extent2D<F32> framebufferSize() const;
 
     Result createSwapchain();
     Result destroySwapchain();

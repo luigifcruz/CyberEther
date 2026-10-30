@@ -940,21 +940,33 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
     std::vector<BlockState> previousStates;
     Parser::Map mergedConfig;
     const auto reconfigure = [&]() -> Result {
-        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+        decltype(impl->blocks)::node_type entry;
+        {
+            std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+            if (!impl->blocks.contains(name)) {
+                JST_ERROR("[FLOWGRAPH] Cannot update block '{}' because it doesn't exist.", name);
+                return Result::ERROR;
+            }
+            JST_CHECK(CaptureAffectedBlockStates(*impl, name, previousStates));
+            mergedConfig = previousStates.front().config;
+            for (const auto& field : config) mergedConfig[field.key] = field.value;
 
-        if (!impl->blocks.contains(name)) {
-            JST_ERROR("[FLOWGRAPH] Cannot update block '{}' because it doesn't exist.", name);
-            return Result::ERROR;
+            Flowgraph::View::BlockData transient;
+            JST_CHECK(impl->view->block(name, transient));
+            impl->transientBlocks[name] = std::move(transient);
+            entry = impl->blocks.extract(name);
         }
 
-        JST_CHECK(CaptureAffectedBlockStates(*impl, name, previousStates));
-
-        mergedConfig = previousStates.front().config;
-        for (const auto& entry : config) {
-            mergedConfig[entry.key] = entry.value;
-        }
-
-        const auto block = impl->blocks.at(name);
+        struct Publish {
+            Impl& graph;
+            decltype(entry)& node;
+            ~Publish() {
+                std::lock_guard lock(graph.blockMutex);
+                graph.transientBlocks.erase(node.key());
+                graph.blocks.insert(std::move(node));
+            }
+        } publish{*impl, entry};
+        const auto block = entry.mapped();
         result = block->reconfigure(mergedConfig);
         recoverPrevious = result != Result::SUCCESS && result != Result::RELOAD &&
                           result != Result::RECREATE &&
@@ -1049,6 +1061,10 @@ Result Flowgraph::blockConfig(const std::string name, Parser::Map& config) const
     std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
 
     if (!impl->blocks.contains(name)) {
+        if (const auto found = impl->transientBlocks.find(name); found != impl->transientBlocks.end()) {
+            config = found->second.config;
+            return Result::SUCCESS;
+        }
         JST_ERROR("[FLOWGRAPH] Cannot get block '{}' configuration because it doesn't exist.", name);
         return Result::ERROR;
     }

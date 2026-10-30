@@ -1,12 +1,15 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_WELCOME_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_WELCOME_HH
 
+#include "../components/assistant_composer.hh"
+
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace Jetstream {
 
@@ -105,6 +108,11 @@ struct WelcomeHudCell : public Sakura::Div {
 struct WelcomeHudView {
     struct Config {
         std::string version;
+        bool chatOpen = false;
+        bool assistantEnabled = true;
+        U64 assistantClearRequest = 0;
+        std::function<void(const std::string&)> onAssistantSubmit;
+        std::function<void()> onAssistantVoice;
         std::function<void()> onNewFlowgraph;
         std::function<void()> onOpenFlowgraph;
         std::function<void()> onOpenExamples;
@@ -120,7 +128,19 @@ struct WelcomeHudView {
             .title = "CyberEther",
             .slogan = "GPU-ACCELERATED SIGNAL PROCESSING",
         });
-        welcomeSpacing.update({.lines = 4});
+        welcomeSpacing.update({.lines = 3});
+        assistant.update({
+            .id = "WelcomeAssistant",
+            .style = AssistantComposerStyle({
+                .backgroundColorKey = "card",
+                .compact = true,
+                .margin = {.left = 4.0f, .right = 4.0f, .bottom = 6.0f},
+            }),
+            .onSubmit = this->config.onAssistantSubmit,
+            .onVoice = this->config.onAssistantVoice,
+            .clearRequest = this->config.assistantClearRequest,
+        });
+        assistantSpacing.update({});
         buttonSpacing.update({});
         versionSpacing.update({});
         newCell.update({
@@ -190,17 +210,20 @@ struct WelcomeHudView {
             .cellPadding = {4.0f, 2.0f},
             .items = {&websiteButton, &docsButton, &settingsButton, &aboutButton},
         });
-        stack.update({
-            .items = {
-                {.child = &title},
-                {.child = &welcomeSpacing},
-                {.child = &actions},
-                {.child = &buttonSpacing},
-                {.child = &links},
-                {.child = &versionSpacing},
-                {.child = &version},
-            },
-        });
+        std::vector<Sakura::Stack::Item> items = {
+            {.child = &title},
+            {.child = &welcomeSpacing},
+        };
+        if (this->config.assistantEnabled && !this->config.chatOpen) {
+            items.push_back({.child = &assistant});
+            items.push_back({.child = &assistantSpacing});
+        }
+        items.push_back({.child = &actions});
+        items.push_back({.child = &buttonSpacing});
+        items.push_back({.child = &links});
+        items.push_back({.child = &versionSpacing});
+        items.push_back({.child = &version});
+        stack.update({.items = std::move(items)});
         panel.update({
             .id = "Welcome",
             .content = &stack,
@@ -229,6 +252,8 @@ struct WelcomeHudView {
     Config config;
     WelcomeHudTitle title;
     Sakura::Spacer welcomeSpacing;
+    Sakura::ChatComposer assistant;
+    Sakura::Spacer assistantSpacing;
     Sakura::Spacer buttonSpacing;
     Sakura::Spacer versionSpacing;
     WelcomeHudCell newCell;

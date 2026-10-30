@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_EDITOR_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/field.hh>
 #include <jetstream/types.hh>
 
@@ -49,6 +50,9 @@ struct NodeEditor : public Component {
     struct Geometry {
         Extent2D<F32> gridPosition;
         Extent2D<F32> contentDimensions;
+        Extent2D<F32> dimensions;
+        F32 minimumHeight = 0.0f;
+        bool onscreen = false;
 
         bool operator==(const Geometry&) const = default;
     };
@@ -98,7 +102,7 @@ struct NodeEditor : public Component {
         Callback<void(const std::string&)> onLinkDestroyed;
         Callback<void(const std::vector<std::string>&)> onCopyShortcut;
         Callback<void(Extent2D<F32>)> onPasteShortcut;
-        Callback<void(Extent2D<F32>)> onViewportGridCenterChange;
+        Callback<void(Rect)> onViewportGridChange;
 
         bool operator==(const Config&) const = default;
     };
@@ -111,10 +115,13 @@ struct NodeEditor : public Component {
     bool canZoom(int direction) const;
     void zoomStep(int direction);
     void zoomReset();
+    bool shown() const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
     void layout(const Context& ctx) override;
+    void wentOnscreen(U64 frame) override;
+    void wentOffscreen(U64 frame) override;
     bool keyEvent(const KeyEvent& event) override;
     bool focusesOnClick() const override;
 

@@ -4,12 +4,14 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 #include "jetstream/domains/core/python/module.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime.hh"
@@ -251,11 +253,13 @@ def compute(ctx):
     _cycle += 1
     if _cycle == 1:
         ctx.output_attrs[0]["frequency"] = np.float64(1.0)
+        ctx.output_attrs[0]["sampleRate"] = 2.0e6
         ctx.output_attrs[0]["counter"] = np.int64(7)
         ctx.output_attrs[0]["phase"] = np.complex128(1 + 2j)
         ctx.output_attrs[0]["window"] = np.array([1.0, 2.0], dtype=np.float64)
     else:
         ctx.output_attrs[0]["frequency"] = np.float32(2.0)
+        ctx.output_attrs[0]["sampleRate"] = np.float32(2.0e6)
         ctx.output_attrs[0]["counter"] = np.int16(-7)
         ctx.output_attrs[0]["phase"] = np.complex64(3 + 4j)
         ctx.output_attrs[0]["window"] = np.array([3.0, 4.0], dtype=np.float32)
@@ -292,6 +296,11 @@ def compute(ctx):
 
     REQUIRE(output.attribute("frequency").type() == typeid(F64));
     REQUIRE(std::any_cast<F64>(output.attribute("frequency")) == 1.0);
+    REQUIRE(output.attribute("sampleRate").type() == typeid(F64));
+    std::optional<F32> sampleRate;
+    REQUIRE(ReadAttribute(output, "sampleRate", sampleRate) == Result::ERROR);
+    REQUIRE(JST_LOG_LAST_ERROR().find("F64") != std::string::npos);
+    REQUIRE(JST_LOG_LAST_ERROR().find("np.float32") != std::string::npos);
     REQUIRE(output.attribute("counter").type() == typeid(I64));
     REQUIRE(std::any_cast<I64>(output.attribute("counter")) == 7);
     REQUIRE(output.attribute("phase").type() == typeid(CF64));
@@ -305,6 +314,9 @@ def compute(ctx):
                             skippedModules, failedModules) == Result::SUCCESS);
     REQUIRE(output.attribute("frequency").type() == typeid(F32));
     REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == 2.0f);
+    REQUIRE(output.attribute("sampleRate").type() == typeid(F32));
+    REQUIRE(ReadAttribute(output, "sampleRate", sampleRate) == Result::SUCCESS);
+    REQUIRE(sampleRate == 2.0e6f);
     REQUIRE(output.attribute("counter").type() == typeid(I16));
     REQUIRE(std::any_cast<I16>(output.attribute("counter")) == -7);
     REQUIRE(output.attribute("phase").type() == typeid(CF32));

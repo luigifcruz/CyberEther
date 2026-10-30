@@ -77,6 +77,9 @@ class JETSTREAM_API Flowgraph::View {
     Result metrics(const std::string& block, std::vector<MetricEntry>& metrics) const;
     Result surfaces(const std::string& block,
                     std::vector<std::shared_ptr<Module::Surface>>& surfaces) const;
+    bool canCapture() const;
+    Result capture(const std::shared_ptr<const Render::Texture>& texture,
+                   Extent2D<U64>& size, std::vector<U8>& pixels) const;
     Result block(const std::string& block, BlockData& data) const;
 
  private:

@@ -1,7 +1,5 @@
 src_lst += files([
-  'imgui.cpp',
-  'imgui_draw.cpp',
-  'imgui_tables.cpp',
-  'imgui_widgets.cpp',
+  'stb_decompress.cc',
   'stb_image.cc',
+  'stb_image_write.cc',
 ])

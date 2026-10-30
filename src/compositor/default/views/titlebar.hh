@@ -24,6 +24,8 @@ struct TitlebarView {
         CheckForUpdates,
         OpenUpdateModal,
         RemoteStreaming,
+        ToggleAgent,
+        ToggleVoice,
         GettingStarted,
         Documentation,
         OpenRepository,
@@ -62,6 +64,9 @@ struct TitlebarView {
         bool remoteStarted = false;
         bool updateAvailable = false;
         bool updateReady = false;
+        bool intelligenceEnabled = false;
+        bool agentVisible = false;
+        bool voiceVisible = false;
         std::optional<std::string> focusedFlowgraph;
         bool flowgraphMetadataVisible = false;
         bool flowgraphEnvironmentVisible = false;
@@ -94,27 +99,46 @@ struct TitlebarView {
             {.label = "About CyberEther", .onClick = action(Action::About)},
             {.label = "Settings", .shortcut = "CTRL+,", .onClick = action(Action::Settings)},
             std::move(updateEntry),
-            {
-                .label = "Remote Streaming",
-                .enabled = this->config.remoteSupported,
-                .onClick = action(Action::RemoteStreaming),
-            },
-            {
-                .label = "Developer",
-                .children = developerEntries(action, separator),
-            },
-            {
-                .label = "Help",
-                .children = {
-                    {.label = "Getting Started", .onClick = action(Action::GettingStarted)},
-                    {.label = "Documentation", .onClick = action(Action::Documentation)},
-                    {.label = "Repository", .onClick = action(Action::OpenRepository)},
-                    {.label = "Report Issue", .onClick = action(Action::ReportIssue)},
-                    {.label = "Luigi's Twitter", .onClick = action(Action::OpenTwitter)},
-                },
-            },
-            {.label = "Send Feedback", .shortcut = "CTRL+G", .onClick = action(Action::SendFeedback)},
         };
+#ifndef JST_OS_BROWSER
+        if (this->config.intelligenceEnabled) {
+            appEntries.push_back({
+                .label = "Intelligence",
+                .children = {
+                    {
+                        .label = "Show Agent Window",
+                        .selected = this->config.agentVisible,
+                        .onClick = action(Action::ToggleAgent),
+                    },
+                    {
+                        .label = "Show Voice Window",
+                        .selected = this->config.voiceVisible,
+                        .onClick = action(Action::ToggleVoice),
+                    },
+                },
+            });
+        }
+#endif
+        appEntries.push_back({
+            .label = "Remote Streaming",
+            .enabled = this->config.remoteSupported,
+            .onClick = action(Action::RemoteStreaming),
+        });
+        appEntries.push_back({
+            .label = "Developer",
+            .children = developerEntries(action, separator),
+        });
+        appEntries.push_back({
+            .label = "Help",
+            .children = {
+                {.label = "Getting Started", .onClick = action(Action::GettingStarted)},
+                {.label = "Documentation", .onClick = action(Action::Documentation)},
+                {.label = "Repository", .onClick = action(Action::OpenRepository)},
+                {.label = "Report Issue", .onClick = action(Action::ReportIssue)},
+                {.label = "Luigi's Twitter", .onClick = action(Action::OpenTwitter)},
+            },
+        });
+        appEntries.push_back({.label = "Send Feedback", .shortcut = "CTRL+G", .onClick = action(Action::SendFeedback)});
 #ifndef JST_OS_BROWSER
         appEntries.push_back(separator);
         appEntries.push_back({.label = "Quit CyberEther", .onClick = action(Action::Quit)});

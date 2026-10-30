@@ -153,10 +153,9 @@ def configure(
     device_id: int = 0,
     window_title: str = "Superluminal",
     remote: bool = False,
-    remote_broker: str = "https://cyberether.org",
     remote_codec: str = "h264",
     remote_encoder: str = "auto",
-    remote_auto_join: bool = False,
+    remote_auto_approve: bool = False,
     remote_framerate: int = 30,
     on_remote_ready=None,
 ):
@@ -166,17 +165,14 @@ def configure(
     if not isinstance(preferred_device, lm.constant):
         raise TypeError("Preferred device must be a constant.")
 
-    if not isinstance(remote_broker, str):
-        raise TypeError("Remote broker must be a string.")
-
     if not isinstance(remote_codec, str):
         raise TypeError("Remote codec must be a string.")
 
     if not isinstance(remote_encoder, str):
         raise TypeError("Remote encoder must be a string.")
 
-    if not isinstance(remote_auto_join, bool):
-        raise TypeError("Remote auto join must be a bool.")
+    if not isinstance(remote_auto_approve, bool):
+        raise TypeError("Remote auto approve must be a bool.")
 
     if not isinstance(remote_framerate, int):
         raise TypeError("Remote framerate must be an int.")
@@ -190,10 +186,9 @@ def configure(
     cfg.preferred_device = preferred_device.value
     cfg.window_title = window_title
     cfg.remote = remote
-    cfg.remote_broker = remote_broker
     cfg.remote_codec = remote_codec
     cfg.remote_encoder = remote_encoder
-    cfg.remote_auto_join = remote_auto_join
+    cfg.remote_auto_approve = remote_auto_approve
     cfg.remote_framerate = remote_framerate
     result = lm.initialize(cfg)
 

@@ -18,17 +18,17 @@ inline std::string MakeFlowgraphTitle(const std::string& flowgraphId,
 
 inline std::string MakeSurfaceTileTitle(const std::string& blockName, const std::string& blockTitle) {
     const std::string title = blockTitle.empty() ? blockName : blockTitle;
-    return title + " (" + blockName + ")";
+    return jst::fmt::format("{} ({})", title, blockName);
 }
 
 inline std::string MakeConfigTileTitle(const std::string& blockName, const std::string& blockTitle) {
     const std::string title = blockTitle.empty() ? blockName : blockTitle;
-    return title + " Config (" + blockName + ")";
+    return jst::fmt::format("{} Config ({})", title, blockName);
 }
 
 inline std::string MakeDocumentationTileTitle(const std::string& blockName, const std::string& blockTitle) {
     const std::string title = blockTitle.empty() ? blockName : blockTitle;
-    return title + " Documentation (" + blockName + ")";
+    return jst::fmt::format("{} Documentation ({})", title, blockName);
 }
 
 inline std::string MakeEditorPaneId(const std::string& flowgraphId) {

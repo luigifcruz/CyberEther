@@ -20,8 +20,6 @@ Result Implementation::create() {
     swapchain->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
     swapchain->setFramebufferOnly(true);
 
-    lastTime = std::chrono::high_resolution_clock::now();
-    
     return Result::SUCCESS;
 }
 
@@ -31,39 +29,17 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::createImgui() {
-
-    return Result::SUCCESS;
-}
-
 Extent2D<F32> Implementation::displaySize() const {
     return {static_cast<F32>(swapchain->drawableSize().x / 2.0),
             static_cast<F32>(swapchain->drawableSize().y / 2.0)};
 }
 
-F32 Implementation::scale(const F32& scale) const {
-    return scale;
-}
-
-Result Implementation::destroyImgui() {
-
-    return Result::SUCCESS;
+Extent2D<F32> Implementation::framebufferSize() const {
+    return {static_cast<F32>(swapchain->drawableSize().x),
+            static_cast<F32>(swapchain->drawableSize().y)};
 }
 
 void* Implementation::nextDrawable() {
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
-    lastTime = currentTime;
-
-    // Update ImGui state.
-
-    ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize.x = swapchain->drawableSize().x / 2.0;
-    io.DisplaySize.y = swapchain->drawableSize().y / 2.0;
-    io.DisplayFramebufferScale.x = 2.0;
-    io.DisplayFramebufferScale.y = 2.0;
-    io.DeltaTime = deltaTime;
-    
     return static_cast<void*>(swapchain->nextDrawable());
 }
 

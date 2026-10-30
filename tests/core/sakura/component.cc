@@ -3,8 +3,8 @@
 #include "component_harness.hh"
 
 #include <jetstream/render/sakura/components/box.hh>
-#include <jetstream/render/sakura/components/controls.hh>
-#include <jetstream/render/sakura/components/layout.hh>
+#include <jetstream/render/sakura/components/stack.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include "scene.hh"
 
@@ -371,6 +371,28 @@ TEST_CASE("Setting children with a permutation reorders without detaching", "[co
     CHECK(board.children() == std::vector<Sakura::Component*>{&c});
     CHECK(a.count(MouseEventType::Cancel) == 1);
     CHECK(b.count(MouseEventType::Cancel) == 1);
+}
+
+TEST_CASE("Adding and removing siblings leaves the surviving children untouched", "[core][sakura][component]") {
+    Board board;
+    Probe a;
+    Probe b;
+    board.attach(a);
+    board.attach(b);
+
+    Probe c;
+    board.setChildren({&a, &c, &b});
+
+    CHECK(board.children() == std::vector<Sakura::Component*>{&a, &c, &b});
+    CHECK(a.events.empty());
+    CHECK(b.events.empty());
+
+    board.setChildren({&c, &b, &c});
+
+    CHECK(board.children() == std::vector<Sakura::Component*>{&c, &b});
+    CHECK(a.count(MouseEventType::Cancel) == 1);
+    CHECK(b.events.empty());
+    CHECK(c.events.empty());
 }
 
 TEST_CASE("Events reach the topmost child first and stop when consumed", "[core][sakura][component]") {

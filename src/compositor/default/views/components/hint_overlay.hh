@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_HINT_OVERLAY_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include <functional>
 #include <memory>
@@ -58,7 +58,7 @@ struct HintOverlay {
         }
         for (U64 i = 0; i < this->config.steps.size(); ++i) {
             stepTexts[i]->update({
-                .str = std::to_string(i + 1) + ". " + this->config.steps[i],
+                .str = jst::fmt::format("{}. {}", i + 1, this->config.steps[i]),
                 .align = Text::Align::Center,
             });
         }

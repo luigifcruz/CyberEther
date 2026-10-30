@@ -257,17 +257,16 @@ Result Superluminal::initialize(const InstanceConfig& config) {
 
     if (impl->config.remote) {
         Instance::Remote::Config remoteConfig;
-        remoteConfig.broker = impl->config.remoteBroker;
         try {
-            remoteConfig.codec = StringToRemoteCodec(impl->config.remoteCodec);
-            remoteConfig.encoder = StringToRemoteEncoder(impl->config.remoteEncoder);
+            remoteConfig.video.codec = StringToRemoteCodec(impl->config.remoteCodec);
+            remoteConfig.video.encoder = StringToRemoteEncoder(impl->config.remoteEncoder);
         } catch (const Result&) {
             JST_CHECK(impl->instance->destroy());
             impl->instance.reset();
             return Result::ERROR;
         }
-        remoteConfig.autoJoinSessions = impl->config.remoteAutoJoin;
-        remoteConfig.framerate = impl->config.remoteFramerate;
+        remoteConfig.access.autoApprove = impl->config.remoteAutoApprove;
+        remoteConfig.video.framerate = impl->config.remoteFramerate;
         result = impl->instance->remote()->create(remoteConfig);
         if (result != Result::SUCCESS && result != Result::RELOAD) {
             JST_CHECK(impl->instance->destroy());
@@ -369,7 +368,7 @@ Result Superluminal::start() {
     if (impl->config.remote && impl->instance->remote()) {
         impl->supervisor = std::make_unique<Instance::Remote::Supervisor>(
             impl->instance->remote().get(),
-            impl->config.remoteAutoJoin);
+            impl->config.remoteAutoApprove);
         impl->supervisor->start();
     }
 

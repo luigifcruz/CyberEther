@@ -5,9 +5,12 @@
 #include <jetstream/render/base/texture.hh>
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/image.hh>
+#include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
+#include <jetstream/render/sakura/components/surface_image.hh>
+#include <jetstream/render/sakura/components/text.hh>
 
-#include <jetstream/render/tools/imgui_icons_ext.hh>
+#include <jetstream/render/tools/icons_fa.hh>
 
 #include "harness.hh"
 #include "fonts.hh"
@@ -156,7 +159,7 @@ std::vector<Rect> TextFrames(Sakura::Component& dock) {
 }
 
 const Sakura::Box::Config* BoxWith(Sakura::Component& dock, const Rect& rect) {
-    for (auto* box : Direct<Sakura::Box>(dock)) {
+    for (auto* box : Find<Sakura::Box>(dock)) {
         for (const auto& instance : box->config().instances) {
             if (instance.rect == rect) {
                 return &box->config();
@@ -185,7 +188,6 @@ TEST_CASE("Tab mode lays out only the active pane below the tab bar", "[core][sa
 
 TEST_CASE("Tab mode presents only the active pane's surface and swaps hints when the tab changes",
           "[core][sakura][dock]") {
-    const ImGuiContextGuard imgui;
     SakuraTest::FakeWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -1669,7 +1671,6 @@ TEST_CASE("Strip tabs share one track with a bordered active capsule, dividers a
 
 TEST_CASE("Strip tab titles are ellipsized to the tab and tabs shrink evenly to fit the bar",
           "[core][sakura][dock]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -1849,7 +1850,7 @@ TEST_CASE("Tile cards cast a soft dropped shadow and carry a top lit edge and ri
     CHECK(shadows->instances[1].rect == Rect{397.0f, 2.0f, 403.0f, 600.0f});
 
     std::vector<const Sakura::Box::Config*> lit;
-    for (auto* box : Direct<Sakura::Box>(dock)) {
+    for (auto* box : Find<Sakura::Box>(dock)) {
         if (box->config().topLit && !box->config().instances.empty()) {
             lit.push_back(&box->config());
         }
@@ -2111,7 +2112,6 @@ TEST_CASE("Maximize buttons appear only for maximizable panes with company", "[c
 }
 
 TEST_CASE("A maximized tile hides the other surfaces until restored", "[core][sakura][dock]") {
-    const ImGuiContextGuard imgui;
     SakuraTest::FakeWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;

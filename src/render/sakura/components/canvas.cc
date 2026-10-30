@@ -3,19 +3,17 @@
 #include <jetstream/render/base.hh>
 #include <jetstream/render/components/generic.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
+#include "../metrics.hh"
 #include "../input.hh"
 #include "../detail/access.hh"
 #include "../detail/component.hh"
 #include "../detail/drawable.hh"
+#include "../detail/helpers.hh"
 #include "../detail/input_router.hh"
 #include "../surface_view.hh"
 
-#include "jetstream/render/tools/imgui_blend_ext.h"
-
 #include <algorithm>
-#include <cmath>
-#include <limits>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -91,31 +89,26 @@ struct Canvas::Impl {
         Render::Window* render = nullptr;
         Extent2D<U64> framebufferSize = {0, 0};
         F32 pixelRatio = 0.0f;
-        F32 scalingFactor = 0.0f;
-        Extent2D<F32> framebufferScale = {0.0f, 0.0f};
+        Render::WindowMetrics metrics;
         bool windowFocused = false;
+
+        bool operator==(const Environment&) const = default;
     };
     std::optional<Environment> environment;
 
     void refreshEnvironment(const Context& ctx) {
-        const F32 scaling = ctx.render ? ctx.render->scalingFactor() : 0.0f;
-        const Extent2D<F32> scale = ctx.render ? ctx.render->framebufferScale() : Extent2D<F32>{0.0f, 0.0f};
-        if (environment.has_value() && environment->render == ctx.render &&
-            environment->framebufferSize == ctx.framebufferSize && environment->pixelRatio == ctx.pixelRatio &&
-            environment->scalingFactor == scaling && environment->framebufferScale == scale &&
-            environment->windowFocused == ctx.windowFocused &&
-            environment->palette == ctx.palette.get()) {
-            return;
-        }
-        environment = Environment{
+        Environment next{
             .palette = ctx.palette.get(),
             .render = ctx.render,
             .framebufferSize = ctx.framebufferSize,
             .pixelRatio = ctx.pixelRatio,
-            .scalingFactor = scaling,
-            .framebufferScale = scale,
+            .metrics = ctx.render ? ctx.render->metrics() : Render::WindowMetrics{},
             .windowFocused = ctx.windowFocused,
         };
+        if (environment == next) {
+            return;
+        }
+        environment = std::move(next);
         Access::invalidateLayout(*root);
     }
 
@@ -149,10 +142,7 @@ struct Canvas::Impl {
     }
 
     F32 currentPixelRatio() const {
-        if (lastResize.has_value() && lastResize->scale > 0.0f) {
-            return lastResize->scale * 2.0f;
-        }
-        return 1.0f;
+        return lastResize.has_value() ? DisplayMetrics::PixelRatio(*lastResize) : 1.0f;
     }
 
     Extent2D<U64> resolveFramebufferSize() const {
@@ -175,7 +165,7 @@ struct Canvas::Impl {
             .mouse = mouse,
             .time = ctx.input ? ctx.input->time : 0.0,
             .deltaTime = ctx.input ? ctx.input->deltaTime : 0.0f,
-            .frame = static_cast<U64>(ImGui::GetFrameCount()),
+            .frame = renderWindow->frameIndex(),
             .hoverDelay = kHoverDelay,
         };
     }
@@ -328,8 +318,7 @@ struct Canvas::Impl {
             return Result::SUCCESS;
         }
 
-        const bool underlays = UnderlaysAvailable(window->supportsEraseBlending(),
-                                                  ImGui::PremultipliedAlphaCallback != nullptr, config.clearColor);
+        const bool underlays = UnderlaysAvailable(window->supportsEraseBlending(), config.clearColor);
         const bool underlaysChanged = bound && underlays != context.underlays;
         const bool rebuildNeeded = !bound || boundWindow != window || releasePending || underlaysChanged ||
                                    Access::resourceDirty(*root) ||
@@ -502,22 +491,23 @@ struct Canvas::Impl {
         middleHeld = routed.middle;
     }
 
-    void emitUnderlays(ImDrawList* drawList) const {
+    std::vector<Render::PresentList::Layer> collectUnderlays(const Rect& windowClip) const {
+        std::vector<Render::PresentList::Layer> layers;
         if (screenRect.width <= 0.0f || screenRect.height <= 0.0f || !framebuffer) {
-            return;
+            return layers;
         }
         for (const auto& attachment : attachments) {
             const auto underlay = attachment.drawable ? attachment.drawable->underlay() : std::nullopt;
             if (!underlay || underlay->texture->raw() == 0) {
                 continue;
             }
-            const Rect clip = MapToScreen(underlay->clip, screenRect, framebuffer->size());
-            const Rect rect = MapToScreen(underlay->rect, screenRect, underlay->frame);
-            drawList->PushClipRect(ImVec2(clip.x, clip.y), ImVec2(clip.right(), clip.bottom()), true);
-            drawList->AddImage(ImTextureRef(static_cast<ImTextureID>(underlay->texture->raw())), ImVec2(rect.x, rect.y),
-                               ImVec2(rect.right(), rect.bottom()));
-            drawList->PopClipRect();
+            layers.push_back({
+                .texture = underlay->texture,
+                .rect = MapToScreen(underlay->rect, screenRect, underlay->frame),
+                .clip = Intersect(MapToScreen(underlay->clip, screenRect, framebuffer->size()), windowClip),
+            });
         }
+        return layers;
     }
 
     Result occludeHidden() {
@@ -575,16 +565,14 @@ void Canvas::update(Config config) {
     }
 }
 
-void Canvas::render(const Sakura::Context& ctx) {
+void Canvas::render(const Sakura::Context& ctx, const Rect& region) {
     impl->renderWindow = ctx.render;
     impl->cursor = SurfaceCursor::Default;
     impl->inputDispatched = false;
     impl->inputDirtied = false;
 
-    const Extent2D<F32> surfaceSize = {
-        std::max(0.0f, Unscale(ctx, ImGui::GetContentRegionAvail().x)),
-        std::max(0.0f, Unscale(ctx, ImGui::GetContentRegionAvail().y)),
-    };
+    const Extent2D<F32> surfaceSize = DisplayMetrics::LogicalSize(Metrics(ctx), {region.width, region.height});
+    const Rect clip = DisplayMetrics::RootClip(Metrics(ctx), region);
 
     if (!impl->bound) {
         if (const auto resize = ResolveSurfaceResize(ctx, surfaceSize)) {
@@ -627,7 +615,6 @@ void Canvas::render(const Sakura::Context& ctx) {
     }
 
     if (!impl->bound) {
-        ImGui::Dummy(Private::ToImVec2({Scale(ctx, surfaceSize.x), Scale(ctx, surfaceSize.y)}));
         return;
     }
 
@@ -640,28 +627,17 @@ void Canvas::render(const Sakura::Context& ctx) {
             .id = impl->surfaceId,
             .size = surfaceSize,
             .premultiplied = impl->context.underlays,
-            .resolveTexture = [impl = impl.get()]() {
-                return impl->framebuffer ? impl->framebuffer->raw() : 0;
+            .resolveTexture = [impl = impl.get()]() -> std::shared_ptr<const Render::Texture> {
+                return impl->framebuffer;
             },
             .onSize = [impl = impl.get()](const SurfaceResize& resize) {
                 impl->handleResize(resize);
             },
         });
     }
-    auto* drawList = ImGui::GetWindowDrawList();
-    ImDrawListSplitter splitter;
     const bool layered = impl->context.underlays;
-    if (layered) {
-        splitter.Split(drawList, 2);
-        splitter.SetCurrentChannel(drawList, 1);
-    }
-    impl->surfaceView.render(ctx);
-    impl->screenRect = {
-        ImGui::GetItemRectMin().x,
-        ImGui::GetItemRectMin().y,
-        ImGui::GetItemRectSize().x,
-        ImGui::GetItemRectSize().y,
-    };
+    const auto presented = impl->surfaceView.render(ctx, region, clip);
+    impl->screenRect = presented.rect;
     ++impl->dispatchDepth;
     impl->consumeInput(ctx.input);
     if (!impl->hovered && !impl->active && !impl->middleHeld && impl->mouse.has_value()) {
@@ -678,7 +654,7 @@ void Canvas::render(const Sakura::Context& ctx) {
         impl->cursor = hit->cursor;
     }
     if (impl->hovered || impl->active) {
-        Private::ApplyCursor(impl->cursor);
+        Private::ApplyCursor(ctx, impl->cursor);
     }
     if (!impl->hovered && !impl->active && !impl->middleHeld) {
         impl->mouse.reset();
@@ -702,11 +678,13 @@ void Canvas::render(const Sakura::Context& ctx) {
 
     (void)impl->paintTree();
 
+    std::vector<Render::PresentList::Layer> underlays;
     if (layered) {
         impl->guardUnderlays();
-        splitter.SetCurrentChannel(drawList, 0);
-        impl->emitUnderlays(drawList);
-        splitter.Merge(drawList);
+        underlays = impl->collectUnderlays(clip);
+    }
+    if (presented.layer.has_value() || !underlays.empty()) {
+        ctx.render->present(Render::PresentList::Build(Metrics(ctx), underlays, presented.layer, presented.blend));
     }
 }
 

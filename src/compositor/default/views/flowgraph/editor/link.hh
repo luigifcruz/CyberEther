@@ -3,7 +3,7 @@
 
 #include "node.hh"
 
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include <functional>
 #include <string>
@@ -13,7 +13,7 @@
 namespace Jetstream {
 
 inline std::string FlowgraphLinkId(const std::string& consumerName, const std::string& inputSlot) {
-    return consumerName + ":" + inputSlot + "link";
+    return jst::fmt::format("{}:{}link", consumerName, inputSlot);
 }
 
 struct FlowgraphLink {

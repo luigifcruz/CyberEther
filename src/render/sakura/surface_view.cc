@@ -1,9 +1,8 @@
 #include "surface_view.hh"
 
-#include "helpers.hh"
+#include "metrics.hh"
 #include "surface_presenter.hh"
-
-#include "jetstream/render/tools/imgui_blend_ext.h"
+#include "detail/helpers.hh"
 
 #include <cmath>
 #include <optional>
@@ -11,6 +10,8 @@
 namespace Jetstream::Sakura {
 
 namespace {
+
+constexpr F32 kFringe = 1.0f;
 
 Extent2D<F32> ResolveSurfaceLogicalDrawSize(const SurfaceView::Config& config,
                                             const Extent2D<F32>& available) {
@@ -28,18 +29,6 @@ Extent2D<F32> ResolveSurfaceLogicalDrawSize(const SurfaceView::Config& config,
     }
 
     return size;
-}
-
-void PremultiplyVertexColors(ImDrawList* drawList, const int vtxStart) {
-    for (int i = vtxStart; i < drawList->VtxBuffer.Size; ++i) {
-        ImU32& col = drawList->VtxBuffer[i].col;
-        const ImU32 alpha = (col >> IM_COL32_A_SHIFT) & 0xFF;
-        const auto scale = [&](const int shift) {
-            return ((((col >> shift) & 0xFF) * alpha + 127) / 255) << shift;
-        };
-        col = scale(IM_COL32_R_SHIFT) | scale(IM_COL32_G_SHIFT) | scale(IM_COL32_B_SHIFT) |
-              (alpha << IM_COL32_A_SHIFT);
-    }
 }
 
 }  // namespace
@@ -68,68 +57,51 @@ void SurfaceView::update(Config config) {
     this->impl->config = std::move(config);
 }
 
-void SurfaceView::render(const Context& ctx) const {
+SurfaceView::Frame SurfaceView::render(const Context& ctx, const Rect& region, const Rect& clip) const {
     const auto& config = impl->config;
-    const int frame = ImGui::GetFrameCount();
+    const U64 frame = ctx.render->frameIndex();
     impl->presenter.beginFrame(frame);
 
-    const Extent2D<F32> available = Unscale(ctx, Private::ToExtent2D(ImGui::GetContentRegionAvail()));
+    const Extent2D<F32> origin = DisplayMetrics::Snap(Metrics(ctx), {region.x, region.y});
+    Frame result{.rect = {origin.x, origin.y, 0.0f, 0.0f}};
+
+    const Extent2D<F32> available = DisplayMetrics::LogicalSize(Metrics(ctx), {region.width, region.height});
     const Extent2D<F32> logicalDrawSize = ResolveSurfaceLogicalDrawSize(config, available);
     if (logicalDrawSize.x <= 0.0f || logicalDrawSize.y <= 0.0f) {
-        return;
+        return result;
     }
     const auto resolvedResize = ResolveSurfaceResize(ctx, logicalDrawSize);
     impl->presenter.emitResize(resolvedResize, config.onSize);
     Extent2D<F32> displaySize = Scale(ctx, logicalDrawSize);
     if (resolvedResize.has_value()) {
-        displaySize = FramebufferToDisplay(ctx, resolvedResize->framebufferSize);
+        displaySize = DisplayMetrics::FramebufferToDisplay(Metrics(ctx), resolvedResize->framebufferSize);
     }
+    result.rect.width = displaySize.x;
+    result.rect.height = displaySize.y;
 
-    const U64 texture = config.resolveTexture
+    const std::shared_ptr<const Render::Texture> texture = config.resolveTexture
         ? config.resolveTexture()
-        : config.textureSource ? config.textureSource->raw() : config.texture;
-    if (texture == 0) {
-        return;
+        : config.textureSource;
+    if (!texture || texture->raw() == 0) {
+        return result;
     }
 
-    const ImTextureRef textureRef(static_cast<ImTextureID>(texture));
-    if (textureRef.GetTexID() == ImTextureID_Invalid) {
-        return;
-    }
-
-    const ImVec2 surfaceSize = Private::ToImVec2(displaySize);
-    const ImVec2 cursorPos = Private::ToImVec2(
-        SnapToFramebuffer(ctx, Private::ToExtent2D(ImGui::GetCursorScreenPos())));
-    ImGui::SetCursorScreenPos(cursorPos);
-    const ImVec2 cursorEnd(cursorPos.x + surfaceSize.x, cursorPos.y + surfaceSize.y);
-    auto* drawList = ImGui::GetWindowDrawList();
-    ImRect imageRect(cursorPos, cursorEnd);
-    imageRect.Expand(drawList->_FringeScale);
-    const bool visible = imageRect.Overlaps(ImRect(drawList->GetClipRectMin(), drawList->GetClipRectMax()));
-    if (config.textureSource && config.textureSource->raw() == texture) {
+    const bool visible = Overlaps(Inflate(result.rect, kFringe), clip);
+    if (config.textureSource && config.textureSource == texture) {
         config.textureSource->presentationHint(frame, visible);
     }
     const bool settled = impl->presenter.settle(config.textureSource.get(), resolvedResize, frame);
     if (visible && settled) {
-        const bool premultiplied = config.premultiplied && ImGui::PremultipliedAlphaCallback;
-        if (premultiplied) {
-            drawList->AddCallback(ImGui::PremultipliedAlphaCallback, nullptr);
-        }
-        const int vtxStart = drawList->VtxBuffer.Size;
-        drawList->AddImageRounded(textureRef,
-                                  cursorPos,
-                                  cursorEnd,
-                                  ImVec2(0.0f, 0.0f),
-                                  ImVec2(1.0f, 1.0f),
-                                  IM_COL32_WHITE,
-                                  std::max(0.0f, config.rounding));
-        if (premultiplied) {
-            PremultiplyVertexColors(drawList, vtxStart);
-            drawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
-        }
+        result.layer = Render::PresentList::Layer{
+            .texture = texture,
+            .rect = result.rect,
+            .clip = clip,
+        };
+        result.blend = config.premultiplied ? Render::PresentList::Blend::Premultiplied
+                                     : Render::PresentList::Blend::Straight;
     }
 
-    ImGui::Dummy(surfaceSize);
+    return result;
 }
 
 }  // namespace Jetstream::Sakura

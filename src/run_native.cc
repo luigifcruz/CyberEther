@@ -96,12 +96,42 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
 
 Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
     Instance::Remote::Config config = {
-        .broker = settings.remote.brokerUrl,
-        .autoJoinSessions = settings.remote.autoJoinSessions,
-        .framerate = static_cast<U32>(settings.remote.framerate),
-        .encoder = StringToRemoteEncoder(settings.remote.encoder),
-        .codec = StringToRemoteCodec(settings.remote.codec),
+        .access = {
+            .autoApprove = settings.remote.access.autoApprove,
+        },
+        .video = {
+            .framerate = static_cast<U32>(settings.remote.video.framerate),
+            .codec = StringToRemoteCodec(settings.remote.video.codec),
+            .encoder = StringToRemoteEncoder(settings.remote.video.encoder),
+        },
+        .broker = {
+            .address = settings.remote.broker.address,
+            .port = static_cast<U16>(settings.remote.broker.port),
+            .publicUrl = settings.remote.broker.publicUrl,
+            .certificate = settings.remote.broker.certificate,
+            .key = settings.remote.broker.key,
+        },
+        .media = {
+            .transport = StringToRemoteTransport(settings.remote.media.transport),
+            .minPort = static_cast<U16>(settings.remote.media.minPort),
+            .maxPort = static_cast<U16>(settings.remote.media.maxPort),
+            .address = settings.remote.media.address,
+        },
     };
+
+    if (!IsRemotePortRangeValid(settings.remote.media.minPort, settings.remote.media.maxPort)) {
+        JST_ERROR("Invalid remote port range {}-{}.", settings.remote.media.minPort, settings.remote.media.maxPort);
+        throw Result::ERROR;
+    }
+
+    if (!settings.remote.broker.publicUrl.empty() && !IsRemotePublicUrlValid(settings.remote.broker.publicUrl)) {
+        throw Result::ERROR;
+    }
+
+    if (settings.remote.broker.port > 65535) {
+        JST_ERROR("Invalid broker port {}.", settings.remote.broker.port);
+        throw Result::ERROR;
+    }
 
     return config;
 }
@@ -142,6 +172,20 @@ std::string RemoteEncoderOptionsString() {
     return options;
 }
 
+std::string RemoteTransportOptionsString() {
+    std::string options;
+
+    for (const auto transport : RemoteTransportTypes) {
+        if (!options.empty()) {
+            options += ", ";
+        }
+
+        options += GetRemoteTransportName(transport);
+    }
+
+    return options;
+}
+
 enum class CommandType {
     Run,
     Benchmark,
@@ -167,6 +211,12 @@ bool IsRemoteCodec(const std::string& value) {
 bool IsRemoteEncoder(const std::string& value) {
     return std::any_of(RemoteEncoderTypes.begin(), RemoteEncoderTypes.end(), [&](const auto encoder) {
         return value == GetRemoteEncoderName(encoder);
+    });
+}
+
+bool IsRemoteTransport(const std::string& value) {
+    return std::any_of(RemoteTransportTypes.begin(), RemoteTransportTypes.end(), [&](const auto transport) {
+        return value == GetRemoteTransportName(transport);
     });
 }
 
@@ -332,9 +382,9 @@ static void printUsage(const char* program,
         jst::fmt::print("  {} benchmark [options] [block]\n", program);
         jst::fmt::print("  {} update [--install]\n\n", program);
         jst::fmt::print("Commands:\n");
-        jst::fmt::print("  run                          Launch CyberEther (default)\n");
-        jst::fmt::print("  benchmark                    Run performance benchmarks\n");
-        jst::fmt::print("  update                       Check for application updates\n\n");
+        jst::fmt::print("  run                                   Launch CyberEther (default)\n");
+        jst::fmt::print("  benchmark                             Run performance benchmarks\n");
+        jst::fmt::print("  update                                Check for application updates\n\n");
     } else if (*command == CommandType::Benchmark) {
         jst::fmt::print("  {} benchmark [options] [block]\n\n", program);
     } else if (*command == CommandType::Update) {
@@ -344,49 +394,68 @@ static void printUsage(const char* program,
     }
 
     jst::fmt::print("Global Options:\n");
-    jst::fmt::print("  -h, --help                   Show this help\n");
-    jst::fmt::print("  -v, -vv                      Set debug or trace log level\n");
-    jst::fmt::print("  -V, --version                Show version\n\n");
+    jst::fmt::print("  -h, --help                            Show this help\n");
+    jst::fmt::print("  -v, -vv                               Set debug or trace log level\n");
+    jst::fmt::print("  -V, --version                         Show version\n\n");
 
     if (!command.has_value() || *command != CommandType::Update) {
         jst::fmt::print("Runtime Options:\n");
-        jst::fmt::print("  --dependency-policy <policy> Dependency installation policy (current: {})\n",
+        jst::fmt::print("  --dependency-policy <policy>          Dependency installation policy (current: {})\n",
                         settings.runtime.dependencyPolicy);
-        jst::fmt::print("  {:<29}  Choices: prompt, allow, deny\n", "");
-        jst::fmt::print("  --python-runtime <path>      Python executable or library\n");
-        jst::fmt::print("  --device-index <index>       Vulkan and CUDA device index (current: {})\n",
+        jst::fmt::print("  {:<38}  Choices: prompt, allow, deny\n", "");
+        jst::fmt::print("  --python-runtime <path>               Python executable or library\n");
+        jst::fmt::print("  --device-index <index>                Vulkan and CUDA device index (current: {})\n",
                         settings.graphics.deviceId);
-        jst::fmt::print("  --plugin <path>              Load a .cep plugin (repeatable)\n\n");
+        jst::fmt::print("  --plugin <path>                       Load a .cep plugin (repeatable)\n\n");
     }
 
     if (!command.has_value() || *command == CommandType::Run) {
         jst::fmt::print("Graphics Options:\n");
-        jst::fmt::print("  --renderer <renderer>        Preferred graphics backend (current: {})\n", renderer);
-        jst::fmt::print("  {:<29}  Choices: metal, vulkan\n", "");
-        jst::fmt::print("  --headless                   Run without a window\n");
-        jst::fmt::print("  --size <WxH>                 Viewport size (current: {}x{})\n",
+        jst::fmt::print("  --renderer <renderer>                 Preferred graphics backend (current: {})\n", renderer);
+        jst::fmt::print("  {:<38}  Choices: metal, vulkan\n", "");
+        jst::fmt::print("  --headless                            Run without a window\n");
+        jst::fmt::print("  --size <WxH>                          Viewport size (current: {}x{})\n",
                         settings.graphics.size.width,
                         settings.graphics.size.height);
-        jst::fmt::print("  --scale <factor>             Interface scale factor (current: {})\n",
+        jst::fmt::print("  --scale <factor>                      Interface scale factor (current: {})\n",
                         interfaceScale);
-        jst::fmt::print("  --theme <name>               Interface color theme (current: {})\n",
+        jst::fmt::print("  --theme <name>                        Interface color theme (current: {})\n",
                         settings.interface.themeKey);
-        jst::fmt::print("  --framerate <fps>            Target frame rate (current: {})\n\n",
+        jst::fmt::print("  --framerate <fps>                     Target frame rate (current: {})\n\n",
                         settings.graphics.framerate);
         jst::fmt::print("CyberEther Remote Options:\n");
-        jst::fmt::print("  --remote                     Enable CyberEther Remote\n");
-        jst::fmt::print("  --broker <url>               Broker URL (current: {})\n",
-                        settings.remote.brokerUrl);
-        jst::fmt::print("  --auto-join-sessions         Automatically join remote sessions\n");
-        jst::fmt::print("  --codec <codec>              Streaming codec (current: {})\n",
-                        settings.remote.codec);
-        jst::fmt::print("  {:<29}  Choices: {}\n", "", codecOptions);
-        jst::fmt::print("  --encoder <encoder>          Streaming encoder (current: {})\n",
-                        settings.remote.encoder);
-        jst::fmt::print("  {:<29}  Choices: {}\n", "", encoderChoicesFirst);
+        jst::fmt::print("  --remote                              Enable CyberEther Remote\n");
+        jst::fmt::print("  --remote-auto-approve <on|off>        Approve viewers automatically (current: {})\n",
+                        settings.remote.access.autoApprove ? "on" : "off");
+        jst::fmt::print("  --remote-framerate <fps>              Video framerate (current: {})\n",
+                        settings.remote.video.framerate);
+        jst::fmt::print("  --remote-codec <codec>                Video codec (current: {})\n",
+                        settings.remote.video.codec);
+        jst::fmt::print("  {:<38}  Choices: {}\n", "", codecOptions);
+        jst::fmt::print("  --remote-encoder <encoder>            Video encoder (current: {})\n",
+                        settings.remote.video.encoder);
+        jst::fmt::print("  {:<38}  Choices: {}\n", "", encoderChoicesFirst);
         if (!encoderChoicesSecond.empty()) {
-            jst::fmt::print("  {:<29}           {}\n", "", encoderChoicesSecond);
+            jst::fmt::print("  {:<38}           {}\n", "", encoderChoicesSecond);
         }
+        jst::fmt::print("  --remote-broker-address <ip>          Broker address (current: {})\n",
+                        settings.remote.broker.address);
+        jst::fmt::print("  --remote-broker-port <port>           Broker port (current: {})\n",
+                        settings.remote.broker.port);
+        jst::fmt::print("  --remote-broker-public-url <url>      Broker public URL (current: {})\n",
+                        settings.remote.broker.publicUrl.empty() ? "auto" : settings.remote.broker.publicUrl);
+        jst::fmt::print("  --remote-broker-tls-cert <path>       Broker TLS certificate (current: {})\n",
+                        settings.remote.broker.certificate.empty() ? "none" : settings.remote.broker.certificate);
+        jst::fmt::print("  --remote-broker-tls-key <path>        Broker TLS key (current: {})\n",
+                        settings.remote.broker.key.empty() ? "none" : settings.remote.broker.key);
+        jst::fmt::print("  --remote-media-transport <transport>  Media transport (current: {})\n",
+                        settings.remote.media.transport);
+        jst::fmt::print("  {:<38}  Choices: {}\n", "", RemoteTransportOptionsString());
+        jst::fmt::print("  --remote-media-port-range <min-max>   Media port range (current: {})\n",
+                        settings.remote.media.minPort == 0 ? "any" : GetRemotePortRangeName(settings.remote.media.minPort,
+                                                                                      settings.remote.media.maxPort));
+        jst::fmt::print("  --remote-media-address <ip>           Media address (current: {})\n",
+                        settings.remote.media.address.empty() ? "auto" : settings.remote.media.address);
     }
 
     if (!command.has_value() || *command == CommandType::Benchmark) {
@@ -394,9 +463,9 @@ static void printUsage(const char* program,
             jst::fmt::print("\n");
         }
         jst::fmt::print("Benchmark Options:\n");
-        jst::fmt::print("  --format <format>            Output format (current: {})\n",
+        jst::fmt::print("  --format <format>                     Output format (current: {})\n",
                         settings.benchmark.format);
-        jst::fmt::print("  {:<29}  Choices: markdown, json, csv\n", "");
+        jst::fmt::print("  {:<38}  Choices: markdown, json, csv\n", "");
     }
 
     if (!command.has_value() || *command == CommandType::Update) {
@@ -404,7 +473,7 @@ static void printUsage(const char* program,
             jst::fmt::print("\n");
         }
         jst::fmt::print("Update Options:\n");
-        jst::fmt::print("  --install                    Download and install an available update\n");
+        jst::fmt::print("  --install                             Download and install an available update\n");
     }
 
     jst::fmt::print("\nExamples:\n");
@@ -772,64 +841,183 @@ int Run(int argc, char* argv[]) {
             continue;
         }
 
-        if (!positionalOnly && arg == "--broker") {
+        if (!positionalOnly && arg == "--remote-broker-address") {
             std::string value;
             if (!takeValue(value)) {
-                return PrintUsageError(argv[0], "Missing value for --broker. Expected a URL.");
+                return PrintUsageError(argv[0], "Missing value for --remote-broker-address. Expected an IP address.");
             }
-            if (!IsRemoteBrokerSchemeSupported(value)) {
-                return PrintUsageError(argv[0], jst::fmt::format(
-                    "Invalid value for --broker: '{}'. Expected an HTTP or HTTPS URL.", value));
-            }
-            settings.remote.brokerUrl = value;
+            settings.remote.broker.address = value;
             runOption = arg;
             remoteSettingOption = arg;
             continue;
         }
 
-        if (!positionalOnly && arg == "--codec") {
+        if (!positionalOnly && arg == "--remote-broker-port") {
+            std::string value;
+            U64 port = 0;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-broker-port. Expected a port number.");
+            }
+            if (!ParseDeviceId(value, port) || port > 65535) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-broker-port: '{}'. Expected a port between 0 and 65535.", value));
+            }
+            settings.remote.broker.port = port;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-broker-public-url") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-broker-public-url. Expected a URL.");
+            }
+            if (!IsRemotePublicUrlValid(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-broker-public-url: '{}'. Expected an HTTP or HTTPS origin such as https://host:port.", value));
+            }
+            settings.remote.broker.publicUrl = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-broker-tls-cert") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-broker-tls-cert. Expected a file path.");
+            }
+            settings.remote.broker.certificate = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-broker-tls-key") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-broker-tls-key. Expected a file path.");
+            }
+            settings.remote.broker.key = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-framerate") {
+            std::string value;
+            U64 framerate = 0;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-framerate. Expected a positive integer.");
+            }
+            if (!ParsePositiveInteger(value, framerate) || framerate > std::numeric_limits<U32>::max()) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-framerate: '{}'. Expected a positive integer.", value));
+            }
+            settings.remote.video.framerate = framerate;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-codec") {
             std::string value;
             if (!takeValue(value)) {
                 return PrintUsageError(argv[0], jst::fmt::format(
-                    "Missing value for --codec. Expected one of: {}.", RemoteCodecOptionsString()));
+                    "Missing value for --remote-codec. Expected one of: {}.", RemoteCodecOptionsString()));
             }
             value = Lowercase(value);
             if (!IsRemoteCodec(value)) {
                 return PrintUsageError(argv[0], jst::fmt::format(
-                    "Invalid value for --codec: '{}'. Expected one of: {}.",
+                    "Invalid value for --remote-codec: '{}'. Expected one of: {}.",
                     value,
                     RemoteCodecOptionsString()));
             }
-            settings.remote.codec = value;
+            settings.remote.video.codec = value;
             runOption = arg;
             remoteSettingOption = arg;
             continue;
         }
 
-        if (!positionalOnly && arg == "--encoder") {
+        if (!positionalOnly && arg == "--remote-encoder") {
             std::string value;
             if (!takeValue(value)) {
                 return PrintUsageError(argv[0], jst::fmt::format(
-                    "Missing value for --encoder. Expected one of: {}.", RemoteEncoderOptionsString()));
+                    "Missing value for --remote-encoder. Expected one of: {}.", RemoteEncoderOptionsString()));
             }
             value = Lowercase(value);
             if (!IsRemoteEncoder(value)) {
                 return PrintUsageError(argv[0], jst::fmt::format(
-                    "Invalid value for --encoder: '{}'. Expected one of: {}.",
+                    "Invalid value for --remote-encoder: '{}'. Expected one of: {}.",
                     value,
                     RemoteEncoderOptionsString()));
             }
-            settings.remote.encoder = value;
+            settings.remote.video.encoder = value;
             runOption = arg;
             remoteSettingOption = arg;
             continue;
         }
 
-        if (!positionalOnly && arg == "--auto-join-sessions") {
-            if (const int error = rejectInlineValue()) {
-                return error;
+        if (!positionalOnly && arg == "--remote-media-transport") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Missing value for --remote-media-transport. Expected one of: {}.", RemoteTransportOptionsString()));
             }
-            settings.remote.autoJoinSessions = true;
+            value = Lowercase(value);
+            if (!IsRemoteTransport(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-media-transport: '{}'. Expected one of: {}.",
+                    value,
+                    RemoteTransportOptionsString()));
+            }
+            settings.remote.media.transport = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-media-port-range") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-media-port-range. Expected MIN-MAX.");
+            }
+            U16 minPort = 0;
+            U16 maxPort = 0;
+            if (!ParseRemotePortRange(value, minPort, maxPort)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-media-port-range: '{}'. Expected MIN-MAX between 1 and 65535.", value));
+            }
+            settings.remote.media.minPort = minPort;
+            settings.remote.media.maxPort = maxPort;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-media-address") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-media-address. Expected an IP address.");
+            }
+            settings.remote.media.address = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-auto-approve") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-auto-approve. Expected on or off.");
+            }
+            value = Lowercase(value);
+            if (value != "on" && value != "off") {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-auto-approve: '{}'. Expected on or off.", value));
+            }
+            settings.remote.access.autoApprove = value == "on";
             runOption = arg;
             remoteSettingOption = arg;
             continue;
@@ -913,17 +1101,16 @@ int Run(int argc, char* argv[]) {
             "Option '{}' requires --remote.", remoteSettingOption));
     }
 
+    if (remoteEnabled && settings.remote.broker.certificate.empty() != settings.remote.broker.key.empty()) {
+        return PrintUsageError(argv[0], "The broker needs both --remote-broker-tls-cert and --remote-broker-tls-key.");
+    }
+
     Instance::Remote::Config remoteConfig;
     if (remoteEnabled) {
-        if (!IsRemoteBrokerSchemeSupported(settings.remote.brokerUrl)) {
-            return PrintUsageError(argv[0], jst::fmt::format(
-                "Invalid value for --broker: '{}'. Expected an HTTP or HTTPS URL.",
-                settings.remote.brokerUrl));
-        }
         try {
             remoteConfig = BuildRemoteConfig(settings);
         } catch (const Result&) {
-            return PrintUsageError(argv[0], "The configured CyberEther Remote codec or encoder is invalid.");
+            return PrintUsageError(argv[0], "The configured CyberEther Remote settings are invalid.");
         }
     }
 
@@ -945,6 +1132,8 @@ int Run(int argc, char* argv[]) {
     if (command == CommandType::Benchmark) {
         benchmarkLogLevel.emplace(-1);
     }
+
+    Platform::IgnoreBrokenPipe();
 
     std::optional<InterruptHandlerGuard> interruptHandler;
     Platform::WorkerThread computeThread;
@@ -1152,7 +1341,7 @@ int Run(int argc, char* argv[]) {
         if (remoteEnabled && instance->remote()) {
             supervisor = std::make_unique<Instance::Remote::Supervisor>(
                 instance->remote().get(),
-                remoteConfig.autoJoinSessions
+                remoteConfig.access.autoApprove
             );
             supervisor->print();
             supervisor->start();

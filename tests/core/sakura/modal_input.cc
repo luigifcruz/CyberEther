@@ -1,12 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
-#include <jetstream/render/sakura/components/controls.hh>
+#include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/floating_layer.hh>
 #include <jetstream/render/sakura/components/image.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/modal_layer.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
-#include <jetstream/render/sakura/components/shell.hh>
+#include <jetstream/render/sakura/components/popup.hh>
 #include <jetstream/render/sakura/components/shortcuts.hh>
+#include <jetstream/render/sakura/components/surface_image.hh>
 #include <jetstream/render/sakura/components/table.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include "render/sakura/detail/input_router.hh"
 #include "render/sakura/detail/root_component.hh"
@@ -139,7 +144,6 @@ struct ModalBody : Sakura::Component {
 };
 
 struct ModalFixture {
-    ImGuiContext* imgui = ImGui::CreateContext();
     Sakura::Context ctx;
     Sakura::RootComponent root;
     Sakura::InputRouter router;
@@ -150,11 +154,11 @@ struct ModalFixture {
         ctx.framebufferSize = {800, 600};
         ctx.windowFocused = true;
     }
-    ~ModalFixture() { ImGui::DestroyContext(imgui); }
 
     void place() {
         ++ctx.frame;
         ctx.time += 0.02;
+        Sakura::Access::advance(ctx.time);
         Sakura::Access::layout(root, ctx, {0, 0, 800, 600});
         Sakura::Access::present(root, ctx.frame);
         Sakura::Access::settleFocus(root);
@@ -216,7 +220,9 @@ struct LinkFixture {
                       {.id = "dst", .header = false, .pins = {{.id = "in", .isInput = true, .label = "in"}},
                        .dimensions = {120, 0}, .gridPosition = Extent2D<F32>{1040, 240}}},
             .onLinkCreated = [&](auto start, auto end) { links.emplace_back(std::move(start), std::move(end)); },
-            .onViewportGridCenterChange = [&](auto next) { center = next; },
+            .onViewportGridChange = [&](Rect next) {
+                center = Extent2D<F32>{next.x + next.width * 0.5f, next.y + next.height * 0.5f};
+            },
         };
         editor.update(config);
         layer.set(editor);

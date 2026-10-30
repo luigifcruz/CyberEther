@@ -16,10 +16,16 @@
 #include <string_view>
 #include <utility>
 
+#include "environment.hh"
 #include "jetstream/platform.hh"
 
 #if defined(JST_OS_WINDOWS)
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #undef ERROR
 #undef FATAL
@@ -40,25 +46,6 @@ constexpr std::size_t kProcessOutputLimit = 1024 * 1024;
 void SeedPaths(std::string& configPath, std::string& cachePath) {
     configPath = kInitialConfigPath;
     cachePath = kInitialCachePath;
-}
-
-bool SetEnvValue(const char* name, const std::optional<std::string>& value) {
-#if defined(JST_OS_WINDOWS)
-    try {
-        const auto nativeName = Platform::PathFromUtf8(name).native();
-        const auto nativeValue = value ? Platform::PathFromUtf8(*value).native() : std::wstring();
-        return SetEnvironmentVariableW(nativeName.c_str(), value ? nativeValue.c_str() : nullptr) !=
-               FALSE;
-    } catch (...) {
-        return false;
-    }
-#else
-    if (value) {
-        return setenv(name, value->c_str(), 1) == 0;
-    }
-
-    return unsetenv(name) == 0;
-#endif
 }
 
 #if defined(JST_OS_WINDOWS)
@@ -90,25 +77,7 @@ struct ScopedWideEnvVar {
 
 #endif
 
-struct ScopedEnvVar {
-    explicit ScopedEnvVar(const char* name) : name(name) {
-        std::string value;
-        if (Platform::EnvironmentVariable(name, value) == Result::SUCCESS) {
-            originalValue = std::move(value);
-        }
-    }
-
-    ~ScopedEnvVar() {
-        (void)SetEnvValue(name, originalValue);
-    }
-
-    bool set(const std::optional<std::string>& value) const {
-        return SetEnvValue(name, value);
-    }
-
-    const char* name;
-    std::optional<std::string> originalValue;
-};
+using ScopedEnvVar = TestSupport::ScopedEnvironment;
 
 struct TempPathRoot {
     explicit TempPathRoot(const std::string& label) {
@@ -250,19 +219,19 @@ TEST_CASE("Platform environment variables preserve values", "[core][platform][en
     REQUIRE(environment.set("cyberether environment=value"));
 
     std::string value;
-    REQUIRE(Platform::EnvironmentVariable(environment.name, value) == Result::SUCCESS);
+    REQUIRE(Platform::EnvironmentVariable(environment.name(), value) == Result::SUCCESS);
     REQUIRE(value == "cyberether environment=value");
 
 #if !defined(JST_OS_WINDOWS)
     REQUIRE(environment.set(std::string()));
     value = "unchanged";
-    REQUIRE(Platform::EnvironmentVariable(environment.name, value) == Result::SUCCESS);
+    REQUIRE(Platform::EnvironmentVariable(environment.name(), value) == Result::SUCCESS);
     REQUIRE(value.empty());
 #endif
 
     REQUIRE(environment.set(std::nullopt));
     value = "unchanged";
-    REQUIRE(Platform::EnvironmentVariable(environment.name, value) == Result::ERROR);
+    REQUIRE(Platform::EnvironmentVariable(environment.name(), value) == Result::ERROR);
     REQUIRE(value == "unchanged");
 }
 
@@ -272,26 +241,26 @@ TEST_CASE("Platform environment fixtures restore present and absent values",
 
     REQUIRE(externalEnvironment.set("baseline value"));
     {
-        const ScopedEnvVar restorePresent(externalEnvironment.name);
+        const ScopedEnvVar restorePresent(externalEnvironment.name());
         REQUIRE(restorePresent.set("temporary value"));
 
         std::string value;
-        REQUIRE(Platform::EnvironmentVariable(externalEnvironment.name, value) == Result::SUCCESS);
+        REQUIRE(Platform::EnvironmentVariable(externalEnvironment.name(), value) == Result::SUCCESS);
         REQUIRE(value == "temporary value");
     }
 
     std::string value;
-    REQUIRE(Platform::EnvironmentVariable(externalEnvironment.name, value) == Result::SUCCESS);
+    REQUIRE(Platform::EnvironmentVariable(externalEnvironment.name(), value) == Result::SUCCESS);
     REQUIRE(value == "baseline value");
 
     REQUIRE(externalEnvironment.set(std::nullopt));
     {
-        const ScopedEnvVar restoreAbsent(externalEnvironment.name);
+        const ScopedEnvVar restoreAbsent(externalEnvironment.name());
         REQUIRE(restoreAbsent.set("temporary value"));
     }
 
     value = "unchanged";
-    REQUIRE(Platform::EnvironmentVariable(externalEnvironment.name, value) == Result::ERROR);
+    REQUIRE(Platform::EnvironmentVariable(externalEnvironment.name(), value) == Result::ERROR);
     REQUIRE(value == "unchanged");
 }
 
@@ -312,17 +281,17 @@ TEST_CASE("Platform environment paths are native", "[core][platform][environment
     REQUIRE(environment.set(utf8Path));
 
     std::filesystem::path path;
-    REQUIRE(Platform::EnvironmentPath(environment.name, path) == Result::SUCCESS);
+    REQUIRE(Platform::EnvironmentPath(environment.name(), path) == Result::SUCCESS);
     REQUIRE(path == Platform::PathFromUtf8(utf8Path));
 
     REQUIRE(environment.set(std::string()));
     path = "unchanged";
-    REQUIRE(Platform::EnvironmentPath(environment.name, path) == Result::ERROR);
+    REQUIRE(Platform::EnvironmentPath(environment.name(), path) == Result::ERROR);
     REQUIRE(path == "unchanged");
 
     REQUIRE(environment.set(std::nullopt));
     path = "unchanged";
-    REQUIRE(Platform::EnvironmentPath(environment.name, path) == Result::ERROR);
+    REQUIRE(Platform::EnvironmentPath(environment.name(), path) == Result::ERROR);
     REQUIRE(path == "unchanged");
 
 #if defined(JST_OS_WINDOWS)

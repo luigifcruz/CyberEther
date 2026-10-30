@@ -9,7 +9,7 @@
 #include "compositor/default/presenters/flowgraph/pane.hh"
 #include "compositor/default/views/flowgraph/pane.hh"
 #include "flowgraph_fixture.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include <algorithm>
 #include <functional>
@@ -92,7 +92,6 @@ std::vector<std::string> LayoutPanes(const TileMeta& tiles) {
 }
 
 struct PaneRig : FlowgraphFixture {
-    ImGuiContextGuard imgui;
     MonoFontWindow window;
     Sakura::Context ctx = MakeContext();
     DefaultCompositorState state;
