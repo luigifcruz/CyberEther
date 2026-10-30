@@ -1,0 +1,282 @@
+---
+version: 2
+title: QPSK Eye Diagram
+summary: Explore a pulse-shaped QPSK eye at eight samples per symbol.
+author: Luigi & Paulo
+license: MIT
+description: 'Generates noisy, root-raised-cosine-shaped QPSK with Python, then displays a native Eye Diagram, spectrum, waterfall and recovered constellation. Requires Python with NumPy.'
+graph:
+  - name: explanation
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # QPSK Eye Diagram
+        **No radio needed. Requires Python with NumPy.**
+
+        Based on the 8-SPS QPSK demo: Python generates random symbols and applies a transmit root-raised-cosine filter. Noise is added, then a native RRC filter and AGC feed the native **Eye Diagram** before symbol decimation.
+
+        The eye replaces the Python eye-folding block, Range and Lineplot chain. The generator remains Python so you can experiment with pulse shaping.
+
+        ## Reading the eye
+        Two symbol periods span the plot, from -1 to +1. Density accumulates successive traces. Open regions between transitions are the eye openings; noise and timing mismatch close or smear them. The folding origin is fixed, not clock-recovered.
+
+        ## Try it
+        1. Keep **Samples per Symbol** at 8 to match the generator. Try 7 or 9 to see the eye lose alignment, then restore 8.
+        2. Compare **Interpolation** at 1x, 4x and 16x. Linear interpolation adds display points, not signal information.
+        3. Switch **Component** between in-phase and quadrature.
+        4. Raise **Noise Variance** from 0.005 to 0.05 and compare the eye and constellation.
+        5. Change **Persistence** to shorten or lengthen the density history. **Amplitude Min/Max** set the display range.
+
+        The **PSK Demodulator** recovers symbol timing and carrier phase for the constellation. Its output is symbol-rate data: use the oversampled AGC output for the eye instead.
+    meta:
+      node:
+        x: 20
+        y: 250
+        width: 420
+        height: 620
+  - name: noise
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      signalType: noise
+      signalDataType: CF32
+      sampleRate: 1000000
+      frequency: 0
+      amplitude: 1
+      noiseVariance: 0.005
+      bufferSize: 4096
+    meta:
+      node:
+        x: 20
+        y: 0
+        width: 200
+        height: 0
+  - name: python_qpsk
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |-
+        import numpy as np
+
+        def rrc_filter(x, sample_rate, symbol_rate, roll_off, taps, history):
+            sps, b = sample_rate / symbol_rate, roll_off
+            t = (np.arange(taps) - (taps - 1) / 2) / sps
+            edge = np.isclose(np.abs(4 * b * t), 1)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                h = np.sin(np.pi * t * (1 - b)) + 4 * b * t * np.cos(np.pi * t * (1 + b))
+                h /= np.pi * t * (1 - (4 * b * t) ** 2)
+                q = np.pi / (4 * b)
+                h[edge] = b / np.sqrt(2) * (
+                    (1 + 2 / np.pi) * np.sin(q) + (1 - 2 / np.pi) * np.cos(q))
+            h[t == 0] = 1 + b * (4 / np.pi - 1)
+            if history is None:
+                history = np.zeros(taps - 1, dtype=x.dtype)
+            samples = np.concatenate((history, x))
+            return np.convolve(samples, h, mode="valid"), samples[-(taps - 1):].copy()
+
+        rng = np.random.default_rng(7)
+        samples_per_symbol = 8
+        amplitude = 0.7
+        sample_rate = 1e6
+        symbol_rate = sample_rate / samples_per_symbol
+        roll_off = 0.35
+        taps = 11 * samples_per_symbol + 1
+        rrc_history = None
+
+        def compute(ctx):
+            global rrc_history
+            count = ctx.inputs[0].size // samples_per_symbol
+            bits = rng.integers(0, 2, (2, count))
+            i, q = 2 * bits - 1
+            symbols = amplitude * (i + 1j * q) / np.sqrt(2)
+            signal = np.zeros((count, samples_per_symbol), dtype=symbols.dtype)
+            signal[:, 0] = symbols
+            filtered, rrc_history = rrc_filter(
+                signal.ravel(), sample_rate, symbol_rate, roll_off, taps, rrc_history)
+            ctx.outputs[0][...] = filtered
+            attrs = ctx.input_attrs[0]
+            ctx.output_attrs[0]["sampleRate"] = attrs["sampleRate"]
+            ctx.output_attrs[0]["frequency"] = attrs["frequency"]
+      inputCount: 1
+      outputCount: 1
+      outputTensorSpecs:
+        - shape: '[4096]'
+          axes: '[S]'
+          dtype: CF32
+          device: cpu
+      throttled: false
+    input:
+      input0: '${graph.noise.output.signal}'
+    meta:
+      node:
+        x: 280
+        y: 0
+        width: 200
+        height: 0
+      config:
+        collapsed: true
+  - name: add
+    module: add
+    device: cpu
+    runtime: native
+    provider: generic
+    input:
+      a: '${graph.noise.output.signal}'
+      b: '${graph.python_qpsk.output.output0}'
+    meta:
+      node:
+        x: 540
+        y: 0
+        width: 140
+        height: 0
+  - name: spectrum_analyzer
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      mode: lineplot_waterfall
+      lineplotAveraging: 1
+      waterfallAveraging: 1
+      rangeMin: -100
+      rangeMax: 0
+      waterfallHeight: 256
+      colormap: turbo
+      splitRatio: 0.5
+    input:
+      buffer: '${graph.add.output.sum}'
+    meta:
+      node:
+        x: 510
+        y: 270
+        width: 420
+        height: 340
+      config:
+        collapsed: true
+      surface_default:
+        attachedHeight: 280
+        detachedWidth: 800
+        detachedHeight: 600
+        detached: false
+        configCollapsed: true
+  - name: rrc_filter
+    module: rrc_filter
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      symbolRate: 125000
+      sampleRate: 1000000
+      rollOff: 0.35
+      taps: 89
+    input:
+      buffer: '${graph.add.output.sum}'
+    meta:
+      node:
+        x: 750
+        y: 0
+        width: 180
+        height: 0
+      config:
+        collapsed: true
+  - name: agc
+    module: agc
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      tileSize: 4096
+      reference: 1
+      epsilon: 1e-12
+      minGain: 0.01
+      maxGain: 100
+      maxGainChange: 4
+    input:
+      signal: '${graph.rrc_filter.output.buffer}'
+    meta:
+      node:
+        x: 1000
+        y: 0
+        width: 180
+        height: 0
+      config:
+        collapsed: true
+  - name: eye_diagram
+    module: eye_diagram
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      samplesPerSymbol: 8
+      interpolation: 4
+      component: real
+      rangeMin: -2
+      rangeMax: 2
+      persistence: 256
+    input:
+      signal: '${graph.agc.output.signal}'
+    meta:
+      node:
+        x: 1000
+        y: 270
+        width: 500
+        height: 420
+      config:
+        collapsed: false
+      surface_default:
+        attachedHeight: 320
+        detachedWidth: 900
+        detachedHeight: 600
+        detached: false
+        configCollapsed: false
+  - name: psk_demod
+    module: psk_demod
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      pskType: qpsk
+      sampleRate: 1000000
+      symbolRate: 125000
+      frequencyLoopBandwidth: 0.047972117
+      timingLoopBandwidth: 0.05
+      dampingFactor: 0.707
+    input:
+      signal: '${graph.agc.output.signal}'
+    meta:
+      node:
+        x: 1270
+        y: 0
+        width: 220
+        height: 0
+      config:
+        collapsed: true
+  - name: constellation
+    module: constellation
+    device: cpu
+    runtime: native
+    provider: generic
+    input:
+      signal: '${graph.psk_demod.output.signal}'
+    meta:
+      node:
+        x: 1580
+        y: 270
+        width: 360
+        height: 360
+      config:
+        collapsed: true
+      surface_default:
+        attachedHeight: 300
+        detachedWidth: 600
+        detachedHeight: 600
+        detached: false
+        configCollapsed: true
