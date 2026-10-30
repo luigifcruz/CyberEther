@@ -1782,6 +1782,9 @@ struct TextMarkdown::Impl {
     F32 tablesLayoutWidth = -1.0f;
     std::vector<U8> tablesLayoutFonts;
     TextGrid::WidthLayout tablesLayout;
+    bool gridConfigDirty = true;
+    const Render::Window* gridConfigWindow = nullptr;
+    U64 gridConfigFontRevision = 0;
 
     void rebuild() {
         ++styleRevision;
@@ -1794,6 +1797,7 @@ struct TextMarkdown::Impl {
         document = DocumentBuilder(config.fontSize, inset, inset, highlighter)
                        .build(blocks, scanner.footnotes, config.hero);
         tablesLayoutValid = false;
+        gridConfigDirty = true;
     }
 
     F32 codeGlyphSize() const {
@@ -2207,6 +2211,18 @@ struct TextMarkdown::Impl {
                 return document.linkAt(pos) != nullptr;
             },
         };
+    }
+
+    void syncGrid() {
+        const auto* window = textMetrics.window;
+        const U64 fonts = window ? window->fontRevision() : 0;
+        if (!gridConfigDirty && gridConfigWindow == window && gridConfigFontRevision == fonts) {
+            return;
+        }
+        grid.update(buildGridConfig());
+        gridConfigDirty = false;
+        gridConfigWindow = window;
+        gridConfigFontRevision = fonts;
     }
 
     DecorationFrame decorationFrame(const Context& ctx, const Rect& rect, const Rect& clipPixel) const {
@@ -2625,7 +2641,7 @@ struct TextMarkdown::Impl {
                 config.onDetailsToggle(config.detailsOpen);
             }
             rebuild();
-            grid.update(buildGridConfig());
+            syncGrid();
             owner->invalidate(Dirty::Layout);
         }
     }
@@ -2644,7 +2660,7 @@ TextMarkdown::TextMarkdown() {
     addChild(this->impl->grid);
     addChild(this->impl->markers);
     addChild(this->impl->headers);
-    this->impl->grid.update(this->impl->buildGridConfig());
+    this->impl->syncGrid();
 }
 
 TextMarkdown::~TextMarkdown() = default;
@@ -2652,6 +2668,7 @@ TextMarkdown::~TextMarkdown() = default;
 void TextMarkdown::update(Config config) {
     if (config != impl->config) {
         invalidate(Dirty::Layout);
+        impl->gridConfigDirty = true;
     }
     const bool changed = !impl->parsed ||
                          impl->config.id != config.id ||
@@ -2677,7 +2694,7 @@ void TextMarkdown::update(Config config) {
         impl->parsed = true;
     }
     if (changed || widthInputsChanged) {
-        impl->grid.update(impl->buildGridConfig());
+        impl->syncGrid();
     }
 }
 
@@ -2699,7 +2716,7 @@ void TextMarkdown::scrollToLine(U64 line) {
 
 Extent2D<F32> TextMarkdown::measure(const Context& ctx, Extent2D<F32> available) {
     impl->textMetrics.setWindow(ctx.render);
-    impl->grid.update(impl->buildGridConfig());
+    impl->syncGrid();
     return FitExtent(measureChild(impl->grid, ctx, available), available);
 }
 
@@ -2708,7 +2725,7 @@ void TextMarkdown::layout(const Context& ctx) {
     const Rect clipPixel = Intersect(bounds, clip());
 
     impl->textMetrics.setWindow(ctx.render);
-    impl->grid.update(impl->buildGridConfig());
+    impl->syncGrid();
     layoutChild(ctx, impl->grid, bounds);
 
     const auto decoFrame = impl->decorationFrame(ctx, bounds, clipPixel);
