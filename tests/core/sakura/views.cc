@@ -5129,3 +5129,28 @@ TEST_CASE("Docs search presenters open the modal, store the query, and replace t
     CHECK(open->page == "plugins");
     CHECK(open->anchor == "bundling");
 }
+
+TEST_CASE("Welcome screen scrolls back to the top on a new visit and keeps its scroll within one",
+          "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    auto config = rig.build();
+    rig.show(config);
+    const auto cards = Find<Sakura::FlowgraphCard>(rig.root());
+    REQUIRE(cards.size() > 3);
+    const F32 top = Peek::Frame(*cards.back()).y;
+    const auto scroll = [&] {
+        rig.host.send(Wheel(rig.bounds.width * 0.7f, rig.bounds.height * 0.5f, -3.0f));
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    };
+
+    scroll();
+    const F32 scrolled = Peek::Frame(*cards.back()).y;
+    CHECK(scrolled < top);
+    rig.show(config);
+    CHECK(Peek::Frame(*cards.back()).y == scrolled);
+
+    config.visit += 1;
+    rig.show(config);
+    rig.show(config);
+    CHECK(Peek::Frame(*cards.back()).y == top);
+}

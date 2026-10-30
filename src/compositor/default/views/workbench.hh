@@ -180,12 +180,17 @@ struct WorkbenchView {
         }
         std::optional<std::string> activate;
         if (this->config.startTab.has_value()) {
+            if (!startTabShown) {
+                ++startTabVisits;
+            }
+            this->config.startTab->welcome.visit = startTabVisits;
             startTab.update(std::move(this->config.startTab.value()));
             panes.push_back(startTab.pane());
             if (this->config.startTabRequests != startTabRequests && this->config.startTabFocused) {
                 activate = StartTabView::PaneId;
             }
         }
+        startTabShown = this->config.startTab.has_value();
         startTabRequests = this->config.startTabRequests;
         if (this->config.settings.has_value()) {
             settings.update(std::move(this->config.settings.value()));
@@ -253,6 +258,8 @@ struct WorkbenchView {
     AgentChatView agentChat;
     StartTabView startTab;
     U64 startTabRequests = 0;
+    bool startTabShown = false;
+    U64 startTabVisits = 0;
     SettingsView settings;
     U64 settingsTabRequests = 0;
     DocsView docs;

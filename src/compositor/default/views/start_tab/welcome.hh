@@ -118,6 +118,7 @@ struct WelcomeView {
         Sakura::Callback<void(const std::string&)> onToggleFavorite;
         Sakura::Callback<void(const std::string&)> onOpenExample;
         std::optional<RemoteSectionView::Config> remote;
+        U64 visit = 0;
     };
 
     void update(Config config) {
@@ -145,6 +146,7 @@ struct WelcomeView {
             .colorKey = "transparent",
         });
         leftArea.update({
+            .id = jst::fmt::format("welcome-left:{}", this->config.visit),
             .content = &leftFrame,
             .alwaysScrollbar = false,
             .border = false,
@@ -172,6 +174,7 @@ struct WelcomeView {
             .colorKey = "transparent",
         });
         pageArea.update({
+            .id = jst::fmt::format("welcome-page:{}", this->config.visit),
             .content = &pageFrame,
             .alwaysScrollbar = false,
             .border = false,
