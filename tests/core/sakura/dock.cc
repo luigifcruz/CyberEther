@@ -410,6 +410,39 @@ TEST_CASE("Dock panes see the tile backdrop only when they draw a card", "[core]
     CHECK(b.backdrop == "background");
 }
 
+TEST_CASE("Dock panes with a fill tint their whole tile under the header and the frame",
+          "[core][sakura][dock]") {
+    constexpr ColorRGBA<F32> kTint = {0.1f, 0.2f, 0.9f, 1.0f};
+    Probe a({0.0f, 0.0f});
+    Probe b({0.0f, 0.0f});
+    Dock dock;
+    Host host(dock);
+    auto tinted = MakePane("b", &b);
+    tinted.fill = kTint;
+    const auto tinting = [&](const Dock::Pane& second) {
+        dock.update({.panes = {MakePane("a", &a), second}, .columns = true});
+        host.place(MakeContext(), kScreen);
+        std::vector<Sakura::Box::Instance> found;
+        for (const auto* box : Find<Sakura::Box>(dock)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.backgroundColor == kTint) {
+                    found.push_back(instance);
+                }
+            }
+        }
+        return found;
+    };
+
+    CHECK(tinting(MakePane("b", &b)).empty());
+    const auto found = tinting(tinted);
+    REQUIRE(found.size() == 1);
+    CHECK(found[0].rect.y < Peek::Frame(b).y);
+    CHECK(found[0].rect.x <= Peek::Frame(b).x);
+    CHECK(found[0].rect.right() >= Peek::Frame(b).right());
+    CHECK(found[0].rect.bottom() >= Peek::Frame(b).bottom());
+    CHECK(found[0].rect.x > Peek::Frame(a).right());
+}
+
 TEST_CASE("Turning dock headers off restores a maximized tile", "[core][sakura][dock]") {
     const auto ctx = MakeContext();
     Probe a;
@@ -1729,6 +1762,95 @@ TEST_CASE("Dragging a tile into a dock of another group is refused", "[core][sak
     CHECK(target.trees.empty());
 }
 
+TEST_CASE("A dock adopts drags whose group it lists in adopts and still refuses other groups",
+          "[core][sakura][dock]") {
+    Emissions source;
+    Emissions target;
+    Dock left;
+    Dock right;
+    Columns columns(left, right);
+    Layer layer;
+    layer.update({.content = &columns});
+    LayerHost host({&layer});
+    auto paneA = MakePane("a");
+    paneA.group = "terminal";
+    left.update({.accepts = "panel",
+                 .panes = {paneA, MakePane("b")},
+                 .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")}),
+                 .onTiles = source.sink()});
+    right.update({.accepts = "scope", .adopts = {"terminal"}, .onTiles = target.sink()});
+    host.place(MakeContext(), kScreen);
+
+    host.send(Mouse(MouseEventType::Click, 300.0f, 12.0f));
+    host.send(Mouse(MouseEventType::Move, 600.0f, 300.0f));
+    REQUIRE(host.drag.active);
+    CHECK(host.drag.pane == "b");
+    CHECK(host.drag.group == "panel");
+    host.place(MouseAt(600.0f, 300.0f), kScreen);
+    CHECK_FALSE(host.drag.target.has_value());
+    host.send(Mouse(MouseEventType::Release, 600.0f, 300.0f));
+    CHECK(source.trees.empty());
+    CHECK(target.trees.empty());
+
+    host.place(MakeContext(), kScreen);
+    host.send(Mouse(MouseEventType::Click, 100.0f, 12.0f));
+    host.send(Mouse(MouseEventType::Move, 600.0f, 300.0f));
+    REQUIRE(host.drag.active);
+    CHECK(host.drag.pane == "a");
+    CHECK(host.drag.group == "terminal");
+    host.place(MouseAt(600.0f, 300.0f), kScreen);
+    REQUIRE(host.drag.target.has_value());
+    CHECK(host.drag.target->owner == static_cast<const void*>(&right));
+    CHECK(host.drag.target->preview == Rect{406.0f, 6.0f, 388.0f, 588.0f});
+
+    host.send(Mouse(MouseEventType::Release, 600.0f, 300.0f));
+    REQUIRE(source.trees.size() == 1);
+    CHECK(source.last() == Leaf("b"));
+    REQUIRE(target.trees.size() == 1);
+    CHECK(target.last() == Leaf("a"));
+    CHECK_FALSE(host.drag.active);
+}
+
+TEST_CASE("A tab bar adopts a tile of a listed group and shows it as a new tab", "[core][sakura][dock]") {
+    Probe a;
+    Probe b;
+    Probe c;
+    Emissions source;
+    Dock left;
+    Dock right;
+    Columns columns(left, right);
+    Layer layer;
+    layer.update({.content = &columns});
+    LayerHost host({&layer});
+    c.consume = false;
+    auto paneA = MakePane("a", &a);
+    paneA.group = "terminal";
+    left.update({.accepts = "panel",
+                 .panes = {paneA, MakePane("b", &b)},
+                 .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")}),
+                 .onTiles = source.sink()});
+    right.update({.tabs = true, .accepts = "main", .adopts = {"terminal"}, .panes = {MakePane("c", &c)}});
+    host.place(MakeContext(), kScreen);
+
+    host.send(Mouse(MouseEventType::Click, 100.0f, 12.0f));
+    host.send(Mouse(MouseEventType::Move, 700.0f, 12.0f));
+    REQUIRE(host.drag.active);
+    host.place(MouseAt(700.0f, 12.0f), kScreen);
+    REQUIRE(host.drag.target.has_value());
+    CHECK(host.drag.target->owner == static_cast<const void*>(&right));
+
+    host.send(Mouse(MouseEventType::Release, 700.0f, 12.0f));
+    REQUIRE(source.trees.size() == 1);
+    CHECK(source.last() == Leaf("b"));
+
+    auto moved = MakePane("a", &a);
+    moved.group = "terminal";
+    left.update({.accepts = "panel", .panes = {MakePane("b", &b)}, .tiles = Leaf("b"), .onTiles = source.sink()});
+    right.update({.tabs = true, .accepts = "main", .adopts = {"terminal"}, .panes = {MakePane("c", &c), moved}});
+    host.place(MakeContext(), kScreen);
+    CHECK(a.laidFrame == Rect{400.0f, kBar, 400.0f, 600.0f - kBar});
+}
+
 TEST_CASE("Dropping a tab into another tab bar inserts it at the hovered slot and focuses the source's next tab",
           "[core][sakura][dock]") {
     Probe a;
@@ -2438,6 +2560,210 @@ TEST_CASE("A maximized tile is restored when it goes away or when a pane is adde
     CHECK(b.laidFrame == Body({6.0f, 6.0f, 391.0f, 588.0f}));
 }
 
+TEST_CASE("A maximized tile is restored when a new pane arrives already placed in the tiles",
+          "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Probe c;
+    Dock dock;
+    Host host(dock);
+    dock.update({.panes = {MakePane("a", &a), MakePane("b", &b)}, .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")})});
+    host.place(ctx, kScreen);
+    const auto maximizeB = MaximizeOf({403.0f, 6.0f, 391.0f, 588.0f});
+    host.click(maximizeB.x, maximizeB.y);
+    host.place(ctx, kScreen);
+    REQUIRE_FALSE(a.visible());
+
+    dock.update({.panes = {MakePane("a", &a), MakePane("b", &b), MakePane("c", &c)},
+                 .tiles = Row({1.0f, 1.0f}, {Leaf("a"), Column({1.0f, 1.0f}, {Leaf("b"), Leaf("c")})})});
+    host.place(ctx, kScreen);
+    CHECK(a.visible());
+    CHECK(b.visible());
+    CHECK(c.visible());
+    CHECK(c.laidFrame.width > 0.0f);
+    CHECK(b.laidFrame.width < 700.0f);
+}
+
+TEST_CASE("Tiles with different fills draw outlines derived from their own fill", "[core][sakura][dock]") {
+    constexpr ColorRGBA<F32> kRed = {0.3f, 0.0f, 0.0f, 1.0f};
+    constexpr ColorRGBA<F32> kBlue = {0.0f, 0.0f, 0.3f, 1.0f};
+    Probe a;
+    Probe b;
+    Dock dock;
+    Host host(dock);
+    auto red = MakePane("a", &a);
+    red.fill = kRed;
+    auto blue = MakePane("b", &b);
+    blue.fill = kBlue;
+    dock.update({.panes = {red, blue}, .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")})});
+    host.place(MakeContext(), kScreen);
+
+    U64 reds = 0;
+    U64 blues = 0;
+    for (auto* box : Direct<Sakura::Box>(dock)) {
+        const auto& config = box->config();
+        if (config.borderWidth <= 0.0f || config.instances.size() != 1) {
+            continue;
+        }
+        const auto& color = config.borderColor;
+        const Rect& rect = config.instances.front().rect;
+        if (color.r > color.b && color.r > kRed.r) {
+            CHECK(rect.contains(Peek::Frame(a).x + 1.0f, Peek::Frame(a).y + 1.0f));
+            ++reds;
+        } else if (color.b > color.r && color.b > kBlue.b) {
+            CHECK(rect.contains(Peek::Frame(b).x + 1.0f, Peek::Frame(b).y + 1.0f));
+            ++blues;
+        }
+    }
+    CHECK(reds == 2);
+    CHECK(blues == 2);
+}
+
+TEST_CASE("The header button hover circle draws above tile contents and below the header glyphs",
+          "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Dock dock;
+    Host host(dock);
+    dock.update({.panes = {MakePane("a", &a), MakePane("b", &b)}, .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")})});
+    host.place(ctx, kScreen);
+    const auto close = CloseOf({403.0f, 6.0f, 391.0f, 588.0f});
+    host.send(Mouse(MouseEventType::Move, close.x, close.y));
+    host.place(ctx, kScreen);
+
+    const auto children = Peek::Children(dock);
+    const auto index = [&](const Sakura::Component* child) {
+        return static_cast<U64>(std::find(children.begin(), children.end(), child) - children.begin());
+    };
+    std::optional<U64> hover;
+    for (auto* box : Direct<Sakura::Box>(dock)) {
+        for (const auto& instance : box->config().instances) {
+            if (instance.visible && instance.rect.contains(close.x, close.y) &&
+                instance.backgroundColor == ctx.color("chrome_button_hover")) {
+                hover = index(box);
+            }
+        }
+    }
+    REQUIRE(hover.has_value());
+    CHECK(*hover > index(&a));
+    CHECK(*hover > index(&b));
+    const auto glyph = GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_LC_X);
+    REQUIRE(glyph != nullptr);
+    CHECK(*hover < index(glyph));
+}
+
+TEST_CASE("A tab dragged over its own content dock is not offered as a drop there", "[core][sakura][dock]") {
+    Probe x;
+    Dock inner;
+    Dock outer;
+    Layer layer;
+    layer.update({.content = &outer});
+    LayerHost host({&layer});
+    inner.update({.accepts = "terminal", .panes = {MakePane("x", &x)}});
+    auto tab = MakePane("t", &inner);
+    tab.group = "terminal";
+    outer.update({.tabs = true, .accepts = "main", .adopts = {"terminal"}, .panes = {tab}});
+    host.place(MakeContext(), kScreen);
+    const auto rect = outer.tabRect("t");
+    REQUIRE(rect.has_value());
+
+    host.send(Mouse(MouseEventType::Click, rect->x + rect->width * 0.5f, rect->y + rect->height * 0.5f));
+    host.send(Mouse(MouseEventType::Move, 400.0f, 300.0f));
+    REQUIRE(host.drag.active);
+    CHECK(host.drag.pane == "t");
+    CHECK(host.drag.content == static_cast<const void*>(&inner));
+    host.place(MouseAt(400.0f, 300.0f), kScreen);
+    CHECK_FALSE(host.drag.target.has_value());
+    host.send(Mouse(MouseEventType::Release, 400.0f, 300.0f));
+    host.place(MakeContext(), kScreen);
+    CHECK(x.visible());
+    CHECK(outer.tabRect("t").has_value());
+}
+
+TEST_CASE("A tab dragged over a dock nested deeper inside its content is not offered as a drop there",
+          "[core][sakura][dock]") {
+    Probe x;
+    Dock inner;
+    Dock middle;
+    Dock outer;
+    Layer layer;
+    layer.update({.content = &outer});
+    LayerHost host({&layer});
+    inner.update({.accepts = "terminal", .panes = {MakePane("x", &x)}});
+    middle.update({.accepts = "other", .panes = {MakePane("i", &inner)}});
+    auto tab = MakePane("t", &middle);
+    tab.group = "terminal";
+    outer.update({.tabs = true, .accepts = "main", .adopts = {"terminal"}, .panes = {tab}});
+    host.place(MakeContext(), kScreen);
+    const auto rect = outer.tabRect("t");
+    REQUIRE(rect.has_value());
+
+    host.send(Mouse(MouseEventType::Click, rect->x + rect->width * 0.5f, rect->y + rect->height * 0.5f));
+    host.send(Mouse(MouseEventType::Move, 400.0f, 300.0f));
+    REQUIRE(host.drag.active);
+    REQUIRE(x.laidFrame.contains(400.0f, 300.0f));
+    host.place(MouseAt(400.0f, 300.0f), kScreen);
+    CHECK_FALSE(host.drag.target.has_value());
+    host.send(Mouse(MouseEventType::Release, 400.0f, 300.0f));
+    host.place(MakeContext(), kScreen);
+    CHECK(x.visible());
+    CHECK(outer.tabRect("t").has_value());
+}
+
+namespace {
+
+struct BackdropColorProbe : Probe {
+    ColorRGBA<F32> color = {0.0f, 0.0f, 0.0f, 0.0f};
+
+ protected:
+    void layout(const Jetstream::Sakura::Context& ctx) override {
+        Probe::layout(ctx);
+        color = ctx.color(ctx.backdropColorKey);
+    }
+};
+
+}  // namespace
+
+TEST_CASE("Content of a tinted tile sees the tint as its backdrop and follows tint changes", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    BackdropColorProbe a;
+    BackdropColorProbe b;
+    Dock dock;
+    Host host(dock);
+    const auto configure = [&](ColorRGBA<F32> tint) {
+        auto tinted = MakePane("b", &b);
+        tinted.fill = tint;
+        dock.update({.panes = {MakePane("a", &a), tinted}});
+    };
+
+    const auto same = [](ColorRGBA<F32> actual, ColorRGBA<F32> expected) {
+        return actual.r == Catch::Approx(expected.r) && actual.g == Catch::Approx(expected.g) &&
+               actual.b == Catch::Approx(expected.b) && actual.a == Catch::Approx(expected.a);
+    };
+
+    configure({0.3f, 0.0f, 0.0f, 1.0f});
+    host.place(ctx, kScreen);
+    CHECK(a.color == ctx.color("tile_bg"));
+    CHECK(same(b.color, {0.3f, 0.0f, 0.0f, ctx.color("tile_bg").a}));
+
+    configure({0.0f, 0.4f, 0.0f, 1.0f});
+    host.place(ctx, kScreen);
+    CHECK(same(b.color, {0.0f, 0.4f, 0.0f, ctx.color("tile_bg").a}));
+
+    const auto base = ctx.color("tile_bg");
+    configure({1.0f, 0.0f, 0.0f, 0.5f});
+    host.place(ctx, kScreen);
+    CHECK(b.color.r == Catch::Approx(base.r + (1.0f - base.r) * 0.5f));
+    CHECK(b.color.g == Catch::Approx(base.g * 0.5f));
+    CHECK(b.color.a == Catch::Approx(base.a));
+
+    configure({0.0f, 0.0f, 0.0f, 0.0f});
+    host.place(ctx, kScreen);
+    CHECK(b.color == base);
+}
+
 TEST_CASE("Maximize buttons appear only for maximizable panes with company", "[core][sakura][dock]") {
     const auto ctx = MakeContext();
     Probe a;
@@ -2563,6 +2889,7 @@ struct ColumnRig {
     std::vector<std::optional<DockTiles>> emitted;
     std::vector<std::string> closed;
     std::string closeOnlyMinimized;
+    ColorRGBA<F32> fillC = {0.0f, 0.0f, 0.0f, 0.0f};
     bool withA = true;
     bool withC = true;
     Dock dock;
@@ -2579,6 +2906,9 @@ struct ColumnRig {
         for (auto& pane : panes) {
             pane.onClose = [this, id = pane.id] { closed.push_back(id); };
             pane.closeOnlyMinimized = pane.id == closeOnlyMinimized;
+            if (pane.id == "c") {
+                pane.fill = fillC;
+            }
         }
         dock.update({
             .accepts = "panel",
@@ -4149,6 +4479,39 @@ TEST_CASE("Minimizing a stacked pane shrinks it to a header the width of a strip
     CHECK(rig.c.visible());
     CHECK(rig.c.laidFrame == Body({1174.0f, 303.0f, 420.0f, 291.0f}));
     CHECK(rig.emitted.empty());
+}
+
+TEST_CASE("A minimized tinted pane falls back to the default tile fill and outline", "[core][sakura][dock][columns]") {
+    constexpr ColorRGBA<F32> kTint = {0.3f, 0.0f, 0.0f, 1.0f};
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.fillC = kTint;
+    rig.tiles = ColumnRow({Leaf("a"), Column({0.5f, 0.5f}, {Leaf("b"), Leaf("c")})});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+    const auto tinted = [&] {
+        U64 count = 0;
+        for (auto* box : Direct<Sakura::Box>(rig.dock)) {
+            const auto& config = box->config();
+            for (const auto& instance : config.instances) {
+                if (instance.visible && (instance.backgroundColor == kTint ||
+                                         (config.borderWidth > 0.0f && config.borderColor.r > config.borderColor.g &&
+                                          config.borderColor.r > kTint.r))) {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    };
+    CHECK(tinted() == 3);
+
+    const auto minimize = MinimizeOf({1174.0f, 303.0f, 420.0f, 291.0f});
+    host.click(minimize.x, minimize.y);
+    host.place(ctx, kWideDock);
+    REQUIRE_FALSE(rig.c.visible());
+    CHECK(tinted() == 0);
+    CHECK(BoxWith(rig.dock, {1174.0f, 562.0f, 420.0f, 32.0f}) != nullptr);
 }
 
 TEST_CASE("Minimizing a pane cancels a press held in its content and releases focus inside it",

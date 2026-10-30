@@ -60,6 +60,15 @@ struct Access {
         }
     }
 
+    static bool within(const Component& component, const void* ancestor) {
+        for (const Component* node = &component; node; node = node->impl->parent) {
+            if (node == ancestor) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static bool reachable(const Component& component) {
         return component.impl->reachable();
     }

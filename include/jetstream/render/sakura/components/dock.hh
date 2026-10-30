@@ -49,6 +49,7 @@ struct Dock : public Component {
         bool startMinimized = false;
         F32 width = 0.0f;
         F32 padding = 0.0f;
+        ColorRGBA<F32> fill = {0.0f, 0.0f, 0.0f, 0.0f};
         Callback<void()> onClose;
         Callback<void()> onFocus;
         std::vector<Action> actions;
@@ -60,6 +61,7 @@ struct Dock : public Component {
         bool tabs = false;
         bool hideTabs = false;
         std::string accepts;
+        std::vector<std::string> adopts;
         std::vector<Pane> panes;
         std::optional<DockTiles> tiles;
         std::optional<std::string> activate;

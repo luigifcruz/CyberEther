@@ -59,6 +59,8 @@ constexpr F32 kTabPadX = 10.0f;
 constexpr F32 kIconGap = 6.0f;
 constexpr F32 kDividerHeight = 15.0f;
 constexpr F32 kHeaderTitleSize = 16.0f;
+constexpr F32 kFillBorder = 0.10f;
+constexpr F32 kFillRim = 0.14f;
 constexpr const char* kTabFont = Typography::DisplayFont;
 constexpr const char* kHeaderFont = Typography::DisplaySemiboldFont;
 constexpr F32 kBarMargin = 6.0f;
@@ -537,9 +539,17 @@ struct Dock::Impl {
     Box tabRim;
     Box dividers;
     Card tileBase;
+    Box tileFills;
     Box splitterBoxes;
     Box buttonHover;
     Card tileFrame;
+    struct FillFrame {
+        ColorRGBA<F32> fill;
+        Palette palette;
+        Box border;
+        Box rim;
+    };
+    std::vector<std::unique_ptr<FillFrame>> fillFrames;
     TextMetrics metrics;
     std::unordered_map<std::string, Caption> tabCaptions;
     std::unordered_map<std::string, Caption> headerCaptions;
@@ -555,9 +565,16 @@ struct Dock::Impl {
     Component* parkedAside = nullptr;
     std::vector<Component*> ordered;
     std::vector<Component*> managed;
+    U64 contentCount = 0;
 
     void collectManaged() {
         managed.clear();
+        for (const auto& item : config.panes) {
+            if (item.content) {
+                managed.push_back(item.content);
+            }
+        }
+        contentCount = managed.size();
         const auto captionParts = [&](Caption& caption) {
             managed.insert(managed.end(), {caption.text.get(), caption.glyph.get(), caption.close.get(), caption.maximize.get(),
                                             caption.minimize.get(), caption.spine.get()});
@@ -587,19 +604,21 @@ struct Dock::Impl {
                 managed.push_back(it->second.get());
             }
         }
-        for (const auto& item : config.panes) {
-            if (item.content) {
-                managed.push_back(item.content);
-            }
-        }
         managed.insert(managed.end(), mountedChrome.begin(), mountedChrome.end());
     }
 
     std::vector<Component*> childOrder() {
         std::vector<Component*> order = {&backgrounds, &separators, &track, &tabBoxes, &activeTab,
-                                         &tabRim, &dividers, &tileBase, &splitterBoxes, &buttonHover};
-        order.insert(order.end(), managed.begin(), managed.end());
+                                         &tabRim, &dividers, &tileBase, &tileFills, &splitterBoxes};
+        const auto split = managed.begin() + static_cast<I64>(std::min<U64>(contentCount, managed.size()));
+        order.insert(order.end(), managed.begin(), split);
+        order.push_back(&buttonHover);
+        order.insert(order.end(), split, managed.end());
         order.push_back(&tileFrame);
+        for (auto& frame : fillFrames) {
+            order.push_back(&frame->border);
+            order.push_back(&frame->rim);
+        }
         return order;
     }
     std::vector<Rect> tabRects;
@@ -789,8 +808,11 @@ struct Dock::Impl {
                 }
                 added = true;
             }
-            if (introduced.insert(item.id).second && item.startMinimized) {
-                minimized.insert(item.id);
+            if (introduced.insert(item.id).second) {
+                added = added || !maximized.empty();
+                if (item.startMinimized) {
+                    minimized.insert(item.id);
+                }
             }
         }
         rebuild();
@@ -1151,8 +1173,14 @@ struct Dock::Impl {
                 tree = Normalize(*config.tiles);
             }
         }
+        std::erase_if(introduced, [this](const std::string& id) {
+            return !known(id);
+        });
         bool added = false;
         for (const auto& item : config.panes) {
+            if (introduced.insert(item.id).second) {
+                maximized.clear();
+            }
             if (!tree.has_value() || !Contains(*tree, item.id)) {
                 tree = Append(tree, item.id);
                 added = true;
@@ -1422,7 +1450,19 @@ void Dock::update(Config config) {
     if (changed) {
         invalidate(Dirty::Layout);
     }
+    std::vector<Component*> retinted;
+    for (const auto& item : config.panes) {
+        const auto previous = std::find_if(impl->config.panes.begin(), impl->config.panes.end(), [&](const auto& pane) {
+            return pane.id == item.id;
+        });
+        if (item.content && previous != impl->config.panes.end() && previous->fill != item.fill) {
+            retinted.push_back(item.content);
+        }
+    }
     impl->config = std::move(config);
+    for (auto* content : retinted) {
+        Access::invalidateSubtree(*content);
+    }
     std::optional<Impl::State> before;
     if (!changed) {
         before = impl->state();
@@ -1525,6 +1565,21 @@ void Dock::update(Config config) {
     std::erase_if(impl->placeholders, [&](const auto& entry) {
         return stale(entry.first, true);
     });
+    std::vector<ColorRGBA<F32>> fills;
+    if (!impl->config.tabs) {
+        for (const auto& item : impl->config.panes) {
+            if (item.card && item.fill.a > 0.0f && std::find(fills.begin(), fills.end(), item.fill) == fills.end()) {
+                fills.push_back(item.fill);
+            }
+        }
+    }
+    impl->fillFrames.resize(fills.size());
+    for (U64 index = 0; index < fills.size(); ++index) {
+        if (!impl->fillFrames[index]) {
+            impl->fillFrames[index] = std::make_unique<Impl::FillFrame>();
+        }
+        impl->fillFrames[index]->fill = fills[index];
+    }
     impl->collectManaged();
     auto order = impl->childOrder();
     if (order != impl->ordered) {
@@ -1593,6 +1648,8 @@ void Dock::layout(const Context& ctx) {
     std::vector<Box::Instance> tabRimInstances;
     std::vector<Box::Instance> dividerInstances;
     std::vector<Rect> tileRects;
+    std::vector<Box::Instance> tileFillInstances;
+    std::vector<Rect> frameRects;
     std::vector<Box::Instance> splitterInstances;
     std::vector<Component*> labels;
     std::vector<Component*> chrome;
@@ -1816,6 +1873,11 @@ void Dock::layout(const Context& ctx) {
         }
         if (!tabs && (!item || item->card)) {
             tileRects.push_back(leaf.tile);
+            if (item && item->fill.a > 0.0f && !leaf.minimized) {
+                tileFillInstances.push_back({.rect = leaf.tile, .backgroundColor = item->fill});
+            } else {
+                frameRects.push_back(leaf.tile);
+            }
         }
         const bool fullscreenable = item && item->maximizable && total > 1;
         const bool minimizable = item && !leaf.minimized && s.canMinimize(leaf.pane);
@@ -2033,7 +2095,30 @@ void Dock::layout(const Context& ctx) {
         .capacity = kBoxCapacity,
     };
     s.tileBase.update(tile);
+    for (auto& frame : s.fillFrames) {
+        std::vector<Box::Instance> outlines;
+        for (const auto& fill : tileFillInstances) {
+            if (fill.backgroundColor == frame->fill) {
+                outlines.push_back({.rect = fill.rect, .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}});
+            }
+        }
+        const ColorRGBA<F32>& fill = frame->fill;
+        const F32 luma = 0.2126f * fill.r + 0.7152f * fill.g + 0.0722f * fill.b;
+        const ColorRGBA<F32> contrast = luma < 0.5f ? ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 1.0f}
+                                                    : ColorRGBA<F32>{0.0f, 0.0f, 0.0f, 1.0f};
+        frame->border.update({.instances = outlines, .clip = s.bounds, .cornerRadius = radius,
+                              .borderWidth = Px(ctx, 1.0f), .borderColor = MixColor(fill, contrast, kFillBorder),
+                              .strokeFringe = true, .capacity = kBoxCapacity});
+        frame->rim.update({.instances = std::move(outlines), .clip = s.bounds, .cornerRadius = radius,
+                           .borderWidth = Px(ctx, 1.0f), .borderColor = MixColor(fill, contrast, kFillRim),
+                           .strokeFringe = true, .topLit = true, .capacity = kBoxCapacity});
+        layoutChild(ctx, frame->border, s.bounds);
+        layoutChild(ctx, frame->rim, s.bounds);
+    }
+    s.tileFills.update({.instances = std::move(tileFillInstances), .clip = s.bounds, .cornerRadius = radius,
+                        .capacity = kBoxCapacity});
     tile.layer = Card::Layer::Frame;
+    tile.rects = std::move(frameRects);
     s.tileFrame.update(std::move(tile));
     s.splitterBoxes.update({.instances = std::move(splitterInstances), .clip = s.bounds,
                             .cornerRadius = splitterLine * 0.5f, .capacity = kBoxCapacity});
@@ -2060,21 +2145,47 @@ void Dock::layout(const Context& ctx) {
     });
     for (auto* primitive : std::initializer_list<Component*>{&s.backgrounds, &s.separators, &s.track, &s.tabBoxes,
                                                              &s.activeTab, &s.tabRim, &s.dividers, &s.tileBase,
-                                                             &s.splitterBoxes, &s.buttonHover, &s.tileFrame}) {
+                                                             &s.tileFills, &s.splitterBoxes, &s.buttonHover,
+                                                             &s.tileFrame}) {
         layoutChild(ctx, *primitive, s.bounds);
     }
 
     Context carded = ctx;
     carded.backdropColorKey = "tile_bg";
     carded.backdropTopColorKey.clear();
+    for (auto& frame : s.fillFrames) {
+        frame->palette = ctx.palette.get();
+        const ColorRGBA<F32> base = ctx.color("tile_bg");
+        const ColorRGBA<F32>& fill = frame->fill;
+        frame->palette["tile_fill"] = MixColor(base, {fill.r, fill.g, fill.b, base.a}, fill.a);
+    }
     for (const auto& leaf : s.leaves) {
         const auto* item = s.pane(leaf.pane);
-        if (item && item->content && !leaf.minimized) {
-            layoutChild(!tabs && item->card ? carded : ctx, *item->content, leaf.content, leaf.body);
+        if (!item || !item->content || leaf.minimized) {
+            continue;
         }
+        if (tabs || !item->card) {
+            layoutChild(ctx, *item->content, leaf.content, leaf.body);
+            continue;
+        }
+        const auto frame = std::find_if(s.fillFrames.begin(), s.fillFrames.end(), [&](const auto& candidate) {
+            return item->fill.a > 0.0f && candidate->fill == item->fill;
+        });
+        if (frame == s.fillFrames.end()) {
+            layoutChild(carded, *item->content, leaf.content, leaf.body);
+            continue;
+        }
+        Context tinted = carded;
+        tinted.palette = std::cref((*frame)->palette);
+        tinted.backdropColorKey = "tile_fill";
+        layoutChild(tinted, *item->content, leaf.content, leaf.body);
     }
 
-    if (!s.drag || !s.drag->active || s.drag->group != s.config.accepts || !ctx.mouse.has_value() ||
+    const auto& adopts = s.config.adopts;
+    if (!s.drag || !s.drag->active || Access::within(*this, s.drag->content) ||
+        (s.drag->group != s.config.accepts &&
+         std::find(adopts.begin(), adopts.end(), s.drag->group) == adopts.end()) ||
+        !ctx.mouse.has_value() ||
         !s.bounds.contains(ctx.mouse->x, ctx.mouse->y)) {
         return;
     }
@@ -2214,6 +2325,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                     s.drag->title = item->title;
                     s.drag->icon = s.config.tabs ? item->icon : std::string();
                     s.drag->source = this;
+                    s.drag->content = item->content;
                     s.dragging = true;
                     s.dragPoint = point;
                     invalidate(Dirty::Layout);
