@@ -33,6 +33,8 @@ Result EyeDiagramImpl::configure() {
     signalViewConfig->rangeMax = rangeMax;
     signalViewConfig->xLabel = "Time (symbols)";
     signalViewConfig->amplitudeLabel = "Amplitude";
+    signalViewConfig->markers = markers;
+    signalViewConfig->pins = pins;
 
     return Result::SUCCESS;
 }
@@ -89,6 +91,8 @@ Result EyeDiagramImpl::create() {
     JST_CHECK(moduleCreate("signal_view", signalViewConfig, {
         {"signal", moduleGetOutput({"eye_diagram", "signal"})}
     }));
+    JST_CHECK(moduleBindConfigEdit("signal_view", "markers", "markers"));
+    JST_CHECK(moduleBindConfigEdit("signal_view", "pins", "pins"));
 
     return Result::SUCCESS;
 }

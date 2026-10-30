@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_VISUALIZATION_EYE_DIAGRAM_BLOCK_HH
 
 #include <string>
+#include <vector>
 
 #include "jetstream/block.hh"
 
@@ -14,12 +15,14 @@ struct EyeDiagram : public Block::Config {
     F32 rangeMin = -2.0f;
     F32 rangeMax = 2.0f;
     U64 persistence = 256;
+    std::vector<F32> markers;
+    std::vector<U64> pins;
 
     JST_BLOCK_TYPE(eye_diagram);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(samplesPerSymbol, interpolation, component, rangeMin, rangeMax,
-                     persistence);
+                     persistence, markers, pins);
     JST_BLOCK_DESCRIPTION(
         "Eye Diagram",
         "Displays an eye diagram of an oversampled signal.",
@@ -33,8 +36,8 @@ struct EyeDiagram : public Block::Config {
         "the source.\n"
         "- **Nothing recovers the symbol clock.** Each window starts at a fixed sample,"
         " so a rate mismatch makes the eye drift.\n"
-        "- **Each buffer draws one window.** It is the newest complete window, and a "
-        "partial window carries into the next buffer.\n"
+        "- **Each buffer draws one window at most.** It is the newest complete window, "
+        "and a partial window carries into the next buffer.\n"
         "- **Controls work in a detached window.** Click the expand icon on the view to"
         " open it.\n"
         "\n"
@@ -118,8 +121,8 @@ struct EyeDiagram : public Block::Config {
         "The stream is cut into windows that share their end samples, and straight "
         "lines between samples add the display points. Levels are clipped to the "
         "amplitude range and scaled to the plot, and a density map fades older traces. "
-        "The model below covers one buffer from a fresh start, without non-finite "
-        "samples or the density.\n"
+        "The model below takes the selected component as real samples, from a fresh "
+        "start, without non-finite samples or the density.\n"
         "\n"
         "```python\n"
         "import numpy as np\n"
@@ -129,7 +132,7 @@ struct EyeDiagram : public Block::Config {
         "    n = 2 * samples_per_symbol\n"
         "    windows = (len(x) - 1) // n\n"
         "    if windows == 0:\n"
-        "        return np.full(n * interpolation + 1, 0.5)\n"
+        "        return None\n"
         "    w = x[(windows - 1) * n:windows * n + 1]\n"
         "    t = np.arange(n * interpolation + 1) / interpolation\n"
         "    y = np.interp(t, np.arange(n + 1), w)\n"

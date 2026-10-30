@@ -44,6 +44,7 @@ Result EyeDiagramImplNativeCpu::validate() {
 Result EyeDiagramImplNativeCpu::computeSubmit() {
     const U64 windowIntervals = 2 * samplesPerSymbol;
     const F32 width = rangeMax - rangeMin;
+    bool windowCompleted = false;
 
     for (U64 i = 0; i < input.size(); ++i) {
         const F32 sample = input.dtype() == DataType::F32 ? input.data<F32>()[i] :
@@ -78,10 +79,11 @@ Result EyeDiagramImplNativeCpu::computeSubmit() {
             }
 
             interval = 0;
+            windowCompleted = true;
         }
     }
 
-    return Result::SUCCESS;
+    return windowCompleted ? Result::SUCCESS : Result::SKIP;
 }
 
 JST_REGISTER_MODULE(EyeDiagramImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");
