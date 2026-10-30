@@ -430,6 +430,104 @@ TEST_CASE("Search catalog gives unnamed groups no chip and lists them last under
     }
 }
 
+TEST_CASE("Pill fields scale their icon and text with the scale field", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    Sakura::PillField pill;
+    Host host(pill);
+    Sakura::PillField::Config config{.icon = "Q", .placeholder = "Search blocks"};
+    const auto texts = [&] {
+        std::vector<Sakura::Text::Config> found;
+        for (auto* text : Find<Sakura::Text>(pill)) {
+            found.push_back(text->config());
+        }
+        return found;
+    };
+    const auto scaleOf = [&](const std::string& str) {
+        for (const auto& text : texts()) {
+            if (text.str == str) {
+                return text.scale;
+            }
+        }
+        return 0.0f;
+    };
+
+    pill.update(config);
+    const F32 base = host.measureOf(scene.ctx, {kInfinite, kInfinite}).x;
+    const F32 icon = scaleOf("Q");
+    CHECK(scaleOf("Search blocks") == 1.0f);
+
+    config.scale = 1.25f;
+    pill.update(config);
+    CHECK(scaleOf("Search blocks") == 1.25f);
+    CHECK(scaleOf("Q") == Catch::Approx(icon * 1.25f));
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).x > base);
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).y == 34.0f);
+}
+
+TEST_CASE("Pill field trailing labels sit in a keycap inset evenly inside the pill", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    Sakura::PillField pill;
+    Host host(pill);
+    Sakura::PillField::Config config{.icon = "Q", .placeholder = "Search docs"};
+    pill.update(config);
+    const F32 bare = host.measureOf(scene.ctx, {kInfinite, kInfinite}).x;
+
+    config.trailing = "Ctrl K";
+    pill.update(config);
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).x > bare);
+
+    const auto keycap = [&](const Sakura::Context& ctx) -> std::optional<std::pair<Jetstream::Rect, F32>> {
+        for (auto* box : Find<Sakura::Box>(pill)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.backgroundColor == ctx.color("chrome_button_hover")) {
+                    return std::make_pair(instance.rect, box->config().cornerRadius);
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    for (const F32 ratio : {1.0f, 2.0f}) {
+        auto ctx = scene.context();
+        ctx.pixelRatio = ratio;
+        config.size = {240.0f * ratio, 34.0f * ratio};
+        pill.update(config);
+        host.place(ctx, {0.0f, 0.0f, 240.0f * ratio, 34.0f * ratio});
+        const auto found = keycap(ctx);
+        REQUIRE(found.has_value());
+        const auto& [rect, radius] = *found;
+        CHECK(rect.height == 22.0f * ratio);
+        CHECK(rect.y == 6.0f * ratio);
+        CHECK(rect.right() == Catch::Approx(234.0f * ratio));
+        CHECK(radius == rect.height * 0.5f);
+        bool labelled = false;
+        for (auto* text : Find<Sakura::Text>(pill)) {
+            if (text->config().str == "Ctrl K") {
+                const auto frame = Peek::Frame(*text);
+                labelled = frame.x >= rect.x && frame.right() <= rect.right();
+            }
+        }
+        CHECK(labelled);
+    }
+}
+
+TEST_CASE("Pill field trailing labels settle and repaint when they change", "[core][sakura][search][retention]") {
+    Scene scene;
+    Sakura::PillField pill;
+    Place place(pill, {10.0f, 10.0f, 240.0f, 34.0f});
+    Frames frames(place, kScreen, scene.context());
+    std::string trailing = "Ctrl K";
+    const auto update = [&] {
+        pill.update({.icon = "Q", .placeholder = "Search docs", .trailing = trailing, .size = {240.0f, 34.0f}});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    trailing = "Ctrl P";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+}
+
 TEST_CASE("Pill field placeholder keeps its position when the field starts editing",
           "[core][sakura][search]") {
     Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
