@@ -25,6 +25,7 @@
 #include "compositor/default/views/start_tab/base.hh"
 #include "compositor/default/views/titlebar.hh"
 #include "compositor/default/views/workbench.hh"
+#include "render/sakura/runtime.hh"
 #include "scene.hh"
 
 #include <functional>
@@ -1031,6 +1032,35 @@ TEST_CASE("Titlebar presenter close action targets the start tab while it is the
     CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "a");
 }
 
+TEST_CASE("Titlebar close action closes the focused terminal tab and a start tab beside it can close",
+          "[core][sakura][views][terminal]") {
+    using Action = TitlebarView::Action;
+    Mailbox mailbox;
+    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
+    mailbox.state.interface.focusedFlowgraph = "a";
+    mailbox.state.terminal.tabs[4] = TileMeta{.pane = "terminal:1"};
+    mailbox.state.terminal.focused = 4;
+    TitlebarPresenter(mailbox.context()).build().onAction(Action::CloseFlowgraph);
+    REQUIRE(mailbox.last<MailCloseTerminalTab>() != nullptr);
+    CHECK(mailbox.last<MailCloseTerminalTab>()->tab == 4);
+    CHECK(mailbox.count<MailCloseFlowgraph>() == 0);
+
+    mailbox.state.terminal.focused.reset();
+    TitlebarPresenter(mailbox.context()).build().onAction(Action::CloseFlowgraph);
+    REQUIRE(mailbox.last<MailCloseFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "a");
+
+    mailbox.state.flowgraph.items.clear();
+    mailbox.state.interface.startTab = true;
+    auto start = StartTabPresenter(mailbox.context()).build();
+    REQUIRE(start.has_value());
+    CHECK(start->closable);
+    mailbox.state.terminal.tabs.clear();
+    start = StartTabPresenter(mailbox.context()).build();
+    REQUIRE(start.has_value());
+    CHECK_FALSE(start->closable);
+}
+
 TEST_CASE("Titlebar presenter save and info shortcuts skip the flowgraph hidden behind a focused tab",
           "[core][sakura][views]") {
     using Action = TitlebarView::Action;
@@ -1132,6 +1162,99 @@ TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph",
     CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).value);
 }
 
+TEST_CASE("Titlebar presenter open terminal action opens a terminal in the active flowgraph folder",
+          "[core][sakura][views][terminal]") {
+    using Action = TitlebarView::Action;
+    Mailbox mailbox;
+    auto config = TitlebarPresenter(mailbox.context()).build();
+    config.onAction(Action::OpenTerminal);
+    if (!TerminalSession::Supported()) {
+        CHECK(mailbox.mails.empty());
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    REQUIRE(mailbox.count<MailOpenTerminal>() == 1);
+    CHECK(mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+
+    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
+    mailbox.state.interface.focusedFlowgraph = "a";
+    config = TitlebarPresenter(mailbox.context()).build();
+    config.onAction(Action::OpenTerminal);
+    REQUIRE(mailbox.count<MailOpenTerminal>() == 2);
+    CHECK(mailbox.last<MailOpenTerminal>()->flowgraph == "a");
+
+    mailbox.state.terminal.items[1] = {.tab = 1};
+    mailbox.state.terminal.tabs[1] = TileMeta{.pane = "terminal:1"};
+    mailbox.state.terminal.focused = 1;
+    config = TitlebarPresenter(mailbox.context()).build();
+    config.onAction(Action::OpenTerminal);
+    REQUIRE(mailbox.count<MailOpenTerminal>() == 3);
+    CHECK(mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+    CHECK(mailbox.mails.size() == 3);
+}
+
+TEST_CASE("Terminal tabs in the title row open no tab menu while flowgraph tabs still do",
+          "[core][sakura][views][terminal]") {
+    TitleRig rig;
+    Probe terminal;
+    rig.shell.updatePanes({
+        .panes = {
+            {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
+            {.id = "terminals:1", .title = "Terminal", .group = TerminalView::Group, .icon = ICON_LC_SQUARE_TERMINAL,
+             .content = &terminal},
+        },
+    });
+    rig.place();
+
+    const auto shell = rig.pill(1);
+    rig.host.click(shell.x, shell.y, MouseButton::Right);
+    rig.place();
+    CHECK(PopupFrames(rig.host).empty());
+
+    const auto flowgraph = rig.pill(0);
+    rig.host.click(flowgraph.x, flowgraph.y, MouseButton::Right);
+    rig.place();
+    CHECK_FALSE(PopupFrames(rig.host).empty());
+    REQUIRE(ClickMenu(rig.host, "Save"));
+    rig.place();
+    CHECK(rig.tabActions == std::vector<std::pair<TitlebarView::TabAction, std::string>>{
+        {TitlebarView::TabAction::Save, "a"}});
+}
+
+TEST_CASE("A retired terminal view drops its screen and callbacks before its dock lets go of it",
+          "[core][sakura][views][terminal]") {
+    const auto ctx = MakeContext({800.0f, 600.0f});
+    const Jetstream::Rect bounds = {0.0f, 0.0f, 800.0f, 600.0f};
+    Sakura::Terminal::Screen screen;
+    screen.columns = 40;
+    screen.rows = 8;
+    screen.lines.resize(8);
+    screen.scrollTotal = 8;
+    screen.mouseTracking = true;
+    std::vector<MouseEventType> pointers;
+    TerminalView view;
+    view.update({
+        .id = "terminal:1",
+        .title = "Terminal",
+        .terminal = {
+            .id = "terminal:1",
+            .screen = &screen,
+            .revision = 1,
+            .onPointer = [&](const MouseEvent& event) { pointers.push_back(event.type); },
+        },
+    });
+    Sakura::Dock dock;
+    Host host(dock);
+    dock.update({.accepts = TerminalView::Group, .panes = {view.pane()}, .loneHeader = true});
+    host.place(ctx, bounds);
+    host.send(Mouse(MouseEventType::Click, 400.0f, 400.0f));
+    REQUIRE(pointers == std::vector<MouseEventType>{MouseEventType::Click});
+
+    view.retire();
+    dock.update({.accepts = TerminalView::Group, .loneHeader = true});
+    host.place(ctx, bounds);
+    CHECK(pointers == std::vector<MouseEventType>{MouseEventType::Click});
+}
+
 TEST_CASE("Titlebar presenter window presses are safe without a native titlebar", "[core][sakura][views]") {
     Mailbox mailbox;
     mailbox.state.system.render = std::make_shared<SakuraTest::FakeWindow>();
@@ -1174,12 +1297,13 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     keys.update({.bindings = bar.shortcuts()});
     Host host(keys);
 
-    for (const auto key : {KeyCode::T, KeyCode::O, KeyCode::S, KeyCode::W, KeyCode::I, KeyCode::G, KeyCode::Comma}) {
+    for (const auto key : {KeyCode::T, KeyCode::O, KeyCode::S, KeyCode::W, KeyCode::I, KeyCode::G, KeyCode::Comma,
+                           KeyCode::GraveAccent}) {
         CHECK(Tap(host, key, {.control = true}));
     }
     CHECK(actions == std::vector<Action>{Action::NewTab, Action::OpenFlowgraph, Action::SaveFlowgraph,
                                          Action::CloseFlowgraph, Action::ShowFlowgraphInfo, Action::SendFeedback,
-                                         Action::Settings});
+                                         Action::Settings, Action::OpenTerminal});
 
     actions.clear();
     CHECK(Tap(host, KeyCode::T, {.super = true}));
@@ -1688,6 +1812,45 @@ TEST_CASE("Welcome screen splits into a saved flowgraph sidebar and a wider expl
     CHECK(rig.mailbox.count<MailNewFlowgraph>() == 1);
     CHECK(rig.mailbox.count<MailOpenFlowgraph>() == 1);
     CHECK(rig.mailbox.mails.size() == 2);
+}
+
+TEST_CASE("Welcome hero shows an Open Terminal button only when terminals are available",
+          "[core][sakura][views][terminal]") {
+    WelcomeRig rig;
+    auto config = rig.build();
+    CHECK(static_cast<bool>(config.onOpenTerminal) == TerminalSession::Supported());
+    if (config.onOpenTerminal) {
+        config.onOpenTerminal();
+        REQUIRE(rig.mailbox.count<MailOpenTerminal>() == 1);
+        CHECK(rig.mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+        rig.mailbox.mails.clear();
+    }
+
+    U64 opened = 0;
+    config.onOpenTerminal = [&] {
+        ++opened;
+    };
+    rig.show(config);
+    auto* create = LabeledButton(rig.root(), "New Flowgraph");
+    auto* open = LabeledButton(rig.root(), "Open Flowgraph");
+    auto* terminal = LabeledButton(rig.root(), "Open Terminal");
+    REQUIRE(create != nullptr);
+    REQUIRE(open != nullptr);
+    REQUIRE(terminal != nullptr);
+    CHECK(ShownText(*terminal, ICON_LC_SQUARE_TERMINAL "  Open Terminal") != nullptr);
+    CHECK(Peek::Frame(*terminal).y == Peek::Frame(*open).y);
+    CHECK(Peek::Frame(*terminal).x > Peek::Frame(*open).right());
+    CHECK(Peek::Frame(*terminal).width == Peek::Frame(*create).width);
+    const F32 width = Peek::Frame(*create).width;
+    CHECK(Press(rig.host, *terminal));
+    CHECK(opened == 1);
+    CHECK(rig.mailbox.mails.empty());
+
+    config.onOpenTerminal = {};
+    rig.show(config);
+    CHECK(LabeledButton(rig.root(), "Open Terminal") == nullptr);
+    REQUIRE(LabeledButton(rig.root(), "New Flowgraph") != nullptr);
+    CHECK(Peek::Frame(*LabeledButton(rig.root(), "New Flowgraph")).width > width);
 }
 
 TEST_CASE("Welcome screen shows the remote section only when the build supports streaming",
@@ -4333,6 +4496,302 @@ TEST_CASE("Workbench activates only the tab the model navigated to last within a
     actions.handle(MailFocusSettings{});
     update();
     CHECK(mailbox.mails.empty());
+}
+
+TEST_CASE("Terminal presenter builds one config per terminal and per tab and routes their callbacks by id",
+          "[core][sakura][views][terminal]") {
+    Mailbox mailbox;
+    auto& terminals = mailbox.state.terminal;
+    terminals.items[1] = {.tab = 1};
+    terminals.items[3] = {.title = "zsh", .flowgraph = std::string("graph"), .revision = 7, .focusRequests = 2};
+    terminals.items[4] = {.title = "vim", .tab = 1};
+    terminals.tabs[1] = TileMeta{
+        .split = "column",
+        .children = std::vector<TileMeta>{{.pane = "terminal:9"}, {.pane = "terminal:4"}, {.pane = "terminal:1"}},
+    };
+    terminals.tabs[2] = TileMeta{.pane = "terminal:9"};
+    const auto context = mailbox.context();
+    const TerminalPresenter presenter(context);
+    const auto configs = presenter.build();
+    REQUIRE(configs.size() == 3);
+    CHECK(configs[0].id == "terminal:1");
+    CHECK(configs[0].title == "Terminal");
+    CHECK_FALSE(configs[0].flowgraph.has_value());
+    CHECK(configs[0].tab == std::optional<std::string>("terminals:1"));
+    CHECK(configs[1].id == "terminal:3");
+    CHECK(configs[1].title == "Terminal (zsh)");
+    CHECK(configs[1].flowgraph == std::optional<std::string>("graph"));
+    CHECK_FALSE(configs[1].tab.has_value());
+    CHECK(configs[1].terminal.id == "terminal:3");
+    CHECK(configs[1].terminal.screen == &terminals.items.at(3).screen);
+    CHECK(configs[1].terminal.revision == 7);
+    CHECK(configs[1].terminal.focusRequest == 2);
+    CHECK(configs[0].terminal.focusRequest == 0);
+    CHECK(configs[2].title == "Terminal (vim)");
+
+    configs[1].terminal.onText("l");
+    configs[1].terminal.onResize({.columns = 30, .rows = 5, .cellWidth = 9.0f, .cellHeight = 17.0f});
+    configs[0].terminal.onScroll(-2, {4.0f, 8.0f}, {.control = true});
+    REQUIRE(mailbox.count<MailTerminalInput>() == 3);
+    const auto& typed = std::get<MailTerminalInput>(mailbox.mails[0]);
+    CHECK(typed.terminal == 3);
+    REQUIRE(std::holds_alternative<MailTerminalInput::Text>(typed.input));
+    CHECK(std::get<MailTerminalInput::Text>(typed.input).value == "l");
+    const auto& resized = std::get<MailTerminalInput>(mailbox.mails[1]);
+    CHECK(resized.terminal == 3);
+    REQUIRE(std::holds_alternative<Sakura::Terminal::Grid>(resized.input));
+    CHECK(std::get<Sakura::Terminal::Grid>(resized.input).columns == 30);
+    const auto& scrolled = std::get<MailTerminalInput>(mailbox.mails[2]);
+    CHECK(scrolled.terminal == 1);
+    REQUIRE(std::holds_alternative<MailTerminalInput::Scroll>(scrolled.input));
+    CHECK(std::get<MailTerminalInput::Scroll>(scrolled.input).rows == -2);
+
+    mailbox.mails.clear();
+    configs[1].onClose();
+    configs[0].onSplit(false);
+    configs[2].onSplit(true);
+    REQUIRE(mailbox.mails.size() == 3);
+    REQUIRE(std::holds_alternative<MailCloseTerminal>(mailbox.mails[0]));
+    CHECK(std::get<MailCloseTerminal>(mailbox.mails[0]).terminal == 3);
+    REQUIRE(std::holds_alternative<MailOpenTerminal>(mailbox.mails[1]));
+    CHECK(std::get<MailOpenTerminal>(mailbox.mails[1]).split == std::optional<U64>(1));
+    CHECK_FALSE(std::get<MailOpenTerminal>(mailbox.mails[1]).stacked);
+    REQUIRE(std::holds_alternative<MailOpenTerminal>(mailbox.mails[2]));
+    CHECK(std::get<MailOpenTerminal>(mailbox.mails[2]).split == std::optional<U64>(4));
+    CHECK(std::get<MailOpenTerminal>(mailbox.mails[2]).stacked);
+
+    mailbox.mails.clear();
+    const auto tabs = presenter.tabs();
+    REQUIRE(tabs.size() == 2);
+    CHECK(tabs[0].id == "terminals:1");
+    CHECK(tabs[0].title == "Terminal (vim)");
+    REQUIRE(tabs[0].tiles.has_value());
+    CHECK(tabs[0].tiles->vertical);
+    REQUIRE(tabs[0].tiles->children.size() == 3);
+    CHECK(tabs[0].tiles->children[1].pane == "terminal:4");
+    CHECK(tabs[1].id == "terminals:2");
+    CHECK(tabs[1].title == "Terminal");
+
+    tabs[0].onTiles(Row({0.5f, 0.5f}, {Leaf("terminal:1"), Leaf("terminal:4")}));
+    tabs[0].onTiles(std::nullopt);
+    tabs[0].onClose();
+    tabs[1].onFocus();
+    REQUIRE(mailbox.mails.size() == 4);
+    const auto& tiled = std::get<MailSetTerminalTabLayout>(mailbox.mails[0]);
+    CHECK(tiled.tab == 1);
+    REQUIRE(tiled.tiles.has_value());
+    CHECK(tiled.tiles->split == std::optional<std::string>("row"));
+    REQUIRE(tiled.tiles->children.has_value());
+    CHECK(tiled.tiles->children->size() == 2);
+    const auto& cleared = std::get<MailSetTerminalTabLayout>(mailbox.mails[1]);
+    CHECK(cleared.tab == 1);
+    CHECK_FALSE(cleared.tiles.has_value());
+    CHECK(std::get<MailCloseTerminalTab>(mailbox.mails[2]).tab == 1);
+    CHECK(std::get<MailFocusTerminalTab>(mailbox.mails[3]).tab == 2);
+}
+
+TEST_CASE("A terminal tab is a main dock tab whose inner dock titles its terminal tiles even when alone",
+          "[core][sakura][views][terminal]") {
+    TitleRig rig;
+    Sakura::Terminal::Screen screen;
+    std::vector<std::string> events;
+    TerminalView first;
+    TerminalView second;
+    TerminalTabView tab;
+    std::optional<Sakura::DockTiles> tiles = Leaf("terminal:1");
+    bool split = false;
+    const auto terminal = [&](U64 id, std::string title) {
+        return TerminalView::Config{
+            .id = MakeTerminalPaneKey(id),
+            .title = std::move(title),
+            .tab = MakeTerminalTabKey(1),
+            .terminal = {.id = MakeTerminalPaneKey(id), .screen = &screen, .revision = 1},
+            .onClose = [&events, id] {
+                events.push_back("close:" + std::to_string(id));
+            },
+            .onSplit = [&events, id](bool stacked) {
+                events.push_back("split:" + std::to_string(id) + (stacked ? ":below" : ":beside"));
+            },
+        };
+    };
+    const auto update = [&](std::optional<std::string> activate) {
+        first.update(terminal(1, "Terminal (zsh)"));
+        std::vector<Sakura::Dock::Pane> panes = {first.pane()};
+        if (split) {
+            second.update(terminal(2, "Terminal"));
+            panes.push_back(second.pane());
+        }
+        tab.update({
+                       .id = "terminals:1",
+                       .title = "Terminal (zsh)",
+                       .tiles = tiles,
+                       .onTiles = [&events](std::optional<Sakura::DockTiles>) {
+                           events.push_back("tiles");
+                       },
+                       .onClose = [&events] {
+                           events.push_back("close tab");
+                       },
+                       .onFocus = [&events] {
+                           events.push_back("focus");
+                       },
+                   },
+                   std::move(panes));
+        rig.shell.updatePanes({
+            .panes = {{.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
+                      tab.pane()},
+            .activate = std::move(activate),
+        });
+        rig.place();
+    };
+    const auto glyph = [&](const std::string& str) -> Sakura::Text* {
+        for (auto* text : Direct<Sakura::Text>(*tab.pane().content)) {
+            if (text->config().str == str && text->visible()) {
+                return text;
+            }
+        }
+        return nullptr;
+    };
+    const auto headers = [&](const std::string& title) {
+        U64 count = 0;
+        for (auto* text : Direct<Sakura::Text>(*tab.pane().content)) {
+            count += text->config().str == title && text->visible() ? 1 : 0;
+        }
+        return count;
+    };
+
+    update("terminals:1");
+    const auto pane = tab.pane();
+    CHECK(pane.id == "terminals:1");
+    CHECK(pane.group == TerminalView::Group);
+    CHECK(pane.icon == ICON_LC_SQUARE_TERMINAL);
+    REQUIRE(dynamic_cast<Sakura::Dock*>(pane.content) != nullptr);
+    CHECK(events == std::vector<std::string>{"focus"});
+    CHECK_FALSE(rig.a.visible());
+    const auto shown = Find<Sakura::Terminal>(*pane.content);
+    REQUIRE(shown.size() == 1);
+    CHECK(shown.front()->visible());
+    CHECK(headers("Terminal (zsh)") == 1);
+    auto* beside = glyph(ICON_LC_COLUMNS_2);
+    REQUIRE(beside != nullptr);
+    REQUIRE(glyph(ICON_LC_ROWS_2) != nullptr);
+    CHECK(Peek::Frame(*beside).y < Peek::Frame(*shown.front()).y);
+
+    events.clear();
+    Press(rig.host, *beside);
+    rig.place();
+    Press(rig.host, *glyph(ICON_LC_ROWS_2));
+    rig.place();
+    CHECK(events == std::vector<std::string>{"split:1:beside", "split:1:below"});
+
+    split = true;
+    tiles = Row({0.5f, 0.5f}, {Leaf("terminal:1"), Leaf("terminal:2")});
+    events.clear();
+    update(std::nullopt);
+    REQUIRE(Find<Sakura::Terminal>(*pane.content).size() == 2);
+    CHECK(headers("Terminal (zsh)") == 1);
+    CHECK(headers("Terminal") == 1);
+    const auto left = Peek::Frame(*Find<Sakura::Terminal>(*pane.content)[0]);
+    const auto right = Peek::Frame(*Find<Sakura::Terminal>(*pane.content)[1]);
+    CHECK(left.y == right.y);
+    CHECK(left.x != right.x);
+
+    const auto pill = rig.pill(1);
+    rig.host.click(pill.x, pill.y, MouseButton::Right);
+    rig.place();
+    CHECK(PopupFrames(rig.host).empty());
+    CHECK(rig.tabActions.empty());
+}
+
+TEST_CASE("Workbench shows a terminal tab as a main tab and a tiled terminal inside its flowgraph",
+          "[core][sakura][views][terminal]") {
+    Mailbox mailbox;
+    auto& terminals = mailbox.state.terminal;
+    terminals.items[1] = {.tab = 1};
+    terminals.items[2] = {.flowgraph = std::string("graph")};
+    terminals.tabs[1] = TileMeta{.pane = "terminal:1"};
+    terminals.focused = 1;
+    terminals.requested = 1;
+    terminals.requests = 1;
+    CHECK_FALSE(mailbox.state.tabsHidden());
+
+    const auto presented = WorkbenchPresenter(mailbox.context()).build();
+    CHECK_FALSE(presented.hideTabs);
+    CHECK(presented.terminals.size() == 2);
+    REQUIRE(presented.terminalTabs.size() == 1);
+    CHECK(presented.terminalTabs[0].id == "terminals:1");
+    CHECK(presented.terminalRequested == std::optional<std::string>("terminals:1"));
+    CHECK(presented.terminalRequests == 1);
+    CHECK(presented.terminalFocused);
+
+    FakeWindow window(1.0f, {1200.0f, 600.0f});
+    Sakura::Runtime runtime;
+    runtime.update({.render = &window});
+    WorkbenchView view;
+    const auto show = [&] {
+        const auto context = mailbox.context();
+        const TerminalPresenter presenter(context);
+        WorkbenchView::Config config;
+        config.backgroundParticles = false;
+        config.flowgraphs.push_back({
+            .id = "graph",
+            .title = "Graph",
+            .layoutGroup = "layout:graph",
+            .editorPane = "editor:graph",
+            .layout = Row({0.5f, 0.5f}, {Leaf("editor:graph"), Leaf("terminal:2")}),
+        });
+        config.terminals = presenter.build();
+        config.terminalTabs = presenter.tabs();
+        if (terminals.requested.has_value()) {
+            config.terminalRequested = MakeTerminalTabKey(*terminals.requested);
+        }
+        config.terminalRequests = terminals.requests;
+        config.terminalFocused = terminals.focused == terminals.requested;
+        mailbox.mails.clear();
+        view.update(std::move(config));
+        for (U64 frame = 0; frame < 3; ++frame) {
+            REQUIRE(window.begin() == Result::SUCCESS);
+            view.render(runtime.context());
+            REQUIRE(window.end() == Result::SUCCESS);
+        }
+    };
+    const auto grid = [&](U64 terminal) -> std::optional<Sakura::Terminal::Grid> {
+        std::optional<Sakura::Terminal::Grid> found;
+        for (const auto& mail : mailbox.mails) {
+            if (const auto* input = std::get_if<MailTerminalInput>(&mail); input && input->terminal == terminal) {
+                if (const auto* resized = std::get_if<Sakura::Terminal::Grid>(&input->input)) {
+                    found = *resized;
+                }
+            }
+        }
+        return found;
+    };
+
+    show();
+    REQUIRE(mailbox.count<MailFocusTerminalTab>() == 1);
+    CHECK(mailbox.last<MailFocusTerminalTab>()->tab == 1);
+    const auto tabbed = grid(1);
+    REQUIRE(tabbed.has_value());
+    CHECK_FALSE(grid(2).has_value());
+
+    show();
+    CHECK(mailbox.count<MailFocusTerminalTab>() == 0);
+
+    terminals.requests = 2;
+    terminals.focused.reset();
+    show();
+    CHECK(mailbox.count<MailFocusTerminalTab>() == 0);
+    CHECK_FALSE(WorkbenchPresenter(mailbox.context()).build().terminalFocused);
+
+    terminals.items.erase(1);
+    terminals.tabs.clear();
+    terminals.focused.reset();
+    terminals.requested.reset();
+    show();
+    const auto tiled = grid(2);
+    REQUIRE(tiled.has_value());
+    CHECK(tiled->columns < tabbed->columns);
+    CHECK(tiled->columns * 3 > tabbed->columns);
+    CHECK_FALSE(grid(1).has_value());
 }
 
 TEST_CASE("Flowgraph info view settles under identical updates",

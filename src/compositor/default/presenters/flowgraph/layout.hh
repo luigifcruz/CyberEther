@@ -28,6 +28,9 @@ inline std::string DescribeTile(const std::string& key) {
     if (key == kLayoutDescriptionPane) {
         return "Description";
     }
+    if (ParseTerminalPaneKey(key).has_value()) {
+        return "Terminal";
+    }
     if (auto config = ParseConfigTileKey(key)) {
         return *config + " Config";
     }

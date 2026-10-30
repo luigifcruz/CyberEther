@@ -278,6 +278,67 @@ struct MailSetFlowgraphEnvironmentSearch {
     std::string value;
 };
 
+struct MailOpenTerminal {
+    std::string flowgraph;
+    std::optional<U64> split;
+    bool stacked = false;
+    bool tile = false;
+};
+
+struct MailCloseTerminal {
+    U64 terminal = 0;
+};
+
+struct MailCloseTerminalTab {
+    U64 tab = 0;
+};
+
+struct MailFocusTerminalTab {
+    U64 tab = 0;
+};
+
+struct MailSetTerminalTabLayout {
+    U64 tab = 0;
+    std::optional<TileMeta> tiles;
+};
+
+struct MailTerminalInput {
+    struct Text {
+        std::string value;
+    };
+
+    struct Paste {
+        std::string value;
+    };
+
+    struct Scroll {
+        I32 rows = 0;
+        Extent2D<F32> position = {0.0f, 0.0f};
+        KeyModifiers modifiers;
+    };
+
+    struct ScrollTo {
+        U64 row = 0;
+    };
+
+    struct Focus {
+        bool value = false;
+    };
+
+    using Input = std::variant<Sakura::Terminal::Grid,
+                               KeyEvent,
+                               Text,
+                               Paste,
+                               Scroll,
+                               ScrollTo,
+                               Sakura::Terminal::Selection,
+                               MouseEvent,
+                               Focus>;
+
+    U64 terminal = 0;
+    Input input;
+};
+
 struct MailSetGraphicsScale {
     F32 value = 1.0f;
 };
@@ -622,6 +683,12 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetShowTips,
                           MailSetFlowgraphEnvironmentVisible,
                           MailSetFlowgraphEnvironmentSearch,
+                          MailOpenTerminal,
+                          MailCloseTerminal,
+                          MailCloseTerminalTab,
+                          MailFocusTerminalTab,
+                          MailSetTerminalTabLayout,
+                          MailTerminalInput,
                           MailSetGraphicsScale,
                           MailSetGraphicsDevice,
                           MailSetAgentEnabled,

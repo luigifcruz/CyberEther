@@ -94,6 +94,7 @@ struct WelcomeView {
         Sakura::Callback<void()> onAssistantVoice;
         Sakura::Callback<void()> onNewFlowgraph;
         Sakura::Callback<void()> onOpenFlowgraph;
+        Sakura::Callback<void()> onOpenTerminal;
         Sakura::Callback<void()> onOpenSettings;
         bool darkMode = true;
         Sakura::Callback<void()> onToggleTheme;
@@ -492,11 +493,25 @@ struct WelcomeView {
                 }
             },
         });
+        heroTerminal.update({
+            .str = ICON_LC_SQUARE_TERMINAL "  Open Terminal",
+            .height = HeroButtonHeight,
+            .textScale = HeroButtonText,
+            .onClick = [this]() {
+                if (config.onOpenTerminal) {
+                    config.onOpenTerminal();
+                }
+            },
+        });
+        std::vector<Sakura::Component*> heroItems = {&heroNew, &heroOpen};
+        if (config.onOpenTerminal) {
+            heroItems.push_back(&heroTerminal);
+        }
         heroActions.update({
-            .columns = 2,
+            .columns = static_cast<U64>(heroItems.size()),
             .cellPadding = {4.0f, 0.0f},
             .outerPadding = false,
-            .items = {&heroNew, &heroOpen},
+            .items = std::move(heroItems),
         });
         actionsSpacing.update({.lines = 3});
         std::vector<Sakura::Stack::Item> column = {{.child = &wordmark}, {.child = &wordmarkSpacing}};
@@ -842,6 +857,7 @@ struct WelcomeView {
     Sakura::ChatComposer assistant;
     CardButton heroNew;
     CardButton heroOpen;
+    CardButton heroTerminal;
     Sakura::Grid heroActions;
     Sakura::Spacer actionsSpacing;
     Sakura::Spacer heroSpacing;
