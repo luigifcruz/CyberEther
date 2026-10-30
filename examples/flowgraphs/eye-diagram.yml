@@ -15,28 +15,28 @@ graph:
       content: |-
         # QPSK Eye Diagram
         **No radio needed. Requires Python with NumPy.**
-
+        
         The **Python** block generates random QPSK symbols at eight samples per symbol and shapes them with a root-raised-cosine filter. Noise is added, then an **RRC Filter** and an **AGC** feed the **Eye Diagram** before any symbol decimation.
-
+        
         The generator stays in Python so you can experiment with pulse shaping.
-
+        
         ## Reading the eye
         Two symbol periods span the plot, from -1 to +1. Density accumulates successive traces. Open regions between transitions are the eye openings. Noise and timing mismatch close or smear them. The folding origin is fixed, not clock-recovered.
-
+        
         ## Try it
         1. Keep **Samples per Symbol** at 8 to match the generator. Try 7 or 9 to see the eye lose alignment, then restore 8.
         2. Compare **Interpolation** at 1x, 4x, and 16x. Linear interpolation adds display points, not signal information.
         3. Switch **Component** between in-phase and quadrature.
         4. Raise **Noise Variance** from 0.005 to 0.05 and compare the eye and constellation.
         5. Change **Persistence** to shorten or lengthen the density history. **Amplitude Min** and **Amplitude Max** set the display range.
-
+        
         The **PSK Demodulator** recovers symbol timing and carrier phase for the constellation. Its output is one sample per symbol, so the eye reads the oversampled AGC output instead.
     meta:
       node:
-        x: 20
-        y: 250
-        width: 420
-        height: 620
+        x: 22
+        y: 337
+        width: 533
+        height: 554
   - name: noise
     module: signal_generator
     device: cpu
@@ -48,13 +48,18 @@ graph:
       sampleRate: 1000000
       frequency: 0
       amplitude: 1
+      phase: 0
+      dcOffset: 0
       noiseVariance: 0.005
+      chirpStartFreq: 1000
+      chirpEndFreq: 10000
+      chirpDuration: 1
       bufferSize: 4096
     meta:
       node:
-        x: 20
-        y: 0
-        width: 200
+        x: 22
+        y: 87
+        width: 288
         height: 0
   - name: python_qpsk
     module: python
@@ -65,7 +70,7 @@ graph:
       source: editor
       code: |-
         import numpy as np
-
+        
         def rrc_filter(x, sample_rate, symbol_rate, roll_off, taps, history):
             sps, b = sample_rate / symbol_rate, roll_off
             t = (np.arange(taps) - (taps - 1) / 2) / sps
@@ -81,7 +86,7 @@ graph:
                 history = np.zeros(taps - 1, dtype=x.dtype)
             samples = np.concatenate((history, x))
             return np.convolve(samples, h, mode="valid"), samples[-(taps - 1):].copy()
-
+        
         rng = np.random.default_rng(7)
         samples_per_symbol = 8
         amplitude = 0.7
@@ -90,7 +95,7 @@ graph:
         roll_off = 0.35
         taps = 11 * samples_per_symbol + 1
         rrc_history = None
-
+        
         def compute(ctx):
             global rrc_history
             count = ctx.inputs[0].size // samples_per_symbol
@@ -105,6 +110,7 @@ graph:
             attrs = ctx.input_attrs[0]
             ctx.output_attrs[0]["sampleRate"] = attrs["sampleRate"]
             ctx.output_attrs[0]["frequency"] = attrs["frequency"]
+      file: ''
       inputCount: 1
       outputCount: 1
       outputTensorSpecs:
@@ -117,25 +123,27 @@ graph:
       input0: '${graph.noise.output.signal}'
     meta:
       node:
-        x: 280
-        y: 0
-        width: 200
-        height: 0
+        x: 386
+        y: 202
+        width: 120
+        height: 734
       config:
         collapsed: true
+        detached: false
+        windowId: ''
   - name: add
     module: add
     device: cpu
     runtime: native
     provider: generic
     input:
-      a: '${graph.noise.output.signal}'
       b: '${graph.python_qpsk.output.output0}'
+      a: '${graph.noise.output.signal}'
     meta:
       node:
-        x: 540
-        y: 0
-        width: 140
+        x: 592
+        y: 87
+        width: 120
         height: 0
   - name: spectrum_analyzer
     module: spectrum_analyzer
@@ -146,27 +154,37 @@ graph:
       mode: lineplot_waterfall
       lineplotAveraging: 1
       waterfallAveraging: 1
+      maxHold: false
+      fill: true
       rangeMin: -100
       rangeMax: 0
       waterfallHeight: 256
       colormap: turbo
+      density: false
+      persistence: 256
       splitRatio: 0.5
+      markers: '[]'
+      pins: '[]'
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
     input:
       buffer: '${graph.add.output.sum}'
     meta:
       node:
-        x: 510
-        y: 270
-        width: 420
-        height: 340
+        x: 758
+        y: 261
+        width: 307
+        height: 353
       config:
         collapsed: true
       surface_default:
-        attachedHeight: 280
+        attachedHeight: 295
         detachedWidth: 800
         detachedHeight: 600
         detached: false
         configCollapsed: true
+        windowId: ''
   - name: rrc_filter
     module: rrc_filter
     device: cpu
@@ -181,9 +199,9 @@ graph:
       buffer: '${graph.add.output.sum}'
     meta:
       node:
-        x: 750
-        y: 0
-        width: 180
+        x: 758
+        y: 86
+        width: 120
         height: 0
       config:
         collapsed: true
@@ -203,40 +221,12 @@ graph:
       signal: '${graph.rrc_filter.output.buffer}'
     meta:
       node:
-        x: 1000
-        y: 0
-        width: 180
+        x: 926
+        y: 85
+        width: 120
         height: 0
       config:
         collapsed: true
-  - name: eye_diagram
-    module: eye_diagram
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      samplesPerSymbol: 8
-      interpolation: 4
-      component: real
-      rangeMin: -2
-      rangeMax: 2
-      persistence: 256
-    input:
-      signal: '${graph.agc.output.signal}'
-    meta:
-      node:
-        x: 1000
-        y: 270
-        width: 500
-        height: 420
-      config:
-        collapsed: false
-      surface_default:
-        attachedHeight: 320
-        detachedWidth: 900
-        detachedHeight: 600
-        detached: false
-        configCollapsed: false
   - name: psk_demod
     module: psk_demod
     device: cpu
@@ -253,9 +243,9 @@ graph:
       signal: '${graph.agc.output.signal}'
     meta:
       node:
-        x: 1270
-        y: 0
-        width: 220
+        x: 1095
+        y: 85
+        width: 162
         height: 0
       config:
         collapsed: true
@@ -264,19 +254,54 @@ graph:
     device: cpu
     runtime: native
     provider: generic
+    config:
+      xLabel: In-Phase
+      yLabel: Quadrature
     input:
       signal: '${graph.psk_demod.output.signal}'
     meta:
       node:
-        x: 1580
-        y: 270
-        width: 360
-        height: 360
+        x: 1629
+        y: 82
+        width: 244
+        height: 285
       config:
         collapsed: true
       surface_default:
-        attachedHeight: 300
+        attachedHeight: 227
         detachedWidth: 600
         detachedHeight: 600
         detached: false
         configCollapsed: true
+        windowId: ''
+  - name: eye_diagram
+    module: eye_diagram
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      samplesPerSymbol: 8
+      interpolation: 16
+      component: real
+      rangeMin: -2
+      rangeMax: 2
+      persistence: 256
+      markers: '[]'
+      pins: '[]'
+    input:
+      signal: '${graph.agc.output.signal}'
+    meta:
+      node:
+        x: 1098
+        y: 197
+        width: 500
+        height: 420
+      config:
+        collapsed: false
+      surface_default:
+        attachedHeight: 294
+        detachedWidth: 900
+        detachedHeight: 600
+        detached: false
+        configCollapsed: false
+        windowId: ''
