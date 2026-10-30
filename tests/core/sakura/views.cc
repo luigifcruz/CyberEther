@@ -5018,3 +5018,114 @@ TEST_CASE("Docs tab settles under identical updates", "[core][sakura][views]") {
     config.navigation = 2;
     CHECK(Settles(frames, update));
 }
+
+namespace {
+
+Docs SearchDocs() {
+    return Docs::Parse({
+        {"overview", "---\ntitle: Overview\norder: 1\ncategory: Getting Started\n---\n\nIntro to the blueprint."},
+        {"plugins", "---\ntitle: Creating Plugins\norder: 2\ncategory: Guides\n---\n\n"
+                    "## Bundling\n\nUse the blueprint bundler.\n\n"
+                    "## Folder Layout\n\nThe blueprint folder layout."},
+    });
+}
+
+}  // namespace
+
+TEST_CASE("Docs search keeps one height across the hint, the results, and the no-results state",
+          "[core][sakura][views]") {
+    const Docs docs = SearchDocs();
+    KeyedModalRig rig;
+    DocsSearchView view;
+    std::string query;
+    rig.update = [&] {
+        view.update({.docs = &docs, .query = query, .onQueryChange = [&](const std::string& next) { query = next; }});
+        rig.modal.update(view.layer());
+    };
+    REQUIRE(rig.settles());
+    CHECK(ShownText(view.component(), "Search the documentation.") != nullptr);
+    CHECK(Find<Sakura::HighlightText>(view.component()).empty());
+    const F32 height = Peek::Frame(view.component()).height;
+    REQUIRE(height > 0.0f);
+
+    rig.type("blueprint");
+    CHECK(query == "blueprint");
+    REQUIRE(rig.settles());
+    CHECK(Find<Sakura::HighlightText>(view.component()).size() == docs.search("blueprint", 6).size());
+    CHECK(ShownText(view.component(), "Creating Plugins") != nullptr);
+    CHECK(Peek::Frame(view.component()).height == height);
+
+    query = "zzz";
+    REQUIRE(rig.settles());
+    CHECK(ShownText(view.component(), "No results for \"zzz\".") != nullptr);
+    CHECK(Find<Sakura::HighlightText>(view.component()).empty());
+    CHECK(Peek::Frame(view.component()).height == height);
+}
+
+TEST_CASE("Docs search opens the selected section from the keyboard and closes on escape and outside clicks",
+          "[core][sakura][views]") {
+    const Docs docs = SearchDocs();
+    KeyedModalRig rig;
+    DocsSearchView view;
+    std::vector<std::string> opened;
+    U64 closes = 0;
+    rig.update = [&] {
+        view.update({
+            .docs = &docs,
+            .query = "blueprint",
+            .onOpen = [&](const std::string& page, const std::string& anchor) {
+                opened.push_back(page + "#" + anchor);
+            },
+            .onClose = [&] { ++closes; },
+        });
+        rig.modal.update(view.layer());
+    };
+    REQUIRE(rig.settles());
+    const auto hits = docs.search("blueprint", 6);
+    REQUIRE(hits.size() >= 2);
+    const auto expected = [&](U64 index) {
+        return docs.pages()[hits[index].page].slug + "#" + hits[index].anchor;
+    };
+
+    rig.press(KeyCode::Enter);
+    rig.press(KeyCode::DownArrow);
+    rig.press(KeyCode::Enter);
+    rig.press(KeyCode::UpArrow);
+    rig.press(KeyCode::UpArrow);
+    rig.press(KeyCode::Enter);
+    CHECK(opened == std::vector<std::string>{expected(0), expected(1), expected(hits.size() - 1)});
+
+    const auto card = Peek::Frame(view.component());
+    rig.click({card.x + card.width * 0.5f, card.bottom() - 4.0f});
+    CHECK(closes == 0);
+    rig.click({card.x * 0.5f, card.y + card.height * 0.5f});
+    CHECK(closes == 1);
+    rig.press(KeyCode::Escape);
+    CHECK(closes == 2);
+}
+
+TEST_CASE("Docs search presenters open the modal, store the query, and replace the modal with the docs page",
+          "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    WorkbenchActions actions(mailbox.state, mailbox.callbacks);
+    actions.handle(MailSetDocsQuery{.query = "bundler"});
+    CHECK(mailbox.state.interface.docsQuery == "bundler");
+
+    mailbox.state.modal.content = ModalContent::DocsSearch;
+    const auto config = ModalPresenter(context).build();
+    CHECK(config.docsSearch.query == "bundler");
+    CHECK(config.docsSearch.docs == &Docs::Bundled());
+
+    config.docsSearch.onQueryChange("bundle");
+    REQUIRE(mailbox.last<MailSetDocsQuery>() != nullptr);
+    CHECK(mailbox.last<MailSetDocsQuery>()->query == "bundle");
+    mailbox.mails.clear();
+    config.docsSearch.onOpen("plugins", "bundling");
+    REQUIRE(mailbox.mails.size() == 2);
+    CHECK(std::holds_alternative<MailCloseModal>(mailbox.mails[0]));
+    const auto* open = std::get_if<MailOpenDocs>(&mailbox.mails[1]);
+    REQUIRE(open != nullptr);
+    CHECK(open->page == "plugins");
+    CHECK(open->anchor == "bundling");
+}

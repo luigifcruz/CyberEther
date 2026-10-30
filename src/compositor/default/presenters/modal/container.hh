@@ -3,6 +3,7 @@
 
 #include "benchmark.hh"
 #include "dependencies.hh"
+#include "docs_search.hh"
 #include "feedback.hh"
 #include "remote_qr.hh"
 
@@ -23,6 +24,7 @@ struct ModalPresenter {
     DependencyReviewModalPresenter dependencies;
     FeedbackModalPresenter feedback;
     RemoteQrModalPresenter remoteQr;
+    DocsSearchModalPresenter docsSearch;
 
     explicit ModalPresenter(const PresenterContext& context) : context(context),
                                                                flowgraphInfo(context),
@@ -30,7 +32,8 @@ struct ModalPresenter {
                                                                benchmark(context),
                                                                dependencies(context),
                                                                feedback(context),
-                                                               remoteQr(context) {}
+                                                               remoteQr(context),
+                                                               docsSearch(context) {}
 
     ModalView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
@@ -65,6 +68,9 @@ struct ModalPresenter {
                 break;
             case ModalContent::RemoteQr:
                 config.remoteQr = remoteQr.build();
+                break;
+            case ModalContent::DocsSearch:
+                config.docsSearch = docsSearch.build();
                 break;
         }
 

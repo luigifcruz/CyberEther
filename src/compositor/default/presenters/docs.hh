@@ -23,6 +23,9 @@ struct DocsPresenter {
             .onNavigate = [enqueue](const std::string& page, const std::string& anchor) {
                 enqueue(MailOpenDocs{.page = page, .anchor = anchor});
             },
+            .onSearch = [enqueue]() {
+                enqueue(MailOpenModal{.content = ModalContent::DocsSearch});
+            },
             .onOpenUrl = [enqueue](const std::string& url) {
                 enqueue(MailOpenUrl{.url = url, .notifyResult = true});
             },

@@ -149,6 +149,10 @@ struct MailOpenDocs {
 
 struct MailCloseDocs {};
 
+struct MailSetDocsQuery {
+    std::string query;
+};
+
 struct MailFocusDocs {};
 
 struct MailOpenFlowgraph {};
@@ -589,6 +593,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailFocusSettings,
                           MailOpenDocs,
                           MailCloseDocs,
+                          MailSetDocsQuery,
                           MailFocusDocs,
                           MailOpenFlowgraph,
                           MailCreateBlock,

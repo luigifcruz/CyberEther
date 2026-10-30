@@ -42,6 +42,7 @@ struct WorkbenchActions {
                               MailFocusSettings,
                               MailOpenDocs,
                               MailCloseDocs,
+                              MailSetDocsQuery,
                               MailFocusDocs>;
 
     DefaultCompositorState& state;
@@ -169,6 +170,11 @@ struct WorkbenchActions {
 
     Result handle(const MailCloseDocs&) {
         Close(state, WorkspaceTab::Docs);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetDocsQuery& msg) {
+        state.interface.docsQuery = msg.query;
         return Result::SUCCESS;
     }
 

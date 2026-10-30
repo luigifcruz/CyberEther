@@ -184,6 +184,7 @@ struct DefaultCompositorState {
         std::string docsPage;
         std::string docsAnchor;
         U64 docsNavigations = 0;
+        std::string docsQuery;
     };
 
     struct GraphicsState {
