@@ -93,6 +93,8 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     subjects.push_back(Make<Sakura::LogView>("log view", {.value = "first\nsecond", .height = 0.0f}));
     subjects.push_back(Make<Sakura::Console>("console", {.output = {"first", "second"}, .height = 0.0f}));
     subjects.push_back(Make<Sakura::CodeEditor>("code editor", {.value = "x = 1\ny = 2\n", .height = 0.0f}));
+    subjects.push_back(Make<Sakura::Terminal>("terminal", {}));
+    subjects.push_back(Make<Sakura::Terminal>("natural terminal", {.size = {0.0f, 0.0f}}));
     subjects.push_back(Make<Sakura::MarkdownEditor>("markdown editor", {.value = "Notes"}));
     subjects.push_back(Make<Sakura::PillField>("pill field", {.placeholder = "Search blocks"}));
     subjects.push_back(Make<Sakura::PillStepper>("pill stepper", {.label = "100%"}));

@@ -65,6 +65,7 @@
 #include <jetstream/render/sakura/components/status_bar.hh>
 #include <jetstream/render/sakura/components/surface_image.hh>
 #include <jetstream/render/sakura/components/table.hh>
+#include <jetstream/render/sakura/components/terminal.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_editor.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
