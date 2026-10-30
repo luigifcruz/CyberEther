@@ -4,7 +4,7 @@ title: QPSK Eye Diagram
 summary: Explore a pulse-shaped QPSK eye at eight samples per symbol.
 author: Luigi & Paulo
 license: MIT
-description: 'Generates noisy, root-raised-cosine-shaped QPSK with Python, then displays a native Eye Diagram, spectrum, waterfall and recovered constellation. Requires Python with NumPy.'
+description: 'Generates noisy, root-raised-cosine-shaped QPSK with Python, then displays its eye diagram, spectrum, waterfall, and recovered constellation. Requires Python with NumPy.'
 graph:
   - name: explanation
     module: note
@@ -16,21 +16,21 @@ graph:
         # QPSK Eye Diagram
         **No radio needed. Requires Python with NumPy.**
 
-        Based on the 8-SPS QPSK demo: Python generates random symbols and applies a transmit root-raised-cosine filter. Noise is added, then a native RRC filter and AGC feed the native **Eye Diagram** before symbol decimation.
+        The **Python** block generates random QPSK symbols at eight samples per symbol and shapes them with a root-raised-cosine filter. Noise is added, then an **RRC Filter** and an **AGC** feed the **Eye Diagram** before any symbol decimation.
 
-        The eye replaces the Python eye-folding block, Range and Lineplot chain. The generator remains Python so you can experiment with pulse shaping.
+        The generator stays in Python so you can experiment with pulse shaping.
 
         ## Reading the eye
-        Two symbol periods span the plot, from -1 to +1. Density accumulates successive traces. Open regions between transitions are the eye openings; noise and timing mismatch close or smear them. The folding origin is fixed, not clock-recovered.
+        Two symbol periods span the plot, from -1 to +1. Density accumulates successive traces. Open regions between transitions are the eye openings. Noise and timing mismatch close or smear them. The folding origin is fixed, not clock-recovered.
 
         ## Try it
         1. Keep **Samples per Symbol** at 8 to match the generator. Try 7 or 9 to see the eye lose alignment, then restore 8.
-        2. Compare **Interpolation** at 1x, 4x and 16x. Linear interpolation adds display points, not signal information.
+        2. Compare **Interpolation** at 1x, 4x, and 16x. Linear interpolation adds display points, not signal information.
         3. Switch **Component** between in-phase and quadrature.
         4. Raise **Noise Variance** from 0.005 to 0.05 and compare the eye and constellation.
-        5. Change **Persistence** to shorten or lengthen the density history. **Amplitude Min/Max** set the display range.
+        5. Change **Persistence** to shorten or lengthen the density history. **Amplitude Min** and **Amplitude Max** set the display range.
 
-        The **PSK Demodulator** recovers symbol timing and carrier phase for the constellation. Its output is symbol-rate data: use the oversampled AGC output for the eye instead.
+        The **PSK Demodulator** recovers symbol timing and carrier phase for the constellation. Its output is one sample per symbol, so the eye reads the oversampled AGC output instead.
     meta:
       node:
         x: 20

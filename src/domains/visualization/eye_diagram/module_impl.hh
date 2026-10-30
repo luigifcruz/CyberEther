@@ -9,6 +9,7 @@
 namespace Jetstream::Modules {
 
 struct EyeDiagramImpl : public Module::Impl, public DynamicConfig<EyeDiagram> {
+ public:
     Result validate() override;
     Result define() override;
     Result create() override;
@@ -17,6 +18,7 @@ struct EyeDiagramImpl : public Module::Impl, public DynamicConfig<EyeDiagram> {
  protected:
     Tensor input;
     Tensor output;
+
     std::vector<F32> pending;
     U64 interval = 0;
     F32 previous = 0.0f;
