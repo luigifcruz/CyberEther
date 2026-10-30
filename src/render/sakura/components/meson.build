@@ -42,6 +42,7 @@ src_lst += files([
     'divider.cc',
     'floating_layer.cc',
     'grid.cc',
+    'highlight_text.cc',
     'hud_layer.cc',
     'layer.cc',
     'log_view.cc',

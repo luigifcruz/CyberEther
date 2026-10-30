@@ -9,6 +9,7 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/highlight_text.hh>
 #include <jetstream/render/sakura/components/overlay.hh>
 #include <jetstream/render/sakura/components/pill_button.hh>
 #include <jetstream/render/sakura/components/pill_field.hh>
@@ -1680,4 +1681,69 @@ TEST_CASE("Pill icon buttons show their tooltip below after the hover delay and 
     frames.run(update);
     CHECK_FALSE(tooltip().has_value());
     CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Highlight text scales with the pixel ratio and reports clicks", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    U64 clicks = 0;
+    Sakura::HighlightText text;
+    Host host(text);
+    text.update({
+        .str = "Use the blueprint bundler.",
+        .marks = {{.begin = 8, .end = 17}},
+        .onClick = [&] { ++clicks; },
+    });
+
+    const auto base = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    auto doubled = scene.ctx;
+    doubled.pixelRatio = 2.0f;
+    const auto scaled = host.measureOf(doubled, {kInfinite, kInfinite});
+    CHECK(base.y > 0.0f);
+    CHECK(scaled.y == Catch::Approx(2.0f * base.y));
+
+    host.place(scene.ctx, {0.0f, 0.0f, base.x, base.y});
+    host.click(base.x * 0.5f, base.y * 0.5f);
+    CHECK(clicks == 1);
+}
+
+TEST_CASE("Highlight text marks ranges on every line", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    Sakura::HighlightText text;
+    Host host(text);
+    text.update({
+        .str = "foo\nbar",
+        .marks = {{.begin = 4, .end = 7}},
+    });
+
+    const auto size = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    host.place(scene.ctx, {0.0f, 0.0f, size.x, size.y});
+    const auto mark = scene.ctx.color("editor_selection_match");
+    std::vector<Jetstream::Rect> marked;
+    for (auto* box : Find<Sakura::Box>(text)) {
+        for (const auto& instance : box->config().instances) {
+            if (instance.visible && instance.backgroundColor == mark) {
+                marked.push_back(instance.rect);
+            }
+        }
+    }
+    REQUIRE(marked.size() == 1);
+    CHECK(marked.front().y > size.y * 0.5f - marked.front().height);
+}
+
+TEST_CASE("Highlight text settles and repaints when its marks change", "[core][sakura][search][retention]") {
+    Scene scene;
+    Sakura::HighlightText text;
+    Place place(text, {10.0f, 10.0f, 300.0f, 60.0f});
+    Frames frames(place, kScreen, scene.context());
+    std::vector<Sakura::HighlightText::Mark> marks = {{.begin = 0, .end = 5}};
+    const auto update = [&] {
+        text.update({.id = "snippet", .str = "alpha beta gamma", .marks = marks});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    marks = {{.begin = 6, .end = 10}};
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
 }
