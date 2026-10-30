@@ -9,6 +9,8 @@
 #endif
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <deque>
@@ -38,6 +40,7 @@ using Unicode = Render::Components::Text::Unicode;
 using Screen = Sakura::Terminal::Screen;
 using Row = Sakura::Terminal::Row;
 using Span = Sakura::Terminal::Span;
+using Link = Sakura::Terminal::Link;
 
 constexpr U64 kReadBudget = 4 * 1024 * 1024;
 constexpr size_t kScrollbackLines = 10000;
@@ -178,6 +181,71 @@ bool PointBefore(const GhosttyPointCoordinate& a, const GhosttyPointCoordinate& 
     return a.y < b.y || (a.y == b.y && a.x < b.x);
 }
 
+struct LinkCell {
+    U16 row = 0;
+    U16 column = 0;
+    std::string text;
+};
+
+struct FoundLink {
+    U64 first = 0;
+    U64 last = 0;
+    bool open = false;
+    std::string uri;
+};
+
+std::vector<FoundLink> DetectLinks(const std::vector<LinkCell>& cells) {
+    static constexpr std::array<std::string_view, 4> kSchemes = {"https://", "http://", "file://", "mailto:"};
+    static constexpr std::string_view kStops = " \t<>\"'`";
+    static constexpr std::string_view kTrailing = ".,;:!?";
+    std::string line;
+    std::vector<U64> owners;
+    for (U64 index = 0; index < cells.size(); ++index) {
+        const std::string shown = cells[index].text.empty() ? std::string(" ") : cells[index].text;
+        line += shown;
+        owners.insert(owners.end(), shown.size(), index);
+    }
+    std::vector<FoundLink> found;
+    U64 position = 0;
+    while (position < line.size()) {
+        U64 start = std::string_view::npos;
+        U64 scheme = 0;
+        for (const auto candidate : kSchemes) {
+            const U64 match = line.find(candidate, position);
+            if (match < start) {
+                start = match;
+                scheme = candidate.size();
+            }
+        }
+        if (start == std::string_view::npos) {
+            break;
+        }
+        U64 end = start + scheme;
+        while (end < line.size() && kStops.find(line[end]) == std::string_view::npos) {
+            ++end;
+        }
+        const bool open = end == line.size();
+        while (end > start + scheme) {
+            const char last = line[end - 1];
+            const auto unbalanced = [&](char open, char close) {
+                return last == close && std::count(line.begin() + start, line.begin() + end, open) <
+                                            std::count(line.begin() + start, line.begin() + end, close);
+            };
+            if (kTrailing.find(last) == std::string_view::npos && !unbalanced('(', ')') && !unbalanced('[', ']')) {
+                break;
+            }
+            --end;
+        }
+        const bool word = start > 0 && std::isalnum(static_cast<unsigned char>(line[start - 1]));
+        if (end > start + scheme && !word) {
+            found.push_back({.first = owners[start], .last = owners[end - 1], .open = open,
+                             .uri = line.substr(start, end - start)});
+        }
+        position = std::max(end, start + 1);
+    }
+    return found;
+}
+
 }  // namespace
 
 struct TerminalSession::Impl {
@@ -213,6 +281,9 @@ struct TerminalSession::Impl {
 
     Screen screen;
     std::vector<uint32_t> graphemes;
+    std::vector<std::vector<std::pair<U16, std::string>>> texts;
+    std::vector<std::vector<Link>> hyperlinks;
+    std::vector<U8> wraps;
     U64 revision = 0;
     bool started = false;
     bool rebuildAll = true;
@@ -315,8 +386,9 @@ struct TerminalSession::Impl {
     static void RenderHold(GhosttyTerminal terminal, void* userdata, bool held) {
         auto* self = static_cast<Impl*>(userdata);
         if (held) {
-            self->captured = ghostty_render_state_update(self->renderState, terminal) == GHOSTTY_SUCCESS;
             self->holdSince = Clock::now();
+            self->captured = ghostty_render_state_update(self->renderState, terminal) == GHOSTTY_SUCCESS;
+            self->rebuild();
         } else {
             self->holdSince.reset();
         }
@@ -586,10 +658,41 @@ struct TerminalSession::Impl {
         };
     }
 
+    std::string hyperlinkAt(U16 column, U16 row) const {
+        GhosttyPoint point{};
+        point.tag = GHOSTTY_POINT_TAG_VIEWPORT;
+        point.value.coordinate = {.x = column, .y = row};
+        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        if (ghostty_terminal_grid_ref(terminal, point, &ref) != GHOSTTY_SUCCESS) {
+            return {};
+        }
+        size_t length = 0;
+        if (ghostty_grid_ref_hyperlink_uri(&ref, nullptr, 0, &length) != GHOSTTY_OUT_OF_SPACE || length == 0) {
+            return {};
+        }
+        std::string uri(length, '\0');
+        if (ghostty_grid_ref_hyperlink_uri(&ref, reinterpret_cast<uint8_t*>(uri.data()), uri.size(), &length) !=
+            GHOSTTY_SUCCESS) {
+            return {};
+        }
+        uri.resize(length);
+        return uri;
+    }
+
     void buildRow(Row& row, U16 rowIndex, const GhosttyRenderStateCursor& cursor) {
         row.spans.clear();
         row.backgrounds.clear();
+        row.links.clear();
         row.selection.reset();
+        auto& cells = texts[rowIndex];
+        cells.clear();
+        GhosttyRow rawRow = 0;
+        bool wrapped = false;
+        if (ghostty_render_state_row_get(rowIterator, GHOSTTY_RENDER_STATE_ROW_DATA_RAW, &rawRow) == GHOSTTY_SUCCESS) {
+            (void)ghostty_row_get(rawRow, GHOSTTY_ROW_DATA_WRAP, &wrapped);
+        }
+        wraps[rowIndex] = wrapped;
+        hyperlinks[rowIndex].clear();
 
         GhosttyRenderStateRowSelection selection = GHOSTTY_INIT_SIZED(GhosttyRenderStateRowSelection);
         if (ghostty_render_state_row_get(rowIterator, GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION, &selection) ==
@@ -671,6 +774,20 @@ struct TerminalSession::Impl {
                 }
             }
 
+            cells.emplace_back(cellColumn, text);
+            bool linked = false;
+            if (raw != 0 && ghostty_cell_get(raw, GHOSTTY_CELL_DATA_HAS_HYPERLINK, &linked) == GHOSTTY_SUCCESS && linked) {
+                std::string uri = hyperlinkAt(cellColumn, rowIndex);
+                if (!uri.empty()) {
+                    auto& links = row.links;
+                    if (!links.empty() && links.back().uri == uri && links.back().column + links.back().width == cellColumn) {
+                        links.back().width += width;
+                    } else {
+                        links.push_back({.column = cellColumn, .width = width, .uri = std::move(uri)});
+                    }
+                }
+            }
+
             if (cursorRow && cellColumn == cursorColumn) {
                 screen.cursor.text = text == " " ? std::string() : text;
                 screen.cursor.textColor = cellStyle.color;
@@ -712,6 +829,51 @@ struct TerminalSession::Impl {
             } else {
                 flush();
             }
+        }
+        hyperlinks[rowIndex] = row.links;
+    }
+
+    void relink() {
+        const U16 count = static_cast<U16>(screen.lines.size());
+        for (U16 row = 0; row < count; ++row) {
+            screen.lines[row].links = hyperlinks[row];
+        }
+        U16 start = 0;
+        while (start < count) {
+            U16 end = start;
+            while (end + 1 < count && wraps[end]) {
+                ++end;
+            }
+            std::vector<LinkCell> cells;
+            for (U16 row = start; row <= end; ++row) {
+                for (const auto& [column, text] : texts[row]) {
+                    cells.push_back({.row = row, .column = column, .text = text});
+                }
+            }
+            const bool clipped = end + 1 == count && wraps[end];
+            for (const auto& found : DetectLinks(cells)) {
+                if (clipped && found.open) {
+                    continue;
+                }
+                U64 index = found.first;
+                while (index <= found.last) {
+                    U64 stop = index;
+                    while (stop < found.last && cells[stop + 1].row == cells[index].row) {
+                        ++stop;
+                    }
+                    const U16 first = cells[index].column;
+                    const U16 last = cells[stop].column;
+                    auto& links = screen.lines[cells[index].row].links;
+                    const bool taken = std::any_of(links.begin(), links.end(), [&](const Link& link) {
+                        return first < link.column + link.width && link.column <= last;
+                    });
+                    if (!taken) {
+                        links.push_back({.column = first, .width = static_cast<U16>(last - first + 1), .uri = found.uri});
+                    }
+                    index = stop + 1;
+                }
+            }
+            start = end + 1;
         }
     }
 
@@ -771,6 +933,9 @@ struct TerminalSession::Impl {
         screen.columns = columns;
         screen.rows = rows;
         screen.lines.resize(rows);
+        texts.resize(rows);
+        hyperlinks.resize(rows);
+        wraps.resize(rows);
         screen.scrollTotal = scrollbar.total;
         screen.scrollOffset = scrollbar.offset;
         screen.mouseTracking = tracking;
@@ -785,6 +950,7 @@ struct TerminalSession::Impl {
         if (ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &rowIterator) ==
             GHOSTTY_SUCCESS) {
             U16 index = 0;
+            bool built = false;
             while (ghostty_render_state_row_iterator_next(rowIterator) && index < rows) {
                 bool rowDirty = full;
                 if (!rowDirty) {
@@ -794,8 +960,12 @@ struct TerminalSession::Impl {
                                            (previousCursorVisible && index == previousCursorRow);
                 if (rowDirty || cursorTouched) {
                     buildRow(screen.lines[index], index, cursor);
+                    built = true;
                 }
                 ++index;
+            }
+            if (built) {
+                relink();
             }
         }
 

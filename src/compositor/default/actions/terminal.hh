@@ -12,9 +12,12 @@
 #include "jetstream/platform.hh"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -27,6 +30,15 @@ namespace Jetstream {
 struct TerminalActions {
     static constexpr I32 kMinZoom = -6;
     static constexpr I32 kMaxZoom = 24;
+
+    static bool Openable(const std::string& uri) {
+        static constexpr std::array<std::string_view, 4> kSchemes = {"https://", "http://", "mailto:", "file://"};
+        return std::any_of(kSchemes.begin(), kSchemes.end(), [&](std::string_view scheme) {
+            return uri.size() > scheme.size() && std::equal(scheme.begin(), scheme.end(), uri.begin(), [](char a, char b) {
+                return a == std::tolower(static_cast<unsigned char>(b));
+            });
+        });
+    }
 
     using Filter = std::tuple<MailOpenTerminal,
                               MailCloseTerminal,
@@ -158,6 +170,10 @@ struct TerminalActions {
                 target.pointer(input);
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::Focus>) {
                 target.focus(input.value);
+            } else if constexpr (std::is_same_v<Input, MailTerminalInput::OpenLink>) {
+                if (Openable(input.uri)) {
+                    callbacks.enqueueMail(MailOpenUrl{.url = input.uri, .notifyResult = true});
+                }
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::Zoom>) {
                 auto& zoom = terminal->second.zoom;
                 zoom = input.step == 0 ? 0 : std::clamp(zoom + input.step, kMinZoom, kMaxZoom);

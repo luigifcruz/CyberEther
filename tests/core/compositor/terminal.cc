@@ -1178,6 +1178,141 @@ TEST_CASE("Terminal zoom steps clamp to their limits and zero resets them", "[co
     CHECK(zoom(0) == 0);
 }
 
+TEST_CASE("Terminal sessions publish hyperlinks and plain URLs per row", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(StartShell(session));
+    session.text("printf '\\033[2J\\033[H\\033]8;;https://example.org/a\\033\\\\label\\033]8;;\\033\\\\ "
+                 "see (https://cyberether.org/docs). x'; sleep 30\r");
+    const auto links = [&]() -> std::vector<Sakura::Terminal::Link> {
+        return session.screen().lines.empty() ? std::vector<Sakura::Terminal::Link>{} : session.screen().lines[0].links;
+    };
+    REQUIRE(PollUntil(session, [&] { return links().size() == 2; }));
+    CHECK(links()[0].uri == "https://example.org/a");
+    CHECK(links()[0].column == 0);
+    CHECK(links()[0].width == 5);
+    CHECK(links()[1].uri == "https://cyberether.org/docs");
+    CHECK(links()[1].column == 11);
+    CHECK(links()[1].width == 27);
+}
+
+TEST_CASE("Terminal sessions link a URL that wraps across rows to its whole destination", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(StartShell(session));
+    session.resize({.columns = 20, .rows = 10, .cellWidth = 8.0f, .cellHeight = 16.0f});
+    session.text("printf '\\033[2J\\033[Hhttps://example.org/a/long/path end'; sleep 30\r");
+    const auto row = [&](U16 index) -> std::vector<Sakura::Terminal::Link> {
+        return session.screen().lines.size() > index ? session.screen().lines[index].links
+                                                     : std::vector<Sakura::Terminal::Link>{};
+    };
+    REQUIRE(PollUntil(session, [&] { return row(0).size() == 1 && row(1).size() == 1; }));
+    CHECK(row(0)[0].uri == "https://example.org/a/long/path");
+    CHECK(row(0)[0].column == 0);
+    CHECK(row(0)[0].width == 20);
+    CHECK(row(1)[0].uri == "https://example.org/a/long/path");
+    CHECK(row(1)[0].column == 0);
+    CHECK(row(1)[0].width == 11);
+}
+
+TEST_CASE("Terminal sessions skip a wrapped URL that continues below the visible rows", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(StartShell(session));
+    session.resize({.columns = 20, .rows = 6, .cellWidth = 8.0f, .cellHeight = 16.0f});
+    session.text("clear; i=0; while [ $i -lt 30 ]; do echo line$i; i=$((i+1)); done; "
+                 "printf 'https://example.org/a/long/path\\n'; printf 'tail'; sleep 30\r");
+    REQUIRE(Shows(session, "tail"));
+    const auto bottomLink = [&] {
+        for (const auto& row : session.screen().lines) {
+            for (const auto& link : row.links) {
+                if (link.uri.find("example.org") != std::string::npos) {
+                    return link.uri;
+                }
+            }
+        }
+        return std::string();
+    };
+    REQUIRE(bottomLink() == "https://example.org/a/long/path");
+    const auto bottom = [&] {
+        const auto& lines = session.screen().lines;
+        return lines.empty() ? std::string() : RowText(lines.back());
+    };
+    for (U64 step = 0; step < 10 && bottom().rfind("https://", 0) != 0; ++step) {
+        session.scroll(-1, {10.0f, 10.0f}, {});
+        session.poll();
+    }
+    REQUIRE(bottom().rfind("https://example.org/", 0) == 0);
+    REQUIRE(bottom().find("path") == std::string::npos);
+    const auto& lines = session.screen().lines;
+    bool truncated = false;
+    for (const auto& row : lines) {
+        for (const auto& link : row.links) {
+            truncated |= link.uri != "https://example.org/a/long/path" && link.uri.find("example.org") != std::string::npos;
+        }
+    }
+    CHECK_FALSE(truncated);
+}
+
+TEST_CASE("Terminal sessions keep the shown hyperlink while synchronized output holds a new one", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(session.start({
+        .program = "/bin/sh",
+        .arguments = {"-c", "printf '\\033]8;;https://old.example\\033\\\\label\\033]8;;\\033\\\\'; sleep 0.5; "
+                            "printf '\\033[H\\033]8;;https://mid.example\\033\\\\label\\033]8;;\\033\\\\"
+                            "\\033[?2026h\\033[H\\033]8;;https://new.example\\033\\\\label\\033]8;;\\033\\\\'; "
+                            "sleep 0.8; printf '\\033[?2026l'; sleep 2"},
+        .directory = "/",
+    }) == Result::SUCCESS);
+    const auto uri = [&]() -> std::string {
+        const auto& lines = session.screen().lines;
+        return lines.empty() || lines[0].links.empty() ? std::string() : lines[0].links[0].uri;
+    };
+    REQUIRE(PollUntil(session, [&] { return uri() == "https://old.example"; }));
+    REQUIRE(PollUntil(session, [&] { return uri() != "https://old.example"; }));
+    CHECK(uri() == "https://mid.example");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    while (std::chrono::steady_clock::now() < deadline) {
+        session.poll();
+        CHECK(uri() == "https://mid.example");
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    REQUIRE(PollUntil(session, [&] { return uri() == "https://new.example"; }));
+}
+
+TEST_CASE("Terminal link opens forward only web, mail, and file links", "[core][compositor][terminal][layout]") {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalRig rig;
+    rig.shell.set("/bin/sh");
+    REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
+    rig.actions.reconcile();
+    REQUIRE(rig.actions.sessions.contains(1));
+    rig.mails.clear();
+    for (const auto* uri : {"https://example.org", "HTTP://example.org", "mailto:a@b.c", "file:///tmp/x",
+                            "javascript:alert(1)", "ssh://host", "https://"}) {
+        REQUIRE(rig.actions.handle(MailTerminalInput{.terminal = 1, .input = MailTerminalInput::OpenLink{.uri = uri}}) ==
+                Result::SUCCESS);
+    }
+    std::vector<std::string> opened;
+    for (const auto& mail : rig.mails) {
+        if (const auto* open = std::get_if<MailOpenUrl>(&mail)) {
+            opened.push_back(open->url);
+        }
+    }
+    CHECK(opened == std::vector<std::string>{"https://example.org", "HTTP://example.org", "mailto:a@b.c", "file:///tmp/x"});
+}
+
 TEST_CASE("Terminal sessions publish the predominant background of the screen", kTags) {
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");

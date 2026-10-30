@@ -54,9 +54,18 @@ struct Terminal : public Component {
         bool operator==(const Range&) const = default;
     };
 
+    struct Link {
+        U16 column = 0;
+        U16 width = 1;
+        std::string uri;
+
+        bool operator==(const Link&) const = default;
+    };
+
     struct Row {
         std::vector<Span> spans;
         std::vector<Background> backgrounds;
+        std::vector<Link> links;
         std::optional<Range> selection;
 
         bool operator==(const Row&) const = default;
@@ -134,6 +143,7 @@ struct Terminal : public Component {
         Callback<void(const MouseEvent&)> onPointer;
         Callback<void(bool)> onFocusChange;
         Callback<void(I32 step)> onZoom;
+        Callback<void(std::string uri)> onOpenLink;
 
         bool operator==(const Config&) const = default;
     };

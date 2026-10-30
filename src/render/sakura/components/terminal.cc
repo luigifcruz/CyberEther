@@ -97,6 +97,7 @@ struct Terminal::Impl {
     bool selecting = false;
     bool pointing = false;
     std::optional<std::pair<U16, U16>> lastCell;
+    std::optional<std::pair<U16, U16>> linkHover;
     F32 wheelRemainder = 0.0f;
     F64 now = 0.0;
     F64 blinkBase = 0.0;
@@ -134,6 +135,37 @@ struct Terminal::Impl {
 
     bool inside(Extent2D<F32> point) const {
         return self->frame().contains(point.x, point.y);
+    }
+
+    static bool LinkModifier(const KeyModifiers& modifiers) {
+        return (modifiers.super || modifiers.control) && !modifiers.alt && !modifiers.shift;
+    }
+
+    const Link* linkAt(std::pair<U16, U16> cell) const {
+        const Screen* screen = config.screen;
+        if (!screen || cell.second >= screen->lines.size()) {
+            return nullptr;
+        }
+        for (const auto& link : screen->lines[cell.second].links) {
+            if (cell.first >= link.column && cell.first < link.column + link.width) {
+                return &link;
+            }
+        }
+        return nullptr;
+    }
+
+    bool hoverLink(const MouseEvent& event) {
+        std::optional<std::pair<U16, U16>> next;
+        if (LinkModifier(event.modifiers) && inside(event.position)) {
+            const auto cell = cellAt(event.position);
+            if (linkAt(cell)) {
+                next = cell;
+            }
+        }
+        const bool changed = (next.has_value() != linkHover.has_value()) ||
+                             (next && linkAt(*next) != linkAt(*linkHover));
+        linkHover = next;
+        return changed;
     }
 
     bool blinkOn() const {
@@ -423,6 +455,24 @@ struct Terminal::Impl {
             emit(boldGroups, bold, boldCapacity);
         }
 
+        if (linkHover) {
+            if (const Link* link = linkAt(*linkHover); link && link->column < columns && linkHover->second < visibleRows) {
+                const U16 row = linkHover->second;
+                ColorRGBA<F32> color = screen->cursor.textColor;
+                for (const auto& span : screen->lines[row].spans) {
+                    if (link->column >= span.column && link->column < span.column + span.width) {
+                        color = span.color;
+                        break;
+                    }
+                }
+                const Rect cell = cellRect(link->column, row, std::min<U16>(link->width, columns - link->column));
+                if (lines.size() < lineCapacity) {
+                    lines.push_back({.rect = {cell.x, cell.bottom() - hairline, cell.width, hairline},
+                                     .backgroundColor = color});
+                }
+            }
+        }
+
         Box::Instance cursor{.visible = false};
         Label::Instance cursorText{.visible = false};
         bool hollow = false;
@@ -672,6 +722,14 @@ bool Terminal::mouseEvent(const MouseEvent& event) {
             if (!impl->inside(event.position)) {
                 return false;
             }
+            if (event.button == MouseButton::Left && Impl::LinkModifier(event.modifiers)) {
+                if (const Link* link = impl->linkAt(impl->cellAt(event.position))) {
+                    if (impl->config.onOpenLink) {
+                        impl->config.onOpenLink(link->uri);
+                    }
+                    return true;
+                }
+            }
             if (tracking && !event.modifiers.shift) {
                 impl->pointing = true;
                 impl->lastCell = impl->cellAt(event.position);
@@ -687,6 +745,9 @@ bool Terminal::mouseEvent(const MouseEvent& event) {
             return true;
         }
         case MouseEventType::Move: {
+            if (impl->hoverLink(event)) {
+                invalidate(Dirty::Layout);
+            }
             if (impl->selecting) {
                 requestCursor(SurfaceCursor::TextInput);
                 impl->select(Gesture::Drag, event.position, 1);
@@ -732,6 +793,10 @@ bool Terminal::mouseEvent(const MouseEvent& event) {
         }
         case MouseEventType::Cancel:
         case MouseEventType::Leave: {
+            if (impl->linkHover) {
+                impl->linkHover.reset();
+                invalidate(Dirty::Layout);
+            }
             if (impl->pointing) {
                 MouseEvent cancel = event;
                 cancel.type = MouseEventType::Cancel;
@@ -818,6 +883,9 @@ bool Terminal::focusesOnClick() const {
 std::optional<SurfaceCursor> Terminal::cursorAt(const Extent2D<F32>& point) const {
     if (!impl->inside(point)) {
         return std::nullopt;
+    }
+    if (impl->linkHover && impl->linkAt(*impl->linkHover)) {
+        return SurfaceCursor::Hand;
     }
     return SurfaceCursor::TextInput;
 }

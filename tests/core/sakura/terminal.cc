@@ -46,6 +46,7 @@ struct Recorder {
     std::vector<MouseEvent> pointers;
     std::vector<bool> focus;
     std::vector<I32> zooms;
+    std::vector<std::string> links;
 
     Terminal::Config wire(const Terminal::Screen* screen, U64 revision) {
         return {
@@ -63,6 +64,7 @@ struct Recorder {
             .onPointer = [this](const MouseEvent& event) { pointers.push_back(event); },
             .onFocusChange = [this](bool focused) { focus.push_back(focused); },
             .onZoom = [this](I32 step) { zooms.push_back(step); },
+            .onOpenLink = [this](std::string uri) { links.push_back(std::move(uri)); },
         };
     }
 };
@@ -615,6 +617,53 @@ TEST_CASE("A larger terminal font size reports a smaller grid", kTags) {
     REQUIRE(recorder.grids.size() == 2);
     CHECK(recorder.grids[1].cellHeight > recorder.grids[0].cellHeight);
     CHECK(recorder.grids[1].columns < recorder.grids[0].columns);
+}
+
+TEST_CASE("Command clicking a terminal link opens it and command hover underlines it with a hand", kTags) {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    screen.lines[1].spans = {{.column = 4, .width = 11, .text = "example.org", .color = kRed}};
+    screen.lines[1].links = {{.column = 4, .width = 11, .uri = "https://example.org"}};
+    Terminal terminal;
+    Place place(terminal, kBounds);
+    Frames frames(place, kScreen, scene.context());
+    REQUIRE(frames.settle([&] { terminal.update(recorder.wire(&screen, 1)); }));
+    const auto grid = recorder.grids.front();
+    const auto link = CellCenter(grid, 6, 1);
+    const auto plain = CellCenter(grid, 20, 1);
+    const auto command = [](MouseEvent event) {
+        event.modifiers.super = true;
+        return event;
+    };
+    const U64 decorations = Decorations(place).config().instances.size();
+
+    place.send(command(Mouse(MouseEventType::Move, link.x, link.y)));
+    REQUIRE(frames.settle([&] { terminal.update(recorder.wire(&screen, 1)); }));
+    CHECK(Peek::CursorAt(terminal, link) == SurfaceCursor::Hand);
+    REQUIRE(Decorations(place).config().instances.size() == decorations + 1);
+    const auto underline = Decorations(place).config().instances.back();
+    const Rect first = GridCell(grid, 4, 1);
+    CHECK(underline.rect.x == first.x);
+    CHECK(underline.rect.width == Catch::Approx(11.0f * grid.cellWidth));
+    CHECK(underline.backgroundColor == kRed);
+
+    place.send(Mouse(MouseEventType::Move, link.x, link.y));
+    REQUIRE(frames.settle([&] { terminal.update(recorder.wire(&screen, 1)); }));
+    CHECK(Peek::CursorAt(terminal, link) == SurfaceCursor::TextInput);
+    CHECK(Decorations(place).config().instances.size() == decorations);
+
+    CHECK(place.send(command(Mouse(MouseEventType::Click, link.x, link.y))));
+    place.send(command(Mouse(MouseEventType::Release, link.x, link.y)));
+    CHECK(recorder.links == std::vector<std::string>{"https://example.org"});
+    CHECK(recorder.selections.empty());
+
+    place.send(command(Mouse(MouseEventType::Click, plain.x, plain.y)));
+    place.send(command(Mouse(MouseEventType::Release, plain.x, plain.y)));
+    place.send(Mouse(MouseEventType::Click, link.x, link.y));
+    place.send(Mouse(MouseEventType::Release, link.x, link.y));
+    CHECK(recorder.links.size() == 1);
+    CHECK_FALSE(recorder.selections.empty());
 }
 
 TEST_CASE("Terminals take keyboard focus again when their focus request changes", kTags) {

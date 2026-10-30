@@ -329,6 +329,10 @@ struct MailTerminalInput {
         I32 step = 0;
     };
 
+    struct OpenLink {
+        std::string uri;
+    };
+
     using Input = std::variant<Sakura::Terminal::Grid,
                                KeyEvent,
                                Text,
@@ -338,7 +342,8 @@ struct MailTerminalInput {
                                Sakura::Terminal::Selection,
                                MouseEvent,
                                Focus,
-                               Zoom>;
+                               Zoom,
+                               OpenLink>;
 
     U64 terminal = 0;
     Input input;

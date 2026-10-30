@@ -74,6 +74,9 @@ struct TerminalPresenter {
                     .onZoom = [send](I32 step) {
                         send(MailTerminalInput::Zoom{.step = step});
                     },
+                    .onOpenLink = [send](std::string uri) {
+                        send(MailTerminalInput::OpenLink{.uri = std::move(uri)});
+                    },
                 },
                 .onClose = [enqueue, id]() {
                     enqueue(MailCloseTerminal{.terminal = id});
