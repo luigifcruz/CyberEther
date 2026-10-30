@@ -2621,7 +2621,12 @@ struct TextGrid::Impl {
                 if (ctx.clip) {
                     bgRect = Intersect(bgRect, {ctx.clip->x, bgRect.y, ctx.clip->width, bgRect.height});
                 }
-                if (bg.a > 0.0f && bgRect.width > 0.0f && pools.styleBackgrounds.size() < frame.segmentCapacity) {
+                auto* previous = pools.styleBackgrounds.empty() ? nullptr : &pools.styleBackgrounds.back();
+                if (!spanStart && bg.a > 0.0f && previous && previous->backgroundColor == bg &&
+                    previous->rect.y == bgRect.y && previous->rect.right() <= bgRect.right() &&
+                    previous->rect.right() + 1.0f >= bgRect.x) {
+                    previous->rect.width = bgRect.right() - previous->rect.x;
+                } else if (bg.a > 0.0f && bgRect.width > 0.0f && pools.styleBackgrounds.size() < frame.segmentCapacity) {
                     pools.styleBackgrounds.push_back({
                         .rect = bgRect,
                         .visible = true,
