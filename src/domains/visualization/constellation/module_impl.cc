@@ -67,6 +67,9 @@ Result ConstellationImpl::create() {
     // Calculate number of points.
 
     numberOfPoints = input.size();
+    samples.assign(numberOfPoints, {});
+    displayedSamples.assign(numberOfPoints, {});
+    updateSamplesFlag = false;
 
     return Result::SUCCESS;
 }
@@ -138,6 +141,7 @@ Result ConstellationImpl::createPresent() {
     {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
+        cfg.retained = true;
         cfg.clearColor = interaction.theme.background;
         JST_CHECK(axis->surfaceUnderlay(cfg));
         JST_CHECK(shapes->surface(cfg));
@@ -147,7 +151,7 @@ Result ConstellationImpl::createPresent() {
     }
 
     JST_CHECK(updateAxisState());
-    JST_CHECK(updatePointPositions());
+    updatePositionsFlag = true;
 
     // Register surface manifest.
 
@@ -193,6 +197,18 @@ Result ConstellationImpl::applyTheme() {
     return Result::SUCCESS;
 }
 
+Result ConstellationImpl::capture() {
+    if (!updateSamplesFlag) {
+        return Result::SUCCESS;
+    }
+
+    std::copy(samples.begin(), samples.end(), displayedSamples.begin());
+    updateSamplesFlag = false;
+    updatePositionsFlag = true;
+
+    return Result::SUCCESS;
+}
+
 Result ConstellationImpl::present() {
     if (!shapes) {
         return Result::SUCCESS;
@@ -202,6 +218,7 @@ Result ConstellationImpl::present() {
 
     auto surfaceEvents = surfaceConsumeSurfaceEvents();
     auto inputEvents = surfaceConsumeInputEvents();
+    bool redraw = !surfaceEvents.empty() || !inputEvents.empty();
 
     interaction = ProcessSurfaceInteraction(interaction,
                                             std::move(surfaceEvents),
@@ -237,18 +254,24 @@ Result ConstellationImpl::present() {
         renderSurface->size(interaction.viewSize);
         surfaceUpdateManifestSize("default", interaction.viewSize);
         JST_CHECK(updateAxisState());
-        JST_CHECK(updatePointPositions());
+        updatePositionsFlag = true;
     }
 
     // Process update flags.
 
     if (updatePositionsFlag) {
+        JST_CHECK(updatePointPositions());
         JST_CHECK(shapes->updatePositions());
         updatePositionsFlag = false;
+        redraw = true;
     }
 
     JST_CHECK(shapes->present());
     JST_CHECK(axis->present());
+
+    if (redraw) {
+        renderSurface->invalidate();
+    }
 
     return Result::SUCCESS;
 }

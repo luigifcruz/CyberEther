@@ -3,6 +3,7 @@
 #include <chrono>
 #include <functional>
 #include <initializer_list>
+#include <latch>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -34,8 +35,10 @@ struct SyntheticSpec {
     std::vector<Result> pendingComputeResults;
     std::vector<Result> computeResults;
     std::vector<Result> presentInitializeResults;
+    std::vector<Result> presentCaptureResults;
     std::vector<Result> presentResults;
     std::function<void()> pendingAction;
+    std::function<void()> computeAction;
 };
 
 struct SyntheticState {
@@ -165,6 +168,9 @@ struct SyntheticModuleBase : Module::Impl,
 
     Result computeSubmit() override {
         const auto& spec = syntheticState().spec(name());
+        if (spec.computeAction) {
+            spec.computeAction();
+        }
         if (spec.computeDelay.count() > 0) {
             std::this_thread::sleep_for(spec.computeDelay);
         }
@@ -174,6 +180,11 @@ struct SyntheticModuleBase : Module::Impl,
     Result presentInitialize() override {
         const auto& spec = syntheticState().spec(name());
         return syntheticState().invoke("present_initialize", name(), spec.presentInitializeResults);
+    }
+
+    Result presentCapture() override {
+        const auto& spec = syntheticState().spec(name());
+        return syntheticState().invoke("capture", name(), spec.presentCaptureResults);
     }
 
     Result presentSubmit() override {
@@ -766,6 +777,24 @@ TEST_CASE("Scheduler reports presentation initialization and submission failures
         REQUIRE(state.count("present", "present_submit_failure") == 1);
     }
 
+    SECTION("capture failure names the surface and skips submission") {
+        state.reset();
+        auto& spec = state.configure("present_capture_failure");
+        spec.surface = true;
+        spec.presentCaptureResults = {Result::ERROR};
+
+        SchedulerFixture fixture;
+        auto surface = fixture.module("present_capture_failure");
+        REQUIRE(fixture.scheduler.add(surface) == Result::SUCCESS);
+
+        state.clearEvents();
+        std::unordered_set<std::string> failedModules = {"stale"};
+        REQUIRE(fixture.scheduler.present(failedModules) == Result::ERROR);
+        REQUIRE(failedModules == std::unordered_set<std::string>{"present_capture_failure"});
+        REQUIRE(state.count("capture", "present_capture_failure") == 1);
+        REQUIRE(state.count("present", "present_capture_failure") == 0);
+    }
+
     SECTION("RELOAD is successful presentation progress") {
         state.reset();
         auto& spec = state.configure("present_reload");
@@ -782,6 +811,51 @@ TEST_CASE("Scheduler reports presentation initialization and submission failures
         REQUIRE(failedModules.empty());
         REQUIRE(state.count("present", "present_reload") == 1);
     }
+}
+
+TEST_CASE("Scheduler submits presentation while compute holds the data lock",
+          "[core][runtime][scheduler]") {
+    auto& state = syntheticState();
+    state.reset();
+    std::latch entered(1);
+    std::latch release(1);
+    state.configure("busy_source").computeAction = [&] {
+        entered.count_down();
+        release.wait();
+    };
+    state.configure("live_surface").surface = true;
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("busy_source");
+    auto surface = fixture.module("live_surface");
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(surface) == Result::SUCCESS);
+
+    Result computeResult = Result::ERROR;
+    std::thread computeThread([&] {
+        std::unordered_set<std::string> computeFailures;
+        computeResult = fixture.scheduler.compute(computeFailures);
+    });
+    entered.wait();
+
+    state.clearEvents();
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(state.count("capture", "live_surface") == 0);
+    REQUIRE(state.count("present", "live_surface") == 2);
+
+    release.count_down();
+    computeThread.join();
+    REQUIRE(computeResult == Result::SUCCESS);
+
+    state.clearEvents();
+    REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
+    REQUIRE(state.events == std::vector<std::string>{
+                                "capture:live_surface",
+                                "present:live_surface",
+                            });
 }
 
 TEST_CASE("Scheduler presentation follows add stop remove and re-add lifecycle",
@@ -804,7 +878,10 @@ TEST_CASE("Scheduler presentation follows add stop remove and re-add lifecycle",
     std::unordered_set<std::string> failedModules;
     REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
     REQUIRE(failedModules.empty());
-    REQUIRE(state.events == std::vector<std::string>{"present:present_lifecycle"});
+    REQUIRE(state.events == std::vector<std::string>{
+                                "capture:present_lifecycle",
+                                "present:present_lifecycle",
+                            });
 
     state.clearEvents();
     REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
@@ -812,7 +889,10 @@ TEST_CASE("Scheduler presentation follows add stop remove and re-add lifecycle",
     REQUIRE(state.events.empty());
     REQUIRE(fixture.scheduler.start() == Result::SUCCESS);
     REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
-    REQUIRE(state.events == std::vector<std::string>{"present:present_lifecycle"});
+    REQUIRE(state.events == std::vector<std::string>{
+                                "capture:present_lifecycle",
+                                "present:present_lifecycle",
+                            });
 
     state.clearEvents();
     REQUIRE(fixture.scheduler.remove(surface) == Result::SUCCESS);

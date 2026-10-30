@@ -1,5 +1,8 @@
 #include <algorithm>
+#include <cstring>
 #include <span>
+#include <utility>
+#include <vector>
 
 #include <glm/mat4x4.hpp>
 
@@ -44,6 +47,26 @@ struct Shapes::Impl {
 
     // Internal Types.
 
+    struct Snapshot {
+        std::vector<U8> bytes;
+
+        template<typename T>
+        bool changed(const TypedTensor<T>& data) {
+            const U64 size = data.size() * sizeof(T);
+            if (size == 0) {
+                const bool cleared = !bytes.empty();
+                bytes.clear();
+                return cleared;
+            }
+            const auto* begin = reinterpret_cast<const U8*>(data.data());
+            if (bytes.size() == size && std::memcmp(bytes.data(), begin, size) == 0) {
+                return false;
+            }
+            bytes.assign(begin, begin + size);
+            return true;
+        }
+    };
+
     struct Element {
         const ElementConfig& config;
         std::span<ColorRGBA<F32>> instanceColorsBuffer;
@@ -82,6 +105,13 @@ struct Shapes::Impl {
     bool updateHoleBufferFlag = false;
 
     bool computeInstanceBufferFlag = false;
+
+    Snapshot propertiesSnapshot;
+    Snapshot colorsSnapshot;
+    Snapshot rotationsSnapshot;
+    Snapshot positionsSnapshot;
+    Snapshot holesSnapshot;
+    Snapshot sizesSnapshot;
 
     TypedTensor<glm::vec2> vertices;
     TypedTensor<InstanceData> instances;
@@ -133,6 +163,7 @@ struct Shapes::Impl {
 
 Result Shapes::create(Window* window) {
     JST_DEBUG("[SHAPES] Loading new shapes.");
+
 
     // Calculate geometry requirements.
 
@@ -670,37 +701,38 @@ Result Shapes::present() {
 
     // Update compute buffers.
 
-    if (pimpl->updatePropertiesBufferFlag) {
+    if (std::exchange(pimpl->updatePropertiesBufferFlag, false) &&
+        pimpl->propertiesSnapshot.changed(pimpl->properties)) {
         pimpl->propertiesBuffer->update();
-        pimpl->updatePropertiesBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 
-    if (pimpl->updateColorBufferFlag) {
+    if (std::exchange(pimpl->updateColorBufferFlag, false) &&
+        pimpl->colorsSnapshot.changed(pimpl->instanceColors)) {
         pimpl->colorsBuffer->update();
-        pimpl->updateColorBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 
-    if (pimpl->updateRotationBufferFlag) {
+    if (std::exchange(pimpl->updateRotationBufferFlag, false) &&
+        pimpl->rotationsSnapshot.changed(pimpl->instanceRotations)) {
         pimpl->rotationsBuffer->update();
-        pimpl->updateRotationBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 
-    if (pimpl->updatePositionBufferFlag) {
+    if (std::exchange(pimpl->updatePositionBufferFlag, false) &&
+        pimpl->positionsSnapshot.changed(pimpl->instancePositions)) {
         pimpl->positionsBuffer->update();
-        pimpl->updatePositionBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 
-    if (pimpl->updateHoleBufferFlag) {
+    if (std::exchange(pimpl->updateHoleBufferFlag, false) &&
+        pimpl->holesSnapshot.changed(pimpl->instanceHoles)) {
         pimpl->holesBuffer->update();
-        pimpl->updateHoleBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 
-    if (pimpl->updateSizeBufferFlag) {
+    if (std::exchange(pimpl->updateSizeBufferFlag, false) &&
+        pimpl->sizesSnapshot.changed(pimpl->instanceSizes)) {
         pimpl->visible = false;
         for (const auto& element : pimpl->elements) {
             for (const auto& size : element.instanceSizesBuffer) {
@@ -709,7 +741,6 @@ Result Shapes::present() {
         }
         pimpl->program->setEnabled(pimpl->enabled && pimpl->visible);
         pimpl->sizesBuffer->update();
-        pimpl->updateSizeBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 

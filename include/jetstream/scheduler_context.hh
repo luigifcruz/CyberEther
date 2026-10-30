@@ -8,6 +8,7 @@ namespace Jetstream {
 struct JETSTREAM_API Scheduler::Context {
  public:
     virtual Result presentInitialize();
+    virtual Result presentCapture();
     virtual Result presentSubmit();
 
     virtual Result hasPendingCompute();

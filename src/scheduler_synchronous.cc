@@ -1,8 +1,10 @@
 // Synchronous Scheduler Implementation
 //
 // Coordinates compute and present threads with the following guarantees:
-//   - Present never blocks waiting for compute (skips frame if busy).
+//   - Present never blocks waiting for compute (skips capture if busy).
 //   - Present has priority: compute yields at segment boundaries when present wants in.
+//   - Present capture copies compute data under the data lock, submit runs every
+//     frame without it and is only excluded by state modifications.
 //   - State modifications (add/remove/reload) safely halt both threads.
 //   - Compute polling (hasPendingCompute) doesn't hold locks, allowing fast state changes.
 
@@ -11,6 +13,8 @@
 #include <jetstream/module_context.hh>
 #include <jetstream/runtime.hh>
 #include <jetstream/module.hh>
+#include <jetstream/instance.hh>
+#include <jetstream/viewport/adapters/generic.hh>
 
 #include <atomic>
 #include <algorithm>
@@ -41,6 +45,8 @@ struct SynchronousScheduler : public Scheduler::Impl {
     Result compute(std::unordered_set<std::string>& failedModules) override;
 
  private:
+    Result capture(std::unordered_set<std::string>& failedModules);
+    Result submit(std::unordered_set<std::string>& failedModules);
     void haltAll();
     void resumeAll();
     bool isComputeHalted() const;
@@ -64,12 +70,14 @@ struct SynchronousScheduler : public Scheduler::Impl {
     void waitForPresentToFinish(std::unique_lock<std::mutex>& lock);
     void notifyCompute();
     void notifyPresent();
+    void wakePresent();
     Result lockState(const std::function<Result()>& func);
 
     std::atomic_flag computeHalt = ATOMIC_FLAG_INIT;
     std::atomic_flag presentHalt = ATOMIC_FLAG_INIT;
     std::shared_mutex dataMutex;
     std::mutex sharedMutex;
+    std::mutex surfaceMutex;
     std::condition_variable presentCond;
     std::condition_variable computeCond;
     bool presentSync = false;
@@ -77,6 +85,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     std::atomic<bool> presentWantsIn{false};
     std::atomic<bool> stopping{false};
     std::atomic<U64> generation{0};
+    std::weak_ptr<Viewport::Generic> viewport;
 
     std::unordered_map<std::string, std::shared_ptr<Module>> modules;
     std::vector<std::string> topoOrder;
@@ -103,6 +112,11 @@ struct SynchronousScheduler : public Scheduler::Impl {
 Result SynchronousScheduler::create() {
     JST_DEBUG("[SCHEDULER_SYNCHRONOUS] Creating scheduler.");
     stopping.store(false, std::memory_order_release);
+    if (instance) {
+        std::shared_ptr<Viewport::Generic> instanceViewport;
+        JST_CHECK(instance->viewportGet(instanceViewport));
+        viewport = instanceViewport;
+    }
     return Result::SUCCESS;
 }
 
@@ -243,6 +257,11 @@ Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModu
         return Result::SUCCESS;
     }
 
+    JST_CHECK(capture(failedModules));
+    return submit(failedModules);
+}
+
+Result SynchronousScheduler::capture(std::unordered_set<std::string>& failedModules) {
     {
         auto dataLock = trySharedDataLock();
         if (!dataLock.owns_lock()) {
@@ -293,7 +312,7 @@ Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModu
 
         for (const auto& name : presentModules) {
             const auto& mod = modules.at(name);
-            res = mod->context()->scheduler()->presentSubmit();
+            res = mod->context()->scheduler()->presentCapture();
             if (res != Result::SUCCESS && res != Result::RELOAD) {
                 failedModules.insert(name);
                 break;
@@ -308,6 +327,24 @@ Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModu
     }
 
     notifyCompute();
+
+    return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::submit(std::unordered_set<std::string>& failedModules) {
+    std::unique_lock lock(surfaceMutex, std::try_to_lock);
+    if (!lock.owns_lock() || isStopping() || isPresentHalted()) {
+        return Result::SUCCESS;
+    }
+
+    for (const auto& name : presentModules) {
+        const auto& mod = modules.at(name);
+        const Result res = mod->context()->scheduler()->presentSubmit();
+        if (res != Result::SUCCESS && res != Result::RELOAD) {
+            failedModules.insert(name);
+            return res;
+        }
+    }
 
     return Result::SUCCESS;
 }
@@ -460,6 +497,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         // Priority Yield: Check if present wants in before each segment.
 
         if (isPresentRequested()) {
+            wakePresent();
             while (isPresentRequested()) {
                 if (isStopping()) {
                     clearPresentRequest();
@@ -846,10 +884,17 @@ void SynchronousScheduler::notifyPresent() {
     presentCond.notify_all();
 }
 
+void SynchronousScheduler::wakePresent() {
+    if (const auto target = viewport.lock()) {
+        target->input().wake();
+    }
+}
+
 Result SynchronousScheduler::lockState(const std::function<Result()>& func) {
     haltAll();
 
     std::unique_lock dataLock(dataMutex);
+    std::unique_lock surfaceLock(surfaceMutex);
 
     sharedMutex.lock();
     presentSync = true;
@@ -873,6 +918,7 @@ Result SynchronousScheduler::lockState(const std::function<Result()>& func) {
     computeSync = false;
     presentSync = false;
     sharedMutex.unlock();
+    surfaceLock.unlock();
     dataLock.unlock();
 
     notifyCompute();

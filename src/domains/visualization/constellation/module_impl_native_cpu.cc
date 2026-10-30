@@ -17,6 +17,7 @@ struct ConstellationImplNativeCpu : public ConstellationImpl,
     Result create() final;
 
     Result presentInitialize() override;
+    Result presentCapture() override;
     Result presentSubmit() override;
     Result computeSubmit() override;
 };
@@ -53,16 +54,20 @@ Result ConstellationImplNativeCpu::presentInitialize() {
     return createPresent();
 }
 
+Result ConstellationImplNativeCpu::presentCapture() {
+    return capture();
+}
+
 Result ConstellationImplNativeCpu::presentSubmit() {
     return present();
 }
 
 Result ConstellationImplNativeCpu::computeSubmit() {
-    if (!shapes) {
-        return Result::SUCCESS;
-    }
+    const CF32* inputData = input.data<CF32>();
+    std::copy_n(inputData, numberOfPoints, samples.begin());
+    updateSamplesFlag = true;
 
-    return updatePointPositions();
+    return Result::SUCCESS;
 }
 
 Result ConstellationImpl::updatePointPositions() {
@@ -82,16 +87,12 @@ Result ConstellationImpl::updatePointPositions() {
         std::max(0.0f, paddingScale.x - pointMargin.x),
         std::max(0.0f, paddingScale.y - pointMargin.y),
     };
-    const CF32* inputData = input.data<CF32>();
-
     for (U64 i = 0; i < numberOfPoints; i++) {
         positions[i] = {
-            inputData[i].real() * safeScale.x * interaction.zoom,
-            inputData[i].imag() * safeScale.y * interaction.zoom,
+            displayedSamples[i].real() * safeScale.x * interaction.zoom,
+            displayedSamples[i].imag() * safeScale.y * interaction.zoom,
         };
     }
-
-    updatePositionsFlag = true;
 
     return Result::SUCCESS;
 }

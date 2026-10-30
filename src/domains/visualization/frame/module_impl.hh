@@ -3,8 +3,8 @@
 
 #include <optional>
 #include <array>
-#include <atomic>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <jetstream/domains/visualization/frame/module.hh>
@@ -44,8 +44,14 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
 
     std::string frameLabel;
 
-    std::atomic<F32> autoRangeMin{0.0f};
-    std::atomic<F32> autoRangeMax{1.0f};
+    std::vector<F32> pixels;
+    bool updateFrameFlag = false;
+    bool redrawFlag = false;
+
+    F32 autoRangeMin = 0.0f;
+    F32 autoRangeMax = 1.0f;
+    F32 displayRangeMin = 0.0f;
+    F32 displayRangeMax = 1.0f;
 
     SurfaceInteractionState interaction;
     std::optional<SurfaceTheme> appliedTheme;
@@ -82,6 +88,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
         float paddingScaleX;
         float paddingScaleY;
     } frameUniforms{};
+    decltype(frameUniforms) uploadedFrameUniforms{};
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
@@ -103,8 +110,10 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
 
     Result createPresent();
     Result destroyPresent();
+    Result capture();
     Result present();
     Result applyTheme();
+    std::pair<F32, F32> displayRange() const;
 
     void processInputEvents(const std::vector<InputEvent>& events);
     void clampViewCenter();
