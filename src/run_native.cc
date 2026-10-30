@@ -504,6 +504,8 @@ int Run(int argc, char* argv[]) {
     const HANDLE errorHandle = streamHandle(stderr);
 
     if (GetConsoleCP() != 0 || AttachConsole(ATTACH_PARENT_PROCESS)) {
+        (void)SetConsoleCtrlHandler(nullptr, FALSE);
+
         const auto connect = [](FILE* stream, DWORD id, HANDLE handle) {
             if (handle != nullptr && handle != INVALID_HANDLE_VALUE &&
                 GetFileType(handle) != FILE_TYPE_UNKNOWN) {
