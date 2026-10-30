@@ -38,6 +38,7 @@ struct Mesh::Impl {
     U64 vertexCount = 0;
     U64 indexCount = 0;
     U64 appliedIndexCount = 0;
+    U64 indexUploadExtent = 0;
     bool enabled = true;
 
     bool updateUniformBufferFlag = false;
@@ -235,10 +236,13 @@ Result Mesh::present() {
             JST_CHECK(pimpl->positionsBuffer->update(0, pimpl->vertexCount));
             JST_CHECK(pimpl->colorsBuffer->update(0, pimpl->vertexCount));
         }
+        pimpl->indexUploadExtent = std::max(pimpl->indexCount, pimpl->indexUploadExtent);
+        const U64 uploadCount = pimpl->indexUploadExtent;
         std::copy_n(pimpl->vertexIndices.data(), pimpl->indexCount, pimpl->uploadIndices.data());
-        std::fill_n(pimpl->uploadIndices.data() + pimpl->indexCount, config.indexCapacity - pimpl->indexCount, 0u);
+        std::fill_n(pimpl->uploadIndices.data() + pimpl->indexCount, uploadCount - pimpl->indexCount, 0u);
         if (pimpl->indexCount > 0) {
-            JST_CHECK(pimpl->indicesBuffer->update());
+            JST_CHECK(pimpl->indicesBuffer->update(0, uploadCount));
+            pimpl->indexUploadExtent = pimpl->indexCount;
             if (pimpl->appliedIndexCount != pimpl->indexCount) {
                 JST_CHECK(pimpl->draw->updateVertexCount(pimpl->indexCount));
                 pimpl->appliedIndexCount = pimpl->indexCount;
