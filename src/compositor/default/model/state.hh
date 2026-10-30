@@ -276,6 +276,7 @@ struct DefaultCompositorState {
             U64 focusRequests = 0;
             U64 focusedAt = 0;
             I32 zoom = 0;
+            std::optional<std::string> search;
         };
 
         std::map<U64, Item> items;

@@ -333,6 +333,14 @@ struct MailTerminalInput {
         std::string uri;
     };
 
+    struct Search {
+        std::optional<std::string> query;
+    };
+
+    struct SearchStep {
+        bool older = true;
+    };
+
     using Input = std::variant<Sakura::Terminal::Grid,
                                KeyEvent,
                                Text,
@@ -343,7 +351,9 @@ struct MailTerminalInput {
                                MouseEvent,
                                Focus,
                                Zoom,
-                               OpenLink>;
+                               OpenLink,
+                               Search,
+                               SearchStep>;
 
     U64 terminal = 0;
     Input input;

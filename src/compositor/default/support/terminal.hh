@@ -55,6 +55,8 @@ class TerminalSession {
     void select(const Sakura::Terminal::Selection& selection);
     void pointer(const MouseEvent& event);
     void focus(bool focused);
+    void search(const std::string& needle);
+    void searchStep(bool older);
 
  private:
     struct Impl;

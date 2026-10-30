@@ -1313,6 +1313,72 @@ TEST_CASE("Terminal link opens forward only web, mail, and file links", "[core][
     CHECK(opened == std::vector<std::string>{"https://example.org", "HTTP://example.org", "mailto:a@b.c", "file:///tmp/x"});
 }
 
+TEST_CASE("Terminal sessions search the screen, step between matches, and clear the search", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(StartShell(session));
+    session.text("clear; printf 'alpha needle\\nbeta\\nNEEDLE gamma needle\\n'; sleep 30\r");
+    REQUIRE(Shows(session, "gamma"));
+    session.search("needle");
+    const auto& screen = session.screen();
+    CHECK(screen.matchCount == 3);
+    REQUIRE(screen.matchIndex.has_value());
+    const auto marked = [&] {
+        U64 count = 0;
+        U64 current = 0;
+        for (const auto& row : screen.lines) {
+            count += row.matches.size();
+            current += row.match.has_value() ? 1 : 0;
+        }
+        return std::make_pair(count, current);
+    };
+    CHECK(marked().second == 1);
+    CHECK(marked().first + marked().second >= 3);
+    const U64 first = *screen.matchIndex;
+    session.searchStep(true);
+    REQUIRE(screen.matchIndex.has_value());
+    CHECK(*screen.matchIndex == (first + 1) % 3);
+    session.searchStep(false);
+    CHECK(*screen.matchIndex == first);
+
+    session.search("");
+    CHECK(screen.matchCount == 0);
+    CHECK_FALSE(screen.matchIndex.has_value());
+    CHECK(marked() == std::make_pair(U64{0}, U64{0}));
+}
+
+TEST_CASE("Terminal search keeps highlighting the visible part of a match wrapped above the viewport", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(StartShell(session));
+    session.resize({.columns = 20, .rows = 6, .cellWidth = 8.0f, .cellHeight = 16.0f});
+    session.text("clear; printf 'abcdefghijklmnopqrstuvwxyz0123\\n'; i=0; while [ $i -lt 30 ]; do echo line$i; "
+                 "i=$((i+1)); done; sleep 30\r");
+    REQUIRE(Shows(session, "line29"));
+    session.search("abcdefghijklmnopqrstuvwxyz0123");
+    const auto top = [&] {
+        const auto& lines = session.screen().lines;
+        return lines.empty() ? std::string() : RowText(lines.front());
+    };
+    for (const I32 direction : {1, -1}) {
+        for (U64 step = 0; step < 60 && top().rfind("uvwxyz0123", 0) != 0; ++step) {
+            session.scroll(direction, {10.0f, 10.0f}, {});
+            session.poll();
+        }
+    }
+    REQUIRE(top().rfind("uvwxyz0123", 0) == 0);
+    const auto& row = session.screen().lines.front();
+    const bool marked = row.match.has_value() || !row.matches.empty();
+    REQUIRE(marked);
+    const auto range = row.match.has_value() ? *row.match : row.matches.front();
+    CHECK(range.start == 0);
+    CHECK(range.end == 9);
+}
+
 TEST_CASE("Terminal sessions publish the predominant background of the screen", kTags) {
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");

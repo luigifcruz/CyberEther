@@ -44,6 +44,7 @@ struct TerminalPresenter {
                     .focusRequest = terminal.focusRequests,
                     .fontSize = Sakura::Typography::FontSize + static_cast<F32>(terminal.zoom),
                     .altSendsEscape = TerminalSession::AltSendsEscape(),
+                    .search = terminal.search,
                     .onResize = [send](Sakura::Terminal::Grid grid) {
                         send(grid);
                     },
@@ -76,6 +77,12 @@ struct TerminalPresenter {
                     },
                     .onOpenLink = [send](std::string uri) {
                         send(MailTerminalInput::OpenLink{.uri = std::move(uri)});
+                    },
+                    .onSearch = [send](std::optional<std::string> query) {
+                        send(MailTerminalInput::Search{.query = std::move(query)});
+                    },
+                    .onSearchStep = [send](bool older) {
+                        send(MailTerminalInput::SearchStep{.older = older});
                     },
                 },
                 .onClose = [enqueue, id]() {

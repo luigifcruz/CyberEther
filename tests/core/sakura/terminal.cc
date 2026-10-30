@@ -4,9 +4,13 @@
 #include <jetstream/render/components/text.hh>
 #include <jetstream/render/sakura/clipboard.hh>
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
+#include <jetstream/render/sakura/components/chrome_button.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/terminal.hh>
+#include <jetstream/render/sakura/components/text.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include "../../../resources/fonts/compressed_inter.hh"
 #include "component_harness.hh"
@@ -47,6 +51,8 @@ struct Recorder {
     std::vector<bool> focus;
     std::vector<I32> zooms;
     std::vector<std::string> links;
+    std::vector<std::optional<std::string>> searches;
+    std::vector<bool> steps;
 
     Terminal::Config wire(const Terminal::Screen* screen, U64 revision) {
         return {
@@ -65,6 +71,8 @@ struct Recorder {
             .onFocusChange = [this](bool focused) { focus.push_back(focused); },
             .onZoom = [this](I32 step) { zooms.push_back(step); },
             .onOpenLink = [this](std::string uri) { links.push_back(std::move(uri)); },
+            .onSearch = [this](std::optional<std::string> query) { searches.push_back(std::move(query)); },
+            .onSearchStep = [this](bool older) { steps.push_back(older); },
         };
     }
 };
@@ -517,6 +525,38 @@ TEST_CASE("Scrollbar drags move the terminal viewport", kTags) {
     CHECK(recorder.selections.empty());
 }
 
+TEST_CASE("The terminal scrollbar track stays clear of the rounded corners", kTags) {
+    for (const F32 ratio : {1.0f, 2.0f}) {
+        Scene scene;
+        auto ctx = scene.context();
+        ctx.pixelRatio = ratio;
+        Recorder recorder;
+        auto screen = MakeScreen();
+        screen.scrollTotal = 200;
+        screen.scrollOffset = 192;
+        Terminal terminal;
+        Place place(terminal, kBounds);
+        Frames frames(place, kScreen, ctx);
+        REQUIRE(frames.settle([&] {
+            auto config = recorder.wire(&screen, 1);
+            config.rounding = 10.0f;
+            terminal.update(std::move(config));
+        }));
+        const auto track = ctx.color("editor_scrollbar_track");
+        std::optional<Rect> found;
+        for (const auto* box : Find<Sakura::Box>(place)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.backgroundColor == track) {
+                    found = instance.rect;
+                }
+            }
+        }
+        REQUIRE(found.has_value());
+        CHECK(found->y >= kBounds.y + 10.0f * ratio);
+        CHECK(found->bottom() <= kBounds.bottom() - 10.0f * ratio);
+    }
+}
+
 TEST_CASE("Focused terminals send keys to the shell and keep copy, paste, and app shortcuts", kTags) {
     Scene scene;
     Recorder recorder;
@@ -664,6 +704,157 @@ TEST_CASE("Command clicking a terminal link opens it and command hover underline
     place.send(Mouse(MouseEventType::Release, link.x, link.y));
     CHECK(recorder.links.size() == 1);
     CHECK_FALSE(recorder.selections.empty());
+}
+
+TEST_CASE("Command F opens a find bar that takes typing, steps through matches, and closes back to the shell",
+          "[core][sakura][terminal][find]") {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    Terminal terminal;
+    Place place(terminal, kBounds);
+    Frames frames(place, kScreen, scene.context());
+    std::optional<std::string> search;
+    const auto update = [&] {
+        auto config = recorder.wire(&screen, 1);
+        config.search = search;
+        terminal.update(std::move(config));
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(FocusOwner(place) == &terminal);
+    CHECK(Find<Sakura::TextInput>(place).empty());
+
+    CHECK(Tap(place, KeyCode::F, {.super = true}));
+    REQUIRE(recorder.searches == std::vector<std::optional<std::string>>{std::string()});
+    search = std::string();
+    REQUIRE(frames.settle(update));
+    const auto field = Find<Sakura::TextInput>(place);
+    REQUIRE(field.size() == 1);
+    CHECK(field[0]->focused());
+
+    Type(place, "ab");
+    CHECK(recorder.texts.empty());
+    REQUIRE(recorder.searches.size() == 3);
+    CHECK(recorder.searches.back() == std::optional<std::string>("ab"));
+    search = std::string("ab");
+    screen.matchCount = 4;
+    screen.matchIndex = 1;
+    REQUIRE(frames.settle(update));
+    CHECK(ShownText(place, "2/4") != nullptr);
+
+    CHECK(Tap(place, KeyCode::Enter));
+    CHECK(Tap(place, KeyCode::Enter, {.shift = true}));
+    CHECK(recorder.steps == std::vector<bool>{true, false});
+    CHECK(recorder.keys.empty());
+
+    const auto buttons = Find<Sakura::ChromeButton>(place);
+    REQUIRE(buttons.size() == 3);
+    const Rect older = Peek::Frame(*buttons[1]);
+    const Extent2D<F32> center = {older.x + older.width * 0.5f, older.y + older.height * 0.5f};
+    const auto focusChanges = recorder.focus;
+    place.send(Mouse(MouseEventType::Click, center.x, center.y));
+    ClickFocus(place, center);
+    place.send(Mouse(MouseEventType::Release, center.x, center.y));
+    REQUIRE(frames.settle(update));
+    CHECK(recorder.steps == std::vector<bool>{true, false, true});
+    CHECK(field[0]->focused());
+    CHECK(recorder.focus == focusChanges);
+    Type(place, "c");
+    CHECK(recorder.texts.empty());
+    CHECK(recorder.searches.back() == std::optional<std::string>("abc"));
+
+    const auto shown = [&](const std::string& value) {
+        const auto strings = LabelStrings(place);
+        return std::find(strings.begin(), strings.end(), value) != strings.end();
+    };
+    REQUIRE(shown("2/4"));
+    search = std::string();
+    REQUIRE(frames.settle(update));
+    CHECK_FALSE(shown("2/4"));
+    search = std::string("ab");
+    REQUIRE(frames.settle(update));
+
+    CHECK(Tap(place, KeyCode::Escape));
+    CHECK(recorder.searches.back() == std::nullopt);
+    search.reset();
+    REQUIRE(frames.settle(update));
+    CHECK(Find<Sakura::TextInput>(place).empty());
+    CHECK(FocusOwner(place) == &terminal);
+    CHECK(Tap(place, KeyCode::Enter));
+    CHECK(recorder.keys.size() == 1);
+}
+
+TEST_CASE("The terminal find bar settles, toggles as a repaint, and scales with the pixel ratio",
+          "[core][sakura][terminal][find][retention]") {
+    for (const F32 ratio : {1.0f, 2.0f}) {
+        Scene scene;
+        auto ctx = scene.context();
+        ctx.pixelRatio = ratio;
+        Recorder recorder;
+        auto screen = MakeScreen();
+        Terminal terminal;
+        Place place(terminal, kScreen);
+        Frames frames(place, kScreen, ctx);
+        std::optional<std::string> search = std::string("needle");
+        const auto update = [&] {
+            auto config = recorder.wire(&screen, 1);
+            config.search = search;
+            terminal.update(std::move(config));
+        };
+        REQUIRE(frames.settle(update));
+        CHECK(Retains(frames, update));
+        const auto panel = [&]() -> std::optional<Rect> {
+            const auto cards = Find<Sakura::Card>(place);
+            if (cards.size() != 1) {
+                return std::nullopt;
+            }
+            return Peek::Frame(*cards.front());
+        };
+        REQUIRE(panel().has_value());
+        CHECK(panel()->width == Catch::Approx(320.0f * ratio));
+        CHECK(panel()->y == Catch::Approx(kScreen.y + 14.0f * ratio));
+        const F32 gutter = 8.0f + Sakura::kScrollbarThickness + 2.0f * Sakura::kScrollbarMargin;
+        CHECK(panel()->right() == Catch::Approx(kScreen.right() - std::round(gutter * ratio)).margin(1.0f));
+
+        const U64 restructures = frames.restructures;
+        search.reset();
+        CHECK(RepaintOnly(frames.run(update)));
+        REQUIRE(frames.settle(update));
+        search = std::string("needle");
+        CHECK(RepaintOnly(frames.run(update)));
+        REQUIRE(frames.settle(update));
+        CHECK(frames.restructures == restructures);
+    }
+}
+
+TEST_CASE("Terminal search matches tint their cells and the current match stands out", "[core][sakura][terminal][find]") {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    screen.lines[2].matches = {{.start = 3, .end = 5}};
+    screen.lines[4].match = Terminal::Range{.start = 0, .end = 2};
+    Terminal terminal;
+    Place place(terminal, kBounds);
+    Frames frames(place, kScreen, scene.context());
+    REQUIRE(frames.settle([&] { terminal.update(recorder.wire(&screen, 1)); }));
+    const auto grid = recorder.grids.front();
+    const auto ctx = scene.context();
+    auto current = ctx.color("accent_color");
+    current.a *= 0.55f;
+    const auto& fills = Fills(place).config().instances;
+    const auto at = [&](U16 column, U16 row, U16 width) {
+        const Rect cell = GridCell(grid, column, row);
+        return std::find_if(fills.begin(), fills.end(), [&](const auto& fill) {
+            return fill.rect.x == cell.x && fill.rect.y == cell.y &&
+                   fill.rect.width == Catch::Approx(width * grid.cellWidth);
+        });
+    };
+    const auto match = at(3, 2, 3);
+    REQUIRE(match != fills.end());
+    CHECK(match->backgroundColor == ctx.color("editor_selection_match"));
+    const auto selected = at(0, 4, 3);
+    REQUIRE(selected != fills.end());
+    CHECK(selected->backgroundColor == current);
 }
 
 TEST_CASE("Terminals take keyboard focus again when their focus request changes", kTags) {

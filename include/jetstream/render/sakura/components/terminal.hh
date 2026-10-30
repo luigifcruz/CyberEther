@@ -66,6 +66,8 @@ struct Terminal : public Component {
         std::vector<Span> spans;
         std::vector<Background> backgrounds;
         std::vector<Link> links;
+        std::vector<Range> matches;
+        std::optional<Range> match;
         std::optional<Range> selection;
 
         bool operator==(const Row&) const = default;
@@ -95,6 +97,8 @@ struct Terminal : public Component {
         std::string selection;
         U64 scrollTotal = 0;
         U64 scrollOffset = 0;
+        U64 matchCount = 0;
+        std::optional<U64> matchIndex;
         bool mouseTracking = false;
 
         bool operator==(const Screen&) const = default;
@@ -131,6 +135,9 @@ struct Terminal : public Component {
         bool altSendsEscape = false;
         std::string cursorColorKey = "editor_cursor";
         std::string selectionColorKey = "editor_selection";
+        std::string matchColorKey = "editor_selection_match";
+        std::string currentMatchColorKey = "accent_color";
+        std::optional<std::string> search;
         std::string scrollbarTrackColorKey = "editor_scrollbar_track";
         std::string scrollbarThumbColorKey = "editor_scrollbar_thumb";
         Callback<void(Grid)> onResize;
@@ -144,6 +151,8 @@ struct Terminal : public Component {
         Callback<void(bool)> onFocusChange;
         Callback<void(I32 step)> onZoom;
         Callback<void(std::string uri)> onOpenLink;
+        Callback<void(std::optional<std::string> query)> onSearch;
+        Callback<void(bool older)> onSearchStep;
 
         bool operator==(const Config&) const = default;
     };
@@ -165,6 +174,8 @@ struct Terminal : public Component {
     std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
 
  private:
+    void layoutFind(const Context& ctx, const Rect& bounds);
+
     struct Impl;
     std::unique_ptr<Impl> impl;
 };

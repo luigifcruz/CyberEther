@@ -2,14 +2,20 @@
 
 #include <jetstream/render/sakura/clipboard.hh>
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
+#include <jetstream/render/sakura/components/chrome_button.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
+#include <jetstream/render/sakura/components/text.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include <jetstream/render/components/text.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
+#include "../detail/helpers.hh"
 #include "../detail/terminal_sprites.hh"
 #include "../detail/text_metrics.hh"
 
@@ -45,6 +51,18 @@ constexpr F32 kCursorUnderlineHeight = 2.0f;
 constexpr F32 kWheelRows = 3.0f;
 constexpr F64 kCursorBlinkPeriod = 1.0;
 constexpr F64 kCursorBlinkOnDuration = 0.55;
+constexpr F32 kFindWidth = 320.0f;
+constexpr F32 kFindHeight = 34.0f;
+constexpr F32 kFindMargin = 8.0f;
+constexpr F32 kFindTop = 14.0f;
+constexpr F32 kFindInset = 4.0f;
+constexpr F32 kFindButton = 26.0f;
+constexpr F32 kFindButtonPadding = 6.0f;
+constexpr F32 kFindFieldPadding = 8.0f;
+constexpr F32 kFindCountScale = 0.85f;
+constexpr F32 kFindRounding = 8.0f;
+constexpr F32 kFindShadowSoftness = 12.0f;
+constexpr F32 kCurrentMatchAlpha = 0.55f;
 
 }  // namespace
 
@@ -76,6 +94,17 @@ struct Terminal::Impl {
     Box decorations;
     Label cursorGlyph;
     Scroller scroller;
+    Card findPanel;
+    TextInput findField;
+    Text findCount;
+    ChromeButton findNewer;
+    ChromeButton findOlder;
+    ChromeButton findClose;
+    Rect findBounds;
+    bool findFocus = false;
+    bool findRefocus = false;
+    bool findPress = false;
+    bool findClosing = false;
 
     TextMetrics metrics;
     TerminalSprites canvas;
@@ -316,10 +345,84 @@ struct Terminal::Impl {
         }
     }
 
+    bool finding() const {
+        return config.search.has_value();
+    }
+
+    std::array<Component*, 6> findParts() {
+        return {&findPanel, &findField, &findCount, &findNewer, &findOlder, &findClose};
+    }
+
+    void search(std::optional<std::string> query) {
+        if (config.onSearch) {
+            config.onSearch(std::move(query));
+        }
+    }
+
+    void step(bool older) {
+        if (config.onSearchStep) {
+            config.onSearchStep(older);
+        }
+    }
+
+    void stepFromButton(bool older) {
+        step(older);
+        findRefocus = true;
+        self->invalidate(Dirty::Layout);
+    }
+
+    void closeFind() {
+        search(std::nullopt);
+        findClosing = true;
+        self->requestFocus();
+        findClosing = false;
+    }
+
+    void configureFind() {
+        const Screen* screen = config.screen;
+        std::string count;
+        if (finding() && !config.search->empty() && screen) {
+            count = screen->matchCount == 0 ? std::string("0/0")
+                                            : std::to_string(screen->matchIndex.value_or(0) + 1) + "/" +
+                                                  std::to_string(screen->matchCount);
+        }
+        findField.update({
+            .value = config.search.value_or(""),
+            .hint = "Find",
+            .submit = TextInput::Submit::OnEdit,
+            .keepFocusOnSubmit = true,
+            .onChange = [this](const std::string& query) {
+                if (!findClosing) {
+                    search(query);
+                }
+            },
+            .onSubmit = [this](const std::string&) { step(true); },
+            .backgroundColorKey = "transparent",
+            .onCancel = [this]() { closeFind(); },
+            .padding = {kFindFieldPadding, 0.0f},
+            .fontName = Typography::DisplayFont,
+        });
+        findCount.update({.str = count, .tone = Text::Tone::Secondary, .scale = kFindCountScale});
+        const auto button = [](const char* icon, Callback<void()> onClick) {
+            return ChromeButton::Config{
+                .label = icon,
+                .height = kFindButton,
+                .padding = {kFindButtonPadding, 0.0f},
+                .rounding = kFindButton * 0.5f,
+                .onClick = std::move(onClick),
+            };
+        };
+        findNewer.update(button(ICON_LC_CHEVRON_UP, [this]() { stepFromButton(false); }));
+        findOlder.update(button(ICON_LC_CHEVRON_DOWN, [this]() { stepFromButton(true); }));
+        findClose.update(button(ICON_LC_X, [this]() { closeFind(); }));
+    }
+
     void build(const Context& ctx) {
         const Screen* screen = config.screen;
         const ColorRGBA<F32> cursorColor = ctx.color(config.cursorColorKey);
         const ColorRGBA<F32> selectionColor = ctx.color(config.selectionColorKey);
+        const ColorRGBA<F32> matchColor = ctx.color(config.matchColorKey);
+        const ColorRGBA<F32> currentMatchColor = WithAlpha(ctx.color(config.currentMatchColorKey), kCurrentMatchAlpha);
         const ColorRGBA<F32> backdropColor =
             ctx.color(ctx.backdropColorKey.empty() ? "background" : ctx.backdropColorKey);
 
@@ -330,7 +433,7 @@ struct Terminal::Impl {
         std::vector<Label::Instance> isolated;
         std::array<std::vector<Label::Instance>, kFallbackFonts.size()> fallback;
         const U64 cells = rowCapacity * columnCapacity;
-        const U64 fillCapacity = cells + rowCapacity;
+        const U64 fillCapacity = 2 * cells + rowCapacity;
         const U64 glyphCapacity = cells;
         const U64 boldCapacity = cells;
         const U64 fallbackCapacity = rowCapacity * kIsolatedGlyphsPerRow;
@@ -401,6 +504,18 @@ struct Terminal::Impl {
             }
             if (defaults && painted < columns) {
                 shade(painted, columns, screen->background);
+            }
+            const auto mark = [&](const Range& range, const ColorRGBA<F32>& color) {
+                const U16 end = std::min<U16>(range.end, columns - 1);
+                if (range.start < columns && end >= range.start && fills.size() < fillCapacity) {
+                    fills.push_back({.rect = cellRect(range.start, row, end - range.start + 1), .backgroundColor = color});
+                }
+            };
+            for (const auto& range : line.matches) {
+                mark(range, matchColor);
+            }
+            if (line.match) {
+                mark(*line.match, currentMatchColor);
             }
             if (line.selection.has_value() && fills.size() < fillCapacity && line.selection->start < columns) {
                 const U16 end = std::min<U16>(line.selection->end, columns - 1);
@@ -572,6 +687,7 @@ struct Terminal::Impl {
             .wheelStep = Px(ctx, kWheelStep),
             .thickness = Px(ctx, kScrollbarThickness),
             .margin = Px(ctx, kScrollbarMargin),
+            .trackInset = {0.0f, Px(ctx, config.rounding)},
             .trackColorKey = config.scrollbarTrackColorKey,
             .thumbColorKey = config.scrollbarThumbColorKey,
             .onScrollY = [this](F32 scrollY) {
@@ -636,6 +752,10 @@ Terminal::Terminal() {
     addChild(impl->decorations);
     addChild(impl->cursorGlyph);
     addChild(impl->scroller);
+    for (Component* part : impl->findParts()) {
+        addChild(*part);
+        part->setVisible(false);
+    }
 }
 
 Terminal::~Terminal() = default;
@@ -651,6 +771,19 @@ void Terminal::update(Config config) {
     }
     impl->stale = impl->stale || config.fontSize != impl->config.fontSize;
     impl->config = std::move(config);
+    const bool finding = impl->finding();
+    if (impl->findPanel.visible() != finding) {
+        if (!finding && impl->findField.focused()) {
+            requestFocus();
+        }
+        for (Component* part : impl->findParts()) {
+            if (!finding) {
+                cancelMouse(*part);
+            }
+            part->setVisible(finding);
+        }
+    }
+    impl->configureFind();
     if (requested && textEditorFocused()) {
         requestFocus();
     }
@@ -668,6 +801,55 @@ Extent2D<F32> Terminal::measure(const Context& ctx, Extent2D<F32> available) {
     };
     return {ResolveLength(ctx, impl->config.size.x, natural.x, available.x),
             ResolveLength(ctx, impl->config.size.y, natural.y, available.y)};
+}
+
+void Terminal::layoutFind(const Context& ctx, const Rect& bounds) {
+    auto& find = *impl;
+    if (!find.finding()) {
+        find.findBounds = {};
+        return;
+    }
+    const F32 margin = Px(ctx, kFindMargin);
+    const F32 gutter = margin + Px(ctx, kScrollbarThickness + 2.0f * kScrollbarMargin);
+    const F32 inset = Px(ctx, kFindInset);
+    const F32 width = std::min(Px(ctx, kFindWidth), std::max(0.0f, bounds.width - margin - gutter));
+    const Rect panel = {std::round(bounds.right() - gutter - width), std::round(bounds.y + Px(ctx, kFindTop)),
+                        std::round(width), std::round(Px(ctx, kFindHeight))};
+    find.findBounds = panel;
+    find.findPanel.update({
+        .rects = {panel},
+        .cornerRadius = Px(ctx, kFindRounding),
+        .softness = Px(ctx, kFindShadowSoftness),
+        .drop = Px(ctx, kShadowDrop),
+        .borderWidth = Hairline(ctx),
+        .lineWidth = Hairline(ctx),
+        .fillKey = kCardSurface,
+        .capacity = 1,
+    });
+    layoutChild(ctx, find.findPanel, panel);
+    const Context surface = CardSurface(ctx);
+    const auto place = [&](Component& part, const Rect& rect) {
+        layoutChild(surface, part, rect, Intersect(rect, panel));
+    };
+    const auto middle = [&](F32 height) {
+        return std::round(panel.y + (panel.height - height) * 0.5f);
+    };
+    F32 right = panel.right() - inset;
+    for (Component* part : std::initializer_list<Component*>{&find.findClose, &find.findOlder, &find.findNewer}) {
+        const Extent2D<F32> size = measureChild(*part, surface, {panel.width, panel.height});
+        right -= size.x;
+        place(*part, {right, middle(size.y), size.x, size.y});
+    }
+    const Extent2D<F32> count = measureChild(find.findCount, surface, {panel.width, panel.height});
+    right -= count.x > 0.0f ? count.x + 2.0f * inset : 0.0f;
+    place(find.findCount, {right + (count.x > 0.0f ? inset : 0.0f), middle(count.y), count.x, count.y});
+    const F32 left = panel.x + inset;
+    place(find.findField, {left, panel.y + inset, std::max(0.0f, right - left), panel.height - 2.0f * inset});
+    if (find.findFocus || find.findRefocus) {
+        find.findField.focus(find.findFocus);
+        find.findFocus = false;
+        find.findRefocus = false;
+    }
 }
 
 void Terminal::layout(const Context& ctx) {
@@ -690,6 +872,7 @@ void Terminal::layout(const Context& ctx) {
 
     impl->configureScroller(ctx);
     layoutChild(ctx, impl->scroller, bounds);
+    layoutFind(ctx, bounds);
     impl->build(ctx);
 
     const Rect content = impl->grid;
@@ -712,7 +895,13 @@ void Terminal::layout(const Context& ctx) {
 }
 
 bool Terminal::mouseEvent(const MouseEvent& event) {
+    if (event.type == MouseEventType::Click) {
+        impl->findPress = impl->findBounds.contains(event.position.x, event.position.y);
+    }
     if (!impl->selecting && !impl->pointing && mouseEventChildren(event)) {
+        return true;
+    }
+    if (event.type == MouseEventType::Click && impl->findBounds.contains(event.position.x, event.position.y)) {
         return true;
     }
     const Screen* screen = impl->config.screen;
@@ -817,6 +1006,24 @@ bool Terminal::keyEvent(const KeyEvent& event) {
         return false;
     }
     const auto& modifiers = event.modifiers;
+    const bool findKey = event.key == KeyCode::F && !modifiers.alt &&
+                         ((modifiers.super && !modifiers.control) || (modifiers.control && modifiers.shift && !modifiers.super));
+    if (findKey) {
+        if (!event.repeat) {
+            impl->findFocus = true;
+            impl->search(impl->config.search.value_or(""));
+            invalidate(Dirty::Layout);
+        }
+        return true;
+    }
+    if (impl->findField.focused()) {
+        const bool enter = event.key == KeyCode::Enter || event.key == KeyCode::KeypadEnter;
+        if (enter && modifiers.shift && !modifiers.control && !modifiers.alt && !modifiers.super) {
+            impl->step(false);
+            return true;
+        }
+        return false;
+    }
     const bool shiftControl = modifiers.control && modifiers.shift && !modifiers.alt && !modifiers.super;
     if ((modifiers.super && !modifiers.control && !modifiers.alt) || shiftControl) {
         if (event.key == KeyCode::C) {
@@ -851,6 +1058,9 @@ bool Terminal::keyEvent(const KeyEvent& event) {
 }
 
 bool Terminal::textEvent(const TextEvent& event) {
+    if (impl->findField.focused()) {
+        return false;
+    }
     const char32_t codepoint = event.codepoint;
     const auto& modifiers = event.modifiers;
     if (codepoint < 32 || codepoint == 127 || modifiers.super || (modifiers.control && !modifiers.alt) ||
@@ -877,12 +1087,15 @@ bool Terminal::editsText() const {
 }
 
 bool Terminal::focusesOnClick() const {
-    return true;
+    return !impl->findPress;
 }
 
 std::optional<SurfaceCursor> Terminal::cursorAt(const Extent2D<F32>& point) const {
     if (!impl->inside(point)) {
         return std::nullopt;
+    }
+    if (impl->findBounds.contains(point.x, point.y)) {
+        return SurfaceCursor::Default;
     }
     if (impl->linkHover && impl->linkAt(*impl->linkHover)) {
         return SurfaceCursor::Hand;

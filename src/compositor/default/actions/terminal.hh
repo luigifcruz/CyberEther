@@ -170,6 +170,11 @@ struct TerminalActions {
                 target.pointer(input);
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::Focus>) {
                 target.focus(input.value);
+            } else if constexpr (std::is_same_v<Input, MailTerminalInput::Search>) {
+                terminal->second.search = input.query;
+                target.search(input.query.value_or(""));
+            } else if constexpr (std::is_same_v<Input, MailTerminalInput::SearchStep>) {
+                target.searchStep(input.older);
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::OpenLink>) {
                 if (Openable(input.uri)) {
                     callbacks.enqueueMail(MailOpenUrl{.url = input.uri, .notifyResult = true});

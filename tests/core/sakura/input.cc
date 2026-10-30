@@ -543,6 +543,45 @@ TEST_CASE("Text inputs commit and blur in the same event that changes their focu
     CHECK(changes == std::vector<std::string>{"alpha!", "alpha!?"});
 }
 
+TEST_CASE("Text inputs can keep focus on submit, take focus on request, and leave Shift+Enter to their owner",
+          "[core][sakura][input][focus]") {
+    std::vector<std::string> log;
+    std::vector<std::string> submits;
+    Node root("root", log, {0.0f, 0.0f, 300.0f, 25.0f});
+    Sakura::TextInput input;
+    root.adopt(input);
+    const auto configure = [&](bool keep) {
+        input.update({
+            .value = "query",
+            .submit = Sakura::TextInput::Submit::OnEdit,
+            .keepFocusOnSubmit = keep,
+            .onSubmit = [&](const std::string& value) { submits.push_back(value); },
+        });
+    };
+    const auto ctx = MakeContext({300.0f, 25.0f});
+    configure(true);
+    root.place(ctx);
+    CHECK_FALSE(input.focused());
+
+    input.focus(true);
+    REQUIRE(input.focused());
+    CHECK(Tap(root, KeyCode::Enter));
+    CHECK(submits == std::vector<std::string>{"query"});
+    CHECK(input.focused());
+
+    log.clear();
+    CHECK_FALSE(Tap(root, KeyCode::Enter, {.shift = true}));
+    CHECK(submits.size() == 1);
+    CHECK(std::find(log.begin(), log.end(), "root:key") != log.end());
+    CHECK(input.focused());
+
+    configure(false);
+    root.place(ctx);
+    CHECK(Tap(root, KeyCode::Enter));
+    CHECK(submits.size() == 2);
+    CHECK_FALSE(input.focused());
+}
+
 TEST_CASE("The input router sends a move when modifiers change under a still pointer", "[core][sakura][input][router]") {
     Sakura::InputRouter router;
     const Rect screen = {100.0f, 50.0f, 200.0f, 100.0f};

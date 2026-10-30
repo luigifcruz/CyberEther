@@ -272,6 +272,8 @@ struct TerminalSession::Impl {
     Platform::PseudoTerminal pty;
     GhosttyTerminal terminal = nullptr;
     GhosttyRenderState renderState = nullptr;
+    GhosttySearch finder = nullptr;
+    std::string needle;
     GhosttyRenderStateRowIterator rowIterator = nullptr;
     GhosttyRenderStateRowCells rowCells = nullptr;
     GhosttyKeyEncoder keyEncoder = nullptr;
@@ -337,9 +339,83 @@ struct TerminalSession::Impl {
             ghostty_render_state_free(renderState);
             renderState = nullptr;
         }
+        if (finder) {
+            ghostty_search_free(finder);
+            finder = nullptr;
+        }
+        needle.clear();
         if (terminal) {
             ghostty_terminal_free(terminal);
             terminal = nullptr;
+        }
+    }
+
+    std::optional<GhosttyPointCoordinate> viewportPoint(const GhosttyGridRef& ref) const {
+        GhosttyPointCoordinate point{};
+        if (ghostty_terminal_point_from_grid_ref(terminal, &ref, GHOSTTY_POINT_TAG_VIEWPORT, &point) !=
+            GHOSTTY_SUCCESS) {
+            return std::nullopt;
+        }
+        return point;
+    }
+
+    void highlight() {
+        const bool active = finder && !needle.empty();
+        screen.matchCount = 0;
+        screen.matchIndex.reset();
+        for (auto& line : screen.lines) {
+            line.matches.clear();
+            line.match.reset();
+        }
+        if (!active || ghostty_search_run(finder) != GHOSTTY_SUCCESS) {
+            return;
+        }
+        size_t total = 0;
+        (void)ghostty_search_get(finder, GHOSTTY_SEARCH_DATA_TOTAL_MATCHES, &total);
+        screen.matchCount = total;
+        size_t index = 0;
+        if (ghostty_search_get(finder, GHOSTTY_SEARCH_DATA_SELECTED_INDEX, &index) == GHOSTTY_SUCCESS) {
+            screen.matchIndex = index;
+        }
+        const auto paint = [&](const GhosttySelection& selection, bool current) {
+            const U32 rows = static_cast<U32>(screen.lines.size());
+            auto start = viewportPoint(selection.start);
+            auto end = viewportPoint(selection.end);
+            if (!start && !end) {
+                return;
+            }
+            if (!start) {
+                start = GhosttyPointCoordinate{.x = 0, .y = 0};
+            }
+            if (!end) {
+                end = GhosttyPointCoordinate{.x = static_cast<uint16_t>(std::max<U16>(1, screen.columns) - 1),
+                                             .y = rows > 0 ? rows - 1 : 0};
+            }
+            for (U32 row = start->y; row <= end->y && row < rows; ++row) {
+                const Sakura::Terminal::Range range{
+                    .start = row == start->y ? start->x : U16{0},
+                    .end = row == end->y ? end->x : static_cast<U16>(std::max<U16>(1, screen.columns) - 1),
+                };
+                if (current) {
+                    screen.lines[row].match = range;
+                } else {
+                    screen.lines[row].matches.push_back(range);
+                }
+            }
+        };
+        GhosttySelectionBuffer buffer{.ptr = nullptr, .cap = 0, .len = 0};
+        (void)ghostty_search_get(finder, GHOSTTY_SEARCH_DATA_VIEWPORT_MATCHES, &buffer);
+        std::vector<GhosttySelection> matches(buffer.len, GHOSTTY_INIT_SIZED(GhosttySelection));
+        buffer = {.ptr = matches.data(), .cap = matches.size(), .len = 0};
+        if (!matches.empty() &&
+            ghostty_search_get(finder, GHOSTTY_SEARCH_DATA_VIEWPORT_MATCHES, &buffer) == GHOSTTY_SUCCESS) {
+            for (U64 entry = 0; entry < buffer.len; ++entry) {
+                paint(matches[entry], false);
+            }
+        }
+        GhosttySelection selected = GHOSTTY_INIT_SIZED(GhosttySelection);
+        if (ghostty_search_get(finder, GHOSTTY_SEARCH_DATA_SELECTED_MATCH, &selected) == GHOSTTY_SUCCESS) {
+            paint(selected, true);
         }
     }
 
@@ -971,6 +1047,7 @@ struct TerminalSession::Impl {
 
         (void)ghostty_render_state_clean(renderState);
         rebuildAll = false;
+        highlight();
         predominate();
         ++revision;
     }
@@ -1307,6 +1384,35 @@ void TerminalSession::scroll(I32 rows, Extent2D<F32> position, KeyModifiers modi
     impl->rebuild();
 }
 
+void TerminalSession::search(const std::string& needle) {
+    if (!impl->started || needle == impl->needle) {
+        return;
+    }
+    if (!impl->finder && ghostty_search_new(nullptr, &impl->finder, impl->terminal) != GHOSTTY_SUCCESS) {
+        impl->finder = nullptr;
+        return;
+    }
+    const GhosttyString value{reinterpret_cast<const uint8_t*>(needle.data()), needle.size()};
+    (void)ghostty_search_set(impl->finder, GHOSTTY_SEARCH_OPT_NEEDLE, needle.empty() ? nullptr : &value);
+    impl->needle = needle;
+    if (!needle.empty()) {
+        (void)ghostty_search_run(impl->finder);
+        (void)ghostty_search_set(impl->finder, GHOSTTY_SEARCH_OPT_SELECT_NEXT, nullptr);
+    }
+    impl->rebuildAll = true;
+    impl->rebuild();
+}
+
+void TerminalSession::searchStep(bool older) {
+    if (!impl->started || !impl->finder || impl->needle.empty()) {
+        return;
+    }
+    (void)ghostty_search_set(impl->finder, older ? GHOSTTY_SEARCH_OPT_SELECT_NEXT : GHOSTTY_SEARCH_OPT_SELECT_PREV,
+                             nullptr);
+    impl->rebuildAll = true;
+    impl->rebuild();
+}
+
 void TerminalSession::scrollTo(U64 row) {
     if (!impl->started) {
         return;
@@ -1491,6 +1597,10 @@ void TerminalSession::text(const std::string&) {}
 void TerminalSession::paste(const std::string&) {}
 
 void TerminalSession::scroll(I32, Extent2D<F32>, KeyModifiers) {}
+
+void TerminalSession::search(const std::string&) {}
+
+void TerminalSession::searchStep(bool) {}
 
 void TerminalSession::scrollTo(U64) {}
 
