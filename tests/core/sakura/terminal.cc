@@ -294,15 +294,16 @@ TEST_CASE("Terminal cells and padding scale with the pixel ratio", kTags) {
     CHECK(background.instances[0].rect.y == Catch::Approx(10.0f + 2.0f * kPadding));
 }
 
-TEST_CASE("Terminal glyphs share one label per color and keep their cell columns", kTags) {
+TEST_CASE("Terminal glyphs share a label per color within sixteen cells and keep their cell columns", kTags) {
     Scene scene;
     Recorder recorder;
     auto screen = MakeScreen();
     screen.lines[0].spans = {
         {.column = 0, .width = 2, .text = "ls", .color = kRed},
         {.column = 3, .width = 3, .text = "foo", .color = kWhite},
-        {.column = 7, .width = 3, .text = "bar", .color = kRed},
+        {.column = 5, .width = 1, .text = "x", .color = kRed},
         {.column = 12, .width = 4, .text = "bold", .color = kWhite, .bold = true},
+        {.column = 17, .width = 3, .text = "bar", .color = kRed},
     };
     Terminal terminal;
     Place place(terminal, kBounds);
@@ -311,13 +312,16 @@ TEST_CASE("Terminal glyphs share one label per color and keep their cell columns
     const auto grid = recorder.grids.front();
 
     const auto& regular = Glyphs(place, 0).config();
-    REQUIRE(regular.instances.size() == 2);
-    CHECK(regular.instances[0].str == "ls     bar");
+    REQUIRE(regular.instances.size() == 3);
+    CHECK(regular.instances[0].str == "ls   x");
     CHECK(regular.instances[0].color == kRed);
     CHECK(regular.instances[0].rect.x == Catch::Approx(kBounds.x + kPadding));
     CHECK(regular.instances[1].str == "foo");
     CHECK(regular.instances[1].color == kWhite);
     CHECK(regular.instances[1].rect.x == Catch::Approx(kBounds.x + kPadding + 3.0f * grid.cellWidth));
+    CHECK(regular.instances[2].str == "bar");
+    CHECK(regular.instances[2].color == kRed);
+    CHECK(regular.instances[2].rect.x == Catch::Approx(kBounds.x + kPadding + 17.0f * grid.cellWidth));
     CHECK(regular.fontName == "default_mono");
 
     const auto& bold = Glyphs(place, 1).config();
@@ -342,13 +346,18 @@ TEST_CASE("Terminal glyphs advance by whole-pixel cells at every pixel ratio", k
         const auto grid = recorder.grids.back();
 
         const auto& regular = Glyphs(place, 0).config();
-        REQUIRE(regular.instances.size() == 1);
+        REQUIRE(regular.instances.size() == 3);
         Sakura::TextMetrics metrics;
         metrics.setWindow(ctx.render);
-        const F32 run = metrics.measure(regular.fontName, regular.instances[0].str, regular.instances[0].fontSize);
-        REQUIRE(run > 0.0f);
         CHECK(grid.cellWidth == std::round(grid.cellWidth));
-        CHECK(run == Catch::Approx(40.0f * grid.cellWidth).margin(0.01f));
+        for (U64 index = 0; index < regular.instances.size(); ++index) {
+            const auto& chunk = regular.instances[index];
+            const F32 run = metrics.measure(regular.fontName, chunk.str, chunk.fontSize);
+            const U64 length = index < 2 ? 16 : 8;
+            CHECK(chunk.str == std::string(length, 'm'));
+            CHECK(run == Catch::Approx(static_cast<F32>(length) * grid.cellWidth).margin(0.01f));
+            CHECK(chunk.rect.x - regular.instances[0].rect.x == Catch::Approx(16.0f * index * grid.cellWidth));
+        }
     }
 }
 
@@ -1181,6 +1190,81 @@ TEST_CASE("Color dense rows keep every background and decoration", kTags) {
     const U64 columns = std::min<U64>(40, grid.columns);
     CHECK(Fills(place).config().instances.size() == rows * columns);
     CHECK(Decorations(place).config().instances.size() == rows * columns);
+}
+
+TEST_CASE("Color dense rows keep every regular and bold glyph", kTags) {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen(200, 80);
+    for (U16 row = 0; row < 80; ++row) {
+        for (U16 column = 0; column < 200; ++column) {
+            screen.lines[row].spans.push_back({
+                .column = column,
+                .width = 1,
+                .text = std::string(1, static_cast<char>('a' + column % 26)),
+                .color = {static_cast<F32>(column) / 200.0f, static_cast<F32>(row) / 80.0f, 0.5f, 1.0f},
+                .bold = row % 2 == 1,
+            });
+        }
+    }
+    Terminal terminal;
+    Place place(terminal, kScreen);
+    Frames frames(place, kScreen, scene.context());
+    REQUIRE(frames.settle([&] { terminal.update(recorder.wire(&screen, 1)); }));
+    const auto grid = recorder.grids.front();
+    const U64 rows = std::min<U64>(80, grid.rows);
+    const U64 columns = std::min<U64>(200, grid.columns);
+    const auto shown = [](const Sakura::Label& label) {
+        U64 count = 0;
+        for (const auto& instance : label.config().instances) {
+            count += static_cast<U64>(std::count_if(instance.str.begin(), instance.str.end(), [](char value) {
+                return value != ' ';
+            }));
+        }
+        return count;
+    };
+    CHECK(shown(Glyphs(place, 0)) == ((rows + 1) / 2) * columns);
+    CHECK(shown(Glyphs(place, 1)) == (rows / 2) * columns);
+}
+
+TEST_CASE("Full braille, diagonal, and arrow screens keep every dot and stroke", "[core][sakura][terminal][sprites]") {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen(200, 80);
+    for (U16 row = 0; row < 80; ++row) {
+        const char* text = row % 3 == 0 ? "\u28FF" : row % 3 == 1 ? "\u2571" : "\u279C";
+        for (U16 column = 0; column < 200; ++column) {
+            screen.lines[row].spans.push_back({.column = column, .width = 1, .text = text, .color = kWhite});
+        }
+    }
+    Terminal terminal;
+    Place place(terminal, kScreen);
+    Frames frames(place, kScreen, scene.context());
+    REQUIRE(frames.settle([&] { terminal.update(recorder.wire(&screen, 1)); }));
+    const auto grid = recorder.grids.front();
+    const U64 rows = std::min<U64>(80, grid.rows);
+    const U64 columns = std::min<U64>(200, grid.columns);
+    U64 braille = 0;
+    U64 diagonal = 0;
+    U64 arrow = 0;
+    for (U64 row = 0; row < rows; ++row) {
+        (row % 3 == 0 ? braille : row % 3 == 1 ? diagonal : arrow) += columns;
+    }
+    CHECK(Sprites(place).config().instances.size() == braille * 8);
+    CHECK(SpriteStrokes(place).config().instances.size() == diagonal + arrow * 2);
+}
+
+TEST_CASE("Terminal glyph labels hold a whole grapheme in every instance", kTags) {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    Terminal terminal;
+    Place place(terminal, kBounds);
+    Frames frames(place, kScreen, scene.context());
+    REQUIRE(frames.settle([&] { terminal.update(recorder.wire(&screen, 1)); }));
+    for (const auto* label : Find<Sakura::Label>(place)) {
+        CHECK(label->config().maxCharacters >= 16);
+    }
 }
 
 TEST_CASE("Terminals paint their predominant background across the frame and keep default cells", kTags) {

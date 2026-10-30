@@ -29,13 +29,12 @@ using Unicode = Render::Components::Text::Unicode;
 constexpr U16 kNaturalColumns = 80;
 constexpr U16 kNaturalRows = 24;
 constexpr F32 kMaxCells = 4096.0f;
-constexpr U64 kGlyphGroupsPerRow = 4;
-constexpr U64 kBoldGroupsPerRow = 2;
-constexpr U64 kIsolatedGlyphsPerRow = 4;
-constexpr U64 kSpriteRectsPerCell = 2;
-constexpr U64 kSpriteStrokesPerRow = 16;
-constexpr U64 kSpriteVerticesPerStroke = 48;
 constexpr U64 kGraphemeCharacters = 16;
+constexpr U64 kGlyphChunk = kGraphemeCharacters;
+constexpr U64 kIsolatedGlyphsPerRow = 4;
+constexpr U64 kSpriteRectsPerCell = 8;
+constexpr U64 kSpriteStrokesPerCell = 2;
+constexpr U64 kSpriteVerticesPerCell = 48;
 constexpr F32 kLineThicknessRatio = 0.05f;
 constexpr std::array<const char*, 2> kFallbackFonts = {Typography::BodyFont, Typography::DisplayRegularFont};
 constexpr U64 kRegularFace = 1;
@@ -54,6 +53,7 @@ struct Terminal::Impl {
         ColorRGBA<F32> color;
         U16 start = 0;
         U16 column = 0;
+        U64 length = 0;
         std::string line;
     };
 
@@ -230,10 +230,19 @@ struct Terminal::Impl {
         return std::abs(advance - cellWidth) < 0.5f;
     }
 
-    static Group& GroupFor(std::vector<Group>& groups, const ColorRGBA<F32>& color, U16 column) {
-        for (auto& group : groups) {
-            if (group.color == color) {
-                return group;
+    static U64 Codepoints(const std::string& text) {
+        return static_cast<U64>(std::count_if(text.begin(), text.end(), [](char byte) {
+            return (static_cast<U8>(byte) & 0xC0) != 0x80;
+        }));
+    }
+
+    static Group& Open(std::vector<Group>& groups, const ColorRGBA<F32>& color, U16 column, U64 size) {
+        for (auto it = groups.rbegin(); it != groups.rend(); ++it) {
+            if (it->color == color) {
+                if (column >= it->column && it->length + (column - it->column) + size <= kGlyphChunk) {
+                    return *it;
+                }
+                break;
             }
         }
         groups.push_back({.color = color, .start = column, .column = column});
@@ -243,13 +252,36 @@ struct Terminal::Impl {
     static void Append(Group& group, const Span& span) {
         if (span.column > group.column) {
             group.line.append(span.column - group.column, ' ');
+            group.length += span.column - group.column;
         }
         group.line += span.text;
+        group.length += Codepoints(span.text);
         const U16 cells = static_cast<U16>(Unicode::IsAscii(span.text) ? span.text.size() : 1);
         if (span.width > cells) {
             group.line.append(span.width - cells, ' ');
+            group.length += span.width - cells;
         }
         group.column = std::max<U16>(group.column, span.column + std::max<U16>(span.width, cells));
+    }
+
+    static void Place(std::vector<Group>& groups, const Span& span) {
+        if (!Unicode::IsAscii(span.text)) {
+            Append(Open(groups, span.color, span.column, Codepoints(span.text) + span.width - 1), span);
+            return;
+        }
+        U64 offset = 0;
+        while (offset < span.text.size()) {
+            const U16 column = static_cast<U16>(span.column + offset);
+            auto& group = Open(groups, span.color, column, 1);
+            const U64 room = kGlyphChunk - group.length - (column - group.column);
+            const U64 take = std::min<U64>(room, span.text.size() - offset);
+            Span piece = span;
+            piece.column = column;
+            piece.text = span.text.substr(offset, take);
+            piece.width = static_cast<U16>(take);
+            Append(group, piece);
+            offset += take;
+        }
     }
 
     void build(const Context& ctx) {
@@ -267,12 +299,12 @@ struct Terminal::Impl {
         std::array<std::vector<Label::Instance>, kFallbackFonts.size()> fallback;
         const U64 cells = rowCapacity * columnCapacity;
         const U64 fillCapacity = cells + rowCapacity;
-        const U64 glyphCapacity = rowCapacity * (kGlyphGroupsPerRow + kIsolatedGlyphsPerRow);
-        const U64 boldCapacity = rowCapacity * kBoldGroupsPerRow;
+        const U64 glyphCapacity = cells;
+        const U64 boldCapacity = cells;
         const U64 fallbackCapacity = rowCapacity * kIsolatedGlyphsPerRow;
         const U64 lineCapacity = cells;
         const U64 spriteCapacity = cells * kSpriteRectsPerCell;
-        const U64 strokeCapacity = rowCapacity * kSpriteStrokesPerRow;
+        const U64 strokeCapacity = cells * kSpriteStrokesPerCell;
         const F32 hairline = Hairline(ctx);
         const F32 lineThickness = std::max(1.0f, std::ceil(fontPixels * kLineThicknessRatio));
         canvas.clear();
@@ -361,7 +393,7 @@ struct Terminal::Impl {
                     Span shown = span;
                     shown.text = glyph->text;
                     if (glyph->face == 0 && inlineGlyph(shown, FontOf(glyph->face, span.bold))) {
-                        Append(GroupFor(span.bold ? boldGroups : groups, span.color, span.column), shown);
+                        Place(span.bold ? boldGroups : groups, shown);
                     } else {
                         isolate(*glyph, cellRect(span.column, row, width), span.color);
                     }
@@ -444,13 +476,13 @@ struct Terminal::Impl {
         glyphs.update({
             .instances = std::move(regular),
             .fontName = Typography::MonoFont,
-            .maxCharacters = columnCapacity,
+            .maxCharacters = kGlyphChunk,
             .capacity = glyphCapacity,
         });
         boldGlyphs.update({
             .instances = std::move(bold),
             .fontName = Typography::MonoBoldFont,
-            .maxCharacters = columnCapacity,
+            .maxCharacters = kGlyphChunk,
             .capacity = boldCapacity,
         });
         for (U64 index = 0; index < fallbackGlyphs.size(); ++index) {
@@ -465,7 +497,7 @@ struct Terminal::Impl {
         spriteStrokes.update({
             .instances = canvas.strokes,
             .fringe = Fringe(ctx),
-            .capacity = strokeCapacity * kSpriteVerticesPerStroke,
+            .capacity = cells * kSpriteVerticesPerCell,
         });
         decorations.update({.instances = std::move(lines), .capacity = lineCapacity});
         cursorGlyph.update({
