@@ -477,6 +477,7 @@ struct Frames {
     U64 repaints = 0;
     U64 layouts = 0;
     std::optional<Jetstream::Sakura::Palette> palette;
+    std::optional<bool> windowFocused;
 
     explicit Frames(Jetstream::Sakura::Component& root,
                     Rect bounds = kScreen,
@@ -512,8 +513,9 @@ struct Frames {
         ctx.time += timeStep;
         FrameStats stats;
         prepare(root, built, stats);
-        if (!palette.has_value() || *palette != ctx.palette.get()) {
+        if (!palette.has_value() || *palette != ctx.palette.get() || windowFocused != ctx.windowFocused) {
             palette = ctx.palette.get();
+            windowFocused = ctx.windowFocused;
             Access::invalidateLayout(root);
         }
         Access::advance(ctx.time);

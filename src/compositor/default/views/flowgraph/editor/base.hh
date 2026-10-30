@@ -88,7 +88,7 @@ struct FlowgraphEditor {
         });
 
         for (const auto& block : this->config.graph) {
-            if (block.state != Block::State::Destroying && block.state != Block::State::Destroyed) {
+            if (block.state != Block::State::Destroyed) {
                 liveBlocks.insert(block.name);
             }
         }

@@ -628,13 +628,16 @@ TEST_CASE("Voice orbs center the orb and park the dismiss badge on its top right
     CHECK(rig.glyph().config().opacity == 0.0f);
 }
 
-TEST_CASE("Voice orbs animate on every frame while visible and stop when hidden or frozen", kVoiceTags) {
+TEST_CASE("Voice orbs animate while active and stay still when idle, hidden, or frozen", kVoiceTags) {
     VoiceRig rig;
     const auto update = rig.updater();
     REQUIRE(rig.frames.run(update).rebuilt);
     rig.frames.run(update);
     const U64 restructures = rig.frames.restructures;
+    CHECK(Retains(rig.frames, update));
 
+    rig.config.phase = Sakura::Voice::Phase::Listening;
+    rig.frames.run(update);
     F32 time = rig.orb().config().time;
     for (U64 frame = 0; frame < 5; ++frame) {
         const auto stats = rig.frames.run(update);

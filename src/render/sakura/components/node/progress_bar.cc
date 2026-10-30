@@ -9,6 +9,7 @@
 #include "../../metrics.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -56,18 +57,20 @@ void NodeProgressBar::layout(const Context& ctx) {
         .cornerRadius = rounding,
     });
 
-    const F32 fillEnd = bounds.x + bounds.width * fraction;
+    const F32 fillEnd = fraction <= 0.0f ? bounds.x
+                      : fraction >= 1.0f ? bounds.right()
+                      : std::clamp(std::round(bounds.x + bounds.width * fraction), bounds.x, bounds.right());
     impl->fill.update({
-        .instances = {{.rect = Snap(bounds), .visible = !bounds.empty() && fraction > 0.0f,
+        .instances = {{.rect = Snap(bounds), .visible = !bounds.empty() && fillEnd > bounds.x,
                        .backgroundColor = ctx.color(config.colorKey)}},
         .clip = Intersect(bounds, {bounds.x, bounds.y, std::max(0.0f, fillEnd - bounds.x), bounds.height}),
         .cornerRadius = rounding,
     });
 
     const F32 textWidth = impl->metrics.measure(Typography::MonoFont, config.overlay, fontSize);
-    const F32 textX = std::clamp(fillEnd + Px(ctx, NodeContentStack::Spacing),
-                                 bounds.x,
-                                 std::max(bounds.x, bounds.right() - textWidth - Px(ctx, 8.0f)));
+    const F32 textX = std::round(std::clamp(fillEnd + Px(ctx, NodeContentStack::Spacing),
+                                            bounds.x,
+                                            std::max(bounds.x, bounds.right() - textWidth - Px(ctx, 8.0f))));
     impl->overlay.update({
         .instances = {{
             .rect = {textX, bounds.y, textWidth, bounds.height},

@@ -51,6 +51,7 @@ struct Voice::Impl {
     F32 activity = 0.0f;
     F32 level = 0.0f;
     F32 hover = 0.0f;
+    F32 clock = 0.0f;
 
     bool hovered = false;
     bool dismissHovered = false;
@@ -118,11 +119,17 @@ void Voice::layout(const Context& ctx) {
     state.activity = Approach(state.activity, engaged ? 1.0f : (active ? kConnectingActivity : 0.0f),
                               dt / kActivityTime);
     state.level = Approach(state.level, level, dt / (level > state.level ? kLevelRiseTime : kLevelFallTime));
-    state.hover = Approach(state.hover, state.hovered ? 1.0f : 0.0f, dt / kHoverTime);
+    const F32 hoverGoal = state.hovered ? 1.0f : 0.0f;
+    state.hover = Approach(state.hover, hoverGoal, dt / kHoverTime);
+    const bool animating = active || state.busy != 0.0f || state.activity != 0.0f ||
+                           state.level != 0.0f || state.hover != hoverGoal;
+    if (animating) {
+        state.clock += dt;
+    }
     if (!visible()) {
         state.stalled = true;
     }
-    if (shown && !state.stalled) {
+    if (shown && !state.stalled && animating) {
         requestFrame();
     }
 
@@ -132,7 +139,7 @@ void Voice::layout(const Context& ctx) {
         .rect = bounds,
         .center = state.center,
         .radius = state.radius,
-        .time = static_cast<F32>(ctx.time),
+        .time = state.clock,
         .busy = state.busy,
         .activity = state.activity,
         .level = state.level,

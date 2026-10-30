@@ -7,6 +7,8 @@
 #include "compositor/default/views/flowgraph/editor/node.hh"
 
 #include <jetstream/render/sakura/components/node/editor.hh>
+#include <jetstream/render/sakura/components/node/label.hh>
+#include <jetstream/render/sakura/components/node/range_input.hh>
 #include <jetstream/render/sakura/typography.hh>
 
 #include "fonts.hh"
@@ -1638,4 +1640,50 @@ TEST_CASE("A collapsed node being recreated stays at its collapsed height and ke
     session.run();
     CHECK(session.size().y == Catch::Approx(400.0f).margin(1.0f));
     CHECK(session.axes == NodeEditor::ResizeAxes::XY);
+}
+
+template<typename T>
+U64 Mounted(Sakura::Component& node) {
+    U64 count = dynamic_cast<T*>(&node) ? 1 : 0;
+    for (auto* child : Peek::Children(node)) {
+        if (child) {
+            count += Mounted<T>(*child);
+        }
+    }
+    return count;
+}
+
+TEST_CASE("Busy nodes keep their metric and field components while the block is destroyed and recreated",
+          "[core][sakura][flowgraph][node-view]") {
+    auto config = MakeConfig(MakeBlock("busy-block"));
+    config.block.metrics.push_back({
+        .id = "busy-block:rate",
+        .label = "Rate",
+        .format = {{"type", "label"}},
+        .value = std::string("2 MHz"),
+    });
+    config.block.configFields.push_back(RangeField("busy-block:value"));
+    NodeSession session(config);
+    session.run();
+    const auto ranges = [&] { return Mounted<Sakura::NodeRangeInput>(session.host); };
+    const auto labels = [&] { return Mounted<Sakura::NodeLabel>(session.host); };
+    REQUIRE(ranges() == 1);
+    REQUIRE(labels() == 1);
+
+    session.config.block.state = Block::State::Destroying;
+    session.run(3);
+    CHECK(ranges() == 1);
+    CHECK(labels() == 1);
+
+    session.config.block.state = Block::State::Creating;
+    session.config.block.metrics.clear();
+    session.config.block.configFields.clear();
+    session.run(3);
+    CHECK(ranges() == 1);
+    CHECK(labels() == 1);
+
+    session.config.block = config.block;
+    session.run();
+    CHECK(ranges() == 1);
+    CHECK(labels() == 1);
 }

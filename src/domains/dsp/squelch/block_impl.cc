@@ -47,7 +47,7 @@ Result SquelchImpl::define() {
                 return std::string("0.000");
             }
 
-            return jst::fmt::format("{:.3f}", moduleImpl->getAmplitude());
+            return jst::fmt::format("{:.2f}", moduleImpl->getAmplitude());
         }));
 
     JST_CHECK(defineInterfaceConfig("threshold",

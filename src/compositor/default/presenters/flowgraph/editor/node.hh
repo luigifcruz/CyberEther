@@ -129,7 +129,7 @@ struct FlowgraphNodePresenter {
                 : timing.computeTime / static_cast<F32>(timing.cycles);
             const auto& label = metric.label.empty() ? metric.name : metric.label;
 
-            block.timing.push_back(jst::fmt::format("{} ({}/{}/{}): {:.3f} ms",
+            block.timing.push_back(jst::fmt::format("{} ({}/{}/{}): {:.2f} ms",
                                                     label,
                                                     timing.backend,
                                                     timing.device,
@@ -146,7 +146,7 @@ struct FlowgraphNodePresenter {
         const std::string cyclesStr = (maxCycles > 1000)
             ? jst::fmt::format("{:.1f}k", maxCycles / 1000.0f)
             : jst::fmt::format("{}", maxCycles);
-        block.timing.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
+        block.timing.push_back(jst::fmt::format("= {:.2f} ms ({})", totalTime, cyclesStr));
     }
 
     FlowgraphNode::BlockData build(const std::string& flowgraphId,
@@ -194,7 +194,9 @@ struct FlowgraphNodePresenter {
         if (blockState != Block::State::Creating) {
             buildBlockMetrics(block, nodeViewId, blockData);
             buildConfigFields(block, flowgraphId, blockName, nodeViewId, blockData);
-            buildTiming(block, blockData);
+            if (context.state.debug.timingEnabled) {
+                buildTiming(block, blockData);
+            }
             surfaces.buildSurfaces(block, flowgraph, flowgraphId, blockName, nodeViewId, blockData);
         }
 

@@ -332,18 +332,20 @@ struct FlowgraphNode {
         const U64 surfaceCount = block.surfaces.size();
         const bool hasSurfaces = surfaceCount > 0;
         const bool hasConfigFields = !block.configFields.empty();
-        const bool isCreating = block.state == Block::State::Creating;
-        const bool isPending = isCreating ||
+        const bool isBusy = Busy(block.state);
+        const bool isPending = isBusy ||
                                block.state == Block::State::Incomplete;
         const bool configHidden = block.configCollapsed || block.configDetached;
         const auto nodeState = block.state == Block::State::Errored
             ? NodeEditor::NodeState::Error
-            : isCreating ? NodeEditor::NodeState::Loading
+            : isBusy ? NodeEditor::NodeState::Loading
                          : isPending ? NodeEditor::NodeState::Pending : NodeEditor::NodeState::Normal;
 
-        fieldStack.update(std::move(block.configFields), [this]() {
-            reportBounds();
-        });
+        if (!isBusy) {
+            fieldStack.update(std::move(block.configFields), [this]() {
+                reportBounds();
+            });
+        }
         const bool hasFlexibleFields = fieldStack.hasFlexible();
 
         bool allSurfacesDetached = hasSurfaces;
@@ -380,17 +382,17 @@ struct FlowgraphNode {
         dimensions.x = std::max(MinimumNodeWidth, dimensions.x);
 
         Extent2D<F32> nodeDimensions = dimensions;
-        if ((!verticalResize && (!isCreating || configHidden)) || (allSurfacesDetached && !hasFlexibleFields)) {
+        if ((!verticalResize && (!isBusy || configHidden)) || (allSurfacesDetached && !hasFlexibleFields)) {
             nodeDimensions.y = 0.0f;
             // Hidden flexible fields still own the expanded height. Render
             // at auto height without overwriting it in the saved layout.
-            if (!hasFlexibleFields && !isCreating) {
+            if (!hasFlexibleFields && !isBusy) {
                 layoutChanged = layoutChanged || dimensions.y > 0.0f;
                 dimensions.y = 0.0f;
             }
         }
 
-        updateContent(block, isCreating, configHidden);
+        updateContent(block, isBusy, configHidden);
 
         for (U64 i = 0; i < surfaceCount; ++i) {
             const auto& surface = block.surfaces[i];
@@ -404,7 +406,10 @@ struct FlowgraphNode {
             });
         }
 
-        pinTooltips.resize(block.inputs.size() + block.outputs.size());
+        const U64 pinCount = block.inputs.size() + block.outputs.size();
+        if (!isBusy || pinTooltips.size() < pinCount) {
+            pinTooltips.resize(pinCount);
+        }
         for (auto& tooltip : pinTooltips) {
             if (!tooltip) {
                 tooltip = std::make_unique<FlowgraphPinTooltip>();
@@ -465,10 +470,10 @@ struct FlowgraphNode {
             .onContextMenu = [this]() {
                 menuOpen = true;
             },
-            .onGeometryChange = [this, verticalResize, isCreating](const NodeEditor::Geometry& next) {
+            .onGeometryChange = [this, verticalResize, isBusy](const NodeEditor::Geometry& next) {
                 geometry = next;
                 this->dimensions.x = next.contentDimensions.x;
-                if (verticalResize && !isCreating) {
+                if (verticalResize && !isBusy) {
                     this->dimensions.y = next.contentDimensions.y;
                 }
                 layoutChanged = true;
@@ -560,9 +565,13 @@ struct FlowgraphNode {
     }
 
  private:
+    static bool Busy(const Block::State state) {
+        return state == Block::State::Creating || state == Block::State::Destroying;
+    }
+
     void reportBounds() const {
         const auto& block = config.block;
-        if (!geometry.has_value() || block.state == Block::State::Creating || !config.onBounds) {
+        if (!geometry.has_value() || Busy(block.state) || !config.onBounds) {
             return;
         }
         const auto& next = *geometry;
@@ -576,19 +585,21 @@ struct FlowgraphNode {
                         content);
     }
 
-    void updateContent(const BlockData& block, bool isCreating, bool configHidden) {
+    void updateContent(const BlockData& block, bool isBusy, bool configHidden) {
         using Stack = Sakura::NodeContentStack;
 
         std::vector<Stack::Item> items;
 
-        while (metrics.size() > block.metrics.size()) {
-            metrics.pop_back();
-        }
-        while (metrics.size() < block.metrics.size()) {
-            metrics.push_back(std::make_unique<FlowgraphMetricInstance>());
-        }
-        for (U64 i = 0; i < metrics.size(); ++i) {
-            metrics[i]->update(block.metrics[i]);
+        if (!isBusy) {
+            while (metrics.size() > block.metrics.size()) {
+                metrics.pop_back();
+            }
+            while (metrics.size() < block.metrics.size()) {
+                metrics.push_back(std::make_unique<FlowgraphMetricInstance>());
+            }
+            for (U64 i = 0; i < metrics.size(); ++i) {
+                metrics[i]->update(block.metrics[i]);
+            }
         }
 
         while (surfaces.size() > block.surfaces.size()) {
@@ -598,7 +609,7 @@ struct FlowgraphNode {
             surfaces.push_back(std::make_unique<Sakura::NodeSurface>());
         }
 
-        if (!isCreating) {
+        if (!isBusy) {
             for (const auto& metric : metrics) {
                 items.push_back({.child = &metric->component()});
             }

@@ -1530,6 +1530,33 @@ TEST_CASE("A background layer with particles repaints every frame without rebuil
     CHECK(DirtyFrames(frames, tick) == 0);
 }
 
+TEST_CASE("A node progress bar stays clean while its value moves within one pixel",
+          "[core][sakura][retention]") {
+    SakuraTest::FakeWindow window;
+    F32 value = 0.3f;
+    Sakura::NodeProgressBar progress;
+    Sakura::Layer layer;
+    layer.update({.content = &progress});
+    LayerHost host({&layer});
+    Frames frames(host, {0.0f, 0.0f, 400.0f, 600.0f}, ShellContext(&window));
+    const auto update = [&] {
+        progress.update({.id = "progress", .value = value, .overlay = "0.3%"});
+    };
+    REQUIRE(frames.settle(update));
+
+    const auto drift = [&] {
+        value += 0.0001f;
+        update();
+    };
+    for (U64 frame = 0; frame < 5; ++frame) {
+        CHECK(Unpainted(frames.run(drift)));
+    }
+
+    value = 0.6f;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(frames.run(update).clean());
+}
+
 TEST_CASE("A node field panel with node inputs updated every frame stays clean",
           "[core][sakura][retention]") {
     SakuraTest::FakeWindow window;

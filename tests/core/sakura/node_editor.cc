@@ -691,6 +691,35 @@ TEST_CASE("A loading node floors its height and repaints its pulse as time advan
     CHECK(graph.step().clean());
 }
 
+TEST_CASE("A node toggling between loading and normal keeps its loading decoration mounted",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    a.withContent = false;
+    REQUIRE(graph.frames.settle([&] {
+        graph.update();
+    }));
+
+    const auto toggle = [&](const NodeEditor::NodeState state) {
+        a.spec.state = state;
+        a.spec.dimensions.y = 0.0f;
+        REQUIRE(graph.frames.settle([&] {
+            graph.update();
+        }));
+    };
+    toggle(NodeEditor::NodeState::Loading);
+    toggle(NodeEditor::NodeState::Normal);
+    const U64 restructures = graph.frames.restructures;
+    const U64 rebuilds = graph.frames.rebuilds;
+
+    for (U64 cycle = 0; cycle < 3; ++cycle) {
+        toggle(NodeEditor::NodeState::Loading);
+        toggle(NodeEditor::NodeState::Normal);
+    }
+    CHECK(graph.frames.restructures == restructures);
+    CHECK(graph.frames.rebuilds == rebuilds);
+}
+
 TEST_CASE("Dragging from an output pin to an input pin reports the link endpoints",
           "[core][sakura][node-editor]") {
     Graph graph;

@@ -267,6 +267,7 @@ struct TextGrid::Impl {
     bool layingOut = false;
     F64 now = 0.0;
     bool lastBlinkOn = false;
+    bool windowFocused = true;
 
     mutable std::vector<VisualRow> visualRows;
     mutable std::vector<U64> groupStartRows;
@@ -2120,8 +2121,12 @@ struct TextGrid::Impl {
         return now + (phase < kCursorBlinkOnDuration ? kCursorBlinkOnDuration - phase : kCursorBlinkPeriod - phase);
     }
 
+    bool caretActive() const {
+        return config.editable && hasFocus() && windowFocused;
+    }
+
     void reconcileCursorBlink() {
-        if (!config.editable || !hasFocus()) {
+        if (!caretActive()) {
             return;
         }
         const bool blinkOn = std::fmod(now - blinkBase, kCursorBlinkPeriod) < kCursorBlinkOnDuration;
@@ -2543,7 +2548,7 @@ struct TextGrid::Impl {
         cursorBox.update({
             .instances = {{
                 .rect = {cursorX, cursorTop, cursorWidth, cursorHeight},
-                .visible = frame.visible && config.editable && hasFocus() && blinkOn &&
+                .visible = frame.visible && caretActive() && blinkOn &&
                             cursorTop + cursorHeight > frame.rect.y && cursorTop < frame.rect.bottom(),
                 .backgroundColor = theme.cursor,
             }},
@@ -2746,6 +2751,10 @@ void TextGrid::layout(const Context& ctx) {
     impl->surfaceHeight = static_cast<F32>(ctx.framebufferSize.y);
     impl->now = ctx.time;
     impl->layingOut = true;
+    if (ctx.windowFocused && !impl->windowFocused) {
+        impl->blinkPending = true;
+    }
+    impl->windowFocused = ctx.windowFocused;
     if (impl->blinkPending) {
         impl->blinkBase = impl->now;
         impl->blinkPending = false;
@@ -2772,7 +2781,7 @@ void TextGrid::layout(const Context& ctx) {
 
     impl->reconcileCursorBlink();
     impl->notifyLayout();
-    if (impl->config.editable && impl->hasFocus()) {
+    if (impl->caretActive()) {
         requestFrame(impl->nextBlink());
     }
     impl->layingOut = false;

@@ -21,6 +21,7 @@
 #include <jetstream/render/sakura/components/pill_stepper.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/progress_bar.hh>
+#include <jetstream/render/sakura/components/node/progress_bar.hh>
 #include <jetstream/render/sakura/components/qr_code.hh>
 #include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
@@ -44,6 +45,7 @@
 #include "component_harness.hh"
 #include "scene.hh"
 
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -437,7 +439,7 @@ TEST_CASE("Focused editable text grids repaint only when the caret blinks", "[co
     Sakura::TextGrid grid;
     Place place(grid, {10.0f, 10.0f, 300.0f, 200.0f});
     Frames frames(place, kScreen, scene.context());
-    frames.ctx.windowFocused = false;
+    frames.ctx.windowFocused = true;
     const auto update = [&] {
         grid.update({.id = "blink-editor", .value = "x = 1", .editable = true});
     };
@@ -456,6 +458,15 @@ TEST_CASE("Focused editable text grids repaint only when the caret blinks", "[co
         frames.ctx.time += 0.5;
         CHECK(RepaintOnly(frames.run(update)));
     }
+
+    frames.ctx.windowFocused = false;
+    frames.run(update);
+    for (int frame = 0; frame < 4; ++frame) {
+        frames.ctx.time += 0.5;
+        CHECK(frames.run(update).clean());
+    }
+    frames.ctx.windowFocused = true;
+    CHECK(RepaintOnly(frames.run(update)));
 
     grid.blur();
     CHECK(RepaintOnly(frames.run(update)));
@@ -829,6 +840,85 @@ TEST_CASE("Scrollers move their thumb on the frame of a wheel scroll or a thumb 
     CHECK(place.send(Mouse(MouseEventType::Release, 205.0f, 90.0f)));
     CHECK(Unpainted(frames.run(update)));
     CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Scrollers keep their thumb still while content grows by less than a pixel of thumb",
+          "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Scroller scroll;
+    Place place(scroll, {10.0f, 10.0f, 200.0f, 100.0f});
+    Frames frames(place, kScreen, scene.context());
+    frames.verify = false;
+    F32 contentHeight = 20000.0f;
+    const auto update = [&] {
+        scroll.update({.id = "scroll", .contentHeight = contentHeight, .scrollY = 4000.0f});
+    };
+    REQUIRE(frames.settle(update));
+
+    for (U64 frame = 0; frame < 5; ++frame) {
+        contentHeight += 16.0f;
+        CHECK(Unpainted(frames.run(update)));
+    }
+
+    contentHeight = 2000.0f;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Progress bars stay clean while their value moves within one pixel",
+          "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::ProgressBar bar;
+    Place place(bar, {10.0f, 10.0f, 300.0f, 20.0f});
+    Frames frames(place, kScreen, scene.context());
+    F32 value = 0.3f;
+    const auto update = [&] {
+        bar.update({.value = value, .overlay = "30%"});
+    };
+    REQUIRE(frames.settle(update));
+
+    for (U64 frame = 0; frame < 5; ++frame) {
+        value += 0.0001f;
+        CHECK(Unpainted(frames.run(update)));
+    }
+
+    value = 0.6f;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(frames.run(update).clean());
+}
+
+TEST_CASE("Progress bars keep exact endpoints at fractional bounds", "[core][sakura][retention]") {
+    constexpr Rect bounds = {10.75f, 10.0f, 200.5f, 24.0f};
+    const auto fillAt = [&](auto& bar, const auto& update, const F32 value) {
+        Scene scene;
+        Place place(bar, bounds);
+        Frames frames(place, kScreen, scene.context());
+        update(value);
+        frames.run();
+        const auto boxes = Find<Sakura::Box>(place);
+        REQUIRE(boxes.size() == 2);
+        return boxes[1]->config();
+    };
+    const auto check = [&](auto& bar, const auto& update) {
+        const auto empty = fillAt(bar, update, 0.0f);
+        CHECK_FALSE(empty.instances.front().visible);
+
+        const auto half = fillAt(bar, update, 0.5f);
+        REQUIRE(half.clip.has_value());
+        CHECK(half.instances.front().visible);
+        CHECK(half.clip->right() == std::round(half.clip->right()));
+
+        const auto full = fillAt(bar, update, 1.0f);
+        REQUIRE(full.clip.has_value());
+        CHECK(full.instances.front().visible);
+        CHECK(full.clip->x == bounds.x);
+        CHECK(full.clip->right() == bounds.right());
+    };
+
+    Sakura::ProgressBar bar;
+    check(bar, [&](const F32 value) { bar.update({.value = value, .overlay = "bar"}); });
+    Sakura::NodeProgressBar node;
+    check(node, [&](const F32 value) { node.update({.id = "node", .value = value, .overlay = "node"}); });
 }
 
 TEST_CASE("Scrollers follow an owner that resets a wheel scroll to the offset it configured before",
@@ -1432,7 +1522,7 @@ TEST_CASE("Focused text inputs repaint only on caret blinks", "[core][sakura][re
     Sakura::TextInput input;
     Place place(input, {10.0f, 10.0f, 200.0f, 30.0f});
     Frames frames(place, kScreen, scene.context());
-    frames.ctx.windowFocused = false;
+    frames.ctx.windowFocused = true;
     const auto update = [&] {
         input.update({.value = "query", .focus = true});
     };

@@ -88,6 +88,7 @@ class JETSTREAM_API Generic {
     std::string clipboardText() const;
     void setClipboardText(const std::string& text);
     void requestRedraw();
+    void refreshSnapshot();
     bool consumeRedraw();
 
     Render::InputQueue& input();

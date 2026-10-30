@@ -438,7 +438,9 @@ Extent2D<U64> Implementation::getSwapchainExtent() const {
 
 Result Implementation::waitEvents() {
     {
+#ifndef JST_OS_MAC
         std::scoped_lock lock(frameScopeMutex);
+#endif
         glfwPollEvents();
 #ifdef JST_OS_MAC
         if (titlebar) {
@@ -453,7 +455,9 @@ Result Implementation::waitEvents() {
 
 Result Implementation::pollEvents() {
     {
+#ifndef JST_OS_MAC
         std::scoped_lock lock(frameScopeMutex);
+#endif
         glfwPollEvents();
 #ifdef JST_OS_MAC
         if (titlebar) {
