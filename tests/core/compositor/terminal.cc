@@ -1379,6 +1379,27 @@ TEST_CASE("Terminal search keeps highlighting the visible part of a match wrappe
     CHECK(range.end == 9);
 }
 
+TEST_CASE("Terminal sessions clear the alternate screen with the current pen instead of one an earlier app left", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(session.start({
+        .program = "/bin/sh",
+        .arguments = {"-c", "printf '\\033[?1049h\\033[48;2;0;0;0mstale\\033[?1049l'; "
+                            "printf '\\033[?1049h\\033[0mready'; sleep 2"},
+        .directory = "/",
+    }) == Result::SUCCESS);
+    REQUIRE(Shows(session, "ready"));
+    U64 black = 0;
+    for (const auto& row : session.screen().lines) {
+        for (const auto& run : row.backgrounds) {
+            black += run.color == ColorRGBA<F32>{0.0f, 0.0f, 0.0f, 1.0f} ? run.width : 0;
+        }
+    }
+    CHECK(black == 0);
+}
+
 TEST_CASE("Terminal sessions publish the predominant background of the screen", kTags) {
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");

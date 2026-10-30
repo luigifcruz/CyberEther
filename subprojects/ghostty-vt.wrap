@@ -1,9 +1,10 @@
 [wrap-file]
-directory = ghostty-76895d97b74ff6b24c2b1543bcd69ccc18048a4d
-source_url = https://github.com/ghostty-org/ghostty/archive/76895d97b74ff6b24c2b1543bcd69ccc18048a4d.tar.gz
-source_filename = ghostty-76895d97b74ff6b24c2b1543bcd69ccc18048a4d.tar.gz
-source_hash = 604eba4118885c957ee7567a018161731f93412701ca52bc1edf424cdffbd6ce
+directory = ghostty-1.4.0
+source_url = https://github.com/ghostty-org/ghostty/archive/refs/tags/v1.4.0.tar.gz
+source_filename = ghostty-1.4.0.tar.gz
+source_hash = 2e2a2516f9bea89a4991ad7c9401b77682eed366387a5b1d7c629472b5d11a43
 patch_directory = ghostty-vt
+diff_files = ghostty-vt/alternate-screen-erase.diff
 
 [provide]
 ghostty-vt = ghostty_vt_dep

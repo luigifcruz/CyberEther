@@ -2,12 +2,12 @@ project('ghostty-vt', 'c', version: '0.1.0', meson_version: '>=1.5.0')
 
 zig = find_program(
     'zig',
-    version: ['>=0.16.0', '<0.17.0'],
+    version: ['>=0.17.0', '<0.18.0'],
     version_argument: 'version',
     dirs: [
-        '/opt/homebrew/opt/zig@0.16/bin',
-        '/usr/local/opt/zig@0.16/bin',
-        '/home/linuxbrew/.linuxbrew/opt/zig@0.16/bin',
+        '/opt/homebrew/opt/zig@0.17/bin',
+        '/usr/local/opt/zig@0.17/bin',
+        '/home/linuxbrew/.linuxbrew/opt/zig@0.17/bin',
     ],
     required: true,
 )
