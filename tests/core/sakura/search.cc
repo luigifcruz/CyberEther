@@ -339,7 +339,7 @@ TEST_CASE("Search catalog list card matches the docs card height beside it",
     std::vector<Jetstream::Rect> cards;
     for (auto* box : rig.all<Sakura::Box>()) {
         if (box->config().borderWidth > 0.0f && !box->config().topLit && box->config().softness == 0.0f &&
-            box->config().cornerRadius == 12.0f) {
+            box->config().cornerRadius == 18.0f) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     cards.push_back(instance.rect);
@@ -711,7 +711,7 @@ TEST_CASE("Search catalog cards fill with the pill field color", "[core][sakura]
     rig.place();
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     CHECK(instance.backgroundColor == fill);
@@ -1062,6 +1062,71 @@ TEST_CASE("Search catalog scrolls back up to reveal the first result after a whe
     CHECK(RowTiles(rig, "pill_active_bg") == std::vector<Jetstream::Rect>{{10.0f, 43.0f, 280.0f, 46.0f}});
 }
 
+TEST_CASE("Search catalog lists stretch past their ends and spring back", "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.scene.ctx.palette = Tones();
+    rig.config.items.clear();
+    for (U64 index = 0; index < 20; ++index) {
+        rig.config.items.push_back({.id = "item" + std::to_string(index), .title = "Item", .group = "DSP"});
+    }
+    rig.config.maxHeight = 300.0f;
+    rig.place();
+    const auto rest = RowTiles(rig, "pill_active_bg");
+    REQUIRE(rest.size() == 1);
+    const auto trackpad = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(100.0f, 200.0f, 0.0f, dy);
+        event.phase = phase;
+        rig.host.send(event);
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    };
+
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    const auto stretched = RowTiles(rig, "pill_active_bg");
+    REQUIRE(stretched.size() == 1);
+    CHECK(stretched.front().y > rest.front().y);
+
+    trackpad(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 120; ++frame) {
+        rig.scene.ctx.time += 1.0 / 60.0;
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    }
+    CHECK(RowTiles(rig, "pill_active_bg") == rest);
+
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    REQUIRE(RowTiles(rig, "pill_active_bg").front().y > rest.front().y);
+    rig.config.items.pop_back();
+    rig.place();
+    CHECK(RowTiles(rig, "pill_active_bg") == rest);
+}
+
+TEST_CASE("Search catalog cards take the configured rounding and rows stay concentric inside them",
+          "[core][sakura][search]") {
+    const F32 ratio = GENERATE(1.0f, 2.0f);
+    CatalogRig rig;
+    rig.scene.ctx.palette = Tones();
+    rig.scene.ctx.pixelRatio = ratio;
+    rig.config.rounding = 22.0f;
+    rig.place();
+    U64 cards = 0;
+    bool row = false;
+    for (auto* box : rig.all<Sakura::Box>()) {
+        const auto& config = box->config();
+        if (config.borderWidth == ratio && !config.topLit && config.cornerRadius == 22.0f * ratio) {
+            cards += config.instances.size();
+        }
+        for (const auto& instance : config.instances) {
+            if (instance.backgroundColor == rig.scene.ctx.color("pill_active_bg") && config.borderWidth == 0.0f) {
+                row = true;
+                CHECK(config.cornerRadius == 12.0f * ratio);
+            }
+        }
+    }
+    CHECK(cards == 2);
+    CHECK(row);
+}
+
 TEST_CASE("Search catalog leaves the wheel unconsumed when the list does not overflow",
           "[core][sakura][search]") {
     CatalogRig fits;
@@ -1323,7 +1388,7 @@ TEST_CASE("Search catalog bounds follow custom card widths and clamp the docs he
     CHECK(rig.bounds.height == 200.0f);
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 200.0f) {
                     CHECK(instance.rect.height == 200.0f);
@@ -1354,7 +1419,7 @@ TEST_CASE("Search catalog heights are natural, fixed, or filling and keep the do
     rig.host.place(rig.scene.ctx, {0.0f, 0.0f, 748.0f, 400.0f});
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     CHECK(instance.rect.height == 400.0f);
@@ -1395,7 +1460,7 @@ TEST_CASE("Search catalog fixed heights size the whole component with the field 
     CHECK(Peek::Frame(field) == Jetstream::Rect{0.0f, 0.0f, 748.0f, 34.0f});
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     CHECK(instance.rect.y == 42.0f);
@@ -1476,7 +1541,7 @@ TEST_CASE("Search catalog drops the docs card when both cards do not fit and res
 
     U64 wide = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 CHECK(instance.rect.right() <= 500.0f);
                 wide += instance.rect.width >= 300.0f ? 1 : 0;
@@ -1489,7 +1554,7 @@ TEST_CASE("Search catalog drops the docs card when both cards do not fit and res
     rig.host.place(rig.scene.ctx, {0.0f, 0.0f, cramped, narrow.y});
     CHECK(rig.all<Sakura::ScrollArea>().empty());
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 CHECK(instance.rect.right() <= cramped);
             }

@@ -6,6 +6,7 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/markdown.hh>
 #include <jetstream/render/sakura/components/scroll_area.hh>
+#include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
@@ -32,7 +33,6 @@ constexpr const char* kBodyFont = Typography::DisplayRegularFont;
 constexpr const char* kSummaryFont = Typography::BodyFont;
 constexpr const char* kAllLabel = "All";
 constexpr const char* kActionLabel = "Add on";
-constexpr F32 kCardRadius = kPanelRounding;
 constexpr F32 kCardGap = 8.0f;
 constexpr F32 kCardPadding = 6.0f;
 constexpr F32 kCardShadowSoftness = 8.0f;
@@ -40,7 +40,7 @@ constexpr F32 kCardShadowDrop = 3.0f;
 constexpr F32 kHeaderHeight = 24.0f;
 constexpr F32 kRowHeight = 48.0f;
 constexpr F32 kRowPadX = 12.0f;
-constexpr F32 kRowRadius = 8.0f;
+constexpr F32 kRowInset = 4.0f;
 constexpr F32 kRowTop = 8.0f;
 constexpr F32 kTitleSize = 16.0f;
 constexpr F32 kSummarySize = 14.0f;
@@ -89,6 +89,7 @@ struct ResultList : public Component {
         std::vector<U64> order;
         U64 selected = 0;
         std::string emptyLabel;
+        F32 rowRounding = 0.0f;
         Callback<void(U64)> onSelect;
         Callback<void(const std::string&, std::optional<U64>)> onActivate;
 
@@ -109,6 +110,7 @@ struct ResultList : public Component {
     Rect bounds;
     F32 pixelRatio = 1.0f;
     TextMetrics metrics;
+    Scroller scroller;
     Box rowBoxes;
     Label headers;
     Label icons;
@@ -118,6 +120,7 @@ struct ResultList : public Component {
 
     ResultList() {
         setClipsChildren(true);
+        addChild(scroller);
         addChild(rowBoxes);
         addChild(headers);
         addChild(icons);
@@ -135,6 +138,7 @@ struct ResultList : public Component {
         }
         if (next.order != config.order) {
             hovered.reset();
+            scroller.reset();
         }
         config = std::move(next);
         markConfigured();
@@ -181,12 +185,25 @@ struct ResultList : public Component {
             }
         }
         scroll = std::clamp(scroll, 0.0f, maxScroll);
+        scroller.update({
+            .contentHeight = total,
+            .scrollY = scroll,
+            .scrollbar = false,
+            .wheel = false,
+            .wheelStep = Px(ctx, kWheelStep),
+            .onScrollY = [this](F32 next) {
+                scroll = next;
+                invalidate(Dirty::Layout);
+            },
+        });
+        layoutChild(ctx, scroller, bounds);
+        const F32 overscroll = scroller.overscroll(ctx).y;
 
         const F32 padX = Px(ctx, kRowPadX);
         const F32 titleSize = Px(ctx, kTitleSize);
         const F32 summarySize = Px(ctx, kSummarySize);
         const F32 iconSize = Px(ctx, kRowIcon);
-        const F32 inset = Px(ctx, 4.0f);
+        const F32 inset = Px(ctx, kRowInset);
         std::vector<Box::Instance> rowInstances;
         std::vector<Label::Instance> headerInstances;
         std::vector<Label::Instance> iconInstances;
@@ -194,7 +211,7 @@ struct ResultList : public Component {
         std::vector<Label::Instance> summaryInstances;
         placed.clear();
 
-        F32 y = bounds.y - scroll;
+        F32 y = bounds.y - scroll - overscroll;
         for (const auto& row : config.rows) {
             const F32 height = rowHeight(row);
             const Rect rect = {bounds.x, y, bounds.width, height};
@@ -260,7 +277,7 @@ struct ResultList : public Component {
 
         const F32 viewport = static_cast<F32>(ctx.framebufferSize.y);
         const U64 capacity = Capacity(static_cast<U64>(std::ceil(viewport / Px(ctx, kHeaderHeight))) + 2);
-        rowBoxes.update({.instances = std::move(rowInstances), .clip = bounds, .cornerRadius = Px(ctx, kRowRadius),
+        rowBoxes.update({.instances = std::move(rowInstances), .clip = bounds, .cornerRadius = Px(ctx, config.rowRounding),
                          .capacity = 4});
         headers.update({.instances = std::move(headerInstances), .clip = bounds, .fontName = kTitleFont,
                         .capacity = capacity});
@@ -332,16 +349,10 @@ struct ResultList : public Component {
                 return true;
             }
             case MouseEventType::Scroll: {
-                if (!bounds.contains(point.x, point.y) || maxScroll <= 0.0f) {
+                if (!bounds.contains(point.x, point.y)) {
                     return false;
                 }
-                const F32 step = WheelStep(event, kWheelStep * pixelRatio, pixelRatio);
-                const F32 next = std::clamp(scroll - event.scroll.y * step, 0.0f, maxScroll);
-                if (next != scroll) {
-                    scroll = next;
-                    invalidate(Dirty::Layout);
-                }
-                return true;
+                return scroller.wheel(event);
             }
             case MouseEventType::Leave:
             case MouseEventType::Cancel:
@@ -684,6 +695,7 @@ void SearchCatalog::update(Config config) {
         .order = s.order,
         .selected = selected,
         .emptyLabel = s.config.emptyLabel,
+        .rowRounding = std::max(0.0f, s.config.rounding - kCardPadding - kRowInset),
         .onSelect = s.config.onSelect,
         .onActivate = s.config.onActivate,
     });
@@ -809,7 +821,7 @@ void SearchCatalog::layout(const Context& ctx) {
     s.cards.update({
         .rects = std::move(rects),
         .clip = clip(),
-        .cornerRadius = Px(ctx, kCardRadius),
+        .cornerRadius = Px(ctx, s.config.rounding),
         .softness = Px(ctx, kCardShadowSoftness),
         .drop = Px(ctx, kCardShadowDrop),
         .borderWidth = Px(ctx, 1.0f),
