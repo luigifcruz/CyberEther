@@ -56,13 +56,16 @@ class GeoMapBaseLayer final : public MapLayer {
         bool places = true;
         bool airports = true;
         std::array<float, 14> tileLineFullZoom = {
-            12.5f, 10.5f, 9.5f, 13.0f, 13.0f, 10.5f, 9.0f, 8.0f, 11.0f, 8.0f, 8.0f, 8.0f, 12.0f, 10.5f,
+            12.5f, 10.5f, 9.5f, 13.5f, 13.0f, 10.5f, 9.0f, 8.0f, 11.0f, 8.0f, 8.0f, 8.0f, 12.0f, 10.5f,
         };
         std::array<float, 14> tileLineMaxWidth = {
             2.0f, 3.0f, 5.0f, 1.0f, 3.5f, 4.5f, 6.0f, 7.0f, 2.5f, 3.0f, 3.5f, 5.0f, 24.0f, 48.0f,
         };
         std::array<float, 14> tileLineWidthGrowth = {
             1.25f, 1.25f, 1.25f, 1.0f, 1.25f, 1.25f, 1.25f, 1.25f, 1.25f, 1.25f, 1.25f, 1.25f, 2.0f, 2.0f,
+        };
+        std::array<float, 14> tileLineGroundMeters = {
+            3.0f, 10.0f, 0.0f, 0.0f, 8.0f, 12.0f, 16.0f, 24.0f, 4.0f, 0.0f, 0.0f, 0.0f, 23.0f, 45.0f,
         };
         float tileLineFadeRange = 1.0f;
 

@@ -13,8 +13,8 @@ layout(location = 1) out vec3 vSphere;
 layout(location = 2) flat out vec2 vFade;
 
 void main() {
-    vec3 p = lonLatToSphere(inPosition.x, inPosition.y);
-    gl_Position = uniforms.viewProjection * vec4(p, 1.0);
+    vec3 p = mapSphere(inPosition.xy);
+    gl_Position = uniforms.viewProjection * vec4(mapLocal(inPosition), 1.0);
     vColor = inColor;
     vSphere = p;
     vFade = inFade;

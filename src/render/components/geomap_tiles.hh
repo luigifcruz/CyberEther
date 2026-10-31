@@ -38,8 +38,11 @@ class GeoMapTiles {
         Water,
         Airport,
         Building,
+        BuildingMid,
+        BuildingTall,
     };
-    static constexpr U64 FillCount = 5;
+    static constexpr U64 FillCount = 7;
+    static constexpr U64 FirstBuildingFill = static_cast<U64>(Fill::Building);
 
     enum class Place : U8 {
         City,
@@ -111,6 +114,8 @@ class GeoMapTiles {
         std::array<std::vector<F32>, FillCount> fillFades;
         std::array<U64, FillCount> heldFillIndices{};
         std::vector<Label> labels;
+        F64 originLon = 0.0;
+        F64 originLat = 0.0;
         U64 revision = 0;
     };
 
@@ -127,6 +132,8 @@ class GeoMapTiles {
         std::array<U64, LineCount> lineCapacity{};
         U64 fillVertexCapacity = 0;
         U64 fillIndexCapacity = 0;
+        U64 buildingVertexCapacity = 0;
+        U64 buildingIndexCapacity = 0;
     };
 
     explicit GeoMapTiles(std::unique_ptr<Source> source);

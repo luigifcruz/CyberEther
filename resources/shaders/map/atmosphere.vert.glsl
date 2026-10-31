@@ -9,6 +9,6 @@ layout(location = 0) in vec2 inPosition;
 layout(location = 0) out vec3 vWorld;
 
 void main() {
-    vWorld = lonLatToSphere(inPosition.x, inPosition.y) * uniforms.lineWidth;
-    gl_Position = uniforms.viewProjection * vec4(vWorld, 1.0);
+    vWorld = mapSphere(inPosition.xy) * uniforms.lineWidth;
+    gl_Position = uniforms.viewProjection * vec4(sphereLocal(vWorld), 1.0);
 }

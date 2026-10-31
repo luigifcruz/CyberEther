@@ -14,8 +14,10 @@ layout(location = 1) flat out vec2 vShape;
 layout(location = 2) flat out vec2 vFade;
 
 void main() {
-    vec3 a = lonLatToSphere(inSegment.x, inSegment.y);
-    vec3 b = lonLatToSphere(inSegment.z, inSegment.w);
+    vec3 a = mapSphere(inSegment.xy);
+    vec3 b = mapSphere(inSegment.zw);
+    vec3 a0 = a;
+    vec3 b0 = b;
     if (!clipLineToHorizon(a, b, uniforms.targetNormal.xyz,
                           uniforms.targetNormal.w)) {
         gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
@@ -26,8 +28,8 @@ void main() {
     }
 
     vec2 pixelToNdc = mapPixelSize();
-    vec2 start = projectToNdc(a) / pixelToNdc;
-    vec2 end = projectToNdc(b) / pixelToNdc;
+    vec2 start = projectToNdc(clippedLocal(a, a0, inSegment.xy)) / pixelToNdc;
+    vec2 end = projectToNdc(clippedLocal(b, b0, inSegment.zw)) / pixelToNdc;
     vec2 delta = end - start;
     float segmentLength = length(delta);
     vec2 direction = segmentLength > 1e-4 ? delta / segmentLength : vec2(1.0, 0.0);

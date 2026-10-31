@@ -45,6 +45,8 @@ constexpr U32 FootprintCells = 8;
 constexpr F32 MaxFillEdge = 1.0f / FootprintCells;
 constexpr U8 MaxFallbackLevels = 6;
 constexpr U8 PreviewLevels = 2;
+constexpr F32 LevelHysteresis = 0.65f;
+constexpr F64 SimplifyPixels = 0.5;
 constexpr auto AssemblyInterval = std::chrono::milliseconds(250);
 constexpr auto DiskMaxAge = std::chrono::hours(24 * 30);
 
@@ -924,7 +926,8 @@ void Subdivide(GeoMapTiles::Mesh& mesh) {
 
 class Decoder {
  public:
-    explicit Decoder(const MapRenderingOptions& options = {}) : options(options) {}
+    explicit Decoder(const MapRenderingOptions& options = {}, F64 tolerance = 0.0)
+        : options(options), tolerance(tolerance) {}
 
     std::shared_ptr<TileData> run(std::string_view data) {
         tile = std::make_shared<TileData>();
@@ -944,6 +947,7 @@ class Decoder {
 
  private:
     MapRenderingOptions options;
+    F64 tolerance = 0.0;
     using Line = GeoMapTiles::Line;
     using Fill = GeoMapTiles::Fill;
     using Place = GeoMapTiles::Place;
@@ -981,6 +985,10 @@ class Decoder {
     std::vector<Ring> parts;
     std::vector<std::array<I32, 4>> oceanEdges;
     std::vector<std::array<I32, 4>> waterEdges;
+    std::unordered_set<U64> buildingEdges;
+    std::vector<bool> keep;
+    std::vector<std::pair<U64, U64>> spans;
+    Ring simplified;
     Earcut earcut;
     std::vector<F64> coords;
     std::vector<U32> holes;
@@ -1097,7 +1105,84 @@ class Decoder {
         return complete;
     }
 
+    static F64 SegmentDistance(const Point& p, const Point& a, const Point& b) {
+        const F64 dx = static_cast<F64>(b[0]) - a[0];
+        const F64 dy = static_cast<F64>(b[1]) - a[1];
+        const F64 px = static_cast<F64>(p[0]) - a[0];
+        const F64 py = static_cast<F64>(p[1]) - a[1];
+        const F64 length = dx * dx + dy * dy;
+        const F64 t = length > 0.0 ? std::clamp((px * dx + py * dy) / length, 0.0, 1.0) : 0.0;
+        return std::hypot(px - t * dx, py - t * dy);
+    }
+
+    static F64 RingArea(const Ring& ring) {
+        F64 area = 0.0;
+        for (U64 i = 0, j = ring.size() - 1; i < ring.size(); j = i++) {
+            area += static_cast<F64>(ring[j][0]) * ring[i][1] -
+                    static_cast<F64>(ring[i][0]) * ring[j][1];
+        }
+        return area;
+    }
+
+    void simplify(F64 extent, bool closed) {
+        const F64 limit = tolerance * extent;
+        if (limit <= 0.0) return;
+        for (auto& part : parts) {
+            const U64 count = part.size();
+            if (count < (closed ? 4u : 3u)) continue;
+            auto at = [&](U64 i) -> const Point& { return part[i % count]; };
+            U64 last = count - 1;
+            if (closed) {
+                last = 1;
+                F64 farthest = -1.0;
+                for (U64 i = 1; i < count; ++i) {
+                    const F64 d = std::hypot(static_cast<F64>(part[i][0]) - part[0][0],
+                                             static_cast<F64>(part[i][1]) - part[0][1]);
+                    if (d > farthest) {
+                        farthest = d;
+                        last = i;
+                    }
+                }
+            }
+            keep.assign(count, false);
+            keep[0] = true;
+            keep[last] = true;
+            spans.clear();
+            spans.emplace_back(0, last);
+            if (closed) spans.emplace_back(last, count);
+            while (!spans.empty()) {
+                const auto [a, b] = spans.back();
+                spans.pop_back();
+                F64 farthest = -1.0;
+                U64 index = 0;
+                for (U64 i = a + 1; i < b; ++i) {
+                    const F64 d = SegmentDistance(part[i], at(a), at(b));
+                    if (d > farthest) {
+                        farthest = d;
+                        index = i;
+                    }
+                }
+                if (farthest <= limit) continue;
+                keep[index] = true;
+                spans.emplace_back(a, index);
+                spans.emplace_back(index, b);
+            }
+            simplified.clear();
+            for (U64 i = 0; i < count; ++i) {
+                if (keep[i]) simplified.push_back(part[i]);
+            }
+            if (closed) {
+                if (simplified.size() < 3 || simplified.front() == simplified.back()) continue;
+                const F64 before = RingArea(part);
+                const F64 after = RingArea(simplified);
+                if (after == 0.0 || (after > 0.0) != (before > 0.0)) continue;
+            }
+            part.swap(simplified);
+        }
+    }
+
     void addLines(Line line, F64 extent) {
+        simplify(extent, false);
         const Rect rect{0.0, 0.0, extent, extent};
         auto& out = tile->lines[static_cast<U64>(line)];
         for (const auto& part : parts) {
@@ -1172,10 +1257,17 @@ class Decoder {
         auto border = [&](F64 a, F64 b) {
             return (a <= 0.0 && b <= 0.0) || (a >= extent && b >= extent);
         };
+        auto pack = [](const Point& p) {
+            return (static_cast<U32>(static_cast<U16>(p[0])) << 16) | static_cast<U16>(p[1]);
+        };
         for (const auto& ring : parts) {
             for (U64 i = 0; i < ring.size(); ++i) {
                 const auto& a = ring[i];
                 const auto& b = ring[(i + 1) % ring.size()];
+                const U32 pa = pack(a);
+                const U32 pb = pack(b);
+                const U64 edge = (static_cast<U64>(std::min(pa, pb)) << 32) | std::max(pa, pb);
+                if (!buildingEdges.insert(edge).second) continue;
                 F64 x0 = a[0];
                 F64 y0 = a[1];
                 F64 x1 = b[0];
@@ -1281,6 +1373,7 @@ class Decoder {
         const auto nameKey = layer.key("name");
         const auto iataKey = layer.key("iata");
         const auto icaoKey = layer.key("icao");
+        const auto heightKey = layer.key("render_height");
 
         for (const auto& featureData : layer.features) {
             Feature feature;
@@ -1320,7 +1413,12 @@ class Decoder {
             } else if (name == "building") {
                 if (feature.type != 3) continue;
                 if (!decodeGeometry(feature.geometry, feature.type)) return false;
-                if (!addPolygons(Fill::Building, layer.extent, nullptr)) return false;
+                simplify(layer.extent, true);
+                const F64 height = number(heightKey);
+                const Fill tier = height >= 40.0 ? Fill::BuildingTall
+                                : height >= 15.0 ? Fill::BuildingMid
+                                                 : Fill::Building;
+                if (!addPolygons(tier, layer.extent, nullptr)) return false;
                 if (options.buildingOutlines) addBuildingOutlines(layer.extent);
             } else if (name == "waterway") {
                 if (feature.type != 2 || tunnel) continue;
@@ -1672,9 +1770,13 @@ struct GeoMapTiles::Impl {
         }
     }
 
-    std::shared_ptr<const TileData> decode(std::string& data) const {
+    std::shared_ptr<const TileData> decode(const Key& key, std::string& data) const {
         if (!Inflate(data)) return nullptr;
-        Decoder decoder(config.rendering);
+        F64 tolerance = 0.0;
+        if (key.z < source->maxZoom()) {
+            tolerance = SimplifyPixels / (config.tilePixels * std::exp2(LevelHysteresis));
+        }
+        Decoder decoder(config.rendering, tolerance);
         return decoder.run(data);
     }
 
@@ -1684,7 +1786,7 @@ struct GeoMapTiles::Impl {
         const bool hit = readDisk(key, cached, stale);
         if (hit && !stale) {
             std::string copy = cached;
-            if (auto tile = decode(copy)) return tile;
+            if (auto tile = decode(key, copy)) return tile;
             std::error_code ec;
             std::filesystem::remove(tilePath(key), ec);
             cached.clear();
@@ -1694,7 +1796,7 @@ struct GeoMapTiles::Impl {
         const auto status = source->fetch(key, body, [this] { return stopping.load(); });
         if (status == Source::Status::Missing) {
             if (!cached.empty()) {
-                if (auto tile = decode(cached)) return tile;
+                if (auto tile = decode(key, cached)) return tile;
             }
             auto tile = std::make_shared<TileData>();
             tile->missing = true;
@@ -1702,14 +1804,14 @@ struct GeoMapTiles::Impl {
         }
         if (status == Source::Status::Found) {
             std::string copy = body;
-            if (auto tile = decode(copy)) {
+            if (auto tile = decode(key, copy)) {
                 writeDisk(key, body);
                 return tile;
             }
             JST_DEBUG("[GEOMAP] Tile {}/{}/{} could not be decoded.", key.z, key.x, key.y);
         }
         if (!cached.empty()) {
-            if (auto tile = decode(cached)) return tile;
+            if (auto tile = decode(key, cached)) return tile;
         }
         if (!stopping && !warned.exchange(true)) {
             JST_WARN("[GEOMAP] Detail tiles are unavailable, showing Natural Earth only.");
@@ -1772,7 +1874,7 @@ struct GeoMapTiles::Impl {
         std::vector<Key> previews;
         if (zoom >= config.fadeStart - 0.5f) {
             const F32 maxZoom = static_cast<F32>(source->maxZoom());
-            if (!level || zoom > *level + 0.65f || zoom < *level - 0.65f) {
+            if (!level || zoom > *level + LevelHysteresis || zoom < *level - LevelHysteresis) {
                 level = static_cast<U8>(std::clamp(std::round(zoom), 0.0f, maxZoom));
             }
             const auto& view = context.view;
@@ -1923,11 +2025,20 @@ struct GeoMapTiles::Impl {
         }
 
         const F64 sourceScale = 1.0 / static_cast<F64>(1u << source.z);
+        const F64 targetScale = 1.0 / static_cast<F64>(1u << target.z);
+        out.originLon = target.x * targetScale * 360.0 - 180.0;
+        out.originLat = YToLatitude(target.y * targetScale);
+        auto absoluteLon = [&](F64 u) {
+            return (source.x + u) * sourceScale * 360.0 - 180.0;
+        };
+        auto absoluteLat = [&](F64 v) {
+            return YToLatitude((source.y + v) * sourceScale);
+        };
         auto lonOf = [&](F64 u) {
-            return static_cast<F32>((source.x + u) * sourceScale * 360.0 - 180.0);
+            return static_cast<F32>(absoluteLon(u) - out.originLon);
         };
         auto latOf = [&](F64 v) {
-            return static_cast<F32>(YToLatitude((source.y + v) * sourceScale));
+            return static_cast<F32>(absoluteLat(v) - out.originLat);
         };
 
         for (U64 c = 0; c < LineCount; ++c) {
@@ -1966,13 +2077,12 @@ struct GeoMapTiles::Impl {
 
         {
             auto& land = out.fills[static_cast<U64>(Fill::Land)];
-            const F64 targetScale = 1.0 / static_cast<F64>(1u << target.z);
             for (U32 row = 0; row <= FootprintCells; ++row) {
                 const F64 v = (target.y + static_cast<F64>(row) / FootprintCells) * targetScale;
                 for (U32 col = 0; col <= FootprintCells; ++col) {
                     const F64 u = (target.x + static_cast<F64>(col) / FootprintCells) * targetScale;
-                    land.positions.push_back(static_cast<F32>(u * 360.0 - 180.0));
-                    land.positions.push_back(static_cast<F32>(YToLatitude(v)));
+                    land.positions.push_back(static_cast<F32>(u * 360.0 - 180.0 - out.originLon));
+                    land.positions.push_back(static_cast<F32>(YToLatitude(v) - out.originLat));
                 }
             }
             for (U32 row = 0; row < FootprintCells; ++row) {
@@ -1988,7 +2098,8 @@ struct GeoMapTiles::Impl {
 
         for (const auto& label : tile->labels) {
             if (clip && !rect.contains(label.lon, label.lat)) continue;
-            out.labels.push_back({lonOf(label.lon), latOf(label.lat), label.kind, label.name});
+            out.labels.push_back({static_cast<F32>(absoluteLon(label.lon)),
+                                  static_cast<F32>(absoluteLat(label.lat)), label.kind, label.name});
         }
 
         return piece;
@@ -2098,43 +2209,54 @@ struct GeoMapTiles::Impl {
             next.emplace(id, std::move(piece));
         }
 
-        auto fillSize = [](const Piece& piece) {
+        struct Budget {
+            U64 vertexCapacity;
+            U64 indexCapacity;
+            U64 first;
+            U64 last;
             U64 vertices = 0;
             U64 indices = 0;
-            for (const auto& fill : piece.geometry.fills) {
-                vertices += fill.positions.size() / 2;
-                indices += fill.indices.size();
-            }
-            return std::make_pair(vertices, indices);
-        };
-        U64 vertices = 0;
-        U64 indices = 0;
-        auto fits = [&](const Piece& piece) {
-            const auto [pieceVertices, pieceIndices] = fillSize(piece);
-            if (vertices + pieceVertices > config.fillVertexCapacity ||
-                indices + pieceIndices > config.fillIndexCapacity) {
-                return false;
-            }
-            vertices += pieceVertices;
-            indices += pieceIndices;
-            return true;
-        };
 
-        std::vector<const Piece*> visible;
+            bool take(const Piece& piece) {
+                U64 pieceVertices = 0;
+                U64 pieceIndices = 0;
+                for (U64 f = first; f < last; ++f) {
+                    pieceVertices += piece.geometry.fills[f].positions.size() / 2;
+                    pieceIndices += piece.geometry.fills[f].indices.size();
+                }
+                if (vertices + pieceVertices > vertexCapacity ||
+                    indices + pieceIndices > indexCapacity) {
+                    return false;
+                }
+                vertices += pieceVertices;
+                indices += pieceIndices;
+                return true;
+            }
+        };
+        Budget fills{config.fillVertexCapacity, config.fillIndexCapacity, 0, FirstBuildingFill};
+        Budget buildings{config.buildingVertexCapacity, config.buildingIndexCapacity,
+                         FirstBuildingFill, FillCount};
+        constexpr U64 BuildingLine = static_cast<U64>(Line::Building);
+
+        std::vector<std::pair<const Piece*, bool>> visible;
         std::array<U64, LineCount> reserved{};
         std::unordered_set<U64> placed;
         for (const auto& item : plan) {
             const auto id = std::make_pair(item.target.id(), item.source.id());
             if (!placed.insert(item.target.id()).second) continue;
             const auto& piece = next.at(id);
-            if (!fits(piece)) continue;
-            visible.push_back(&piece);
-            for (U64 c = 0; c < LineCount; ++c) reserved[c] += piece.geometry.lines[c].size();
+            if (!fills.take(piece)) continue;
+            const bool withBuildings = buildings.take(piece);
+            visible.emplace_back(&piece, withBuildings);
+            for (U64 c = 0; c < LineCount; ++c) {
+                if (c == BuildingLine && !withBuildings) continue;
+                reserved[c] += piece.geometry.lines[c].size();
+            }
         }
 
         std::unordered_map<U64, const TileData*> drawn;
         U8 deepest = 0;
-        for (const auto* piece : visible) {
+        for (const auto& [piece, withBuildings] : visible) {
             drawn.emplace(piece->target.id(), piece->tile.get());
             deepest = std::max(deepest, piece->target.z);
         }
@@ -2173,26 +2295,45 @@ struct GeoMapTiles::Impl {
 
         Geometry result;
         result.revision = ++revision;
+        if (!visible.empty()) {
+            result.originLon = visible.front().first->geometry.originLon;
+            result.originLat = visible.front().first->geometry.originLat;
+        } else if (!fading.empty()) {
+            result.originLon = fading.front().piece.geometry.originLon;
+            result.originLat = fading.front().piece.geometry.originLat;
+        }
         settled = 0.0f;
-        auto append = [&](const Piece& piece, F32 died, const std::array<U64, LineCount>& keep) {
+        auto append = [&](const Piece& piece, F32 died, const std::array<U64, LineCount>& keep,
+                          bool withBuildings) {
             const auto& geometry = piece.geometry;
+            F64 shiftLon = std::fmod(geometry.originLon - result.originLon + 180.0, 360.0);
+            if (shiftLon < 0.0) shiftLon += 360.0;
+            shiftLon -= 180.0;
+            const std::array<F64, 2> shift = {shiftLon, geometry.originLat - result.originLat};
+            auto shifted = [&](std::vector<F32>& dst, const std::vector<F32>& src, U64 count) {
+                for (U64 i = 0; i < count; ++i) {
+                    dst.push_back(static_cast<F32>(static_cast<F64>(src[i]) + shift[i & 1]));
+                }
+            };
             for (U64 f = 0; f < FillCount; ++f) {
+                if (f >= FirstBuildingFill && !withBuildings) continue;
                 auto& dst = result.fills[f];
                 const auto& src = geometry.fills[f];
                 const U32 base = static_cast<U32>(dst.positions.size() / 2);
-                dst.positions.insert(dst.positions.end(), src.positions.begin(), src.positions.end());
+                shifted(dst.positions, src.positions, src.positions.size());
                 for (const U32 index : src.indices) dst.indices.push_back(base + index);
                 for (U64 v = 0; v < src.positions.size() / 2; ++v) {
                     result.fillFades[f].insert(result.fillFades[f].end(), {piece.born, died});
                 }
             }
             for (U64 c = 0; c < LineCount; ++c) {
+                if (c == BuildingLine && !withBuildings) continue;
                 auto& dst = result.lines[c];
                 const auto& src = geometry.lines[c];
                 const U64 capacity = config.lineCapacity[c] * 4;
                 const U64 room = capacity - std::min<U64>(dst.size() + keep[c], capacity);
                 const U64 count = std::min<U64>(src.size(), room) / 4 * 4;
-                dst.insert(dst.end(), src.begin(), src.begin() + count);
+                shifted(dst, src, count);
                 for (U64 s = 0; s < count / 4; ++s) {
                     result.lineFades[c].insert(result.lineFades[c].end(), {piece.born, died});
                 }
@@ -2201,8 +2342,8 @@ struct GeoMapTiles::Impl {
         };
 
         for (const auto& item : fading) {
-            if (!fits(item.piece)) continue;
-            append(item.piece, item.died, reserved);
+            if (!fills.take(item.piece)) continue;
+            append(item.piece, item.died, reserved, buildings.take(item.piece));
             if (item.died < 0.0f) {
                 result.labels.insert(result.labels.end(), item.piece.geometry.labels.begin(),
                                      item.piece.geometry.labels.end());
@@ -2210,8 +2351,8 @@ struct GeoMapTiles::Impl {
         }
         for (U64 f = 0; f < FillCount; ++f) result.heldFillIndices[f] = result.fills[f].indices.size();
         const std::array<U64, LineCount> none{};
-        for (const auto* piece : visible) {
-            append(*piece, -1.0f, none);
+        for (const auto& [piece, withBuildings] : visible) {
+            append(*piece, -1.0f, none, withBuildings);
             result.labels.insert(result.labels.end(), piece->geometry.labels.begin(),
                                  piece->geometry.labels.end());
         }
@@ -2363,9 +2504,9 @@ std::string GeoMapTiles::attribution() const {
 }
 
 F32 GeoMapTiles::DetailZoom(const MapContext& context, F32 tilePixels) {
-    const F32 lat = std::clamp(context.view.centerLat, -84.0f, 84.0f);
-    const F32 lon = context.view.centerLon;
-    constexpr F32 Delta = 0.01f;
+    const F64 lat = std::clamp(context.view.centerLat, -89.0, 89.0);
+    const F64 lon = context.view.centerLon;
+    constexpr F64 Delta = 0.0001;
     F32 ax = 0.0f;
     F32 ay = 0.0f;
     F32 bx = 0.0f;

@@ -111,13 +111,14 @@ std::string BuildingTile(const std::vector<BuildingRing>& rings) {
     return Bytes(3, layer);
 }
 
-std::array<F64, 2> TilePoint(F32 lon, F32 lat) {
+std::array<F64, 2> TilePoint(F64 lon, F64 lat) {
     constexpr F64 pi = 3.14159265358979323846;
-    return {(static_cast<F64>(lon) + 180.0) / 360.0,
+    return {(lon + 180.0) / 360.0,
             (1.0 - std::asinh(std::tan(lat * pi / 180.0)) / pi) * 0.5};
 }
 
-F64 TileArea(const GeoMapTiles::Mesh& mesh) {
+F64 TileArea(const GeoMapTiles::Geometry& geometry, GeoMapTiles::Fill fill) {
+    const auto& mesh = geometry.fills[static_cast<U64>(fill)];
     F64 area = 0.0;
     REQUIRE(mesh.indices.size() % 3 == 0);
     for (U64 i = 0; i < mesh.indices.size(); i += 3) {
@@ -125,7 +126,8 @@ F64 TileArea(const GeoMapTiles::Mesh& mesh) {
         for (U64 j = 0; j < 3; ++j) {
             const U64 index = mesh.indices[i + j] * 2;
             REQUIRE(index + 1 < mesh.positions.size());
-            p[j] = TilePoint(mesh.positions[index], mesh.positions[index + 1]);
+            p[j] = TilePoint(mesh.positions[index] + geometry.originLon,
+                             mesh.positions[index + 1] + geometry.originLat);
         }
         area += std::abs((p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) -
                          (p[2][0] - p[0][0]) * (p[1][1] - p[0][1])) * 0.5;
@@ -235,6 +237,8 @@ GeoMapTiles::Config TileConfig() {
     config.fadeSeconds = 0.0f;
     config.fillVertexCapacity = 1u << 20;
     config.fillIndexCapacity = 3u << 20;
+    config.buildingVertexCapacity = 1u << 20;
+    config.buildingIndexCapacity = 3u << 20;
     config.lineCapacity.fill(1024);
     return config;
 }
@@ -449,8 +453,7 @@ TEST_CASE("GeoMap building footprints preserve courtyards and closed outlines", 
         return !geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Building)].indices.empty();
     }));
     const auto& geometry = tiles.geometry();
-    const auto& fill = geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Building)];
-    CHECK(std::abs(TileArea(fill) - 0.1875) < 1e-6);
+    CHECK(std::abs(TileArea(geometry, GeoMapTiles::Fill::Building) - 0.1875) < 1e-6);
     const auto& lines = geometry.lines[static_cast<U64>(GeoMapTiles::Line::Building)];
     REQUIRE(lines.size() == 8 * 4);
     for (U64 ring = 0; ring < 2; ++ring) {
@@ -461,6 +464,38 @@ TEST_CASE("GeoMap building footprints preserve courtyards and closed outlines", 
             CHECK(lines[at + 3] == lines[next + 1]);
         }
     }
+}
+
+TEST_CASE("GeoMap building outlines draw shared walls once", "[render][geomap][tiles]") {
+    TileCache cache;
+    const auto payload = BuildingTile({
+        {{1024, 1024}, {3072, 1024}, {3072, 3072}, {1024, 3072}},
+        {{3072, 1024}, {4000, 1024}, {4000, 3072}, {3072, 3072}},
+    });
+    GeoMapTiles tiles(std::make_unique<TileSource>(cache, payload));
+    tiles.start(TileConfig());
+    REQUIRE(WaitFor(tiles, TileContext(), [](const auto& geometry) {
+        return !geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Building)].indices.empty();
+    }));
+    CHECK(tiles.geometry().lines[static_cast<U64>(GeoMapTiles::Line::Building)].size() == 7 * 4);
+}
+
+TEST_CASE("GeoMap building budget overflow keeps the rest of the tile", "[render][geomap][tiles]") {
+    TileCache cache;
+    const auto payload = WaterTile() + BuildingTile({
+        {{1024, 1024}, {3072, 1024}, {3072, 3072}, {1024, 3072}},
+    });
+    GeoMapTiles tiles(std::make_unique<TileSource>(cache, payload));
+    auto config = TileConfig();
+    config.buildingVertexCapacity = 1;
+    tiles.start(config);
+    REQUIRE(WaitForWater(tiles, TileContext()));
+    const auto& geometry = tiles.geometry();
+    for (U64 f = GeoMapTiles::FirstBuildingFill; f < GeoMapTiles::FillCount; ++f) {
+        CHECK(geometry.fills[f].indices.empty());
+    }
+    CHECK(geometry.lines[static_cast<U64>(GeoMapTiles::Line::Building)].empty());
+    CHECK_FALSE(geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Land)].indices.empty());
 }
 
 TEST_CASE("GeoMap building clipping does not draw artificial tile boundaries", "[render][geomap][tiles]") {
@@ -485,12 +520,12 @@ TEST_CASE("GeoMap building clipping does not draw artificial tile boundaries", "
                 return !geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Land)].indices.empty();
             }));
             const auto& geometry = tiles.geometry();
-            CHECK(std::abs(TileArea(geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Building)]) - input.area) < 1e-6);
+            CHECK(std::abs(TileArea(geometry, GeoMapTiles::Fill::Building) - input.area) < 1e-6);
             const auto& lines = geometry.lines[static_cast<U64>(GeoMapTiles::Line::Building)];
             REQUIRE(lines.size() == input.edges * 4);
             for (U64 i = 0; i < lines.size(); i += 4) {
-                const auto a = TilePoint(lines[i], lines[i + 1]);
-                const auto b = TilePoint(lines[i + 2], lines[i + 3]);
+                const auto a = TilePoint(lines[i] + geometry.originLon, lines[i + 1] + geometry.originLat);
+                const auto b = TilePoint(lines[i + 2] + geometry.originLon, lines[i + 3] + geometry.originLat);
                 CHECK_FALSE((std::abs(a[0] - 1.0) < 1e-6 && std::abs(b[0] - 1.0) < 1e-6));
                 for (const auto& p : {a, b}) {
                     CHECK(p[0] >= -1e-6);
