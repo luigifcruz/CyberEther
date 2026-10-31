@@ -7,6 +7,12 @@
 #include <string>
 #include <thread>
 
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC)
+#include <cerrno>
+#include <csignal>
+#include <sys/wait.h>
+#endif
+
 using namespace Jetstream;
 
 namespace {
@@ -20,7 +26,7 @@ bool Drain(Platform::PseudoTerminal& terminal, std::string& output, const std::f
         if (done()) {
             return true;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        (void)terminal.wait(std::chrono::milliseconds(10));
     }
     return false;
 }
@@ -72,21 +78,22 @@ TEST_CASE("Pseudo terminals block until output arrives or another thread interru
     Platform::PseudoTerminal terminal;
     REQUIRE(terminal.start({
         .program = "/bin/sh",
-        .arguments = {"-c", "sleep 0.5; printf 'late'; sleep 30"},
+        .arguments = {"-c", "stty -echo; printf 'ready'; IFS= read -r step; printf 'late'; IFS= read -r step"},
     }) == Result::SUCCESS);
 
+    std::string output;
+    REQUIRE(Drain(terminal, output, [&] { return output.find("ready") != std::string::npos; }));
+    output.clear();
     CHECK(terminal.wait(std::chrono::milliseconds(0)) == Result::SUCCESS);
 
-    std::thread interrupter([&] {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        terminal.interrupt();
-    });
-    const auto begin = std::chrono::steady_clock::now();
+    // Interrupts must wake the wait even when queued before it enters poll().
+    std::thread interrupter([&] { terminal.interrupt(); });
     CHECK(terminal.wait(std::nullopt) == Result::SUCCESS);
     interrupter.join();
-    CHECK(std::chrono::steady_clock::now() - begin < std::chrono::seconds(5));
+    REQUIRE(terminal.read(output, 1024) == Result::SUCCESS);
+    CHECK(output.empty());
 
-    std::string output;
+    REQUIRE(terminal.write("\n") == Result::SUCCESS);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (output.find("late") == std::string::npos && std::chrono::steady_clock::now() < deadline) {
         REQUIRE(terminal.wait(std::chrono::seconds(1)) == Result::SUCCESS);
@@ -105,20 +112,48 @@ TEST_CASE("Pseudo terminals refuse an empty program", kTags) {
     CHECK_FALSE(terminal.running());
 }
 
-TEST_CASE("Pseudo terminals keep unread output readable after the program exits during an input wait", kTags) {
+TEST_CASE("Pseudo terminals keep the program's final output readable during an input wait", kTags) {
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC)
     if (!Platform::PseudoTerminal::Supported()) {
         SKIP("Pseudo terminals are not supported on this platform.");
     }
     Platform::PseudoTerminal terminal;
     REQUIRE(terminal.start({
         .program = "/bin/sh",
-        .arguments = {"-c", "stty -echo; sleep 0.3; printf 'tail'; sleep 0.3"},
+        .arguments = {"-c", "stty raw -echo; printf '%s\\n' \"$$\"; kill -STOP \"$$\"; "
+                            "printf 'tail'; kill -STOP \"$$\""},
     }) == Result::SUCCESS);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    REQUIRE(terminal.write(std::string(1024 * 1024, 'x')) == Result::SUCCESS);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-
-    REQUIRE(terminal.wait(std::chrono::milliseconds(100), false) == Result::SUCCESS);
     std::string output;
+    REQUIRE(Drain(terminal, output, [&] { return output.find('\n') != std::string::npos; }));
+    const auto process = static_cast<pid_t>(std::stol(output));
+    output.clear();
+    const auto waitFor = [&](int event) {
+        siginfo_t info{};
+        int result;
+        do {
+            result = waitid(P_PID, process, &info, event);
+        } while (result < 0 && errno == EINTR);
+        REQUIRE(result == 0);
+        REQUIRE(info.si_pid == process);
+        return info.si_code;
+    };
+
+    // Hold the child without consuming input so the write fills the PTY and
+    // leaves pending bytes. A second stop confirms the final output is queued.
+    REQUIRE(waitFor(WSTOPPED) == CLD_STOPPED);
+    REQUIRE(terminal.write(std::string(1024 * 1024, 'x')) == Result::SUCCESS);
+    REQUIRE(kill(process, SIGCONT) == 0);
+    REQUIRE(waitFor(WSTOPPED) == CLD_STOPPED);
+    REQUIRE(kill(process, SIGCONT) == 0);
+#if defined(JST_OS_LINUX)
+    // Leave reaping to the terminal. Darwin's last slave close can wait for
+    // output to drain, so waiting for exit before reading would deadlock there.
+    REQUIRE(waitFor(WEXITED | WNOWAIT) == CLD_EXITED);
+#endif
+
+    REQUIRE(terminal.wait(std::chrono::milliseconds(0), false) == Result::SUCCESS);
     CHECK(Drain(terminal, output, [&] { return output.find("tail") != std::string::npos; }));
+#else
+    SKIP("Pseudo terminals are not supported on this platform.");
+#endif
 }

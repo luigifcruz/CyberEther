@@ -180,8 +180,13 @@ Result PseudoTerminal::start(const Config& config) {
         JST_ERROR("[PLATFORM] Failed to open a pseudo terminal: {}.", std::strerror(errno));
         return Result::ERROR;
     }
-    if (grantpt(master) != 0 || unlockpt(master) != 0 || !SetDescriptorFlags(master)) {
-        JST_ERROR("[PLATFORM] Failed to prepare the pseudo terminal: {}.", std::strerror(errno));
+    if (grantpt(master) != 0) {
+        JST_ERROR("[PLATFORM] Failed to grant access to the pseudo terminal: {}.", std::strerror(errno));
+        close(master);
+        return Result::ERROR;
+    }
+    if (unlockpt(master) != 0) {
+        JST_ERROR("[PLATFORM] Failed to unlock the pseudo terminal: {}.", std::strerror(errno));
         close(master);
         return Result::ERROR;
     }
@@ -212,6 +217,16 @@ Result PseudoTerminal::start(const Config& config) {
     const int slave = open(slaveName, O_RDWR | O_NOCTTY | O_CLOEXEC);
     if (slave < 0) {
         JST_ERROR("[PLATFORM] Failed to open the pseudo terminal device: {}.", std::strerror(errno));
+        impl->closeInterrupts();
+        close(master);
+        return Result::ERROR;
+    }
+
+    // Darwin's F_SETFL invokes FIONBIO/FIOASYNC, which older kernels reject
+    // with ENOTTY until the slave has been opened and initialized.
+    if (!SetDescriptorFlags(master)) {
+        JST_ERROR("[PLATFORM] Failed to set the pseudo terminal descriptor flags: {}.", std::strerror(errno));
+        close(slave);
         impl->closeInterrupts();
         close(master);
         return Result::ERROR;
