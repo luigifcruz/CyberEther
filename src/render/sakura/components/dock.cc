@@ -1935,14 +1935,10 @@ void Dock::layout(const Context& ctx) {
             s.press = Impl::Press::None;
         }
     }
-    const auto lone = [&s, total]() {
-        if (s.config.loneHeader || total != 1 || s.leaves.size() != 1) {
-            return false;
-        }
-        const auto* item = s.pane(s.leaves.front().pane);
-        return item && !item->closable;
-    };
-    s.showHeaders = !tabs && s.config.headers && !lone();
+    s.showHeaders = !tabs && s.config.headers;
+    const auto expanded = std::count_if(s.leaves.begin(), s.leaves.end(), [](const auto& leaf) {
+        return !leaf.minimized;
+    });
 
     const F32 headerHeight = std::round(Px(ctx, Dock::HeaderHeight));
     const F32 button = Px(ctx, kHeaderButton);
@@ -1958,6 +1954,8 @@ void Dock::layout(const Context& ctx) {
             placeholder = it->second.get();
         }
         const bool closable = item ? item->closable : true;
+        const bool bare = !s.config.loneHeader && s.maximized.empty() && expanded == 1 && !leaf.minimized && item &&
+                          !closable;
         Rect content = leaf.tile;
         if (!tabs && item && !item->card) {
             content = Intersect(Inflate(leaf.tile, gap), s.contentArea);
@@ -1978,7 +1976,7 @@ void Dock::layout(const Context& ctx) {
                             kHeaderGlyph);
             }
         };
-        if (s.showHeaders && leaf.strip) {
+        if (s.showHeaders && !bare && leaf.strip) {
             leaf.header = leaf.tile;
             const auto found = s.headerCaptions.find(leaf.pane);
             auto* caption = found == s.headerCaptions.end() ? nullptr : &found->second;
@@ -2018,7 +2016,7 @@ void Dock::layout(const Context& ctx) {
                 labels.push_back(caption->spine.get());
             }
             content = {};
-        } else if (s.showHeaders) {
+        } else if (s.showHeaders && !bare) {
             leaf.header = leaf.minimized ? leaf.tile
                                          : Rect{leaf.tile.x, leaf.tile.y, leaf.tile.width,
                                                 std::min(headerHeight, leaf.tile.height)};
