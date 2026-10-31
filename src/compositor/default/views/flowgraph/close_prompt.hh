@@ -42,6 +42,7 @@ struct FlowgraphClosePromptView {
             .size = {Width, 0.0f},
             .closeButton = false,
             .chrome = false,
+            .dismissOutside = true,
             .anchor = anchor,
             .onClose = [this]() {
                 if (config.onCancel) {
