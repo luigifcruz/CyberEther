@@ -1,7 +1,7 @@
 ---
 version: 2
 title: Wideband Sweep
-summary: Sweep a radio across a band wider than its sample rate.
+summary: Sweep across a wide radio band.
 author: Luigi
 license: MIT
 description: Sweeps the FM broadcast band in hops, stitches the spectra into synthetic complex samples, and displays them in a Spectrum Analyzer.
