@@ -236,13 +236,13 @@ struct EditorRig {
     void frame(std::optional<Extent2D<F32>> mouse = std::nullopt) {
         editor.update({
             .id = "graph",
-            .graph = graph,
             .onBuildBlockOptions = [this]() {
                 ++catalogs;
                 return std::vector<FlowgraphBlockPicker::BlockOption>{
                     {.type = "fft", .title = "FFT", .category = "DSP", .devices = {{.device = DeviceType::CPU}}},
                 };
             },
+            .graph = graph,
             .onCreateBlock = [this](const std::string& type, std::optional<Extent2D<F32>> position, DeviceType,
                                     RuntimeType, ProviderType) {
                 REQUIRE(position.has_value());
