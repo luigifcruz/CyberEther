@@ -25,6 +25,7 @@ struct TextInput : public Component {
         Submit submit = Submit::OnEnter;
         bool focus = false;
         bool selectAllOnFocus = false;
+        bool keepFocusOnSubmit = false;
         bool multiline = false;
         bool password = false;
         bool disabled = false;
@@ -47,6 +48,7 @@ struct TextInput : public Component {
 
     void update(Config config);
     bool focused() const;
+    void focus(bool selectAll = false);
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

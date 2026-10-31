@@ -234,9 +234,9 @@ class JETSTREAM_API Window {
 
     std::vector<std::shared_ptr<Components::Generic>> components;
 
-    uint32_t frameCount;
+    uint32_t frameCount = 0;
     bool created = false;
-    bool graphicalLoopThreadStarted;
+    bool graphicalLoopThreadStarted = false;
     std::atomic_bool frameActive = false;
     std::thread::id graphicalLoopThreadId;
     std::mutex newFrameQueueMutex;

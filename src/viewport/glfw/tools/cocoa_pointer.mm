@@ -69,6 +69,19 @@ ScrollPhase PhaseOf(NSEvent* event) {
 
 namespace Jetstream::Viewport {
 
+namespace {
+
+KeyModifiers ModifiersOf(NSEventModifierFlags flags) {
+    return {
+        .control = (flags & NSEventModifierFlagControl) != 0,
+        .shift = (flags & NSEventModifierFlagShift) != 0,
+        .alt = (flags & NSEventModifierFlagOption) != 0,
+        .super = (flags & NSEventModifierFlagCommand) != 0,
+    };
+}
+
+}  // namespace
+
 struct CocoaPointer::State {
     NSWindow* window = nil;
     id monitor = nil;
@@ -76,20 +89,21 @@ struct CocoaPointer::State {
     NSTrackingArea* area = nil;
     std::optional<Scroll> pending;
     std::function<void()> onIdle;
+    std::function<void(KeyModifiers)> onModifiers;
+
+    void flagsEvent(NSEvent* event) {
+        if ([event window] == window && onModifiers) {
+            onModifiers(ModifiersOf([event modifierFlags]));
+        }
+    }
 
     void scrollEvent(NSEvent* event) {
         if ([event window] != window) {
             return;
         }
-        const NSEventModifierFlags flags = [event modifierFlags];
         pending = Scroll{
             .phase = PhaseOf(event),
-            .modifiers = {
-                .control = (flags & NSEventModifierFlagControl) != 0,
-                .shift = (flags & NSEventModifierFlagShift) != 0,
-                .alt = (flags & NSEventModifierFlagOption) != 0,
-                .super = (flags & NSEventModifierFlagCommand) != 0,
-            },
+            .modifiers = ModifiersOf([event modifierFlags]),
         };
         if ([event scrollingDeltaX] == 0.0 && [event scrollingDeltaY] == 0.0) {
             if (pending->phase != ScrollPhase::None && onIdle) {
@@ -100,19 +114,25 @@ struct CocoaPointer::State {
     }
 };
 
-CocoaPointer::CocoaPointer(GLFWwindow* handle, std::function<void()> onIdle)
+CocoaPointer::CocoaPointer(GLFWwindow* handle, std::function<void()> onIdle,
+                           std::function<void(KeyModifiers)> onModifiers)
     : state(std::make_shared<State>()) {
     state->onIdle = std::move(onIdle);
+    state->onModifiers = std::move(onModifiers);
     @autoreleasepool {
         state->window = glfwGetCocoaWindow(handle);
         if (!state->window) {
             return;
         }
         std::weak_ptr<State> weak = state;
-        state->monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel
+        state->monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel | NSEventMaskFlagsChanged
                                                                handler:^NSEvent*(NSEvent* event) {
             if (auto shared = weak.lock()) {
-                shared->scrollEvent(event);
+                if ([event type] == NSEventTypeFlagsChanged) {
+                    shared->flagsEvent(event);
+                } else {
+                    shared->scrollEvent(event);
+                }
             }
             return event;
         }];
@@ -144,6 +164,7 @@ CocoaPointer::~CocoaPointer() {
         state->hover = nil;
     }
     state->onIdle = nullptr;
+    state->onModifiers = nullptr;
 }
 
 std::optional<CocoaPointer::Scroll> CocoaPointer::take() {

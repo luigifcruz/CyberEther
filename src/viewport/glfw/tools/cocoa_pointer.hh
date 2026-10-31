@@ -18,7 +18,7 @@ class CocoaPointer {
         KeyModifiers modifiers;
     };
 
-    CocoaPointer(GLFWwindow* window, std::function<void()> onIdle);
+    CocoaPointer(GLFWwindow* window, std::function<void()> onIdle, std::function<void(KeyModifiers)> onModifiers);
     ~CocoaPointer();
 
     CocoaPointer(const CocoaPointer&) = delete;

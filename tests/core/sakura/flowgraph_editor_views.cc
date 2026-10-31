@@ -236,13 +236,13 @@ struct EditorRig {
     void frame(std::optional<Extent2D<F32>> mouse = std::nullopt) {
         editor.update({
             .id = "graph",
-            .graph = graph,
             .onBuildBlockOptions = [this]() {
                 ++catalogs;
                 return std::vector<FlowgraphBlockPicker::BlockOption>{
                     {.type = "fft", .title = "FFT", .category = "DSP", .devices = {{.device = DeviceType::CPU}}},
                 };
             },
+            .graph = graph,
             .onCreateBlock = [this](const std::string& type, std::optional<Extent2D<F32>> position, DeviceType,
                                     RuntimeType, ProviderType) {
                 REQUIRE(position.has_value());
@@ -1046,10 +1046,22 @@ TEST_CASE("Editor toolbar pause, save, and environment buttons run their callbac
     CHECK(press(ICON_LC_SAVE));
     CHECK(press(ICON_LC_TABLE_PROPERTIES));
     CHECK(Find<Sakura::PillIconButton>(host).size() == 4);
+    CHECK_FALSE(press(ICON_LC_SQUARE_TERMINAL));
     paused = true;
     frame();
     CHECK(press(ICON_LC_PLAY));
     CHECK(calls == std::vector<std::string>{"pause", "save", "environment", "resume"});
+
+    calls.clear();
+    editor.update({
+        .id = "graph",
+        .onToggleEnvironment = [&] { calls.push_back("environment"); },
+        .onOpenTerminal = [&] { calls.push_back("terminal"); },
+    });
+    host.place(scene.ctx, kScreen);
+    CHECK(Find<Sakura::PillIconButton>(host).size() == 5);
+    CHECK(press(ICON_LC_SQUARE_TERMINAL));
+    CHECK(calls == std::vector<std::string>{"terminal"});
 }
 
 TEST_CASE("Editor presenter wires the toolbar to pause, save, and environment mail",
@@ -1076,6 +1088,15 @@ TEST_CASE("Editor presenter wires the toolbar to pause, save, and environment ma
     config = FlowgraphEditorPresenter(context).build("graph", graph);
     config.onToggleEnvironment();
     CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(mails.back()).value);
+
+    CHECK(static_cast<bool>(config.onOpenTerminal) == TerminalSession::Supported());
+    if (config.onOpenTerminal) {
+        config.onOpenTerminal();
+        const auto& open = std::get<MailOpenTerminal>(mails.back());
+        CHECK(open.flowgraph == "graph");
+        CHECK(open.tile);
+        CHECK_FALSE(open.split.has_value());
+    }
 }
 
 TEST_CASE("Node plot detach sends every attached surface out and the plot menu entry toggles them all",

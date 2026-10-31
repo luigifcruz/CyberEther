@@ -6,5 +6,6 @@ src_lst += files([
     'popup_layer.cc',
     'root_component.cc',
     'syntax_highlighter.cc',
+    'terminal_sprites.cc',
     'text_metrics.cc',
 ])

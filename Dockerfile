@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update --fix-missing && \
     apt-get install -y --no-install-recommends \
       git build-essential pkg-config python3-pip libpython3.12t64 \
-      curl ca-certificates bison flex nasm \
+      curl ca-certificates bison flex nasm xz-utils \
       spirv-cross glslang-tools \
       libudev-dev \
       libwayland-dev wayland-protocols libxkbcommon-dev \
@@ -16,6 +16,27 @@ RUN apt-get update --fix-missing && \
     rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --break-system-packages meson ninja numpy mapbox_earcut
+
+ARG ZIG_VERSION=0.17.0
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) \
+        zig_arch=x86_64; \
+        zig_sha256=1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026 ;; \
+      arm64) \
+        zig_arch=aarch64; \
+        zig_sha256=9e8d11661d4ae3bd57702a3832781e23ad151dde5798e16a5ccd503f65234ff8 ;; \
+      *) \
+        printf 'Unsupported Zig architecture: %s\n' "$(dpkg --print-architecture)" >&2; \
+        exit 1 ;; \
+    esac; \
+    curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-${zig_arch}-linux-${ZIG_VERSION}.tar.xz" -o /tmp/zig.tar.xz; \
+    printf '%s  %s\n' "${zig_sha256}" /tmp/zig.tar.xz | sha256sum -c -; \
+    mkdir -p /opt/zig; \
+    tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1; \
+    ln -s /opt/zig/zig /usr/local/bin/zig; \
+    test "$(zig version)" = "${ZIG_VERSION}"; \
+    rm /tmp/zig.tar.xz
 
 ARG ONNXRUNTIME_VERSION=1.27.0
 ARG ONNXRUNTIME_CUDA_MAJOR=13
@@ -109,6 +130,7 @@ RUN rm -rf build && \
       -Dbuildtype=${BUILD_TYPE} \
       -Dexamples=false \
       -Dremote=enabled \
+      -Dterminal=enabled \
       -Dinference=enabled && \
     meson compile -C build && \
     if [ "${RUN_TESTS}" = "true" ]; then \

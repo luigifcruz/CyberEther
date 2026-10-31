@@ -75,6 +75,10 @@ bool TextInput::focused() const {
     return impl->grid.focused();
 }
 
+void TextInput::focus(bool selectAll) {
+    impl->grid.focus(selectAll);
+}
+
 Extent2D<F32> TextInput::measure(const Context& ctx, Extent2D<F32> available) {
     return {FillLength(available.x, Px(ctx, kNaturalControlWidth)),
             ResolveLength(ctx, impl->config.height, Px(ctx, impl->config.fontSize) + 2.0f * Px(ctx, impl->config.padding.y), available.y)};
@@ -139,7 +143,9 @@ void TextInput::layout(const Context& ctx) {
             if (impl->config.onSubmit) {
                 impl->config.onSubmit(impl->buffer);
             }
-            impl->grid.blur();
+            if (!impl->config.keepFocusOnSubmit) {
+                impl->grid.blur();
+            }
         },
         .onCancel = [this]() {
             impl->cancelled = true;

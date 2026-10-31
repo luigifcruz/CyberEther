@@ -57,6 +57,7 @@ struct WorkbenchActions {
     static void Focus(DefaultCompositorState& state, std::optional<WorkspaceTab> tab) {
         state.interface.focusedTab = tab;
         state.interface.tabNavigationPending = true;
+        state.terminal.focused.reset();
     }
 
     static void Open(DefaultCompositorState& state, WorkspaceTab tab) {
@@ -65,7 +66,7 @@ struct WorkbenchActions {
             case WorkspaceTab::Start:
                 if (!ui.startTab) {
                     ui.startTab = true;
-                    ui.startTabBaseline = state.flowgraph.items.size();
+                    ui.startTabBaseline = state.workspaceTabs();
                 }
                 ++ui.startTabRequests;
                 break;
@@ -263,7 +264,7 @@ struct WorkbenchActions {
     void settleStartTab() {
         auto& ui = state.interface;
         const bool navigated = ui.tabNavigationPending;
-        const U64 count = state.flowgraph.items.size();
+        const U64 count = state.workspaceTabs();
         if (ui.startTab && (count == 0 || count > ui.startTabBaseline)) {
             Close(state, WorkspaceTab::Start);
         } else if (ui.startTab) {

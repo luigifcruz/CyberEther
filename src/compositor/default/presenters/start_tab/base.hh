@@ -25,7 +25,7 @@ struct StartTabPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         StartTabView::Config config{
             .welcome = welcome.build(),
-            .closable = !context.state.flowgraph.items.empty(),
+            .closable = context.state.workspaceTabs() > 0,
             .onClose = [enqueue]() {
                 enqueue(MailCloseStartTab{});
             },

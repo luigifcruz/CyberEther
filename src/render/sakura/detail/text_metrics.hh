@@ -33,6 +33,14 @@ struct TextMetrics {
         return window && window->hasFont(fontName);
     }
 
+    bool covers(const std::string& fontName, U32 codepoint) const {
+        if (!loaded(fontName)) {
+            return false;
+        }
+        const auto& font = window->font(fontName);
+        return font && font->hasGlyph(static_cast<I32>(codepoint));
+    }
+
     F32 measure(const std::string& fontName, const std::string& value, F32 fontSize);
 
     std::vector<F32> advances(const std::string& fontName, const std::string& value, F32 fontSize) {

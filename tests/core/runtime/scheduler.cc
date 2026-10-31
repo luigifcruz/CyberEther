@@ -9,7 +9,6 @@
 #include <latch>
 #include <memory>
 #include <stdexcept>
-#include <stop_token>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -210,10 +209,6 @@ struct SyntheticModuleBase : Module::Impl,
         }
         if (spec.computeDelay.count() > 0) {
             std::this_thread::sleep_for(spec.computeDelay);
-        }
-
-        if (spec.computeAction) {
-            spec.computeAction();
         }
 
         auto& values = syntheticState().reads[name()].emplace_back();
@@ -428,7 +423,10 @@ TEST_CASE("Scheduler executes CPU modules in topological order",
           "[core][runtime][scheduler]") {
     auto& state = syntheticState();
     state.reset();
-    state.configure("topology_source");
+    std::vector<std::string> submitted;
+    for (const auto& name : {"topology_source", "topology_middle", "topology_sink"}) {
+        state.configure(name).computeAction = [&, name] { submitted.emplace_back(name); };
+    }
     state.configure("topology_middle").inputs = {"in"};
     state.configure("topology_sink").inputs = {"in"};
 
@@ -448,6 +446,7 @@ TEST_CASE("Scheduler executes CPU modules in topological order",
     REQUIRE(failedModules.empty());
     REQUIRE(state.calls("compute") ==
              std::vector<std::string>{"topology_source", "topology_middle", "topology_sink"});
+    REQUIRE(submitted == state.calls("compute"));
 }
 
 TEST_CASE("Scheduler preserves insertion order for independent CPU modules",
@@ -742,9 +741,21 @@ TEST_CASE("Scheduler resume restarts a compute thread polling while paused",
     REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
 
     std::atomic<U64> loops{0};
-    std::jthread computeThread([&](std::stop_token token) {
+    struct ComputeWorker {
+        std::atomic<bool> stopRequested{false};
+        std::thread thread;
+
+        ~ComputeWorker() {
+            stopRequested.store(true);
+            if (thread.joinable()) {
+                thread.join();
+            }
+        }
+    } worker;
+
+    worker.thread = std::thread([&] {
         std::unordered_set<std::string> computeFailures;
-        while (!token.stop_requested()) {
+        while (!worker.stopRequested.load()) {
             (void)fixture.scheduler.compute(computeFailures);
             loops.fetch_add(1);
             if (fixture.scheduler.paused()) {
@@ -766,8 +777,6 @@ TEST_CASE("Scheduler resume restarts a compute thread polling while paused",
 
     REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
     REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
-    computeThread.request_stop();
-    computeThread.join();
 }
 
 TEST_CASE("Scheduler pause cancels source polling before compute submission",

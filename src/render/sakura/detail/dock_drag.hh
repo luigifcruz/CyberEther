@@ -23,6 +23,7 @@ struct DockDrag {
     std::string title;
     std::string icon;
     const void* source = nullptr;
+    const void* content = nullptr;
     std::optional<DockTarget> target;
     std::optional<DockTarget> pending;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
@@ -46,6 +47,7 @@ struct DockDrag {
         title.clear();
         icon.clear();
         source = nullptr;
+        content = nullptr;
         target.reset();
         pending.reset();
     }

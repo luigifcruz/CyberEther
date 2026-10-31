@@ -8,6 +8,7 @@
 #include "compositor/default/actions/flowgraph.hh"
 #include "compositor/default/presenters/flowgraph/pane.hh"
 #include "compositor/default/views/flowgraph/pane.hh"
+#include "compositor/default/views/terminal.hh"
 #include "flowgraph_fixture.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
@@ -106,6 +107,11 @@ struct PaneRig : FlowgraphFixture {
     Sakura::FloatingLayer floating;
     LayerHost host;
     Jetstream::Rect screen = kScreen;
+    TerminalView terminalView;
+    std::optional<TerminalView::Config> terminal;
+    Sakura::Terminal::Screen terminalScreen;
+    U64 terminalCloses = 0;
+    std::vector<bool> terminalSplits;
 
     PaneRig() {
         ctx.render = &window;
@@ -126,7 +132,13 @@ struct PaneRig : FlowgraphFixture {
     }
 
     void update() {
-        pane.update(build());
+        auto config = build();
+        if (terminal.has_value()) {
+            terminalView.update(*terminal);
+            config.terminals.push_back(terminalView.pane());
+            config.adopts = {TerminalView::Group};
+        }
+        pane.update(std::move(config));
         panes.clear();
         pane.appendPanes(panes);
         std::vector<Sakura::FloatingLayer::Window> windows;
@@ -188,6 +200,34 @@ struct PaneRig : FlowgraphFixture {
         CHECK(last<MailOpenDocumentation>()->block == block);
         deliver();
         frame();
+    }
+
+    void showTerminal(std::string title) {
+        terminal = TerminalView::Config{
+            .id = MakeTerminalPaneKey(1),
+            .title = std::move(title),
+            .flowgraph = std::string(kGraph),
+            .terminal = {.id = MakeTerminalPaneKey(1), .screen = &terminalScreen, .revision = 1},
+            .onClose = [this] {
+                ++terminalCloses;
+            },
+            .onSplit = [this](bool stacked) {
+                terminalSplits.push_back(stacked);
+            },
+        };
+    }
+
+    Sakura::Text* headerGlyph(const std::string& glyph) {
+        for (auto* text : Direct<Sakura::Text>(layoutDock())) {
+            if (text->config().str == glyph && text->visible()) {
+                return text;
+            }
+        }
+        return nullptr;
+    }
+
+    std::vector<Sakura::Terminal*> terminals() {
+        return Find<Sakura::Terminal>(layoutDock());
     }
 
     std::vector<Sakura::Markdown*> documentation() {
@@ -746,7 +786,7 @@ TEST_CASE("The editor's bottom right holds the toolbar row and a dependency pill
     std::sort(buttons.begin(), buttons.end(), [](const auto& a, const auto& b) {
         return a.x < b.x;
     });
-    REQUIRE(buttons.size() == 4);
+    REQUIRE(buttons.size() == (TerminalSession::Supported() ? 5u : 4u));
     const F32 top = 38.0f + Sakura::Dock::ContentPadding + FlowgraphEditor::PillMargin;
     const F32 row = 38.0f + 556.0f - Sakura::Dock::ContentPadding - FlowgraphEditor::PillMargin - FlowgraphEditor::PillHeight;
     for (const auto& button : buttons) {
@@ -1043,4 +1083,125 @@ TEST_CASE("The environment button opens a closable Environment tile that is neve
                                 .children = std::vector<TileMeta>{{.pane = "flowgraph"}, {.pane = "environment"}}},
           }) == Result::SUCCESS);
     CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph"});
+}
+
+TEST_CASE("A terminal pane handed to the flowgraph joins its layout dock as a titled tile beside the editor",
+          "[core][sakura][flowgraph][pane][terminal]") {
+    PaneRig rig;
+    rig.screen = kWideScreen;
+    rig.frame();
+    rig.deliver();
+    CHECK(rig.terminals().empty());
+
+    rig.showTerminal("Terminal (zsh)");
+    rig.frame();
+    CHECK(rig.terminalView.flowgraph() == std::optional<std::string>(kGraph));
+    const auto pane = rig.terminalView.pane();
+    CHECK(pane.id == "terminal:1");
+    CHECK(pane.group == TerminalView::Group);
+    CHECK(pane.icon == ICON_LC_SQUARE_TERMINAL);
+    REQUIRE(pane.actions.size() == 2);
+    CHECK(pane.actions[0].icon == ICON_LC_COLUMNS_2);
+    CHECK(pane.actions[1].icon == ICON_LC_ROWS_2);
+
+    const auto terminals = rig.terminals();
+    REQUIRE(terminals.size() == 1);
+    CHECK(pane.content == terminals.front());
+    CHECK(rig.header("Terminal (zsh)"));
+    REQUIRE(rig.tiles().size() == 1);
+    const auto editor = Peek::Frame(*rig.tiles()[0]);
+    const auto terminal = Peek::Frame(*terminals[0]);
+    CHECK(terminal.x > editor.right());
+    CHECK(terminal.y == editor.y - Sakura::Dock::ContentPadding);
+    CHECK(terminal.height == editor.height + 2.0f * Sakura::Dock::ContentPadding);
+
+    rig.deliver();
+    CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph", "terminal:1"});
+
+    auto* beside = rig.headerGlyph(ICON_LC_COLUMNS_2);
+    auto* below = rig.headerGlyph(ICON_LC_ROWS_2);
+    REQUIRE(beside != nullptr);
+    REQUIRE(below != nullptr);
+    const auto besideFrame = Peek::Frame(*beside);
+    const auto belowFrame = Peek::Frame(*below);
+    CHECK(besideFrame.x > terminal.x);
+    CHECK(besideFrame.y == belowFrame.y);
+    CHECK(besideFrame.x != belowFrame.x);
+    CHECK(besideFrame.y < terminal.y);
+    rig.host.click(besideFrame.x + besideFrame.width * 0.5f, besideFrame.y + besideFrame.height * 0.5f);
+    rig.frame();
+    rig.host.click(belowFrame.x + belowFrame.width * 0.5f, belowFrame.y + belowFrame.height * 0.5f);
+    CHECK(rig.terminalSplits == std::vector<bool>{false, true});
+    CHECK(rig.terminalCloses == 0);
+
+    rig.terminal->title = "Terminal (vim)";
+    rig.frame();
+    CHECK(rig.header("Terminal (vim)"));
+    CHECK_FALSE(rig.header("Terminal (zsh)"));
+    CHECK(rig.terminals().size() == 1);
+
+    const auto close = CloseOf({terminal.x, terminal.y - kHeader, terminal.width, terminal.height + kHeader});
+    rig.host.click(close.x, close.y);
+    CHECK(rig.terminalCloses == 1);
+
+    rig.terminal.reset();
+    rig.frame();
+    CHECK(rig.terminals().empty());
+    CHECK_FALSE(rig.header("Terminal (vim)"));
+}
+
+TEST_CASE("A terminal tile settles under identical updates and new screens only repaint",
+          "[core][sakura][flowgraph][pane][terminal][retention]") {
+    PaneRig rig;
+    Frames frames(rig.host, kScreen, rig.ctx);
+    const auto update = [&] {
+        rig.update();
+        rig.deliver();
+    };
+    REQUIRE(Settles(frames, update));
+    rig.showTerminal("Terminal");
+    REQUIRE(Settles(frames, update));
+
+    rig.terminalScreen.columns = 20;
+    rig.terminalScreen.rows = 4;
+    rig.terminalScreen.lines.resize(4);
+    rig.terminalScreen.lines[0].spans = {{.column = 0, .width = 5, .text = "hello"}};
+    rig.terminal->terminal.revision += 1;
+    const U64 restructures = frames.restructures;
+    CHECK(Kept(frames.run(update)));
+    REQUIRE(Settles(frames, update));
+    CHECK(frames.restructures == restructures);
+}
+
+TEST_CASE("A terminal whose screen has a predominant background tints its whole tile",
+          "[core][sakura][flowgraph][pane][terminal]") {
+    constexpr ColorRGBA<F32> kTint = {0.05f, 0.1f, 0.4f, 1.0f};
+    PaneRig rig;
+    rig.screen = kWideScreen;
+    rig.frame();
+    rig.deliver();
+    rig.showTerminal("Terminal");
+    rig.frame();
+    const auto tints = [&] {
+        U64 count = 0;
+        for (const auto* box : Find<Sakura::Box>(rig.layoutDock())) {
+            for (const auto& instance : box->config().instances) {
+                count += instance.visible && instance.backgroundColor == kTint ? 1 : 0;
+            }
+        }
+        return count;
+    };
+    CHECK(tints() == 0);
+
+    rig.terminalScreen.base = {0.0f, 0.0f, 0.0f, 1.0f};
+    rig.terminalScreen.background = rig.terminalScreen.base;
+    rig.terminalScreen.fill = kTint;
+    rig.terminal->terminal.revision += 1;
+    rig.frame();
+    CHECK(tints() == 2);
+
+    rig.terminalScreen.fill = rig.terminalScreen.background;
+    rig.terminal->terminal.revision += 1;
+    rig.frame();
+    CHECK(tints() == 0);
 }

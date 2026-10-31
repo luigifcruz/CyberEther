@@ -36,6 +36,36 @@ inline std::optional<std::pair<std::string, std::string>> ParseSurfaceTileKey(co
     return std::make_pair(rest.substr(0, delimiter), rest.substr(delimiter + 1));
 }
 
+inline std::optional<U64> ParseIndexedKey(const std::string& key, const std::string& prefix) {
+    if (key.rfind(prefix, 0) != 0 || key.size() == prefix.size()) {
+        return std::nullopt;
+    }
+    U64 index = 0;
+    for (const char digit : key.substr(prefix.size())) {
+        if (digit < '0' || digit > '9') {
+            return std::nullopt;
+        }
+        index = index * 10 + static_cast<U64>(digit - '0');
+    }
+    return index;
+}
+
+inline std::string MakeTerminalPaneKey(U64 terminal) {
+    return jst::fmt::format("terminal:{}", terminal);
+}
+
+inline std::optional<U64> ParseTerminalPaneKey(const std::string& key) {
+    return ParseIndexedKey(key, "terminal:");
+}
+
+inline std::string MakeTerminalTabKey(U64 tab) {
+    return jst::fmt::format("terminals:{}", tab);
+}
+
+inline std::optional<U64> ParseTerminalTabKey(const std::string& key) {
+    return ParseIndexedKey(key, "terminals:");
+}
+
 inline std::string MakeConfigTileKey(const std::string& block) {
     return "config:" + block;
 }
@@ -122,7 +152,55 @@ inline bool IsLayoutPane(const std::string& pane) {
 }
 
 inline bool IsTransientPane(const std::string& pane) {
-    return pane == kLayoutDocumentationPane || pane == kLayoutEnvironmentPane || pane == kLayoutDescriptionPane;
+    return pane == kLayoutDocumentationPane || pane == kLayoutEnvironmentPane || pane == kLayoutDescriptionPane ||
+           ParseTerminalPaneKey(pane).has_value() || ParseTerminalTabKey(pane).has_value();
+}
+
+inline TileMeta ReplaceTilePane(const TileMeta& tiles, const std::string& pane, const TileMeta& replacement) {
+    if (IsTileLeaf(tiles)) {
+        if (tiles.pane != pane) {
+            return tiles;
+        }
+        TileMeta replaced = replacement;
+        replaced.weight = tiles.weight;
+        return replaced;
+    }
+    TileMeta copy = tiles;
+    for (auto& child : *copy.children) {
+        child = ReplaceTilePane(child, pane, replacement);
+    }
+    return copy;
+}
+
+inline TileMeta SplitTilePane(const TileMeta& tiles, const std::string& target, const std::string& pane, bool stacked) {
+    return ReplaceTilePane(tiles, target, TileMeta{
+        .split = stacked ? "column" : "row",
+        .children = std::vector<TileMeta>{TileMeta{.pane = target}, TileMeta{.pane = pane}},
+    });
+}
+
+inline TileMeta SplitColumnPane(const TileMeta& tiles, const std::string& target, const std::string& pane,
+                                bool stacked) {
+    if (stacked || !ContainsTilePane(tiles, target)) {
+        return SplitTilePane(tiles, target, pane, true);
+    }
+    if (IsTileLeaf(tiles) || tiles.split == "column") {
+        TileMeta first = tiles;
+        first.weight.reset();
+        return TileMeta{
+            .split = "row",
+            .weight = tiles.weight,
+            .children = std::vector<TileMeta>{std::move(first), TileMeta{.pane = pane}},
+        };
+    }
+    TileMeta row = tiles;
+    for (auto child = row.children->begin(); child != row.children->end(); ++child) {
+        if (ContainsTilePane(*child, target)) {
+            row.children->insert(child + 1, TileMeta{.pane = pane});
+            break;
+        }
+    }
+    return row;
 }
 
 inline TileMeta AppendColumn(const TileMeta& layout, const std::string& pane) {

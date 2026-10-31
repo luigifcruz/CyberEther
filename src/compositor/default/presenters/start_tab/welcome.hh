@@ -5,6 +5,7 @@
 #include "../context.hh"
 
 #include "../../model/messages.hh"
+#include "../../support/terminal.hh"
 #include "../../views/start_tab/welcome.hh"
 
 #include "jetstream/config.hh"
@@ -50,6 +51,10 @@ struct WelcomePresenter {
             .onOpenFlowgraph = [enqueue]() {
                 enqueue(MailOpenFlowgraph{});
             },
+            .onOpenTerminal = TerminalSession::Supported() ? Sakura::Callback<void()>([enqueue]() {
+                enqueue(MailOpenTerminal{});
+            })
+                                                           : Sakura::Callback<void()>(),
             .onOpenSettings = [enqueue]() {
                 enqueue(MailOpenSettings{.section = SettingsSection::General});
             },
