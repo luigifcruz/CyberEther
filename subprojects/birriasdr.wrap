@@ -1,0 +1,9 @@
+[wrap-file]
+directory = BirriaSDR-8ddab14ccc4dde0787bc0db84647dfbb6dca6585
+source_url = https://github.com/luigifcruz/BirriaSDR/archive/8ddab14ccc4dde0787bc0db84647dfbb6dca6585.tar.gz
+source_filename = BirriaSDR-8ddab14ccc4dde0787bc0db84647dfbb6dca6585.tar.gz
+source_hash = 4746b1372326b233f5cb29808c7ede895630c817d3fc17530a07b628875b938e
+patch_directory = birriasdr
+
+[provide]
+birriasdr = birriasdr_dep

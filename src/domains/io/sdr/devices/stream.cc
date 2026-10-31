@@ -80,8 +80,9 @@ Result Stream::update(const Settings& settings) {
     const auto change = [&](const Settings& target) {
         if (target.frequency != previous.frequency) {
             if (!Device::Range::Contains(deviceCapabilities.frequencyRanges, target.frequency)) {
-                JST_ERROR("[SDR] Frequency ({:.3f} MHz) not supported by {}.",
-                          target.frequency / 1e6, deviceInfo.label);
+                JST_ERROR("[SDR] Frequency ({:.3f} MHz) not supported by {}. Use {}.",
+                          target.frequency / 1e6, deviceInfo.label,
+                          Device::Range::Describe(deviceCapabilities.frequencyRanges));
                 return Result::ERROR;
             }
             JST_CHECK(tune(target.frequency));

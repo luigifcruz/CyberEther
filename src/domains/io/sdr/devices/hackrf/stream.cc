@@ -123,8 +123,9 @@ Result HackRfStream::apply(const Settings& settings) {
         return Result::ERROR;
     }
     if (!Device::Range::Contains(deviceCapabilities.frequencyRanges, settings.frequency)) {
-        JST_ERROR("[SDR_HACKRF] Frequency ({:.3f} MHz) not supported.",
-                  settings.frequency / 1e6);
+        JST_ERROR("[SDR_HACKRF] Frequency ({:.3f} MHz) not supported. Use {}.",
+                  settings.frequency / 1e6,
+                  Device::Range::Describe(deviceCapabilities.frequencyRanges));
         return Result::ERROR;
     }
     if (!settings.antenna.empty()) {

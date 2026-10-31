@@ -101,6 +101,7 @@ struct LegalSettingsPanel {
                    "- LimeSuite - Apache License 2.0\n"
                    "- libbladeRF - LGPL-2.1-or-later License\n"
                    "- Analog Devices no-OS - Analog Devices BSD-style License\n"
+                   "- BirriaSDR - MIT and BSD-3-Clause-Clear License\n"
                    "- libmodes - BSD-2-Clause License\n"
                    "- tree-sitter - MIT License\n"
                    "- tree-sitter-python - MIT License\n"

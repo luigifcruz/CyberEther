@@ -231,8 +231,9 @@ Result PlanRetune(const Request& request, const Capabilities& caps, SweepPlan& p
         hop.frequency = std::round(plan.startFrequency + (static_cast<F64>(grid) + 0.5) * binWidth);
         if (!Range::Contains(caps.frequencyRanges, hop.frequency)) {
             if (!quiet) {
-                JST_ERROR("[MODULE_SDR_SWEEP] Hop at {:.3f} MHz is outside the tunable range.",
-                          hop.frequency / 1e6);
+                JST_ERROR("[MODULE_SDR_SWEEP] Hop at {:.3f} MHz is outside the tunable range. "
+                          "Use {}.", hop.frequency / 1e6,
+                          Range::Describe(caps.frequencyRanges));
             }
             return Result::ERROR;
         }

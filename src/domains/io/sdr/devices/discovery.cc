@@ -23,6 +23,9 @@
 #ifdef JETSTREAM_LOADER_PLUTOSDR_AVAILABLE
 #include "plutosdr/base.hh"
 #endif
+#ifdef JETSTREAM_LOADER_BIRRIASDR_AVAILABLE
+#include "birriasdr/base.hh"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -106,6 +109,9 @@ std::vector<Device::Driver> BuiltinDrivers() {
 #endif
 #ifdef JETSTREAM_LOADER_PLUTOSDR_AVAILABLE
     drivers.push_back({"plutosdr", &PlutoSdr::Enumerate, &PlutoSdr::Stream, &PlutoSdr::Sweep});
+#endif
+#ifdef JETSTREAM_LOADER_BIRRIASDR_AVAILABLE
+    drivers.push_back({"birriasdr", &BirriaSdr::Enumerate, &BirriaSdr::Stream, &BirriaSdr::Sweep});
 #endif
     return drivers;
 }

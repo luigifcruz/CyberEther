@@ -16,6 +16,7 @@ imgui.ini
 *.zip
 subprojects/*
 !subprojects/packagefiles
+!subprojects/birriasdr.wrap
 !subprojects/bladerf-no-os.wrap
 !subprojects/catch2.wrap
 !subprojects/cpp-httplib.wrap

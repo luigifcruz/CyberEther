@@ -32,6 +32,7 @@ struct JETSTREAM_API Device {
         F64 maximum = 0.0;
 
         static bool Contains(const std::vector<Range>& ranges, F64 value);
+        static std::string Describe(const std::vector<Range>& ranges);
     };
 
     struct JETSTREAM_API Info {
@@ -86,6 +87,7 @@ struct JETSTREAM_API Device {
         std::vector<std::string> antennas;
         bool automaticGain = false;
         bool biasTee = false;
+        std::string gainUnit = "dB";
         F64 sweepSampleRate = 0.0;
         F64 usableBandwidth = 0.75;
         F64 dcExclusion = 0.0;
