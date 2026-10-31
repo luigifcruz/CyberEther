@@ -1487,7 +1487,13 @@ struct GraphRoot : public Component {
         const F32 spacing = kGridSpacing;
         const F32 width = viewport.width / ratio;
         const F32 height = viewport.height / ratio;
-        const F32 offset = 0.5f / scaling;
+        const Extent2D<F32> origin = {viewport.x + panOffset().x, viewport.y + panOffset().y};
+        const F32 pixels = std::max(1.0f, std::round(ratio / scaling));
+        const F32 center = std::fmod(pixels, 2.0f) * 0.5f;
+        const F32 thickness = pixels / ratio;
+        const auto snap = [&](F32 grid, F32 base) {
+            return (std::round(base + grid * ratio) + center - base) / ratio;
+        };
         const auto color = ctx.color("grid_line");
         const F32 firstX = (std::floor(-pan.x / spacing) - 1.0f) * spacing;
         const F32 lastX = (std::ceil((width - pan.x) / spacing) + 1.0f) * spacing;
@@ -1495,23 +1501,25 @@ struct GraphRoot : public Component {
         const F32 lastY = (std::ceil((height - pan.y) / spacing) + 1.0f) * spacing;
         std::vector<Polyline::Instance> lines;
         for (F32 x = firstX; x <= lastX; x += spacing) {
+            const F32 at = snap(x, origin.x);
             lines.push_back({
-                .points = {{x + offset, firstY + offset}, {x + offset, lastY + offset}},
+                .points = {{at, firstY}, {at, lastY}},
                 .color = color,
-                .thickness = 1.0f / scaling,
+                .thickness = thickness,
             });
         }
         for (F32 y = firstY; y <= lastY; y += spacing) {
+            const F32 at = snap(y, origin.y);
             lines.push_back({
-                .points = {{firstX + offset, y + offset}, {lastX + offset, y + offset}},
+                .points = {{firstX, at}, {lastX, at}},
                 .color = color,
-                .thickness = 1.0f / scaling,
+                .thickness = thickness,
             });
         }
         grid.update({
             .instances = std::move(lines),
             .clip = viewport,
-            .origin = {viewport.x + panOffset().x, viewport.y + panOffset().y},
+            .origin = origin,
             .scale = ratio,
             .fringe = fringe,
             .capacity = kGridCapacity,
@@ -2067,7 +2075,7 @@ void NodeEditor::layout(const Context& ctx) {
     impl->border.update({
         .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
         .cornerRadius = radius,
-        .borderWidth = ctx.pixelRatio,
+        .borderWidth = Hairline(ctx),
         .borderColor = ctx.color("border"),
         .strokeFringe = true,
     });

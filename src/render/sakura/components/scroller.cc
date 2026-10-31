@@ -4,6 +4,7 @@
 
 #include "../context.hh"
 #include "../detail/helpers.hh"
+#include "../detail/wheel_motion.hh"
 #include "../metrics.hh"
 
 #include <algorithm>
@@ -166,6 +167,9 @@ struct Scroller::Impl {
     Extent2D<F32> speed = {0.0f, 0.0f};
     Extent2D<F32> travel = {0.0f, 0.0f};
     F64 sampledAt = -1.0;
+    WheelMotion wheelX;
+    WheelMotion wheelY;
+    F64 wheelSteppedAt = -1.0;
 
     void sample(Extent2D<F32> delta) {
         if (steppedAt != sampledAt) {
@@ -388,6 +392,10 @@ struct Scroller::Impl {
             elasticY.restart = false;
             const F64 elapsed = steppedAt < 0.0 || restart ? 0.0 : time - steppedAt;
             const F32 dt = static_cast<F32>(std::clamp(elapsed, 0.0, kMaxStep));
+            const F64 wheelElapsed = wheelSteppedAt < 0.0 ? 0.0 : time - wheelSteppedAt;
+            (void)setScrollX(self, wheelX.advance(scrollX, wheelElapsed, maxScrollX()));
+            (void)setScrollY(self, wheelY.advance(scrollY, wheelElapsed, maxScrollY()));
+            wheelSteppedAt = wheelX.active() || wheelY.active() ? time : -1.0;
             steppedAt = time;
             if (touching() && time - lastGesture > kGestureTimeout) {
                 release();
@@ -403,6 +411,9 @@ struct Scroller::Impl {
     }
 
     void schedule(Scroller& self) const {
+        if (wheelX.active() || wheelY.active()) {
+            self.requestFrame();
+        }
         if (elasticX.springing() || elasticY.springing()) {
             self.requestFrame();
             if (config.onOverscroll) {
@@ -433,8 +444,13 @@ void Scroller::update(Config config) {
     if (identity) {
         reset();
     }
-    if (impl->config.scrollY != impl->targetY || impl->config.scrollX != impl->targetX) {
+    if (impl->config.scrollY != impl->targetY) {
+        impl->wheelY.cancel();
         impl->targetY = impl->config.scrollY;
+        invalidate(Dirty::Layout);
+    }
+    if (impl->config.scrollX != impl->targetX) {
+        impl->wheelX.cancel();
         impl->targetX = impl->config.scrollX;
         invalidate(Dirty::Layout);
     }
@@ -442,6 +458,8 @@ void Scroller::update(Config config) {
 
 void Scroller::reset() {
     auto& s = *impl;
+    s.wheelX.cancel();
+    s.wheelY.cancel();
     s.elasticX = {};
     s.elasticY = {};
     s.speed = {0.0f, 0.0f};
@@ -507,6 +525,11 @@ bool Scroller::wheel(const MouseEvent& event) {
     const bool scrollsY = s.maxScrollY() > 0.0f;
     const bool held = s.touching();
 
+    if (!event.smooth) {
+        s.wheelX.cancel();
+        s.wheelY.cancel();
+    }
+
     switch (event.phase) {
         case ScrollPhase::Began:
             s.grab();
@@ -548,6 +571,26 @@ bool Scroller::wheel(const MouseEvent& event) {
     const bool coasting = event.phase == ScrollPhase::Momentum;
     const Extent2D<F32> before = {s.elasticX.offset, s.elasticY.offset};
     const Extent2D<F32> delta = {-dx * unit, -dy * unit};
+    if (event.smooth && !sampled) {
+        const bool consumedX = dx != 0.0f && scrollsX;
+        const bool consumedY = dy != 0.0f && scrollsY;
+        if (!s.wheelX.active() && !s.wheelY.active()) {
+            s.wheelSteppedAt = -1.0;
+        }
+        if (consumedX) {
+            s.settle(*this, s.elasticX);
+            s.wheelX.add(s.scrollX, delta.x, s.maxScrollX());
+        }
+        if (consumedY) {
+            s.settle(*this, s.elasticY);
+            s.wheelY.add(s.scrollY, delta.y, s.maxScrollY());
+        }
+        if (consumedX || consumedY) {
+            invalidate(Dirty::Layout);
+            s.schedule(*this);
+        }
+        return consumedX || consumedY;
+    }
     if (sampled) {
         s.sample(delta);
     }
@@ -590,6 +633,8 @@ bool Scroller::mouseEvent(const MouseEvent& event) {
             if (event.button != MouseButton::Left) {
                 return false;
             }
+            impl->wheelX.cancel();
+            impl->wheelY.cancel();
             if (impl->verticalVisible()) {
                 const auto thumb = impl->verticalThumbRect();
                 if (thumb.contains(event.position.x, event.position.y)) {
@@ -636,6 +681,8 @@ bool Scroller::mouseEvent(const MouseEvent& event) {
             return false;
         }
         case MouseEventType::Cancel: {
+            impl->wheelX.cancel();
+            impl->wheelY.cancel();
             impl->dragAxis = Impl::DragAxis::None;
             return false;
         }

@@ -77,6 +77,7 @@ struct TitlebarView {
     struct Config {
         F32 leadingInset = 0.0f;
         F32 height = 0.0f;
+        F32 trailingInset = 0.0f;
         bool remoteStarted = false;
         bool updateAvailable = false;
         bool updateReady = false;
@@ -315,7 +316,7 @@ struct TitlebarView {
     }
 
     F32 trailingInset() const {
-        return TrailingInset;
+        return std::max(config.trailingInset, TrailingInset);
     }
 
  private:

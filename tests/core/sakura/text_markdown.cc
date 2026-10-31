@@ -128,6 +128,76 @@ TEST_CASE("Markdown measurements scale with the font size", "[core][sakura][mark
     CHECK(doubled.x == Catch::Approx(2.0f * base.x));
 }
 
+TEST_CASE("Repeated Markdown layouts refresh presentation settings without changing text",
+          "[core][sakura][markdown][grid-config]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    ctx.palette = DistinctPalette();
+    TextMarkdown markdown;
+    Host host(markdown);
+    TextMarkdown::Config config{.id = "cached-presentation", .value = "Plain **bold** text.", .fontSize = 15.0f};
+    markdown.update(config);
+    for (int i = 0; i < 4; ++i) {
+        host.place(ctx, {0.0f, static_cast<F32>(-i), 300.0f, 120.0f});
+    }
+    config.textColorKey = "text_secondary";
+    config.styleColorKeys[0] = "button_hovered";
+    config.padding = Sakura::Padding{24.0f, 4.0f, 12.0f, 4.0f};
+    markdown.update(config);
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 120.0f});
+    bool plain = false;
+    bool bold = false;
+    for (const auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            if (!instance.visible) {
+                continue;
+            }
+            if (instance.str.starts_with("Plain")) {
+                plain = true;
+                CHECK(instance.color == ctx.color("text_secondary"));
+                CHECK(instance.rect.x == Catch::Approx(24.0f));
+            }
+            if (instance.str == "bold") {
+                bold = true;
+                CHECK(instance.color == ctx.color("button_hovered"));
+            }
+        }
+    }
+    CHECK(plain);
+    CHECK(bold);
+}
+
+TEST_CASE("Markdown refreshes cached layout when fonts arrive and the width changes",
+          "[core][sakura][markdown][grid-config]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    TextMarkdown markdown;
+    Host host(markdown);
+    const TextMarkdown::Config config{.id = "late-fonts", .value =
+        "| Column one | Column two |\n|---|---|\n| **Several words of bold text** | A wrapping table cell |\n\n"
+        "```stats\nOne | 123\nTwo | 456\n```\n\n- An indented line with additional words that wrap.", .fontSize = 15.0f};
+    markdown.update(config);
+    (void)MeasureAt(host, ctx, 240.0f);
+    host.place(ctx, {0.0f, 0.0f, 240.0f, 500.0f});
+    window.load(Sakura::Typography::BodyFont, inter_regular_compressed_data);
+    window.load(Sakura::Typography::BodyBoldFont, inter_bold_compressed_data);
+    for (const F32 width : {240.0f, 480.0f, 180.0f, 240.0f}) {
+        TextMarkdown fresh;
+        Host freshHost(fresh);
+        fresh.update(config);
+        const auto measured = MeasureAt(host, ctx, width);
+        const auto expected = MeasureAt(freshHost, ctx, width);
+        CHECK(measured.x == Catch::Approx(expected.x));
+        CHECK(measured.y == Catch::Approx(expected.y));
+        host.place(ctx, {0.0f, 0.0f, width, 500.0f});
+        freshHost.place(ctx, {0.0f, 0.0f, width, 500.0f});
+        CHECK(markdown.metrics().contentWidth == Catch::Approx(fresh.metrics().contentWidth));
+        CHECK(markdown.metrics().contentHeight == Catch::Approx(fresh.metrics().contentHeight));
+    }
+}
+
 TEST_CASE("Consecutive code blocks keep their backgrounds apart", "[core][sakura][markdown]") {
     const auto ctx = MakeContext();
     TextMarkdown singleMarkdown;

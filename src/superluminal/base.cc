@@ -1757,13 +1757,17 @@ Result Superluminal::markdown(const std::string& content) {
 }
 
 void Superluminal::Impl::createView() {
-    palette = Sakura::Themes.at(Sakura::ResolveThemeKey({}));
+    const auto themeKey = Sakura::ResolveThemeKey({});
+    palette = Sakura::Themes.at(themeKey);
     render.reset();
     instance->renderGet(render);
     instance->viewportGet(viewport);
     if (viewport && !previousIntegratedTitlebar.has_value()) {
         previousIntegratedTitlebar = viewport->integratedTitlebar();
         viewport->setIntegratedTitlebar(true);
+    }
+    if (render) {
+        render->setDarkAppearance(themeKey != "Light");
     }
     view = std::make_unique<SuperluminalView>();
     root = std::make_unique<Sakura::Root>();

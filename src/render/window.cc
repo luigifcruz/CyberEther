@@ -1298,6 +1298,7 @@ TitlebarChrome Window::titlebarChrome() const {
         chrome.leadingInset /= scale;
         chrome.height /= scale;
         chrome.controlsCenter /= scale;
+        chrome.trailingInset /= scale;
     }
     return chrome;
 }

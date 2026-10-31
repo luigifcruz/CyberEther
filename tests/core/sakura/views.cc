@@ -739,6 +739,20 @@ TEST_CASE("Title row places the wordmark after the inset, the pills after it, an
     CHECK(rig.b.laidFrame.y == 32.0f);
 }
 
+TEST_CASE("Titlebar trailing inset preserves padding and native window controls",
+          "[core][sakura][views]") {
+    TitleRig rig;
+    CHECK(rig.shell.bar().trailingInset() == TitlebarView::TrailingInset);
+
+    rig.config.trailingInset = 138.0f;
+    rig.update();
+    CHECK(rig.shell.bar().trailingInset() == 138.0f);
+
+    rig.config.trailingInset = 0.0f;
+    rig.update();
+    CHECK(rig.shell.bar().trailingInset() == TitlebarView::TrailingInset);
+}
+
 TEST_CASE("Clicking a pill activates its flowgraph and empty title row space reports presses",
           "[core][sakura][views]") {
     TitleRig rig;
