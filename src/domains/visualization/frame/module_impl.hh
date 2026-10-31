@@ -113,7 +113,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     Result capture();
     Result present();
     Result applyTheme();
-    std::pair<F32, F32> displayRange() const;
+    JETSTREAM_API std::pair<F32, F32> displayRange() const;
 
     void processInputEvents(const std::vector<InputEvent>& events);
     void clampViewCenter();
