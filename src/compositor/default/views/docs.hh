@@ -33,7 +33,6 @@ struct DocsView {
 #endif
     static constexpr F32 FooterPadding = Sakura::Spacing::Large;
     static constexpr F32 FooterCardPadding = Sakura::Spacing::Medium;
-    static constexpr const char* TileId = "docs-tile";
 
     struct Config {
         const Docs* docs = nullptr;
@@ -61,14 +60,9 @@ struct DocsView {
         updateFooter();
         updateArticle(docs);
 
-        body.update({
-            .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 0.0f,
-            .centerCross = false,
-            .items = {
-                {.child = &sidebar, .size = SidebarTiles::SidebarWidth},
-                {.child = &markdown, .grow = 1.0f, .shrink = 1.0f},
-            },
+        tile.update({
+            .sidebar = &sidebar,
+            .page = &markdown,
         });
         keys.update({
             .bindings = {
@@ -78,31 +72,12 @@ struct DocsView {
                     .onPressed = [this]() { search(); },
                 },
             },
-            .content = &body,
-        });
-        tile.update({
-            .panes = {
-                {
-                    .id = TileId,
-                    .group = TileId,
-                    .content = &keys,
-                    .closable = false,
-                    .maximizable = false,
-                },
-            },
-            .tiles = Sakura::DockTiles{
-                .weights = {0.0f},
-                .children = {{.pane = TileId}},
-            },
-            .columns = true,
-            .flexPane = TileId,
-            .headers = false,
-            .resizable = false,
+            .content = &tile,
         });
     }
 
     Sakura::Component& component() {
-        return tile;
+        return keys;
     }
 
     Sakura::Dock::Pane pane() {
@@ -111,7 +86,7 @@ struct DocsView {
             .title = "Documentation",
             .group = "main",
             .icon = ICON_LC_BOOK_OPEN,
-            .content = &tile,
+            .content = &keys,
             .onClose = config.onClose,
             .onFocus = config.onFocus,
         };
@@ -323,9 +298,8 @@ struct DocsView {
 
     Sakura::Markdown markdown;
 
-    Sakura::Stack body;
     Sakura::Shortcuts keys;
-    Sakura::Dock tile;
+    SidebarTiles tile;
 };
 
 }  // namespace Jetstream
