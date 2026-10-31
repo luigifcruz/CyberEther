@@ -174,6 +174,7 @@ struct DefaultCompositorState {
         U64 startTabBaseline = 0;
         U64 startTabRequests = 0;
         WelcomeSection welcomeSection = WelcomeSection::All;
+        bool welcomeSidebarOpen = true;
         std::string welcomeQuery;
         std::string welcomeCategory;
         U64 welcomePage = 0;

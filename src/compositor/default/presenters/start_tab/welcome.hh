@@ -60,6 +60,7 @@ struct WelcomePresenter {
             .onToggleTheme = [enqueue, dark = context.state.sakura.dark()]() {
                 enqueue(MailApplyTheme{dark ? "Light" : "Dark"});
             },
+            .sidebarOpen = context.state.interface.welcomeSidebarOpen,
 
             .favorites = entries(context.state.interface.favoriteFlowgraphs),
             .recent = entries(context.state.interface.recentFlowgraphs),

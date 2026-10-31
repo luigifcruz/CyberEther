@@ -4371,3 +4371,669 @@ TEST_CASE("Hiding an aside leaves it alone when it moves to another parent while
     REQUIRE(std::find(adopted.begin(), adopted.end(), &aside) != adopted.end());
     CHECK(aside.visible());
 }
+
+TEST_CASE("Dock columns ease a hidden pane out and back while its content keeps its width",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe side;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("side", &side);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {300.0f, 0.0f}, .children = {{.pane = "side"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+            .resizable = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE(side.visible());
+    const Rect open = side.laidFrame;
+    const Rect wide = page.laidFrame;
+    CHECK(open.width == 300.0f);
+
+    hidden = true;
+    place(1.0);
+    place(1.125);
+    CHECK(side.visible());
+    CHECK(side.laidFrame.width == open.width);
+    CHECK(side.laidFrame.x < open.x);
+    CHECK(page.laidFrame.x < wide.x);
+    CHECK(page.laidFrame.width > wide.width);
+
+    place(1.5);
+    CHECK_FALSE(side.visible());
+    CHECK(page.laidFrame.x < open.x + open.width);
+    CHECK(page.laidFrame.width == Catch::Approx(wide.right() - page.laidFrame.x));
+
+    hidden = false;
+    place(2.0);
+    place(2.5);
+    CHECK(side.visible());
+    CHECK(side.laidFrame == open);
+    CHECK(page.laidFrame == wide);
+}
+
+TEST_CASE("Dock leading reach stretches the leading slot to an edge and eases it back",
+          "[core][sakura][dock]") {
+    auto ctx = MakeContext();
+    Probe a;
+    Probe leading({40.0f, 20.0f});
+    Dock dock;
+    Host host(dock);
+    F32 reach = 0.0f;
+    const auto place = [&](F64 time) {
+        dock.update({.tabs = true, .hideTabs = true, .panes = {MakePane("a", &a)}, .leading = &leading,
+                     .leadingInset = 70.0f, .leadingReach = reach});
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    CHECK(leading.laidFrame.width == 40.0f);
+
+    reach = 336.0f;
+    place(1.0);
+    place(1.125);
+    CHECK(leading.laidFrame.width > 40.0f);
+    CHECK(leading.laidFrame.right() < 336.0f);
+    place(1.5);
+    CHECK(leading.laidFrame.right() == 336.0f);
+
+    reach = 0.0f;
+    place(2.0);
+    place(2.5);
+    CHECK(leading.laidFrame.width == 40.0f);
+}
+
+TEST_CASE("Dock hidden panes settle once their slide ends", "[core][sakura][dock][retention]") {
+    Probe side;
+    Probe page;
+    Dock dock;
+    Place place(dock, kScreen);
+    Frames frames(place, kScreen, MakeContext());
+    bool hidden = false;
+    const auto update = [&] {
+        auto pane = MakePane("side", &side);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {300.0f, 0.0f}, .children = {{.pane = "side"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+            .resizable = false,
+        });
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    hidden = true;
+    for (U64 frame = 0; frame < 30; ++frame) {
+        frames.ctx.time += 1.0 / 60.0;
+        frames.run(update);
+    }
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK_FALSE(side.visible());
+}
+
+TEST_CASE("Dock bar presses reach the window through the unused part of the leading slot",
+          "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe leading({40.0f, 20.0f});
+    Dock dock;
+    Host host(dock);
+    std::vector<U8> presses;
+    dock.update({.tabs = true, .hideTabs = true, .panes = {MakePane("a", &a)}, .leading = &leading,
+                 .leadingInset = 70.0f, .leadingReach = 336.0f,
+                 .onBarPress = [&](U8 clicks) { presses.push_back(clicks); }});
+    host.place(ctx, kScreen);
+    REQUIRE(leading.laidFrame.right() == 336.0f);
+    const F32 y = leading.laidFrame.y + leading.laidFrame.height * 0.5f;
+
+    host.click(leading.laidFrame.x + 10.0f, y);
+    CHECK(presses.empty());
+
+    leading.consume = false;
+    host.click(leading.laidFrame.x + 10.0f, y);
+    CHECK(presses == std::vector<U8>{1});
+}
+
+TEST_CASE("Dock leading reach snaps without easing when tabs appear or disappear", "[core][sakura][dock]") {
+    auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Probe leading({40.0f, 20.0f});
+    Dock dock;
+    Host host(dock);
+    bool hideTabs = true;
+    const auto place = [&](F64 time) {
+        dock.update({.tabs = true, .hideTabs = hideTabs, .panes = {MakePane("a", &a), MakePane("b", &b)},
+                     .leading = &leading, .leadingInset = 70.0f, .leadingReach = 336.0f});
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE(leading.laidFrame.right() == 336.0f);
+
+    hideTabs = false;
+    place(1.0);
+    CHECK(leading.laidFrame.width == 40.0f);
+
+    hideTabs = true;
+    place(2.0);
+    CHECK(leading.laidFrame.right() == 336.0f);
+}
+
+TEST_CASE("Dock leading reach stops short of the right side controls in narrow bars", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe leading({40.0f, 20.0f});
+    Probe end({60.0f, 20.0f});
+    Dock dock;
+    Host host(dock);
+    dock.update({.tabs = true, .hideTabs = true, .panes = {MakePane("a", &a)}, .leading = &leading, .end = &end,
+                 .leadingInset = 70.0f, .leadingReach = 336.0f});
+    host.place(ctx, {0.0f, 0.0f, 348.0f, 300.0f});
+
+    CHECK(leading.laidFrame.width >= 40.0f);
+    CHECK(leading.laidFrame.right() < end.laidFrame.x);
+}
+
+TEST_CASE("Dock hides a pane inside a stacked column and gives its height to the rest",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe top;
+    Probe bottom;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("bottom", &bottom);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("top", &top), pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {300.0f, 0.0f},
+                               .children = {{.vertical = true, .children = {{.pane = "top"}, {.pane = "bottom"}}},
+                                            {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+            .resizable = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE(bottom.visible());
+    const F32 split = top.laidFrame.height;
+    const F32 column = bottom.laidFrame.bottom() - top.laidFrame.y;
+
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    CHECK_FALSE(bottom.visible());
+    CHECK(top.visible());
+    CHECK(top.laidFrame.height > split);
+    CHECK(top.laidFrame.height == Catch::Approx(column));
+    CHECK(page.visible());
+}
+
+TEST_CASE("Dock hidden columns hand their space to visible columns and keep one divider between them",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe page;
+    CursorDock dock;
+    Host host(dock);
+    std::string hiddenPane;
+    const auto place = [&](F64 time) {
+        std::vector<Dock::Pane> panes = {MakePane("left", &left), MakePane("middle", &middle),
+                                         MakePane("page", &page)};
+        for (auto& pane : panes) {
+            pane.hidden = pane.id == hiddenPane;
+        }
+        dock.update({
+            .panes = std::move(panes),
+            .tiles = DockTiles{.weights = {250.0f, 250.0f, 0.0f},
+                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    const F32 gap = middle.laidFrame.x - left.laidFrame.right();
+    REQUIRE(gap > 0.0f);
+
+    hiddenPane = "middle";
+    place(1.0);
+    place(1.5);
+    CHECK_FALSE(middle.visible());
+    CHECK(page.laidFrame.x - left.laidFrame.right() == gap);
+    CHECK(dock.cursorAt({left.laidFrame.right() + gap * 0.5f, 300.0f}) == SurfaceCursor::ResizeEW);
+
+    hiddenPane = "page";
+    place(2.0);
+    place(2.5);
+    CHECK_FALSE(page.visible());
+    CHECK(middle.visible());
+    CHECK(middle.laidFrame.right() == Catch::Approx(kScreen.right() - gap));
+}
+
+TEST_CASE("Dock stacked columns keep a divider between the rows around a hidden row",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe top;
+    Probe middle;
+    Probe bottom;
+    Probe page;
+    CursorDock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("top", &top), pane, MakePane("bottom", &bottom), MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {300.0f, 0.0f},
+                               .children = {{.vertical = true,
+                                             .children = {{.pane = "top"}, {.pane = "middle"}, {.pane = "bottom"}}},
+                                            {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(middle.visible());
+    const F32 seam = (top.laidFrame.bottom() + bottom.laidFrame.y) * 0.5f;
+    CHECK(dock.cursorAt({top.laidFrame.x + top.laidFrame.width * 0.5f, seam}) == SurfaceCursor::ResizeNS);
+}
+
+TEST_CASE("Dock column resizes keep the stored width of hidden columns",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe right;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    std::optional<DockTiles> tiles = DockTiles{.weights = {250.0f, 250.0f, 250.0f},
+                                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "right"}}};
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("right", &right)},
+            .tiles = tiles,
+            .onTiles = [&](std::optional<DockTiles> next) { tiles = std::move(next); },
+            .columns = true,
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    const Rect open = middle.laidFrame;
+    const F32 leftWidth = left.laidFrame.width;
+
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(middle.visible());
+    const F32 seam = (left.laidFrame.right() + right.laidFrame.x) * 0.5f;
+    host.send(Mouse(MouseEventType::Click, seam, 300.0f));
+    host.send(Mouse(MouseEventType::Move, seam + 8.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Release, seam + 8.0f, 300.0f));
+    place(1.6);
+    CHECK(left.laidFrame.width > leftWidth);
+
+    hidden = false;
+    place(2.0);
+    place(2.5);
+    CHECK(middle.visible());
+    CHECK(middle.laidFrame.width <= open.width);
+}
+
+TEST_CASE("Dock hidden flex columns give their space to open columns, not to minimized strips",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe page;
+    Probe notes;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto flex = MakePane("page", &page);
+        flex.hidden = hidden;
+        auto strip = MakePane("notes", &notes);
+        strip.startMinimized = true;
+        dock.update({
+            .panes = {MakePane("left", &left), flex, strip},
+            .tiles = DockTiles{.weights = {250.0f, 0.0f, 250.0f},
+                               .children = {{.pane = "left"}, {.pane = "page"}, {.pane = "notes"}}},
+            .columns = true,
+            .flexPane = "page",
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE_FALSE(notes.visible());
+    const auto strip = Spine(dock, "notes");
+    REQUIRE(strip.has_value());
+    const F32 stripWidth = strip->rect.width;
+
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(page.visible());
+    const auto after = Spine(dock, "notes");
+    REQUIRE(after.has_value());
+    CHECK(after->rect.width == Catch::Approx(stripWidth).margin(1.0f));
+    CHECK(left.laidFrame.width > 250.0f);
+}
+
+TEST_CASE("Dock column layouts leave a maximized pane once it is hidden", "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {250.0f, 250.0f, 0.0f},
+                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+    place(0.0);
+    const Rect body = middle.laidFrame;
+    const auto maximize = MaximizeOf({body.x, body.y - kHeader, body.width, body.height + kHeader});
+    host.click(maximize.x, maximize.y);
+    place(0.1);
+    REQUIRE_FALSE(left.visible());
+    REQUIRE(middle.visible());
+
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    CHECK_FALSE(middle.visible());
+    CHECK(left.visible());
+    CHECK(page.visible());
+
+    const Rect card = {left.laidFrame.x, left.laidFrame.y - kHeader, left.laidFrame.width,
+                       left.laidFrame.height + kHeader};
+    const auto minimize = MinimizeOf(card);
+    host.click(minimize.x, minimize.y);
+    place(1.6);
+    CHECK_FALSE(left.visible());
+}
+
+TEST_CASE("Dock dividers next to a column that took hidden space use its visible width for drag limits",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    std::optional<DockTiles> tiles = DockTiles{.weights = {250.0f, 250.0f, 0.0f},
+                                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "page"}}};
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("page", &page)},
+            .tiles = tiles,
+            .onTiles = [&](std::optional<DockTiles> next) { tiles = std::move(next); },
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(middle.visible());
+    const F32 before = left.laidFrame.width;
+    const F32 seam = (left.laidFrame.right() + page.laidFrame.x) * 0.5f;
+    host.send(Mouse(MouseEventType::Click, seam, 300.0f));
+    host.send(Mouse(MouseEventType::Move, seam + 100.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Release, seam + 100.0f, 300.0f));
+    place(1.6);
+    CHECK(left.laidFrame.width == Catch::Approx(before + 100.0f).margin(1.0f));
+}
+
+TEST_CASE("Dock equalizing columns around a hidden column keeps them equal once it returns",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe right;
+    Dock dock;
+    Host host(dock);
+    std::optional<DockTiles> tiles = DockTiles{.weights = {300.0f, 250.0f, 250.0f},
+                                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "right"}}};
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("right", &right)},
+            .tiles = tiles,
+            .onTiles = [&](std::optional<DockTiles> next) { tiles = std::move(next); },
+            .columns = true,
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE(left.laidFrame.width > right.laidFrame.width + 20.0f);
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(middle.visible());
+    const F32 seam = (left.laidFrame.right() + right.laidFrame.x) * 0.5f;
+    host.send(Mouse(MouseEventType::Click, seam, 300.0f, MouseButton::Left, 2));
+    host.send(Mouse(MouseEventType::Release, seam, 300.0f));
+    place(1.6);
+
+    hidden = false;
+    place(2.0);
+    place(2.5);
+    REQUIRE(middle.visible());
+    CHECK(left.laidFrame.width == Catch::Approx(right.laidFrame.width).margin(1.0f));
+}
+
+TEST_CASE("Dock columns animate out from their fitted width in narrow docks", "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe side;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const Rect narrow = {0.0f, 0.0f, 600.0f, 400.0f};
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("side", &side);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {330.0f, 0.0f}, .children = {{.pane = "side"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+            .resizable = false,
+        });
+        ctx.time = time;
+        host.place(ctx, narrow);
+    };
+
+    place(0.0);
+    const F32 fitted = side.laidFrame.width;
+    const F32 pageWidth = page.laidFrame.width;
+    REQUIRE(fitted < 330.0f);
+
+    hidden = true;
+    place(1.0);
+    place(1.02);
+    CHECK(side.laidFrame.width == Catch::Approx(fitted).margin(1.0f));
+    CHECK(page.laidFrame.width >= pageWidth);
+}
+
+TEST_CASE("Dock keeps one visible pane open when the others are minimized or hidden",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = true;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {250.0f, 250.0f, 0.0f},
+                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+    place(0.0);
+    REQUIRE_FALSE(middle.visible());
+
+    const auto card = [](const Rect& body) {
+        return Rect{body.x, body.y - kHeader, body.width, body.height + kHeader};
+    };
+    const auto minimizeLeft = MinimizeOf(card(left.laidFrame));
+    host.click(minimizeLeft.x, minimizeLeft.y);
+    place(0.1);
+    REQUIRE_FALSE(left.visible());
+    REQUIRE(page.visible());
+
+    const auto minimizePage = MinimizeOf(card(page.laidFrame));
+    host.click(minimizePage.x, minimizePage.y);
+    place(0.2);
+    CHECK(page.visible());
+}
+
+TEST_CASE("Dock collapses a column to a strip when its other panes are hidden", "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe notes;
+    Probe extra;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    const auto place = [&](F64 time) {
+        auto strip = MakePane("notes", &notes);
+        strip.startMinimized = true;
+        auto gone = MakePane("extra", &extra);
+        gone.hidden = true;
+        dock.update({
+            .panes = {strip, gone, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {250.0f, 0.0f},
+                               .children = {{.vertical = true, .children = {{.pane = "notes"}, {.pane = "extra"}}},
+                                            {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+    place(0.0);
+
+    CHECK_FALSE(notes.visible());
+    CHECK_FALSE(extra.visible());
+    const auto spine = Spine(dock, "notes");
+    REQUIRE(spine.has_value());
+    CHECK(spine->rect.width < 40.0f);
+    CHECK(page.laidFrame.x < 60.0f);
+}
+
+TEST_CASE("Dock dividers resize only their neighbors while the flex column is hidden",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Probe c;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    std::optional<DockTiles> tiles = DockTiles{
+        .weights = {250.0f, 250.0f, 250.0f, 0.0f},
+        .children = {{.pane = "a"}, {.pane = "b"}, {.pane = "c"}, {.pane = "page"}},
+    };
+    const auto place = [&](F64 time) {
+        auto flex = MakePane("page", &page);
+        flex.hidden = true;
+        dock.update({
+            .panes = {MakePane("a", &a), MakePane("b", &b), MakePane("c", &c), flex},
+            .tiles = tiles,
+            .onTiles = [&](std::optional<DockTiles> next) { tiles = std::move(next); },
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+    place(0.0);
+    REQUIRE_FALSE(page.visible());
+    const F32 cWidth = c.laidFrame.width;
+    const F32 aWidth = a.laidFrame.width;
+
+    const F32 seam = (a.laidFrame.right() + b.laidFrame.x) * 0.5f;
+    host.send(Mouse(MouseEventType::Click, seam, 300.0f));
+    host.send(Mouse(MouseEventType::Move, seam + 10.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Release, seam + 10.0f, 300.0f));
+    place(0.1);
+    CHECK(a.laidFrame.width > aWidth);
+    CHECK(c.laidFrame.width == Catch::Approx(cWidth).margin(1.0f));
+}

@@ -5154,3 +5154,35 @@ TEST_CASE("Welcome screen scrolls back to the top on a new visit and keeps its s
     rig.show(config);
     CHECK(Peek::Frame(*cards.back()).y == top);
 }
+
+TEST_CASE("Titlebar shows the new tab sidebar toggle only while tabs are hidden and stretches to the sidebar edge",
+          "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    WorkbenchActions actions(mailbox.state, mailbox.callbacks);
+    REQUIRE(mailbox.state.tabsHidden());
+
+    auto config = TitlebarPresenter(context).build();
+    REQUIRE(config.sidebarOpen.has_value());
+    CHECK(*config.sidebarOpen);
+    TitlebarView view;
+    view.update(config);
+    CHECK(view.leadingReach() == Sakura::Dock::ContentPadding + SidebarTiles::SidebarWidth);
+    CHECK(ShownText(view.leading(), ICON_LC_PANEL_LEFT_CLOSE) != nullptr);
+
+    mailbox.mails.clear();
+    config.onAction(TitlebarView::Action::ToggleSidebar);
+    REQUIRE(mailbox.last<MailSetWelcomeSidebar>() != nullptr);
+    CHECK_FALSE(mailbox.last<MailSetWelcomeSidebar>()->open);
+    actions.handle(*mailbox.last<MailSetWelcomeSidebar>());
+    CHECK_FALSE(mailbox.state.interface.welcomeSidebarOpen);
+    CHECK_FALSE(WelcomePresenter(context).build().sidebarOpen);
+
+    view.update(TitlebarPresenter(context).build());
+    CHECK(view.leadingReach() == 0.0f);
+    CHECK(ShownText(view.leading(), ICON_LC_PANEL_LEFT_OPEN) != nullptr);
+
+    mailbox.state.interface.startTab = true;
+    REQUIRE_FALSE(mailbox.state.tabsHidden());
+    CHECK_FALSE(TitlebarPresenter(context).build().sidebarOpen.has_value());
+}

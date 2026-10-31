@@ -122,6 +122,10 @@ struct MailSetWelcomeSection {
     WelcomeSection section = WelcomeSection::All;
 };
 
+struct MailSetWelcomeSidebar {
+    bool open = true;
+};
+
 struct MailSetWelcomeQuery {
     std::string query;
 };
@@ -585,6 +589,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCloseStartTab,
                           MailFocusStartTab,
                           MailSetWelcomeSection,
+                          MailSetWelcomeSidebar,
                           MailSetWelcomeQuery,
                           MailSetWelcomeCategory,
                           MailSetWelcomePage,

@@ -14,6 +14,7 @@ struct SidebarTiles : public Sakura::Dock {
         Sakura::Component* sidebar = nullptr;
         Sakura::Component* page = nullptr;
         bool pageCard = true;
+        bool sidebarOpen = true;
     };
 
     void update(Config config) {
@@ -25,6 +26,7 @@ struct SidebarTiles : public Sakura::Dock {
                     .content = config.sidebar,
                     .closable = false,
                     .maximizable = false,
+                    .hidden = !config.sidebarOpen,
                 },
                 {
                     .id = PageTileId,

@@ -34,6 +34,7 @@ struct WorkbenchActions {
                               MailCloseStartTab,
                               MailFocusStartTab,
                               MailSetWelcomeSection,
+                              MailSetWelcomeSidebar,
                               MailSetWelcomeQuery,
                               MailSetWelcomeCategory,
                               MailSetWelcomePage,
@@ -117,6 +118,11 @@ struct WorkbenchActions {
     Result handle(const MailSetWelcomeSection& msg) {
         state.interface.welcomeSection = msg.section;
         state.interface.welcomePage = 0;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetWelcomeSidebar& msg) {
+        state.interface.welcomeSidebarOpen = msg.open;
         return Result::SUCCESS;
     }
 

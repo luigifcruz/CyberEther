@@ -64,6 +64,7 @@ constexpr const char* kHeaderFont = Typography::DisplaySemiboldFont;
 constexpr F32 kBarMargin = 6.0f;
 constexpr F32 kSplitterLine = 2.0f;
 constexpr U64 kBoxCapacity = 128;
+constexpr F64 kHideDuration = 0.25;
 
 enum class Side {
     Left,
@@ -465,6 +466,7 @@ struct Dock::Impl {
         std::vector<Rect> actions;
         Rect body;
         Rect content;
+        F32 slide = 0.0f;
         bool minimized = false;
         bool strip = false;
     };
@@ -691,20 +693,76 @@ struct Dock::Impl {
         return std::nullopt;
     }
 
+    std::unordered_map<std::string, F32> shownProgress;
+    std::optional<F64> shownSeen;
+    bool shownMoving = false;
+    std::optional<F32> reachProgress;
+    std::optional<bool> reachTabsHidden;
+    F32 reach = 0.0f;
+
+    void advanceShown(F64 time) {
+        const F64 elapsed = shownSeen.has_value() ? std::max(0.0, time - *shownSeen) : 0.0;
+        const F32 step = static_cast<F32>(elapsed / kHideDuration);
+        std::unordered_map<std::string, F32> next;
+        shownMoving = false;
+        for (const auto& item : config.panes) {
+            const F32 target = item.hidden ? 0.0f : 1.0f;
+            const auto it = shownProgress.find(item.id);
+            F32 progress = it == shownProgress.end() ? target : it->second;
+            progress = target > progress ? std::min(target, progress + step) : std::max(target, progress - step);
+            shownMoving = shownMoving || progress != target;
+            next[item.id] = progress;
+        }
+        shownProgress = std::move(next);
+        const bool reaching = config.hideTabs && config.leadingReach > 0.0f;
+        const F32 reachTarget = reaching ? 1.0f : 0.0f;
+        if (reaching) {
+            reach = config.leadingReach;
+        }
+        if (reachTabsHidden != config.hideTabs) {
+            reachTabsHidden = config.hideTabs;
+            reachProgress = reachTarget;
+        }
+        F32 progress = reachProgress.value_or(reachTarget);
+        progress = reachTarget > progress ? std::min(reachTarget, progress + step)
+                                          : std::max(reachTarget, progress - step);
+        reachProgress = progress;
+        shownMoving = shownMoving || progress != reachTarget;
+        shownSeen = shownMoving ? std::optional<F64>(time) : std::nullopt;
+    }
+
+    F32 shownFactor(const std::string& id) const {
+        const auto it = shownProgress.find(id);
+        return it == shownProgress.end() ? 1.0f : Smoothstep(it->second);
+    }
+
+    F32 shownFactor(const ColumnModel& column) const {
+        F32 factor = 0.0f;
+        for (const auto& id : column.panes) {
+            factor = std::max(factor, shownFactor(id));
+        }
+        return factor;
+    }
+
     std::optional<U64> flexColumn() const {
         if (config.flexPane.empty()) {
             return std::nullopt;
         }
-        if (const auto found = locate(config.flexPane); found && !collapsed(columns[found->first])) {
+        if (const auto found = locate(config.flexPane);
+            found && !collapsed(columns[found->first]) && shownFactor(columns[found->first]) >= 1.0f) {
             return found->first;
         }
         return std::nullopt;
     }
 
     bool collapsed(const ColumnModel& column) const {
-        return std::all_of(column.panes.begin(), column.panes.end(), [this](const std::string& id) {
+        const auto minimizedPane = [this](const std::string& id) {
             return minimized.contains(id);
-        });
+        };
+        return std::any_of(column.panes.begin(), column.panes.end(), minimizedPane) &&
+               std::all_of(column.panes.begin(), column.panes.end(), [&](const std::string& id) {
+                   return minimizedPane(id) || hiddenPane(id);
+               });
     }
 
     bool canMinimize(const std::string& id) const {
@@ -717,7 +775,7 @@ struct Dock::Impl {
         U64 open = 0;
         for (const auto& column : columns) {
             for (const auto& pane : column.panes) {
-                open += minimized.contains(pane) ? 0 : 1;
+                open += minimized.contains(pane) || hiddenPane(pane) ? 0 : 1;
             }
         }
         return open > 1;
@@ -741,9 +799,12 @@ struct Dock::Impl {
         std::erase_if(minimized, [this](const std::string& id) {
             return !locate(id).has_value();
         });
-        if (std::all_of(columns.begin(), columns.end(), [this](const ColumnModel& column) {
-                return collapsed(column);
-            })) {
+        const bool covered = std::all_of(columns.begin(), columns.end(), [this](const ColumnModel& column) {
+            return std::all_of(column.panes.begin(), column.panes.end(), [this](const std::string& id) {
+                return minimized.contains(id) || hiddenPane(id);
+            });
+        });
+        if (covered) {
             minimized.clear();
         }
     }
@@ -859,7 +920,7 @@ struct Dock::Impl {
 
     void bakeColumns() {
         for (U64 index = 0; index < columns.size() && index < pressWidths.size(); ++index) {
-            if (!collapsed(columns[index])) {
+            if (!collapsed(columns[index]) && shownFactor(columns[index]) >= 1.0f) {
                 columns[index].width = pressWidths[index] / pixelRatio;
             }
         }
@@ -970,7 +1031,7 @@ struct Dock::Impl {
         columnRects.clear();
         columnWidths.clear();
         columnBases.clear();
-        if (!maximized.empty() && locate(maximized)) {
+        if (!maximized.empty() && locate(maximized) && !hiddenPane(maximized)) {
             leaves.push_back({.pane = maximized, .tile = area});
             return;
         }
@@ -980,80 +1041,147 @@ struct Dock::Impl {
         }
         const auto flex = flexColumn();
         const F32 strip = std::round(kStripWidth * pixelRatio);
+        std::vector<F32> factors(count, 1.0f);
+        std::vector<F32> leads(count, 0.0f);
         std::vector<F32> widths(count, strip);
-        std::vector<F32> open;
-        std::optional<U64> openFlex;
-        F32 room = std::max(0.0f, area.width - gap * static_cast<F32>(count - 1));
+        std::vector<F32> fulls(count, strip);
+        F32 earlier = 0.0f;
+        F32 room = area.width;
+        for (U64 index = 0; index < count; ++index) {
+            factors[index] = shownFactor(columns[index]);
+            if (index > 0) {
+                leads[index] = std::round(gap * std::min(factors[index], earlier));
+                room -= leads[index];
+            }
+            earlier = std::max(earlier, factors[index]);
+        }
+        const auto fit = [&](F32 space, const std::function<bool(U64)>& include) {
+            std::vector<F32> open;
+            std::optional<U64> openFlex;
+            for (U64 index = 0; index < count; ++index) {
+                if (!collapsed(columns[index]) && include(index)) {
+                    if (flex == index) {
+                        openFlex = open.size();
+                    }
+                    open.push_back(fulls[index]);
+                }
+            }
+            open = FitColumns(std::move(open), std::max(0.0f, space), openFlex, kMinColumnWidth * pixelRatio);
+            std::vector<F32> fitted(count, 0.0f);
+            for (U64 index = 0, slot = 0; index < count; ++index) {
+                if (!collapsed(columns[index]) && include(index)) {
+                    fitted[index] = open[slot++];
+                }
+            }
+            return fitted;
+        };
+        F32 fullRoom = room;
         for (U64 index = 0; index < count; ++index) {
             if (collapsed(columns[index])) {
-                room = std::max(0.0f, room - strip);
+                widths[index] = std::round(strip * factors[index]);
+                room -= widths[index];
+                fullRoom -= widths[index];
                 continue;
             }
             const F32 fallback = flex == index ? kFlexColumnWidth : kColumnWidth;
             const F32 stored = columns[index].width >= kStoredWidthFloor ? columns[index].width : fallback;
-            widths[index] = std::round(std::max(stored, kMinColumnWidth) * pixelRatio);
-            if (flex == index) {
-                openFlex = open.size();
-            }
-            open.push_back(widths[index]);
-        }
-        columnBases = widths;
-        open = FitColumns(std::move(open), room, openFlex, kMinColumnWidth * pixelRatio);
-        for (U64 index = 0, slot = 0; index < count; ++index) {
-            if (!collapsed(columns[index])) {
-                widths[index] = open[slot++];
+            fulls[index] = std::round(std::max(stored, kMinColumnWidth) * pixelRatio);
+            if (factors[index] > 0.0f && factors[index] < 1.0f) {
+                fullRoom += gap - leads[index];
             }
         }
+        columnBases = fulls;
+        const auto natural = fit(fullRoom, [&](U64 index) {
+            return factors[index] > 0.0f;
+        });
+        for (U64 index = 0; index < count; ++index) {
+            if (!collapsed(columns[index]) && factors[index] > 0.0f && factors[index] < 1.0f) {
+                fulls[index] = natural[index];
+                widths[index] = std::round(fulls[index] * factors[index]);
+                room -= widths[index];
+            } else if (!collapsed(columns[index]) && factors[index] <= 0.0f) {
+                widths[index] = 0.0f;
+            }
+        }
+        const auto shown = fit(room, [&](U64 index) {
+            return factors[index] >= 1.0f;
+        });
+        for (U64 index = 0; index < count; ++index) {
+            if (!collapsed(columns[index]) && factors[index] >= 1.0f) {
+                widths[index] = shown[index];
+            }
+        }
+        const auto visibleBefore = [&](U64 index) -> std::optional<U64> {
+            for (U64 scan = index; scan-- > 0;) {
+                if (factors[scan] > 0.0f && !collapsed(columns[scan])) {
+                    return scan;
+                }
+            }
+            return std::nullopt;
+        };
         F32 x = area.x;
         for (U64 index = 0; index < count; ++index) {
+            x += leads[index];
             const Rect rect = {x, area.y, widths[index], area.height};
-            x += widths[index] + gap;
+            x += widths[index];
             columnRects.push_back(rect);
+            if (factors[index] <= 0.0f) {
+                continue;
+            }
             const auto& column = columns[index];
             const bool strips = collapsed(column);
-            if (index > 0) {
-                std::optional<U64> before;
-                for (U64 scan = index; scan-- > 0;) {
-                    if (!collapsed(columns[scan])) {
-                        before = scan;
-                        break;
-                    }
-                }
+            const F32 slide = factors[index] < 1.0f
+                                  ? (flex.has_value() && index > *flex ? -1.0f : 1.0f) * (fulls[index] - widths[index])
+                                  : 0.0f;
+            const auto before = visibleBefore(index);
+            if (before.has_value() && factors[index] >= 1.0f && factors[*before] >= 1.0f) {
                 std::optional<U64> after;
                 for (U64 scan = index; scan < count; ++scan) {
-                    if (!collapsed(columns[scan])) {
+                    if (factors[scan] > 0.0f && !collapsed(columns[scan])) {
                         after = scan;
                         break;
                     }
                 }
-                if (before.has_value() && after.has_value()) {
+                if (after.has_value()) {
                     splitters.push_back({.index = index - 1, .rect = {rect.x - gap, area.y, gap, area.height},
                                          .column = true, .left = *before, .right = *after});
                 }
             }
             const U64 rows = column.panes.size();
             std::vector<bool> shaded(rows, false);
+            std::vector<F32> shown(rows, 1.0f);
             std::vector<F32> weights = column.weights;
             weights.resize(rows, 1.0f);
             F32 total = 0.0f;
             F32 fixed = 0.0f;
+            U64 present = 0;
+            bool settled = true;
             for (U64 row = 0; row < rows; ++row) {
+                shown[row] = shownFactor(column.panes[row]);
+                settled = settled && (shown[row] <= 0.0f || shown[row] >= 1.0f);
+                if (shown[row] <= 0.0f) {
+                    weights[row] = 0.0f;
+                    continue;
+                }
+                ++present;
                 shaded[row] = !strips && minimized.contains(column.panes[row]);
                 if (shaded[row]) {
                     fixed += strip;
                     continue;
                 }
-                weights[row] = std::max(weights[row], 1.0e-3f);
+                weights[row] = std::max(weights[row], 1.0e-3f) * shown[row];
                 total += weights[row];
             }
-            const F32 usable = std::max(0.0f, rect.height - gap * static_cast<F32>(rows - 1) - fixed);
+            const F32 usable = std::max(0.0f, rect.height - gap * static_cast<F32>(present - 1) - fixed);
             std::vector<F32> heights(rows);
             F32 used = 0.0f;
             std::optional<U64> last;
             for (U64 row = 0; row < rows; ++row) {
-                heights[row] = shaded[row] ? strip : std::round(usable * weights[row] / total);
+                heights[row] = shown[row] <= 0.0f ? 0.0f
+                               : shaded[row]      ? strip
+                                                  : std::round(usable * weights[row] / std::max(total, 1.0e-3f));
                 used += heights[row];
-                if (!shaded[row]) {
+                if (!shaded[row] && shown[row] > 0.0f) {
                     last = row;
                 }
             }
@@ -1064,21 +1192,28 @@ struct Dock::Impl {
             F32 y = rect.y;
             for (U64 row = 0; row < rows; ++row) {
                 tops[row] = y;
+                if (shown[row] <= 0.0f) {
+                    continue;
+                }
                 leaves.push_back({.pane = column.panes[row], .tile = {rect.x, y, rect.width, heights[row]},
-                                  .minimized = minimized.contains(column.panes[row]), .strip = strips});
+                                  .slide = slide, .minimized = minimized.contains(column.panes[row]),
+                                  .strip = strips});
                 y += heights[row] + gap;
             }
-            for (U64 boundary = 1; boundary < rows; ++boundary) {
+            for (U64 boundary = 1; settled && boundary < rows; ++boundary) {
+                if (shown[boundary] <= 0.0f) {
+                    continue;
+                }
                 std::optional<U64> upper;
                 for (U64 scan = boundary; scan-- > 0;) {
-                    if (!shaded[scan]) {
+                    if (!shaded[scan] && shown[scan] > 0.0f) {
                         upper = scan;
                         break;
                     }
                 }
                 std::optional<U64> lower;
                 for (U64 scan = boundary; scan < rows; ++scan) {
-                    if (!shaded[scan]) {
+                    if (!shaded[scan] && shown[scan] > 0.0f) {
                         lower = scan;
                         break;
                     }
@@ -1115,9 +1250,14 @@ struct Dock::Impl {
             return;
         }
         if (config.tabs || !config.headers || !tree.has_value() || !Contains(*tree, maximized) ||
-            Leaves(*tree).size() < 2) {
+            Leaves(*tree).size() < 2 || (columnMode() && hiddenPane(maximized))) {
             maximized.clear();
         }
+    }
+
+    bool hiddenPane(const std::string& id) const {
+        const auto* item = pane(id);
+        return item && item->hidden;
     }
 
     std::optional<DockTiles> visible() const {
@@ -1575,6 +1715,10 @@ void Dock::layout(const Context& ctx) {
     s.metrics.setWindow(ctx.render);
     s.settleMaximized();
     s.settleMinimized();
+    s.advanceShown(ctx.time);
+    if (s.shownMoving) {
+        requestFrame();
+    }
     const bool tabs = s.config.tabs;
     const F32 font = Px(ctx, Typography::FontSize);
     const F32 infinite = std::numeric_limits<F32>::infinity();
@@ -1625,8 +1769,8 @@ void Dock::layout(const Context& ctx) {
         auto* leading = s.config.leading;
         auto* trailing = s.config.trailing;
         auto* end = s.config.end;
-        const Extent2D<F32> leadSize = leading ? measureChild(*leading, ctx, {infinite, infinite})
-                                               : Extent2D<F32>{0.0f, 0.0f};
+        Extent2D<F32> leadSize = leading ? measureChild(*leading, ctx, {infinite, infinite})
+                                         : Extent2D<F32>{0.0f, 0.0f};
         const Extent2D<F32> trailSize = trailing ? measureChild(*trailing, ctx, {infinite, infinite})
                                                  : Extent2D<F32>{0.0f, 0.0f};
         const Extent2D<F32> endSize = end ? measureChild(*end, ctx, {infinite, infinite}) : Extent2D<F32>{0.0f, 0.0f};
@@ -1641,6 +1785,10 @@ void Dock::layout(const Context& ctx) {
         F32 x = s.bounds.x + margin + Px(ctx, s.config.leadingInset);
         F32 limit = s.bounds.right() - margin;
         if (leading) {
+            const F32 controls = (end ? endSize.x + spacing : 0.0f) + (trailing ? trailSize.x + spacing : 0.0f);
+            const F32 room = std::max(0.0f, limit - controls - spacing - x - leadSize.x);
+            const F32 extra = std::clamp(Px(ctx, s.reach) - (x - s.bounds.x) - leadSize.x, 0.0f, room);
+            leadSize.x += std::round(extra * Smoothstep(s.reachProgress.value_or(0.0f)));
             s.leadingRect = {x, s.tabBar.y + std::floor((height - leadSize.y) * 0.5f) + drop, leadSize.x, leadSize.y};
             layoutChild(ctx, *leading, s.leadingRect, s.leadingRect);
             chrome.push_back(leading);
@@ -1947,6 +2095,8 @@ void Dock::layout(const Context& ctx) {
         }
         leaf.body = content;
         leaf.content = Inset(content, Px(ctx, item ? item->padding : 0.0f));
+        leaf.content.x -= std::max(0.0f, leaf.slide);
+        leaf.content.width += std::abs(leaf.slide);
         if (leaf.minimized) {
             continue;
         }
@@ -2283,8 +2433,11 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                                                                                 : Impl::Press::Tab;
                     return true;
                 }
-                if (s.config.tabs && s.tabBar.contains(point.x, point.y) && !s.leadingRect.contains(point.x, point.y) &&
+                if (s.config.tabs && s.tabBar.contains(point.x, point.y) &&
                     !s.trailingRect.contains(point.x, point.y) && !s.endRect.contains(point.x, point.y)) {
+                    if (s.leadingRect.contains(point.x, point.y) && mouseEventChildren(event)) {
+                        return true;
+                    }
                     if (s.config.onBarPress) {
                         s.config.onBarPress(event.clicks);
                     }

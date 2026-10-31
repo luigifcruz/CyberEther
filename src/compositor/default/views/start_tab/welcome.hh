@@ -97,6 +97,7 @@ struct WelcomeView {
         Sakura::Callback<void()> onOpenSettings;
         bool darkMode = true;
         Sakura::Callback<void()> onToggleTheme;
+        bool sidebarOpen = true;
         std::vector<Recent> favorites;
         std::vector<Recent> recent;
         std::vector<Example> featured;
@@ -185,6 +186,7 @@ struct WelcomeView {
             .sidebar = &leftColumn,
             .page = &pageArea,
             .pageCard = this->config.pageCard,
+            .sidebarOpen = this->config.sidebarOpen,
         });
     }
 

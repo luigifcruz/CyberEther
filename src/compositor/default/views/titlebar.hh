@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_TITLEBAR_HH
 
 #include "components/assistant_composer.hh"
+#include "components/sidebar_tiles.hh"
 
 #include "jetstream/render/sakura/base.hh"
 
@@ -44,6 +45,7 @@ struct TitlebarView {
         ReloadPlugins,
         OpenDeveloperSettings,
         NewTab,
+        ToggleSidebar,
     };
 
     enum class TabAction {
@@ -55,6 +57,9 @@ struct TitlebarView {
     };
 
     static constexpr F32 IndicatorGap = Sakura::Spacing::Small;
+    static constexpr F32 SidebarButtonSize = 24.0f;
+    static constexpr F32 SidebarIconSize = 14.0f;
+    static constexpr F32 SidebarDrop = 1.0f;
     static constexpr F32 NewTabRounding = 14.0f;
     static constexpr F32 WordmarkEmboss = 0.0125f;
 
@@ -79,6 +84,7 @@ struct TitlebarView {
         std::unordered_set<std::string> environmentFlowgraphs;
         bool debugTimingEnabled = false;
         I32 debugLogLevel = 0;
+        std::optional<bool> sidebarOpen;
         Sakura::Callback<void(Action)> onAction;
         Sakura::Callback<void(I32)> onLogLevel;
         Sakura::Callback<void(TabAction, const std::string&)> onTabAction;
@@ -201,6 +207,41 @@ struct TitlebarView {
             .items = std::move(indicators),
         });
 
+        sidebarIcon.update({
+            .str = this->config.sidebarOpen.value_or(true) ? ICON_LC_PANEL_LEFT_CLOSE : ICON_LC_PANEL_LEFT_OPEN,
+            .tone = Sakura::Text::Tone::Secondary,
+            .scale = SidebarIconSize / Sakura::Typography::FontSize,
+        });
+        sidebarButton.update({
+            .content = &sidebarIcon,
+            .size = {SidebarButtonSize, SidebarButtonSize},
+            .padding = (SidebarButtonSize - SidebarIconSize) * 0.5f,
+            .rounding = SidebarButtonSize * 0.5f,
+            .border = false,
+            .colorKey = "transparent",
+            .hoveredColorKey = "chrome_button_hover",
+            .onClick = action(Action::ToggleSidebar),
+        });
+        sidebarDrop.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        sidebarSlot.update({
+            .spacing = 0.0f,
+            .items = {
+                {.child = &sidebarDrop, .size = 2.0f * SidebarDrop},
+                {.child = &sidebarButton},
+            },
+        });
+        sidebarGap.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        std::vector<Sakura::Stack::Item> leadingItems = {{.child = &wordmark}};
+        if (this->config.sidebarOpen.has_value()) {
+            leadingItems.push_back({.child = &sidebarGap, .grow = 1.0f});
+            leadingItems.push_back({.child = &sidebarSlot});
+        }
+        leadingRow.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = 0.0f,
+            .items = std::move(leadingItems),
+        });
+
         plus.update({
             .colorKey = "pill_text",
             .glyph = Sakura::ChromeButton::Glyph::Plus,
@@ -243,7 +284,11 @@ struct TitlebarView {
     }
 
     Sakura::Component& leading() {
-        return wordmark;
+        return leadingRow;
+    }
+
+    F32 leadingReach() const {
+        return config.sidebarOpen.value_or(false) ? Sakura::Dock::ContentPadding + SidebarTiles::SidebarWidth : 0.0f;
     }
 
     Sakura::Component& trailing() {
@@ -350,6 +395,12 @@ struct TitlebarView {
 
     Config config;
     Sakura::ChromeButton wordmark;
+    Sakura::Div sidebarGap;
+    Sakura::Text sidebarIcon;
+    Sakura::Div sidebarButton;
+    Sakura::Div sidebarDrop;
+    Sakura::Stack sidebarSlot;
+    Sakura::Stack leadingRow;
     Sakura::ChromeButton plus;
     Sakura::PillButton remoteButton;
     Sakura::PillButton updateButton;

@@ -56,10 +56,14 @@ struct TitlebarPresenter {
             .environmentFlowgraphs = environmentFlowgraphs,
             .debugTimingEnabled = context.state.debug.timingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
+            .sidebarOpen = context.state.tabsHidden() && context.state.startTabShown()
+                               ? std::optional<bool>(context.state.interface.welcomeSidebarOpen)
+                               : std::nullopt,
             .onAction = [enqueue, activeFlowgraph, startTabActive, settingsTabActive, docsTabActive, canCheckForUpdates,
                          missing,
                          timing = context.state.debug.timingEnabled,
                          agentVisible = context.state.agent.ui.visible,
+                         sidebarOpen = context.state.interface.welcomeSidebarOpen,
                          voiceVisible = context.state.agent.ui.voiceVisible](TitlebarView::Action action) {
                 using Action = TitlebarView::Action;
                 switch (action) {
@@ -119,6 +123,9 @@ struct TitlebarPresenter {
                         break;
                     case Action::NewTab:
                         enqueue(MailOpenStartTab{});
+                        break;
+                    case Action::ToggleSidebar:
+                        enqueue(MailSetWelcomeSidebar{.open = !sidebarOpen});
                         break;
                     case Action::Quit:
                         enqueue(MailQuit{});
