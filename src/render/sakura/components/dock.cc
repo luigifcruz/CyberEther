@@ -1783,7 +1783,7 @@ void Dock::layout(const Context& ctx) {
         const F32 drop = std::round(Px(ctx, kTrackDrop));
         const F32 spacing = Px(ctx, kPillGap);
         F32 x = s.bounds.x + margin + Px(ctx, s.config.leadingInset);
-        F32 limit = s.bounds.right() - margin;
+        F32 limit = s.bounds.right() - margin - Px(ctx, s.config.trailingInset);
         if (leading) {
             const F32 controls = (end ? endSize.x + spacing : 0.0f) + (trailing ? trailSize.x + spacing : 0.0f);
             const F32 room = std::max(0.0f, limit - controls - spacing - x - leadSize.x);

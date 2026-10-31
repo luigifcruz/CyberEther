@@ -57,6 +57,7 @@ struct TitlebarView {
     };
 
     static constexpr F32 IndicatorGap = Sakura::Spacing::Small;
+    static constexpr F32 TrailingInset = 2.0f;
     static constexpr F32 SidebarButtonSize = 24.0f;
     static constexpr F32 SidebarIconSize = 14.0f;
     static constexpr F32 SidebarDrop = 1.0f;
@@ -309,6 +310,10 @@ struct TitlebarView {
 
     F32 leadingInset() const {
         return config.leadingInset;
+    }
+
+    F32 trailingInset() const {
+        return TrailingInset;
     }
 
  private:
