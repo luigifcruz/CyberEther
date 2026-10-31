@@ -51,8 +51,8 @@ struct TerminalPresenter {
                     .onKey = [send](const KeyEvent& event) {
                         send(event);
                     },
-                    .onText = [send](std::string text) {
-                        send(MailTerminalInput::Text{std::move(text)});
+                    .onText = [send](std::string text, KeyModifiers modifiers) {
+                        send(MailTerminalInput::Text{.value = std::move(text), .modifiers = modifiers});
                     },
                     .onPaste = [send](std::string text) {
                         send(MailTerminalInput::Paste{std::move(text)});

@@ -157,7 +157,7 @@ struct TerminalActions {
             } else if constexpr (std::is_same_v<Input, KeyEvent>) {
                 target.key(input);
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::Text>) {
-                target.text(input.value);
+                target.text(input.value, input.modifiers);
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::Paste>) {
                 target.paste(input.value);
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::Scroll>) {

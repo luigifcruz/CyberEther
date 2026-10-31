@@ -1400,6 +1400,124 @@ TEST_CASE("Terminal sessions clear the alternate screen with the current pen ins
     CHECK(black == 0);
 }
 
+TEST_CASE("Terminal sessions encode typed keys for the legacy encoding and application keypad mode", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(session.start({
+        .program = "/bin/sh",
+        .arguments = {"-c", "stty raw -echo; printf 'ready'; head -c 2 | od -An -tx1 | tr -s ' '; "
+                            "printf '\\033[?1035l\\033=keypad'; head -c 3 | od -An -tx1 | tr -s ' '; sleep 2"},
+        .directory = "/",
+    }) == Result::SUCCESS);
+    const auto type = [&](KeyCode key, const std::string& text, KeyModifiers modifiers = {}) {
+        session.key({.type = KeyEventType::Press, .key = key, .modifiers = modifiers});
+        session.text(text);
+        session.key({.type = KeyEventType::Release, .key = key, .modifiers = modifiers});
+    };
+    REQUIRE(Shows(session, "ready"));
+    type(KeyCode::A, "a");
+    type(KeyCode::B, "B", {.shift = true});
+    REQUIRE(Shows(session, "61 42"));
+    REQUIRE(Shows(session, "keypad"));
+    type(KeyCode::Keypad1, "1");
+    CHECK(Shows(session, "1b 4f 71"));
+}
+
+TEST_CASE("Terminal sessions report presses and releases through the Kitty keyboard protocol", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(session.start({
+        .program = "/bin/sh",
+        .arguments = {"-c", "stty raw -echo; printf '\\033[>11uready'; head -c 14 | od -An -tx1 | tr -s ' '; "
+                            "sleep 2"},
+        .directory = "/",
+    }) == Result::SUCCESS);
+    REQUIRE(Shows(session, "ready"));
+    session.key({.type = KeyEventType::Press, .key = KeyCode::A});
+    session.text("a");
+    session.key({.type = KeyEventType::Release, .key = KeyCode::A});
+    CHECK(Shows(session, "1b 5b 39 37 75 1b 5b 39 37 3b 31 3a 33 75"));
+}
+
+TEST_CASE("Terminal sessions pair Kitty text with the last pressed key and keep local scroll keys local", kTags) {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    const auto kitty = [](TerminalSession& session, U64 bytes) {
+        REQUIRE(session.start({
+            .program = "/bin/sh",
+            .arguments = {"-c", "stty raw -echo; printf '\\033[>11uready'; head -c " + std::to_string(bytes) +
+                                    " | od -An -tx1 | tr -d '\\n' | tr -s ' '; sleep 2"},
+            .directory = "/",
+        }) == Result::SUCCESS);
+        REQUIRE(Shows(session, "ready"));
+    };
+    const auto press = [](TerminalSession& session, KeyCode key, bool repeat = false) {
+        session.key({.type = KeyEventType::Press, .key = key, .repeat = repeat});
+    };
+
+    TerminalSession repeats;
+    kitty(repeats, 15);
+    press(repeats, KeyCode::B);
+    repeats.text("b");
+    press(repeats, KeyCode::A);
+    repeats.text("a");
+    press(repeats, KeyCode::B, true);
+    press(repeats, KeyCode::A, true);
+    repeats.text("a");
+    CHECK(Shows(repeats, "1b 5b 39 38 75 1b 5b 39 37 75 1b 5b 39 37 3b"));
+
+    TerminalSession layout;
+    kitty(layout, 18);
+    press(layout, KeyCode::A);
+    layout.text("ф");
+    layout.key({.type = KeyEventType::Release, .key = KeyCode::A});
+    CHECK(Shows(layout, "1b 5b 31 30 39 32 75 1b 5b 31 30 39 32 3b 31 3a 33 75"));
+
+    TerminalSession upper;
+    kitty(upper, 9);
+    upper.key({.type = KeyEventType::Press, .key = KeyCode::A, .modifiers = {.shift = true}});
+    upper.text("Ф");
+    CHECK(Shows(upper, "1b 5b 31 30 39 32 3b 32 75"));
+
+    TerminalSession accents;
+    kitty(accents, 16);
+    accents.key({.type = KeyEventType::Press, .key = KeyCode::A, .modifiers = {.shift = true}});
+    accents.text("Ł", KeyModifiers{.shift = true});
+    accents.key({.type = KeyEventType::Press, .key = KeyCode::B, .modifiers = {.shift = true}});
+    accents.text("Ÿ", KeyModifiers{.shift = true});
+    CHECK(Shows(accents, "1b 5b 33 32 32 3b 32 75 1b 5b 32 35 35 3b 32 75"));
+
+    TerminalSession shift;
+    kitty(shift, 16);
+    shift.key({.type = KeyEventType::Press, .key = KeyCode::A, .modifiers = {.shift = true}});
+    shift.text("A", KeyModifiers{.shift = true});
+    shift.text("a", KeyModifiers{});
+    press(shift, KeyCode::A, true);
+    CHECK(Shows(shift, "1b 5b 39 37 3b 32 75 1b 5b 39 37 3b 31 3a 32 75"));
+
+    TerminalSession paging;
+    kitty(paging, 20);
+    paging.key({.type = KeyEventType::Press, .key = KeyCode::PageUp});
+    paging.key({.type = KeyEventType::Press, .key = KeyCode::PageUp, .modifiers = {.shift = true}, .repeat = true});
+    paging.key({.type = KeyEventType::Release, .key = KeyCode::PageUp, .modifiers = {.shift = true}});
+    const U64 offset = paging.screen().scrollOffset;
+    CHECK(Shows(paging, "1b 5b 35 7e 1b 5b 35 3b 32 3a 32 7e 1b 5b 35 3b 32 3a 33 7e"));
+    CHECK(paging.screen().scrollOffset == offset);
+
+    TerminalSession scroll;
+    kitty(scroll, 5);
+    scroll.key({.type = KeyEventType::Press, .key = KeyCode::PageUp, .modifiers = {.shift = true}});
+    scroll.key({.type = KeyEventType::Release, .key = KeyCode::PageUp, .modifiers = {.shift = true}});
+    press(scroll, KeyCode::C);
+    scroll.text("c");
+    CHECK(Shows(scroll, "1b 5b 39 39 75"));
+}
+
 TEST_CASE("Terminal sessions publish the predominant background of the screen", kTags) {
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");

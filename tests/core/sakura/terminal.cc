@@ -42,6 +42,7 @@ constexpr F32 kPadding = 8.0f;
 struct Recorder {
     std::vector<Terminal::Grid> grids;
     std::vector<KeyEvent> keys;
+    std::vector<KeyEvent> releases;
     std::vector<std::string> texts;
     std::vector<std::string> pastes;
     std::vector<I32> scrolls;
@@ -61,8 +62,10 @@ struct Recorder {
             .revision = revision,
             .padding = kPadding,
             .onResize = [this](Terminal::Grid grid) { grids.push_back(grid); },
-            .onKey = [this](const KeyEvent& event) { keys.push_back(event); },
-            .onText = [this](std::string text) { texts.push_back(std::move(text)); },
+            .onKey = [this](const KeyEvent& event) {
+                (event.type == KeyEventType::Release ? releases : keys).push_back(event);
+            },
+            .onText = [this](std::string text, KeyModifiers) { texts.push_back(std::move(text)); },
             .onPaste = [this](std::string text) { pastes.push_back(std::move(text)); },
             .onScroll = [this](I32 delta, Extent2D<F32>, KeyModifiers) { scrolls.push_back(delta); },
             .onScrollTo = [this](U64 row) { rows.push_back(row); },
@@ -855,6 +858,30 @@ TEST_CASE("Terminal search matches tint their cells and the current match stands
     const auto selected = at(0, 4, 3);
     REQUIRE(selected != fills.end());
     CHECK(selected->backgroundColor == current);
+}
+
+TEST_CASE("Terminals forward key releases only for keys whose press reached the shell", kTags) {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    Terminal terminal;
+    Place place(terminal, kBounds);
+    Frames frames(place, kScreen, scene.context());
+    REQUIRE(frames.settle([&] { terminal.update(recorder.wire(&screen, 1)); }));
+    REQUIRE(FocusOwner(place) == &terminal);
+
+    CHECK(Tap(place, KeyCode::A));
+    CHECK(Tap(place, KeyCode::C, {.super = true}));
+    REQUIRE(recorder.keys.size() == 1);
+    REQUIRE(recorder.releases.size() == 1);
+    CHECK(recorder.releases[0].key == KeyCode::A);
+
+    CHECK(Sakura::Access::key(place, {KeyEventType::Press, KeyCode::B, {}}));
+    REQUIRE(recorder.keys.size() == 2);
+    ClickFocus(place, std::nullopt);
+    REQUIRE(FocusOwner(place) == nullptr);
+    REQUIRE(recorder.releases.size() == 2);
+    CHECK(recorder.releases[1].key == KeyCode::B);
 }
 
 TEST_CASE("Terminals take keyboard focus again when their focus request changes", kTags) {

@@ -142,7 +142,7 @@ struct Terminal : public Component {
         std::string scrollbarThumbColorKey = "editor_scrollbar_thumb";
         Callback<void(Grid)> onResize;
         Callback<void(const KeyEvent&)> onKey;
-        Callback<void(std::string)> onText;
+        Callback<void(std::string text, KeyModifiers modifiers)> onText;
         Callback<void(std::string)> onPaste;
         Callback<void(I32 rows, Extent2D<F32> position, KeyModifiers modifiers)> onScroll;
         Callback<void(U64 row)> onScrollTo;

@@ -127,6 +127,7 @@ struct Terminal::Impl {
     bool pointing = false;
     std::optional<std::pair<U16, U16>> lastCell;
     std::optional<std::pair<U16, U16>> linkHover;
+    std::vector<KeyCode> heldKeys;
     F32 wheelRemainder = 0.0f;
     F64 now = 0.0;
     F64 blinkBase = 0.0;
@@ -1002,6 +1003,18 @@ bool Terminal::mouseEvent(const MouseEvent& event) {
 }
 
 bool Terminal::keyEvent(const KeyEvent& event) {
+    if (event.type == KeyEventType::Release) {
+        auto& held = impl->heldKeys;
+        const auto it = std::find(held.begin(), held.end(), event.key);
+        if (it == held.end()) {
+            return false;
+        }
+        held.erase(it);
+        if (impl->config.onKey) {
+            impl->config.onKey(event);
+        }
+        return true;
+    }
     if (event.type != KeyEventType::Press) {
         return false;
     }
@@ -1052,6 +1065,9 @@ bool Terminal::keyEvent(const KeyEvent& event) {
     if (impl->config.onKey) {
         impl->config.onKey(event);
     }
+    if (std::find(impl->heldKeys.begin(), impl->heldKeys.end(), event.key) == impl->heldKeys.end()) {
+        impl->heldKeys.push_back(event.key);
+    }
     impl->blinkBase = impl->now;
     invalidate(Dirty::Layout);
     return true;
@@ -1068,12 +1084,19 @@ bool Terminal::textEvent(const TextEvent& event) {
         return true;
     }
     if (impl->config.onText) {
-        impl->config.onText(Unicode::Encode(static_cast<U32>(codepoint)));
+        impl->config.onText(Unicode::Encode(static_cast<U32>(codepoint)), modifiers);
     }
     return true;
 }
 
 void Terminal::focusChanged(bool focused) {
+    if (!focused) {
+        for (const KeyCode key : std::exchange(impl->heldKeys, {})) {
+            if (impl->config.onKey) {
+                impl->config.onKey({.type = KeyEventType::Release, .key = key});
+            }
+        }
+    }
     impl->focused = focused;
     impl->blinkBase = impl->now;
     invalidate(Dirty::Layout);

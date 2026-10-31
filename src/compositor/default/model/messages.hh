@@ -305,6 +305,7 @@ struct MailSetTerminalTabLayout {
 struct MailTerminalInput {
     struct Text {
         std::string value;
+        std::optional<KeyModifiers> modifiers;
     };
 
     struct Paste {

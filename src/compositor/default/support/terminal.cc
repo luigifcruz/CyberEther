@@ -73,6 +73,14 @@ struct KeyMapping {
     U32 codepoint = 0;
 };
 
+struct PendingKey {
+    KeyCode code = KeyCode::Unknown;
+    GhosttyKey key = GHOSTTY_KEY_UNIDENTIFIED;
+    GhosttyMods mods = 0;
+    U32 codepoint = 0;
+    bool sent = false;
+};
+
 KeyMapping MapKey(KeyCode code) {
     const auto offset = [](KeyCode value, KeyCode base) {
         return static_cast<U16>(value) - static_cast<U16>(base);
@@ -160,6 +168,51 @@ U32 Shifted(U32 codepoint, bool shift) {
         if (const auto index = kPlain.find(static_cast<char>(codepoint)); index != std::string_view::npos) {
             return static_cast<U8>(kShifted[index]);
         }
+    }
+    return codepoint;
+}
+
+U32 LayoutCodepoint(const std::string& text, U32 fallback, bool shift) {
+    U32 codepoint = 0;
+    if (text.empty() || Unicode::Decode(text, 0, codepoint) != text.size()) {
+        return fallback;
+    }
+    if (!shift) {
+        return codepoint;
+    }
+    if (codepoint < 0x80 || Shifted(fallback, true) == codepoint) {
+        return fallback;
+    }
+    if ((codepoint >= 0x00C0 && codepoint <= 0x00DE && codepoint != 0x00D7) ||
+        (codepoint >= 0x0391 && codepoint <= 0x03AB && codepoint != 0x03A2) ||
+        (codepoint >= 0x0410 && codepoint <= 0x042F)) {
+        return codepoint + 0x20;
+    }
+    if (codepoint >= 0x0400 && codepoint <= 0x040F) {
+        return codepoint + 0x50;
+    }
+    if (codepoint == 0x0386) {
+        return 0x03AC;
+    }
+    if (codepoint >= 0x0388 && codepoint <= 0x038A) {
+        return codepoint + 0x25;
+    }
+    if (codepoint == 0x038C) {
+        return 0x03CC;
+    }
+    if (codepoint == 0x038E || codepoint == 0x038F) {
+        return codepoint + 0x3F;
+    }
+    if (codepoint == 0x0130) {
+        return 'i';
+    }
+    if (codepoint == 0x0178) {
+        return 0x00FF;
+    }
+    const bool evenUpper = (codepoint >= 0x0100 && codepoint <= 0x0137) || (codepoint >= 0x014A && codepoint <= 0x0177);
+    const bool oddUpper = (codepoint >= 0x0139 && codepoint <= 0x0148) || (codepoint >= 0x0179 && codepoint <= 0x017E);
+    if ((evenUpper && codepoint % 2 == 0) || (oddUpper && codepoint % 2 == 1)) {
+        return codepoint + 1;
     }
     return codepoint;
 }
@@ -294,6 +347,9 @@ struct TerminalSession::Impl {
     Theme colors;
     Sakura::Terminal::Grid grid = {kInitialColumns, kInitialRows, 8.0f, 16.0f};
     std::optional<Anchor> anchor;
+    std::optional<PendingKey> pendingKey;
+    std::vector<KeyCode> localKeys;
+    std::vector<std::pair<KeyCode, U32>> reportedKeys;
     bool selected = false;
     std::optional<MouseButton> pressedButton;
     Extent2D<F32> pointerPosition = {0.0f, 0.0f};
@@ -616,14 +672,14 @@ struct TerminalSession::Impl {
         return text;
     }
 
-    void encodeKey(GhosttyKey key, GhosttyMods mods, U32 codepoint, bool repeat, U32 text = 0) {
+    void encodeKey(GhosttyKey key, GhosttyMods mods, U32 codepoint, GhosttyKeyAction action,
+                   const std::string& utf8 = {}, GhosttyMods consumed = 0) {
         ghostty_key_encoder_setopt_from_terminal(keyEncoder, terminal);
-        ghostty_key_event_set_action(keyEvent, repeat ? GHOSTTY_KEY_ACTION_REPEAT : GHOSTTY_KEY_ACTION_PRESS);
+        ghostty_key_event_set_action(keyEvent, action);
         ghostty_key_event_set_key(keyEvent, key);
         ghostty_key_event_set_mods(keyEvent, mods);
-        ghostty_key_event_set_consumed_mods(keyEvent, text != 0 ? (mods & GHOSTTY_MODS_SHIFT) : 0);
+        ghostty_key_event_set_consumed_mods(keyEvent, utf8.empty() ? 0 : (mods & consumed));
         ghostty_key_event_set_unshifted_codepoint(keyEvent, codepoint);
-        const std::string utf8 = text != 0 ? Unicode::Encode(text) : std::string();
         ghostty_key_event_set_utf8(keyEvent, utf8.empty() ? nullptr : utf8.data(), utf8.size());
         char buffer[128];
         size_t length = 0;
@@ -1202,6 +1258,9 @@ void TerminalSession::stop() {
     impl->anchor.reset();
     impl->selected = false;
     impl->pressedButton.reset();
+    impl->pendingKey.reset();
+    impl->localKeys.clear();
+    impl->reportedKeys.clear();
     impl->holdSince.reset();
     impl->captured = false;
     impl->screen.selection.clear();
@@ -1273,7 +1332,7 @@ void TerminalSession::resize(const Sakura::Terminal::Grid& grid) {
 }
 
 void TerminalSession::key(const KeyEvent& event) {
-    if (!impl->started || event.type != KeyEventType::Press) {
+    if (!impl->started) {
         return;
     }
     const auto mapping = MapKey(event.key);
@@ -1281,42 +1340,94 @@ void TerminalSession::key(const KeyEvent& event) {
         return;
     }
     const auto& modifiers = event.modifiers;
-    if (modifiers.shift && !modifiers.control && !modifiers.alt && !impl->alternateScreen()) {
+    auto& local = impl->localKeys;
+    auto& reported = impl->reportedKeys;
+    const auto layout = std::find_if(reported.begin(), reported.end(), [&](const auto& entry) {
+        return entry.first == event.key;
+    });
+    if (event.type == KeyEventType::Release) {
+        if (impl->pendingKey && impl->pendingKey->code == event.key) {
+            impl->pendingKey.reset();
+        }
+        const U32 codepoint = layout != reported.end() ? layout->second : mapping.codepoint;
+        if (layout != reported.end()) {
+            reported.erase(layout);
+        }
+        if (const auto it = std::find(local.begin(), local.end(), event.key); it != local.end()) {
+            local.erase(it);
+            return;
+        }
+        impl->encodeKey(mapping.key, MapModifiers(modifiers), codepoint, GHOSTTY_KEY_ACTION_RELEASE);
+        return;
+    }
+    if (!event.repeat) {
+        impl->pendingKey.reset();
+    } else if (impl->pendingKey && impl->pendingKey->code == event.key) {
+        impl->pendingKey->mods = MapModifiers(modifiers);
+    }
+    const bool paging = event.key == KeyCode::PageUp || event.key == KeyCode::PageDown;
+    const bool edge = event.key == KeyCode::Home || event.key == KeyCode::End;
+    const bool scrolls = event.repeat ? std::find(local.begin(), local.end(), event.key) != local.end()
+                                      : (paging || edge) && modifiers.shift && !modifiers.control &&
+                                            !modifiers.alt && !impl->alternateScreen();
+    if (scrolls) {
+        if (std::find(local.begin(), local.end(), event.key) == local.end()) {
+            local.push_back(event.key);
+        }
         GhosttyTerminalScrollViewport behavior{};
-        if (event.key == KeyCode::PageUp || event.key == KeyCode::PageDown) {
+        if (paging) {
             const auto page = static_cast<intptr_t>(std::max<U16>(1, impl->grid.rows));
             behavior.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA;
             behavior.value.delta = event.key == KeyCode::PageUp ? -page : page;
-            ghostty_terminal_scroll_viewport(impl->terminal, behavior);
-            impl->rebuild();
-            return;
-        }
-        if (event.key == KeyCode::Home || event.key == KeyCode::End) {
+        } else {
             behavior.tag = event.key == KeyCode::Home ? GHOSTTY_SCROLL_VIEWPORT_TOP : GHOSTTY_SCROLL_VIEWPORT_BOTTOM;
-            ghostty_terminal_scroll_viewport(impl->terminal, behavior);
-            impl->rebuild();
-            return;
         }
+        ghostty_terminal_scroll_viewport(impl->terminal, behavior);
+        impl->rebuild();
+        return;
     }
     const bool printable = mapping.codepoint != 0 && event.key != KeyCode::KeypadEnter;
     const bool meta = AltSendsEscape() && modifiers.alt && !modifiers.control;
+    const auto action = event.repeat ? GHOSTTY_KEY_ACTION_REPEAT : GHOSTTY_KEY_ACTION_PRESS;
     if (printable && !modifiers.control && !meta) {
+        if (!event.repeat) {
+            impl->pendingKey = PendingKey{.code = event.key, .key = mapping.key, .mods = MapModifiers(modifiers),
+                                          .codepoint = mapping.codepoint};
+        }
         return;
     }
     impl->clearSelection();
     impl->followOutput();
-    impl->encodeKey(mapping.key, MapModifiers(modifiers), mapping.codepoint, event.repeat,
-                    (meta || modifiers.control) && printable ? Shifted(mapping.codepoint, modifiers.shift) : 0);
+    impl->encodeKey(mapping.key, MapModifiers(modifiers), mapping.codepoint, action,
+                    printable ? Unicode::Encode(Shifted(mapping.codepoint, modifiers.shift)) : std::string(),
+                    GHOSTTY_MODS_SHIFT);
     impl->rebuild();
 }
 
-void TerminalSession::text(const std::string& text) {
+void TerminalSession::text(const std::string& text, std::optional<KeyModifiers> modifiers) {
     if (!impl->started || text.empty()) {
         return;
     }
     impl->clearSelection();
     impl->followOutput();
-    impl->send(text, true);
+    if (auto& pending = impl->pendingKey) {
+        if (modifiers) {
+            pending->mods = MapModifiers(*modifiers);
+        }
+        const GhosttyMods consumed = GHOSTTY_MODS_SHIFT | (AltSendsEscape() ? 0 : GHOSTTY_MODS_ALT);
+        const U32 codepoint = LayoutCodepoint(text, pending->codepoint, (pending->mods & GHOSTTY_MODS_SHIFT) != 0);
+        impl->encodeKey(pending->key, pending->mods, codepoint,
+                        pending->sent ? GHOSTTY_KEY_ACTION_REPEAT : GHOSTTY_KEY_ACTION_PRESS, text, consumed);
+        pending->sent = true;
+        auto& reported = impl->reportedKeys;
+        const KeyCode code = pending->code;
+        std::erase_if(reported, [&](const auto& entry) {
+            return entry.first == code;
+        });
+        reported.emplace_back(code, codepoint);
+    } else {
+        impl->send(text, true);
+    }
     impl->rebuild();
 }
 
@@ -1372,7 +1483,7 @@ void TerminalSession::scroll(I32 rows, Extent2D<F32> position, KeyModifiers modi
         if (impl->mode(GHOSTTY_MODE_ALT_SCROLL)) {
             const GhosttyKey key = rows < 0 ? GHOSTTY_KEY_ARROW_UP : GHOSTTY_KEY_ARROW_DOWN;
             for (U32 step = 0; step < steps; ++step) {
-                impl->encodeKey(key, 0, 0, false);
+                impl->encodeKey(key, 0, 0, GHOSTTY_KEY_ACTION_PRESS);
             }
         }
         return;
@@ -1592,7 +1703,7 @@ void TerminalSession::resize(const Sakura::Terminal::Grid&) {}
 
 void TerminalSession::key(const KeyEvent&) {}
 
-void TerminalSession::text(const std::string&) {}
+void TerminalSession::text(const std::string&, std::optional<KeyModifiers>) {}
 
 void TerminalSession::paste(const std::string&) {}
 

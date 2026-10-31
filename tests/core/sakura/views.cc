@@ -4529,7 +4529,7 @@ TEST_CASE("Terminal presenter builds one config per terminal and per tab and rou
     CHECK(configs[0].terminal.focusRequest == 0);
     CHECK(configs[2].title == "Terminal (vim)");
 
-    configs[1].terminal.onText("l");
+    configs[1].terminal.onText("l", {});
     configs[1].terminal.onResize({.columns = 30, .rows = 5, .cellWidth = 9.0f, .cellHeight = 17.0f});
     configs[0].terminal.onScroll(-2, {4.0f, 8.0f}, {.control = true});
     REQUIRE(mailbox.count<MailTerminalInput>() == 3);
