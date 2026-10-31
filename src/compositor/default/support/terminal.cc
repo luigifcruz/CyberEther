@@ -1,4 +1,5 @@
 #include "terminal.hh"
+#include "terminal_pacing.hh"
 
 #include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
@@ -49,7 +50,6 @@ constexpr U16 kInitialRows = 24;
 constexpr U32 kMaxGraphemeCodepoints = 16;
 constexpr F32 kFaintAlpha = 0.5f;
 constexpr const char* kVersion = "CyberEther";
-constexpr auto kKeystrokeSpacing = std::chrono::milliseconds(8);
 constexpr auto kSyncTimeout = std::chrono::milliseconds(1000);
 
 using Clock = std::chrono::steady_clock;
@@ -354,6 +354,7 @@ struct TerminalSession::Impl {
     std::optional<MouseButton> pressedButton;
     Extent2D<F32> pointerPosition = {0.0f, 0.0f};
     std::optional<Clock::time_point> holdSince;
+    Now now;
     bool captured = false;
     std::thread io;
     std::mutex mutex;
@@ -518,7 +519,7 @@ struct TerminalSession::Impl {
     static void RenderHold(GhosttyTerminal terminal, void* userdata, bool held) {
         auto* self = static_cast<Impl*>(userdata);
         if (held) {
-            self->holdSince = Clock::now();
+            self->holdSince = self->now();
             self->captured = ghostty_render_state_update(self->renderState, terminal) == GHOSTTY_SUCCESS;
             self->rebuild();
         } else {
@@ -576,12 +577,11 @@ struct TerminalSession::Impl {
     }
 
     void transfer() {
-        Clock::time_point lastKeystroke{};
+        TerminalInputPacer pacer;
         std::vector<Outgoing> ready;
         std::string output;
         while (true) {
             std::optional<std::chrono::milliseconds> timeout;
-            bool keyed = false;
             U64 room = 0;
             {
                 std::lock_guard lock(mutex);
@@ -590,12 +590,12 @@ struct TerminalSession::Impl {
                 }
                 while (!outbox.empty()) {
                     if (outbox.front().keystroke) {
-                        const auto elapsed = keyed ? Clock::duration::zero() : Clock::now() - lastKeystroke;
-                        if (elapsed < kKeystrokeSpacing) {
-                            timeout = std::chrono::ceil<std::chrono::milliseconds>(kKeystrokeSpacing - elapsed);
+                        const auto delay = pacer.delay(Clock::now());
+                        if (delay > std::chrono::milliseconds::zero()) {
+                            timeout = delay;
                             break;
                         }
-                        keyed = true;
+                        pacer.queue();
                     }
                     ready.push_back(std::move(outbox.front()));
                     outbox.pop_front();
@@ -607,9 +607,7 @@ struct TerminalSession::Impl {
                 (void)pty.write(outgoing.data);
             }
             ready.clear();
-            if (keyed) {
-                lastKeystroke = Clock::now();
-            }
+            pacer.sent(Clock::now());
             (void)pty.flush();
 
             if (room > 0) {
@@ -631,7 +629,7 @@ struct TerminalSession::Impl {
         if (!holdSince.has_value()) {
             return false;
         }
-        if (Clock::now() - *holdSince < kSyncTimeout) {
+        if (now() - *holdSince < kSyncTimeout) {
             return true;
         }
         const GhosttyTerminalModeConfig release{.mode = GHOSTTY_MODE_SYNC_OUTPUT, .value = false};
@@ -1156,8 +1154,9 @@ struct TerminalSession::Impl {
     }
 };
 
-TerminalSession::TerminalSession() {
+TerminalSession::TerminalSession(Now now) {
     impl = std::make_unique<Impl>();
+    impl->now = std::move(now);
 }
 
 TerminalSession::~TerminalSession() {
@@ -1662,7 +1661,7 @@ struct TerminalSession::Impl {
     std::string title;
 };
 
-TerminalSession::TerminalSession() {
+TerminalSession::TerminalSession(Now) {
     impl = std::make_unique<Impl>();
 }
 

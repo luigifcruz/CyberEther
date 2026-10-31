@@ -5,6 +5,8 @@
 #include "jetstream/surface.hh"
 #include "jetstream/types.hh"
 
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,7 +30,10 @@ class TerminalSession {
         Theme theme;
     };
 
-    TerminalSession();
+    using Clock = std::chrono::steady_clock;
+    using Now = std::function<Clock::time_point()>;
+
+    explicit TerminalSession(Now now = Clock::now);
     ~TerminalSession();
 
     TerminalSession(const TerminalSession&) = delete;

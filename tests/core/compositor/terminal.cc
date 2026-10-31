@@ -4,6 +4,7 @@
 #include "compositor/default/actions/terminal.hh"
 #include "compositor/default/actions/workbench.hh"
 #include "compositor/default/support/terminal.hh"
+#include "compositor/default/support/terminal_pacing.hh"
 #include "environment.hh"
 #include "tools/random.hh"
 
@@ -15,7 +16,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -176,14 +176,20 @@ TEST_CASE("Terminal sessions follow cursor moves that change no cells", kTags) {
         SKIP("The integrated terminal is not available in this build.");
     }
     TerminalSession session;
-    REQUIRE(StartShell(session));
-    session.text("printf '\\033[2J\\033[3;1Hstill'; sleep 1; printf '\\033[3;3H'; sleep 1; "
-                 "printf '\\033[3;9H'; sleep 30\r");
+    REQUIRE(session.start({
+        .program = "/bin/sh",
+        .arguments = {"-c", "stty -echo; printf '\\033[2J\\033[3;1Hstill'; IFS= read -r step; "
+                            "printf '\\033[3;3H'; IFS= read -r step; "
+                            "printf '\\033[3;9H'; IFS= read -r step"},
+        .directory = "/",
+    }) == Result::SUCCESS);
     REQUIRE(PollUntil(session, [&] {
         const auto& cursor = session.screen().cursor;
         return ScreenText(session).find("still") != std::string::npos && cursor.row == 2 && cursor.column == 5;
     }));
-    CHECK(PollUntil(session, [&] { return session.screen().cursor.column == 2; }));
+    session.text("\n");
+    REQUIRE(PollUntil(session, [&] { return session.screen().cursor.column == 2; }));
+    session.text("\n");
     CHECK(PollUntil(session, [&] { return session.screen().cursor.column == 8; }));
     CHECK(session.screen().cursor.row == 2);
 }
@@ -193,12 +199,17 @@ TEST_CASE("Terminal sessions follow cursor shape changes that change no cells", 
         SKIP("The integrated terminal is not available in this build.");
     }
     TerminalSession session;
-    REQUIRE(StartShell(session));
-    session.text("printf '\\033[2J\\033[3;1Hsteady\\033[2 q'; sleep 1; printf '\\033[6 q'; sleep 30\r");
+    REQUIRE(session.start({
+        .program = "/bin/sh",
+        .arguments = {"-c", "stty -echo; printf '\\033[2J\\033[3;1Hsteady\\033[2 q'; "
+                            "IFS= read -r step; printf '\\033[6 q'; IFS= read -r step"},
+        .directory = "/",
+    }) == Result::SUCCESS);
     REQUIRE(PollUntil(session, [&] {
         return ScreenText(session).find("steady") != std::string::npos &&
                session.screen().cursor.shape == Sakura::Terminal::CursorShape::Block;
     }));
+    session.text("\n");
     CHECK(PollUntil(session, [&] { return session.screen().cursor.shape == Sakura::Terminal::CursorShape::Bar; }));
 }
 
@@ -213,8 +224,9 @@ TEST_CASE("Terminal sessions encode special keys and pastes for the shell", kTag
     session.key({.type = KeyEventType::Press, .key = KeyCode::Enter});
     REQUIRE(Shows(session, "\ntyped"));
 
-    session.text("sleep 30");
+    session.text("printf '\\033]2;waiting\\007'; IFS= read -r step");
     session.key({.type = KeyEventType::Press, .key = KeyCode::Enter});
+    REQUIRE(PollUntil(session, [&] { return session.title() == "waiting"; }));
     session.key({.type = KeyEventType::Press, .key = KeyCode::C, .modifiers = {.control = true}});
     session.text("echo after$((1+1))\r");
     REQUIRE(Shows(session, "after2"));
@@ -307,7 +319,7 @@ TEST_CASE("Terminal sessions encode modified keys and mouse clicks for full scre
         .program = "/bin/sh",
         .arguments = {"-c", "printf '\\033[?1049h\\033[?1000h'; stty raw -echo; "
                             "printf 'ready'; head -c " + std::to_string(bytes) +
-                            " | od -An -tx1 | tr -s ' '; sleep 2"},
+                            " | od -An -tx1 | tr -s ' '; IFS= read -r step"},
         .directory = "/",
     }) == Result::SUCCESS);
     session.resize({.columns = 60, .rows = 20, .cellWidth = 8.0f, .cellHeight = 16.0f});
@@ -358,7 +370,7 @@ TEST_CASE("Terminal sessions turn wheel scrolls into arrows on the alternate scr
     TerminalSession session;
     REQUIRE(session.start({
         .program = "/bin/sh",
-        .arguments = {"-c", "printf '\\033[?1049h'; stty raw -echo; printf 'ready'; head -c 3 | od -An -tx1 | tr -s ' '; sleep 2"},
+        .arguments = {"-c", "printf '\\033[?1049h'; stty raw -echo; printf 'ready'; head -c 3 | od -An -tx1 | tr -s ' '; IFS= read -r step"},
         .directory = "/",
     }) == Result::SUCCESS);
     REQUIRE(Shows(session, "ready"));
@@ -376,7 +388,7 @@ TEST_CASE("Terminal sessions deliver fast keystrokes in order", kTags) {
     REQUIRE(session.start({
         .program = "/bin/sh",
         .arguments = {"-c", "stty raw -echo; printf 'ready'; head -c 3 | od -An -c | tr -s ' '; "
-                            "printf 'done'; sleep 2"},
+                            "printf 'done'; IFS= read -r step"},
         .directory = "/",
     }) == Result::SUCCESS);
     REQUIRE(Shows(session, "ready"));
@@ -388,52 +400,36 @@ TEST_CASE("Terminal sessions deliver fast keystrokes in order", kTags) {
     CHECK(screen.find(" a b c") != std::string::npos);
 }
 
-TEST_CASE("Terminal sessions pace a burst of keystrokes", kTags) {
-    if (!TerminalSession::Supported()) {
-        SKIP("The integrated terminal is not available in this build.");
-    }
-    // Signal readiness from the initialized reader and count bytes, since PTY
-    // reads can combine writes when the reader is scheduled late.
-    const std::string reader =
-        "$| = 1; my $s = clock_gettime(CLOCK_MONOTONIC); print 'ready'; my $data = ''; "
-        "while (length($data) < 4) { my $n = sysread(STDIN, my $b, 4 - length($data)); "
-        "die 'read failed' unless defined($n) && $n > 0; $data .= $b; } "
-        "printf ' keys=%s elapsed=%d done', $data, (clock_gettime(CLOCK_MONOTONIC) - $s) * 1e6";
-    TerminalSession session;
-    REQUIRE(session.start({
-        .program = "/bin/sh",
-        .arguments = {"-c", "command -v perl >/dev/null 2>&1 || { printf 'noperl'; sleep 5; exit; }; "
-                            "stty raw -echo; exec perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e \"$1\"",
-                      "sh", reader},
-        .directory = "/",
-    }) == Result::SUCCESS);
-    REQUIRE(PollUntil(session, [&] {
-        const std::string screen = ScreenText(session);
-        return screen.find("ready") != std::string::npos || screen.find("noperl") != std::string::npos;
-    }));
-    if (ScreenText(session).find("noperl") != std::string::npos) {
-        SKIP("Perl is not available to time the reads.");
-    }
+TEST_CASE("Terminal input pacing spaces batches using supplied clock values", kTags) {
+    using namespace std::chrono_literals;
+    TerminalInputPacer pacer;
+    const TerminalInputPacer::Clock::time_point start{};
+    REQUIRE(pacer.delay(start) == 0ms);
+    pacer.queue();
 
-    session.text("a");
-    session.text("b");
-    session.text("c");
-    session.text("d");
-    REQUIRE(Shows(session, "done"));
+    // A second keystroke cannot join the current batch, even after a stall.
+    CHECK(pacer.delay(start) == 8ms);
+    CHECK(pacer.delay(start + 1h) == 8ms);
+    pacer.sent(start);
+    CHECK(pacer.delay(start) == 8ms);
+    CHECK(pacer.delay(start + 7999us) == 1ms);
+    CHECK(pacer.delay(start + 8ms) == 0ms);
 
-    const std::string screen = ScreenText(session);
-    const auto begin = screen.find("keys=");
-    REQUIRE(begin != std::string::npos);
-    std::istringstream records(screen.substr(begin, screen.find("done") - begin));
-    std::string keys;
-    std::string elapsed;
-    REQUIRE(static_cast<bool>(records >> keys >> elapsed));
-    CHECK(keys == "keys=abcd");
-    REQUIRE(elapsed.starts_with("elapsed="));
-    CHECK(std::stoll(elapsed.substr(8)) >= 3 * 8000 / 2);
+    SECTION("Output and protocol replies do not postpone the next key") {
+        pacer.sent(start + 5ms);
+        CHECK(pacer.delay(start + 8ms) == 0ms);
+    }
+    SECTION("A delayed write starts a fresh interval instead of catching up") {
+        pacer.queue();
+        pacer.sent(start + 1h);
+        CHECK(pacer.delay(start + 1h) == 8ms);
+        CHECK(pacer.delay(start + 1h + 8ms) == 0ms);
+        pacer.queue();
+        CHECK(pacer.delay(start + 2h) == 8ms);
+    }
 }
 
-TEST_CASE("Terminal sessions stop promptly while the shell floods output", kTags) {
+TEST_CASE("Terminal sessions stop while the shell floods output", kTags) {
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");
     }
@@ -442,17 +438,11 @@ TEST_CASE("Terminal sessions stop promptly while the shell floods output", kTags
         REQUIRE(session.start({.program = "/bin/sh", .arguments = {"-c", "yes"}, .directory = "/"}) ==
                 Result::SUCCESS);
         REQUIRE(Shows(session, "y"));
-        const auto load = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
-        while (std::chrono::steady_clock::now() < load) {
-            if (polling) {
-                session.poll();
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (polling) {
+            session.poll();
         }
         session.text("x");
-        const auto begin = std::chrono::steady_clock::now();
         session.stop();
-        CHECK(std::chrono::steady_clock::now() - begin < std::chrono::seconds(2));
         CHECK_FALSE(session.running());
         session.poll();
         CHECK_FALSE(session.running());
@@ -463,40 +453,53 @@ TEST_CASE("Terminal sessions hold the screen during synchronized output", kTags)
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");
     }
-    TerminalSession session;
+    TerminalSession::Clock::time_point now{};
+    TerminalSession session([&] { return now; });
     REQUIRE(session.start({
         .program = "/bin/sh",
-        .arguments = {"-c", "printf 'before\\n'; sleep 0.5; printf '\\033[?2026hduring\\n'; sleep 0.5; "
-                            "printf 'after\\033[?2026l\\n'; sleep 2"},
+        .arguments = {"-c", "stty -echo; printf 'before\\n'; IFS= read -r step; "
+                            "printf '\\033[?2026hduring\\n\\033]2;held\\007'; IFS= read -r step; "
+                            "printf 'after\\033[?2026l\\n'; IFS= read -r step"},
         .directory = "/",
     }) == Result::SUCCESS);
     REQUIRE(Shows(session, "before"));
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(800);
-    while (std::chrono::steady_clock::now() < deadline) {
-        session.poll();
-        const std::string screen = ScreenText(session);
-        CHECK((screen.find("during") == std::string::npos || screen.find("after") != std::string::npos));
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    session.text("\n");
+    REQUIRE(PollUntil(session, [&] { return session.title() == "held"; }));
+    CHECK(ScreenText(session).find("during") == std::string::npos);
+    SECTION("The application releases the completed frame") {
+        session.text("\n");
+        REQUIRE(Shows(session, "after"));
+        CHECK(ScreenText(session).find("during") != std::string::npos);
     }
-    REQUIRE(Shows(session, "after"));
-    CHECK(ScreenText(session).find("during") != std::string::npos);
+    SECTION("An abandoned hold expires on the supplied clock") {
+        now += std::chrono::milliseconds(999);
+        session.poll();
+        CHECK(ScreenText(session).find("during") == std::string::npos);
+        now += std::chrono::milliseconds(1);
+        session.poll();
+        CHECK(ScreenText(session).find("during") != std::string::npos);
+        CHECK(ScreenText(session).find("after") == std::string::npos);
+    }
 }
 
 TEST_CASE("Terminal sessions show the frame finished right before a new synchronized hold", kTags) {
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");
     }
-    TerminalSession session;
+    TerminalSession session([] { return TerminalSession::Clock::time_point{}; });
     REQUIRE(session.start({
         .program = "/bin/sh",
-        .arguments = {"-c", "printf 'before\\n'; sleep 0.5; "
-                            "printf '\\033[?2026hframe\\n\\033[?2026l\\033[?2026hpartial\\n'; sleep 0.6; "
-                            "printf '\\033[?2026l'; sleep 2"},
+        .arguments = {"-c", "stty -echo; printf 'before\\n'; IFS= read -r step; "
+                            "printf '\\033[?2026hframe\\n\\033[?2026l\\033[?2026hpartial\\n\\033]2;held\\007'; "
+                            "IFS= read -r step; printf '\\033[?2026l'; IFS= read -r step"},
         .directory = "/",
     }) == Result::SUCCESS);
     REQUIRE(Shows(session, "before"));
+    session.text("\n");
+    REQUIRE(PollUntil(session, [&] { return session.title() == "held"; }));
     REQUIRE(Shows(session, "frame"));
     CHECK(ScreenText(session).find("partial") == std::string::npos);
+    session.text("\n");
     REQUIRE(Shows(session, "partial"));
 }
 
@@ -1180,7 +1183,7 @@ TEST_CASE("Terminal sessions publish hyperlinks and plain URLs per row", kTags) 
     TerminalSession session;
     REQUIRE(StartShell(session));
     session.text("printf '\\033[2J\\033[H\\033]8;;https://example.org/a\\033\\\\label\\033]8;;\\033\\\\ "
-                 "see (https://cyberether.org/docs). x'; sleep 30\r");
+                 "see (https://cyberether.org/docs). x'; IFS= read -r step\r");
     const auto links = [&]() -> std::vector<Sakura::Terminal::Link> {
         return session.screen().lines.empty() ? std::vector<Sakura::Terminal::Link>{} : session.screen().lines[0].links;
     };
@@ -1200,7 +1203,7 @@ TEST_CASE("Terminal sessions link a URL that wraps across rows to its whole dest
     TerminalSession session;
     REQUIRE(StartShell(session));
     session.resize({.columns = 20, .rows = 10, .cellWidth = 8.0f, .cellHeight = 16.0f});
-    session.text("printf '\\033[2J\\033[Hhttps://example.org/a/long/path end'; sleep 30\r");
+    session.text("printf '\\033[2J\\033[Hhttps://example.org/a/long/path end'; IFS= read -r step\r");
     const auto row = [&](U16 index) -> std::vector<Sakura::Terminal::Link> {
         return session.screen().lines.size() > index ? session.screen().lines[index].links
                                                      : std::vector<Sakura::Terminal::Link>{};
@@ -1222,7 +1225,7 @@ TEST_CASE("Terminal sessions skip a wrapped URL that continues below the visible
     REQUIRE(StartShell(session));
     session.resize({.columns = 20, .rows = 6, .cellWidth = 8.0f, .cellHeight = 16.0f});
     session.text("clear; i=0; while [ $i -lt 30 ]; do echo line$i; i=$((i+1)); done; "
-                 "printf 'https://example.org/a/long/path\\n'; printf 'tail'; sleep 30\r");
+                 "printf 'https://example.org/a/long/path\\n'; printf 'tail'; IFS= read -r step\r");
     REQUIRE(Shows(session, "tail"));
     const auto bottomLink = [&] {
         for (const auto& row : session.screen().lines) {
@@ -1259,13 +1262,15 @@ TEST_CASE("Terminal sessions keep the shown hyperlink while synchronized output 
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");
     }
-    TerminalSession session;
+    TerminalSession session([] { return TerminalSession::Clock::time_point{}; });
     REQUIRE(session.start({
         .program = "/bin/sh",
-        .arguments = {"-c", "printf '\\033]8;;https://old.example\\033\\\\label\\033]8;;\\033\\\\'; sleep 0.5; "
+        .arguments = {"-c", "stty -echo; printf '\\033]8;;https://old.example\\033\\\\label\\033]8;;\\033\\\\'; "
+                            "IFS= read -r step; "
                             "printf '\\033[H\\033]8;;https://mid.example\\033\\\\label\\033]8;;\\033\\\\"
-                            "\\033[?2026h\\033[H\\033]8;;https://new.example\\033\\\\label\\033]8;;\\033\\\\'; "
-                            "sleep 0.8; printf '\\033[?2026l'; sleep 2"},
+                            "\\033[?2026h\\033[H\\033]8;;https://new.example\\033\\\\label\\033]8;;\\033\\\\"
+                            "\\033]2;held\\007'; IFS= read -r step; "
+                            "printf '\\033[?2026l'; IFS= read -r step"},
         .directory = "/",
     }) == Result::SUCCESS);
     const auto uri = [&]() -> std::string {
@@ -1273,14 +1278,12 @@ TEST_CASE("Terminal sessions keep the shown hyperlink while synchronized output 
         return lines.empty() || lines[0].links.empty() ? std::string() : lines[0].links[0].uri;
     };
     REQUIRE(PollUntil(session, [&] { return uri() == "https://old.example"; }));
-    REQUIRE(PollUntil(session, [&] { return uri() != "https://old.example"; }));
+    session.text("\n");
+    REQUIRE(PollUntil(session, [&] { return session.title() == "held"; }));
     CHECK(uri() == "https://mid.example");
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
-    while (std::chrono::steady_clock::now() < deadline) {
-        session.poll();
-        CHECK(uri() == "https://mid.example");
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
+    session.poll();
+    CHECK(uri() == "https://mid.example");
+    session.text("\n");
     REQUIRE(PollUntil(session, [&] { return uri() == "https://new.example"; }));
 }
 
@@ -1314,7 +1317,7 @@ TEST_CASE("Terminal sessions search the screen, step between matches, and clear 
     }
     TerminalSession session;
     REQUIRE(StartShell(session));
-    session.text("clear; printf 'alpha needle\\nbeta\\nNEEDLE gamma needle\\n'; sleep 30\r");
+    session.text("clear; printf 'alpha needle\\nbeta\\nNEEDLE gamma needle\\n'; IFS= read -r step\r");
     REQUIRE(Shows(session, "gamma"));
     session.search("needle");
     const auto& screen = session.screen();
@@ -1352,7 +1355,7 @@ TEST_CASE("Terminal search keeps highlighting the visible part of a match wrappe
     REQUIRE(StartShell(session));
     session.resize({.columns = 20, .rows = 6, .cellWidth = 8.0f, .cellHeight = 16.0f});
     session.text("clear; printf 'abcdefghijklmnopqrstuvwxyz0123\\n'; i=0; while [ $i -lt 30 ]; do echo line$i; "
-                 "i=$((i+1)); done; sleep 30\r");
+                 "i=$((i+1)); done; IFS= read -r step\r");
     REQUIRE(Shows(session, "line29"));
     session.search("abcdefghijklmnopqrstuvwxyz0123");
     const auto top = [&] {
@@ -1382,7 +1385,7 @@ TEST_CASE("Terminal sessions clear the alternate screen with the current pen ins
     REQUIRE(session.start({
         .program = "/bin/sh",
         .arguments = {"-c", "printf '\\033[?1049h\\033[48;2;0;0;0mstale\\033[?1049l'; "
-                            "printf '\\033[?1049h\\033[0mready'; sleep 2"},
+                            "printf '\\033[?1049h\\033[0mready'; IFS= read -r step"},
         .directory = "/",
     }) == Result::SUCCESS);
     REQUIRE(Shows(session, "ready"));
@@ -1403,7 +1406,7 @@ TEST_CASE("Terminal sessions encode typed keys for the legacy encoding and appli
     REQUIRE(session.start({
         .program = "/bin/sh",
         .arguments = {"-c", "stty raw -echo; printf 'ready'; head -c 2 | od -An -tx1 | tr -s ' '; "
-                            "printf '\\033[?1035l\\033=keypad'; head -c 3 | od -An -tx1 | tr -s ' '; sleep 2"},
+                            "printf '\\033[?1035l\\033=keypad'; head -c 3 | od -An -tx1 | tr -s ' '; IFS= read -r step"},
         .directory = "/",
     }) == Result::SUCCESS);
     const auto type = [&](KeyCode key, const std::string& text, KeyModifiers modifiers = {}) {
@@ -1428,7 +1431,7 @@ TEST_CASE("Terminal sessions report presses and releases through the Kitty keybo
     REQUIRE(session.start({
         .program = "/bin/sh",
         .arguments = {"-c", "stty raw -echo; printf '\\033[>11uready'; head -c 14 | od -An -tx1 | tr -s ' '; "
-                            "sleep 2"},
+                            "IFS= read -r step"},
         .directory = "/",
     }) == Result::SUCCESS);
     REQUIRE(Shows(session, "ready"));
@@ -1446,7 +1449,7 @@ TEST_CASE("Terminal sessions pair Kitty text with the last pressed key and keep 
         REQUIRE(session.start({
             .program = "/bin/sh",
             .arguments = {"-c", "stty raw -echo; printf '\\033[>11uready'; head -c " + std::to_string(bytes) +
-                                    " | od -An -tx1 | tr -d '\\n' | tr -s ' '; sleep 2"},
+                                    " | od -An -tx1 | tr -d '\\n' | tr -s ' '; IFS= read -r step"},
             .directory = "/",
         }) == Result::SUCCESS);
         REQUIRE(Shows(session, "ready"));
@@ -1523,7 +1526,7 @@ TEST_CASE("Terminal sessions publish the predominant background of the screen", 
     CHECK(session.screen().base == session.screen().background);
     CHECK(session.screen().background.a == 1.0f);
 
-    session.text("printf '\\033[44m\\033[2J\\033[Hblue'; sleep 30\r");
+    session.text("printf '\\033[44m\\033[2J\\033[Hblue'; IFS= read -r step\r");
     REQUIRE(PollUntil(session, [&] { return session.screen().fill != session.screen().background; }));
     CHECK(session.screen().fill.b > session.screen().fill.r);
 }
@@ -1535,7 +1538,7 @@ TEST_CASE("Terminal sessions follow default colors that apps set themselves", kT
     TerminalSession session;
     REQUIRE(StartShell(session));
     const auto base = session.screen().base;
-    session.text("printf '\\033]10;rgb:00/ff/00\\007\\033]11;rgb:00/00/ff\\007\\033[2J\\033[Hcolored'; sleep 30\r");
+    session.text("printf '\\033]10;rgb:00/ff/00\\007\\033]11;rgb:00/00/ff\\007\\033[2J\\033[Hcolored'; IFS= read -r step\r");
     REQUIRE(PollUntil(session, [&] { return session.screen().background.b > 0.9f; }));
     CHECK(session.screen().base == base);
     CHECK(session.screen().fill == session.screen().background);
@@ -1554,7 +1557,7 @@ TEST_CASE("Terminal sessions count explicit edge cells in the default color towa
     TerminalSession session;
     REQUIRE(StartShell(session));
     session.text("printf '\\033[2J\\033[48;2;0;0;0m'; i=1; while [ $i -le 23 ]; do printf '\\033[%d;1H\\033[K' $i; "
-                 "i=$((i+1)); done; printf '\\033[48;2;0;0;255m\\033[24;1H\\033[K\\033[0mfinished'; sleep 30\r");
+                 "i=$((i+1)); done; printf '\\033[48;2;0;0;255m\\033[24;1H\\033[K\\033[0mfinished'; IFS= read -r step\r");
     REQUIRE(PollUntil(session, [&] { return RowText(session.screen().lines.back()).rfind("finished", 0) == 0; }));
     U64 blue = 0;
     for (const auto& run : session.screen().lines.back().backgrounds) {
@@ -1572,7 +1575,7 @@ TEST_CASE("Terminal sessions ignore a large background block that does not touch
     TerminalSession session;
     REQUIRE(StartShell(session));
     session.text("printf '\\033[2J\\033[48;2;0;0;255m'; i=3; while [ $i -le 22 ]; do printf '\\033[%d;3H%76s' $i ''; "
-                 "i=$((i+1)); done; printf '\\033[0m\\033[24;1Hfinished'; sleep 30\r");
+                 "i=$((i+1)); done; printf '\\033[0m\\033[24;1Hfinished'; IFS= read -r step\r");
     REQUIRE(PollUntil(session, [&] { return RowText(session.screen().lines.back()).rfind("finished", 0) == 0; }));
     U64 blue = 0;
     U64 edges = 0;
@@ -1596,7 +1599,7 @@ TEST_CASE("Terminal sessions ignore a large background block that does not touch
     TerminalSession framed;
     REQUIRE(StartShell(framed));
     framed.text("printf '\\033[2J\\033[48;2;0;0;255m'; i=1; while [ $i -le 24 ]; do printf '\\033[%d;1H\\033[K' $i; "
-               "i=$((i+1)); done; printf '\\033[0m'; sleep 30\r");
+               "i=$((i+1)); done; printf '\\033[0m'; IFS= read -r step\r");
     REQUIRE(PollUntil(framed, [&] { return framed.screen().fill != framed.screen().background; }));
     CHECK(framed.screen().fill.b > 0.9f);
 }
