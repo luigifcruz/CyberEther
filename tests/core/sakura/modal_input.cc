@@ -339,6 +339,42 @@ TEST_CASE("A chromeless modal with a fixed width leaves room outside its content
     CHECK((!clip.has_value() || (clip->x < frame.x && clip->right() > frame.right())));
 }
 
+TEST_CASE("A modal that dismisses outside closes on outside clicks only", "[core][sakura][modal-scope]") {
+    ModalFixture fixture;
+    PointerProbe background;
+    PointerProbe content;
+    Sakura::Layer base;
+    base.update({.content = &background});
+    Sakura::ModalLayer layer;
+    fixture.root.setLayers({&base, &layer});
+    U64 closes = 0;
+    const auto open = [&](bool dismissOutside) {
+        layer.update({.content = &content, .size = {150, 60}, .closeButton = false, .chrome = false,
+                      .dismissOutside = dismissOutside, .anchor = Rect{100, 40, 80, 24},
+                      .onClose = [&] { ++closes; }});
+        fixture.place();
+    };
+
+    open(true);
+    fixture.mouse(MouseEventType::Click, 120, 80);
+    fixture.mouse(MouseEventType::Release, 120, 80);
+    CHECK(closes == 0);
+    CHECK_FALSE(content.pointerEvents.empty());
+
+    fixture.mouse(MouseEventType::Release, 20, 20);
+    CHECK(closes == 0);
+    fixture.mouse(MouseEventType::Click, 20, 20);
+    fixture.mouse(MouseEventType::Release, 20, 20);
+    CHECK(closes == 1);
+    CHECK(background.pointerEvents.empty());
+
+    open(false);
+    fixture.mouse(MouseEventType::Click, 20, 20);
+    fixture.mouse(MouseEventType::Release, 20, 20);
+    CHECK(closes == 1);
+    CHECK(background.pointerEvents.empty());
+}
+
 TEST_CASE("An anchored modal sits below its anchor without dim or window chrome and stays on screen",
           "[core][sakura][modal-scope][modal-anchor]") {
     const F32 ratio = GENERATE(1.0f, 2.0f);

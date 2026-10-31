@@ -1,5 +1,6 @@
 #include <jetstream/render/sakura/components/pill_field.hh>
 
+#include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
@@ -20,6 +21,8 @@ namespace {
 
 constexpr F32 kPillPadX = 14.0f;
 constexpr F32 kPillIcon = 13.0f;
+constexpr F32 kKeycapHeight = 22.0f;
+constexpr F32 kKeycapPadX = 7.0f;
 
 }  // namespace
 
@@ -28,6 +31,7 @@ struct PillField::Impl {
     Card card;
     Text icon;
     Text placeholder;
+    Box keycap;
     Text trailing;
     TextInput input;
     bool pressed = false;
@@ -43,6 +47,7 @@ struct PillField::Impl {
             children.push_back(&placeholder);
         }
         if (!config.trailing.empty()) {
+            children.push_back(&keycap);
             children.push_back(&trailing);
         }
         if (children != mounted) {
@@ -64,10 +69,13 @@ void PillField::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
+    const F32 scale = impl->config.scale;
     impl->icon.update({.str = impl->config.icon, .colorKey = impl->config.iconColorKey,
-                       .scale = kPillIcon / Typography::FontSize});
-    impl->placeholder.update({.str = impl->config.placeholder, .font = Text::Font::Display, .tone = Text::Tone::Secondary});
-    impl->trailing.update({.str = impl->config.trailing, .tone = Text::Tone::Secondary, .scale = 0.85f});
+                       .scale = scale * kPillIcon / Typography::FontSize});
+    impl->placeholder.update({.str = impl->config.placeholder, .font = Text::Font::Display, .tone = Text::Tone::Secondary,
+                              .scale = scale});
+    impl->trailing.update({.str = impl->config.trailing, .font = Text::Font::Display, .tone = Text::Tone::Secondary,
+                           .scale = Typography::Scale::Small});
     impl->input.update({
         .value = impl->config.query,
         .hint = impl->config.placeholder,
@@ -78,6 +86,7 @@ void PillField::update(Config config) {
         .backgroundColorKey = "transparent",
         .onCancel = impl->config.onCancel,
         .padding = {0.0f, 0.0f},
+        .fontSize = Typography::FontSize * scale,
         .fontName = Typography::DisplayFont,
     });
     impl->mount(*this);
@@ -95,7 +104,9 @@ Extent2D<F32> PillField::measure(const Context& ctx, Extent2D<F32> available) {
         width += measureChild(impl->icon, ctx, {infinite, infinite}).x + Px(ctx, kPillIconGap);
     }
     if (!impl->config.trailing.empty()) {
-        width += measureChild(impl->trailing, ctx, {infinite, infinite}).x + Px(ctx, kPillIconGap);
+        width += measureChild(impl->trailing, ctx, {infinite, infinite}).x + 2.0f * Px(ctx, kKeycapPadX) +
+                 Px(ctx, kPillIconGap) - Px(ctx, kPillPadX) +
+                 (height - std::min(Px(ctx, kKeycapHeight), height)) * 0.5f;
     }
     return {ResolveLength(ctx, size.x, std::ceil(width), available.x), height};
 }
@@ -126,8 +137,19 @@ void PillField::layout(const Context& ctx) {
     }
     if (!impl->config.trailing.empty()) {
         const Extent2D<F32> size = measureChild(impl->trailing, ctx, {infinite, infinite});
-        layoutChild(ctx, impl->trailing, {right - size.x, bounds.y + (bounds.height - size.y) * 0.5f, size.x, size.y});
-        right -= size.x + Px(ctx, kPillIconGap);
+        const F32 height = std::min(Px(ctx, kKeycapHeight), bounds.height);
+        const F32 width = std::ceil(size.x + 2.0f * Px(ctx, kKeycapPadX));
+        const Rect keycap = {bounds.right() - (bounds.height - height) * 0.5f - width,
+                             std::round(bounds.y + (bounds.height - height) * 0.5f), width, height};
+        impl->keycap.update({
+            .instances = {{.rect = keycap, .visible = !keycap.empty(), .backgroundColor = ctx.color(kPillHover)}},
+            .clip = clip(),
+            .cornerRadius = keycap.height * 0.5f,
+        });
+        layoutChild(ctx, impl->keycap, keycap);
+        layoutChild(ctx, impl->trailing, {keycap.x + Px(ctx, kKeycapPadX), keycap.y + (keycap.height - size.y) * 0.5f,
+                                          size.x, size.y});
+        right = keycap.x - Px(ctx, kPillIconGap);
     }
     const Rect text = {x, bounds.y, std::max(0.0f, right - x), bounds.height};
     if (impl->config.editing) {

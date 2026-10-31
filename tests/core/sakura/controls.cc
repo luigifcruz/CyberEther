@@ -900,3 +900,13 @@ TEST_CASE("Reopening a combo dropdown drops the previous opening stretch", "[cor
     REQUIRE(row().has_value());
     CHECK(row()->y == Catch::Approx(rest->y));
 }
+
+TEST_CASE("Pill buttons let wheel events pass to the views around them", "[core][sakura][controls]") {
+    const auto ctx = MakeContext();
+    Sakura::PillButton button;
+    Host host(button);
+    button.update({.icon = "!", .label = "Report", .onClick = [] {}});
+    host.place(ctx, {0.0f, 0.0f, 120.0f, 28.0f});
+    CHECK_FALSE(host.send(Wheel(60.0f, 14.0f, -1.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Click, 60.0f, 14.0f)));
+}

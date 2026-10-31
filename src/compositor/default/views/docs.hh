@@ -5,6 +5,7 @@
 #include "components/sidebar_navigation.hh"
 #include "components/sidebar_tiles.hh"
 
+#include "jetstream/config.hh"
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
@@ -24,9 +25,14 @@ struct DocsView {
     static constexpr F32 ArticleFont = Sakura::Typography::FontSize * Sakura::Typography::Scale::Large;
     static constexpr F32 ArticlePadding = Sakura::Spacing::XXLarge;
     static constexpr F32 ChildIndent = Sakura::Spacing::Medium;
+    static constexpr F32 SearchHeight = 34.0f;
+#if defined(JST_OS_MAC)
+    static constexpr const char* SearchShortcut = ICON_LC_COMMAND " K";
+#else
+    static constexpr const char* SearchShortcut = "Ctrl K";
+#endif
     static constexpr F32 FooterPadding = Sakura::Spacing::Large;
     static constexpr F32 FooterCardPadding = Sakura::Spacing::Medium;
-    static constexpr const char* TileId = "docs-tile";
 
     struct Config {
         const Docs* docs = nullptr;
@@ -34,6 +40,7 @@ struct DocsView {
         std::string anchor;
         U64 navigation = 0;
         Sakura::Callback<void(const std::string&, const std::string&)> onNavigate;
+        Sakura::Callback<void()> onSearch;
         Sakura::Callback<void(const std::string&)> onOpenUrl;
         Sakura::Callback<void()> onFeedback;
         Sakura::Callback<void()> onClose;
@@ -53,38 +60,24 @@ struct DocsView {
         updateFooter();
         updateArticle(docs);
 
-        body.update({
-            .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 0.0f,
-            .centerCross = false,
-            .items = {
-                {.child = &sidebar, .size = SidebarTiles::SidebarWidth},
-                {.child = &markdown, .grow = 1.0f, .shrink = 1.0f},
-            },
-        });
         tile.update({
-            .panes = {
+            .sidebar = &sidebar,
+            .page = &markdown,
+        });
+        keys.update({
+            .bindings = {
                 {
-                    .id = TileId,
-                    .group = TileId,
-                    .content = &body,
-                    .closable = false,
-                    .maximizable = false,
+                    .key = KeyCode::K,
+                    .modifier = Sakura::Shortcuts::Modifier::Primary,
+                    .onPressed = [this]() { search(); },
                 },
             },
-            .tiles = Sakura::DockTiles{
-                .weights = {0.0f},
-                .children = {{.pane = TileId}},
-            },
-            .columns = true,
-            .flexPane = TileId,
-            .headers = false,
-            .resizable = false,
+            .content = &tile,
         });
     }
 
     Sakura::Component& component() {
-        return tile;
+        return keys;
     }
 
     Sakura::Dock::Pane pane() {
@@ -93,7 +86,7 @@ struct DocsView {
             .title = "Documentation",
             .group = "main",
             .icon = ICON_LC_BOOK_OPEN,
-            .content = &tile,
+            .content = &keys,
             .onClose = config.onClose,
             .onFocus = config.onFocus,
         };
@@ -126,8 +119,18 @@ struct DocsView {
             }
             sections.push_back(std::move(section));
         }
+        searchField.update({
+            .icon = ICON_LC_SEARCH,
+            .placeholder = "Search docs",
+            .trailing = SearchShortcut,
+            .size = {0.0f, SearchHeight},
+            .onOpen = [this]() {
+                search();
+            },
+        });
         navigation.update({
             .title = "Documentation",
+            .header = &searchField,
             .sections = std::move(sections),
         });
     }
@@ -248,6 +251,12 @@ struct DocsView {
         return true;
     }
 
+    void search() {
+        if (config.onSearch) {
+            config.onSearch();
+        }
+    }
+
     void navigate(const std::string& slug, const std::string& anchor) {
         if (config.onNavigate) {
             config.onNavigate(slug, anchor);
@@ -277,6 +286,7 @@ struct DocsView {
     std::string pendingAnchor;
     U64 navigations = 0;
 
+    Sakura::PillField searchField;
     std::vector<std::unique_ptr<Sakura::SidebarItem>> pageItems;
     SidebarNavigation navigation;
     Sakura::Text feedbackIcon;
@@ -288,8 +298,8 @@ struct DocsView {
 
     Sakura::Markdown markdown;
 
-    Sakura::Stack body;
-    Sakura::Dock tile;
+    Sakura::Shortcuts keys;
+    SidebarTiles tile;
 };
 
 }  // namespace Jetstream

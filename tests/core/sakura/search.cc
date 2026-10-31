@@ -9,6 +9,7 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/highlight_text.hh>
 #include <jetstream/render/sakura/components/overlay.hh>
 #include <jetstream/render/sakura/components/pill_button.hh>
 #include <jetstream/render/sakura/components/pill_field.hh>
@@ -338,7 +339,7 @@ TEST_CASE("Search catalog list card matches the docs card height beside it",
     std::vector<Jetstream::Rect> cards;
     for (auto* box : rig.all<Sakura::Box>()) {
         if (box->config().borderWidth > 0.0f && !box->config().topLit && box->config().softness == 0.0f &&
-            box->config().cornerRadius == 12.0f) {
+            box->config().cornerRadius == 18.0f) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     cards.push_back(instance.rect);
@@ -427,6 +428,104 @@ TEST_CASE("Search catalog gives unnamed groups no chip and lists them last under
             }
         }
     }
+}
+
+TEST_CASE("Pill fields scale their icon and text with the scale field", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    Sakura::PillField pill;
+    Host host(pill);
+    Sakura::PillField::Config config{.icon = "Q", .placeholder = "Search blocks"};
+    const auto texts = [&] {
+        std::vector<Sakura::Text::Config> found;
+        for (auto* text : Find<Sakura::Text>(pill)) {
+            found.push_back(text->config());
+        }
+        return found;
+    };
+    const auto scaleOf = [&](const std::string& str) {
+        for (const auto& text : texts()) {
+            if (text.str == str) {
+                return text.scale;
+            }
+        }
+        return 0.0f;
+    };
+
+    pill.update(config);
+    const F32 base = host.measureOf(scene.ctx, {kInfinite, kInfinite}).x;
+    const F32 icon = scaleOf("Q");
+    CHECK(scaleOf("Search blocks") == 1.0f);
+
+    config.scale = 1.25f;
+    pill.update(config);
+    CHECK(scaleOf("Search blocks") == 1.25f);
+    CHECK(scaleOf("Q") == Catch::Approx(icon * 1.25f));
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).x > base);
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).y == 34.0f);
+}
+
+TEST_CASE("Pill field trailing labels sit in a keycap inset evenly inside the pill", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    Sakura::PillField pill;
+    Host host(pill);
+    Sakura::PillField::Config config{.icon = "Q", .placeholder = "Search docs"};
+    pill.update(config);
+    const F32 bare = host.measureOf(scene.ctx, {kInfinite, kInfinite}).x;
+
+    config.trailing = "Ctrl K";
+    pill.update(config);
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).x > bare);
+
+    const auto keycap = [&](const Sakura::Context& ctx) -> std::optional<std::pair<Jetstream::Rect, F32>> {
+        for (auto* box : Find<Sakura::Box>(pill)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.backgroundColor == ctx.color("chrome_button_hover")) {
+                    return std::make_pair(instance.rect, box->config().cornerRadius);
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    for (const F32 ratio : {1.0f, 2.0f}) {
+        auto ctx = scene.context();
+        ctx.pixelRatio = ratio;
+        config.size = {240.0f * ratio, 34.0f * ratio};
+        pill.update(config);
+        host.place(ctx, {0.0f, 0.0f, 240.0f * ratio, 34.0f * ratio});
+        const auto found = keycap(ctx);
+        REQUIRE(found.has_value());
+        const auto& [rect, radius] = *found;
+        CHECK(rect.height == 22.0f * ratio);
+        CHECK(rect.y == 6.0f * ratio);
+        CHECK(rect.right() == Catch::Approx(234.0f * ratio));
+        CHECK(radius == rect.height * 0.5f);
+        bool labelled = false;
+        for (auto* text : Find<Sakura::Text>(pill)) {
+            if (text->config().str == "Ctrl K") {
+                const auto frame = Peek::Frame(*text);
+                labelled = frame.x >= rect.x && frame.right() <= rect.right();
+            }
+        }
+        CHECK(labelled);
+    }
+}
+
+TEST_CASE("Pill field trailing labels settle and repaint when they change", "[core][sakura][search][retention]") {
+    Scene scene;
+    Sakura::PillField pill;
+    Place place(pill, {10.0f, 10.0f, 240.0f, 34.0f});
+    Frames frames(place, kScreen, scene.context());
+    std::string trailing = "Ctrl K";
+    const auto update = [&] {
+        pill.update({.icon = "Q", .placeholder = "Search docs", .trailing = trailing, .size = {240.0f, 34.0f}});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    trailing = "Ctrl P";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
 }
 
 TEST_CASE("Pill field placeholder keeps its position when the field starts editing",
@@ -612,7 +711,7 @@ TEST_CASE("Search catalog cards fill with the pill field color", "[core][sakura]
     rig.place();
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     CHECK(instance.backgroundColor == fill);
@@ -963,6 +1062,71 @@ TEST_CASE("Search catalog scrolls back up to reveal the first result after a whe
     CHECK(RowTiles(rig, "pill_active_bg") == std::vector<Jetstream::Rect>{{10.0f, 43.0f, 280.0f, 46.0f}});
 }
 
+TEST_CASE("Search catalog lists stretch past their ends and spring back", "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.scene.ctx.palette = Tones();
+    rig.config.items.clear();
+    for (U64 index = 0; index < 20; ++index) {
+        rig.config.items.push_back({.id = "item" + std::to_string(index), .title = "Item", .group = "DSP"});
+    }
+    rig.config.maxHeight = 300.0f;
+    rig.place();
+    const auto rest = RowTiles(rig, "pill_active_bg");
+    REQUIRE(rest.size() == 1);
+    const auto trackpad = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(100.0f, 200.0f, 0.0f, dy);
+        event.phase = phase;
+        rig.host.send(event);
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    };
+
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    const auto stretched = RowTiles(rig, "pill_active_bg");
+    REQUIRE(stretched.size() == 1);
+    CHECK(stretched.front().y > rest.front().y);
+
+    trackpad(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 120; ++frame) {
+        rig.scene.ctx.time += 1.0 / 60.0;
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    }
+    CHECK(RowTiles(rig, "pill_active_bg") == rest);
+
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    REQUIRE(RowTiles(rig, "pill_active_bg").front().y > rest.front().y);
+    rig.config.items.pop_back();
+    rig.place();
+    CHECK(RowTiles(rig, "pill_active_bg") == rest);
+}
+
+TEST_CASE("Search catalog cards take the configured rounding and rows stay concentric inside them",
+          "[core][sakura][search]") {
+    const F32 ratio = GENERATE(1.0f, 2.0f);
+    CatalogRig rig;
+    rig.scene.ctx.palette = Tones();
+    rig.scene.ctx.pixelRatio = ratio;
+    rig.config.rounding = 22.0f;
+    rig.place();
+    U64 cards = 0;
+    bool row = false;
+    for (auto* box : rig.all<Sakura::Box>()) {
+        const auto& config = box->config();
+        if (config.borderWidth == ratio && !config.topLit && config.cornerRadius == 22.0f * ratio) {
+            cards += config.instances.size();
+        }
+        for (const auto& instance : config.instances) {
+            if (instance.backgroundColor == rig.scene.ctx.color("pill_active_bg") && config.borderWidth == 0.0f) {
+                row = true;
+                CHECK(config.cornerRadius == 12.0f * ratio);
+            }
+        }
+    }
+    CHECK(cards == 2);
+    CHECK(row);
+}
+
 TEST_CASE("Search catalog leaves the wheel unconsumed when the list does not overflow",
           "[core][sakura][search]") {
     CatalogRig fits;
@@ -1224,7 +1388,7 @@ TEST_CASE("Search catalog bounds follow custom card widths and clamp the docs he
     CHECK(rig.bounds.height == 200.0f);
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 200.0f) {
                     CHECK(instance.rect.height == 200.0f);
@@ -1255,7 +1419,7 @@ TEST_CASE("Search catalog heights are natural, fixed, or filling and keep the do
     rig.host.place(rig.scene.ctx, {0.0f, 0.0f, 748.0f, 400.0f});
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     CHECK(instance.rect.height == 400.0f);
@@ -1296,7 +1460,7 @@ TEST_CASE("Search catalog fixed heights size the whole component with the field 
     CHECK(Peek::Frame(field) == Jetstream::Rect{0.0f, 0.0f, 748.0f, 34.0f});
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     CHECK(instance.rect.y == 42.0f);
@@ -1377,7 +1541,7 @@ TEST_CASE("Search catalog drops the docs card when both cards do not fit and res
 
     U64 wide = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 CHECK(instance.rect.right() <= 500.0f);
                 wide += instance.rect.width >= 300.0f ? 1 : 0;
@@ -1390,7 +1554,7 @@ TEST_CASE("Search catalog drops the docs card when both cards do not fit and res
     rig.host.place(rig.scene.ctx, {0.0f, 0.0f, cramped, narrow.y});
     CHECK(rig.all<Sakura::ScrollArea>().empty());
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 CHECK(instance.rect.right() <= cramped);
             }
@@ -1680,4 +1844,69 @@ TEST_CASE("Pill icon buttons show their tooltip below after the hover delay and 
     frames.run(update);
     CHECK_FALSE(tooltip().has_value());
     CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Highlight text scales with the pixel ratio and reports clicks", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    U64 clicks = 0;
+    Sakura::HighlightText text;
+    Host host(text);
+    text.update({
+        .str = "Use the blueprint bundler.",
+        .marks = {{.begin = 8, .end = 17}},
+        .onClick = [&] { ++clicks; },
+    });
+
+    const auto base = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    auto doubled = scene.ctx;
+    doubled.pixelRatio = 2.0f;
+    const auto scaled = host.measureOf(doubled, {kInfinite, kInfinite});
+    CHECK(base.y > 0.0f);
+    CHECK(scaled.y == Catch::Approx(2.0f * base.y));
+
+    host.place(scene.ctx, {0.0f, 0.0f, base.x, base.y});
+    host.click(base.x * 0.5f, base.y * 0.5f);
+    CHECK(clicks == 1);
+}
+
+TEST_CASE("Highlight text marks ranges on every line", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    Sakura::HighlightText text;
+    Host host(text);
+    text.update({
+        .str = "foo\nbar",
+        .marks = {{.begin = 4, .end = 7}},
+    });
+
+    const auto size = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    host.place(scene.ctx, {0.0f, 0.0f, size.x, size.y});
+    const auto mark = scene.ctx.color("editor_selection_match");
+    std::vector<Jetstream::Rect> marked;
+    for (auto* box : Find<Sakura::Box>(text)) {
+        for (const auto& instance : box->config().instances) {
+            if (instance.visible && instance.backgroundColor == mark) {
+                marked.push_back(instance.rect);
+            }
+        }
+    }
+    REQUIRE(marked.size() == 1);
+    CHECK(marked.front().y > size.y * 0.5f - marked.front().height);
+}
+
+TEST_CASE("Highlight text settles and repaints when its marks change", "[core][sakura][search][retention]") {
+    Scene scene;
+    Sakura::HighlightText text;
+    Place place(text, {10.0f, 10.0f, 300.0f, 60.0f});
+    Frames frames(place, kScreen, scene.context());
+    std::vector<Sakura::HighlightText::Mark> marks = {{.begin = 0, .end = 5}};
+    const auto update = [&] {
+        text.update({.id = "snippet", .str = "alpha beta gamma", .marks = marks});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    marks = {{.begin = 6, .end = 10}};
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
 }

@@ -29,6 +29,7 @@
 #include <jetstream/render/sakura/components/flowgraph_card.hh>
 #include <jetstream/render/sakura/components/floating_layer.hh>
 #include <jetstream/render/sakura/components/grid.hh>
+#include <jetstream/render/sakura/components/highlight_text.hh>
 #include <jetstream/render/sakura/components/hud_layer.hh>
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/label.hh>

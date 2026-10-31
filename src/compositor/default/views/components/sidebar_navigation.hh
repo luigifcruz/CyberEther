@@ -24,6 +24,7 @@ struct SidebarNavigation : public Sakura::ScrollArea {
 
     struct Config {
         std::string title;
+        Sakura::Component* header = nullptr;
         std::vector<Section> sections;
     };
 
@@ -34,6 +35,11 @@ struct SidebarNavigation : public Sakura::ScrollArea {
             groups.push_back(std::make_unique<Group>());
         }
         std::vector<Sakura::Stack::Item> items = {{.child = &title}, {.child = &titleSpacing}};
+        if (config.header) {
+            headerSpacing.update({.lines = SectionLines});
+            items.push_back({.child = config.header});
+            items.push_back({.child = &headerSpacing});
+        }
         for (U64 index = 0; index < config.sections.size(); ++index) {
             auto& section = config.sections[index];
             auto& group = *groups[index];
@@ -76,6 +82,7 @@ struct SidebarNavigation : public Sakura::ScrollArea {
 
     SidebarHeading title;
     Sakura::Spacer titleSpacing;
+    Sakura::Spacer headerSpacing;
     std::vector<std::unique_ptr<Group>> groups;
     Sakura::Stack stack;
     Sakura::Div frame;

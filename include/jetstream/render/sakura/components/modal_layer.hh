@@ -15,6 +15,7 @@ struct ModalLayer : public Layer {
         Extent2D<F32> size = {550.0f, 0.0f};
         bool closeButton = true;
         bool chrome = true;
+        bool dismissOutside = false;
         std::optional<Rect> anchor;
         Callback<void()> onClose;
 

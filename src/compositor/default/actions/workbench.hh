@@ -34,6 +34,7 @@ struct WorkbenchActions {
                               MailCloseStartTab,
                               MailFocusStartTab,
                               MailSetWelcomeSection,
+                              MailSetWelcomeSidebar,
                               MailSetWelcomeQuery,
                               MailSetWelcomeCategory,
                               MailSetWelcomePage,
@@ -42,6 +43,7 @@ struct WorkbenchActions {
                               MailFocusSettings,
                               MailOpenDocs,
                               MailCloseDocs,
+                              MailSetDocsQuery,
                               MailFocusDocs>;
 
     DefaultCompositorState& state;
@@ -120,6 +122,11 @@ struct WorkbenchActions {
         return Result::SUCCESS;
     }
 
+    Result handle(const MailSetWelcomeSidebar& msg) {
+        state.interface.welcomeSidebarOpen = msg.open;
+        return Result::SUCCESS;
+    }
+
     Result handle(const MailSetWelcomeQuery& msg) {
         state.interface.welcomeQuery = msg.query;
         state.interface.welcomePage = 0;
@@ -170,6 +177,11 @@ struct WorkbenchActions {
 
     Result handle(const MailCloseDocs&) {
         Close(state, WorkspaceTab::Docs);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetDocsQuery& msg) {
+        state.interface.docsQuery = msg.query;
         return Result::SUCCESS;
     }
 

@@ -21,6 +21,7 @@
 #include "render/sakura/detail/text_metrics.hh"
 #include "render/sakura/metrics.hh"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -510,7 +511,7 @@ TEST_CASE("Model picker slider drags cancel without committing an effort", kPick
     CHECK(rig.open());
 }
 
-TEST_CASE("Model picker lists fit the space beside the field and scroll by rows", kPickerTags) {
+TEST_CASE("Model picker lists fit the space beside the field and scroll smoothly", kPickerTags) {
     PickerRig rig;
     rig.frames.verify = false;
     rig.config.models.clear();
@@ -536,7 +537,6 @@ TEST_CASE("Model picker lists fit the space beside the field and scroll by rows"
     rig.host.send(Wheel(150.0f, 100.0f, -1.0f));
     REQUIRE(rig.settle());
     CHECK_FALSE(ShowsAt(rig.host, "Model 00", top));
-    CHECK(ShowsAt(rig.host, "Model 00", kField.y));
     CHECK(ShowsAt(rig.host, "Model 01", top));
     CHECK(ShowsAt(rig.host, "Model 11", top + 10.0f * kRowHeight));
     CHECK(Texts(rig.host, ICON_LC_CHECK).empty());
@@ -556,28 +556,22 @@ TEST_CASE("Model picker lists fit the space beside the field and scroll by rows"
     trackpad.phase = ScrollPhase::Changed;
     rig.host.send(trackpad);
     REQUIRE(rig.settle());
-    CHECK(ShowsAt(rig.host, "Model 28", top + 10.0f * kRowHeight));
-    rig.host.send(trackpad);
-    REQUIRE(rig.settle());
-    CHECK(ShowsAt(rig.host, "Model 27", top + 10.0f * kRowHeight));
+    const auto moved = Texts(rig.host, "Model 28");
+    REQUIRE(moved.size() == 1);
+    CHECK(moved.front().rect.y > top + 10.0f * kRowHeight);
+    CHECK(moved.front().rect.y < top + 11.0f * kRowHeight);
+    CHECK(Capacities(rig.host) == capacities);
 
-    auto down = trackpad;
-    down.scroll.y = -trackpad.scroll.y;
-    rig.host.send(down);
-    REQUIRE(rig.settle());
-    CHECK(ShowsAt(rig.host, "Model 27", top + 10.0f * kRowHeight));
     rig.click(kFieldCenter);
     REQUIRE(rig.settle());
     REQUIRE_FALSE(rig.host.popups.interactiveAt({150.0f, 100.0f}));
     rig.click(kFieldCenter);
     REQUIRE(rig.settle());
     REQUIRE(rig.host.popups.interactiveAt({150.0f, 100.0f}));
-    rig.host.send(down);
-    REQUIRE(rig.settle());
     CHECK(ShowsAt(rig.host, "Model 00", top));
 }
 
-TEST_CASE("Model picker lists leave their endpoints on small inward trackpad deltas", kPickerTags) {
+TEST_CASE("Model picker lists stretch past their ends and spring back", kPickerTags) {
     PickerRig rig;
     rig.frames.verify = false;
     rig.config.models.clear();
@@ -594,30 +588,119 @@ TEST_CASE("Model picker lists leave their endpoints on small inward trackpad del
 
     const F32 top = 13.0f;
     REQUIRE(ShowsAt(rig.host, "Model 00", top));
+    const auto trackpad = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(150.0f, 100.0f, dy);
+        event.phase = phase;
+        rig.host.send(event);
+        rig.settle();
+    };
 
-    auto inward = Wheel(150.0f, 100.0f, -kRowHeight / 10.0f * 0.5f);
-    inward.phase = ScrollPhase::Changed;
-    rig.host.send(inward);
-    REQUIRE(rig.settle());
-    CHECK(ShowsAt(rig.host, "Model 00", top));
-    rig.host.send(inward);
-    REQUIRE(rig.settle());
-    CHECK(ShowsAt(rig.host, "Model 01", top));
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    const auto stretched = Texts(rig.host, "Model 00");
+    CHECK(std::any_of(stretched.begin(), stretched.end(), [&](const auto& instance) {
+        return instance.rect.y > top && instance.rect.y < top + kRowHeight;
+    }));
 
-    for (U64 i = 0; i < 40; ++i) {
-        rig.host.send(Wheel(150.0f, 100.0f, -1.0f));
+    trackpad(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 120; ++frame) {
+        rig.frames.ctx.time += 1.0 / 60.0;
+        rig.settle();
     }
-    REQUIRE(rig.settle());
-    REQUIRE(ShowsAt(rig.host, "Model 29", top + 10.0f * kRowHeight));
+    CHECK(ShowsAt(rig.host, "Model 00", top));
+}
 
-    auto up = inward;
-    up.scroll.y = -inward.scroll.y;
-    rig.host.send(up);
+TEST_CASE("Model picker lists keep the hover on the row under the pointer after a wheel", kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    rig.config.models.clear();
+    for (U64 i = 0; i < 30; ++i) {
+        const std::string index = (i < 10 ? "0" : "") + std::to_string(i);
+        rig.config.models.push_back({.id = "model-" + index, .label = "Model " + index});
+    }
+    rig.config.value = "model-00";
+    rig.config.efforts.clear();
+    rig.config.effort.clear();
     REQUIRE(rig.settle());
-    CHECK(ShowsAt(rig.host, "Model 29", top + 10.0f * kRowHeight));
-    rig.host.send(up);
+    rig.click(kFieldCenter);
     REQUIRE(rig.settle());
-    CHECK(ShowsAt(rig.host, "Model 28", top + 10.0f * kRowHeight));
+
+    const Extent2D<F32> point = {150.0f, 100.0f};
+    rig.host.send(Mouse(MouseEventType::Move, point.x, point.y));
+    REQUIRE(rig.settle());
+    rig.host.send(Wheel(point.x, point.y, -1.0f));
+    REQUIRE(rig.settle());
+
+    const auto hovered = rig.frames.ctx.color("button_hovered");
+    std::optional<Rect> highlight;
+    for (auto* box : Find<Sakura::Box>(rig.host.popups)) {
+        for (const auto& instance : box->config().instances) {
+            if (instance.visible && instance.backgroundColor == hovered) {
+                highlight = instance.rect;
+            }
+        }
+    }
+    REQUIRE(highlight.has_value());
+    CHECK(highlight->y <= point.y);
+    CHECK(highlight->bottom() > point.y);
+    CHECK(ShowsAt(rig.host, "Model 04", highlight->y));
+
+    rig.click(point);
+    REQUIRE_FALSE(rig.selected.empty());
+    CHECK(rig.selected.back() == "model-04");
+}
+
+TEST_CASE("Model pickers settle after leaving the list mid spring back", kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    rig.config.models.clear();
+    for (U64 i = 0; i < 30; ++i) {
+        const std::string index = (i < 10 ? "0" : "") + std::to_string(i);
+        rig.config.models.push_back({.id = "model-" + index, .label = "Model " + index});
+    }
+    rig.config.value = "model-00";
+    REQUIRE(rig.settle());
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    rig.click(kModelRow);
+    REQUIRE(rig.settle());
+
+    const auto row = [&]() -> std::optional<Rect> {
+        for (const auto& instance : Texts(rig.host, "Model 00")) {
+            if (instance.rect.y != kField.y) {
+                return instance.rect;
+            }
+        }
+        return std::nullopt;
+    };
+    const auto rest = row();
+    REQUIRE(rest.has_value());
+    auto pull = Wheel(rest->x + 10.0f, rest->y + rest->height * 0.5f, 3.0f);
+    pull.phase = ScrollPhase::Began;
+    rig.host.send(pull);
+    pull.phase = ScrollPhase::Changed;
+    rig.host.send(pull);
+    rig.step();
+    pull.scroll.y = 0.0f;
+    pull.phase = ScrollPhase::Ended;
+    rig.host.send(pull);
+    rig.step();
+
+    const auto stretched = row();
+    REQUIRE(stretched.has_value());
+    REQUIRE(stretched->y > rest->y);
+    rig.click({stretched->x + 10.0f, stretched->y + stretched->height * 0.5f});
+    rig.step();
+    CHECK(rig.selected.empty());
+    CHECK_FALSE(Shows(rig.host, "Model 01"));
+    CHECK(Shows(rig.host, "Medium"));
+
+    for (U64 frame = 0; frame < 120; ++frame) {
+        rig.frames.ctx.time += 1.0 / 60.0;
+        rig.step();
+    }
+    CHECK(rig.step().clean());
+    CHECK(rig.step().clean());
 }
 
 TEST_CASE("Closed model pickers settle and repaint once per hover transition and visual change",

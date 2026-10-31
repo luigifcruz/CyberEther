@@ -4,6 +4,7 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/popup.hh>
+#include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
@@ -89,8 +90,8 @@ struct PickerState {
     Target pressed;
     bool dragging = false;
     I64 dragIndex = -1;
-    U64 firstRow = 0;
-    F32 travel = 0.0f;
+    F32 scroll = 0.0f;
+    bool scrollReset = false;
     U64 rowLimit = 1;
     F32 anchorWidth = 0.0f;
     F32 thumb = -1.0f;
@@ -167,9 +168,13 @@ struct PickerState {
         pressed = {};
         dragging = false;
         dragIndex = -1;
-        firstRow = 0;
-        travel = 0.0f;
+        resetScroll();
         changed();
+    }
+
+    void resetScroll() {
+        scroll = 0.0f;
+        scrollReset = true;
     }
 
     void select(U64 row) {
@@ -183,6 +188,7 @@ struct PickerState {
             } else {
                 mode = Mode::Effort;
                 hover = {};
+                resetScroll();
                 changed();
             }
             return;
@@ -214,6 +220,7 @@ struct PickerState {
 
 struct PickerBody : public Component {
     PickerState& picker;
+    Scroller scroller;
     Box background;
     Box highlight;
     Box rail;
@@ -223,13 +230,14 @@ struct PickerBody : public Component {
     Label icons;
     Rect modelRow;
     std::vector<F32> stops;
-    F32 listTop = 0.0f;
+    Rect list;
     F32 rowHeight = 0.0f;
-    U64 visibleRows = 0;
-    F32 pixelRatio = 1.0f;
+    F32 offset = 0.0f;
+    std::optional<Extent2D<F32>> pointer;
 
     explicit PickerBody(PickerState& picker) : picker(picker) {
         setClipsChildren(true);
+        addChild(scroller);
         addChild(background);
         addChild(highlight);
         addChild(rail);
@@ -264,14 +272,18 @@ struct PickerBody : public Component {
 
     std::optional<U64> rowAt(const Extent2D<F32>& point) const {
         if (picker.activeMode() != Mode::Models || rowHeight <= 0.0f || !frame().contains(point.x, point.y) ||
-            point.y < listTop) {
+            !list.contains(point.x, point.y)) {
             return std::nullopt;
         }
-        const U64 slot = static_cast<U64>((point.y - listTop) / rowHeight);
-        if (slot >= visibleRows || picker.firstRow + slot >= picker.config.models.size()) {
+        const F32 y = point.y - list.y + offset;
+        if (y < 0.0f) {
             return std::nullopt;
         }
-        return picker.firstRow + slot;
+        const U64 row = static_cast<U64>(y / rowHeight);
+        if (row >= picker.config.models.size()) {
+            return std::nullopt;
+        }
+        return row;
     }
 
     bool onTrack(const Extent2D<F32>& point) const {
@@ -349,9 +361,9 @@ struct PickerBody : public Component {
         for (U64 i = 0; i < count; ++i) {
             stops.push_back(track.x + inset + StopFraction(i, count) * span);
         }
-        listTop = 0.0f;
+        list = {};
         rowHeight = 0.0f;
-        visibleRows = 0;
+        offset = 0.0f;
 
         const I64 index = state.effortIndex();
         if (index < 0) {
@@ -443,10 +455,25 @@ struct PickerBody : public Component {
         const F32 inset = kListInset * m.unit;
         const U64 rows = config.models.size();
         rowHeight = RowHeight(m);
-        visibleRows = rowsShown(ctx, m);
-        pixelRatio = ctx.pixelRatio;
-        state.firstRow = std::min(state.firstRow, rows - visibleRows);
-        listTop = bounds.y + pad;
+        const F32 content = static_cast<F32>(rows) * rowHeight;
+        list = {bounds.x, bounds.y + pad, bounds.width, static_cast<F32>(rowsShown(ctx, m)) * rowHeight};
+        state.scroll = std::clamp(state.scroll, 0.0f, std::max(0.0f, content - list.height));
+        scroller.update({
+            .contentHeight = content,
+            .scrollY = state.scroll,
+            .scrollbar = false,
+            .wheel = false,
+            .wheelStep = rowHeight,
+            .onScrollY = [this](F32 next) {
+                picker.scroll = next;
+                refresh();
+            },
+        });
+        layoutChild(ctx, scroller, list);
+        offset = state.scroll + scroller.overscroll(ctx).y;
+        if (pointer.has_value()) {
+            state.hover = targetAt(*pointer);
+        }
         modelRow = {};
         stops.clear();
 
@@ -454,9 +481,11 @@ struct PickerBody : public Component {
         const auto detailColor = state.color(ctx, config.detailColorKey);
         std::vector<Label::Instance> labels;
         Label::Instance check = {.visible = false};
-        for (U64 i = 0; i < visibleRows; ++i) {
-            const auto& option = config.models[state.firstRow + i];
-            const Rect row = {bounds.x + inset, listTop + static_cast<F32>(i) * rowHeight,
+        const U64 first = static_cast<U64>(std::max(0.0f, std::floor(offset / rowHeight)));
+        const U64 last = std::min<U64>(rows, static_cast<U64>(std::max(0.0f, std::ceil((offset + list.height) / rowHeight))));
+        for (U64 i = first; i < last; ++i) {
+            const auto& option = config.models[i];
+            const Rect row = {bounds.x + inset, list.y + static_cast<F32>(i) * rowHeight - offset,
                               std::max(0.0f, bounds.width - 2.0f * inset), rowHeight};
             const F32 labelWidth = state.measureText(option.label, m.font);
             labels.push_back({.rect = row, .str = option.label, .color = textColor, .fontSize = m.font,
@@ -471,13 +500,12 @@ struct PickerBody : public Component {
                          .color = textColor, .fontSize = m.font * kCheckScale, .alignment = {1, 1}};
             }
         }
-        const bool hovered = state.hover.kind == Target::Kind::Row && state.hover.row >= state.firstRow &&
-                             state.hover.row < state.firstRow + visibleRows;
-        const F32 hoverTop = listTop + static_cast<F32>(hovered ? state.hover.row - state.firstRow : 0) * rowHeight;
+        const bool hovered = state.hover.kind == Target::Kind::Row && state.hover.row >= first && state.hover.row < last;
+        const F32 hoverTop = list.y + static_cast<F32>(hovered ? state.hover.row : 0) * rowHeight - offset;
         highlight.update({
             .instances = {{.rect = {bounds.x + pad, hoverTop, std::max(0.0f, bounds.width - 2.0f * pad), rowHeight},
                            .visible = hovered, .backgroundColor = state.color(ctx, config.rowHoveredColorKey)}},
-            .clip = bounds,
+            .clip = list,
             .cornerRadius = std::max(0.0f, Px(ctx, config.popupRounding) - pad),
         });
         rail.update({.clip = bounds, .cornerRadius = kTrackHeight * m.unit * 0.5f});
@@ -485,14 +513,14 @@ struct PickerBody : public Component {
         knob.update({.clip = bounds, .cornerRadius = kThumbSize * m.unit * 0.5f});
         texts.update({
             .instances = std::move(labels),
-            .clip = bounds,
+            .clip = list,
             .fontName = Typography::BodyFont,
             .maxCharacters = kMaxCharacters,
             .capacity = capacity,
         });
         icons.update({
             .instances = {std::move(check)},
-            .clip = bounds,
+            .clip = list,
             .fontName = Typography::IconFont,
             .maxCharacters = 4,
             .capacity = 1,
@@ -513,9 +541,15 @@ struct PickerBody : public Component {
             .borderColor = picker.color(ctx, config.popupBorderColorKey),
             .strokeFringe = true,
         });
-        const U64 capacity = 2 * PoolRows(ctx, m);
+        const U64 capacity = 2 * (PoolRows(ctx, m) + 1);
+        if (picker.scrollReset) {
+            picker.scrollReset = false;
+            scroller.reset();
+        }
         if (picker.activeMode() == Mode::Effort) {
             layoutEffort(ctx, m, bounds, capacity);
+            scroller.update({.scrollbar = false, .wheel = false});
+            layoutChild(ctx, scroller, {bounds.x, bounds.y, 0.0f, 0.0f});
         } else {
             layoutModels(ctx, m, bounds, capacity);
         }
@@ -546,15 +580,18 @@ struct PickerBody : public Component {
                     }
                     return true;
                 }
+                pointer = point;
                 const Target next = targetAt(point);
                 setHover(next);
                 return next.kind != Target::Kind::None;
             }
             case MouseEventType::Leave:
+                pointer.reset();
                 state.pressed = {};
                 setHover({});
                 return false;
             case MouseEventType::Cancel:
+                pointer.reset();
                 state.pressed = {};
                 if (state.dragging) {
                     state.dragging = false;
@@ -564,24 +601,12 @@ struct PickerBody : public Component {
                 setHover({});
                 return false;
             case MouseEventType::Scroll: {
-                if (!inside || state.activeMode() != Mode::Models || event.scroll.y == 0.0f || rowHeight <= 0.0f) {
+                if (!inside || state.activeMode() != Mode::Models || rowHeight <= 0.0f) {
                     return inside;
                 }
-                const U64 rows = state.config.models.size();
-                const U64 last = rows - std::min(rows, visibleRows);
-                state.travel -= event.scroll.y * WheelStep(event, rowHeight, pixelRatio);
-                const I64 steps = static_cast<I64>(state.travel / rowHeight);
-                state.travel -= static_cast<F32>(steps) * rowHeight;
-                const I64 target = static_cast<I64>(state.firstRow) + steps;
-                if ((target <= 0 && state.travel < 0.0f) || (target >= static_cast<I64>(last) && state.travel > 0.0f)) {
-                    state.travel = 0.0f;
-                }
-                const U64 next = static_cast<U64>(std::clamp<I64>(target, 0, static_cast<I64>(last)));
-                if (next != state.firstRow) {
-                    state.firstRow = next;
-                    refresh();
-                }
-                setHover(targetAt(point));
+                pointer = point;
+                scroller.wheel(event);
+                refresh();
                 return true;
             }
             case MouseEventType::Click: {
@@ -614,7 +639,7 @@ struct PickerBody : public Component {
                 }
                 if (target.kind == Target::Kind::ModelRow) {
                     state.mode = Mode::Models;
-                    state.travel = 0.0f;
+                    state.resetScroll();
                     state.hover = {};
                     state.changed();
                 } else {
@@ -687,6 +712,7 @@ void ModelPicker::update(Config config) {
         } else {
             state.mode = Mode::Effort;
             state.hover = {};
+            state.resetScroll();
             state.pressed = {};
         }
     } else if (reset) {

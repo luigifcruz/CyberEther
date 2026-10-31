@@ -12,6 +12,7 @@ struct Reveal : public Component {
     struct Config {
         Component* child = nullptr;
         bool shown = false;
+        bool upward = false;
         F32 gap = 0.0f;
         F64 minimumDuration = 0.0;
         F64 linger = 0.0;

@@ -12,6 +12,7 @@ enum class ModalContent : I32 {
     Dependencies,
     Feedback,
     RemoteQr,
+    DocsSearch,
 };
 
 enum class RegistryPage : I32 {

@@ -91,6 +91,8 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     subjects.push_back(Make<Sakura::Text>("wrapped text", {.str = "alpha beta gamma", .wrapped = true}));
     subjects.push_back(Make<Sakura::Markdown>("markdown", {.value = "# Title\n\nBody text."}));
     subjects.push_back(Make<Sakura::LogView>("log view", {.value = "first\nsecond", .height = 0.0f}));
+    subjects.push_back(Make<Sakura::HighlightText>("highlight text", {.str = "alpha beta gamma",
+                                                                      .marks = {{.begin = 6, .end = 10}}}));
     subjects.push_back(Make<Sakura::Console>("console", {.output = {"first", "second"}, .height = 0.0f}));
     subjects.push_back(Make<Sakura::CodeEditor>("code editor", {.value = "x = 1\ny = 2\n", .height = 0.0f}));
     subjects.push_back(Make<Sakura::Terminal>("terminal", {}));

@@ -6,6 +6,10 @@
 namespace Jetstream::Sakura {
 
 struct Access {
+    static Rect frame(const Component& component) {
+        return component.frame();
+    }
+
     static void layout(Component& root, const Context& ctx, Rect viewport) {
         root.layoutRoot(ctx, viewport);
     }

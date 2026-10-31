@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_RENDER_SAKURA_SCROLL_AREA_HH
 #define JETSTREAM_RENDER_SAKURA_SCROLL_AREA_HH
 
+#include <jetstream/render/sakura/callback.hh>
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
@@ -18,6 +19,9 @@ struct ScrollArea : public Component {
         bool border = true;
         bool overlay = false;
         Extent2D<F32> scrollbarInset = {0.0f, 0.0f};
+        Component* scrollTarget = nullptr;
+        U64 scrollRequest = 0;
+        Callback<void(F32)> onScroll;
 
         bool operator==(const Config&) const = default;
     };
