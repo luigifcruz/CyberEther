@@ -12,6 +12,7 @@
 #include "metrics.hh"
 #include "remote.hh"
 #include "settings.hh"
+#include "terminal.hh"
 #include "workbench.hh"
 #include "agent.hh"
 
@@ -41,6 +42,7 @@ class DefaultActions {
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
         agent = std::make_shared<AgentActions>(state, callbacks, runtime);
         gallery = std::make_shared<GalleryActions>(state);
+        terminals = std::make_shared<TerminalActions>(state, callbacks);
     }
 
     Result handle(const Mail& mail) {
@@ -73,6 +75,9 @@ class DefaultActions {
             return result;
         }
         if (Handle(*agent, mail, result)) {
+            return result;
+        }
+        if (Handle(*terminals, mail, result)) {
             return result;
         }
 
@@ -140,6 +145,14 @@ class DefaultActions {
         gallery->shutdown();
     }
 
+    void reconcileTerminals() {
+        terminals->reconcile();
+    }
+
+    void shutdownTerminals() {
+        terminals->shutdown();
+    }
+
  private:
     template<class Action, class... Signals>
     static bool Handle(Action& action, const Mail& mail, Result& result, std::tuple<Signals...>*) {
@@ -171,6 +184,7 @@ class DefaultActions {
     std::shared_ptr<FeedbackActions> feedback;
     std::shared_ptr<AgentActions> agent;
     std::shared_ptr<GalleryActions> gallery;
+    std::shared_ptr<TerminalActions> terminals;
 };
 
 }  // namespace Jetstream

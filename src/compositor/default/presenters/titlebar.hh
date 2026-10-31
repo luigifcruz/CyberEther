@@ -5,6 +5,7 @@
 #include "agent/voice.hh"
 
 #include "../model/messages.hh"
+#include "../support/terminal.hh"
 #include "../views/titlebar.hh"
 
 #include "render/sakura/titlebar.hh"
@@ -57,10 +58,15 @@ struct TitlebarPresenter {
             .environmentFlowgraphs = environmentFlowgraphs,
             .debugTimingEnabled = context.state.debug.timingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
+            .sidebarOpen = context.state.tabsHidden() && context.state.startTabShown()
+                               ? std::optional<bool>(context.state.interface.welcomeSidebarOpen)
+                               : std::nullopt,
             .onAction = [enqueue, activeFlowgraph, startTabActive, settingsTabActive, docsTabActive, canCheckForUpdates,
-                         missing,
+                         missing, terminalSupported = TerminalSession::Supported(),
+                         terminalTab = context.state.terminal.focused,
                          timing = context.state.debug.timingEnabled,
                          agentVisible = context.state.agent.ui.visible,
+                         sidebarOpen = context.state.interface.welcomeSidebarOpen,
                          voiceVisible = context.state.agent.ui.voiceVisible](TitlebarView::Action action) {
                 using Action = TitlebarView::Action;
                 switch (action) {
@@ -121,6 +127,14 @@ struct TitlebarPresenter {
                     case Action::NewTab:
                         enqueue(MailOpenStartTab{});
                         break;
+                    case Action::OpenTerminal:
+                        if (terminalSupported) {
+                            enqueue(MailOpenTerminal{.flowgraph = activeFlowgraph.value_or("")});
+                        }
+                        break;
+                    case Action::ToggleSidebar:
+                        enqueue(MailSetWelcomeSidebar{.open = !sidebarOpen});
+                        break;
                     case Action::Quit:
                         enqueue(MailQuit{});
                         break;
@@ -151,6 +165,8 @@ struct TitlebarPresenter {
                             enqueue(MailCloseSettings{});
                         } else if (docsTabActive) {
                             enqueue(MailCloseDocs{});
+                        } else if (terminalTab.has_value()) {
+                            enqueue(MailCloseTerminalTab{.tab = *terminalTab});
                         } else if (activeFlowgraph.has_value()) {
                             enqueue(MailCloseFlowgraph{activeFlowgraph.value()});
                         } else {

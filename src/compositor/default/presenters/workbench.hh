@@ -9,6 +9,7 @@
 #include "modal/container.hh"
 #include "settings/base.hh"
 #include "start_tab/base.hh"
+#include "terminal.hh"
 #include "titlebar.hh"
 
 #include "agent/chat.hh"
@@ -27,6 +28,7 @@ struct WorkbenchPresenter {
     SettingsPresenter settings;
     DocsPresenter docs;
     AgentChatPresenter agentChat;
+    TerminalPresenter terminals;
 
     explicit WorkbenchPresenter(const PresenterContext& context) : context(context),
                                                                    filePicker(context),
@@ -37,7 +39,8 @@ struct WorkbenchPresenter {
                                                                    modal(context),
                                                                    settings(context),
                                                                    docs(context),
-                                                                   agentChat{context} {}
+                                                                   agentChat{context},
+                                                                   terminals(context) {}
 
     WorkbenchView::Config build() const {
         WorkbenchView::Config config;
@@ -63,6 +66,14 @@ struct WorkbenchPresenter {
         for (const auto& [flowgraphId, flowgraph] : context.state.flowgraph.items) {
             config.flowgraphs.push_back(flowgraphPane.build(flowgraphId, flowgraph));
         }
+        config.terminals = terminals.build();
+        config.terminalTabs = terminals.tabs();
+        if (context.state.terminal.requested.has_value()) {
+            config.terminalRequested = MakeTerminalTabKey(*context.state.terminal.requested);
+        }
+        config.terminalRequests = context.state.terminal.requests;
+        config.terminalFocused = context.state.terminal.requested.has_value() &&
+                                 context.state.terminal.focused == context.state.terminal.requested;
         config.modal = modal.build();
         config.filePicker = filePicker.build();
         config.backgroundParticles = context.state.interface.backgroundParticles &&

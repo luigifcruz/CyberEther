@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <jetstream/render/components/text.hh>
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/markdown.hh>
@@ -18,7 +19,6 @@
 #include "render/sakura/context.hh"
 
 #include <algorithm>
-#include <chrono>
 #include <limits>
 #include <optional>
 #include <string>
@@ -1842,7 +1842,7 @@ TEST_CASE("A details section closed at the end of a content line ends there", "[
     CHECK_FALSE(drawn("</details>"));
 }
 
-TEST_CASE("Long markdown with a details chevron keeps its layout cache when the icon font has no digit glyph",
+TEST_CASE("Long markdown with a details chevron keeps its layout cache when the icon font has zero digit advance",
           "[core][sakura][markdown]") {
     SakuraTest::FontWindow window;
     window.load("default_mono", jbmm_compressed_data);
@@ -1858,11 +1858,34 @@ TEST_CASE("Long markdown with a details chevron keeps its layout cache when the 
     TextMarkdown markdown;
     Host host(markdown);
     markdown.update({.id = "long-details", .value = value, .fontSize = 15.0f});
-    const auto start = std::chrono::steady_clock::now();
     host.place(ctx, {0.0f, 0.0f, 800.0f, 600.0f});
-    const auto elapsed = std::chrono::steady_clock::now() - start;
     CHECK(markdown.metrics().sourceLines.size() > 400);
-    CHECK(elapsed < std::chrono::seconds(1));
+
+    // Exercise the grid's measurement cache directly, counting style requests
+    // instead of judging the machine's speed. Loaded icon fonts can have
+    // zero-width digit glyphs without invalidating cached measurements.
+    Render::Components::Text icons({.font = window.font("default_icons")});
+    REQUIRE(icons.advance("0", 1.0f) == 0.0f);
+    struct MeasurableGrid : Sakura::TextGrid {
+        using Sakura::TextGrid::measure;
+    } grid;
+    U64 styleRequests = 0;
+    const std::vector<std::vector<Sakura::TextGrid::StyleId>> styles;
+    grid.update({
+        .value = std::string(ICON_LC_CHEVRON_DOWN) + " License\n" + value,
+        .fontName = "default_body",
+        .monospace = false,
+        .wrap = Sakura::TextGrid::Wrap::Word,
+        .styler = [&](const std::vector<std::string>&, U64) -> const auto& {
+            ++styleRequests;
+            return styles;
+        },
+    });
+    const auto measured = grid.measure(ctx, {800.0f, kInfinite});
+    REQUIRE(styleRequests > 0);
+    const auto requests = styleRequests;
+    CHECK(grid.measure(ctx, {800.0f, kInfinite}) == measured);
+    CHECK(styleRequests == requests);
 }
 
 TEST_CASE("Code block copy buttons brighten while hovered", "[core][sakura][markdown]") {

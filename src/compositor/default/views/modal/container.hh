@@ -4,6 +4,7 @@
 #include "about.hh"
 #include "benchmark.hh"
 #include "dependencies.hh"
+#include "docs_search.hh"
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "feedback.hh"
@@ -26,6 +27,7 @@ struct ModalView {
         DependencyReviewView::Config dependencies;
         FeedbackView::Config feedback;
         RemoteQrView::Config remoteQr;
+        DocsSearchView::Config docsSearch;
         Sakura::Callback<void()> onClose;
     };
 
@@ -78,12 +80,20 @@ struct ModalView {
                 remoteQrView.update(std::move(viewConfig));
                 break;
             }
+            case ModalContent::DocsSearch: {
+                auto viewConfig = this->config.docsSearch;
+                docsSearchView.update(std::move(viewConfig));
+                break;
+            }
         }
 
         previousContent = this->config.content;
     }
 
     Sakura::ModalLayer::Config layer() {
+        if (config.content == ModalContent::DocsSearch) {
+            return docsSearchView.layer();
+        }
         return {
             .content = content(),
             .size = modalSize(),
@@ -116,6 +126,8 @@ struct ModalView {
                 return &feedbackView.component();
             case ModalContent::RemoteQr:
                 return &remoteQrView.component();
+            case ModalContent::DocsSearch:
+                return nullptr;
         }
         return nullptr;
     }
@@ -139,6 +151,7 @@ struct ModalView {
     DependencyReviewView dependencyReviewView;
     FeedbackView feedbackView;
     RemoteQrView remoteQrView;
+    DocsSearchView docsSearchView;
 };
 
 }  // namespace Jetstream

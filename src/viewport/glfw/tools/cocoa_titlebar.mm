@@ -172,7 +172,7 @@ struct CocoaTitlebar::State {
             const NSSize size = [buttons[i] frame].size;
             const CGFloat margin = std::round((TitlebarHeight - size.height) / 2.0);
             const CGFloat drop = [[buttons[i] superview] isFlipped] ? RowDrop : -RowDrop;
-            const NSPoint origin = NSMakePoint(margin + static_cast<CGFloat>(i) * spacing, margin + drop);
+            const NSPoint origin = NSMakePoint(margin + RowDrop + static_cast<CGFloat>(i) * spacing, margin + drop);
             if (!NSEqualPoints([buttons[i] frame].origin, origin)) {
                 [buttons[i] setFrameOrigin:origin];
             }

@@ -81,6 +81,7 @@ struct FlowgraphBlockPicker {
             .placeholder = "Search blocks",
             .query = query,
             .editing = opened,
+            .scale = Sakura::Typography::Scale::Large,
             .size = {0.0f, FieldHeight},
             .onChange = [this](const std::string& value) {
                 query = value;
@@ -102,6 +103,7 @@ struct FlowgraphBlockPicker {
             .emptyLabel = "No matching blocks.",
             .docsWidth = DocsWidth,
             .height = Height,
+            .rounding = FieldHeight * 0.5f,
             .onSelect = [this](U64 index) {
                 selected = index;
             },

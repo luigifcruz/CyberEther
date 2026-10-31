@@ -166,3 +166,40 @@ TEST_CASE("Docs build website links from a slug and an optional anchor", "[core]
     CHECK(Docs::WebUrl({.slug = "metadata", .anchor = "signal-axes"}) ==
           "https://cyberether.org/docs/metadata#signal-axes");
 }
+
+TEST_CASE("Docs search ranks sections and marks every hit in the snippet", "[core][compositor][docs]") {
+    const Files files = {
+        {"plugins", "---\ntitle: Creating Plugins\norder: 1\ncategory: Usage\n---\n\nIntro text.\n\n"
+                    "## Bundling\n\nUse the blueprint's bundler with **blueprint** files.\n"},
+        {"blocks", "---\ntitle: Blocks\norder: 2\ncategory: Usage\n---\n\n## File Layout\n\n"
+                   "The plugin `blueprint` mirrors it.\n\n## Blueprint\n\nShort.\n"},
+    };
+    const Docs docs = Docs::Parse(files);
+
+    const auto hits = docs.search("BLUEPRINT", 10);
+    REQUIRE(hits.size() == 3);
+    CHECK(hits[0].heading == "Blueprint");
+    CHECK(hits[0].anchor == "blueprint");
+    CHECK(docs.pages()[hits[0].page].slug == "blocks");
+    CHECK(hits[1].heading == "Bundling");
+    CHECK(hits[1].snippet == "Use the blueprint's bundler with blueprint files.");
+    CHECK(hits[1].marks == std::vector<std::pair<U64, U64>>{{8, 19}, {33, 42}});
+    CHECK(hits[2].heading == "File Layout");
+    CHECK(hits[2].snippet == "The plugin blueprint mirrors it.");
+
+    CHECK(docs.search("blueprint bundler", 10).size() == 1);
+    CHECK(docs.search("blueprint", 1).size() == 1);
+    CHECK(docs.search("   ", 10).empty());
+}
+
+TEST_CASE("Docs search keeps inline code text verbatim", "[core][compositor][docs]") {
+    const Docs docs = Docs::Parse({
+        {"tensors", "---\ntitle: Tensors\norder: 1\ncategory: Usage\n---\n\n"
+                    "## Typed\n\nWrap it in `TypedTensor<T>` or `[a](b)` before <b>use</b>.\n"},
+    });
+
+    const auto hits = docs.search("TypedTensor<T>", 10);
+    REQUIRE(hits.size() == 1);
+    CHECK(hits[0].snippet == "Wrap it in TypedTensor<T> or [a](b) before use.");
+    CHECK(docs.search("[a](b)", 10).size() == 1);
+}

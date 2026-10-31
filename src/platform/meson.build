@@ -6,6 +6,7 @@ src_lst += files([
     'http.cc',
     'paths.cc',
     'process.cc',
+    'pseudo_terminal.cc',
     'secret.cc',
     'storage.cc',
     'terminal.cc',

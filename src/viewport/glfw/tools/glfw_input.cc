@@ -29,15 +29,12 @@ namespace {
 
 constexpr U64 kCursorCount = static_cast<U64>(SurfaceCursor::NotAllowed) + 1;
 
-KeyModifiers CurrentModifiers(GLFWwindow* window) {
-    const auto down = [&](int left, int right) {
-        return glfwGetKey(window, left) == GLFW_PRESS || glfwGetKey(window, right) == GLFW_PRESS;
-    };
+KeyModifiers EventModifiers(int mods) {
     return {
-        .control = down(GLFW_KEY_LEFT_CONTROL, GLFW_KEY_RIGHT_CONTROL),
-        .shift = down(GLFW_KEY_LEFT_SHIFT, GLFW_KEY_RIGHT_SHIFT),
-        .alt = down(GLFW_KEY_LEFT_ALT, GLFW_KEY_RIGHT_ALT),
-        .super = down(GLFW_KEY_LEFT_SUPER, GLFW_KEY_RIGHT_SUPER),
+        .control = (mods & GLFW_MOD_CONTROL) != 0,
+        .shift = (mods & GLFW_MOD_SHIFT) != 0,
+        .alt = (mods & GLFW_MOD_ALT) != 0,
+        .super = (mods & GLFW_MOD_SUPER) != 0,
     };
 }
 
@@ -226,6 +223,7 @@ struct GlfwInput::Impl {
     GLFWwindow* window = nullptr;
     Generic& viewport;
     std::atomic<bool> pointerInside = false;
+    std::array<bool, 8> heldModifiers = {};
     std::array<GLFWcursor*, kCursorCount> cursors{};
     std::optional<SurfaceCursor> cursor;
     std::atomic<SurfaceCursor> requestedCursor = SurfaceCursor::Default;
@@ -301,15 +299,67 @@ struct GlfwInput::Impl {
         return *static_cast<Impl*>(glfwGetWindowUserPointer(window));
     }
 
-    void pushModifiers() {
-        viewport.input().push(Render::InputQueue::Modifiers{CurrentModifiers(window)});
+    void pushModifiers(KeyModifiers modifiers) {
+        viewport.input().push(Render::InputQueue::Modifiers{modifiers});
     }
+
+    void releaseModifiers(int mods) {
+        const auto release = [this, mods](int bit, int left, int right) {
+            if ((mods & bit) == 0) {
+                heldModifiers[static_cast<U64>(left - GLFW_KEY_LEFT_SHIFT)] = false;
+                heldModifiers[static_cast<U64>(right - GLFW_KEY_LEFT_SHIFT)] = false;
+            }
+        };
+        release(GLFW_MOD_SHIFT, GLFW_KEY_LEFT_SHIFT, GLFW_KEY_RIGHT_SHIFT);
+        release(GLFW_MOD_CONTROL, GLFW_KEY_LEFT_CONTROL, GLFW_KEY_RIGHT_CONTROL);
+        release(GLFW_MOD_ALT, GLFW_KEY_LEFT_ALT, GLFW_KEY_RIGHT_ALT);
+        release(GLFW_MOD_SUPER, GLFW_KEY_LEFT_SUPER, GLFW_KEY_RIGHT_SUPER);
+    }
+
+#ifdef JST_OS_MAC
+    KeyModifiers keyModifiers(int, int, int mods) {
+        return EventModifiers(mods);
+    }
+#else
+    KeyModifiers keyModifiers(int key, int action, int mods) {
+        releaseModifiers(mods);
+        KeyModifiers modifiers = EventModifiers(mods);
+        if (key < GLFW_KEY_LEFT_SHIFT || key > GLFW_KEY_RIGHT_SUPER) {
+            return modifiers;
+        }
+        heldModifiers[static_cast<U64>(key - GLFW_KEY_LEFT_SHIFT)] = action == GLFW_PRESS;
+        const auto held = [this](int left, int right) {
+            return heldModifiers[static_cast<U64>(left - GLFW_KEY_LEFT_SHIFT)] ||
+                   heldModifiers[static_cast<U64>(right - GLFW_KEY_LEFT_SHIFT)];
+        };
+        switch (key) {
+            case GLFW_KEY_LEFT_CONTROL:
+            case GLFW_KEY_RIGHT_CONTROL:
+                modifiers.control = held(GLFW_KEY_LEFT_CONTROL, GLFW_KEY_RIGHT_CONTROL);
+                break;
+            case GLFW_KEY_LEFT_SHIFT:
+            case GLFW_KEY_RIGHT_SHIFT:
+                modifiers.shift = held(GLFW_KEY_LEFT_SHIFT, GLFW_KEY_RIGHT_SHIFT);
+                break;
+            case GLFW_KEY_LEFT_ALT:
+            case GLFW_KEY_RIGHT_ALT:
+                modifiers.alt = held(GLFW_KEY_LEFT_ALT, GLFW_KEY_RIGHT_ALT);
+                break;
+            default:
+                modifiers.super = held(GLFW_KEY_LEFT_SUPER, GLFW_KEY_RIGHT_SUPER);
+                break;
+        }
+        return modifiers;
+    }
+#endif
 
     static void OnFocus(GLFWwindow* window, int focused) {
         auto& impl = From(window);
         if (focused != 0) {
             impl.readClipboard();
         }
+        impl.heldModifiers.fill(false);
+        impl.pushModifiers({});
         impl.viewport.input().push(Render::InputQueue::Focus{focused != 0});
     }
 
@@ -325,12 +375,13 @@ struct GlfwInput::Impl {
             Extent2D<F32>{static_cast<F32>(x), static_cast<F32>(y)}});
     }
 
-    static void OnButton(GLFWwindow* window, int button, int action, int) {
+    static void OnButton(GLFWwindow* window, int button, int action, int mods) {
         auto& impl = From(window);
         if (action == GLFW_PRESS) {
             impl.readClipboard();
         }
-        impl.pushModifiers();
+        impl.releaseModifiers(mods);
+        impl.pushModifiers(EventModifiers(mods));
         if (const auto pressed = Render::InputQueue::ButtonFromIndex(button)) {
             impl.viewport.input().push(Render::InputQueue::Button{*pressed, action == GLFW_PRESS});
         }
@@ -349,7 +400,7 @@ struct GlfwInput::Impl {
         if (action == GLFW_PRESS && (mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER)) != 0) {
             impl.readClipboard();
         }
-        impl.pushModifiers();
+        impl.pushModifiers(impl.keyModifiers(key, action, mods));
         const KeyCode code = TranslateKey(key, scancode);
         if (code != KeyCode::Unknown) {
             impl.viewport.input().push(Render::InputQueue::Key{code, action == GLFW_PRESS});
@@ -423,9 +474,14 @@ GlfwInput::GlfwInput(GLFWwindow* window, Generic& viewport) {
 #endif
     impl->readClipboard();
 #ifdef JST_OS_MAC
-    impl->pointer = std::make_unique<CocoaPointer>(window, [input = impl.get()]() {
-        Impl::OnScroll(input->window, 0.0, 0.0);
-    });
+    impl->pointer = std::make_unique<CocoaPointer>(
+        window,
+        [input = impl.get()]() {
+            Impl::OnScroll(input->window, 0.0, 0.0);
+        },
+        [input = impl.get()](KeyModifiers modifiers) {
+            input->pushModifiers(modifiers);
+        });
 #endif
 #ifdef JST_OS_BROWSER
     impl->wheel = std::make_unique<BrowserWheel>();

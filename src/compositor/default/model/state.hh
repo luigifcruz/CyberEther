@@ -25,6 +25,7 @@
 
 #include "jetstream/agent/provider.hh"
 #include "jetstream/agent/session.hh"
+#include "jetstream/render/sakura/components/terminal.hh"
 #include "jetstream/render/sakura/toast.hh"
 
 #include <atomic>
@@ -174,6 +175,7 @@ struct DefaultCompositorState {
         U64 startTabBaseline = 0;
         U64 startTabRequests = 0;
         WelcomeSection welcomeSection = WelcomeSection::All;
+        bool welcomeSidebarOpen = true;
         std::string welcomeQuery;
         std::string welcomeCategory;
         U64 welcomePage = 0;
@@ -184,6 +186,7 @@ struct DefaultCompositorState {
         std::string docsPage;
         std::string docsAnchor;
         U64 docsNavigations = 0;
+        std::string docsQuery;
     };
 
     struct GraphicsState {
@@ -262,6 +265,30 @@ struct DefaultCompositorState {
         std::unordered_map<std::string, std::string> environment;
         std::unordered_map<std::string, std::string> gallery;
         SurfaceTracks surfaces;
+    };
+
+    struct TerminalState {
+        struct Item {
+            std::string title;
+            std::string directory;
+            std::optional<std::string> flowgraph;
+            std::optional<U64> tab;
+            Sakura::Terminal::Screen screen;
+            U64 revision = 0;
+            U64 focusRequests = 0;
+            U64 focusedAt = 0;
+            I32 zoom = 0;
+            std::optional<std::string> search;
+        };
+
+        std::map<U64, Item> items;
+        std::map<U64, TileMeta> tabs;
+        U64 next = 1;
+        U64 nextTab = 1;
+        U64 focusSerial = 0;
+        std::optional<U64> focused;
+        std::optional<U64> requested;
+        U64 requests = 0;
     };
 
     struct ClipboardState {
@@ -366,6 +393,7 @@ struct DefaultCompositorState {
     DebugState debug;
     UpdateState update;
     FlowgraphState flowgraph;
+    TerminalState terminal;
     BenchmarkState benchmark;
     ClipboardState clipboard;
     RemoteState remote;
@@ -374,7 +402,7 @@ struct DefaultCompositorState {
     FeedbackState feedback;
 
     bool startTabShown() const {
-        return interface.startTab || flowgraph.items.empty();
+        return interface.startTab || workspaceTabs() == 0;
     }
 
     bool tabShown(WorkspaceTab tab) const {
@@ -406,7 +434,7 @@ struct DefaultCompositorState {
     }
 
     std::optional<std::string> activeFlowgraph() const {
-        if (startTabActive() || settingsTabActive() || docsTabActive()) {
+        if (startTabActive() || settingsTabActive() || docsTabActive() || terminal.focused.has_value()) {
             return std::nullopt;
         }
         if (!interface.focusedFlowgraph.has_value() || !flowgraph.items.contains(*interface.focusedFlowgraph)) {
@@ -416,7 +444,11 @@ struct DefaultCompositorState {
     }
 
     bool tabsHidden() const {
-        return flowgraph.items.empty() && !interface.startTab && !interface.settingsTab && !interface.docsTab;
+        return workspaceTabs() == 0 && !interface.startTab && !interface.settingsTab && !interface.docsTab;
+    }
+
+    U64 workspaceTabs() const {
+        return flowgraph.items.size() + terminal.tabs.size();
     }
 };
 

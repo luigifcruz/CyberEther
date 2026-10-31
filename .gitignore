@@ -19,6 +19,7 @@ subprojects/*
 !subprojects/catch2.wrap
 !subprojects/cpp-httplib.wrap
 !subprojects/fmt.wrap
+!subprojects/ghostty-vt.wrap
 !subprojects/glfw.wrap
 !subprojects/glm.wrap
 !subprojects/libffi.wrap

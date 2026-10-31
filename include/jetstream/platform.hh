@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_PLATFORM_HH
 #define JETSTREAM_PLATFORM_HH
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -52,6 +53,45 @@ JETSTREAM_API Result InitializePersistentStorage();
 //
 
 JETSTREAM_API bool PrepareStandardOutputForAnsi();
+
+//
+// Pseudo Terminal
+//
+
+class JETSTREAM_API PseudoTerminal {
+ public:
+    struct Config {
+        std::string program;
+        std::vector<std::string> arguments;
+        std::string directory;
+        std::vector<std::pair<std::string, std::string>> environment;
+        U16 columns = 80;
+        U16 rows = 24;
+    };
+
+    PseudoTerminal();
+    ~PseudoTerminal();
+
+    PseudoTerminal(const PseudoTerminal&) = delete;
+    PseudoTerminal& operator=(const PseudoTerminal&) = delete;
+
+    static bool Supported();
+
+    Result start(const Config& config);
+    void stop();
+    bool running() const;
+
+    Result read(std::string& output, U64 limit);
+    Result write(std::string_view data);
+    Result flush();
+    Result wait(std::optional<std::chrono::milliseconds> timeout, bool output = true);
+    void interrupt();
+    Result resize(U16 columns, U16 rows, U16 widthPixels, U16 heightPixels);
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
 
 //
 // Interrupt

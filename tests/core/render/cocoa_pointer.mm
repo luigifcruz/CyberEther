@@ -31,6 +31,7 @@ void* TestWindowUserPointer(GLFWwindow*) {
 @interface PointerTestEvent : NSObject {
  @public
     PointerTestWindow* eventWindow;
+    NSEventType eventType;
     NSEventPhase eventPhase;
     NSEventPhase eventMomentum;
     NSEventModifierFlags eventModifiers;
@@ -40,6 +41,7 @@ void* TestWindowUserPointer(GLFWwindow*) {
 + (id)addLocalMonitorForEventsMatchingMask:(NSEventMask)mask handler:(PointerTestEvent* (^)(PointerTestEvent*))handler;
 + (void)removeMonitor:(id)token;
 - (PointerTestWindow*)window;
+- (NSEventType)type;
 - (NSEventPhase)phase;
 - (NSEventPhase)momentumPhase;
 - (NSEventModifierFlags)modifierFlags;
@@ -56,6 +58,7 @@ void* TestWindowUserPointer(GLFWwindow*) {
 }
 + (void)removeMonitor:(id)token { [eventMonitors removeObjectIdenticalTo:token]; }
 - (PointerTestWindow*)window { return eventWindow; }
+- (NSEventType)type { return eventType; }
 - (NSEventPhase)phase { return eventPhase; }
 - (NSEventPhase)momentumPhase { return eventMomentum; }
 - (NSEventModifierFlags)modifierFlags { return eventModifiers; }
@@ -131,7 +134,7 @@ class PointerFixture {
         a = make();
         b = make();
         pointer = std::make_unique<Jetstream::Viewport::CocoaPointer>(reinterpret_cast<GLFWwindow*>(a),
-                                                                      []() {});
+                                                                      []() {}, [](KeyModifiers) {});
     }
 
     ~PointerFixture() {
@@ -156,10 +159,23 @@ class PointerFixture {
                  NSEventModifierFlags modifiers = 0) {
         auto* event = [[[PointerTestEvent alloc] init] autorelease];
         event->eventWindow = window;
+        event->eventType = NSEventTypeScrollWheel;
         event->eventPhase = phase;
         event->eventMomentum = momentum;
         event->eventModifiers = modifiers;
         event->deltaY = dy;
+        dispatch(event);
+    }
+
+    void flags(PointerTestWindow* window, NSEventModifierFlags modifiers) {
+        auto* event = [[[PointerTestEvent alloc] init] autorelease];
+        event->eventWindow = window;
+        event->eventType = NSEventTypeFlagsChanged;
+        event->eventModifiers = modifiers;
+        dispatch(event);
+    }
+
+    static void dispatch(PointerTestEvent* event) {
         NSArray* monitors = [eventMonitors copy];
         for (id token in monitors) {
             auto handler = (PointerTestEvent* (^)(PointerTestEvent*))token;
@@ -179,9 +195,14 @@ class PointerInputFixture : public PointerFixture {
     PointerInputFixture() : input(reinterpret_cast<GLFWwindow*>(a), viewport) {
         pointer.reset();
         inputUserPointer = &input;
-        input.pointer = std::make_unique<Jetstream::Viewport::CocoaPointer>(input.window, [this]() {
-            GlfwInput::Impl::OnScroll(input.window, 0.0, 0.0);
-        });
+        input.pointer = std::make_unique<Jetstream::Viewport::CocoaPointer>(
+            input.window,
+            [this]() {
+                GlfwInput::Impl::OnScroll(input.window, 0.0, 0.0);
+            },
+            [this](KeyModifiers modifiers) {
+                input.pushModifiers(modifiers);
+            });
     }
 
     ~PointerInputFixture() {
@@ -258,6 +279,24 @@ TEST_CASE("Cocoa pointers remove their monitor and tracking area on teardown", "
     fixture.pointer.reset();
     CHECK([eventMonitors count] == 0);
     CHECK(fixture.a->view->areas == 0);
+}
+
+TEST_CASE("Native modifier flag changes push the window's modifier state directly", "[core][render][cocoa]") {
+    PointerInputFixture fixture;
+    (void)fixture.viewport.input().drain();
+
+    fixture.flags(fixture.a, NSEventModifierFlagShift);
+    fixture.flags(fixture.b, NSEventModifierFlagCommand);
+    fixture.flags(fixture.a, NSEventModifierFlagShift | NSEventModifierFlagControl);
+    fixture.flags(fixture.a, 0);
+    const auto queued = fixture.viewport.input().drain();
+    REQUIRE(queued.size() == 3);
+    const KeyModifiers expected[] = {{.shift = true}, {.control = true, .shift = true}, {}};
+    for (std::size_t index = 0; index < queued.size(); ++index) {
+        const auto* modifiers = std::get_if<InputQueue::Modifiers>(&queued[index]);
+        REQUIRE(modifiers);
+        CheckModifiers(modifiers->modifiers, expected[index]);
+    }
 }
 
 TEST_CASE("Native scrolls acquire event modifiers after focus loss and refocus", "[core][render][cocoa][scroll-modifiers]") {

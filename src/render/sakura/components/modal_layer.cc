@@ -148,7 +148,13 @@ bool ModalLayer::mouseEvent(const MouseEvent& event) {
     if (!impl->config.content) {
         return false;
     }
-    mouseEventChildren(event);
+    if (mouseEventChildren(event)) {
+        return true;
+    }
+    const bool outside = !impl->rect.contains(event.position.x, event.position.y);
+    if (impl->config.dismissOutside && outside && event.type == MouseEventType::Click && impl->config.onClose) {
+        impl->config.onClose();
+    }
     return true;
 }
 

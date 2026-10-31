@@ -8,6 +8,7 @@
 #include <exception>
 #include <future>
 #include <limits>
+#include <memory>
 #include <new>
 #include <optional>
 #include <stdexcept>
@@ -523,6 +524,25 @@ std::shared_ptr<TestBuffer> MakeBuffer(std::array<U32, 2>& source) {
         .elementByteSize = sizeof(U32),
         .buffer = source.data(),
     });
+}
+
+TEST_CASE("Window attachment binding does not depend on allocator contents",
+          "[core][render][transfers][regression]") {
+    // Reproduce nonzero allocator fills such as Linux MALLOC_PERTURB_.
+    alignas(TestWindow) std::array<unsigned char, sizeof(TestWindow)> storage;
+    storage.fill(1);
+    const auto destruct = [](TestWindow* window) { std::destroy_at(window); };
+    std::unique_ptr<TestWindow, decltype(destruct)> window(
+        new (storage.data()) TestWindow, destruct);
+    std::array<U32, 2> source = {1, 2};
+    auto buffer = MakeBuffer(source);
+
+    // Components may bind resources before Window::create(), as fonts do.
+    REQUIRE(window->bind(buffer) == Result::SUCCESS);
+    CHECK(buffer->createCount == 1);
+    REQUIRE(window->create() == Result::SUCCESS);
+    REQUIRE(window->destroy() == Result::SUCCESS);
+    CHECK(buffer->destroyCount == 1);
 }
 
 std::shared_ptr<TestSurface> MakeRetainedSurface(

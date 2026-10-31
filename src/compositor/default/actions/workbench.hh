@@ -34,6 +34,7 @@ struct WorkbenchActions {
                               MailCloseStartTab,
                               MailFocusStartTab,
                               MailSetWelcomeSection,
+                              MailSetWelcomeSidebar,
                               MailSetWelcomeQuery,
                               MailSetWelcomeCategory,
                               MailSetWelcomePage,
@@ -42,6 +43,7 @@ struct WorkbenchActions {
                               MailFocusSettings,
                               MailOpenDocs,
                               MailCloseDocs,
+                              MailSetDocsQuery,
                               MailFocusDocs>;
 
     DefaultCompositorState& state;
@@ -55,6 +57,7 @@ struct WorkbenchActions {
     static void Focus(DefaultCompositorState& state, std::optional<WorkspaceTab> tab) {
         state.interface.focusedTab = tab;
         state.interface.tabNavigationPending = true;
+        state.terminal.focused.reset();
     }
 
     static void Open(DefaultCompositorState& state, WorkspaceTab tab) {
@@ -63,7 +66,7 @@ struct WorkbenchActions {
             case WorkspaceTab::Start:
                 if (!ui.startTab) {
                     ui.startTab = true;
-                    ui.startTabBaseline = state.flowgraph.items.size();
+                    ui.startTabBaseline = state.workspaceTabs();
                 }
                 ++ui.startTabRequests;
                 break;
@@ -119,6 +122,11 @@ struct WorkbenchActions {
         return Result::SUCCESS;
     }
 
+    Result handle(const MailSetWelcomeSidebar& msg) {
+        state.interface.welcomeSidebarOpen = msg.open;
+        return Result::SUCCESS;
+    }
+
     Result handle(const MailSetWelcomeQuery& msg) {
         state.interface.welcomeQuery = msg.query;
         state.interface.welcomePage = 0;
@@ -169,6 +177,11 @@ struct WorkbenchActions {
 
     Result handle(const MailCloseDocs&) {
         Close(state, WorkspaceTab::Docs);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetDocsQuery& msg) {
+        state.interface.docsQuery = msg.query;
         return Result::SUCCESS;
     }
 
@@ -251,7 +264,7 @@ struct WorkbenchActions {
     void settleStartTab() {
         auto& ui = state.interface;
         const bool navigated = ui.tabNavigationPending;
-        const U64 count = state.flowgraph.items.size();
+        const U64 count = state.workspaceTabs();
         if (ui.startTab && (count == 0 || count > ui.startTabBaseline)) {
             Close(state, WorkspaceTab::Start);
         } else if (ui.startTab) {

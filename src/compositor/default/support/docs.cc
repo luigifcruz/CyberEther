@@ -6,6 +6,7 @@
 #include <cctype>
 #include <functional>
 #include <optional>
+#include <sstream>
 #include <unordered_map>
 
 namespace Jetstream {
@@ -13,6 +14,8 @@ namespace Jetstream {
 namespace {
 
 constexpr const char* kInternalCategory = "Internal";
+constexpr U64 kSnippetLead = 60;
+constexpr U64 kSnippetLength = 160;
 
 std::string Unquote(std::string value) {
     value = Text::TrimBlank(value);
@@ -77,6 +80,191 @@ Docs::Page ParsePage(std::string_view slug, std::string_view source) {
         page.category = "Overview";
     }
     return page;
+}
+
+std::string PlainInline(std::string_view line) {
+    std::string plain;
+    bool code = false;
+    for (U64 i = 0; i < line.size(); ++i) {
+        const char c = line[i];
+        if (c == '`') {
+            code = !code;
+            continue;
+        }
+        if (code) {
+            plain += c;
+            continue;
+        }
+        if (c == '!' && i + 1 < line.size() && line[i + 1] == '[') {
+            continue;
+        }
+        if (c == '[') {
+            const auto close = line.find("](", i);
+            const bool link = close != std::string_view::npos && line.find(']', i) == close;
+            const auto end = link ? line.find(')', close) : std::string_view::npos;
+            if (end != std::string_view::npos) {
+                plain += PlainInline(line.substr(i + 1, close - i - 1));
+                i = end;
+                continue;
+            }
+        }
+        if (c == '<' && i + 1 < line.size() && (std::isalpha(static_cast<unsigned char>(line[i + 1])) ||
+                                                line[i + 1] == '/')) {
+            const auto end = line.find('>', i);
+            if (end != std::string_view::npos) {
+                i = end;
+                continue;
+            }
+        }
+        if (c == '*' || c == '|') {
+            plain += c == '|' ? " " : "";
+            continue;
+        }
+        plain += c;
+    }
+    return plain;
+}
+
+std::string StripBlockMarkers(const std::string& line) {
+    U64 start = 0;
+    while (start < line.size() && (line[start] == '>' || line[start] == ' ')) {
+        ++start;
+    }
+    if (start + 1 < line.size() && (line[start] == '-' || line[start] == '*' || line[start] == '+') &&
+        line[start + 1] == ' ') {
+        start += 2;
+    }
+    U64 digits = start;
+    while (digits < line.size() && std::isdigit(static_cast<unsigned char>(line[digits]))) {
+        ++digits;
+    }
+    if (digits > start && digits + 1 < line.size() && line[digits] == '.' && line[digits + 1] == ' ') {
+        start = digits + 2;
+    }
+    return line.substr(start);
+}
+
+std::string CollapseSpaces(const std::string& text) {
+    std::string collapsed;
+    for (const char c : text) {
+        const bool space = std::isspace(static_cast<unsigned char>(c));
+        if (space && (collapsed.empty() || collapsed.back() == ' ')) {
+            continue;
+        }
+        collapsed += space ? ' ' : c;
+    }
+    while (!collapsed.empty() && collapsed.back() == ' ') {
+        collapsed.pop_back();
+    }
+    return collapsed;
+}
+
+std::vector<std::pair<std::string, std::string>> SplitSections(const std::string& body) {
+    std::vector<std::pair<std::string, std::string>> sections = {{"", ""}};
+    bool fenced = false;
+    for (const auto& line : Text::SplitLines(body)) {
+        const std::string trimmed = Text::TrimBlank(line);
+        if (trimmed.rfind("```", 0) == 0 || trimmed.rfind("~~~", 0) == 0) {
+            fenced = !fenced;
+            continue;
+        }
+        if (fenced) {
+            sections.back().second += trimmed + " ";
+            continue;
+        }
+        const auto hashes = trimmed.find_first_not_of('#');
+        if (hashes > 0 && hashes != std::string::npos && trimmed[hashes] == ' ') {
+            sections.push_back({CollapseSpaces(PlainInline(trimmed.substr(hashes + 1))), ""});
+            continue;
+        }
+        if (trimmed.find_first_not_of("|-: ") == std::string::npos) {
+            continue;
+        }
+        sections.back().second += PlainInline(StripBlockMarkers(trimmed)) + " ";
+    }
+    for (auto& section : sections) {
+        section.second = CollapseSpaces(section.second);
+    }
+    std::erase_if(sections, [](const auto& section) {
+        return section.first.empty() && section.second.empty();
+    });
+    return sections;
+}
+
+std::vector<std::string> SearchTerms(const std::string& query) {
+    std::vector<std::string> terms;
+    std::istringstream stream(Text::ToLower(query));
+    for (std::string term; stream >> term;) {
+        terms.push_back(std::move(term));
+    }
+    return terms;
+}
+
+bool ContainsAll(const std::string& text, const std::vector<std::string>& terms) {
+    return std::all_of(terms.begin(), terms.end(), [&](const std::string& term) {
+        return text.find(term) != std::string::npos;
+    });
+}
+
+U64 CountMatches(const std::string& text, const std::vector<std::string>& terms) {
+    U64 count = 0;
+    for (const auto& term : terms) {
+        for (auto at = text.find(term); at != std::string::npos; at = text.find(term, at + term.size())) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+std::pair<U64, U64> SnippetRange(const std::string& lower, const std::vector<std::string>& terms) {
+    U64 first = lower.size();
+    for (const auto& term : terms) {
+        first = std::min<U64>(first, lower.find(term) == std::string::npos ? lower.size() : lower.find(term));
+    }
+    if (first == lower.size()) {
+        first = 0;
+    }
+    U64 start = first > kSnippetLead ? first - kSnippetLead : 0;
+    if (start > 0) {
+        const auto space = lower.find(' ', start);
+        start = space != std::string::npos && space < first ? space + 1 : start;
+    }
+    U64 end = std::min<U64>(lower.size(), start + kSnippetLength);
+    if (end < lower.size()) {
+        const auto space = lower.rfind(' ', end);
+        end = space != std::string::npos && space > first ? space : end;
+    }
+    while (end < lower.size() && (static_cast<unsigned char>(lower[end]) & 0xC0) == 0x80) {
+        ++end;
+    }
+    return {start, end};
+}
+
+std::vector<std::pair<U64, U64>> MatchMarks(const std::string& lower, const std::vector<std::string>& terms) {
+    std::vector<std::pair<U64, U64>> marks;
+    for (const auto& term : terms) {
+        for (auto at = lower.find(term); at != std::string::npos; at = lower.find(term, at + term.size())) {
+            U64 begin = at;
+            U64 end = at + term.size();
+            while (begin > 0 && lower[begin - 1] != ' ') {
+                --begin;
+            }
+            while (end < lower.size() && lower[end] != ' ') {
+                ++end;
+            }
+            marks.push_back({begin, end});
+        }
+    }
+    std::sort(marks.begin(), marks.end());
+    std::vector<std::pair<U64, U64>> merged;
+    for (const auto& mark : marks) {
+        if (!merged.empty() && mark.first <= merged.back().second) {
+            merged.back().second = std::max(merged.back().second, mark.second);
+        } else {
+            merged.push_back(mark);
+        }
+    }
+    return merged;
 }
 
 }  // namespace
@@ -160,6 +348,18 @@ Docs Docs::Parse(const std::vector<std::pair<std::string_view, std::string_view>
     for (const U64 top : tops) {
         visit(top, 0);
     }
+    for (U64 index = 0; index < docs.ordered.size(); ++index) {
+        const auto& page = docs.ordered[index];
+        for (auto& [heading, text] : SplitSections(page.description + "\n\n" + page.body)) {
+            const std::string searchable = Text::ToLower(page.title + "\n" + heading + "\n" + text);
+            docs.sections.push_back({
+                .page = index,
+                .heading = std::move(heading),
+                .text = std::move(text),
+                .searchable = searchable,
+            });
+        }
+    }
     return docs;
 }
 
@@ -226,6 +426,51 @@ std::optional<U64> Docs::find(const std::string& slug) const {
         }
     }
     return std::nullopt;
+}
+
+std::vector<Docs::Hit> Docs::search(const std::string& query, U64 limit) const {
+    const auto terms = SearchTerms(query);
+    if (terms.empty()) {
+        return {};
+    }
+    struct Ranked {
+        U64 section = 0;
+        U64 weight = 0;
+        U64 count = 0;
+    };
+    std::vector<Ranked> ranked;
+    for (U64 index = 0; index < sections.size(); ++index) {
+        const auto& section = sections[index];
+        if (!ContainsAll(section.searchable, terms)) {
+            continue;
+        }
+        U64 weight = 0;
+        if (ContainsAll(Text::ToLower(section.heading), terms)) {
+            weight = 2;
+        } else if (ContainsAll(Text::ToLower(ordered[section.page].title), terms)) {
+            weight = 1;
+        }
+        ranked.push_back({.section = index, .weight = weight, .count = CountMatches(section.searchable, terms)});
+    }
+    std::stable_sort(ranked.begin(), ranked.end(), [](const Ranked& a, const Ranked& b) {
+        return a.weight != b.weight ? a.weight > b.weight : a.count > b.count;
+    });
+    ranked.resize(std::min<U64>(ranked.size(), limit));
+
+    std::vector<Hit> hits;
+    for (const auto& entry : ranked) {
+        const auto& section = sections[entry.section];
+        const std::string lower = Text::ToLower(section.text);
+        const auto [start, end] = SnippetRange(lower, terms);
+        hits.push_back({
+            .page = section.page,
+            .heading = section.heading,
+            .anchor = section.heading.empty() ? std::string() : Anchor(section.heading),
+            .snippet = section.text.substr(start, end - start),
+            .marks = MatchMarks(lower.substr(start, end - start), terms),
+        });
+    }
+    return hits;
 }
 
 }  // namespace Jetstream

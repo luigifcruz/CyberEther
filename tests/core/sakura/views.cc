@@ -25,6 +25,7 @@
 #include "compositor/default/views/start_tab/base.hh"
 #include "compositor/default/views/titlebar.hh"
 #include "compositor/default/views/workbench.hh"
+#include "render/sakura/runtime.hh"
 #include "scene.hh"
 
 #include <functional>
@@ -738,6 +739,20 @@ TEST_CASE("Title row places the wordmark after the inset, the pills after it, an
     CHECK(rig.b.laidFrame.y == 32.0f);
 }
 
+TEST_CASE("Titlebar trailing inset preserves padding and native window controls",
+          "[core][sakura][views]") {
+    TitleRig rig;
+    CHECK(rig.shell.bar().trailingInset() == TitlebarView::TrailingInset);
+
+    rig.config.trailingInset = 138.0f;
+    rig.update();
+    CHECK(rig.shell.bar().trailingInset() == 138.0f);
+
+    rig.config.trailingInset = 0.0f;
+    rig.update();
+    CHECK(rig.shell.bar().trailingInset() == TitlebarView::TrailingInset);
+}
+
 TEST_CASE("Clicking a pill activates its flowgraph and empty title row space reports presses",
           "[core][sakura][views]") {
     TitleRig rig;
@@ -1031,6 +1046,35 @@ TEST_CASE("Titlebar presenter close action targets the start tab while it is the
     CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "a");
 }
 
+TEST_CASE("Titlebar close action closes the focused terminal tab and a start tab beside it can close",
+          "[core][sakura][views][terminal]") {
+    using Action = TitlebarView::Action;
+    Mailbox mailbox;
+    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
+    mailbox.state.interface.focusedFlowgraph = "a";
+    mailbox.state.terminal.tabs[4] = TileMeta{.pane = "terminal:1"};
+    mailbox.state.terminal.focused = 4;
+    TitlebarPresenter(mailbox.context()).build().onAction(Action::CloseFlowgraph);
+    REQUIRE(mailbox.last<MailCloseTerminalTab>() != nullptr);
+    CHECK(mailbox.last<MailCloseTerminalTab>()->tab == 4);
+    CHECK(mailbox.count<MailCloseFlowgraph>() == 0);
+
+    mailbox.state.terminal.focused.reset();
+    TitlebarPresenter(mailbox.context()).build().onAction(Action::CloseFlowgraph);
+    REQUIRE(mailbox.last<MailCloseFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "a");
+
+    mailbox.state.flowgraph.items.clear();
+    mailbox.state.interface.startTab = true;
+    auto start = StartTabPresenter(mailbox.context()).build();
+    REQUIRE(start.has_value());
+    CHECK(start->closable);
+    mailbox.state.terminal.tabs.clear();
+    start = StartTabPresenter(mailbox.context()).build();
+    REQUIRE(start.has_value());
+    CHECK_FALSE(start->closable);
+}
+
 TEST_CASE("Titlebar presenter save and info shortcuts skip the flowgraph hidden behind a focused tab",
           "[core][sakura][views]") {
     using Action = TitlebarView::Action;
@@ -1132,6 +1176,99 @@ TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph",
     CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).value);
 }
 
+TEST_CASE("Titlebar presenter open terminal action opens a terminal in the active flowgraph folder",
+          "[core][sakura][views][terminal]") {
+    using Action = TitlebarView::Action;
+    Mailbox mailbox;
+    auto config = TitlebarPresenter(mailbox.context()).build();
+    config.onAction(Action::OpenTerminal);
+    if (!TerminalSession::Supported()) {
+        CHECK(mailbox.mails.empty());
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    REQUIRE(mailbox.count<MailOpenTerminal>() == 1);
+    CHECK(mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+
+    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
+    mailbox.state.interface.focusedFlowgraph = "a";
+    config = TitlebarPresenter(mailbox.context()).build();
+    config.onAction(Action::OpenTerminal);
+    REQUIRE(mailbox.count<MailOpenTerminal>() == 2);
+    CHECK(mailbox.last<MailOpenTerminal>()->flowgraph == "a");
+
+    mailbox.state.terminal.items[1] = {.tab = 1};
+    mailbox.state.terminal.tabs[1] = TileMeta{.pane = "terminal:1"};
+    mailbox.state.terminal.focused = 1;
+    config = TitlebarPresenter(mailbox.context()).build();
+    config.onAction(Action::OpenTerminal);
+    REQUIRE(mailbox.count<MailOpenTerminal>() == 3);
+    CHECK(mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+    CHECK(mailbox.mails.size() == 3);
+}
+
+TEST_CASE("Terminal tabs in the title row open no tab menu while flowgraph tabs still do",
+          "[core][sakura][views][terminal]") {
+    TitleRig rig;
+    Probe terminal;
+    rig.shell.updatePanes({
+        .panes = {
+            {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
+            {.id = "terminals:1", .title = "Terminal", .group = TerminalView::Group, .icon = ICON_LC_SQUARE_TERMINAL,
+             .content = &terminal},
+        },
+    });
+    rig.place();
+
+    const auto shell = rig.pill(1);
+    rig.host.click(shell.x, shell.y, MouseButton::Right);
+    rig.place();
+    CHECK(PopupFrames(rig.host).empty());
+
+    const auto flowgraph = rig.pill(0);
+    rig.host.click(flowgraph.x, flowgraph.y, MouseButton::Right);
+    rig.place();
+    CHECK_FALSE(PopupFrames(rig.host).empty());
+    REQUIRE(ClickMenu(rig.host, "Save"));
+    rig.place();
+    CHECK(rig.tabActions == std::vector<std::pair<TitlebarView::TabAction, std::string>>{
+        {TitlebarView::TabAction::Save, "a"}});
+}
+
+TEST_CASE("A retired terminal view drops its screen and callbacks before its dock lets go of it",
+          "[core][sakura][views][terminal]") {
+    const auto ctx = MakeContext({800.0f, 600.0f});
+    const Jetstream::Rect bounds = {0.0f, 0.0f, 800.0f, 600.0f};
+    Sakura::Terminal::Screen screen;
+    screen.columns = 40;
+    screen.rows = 8;
+    screen.lines.resize(8);
+    screen.scrollTotal = 8;
+    screen.mouseTracking = true;
+    std::vector<MouseEventType> pointers;
+    TerminalView view;
+    view.update({
+        .id = "terminal:1",
+        .title = "Terminal",
+        .terminal = {
+            .id = "terminal:1",
+            .screen = &screen,
+            .revision = 1,
+            .onPointer = [&](const MouseEvent& event) { pointers.push_back(event.type); },
+        },
+    });
+    Sakura::Dock dock;
+    Host host(dock);
+    dock.update({.accepts = TerminalView::Group, .panes = {view.pane()}, .loneHeader = true});
+    host.place(ctx, bounds);
+    host.send(Mouse(MouseEventType::Click, 400.0f, 400.0f));
+    REQUIRE(pointers == std::vector<MouseEventType>{MouseEventType::Click});
+
+    view.retire();
+    dock.update({.accepts = TerminalView::Group, .loneHeader = true});
+    host.place(ctx, bounds);
+    CHECK(pointers == std::vector<MouseEventType>{MouseEventType::Click});
+}
+
 TEST_CASE("Titlebar presenter window presses are safe without a native titlebar", "[core][sakura][views]") {
     Mailbox mailbox;
     mailbox.state.system.render = std::make_shared<SakuraTest::FakeWindow>();
@@ -1174,12 +1311,13 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     keys.update({.bindings = bar.shortcuts()});
     Host host(keys);
 
-    for (const auto key : {KeyCode::T, KeyCode::O, KeyCode::S, KeyCode::W, KeyCode::I, KeyCode::G, KeyCode::Comma}) {
+    for (const auto key : {KeyCode::T, KeyCode::O, KeyCode::S, KeyCode::W, KeyCode::I, KeyCode::G, KeyCode::Comma,
+                           KeyCode::GraveAccent}) {
         CHECK(Tap(host, key, {.control = true}));
     }
     CHECK(actions == std::vector<Action>{Action::NewTab, Action::OpenFlowgraph, Action::SaveFlowgraph,
                                          Action::CloseFlowgraph, Action::ShowFlowgraphInfo, Action::SendFeedback,
-                                         Action::Settings});
+                                         Action::Settings, Action::OpenTerminal});
 
     actions.clear();
     CHECK(Tap(host, KeyCode::T, {.super = true}));
@@ -1690,6 +1828,45 @@ TEST_CASE("Welcome screen splits into a saved flowgraph sidebar and a wider expl
     CHECK(rig.mailbox.mails.size() == 2);
 }
 
+TEST_CASE("Welcome hero shows an Open Terminal button only when terminals are available",
+          "[core][sakura][views][terminal]") {
+    WelcomeRig rig;
+    auto config = rig.build();
+    CHECK(static_cast<bool>(config.onOpenTerminal) == TerminalSession::Supported());
+    if (config.onOpenTerminal) {
+        config.onOpenTerminal();
+        REQUIRE(rig.mailbox.count<MailOpenTerminal>() == 1);
+        CHECK(rig.mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+        rig.mailbox.mails.clear();
+    }
+
+    U64 opened = 0;
+    config.onOpenTerminal = [&] {
+        ++opened;
+    };
+    rig.show(config);
+    auto* create = LabeledButton(rig.root(), "New Flowgraph");
+    auto* open = LabeledButton(rig.root(), "Open Flowgraph");
+    auto* terminal = LabeledButton(rig.root(), "Open Terminal");
+    REQUIRE(create != nullptr);
+    REQUIRE(open != nullptr);
+    REQUIRE(terminal != nullptr);
+    CHECK(ShownText(*terminal, ICON_LC_SQUARE_TERMINAL "  Open Terminal") != nullptr);
+    CHECK(Peek::Frame(*terminal).y == Peek::Frame(*open).y);
+    CHECK(Peek::Frame(*terminal).x > Peek::Frame(*open).right());
+    CHECK(Peek::Frame(*terminal).width == Peek::Frame(*create).width);
+    const F32 width = Peek::Frame(*create).width;
+    CHECK(Press(rig.host, *terminal));
+    CHECK(opened == 1);
+    CHECK(rig.mailbox.mails.empty());
+
+    config.onOpenTerminal = {};
+    rig.show(config);
+    CHECK(LabeledButton(rig.root(), "Open Terminal") == nullptr);
+    REQUIRE(LabeledButton(rig.root(), "New Flowgraph") != nullptr);
+    CHECK(Peek::Frame(*LabeledButton(rig.root(), "New Flowgraph")).width > width);
+}
+
 TEST_CASE("Welcome screen shows the remote section only when the build supports streaming",
           "[core][sakura][views]") {
     WelcomeRig rig;
@@ -1749,10 +1926,8 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
                                                "Python QPSK Generator", "Simple FM Receiver", "Multi-FM Receiver",
                                                "Overlap-Add-Fold"});
     CHECK(config.featured.front().diagram.find("Tone") != std::string::npos);
-    CHECK(config.featured.front().accentColorKey == "gallery_green");
     CHECK(config.featured.front().summary.find("spectrum analyzer") != std::string::npos);
     CHECK(config.featured[1].category == "Receivers");
-    CHECK(config.featured[1].accentColorKey == "gallery_coral");
     CHECK(config.categoryNames == std::vector<std::string>{"Basics", "Receivers", "DSP"});
     REQUIRE(config.categories.size() == 3);
     CHECK(config.categories.front().title == "Basics");
@@ -1761,7 +1936,6 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
     for (const auto& category : config.categories) {
         for (const auto& example : category.examples) {
             ++examples;
-            CHECK(example.accentColorKey.rfind("gallery_", 0) == 0);
             CHECK_FALSE(example.diagram.empty());
         }
     }
@@ -1782,7 +1956,7 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
     CHECK_FALSE(config.featured.front().key.empty());
 }
 
-TEST_CASE("Welcome presenter files examples without gallery metadata under plugins with the default accent",
+TEST_CASE("Welcome presenter files examples without gallery metadata under plugins",
           "[core][sakura][views]") {
     Registry::FlowgraphRegistration record;
     record.key = "welcome-plain-example";
@@ -1802,7 +1976,6 @@ TEST_CASE("Welcome presenter files examples without gallery metadata under plugi
     CHECK(plugins.examples[0].title == "Plain Example");
     CHECK(plugins.examples[0].summary == "Plain summary.");
     CHECK(plugins.examples[0].diagram.empty());
-    CHECK(plugins.examples[0].accentColorKey == Sakura::FlowgraphCard::Config{}.accentColorKey);
 }
 
 TEST_CASE("Welcome screen lists favorites above recent and stars toggle without opening",
@@ -1881,7 +2054,7 @@ TEST_CASE("Welcome screen switches between all and flowgraphs with the section t
 
     mailbox.state.interface.welcomeSection = mailbox.last<MailSetWelcomeSection>()->section;
     rig.show();
-    CHECK(ShownText(rig.root(), "Featured") == nullptr);
+    CHECK(ShownText(rig.root(), "Featured") != nullptr);
     CHECK_FALSE(Find<Sakura::FlowgraphCard>(rig.root()).empty());
 
     auto* allLabel = ShownText(*SectionTabs(rig.root()).front(), "All");
@@ -1991,7 +2164,7 @@ TEST_CASE("Welcome screen pins settings and a theme toggle to the bottom of the 
     CHECK(Peek::Frame(*settings).y == before);
 }
 
-TEST_CASE("Welcome leaves room below the last flowgraph cards for the footer art", "[core][sakura][views]") {
+TEST_CASE("Welcome leaves room below the last flowgraph cards for the footer", "[core][sakura][views]") {
     WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
     rig.show();
     const auto cards = Find<Sakura::FlowgraphCard>(rig.root());
@@ -2004,7 +2177,7 @@ TEST_CASE("Welcome leaves room below the last flowgraph cards for the footer art
     for (auto* card : cards) {
         bottom = std::max(bottom, Peek::Frame(*card).bottom());
     }
-    CHECK(bottom <= rig.bounds.height - WelcomeView::FooterArtTop - WelcomeView::FooterArtBottom);
+    CHECK(bottom <= rig.bounds.height - WelcomeView::FooterTop - WelcomeView::FooterBottom);
 }
 
 TEST_CASE("Welcome explore page keeps equal side margins inside its tile", "[core][sakura][views]") {
@@ -2053,8 +2226,8 @@ TEST_CASE("Welcome shows a gallery progress card until the first fetch of the se
     const auto shown = [&](const std::string& label) {
         return ShownText(rig.root(), label) != nullptr;
     };
-    const std::string loading = "Loading flowgraphs from the gallery...";
-    const std::string updating = "Updating gallery...";
+    const std::string loading = "Loading flowgraphs...";
+    const std::string updating = "Updating flowgraphs...";
 
     CHECK(rig.build().progress.empty());
     rig.show();
@@ -2091,7 +2264,7 @@ TEST_CASE("Welcome shows a gallery progress card until the first fetch of the se
     CHECK(Find<Sakura::Spinner>(rig.root()).empty());
     const auto icons = Find<Sakura::Text>(rig.root());
     CHECK(std::any_of(icons.begin(), icons.end(), [](auto* text) {
-        return text->config().str == ICON_LC_CIRCLE_CHECK && text->config().colorKey == "success_green";
+        return text->config().str == ICON_LC_CHECK && text->config().colorKey == "action_btn_text";
     }));
     rig.wait(WelcomeView::ProgressLinger * 0.5);
     CHECK(shown("Gallery updated successfully!"));
@@ -2101,17 +2274,17 @@ TEST_CASE("Welcome shows a gallery progress card until the first fetch of the se
     gallery.cached = false;
     CHECK(rig.build().progressResult == "Gallery loaded.");
     gallery.failed = true;
-    CHECK(rig.build().progressResult == "Could not reach the gallery. Showing bundled flowgraphs.");
+    CHECK(rig.build().progressResult == "Using bundled flowgraphs");
 }
 
 TEST_CASE("Welcome gallery progress ends with a warning when the first fetch fails", "[core][sakura][views]") {
     WelcomeRig rig;
     auto& gallery = rig.mailbox.state.registry.gallery;
-    const std::string failure = "Could not reach the gallery. Showing bundled flowgraphs.";
+    const std::string failure = "Using bundled flowgraphs";
     gallery.loading = true;
     rig.show();
     rig.wait(0.5);
-    CHECK(ShownText(rig.root(), "Loading flowgraphs from the gallery...") != nullptr);
+    CHECK(ShownText(rig.root(), "Loading flowgraphs...") != nullptr);
 
     gallery.loading = false;
     gallery.attempted = true;
@@ -2120,7 +2293,7 @@ TEST_CASE("Welcome gallery progress ends with a warning when the first fetch fai
     CHECK(ShownText(rig.root(), failure) != nullptr);
     const auto icons = Find<Sakura::Text>(rig.root());
     CHECK(std::any_of(icons.begin(), icons.end(), [](auto* text) {
-        return text->config().str == ICON_LC_CIRCLE_ALERT && text->config().colorKey == "warning_yellow";
+        return text->config().str == ICON_LC_CIRCLE_ALERT && text->config().colorKey == "action_btn_text";
     }));
     rig.wait(WelcomeView::ProgressLinger * 0.5);
     CHECK(ShownText(rig.root(), failure) != nullptr);
@@ -2128,7 +2301,7 @@ TEST_CASE("Welcome gallery progress ends with a warning when the first fetch fai
     CHECK(ShownText(rig.root(), failure) == nullptr);
 }
 
-TEST_CASE("Welcome category sections lead with a workflow icon and a category flowgraphs title",
+TEST_CASE("Welcome category sections lead with their tinted category icon and a category flowgraphs title",
           "[core][sakura][views]") {
     WelcomeRig rig;
     rig.show();
@@ -2138,13 +2311,14 @@ TEST_CASE("Welcome category sections lead with a workflow icon and a category fl
     const auto texts = Find<Sakura::Text>(rig.root());
     const auto icon = std::find_if(texts.begin(), texts.end(), [&](auto* text) {
         const auto frame = Peek::Frame(*text);
-        return text->config().str == ICON_LC_WORKFLOW && frame.right() <= Peek::Frame(*title).x &&
+        return text->config().str == ICON_LC_GRADUATION_CAP && frame.right() <= Peek::Frame(*title).x &&
                frame.y < Peek::Frame(*title).bottom() && frame.bottom() > Peek::Frame(*title).y;
     });
-    CHECK(icon != texts.end());
+    REQUIRE(icon != texts.end());
+    CHECK((*icon)->config().colorKey == "gallery_green");
 }
 
-TEST_CASE("Welcome shows the featured card only on the All section", "[core][sakura][views]") {
+TEST_CASE("Welcome keeps the featured card on both sections", "[core][sakura][views]") {
     WelcomeRig rig;
     auto& ui = rig.mailbox.state.interface;
     auto config = rig.build();
@@ -2152,13 +2326,9 @@ TEST_CASE("Welcome shows the featured card only on the All section", "[core][sak
 
     ui.welcomeSection = WelcomeSection::Flowgraphs;
     config = rig.build();
-    CHECK(config.featured.empty());
+    CHECK_FALSE(config.featured.empty());
     CHECK_FALSE(config.categories.empty());
     rig.show(config);
-    CHECK(ShownText(rig.root(), "Featured") == nullptr);
-
-    ui.welcomeSection = WelcomeSection::All;
-    rig.show(rig.build());
     CHECK(ShownText(rig.root(), "Featured") != nullptr);
 }
 
@@ -2203,19 +2373,11 @@ TEST_CASE("Welcome flowgraph filters narrow the catalog by search text and categ
     });
     REQUIRE(hint != hints.end());
     CHECK((*hint)->config().fontName == Sakura::Typography::DisplaySemiboldFont);
-    auto pillsList = Find<Sakura::PillTabs>(rig.root());
-    std::erase_if(pillsList, [&](auto* item) {
-        return SectionTabs(rig.root()).front() == item;
-    });
-    REQUIRE(pillsList.size() == 1);
-    auto* pills = pillsList.front();
-    CHECK(Peek::Frame(*pills).y > Peek::Frame(*inputs[0]).y - 1.0f);
-    const auto labels = Find<Sakura::Text>(*pills);
-    REQUIRE(labels.size() == allCategories.size() + 1);
-    for (auto* label : labels) {
-        CHECK(label->config().font == Sakura::Text::Font::Display);
-    }
-    const auto first = Center(*labels[0]);
+    auto* cell = ShownText(rig.root(), allCategories[0]);
+    REQUIRE(cell != nullptr);
+    CHECK(Peek::Frame(*cell).y > Peek::Frame(*inputs[0]).bottom());
+    CHECK(cell->config().font == Sakura::Text::Font::Display);
+    const auto first = Center(*cell);
     mailbox.mails.clear();
     rig.host.send(Mouse(MouseEventType::Click, first.x, first.y));
     rig.host.send(Mouse(MouseEventType::Release, first.x, first.y));
@@ -2308,7 +2470,7 @@ TEST_CASE("Pagination windows long page lists around the current page", "[core][
     CHECK(Pagination::Slots(9, 10) == Slots{0, std::nullopt, 6, 7, 8, 9});
 }
 
-TEST_CASE("Welcome filter card insets the search icon and keeps the category pills evenly inset", "[core][sakura][views]") {
+TEST_CASE("Welcome filter card insets the search icon and the category grid lines up with it", "[core][sakura][views]") {
     WelcomeRig rig;
     rig.show();
 
@@ -2316,21 +2478,20 @@ TEST_CASE("Welcome filter card insets the search icon and keeps the category pil
     REQUIRE(icon != nullptr);
     Sakura::Div* card = nullptr;
     for (auto* div : Find<Sakura::Div>(rig.root())) {
-        if (!Find<Sakura::TextInput>(*div).empty() && Find<Sakura::PillTabs>(*div).size() == 2 &&
+        if (!Find<Sakura::TextInput>(*div).empty() && Find<Sakura::PillTabs>(*div).size() == 1 &&
             (!card || Peek::Frame(*div).height < Peek::Frame(*card).height)) {
             card = div;
         }
     }
     REQUIRE(card != nullptr);
     CHECK(Peek::Frame(*icon).x - Peek::Frame(*card).x == WelcomeView::SearchInset);
-    auto pills = Find<Sakura::PillTabs>(rig.root());
-    std::erase_if(pills, [&](auto* item) {
-        return SectionTabs(rig.root()).front() == item;
+    const auto grids = Find<Sakura::Grid>(rig.root());
+    const auto grid = std::find_if(grids.begin(), grids.end(), [&](auto* item) {
+        return Peek::Frame(*item).y > Peek::Frame(*card).bottom() && ShownText(*item, "Basics") != nullptr;
     });
-    REQUIRE(pills.size() == 1);
-    const auto pill = Peek::Frame(*pills.front());
-    CHECK(pill.x - Peek::Frame(*card).x == WelcomeView::CategoryPadding);
-    CHECK(Peek::Frame(*card).bottom() - pill.bottom() == WelcomeView::CategoryPadding);
+    REQUIRE(grid != grids.end());
+    CHECK(Peek::Frame(**grid).x == Peek::Frame(*card).x);
+    CHECK(Peek::Frame(**grid).right() == Peek::Frame(*card).right());
 }
 
 TEST_CASE("Welcome page opens with a centered wordmark and a wave above the filter card", "[core][sakura][views]") {
@@ -2351,7 +2512,7 @@ TEST_CASE("Welcome page opens with a centered wordmark and a wave above the filt
     }));
     const auto texts = Find<Sakura::Text>(rig.root());
     CHECK(std::all_of(texts.begin(), texts.end(), [&](auto* text) {
-        return text == wordmark || text->config().emboss == 0.0f;
+        return text->config().str == "CyberEther" || text->config().emboss == 0.0f;
     }));
     const auto composers = Find<Sakura::ChatComposer>(rig.root());
     REQUIRE(composers.size() == 1);
@@ -4335,6 +4496,302 @@ TEST_CASE("Workbench activates only the tab the model navigated to last within a
     CHECK(mailbox.mails.empty());
 }
 
+TEST_CASE("Terminal presenter builds one config per terminal and per tab and routes their callbacks by id",
+          "[core][sakura][views][terminal]") {
+    Mailbox mailbox;
+    auto& terminals = mailbox.state.terminal;
+    terminals.items[1] = {.tab = 1};
+    terminals.items[3] = {.title = "zsh", .flowgraph = std::string("graph"), .revision = 7, .focusRequests = 2};
+    terminals.items[4] = {.title = "vim", .tab = 1};
+    terminals.tabs[1] = TileMeta{
+        .split = "column",
+        .children = std::vector<TileMeta>{{.pane = "terminal:9"}, {.pane = "terminal:4"}, {.pane = "terminal:1"}},
+    };
+    terminals.tabs[2] = TileMeta{.pane = "terminal:9"};
+    const auto context = mailbox.context();
+    const TerminalPresenter presenter(context);
+    const auto configs = presenter.build();
+    REQUIRE(configs.size() == 3);
+    CHECK(configs[0].id == "terminal:1");
+    CHECK(configs[0].title == "Terminal");
+    CHECK_FALSE(configs[0].flowgraph.has_value());
+    CHECK(configs[0].tab == std::optional<std::string>("terminals:1"));
+    CHECK(configs[1].id == "terminal:3");
+    CHECK(configs[1].title == "Terminal (zsh)");
+    CHECK(configs[1].flowgraph == std::optional<std::string>("graph"));
+    CHECK_FALSE(configs[1].tab.has_value());
+    CHECK(configs[1].terminal.id == "terminal:3");
+    CHECK(configs[1].terminal.screen == &terminals.items.at(3).screen);
+    CHECK(configs[1].terminal.revision == 7);
+    CHECK(configs[1].terminal.focusRequest == 2);
+    CHECK(configs[0].terminal.focusRequest == 0);
+    CHECK(configs[2].title == "Terminal (vim)");
+
+    configs[1].terminal.onText("l", {});
+    configs[1].terminal.onResize({.columns = 30, .rows = 5, .cellWidth = 9.0f, .cellHeight = 17.0f});
+    configs[0].terminal.onScroll(-2, {4.0f, 8.0f}, {.control = true});
+    REQUIRE(mailbox.count<MailTerminalInput>() == 3);
+    const auto& typed = std::get<MailTerminalInput>(mailbox.mails[0]);
+    CHECK(typed.terminal == 3);
+    REQUIRE(std::holds_alternative<MailTerminalInput::Text>(typed.input));
+    CHECK(std::get<MailTerminalInput::Text>(typed.input).value == "l");
+    const auto& resized = std::get<MailTerminalInput>(mailbox.mails[1]);
+    CHECK(resized.terminal == 3);
+    REQUIRE(std::holds_alternative<Sakura::Terminal::Grid>(resized.input));
+    CHECK(std::get<Sakura::Terminal::Grid>(resized.input).columns == 30);
+    const auto& scrolled = std::get<MailTerminalInput>(mailbox.mails[2]);
+    CHECK(scrolled.terminal == 1);
+    REQUIRE(std::holds_alternative<MailTerminalInput::Scroll>(scrolled.input));
+    CHECK(std::get<MailTerminalInput::Scroll>(scrolled.input).rows == -2);
+
+    mailbox.mails.clear();
+    configs[1].onClose();
+    configs[0].onSplit(false);
+    configs[2].onSplit(true);
+    REQUIRE(mailbox.mails.size() == 3);
+    REQUIRE(std::holds_alternative<MailCloseTerminal>(mailbox.mails[0]));
+    CHECK(std::get<MailCloseTerminal>(mailbox.mails[0]).terminal == 3);
+    REQUIRE(std::holds_alternative<MailOpenTerminal>(mailbox.mails[1]));
+    CHECK(std::get<MailOpenTerminal>(mailbox.mails[1]).split == std::optional<U64>(1));
+    CHECK_FALSE(std::get<MailOpenTerminal>(mailbox.mails[1]).stacked);
+    REQUIRE(std::holds_alternative<MailOpenTerminal>(mailbox.mails[2]));
+    CHECK(std::get<MailOpenTerminal>(mailbox.mails[2]).split == std::optional<U64>(4));
+    CHECK(std::get<MailOpenTerminal>(mailbox.mails[2]).stacked);
+
+    mailbox.mails.clear();
+    const auto tabs = presenter.tabs();
+    REQUIRE(tabs.size() == 2);
+    CHECK(tabs[0].id == "terminals:1");
+    CHECK(tabs[0].title == "Terminal (vim)");
+    REQUIRE(tabs[0].tiles.has_value());
+    CHECK(tabs[0].tiles->vertical);
+    REQUIRE(tabs[0].tiles->children.size() == 3);
+    CHECK(tabs[0].tiles->children[1].pane == "terminal:4");
+    CHECK(tabs[1].id == "terminals:2");
+    CHECK(tabs[1].title == "Terminal");
+
+    tabs[0].onTiles(Row({0.5f, 0.5f}, {Leaf("terminal:1"), Leaf("terminal:4")}));
+    tabs[0].onTiles(std::nullopt);
+    tabs[0].onClose();
+    tabs[1].onFocus();
+    REQUIRE(mailbox.mails.size() == 4);
+    const auto& tiled = std::get<MailSetTerminalTabLayout>(mailbox.mails[0]);
+    CHECK(tiled.tab == 1);
+    REQUIRE(tiled.tiles.has_value());
+    CHECK(tiled.tiles->split == std::optional<std::string>("row"));
+    REQUIRE(tiled.tiles->children.has_value());
+    CHECK(tiled.tiles->children->size() == 2);
+    const auto& cleared = std::get<MailSetTerminalTabLayout>(mailbox.mails[1]);
+    CHECK(cleared.tab == 1);
+    CHECK_FALSE(cleared.tiles.has_value());
+    CHECK(std::get<MailCloseTerminalTab>(mailbox.mails[2]).tab == 1);
+    CHECK(std::get<MailFocusTerminalTab>(mailbox.mails[3]).tab == 2);
+}
+
+TEST_CASE("A terminal tab is a main dock tab whose inner dock titles its terminal tiles even when alone",
+          "[core][sakura][views][terminal]") {
+    TitleRig rig;
+    Sakura::Terminal::Screen screen;
+    std::vector<std::string> events;
+    TerminalView first;
+    TerminalView second;
+    TerminalTabView tab;
+    std::optional<Sakura::DockTiles> tiles = Leaf("terminal:1");
+    bool split = false;
+    const auto terminal = [&](U64 id, std::string title) {
+        return TerminalView::Config{
+            .id = MakeTerminalPaneKey(id),
+            .title = std::move(title),
+            .tab = MakeTerminalTabKey(1),
+            .terminal = {.id = MakeTerminalPaneKey(id), .screen = &screen, .revision = 1},
+            .onClose = [&events, id] {
+                events.push_back("close:" + std::to_string(id));
+            },
+            .onSplit = [&events, id](bool stacked) {
+                events.push_back("split:" + std::to_string(id) + (stacked ? ":below" : ":beside"));
+            },
+        };
+    };
+    const auto update = [&](std::optional<std::string> activate) {
+        first.update(terminal(1, "Terminal (zsh)"));
+        std::vector<Sakura::Dock::Pane> panes = {first.pane()};
+        if (split) {
+            second.update(terminal(2, "Terminal"));
+            panes.push_back(second.pane());
+        }
+        tab.update({
+                       .id = "terminals:1",
+                       .title = "Terminal (zsh)",
+                       .tiles = tiles,
+                       .onTiles = [&events](std::optional<Sakura::DockTiles>) {
+                           events.push_back("tiles");
+                       },
+                       .onClose = [&events] {
+                           events.push_back("close tab");
+                       },
+                       .onFocus = [&events] {
+                           events.push_back("focus");
+                       },
+                   },
+                   std::move(panes));
+        rig.shell.updatePanes({
+            .panes = {{.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
+                      tab.pane()},
+            .activate = std::move(activate),
+        });
+        rig.place();
+    };
+    const auto glyph = [&](const std::string& str) -> Sakura::Text* {
+        for (auto* text : Direct<Sakura::Text>(*tab.pane().content)) {
+            if (text->config().str == str && text->visible()) {
+                return text;
+            }
+        }
+        return nullptr;
+    };
+    const auto headers = [&](const std::string& title) {
+        U64 count = 0;
+        for (auto* text : Direct<Sakura::Text>(*tab.pane().content)) {
+            count += text->config().str == title && text->visible() ? 1 : 0;
+        }
+        return count;
+    };
+
+    update("terminals:1");
+    const auto pane = tab.pane();
+    CHECK(pane.id == "terminals:1");
+    CHECK(pane.group == TerminalView::Group);
+    CHECK(pane.icon == ICON_LC_SQUARE_TERMINAL);
+    REQUIRE(dynamic_cast<Sakura::Dock*>(pane.content) != nullptr);
+    CHECK(events == std::vector<std::string>{"focus"});
+    CHECK_FALSE(rig.a.visible());
+    const auto shown = Find<Sakura::Terminal>(*pane.content);
+    REQUIRE(shown.size() == 1);
+    CHECK(shown.front()->visible());
+    CHECK(headers("Terminal (zsh)") == 1);
+    auto* beside = glyph(ICON_LC_COLUMNS_2);
+    REQUIRE(beside != nullptr);
+    REQUIRE(glyph(ICON_LC_ROWS_2) != nullptr);
+    CHECK(Peek::Frame(*beside).y < Peek::Frame(*shown.front()).y);
+
+    events.clear();
+    Press(rig.host, *beside);
+    rig.place();
+    Press(rig.host, *glyph(ICON_LC_ROWS_2));
+    rig.place();
+    CHECK(events == std::vector<std::string>{"split:1:beside", "split:1:below"});
+
+    split = true;
+    tiles = Row({0.5f, 0.5f}, {Leaf("terminal:1"), Leaf("terminal:2")});
+    events.clear();
+    update(std::nullopt);
+    REQUIRE(Find<Sakura::Terminal>(*pane.content).size() == 2);
+    CHECK(headers("Terminal (zsh)") == 1);
+    CHECK(headers("Terminal") == 1);
+    const auto left = Peek::Frame(*Find<Sakura::Terminal>(*pane.content)[0]);
+    const auto right = Peek::Frame(*Find<Sakura::Terminal>(*pane.content)[1]);
+    CHECK(left.y == right.y);
+    CHECK(left.x != right.x);
+
+    const auto pill = rig.pill(1);
+    rig.host.click(pill.x, pill.y, MouseButton::Right);
+    rig.place();
+    CHECK(PopupFrames(rig.host).empty());
+    CHECK(rig.tabActions.empty());
+}
+
+TEST_CASE("Workbench shows a terminal tab as a main tab and a tiled terminal inside its flowgraph",
+          "[core][sakura][views][terminal]") {
+    Mailbox mailbox;
+    auto& terminals = mailbox.state.terminal;
+    terminals.items[1] = {.tab = 1};
+    terminals.items[2] = {.flowgraph = std::string("graph")};
+    terminals.tabs[1] = TileMeta{.pane = "terminal:1"};
+    terminals.focused = 1;
+    terminals.requested = 1;
+    terminals.requests = 1;
+    CHECK_FALSE(mailbox.state.tabsHidden());
+
+    const auto presented = WorkbenchPresenter(mailbox.context()).build();
+    CHECK_FALSE(presented.hideTabs);
+    CHECK(presented.terminals.size() == 2);
+    REQUIRE(presented.terminalTabs.size() == 1);
+    CHECK(presented.terminalTabs[0].id == "terminals:1");
+    CHECK(presented.terminalRequested == std::optional<std::string>("terminals:1"));
+    CHECK(presented.terminalRequests == 1);
+    CHECK(presented.terminalFocused);
+
+    FakeWindow window(1.0f, {1200.0f, 600.0f});
+    Sakura::Runtime runtime;
+    runtime.update({.render = &window});
+    WorkbenchView view;
+    const auto show = [&] {
+        const auto context = mailbox.context();
+        const TerminalPresenter presenter(context);
+        WorkbenchView::Config config;
+        config.backgroundParticles = false;
+        config.flowgraphs.push_back({
+            .id = "graph",
+            .title = "Graph",
+            .layoutGroup = "layout:graph",
+            .editorPane = "editor:graph",
+            .layout = Row({0.5f, 0.5f}, {Leaf("editor:graph"), Leaf("terminal:2")}),
+        });
+        config.terminals = presenter.build();
+        config.terminalTabs = presenter.tabs();
+        if (terminals.requested.has_value()) {
+            config.terminalRequested = MakeTerminalTabKey(*terminals.requested);
+        }
+        config.terminalRequests = terminals.requests;
+        config.terminalFocused = terminals.focused == terminals.requested;
+        mailbox.mails.clear();
+        view.update(std::move(config));
+        for (U64 frame = 0; frame < 3; ++frame) {
+            REQUIRE(window.begin() == Result::SUCCESS);
+            view.render(runtime.context());
+            REQUIRE(window.end() == Result::SUCCESS);
+        }
+    };
+    const auto grid = [&](U64 terminal) -> std::optional<Sakura::Terminal::Grid> {
+        std::optional<Sakura::Terminal::Grid> found;
+        for (const auto& mail : mailbox.mails) {
+            if (const auto* input = std::get_if<MailTerminalInput>(&mail); input && input->terminal == terminal) {
+                if (const auto* resized = std::get_if<Sakura::Terminal::Grid>(&input->input)) {
+                    found = *resized;
+                }
+            }
+        }
+        return found;
+    };
+
+    show();
+    REQUIRE(mailbox.count<MailFocusTerminalTab>() == 1);
+    CHECK(mailbox.last<MailFocusTerminalTab>()->tab == 1);
+    const auto tabbed = grid(1);
+    REQUIRE(tabbed.has_value());
+    CHECK_FALSE(grid(2).has_value());
+
+    show();
+    CHECK(mailbox.count<MailFocusTerminalTab>() == 0);
+
+    terminals.requests = 2;
+    terminals.focused.reset();
+    show();
+    CHECK(mailbox.count<MailFocusTerminalTab>() == 0);
+    CHECK_FALSE(WorkbenchPresenter(mailbox.context()).build().terminalFocused);
+
+    terminals.items.erase(1);
+    terminals.tabs.clear();
+    terminals.focused.reset();
+    terminals.requested.reset();
+    show();
+    const auto tiled = grid(2);
+    REQUIRE(tiled.has_value());
+    CHECK(tiled->columns < tabbed->columns);
+    CHECK(tiled->columns * 3 > tabbed->columns);
+    CHECK_FALSE(grid(1).has_value());
+}
+
 TEST_CASE("Flowgraph info view settles under identical updates",
           "[core][sakura][views]") {
     Scene scene{kWide};
@@ -5017,4 +5474,268 @@ TEST_CASE("Docs tab settles under identical updates", "[core][sakura][views]") {
     config.anchor = "first-steps";
     config.navigation = 2;
     CHECK(Settles(frames, update));
+}
+
+namespace {
+
+Docs SearchDocs() {
+    return Docs::Parse({
+        {"overview", "---\ntitle: Overview\norder: 1\ncategory: Getting Started\n---\n\nIntro to the blueprint."},
+        {"plugins", "---\ntitle: Creating Plugins\norder: 2\ncategory: Guides\n---\n\n"
+                    "## Bundling\n\nUse the blueprint bundler.\n\n"
+                    "## Folder Layout\n\nThe blueprint folder layout."},
+    });
+}
+
+}  // namespace
+
+TEST_CASE("Docs search keeps one height across the hint, the results, and the no-results state",
+          "[core][sakura][views]") {
+    const Docs docs = SearchDocs();
+    KeyedModalRig rig;
+    DocsSearchView view;
+    std::string query;
+    rig.update = [&] {
+        view.update({.docs = &docs, .query = query, .onQueryChange = [&](const std::string& next) { query = next; }});
+        rig.modal.update(view.layer());
+    };
+    REQUIRE(rig.settles());
+    CHECK(ShownText(view.component(), "Search the documentation.") != nullptr);
+    CHECK(Find<Sakura::HighlightText>(view.component()).empty());
+    const F32 height = Peek::Frame(view.component()).height;
+    REQUIRE(height > 0.0f);
+
+    rig.type("blueprint");
+    CHECK(query == "blueprint");
+    REQUIRE(rig.settles());
+    CHECK(Find<Sakura::HighlightText>(view.component()).size() == docs.search("blueprint", 6).size());
+    CHECK(ShownText(view.component(), "Creating Plugins") != nullptr);
+    CHECK(Peek::Frame(view.component()).height == height);
+
+    query = "zzz";
+    REQUIRE(rig.settles());
+    CHECK(ShownText(view.component(), "No results for \"zzz\".") != nullptr);
+    CHECK(Find<Sakura::HighlightText>(view.component()).empty());
+    CHECK(Peek::Frame(view.component()).height == height);
+}
+
+TEST_CASE("Docs search opens the selected section from the keyboard and closes on escape and outside clicks",
+          "[core][sakura][views]") {
+    const Docs docs = SearchDocs();
+    KeyedModalRig rig;
+    DocsSearchView view;
+    std::vector<std::string> opened;
+    U64 closes = 0;
+    rig.update = [&] {
+        view.update({
+            .docs = &docs,
+            .query = "blueprint",
+            .onOpen = [&](const std::string& page, const std::string& anchor) {
+                opened.push_back(page + "#" + anchor);
+            },
+            .onClose = [&] { ++closes; },
+        });
+        rig.modal.update(view.layer());
+    };
+    REQUIRE(rig.settles());
+    const auto hits = docs.search("blueprint", 6);
+    REQUIRE(hits.size() >= 2);
+    const auto expected = [&](U64 index) {
+        return docs.pages()[hits[index].page].slug + "#" + hits[index].anchor;
+    };
+
+    rig.press(KeyCode::Enter);
+    rig.press(KeyCode::DownArrow);
+    rig.press(KeyCode::Enter);
+    rig.press(KeyCode::UpArrow);
+    rig.press(KeyCode::UpArrow);
+    rig.press(KeyCode::Enter);
+    CHECK(opened == std::vector<std::string>{expected(0), expected(1), expected(hits.size() - 1)});
+
+    const auto card = Peek::Frame(view.component());
+    rig.click({card.x + card.width * 0.5f, card.bottom() - 4.0f});
+    CHECK(closes == 0);
+    rig.click({card.x * 0.5f, card.y + card.height * 0.5f});
+    CHECK(closes == 1);
+    rig.press(KeyCode::Escape);
+    CHECK(closes == 2);
+}
+
+TEST_CASE("Docs search presenters open the modal, store the query, and replace the modal with the docs page",
+          "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    WorkbenchActions actions(mailbox.state, mailbox.callbacks);
+    actions.handle(MailSetDocsQuery{.query = "bundler"});
+    CHECK(mailbox.state.interface.docsQuery == "bundler");
+
+    mailbox.state.modal.content = ModalContent::DocsSearch;
+    const auto config = ModalPresenter(context).build();
+    CHECK(config.docsSearch.query == "bundler");
+    CHECK(config.docsSearch.docs == &Docs::Bundled());
+
+    config.docsSearch.onQueryChange("bundle");
+    REQUIRE(mailbox.last<MailSetDocsQuery>() != nullptr);
+    CHECK(mailbox.last<MailSetDocsQuery>()->query == "bundle");
+    mailbox.mails.clear();
+    config.docsSearch.onOpen("plugins", "bundling");
+    REQUIRE(mailbox.mails.size() == 2);
+    CHECK(std::holds_alternative<MailCloseModal>(mailbox.mails[0]));
+    const auto* open = std::get_if<MailOpenDocs>(&mailbox.mails[1]);
+    REQUIRE(open != nullptr);
+    CHECK(open->page == "plugins");
+    CHECK(open->anchor == "bundling");
+}
+
+TEST_CASE("Welcome screen scrolls back to the top on a new visit and keeps its scroll within one",
+          "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    auto config = rig.build();
+    rig.show(config);
+    const auto cards = Find<Sakura::FlowgraphCard>(rig.root());
+    REQUIRE(cards.size() > 3);
+    const F32 top = Peek::Frame(*cards.back()).y;
+    const auto scroll = [&] {
+        rig.host.send(Wheel(rig.bounds.width * 0.7f, rig.bounds.height * 0.5f, -3.0f));
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    };
+
+    scroll();
+    const F32 scrolled = Peek::Frame(*cards.back()).y;
+    CHECK(scrolled < top);
+    rig.show(config);
+    CHECK(Peek::Frame(*cards.back()).y == scrolled);
+
+    config.visit += 1;
+    rig.show(config);
+    rig.show(config);
+    CHECK(Peek::Frame(*cards.back()).y == top);
+}
+
+TEST_CASE("Titlebar shows the new tab sidebar toggle only while tabs are hidden and stretches to the sidebar edge",
+          "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    WorkbenchActions actions(mailbox.state, mailbox.callbacks);
+    REQUIRE(mailbox.state.tabsHidden());
+
+    auto config = TitlebarPresenter(context).build();
+    REQUIRE(config.sidebarOpen.has_value());
+    CHECK(*config.sidebarOpen);
+    TitlebarView view;
+    view.update(config);
+    CHECK(view.leadingReach() == Sakura::Dock::ContentPadding + SidebarTiles::SidebarWidth);
+    CHECK(ShownText(view.leading(), ICON_LC_PANEL_LEFT_CLOSE) != nullptr);
+
+    mailbox.mails.clear();
+    config.onAction(TitlebarView::Action::ToggleSidebar);
+    REQUIRE(mailbox.last<MailSetWelcomeSidebar>() != nullptr);
+    CHECK_FALSE(mailbox.last<MailSetWelcomeSidebar>()->open);
+    actions.handle(*mailbox.last<MailSetWelcomeSidebar>());
+    CHECK_FALSE(mailbox.state.interface.welcomeSidebarOpen);
+    CHECK_FALSE(WelcomePresenter(context).build().sidebarOpen);
+
+    view.update(TitlebarPresenter(context).build());
+    CHECK(view.leadingReach() == 0.0f);
+    CHECK(ShownText(view.leading(), ICON_LC_PANEL_LEFT_OPEN) != nullptr);
+
+    mailbox.state.interface.startTab = true;
+    REQUIRE_FALSE(mailbox.state.tabsHidden());
+    CHECK_FALSE(TitlebarPresenter(context).build().sidebarOpen.has_value());
+}
+
+TEST_CASE("Welcome category cells glide to their section and back to top returns to the top",
+          "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    rig.show();
+    const auto topmost = [&](const std::string& str) -> Sakura::Text* {
+        Sakura::Text* found = nullptr;
+        for (auto* text : Find<Sakura::Text>(rig.root())) {
+            if (text->visible() && text->config().str == str &&
+                (!found || Peek::Frame(*text).y < Peek::Frame(*found).y)) {
+                found = text;
+            }
+        }
+        return found;
+    };
+    auto* heading = ShownText(rig.root(), "DSP Flowgraphs");
+    REQUIRE(heading != nullptr);
+    const F32 resting = Peek::Frame(*heading).y;
+    REQUIRE(resting > rig.bounds.height);
+    CHECK(ShownText(rig.root(), "Back to top") == nullptr);
+
+    auto* cell = topmost("DSP");
+    REQUIRE(cell != nullptr);
+    const auto point = Center(*cell);
+    REQUIRE(point.y < rig.bounds.height);
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    rig.show();
+    rig.wait(0.6);
+    rig.show();
+    CHECK(Peek::Frame(*heading).y < resting);
+    CHECK(Peek::Frame(*heading).y < rig.bounds.height * 0.5f);
+
+    auto* back = ShownText(rig.root(), "Back to top");
+    REQUIRE(back != nullptr);
+    const auto backPoint = Center(*back);
+    rig.host.send(Mouse(MouseEventType::Click, backPoint.x, backPoint.y));
+    rig.host.send(Mouse(MouseEventType::Release, backPoint.x, backPoint.y));
+    rig.show();
+    rig.wait(0.6);
+    rig.show();
+    CHECK(std::abs(Peek::Frame(*heading).y - resting) <= 1.0f);
+}
+
+TEST_CASE("Welcome category cells clear an active search before gliding to their section", "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    rig.mailbox.state.interface.welcomeQuery = "FM";
+    rig.show();
+    REQUIRE(ShownText(rig.root(), "Basics Flowgraphs") == nullptr);
+    Sakura::Text* cell = nullptr;
+    for (auto* text : Find<Sakura::Text>(rig.root())) {
+        if (text->visible() && text->config().str == "Basics" && (!cell || Peek::Frame(*text).y < Peek::Frame(*cell).y)) {
+            cell = text;
+        }
+    }
+    REQUIRE(cell != nullptr);
+    CHECK(cell->config().shrinkToFit);
+    const auto point = Center(*cell);
+    REQUIRE(point.y < rig.bounds.height);
+    rig.mailbox.mails.clear();
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    REQUIRE(rig.mailbox.last<MailSetWelcomeQuery>() != nullptr);
+    CHECK(rig.mailbox.last<MailSetWelcomeQuery>()->query.empty());
+
+    rig.mailbox.state.interface.welcomeQuery.clear();
+    rig.show();
+    rig.wait(0.6);
+    rig.show();
+    auto* heading = ShownText(rig.root(), "Basics Flowgraphs");
+    REQUIRE(heading != nullptr);
+    CHECK(Peek::Frame(*heading).y < rig.bounds.height * 0.5f);
+}
+
+TEST_CASE("Welcome category cells clear an active search even when their section is still shown",
+          "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    rig.mailbox.state.interface.welcomeQuery = "FM";
+    rig.show();
+    REQUIRE(ShownText(rig.root(), "Receivers Flowgraphs") != nullptr);
+    Sakura::Text* cell = nullptr;
+    for (auto* text : Find<Sakura::Text>(rig.root())) {
+        if (text->visible() && text->config().str == "Receivers" &&
+            (!cell || Peek::Frame(*text).y < Peek::Frame(*cell).y)) {
+            cell = text;
+        }
+    }
+    REQUIRE(cell != nullptr);
+    const auto point = Center(*cell);
+    REQUIRE(point.y < rig.bounds.height);
+    rig.mailbox.mails.clear();
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    REQUIRE(rig.mailbox.last<MailSetWelcomeQuery>() != nullptr);
+    CHECK(rig.mailbox.last<MailSetWelcomeQuery>()->query.empty());
 }

@@ -44,6 +44,14 @@ class JETSTREAM_API Docs {
         std::string anchor;
     };
 
+    struct Hit {
+        U64 page = 0;
+        std::string heading;
+        std::string anchor;
+        std::string snippet;
+        std::vector<std::pair<U64, U64>> marks;
+    };
+
     static const Docs& Bundled();
     static Docs Parse(const std::vector<std::pair<std::string_view, std::string_view>>& files);
     static std::optional<Link> Resolve(const std::string& url);
@@ -53,10 +61,19 @@ class JETSTREAM_API Docs {
     const std::vector<Page>& pages() const;
     const std::vector<Group>& groups() const;
     std::optional<U64> find(const std::string& slug) const;
+    std::vector<Hit> search(const std::string& query, U64 limit) const;
 
  private:
+    struct Section {
+        U64 page = 0;
+        std::string heading;
+        std::string text;
+        std::string searchable;
+    };
+
     std::vector<Page> ordered;
     std::vector<Group> grouped;
+    std::vector<Section> sections;
 };
 
 }  // namespace Jetstream

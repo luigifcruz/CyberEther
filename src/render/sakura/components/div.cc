@@ -41,6 +41,42 @@ struct Div::Impl {
     Card card;
     Polyline waves;
     bool hovered = false;
+    std::string fillKey;
+    std::string strokeKey;
+    ColorRGBA<F32> fillFrom = {0.0f, 0.0f, 0.0f, 0.0f};
+    ColorRGBA<F32> strokeFrom = {0.0f, 0.0f, 0.0f, 0.0f};
+    ColorRGBA<F32> fill = {0.0f, 0.0f, 0.0f, 0.0f};
+    ColorRGBA<F32> stroke = {0.0f, 0.0f, 0.0f, 0.0f};
+    std::optional<F64> blendStart;
+
+    void blend(const Context& ctx, const std::string& nextFill, const std::string& nextStroke) {
+        const auto targetFill = ctx.color(nextFill);
+        const auto targetStroke = ctx.color(nextStroke);
+        const bool changed = nextFill != fillKey || nextStroke != strokeKey;
+        if (changed && config.colorTransition > 0.0 && !fillKey.empty()) {
+            fillFrom = fill;
+            strokeFrom = stroke;
+            blendStart = ctx.time;
+        }
+        fillKey = nextFill;
+        strokeKey = nextStroke;
+        if (!blendStart.has_value()) {
+            fill = targetFill;
+            stroke = targetStroke;
+            return;
+        }
+        const F32 t = static_cast<F32>(std::clamp((ctx.time - *blendStart) / config.colorTransition, 0.0, 1.0));
+        const F32 eased = Smoothstep(t);
+        const auto mix = [eased](ColorRGBA<F32> from, ColorRGBA<F32> to) {
+            return ColorRGBA<F32>{from.r + (to.r - from.r) * eased, from.g + (to.g - from.g) * eased,
+                                  from.b + (to.b - from.b) * eased, from.a + (to.a - from.a) * eased};
+        };
+        fill = mix(fillFrom, targetFill);
+        stroke = mix(strokeFrom, targetStroke);
+        if (t >= 1.0f) {
+            blendStart.reset();
+        }
+    }
 
     static U64 waveCapacity(const Context& ctx) {
         const F32 row = std::max(Px(ctx, kWaveRow), 1.0f);
@@ -145,13 +181,18 @@ void Div::layout(const Context& ctx) {
         .softness = softness,
     });
     layoutChild(ctx, impl->shadow, bounds);
+    impl->blend(ctx, key, config.borderColorKey);
+    if (impl->blendStart.has_value()) {
+        requestFrame();
+    }
     impl->frame.setVisible(!config.chrome);
     impl->frame.update({
-        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color(key)}},
+        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = impl->fill,
+                       .corners = config.corners}},
         .clip = bounds,
         .cornerRadius = Px(ctx, config.rounding),
         .borderWidth = config.border ? Px(ctx, config.borderWidth) : 0.0f,
-        .borderColor = ctx.color(config.borderColorKey),
+        .borderColor = impl->stroke,
         .strokeFringe = true,
     });
     layoutChild(ctx, impl->frame, bounds);

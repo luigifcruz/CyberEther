@@ -1293,6 +1293,60 @@ TEST_CASE("Masked text grids draw one mask glyph per character", "[core][sakura]
     CHECK(joined == "********");
 }
 
+TEST_CASE("Style backgrounds draw one box across a span split into several segments",
+          "[core][sakura][text-grid]") {
+    Scene scene;
+    TextGrid grid;
+    Host host(grid);
+    const std::string marked(40, 'm');
+    const std::string plain(40, 'p');
+    const std::vector<std::vector<TextGrid::StyleId>> styles = {[&] {
+        std::vector<TextGrid::StyleId> line(marked.size() + plain.size(), 0);
+        std::fill(line.begin(), line.begin() + static_cast<I64>(marked.size()), 1);
+        return line;
+    }()};
+    grid.update({
+        .id = "split-background",
+        .value = marked + plain,
+        .fontSize = 15.0f,
+        .monospace = false,
+        .scrollbar = false,
+        .padding = kNoPadding,
+        .styleBackgroundColorKeys = {"editor_selection_match"},
+        .styleRevision = 1,
+        .styler = [&styles](const std::vector<std::string>&, U64) -> const std::vector<std::vector<TextGrid::StyleId>>& {
+            return styles;
+        },
+    });
+    const auto ctx = scene.context();
+    host.place(ctx, {0.0f, 0.0f, 2000.0f, 40.0f});
+
+    const auto background = ctx.color("editor_selection_match");
+    std::vector<Rect> boxes;
+    for (auto* box : Find<Sakura::Box>(grid)) {
+        for (const auto& instance : box->config().instances) {
+            if (instance.visible && instance.backgroundColor == background) {
+                boxes.push_back(instance.rect);
+            }
+        }
+    }
+    REQUIRE(boxes.size() == 1);
+    std::vector<Rect> markedGlyphs;
+    std::vector<Rect> plainGlyphs;
+    for (auto* label : Find<Sakura::Label>(grid)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && !instance.str.empty()) {
+                (instance.str.front() == 'm' ? markedGlyphs : plainGlyphs).push_back(instance.rect);
+            }
+        }
+    }
+    REQUIRE(markedGlyphs.size() > 1);
+    REQUIRE_FALSE(plainGlyphs.empty());
+    CHECK(boxes.front().x <= markedGlyphs.front().x + 1.0f);
+    CHECK(boxes.front().right() >= markedGlyphs.back().right() - 1.0f);
+    CHECK(boxes.front().right() <= plainGlyphs.front().x + 1.0f);
+}
+
 namespace {
 
 TextGrid::Config RegionText(std::string value) {

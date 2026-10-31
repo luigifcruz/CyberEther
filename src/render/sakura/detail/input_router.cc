@@ -124,9 +124,12 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
         hovered = false;
         pointer.reset();
     } else if (!pointerCancelled) {
+        const auto& held = input.modifiers;
+        const bool shifted = held.control != modifiers.control || held.shift != modifiers.shift ||
+                             held.alt != modifiers.alt || held.super != modifiers.super;
         const bool moved = !pointer || *pointer != *input.pointer;
         locate(*input.pointer);
-        if (moved && (hovered || captured())) {
+        if ((moved || shifted) && (hovered || captured())) {
             output.events.push_back(MouseEvent{
                 .type = MouseEventType::Move,
                 .position = position,
@@ -136,6 +139,7 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
     } else {
         hovered = false;
     }
+    modifiers = input.modifiers;
     return state(output);
 }
 

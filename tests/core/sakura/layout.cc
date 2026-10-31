@@ -1526,3 +1526,145 @@ TEST_CASE("Ending a trackpad gesture releases an outer scroller stretched past a
     }
     CHECK(nested.outer.overscroll(ctx).y > stretched);
 }
+
+TEST_CASE("Scroll areas glide to a requested target, report offsets once, and yield to the wheel",
+          "[core][sakura][layout]") {
+    Probe above({100.0f, 400.0f});
+    Probe target({100.0f, 40.0f});
+    Probe below({100.0f, 600.0f});
+    for (auto* probe : {&above, &target, &below}) {
+        probe->consume = false;
+        probe->prepare();
+    }
+    Stack content;
+    content.update({.spacing = 0.0f, .centerCross = false,
+                    .items = {{.child = &above}, {.child = &target}, {.child = &below}}});
+    Sakura::ScrollArea area;
+    Host host(area);
+    auto ctx = MakeContext();
+    U64 request = 0;
+    std::vector<F32> offsets;
+    const auto place = [&](F64 time) {
+        area.update({.content = &content, .height = Sakura::Fill, .border = false, .scrollTarget = &target,
+                     .scrollRequest = request, .onScroll = [&](F32 offset) { offsets.push_back(offset); }});
+        ctx.time = time;
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    };
+
+    place(0.0);
+    REQUIRE(offsets == std::vector<F32>{0.0f});
+    place(0.1);
+    CHECK(offsets.size() == 1);
+
+    ++request;
+    place(1.0);
+    place(1.175);
+    CHECK(target.currentFrame().y > 0.0f);
+    CHECK(target.currentFrame().y < 400.0f);
+    place(1.5);
+    CHECK(target.currentFrame().y == 0.0f);
+    CHECK(offsets.back() == 400.0f);
+    const U64 reported = offsets.size();
+    place(1.6);
+    CHECK(offsets.size() == reported);
+
+    area.update({.content = &content, .height = Sakura::Fill, .border = false, .scrollTarget = &above,
+                 .scrollRequest = ++request});
+    ctx.time = 2.0;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    CHECK(host.send(Wheel(100.0f, 50.0f, -1.0f)));
+    for (F64 time = 2.1; time < 3.0; time += 0.1) {
+        ctx.time = time;
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    }
+    CHECK(above.currentFrame().y < 0.0f);
+}
+
+TEST_CASE("Upward reveals keep their child's top at their top edge while they grow", "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    Probe child({100.0f, 40.0f});
+    child.prepare();
+    Sakura::Reveal reveal;
+    Host host(reveal);
+    const auto place = [&](bool upward, bool shown, F64 time) {
+        reveal.update({.child = &child, .shown = shown, .upward = upward});
+        ctx.time = time;
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 20.0f});
+    };
+
+    place(true, false, 0.0);
+    place(true, true, 1.0);
+    place(true, true, 1.125);
+    CHECK(child.currentFrame().y == 0.0f);
+
+    place(false, false, 5.0);
+    place(false, true, 6.0);
+    place(false, true, 6.125);
+    CHECK(child.currentFrame().y < 0.0f);
+}
+
+TEST_CASE("Divs ease between color keys, snap on first show, and round only the requested corners",
+          "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    ctx.palette = DistinctPalette();
+    Sakura::Div div;
+    Host host(div);
+    std::string key = "status_success";
+    const auto place = [&](F64 time) {
+        div.update({.size = {100.0f, 30.0f}, .corners = Sakura::Box::TopLeft | Sakura::Box::TopRight,
+                    .border = true, .colorKey = key, .borderColorKey = key, .colorTransition = 0.3});
+        ctx.time = time;
+        host.place(ctx, {0.0f, 0.0f, 100.0f, 30.0f});
+    };
+    const auto fill = [&]() -> Sakura::Box::Instance {
+        for (auto* box : Direct<Sakura::Box>(div)) {
+            if (box->visible() && box->config().borderWidth > 0.0f) {
+                return box->config().instances.front();
+            }
+        }
+        return {};
+    };
+
+    place(0.0);
+    CHECK(fill().backgroundColor == ctx.color("status_success"));
+    CHECK(fill().corners == (Sakura::Box::TopLeft | Sakura::Box::TopRight));
+
+    key = "status_warning";
+    place(1.0);
+    place(1.15);
+    const auto middle = fill().backgroundColor;
+    CHECK(middle != ctx.color("status_success"));
+    CHECK(middle != ctx.color("status_warning"));
+    place(1.5);
+    CHECK(fill().backgroundColor == ctx.color("status_warning"));
+}
+
+TEST_CASE("Scroll areas drop a glide on any wheel event, even one that cannot move", "[core][sakura][layout]") {
+    Probe above({100.0f, 400.0f});
+    Probe target({100.0f, 600.0f});
+    for (auto* probe : {&above, &target}) {
+        probe->consume = false;
+        probe->prepare();
+    }
+    Stack content;
+    content.update({.spacing = 0.0f, .centerCross = false, .items = {{.child = &above}, {.child = &target}}});
+    Sakura::ScrollArea area;
+    Host host(area);
+    auto ctx = MakeContext();
+    U64 request = 0;
+    const auto place = [&](F64 time) {
+        area.update({.content = &content, .height = Sakura::Fill, .border = false, .scrollTarget = &target,
+                     .scrollRequest = request});
+        ctx.time = time;
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    };
+
+    place(0.0);
+    ++request;
+    place(1.0);
+    host.send(Wheel(100.0f, 50.0f, 1.0f));
+    for (F64 time = 1.1; time < 2.0; time += 0.1) {
+        place(time);
+    }
+    CHECK(above.currentFrame().y == 0.0f);
+}

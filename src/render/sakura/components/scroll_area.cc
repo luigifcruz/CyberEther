@@ -5,14 +5,22 @@
 
 #include "../context.hh"
 #include "../metrics.hh"
+#include "../detail/access.hh"
 #include "../detail/clip_layer.hh"
 
 #include <algorithm>
 #include <limits>
+#include <optional>
 #include <utility>
 #include <vector>
 
 namespace Jetstream::Sakura {
+
+namespace {
+
+constexpr F64 kScrollToDuration = 0.35;
+
+}  // namespace
 
 struct ScrollArea::Impl {
     Config config;
@@ -21,6 +29,11 @@ struct ScrollArea::Impl {
     Scroller scroll;
     F32 scrollY = 0.0f;
     F32 contentHeight = 0.0f;
+    bool scrollPending = false;
+    std::optional<F32> reported;
+    std::optional<F64> glideStart;
+    F32 glideFrom = 0.0f;
+    F32 glideTo = 0.0f;
 };
 
 ScrollArea::ScrollArea() {
@@ -39,6 +52,10 @@ void ScrollArea::update(Config config) {
     if (config.id != impl->config.id) {
         impl->scrollY = 0.0f;
         impl->scroll.reset();
+        impl->glideStart.reset();
+    }
+    if (config.scrollRequest != impl->config.scrollRequest && config.scrollTarget) {
+        impl->scrollPending = true;
     }
     std::vector<Component*> children;
     if (config.content) {
@@ -86,7 +103,20 @@ void ScrollArea::layout(const Context& ctx) {
         }
         impl->contentHeight = measureChild(*impl->config.content, ctx, {innerWidth, infinite}).y + 2.0f * padding;
     }
+    if (impl->glideStart.has_value()) {
+        const F32 t = static_cast<F32>(std::clamp((ctx.time - *impl->glideStart) / kScrollToDuration, 0.0, 1.0));
+        impl->scrollY = impl->glideFrom + (impl->glideTo - impl->glideFrom) * Smoothstep(t);
+        if (t >= 1.0f) {
+            impl->glideStart.reset();
+        } else {
+            requestFrame();
+        }
+    }
     impl->scrollY = std::clamp(impl->scrollY, 0.0f, std::max(0.0f, impl->contentHeight - bounds.height));
+    if (impl->config.onScroll && impl->reported != impl->scrollY) {
+        impl->reported = impl->scrollY;
+        impl->config.onScroll(impl->scrollY / ctx.pixelRatio);
+    }
 
     impl->border.update({
         .instances = {{.rect = bounds, .visible = border && !bounds.empty(), .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
@@ -110,6 +140,7 @@ void ScrollArea::layout(const Context& ctx) {
         .thumbColorKey = "scrollbar_grab",
         .onScrollY = [this](F32 next) {
             impl->scrollY = next;
+            impl->glideStart.reset();
             invalidate(Dirty::Layout);
         },
     });
@@ -122,13 +153,27 @@ void ScrollArea::layout(const Context& ctx) {
                            std::max(0.0f, bounds.height - 2.0f * inset)};
     layoutChild(ctx, impl->clipLayer, clipRect);
     if (impl->config.content) {
-        impl->clipLayer.place(ctx, *impl->config.content,
-                              {bounds.x + padding, bounds.y + padding - impl->scrollY - overscroll, innerWidth,
-                               std::max(0.0f, impl->contentHeight - 2.0f * padding)});
+        const Rect content = {bounds.x + padding, bounds.y + padding - impl->scrollY - overscroll, innerWidth,
+                              std::max(0.0f, impl->contentHeight - 2.0f * padding)};
+        impl->clipLayer.place(ctx, *impl->config.content, content);
+        if (impl->scrollPending && impl->config.scrollTarget) {
+            impl->scrollPending = false;
+            const F32 maxScroll = std::max(0.0f, impl->contentHeight - bounds.height);
+            impl->glideFrom = impl->scrollY;
+            impl->glideTo = std::clamp(Access::frame(*impl->config.scrollTarget).y - content.y, 0.0f,
+                                       maxScroll);
+            impl->glideStart = ctx.time;
+            requestFrame();
+        }
     }
 }
 
 bool ScrollArea::mouseEvent(const MouseEvent& event) {
+    if (event.type == MouseEventType::Scroll && impl->glideStart.has_value() &&
+        frame().contains(event.position.x, event.position.y)) {
+        impl->glideStart.reset();
+        invalidate(Dirty::Layout);
+    }
     if (mouseEventChildren(event)) {
         return true;
     }

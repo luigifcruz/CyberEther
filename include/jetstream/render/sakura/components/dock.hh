@@ -47,8 +47,10 @@ struct Dock : public Component {
         bool card = true;
         bool leftmost = false;
         bool startMinimized = false;
+        bool hidden = false;
         F32 width = 0.0f;
         F32 padding = 0.0f;
+        ColorRGBA<F32> fill = {0.0f, 0.0f, 0.0f, 0.0f};
         Callback<void()> onClose;
         Callback<void()> onFocus;
         std::vector<Action> actions;
@@ -60,6 +62,7 @@ struct Dock : public Component {
         bool tabs = false;
         bool hideTabs = false;
         std::string accepts;
+        std::vector<std::string> adopts;
         std::vector<Pane> panes;
         std::optional<DockTiles> tiles;
         std::optional<std::string> activate;
@@ -73,6 +76,7 @@ struct Dock : public Component {
         F32 tabBarHeight = 0.0f;
         F32 leadingInset = 0.0f;
         F32 trailingInset = 0.0f;
+        F32 leadingReach = 0.0f;
         Callback<void(const std::string&, Extent2D<F32>)> onTabMenu;
         Callback<void(U8)> onBarPress;
         bool columns = false;

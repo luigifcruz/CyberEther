@@ -29,6 +29,10 @@ const std::unordered_map<std::string, Palette> Themes = {
 
             // Status Colors
             {"success_green", {0.0f, 1.0f, 0.0f, 1.0f}},
+            {"status_success", {0.10f, 0.50f, 0.27f, 1.0f}},
+            {"status_success_border", {0.20f, 0.68f, 0.40f, 1.0f}},
+            {"status_warning", {0.58f, 0.38f, 0.06f, 1.0f}},
+            {"status_warning_border", {0.78f, 0.53f, 0.12f, 1.0f}},
             {"warning_yellow", {1.0f, 0.8f, 0.0f, 1.0f}},
             {"favorite_star", {1.0f, 0.76f, 0.22f, 1.0f}},
             {"error_red", {1.0f, 0.0f, 0.0f, 1.0f}},
@@ -262,6 +266,10 @@ const std::unordered_map<std::string, Palette> Themes = {
 
             // Status Colors
             {"success_green", {0.0f, 0.6f, 0.0f, 1.0f}},
+            {"status_success", {0.30f, 0.76f, 0.46f, 1.0f}},
+            {"status_success_border", {0.22f, 0.66f, 0.38f, 1.0f}},
+            {"status_warning", {0.93f, 0.66f, 0.20f, 1.0f}},
+            {"status_warning_border", {0.82f, 0.55f, 0.12f, 1.0f}},
             {"warning_yellow", {0.64f, 0.38f, 0.0f, 1.0f}},
             {"favorite_star", {0.78f, 0.50f, 0.00f, 1.0f}},
             {"error_red", {0.9f, 0.15f, 0.15f, 1.0f}},
