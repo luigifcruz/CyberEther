@@ -118,7 +118,9 @@ Result DefaultCompositor::create() {
     // Restore map preferences.
 
     state.maps.highResolution = settings.maps.highResolution;
+    state.maps.rendering = settings.maps.rendering;
     Render::Components::GeoMapTiles::SetEnabled(settings.maps.highResolution);
+    Render::Components::GeoMap::SetRenderingOptions(settings.maps.rendering);
 
     // Restore intelligence preferences.
 

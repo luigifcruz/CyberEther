@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <thread>
@@ -72,6 +73,66 @@ std::string WaterTile() {
     return GeometryTile(3, {9, 0, 0, 26, 8192, 0, 0, 8192, 8191, 0, 15});
 }
 
+std::string LayerTile(const std::string& name, U32 type,
+                      const std::vector<U64>& commands, const std::string& kind) {
+    const auto feature = Repeated(2, {0, 0, 1, 1, 2, 2, 3, 1}, Encoding::Packed) +
+                         Varint(24) + Varint(type) + Repeated(4, commands, Encoding::Packed);
+    const auto layer = Bytes(1, name) + Bytes(2, feature) +
+                       Bytes(3, "class") + Bytes(3, "name") + Bytes(3, "admin_level") + Bytes(3, "iata") +
+                       Bytes(4, Bytes(1, kind)) + Bytes(4, Bytes(1, "TEST")) +
+                       Bytes(4, Varint(40) + Varint(2)) +
+                       Varint(40) + Varint(4096) + Varint(120) + Varint(2);
+    return Bytes(3, layer);
+}
+
+using BuildingRing = std::vector<std::array<I32, 2>>;
+
+std::string BuildingTile(const std::vector<BuildingRing>& rings) {
+    std::vector<U64> commands;
+    I32 x = 0;
+    I32 y = 0;
+    auto point = [&](const auto& p) {
+        auto zigzag = [](I64 value) -> U64 { return value < 0 ? -value * 2 - 1 : value * 2; };
+        commands.push_back(zigzag(p[0] - x));
+        commands.push_back(zigzag(p[1] - y));
+        x = p[0];
+        y = p[1];
+    };
+    for (const auto& ring : rings) {
+        commands.push_back(9);
+        point(ring.front());
+        commands.push_back(((ring.size() - 1) << 3) | 2);
+        for (U64 i = 1; i < ring.size(); ++i) point(ring[i]);
+        commands.push_back(15);
+    }
+    const auto feature = Varint(24) + Varint(3) + Repeated(4, commands, Encoding::Packed);
+    const auto layer = Bytes(1, "building") + Bytes(2, feature) +
+                       Varint(40) + Varint(4096) + Varint(120) + Varint(2);
+    return Bytes(3, layer);
+}
+
+std::array<F64, 2> TilePoint(F32 lon, F32 lat) {
+    constexpr F64 pi = 3.14159265358979323846;
+    return {(static_cast<F64>(lon) + 180.0) / 360.0,
+            (1.0 - std::asinh(std::tan(lat * pi / 180.0)) / pi) * 0.5};
+}
+
+F64 TileArea(const GeoMapTiles::Mesh& mesh) {
+    F64 area = 0.0;
+    REQUIRE(mesh.indices.size() % 3 == 0);
+    for (U64 i = 0; i < mesh.indices.size(); i += 3) {
+        std::array<std::array<F64, 2>, 3> p;
+        for (U64 j = 0; j < 3; ++j) {
+            const U64 index = mesh.indices[i + j] * 2;
+            REQUIRE(index + 1 < mesh.positions.size());
+            p[j] = TilePoint(mesh.positions[index], mesh.positions[index + 1]);
+        }
+        area += std::abs((p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) -
+                         (p[2][0] - p[0][0]) * (p[1][1] - p[0][1])) * 0.5;
+    }
+    return area;
+}
+
 struct GeometryCase {
     const char* name;
     U32 type;
@@ -119,6 +180,10 @@ std::vector<std::pair<std::string, std::string>> MalformedTiles() {
         Bytes(4, std::string("\x00\x00\x00\x12\x02\x00\x00\x02\x0f", 9)), tags));
     result.emplace_back("overflowing varint", GeometryTileFields(3,
         Bytes(4, std::string(9, '\x80') + '\x02'), tags));
+    result.emplace_back("building incomplete ring", WaterTile() + BuildingTile({{{1024, 1024}}}));
+    result.emplace_back("building orphan courtyard", WaterTile() + BuildingTile({
+        {{1024, 1024}, {1024, 3072}, {3072, 3072}, {3072, 1024}},
+    }));
     return result;
 }
 
@@ -370,4 +435,155 @@ TEST_CASE("GeoMap accepts complete single and multipart geometries", "[render][g
             CHECK(std::filesystem::exists(cache.tilePath()));
         }
     }
+}
+
+TEST_CASE("GeoMap building footprints preserve courtyards and closed outlines", "[render][geomap][tiles]") {
+    TileCache cache;
+    const auto payload = BuildingTile({
+        {{1024, 1024}, {3072, 1024}, {3072, 3072}, {1024, 3072}},
+        {{1536, 1536}, {1536, 2560}, {2560, 2560}, {2560, 1536}},
+    });
+    GeoMapTiles tiles(std::make_unique<TileSource>(cache, payload));
+    tiles.start(TileConfig());
+    REQUIRE(WaitFor(tiles, TileContext(), [](const auto& geometry) {
+        return !geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Building)].indices.empty();
+    }));
+    const auto& geometry = tiles.geometry();
+    const auto& fill = geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Building)];
+    CHECK(std::abs(TileArea(fill) - 0.1875) < 1e-6);
+    const auto& lines = geometry.lines[static_cast<U64>(GeoMapTiles::Line::Building)];
+    REQUIRE(lines.size() == 8 * 4);
+    for (U64 ring = 0; ring < 2; ++ring) {
+        for (U64 edge = 0; edge < 4; ++edge) {
+            const U64 at = ring * 16 + edge * 4;
+            const U64 next = ring * 16 + ((edge + 1) % 4) * 4;
+            CHECK(lines[at + 2] == lines[next]);
+            CHECK(lines[at + 3] == lines[next + 1]);
+        }
+    }
+}
+
+TEST_CASE("GeoMap building clipping does not draw artificial tile boundaries", "[render][geomap][tiles]") {
+    struct Case {
+        const char* name;
+        BuildingRing ring;
+        F64 area;
+        U64 edges;
+    };
+    const std::array<Case, 4> cases = {{
+        {"buffered footprint", {{3072, 1024}, {5120, 1024}, {5120, 3072}, {3072, 3072}}, 0.125, 3},
+        {"clipped footprint", {{3072, 1024}, {4096, 1024}, {4096, 3072}, {3072, 3072}}, 0.125, 3},
+        {"surrounding footprint", {{-1024, -1024}, {5120, -1024}, {5120, 5120}, {-1024, 5120}}, 1.0, 0},
+        {"outside footprint", {{5000, 5000}, {6000, 5000}, {6000, 6000}, {5000, 6000}}, 0.0, 0},
+    }};
+    for (const auto& input : cases) {
+        DYNAMIC_SECTION(input.name) {
+            TileCache cache;
+            GeoMapTiles tiles(std::make_unique<TileSource>(cache, BuildingTile({input.ring})));
+            tiles.start(TileConfig());
+            REQUIRE(WaitFor(tiles, TileContext(), [](const auto& geometry) {
+                return !geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Land)].indices.empty();
+            }));
+            const auto& geometry = tiles.geometry();
+            CHECK(std::abs(TileArea(geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Building)]) - input.area) < 1e-6);
+            const auto& lines = geometry.lines[static_cast<U64>(GeoMapTiles::Line::Building)];
+            REQUIRE(lines.size() == input.edges * 4);
+            for (U64 i = 0; i < lines.size(); i += 4) {
+                const auto a = TilePoint(lines[i], lines[i + 1]);
+                const auto b = TilePoint(lines[i + 2], lines[i + 3]);
+                CHECK_FALSE((std::abs(a[0] - 1.0) < 1e-6 && std::abs(b[0] - 1.0) < 1e-6));
+                for (const auto& p : {a, b}) {
+                    CHECK(p[0] >= -1e-6);
+                    CHECK(p[0] <= 1.0 + 1e-6);
+                    CHECK(p[1] >= -1e-6);
+                    CHECK(p[1] <= 1.0 + 1e-6);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("GeoMap changes building modes at the same view using downloaded tiles", "[render][geomap][tiles]") {
+    TileCache cache;
+    const auto payload = WaterTile() + BuildingTile({
+        {{1024, 1024}, {3072, 1024}, {3072, 3072}, {1024, 3072}},
+    });
+    auto source = std::make_unique<TileSource>(cache, payload);
+    const auto* observed = source.get();
+    GeoMapTiles tiles(std::move(source));
+    auto config = TileConfig();
+    for (const U64 mode : {0, 1, 2, 0, 2}) {
+        CAPTURE(mode);
+        tiles.stop();
+        config.rendering.buildings = mode > 0;
+        config.rendering.buildingOutlines = mode == 2;
+        tiles.start(config);
+        REQUIRE(WaitForWater(tiles, TileContext()));
+        const auto& geometry = tiles.geometry();
+        CHECK(geometry.fills[static_cast<U64>(GeoMapTiles::Fill::Building)].indices.empty() == (mode == 0));
+        CHECK(geometry.lines[static_cast<U64>(GeoMapTiles::Line::Building)].empty() == (mode != 2));
+        CHECK(observed->fetches.load() == 1);
+    }
+}
+
+TEST_CASE("GeoMap rendering choices remove disabled tile layers and restore them from cache", "[render][geomap][tiles]") {
+    const std::vector<U64> line{9, 2048, 2048, 10, 2048, 2048};
+    const std::vector<U64> point{9, 4096, 4096};
+    const auto payload = WaterTile() +
+        LayerTile("transportation", 2, line, "primary") +
+        LayerTile("transportation", 2, line, "rail") +
+        LayerTile("waterway", 2, line, "river") +
+        LayerTile("boundary", 2, line, "") +
+        LayerTile("aeroway", 2, line, "runway") +
+        LayerTile("aeroway", 3, {9, 2048, 2048, 26, 4096, 0, 0, 4096, 4095, 0, 15}, "apron") +
+        LayerTile("place", 1, point, "city") +
+        LayerTile("aerodrome_label", 1, point, "international");
+    for (auto field : {&MapRenderingOptions::roads, &MapRenderingOptions::rivers,
+                       &MapRenderingOptions::borders, &MapRenderingOptions::places,
+                       &MapRenderingOptions::airports}) {
+        TileCache cache;
+        auto source = std::make_unique<TileSource>(cache, payload);
+        const auto* observed = source.get();
+        GeoMapTiles tiles(std::move(source));
+        auto config = TileConfig();
+        for (bool enabled : {true, false, true}) {
+            tiles.stop();
+            config.rendering.*field = enabled;
+            tiles.start(config);
+            REQUIRE(WaitForWater(tiles, TileContext()));
+            const auto& g = tiles.geometry();
+            auto hasLine = [&](GeoMapTiles::Line line) { return !g.lines[static_cast<U64>(line)].empty(); };
+            CHECK(hasLine(GeoMapTiles::Line::PrimaryRoad) == config.rendering.roads);
+            CHECK(hasLine(GeoMapTiles::Line::Rail) == config.rendering.roads);
+            CHECK(hasLine(GeoMapTiles::Line::River) == config.rendering.rivers);
+            CHECK(hasLine(GeoMapTiles::Line::CountryBorder) == config.rendering.borders);
+            CHECK(hasLine(GeoMapTiles::Line::Runway) == config.rendering.airports);
+            CHECK(g.fills[static_cast<U64>(GeoMapTiles::Fill::Airport)].indices.empty() == !config.rendering.airports);
+            CHECK(g.labels.size() == (config.rendering.places ? 1u + config.rendering.airports : 0u));
+            CHECK(observed->fetches.load() == 1);
+        }
+    }
+}
+
+TEST_CASE("GeoMap skips disabled geometry decoding and revalidates cached layers when enabled", "[render][geomap][tiles]") {
+    TileCache cache;
+    const auto context = TileContext();
+    {
+        const auto malformed = WaterTile() + LayerTile("transportation", 2, {9, 0}, "primary");
+        GeoMapTiles tiles(std::make_unique<TileSource>(cache, malformed));
+        auto config = TileConfig();
+        config.rendering.roads = false;
+        tiles.start(config);
+        REQUIRE(WaitForWater(tiles, context));
+        tiles.stop();
+        REQUIRE(std::filesystem::exists(cache.tilePath()));
+    }
+    const auto valid = WaterTile() + LayerTile("transportation", 2, {9, 2048, 2048, 10, 2048, 2048}, "primary");
+    auto source = std::make_unique<TileSource>(cache, valid);
+    const auto* observed = source.get();
+    GeoMapTiles tiles(std::move(source));
+    tiles.start(TileConfig());
+    REQUIRE(WaitForWater(tiles, context));
+    REQUIRE_FALSE(tiles.geometry().lines[static_cast<U64>(GeoMapTiles::Line::PrimaryRoad)].empty());
+    CHECK(observed->fetches.load() == 1);
 }

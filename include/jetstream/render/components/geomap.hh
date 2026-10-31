@@ -6,6 +6,7 @@
 
 #include "jetstream/render/components/generic.hh"
 #include "jetstream/render/components/map_layer.hh"
+#include "jetstream/render/components/map_options.hh"
 
 namespace Jetstream::Render::Components {
 
@@ -30,6 +31,9 @@ class JETSTREAM_API GeoMap : public Generic {
 
     const MapContext& getContext() const;
     const Uniforms& getUniforms() const;
+
+    static void SetRenderingOptions(const MapRenderingOptions& options);
+    static MapRenderingOptions RenderingOptions();
 
     constexpr const Config& getConfig() const { return config; }
 

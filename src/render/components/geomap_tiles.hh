@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "jetstream/render/components/map_context.hh"
+#include "jetstream/render/components/map_options.hh"
 
 namespace Jetstream::Render::Components {
 
@@ -17,6 +18,7 @@ class GeoMapTiles {
         Stream,
         Canal,
         River,
+        Building,
         MinorRoad,
         SecondaryRoad,
         PrimaryRoad,
@@ -28,15 +30,16 @@ class GeoMapTiles {
         Taxiway,
         Runway,
     };
-    static constexpr U64 LineCount = 13;
+    static constexpr U64 LineCount = 14;
 
     enum class Fill : U8 {
         Land,
         Urban,
         Water,
         Airport,
+        Building,
     };
-    static constexpr U64 FillCount = 4;
+    static constexpr U64 FillCount = 5;
 
     enum class Place : U8 {
         City,
@@ -112,6 +115,7 @@ class GeoMapTiles {
     };
 
     struct Config {
+        MapRenderingOptions rendering;
         F32 fadeStart = 7.0f;
         F32 fadeEnd = 8.0f;
         F32 tilePixels = 512.0f;

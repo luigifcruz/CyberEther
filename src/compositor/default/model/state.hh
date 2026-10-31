@@ -257,6 +257,7 @@ struct DefaultCompositorState {
         };
 
         bool highResolution = true;
+        Render::Components::MapRenderingOptions rendering;
         bool measured = false;
         bool clearing = false;
         bool cacheAvailable = false;

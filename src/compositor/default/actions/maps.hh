@@ -7,6 +7,7 @@
 #include "../model/state.hh"
 
 #include "jetstream/settings.hh"
+#include "jetstream/render/components/geomap.hh"
 #include "render/components/geomap_tiles.hh"
 
 #include <chrono>
@@ -17,6 +18,7 @@ namespace Jetstream {
 
 struct MapsActions {
     using Filter = std::tuple<MailSetMapsHighResolution,
+                              MailSetMapsRendering,
                               MailClearMapsCache>;
     using CacheResult = DefaultCompositorState::MapsState::CacheResult;
     using Tiles = Render::Components::GeoMapTiles;
@@ -38,6 +40,14 @@ struct MapsActions {
         }));
 
         return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetMapsRendering& msg) {
+        state.maps.rendering = msg.value;
+        Render::Components::GeoMap::SetRenderingOptions(msg.value);
+        return PersistSettings([&](Settings& settings) {
+            settings.maps.rendering = msg.value;
+        });
     }
 
     Result handle(const MailClearMapsCache&) {

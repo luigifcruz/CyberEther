@@ -924,6 +924,8 @@ void Subdivide(GeoMapTiles::Mesh& mesh) {
 
 class Decoder {
  public:
+    explicit Decoder(const MapRenderingOptions& options = {}) : options(options) {}
+
     std::shared_ptr<TileData> run(std::string_view data) {
         tile = std::make_shared<TileData>();
         Proto message(data);
@@ -941,6 +943,7 @@ class Decoder {
     }
 
  private:
+    MapRenderingOptions options;
     using Line = GeoMapTiles::Line;
     using Fill = GeoMapTiles::Fill;
     using Place = GeoMapTiles::Place;
@@ -1163,6 +1166,28 @@ class Decoder {
         return true;
     }
 
+    void addBuildingOutlines(F64 extent) {
+        const Rect rect{0.0, 0.0, extent, extent};
+        auto& out = tile->lines[static_cast<U64>(Line::Building)];
+        auto border = [&](F64 a, F64 b) {
+            return (a <= 0.0 && b <= 0.0) || (a >= extent && b >= extent);
+        };
+        for (const auto& ring : parts) {
+            for (U64 i = 0; i < ring.size(); ++i) {
+                const auto& a = ring[i];
+                const auto& b = ring[(i + 1) % ring.size()];
+                F64 x0 = a[0];
+                F64 y0 = a[1];
+                F64 x1 = b[0];
+                F64 y1 = b[1];
+                if (!ClipSegment(x0, y0, x1, y1, rect)) continue;
+                if (border(x0, x1) || border(y0, y1)) continue;
+                out.insert(out.end(), {static_cast<F32>(x0 / extent), static_cast<F32>(y0 / extent),
+                                       static_cast<F32>(x1 / extent), static_cast<F32>(y1 / extent)});
+            }
+        }
+    }
+
     void addCoastline(F64 extent) {
         auto pack = [](I32 x0, I32 y0, I32 x1, I32 y1) {
             return (static_cast<U64>(static_cast<U16>(x0)) << 48) |
@@ -1232,9 +1257,18 @@ class Decoder {
         if (!message.good()) return false;
 
         const auto& name = layer.name;
+        if ((name == "building" && !options.buildings) ||
+            (name == "transportation" && !options.roads) ||
+            (name == "waterway" && !options.rivers) ||
+            (name == "boundary" && !options.borders) ||
+            (name == "place" && !options.places) ||
+            (name == "aeroway" && !options.airports) ||
+            (name == "aerodrome_label" && (!options.airports || !options.places))) {
+            return true;
+        }
         if (name != "water" && name != "landuse" && name != "waterway" &&
             name != "transportation" && name != "boundary" && name != "place" &&
-            name != "aeroway" && name != "aerodrome_label") {
+            name != "aeroway" && name != "aerodrome_label" && name != "building") {
             return true;
         }
 
@@ -1283,6 +1317,11 @@ class Decoder {
                     kind != "industrial" && kind != "retail") continue;
                 if (!decodeGeometry(feature.geometry, feature.type)) return false;
                 if (!addPolygons(Fill::Urban, layer.extent, nullptr)) return false;
+            } else if (name == "building") {
+                if (feature.type != 3) continue;
+                if (!decodeGeometry(feature.geometry, feature.type)) return false;
+                if (!addPolygons(Fill::Building, layer.extent, nullptr)) return false;
+                if (options.buildingOutlines) addBuildingOutlines(layer.extent);
             } else if (name == "waterway") {
                 if (feature.type != 2 || tunnel) continue;
                 std::optional<Line> line;
@@ -1635,7 +1674,7 @@ struct GeoMapTiles::Impl {
 
     std::shared_ptr<const TileData> decode(std::string& data) const {
         if (!Inflate(data)) return nullptr;
-        Decoder decoder;
+        Decoder decoder(config.rendering);
         return decoder.run(data);
     }
 
@@ -2217,6 +2256,11 @@ GeoMapTiles::~GeoMapTiles() {
 
 void GeoMapTiles::start(const Config& config) {
     if (!pimpl->workers.empty() || !pimpl->source) return;
+    if (pimpl->config.rendering != config.rendering) {
+        pimpl->entries.clear();
+        pimpl->completed = 0;
+        pimpl->requestedCompletions = 0;
+    }
     pimpl->config = config;
     pimpl->stopping = false;
     pimpl->lastView.reset();

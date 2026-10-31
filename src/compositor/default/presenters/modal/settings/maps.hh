@@ -19,6 +19,7 @@ struct MapsSettingsPresenter {
 
         return MapsSettingsPanel::Config{
             .highResolution = maps.highResolution,
+            .rendering = maps.rendering,
             .cacheAvailable = maps.cacheAvailable,
             .cacheBytes = maps.cacheBytes,
             .measuring = !maps.clearing && (!maps.measured || maps.task.valid()),
@@ -28,6 +29,9 @@ struct MapsSettingsPresenter {
             },
             .onClearCache = [enqueue]() {
                 enqueue(MailClearMapsCache{});
+            },
+            .onRenderingChange = [enqueue](const Render::Components::MapRenderingOptions& value) {
+                enqueue(MailSetMapsRendering{.value = value});
             },
         };
     }

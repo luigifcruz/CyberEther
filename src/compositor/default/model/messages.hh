@@ -208,6 +208,10 @@ struct MailSetMapsHighResolution {
 
 struct MailClearMapsCache {};
 
+struct MailSetMapsRendering {
+    Render::Components::MapRenderingOptions value;
+};
+
 struct MailSetFlowgraphMetadataVisible {
     bool value = false;
 };
@@ -559,6 +563,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetInfoPanelEnabled,
                           MailSetBackgroundParticles,
                           MailSetMapsHighResolution,
+                          MailSetMapsRendering,
                           MailClearMapsCache,
                           MailSetFlowgraphMetadataVisible,
                           MailSetFlowgraphMetadataSearch,

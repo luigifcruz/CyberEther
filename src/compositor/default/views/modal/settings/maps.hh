@@ -5,7 +5,9 @@
 
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/components/map_options.hh"
 
+#include <array>
 #include <functional>
 #include <optional>
 #include <string>
@@ -13,14 +15,18 @@
 namespace Jetstream {
 
 struct MapsSettingsPanel {
+    using Rendering = Render::Components::MapRenderingOptions;
+
     struct Config {
         bool highResolution = true;
+        Rendering rendering;
         bool cacheAvailable = false;
         std::optional<U64> cacheBytes;
         bool measuring = false;
         bool clearing = false;
         std::function<void(bool)> onHighResolutionChange;
         std::function<void()> onClearCache;
+        std::function<void(const Rendering&)> onRenderingChange;
     };
 
     void update(Config config) {
@@ -48,7 +54,7 @@ struct MapsSettingsPanel {
             .id = "MapsDetailSection",
             .title = "Detail",
             .description = "The world map is built into CyberEther and always works, even offline. "
-                           "High resolution maps add streets, rivers, airports, and neighborhood names "
+                           "High resolution maps add buildings, streets, rivers, airports, and neighborhood names "
                            "when you zoom in.",
         });
 
@@ -79,6 +85,50 @@ struct MapsSettingsPanel {
                 }
             },
         });
+
+        renderingSection.update({
+            .id = "MapsRenderingSection",
+            .title = "Rendering",
+            .description = "Choose which map details to show. Changes apply to all maps immediately. "
+                           "Buildings and roads require high resolution maps.",
+        });
+        buildingsField.update({
+            .id = "MapsBuildingsField",
+            .label = "Buildings",
+            .description = "Show building footprints and optional outlines. Turning buildings off reduces "
+                           "memory use in dense cities.",
+        });
+        buildingsCombo.update({
+            .id = "##app-settings-maps-buildings",
+            .options = {"Off", "Fills only", "Fills and outlines"},
+            .value = !this->config.rendering.buildings ? "Off" :
+                     this->config.rendering.buildingOutlines ? "Fills and outlines" : "Fills only",
+            .disabled = !this->config.highResolution,
+            .onChange = [this](const std::string& value) {
+                this->config.rendering.buildings = value != "Off";
+                this->config.rendering.buildingOutlines = value == "Fills and outlines";
+                renderingChanged();
+            },
+        });
+        for (U64 i = 0; i < Layers.size(); ++i) {
+            const auto& layer = Layers[i];
+            layerFields[i].update({
+                .id = std::string("MapsRenderingField") + layer.id,
+                .label = layer.label,
+                .description = layer.description,
+                .divider = i + 1 < Layers.size(),
+            });
+            layerCombos[i].update({
+                .id = std::string("##app-settings-maps-") + layer.id,
+                .options = {"Enabled", "Disabled"},
+                .value = this->config.rendering.*layer.field ? "Enabled" : "Disabled",
+                .disabled = layer.field == &Rendering::roads && !this->config.highResolution,
+                .onChange = [this, field = layer.field](const std::string& value) {
+                    this->config.rendering.*field = value == "Enabled";
+                    renderingChanged();
+                },
+            });
+        }
 
         cacheField.update({
             .id = "MapsCacheField",
@@ -123,6 +173,17 @@ struct MapsSettingsPanel {
             });
         });
 
+        renderingSection.render(ctx, [&](const Sakura::Context& ctx) {
+            buildingsField.render(ctx, [&](const Sakura::Context& ctx) {
+                buildingsCombo.render(ctx);
+            });
+            for (U64 i = 0; i < Layers.size(); ++i) {
+                layerFields[i].render(ctx, [&](const Sakura::Context& ctx) {
+                    layerCombos[i].render(ctx);
+                });
+            }
+        });
+
         storageSection.render(ctx, [&](const Sakura::Context& ctx) {
             cacheField.render(ctx, [&](const Sakura::Context& ctx) {
                 cacheSize.render(ctx);
@@ -133,6 +194,25 @@ struct MapsSettingsPanel {
     }
 
  private:
+    struct Layer {
+        const char* id;
+        const char* label;
+        const char* description;
+        bool Rendering::*field;
+    };
+    static constexpr std::array<Layer, 6> Layers = {{
+        {"roads", "Roads and Railways", "Show streets, highways, and railway lines.", &Rendering::roads},
+        {"rivers", "Rivers", "Show rivers, canals, and streams.", &Rendering::rivers},
+        {"borders", "Country and State Borders", "Show national, regional, and disputed boundaries.", &Rendering::borders},
+        {"places", "Place Labels", "Show geographic names, city markers, and airport labels.", &Rendering::places},
+        {"airports", "Airports", "Show airport areas, runways, taxiways, and airport markers.", &Rendering::airports},
+        {"bathymetry", "Ocean Depth Shading", "Shade ocean areas by depth.", &Rendering::bathymetry},
+    }};
+
+    void renderingChanged() {
+        if (config.onRenderingChange) config.onRenderingChange(config.rendering);
+    }
+
     std::string cacheLabel() const {
         if (config.clearing) {
             return "Clearing downloaded maps...";
@@ -163,10 +243,15 @@ struct MapsSettingsPanel {
     Sakura::Text description;
     Sakura::Divider divider;
     SettingsGroup detailSection;
+    SettingsGroup renderingSection;
     SettingsGroup storageSection;
     Sakura::SettingField highResolutionField;
     Sakura::SettingField cacheField;
     Sakura::Combo highResolutionCombo;
+    Sakura::SettingField buildingsField;
+    Sakura::Combo buildingsCombo;
+    std::array<Sakura::SettingField, Layers.size()> layerFields;
+    std::array<Sakura::Combo, Layers.size()> layerCombos;
     Sakura::Text cacheSize;
     Sakura::Spacing cacheSpacing;
     Sakura::Button clearButton;

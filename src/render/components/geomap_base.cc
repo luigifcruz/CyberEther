@@ -17,6 +17,7 @@
 
 #include "jetstream/render/base.hh"
 #include "geomap_base.hh"
+#include "jetstream/render/components/geomap.hh"
 #include "jetstream/render/components/text.hh"
 #include "jetstream/render/components/font.hh"
 #include "render/components/geomap_labels.hh"
@@ -651,7 +652,7 @@ struct BathymetryOverlay {
 };
 
 static constexpr std::array<U64, GeoMapTiles::LineCount> kTileLineCapacity = {
-    16384, 16384, 131072, 524288, 262144, 262144, 163840, 98304, 65536, 32768, 98304, 65536, 16384,
+    16384, 16384, 131072, 262144, 524288, 262144, 262144, 163840, 98304, 65536, 32768, 98304, 65536, 16384,
 };
 static constexpr std::array<F32, 3> kRoadCasingColor = {0.055f, 0.058f, 0.054f};
 static constexpr U64 kTileFillVertices = 1u << 20;
@@ -775,6 +776,7 @@ struct GeoMapBaseLayer::Impl {
 
     std::unique_ptr<GeoMapTiles> tiles;
     GeoMapTiles::Config tilesConfig;
+    MapRenderingOptions rendering;
     bool tilesRunning = false;
     U64 tileRevision = 0;
     U64 tileFillIndexCount = 0;
@@ -850,6 +852,7 @@ static constexpr float kWaterSphereG = 0.176f;
 static constexpr float kWaterSphereB = 0.310f;
 static constexpr std::array<F32, 3> kLandColor = {0.094f, 0.098f, 0.090f};
 static constexpr std::array<F32, 3> kUrbanColor = {0.133f, 0.133f, 0.122f};
+static constexpr std::array<F32, 3> kBuildingColor = {0.165f, 0.170f, 0.155f};
 static constexpr std::array<F32, 3> kAirportColor = {0.150f, 0.152f, 0.155f};
 
 static std::string PlaceNameKey(const std::string& name) {
@@ -1355,6 +1358,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
             thin(river(9), 1.2f),
             thin(river(6), 1.5f),
             thin(river(4), 2.0f),
+            LineStyle{.width = 1.0f, .color = {0.235f, 0.238f, 0.220f}},
             LineStyle{.width = 1.2f, .color = {0.19f, 0.19f, 0.19f}},
             LineStyle{.width = 1.6f, .color = {0.23f, 0.23f, 0.22f}},
             LineStyle{.width = 2.0f, .color = {0.27f, 0.26f, 0.25f}},
@@ -2214,6 +2218,8 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         JST_CHECK(window->bind(pimpl->attribution));
 
         GeoMapTiles::Config tiles;
+        tiles.rendering = GeoMap::RenderingOptions();
+        tiles.rendering.bathymetry = true;
         tiles.fadeStart = pimpl->tuning.tileFadeStart;
         tiles.fadeEnd = pimpl->tuning.tileFadeEnd;
         tiles.lineCapacity = kTileLineCapacity;
@@ -2379,8 +2385,35 @@ Result GeoMapBaseLayer::surface(Render::Surface::Config& config) {
 }
 
 Result GeoMapBaseLayer::present(const MapContext& context) {
+    const auto rendering = GeoMap::RenderingOptions();
+    const bool optionsChanged = pimpl->rendering != rendering;
+    if (optionsChanged || pimpl->firstFrame) {
+        pimpl->rendering = rendering;
+        auto& tuning = pimpl->tuning;
+        tuning.roads = rendering.roads;
+        tuning.rivers = rendering.rivers;
+        tuning.countryBorders = rendering.borders;
+        tuning.stateBorders = rendering.borders;
+        tuning.disputedBorders = rendering.borders;
+        tuning.places = rendering.places;
+        tuning.airports = rendering.airports;
+        tuning.airportMarkers = rendering.airports;
+        tuning.bathymetry = rendering.bathymetry;
+        for (U64 i = 0; i < tuning.labels.size(); ++i) {
+            tuning.labels[i].enabled = rendering.places &&
+                (i != Impl::LabelAirports || rendering.airports);
+        }
+    }
     bool tilesChanged = false;
     if (pimpl->tiles) {
+        auto tileRendering = rendering;
+        tileRendering.bathymetry = true;
+        if (tileRendering != pimpl->tilesConfig.rendering) {
+            pimpl->tiles->stop();
+            pimpl->tilesRunning = false;
+            pimpl->tilesConfig.rendering = tileRendering;
+            tilesChanged = true;
+        }
         const bool running = pimpl->tuning.detailTiles && GeoMapTiles::Enabled();
         if (running != pimpl->tilesRunning) {
             pimpl->tilesRunning = running;
@@ -2394,7 +2427,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
         tilesChanged = pimpl->tiles->update(context) || tilesChanged;
     }
     const bool updateView = pimpl->firstFrame || pimpl->uniforms != context.view ||
-                            tilesChanged;
+                            tilesChanged || optionsChanged;
     const F64 sunTime = std::floor(
         pimpl->tuning.sunTime.value_or(WallClockSeconds()) / 5.0) * 5.0;
     const bool updateSun = updateView || sunTime != pimpl->sunTime;
@@ -2408,6 +2441,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
 
         auto updateLine = [&](LineCategory& line, bool enabled, F32 opacity) -> Result {
             if (!line.program) return Result::SUCCESS;
+            if (!enabled) return line.draw->updateInstanceCount(0);
             copyCamera(line.gpuUniforms);
             line.gpuUniforms.lineOpacity = opacity;
             JST_CHECK(line.uniformBuffer->update());
@@ -2425,6 +2459,10 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
 
         for (auto& river : pimpl->rivers) {
             if (!river.program) continue;
+            if (!pimpl->tuning.rivers) {
+                JST_CHECK(river.draw->updateInstanceCount(0));
+                continue;
+            }
             copyCamera(river.gpuUniforms);
             river.gpuUniforms.lineOpacity = GeoMapLabels::VisibilityFade(
                 pimpl->uniforms.detailZoom,
@@ -2461,6 +2499,10 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
 
         for (auto& category : pimpl->disputed) {
             if (!category.program) continue;
+            if (!pimpl->tuning.disputedBorders) {
+                JST_CHECK(category.draw->updateInstanceCount(0));
+                continue;
+            }
             U64 visibleCount = 0;
             for (U64 i = 0; i < category.minZooms.size(); ++i) {
                 if (pimpl->uniforms.detailZoom <
@@ -2496,6 +2538,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                     kUrbanColor,
                     std::array<F32, 3>{kWaterSphereR, kWaterSphereG, kWaterSphereB},
                     kAirportColor,
+                    kBuildingColor,
                 };
                 U64 vertices = 0;
                 U64 indices = 0;
@@ -2648,6 +2691,9 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                                                             tuning.tileLineFadeRange);
                 }
                 switch (static_cast<TileLine>(i)) {
+                    case TileLine::Building:
+                        enabled = enabled && rendering.buildings && rendering.buildingOutlines;
+                        break;
                     case TileLine::Stream:
                     case TileLine::Canal:
                     case TileLine::River:
@@ -2708,6 +2754,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
         auto updateFillUniforms = [&](MergedFillLayer& layer,
                                       bool enabled) -> Result {
             if (layer.indexCount > 0) {
+                if (!enabled) return layer.draw->updateInstanceCount(0);
                 copyCamera(layer.gpuUniforms);
                 layer.gpuUniforms.lineWidth = 0.0f;
                 layer.gpuUniforms.lineOpacity = 1.0f;
@@ -3043,7 +3090,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
         // sampled arc is sized from the on-screen length of one degree so
         // the glyphs follow the line's curvature closely.
         auto updateReferenceLabels = [&]() -> Result {
-            if (!pimpl->pathText || !pimpl->tuning.references) {
+            if (!pimpl->pathText || !pimpl->tuning.references || !rendering.places) {
                 return Result::SUCCESS;
             }
             struct ReferenceLabel {
@@ -3441,6 +3488,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
         auto uploadCityMarkers = [&](PointMarkerLayer& markers,
                                      U64 markerCount) -> Result {
             if (!markers.program) return Result::SUCCESS;
+            if (markerCount == 0) return markers.draw->updateInstanceCount(0);
             CopyCameraFields(markers.gpuUniforms, pimpl->cameraUniforms);
             markers.instanceBuffer->update();
             markers.uniformBuffer->update();

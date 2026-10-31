@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "jetstream/parser.hh"
+#include "jetstream/render/components/map_options.hh"
 
 namespace Jetstream {
 
@@ -81,8 +82,9 @@ struct JETSTREAM_API Settings {
 
     struct Maps {
         bool highResolution = true;
+        Render::Components::MapRenderingOptions rendering;
 
-        JST_SERDES(highResolution);
+        JST_SERDES(highResolution, rendering);
     };
 
     struct Intelligence {
