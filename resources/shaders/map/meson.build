@@ -4,10 +4,12 @@ shader_pkg_lst += [{
     'msl_args': ['--msl-decoration-binding'],
     'shaders': [
         files(['geoline.vert.glsl', 'geoline.frag.glsl']),
+        files(['tileroad.vert.glsl', 'tileroad.frag.glsl']),
         files(['airport.vert.glsl', 'airport.frag.glsl']),
         files(['citymarker.vert.glsl', 'citymarker.frag.glsl']),
         files(['citydot.vert.glsl', 'citydot.frag.glsl']),
         files(['fill.vert.glsl', 'fill.frag.glsl']),
+        files(['tilefill.vert.glsl', 'tilefill.frag.glsl']),
         files(['atmosphere.vert.glsl', 'atmosphere.frag.glsl']),
         files(['daylight.vert.glsl', 'daylight.frag.glsl']),
         files(['urbanglow.vert.glsl', 'urbanglow.frag.glsl']),

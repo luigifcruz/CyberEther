@@ -79,6 +79,12 @@ struct JETSTREAM_API Settings {
         JST_SERDES(themeKey, infoPanelEnabled, backgroundParticles);
     };
 
+    struct Maps {
+        bool highResolution = true;
+
+        JST_SERDES(highResolution);
+    };
+
     struct Intelligence {
         struct Provider {
             std::string name;
@@ -171,13 +177,14 @@ struct JETSTREAM_API Settings {
     Graphics graphics;
     Remote remote;
     Interface interface;
+    Maps maps;
     Intelligence intelligence;
     Developer developer;
     Benchmark benchmark;
     Registry registry;
     Runtime runtime;
 
-    JST_SERDES(graphics, remote, interface, intelligence, developer, registry, runtime);
+    JST_SERDES(graphics, remote, interface, maps, intelligence, developer, registry, runtime);
 
     static Result Get(Settings& settings);
     static Result Set(const Settings& settings, bool persist = true);

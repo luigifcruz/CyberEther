@@ -4,6 +4,9 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -18,6 +21,7 @@
 #include "jetstream/render/components/font.hh"
 #include "render/components/geomap_labels.hh"
 #include "render/components/geomap_lines.hh"
+#include "render/components/geomap_tiles.hh"
 
 #include "jetstream/types.hh"
 #include "resources/shaders/map_shaders.hh"
@@ -569,12 +573,14 @@ GeoMapBaseLayer::~GeoMapBaseLayer() {
 struct MergedFillLayer {
     std::vector<F32> geographicPositions;  // longitude, latitude
     std::vector<F32> colors;               // r, g, b
+    std::vector<F32> fades;
     std::vector<U32> indices;
     U64 indexCount = 0;
 
     GpuUniforms gpuUniforms{};
     std::shared_ptr<Render::Buffer> posBuffer;     // longitude, latitude
     std::shared_ptr<Render::Buffer> colorBuffer;   // r, g, b
+    std::shared_ptr<Render::Buffer> fadeBuffer;
     std::shared_ptr<Render::Buffer> indexBuffer;
     std::shared_ptr<Render::Buffer> uniformBuffer;
     std::shared_ptr<Render::Vertex> vertex;
@@ -629,6 +635,28 @@ struct SpherePass {
     std::shared_ptr<Render::Draw> draw;
     std::shared_ptr<Render::Program> program;
 };
+
+struct LineCasing {
+    GpuUniforms gpuUniforms{};
+    std::shared_ptr<Render::Buffer> uniformBuffer;
+    std::shared_ptr<Render::Vertex> vertex;
+    std::shared_ptr<Render::Draw> draw;
+    std::shared_ptr<Render::Program> program;
+};
+
+struct BathymetryOverlay {
+    std::shared_ptr<Render::Vertex> vertex;
+    std::shared_ptr<Render::Draw> draw;
+    std::shared_ptr<Render::Program> program;
+};
+
+static constexpr std::array<U64, GeoMapTiles::LineCount> kTileLineCapacity = {
+    16384, 16384, 131072, 524288, 262144, 262144, 163840, 98304, 65536, 32768, 98304, 65536, 16384,
+};
+static constexpr std::array<F32, 3> kRoadCasingColor = {0.055f, 0.058f, 0.054f};
+static constexpr U64 kTileFillVertices = 1u << 20;
+static constexpr F32 kTileFadeSeconds = 0.0f;
+static constexpr U64 kTileFillIndices = 3u << 20;
 
 struct GeoMapBaseLayer::Impl {
     Uniforms uniforms;
@@ -744,6 +772,24 @@ struct GeoMapBaseLayer::Impl {
     std::shared_ptr<Render::Components::Text> pathText;
     std::vector<std::string> pathLabelIds;
     U64 previousPathGlyphCount = 0;
+
+    std::unique_ptr<GeoMapTiles> tiles;
+    GeoMapTiles::Config tilesConfig;
+    bool tilesRunning = false;
+    U64 tileRevision = 0;
+    U64 tileFillIndexCount = 0;
+    std::array<LineCategory, GeoMapTiles::LineCount> tileLines{};
+    std::array<LineCasing, GeoMapTiles::LineCount> tileCasings{};
+    std::array<F32, GeoMapTiles::LineCount> tileLineWidths{};
+    std::array<bool, GeoMapTiles::LineCount> tileLineScaled{};
+    MergedFillLayer tileFill;
+    BathymetryOverlay bathymetryOverlay;
+    std::vector<LabelInfo> cityLabels;
+    std::vector<LabelInfo> airportLabels;
+    std::unordered_set<std::string> airportCodes;
+    std::unordered_map<std::string, std::vector<std::pair<F32, F32>>> cityNames;
+    std::shared_ptr<Render::Components::Text> attribution;
+    std::string attributionText;
 };
 
 // Append triangulated polygons with one color to a merged layer.
@@ -802,6 +848,36 @@ static Result AppendColoredFill(const uint8_t* gz,
 static constexpr float kWaterSphereR = 0.106f;
 static constexpr float kWaterSphereG = 0.176f;
 static constexpr float kWaterSphereB = 0.310f;
+static constexpr std::array<F32, 3> kLandColor = {0.094f, 0.098f, 0.090f};
+static constexpr std::array<F32, 3> kUrbanColor = {0.133f, 0.133f, 0.122f};
+static constexpr std::array<F32, 3> kAirportColor = {0.150f, 0.152f, 0.155f};
+
+static std::string PlaceNameKey(const std::string& name) {
+    static constexpr std::string_view Latin1 =
+        "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
+    static constexpr std::string_view LatinExtended =
+        "AaAaAaCcCcCcCcDdDdEeEeEeEeEeGgGgGgGgHhHhIiIiIiIiIiJjJjKkkLlLlLlLlLl"
+        "NnNnNnnNnOoOoOoOoRrRrRrSsSsSsSsTtTtTtUuUuUuUuUuUuWwYyYZzZzZzs";
+    std::string key;
+    key.reserve(name.size());
+    for (U64 i = 0; i < name.size(); ++i) {
+        const U8 lead = static_cast<U8>(name[i]);
+        char c = static_cast<char>(lead);
+        if ((lead & 0xE0) == 0xC0 && i + 1 < name.size()) {
+            const U32 codepoint = ((lead & 0x1F) << 6) | (static_cast<U8>(name[++i]) & 0x3F);
+            if (codepoint >= 0xC0 && codepoint < 0x100) {
+                c = Latin1[codepoint - 0xC0];
+            } else if (codepoint >= 0x100 && codepoint < 0x180) {
+                c = LatinExtended[codepoint - 0x100];
+            } else {
+                continue;
+            }
+        }
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        key.push_back(c);
+    }
+    return key;
+}
 
 // Fill a merged fill layer with a procedural lon/lat grid sphere painted in
 // the base ocean color. Drawn underneath the bathymetry, it guarantees the
@@ -950,17 +1026,17 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     JST_CHECK(AppendColoredFill(Resources::ne_10m_admin_0_countries_tri_gz,
                                 Resources::ne_10m_admin_0_countries_tri_gz_len,
                                 Resources::ne_10m_admin_0_countries_tri_raw_len,
-                                0.094f,
-                                0.098f,
-                                0.090f,  // land: dark gray-green
+                                kLandColor[0],
+                                kLandColor[1],
+                                kLandColor[2],
                                 pimpl->landcover));
 
     JST_CHECK(AppendColoredFill(Resources::ne_10m_urban_areas_tri_gz,
                                 Resources::ne_10m_urban_areas_tri_gz_len,
                                 Resources::ne_10m_urban_areas_tri_raw_len,
-                                0.133f,
-                                0.133f,
-                                0.122f,  // urban: slightly lighter
+                                kUrbanColor[0],
+                                kUrbanColor[1],
+                                kUrbanColor[2],
                                 pimpl->landcover));
 
     JST_CHECK(AppendColoredFill(Resources::ne_10m_lakes_tri_gz,
@@ -1054,6 +1130,9 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
 
     // Solid categories all read the same immutable zero stream. Only dashed
     // categories need their own per-segment distances and camera-time uploads.
+    for (U64 i = 0; i < pimpl->tileLines.size(); ++i) {
+        pimpl->tileLines[i].vertices.assign(kTileLineCapacity[i] * 4, 0.0f);
+    }
     {
         U64 largest = std::max({pimpl->coastlines.vertices.size(),
                                 pimpl->countryBorders.vertices.size(),
@@ -1079,7 +1158,8 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
 
     // Helper lambda to build one line category.
     auto buildCategory = [&](LineCategory& category, const LineStyle& style,
-                             std::optional<U64> initialCount = std::nullopt) -> Result {
+                             std::optional<U64> initialCount = std::nullopt,
+                             const char* shader = "geoline") -> Result {
         auto& instanceData = category.visibleVertices.empty()
             ? category.vertices : category.visibleVertices;
         if (instanceData.empty()) {
@@ -1119,7 +1199,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
             JST_CHECK(window->build(category.uniformBuffer, cfg));
         }
 
-        if (style.pattern > 0.5f) {
+        if (style.pattern > 0.5f || !category.dashRanges.empty()) {
             category.dashRanges.resize(instanceData.size() / 2, 0.0f);
             Render::Buffer::Config cfg;
             cfg.buffer = category.dashRanges.data();
@@ -1156,7 +1236,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         // Program.
         {
             Render::Program::Config cfg;
-            cfg.shaders = ShadersPackage["geoline"];
+            cfg.shaders = ShadersPackage[shader];
             cfg.draws = {category.draw};
             cfg.buffers = {
                 {category.uniformBuffer, Render::Program::Target::VERTEX |
@@ -1258,8 +1338,92 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         }
     }
 
+    {
+        auto river = [&](I32 rank) -> LineStyle {
+            const F32 rankMix = static_cast<F32>(rank) /
+                                static_cast<F32>(pimpl->rivers.size() - 1);
+            return {.width = GeoMapLabels::RiverLineWidth(rank),
+                    .color = {std::lerp(0.15f, 0.08f, rankMix),
+                              std::lerp(0.27f, 0.16f, rankMix),
+                              std::lerp(0.42f, 0.27f, rankMix)}};
+        };
+        auto thin = [](LineStyle style, F32 width) {
+            style.width = width;
+            return style;
+        };
+        const std::array<LineStyle, GeoMapTiles::LineCount> styles = {
+            thin(river(9), 1.2f),
+            thin(river(6), 1.5f),
+            thin(river(4), 2.0f),
+            LineStyle{.width = 1.2f, .color = {0.19f, 0.19f, 0.19f}},
+            LineStyle{.width = 1.6f, .color = {0.23f, 0.23f, 0.22f}},
+            LineStyle{.width = 2.0f, .color = {0.27f, 0.26f, 0.25f}},
+            LineStyle{.width = 2.5f, .color = {0.32f, 0.31f, 0.28f}},
+            LineStyle{.width = 1.8f, .color = {0.26f, 0.25f, 0.29f}},
+            LineStyle{.width = 3.0f, .color = {0.30f, 0.30f, 0.30f}},
+            LineStyle{.width = 3.5f, .color = {0.68f, 0.68f, 0.68f}},
+            LineStyle{.width = 5.0f, .color = {0.5f, 0.6f, 0.7f}},
+            LineStyle{.width = 1.5f, .color = {0.122f, 0.124f, 0.128f}},
+            LineStyle{.width = 1.5f, .color = {0.108f, 0.110f, 0.114f}, .pattern = 1.0f},
+        };
+        auto buildCasing = [&](LineCasing& casing, const LineCategory& line) -> Result {
+            CopyCameraFields(casing.gpuUniforms, pimpl->cameraUniforms);
+            casing.gpuUniforms.colorR = kRoadCasingColor[0];
+            casing.gpuUniforms.colorG = kRoadCasingColor[1];
+            casing.gpuUniforms.colorB = kRoadCasingColor[2];
+            {
+                Render::Buffer::Config cfg;
+                cfg.buffer = &casing.gpuUniforms;
+                cfg.elementByteSize = sizeof(GpuUniforms);
+                cfg.size = 1;
+                cfg.target = Render::Buffer::Target::UNIFORM;
+                JST_CHECK(window->build(casing.uniformBuffer, cfg));
+            }
+            {
+                Render::Vertex::Config cfg;
+                cfg.vertices = {{pimpl->quadBuffer, 2}};
+                cfg.instances = {{line.instanceBuffer, 4}, {line.dashBuffer, 2}};
+                JST_CHECK(window->build(casing.vertex, cfg));
+            }
+            {
+                Render::Draw::Config cfg;
+                cfg.buffer = casing.vertex;
+                cfg.mode = Render::Draw::Mode::TRIANGLE_STRIP;
+                cfg.numberOfInstances = 0;
+                JST_CHECK(window->build(casing.draw, cfg));
+            }
+            {
+                Render::Program::Config cfg;
+                cfg.shaders = ShadersPackage["tileroad"];
+                cfg.draws = {casing.draw};
+                cfg.buffers = {
+                    {casing.uniformBuffer, Render::Program::Target::VERTEX |
+                                           Render::Program::Target::FRAGMENT},
+                };
+                cfg.enableAlphaBlending = true;
+                JST_CHECK(window->build(casing.program, cfg));
+            }
+            return Result::SUCCESS;
+        };
+        using TileLine = GeoMapTiles::Line;
+        for (U64 i = 0; i < pimpl->tileLines.size(); ++i) {
+            const auto kind = static_cast<TileLine>(i);
+            const bool road = kind == TileLine::MinorRoad || kind == TileLine::SecondaryRoad ||
+                              kind == TileLine::PrimaryRoad || kind == TileLine::Motorway;
+            pimpl->tileLineWidths[i] = styles[i].width;
+            pimpl->tileLineScaled[i] = kind != TileLine::StateBorder &&
+                                       kind != TileLine::CountryBorder &&
+                                       kind != TileLine::Coastline;
+            auto& line = pimpl->tileLines[i];
+            line.dashRanges.assign(kTileLineCapacity[i] * 2, 0.0f);
+            JST_CHECK(buildCategory(line, styles[i], 0, "tileroad"));
+            if (!road || !line.program) continue;
+            JST_CHECK(buildCasing(pimpl->tileCasings[i], line));
+        }
+    }
+
     // Helper lambda to build a merged fill layer pipeline.
-    auto buildMergedFill = [&](MergedFillLayer& layer) -> Result {
+    auto buildMergedFill = [&](MergedFillLayer& layer, bool blending = false) -> Result {
         if (layer.indexCount == 0) {
             return Result::SUCCESS;
         }
@@ -1273,6 +1437,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
 
         CopyCameraFields(layer.gpuUniforms, pimpl->cameraUniforms);
         layer.gpuUniforms.lineWidth = 0.0f;
+        layer.gpuUniforms.lineOpacity = 1.0f;
 
         // Position buffer: geographic (lon, lat) — the shader projects onto
         // the 3D globe.
@@ -1316,6 +1481,15 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
             JST_CHECK(window->build(layer.uniformBuffer, cfg));
         }
 
+        if (!layer.fades.empty()) {
+            Render::Buffer::Config cfg;
+            cfg.buffer = layer.fades.data();
+            cfg.elementByteSize = sizeof(F32);
+            cfg.size = layer.fades.size();
+            cfg.target = Render::Buffer::Target::VERTEX;
+            JST_CHECK(window->build(layer.fadeBuffer, cfg));
+        }
+
         // Vertex config: position + color + indices.
         {
             Render::Vertex::Config cfg;
@@ -1323,6 +1497,9 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
                 {layer.posBuffer, 2},    // location 0: vec2
                 {layer.colorBuffer, 3},  // location 1: vec3
             };
+            if (layer.fadeBuffer) {
+                cfg.vertices.push_back({layer.fadeBuffer, 2});
+            }
             cfg.indices = layer.indexBuffer;
             JST_CHECK(window->build(layer.vertex, cfg));
         }
@@ -1339,14 +1516,14 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         // Program using per-vertex color shader.
         {
             Render::Program::Config cfg;
-            cfg.shaders = ShadersPackage["fill"];
+            cfg.shaders = ShadersPackage[layer.fadeBuffer ? "tilefill" : "fill"];
             cfg.draws = {layer.draw};
             cfg.buffers = {
                 {layer.uniformBuffer,
                  Render::Program::Target::VERTEX |
                  Render::Program::Target::FRAGMENT},
             };
-            cfg.enableAlphaBlending = false;
+            cfg.enableAlphaBlending = blending;
             JST_CHECK(window->build(layer.program, cfg));
         }
 
@@ -1357,6 +1534,48 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     JST_CHECK(buildMergedFill(pimpl->waterSphere));
     JST_CHECK(buildMergedFill(pimpl->bathymetry));
     JST_CHECK(buildMergedFill(pimpl->landcover));
+
+    {
+        auto& fill = pimpl->tileFill;
+        fill.geographicPositions.assign(kTileFillVertices * 2, 0.0f);
+        fill.colors.assign(kTileFillVertices * 3, 0.0f);
+        fill.fades.assign(kTileFillVertices * 2, 0.0f);
+        fill.indices.assign(kTileFillIndices, 0);
+        fill.indexCount = fill.indices.size();
+        JST_CHECK(buildMergedFill(fill, true));
+    }
+
+    if (pimpl->bathymetry.program) {
+        auto& overlay = pimpl->bathymetryOverlay;
+        {
+            Render::Vertex::Config cfg;
+            cfg.vertices = {
+                {pimpl->bathymetry.posBuffer, 2},
+                {pimpl->bathymetry.colorBuffer, 3},
+            };
+            cfg.indices = pimpl->bathymetry.indexBuffer;
+            JST_CHECK(window->build(overlay.vertex, cfg));
+        }
+        {
+            Render::Draw::Config cfg;
+            cfg.buffer = overlay.vertex;
+            cfg.mode = Render::Draw::Mode::TRIANGLES;
+            cfg.numberOfInstances = 0;
+            JST_CHECK(window->build(overlay.draw, cfg));
+        }
+        {
+            Render::Program::Config cfg;
+            cfg.shaders = ShadersPackage["fill"];
+            cfg.draws = {overlay.draw};
+            cfg.buffers = {
+                {pimpl->bathymetry.uniformBuffer,
+                 Render::Program::Target::VERTEX |
+                 Render::Program::Target::FRAGMENT},
+            };
+            cfg.enableAlphaBlending = false;
+            JST_CHECK(window->build(overlay.program, cfg));
+        }
+    }
 
     {
         Render::Buffer::Config cfg;
@@ -1679,6 +1898,16 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
             std::sort(layer.labels.begin(), layer.labels.end(),
                       GeoMapLabels::MoreImportant<LabelInfo>);
         }
+        pimpl->cityLabels = pimpl->labelLayers[Impl::LabelCities].labels;
+        pimpl->airportLabels = pimpl->labelLayers[Impl::LabelAirports].labels;
+        for (const auto& label : pimpl->airportLabels) {
+            if (label.flags & 4) pimpl->airportCodes.insert(label.name);
+        }
+        for (const U64 idx : {Impl::LabelCapitals, Impl::LabelCities}) {
+            for (const auto& label : pimpl->labelLayers[idx].labels) {
+                pimpl->cityNames[PlaceNameKey(label.name)].emplace_back(label.lon, label.lat);
+            }
+        }
     }
 
     JST_INFO("[GEOMAP] Labels: {} countries, {} capitals, {} cities, "
@@ -1712,7 +1941,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
 
         Render::Components::Text::Config cfg;
         // Reserve for the full source names; country and state names can be long.
-        cfg.maxCharacters = 1;
+        cfg.maxCharacters = idx == Impl::LabelCities ? 40 : 1;
         for (const auto& label : layer.labels) {
             cfg.maxCharacters = std::max<U64>(cfg.maxCharacters, label.name.size());
         }
@@ -1970,6 +2199,34 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         }
     }
 
+    if (window->hasFont("default_mono")) {
+        pimpl->tiles = std::make_unique<GeoMapTiles>(
+            std::make_unique<GeoMapTiles::OpenFreeMap>());
+        pimpl->attributionText = pimpl->tiles->attribution();
+
+        Render::Components::Text::Config cfg;
+        cfg.font = window->font("default_mono");
+        cfg.maxCharacters = pimpl->attributionText.size();
+        cfg.color = {0.80f, 0.82f, 0.86f, 0.0f};
+        cfg.sharpness = 0.5f;
+        cfg.elements["attribution"] = {.scale = 0.0f, .alignment = {0, 2}};
+        JST_CHECK(window->build(pimpl->attribution, cfg));
+        JST_CHECK(window->bind(pimpl->attribution));
+
+        GeoMapTiles::Config tiles;
+        tiles.fadeStart = pimpl->tuning.tileFadeStart;
+        tiles.fadeEnd = pimpl->tuning.tileFadeEnd;
+        tiles.lineCapacity = kTileLineCapacity;
+        tiles.fillVertexCapacity = kTileFillVertices;
+        tiles.fillIndexCapacity = kTileFillIndices;
+        tiles.fadeSeconds = kTileFadeSeconds;
+        pimpl->tilesConfig = tiles;
+        pimpl->tilesRunning = pimpl->tuning.detailTiles && GeoMapTiles::Enabled();
+        if (pimpl->tilesRunning) {
+            pimpl->tiles->start(tiles);
+        }
+    }
+
     return Result::SUCCESS;
 }
 
@@ -1981,6 +2238,12 @@ Result GeoMapBaseLayer::destroy(Window* window) {
     }
     if (pimpl->pathText) {
         JST_CHECK(window->unbind(pimpl->pathText));
+    }
+    if (pimpl->attribution) {
+        JST_CHECK(window->unbind(pimpl->attribution));
+    }
+    if (pimpl->tiles) {
+        pimpl->tiles->stop();
     }
     pimpl = std::make_unique<Impl>();
     return Result::SUCCESS;
@@ -2010,13 +2273,6 @@ Result GeoMapBaseLayer::surface(Render::Surface::Config& config) {
         config.programs.push_back(pimpl->landcover.program);
     }
 
-    // Geographic reference lines render on top of landcover.
-    for (auto& g : pimpl->geo) {
-        if (g.instanceCount > 0) {
-            config.programs.push_back(g.program);
-        }
-    }
-
     for (auto it = pimpl->rivers.rbegin(); it != pimpl->rivers.rend(); ++it) {
         if (it->program) {
             config.programs.push_back(it->program);
@@ -2031,6 +2287,36 @@ Result GeoMapBaseLayer::surface(Render::Surface::Config& config) {
     }
     if (pimpl->coastlines.instanceCount > 0) {
         config.programs.push_back(pimpl->coastlines.program);
+    }
+
+    if (pimpl->tileFill.program) {
+        config.programs.push_back(pimpl->tileFill.program);
+    }
+    if (pimpl->bathymetryOverlay.program) {
+        config.programs.push_back(pimpl->bathymetryOverlay.program);
+    }
+
+    for (auto& g : pimpl->geo) {
+        if (g.instanceCount > 0) {
+            config.programs.push_back(g.program);
+        }
+    }
+
+    const U64 firstRoad = static_cast<U64>(GeoMapTiles::Line::MinorRoad);
+    for (U64 i = 0; i < firstRoad; ++i) {
+        if (pimpl->tileLines[i].program) {
+            config.programs.push_back(pimpl->tileLines[i].program);
+        }
+    }
+    for (const auto& casing : pimpl->tileCasings) {
+        if (casing.program) {
+            config.programs.push_back(casing.program);
+        }
+    }
+    for (U64 i = firstRoad; i < pimpl->tileLines.size(); ++i) {
+        if (pimpl->tileLines[i].program) {
+            config.programs.push_back(pimpl->tileLines[i].program);
+        }
     }
     // Draw generic references first and politically significant classes last.
     for (auto it = pimpl->disputed.rbegin();
@@ -2085,12 +2371,30 @@ Result GeoMapBaseLayer::surface(Render::Surface::Config& config) {
             JST_CHECK(pimpl->pathText->surface(config));
         }
     }
+    if (pimpl->attribution) {
+        JST_CHECK(pimpl->attribution->surface(config));
+    }
 
     return Result::SUCCESS;
 }
 
 Result GeoMapBaseLayer::present(const MapContext& context) {
-    const bool updateView = pimpl->firstFrame || pimpl->uniforms != context.view;
+    bool tilesChanged = false;
+    if (pimpl->tiles) {
+        const bool running = pimpl->tuning.detailTiles && GeoMapTiles::Enabled();
+        if (running != pimpl->tilesRunning) {
+            pimpl->tilesRunning = running;
+            if (running) {
+                pimpl->tiles->start(pimpl->tilesConfig);
+            } else {
+                pimpl->tiles->stop();
+            }
+            tilesChanged = true;
+        }
+        tilesChanged = pimpl->tiles->update(context) || tilesChanged;
+    }
+    const bool updateView = pimpl->firstFrame || pimpl->uniforms != context.view ||
+                            tilesChanged;
     const F64 sunTime = std::floor(
         pimpl->tuning.sunTime.value_or(WallClockSeconds()) / 5.0) * 5.0;
     const bool updateSun = updateView || sunTime != pimpl->sunTime;
@@ -2178,6 +2482,227 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                 pimpl->tuning.disputedBorders ? visibleCount : 0));
         }
 
+        if (pimpl->tiles) {
+            const auto& tuning = pimpl->tuning;
+            const F32 tileOpacity = tuning.detailTiles ? pimpl->tiles->opacity() : 0.0f;
+            const auto& geometry = pimpl->tiles->geometry();
+            auto& fill = pimpl->tileFill;
+
+            if (geometry.revision != pimpl->tileRevision) {
+                pimpl->tileRevision = geometry.revision;
+
+                const std::array<std::array<F32, 3>, GeoMapTiles::FillCount> colors = {
+                    kLandColor,
+                    kUrbanColor,
+                    std::array<F32, 3>{kWaterSphereR, kWaterSphereG, kWaterSphereB},
+                    kAirportColor,
+                };
+                U64 vertices = 0;
+                U64 indices = 0;
+                U64 copied = 0;
+                std::array<U64, GeoMapTiles::FillCount> bases{};
+                for (U64 f = 0; f < GeoMapTiles::FillCount; ++f) {
+                    const auto& mesh = geometry.fills[f];
+                    const U64 count = mesh.positions.size() / 2;
+                    if (vertices + count > kTileFillVertices ||
+                        indices + mesh.indices.size() > kTileFillIndices) {
+                        break;
+                    }
+                    std::copy(mesh.positions.begin(), mesh.positions.end(),
+                              fill.geographicPositions.begin() + vertices * 2);
+                    for (U64 v = 0; v < count; ++v) {
+                        std::copy(colors[f].begin(), colors[f].end(),
+                                  fill.colors.begin() + (vertices + v) * 3);
+                    }
+                    std::copy_n(geometry.fillFades[f].begin(), count * 2,
+                                fill.fades.begin() + vertices * 2);
+                    bases[f] = vertices;
+                    vertices += count;
+                    indices += mesh.indices.size();
+                    copied = f + 1;
+                }
+                indices = 0;
+                for (const bool held : {true, false}) {
+                    for (U64 f = 0; f < copied; ++f) {
+                        const auto& mesh = geometry.fills[f];
+                        const U64 split = std::min<U64>(geometry.heldFillIndices[f], mesh.indices.size());
+                        const U64 begin = held ? 0 : split;
+                        const U64 end = held ? split : mesh.indices.size();
+                        for (U64 i = begin; i < end; ++i) {
+                            fill.indices[indices++] = static_cast<U32>(bases[f]) + mesh.indices[i];
+                        }
+                    }
+                }
+                pimpl->tileFillIndexCount = indices;
+                if (indices > 0) {
+                    JST_CHECK(fill.posBuffer->update(0, vertices * 2));
+                    JST_CHECK(fill.colorBuffer->update(0, vertices * 3));
+                    JST_CHECK(fill.fadeBuffer->update(0, vertices * 2));
+                    JST_CHECK(fill.indexBuffer->update(0, indices));
+                    JST_CHECK(fill.draw->updateVertexCount(indices));
+                }
+
+                for (U64 i = 0; i < pimpl->tileLines.size(); ++i) {
+                    auto& line = pimpl->tileLines[i];
+                    const auto& segments = geometry.lines[i];
+                    const U64 count = std::min<U64>(segments.size(), line.vertices.size()) / 4;
+                    std::copy_n(segments.begin(), count * 4, line.vertices.begin());
+                    std::copy_n(geometry.lineFades[i].begin(), count * 2, line.dashRanges.begin());
+                    line.instanceCount = count;
+                    if (count > 0) {
+                        JST_CHECK(line.instanceBuffer->update(0, count * 4));
+                        JST_CHECK(line.dashBuffer->update(0, count * 2));
+                    }
+                }
+
+                auto& cities = pimpl->labelLayers[Impl::LabelCities];
+                auto& airports = pimpl->labelLayers[Impl::LabelAirports];
+                cities.labels = pimpl->cityLabels;
+                airports.labels = pimpl->airportLabels;
+                for (const auto& place : geometry.labels) {
+                    if (place.kind == GeoMapTiles::Place::Airport ||
+                        place.kind == GeoMapTiles::Place::Airfield) {
+                        if (!tuning.airports || pimpl->airportCodes.contains(place.name)) continue;
+                        LabelInfo label{};
+                        label.lon = place.lon;
+                        label.lat = place.lat;
+                        label.kind = LabelKind::Airport;
+                        label.name = place.name;
+                        UppercaseAscii(label.name);
+                        const bool international = place.kind == GeoMapTiles::Place::Airport;
+                        label.scalerank = international ? 8 : 10;
+                        label.flags = international ? 6 : 4;
+                        airports.labels.push_back(std::move(label));
+                        continue;
+                    }
+                    if (tuning.places) {
+                        const auto known = pimpl->cityNames.find(PlaceNameKey(place.name));
+                        if (known != pimpl->cityNames.end() &&
+                            std::any_of(known->second.begin(), known->second.end(),
+                                        [&](const auto& position) {
+                                return std::abs(position.first - place.lon) < 0.3f &&
+                                       std::abs(position.second - place.lat) < 0.3f;
+                            })) {
+                            continue;
+                        }
+                        LabelInfo label{};
+                        label.lon = place.lon;
+                        label.lat = place.lat;
+                        label.kind = LabelKind::City;
+                        label.name = place.name;
+                        switch (place.kind) {
+                            case GeoMapTiles::Place::City:
+                                label.scalerank = 7;
+                                label.population = 250000;
+                                break;
+                            case GeoMapTiles::Place::Town:
+                                label.scalerank = 8;
+                                label.population = 50000;
+                                break;
+                            case GeoMapTiles::Place::Village:
+                            case GeoMapTiles::Place::Suburb:
+                                label.scalerank = 9;
+                                label.population = 5000;
+                                break;
+                            case GeoMapTiles::Place::Hamlet:
+                                label.scalerank = 10;
+                                label.minZoom = 12.5f;
+                                break;
+                            case GeoMapTiles::Place::Airport:
+                            case GeoMapTiles::Place::Airfield:
+                                break;
+                        }
+                        cities.labels.push_back(std::move(label));
+                    }
+                }
+                std::sort(cities.labels.begin(), cities.labels.end(),
+                          GeoMapLabels::MoreImportant<LabelInfo>);
+                std::sort(airports.labels.begin(), airports.labels.end(),
+                          GeoMapLabels::MoreImportant<LabelInfo>);
+            }
+
+            const bool covered = tileOpacity > 0.0f && pimpl->tileFillIndexCount > 0;
+            const F32 tileTime = pimpl->tiles->time();
+            if (fill.program) {
+                copyCamera(fill.gpuUniforms);
+                fill.gpuUniforms.lineWidth = 0.0f;
+                fill.gpuUniforms.lineOpacity = tileOpacity;
+                fill.gpuUniforms.dashScale = kTileFadeSeconds;
+                fill.gpuUniforms.dashPhase = tileTime;
+                JST_CHECK(fill.uniformBuffer->update());
+                JST_CHECK(fill.draw->updateInstanceCount(covered ? 1 : 0));
+            }
+            if (pimpl->bathymetryOverlay.draw) {
+                JST_CHECK(pimpl->bathymetryOverlay.draw->updateInstanceCount(
+                    covered && tuning.bathymetry ? 1 : 0));
+            }
+
+            using TileLine = GeoMapTiles::Line;
+            const F32 tileZoom = pimpl->tiles->zoom();
+            for (U64 i = 0; i < pimpl->tileLines.size(); ++i) {
+                const F32 fullZoom = tuning.tileLineFullZoom[i];
+                bool enabled = tileOpacity > 0.0f;
+                F32 opacity = tileOpacity;
+                if (fullZoom > tuning.tileFadeEnd) {
+                    opacity *= GeoMapLabels::VisibilityFade(tileZoom, fullZoom,
+                                                            tuning.tileLineFadeRange);
+                }
+                switch (static_cast<TileLine>(i)) {
+                    case TileLine::Stream:
+                    case TileLine::Canal:
+                    case TileLine::River:
+                        enabled = enabled && tuning.rivers;
+                        break;
+                    case TileLine::MinorRoad:
+                    case TileLine::SecondaryRoad:
+                    case TileLine::PrimaryRoad:
+                    case TileLine::Motorway:
+                    case TileLine::Rail:
+                        enabled = enabled && tuning.roads;
+                        break;
+                    case TileLine::StateBorder:
+                        enabled = enabled && tuning.stateBorders;
+                        opacity *= tuning.stateLineOpacity;
+                        break;
+                    case TileLine::CountryBorder:
+                        enabled = enabled && tuning.countryBorders;
+                        opacity *= tuning.countryBorderOpacity;
+                        break;
+                    case TileLine::Coastline:
+                        enabled = enabled && tuning.coastlines;
+                        opacity *= tuning.coastlineOpacity;
+                        break;
+                    case TileLine::Runway:
+                    case TileLine::Taxiway:
+                        enabled = enabled && tuning.airports;
+                        break;
+                }
+                auto& line = pimpl->tileLines[i];
+                const F32 baseWidth = pimpl->tileLineWidths[i];
+                line.gpuUniforms.lineWidth = pimpl->tileLineScaled[i]
+                    ? std::clamp(baseWidth * std::pow(tuning.tileLineWidthGrowth[i],
+                                                      tileZoom - fullZoom),
+                                 baseWidth,
+                                 std::max(baseWidth, tuning.tileLineMaxWidth[i]))
+                    : baseWidth;
+                line.gpuUniforms.dashScale = kTileFadeSeconds;
+                line.gpuUniforms.dashPhase = tileTime;
+                enabled = enabled && opacity > 0.0f;
+                JST_CHECK(updateLine(line, enabled, opacity));
+
+                auto& casing = pimpl->tileCasings[i];
+                if (!casing.program) continue;
+                copyCamera(casing.gpuUniforms);
+                casing.gpuUniforms.dashScale = kTileFadeSeconds;
+                casing.gpuUniforms.dashPhase = tileTime;
+                casing.gpuUniforms.lineWidth = line.gpuUniforms.lineWidth +
+                    std::max(1.5f, line.gpuUniforms.lineWidth * 0.3f);
+                casing.gpuUniforms.lineOpacity = opacity;
+                JST_CHECK(casing.uniformBuffer->update());
+                JST_CHECK(casing.draw->updateInstanceCount(enabled ? line.instanceCount : 0));
+            }
+        }
+
         // Update merged fill layer uniforms. The globe is a single copy — the
         // sphere handles antimeridian wrapping natively, so no world offsets.
         auto updateFillUniforms = [&](MergedFillLayer& layer,
@@ -2185,6 +2710,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
             if (layer.indexCount > 0) {
                 copyCamera(layer.gpuUniforms);
                 layer.gpuUniforms.lineWidth = 0.0f;
+                layer.gpuUniforms.lineOpacity = 1.0f;
                 layer.uniformBuffer->update();
                 JST_CHECK(layer.draw->updateInstanceCount(enabled ? 1 : 0));
             }
@@ -2956,6 +3482,25 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                 glm::smoothstep(0.0f, 1.5f, detailZoom),
             0.0f, 0.0f);
         JST_CHECK(pimpl->sunUniformBuffer->update());
+    }
+
+    if (pimpl->attribution) {
+        const F32 opacity = pimpl->tuning.detailTiles ? pimpl->tiles->opacity() : 0.0f;
+        const auto pixel = context.pixelSize();
+        auto element = pimpl->attribution->get("attribution");
+        const F32 scale = opacity > 0.0f ? 0.7f : 0.0f;
+        const ColorRGBA<F32> color = {0.80f, 0.82f, 0.86f, 0.70f * opacity};
+        const Extent2D<F32> position = {-1.0f + pixel.x * 12.0f, -1.0f + pixel.y * 9.0f};
+        if (element.scale != scale || element.color != color ||
+            element.position.x != position.x || element.position.y != position.y) {
+            element.fill = scale > 0.0f ? pimpl->attributionText : "";
+            element.scale = scale;
+            element.color = color;
+            element.position = position;
+            JST_CHECK(pimpl->attribution->updatePixelSize(pixel));
+            JST_CHECK(pimpl->attribution->update("attribution", element));
+        }
+        JST_CHECK(pimpl->attribution->present());
     }
 
     // Always present text layers (handles GPU buffer uploads).

@@ -95,6 +95,13 @@ if not jst_is_windows
 endif
 
 core_test_targets = []
+if cfg_lst.get('JETSTREAM_LOADER_ZLIB_AVAILABLE', false) and not jst_is_windows and not jst_is_browser
+    # GeoMapTiles is internal (not DLL-exported); these tests synchronously
+    # wait for its native worker threads without requiring a GPU or network.
+    core_test_domains += {
+        'render': core_test_domains['render'] + ['render/geomap_tiles.cc'],
+    }
+endif
 if not jst_is_browser
     core_test_domains += {
         'platform': core_test_domains['platform'] + ['platform/socket.cc'],

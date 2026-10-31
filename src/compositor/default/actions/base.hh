@@ -7,6 +7,7 @@
 #include "file_picker.hh"
 #include "flowgraph.hh"
 #include "live_markdown.hh"
+#include "maps.hh"
 #include "remote.hh"
 #include "settings.hh"
 #include "stacks.hh"
@@ -30,6 +31,7 @@ class DefaultActions {
         settings = std::make_shared<SettingsActions>(state, callbacks);
         benchmark = std::make_shared<BenchmarkActions>(state, callbacks);
         remote = std::make_shared<RemoteActions>(state, callbacks);
+        maps = std::make_shared<MapsActions>(state, callbacks);
         filePicker = std::make_shared<FilePickerActions>(state, callbacks);
         flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
         dependencies = std::make_shared<DependencyActions>(callbacks);
@@ -51,6 +53,9 @@ class DefaultActions {
             return result;
         }
         if (Handle(*remote, mail, result)) {
+            return result;
+        }
+        if (Handle(*maps, mail, result)) {
             return result;
         }
         if (Handle(*filePicker, mail, result)) {
@@ -100,6 +105,14 @@ class DefaultActions {
         agent->reconcile();
     }
 
+    void reconcileMaps() {
+        maps->reconcile();
+    }
+
+    void shutdownMaps() {
+        maps->shutdown();
+    }
+
     void shutdownAgent() {
         agent->shutdown();
     }
@@ -128,6 +141,7 @@ class DefaultActions {
     std::shared_ptr<FlowgraphActions> flowgraph;
     std::shared_ptr<LiveMarkdownActions> liveMarkdown;
     std::shared_ptr<RemoteActions> remote;
+    std::shared_ptr<MapsActions> maps;
     std::shared_ptr<SettingsActions> settings;
     std::shared_ptr<StackActions> stacks;
     std::shared_ptr<WorkbenchActions> workbench;

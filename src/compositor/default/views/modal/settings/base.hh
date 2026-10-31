@@ -8,6 +8,7 @@
 #include "general.hh"
 #include "intelligence.hh"
 #include "legal.hh"
+#include "maps.hh"
 #include "registry.hh"
 #include "remote.hh"
 #include "runtime.hh"
@@ -23,6 +24,7 @@ struct SettingsView {
         SettingsSection section = SettingsSection::General;
         GeneralSettingsPanel::Config general;
         RemoteSettingsPanel::Config remote;
+        MapsSettingsPanel::Config maps;
         RuntimeSettingsPanel::Config runtime;
         RegistrySettingsPanel::Config registry;
         IntelligenceSettingsPanel::Config intelligence;
@@ -77,6 +79,15 @@ struct SettingsView {
                     .onSelect = [this]() {
                         if (this->config.onSectionChange) {
                             this->config.onSectionChange(SettingsSection::Remote);
+                        }
+                    },
+                },
+                {
+                    .label = ICON_FA_MAP " Maps",
+                    .selected = this->config.section == SettingsSection::Maps,
+                    .onSelect = [this]() {
+                        if (this->config.onSectionChange) {
+                            this->config.onSectionChange(SettingsSection::Maps);
                         }
                     },
                 },
@@ -141,6 +152,7 @@ struct SettingsView {
 
         general.update(this->config.general);
         remote.update(this->config.remote);
+        maps.update(this->config.maps);
         runtime.update(this->config.runtime);
         registry.update(this->config.registry);
         intelligence.update(this->config.intelligence);
@@ -165,6 +177,9 @@ struct SettingsView {
                             break;
                         case SettingsSection::Remote:
                             remote.render(ctx);
+                            break;
+                        case SettingsSection::Maps:
+                            maps.render(ctx);
                             break;
                         case SettingsSection::Runtime:
                             runtime.render(ctx);
@@ -199,6 +214,7 @@ struct SettingsView {
     Sakura::NavigationList navigation;
     GeneralSettingsPanel general;
     RemoteSettingsPanel remote;
+    MapsSettingsPanel maps;
     RuntimeSettingsPanel runtime;
     RegistrySettingsPanel registry;
     IntelligenceSettingsPanel intelligence;

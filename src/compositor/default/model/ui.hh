@@ -29,6 +29,7 @@ enum class SettingsSection : I32 {
     Developer,
     About,
     Legal,
+    Maps,
 };
 
 }  // namespace Jetstream

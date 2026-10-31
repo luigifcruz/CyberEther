@@ -32,6 +32,14 @@ vec2 projectToNdc(vec3 p) {
     return clip.xy / max(clip.w, 1e-7);
 }
 
+float tileFade(vec2 fade) {
+    float span = max(uniforms.dashScale * 0.5, 1e-3);
+    float now = uniforms.dashPhase;
+    float fadeIn = smoothstep(fade.x, fade.x + span, now);
+    float fadeOut = fade.y < 0.0 ? 1.0 : 1.0 - smoothstep(fade.y + span, fade.y + 2.0 * span, now);
+    return fadeIn * fadeOut;
+}
+
 vec2 mapPixelSize() {
     return vec2(
         (2.0 * uniforms.surfaceScale) / max(uniforms.viewportWidth, 1.0),
