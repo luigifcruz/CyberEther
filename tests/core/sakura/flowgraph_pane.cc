@@ -683,7 +683,7 @@ TEST_CASE("Dragging a view onto the bottom of another stacks them in one column 
     CHECK(rig.host.drag.group == "layout:graph");
     REQUIRE(rig.host.drag.target.has_value());
     CHECK(rig.host.drag.target->owner == static_cast<const void*>(&rig.layoutDock()));
-    CHECK(rig.host.drag.target->preview == Jetstream::Rect{588.0f, 316.0f, 300.0f, 278.0f});
+    CHECK(rig.host.drag.target->preview == Jetstream::Rect{588.0f, 319.0f, 300.0f, 275.0f});
 
     rig.host.send(Mouse(MouseEventType::Release, 738.0f, 500.0f));
     REQUIRE(rig.count<MailSetFlowgraphLayout>() == 1);

@@ -3136,7 +3136,7 @@ TEST_CASE("Dropping on a tile's top or bottom stacks it in that column and on it
     CHECK(host.drag.pane == "c");
     host.place(WideAt(958.0f, 500.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{748.0f, 300.0f, 420.0f, 294.0f});
+    CHECK(host.drag.target->preview == Rect{748.0f, 303.0f, 420.0f, 291.0f});
     host.send(Mouse(MouseEventType::Release, 958.0f, 500.0f));
     REQUIRE(rig.emitted.size() == 1);
     REQUIRE(rig.emitted[0]->children.size() == 2);
@@ -3153,15 +3153,323 @@ TEST_CASE("Dropping on a tile's top or bottom stacks it in that column and on it
     host.send(Mouse(MouseEventType::Move, 1580.0f, 150.0f));
     host.place(WideAt(1580.0f, 150.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{1384.0f, 6.0f, 210.0f, 588.0f});
+    CHECK(host.drag.target->preview == Rect{1387.0f, 6.0f, 207.0f, 588.0f});
     host.send(Mouse(MouseEventType::Release, 1580.0f, 150.0f));
     REQUIRE(rig.emitted.size() == 2);
     CHECK(rig.emitted[1]->children.size() == 3);
 
     rig.update();
     host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
-    CHECK(rig.b.laidFrame == Rect{748.0f, 26.0f, 420.0f, 568.0f});
-    CHECK(rig.c.laidFrame == Rect{1174.0f, 26.0f, 420.0f, 568.0f});
+    CHECK(rig.b.laidFrame == Rect{1174.0f, 26.0f, 207.0f, 568.0f});
+    CHECK(rig.c.laidFrame == Rect{1387.0f, 26.0f, 207.0f, 568.0f});
+}
+
+TEST_CASE("A tab dropped into columns takes half of the target shown by the preview",
+          "[core][sakura][dock][columns][drop-sizing]") {
+    const U64 side = GENERATE(0, 1, 2, 3);
+    const F32 width = GENERATE(800.0f, 1600.0f);
+    const F32 scale = GENERATE(1.0f, 1.1f, 1.3f, 2.0f, 2.3f);
+    const bool extra = GENERATE(false, true);
+    CAPTURE(side, width, scale, extra);
+    auto ctx = MakeContext({width * scale, 600.0f * scale});
+    ctx.pixelRatio = scale;
+    const Rect bounds = {0.0f, 0.0f, width * scale, 600.0f * scale};
+    Probe editor;
+    Probe other;
+    Probe terminal;
+    editor.consume = false;
+    other.consume = false;
+    terminal.consume = false;
+    Dock source;
+    Dock target;
+    Emissions emissions;
+    auto tab = MakePane("terminal", &terminal);
+    tab.group = "terminal";
+    source.update({.tabs = true, .accepts = "main", .panes = {tab}});
+    Dock::Config config = {
+        .accepts = "flowgraph",
+        .adopts = {"terminal"},
+        .panes = {MakePane("editor", &editor)},
+        .tiles = Leaf("editor"),
+        .onTiles = emissions.sink(),
+        .columns = true,
+        .flexPane = "editor",
+    };
+    if (extra) {
+        config.panes.push_back(MakePane("other", &other));
+        config.tiles = ColumnRow({Leaf("editor"), Leaf("other")});
+    }
+    target.update(config);
+    Columns columns(source, target);
+    Layer layer;
+    layer.update({.content = &columns});
+    LayerHost host({&layer});
+    host.place(ctx, bounds);
+    const Rect original = extra ? other.laidFrame : editor.laidFrame;
+    const Rect tile = {original.x, original.y - kHeader * scale,
+                       original.width, original.height + kHeader * scale};
+    const Extent2D<F32> point = {
+        side == 0 ? tile.x + scale : side == 1 ? tile.right() - scale : tile.x + tile.width * 0.5f,
+        side == 2 ? tile.y + scale : side == 3 ? tile.bottom() - scale : tile.y + tile.height * 0.5f,
+    };
+    const auto tabRect = source.tabRect("terminal");
+    REQUIRE(tabRect.has_value());
+    host.send(Mouse(MouseEventType::Click, (tabRect->x + 5.0f) * scale, (tabRect->y + 12.0f) * scale));
+    host.send(Mouse(MouseEventType::Move, (tabRect->x + 15.0f) * scale, (tabRect->y + 12.0f) * scale));
+    host.send(Mouse(MouseEventType::Move, point.x, point.y));
+    REQUIRE(host.drag.active);
+    ctx.mouse = point;
+    host.place(ctx, bounds);
+    REQUIRE(host.drag.target.has_value());
+    const Rect preview = host.drag.target->preview;
+    host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    REQUIRE(emissions.trees.size() == 1);
+    config.tiles = emissions.last();
+    config.panes.push_back(tab);
+    source.update({.tabs = true, .accepts = "main"});
+    target.update(config);
+    host.place(ctx, bounds);
+
+    const Rect kept = extra ? other.laidFrame : editor.laidFrame;
+    const F32 gap = Dock::ContentPadding * scale;
+    if (side < 2) {
+        CHECK(terminal.laidFrame.width == Catch::Approx((tile.width - gap) * 0.5f).margin(1.0f));
+        CHECK(kept.width == Catch::Approx(terminal.laidFrame.width).margin(1.0f));
+    } else {
+        CHECK(terminal.laidFrame.height + kHeader * scale ==
+              Catch::Approx((tile.height - gap) * 0.5f).margin(1.0f));
+        CHECK(kept.height == Catch::Approx(terminal.laidFrame.height).margin(1.0f));
+    }
+    CHECK(terminal.laidFrame.x == Catch::Approx(preview.x).margin(1.0f));
+    CHECK(terminal.laidFrame.y - kHeader * scale == Catch::Approx(preview.y).margin(1.0f));
+    CHECK(terminal.laidFrame.width == Catch::Approx(preview.width).margin(1.0f));
+    CHECK(terminal.laidFrame.height + kHeader * scale == Catch::Approx(preview.height).margin(1.0f));
+
+    if (side < 2) {
+        auto& left = side == 0 ? terminal : extra ? other : editor;
+        auto& right = side == 1 ? terminal : extra ? other : editor;
+        const F32 leftWidth = left.laidFrame.width;
+        const F32 rightWidth = right.laidFrame.width;
+        const auto resize = [&](F32 delta) {
+            const F32 divider = left.laidFrame.right() + gap * 0.5f;
+            host.send(Mouse(MouseEventType::Click, divider, 300.0f * scale));
+            host.send(Mouse(MouseEventType::Move, divider + delta, 300.0f * scale));
+            host.send(Mouse(MouseEventType::Release, divider + delta, 300.0f * scale));
+            config.tiles = emissions.last();
+            target.update(config);
+            host.place(ctx, bounds);
+        };
+        resize(20.0f * scale);
+        CHECK(left.laidFrame.width == Catch::Approx(leftWidth + 20.0f * scale).margin(1.0f));
+        CHECK(right.laidFrame.width == Catch::Approx(rightWidth - 20.0f * scale).margin(1.0f));
+        if (std::min(leftWidth, rightWidth) < 240.0f * scale) {
+            for (const bool shrinkRight : {true, false}) {
+                for (const F32 delta : {bounds.width, 20.0f * scale}) {
+                    CAPTURE(shrinkRight, delta);
+                    resize(shrinkRight ? delta : -delta);
+                    CHECK((shrinkRight ? right : left).laidFrame.width ==
+                          Catch::Approx(64.0f * scale).margin(1.0f));
+                    REQUIRE(config.tiles.has_value());
+                    for (const F32 stored : config.tiles->weights) {
+                        CHECK(stored >= 64.0f);
+                    }
+                }
+            }
+        }
+    }
+
+    const Rect restored = terminal.laidFrame;
+    Dock reopened;
+    Layer reopenedLayer;
+    reopenedLayer.update({.content = &reopened});
+    LayerHost reopenedHost({&reopenedLayer});
+    reopened.update(config);
+    reopenedHost.place(ctx, {bounds.width * 0.5f, 0.0f, bounds.width * 0.5f, bounds.height});
+    CHECK(terminal.laidFrame == restored);
+    reopenedHost.place(ctx, {bounds.width * 0.5f, 0.0f, bounds.width * 0.4f, bounds.height});
+    CHECK(terminal.laidFrame.width <= restored.width + 1.0f);
+}
+
+TEST_CASE("Column divider actions preserve floor widths at fractional scales without a flex pane",
+          "[core][sakura][dock][columns][drop-sizing]") {
+    const F32 scale = GENERATE(1.0f, 1.1f, 1.3f, 2.3f);
+    CAPTURE(scale);
+    auto ctx = MakeContext({572.0f * scale, 600.0f * scale});
+    ctx.pixelRatio = scale;
+    const Rect bounds = {0.0f, 0.0f, 572.0f * scale, 600.0f * scale};
+    ColumnRig rig;
+    rig.flex.clear();
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {420.0f, 64.0f, 64.0f});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, bounds);
+    REQUIRE(rig.b.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+    REQUIRE(rig.c.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+
+    SECTION("Dragging also preserves the untouched floor-width column") {
+        for (U64 attempt = 0; attempt < 2; ++attempt) {
+            const F32 seam = (rig.a.laidFrame.right() + rig.b.laidFrame.x) * 0.5f;
+            host.send(Mouse(MouseEventType::Click, seam, 300.0f * scale));
+            host.send(Mouse(MouseEventType::Move, seam + 20.0f * scale, 300.0f * scale));
+            host.send(Mouse(MouseEventType::Release, seam + 20.0f * scale, 300.0f * scale));
+            rig.update();
+            host.place(ctx, bounds);
+            CHECK(rig.b.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+            CHECK(rig.c.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+        }
+    }
+    SECTION("Equalizing two floor-width columns keeps their saved widths valid") {
+        const F32 seam = (rig.b.laidFrame.right() + rig.c.laidFrame.x) * 0.5f;
+        host.send(Mouse(MouseEventType::Click, seam, 300.0f * scale, MouseButton::Left, 2));
+        host.send(Mouse(MouseEventType::Release, seam, 300.0f * scale));
+        rig.update();
+        host.place(ctx, bounds);
+    }
+
+    REQUIRE(rig.tiles.has_value());
+    for (const F32 stored : rig.tiles->weights) {
+        CHECK(stored >= 64.0f);
+    }
+    ColumnRig restored;
+    restored.flex.clear();
+    restored.tiles = rig.tiles;
+    restored.update();
+    Host restoredHost(restored.dock);
+    restoredHost.place(ctx, bounds);
+    CHECK(restored.b.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+    CHECK(restored.c.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+}
+
+TEST_CASE("Side drops wait until every visible column has a storable width",
+          "[core][sakura][dock][columns][drop-sizing]") {
+    const bool before = GENERATE(false, true);
+    const F32 scale = GENERATE(1.0f, 1.25f, 2.0f);
+    CAPTURE(before, scale);
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {3000.0f, 480.0f, 420.0f});
+    const auto original = rig.tiles;
+    Layer layer;
+    layer.update({.content = &rig.dock});
+    LayerHost host({&layer});
+    auto ctx = MakeContext({600.0f * scale, 600.0f * scale});
+    ctx.pixelRatio = scale;
+    Rect bounds = {0.0f, 0.0f, 600.0f * scale, 600.0f * scale};
+    rig.update();
+    host.place(ctx, bounds);
+    REQUIRE(rig.a.laidFrame.width > 134.0f * scale);
+    REQUIRE(rig.c.laidFrame.width < 64.0f * scale);
+    const Rect narrow = rig.c.laidFrame;
+    const auto offer = [&] {
+        host.drag.active = true;
+        host.drag.pane = "terminal";
+        host.drag.group = "panel";
+        ctx.mouse = Extent2D<F32>{before ? rig.a.laidFrame.x + scale : rig.a.laidFrame.right() - scale,
+                                 300.0f * scale};
+        Sakura::Access::invalidateLayout(rig.dock);
+        host.place(ctx, bounds);
+    };
+    offer();
+    CHECK_FALSE(host.drag.target.has_value());
+    CHECK(rig.emitted.empty());
+    CHECK(rig.tiles == original);
+    host.drag.reset();
+
+    ColumnRig restored;
+    restored.tiles = rig.tiles;
+    restored.update();
+    Host restoredHost(restored.dock);
+    restoredHost.place(ctx, bounds);
+    CHECK(restored.c.laidFrame == narrow);
+
+    bounds.width = 800.0f * scale;
+    ctx.framebufferSize.x = static_cast<U64>(bounds.width);
+    host.place(ctx, bounds);
+    REQUIRE(rig.c.laidFrame.width >= 64.0f * scale);
+    offer();
+    REQUIRE(host.drag.target.has_value());
+    const Rect preview = host.drag.target->preview;
+    const auto accept = host.drag.target->accept;
+    host.drag.reset();
+    accept("terminal");
+    REQUIRE(rig.emitted.size() == 1);
+
+    Probe terminal;
+    Dock reopened;
+    reopened.update({
+        .panes = {MakePane("a", &rig.a), MakePane("b", &rig.b), MakePane("c", &rig.c),
+                  MakePane("terminal", &terminal)},
+        .tiles = rig.tiles,
+        .columns = true,
+        .flexPane = "a",
+    });
+    Host reopenedHost(reopened);
+    reopenedHost.place(ctx, bounds);
+    CHECK(terminal.laidFrame.width == Catch::Approx(preview.width).margin(1.0f));
+    CHECK(terminal.laidFrame.x == Catch::Approx(preview.x).margin(1.0f));
+    CHECK(rig.c.laidFrame.width >= 64.0f * scale);
+}
+
+TEST_CASE("Side drops leave spare editor width available when the window narrows",
+          "[core][sakura][dock][columns][drop-sizing]") {
+    const bool before = GENERATE(false, true);
+    CAPTURE(before);
+    auto ctx = MakeContext({2560.0f, 600.0f});
+    const Rect bounds = {0.0f, 0.0f, 2560.0f, 600.0f};
+    Probe editor;
+    Probe description;
+    Probe other;
+    Probe terminal;
+    Emissions emissions;
+    Dock dock;
+    Dock::Config config = {
+        .accepts = "panel",
+        .panes = {MakePane("editor", &editor), MakePane("description", &description), MakePane("other", &other)},
+        .tiles = ColumnRow({Leaf("editor"), Leaf("description"), Leaf("other")}, {0.0f, 420.0f, 600.0f}),
+        .onTiles = emissions.sink(),
+        .columns = true,
+        .flexPane = "editor",
+    };
+    dock.update(config);
+    Layer layer;
+    layer.update({.content = &dock});
+    LayerHost host({&layer});
+    host.place(ctx, bounds);
+    REQUIRE(editor.laidFrame.width == 1516.0f);
+    REQUIRE(other.laidFrame.width == 600.0f);
+
+    host.drag.active = true;
+    host.drag.pane = "terminal";
+    host.drag.group = "panel";
+    ctx.mouse = Extent2D<F32>{before ? other.laidFrame.x + 1.0f : other.laidFrame.right() - 1.0f, 300.0f};
+    Sakura::Access::invalidateLayout(dock);
+    host.place(ctx, bounds);
+    REQUIRE(host.drag.target.has_value());
+    const auto accept = host.drag.target->accept;
+    host.drag.reset();
+    accept("terminal");
+    REQUIRE(emissions.trees.size() == 1);
+    config.tiles = emissions.last();
+    config.panes.push_back(MakePane("terminal", &terminal));
+    dock.update(config);
+    host.place(ctx, bounds);
+    CHECK(description.laidFrame.width == 420.0f);
+    CHECK(other.laidFrame.width == 297.0f);
+    CHECK(terminal.laidFrame.width == 297.0f);
+
+    const auto checkNarrow = [&] {
+        CHECK(editor.laidFrame.width == 556.0f);
+        CHECK(description.laidFrame.width == 420.0f);
+        CHECK(other.laidFrame.width == 297.0f);
+        CHECK(terminal.laidFrame.width == 297.0f);
+    };
+    host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    checkNarrow();
+
+    Dock reopened;
+    Host reopenedHost(reopened);
+    reopened.update(config);
+    reopenedHost.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    checkNarrow();
 }
 
 TEST_CASE("Closing a pane removes its column and the flex column takes the space back",
@@ -3364,7 +3672,7 @@ TEST_CASE("Column dividers at a pixel ratio of two emit logical widths that lay 
     CHECK(rig.c.laidFrame == Rect{2098.0f, 52.0f, 1090.0f, 1136.0f});
 }
 
-TEST_CASE("Moving a single pane column beside another column or past the last one keeps its stored width",
+TEST_CASE("Moving a column onto another halves the target width while appending keeps its stored width",
           "[core][sakura][dock][columns]") {
     ColumnRig rig;
     rig.flex = "b";
@@ -3382,24 +3690,24 @@ TEST_CASE("Moving a single pane column beside another column or past the last on
     host.send(Mouse(MouseEventType::Move, 1580.0f, 300.0f));
     host.place(WideAt(1580.0f, 300.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{1384.0f, 6.0f, 210.0f, 588.0f});
+    CHECK(host.drag.target->preview == Rect{1387.0f, 6.0f, 207.0f, 588.0f});
     host.send(Mouse(MouseEventType::Release, 1580.0f, 300.0f));
     REQUIRE(rig.emitted.size() == 1);
-    CHECK(rig.emitted[0] == ColumnRow({Leaf("b"), Leaf("c"), Leaf("a")}, {0.0f, 0.0f, 500.0f}));
+    CHECK(rig.emitted[0] == ColumnRow({Leaf("b"), Leaf("c"), Leaf("a")}, {480.0f, 207.0f, 207.0f}));
 
     rig.update();
     host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
-    CHECK(rig.a.laidFrame == Rect{1094.0f, 26.0f, 500.0f, 568.0f});
+    CHECK(rig.a.laidFrame == Rect{1387.0f, 26.0f, 207.0f, 568.0f});
 
-    host.send(Mouse(MouseEventType::Click, 1300.0f, 16.0f));
-    host.send(Mouse(MouseEventType::Move, 1310.0f, 16.0f));
+    host.send(Mouse(MouseEventType::Click, 1450.0f, 16.0f));
+    host.send(Mouse(MouseEventType::Move, 1460.0f, 16.0f));
     host.send(Mouse(MouseEventType::Move, 20.0f, 300.0f));
     host.place(WideAt(20.0f, 300.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{6.0f, 6.0f, 328.0f, 588.0f});
+    CHECK(host.drag.target->preview == Rect{6.0f, 6.0f, 578.0f, 588.0f});
     host.send(Mouse(MouseEventType::Release, 20.0f, 300.0f));
     REQUIRE(rig.emitted.size() == 2);
-    CHECK(rig.emitted[1] == ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {500.0f, 0.0f, 0.0f}));
+    CHECK(rig.emitted[1] == ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {578.0f, 578.0f, 207.0f}));
 
     rig.update();
     host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
@@ -3411,7 +3719,7 @@ TEST_CASE("Moving a single pane column beside another column or past the last on
     CHECK(host.drag.target->preview.x >= 1594.0f);
     host.send(Mouse(MouseEventType::Release, 1599.0f, 300.0f));
     REQUIRE(rig.emitted.size() == 3);
-    CHECK(rig.emitted[2] == ColumnRow({Leaf("a"), Leaf("c"), Leaf("b")}, {500.0f, 0.0f, 0.0f}));
+    CHECK(rig.emitted[2] == ColumnRow({Leaf("a"), Leaf("c"), Leaf("b")}, {578.0f, 207.0f, 578.0f}));
 }
 
 TEST_CASE("Dropping on a tile's top stacks above it, and a stacked pane dropped on its own side gets its own column",
@@ -3429,7 +3737,7 @@ TEST_CASE("Dropping on a tile's top stacks above it, and a stacked pane dropped 
     host.send(Mouse(MouseEventType::Move, 958.0f, 20.0f));
     host.place(WideAt(958.0f, 20.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{748.0f, 6.0f, 420.0f, 294.0f});
+    CHECK(host.drag.target->preview == Rect{748.0f, 6.0f, 420.0f, 291.0f});
     host.send(Mouse(MouseEventType::Release, 958.0f, 20.0f));
     REQUIRE(rig.emitted.size() == 1);
     CHECK(rig.emitted[0] == ColumnRow({Leaf("a"), Column({0.5f, 0.5f}, {Leaf("c"), Leaf("b")})}));
@@ -3447,10 +3755,10 @@ TEST_CASE("Dropping on a tile's top stacks above it, and a stacked pane dropped 
     host.send(Mouse(MouseEventType::Move, 1580.0f, 150.0f));
     host.place(WideAt(1580.0f, 150.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{1384.0f, 6.0f, 210.0f, 588.0f});
+    CHECK(host.drag.target->preview == Rect{1387.0f, 6.0f, 207.0f, 588.0f});
     host.send(Mouse(MouseEventType::Release, 1580.0f, 150.0f));
     REQUIRE(rig.emitted.size() == 2);
-    CHECK(rig.emitted[1] == ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}));
+    CHECK(rig.emitted[1] == ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {480.0f, 207.0f, 207.0f}));
 }
 
 TEST_CASE("Dragging a pane into an empty column dock offers its whole viewport and moves the pane over",

@@ -366,7 +366,7 @@ std::vector<F32> FitColumns(std::vector<F32> widths, F32 room, std::optional<U64
             flexible = 0.0f;
             for (U64 index = 0; index < count; ++index) {
                 if (pinned[index]) {
-                    free -= minimum;
+                    free -= std::min(widths[index], minimum);
                 } else {
                     flexible += widths[index];
                 }
@@ -375,7 +375,7 @@ std::vector<F32> FitColumns(std::vector<F32> widths, F32 room, std::optional<U64
                 break;
             }
             for (U64 index = 0; index < count; ++index) {
-                if (!pinned[index] && widths[index] * free / flexible < minimum) {
+                if (!pinned[index] && widths[index] * free / flexible < std::min(widths[index], minimum)) {
                     pinned[index] = true;
                     changed = true;
                 }
@@ -390,23 +390,26 @@ std::vector<F32> FitColumns(std::vector<F32> widths, F32 room, std::optional<U64
     std::vector<F32> fitted(count);
     F32 used = 0.0f;
     for (U64 index = 0; index + 1 < count; ++index) {
-        fitted[index] = pinned[index] ? minimum : std::round(widths[index] * free / flexible);
+        fitted[index] = pinned[index] ? std::min(widths[index], minimum)
+                                     : std::round(widths[index] * free / flexible);
         used += fitted[index];
     }
     fitted[count - 1] = std::max(0.0f, room - used);
     return fitted;
 }
 
-Rect Half(const Rect& rect, Side side) {
+Rect Half(const Rect& rect, Side side, F32 gap = 0.0f) {
+    const F32 width = std::max(0.0f, rect.width - gap) * 0.5f;
+    const F32 height = std::max(0.0f, rect.height - gap) * 0.5f;
     switch (side) {
         case Side::Left:
-            return {rect.x, rect.y, rect.width * 0.5f, rect.height};
+            return {rect.x, rect.y, width, rect.height};
         case Side::Right:
-            return {rect.x + rect.width * 0.5f, rect.y, rect.width * 0.5f, rect.height};
+            return {rect.right() - width, rect.y, width, rect.height};
         case Side::Top:
-            return {rect.x, rect.y, rect.width, rect.height * 0.5f};
+            return {rect.x, rect.y, rect.width, height};
         case Side::Bottom:
-            return {rect.x, rect.y + rect.height * 0.5f, rect.width, rect.height * 0.5f};
+            return {rect.x, rect.bottom() - height, rect.width, height};
     }
     return rect;
 }
@@ -944,7 +947,14 @@ struct Dock::Impl {
         }
         U64 column = before->first;
         U64 row = before->second;
-        const F32 width = takeColumn(id);
+        const bool across = side == Side::Left || side == Side::Right;
+        F32 width = 0.0f;
+        if (across && column < columnRects.size()) {
+            width = (columnRects[column].width / pixelRatio - kCardGap) * 0.5f;
+            pressColumns();
+            bakeColumns();
+        }
+        takeColumn(id);
         if (target != id) {
             const auto after = locate(target);
             if (!after) {
@@ -954,7 +964,10 @@ struct Dock::Impl {
             column = after->first;
             row = after->second;
         }
-        if (side == Side::Left || side == Side::Right) {
+        if (across) {
+            if (column < columns.size()) {
+                columns[column].width = width;
+            }
             const U64 at = std::min<U64>(side == Side::Left ? column : column + 1, columns.size());
             columns.insert(columns.begin() + static_cast<I64>(at),
                            ColumnModel{.panes = {id}, .weights = {1.0f}, .width = width});
@@ -993,10 +1006,27 @@ struct Dock::Impl {
         pressBases = columnBases;
     }
 
+    bool canBakeColumns() const {
+        if (columnWidths.size() != columns.size()) {
+            return false;
+        }
+        for (U64 index = 0; index < columns.size(); ++index) {
+            if (!collapsed(columns[index]) && shownFactor(columns[index]) >= 1.0f &&
+                columnWidths[index] < kStoredWidthFloor * pixelRatio) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     void bakeColumns() {
+        const auto flex = flexColumn();
         for (U64 index = 0; index < columns.size() && index < pressWidths.size(); ++index) {
             if (!collapsed(columns[index]) && shownFactor(columns[index]) >= 1.0f) {
-                columns[index].width = pressWidths[index] / pixelRatio;
+                const F32 width = flex == index && index < pressBases.size()
+                                      ? std::min(pressBases[index], pressWidths[index])
+                                      : pressWidths[index];
+                columns[index].width = std::max(kStoredWidthFloor, width / pixelRatio);
             }
         }
     }
@@ -1009,7 +1039,8 @@ struct Dock::Impl {
             if (left >= right || right >= columns.size() || right >= pressWidths.size() || right >= pressBases.size()) {
                 return false;
             }
-            const F32 minimum = kMinColumnWidth * pixelRatio;
+            const F32 minimum = (std::min(pressWidths[left], pressWidths[right]) < kMinColumnWidth * pixelRatio
+                                     ? kStoredWidthFloor : kMinColumnWidth) * pixelRatio;
             const F32 delta = point.x - pressPoint.x;
             const auto flex = flexColumn();
             if (flex == left || flex == right) {
@@ -1018,9 +1049,9 @@ struct Dock::Impl {
                 const F32 shrink = std::max(0.0f, pressWidths[other] - minimum);
                 const F32 room = std::max(0.0f, pressWidths[*flex] - minimum);
                 const F32 grow = std::clamp(sign * delta, -shrink, room);
-                columns[other].width = (pressWidths[other] + grow) / pixelRatio;
+                columns[other].width = std::max(kStoredWidthFloor, (pressWidths[other] + grow) / pixelRatio);
                 if (pressWidths[*flex] - grow < pressBases[*flex]) {
-                    columns[*flex].width = (pressWidths[*flex] - grow) / pixelRatio;
+                    columns[*flex].width = std::max(kStoredWidthFloor, (pressWidths[*flex] - grow) / pixelRatio);
                 }
             } else {
                 if (!flex.has_value()) {
@@ -1029,8 +1060,8 @@ struct Dock::Impl {
                 const F32 leftRoom = std::max(0.0f, pressWidths[left] - minimum);
                 const F32 rightRoom = std::max(0.0f, pressWidths[right] - minimum);
                 const F32 shift = std::clamp(delta, -leftRoom, rightRoom);
-                columns[left].width = (pressWidths[left] + shift) / pixelRatio;
-                columns[right].width = (pressWidths[right] - shift) / pixelRatio;
+                columns[left].width = std::max(kStoredWidthFloor, (pressWidths[left] + shift) / pixelRatio);
+                columns[right].width = std::max(kStoredWidthFloor, (pressWidths[right] - shift) / pixelRatio);
             }
         } else {
             if (splitter.path.empty() || splitter.path.front() >= columns.size()) {
@@ -1070,7 +1101,8 @@ struct Dock::Impl {
                     return;
                 }
                 pressColumns();
-                const F32 average = (columnWidths[left] + columnWidths[right]) * 0.5f / pixelRatio;
+                const F32 average = std::max(kStoredWidthFloor,
+                                            (columnWidths[left] + columnWidths[right]) * 0.5f / pixelRatio);
                 const auto flex = flexColumn();
                 if (flex == left) {
                     columns[right].width = average;
@@ -1160,7 +1192,7 @@ struct Dock::Impl {
             }
             const F32 fallback = flex == index ? kFlexColumnWidth : kColumnWidth;
             const F32 stored = columns[index].width >= kStoredWidthFloor ? columns[index].width : fallback;
-            fulls[index] = std::round(std::max(stored, kMinColumnWidth) * pixelRatio);
+            fulls[index] = std::round(stored * pixelRatio);
             if (factors[index] > 0.0f && factors[index] < 1.0f) {
                 fullRoom += gap - leads[index];
             }
@@ -2454,12 +2486,16 @@ void Dock::layout(const Context& ctx) {
             return;
         }
         const bool across = *side == Side::Left || *side == Side::Right;
+        if (across && (s.columnRects[column->first].width / s.pixelRatio < 2.0f * kStoredWidthFloor + kCardGap ||
+                       !s.canBakeColumns())) {
+            return;
+        }
         if (leaf->pane == dragged && (!across || s.columns[column->first].panes.size() < 2)) {
             return;
         }
         const std::string target = leaf->pane;
         const Side edge = *side;
-        offer(across ? Half(s.columnRects[column->first], edge) : Half(leaf->tile, edge),
+        offer(across ? Half(s.columnRects[column->first], edge, gap) : Half(leaf->tile, edge, gap),
               [state, target, edge](const std::string& pane) {
                   state->dropColumn(pane, target, edge);
               });
