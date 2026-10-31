@@ -10,16 +10,13 @@
 #include "jetstream/config.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/registry.hh"
-#include "render/sakura/themes.hh"
 #include "tools/text.hh"
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <iterator>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace Jetstream {
@@ -96,9 +93,6 @@ struct WelcomePresenter {
         const auto query = Text::ToLower(Text::TrimBlank(config.query));
         Catalog(config, context.state.registry.flowgraphs, query, config.category);
         Paginate(config, context.state.interface.welcomePage);
-        if (config.section != WelcomeSection::All) {
-            config.featured.clear();
-        }
         return config;
     }
 
@@ -106,7 +100,7 @@ struct WelcomePresenter {
         if (!gallery.loading || gallery.attempted) {
             return "";
         }
-        return gallery.cached ? "Updating gallery..." : "Loading flowgraphs from the gallery...";
+        return gallery.cached ? "Updating flowgraphs..." : "Loading flowgraphs...";
     }
 
     static std::string ProgressResult(const DefaultCompositorState::RegistryState::GalleryFetch& gallery) {
@@ -114,7 +108,7 @@ struct WelcomePresenter {
             return "";
         }
         if (gallery.failed) {
-            return "Could not reach the gallery. Showing bundled flowgraphs.";
+            return "Using bundled flowgraphs";
         }
         return gallery.cached ? "Gallery updated successfully!" : "Gallery loaded.";
     }
@@ -170,29 +164,6 @@ struct WelcomePresenter {
         return "Complete pipelines, ready to run in Web or Native.";
     }
 
-    static U32 Channel(F32 value) {
-        return static_cast<U32>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
-    }
-
-    static std::optional<std::string> AccentKey(const std::string& accent) {
-        static const auto accents = [] {
-            std::unordered_map<std::string, std::string> accents;
-            for (const auto& [key, color] : Sakura::Themes.at("Dark")) {
-                if (key.starts_with("gallery_")) {
-                    accents.emplace(jst::fmt::format("#{:02x}{:02x}{:02x}", Channel(color.r), Channel(color.g),
-                                                     Channel(color.b)),
-                                    key);
-                }
-            }
-            return accents;
-        }();
-        const auto match = accents.find(Text::ToLower(accent));
-        if (match == accents.end()) {
-            return std::nullopt;
-        }
-        return match->second;
-    }
-
     static WelcomeView::Example Example(const Registry::FlowgraphRegistration& entry) {
         WelcomeView::Example example{
             .title = entry.title,
@@ -201,9 +172,6 @@ struct WelcomePresenter {
             .category = entry.category.empty() ? "Plugins" : entry.category,
             .diagram = entry.diagram,
         };
-        if (const auto key = AccentKey(entry.accent)) {
-            example.accentColorKey = *key;
-        }
         return example;
     }
 

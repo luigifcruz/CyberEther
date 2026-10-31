@@ -126,7 +126,7 @@ void Reveal::layout(const Context& ctx) {
     const F32 gap = Px(ctx, s.config.gap);
     const auto child = measureChild(*s.config.child, ctx, {bounds.width, std::numeric_limits<F32>::infinity()});
     const F32 full = child.y + gap;
-    const F32 offset = bounds.height - full;
+    const F32 offset = s.config.upward ? 0.0f : bounds.height - full;
     layoutChild(ctx, *s.config.child, {bounds.x, bounds.y + offset + gap, bounds.width, child.y}, bounds);
 }
 

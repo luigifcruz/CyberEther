@@ -38,8 +38,18 @@ struct WelcomeView {
     static constexpr F32 HeroButtonText = Sakura::Typography::Scale::Large;
     static constexpr F32 ExploreSpacing = Sakura::Spacing::Medium;
     static constexpr F64 ProgressLinger = 1.5;
+    static constexpr F32 StatusHeight = 36.0f;
+    static constexpr F32 StatusPadding = Sakura::Spacing::Small;
+    static constexpr F32 StatusRounding = Sakura::Rounding::Card;
+    static constexpr F32 StatusTuck = 2.0f;
+    static constexpr F32 StatusShadeInset = 18.0f;
+    static constexpr F32 StatusIconSize = 16.0f;
+    static constexpr F64 StatusTransition = 0.3;
     static constexpr F32 FilterPadding = Sakura::Spacing::Small;
-    static constexpr F32 CategoryPadding = Sakura::Spacing::Small;
+    static constexpr F32 CategoryPadding = Sakura::Spacing::Medium;
+    static constexpr F32 CategoryCellWidth = 190.0f;
+    static constexpr F32 CategoryIconScale = Sakura::Typography::Scale::Title;
+    static constexpr F32 BackToTopThreshold = 600.0f;
     static constexpr F32 SearchInset = Sakura::Spacing::Large;
     static constexpr F32 SearchFont = Sakura::Typography::FontSize * Sakura::Typography::Scale::Title;
     static constexpr U64 GridColumns = 3;
@@ -49,18 +59,12 @@ struct WelcomeView {
     static constexpr F32 SectionTitleScale = Sakura::Typography::Scale::Headline;
     static constexpr F32 SectionCaptionScale = Sakura::Typography::Scale::Large;
     static constexpr F32 SectionHeaderGap = Sakura::Spacing::XSmall;
-    static constexpr F32 FooterArtTop = 96.0f;
-    static constexpr F32 FooterArtBottom = 72.0f;
-    static constexpr F32 FooterArtScale = 1.5f;
-    static constexpr F32 FooterArtOpacity = 0.5f;
-    static constexpr std::array<const char*, 6> FooterArt = {
-        R"(   ______      __              ________  __             )",
-        R"(  / ____/_  __/ /_  ___  _____/ ____/ /_/ /_  ___  _____)",
-        R"( / /   / / / / __ \/ _ \/ ___/ __/ / __/ __ \/ _ \/ ___/)",
-        R"(/ /___/ /_/ / /_/ /  __/ /  / /___/ /_/ / / /  __/ /    )",
-        R"(\____/\__, /_.___/\___/_/  /_____/\__/_/ /_/\___/_/     )",
-        R"(     /____/                                             )",
-    };
+    static constexpr F32 FooterTop = 48.0f;
+    static constexpr F32 FooterRowGap = Sakura::Spacing::Medium;
+    static constexpr F32 FooterBottom = Sakura::Spacing::XLarge;
+    static constexpr F32 FooterGlassEmboss = 0.03f;
+    static constexpr F32 FooterGlassOpacity = 0.35f;
+    static constexpr F32 FooterWordmarkScale = Sakura::Typography::Scale::Headline;
 
     struct Recent {
         std::string title;
@@ -75,7 +79,6 @@ struct WelcomeView {
         std::string key;
         std::string category;
         std::string diagram;
-        std::string accentColorKey = "cyber_blue";
     };
 
     struct Category {
@@ -126,6 +129,10 @@ struct WelcomeView {
         this->config = std::move(config);
         updateRecent();
         updateExplore();
+        if (pendingScroll.has_value() && this->config.category.empty() && this->config.query.empty()) {
+            scrollToCategory(*pendingScroll);
+            pendingScroll.reset();
+        }
         std::vector<Sakura::Stack::Item> leftItems;
         if (this->config.remote.has_value()) {
             remote.update(std::move(*this->config.remote));
@@ -181,10 +188,16 @@ struct WelcomeView {
             .border = false,
             .overlay = true,
             .scrollbarInset = {0.0f, Sakura::Dock::TileRounding},
+            .scrollTarget = scrollTarget,
+            .scrollRequest = scrollRequest,
+            .onScroll = [this](F32 offset) {
+                scrolledDown = offset > BackToTopThreshold;
+            },
         });
+        updateBackToTop();
         tiles.update({
             .sidebar = &leftColumn,
-            .page = &pageArea,
+            .page = &pageOverlay,
             .pageCard = this->config.pageCard,
             .sidebarOpen = this->config.sidebarOpen,
         });
@@ -195,6 +208,37 @@ struct WelcomeView {
     }
 
  private:
+    struct CategoryCell {
+        Sakura::Div lead;
+        Sakura::Text icon;
+        Sakura::Text label;
+        Sakura::Div tail;
+        Sakura::Stack content;
+        Sakura::Div card;
+    };
+
+    struct CategoryStyle {
+        const char* title;
+        const char* icon;
+        const char* tintKey;
+    };
+
+    static CategoryStyle StyleOf(const std::string& category) {
+        static const CategoryStyle styles[] = {
+            {"Basics", ICON_LC_GRADUATION_CAP, "gallery_green"},
+            {"DSP", ICON_LC_AUDIO_WAVEFORM, "gallery_purple"},
+            {"Receivers", ICON_LC_RADIO, "gallery_orange"},
+            {"Visualization", ICON_LC_CHART_SPLINE, "gallery_blue"},
+            {"Plugins", ICON_LC_PUZZLE, "gallery_teal"},
+        };
+        for (const auto& style : styles) {
+            if (category == style.title) {
+                return style;
+            }
+        }
+        return {"", ICON_LC_WORKFLOW, "cyber_blue"};
+    }
+
     struct Section {
         Sakura::Text icon;
         Sakura::Text heading;
@@ -279,33 +323,47 @@ struct WelcomeView {
         });
     }
 
-    void updateFooterArt() {
+    void updatePageFooter() {
         using Text = Sakura::Text;
 
-        footerArtTop.update({});
-        footerArtBottom.update({});
-        std::vector<Sakura::Stack::Item> items = {{.child = &footerArtTop, .size = FooterArtTop}};
-        for (U64 index = 0; index < FooterArt.size(); ++index) {
-            std::string line = FooterArt[index];
-            if (index + 1 == FooterArt.size()) {
-                const auto& version = config.version;
-                const U64 length = std::min(version.size(), line.size());
-                line.replace(line.size() - length, length, version, 0, length);
-            }
-            footerArtLines[index].update({
-                .str = std::move(line),
-                .tone = Text::Tone::Disabled,
-                .align = Text::Align::Center,
-                .shrinkToFit = true,
-                .scale = FooterArtScale,
-                .opacity = FooterArtOpacity,
-            });
-            items.push_back({.child = &footerArtLines[index]});
-        }
-        items.push_back({.child = &footerArtBottom, .size = FooterArtBottom});
+        footerTop.update({});
+        footerRule.update({.spacing = 0.0f});
+        footerRowGap.update({});
+        footerBottom.update({});
+        footerWordmark.update({
+            .str = "CyberEther",
+            .font = Text::Font::Display,
+            .colorKey = "text_primary",
+            .scale = FooterWordmarkScale,
+            .emboss = FooterGlassEmboss,
+            .opacity = FooterGlassOpacity,
+        });
+        footerVersion.update({
+            .str = config.version,
+            .font = Text::Font::Display,
+            .tone = Text::Tone::Disabled,
+            .scale = Sakura::Typography::Scale::Caption,
+        });
+        footerGap.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        footerRow.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = 0.0f,
+            .items = {
+                {.child = &footerWordmark},
+                {.child = &footerGap, .grow = 1.0f},
+                {.child = &footerVersion},
+            },
+        });
         footerArt.update({
             .spacing = 0.0f,
-            .items = std::move(items),
+            .centerCross = false,
+            .items = {
+                {.child = &footerTop, .size = FooterTop},
+                {.child = &footerRule},
+                {.child = &footerRowGap, .size = FooterRowGap},
+                {.child = &footerRow},
+                {.child = &footerBottom, .size = FooterBottom},
+            },
         });
     }
 
@@ -375,7 +433,7 @@ struct WelcomeView {
             .category = example.category,
             .title = example.title,
             .description = example.summary,
-            .accentColorKey = example.accentColorKey,
+            .accentColorKey = StyleOf(example.category).tintKey,
             .onOpen = [this, key = example.key]() {
                 if (config.onOpenExample) {
                     config.onOpenExample(key);
@@ -522,7 +580,7 @@ struct WelcomeView {
                 {.child = &heroColumn},
                 {.child = &assistantSpacing, .size = WaveGap},
                 {.child = &wave},
-                {.child = &waveSpacing, .size = WaveGap - ExploreSpacing},
+                {.child = &waveSpacing, .size = WaveGap - ExploreSpacing - StatusHeight},
             },
         });
     }
@@ -593,45 +651,8 @@ struct WelcomeView {
             .colorKey = "transparent",
         });
 
-        std::vector<Sakura::PillTabs::Item> pills = {{.label = "All"}};
-        U64 selected = 0;
-        for (const auto& name : config.categoryNames) {
-            if (name == config.category) {
-                selected = pills.size();
-            }
-            pills.push_back({.label = name});
-        }
-        categoryTabs.update({
-            .items = std::move(pills),
-            .selected = selected,
-            .compact = true,
-            .onSelect = [this](U64 index) {
-                if (config.onSelectCategory) {
-                    config.onSelectCategory(index == 0 || index > config.categoryNames.size()
-                                                ? std::string()
-                                                : config.categoryNames[index - 1]);
-                }
-            },
-        });
-        categoryFrame.update({
-            .content = &categoryTabs,
-            .padding = CategoryPadding,
-            .border = false,
-            .colorKey = "transparent",
-        });
-        filterDivider.update({.spacing = 0.0f});
-
-        filterContent.update({
-            .spacing = 0.0f,
-            .centerCross = false,
-            .items = {
-                {.child = &searchFrame},
-                {.child = &filterDivider},
-                {.child = &categoryFrame},
-            },
-        });
         filterCard.update({
-            .content = &filterContent,
+            .content = &searchFrame,
             .rounding = Sakura::Rounding::Card,
             .border = true,
             .chrome = true,
@@ -640,32 +661,253 @@ struct WelcomeView {
         });
     }
 
-    void updateExplore() {
-        if (!config.progress.empty()) {
-            loadingSpinner.update({});
-            loadingCard.update({
-                .rows = {{
-                    .label = config.progress,
-                    .control = &loadingSpinner,
-                }},
+    void updateCategories() {
+        using Text = Sakura::Text;
+
+        const U64 count = config.categoryNames.size();
+        while (categoryCells.size() < count) {
+            categoryCells.push_back(std::make_unique<CategoryCell>());
+        }
+        std::vector<Sakura::Component*> cells;
+        for (U64 index = 0; index < count; ++index) {
+            const std::string& name = config.categoryNames[index];
+            const bool selected = name == config.category;
+            const auto style = StyleOf(name);
+            auto& cell = *categoryCells[index];
+            cell.icon.update({
+                .str = style.icon,
+                .align = Text::Align::Center,
+                .colorKey = style.tintKey,
+                .scale = CategoryIconScale,
             });
-        } else if (!config.progressResult.empty()) {
-            loadingResult.update({
-                .str = config.progressFailed ? ICON_LC_CIRCLE_ALERT : ICON_LC_CIRCLE_CHECK,
-                .colorKey = config.progressFailed ? "warning_yellow" : "success_green",
+            cell.label.update({
+                .str = name,
+                .font = Text::Font::Display,
+                .align = Text::Align::Center,
+                .colorKey = "text_primary",
+                .shrinkToFit = true,
+                .scale = CategoryIconScale,
             });
-            loadingCard.update({
-                .rows = {{
-                    .label = config.progressResult,
-                    .control = &loadingResult,
-                }},
+            cell.lead.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+            cell.tail.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+            cell.content.update({
+                .axis = Sakura::Stack::Axis::Horizontal,
+                .spacing = Sakura::Spacing::Small,
+                .items = {
+                    {.child = &cell.lead, .grow = 1.0f},
+                    {.child = &cell.icon},
+                    {.child = &cell.label, .shrink = 1.0f},
+                    {.child = &cell.tail, .grow = 1.0f},
+                },
+            });
+            cell.card.update({
+                .content = &cell.content,
+                .padding = CategoryPadding,
+                .rounding = Sakura::Rounding::Card,
+                .border = true,
+                .chrome = true,
+                .selected = selected,
+                .colorKey = "card_surface",
+                .hoveredColorKey = "card_surface_hovered",
+                .selectedColorKey = "card_surface_hovered",
+                .onClick = [this, name]() {
+                    jumpToCategory(name);
+                },
+            });
+            cells.push_back(&cell.card);
+        }
+        categoryGrid.update({
+            .columns = std::max<U64>(1, count),
+            .minCellWidth = CategoryCellWidth,
+            .cellPadding = {Sakura::Spacing::XSmall, Sakura::Spacing::XSmall},
+            .outerPadding = false,
+            .items = std::move(cells),
+        });
+    }
+
+    void updateBackToTop() {
+        using Text = Sakura::Text;
+
+        backToTopIcon.update({
+            .str = ICON_LC_ARROW_UP,
+            .colorKey = "text_secondary",
+            .scale = CategoryIconScale,
+        });
+        backToTopLabel.update({
+            .str = "Back to top",
+            .font = Text::Font::Display,
+            .colorKey = "text_primary",
+            .scale = CategoryIconScale,
+        });
+        backToTopContent.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = Sakura::Spacing::Small,
+            .items = {
+                {.child = &backToTopIcon},
+                {.child = &backToTopLabel},
+            },
+        });
+        backToTop.update({
+            .content = &backToTopContent,
+            .size = {0.0f, 0.0f},
+            .padding = CategoryPadding,
+            .rounding = Sakura::Rounding::Card,
+            .border = true,
+            .chrome = true,
+            .shadow = true,
+            .colorKey = "card_surface",
+            .hoveredColorKey = "card_surface_hovered",
+            .onClick = [this]() {
+                scrollTarget = &pageFrame;
+                ++scrollRequest;
+            },
+        });
+        std::vector<Sakura::Overlay::Item> items = {{.child = &pageArea}};
+        if (scrolledDown) {
+            items.push_back({
+                .child = &backToTop,
+                .anchor = Sakura::Anchor::BottomRight,
+                .offset = {-FramePadding, -FramePadding},
             });
         }
+        pageOverlay.update({.items = std::move(items)});
+    }
+
+    void jumpToCategory(const std::string& name) {
+        if (config.category.empty() && config.query.empty() && scrollToCategory(name)) {
+            return;
+        }
+        pendingScroll = name;
+        if (!config.category.empty() && config.onSelectCategory) {
+            config.onSelectCategory("");
+        }
+        if (!config.query.empty() && config.onQueryChange) {
+            config.onQueryChange("");
+        }
+    }
+
+    bool scrollToCategory(const std::string& name) {
+        Sakura::Component* target = nullptr;
+        for (U64 index = 0; !target && index < config.categories.size() && index < sections.size(); ++index) {
+            if (config.categories[index].title == name) {
+                target = &sections[index]->stack;
+            }
+        }
+        if (target) {
+            scrollTarget = target;
+            ++scrollRequest;
+        }
+        return target != nullptr;
+    }
+
+    void updateStatusPill() {
+        using Text = Sakura::Text;
+
+        const bool loading = !config.progress.empty();
+        if (!loading && config.progressResult.empty()) {
+            return;
+        }
+        const char* doneKey = config.progressFailed ? "status_warning" : "status_success";
+        const char* doneBorderKey = config.progressFailed ? "status_warning_border" : "status_success_border";
+        loadingSpinner.update({.diameter = StatusIconSize, .colorKey = "text_secondary"});
+        loadingResult.update({
+            .str = config.progressFailed ? ICON_LC_CIRCLE_ALERT : ICON_LC_CHECK,
+            .colorKey = "action_btn_text",
+            .scale = StatusIconSize / Sakura::Typography::FontSize,
+        });
+        statusLabel.update({
+            .str = loading ? config.progress : config.progressResult,
+            .font = Text::Font::Display,
+            .colorKey = loading ? "text_primary" : "action_btn_text",
+            .scale = Sakura::Typography::Scale::Lead,
+        });
+        statusLead.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        statusTail.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        statusContent.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = Sakura::Spacing::Small,
+            .items = {
+                {.child = &statusLead, .grow = 1.0f},
+                {.child = loading ? static_cast<Sakura::Component*>(&loadingSpinner) : &loadingResult},
+                {.child = &statusLabel},
+                {.child = &statusTail, .grow = 1.0f},
+            },
+        });
+        statusPill.update({
+            .content = &statusContent,
+            .size = {Sakura::Fill, StatusHeight + StatusTuck},
+            .padding = StatusPadding,
+            .rounding = StatusRounding,
+            .corners = Sakura::Box::TopLeft | Sakura::Box::TopRight,
+            .border = true,
+            .colorKey = loading ? "card_surface" : doneKey,
+            .hoveredColorKey = loading ? "card_surface" : doneKey,
+            .borderColorKey = loading ? "tile_border" : doneBorderKey,
+            .colorTransition = StatusTransition,
+        });
+        statusLeft.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        statusRight.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        statusBar.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = 0.0f,
+            .items = {
+                {.child = &statusLeft, .grow = 2.0f},
+                {.child = &statusPill, .grow = 1.0f},
+                {.child = &statusRight, .grow = 2.0f},
+            },
+        });
+        statusShade.update({
+            .size = {Sakura::Fill, StatusTuck},
+            .border = false,
+            .shadow = true,
+            .colorKey = "transparent",
+        });
+        statusShadeLeft.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        statusShadeRight.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        statusShadeStart.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        statusShadeEnd.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        statusShadeInner.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = 0.0f,
+            .items = {
+                {.child = &statusShadeStart, .size = StatusShadeInset},
+                {.child = &statusShade, .grow = 1.0f},
+                {.child = &statusShadeEnd, .size = StatusShadeInset},
+            },
+        });
+        statusShadeRow.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = 0.0f,
+            .items = {
+                {.child = &statusShadeLeft, .grow = 2.0f},
+                {.child = &statusShadeInner, .grow = 1.0f},
+                {.child = &statusShadeRight, .grow = 2.0f},
+            },
+        });
+        statusRow.update({
+            .spacing = -StatusTuck,
+            .items = {
+                {.child = &statusBar},
+                {.child = &statusShadeRow},
+            },
+        });
+    }
+
+    void updateExplore() {
+        updateStatusPill();
         loadingReveal.update({
-            .child = &loadingCard,
+            .child = &statusRow,
             .shown = !config.progress.empty(),
-            .gap = ExploreSpacing,
+            .upward = true,
             .linger = ProgressLinger,
+        });
+        statusTop.update({.size = {0.0f, 0.0f}, .border = false, .colorKey = "transparent"});
+        statusSlot.update({
+            .spacing = 0.0f,
+            .items = {
+                {.child = &statusTop, .grow = 1.0f},
+                {.child = &loadingReveal},
+            },
         });
         auto items = updateFlowgraphs();
         if (items.empty() && config.progress.empty()) {
@@ -675,19 +917,24 @@ struct WelcomeView {
         }
         updateHeader();
         updateFilterCard();
+        updateCategories();
         filterGroup.update({
-            .spacing = 0.0f,
+            .spacing = -StatusTuck,
             .centerCross = false,
             .items = {
+                {.child = &statusSlot, .size = StatusHeight + StatusTuck},
                 {.child = &filterCard},
-                {.child = &loadingReveal},
             },
         });
-        std::vector<Sakura::Stack::Item> stackItems = {{.child = &exploreHeader}, {.child = &filterGroup}};
+        std::vector<Sakura::Stack::Item> stackItems = {
+            {.child = &exploreHeader},
+            {.child = &filterGroup},
+            {.child = &categoryGrid},
+        };
         for (auto* item : items) {
             stackItems.push_back({.child = item});
         }
-        updateFooterArt();
+        updatePageFooter();
         stackItems.push_back({.child = &footerArt});
         explore.update({
             .spacing = ExploreSpacing,
@@ -719,8 +966,8 @@ struct WelcomeView {
                 cards.push_back(section.cards[card].get());
             }
             section.icon.update({
-                .str = ICON_LC_WORKFLOW,
-                .colorKey = "cyber_blue",
+                .str = StyleOf(category.title).icon,
+                .colorKey = StyleOf(category.title).tintKey,
                 .scale = SectionIconScale,
             });
             section.heading.update({
@@ -865,6 +1112,14 @@ struct WelcomeView {
     Sakura::Stack featuredContent;
     Sakura::Div featuredCard;
     std::vector<std::unique_ptr<Section>> sections;
+    std::optional<std::string> pendingScroll;
+    Sakura::Component* scrollTarget = nullptr;
+    U64 scrollRequest = 0;
+    bool scrolledDown = false;
+    Sakura::Text backToTopIcon;
+    Sakura::Text backToTopLabel;
+    Sakura::Stack backToTopContent;
+    Sakura::Div backToTop;
     Sakura::Text searchIcon;
     Sakura::TextInput search;
     Sakura::Div typeDivider;
@@ -875,25 +1130,46 @@ struct WelcomeView {
     Sakura::Spacer tabsGap;
     Sakura::Stack searchRow;
     Sakura::Div searchFrame;
-    Sakura::Divider filterDivider;
-    Sakura::PillTabs categoryTabs;
-    Sakura::Div categoryFrame;
-    Sakura::Stack filterContent;
     Sakura::Div filterCard;
+    std::vector<std::unique_ptr<CategoryCell>> categoryCells;
+    Sakura::Grid categoryGrid;
     Sakura::SettingCard noResults;
-    Sakura::SettingCard loadingCard;
+    Sakura::Div statusLead;
+    Sakura::Text statusLabel;
+    Sakura::Div statusTail;
+    Sakura::Stack statusContent;
+    Sakura::Div statusPill;
+    Sakura::Div statusLeft;
+    Sakura::Div statusRight;
+    Sakura::Stack statusBar;
+    Sakura::Div statusShade;
+    Sakura::Div statusShadeLeft;
+    Sakura::Div statusShadeRight;
+    Sakura::Div statusShadeStart;
+    Sakura::Div statusShadeEnd;
+    Sakura::Stack statusShadeInner;
+    Sakura::Stack statusShadeRow;
+    Sakura::Stack statusRow;
     Sakura::Reveal loadingReveal;
+    Sakura::Div statusTop;
+    Sakura::Stack statusSlot;
     Sakura::Stack filterGroup;
     Sakura::Spinner loadingSpinner;
     Sakura::Text loadingResult;
-    Sakura::Spacer footerArtTop;
-    std::array<Sakura::Text, FooterArt.size()> footerArtLines;
-    Sakura::Spacer footerArtBottom;
+    Sakura::Spacer footerTop;
+    Sakura::Divider footerRule;
+    Sakura::Spacer footerRowGap;
+    Sakura::Div footerGap;
+    Sakura::Stack footerRow;
+    Sakura::Text footerVersion;
+    Sakura::Text footerWordmark;
+    Sakura::Spacer footerBottom;
     Sakura::Stack footerArt;
     Sakura::Stack explore;
     Sakura::Panel page;
     Sakura::Div pageFrame;
     Sakura::ScrollArea pageArea;
+    Sakura::Overlay pageOverlay;
     SidebarTiles tiles;
 };
 

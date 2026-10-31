@@ -159,6 +159,8 @@ bool PillButton::mouseEvent(const MouseEvent& event) {
                 invalidate(Dirty::Layout);
             }
             return false;
+        case MouseEventType::Scroll:
+            return false;
         default:
             return inside;
     }

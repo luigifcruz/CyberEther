@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_DIV_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/types.hh>
 
 #include <memory>
@@ -16,6 +17,7 @@ struct Div : public Component {
         Extent2D<F32> size = {Fill, 0.0f};
         F32 padding = 0.0f;
         F32 rounding = 0.0f;
+        U8 corners = Box::AllCorners;
         bool border = true;
         F32 borderWidth = 1.0f;
         bool chrome = false;
@@ -26,6 +28,7 @@ struct Div : public Component {
         std::string hoveredColorKey = "header_hovered";
         std::string selectedColorKey = "header_hovered";
         std::string borderColorKey = "border";
+        F64 colorTransition = 0.0;
         Callback<void()> onClick;
         Callback<void()> onDoubleClick;
 

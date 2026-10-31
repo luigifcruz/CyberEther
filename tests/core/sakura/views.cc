@@ -1749,10 +1749,8 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
                                                "Python QPSK Generator", "Simple FM Receiver", "Multi-FM Receiver",
                                                "Overlap-Add-Fold"});
     CHECK(config.featured.front().diagram.find("Tone") != std::string::npos);
-    CHECK(config.featured.front().accentColorKey == "gallery_green");
     CHECK(config.featured.front().summary.find("spectrum analyzer") != std::string::npos);
     CHECK(config.featured[1].category == "Receivers");
-    CHECK(config.featured[1].accentColorKey == "gallery_coral");
     CHECK(config.categoryNames == std::vector<std::string>{"Basics", "Receivers", "DSP"});
     REQUIRE(config.categories.size() == 3);
     CHECK(config.categories.front().title == "Basics");
@@ -1761,7 +1759,6 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
     for (const auto& category : config.categories) {
         for (const auto& example : category.examples) {
             ++examples;
-            CHECK(example.accentColorKey.rfind("gallery_", 0) == 0);
             CHECK_FALSE(example.diagram.empty());
         }
     }
@@ -1782,7 +1779,7 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
     CHECK_FALSE(config.featured.front().key.empty());
 }
 
-TEST_CASE("Welcome presenter files examples without gallery metadata under plugins with the default accent",
+TEST_CASE("Welcome presenter files examples without gallery metadata under plugins",
           "[core][sakura][views]") {
     Registry::FlowgraphRegistration record;
     record.key = "welcome-plain-example";
@@ -1802,7 +1799,6 @@ TEST_CASE("Welcome presenter files examples without gallery metadata under plugi
     CHECK(plugins.examples[0].title == "Plain Example");
     CHECK(plugins.examples[0].summary == "Plain summary.");
     CHECK(plugins.examples[0].diagram.empty());
-    CHECK(plugins.examples[0].accentColorKey == Sakura::FlowgraphCard::Config{}.accentColorKey);
 }
 
 TEST_CASE("Welcome screen lists favorites above recent and stars toggle without opening",
@@ -1881,7 +1877,7 @@ TEST_CASE("Welcome screen switches between all and flowgraphs with the section t
 
     mailbox.state.interface.welcomeSection = mailbox.last<MailSetWelcomeSection>()->section;
     rig.show();
-    CHECK(ShownText(rig.root(), "Featured") == nullptr);
+    CHECK(ShownText(rig.root(), "Featured") != nullptr);
     CHECK_FALSE(Find<Sakura::FlowgraphCard>(rig.root()).empty());
 
     auto* allLabel = ShownText(*SectionTabs(rig.root()).front(), "All");
@@ -1991,7 +1987,7 @@ TEST_CASE("Welcome screen pins settings and a theme toggle to the bottom of the 
     CHECK(Peek::Frame(*settings).y == before);
 }
 
-TEST_CASE("Welcome leaves room below the last flowgraph cards for the footer art", "[core][sakura][views]") {
+TEST_CASE("Welcome leaves room below the last flowgraph cards for the footer", "[core][sakura][views]") {
     WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
     rig.show();
     const auto cards = Find<Sakura::FlowgraphCard>(rig.root());
@@ -2004,7 +2000,7 @@ TEST_CASE("Welcome leaves room below the last flowgraph cards for the footer art
     for (auto* card : cards) {
         bottom = std::max(bottom, Peek::Frame(*card).bottom());
     }
-    CHECK(bottom <= rig.bounds.height - WelcomeView::FooterArtTop - WelcomeView::FooterArtBottom);
+    CHECK(bottom <= rig.bounds.height - WelcomeView::FooterTop - WelcomeView::FooterBottom);
 }
 
 TEST_CASE("Welcome explore page keeps equal side margins inside its tile", "[core][sakura][views]") {
@@ -2053,8 +2049,8 @@ TEST_CASE("Welcome shows a gallery progress card until the first fetch of the se
     const auto shown = [&](const std::string& label) {
         return ShownText(rig.root(), label) != nullptr;
     };
-    const std::string loading = "Loading flowgraphs from the gallery...";
-    const std::string updating = "Updating gallery...";
+    const std::string loading = "Loading flowgraphs...";
+    const std::string updating = "Updating flowgraphs...";
 
     CHECK(rig.build().progress.empty());
     rig.show();
@@ -2091,7 +2087,7 @@ TEST_CASE("Welcome shows a gallery progress card until the first fetch of the se
     CHECK(Find<Sakura::Spinner>(rig.root()).empty());
     const auto icons = Find<Sakura::Text>(rig.root());
     CHECK(std::any_of(icons.begin(), icons.end(), [](auto* text) {
-        return text->config().str == ICON_LC_CIRCLE_CHECK && text->config().colorKey == "success_green";
+        return text->config().str == ICON_LC_CHECK && text->config().colorKey == "action_btn_text";
     }));
     rig.wait(WelcomeView::ProgressLinger * 0.5);
     CHECK(shown("Gallery updated successfully!"));
@@ -2101,17 +2097,17 @@ TEST_CASE("Welcome shows a gallery progress card until the first fetch of the se
     gallery.cached = false;
     CHECK(rig.build().progressResult == "Gallery loaded.");
     gallery.failed = true;
-    CHECK(rig.build().progressResult == "Could not reach the gallery. Showing bundled flowgraphs.");
+    CHECK(rig.build().progressResult == "Using bundled flowgraphs");
 }
 
 TEST_CASE("Welcome gallery progress ends with a warning when the first fetch fails", "[core][sakura][views]") {
     WelcomeRig rig;
     auto& gallery = rig.mailbox.state.registry.gallery;
-    const std::string failure = "Could not reach the gallery. Showing bundled flowgraphs.";
+    const std::string failure = "Using bundled flowgraphs";
     gallery.loading = true;
     rig.show();
     rig.wait(0.5);
-    CHECK(ShownText(rig.root(), "Loading flowgraphs from the gallery...") != nullptr);
+    CHECK(ShownText(rig.root(), "Loading flowgraphs...") != nullptr);
 
     gallery.loading = false;
     gallery.attempted = true;
@@ -2120,7 +2116,7 @@ TEST_CASE("Welcome gallery progress ends with a warning when the first fetch fai
     CHECK(ShownText(rig.root(), failure) != nullptr);
     const auto icons = Find<Sakura::Text>(rig.root());
     CHECK(std::any_of(icons.begin(), icons.end(), [](auto* text) {
-        return text->config().str == ICON_LC_CIRCLE_ALERT && text->config().colorKey == "warning_yellow";
+        return text->config().str == ICON_LC_CIRCLE_ALERT && text->config().colorKey == "action_btn_text";
     }));
     rig.wait(WelcomeView::ProgressLinger * 0.5);
     CHECK(ShownText(rig.root(), failure) != nullptr);
@@ -2128,7 +2124,7 @@ TEST_CASE("Welcome gallery progress ends with a warning when the first fetch fai
     CHECK(ShownText(rig.root(), failure) == nullptr);
 }
 
-TEST_CASE("Welcome category sections lead with a workflow icon and a category flowgraphs title",
+TEST_CASE("Welcome category sections lead with their tinted category icon and a category flowgraphs title",
           "[core][sakura][views]") {
     WelcomeRig rig;
     rig.show();
@@ -2138,13 +2134,14 @@ TEST_CASE("Welcome category sections lead with a workflow icon and a category fl
     const auto texts = Find<Sakura::Text>(rig.root());
     const auto icon = std::find_if(texts.begin(), texts.end(), [&](auto* text) {
         const auto frame = Peek::Frame(*text);
-        return text->config().str == ICON_LC_WORKFLOW && frame.right() <= Peek::Frame(*title).x &&
+        return text->config().str == ICON_LC_GRADUATION_CAP && frame.right() <= Peek::Frame(*title).x &&
                frame.y < Peek::Frame(*title).bottom() && frame.bottom() > Peek::Frame(*title).y;
     });
-    CHECK(icon != texts.end());
+    REQUIRE(icon != texts.end());
+    CHECK((*icon)->config().colorKey == "gallery_green");
 }
 
-TEST_CASE("Welcome shows the featured card only on the All section", "[core][sakura][views]") {
+TEST_CASE("Welcome keeps the featured card on both sections", "[core][sakura][views]") {
     WelcomeRig rig;
     auto& ui = rig.mailbox.state.interface;
     auto config = rig.build();
@@ -2152,13 +2149,9 @@ TEST_CASE("Welcome shows the featured card only on the All section", "[core][sak
 
     ui.welcomeSection = WelcomeSection::Flowgraphs;
     config = rig.build();
-    CHECK(config.featured.empty());
+    CHECK_FALSE(config.featured.empty());
     CHECK_FALSE(config.categories.empty());
     rig.show(config);
-    CHECK(ShownText(rig.root(), "Featured") == nullptr);
-
-    ui.welcomeSection = WelcomeSection::All;
-    rig.show(rig.build());
     CHECK(ShownText(rig.root(), "Featured") != nullptr);
 }
 
@@ -2203,19 +2196,11 @@ TEST_CASE("Welcome flowgraph filters narrow the catalog by search text and categ
     });
     REQUIRE(hint != hints.end());
     CHECK((*hint)->config().fontName == Sakura::Typography::DisplaySemiboldFont);
-    auto pillsList = Find<Sakura::PillTabs>(rig.root());
-    std::erase_if(pillsList, [&](auto* item) {
-        return SectionTabs(rig.root()).front() == item;
-    });
-    REQUIRE(pillsList.size() == 1);
-    auto* pills = pillsList.front();
-    CHECK(Peek::Frame(*pills).y > Peek::Frame(*inputs[0]).y - 1.0f);
-    const auto labels = Find<Sakura::Text>(*pills);
-    REQUIRE(labels.size() == allCategories.size() + 1);
-    for (auto* label : labels) {
-        CHECK(label->config().font == Sakura::Text::Font::Display);
-    }
-    const auto first = Center(*labels[0]);
+    auto* cell = ShownText(rig.root(), allCategories[0]);
+    REQUIRE(cell != nullptr);
+    CHECK(Peek::Frame(*cell).y > Peek::Frame(*inputs[0]).bottom());
+    CHECK(cell->config().font == Sakura::Text::Font::Display);
+    const auto first = Center(*cell);
     mailbox.mails.clear();
     rig.host.send(Mouse(MouseEventType::Click, first.x, first.y));
     rig.host.send(Mouse(MouseEventType::Release, first.x, first.y));
@@ -2308,7 +2293,7 @@ TEST_CASE("Pagination windows long page lists around the current page", "[core][
     CHECK(Pagination::Slots(9, 10) == Slots{0, std::nullopt, 6, 7, 8, 9});
 }
 
-TEST_CASE("Welcome filter card insets the search icon and keeps the category pills evenly inset", "[core][sakura][views]") {
+TEST_CASE("Welcome filter card insets the search icon and the category grid lines up with it", "[core][sakura][views]") {
     WelcomeRig rig;
     rig.show();
 
@@ -2316,21 +2301,20 @@ TEST_CASE("Welcome filter card insets the search icon and keeps the category pil
     REQUIRE(icon != nullptr);
     Sakura::Div* card = nullptr;
     for (auto* div : Find<Sakura::Div>(rig.root())) {
-        if (!Find<Sakura::TextInput>(*div).empty() && Find<Sakura::PillTabs>(*div).size() == 2 &&
+        if (!Find<Sakura::TextInput>(*div).empty() && Find<Sakura::PillTabs>(*div).size() == 1 &&
             (!card || Peek::Frame(*div).height < Peek::Frame(*card).height)) {
             card = div;
         }
     }
     REQUIRE(card != nullptr);
     CHECK(Peek::Frame(*icon).x - Peek::Frame(*card).x == WelcomeView::SearchInset);
-    auto pills = Find<Sakura::PillTabs>(rig.root());
-    std::erase_if(pills, [&](auto* item) {
-        return SectionTabs(rig.root()).front() == item;
+    const auto grids = Find<Sakura::Grid>(rig.root());
+    const auto grid = std::find_if(grids.begin(), grids.end(), [&](auto* item) {
+        return Peek::Frame(*item).y > Peek::Frame(*card).bottom() && ShownText(*item, "Basics") != nullptr;
     });
-    REQUIRE(pills.size() == 1);
-    const auto pill = Peek::Frame(*pills.front());
-    CHECK(pill.x - Peek::Frame(*card).x == WelcomeView::CategoryPadding);
-    CHECK(Peek::Frame(*card).bottom() - pill.bottom() == WelcomeView::CategoryPadding);
+    REQUIRE(grid != grids.end());
+    CHECK(Peek::Frame(**grid).x == Peek::Frame(*card).x);
+    CHECK(Peek::Frame(**grid).right() == Peek::Frame(*card).right());
 }
 
 TEST_CASE("Welcome page opens with a centered wordmark and a wave above the filter card", "[core][sakura][views]") {
@@ -2351,7 +2335,7 @@ TEST_CASE("Welcome page opens with a centered wordmark and a wave above the filt
     }));
     const auto texts = Find<Sakura::Text>(rig.root());
     CHECK(std::all_of(texts.begin(), texts.end(), [&](auto* text) {
-        return text == wordmark || text->config().emboss == 0.0f;
+        return text->config().str == "CyberEther" || text->config().emboss == 0.0f;
     }));
     const auto composers = Find<Sakura::ChatComposer>(rig.root());
     REQUIRE(composers.size() == 1);
@@ -5185,4 +5169,100 @@ TEST_CASE("Titlebar shows the new tab sidebar toggle only while tabs are hidden 
     mailbox.state.interface.startTab = true;
     REQUIRE_FALSE(mailbox.state.tabsHidden());
     CHECK_FALSE(TitlebarPresenter(context).build().sidebarOpen.has_value());
+}
+
+TEST_CASE("Welcome category cells glide to their section and back to top returns to the top",
+          "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    rig.show();
+    const auto topmost = [&](const std::string& str) -> Sakura::Text* {
+        Sakura::Text* found = nullptr;
+        for (auto* text : Find<Sakura::Text>(rig.root())) {
+            if (text->visible() && text->config().str == str &&
+                (!found || Peek::Frame(*text).y < Peek::Frame(*found).y)) {
+                found = text;
+            }
+        }
+        return found;
+    };
+    auto* heading = ShownText(rig.root(), "DSP Flowgraphs");
+    REQUIRE(heading != nullptr);
+    const F32 resting = Peek::Frame(*heading).y;
+    REQUIRE(resting > rig.bounds.height);
+    CHECK(ShownText(rig.root(), "Back to top") == nullptr);
+
+    auto* cell = topmost("DSP");
+    REQUIRE(cell != nullptr);
+    const auto point = Center(*cell);
+    REQUIRE(point.y < rig.bounds.height);
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    rig.show();
+    rig.wait(0.6);
+    rig.show();
+    CHECK(Peek::Frame(*heading).y < resting);
+    CHECK(Peek::Frame(*heading).y < rig.bounds.height * 0.5f);
+
+    auto* back = ShownText(rig.root(), "Back to top");
+    REQUIRE(back != nullptr);
+    const auto backPoint = Center(*back);
+    rig.host.send(Mouse(MouseEventType::Click, backPoint.x, backPoint.y));
+    rig.host.send(Mouse(MouseEventType::Release, backPoint.x, backPoint.y));
+    rig.show();
+    rig.wait(0.6);
+    rig.show();
+    CHECK(std::abs(Peek::Frame(*heading).y - resting) <= 1.0f);
+}
+
+TEST_CASE("Welcome category cells clear an active search before gliding to their section", "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    rig.mailbox.state.interface.welcomeQuery = "FM";
+    rig.show();
+    REQUIRE(ShownText(rig.root(), "Basics Flowgraphs") == nullptr);
+    Sakura::Text* cell = nullptr;
+    for (auto* text : Find<Sakura::Text>(rig.root())) {
+        if (text->visible() && text->config().str == "Basics" && (!cell || Peek::Frame(*text).y < Peek::Frame(*cell).y)) {
+            cell = text;
+        }
+    }
+    REQUIRE(cell != nullptr);
+    CHECK(cell->config().shrinkToFit);
+    const auto point = Center(*cell);
+    REQUIRE(point.y < rig.bounds.height);
+    rig.mailbox.mails.clear();
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    REQUIRE(rig.mailbox.last<MailSetWelcomeQuery>() != nullptr);
+    CHECK(rig.mailbox.last<MailSetWelcomeQuery>()->query.empty());
+
+    rig.mailbox.state.interface.welcomeQuery.clear();
+    rig.show();
+    rig.wait(0.6);
+    rig.show();
+    auto* heading = ShownText(rig.root(), "Basics Flowgraphs");
+    REQUIRE(heading != nullptr);
+    CHECK(Peek::Frame(*heading).y < rig.bounds.height * 0.5f);
+}
+
+TEST_CASE("Welcome category cells clear an active search even when their section is still shown",
+          "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    rig.mailbox.state.interface.welcomeQuery = "FM";
+    rig.show();
+    REQUIRE(ShownText(rig.root(), "Receivers Flowgraphs") != nullptr);
+    Sakura::Text* cell = nullptr;
+    for (auto* text : Find<Sakura::Text>(rig.root())) {
+        if (text->visible() && text->config().str == "Receivers" &&
+            (!cell || Peek::Frame(*text).y < Peek::Frame(*cell).y)) {
+            cell = text;
+        }
+    }
+    REQUIRE(cell != nullptr);
+    const auto point = Center(*cell);
+    REQUIRE(point.y < rig.bounds.height);
+    rig.mailbox.mails.clear();
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    REQUIRE(rig.mailbox.last<MailSetWelcomeQuery>() != nullptr);
+    CHECK(rig.mailbox.last<MailSetWelcomeQuery>()->query.empty());
 }
