@@ -32,6 +32,7 @@ struct JETSTREAM_API Device {
         F64 maximum = 0.0;
 
         static bool Contains(const std::vector<Range>& ranges, F64 value);
+        static std::string Describe(const std::vector<Range>& ranges);
     };
 
     struct JETSTREAM_API Info {

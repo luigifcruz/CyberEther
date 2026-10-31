@@ -56,6 +56,14 @@ TEST_CASE("BirriaSDR exposes all rates and separate board-specific tuning bands"
         REQUIRE(caps.sweepSampleRate == 40e6);
         REQUIRE(caps.gainUnit == "steps");
     }
+    Device::Capabilities caps;
+    REQUIRE(ReadCapabilities(Bands{}, 40e6, caps) == Result::SUCCESS);
+    REQUIRE(Device::Range::Describe(caps.frequencyRanges) ==
+            "2156 to 2610 MHz or 4500 to 6200 MHz");
+    REQUIRE(Device::Range::Describe({{100000001.0, 100000002.0}}) ==
+            "100.000001 to 100.000002 MHz");
+    REQUIRE(Device::Range::Describe({{9e3, 31e6}, {28.8e6, 28.8e6}}) ==
+            "0.009 to 31 MHz or 28.8 to 28.8 MHz");
 }
 
 TEST_CASE("BirriaSDR sweep planning accepts the high band at every rate and rejects the gap",
