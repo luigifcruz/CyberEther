@@ -19,6 +19,7 @@ class GeoMapTiles {
         Canal,
         River,
         Building,
+        Pier,
         ServiceRoad,
         MinorRoad,
         SecondaryRoad,
@@ -31,7 +32,7 @@ class GeoMapTiles {
         Taxiway,
         Runway,
     };
-    static constexpr U64 LineCount = 15;
+    static constexpr U64 LineCount = 16;
 
     enum class Fill : U8 {
         Land,
@@ -39,12 +40,13 @@ class GeoMapTiles {
         Airport,
         Grass,
         Water,
+        Pier,
         Apron,
         Building,
         BuildingMid,
         BuildingTall,
     };
-    static constexpr U64 FillCount = 9;
+    static constexpr U64 FillCount = 10;
     static constexpr U64 FirstBuildingFill = static_cast<U64>(Fill::Building);
 
     enum class Place : U8 {
@@ -110,6 +112,21 @@ class GeoMapTiles {
         std::string name;
     };
 
+    enum class Road : U8 {
+        Motorway,
+        Primary,
+        Secondary,
+        Minor,
+        Service,
+    };
+    static constexpr U64 RoadCount = 5;
+
+    struct RoadLabel {
+        Road kind = Road::Minor;
+        std::string name;
+        std::vector<F32> points;
+    };
+
     struct Geometry {
         std::array<std::vector<F32>, LineCount> lines;
         std::array<std::vector<F32>, LineCount> lineFades;
@@ -117,6 +134,7 @@ class GeoMapTiles {
         std::array<std::vector<F32>, FillCount> fillFades;
         std::array<U64, FillCount> heldFillIndices{};
         std::vector<Label> labels;
+        std::vector<RoadLabel> roadLabels;
         F64 originLon = 0.0;
         F64 originLat = 0.0;
         U64 revision = 0;

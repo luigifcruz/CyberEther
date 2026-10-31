@@ -654,9 +654,13 @@ struct BathymetryOverlay {
 
 static constexpr U64 kTileBuildingVertices = 2u << 20;
 static constexpr std::array<U64, GeoMapTiles::LineCount> kTileLineCapacity = {
-    16384, 16384, 131072, kTileBuildingVertices, 262144, 524288, 262144, 262144, 163840, 98304, 65536, 32768, 98304, 65536, 16384,
+    16384, 16384, 131072, kTileBuildingVertices, 16384, 262144, 524288, 262144, 262144, 163840, 98304, 65536, 32768, 98304, 65536, 16384,
 };
 static constexpr std::array<F32, 3> kRoadCasingColor = {0.055f, 0.058f, 0.054f};
+static constexpr std::array<F32, 3> kRoadHaloColor = {0.060f, 0.062f, 0.058f};
+static constexpr F32 kRoadHaloAlpha = 0.85f;
+static constexpr F32 kRoadHaloSharpness = 0.12f;
+static constexpr F32 kRoadHaloScale = 1.06f;
 static constexpr U64 kTileFillVertices = 1u << 20;
 static constexpr F32 kTileFadeSeconds = 0.0f;
 static constexpr U64 kTileFillIndices = 3u << 20;
@@ -777,6 +781,13 @@ struct GeoMapBaseLayer::Impl {
     std::vector<std::string> pathLabelIds;
     U64 previousPathGlyphCount = 0;
 
+    static constexpr U64 RoadLabelMaxGlyphs = 1536;
+    std::shared_ptr<Render::Components::Text> roadText;
+    std::shared_ptr<Render::Components::Text> roadHalo;
+    std::vector<std::string> roadLabelIds;
+    U64 previousRoadGlyphCount = 0;
+    std::vector<GeoMapTiles::RoadLabel> roadLabels;
+
     std::unique_ptr<GeoMapTiles> tiles;
     GeoMapTiles::Config tilesConfig;
     MapRenderingOptions rendering;
@@ -861,6 +872,7 @@ static constexpr std::array<F32, 3> kBuildingColor = {0.165f, 0.170f, 0.155f};
 static constexpr std::array<F32, 3> kBuildingMidColor = {0.182f, 0.187f, 0.171f};
 static constexpr std::array<F32, 3> kBuildingTallColor = {0.202f, 0.207f, 0.190f};
 static constexpr std::array<F32, 3> kAirportColor = {0.150f, 0.152f, 0.155f};
+static constexpr std::array<F32, 3> kPierColor = {0.140f, 0.140f, 0.132f};
 static constexpr std::array<F32, 3> kApronColor = {0.176f, 0.178f, 0.183f};
 static constexpr std::array<F32, 3> kGrassColor = {0.100f, 0.121f, 0.094f};
 
@@ -1368,6 +1380,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
             thin(river(6), 1.5f),
             thin(river(4), 2.0f),
             LineStyle{.width = 1.0f, .color = {0.235f, 0.238f, 0.220f}},
+            LineStyle{.width = 1.5f, .color = kPierColor},
             LineStyle{.width = 1.0f, .color = {0.165f, 0.165f, 0.162f}},
             LineStyle{.width = 1.2f, .color = {0.19f, 0.19f, 0.19f}},
             LineStyle{.width = 1.6f, .color = {0.23f, 0.23f, 0.22f}},
@@ -1987,14 +2000,47 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         return Result::SUCCESS;
     };
 
-    JST_CHECK(buildLabelLayer(Impl::LabelCountries, "default_mono_bold"));
-    JST_CHECK(buildLabelLayer(Impl::LabelCapitals, "default_mono_bold"));
-    JST_CHECK(buildLabelLayer(Impl::LabelCities, "default_mono"));
-    JST_CHECK(buildLabelLayer(Impl::LabelStates, "default_mono_bold"));
+    JST_CHECK(buildLabelLayer(Impl::LabelCountries, "default_body_bold"));
+    JST_CHECK(buildLabelLayer(Impl::LabelCapitals, "default_body_bold"));
+    JST_CHECK(buildLabelLayer(Impl::LabelCities, "default_body"));
+    JST_CHECK(buildLabelLayer(Impl::LabelStates, "default_body_bold"));
     JST_CHECK(buildLabelLayer(Impl::LabelRegions, "default_body_italic"));
     JST_CHECK(buildLabelLayer(Impl::LabelMarine, "default_body_italic"));
-    JST_CHECK(buildLabelLayer(Impl::LabelAirports, "default_mono"));
+    JST_CHECK(buildLabelLayer(Impl::LabelAirports, "default_body"));
     JST_CHECK(buildLabelLayer(Impl::LabelPhysical, "default_body_italic"));
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+        if (window->hasFont("default_body_bold")) {
+            font = window->font("default_body_bold");
+        } else if (window->hasFont("default_body")) {
+            font = window->font("default_body");
+        } else if (window->hasFont("default_mono")) {
+            font = window->font("default_mono");
+        }
+        if (font) {
+            Render::Components::Text::Config cfg;
+            cfg.maxCharacters = 1;
+            cfg.color = {0.82f, 0.82f, 0.78f, 0.85f};
+            cfg.font = font;
+            cfg.sharpness = 0.5f;
+            pimpl->roadLabelIds.resize(Impl::RoadLabelMaxGlyphs);
+            for (U64 i = 0; i < Impl::RoadLabelMaxGlyphs; ++i) {
+                const auto id = jst::fmt::format("r{:04d}", i);
+                cfg.elements[id] = {
+                    .scale = 0.0f,
+                    .alignment = {1, 1},
+                };
+                pimpl->roadLabelIds[i] = id;
+            }
+            JST_CHECK(window->build(pimpl->roadText, cfg));
+            JST_CHECK(window->bind(pimpl->roadText));
+            cfg.color = {kRoadHaloColor[0], kRoadHaloColor[1], kRoadHaloColor[2], 0.9f};
+            cfg.sharpness = kRoadHaloSharpness;
+            JST_CHECK(window->build(pimpl->roadHalo, cfg));
+            JST_CHECK(window->bind(pimpl->roadHalo));
+        }
+    }
 
     // Build a compact one-character element pool for curved range labels.
     {
@@ -2229,7 +2275,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         pimpl->attributionText = pimpl->tiles->attribution();
 
         Render::Components::Text::Config cfg;
-        cfg.font = window->font("default_mono");
+        cfg.font = window->font(window->hasFont("default_body") ? "default_body" : "default_mono");
         cfg.maxCharacters = pimpl->attributionText.size();
         cfg.color = {0.80f, 0.82f, 0.86f, 0.0f};
         cfg.sharpness = 0.5f;
@@ -2266,6 +2312,12 @@ Result GeoMapBaseLayer::destroy(Window* window) {
     }
     if (pimpl->pathText) {
         JST_CHECK(window->unbind(pimpl->pathText));
+    }
+    if (pimpl->roadHalo) {
+        JST_CHECK(window->unbind(pimpl->roadHalo));
+    }
+    if (pimpl->roadText) {
+        JST_CHECK(window->unbind(pimpl->roadText));
     }
     if (pimpl->attribution) {
         JST_CHECK(window->unbind(pimpl->attribution));
@@ -2384,6 +2436,13 @@ Result GeoMapBaseLayer::surface(Render::Surface::Config& config) {
     }
     if (pimpl->worldCityMarkers.program) {
         config.programs.push_back(pimpl->worldCityMarkers.program);
+    }
+
+    if (pimpl->roadHalo) {
+        JST_CHECK(pimpl->roadHalo->surface(config));
+    }
+    if (pimpl->roadText) {
+        JST_CHECK(pimpl->roadText->surface(config));
     }
 
     // Lower-priority labels draw first; collision winners draw last.
@@ -2557,6 +2616,9 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
 
             if (geometry.revision != pimpl->tileRevision) {
                 pimpl->tileRevision = geometry.revision;
+                pimpl->roadLabels = geometry.roadLabels;
+                std::stable_sort(pimpl->roadLabels.begin(), pimpl->roadLabels.end(),
+                                 [](const auto& a, const auto& b) { return a.kind < b.kind; });
 
                 const std::array<std::array<F32, 3>, GeoMapTiles::FillCount> colors = {
                     kLandColor,
@@ -2564,6 +2626,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                     kAirportColor,
                     kGrassColor,
                     std::array<F32, 3>{kWaterSphereR, kWaterSphereG, kWaterSphereB},
+                    kPierColor,
                     kApronColor,
                     kBuildingColor,
                     kBuildingMidColor,
@@ -2758,6 +2821,8 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                 switch (static_cast<TileLine>(i)) {
                     case TileLine::Building:
                         enabled = enabled && rendering.buildings && rendering.buildingOutlines;
+                        break;
+                    case TileLine::Pier:
                         break;
                     case TileLine::Stream:
                     case TileLine::Canal:
@@ -3259,6 +3324,177 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
             return Result::SUCCESS;
         };
 
+        U64 roadGlyphSlot = 0;
+        auto updateRoadLabels = [&]() -> Result {
+            if (!pimpl->roadText || !pimpl->tiles || !pimpl->tuning.roadLabels ||
+                !pimpl->tuning.detailTiles || !rendering.roads || !rendering.places) {
+                return Result::SUCCESS;
+            }
+            const F32 tileOpacity = pimpl->tiles->opacity();
+            if (tileOpacity <= 0.01f) return Result::SUCCESS;
+            JST_CHECK(pimpl->roadText->updatePixelSize(pixelSize));
+            JST_CHECK(pimpl->roadHalo->updatePixelSize(pixelSize));
+            const F32 roadZoom = pimpl->tiles->zoom();
+            const F32 lineHeight = static_cast<F32>(pimpl->roadText->getConfig().font->lineHeight());
+            constexpr F32 tracking = 0.5f;
+            constexpr F32 maxBend = 0.6f;
+            constexpr F32 repeatPixels = 240.0f;
+            constexpr F32 padPixels = 3.0f;
+            constexpr std::array<F32, GeoMapTiles::RoadCount> scales = {0.70f, 0.68f, 0.64f, 0.61f, 0.57f};
+            constexpr std::array<ColorRGBA<F32>, GeoMapTiles::RoadCount> colors = {{
+                {0.90f, 0.88f, 0.82f, 0.90f},
+                {0.86f, 0.85f, 0.80f, 0.88f},
+                {0.80f, 0.80f, 0.76f, 0.85f},
+                {0.74f, 0.74f, 0.71f, 0.82f},
+                {0.66f, 0.66f, 0.64f, 0.78f},
+            }};
+
+            struct Placed {
+                const std::string* name;
+                F32 x;
+                F32 y;
+            };
+            std::vector<Placed> placed;
+            std::vector<Extent2D<F32>> pixels;
+            std::vector<F32> cumulative;
+            std::vector<PathGlyph> glyphs;
+            struct RoadSample {
+                F32 x;
+                F32 y;
+                F32 angle;
+            };
+
+            for (const auto& road : pimpl->roadLabels) {
+                const U64 kind = static_cast<U64>(road.kind);
+                F32 fade = tileOpacity * GeoMapLabels::VisibilityFade(
+                    roadZoom, pimpl->tuning.roadLabelFullZoom[kind], pimpl->tuning.roadLabelFadeRange);
+                if (fade <= 0.01f) continue;
+                const auto& name = road.name;
+                if (roadGlyphSlot + name.size() > pimpl->roadLabelIds.size()) break;
+                const U64 count = road.points.size() / 2;
+                if (count < 2) continue;
+
+                pixels.clear();
+                cumulative.clear();
+                bool visible = true;
+                for (U64 i = 0; i < count; ++i) {
+                    F32 ndcX, ndcY;
+                    if (!projectLabel(road.points[i * 2], road.points[i * 2 + 1], ndcX, ndcY)) {
+                        visible = false;
+                        break;
+                    }
+                    pixels.push_back({ndcX / pixelSize.x, ndcY / pixelSize.y});
+                    cumulative.push_back(i == 0 ? 0.0f : cumulative.back() +
+                        std::hypot(pixels[i].x - pixels[i - 1].x, pixels[i].y - pixels[i - 1].y));
+                }
+                if (!visible) continue;
+                const auto [minX, maxX] = std::minmax_element(pixels.begin(), pixels.end(),
+                    [](const auto& a, const auto& b) { return a.x < b.x; });
+                const auto [minY, maxY] = std::minmax_element(pixels.begin(), pixels.end(),
+                    [](const auto& a, const auto& b) { return a.y < b.y; });
+                if (maxX->x < -1.0f / pixelSize.x || minX->x > 1.0f / pixelSize.x ||
+                    maxY->y < -1.0f / pixelSize.y || minY->y > 1.0f / pixelSize.y) {
+                    continue;
+                }
+
+                const F32 scale = scales[kind];
+                const auto advances = pimpl->roadText->advances(name, scale);
+                F32 width = tracking * static_cast<F32>(name.size() - 1);
+                for (const F32 advance : advances) width += advance;
+                const F32 length = cumulative.back();
+                if (width <= 0.0f || length < width * 1.1f) continue;
+
+                auto sample = [&](F32 distance) {
+                    const auto segment = std::upper_bound(cumulative.begin(), cumulative.end(), distance);
+                    const U64 end = std::clamp<U64>(static_cast<U64>(segment - cumulative.begin()),
+                                                    1, cumulative.size() - 1);
+                    const U64 start = end - 1;
+                    const F32 span = cumulative[end] - cumulative[start];
+                    const F32 t = span > 1.0e-5f ? (distance - cumulative[start]) / span : 0.0f;
+                    const auto& a = pixels[start];
+                    const auto& b = pixels[end];
+                    return RoadSample{std::lerp(a.x, b.x, t), std::lerp(a.y, b.y, t),
+                                      std::atan2(b.y - a.y, b.x - a.x)};
+                };
+
+                const RoadSample center = sample(length * 0.5f);
+                bool duplicate = false;
+                for (const auto& other : placed) {
+                    if (*other.name == name &&
+                        std::hypot(other.x - center.x, other.y - center.y) < repeatPixels) {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate) continue;
+
+                const bool reversed = std::cos(center.angle) < 0.0f;
+                const F32 begin = (length - width) * 0.5f;
+                const F32 halfHeight = lineHeight * scale * 0.5f + padPixels;
+                glyphs.clear();
+                F32 cursor = 0.0f;
+                F32 previous = 0.0f;
+                bool rejected = false;
+                for (U64 i = 0; i < name.size(); ++i) {
+                    const F32 along = begin + cursor + advances[i] * 0.5f;
+                    const RoadSample glyph = sample(reversed ? length - along : along);
+                    const F32 angle = reversed ? glyph.angle + kPi : glyph.angle;
+                    if (i > 0) {
+                        const F32 bend = std::remainder(angle - previous, 2.0f * kPi);
+                        if (std::abs(bend) > maxBend) {
+                            rejected = true;
+                            break;
+                        }
+                    }
+                    previous = angle;
+                    const F32 halfWidth = advances[i] * 0.5f + padPixels;
+                    const F32 boxHalfWidth = std::abs(std::cos(angle)) * halfWidth +
+                                             std::abs(std::sin(angle)) * halfHeight;
+                    const F32 boxHalfHeight = std::abs(std::sin(angle)) * halfWidth +
+                                              std::abs(std::cos(angle)) * halfHeight;
+                    const F32 ndcX = glyph.x * pixelSize.x;
+                    const F32 ndcY = glyph.y * pixelSize.y;
+                    const AABB box = {
+                        ndcX - boxHalfWidth * pixelSize.x,
+                        ndcY - boxHalfHeight * pixelSize.y,
+                        ndcX + boxHalfWidth * pixelSize.x,
+                        ndcY + boxHalfHeight * pixelSize.y,
+                    };
+                    if (box.x0 < -1.0f || box.x1 > 1.0f || box.y0 < -1.0f || box.y1 > 1.0f ||
+                        occlusion(box) > 0.0f) {
+                        rejected = true;
+                        break;
+                    }
+                    glyphs.push_back({name[i], ndcX, ndcY, angle * 180.0f / kPi, box});
+                    cursor += advances[i] + tracking;
+                }
+                if (rejected) continue;
+
+                auto color = colors[kind];
+                color.a *= fade;
+                const ColorRGBA<F32> halo = {kRoadHaloColor[0], kRoadHaloColor[1], kRoadHaloColor[2],
+                                             kRoadHaloAlpha * fade};
+                for (const auto& glyph : glyphs) {
+                    const auto& id = pimpl->roadLabelIds[roadGlyphSlot++];
+                    const std::string fill(1, glyph.character);
+                    for (const auto& [text, glyphColor, glyphScale] :
+                         {std::tuple{pimpl->roadHalo.get(), halo, scale * kRoadHaloScale},
+                          std::tuple{pimpl->roadText.get(), color, scale}}) {
+                        auto element = text->get(id);
+                        element.position = {glyph.x, glyph.y};
+                        element.scale = glyphScale;
+                        element.rotationDeg = glyph.angleDeg;
+                        element.color = glyphColor;
+                        if (element.fill != fill) element.fill = fill;
+                        JST_CHECK(text->update(id, element));
+                    }
+                    rendered.push_back({glyph.box, 1.0f});
+                }
+                placed.push_back({&name, center.x, center.y});
+            }
+            return Result::SUCCESS;
+        };
+
         for (U64 oi = 0; oi < order.size(); ++oi) {
             const U64 idx = order[oi];
             auto& layer = pimpl->labelLayers[idx];
@@ -3544,6 +3780,20 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
         }
 
         JST_CHECK(updateReferenceLabels());
+        JST_CHECK(updateRoadLabels());
+        if (pimpl->roadText) {
+            for (U64 i = roadGlyphSlot; i < pimpl->previousRoadGlyphCount; ++i) {
+                const auto& id = pimpl->roadLabelIds[i];
+                for (auto* text : {pimpl->roadHalo.get(), pimpl->roadText.get()}) {
+                    auto element = text->get(id);
+                    element.fill = "";
+                    element.scale = 0.0f;
+                    element.color = std::nullopt;
+                    JST_CHECK(text->update(id, element));
+                }
+            }
+            pimpl->previousRoadGlyphCount = roadGlyphSlot;
+        }
         if (pimpl->pathText) {
             for (U64 i = pathGlyphSlot;
                  i < pimpl->previousPathGlyphCount; ++i) {
@@ -3631,6 +3881,12 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
     }
     if (pimpl->pathText) {
         JST_CHECK(pimpl->pathText->present());
+    }
+    if (pimpl->roadHalo) {
+        JST_CHECK(pimpl->roadHalo->present());
+    }
+    if (pimpl->roadText) {
+        JST_CHECK(pimpl->roadText->present());
     }
 
     return Result::SUCCESS;

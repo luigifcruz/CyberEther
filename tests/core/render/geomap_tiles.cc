@@ -231,6 +231,37 @@ class TileSource final : public GeoMapTiles::Source {
     std::string data;
 };
 
+class DetailTileSource final : public GeoMapTiles::Source {
+ public:
+    DetailTileSource(const TileCache& cache, GeoMapTiles::Key target, std::string data)
+        : directory(Platform::PathToUtf8(cache.root)), target(target), data(std::move(data)) {}
+
+    std::string name() const override { return directory; }
+    std::string attribution() const override { return "Test detail tiles"; }
+    U8 maxZoom() const override { return target.z + 1; }
+
+    Status fetch(const GeoMapTiles::Key& key, std::string& result,
+                 const std::function<bool()>& cancelled) override {
+        if (key == target) {
+            targetRequested = true;
+            while (!targetReady && !cancelled()) std::this_thread::sleep_for(1ms);
+            if (cancelled()) return Status::Failed;
+        } else if (key.z != target.z + 1 || key.x >> 1 != target.x || key.y >> 1 != target.y) {
+            return Status::Missing;
+        }
+        result = data;
+        return Status::Found;
+    }
+
+    std::atomic<bool> targetRequested{false};
+    std::atomic<bool> targetReady{false};
+
+ private:
+    std::string directory;
+    GeoMapTiles::Key target;
+    std::string data;
+};
+
 GeoMapTiles::Config TileConfig() {
     GeoMapTiles::Config config;
     config.workers = 1;
@@ -303,6 +334,53 @@ TEST_CASE("GeoMap restores cached detail after restarting at the same view", "[r
     REQUIRE(WaitForWater(tiles, context));
     CHECK(tiles.geometry().fills[static_cast<U64>(GeoMapTiles::Fill::Water)].indices.size() == count);
     CHECK(observed->fetches.load() == 1);
+}
+
+TEST_CASE("GeoMap does not promote children above the selected detail level", "[render][geomap][tiles]") {
+    TileCache cache;
+    const GeoMapTiles::Key target{13, 1312, 3165};
+    const std::vector<U64> line{9, 2048, 2048, 10, 2048, 2048};
+    const auto payload = LayerTile("transportation", 2, line, "rail") +
+                         LayerTile("transportation_name", 2, line, "minor") +
+                         LayerTile("place", 1, {9, 4096, 4096}, "neighbourhood");
+    auto source = std::make_unique<DetailTileSource>(cache, target, payload);
+    auto* observed = source.get();
+    GeoMapTiles tiles(std::move(source));
+    auto context = TileContext();
+    auto view = context.view;
+    view.centerLon = -122.31;
+    view.centerLat = 37.8;
+    view.viewportWidth = 1828;
+    view.viewportHeight = 969;
+    view.aspectRatio = view.viewportWidth / view.viewportHeight;
+    view.zoom = 11.0f;
+    REQUIRE(context.update(view) == Result::SUCCESS);
+    const auto config = TileConfig();
+    tiles.start(config);
+    REQUIRE(WaitFor(tiles, context, [](const auto& geometry) { return geometry.labels.size() == 4; }));
+    bool restart = true;
+    SECTION("cached children") {
+        tiles.stop();
+    }
+    SECTION("drawn children") {
+        restart = false;
+    }
+
+    view.zoom = 10.15f;
+    REQUIRE(context.update(view) == Result::SUCCESS);
+    if (restart) tiles.start(config);
+    REQUIRE(WaitFor(tiles, context, [&](const auto&) { return observed->targetRequested.load(); }));
+    view.centerLat += 0.0005;
+    REQUIRE(context.update(view) == Result::SUCCESS);
+    Pump(tiles, context, 350ms);
+    CHECK(tiles.geometry().lines[static_cast<U64>(GeoMapTiles::Line::Rail)].empty());
+    CHECK(tiles.geometry().labels.empty());
+    CHECK(tiles.geometry().roadLabels.empty());
+
+    observed->targetReady = true;
+    REQUIRE(WaitFor(tiles, context, [](const auto& geometry) { return geometry.labels.size() == 1; }));
+    CHECK(tiles.geometry().lines[static_cast<U64>(GeoMapTiles::Line::Rail)].size() == 4);
+    CHECK(tiles.geometry().roadLabels.size() == 1);
 }
 
 TEST_CASE("GeoMap rejects malformed downloads without poisoning the cache", "[render][geomap][tiles]") {

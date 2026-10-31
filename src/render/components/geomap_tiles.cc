@@ -103,6 +103,13 @@ bool Inflate(std::string& data) {
     return true;
 }
 
+bool RoadName(std::string_view name) {
+    if (name.empty() || name.size() > MaxNameBytes) return false;
+    return std::all_of(name.begin(), name.end(), [](char c) {
+        return static_cast<U8>(c) >= 0x20 && static_cast<U8>(c) < 0x7F;
+    });
+}
+
 bool RenderableName(std::string_view name) {
     if (name.empty() || name.size() > MaxNameBytes) return false;
     for (U64 i = 0; i < name.size();) {
@@ -855,6 +862,7 @@ struct TileData {
     std::array<std::vector<F32>, GeoMapTiles::LineCount> lines;
     std::array<GeoMapTiles::Mesh, GeoMapTiles::FillCount> fills;
     std::vector<GeoMapTiles::Label> labels;
+    std::vector<GeoMapTiles::RoadLabel> roadLabels;
     bool missing = false;
 
     U64 bytes() const {
@@ -864,6 +872,9 @@ struct TileData {
             total += fill.positions.size() * sizeof(F32) + fill.indices.size() * sizeof(U32);
         }
         for (const auto& label : labels) total += sizeof(label) + label.name.size();
+        for (const auto& road : roadLabels) {
+            total += sizeof(road) + road.name.size() + road.points.size() * sizeof(F32);
+        }
         return total;
     }
 };
@@ -953,6 +964,7 @@ class Decoder {
     using Line = GeoMapTiles::Line;
     using Fill = GeoMapTiles::Fill;
     using Place = GeoMapTiles::Place;
+    using Road = GeoMapTiles::Road;
     using Point = std::array<I32, 2>;
     using Ring = std::vector<Point>;
 
@@ -1352,7 +1364,7 @@ class Decoder {
 
         const auto& name = layer.name;
         if ((name == "building" && !options.buildings) ||
-            (name == "transportation" && !options.roads) ||
+            (name == "transportation_name" && (!options.roads || !options.places)) ||
             (name == "waterway" && !options.rivers) ||
             (name == "boundary" && !options.borders) ||
             (name == "place" && !options.places) ||
@@ -1363,7 +1375,7 @@ class Decoder {
         if (name != "water" && name != "landuse" && name != "waterway" &&
             name != "transportation" && name != "boundary" && name != "place" &&
             name != "aeroway" && name != "aerodrome_label" && name != "building" &&
-            name != "landcover") {
+            name != "landcover" && name != "transportation_name") {
             return true;
         }
 
@@ -1377,6 +1389,7 @@ class Decoder {
         const auto iataKey = layer.key("iata");
         const auto icaoKey = layer.key("icao");
         const auto heightKey = layer.key("render_height");
+        const auto refKey = layer.key("ref");
 
         for (const auto& featureData : layer.features) {
             Feature feature;
@@ -1437,7 +1450,17 @@ class Decoder {
                 if (!decodeGeometry(feature.geometry, feature.type)) return false;
                 addLines(*line, layer.extent);
             } else if (name == "transportation") {
-                if (feature.type != 2 || tunnel) continue;
+                if (kind == "pier") {
+                    if (feature.type != 2 && feature.type != 3) continue;
+                    if (!decodeGeometry(feature.geometry, feature.type)) return false;
+                    if (feature.type == 3) {
+                        if (!addPolygons(Fill::Pier, layer.extent, nullptr)) return false;
+                    } else {
+                        addLines(Line::Pier, layer.extent);
+                    }
+                    continue;
+                }
+                if (!options.roads || feature.type != 2 || tunnel) continue;
                 std::optional<Line> line;
                 if (kind == "motorway" || kind == "trunk") line = Line::Motorway;
                 else if (kind == "primary") line = Line::PrimaryRoad;
@@ -1448,6 +1471,31 @@ class Decoder {
                 if (!line) continue;
                 if (!decodeGeometry(feature.geometry, feature.type)) return false;
                 addLines(*line, layer.extent);
+            } else if (name == "transportation_name") {
+                if (feature.type != 2) continue;
+                std::optional<Road> road;
+                if (kind == "motorway" || kind == "trunk") road = Road::Motorway;
+                else if (kind == "primary") road = Road::Primary;
+                else if (kind == "secondary" || kind == "tertiary") road = Road::Secondary;
+                else if (kind == "minor") road = Road::Minor;
+                else if (kind == "service") road = Road::Service;
+                if (!road) continue;
+                std::string_view label = text(latinKey);
+                if (!RoadName(label)) label = text(nameKey);
+                if (!RoadName(label) && road == Road::Motorway) label = text(refKey);
+                if (!RoadName(label)) continue;
+                if (!decodeGeometry(feature.geometry, feature.type)) return false;
+                simplify(layer.extent, false);
+                for (const auto& part : parts) {
+                    if (part.size() < 2) continue;
+                    GeoMapTiles::RoadLabel out{.kind = *road, .name = std::string(label), .points = {}};
+                    out.points.reserve(part.size() * 2);
+                    for (const auto& point : part) {
+                        out.points.push_back(static_cast<F32>(point[0] / layer.extent));
+                        out.points.push_back(static_cast<F32>(point[1] / layer.extent));
+                    }
+                    tile->roadLabels.push_back(std::move(out));
+                }
             } else if (name == "boundary") {
                 if (feature.type != 2 || number(maritimeKey) != 0.0) continue;
                 const F64 level = number(adminKey);
@@ -2111,6 +2159,35 @@ struct GeoMapTiles::Impl {
                                   static_cast<F32>(absoluteLat(label.lat)), label.kind, label.name});
         }
 
+        for (const auto& road : tile->roadLabels) {
+            const auto& points = road.points;
+            F64 length = 0.0;
+            for (U64 i = 2; i + 1 < points.size(); i += 2) {
+                length += std::hypot(points[i] - points[i - 2], points[i + 1] - points[i - 1]);
+            }
+            F64 walked = 0.0;
+            F64 midX = points[0];
+            F64 midY = points[1];
+            for (U64 i = 2; i + 1 < points.size(); i += 2) {
+                const F64 step = std::hypot(points[i] - points[i - 2], points[i + 1] - points[i - 1]);
+                if (walked + step >= length * 0.5 && step > 0.0) {
+                    const F64 t = (length * 0.5 - walked) / step;
+                    midX = std::lerp(static_cast<F64>(points[i - 2]), static_cast<F64>(points[i]), t);
+                    midY = std::lerp(static_cast<F64>(points[i - 1]), static_cast<F64>(points[i + 1]), t);
+                    break;
+                }
+                walked += step;
+            }
+            if (!rect.contains(midX, midY)) continue;
+            GeoMapTiles::RoadLabel absolute{.kind = road.kind, .name = road.name, .points = {}};
+            absolute.points.reserve(points.size());
+            for (U64 i = 0; i + 1 < points.size(); i += 2) {
+                absolute.points.push_back(static_cast<F32>(absoluteLon(points[i])));
+                absolute.points.push_back(static_cast<F32>(absoluteLat(points[i + 1])));
+            }
+            out.roadLabels.push_back(std::move(absolute));
+        }
+
         return piece;
     }
 
@@ -2173,16 +2250,6 @@ struct GeoMapTiles::Impl {
                         found = true;
                     }
                 }
-                if (found || target.z >= source->maxZoom()) continue;
-                std::array<Plan, 4> children;
-                bool complete = true;
-                for (U32 i = 0; i < 4 && complete; ++i) {
-                    const Key child{static_cast<U8>(target.z + 1), target.x * 2 + (i & 1), target.y * 2 + (i >> 1)};
-                    auto tile = ready(child);
-                    complete = tile != nullptr;
-                    children[i] = {child, child, std::move(tile)};
-                }
-                if (complete) plan.insert(plan.end(), children.begin(), children.end());
             }
         }
 
@@ -2294,7 +2361,7 @@ struct GeoMapTiles::Impl {
             if (item.died >= 0.0f) continue;
             const auto& target = item.piece.target;
             const bool inView = std::any_of(targets.begin(), targets.end(), [&](const Key& key) {
-                return overlaps(key, target);
+                return item.piece.source.z <= key.z && overlaps(key, target);
             });
             if (!inView || covered(target, nullptr)) item.died = now;
         }
@@ -2356,6 +2423,8 @@ struct GeoMapTiles::Impl {
             if (item.died < 0.0f) {
                 result.labels.insert(result.labels.end(), item.piece.geometry.labels.begin(),
                                      item.piece.geometry.labels.end());
+                result.roadLabels.insert(result.roadLabels.end(), item.piece.geometry.roadLabels.begin(),
+                                         item.piece.geometry.roadLabels.end());
             }
         }
         for (U64 f = 0; f < FillCount; ++f) result.heldFillIndices[f] = result.fills[f].indices.size();
@@ -2364,6 +2433,8 @@ struct GeoMapTiles::Impl {
             append(*piece, -1.0f, none, withBuildings);
             result.labels.insert(result.labels.end(), piece->geometry.labels.begin(),
                                  piece->geometry.labels.end());
+            result.roadLabels.insert(result.roadLabels.end(), piece->geometry.roadLabels.begin(),
+                                     piece->geometry.roadLabels.end());
         }
 
         pieces = std::move(next);
