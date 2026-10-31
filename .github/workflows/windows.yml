@@ -111,8 +111,11 @@ jobs:
           }
 
           7z x $archivePath "-o$driverRoot" -y | Out-Null
-          $env:VK_DRIVER_FILES = Join-Path $driverRoot 'x64\lvp_icd.x86_64.json'
-          "VK_DRIVER_FILES=$env:VK_DRIVER_FILES" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          # Elevated Windows runners ignore Vulkan driver environment overrides.
+          $icdPath = Join-Path $driverRoot 'x64\lvp_icd.x86_64.json'
+          $driverRegistry = 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers'
+          New-Item -Path $driverRegistry -Force | Out-Null
+          New-ItemProperty -Path $driverRegistry -Name $icdPath -PropertyType DWord -Value 0 -Force | Out-Null
           vulkaninfo --summary
 
       - name: Build Windows binary
