@@ -211,10 +211,6 @@ struct SyntheticModuleBase : Module::Impl,
             std::this_thread::sleep_for(spec.computeDelay);
         }
 
-        if (spec.computeAction) {
-            spec.computeAction();
-        }
-
         auto& values = syntheticState().reads[name()].emplace_back();
         for (const auto& input : spec.inputs) {
             const auto& tensor = inputs().at(input).tensor;
@@ -427,7 +423,10 @@ TEST_CASE("Scheduler executes CPU modules in topological order",
           "[core][runtime][scheduler]") {
     auto& state = syntheticState();
     state.reset();
-    state.configure("topology_source");
+    std::vector<std::string> submitted;
+    for (const auto& name : {"topology_source", "topology_middle", "topology_sink"}) {
+        state.configure(name).computeAction = [&, name] { submitted.emplace_back(name); };
+    }
     state.configure("topology_middle").inputs = {"in"};
     state.configure("topology_sink").inputs = {"in"};
 
@@ -447,6 +446,7 @@ TEST_CASE("Scheduler executes CPU modules in topological order",
     REQUIRE(failedModules.empty());
     REQUIRE(state.calls("compute") ==
              std::vector<std::string>{"topology_source", "topology_middle", "topology_sink"});
+    REQUIRE(submitted == state.calls("compute"));
 }
 
 TEST_CASE("Scheduler preserves insertion order for independent CPU modules",
