@@ -138,6 +138,13 @@ struct FlowgraphEditorPresenter {
         };
 
         const auto& agent = context.state.agent;
+        EditorMeta editor;
+        if (flowgraph->metadata().tryGet("editor", editor)) {
+            config.view = Sakura::NodeEditor::View{.pan = {editor.x, editor.y}, .zoom = editor.zoom};
+        }
+        config.onViewChange = [enqueue, flowgraphId](Sakura::NodeEditor::View view) {
+            enqueue(MailSetEditorMeta{.flowgraph = flowgraphId, .meta = {view.pan.x, view.pan.y, view.zoom}});
+        };
         config.measure = agent.chat.conversation.streaming || agent.voice.phase != Agent::Session::Phase::Idle;
         config.paused = flowgraph->paused();
         config.onTogglePause = [enqueue, flowgraphId, paused = config.paused]() {

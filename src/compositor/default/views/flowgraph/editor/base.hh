@@ -46,6 +46,8 @@ struct FlowgraphEditor {
         Sakura::Callback<std::vector<FlowgraphBlockPicker::BlockOption>()> onBuildBlockOptions;
 
         std::vector<FlowgraphNode::BlockData> graph;
+        std::optional<Sakura::NodeEditor::View> view;
+        Sakura::Callback<void(Sakura::NodeEditor::View)> onViewChange;
 
         Sakura::Callback<void(const std::string&, std::optional<Extent2D<F32>>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
         Sakura::Callback<void(const std::string&)> onCopyBlock;
@@ -300,6 +302,8 @@ struct FlowgraphEditor {
                 viewportGridCenter = {viewport.x + viewport.width * 0.5f, viewport.y + viewport.height * 0.5f};
                 measured.viewport = viewport;
             },
+            .view = this->config.view,
+            .onViewChange = this->config.onViewChange,
         });
 
         flowgraphContextMenu.update({

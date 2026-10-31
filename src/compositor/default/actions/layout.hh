@@ -8,6 +8,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/flowgraph_view.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <functional>
@@ -92,7 +93,8 @@ struct LayoutActions {
             auto& metadata = flowgraph->metadata();
             const bool hasLayout = metadata.has("layout");
             const bool hasStacks = metadata.has("stacks");
-            if (!hasLayout && !hasStacks) {
+            const bool hasDescription = !Text::IsBlank(flowgraph->description());
+            if (!hasLayout && !hasStacks && !hasDescription) {
                 continue;
             }
 
@@ -104,7 +106,9 @@ struct LayoutActions {
             if (hasLayout) {
                 TileMeta layout;
                 if (metadata.get("layout", layout) == Result::SUCCESS) {
-                    if (auto known = FilterTiles(layout, IsLayoutPane)) {
+                    if (auto known = FilterTiles(layout, [&](const std::string& pane) {
+                        return IsLayoutPane(pane) && (pane != kLayoutDescriptionPane || hasDescription);
+                    })) {
                         state.layouts[flowgraphId] = std::move(*known);
                     } else {
                         state.layouts.erase(flowgraphId);
@@ -114,11 +118,23 @@ struct LayoutActions {
                 }
             }
 
+            if (const auto layout = state.layouts.find(flowgraphId); layout != state.layouts.end() &&
+                ContainsTilePane(layout->second, kLayoutEnvironmentPane)) {
+                state.environment.try_emplace(flowgraphId);
+            }
             placeOrphans(flowgraphId);
             if (persistLayout(flowgraphId) != Result::SUCCESS) {
                 JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to save layout metadata for flowgraph '{}'.", flowgraphId);
             }
         }
+    }
+
+    Result prepareSave(const std::string& flowgraphId) {
+        // Old files may have detached panes but no layout metadata. Their
+        // initial layout stays provisional while loading, until an explicit save.
+        restoreFromMetadata();
+        state.restoredLayouts.insert(flowgraphId);
+        return persistLayout(flowgraphId);
     }
 
     Result handle(const MailSetFlowgraphLayout& msg) {
@@ -130,7 +146,8 @@ struct LayoutActions {
         if (tiles.has_value() && !state.environment.contains(msg.flowgraph)) {
             tiles = WithoutPane(*tiles, kLayoutEnvironmentPane);
         }
-        if (tiles.has_value() && !state.gallery.contains(msg.flowgraph)) {
+        if (tiles.has_value() && (state.closedDescriptions.contains(msg.flowgraph) ||
+            Text::IsBlank(state.items.at(msg.flowgraph)->description()))) {
             tiles = WithoutPane(*tiles, kLayoutDescriptionPane);
         }
         if (!tiles.has_value()) {
@@ -294,7 +311,7 @@ struct LayoutActions {
         if (!state.items.contains(msg.flowgraph)) {
             return Result::SUCCESS;
         }
-        state.gallery.erase(msg.flowgraph);
+        state.closedDescriptions.insert(msg.flowgraph);
         return editLayout(msg.flowgraph, [](const TileMeta& tiles) {
             return WithoutPane(tiles, kLayoutDescriptionPane);
         });

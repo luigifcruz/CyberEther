@@ -41,6 +41,8 @@ inline std::optional<Sakura::DockTiles> ToDockTiles(const TileMeta& meta, const 
         return std::nullopt;
     }
     tiles.pane = std::move(*pane);
+    tiles.minimized = meta.minimized.value_or(false);
+    tiles.maximized = meta.maximized.value_or(false);
     return tiles;
 }
 
@@ -72,6 +74,12 @@ inline std::optional<TileMeta> ToTileMeta(const Sakura::DockTiles& tiles, const 
         return std::nullopt;
     }
     meta.pane = std::move(*pane);
+    if (tiles.minimized) {
+        meta.minimized = true;
+    }
+    if (tiles.maximized) {
+        meta.maximized = true;
+    }
     return meta;
 }
 

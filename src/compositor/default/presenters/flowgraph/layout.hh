@@ -45,7 +45,7 @@ inline TilePaneMap LayoutToDockPanes(const std::string& flowgraphId) {
         if (pane == kLayoutEditorPane) {
             return MakeEditorPaneId(flowgraphId);
         }
-        if (IsTransientPane(pane) || TileBlock(pane).has_value()) {
+        if (IsTransientPane(pane) || IsLayoutPane(pane)) {
             return pane;
         }
         return std::nullopt;
@@ -57,7 +57,7 @@ inline TilePaneMap DockToLayoutPanes(const std::string& flowgraphId) {
         if (pane == MakeEditorPaneId(flowgraphId)) {
             return std::string(kLayoutEditorPane);
         }
-        if (IsTransientPane(pane) || TileBlock(pane).has_value()) {
+        if (IsTransientPane(pane) || IsLayoutPane(pane)) {
             return pane;
         }
         return std::nullopt;

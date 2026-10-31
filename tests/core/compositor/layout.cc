@@ -583,7 +583,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "A gallery description tile stays in the session layout and is never saved",
+                 "A file description tile is included in the saved layout",
                  "[core][compositor][layout][description]") {
     DefaultCompositorState::FlowgraphState state;
     LayoutActions actions(state);
@@ -600,22 +600,22 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
     CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph"});
 
-    state.gallery["graph"] = "## Overview";
+    REQUIRE(flowgraph->setDescription("## Overview") == Result::SUCCESS);
     REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
     CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"description", "flowgraph"});
     TileMeta saved;
     REQUIRE(flowgraph->metadata().get("layout", saved) == Result::SUCCESS);
-    CHECK(Panes(saved) == std::vector<std::string>{"flowgraph"});
+    CHECK(Panes(saved) == std::vector<std::string>{"description", "flowgraph"});
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Closing the gallery description drops it and its tile from the session layout",
+                 "Closing the file description drops it and its tile from the session layout",
                  "[core][compositor][layout][description]") {
     DefaultCompositorState::FlowgraphState state;
     LayoutActions actions(state);
     state.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
     state.restoredLayouts.insert("graph");
-    state.gallery["graph"] = "## Overview";
+    REQUIRE(flowgraph->setDescription("## Overview") == Result::SUCCESS);
     const TileMeta tiles{
         .split = "row",
         .children = std::vector<TileMeta>{
@@ -627,7 +627,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(Panes(state.layouts.at("graph")) == std::vector<std::string>{"description", "flowgraph"});
 
     REQUIRE(actions.handle(MailCloseFlowgraphDescription{.flowgraph = "graph"}) == Result::SUCCESS);
-    CHECK_FALSE(state.gallery.contains("graph"));
+    CHECK(state.closedDescriptions.contains("graph"));
+    CHECK(flowgraph->description() == "## Overview");
     CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph"});
 
     REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);

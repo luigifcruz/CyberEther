@@ -6,7 +6,7 @@
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
-#include "../support/gallery.hh"
+#include "layout.hh"
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
@@ -63,6 +63,7 @@ struct FlowgraphActions {
                               MailCopyBlock,
                               MailPasteBlock,
                               MailSetNodeMeta,
+                              MailSetEditorMeta,
                               MailSetConfigCollapsed,
                               MailSurfaceInput,
                               MailResizeSurface>;
@@ -178,20 +179,6 @@ struct FlowgraphActions {
         return name;
     }
 
-    static std::string GalleryDescription(const Registry::FlowgraphRegistration& entry) {
-        static const std::string placeholder = Registry::FlowgraphRegistration{}.description;
-        if (entry.description == placeholder) {
-            return {};
-        }
-        std::string markdown = entry.description;
-        const std::string_view host = Gallery::Host;
-        for (U64 at = markdown.find("](/"); at != std::string::npos; at = markdown.find("](/", at)) {
-            markdown.insert(at + 2, host);
-            at += 2 + host.size();
-        }
-        return markdown;
-    }
-
     Result handle(const MailOpenFlowgraphExample& msg) {
         const auto& flowgraphs = state.registry.flowgraphs;
         const auto example = std::find_if(flowgraphs.begin(), flowgraphs.end(), [&](const auto& entry) {
@@ -205,7 +192,6 @@ struct FlowgraphActions {
         if (!name.has_value()) {
             return Result::ERROR;
         }
-        state.flowgraph.gallery[*name] = GalleryDescription(*example);
         return Result::SUCCESS;
     }
 
@@ -244,6 +230,7 @@ struct FlowgraphActions {
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
 
+        JST_CHECK(LayoutActions(state.flowgraph).prepareSave(msg.flowgraph));
         callbacks.enqueueCommandWithMail([flowgraph, path]() -> Result {
             JST_CHECK(flowgraph->exportToFile(path));
             return Result::SUCCESS;
@@ -405,6 +392,9 @@ struct FlowgraphActions {
         }
         if (msg.description.has_value()) {
             JST_CHECK(flowgraph->setDescription(*msg.description));
+            if (const auto layout = state.flowgraph.layouts.find(msg.flowgraph); layout != state.flowgraph.layouts.end()) {
+                JST_CHECK(LayoutActions(state.flowgraph).handle(MailSetFlowgraphLayout{msg.flowgraph, layout->second}));
+            }
         }
 
         return Result::SUCCESS;
@@ -729,6 +719,13 @@ struct FlowgraphActions {
             }
         }
         flowgraph->metadata().set("node", merged, msg.block);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetEditorMeta& msg) {
+        if (const auto graph = state.flowgraph.items.find(msg.flowgraph); graph != state.flowgraph.items.end()) {
+            return graph->second->metadata().set("editor", msg.meta);
+        }
         return Result::SUCCESS;
     }
 

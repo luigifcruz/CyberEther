@@ -18,6 +18,7 @@
 
 #include "jetstream/logger.hh"
 
+#include <deque>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -43,6 +44,29 @@ class DefaultActions {
         agent = std::make_shared<AgentActions>(state, callbacks, runtime);
         gallery = std::make_shared<GalleryActions>(state);
         terminals = std::make_shared<TerminalActions>(state, callbacks);
+    }
+
+    Result dispatch(const std::deque<Mail>& pending) {
+        for (U64 index = 0; index < pending.size(); ++index) {
+            const auto& mail = pending[index];
+            if (std::holds_alternative<MailSaveFlowgraph>(mail)) {
+                // Apply trailing presentation reports before queuing the save,
+                // without moving them across intervening user actions.
+                while (index + 1 < pending.size()) {
+                    const auto& report = pending[index + 1];
+                    if (!std::holds_alternative<MailSetFlowgraphLayout>(report) &&
+                        !std::holds_alternative<MailSetNodeMeta>(report) &&
+                        !std::holds_alternative<MailSetEditorMeta>(report) &&
+                        !std::holds_alternative<MailResizeSurface>(report)) {
+                        break;
+                    }
+                    JST_CHECK(handle(report));
+                    ++index;
+                }
+            }
+            JST_CHECK(handle(mail));
+        }
+        return Result::SUCCESS;
     }
 
     Result handle(const Mail& mail) {

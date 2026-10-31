@@ -225,7 +225,7 @@ struct WorkbenchActions {
     }
 
     static void Forget(DefaultCompositorState& state, const std::string& flowgraph) {
-        state.flowgraph.gallery.erase(flowgraph);
+        state.flowgraph.closedDescriptions.erase(flowgraph);
         state.flowgraph.environment.erase(flowgraph);
         if (state.interface.pendingFocusedFlowgraph == flowgraph) {
             state.interface.pendingFocusedFlowgraph.reset();

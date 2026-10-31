@@ -13,6 +13,7 @@
 #include "component_harness.hh"
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -72,6 +73,8 @@ struct Graph {
     std::optional<Extent2D<F32>> center;
     U64 centerReports = 0;
     bool frameOnOpen = false;
+    std::optional<NodeEditor::View> savedView;
+    std::vector<NodeEditor::View> viewReports;
     F32 scale = 1.0f;
 
     explicit Graph(F32 pixelRatio = 1.0f) {
@@ -162,6 +165,8 @@ struct Graph {
                 center = Extent2D<F32>{next.x + next.width * 0.5f, next.y + next.height * 0.5f};
                 ++centerReports;
             },
+            .view = savedView,
+            .onViewChange = [this](NodeEditor::View view) { viewReports.push_back(view); },
         });
     }
 
@@ -273,6 +278,30 @@ U64 Dirty(Graph& graph) {
 }
 
 }  // namespace
+
+TEST_CASE("Saved editor navigation survives delayed nodes and rejects nonfinite input",
+          "[core][sakura][node-editor][recovery]") {
+    Graph graph;
+    graph.frameOnOpen = true;
+    const NodeEditor::View saved{.pan = {-145.5f, 78.25f}, .zoom = 1.75f};
+    graph.savedView = saved;
+    graph.step();
+    REQUIRE(graph.viewReports.size() == 1);
+    CHECK(graph.viewReports.back() == saved);
+    const auto viewport = graph.viewport;
+    graph.add("late", {1500.0f, 800.0f});
+    graph.step();
+    CHECK(graph.viewport == viewport);
+    CHECK(graph.editor.zoom() == saved.zoom);
+    CHECK(graph.viewReports.size() == 1);
+
+    SECTION("invalid pan") { graph.savedView->pan.x = std::numeric_limits<F32>::infinity(); }
+    SECTION("invalid zoom") { graph.savedView->zoom = std::numeric_limits<F32>::quiet_NaN(); }
+    SECTION("nonpositive zoom") { graph.savedView->zoom = 0.0f; }
+    graph.step();
+    CHECK(graph.viewport == viewport);
+    CHECK(graph.editor.zoom() == saved.zoom);
+}
 
 TEST_CASE("An idle editor reports the visible viewport in grid coordinates",
           "[core][sakura][node-editor]") {

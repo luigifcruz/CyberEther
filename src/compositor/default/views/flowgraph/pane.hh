@@ -292,6 +292,7 @@ struct FlowgraphPane {
             .onTiles = this->config.onLayout,
             .columns = true,
             .flexPane = this->config.editorPane,
+            .persistView = true,
         });
     }
 

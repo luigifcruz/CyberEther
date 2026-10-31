@@ -13,6 +13,8 @@
 #include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
+#include <chrono>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -154,6 +156,7 @@ struct PaneRig : FlowgraphFixture {
     }
 
     void frame() {
+        LayoutActions(state.flowgraph).restoreFromMetadata();
         update();
         place();
     }
@@ -173,6 +176,12 @@ struct PaneRig : FlowgraphFixture {
             }
             if (const auto* environment = std::get_if<MailSetFlowgraphEnvironmentVisible>(&mail)) {
                 CHECK(actions.handle(*environment) == Result::SUCCESS);
+            }
+            if (const auto* close = std::get_if<MailCloseFlowgraphDescription>(&mail)) {
+                CHECK(actions.handle(*close) == Result::SUCCESS);
+            }
+            if (const auto* editor = std::get_if<MailSetEditorMeta>(&mail)) {
+                CHECK(FlowgraphActions(state, callbacks).handle(*editor) == Result::SUCCESS);
             }
         }
         mails.clear();
@@ -403,20 +412,17 @@ TEST_CASE("A flowgraph without detached views fills its tab with the editor and 
     CHECK_FALSE(layout->tiles->children.has_value());
 }
 
-TEST_CASE("Gallery flowgraphs show the stored description as a collapsed leftmost tile before the flowgraph loads",
+TEST_CASE("File descriptions appear as a collapsed leftmost tile",
           "[core][sakura][flowgraph][pane]") {
     PaneRig rig;
     rig.screen = kWideScreen;
     CHECK_FALSE(rig.build().description.has_value());
 
-    rig.state.flowgraph.gallery[kGraph] = FlowgraphActions::GalleryDescription({
-        .description = "## Overview\n\nRead [Simple FM](/gallery/flowgraphs/simple-fm) next.",
-    });
-    REQUIRE(rig.state.flowgraph.items.at(kGraph)->description().empty());
+    REQUIRE(rig.graph().setDescription("## Overview\n\nRead [Simple FM](/gallery/flowgraphs/simple-fm) next.") == Result::SUCCESS);
     const auto config = rig.build();
     REQUIRE(config.description.has_value());
     CHECK(config.description->id == kLayoutDescriptionPane);
-    CHECK(config.description->markdown == rig.state.flowgraph.gallery.at(kGraph));
+    CHECK(config.description->markdown == rig.graph().description());
     rig.frame();
 
     CHECK(rig.documentation().empty());
@@ -442,14 +448,14 @@ TEST_CASE("Gallery flowgraphs show the stored description as a collapsed leftmos
     REQUIRE(rig.documentation().size() == 1);
     CHECK(rig.documentationText().find("Overview") != std::string::npos);
 
-    rig.state.flowgraph.gallery[kGraph] = "";
+    REQUIRE(rig.graph().setDescription("") == Result::SUCCESS);
     CHECK_FALSE(rig.build().description.has_value());
 }
 
-TEST_CASE("The collapsed gallery description closes from its strip", "[core][sakura][flowgraph][pane]") {
+TEST_CASE("The collapsed file description closes from its strip", "[core][sakura][flowgraph][pane]") {
     PaneRig rig;
     rig.screen = kWideScreen;
-    rig.state.flowgraph.gallery[kGraph] = "## Overview";
+    REQUIRE(rig.graph().setDescription("## Overview") == Result::SUCCESS);
     rig.frame();
 
     std::optional<Rect> strip;
@@ -482,14 +488,14 @@ TEST_CASE("The collapsed gallery description closes from its strip", "[core][sak
     CHECK(closed != rig.mails.end());
 }
 
-TEST_CASE("Gallery descriptions drop the registry placeholder and point relative links at the gallery host",
-          "[core][sakura][flowgraph][pane]") {
-    CHECK(FlowgraphActions::GalleryDescription({}).empty());
-    CHECK(FlowgraphActions::GalleryDescription({.description = "Plain text."}) == "Plain text.");
-    CHECK(FlowgraphActions::GalleryDescription({
-              .description = "See [A](/gallery/a) and [B](/docs/b), or [C](https://example.com/c).",
-          }) == "See [A](" + std::string(Gallery::Host) + "/gallery/a) and [B](" + std::string(Gallery::Host) +
-                    "/docs/b), or [C](https://example.com/c).");
+TEST_CASE("The description tile follows edits to the file description", "[core][sakura][flowgraph][pane]") {
+    PaneRig rig;
+    REQUIRE(rig.graph().setDescription("First") == Result::SUCCESS);
+    REQUIRE(rig.build().description.has_value());
+    CHECK(rig.build().description->markdown == "First");
+    FlowgraphActions actions(rig.state, rig.callbacks);
+    REQUIRE(actions.handle(MailSetFlowgraphInfo{.flowgraph = kGraph, .description = "Updated"}) == Result::SUCCESS);
+    CHECK(rig.build().description->markdown == "Updated");
 }
 
 TEST_CASE("A detached view joins as a column beside the editor and the layout is reported once",
@@ -572,13 +578,16 @@ TEST_CASE("The editor tile only maximizes while detached view headers close thei
 
     const auto editorButton = CloseOf({6.0f, 38.0f, 762.0f, 556.0f});
     rig.host.click(editorButton.x, editorButton.y);
+    REQUIRE(rig.count<MailSetFlowgraphLayout>() == 1);
+    rig.deliver();
     rig.frame();
     CHECK(rig.configFrames().empty());
     const auto restore = CloseOf({6.0f, 38.0f, 1188.0f, 556.0f});
     rig.host.click(restore.x, restore.y);
+    REQUIRE(rig.count<MailSetFlowgraphLayout>() == 1);
+    rig.deliver();
     rig.frame();
     CHECK(rig.configFrames().size() == 1);
-    CHECK(rig.count<MailSetFlowgraphLayout>() == 0);
     CHECK(closed.empty());
 
     rig.mails.clear();
@@ -1041,7 +1050,7 @@ TEST_CASE("Rename completion and late dock reports preserve detached pane order 
     CHECK(std::none_of(panes.begin(), panes.end(), [](const auto& pane) { return pane.find(":old") != std::string::npos; }));
 }
 
-TEST_CASE("The environment button opens a closable Environment tile that is never saved in the layout",
+TEST_CASE("The environment button opens a closable Environment tile that is saved in the layout",
           "[core][sakura][flowgraph][pane][environment]") {
     PaneRig rig;
     rig.screen = kWideScreen;
@@ -1063,7 +1072,7 @@ TEST_CASE("The environment button opens a closable Environment tile that is neve
     CHECK(rig.header("Environment"));
     TileMeta saved;
     REQUIRE(rig.graph().metadata().get("layout", saved) == Result::SUCCESS);
-    CHECK(LayoutPanes(saved) == std::vector<std::string>{"flowgraph"});
+    CHECK(LayoutPanes(saved) == std::vector<std::string>{"flowgraph", "environment"});
 
     const auto open = rig.build();
     REQUIRE(open.environment.has_value());
@@ -1204,4 +1213,231 @@ TEST_CASE("A terminal whose screen has a predominant background tints its whole 
     rig.terminal->terminal.revision += 1;
     rig.frame();
     CHECK(tints() == 0);
+}
+
+namespace {
+
+struct SavedPaneFile {
+    std::filesystem::path path = std::filesystem::temp_directory_path() /
+        ("cyberether-pane-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".yaml");
+
+    ~SavedPaneFile() {
+        std::error_code error;
+        std::filesystem::remove(path, error);
+    }
+
+    void save(PaneRig& rig) const {
+        rig.callbacks.enqueueCommandWithMail = [](Sakura::Callback<Result()> command, bool, Mail) {
+            REQUIRE(command() == Result::SUCCESS);
+        };
+        REQUIRE(FlowgraphActions(rig.state, rig.callbacks).handle(
+            MailSaveFlowgraph{.flowgraph = kGraph, .path = Platform::PathToUtf8(path)}) == Result::SUCCESS);
+    }
+
+    void load(PaneRig& rig) const {
+        REQUIRE(rig.graph().importFromFile(Platform::PathToUtf8(path)) == Result::SUCCESS);
+    }
+};
+
+void RefreshSavedPane(PaneRig& rig) {
+    rig.screen = kWideScreen;
+    auto& blocks = rig.state.flowgraph.blocks[kGraph];
+    blocks.clear();
+    std::vector<std::string> names;
+    REQUIRE(rig.graph().view().keys(names) == Result::SUCCESS);
+    for (const auto& name : names) {
+        blocks.push_back({.name = name, .data = ViewBlock(rig.graph(), name)});
+    }
+    for (int frame = 0; frame < 3; ++frame) {
+        rig.frame();
+        rig.deliver();
+    }
+}
+
+void CreateSavedPane(PaneRig& rig) {
+    REQUIRE(rig.graph().blockCreate("a", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    REQUIRE(rig.graph().metadata().set("node", NodeMeta{132.5f, -54.25f, 320.0f, 440.0f}, "a") == Result::SUCCESS);
+    REQUIRE(rig.graph().metadata().set("config", ConfigMeta{.collapsed = true, .detached = true}, "a") == Result::SUCCESS);
+    REQUIRE(rig.graph().metadata().set("layout", LayoutSplit("row", {
+        LayoutLeaf("flowgraph", 600.0f), LayoutLeaf("config:a", 310.0f),
+    })) == Result::SUCCESS);
+    RefreshSavedPane(rig);
+}
+
+}  // namespace
+
+TEST_CASE("Fresh UI instances restore saved tile navigation and editor view from a file",
+          "[core][sakura][flowgraph][pane][recovery]") {
+    PaneRig original;
+    CreateSavedPane(original);
+    const auto normal = original.configFrames();
+    REQUIRE(normal.size() == 1);
+    const auto frame = normal.front();
+    const Rect card{frame.x - Sakura::Dock::ContentPadding, frame.y - Sakura::Dock::ContentPadding - kHeader,
+                    frame.width + 2 * Sakura::Dock::ContentPadding,
+                    frame.height + 2 * Sakura::Dock::ContentPadding + kHeader};
+
+    SECTION("normal") {}
+    SECTION("minimized") {
+        original.host.click(card.right() - 59, card.y + 15);
+        original.deliver(); original.frame(); original.deliver();
+        REQUIRE(original.configFrames().empty());
+    }
+    SECTION("maximized") {
+        original.host.click(card.right() - 37, card.y + 15);
+        original.deliver(); original.frame(); original.deliver();
+        REQUIRE(original.configFrames().front().width > normal.front().width);
+    }
+    SECTION("panned and zoomed") {
+        REQUIRE(FlowgraphActions(original.state, original.callbacks).handle(
+            MailSetEditorMeta{kGraph, EditorMeta{-145.5f, 78.25f, 1.75f}}) == Result::SUCCESS);
+        original.frame(); original.deliver();
+        const auto editors = Find<Sakura::NodeEditor>(original.layoutDock());
+        REQUIRE(editors.size() == 1);
+        REQUIRE(editors.front()->zoom() == 1.75f);
+        editors.front()->zoomStep(1);
+        original.frame(); original.deliver();
+    }
+    SECTION("paused processing") {
+        REQUIRE(original.graph().pause() == Result::SUCCESS);
+        REQUIRE(original.graph().paused());
+    }
+
+    const auto expectedLayout = original.build().layout;
+    const auto expectedFrames = original.configFrames();
+    const auto expectedView = original.build().editor.view;
+    SavedPaneFile file;
+    file.save(original);
+    PaneRig loaded;
+    file.load(loaded);
+    RefreshSavedPane(loaded);
+    CHECK(loaded.build().layout == expectedLayout);
+    CHECK(loaded.configFrames() == expectedFrames);
+    CHECK(loaded.build().editor.view == expectedView);
+    CHECK_FALSE(loaded.graph().paused());
+    NodeMeta node;
+    REQUIRE(loaded.graph().metadata().get("node", node, "a") == Result::SUCCESS);
+    CHECK(node.x == 132.5f);
+    CHECK(node.y == -54.25f);
+    CHECK(node.width == 320.0f);
+    CHECK(node.height == 440.0f);
+    ConfigMeta config;
+    REQUIRE(loaded.graph().metadata().get("config", config, "a") == Result::SUCCESS);
+    CHECK(config.collapsed);
+    CHECK(config.detached);
+}
+
+TEST_CASE("Explicit saves capture layouts from older files without layout metadata",
+          "[core][sakura][flowgraph][pane][recovery]") {
+    PaneRig original;
+    REQUIRE(original.graph().blockCreate("a", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    REQUIRE(original.graph().metadata().set("config", ConfigMeta{.detached = true}, "a") == Result::SUCCESS);
+    RefreshSavedPane(original);
+    REQUIRE_FALSE(original.graph().metadata().has("layout"));
+    auto layout = original.state.flowgraph.layouts.at(kGraph);
+    REQUIRE(layout.children.has_value());
+    layout.children->back().minimized = true;
+    REQUIRE(LayoutActions(original.state.flowgraph).handle(MailSetFlowgraphLayout{kGraph, layout}) == Result::SUCCESS);
+    original.frame(); original.deliver();
+    REQUIRE(original.configFrames().empty());
+    REQUIRE_FALSE(original.graph().metadata().has("layout"));
+    SavedPaneFile file;
+    file.save(original);
+    REQUIRE(original.graph().metadata().has("layout"));
+    PaneRig loaded;
+    file.load(loaded);
+    RefreshSavedPane(loaded);
+    CHECK(loaded.build().layout == original.build().layout);
+    CHECK(loaded.configFrames().empty());
+}
+
+TEST_CASE("File descriptions retain placement and expansion but saved closes reset them on the next load",
+          "[core][sakura][flowgraph][pane][recovery][description]") {
+    PaneRig original;
+    CreateSavedPane(original);
+    REQUIRE(original.graph().setDescription("# File description\n\nSaved markdown.") == Result::SUCCESS);
+    const auto moved = LayoutSplit("row", {
+        LayoutLeaf("flowgraph", 500.0f),
+        LayoutSplit("column", {LayoutLeaf("config:a", 0.35f), LayoutLeaf("description", 0.65f)}, 370.0f),
+    });
+    REQUIRE(LayoutActions(original.state.flowgraph).handle(MailSetFlowgraphLayout{kGraph, moved}) == Result::SUCCESS);
+    RefreshSavedPane(original);
+    REQUIRE(original.documentation().size() == 1);
+    const auto expectedLayout = original.build().layout;
+    const auto expectedFrame = Peek::Frame(*original.documentation().front());
+    SavedPaneFile file;
+    file.save(original);
+
+    SECTION("open tiles retain their geometry and expansion") {
+        PaneRig loaded;
+        file.load(loaded);
+        RefreshSavedPane(loaded);
+        CHECK(loaded.build().layout == expectedLayout);
+        REQUIRE(loaded.documentation().size() == 1);
+        CHECK(Peek::Frame(*loaded.documentation().front()) == expectedFrame);
+        CHECK(loaded.documentationText().find("Saved markdown.") != std::string::npos);
+    }
+    SECTION("an unsaved close leaves the file alone") {
+        REQUIRE(LayoutActions(original.state.flowgraph).handle(MailCloseFlowgraphDescription{kGraph}) == Result::SUCCESS);
+        original.frame(); original.deliver();
+        REQUIRE_FALSE(original.build().description.has_value());
+        PaneRig loaded;
+        file.load(loaded);
+        RefreshSavedPane(loaded);
+        CHECK(loaded.build().layout == expectedLayout);
+        REQUIRE(loaded.documentation().size() == 1);
+    }
+    SECTION("a saved close returns leftmost and minimized without losing text") {
+        REQUIRE(LayoutActions(original.state.flowgraph).handle(MailCloseFlowgraphDescription{kGraph}) == Result::SUCCESS);
+        original.frame(); original.deliver();
+        REQUIRE_FALSE(original.build().description.has_value());
+        SECTION("normal layout") {}
+        SECTION("another pane is maximized") {
+            auto tiles = original.state.flowgraph.layouts.at(kGraph);
+            REQUIRE(tiles.children.has_value());
+            REQUIRE(tiles.children->back().pane == "config:a");
+            tiles.children->back().maximized = true;
+            REQUIRE(LayoutActions(original.state.flowgraph).handle(MailSetFlowgraphLayout{kGraph, tiles}) == Result::SUCCESS);
+            original.frame(); original.deliver();
+        }
+        const auto expectedFrames = original.configFrames();
+        const auto expectedMaximized = original.build().layout->children.back().maximized;
+        file.save(original);
+        PaneRig loaded;
+        file.load(loaded);
+        RefreshSavedPane(loaded);
+        REQUIRE(loaded.build().description.has_value());
+        CHECK(loaded.graph().description() == original.graph().description());
+        CHECK(loaded.documentation().empty());
+        const auto layout = loaded.build().layout;
+        REQUIRE(layout.has_value());
+        REQUIRE_FALSE(layout->children.empty());
+        CHECK(layout->children.front().pane == "description");
+        CHECK(layout->children.front().minimized);
+        CHECK(layout->weights.front() == FlowgraphPane::DescriptionWidth);
+        CHECK(layout->children.back().maximized == expectedMaximized);
+        CHECK(loaded.configFrames() == expectedFrames);
+    }
+}
+
+TEST_CASE("Environment visibility restores while excluded panes stay out of saved layouts",
+          "[core][sakura][flowgraph][pane][recovery]") {
+    PaneRig original;
+    CreateSavedPane(original);
+    LayoutActions actions(original.state.flowgraph);
+    REQUIRE(actions.handle(MailSetFlowgraphEnvironmentVisible{kGraph, true}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailOpenDocumentation{kGraph, "a"}) == Result::SUCCESS);
+    auto tiles = original.state.flowgraph.layouts.at(kGraph);
+    tiles = AppendColumn(tiles, "terminal:1");
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{kGraph, tiles}) == Result::SUCCESS);
+    SavedPaneFile file;
+    file.save(original);
+    PaneRig loaded;
+    file.load(loaded);
+    RefreshSavedPane(loaded);
+    CHECK(loaded.build().environment.has_value());
+    const auto panes = LayoutPanes(loaded.state.flowgraph.layouts.at(kGraph));
+    CHECK(std::find(panes.begin(), panes.end(), "environment") != panes.end());
+    CHECK(std::find(panes.begin(), panes.end(), "documentation") == panes.end());
+    CHECK(std::find(panes.begin(), panes.end(), "terminal:1") == panes.end());
 }

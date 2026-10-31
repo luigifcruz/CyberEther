@@ -1041,6 +1041,13 @@ struct GraphRoot : public Component {
     }
 
     void apply(NodeEditor::Config next) {
+        if (next.view != config.view && next.view &&
+            std::isfinite(next.view->pan.x) && std::isfinite(next.view->pan.y) &&
+            std::isfinite(next.view->zoom) && next.view->zoom > 0.0f) {
+            pan = next.view->pan;
+            zoom = std::clamp(next.view->zoom, kZoomMin, kZoomMax);
+            framed = true;
+        }
         std::unordered_set<std::string> present;
         for (auto& node : next.nodes) {
             present.insert(node.id);
@@ -2032,6 +2039,7 @@ struct NodeEditor::Impl {
     Box border;
     Rect bounds;
     std::optional<Rect> reportedViewport;
+    std::optional<View> reportedView;
 };
 
 NodeEditor::NodeEditor() {
@@ -2088,6 +2096,14 @@ void NodeEditor::layout(const Context& ctx) {
         if (impl->reportedViewport != viewport) {
             impl->reportedViewport = viewport;
             config.onViewportGridChange(viewport);
+        }
+    }
+
+    if (root.framed && config.onViewChange && !bounds.empty()) {
+        const View view{.pan = root.pan, .zoom = root.zoom};
+        if (impl->reportedView != view) {
+            impl->reportedView = view;
+            config.onViewChange(view);
         }
     }
 

@@ -18,6 +18,8 @@ struct DockTiles {
     bool vertical = false;
     std::vector<F32> weights;
     std::vector<DockTiles> children;
+    bool minimized = false;
+    bool maximized = false;
 
     bool operator==(const DockTiles&) const = default;
 };
@@ -84,6 +86,7 @@ struct Dock : public Component {
         bool loneHeader = false;
         bool headers = true;
         bool resizable = true;
+        bool persistView = false;
 
         bool operator==(const Config&) const = default;
     };

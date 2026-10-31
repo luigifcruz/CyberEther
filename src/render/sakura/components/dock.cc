@@ -803,10 +803,53 @@ struct Dock::Impl {
     void toggleMinimized(const std::string& id) {
         if (minimized.erase(id) > 0) {
             focus(id);
+            commitView();
             return;
         }
         if (canMinimize(id)) {
             minimized.insert(id);
+            commitView();
+        }
+    }
+
+    void readView(const DockTiles& tiles) {
+        if (tiles.children.empty()) {
+            if (tiles.minimized) {
+                minimized.insert(tiles.pane);
+            }
+            if (tiles.maximized && maximized.empty()) {
+                maximized = tiles.pane;
+            }
+        }
+        for (const auto& child : tiles.children) {
+            readView(child);
+        }
+    }
+
+    void restoreView() {
+        if (!config.persistView) {
+            return;
+        }
+        minimized.clear();
+        maximized.clear();
+        if (config.tiles) {
+            readView(*config.tiles);
+        }
+    }
+
+    void writeView(DockTiles& tiles) const {
+        if (tiles.children.empty()) {
+            tiles.minimized = minimized.contains(tiles.pane);
+            tiles.maximized = maximized == tiles.pane;
+        }
+        for (auto& child : tiles.children) {
+            writeView(child);
+        }
+    }
+
+    void commitView() {
+        if (config.persistView) {
+            commit();
         }
     }
 
@@ -830,6 +873,9 @@ struct Dock::Impl {
 
     void rebuild() {
         tree = FromColumns(columns);
+        if (config.persistView && tree) {
+            writeView(*tree);
+        }
     }
 
     F32 takeColumn(const std::string& id) {
@@ -854,11 +900,13 @@ struct Dock::Impl {
         if (config.tiles != synced) {
             synced = config.tiles;
             columns = ToColumns(config.tiles);
+            restoreView();
         }
         std::erase_if(introduced, [this](const std::string& id) {
             return !known(id);
         });
         bool added = false;
+        bool addedVisible = false;
         for (const auto& item : config.panes) {
             if (!locate(item.id)) {
                 ColumnModel column{.panes = {item.id}, .weights = {1.0f}, .width = item.width};
@@ -868,17 +916,22 @@ struct Dock::Impl {
                     columns.push_back(std::move(column));
                 }
                 added = true;
+                addedVisible = addedVisible || !item.startMinimized;
             }
             if (introduced.insert(item.id).second) {
-                added = added || !maximized.empty();
-                if (item.startMinimized) {
+                const bool saved = config.persistView && config.tiles && Contains(*config.tiles, item.id);
+                addedVisible = addedVisible || (!saved && !item.startMinimized);
+                if (item.startMinimized && !saved) {
                     minimized.insert(item.id);
                 }
             }
         }
+        if (addedVisible && !maximized.empty()) {
+            maximized.clear();
+            added = true;
+        }
         rebuild();
         if (added) {
-            maximized.clear();
             commit();
         }
     }
@@ -1299,6 +1352,9 @@ struct Dock::Impl {
         if (config.tabs) {
             return;
         }
+        if (config.persistView && tree) {
+            writeView(*tree);
+        }
         synced = tree;
         if (config.onTiles) {
             config.onTiles(synced);
@@ -1309,6 +1365,7 @@ struct Dock::Impl {
         if (config.tiles != synced) {
             synced = config.tiles;
             tree.reset();
+            restoreView();
             if (config.tiles.has_value()) {
                 tree = Normalize(*config.tiles);
             }
@@ -1318,7 +1375,8 @@ struct Dock::Impl {
         });
         bool added = false;
         for (const auto& item : config.panes) {
-            if (introduced.insert(item.id).second) {
+            if (introduced.insert(item.id).second &&
+                (!config.persistView || !config.tiles || !Contains(*config.tiles, item.id))) {
                 maximized.clear();
             }
             if (!tree.has_value() || !Contains(*tree, item.id)) {
@@ -2588,6 +2646,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                             s.press = Impl::Press::Handled;
                             s.maximized = s.maximized == leaf.pane ? std::string() : leaf.pane;
                             s.focus(leaf.pane);
+                            s.commitView();
                             invalidate(Dirty::Layout);
                             return true;
                         }
@@ -2664,6 +2723,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                     if (leaf.pane == s.pressPane && leaf.maximize.contains(point.x, point.y)) {
                         s.maximized = s.maximized == leaf.pane ? std::string() : leaf.pane;
                         s.focus(leaf.pane);
+                        s.commitView();
                         invalidate(Dirty::Layout);
                         break;
                     }

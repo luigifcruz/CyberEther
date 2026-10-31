@@ -92,6 +92,13 @@ struct NodeEditor : public Component {
         bool operator==(const Link&) const = default;
     };
 
+    struct View {
+        Extent2D<F32> pan = {0.0f, 0.0f};
+        F32 zoom = 1.0f;
+
+        bool operator==(const View&) const = default;
+    };
+
     struct Config {
         std::string id;
         bool pasteEnabled = false;
@@ -106,6 +113,8 @@ struct NodeEditor : public Component {
         Callback<void(const std::vector<std::string>&)> onCopyShortcut;
         Callback<void(Extent2D<F32>)> onPasteShortcut;
         Callback<void(Rect)> onViewportGridChange;
+        std::optional<View> view;
+        Callback<void(View)> onViewChange;
 
         bool operator==(const Config&) const = default;
     };

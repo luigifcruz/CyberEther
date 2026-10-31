@@ -2892,6 +2892,7 @@ struct ColumnRig {
     ColorRGBA<F32> fillC = {0.0f, 0.0f, 0.0f, 0.0f};
     bool withA = true;
     bool withC = true;
+    bool persistView = false;
     Dock dock;
 
     void update() {
@@ -2920,6 +2921,7 @@ struct ColumnRig {
             },
             .columns = true,
             .flexPane = flex,
+            .persistView = persistView,
         });
     }
 };
@@ -3793,6 +3795,36 @@ TEST_CASE("Unknown leaves in column mode hold a centered loading placeholder unt
     CHECK_FALSE(loading().has_value());
     CHECK(rig.c.laidFrame == Rect{748.0f, 26.0f, 420.0f, 568.0f});
     CHECK(rig.emitted.empty());
+}
+
+TEST_CASE("Saved view flags and widths survive late arriving dock content and smaller windows",
+          "[core][sakura][dock][columns][recovery]") {
+    ColumnRig rig;
+    rig.persistView = true;
+    rig.withC = false;
+    auto late = Leaf("c");
+    SECTION("minimized") { late.minimized = true; }
+    SECTION("maximized") { late.maximized = true; }
+    const auto saved = ColumnRow({Leaf("a"), late, Leaf("b")}, {0.0f, 510.0f, 350.0f});
+    rig.tiles = saved;
+    Host host(rig.dock);
+    rig.update();
+    host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    CHECK(rig.emitted.empty());
+
+    rig.withC = true;
+    rig.update();
+    host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    CHECK(rig.c.visible() == !late.minimized);
+    CHECK(rig.a.visible() == !late.maximized);
+    if (late.maximized) {
+        CHECK(rig.c.laidFrame == Body({6.0f, 6.0f, 1588.0f, 588.0f}));
+    }
+    host.place(MakeContext({600.0f, 400.0f}), {0.0f, 0.0f, 600.0f, 400.0f});
+    CHECK(rig.tiles == saved);
+    CHECK(rig.emitted.empty());
+    host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    CHECK(rig.tiles == saved);
 }
 
 TEST_CASE("A pane added while a column is maximized restores the columns and shows the new one",

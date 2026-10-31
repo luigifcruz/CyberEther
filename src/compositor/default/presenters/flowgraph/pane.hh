@@ -57,7 +57,7 @@ struct FlowgraphPanePresenter {
             .detachedConfigs = configs.build(flowgraphId, flowgraph),
             .documentation = documentation(flowgraphId),
             .environment = environment.build(flowgraphId, flowgraph),
-            .description = description(flowgraphId, enqueue),
+            .description = description(flowgraphId, flowgraph, enqueue),
             .empty = flowgraph->view().empty(),
             .showTips = context.state.interface.showTips,
             .dependencyReviewAvailable = hasDependencyReview(flowgraph),
@@ -102,14 +102,15 @@ struct FlowgraphPanePresenter {
 
  private:
     std::optional<FlowgraphPane::Description> description(const std::string& flowgraphId,
+                                                          const std::shared_ptr<Flowgraph>& flowgraph,
                                                           const Sakura::Callback<void(Mail&&)>& enqueue) const {
-        const auto entry = context.state.flowgraph.gallery.find(flowgraphId);
-        if (entry == context.state.flowgraph.gallery.end() || Text::TrimBlank(entry->second).empty()) {
+        const auto markdown = flowgraph->description();
+        if (context.state.flowgraph.closedDescriptions.contains(flowgraphId) || Text::IsBlank(markdown)) {
             return std::nullopt;
         }
         return FlowgraphPane::Description{
             .id = kLayoutDescriptionPane,
-            .markdown = entry->second,
+            .markdown = markdown,
             .onClose = [enqueue, flowgraphId]() {
                 enqueue(MailCloseFlowgraphDescription{.flowgraph = flowgraphId});
             },

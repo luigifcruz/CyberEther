@@ -99,7 +99,8 @@ inline std::optional<TileMeta> MapTiles(const TileMeta& tiles,
         if (!pane.has_value() || pane->empty()) {
             return std::nullopt;
         }
-        return TileMeta{.weight = tiles.weight, .pane = std::move(*pane)};
+        return TileMeta{.weight = tiles.weight, .pane = std::move(*pane),
+                        .minimized = tiles.minimized, .maximized = tiles.maximized};
     }
     std::vector<TileMeta> children;
     for (const auto& child : *tiles.children) {
@@ -148,11 +149,12 @@ inline bool ContainsTilePane(const TileMeta& tiles, const std::string& pane) {
 }
 
 inline bool IsLayoutPane(const std::string& pane) {
-    return pane == kLayoutEditorPane || TileBlock(pane).has_value();
+    return pane == kLayoutEditorPane || pane == kLayoutEnvironmentPane || pane == kLayoutDescriptionPane ||
+           TileBlock(pane).has_value();
 }
 
 inline bool IsTransientPane(const std::string& pane) {
-    return pane == kLayoutDocumentationPane || pane == kLayoutEnvironmentPane || pane == kLayoutDescriptionPane ||
+    return pane == kLayoutDocumentationPane ||
            ParseTerminalPaneKey(pane).has_value() || ParseTerminalTabKey(pane).has_value();
 }
 

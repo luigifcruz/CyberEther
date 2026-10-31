@@ -263,7 +263,7 @@ struct DefaultCompositorState {
         std::unordered_map<std::string, std::string> liveMarkdown;
         std::unordered_map<std::string, Documentation> documentation;
         std::unordered_map<std::string, std::string> environment;
-        std::unordered_map<std::string, std::string> gallery;
+        std::unordered_set<std::string> closedDescriptions;
         SurfaceTracks surfaces;
     };
 

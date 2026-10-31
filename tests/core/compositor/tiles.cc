@@ -113,6 +113,29 @@ TEST_CASE("Mapping tiles renames leaves and keeps their weights", "[core][compos
     REQUIRE(renamed->children->at(1).split == "row");
 }
 
+TEST_CASE("Tile view flags survive serialization, filtering, and dock conversion",
+          "[core][compositor][tiles][recovery]") {
+    auto collapsed = Leaf("description", 520.0f);
+    collapsed.minimized = true;
+    auto fullscreen = Leaf("config:a", 310.0f);
+    fullscreen.maximized = true;
+    const auto original = Split("row", {collapsed, fullscreen, Leaf("terminal:1")});
+    Parser::Map encoded;
+    REQUIRE(original.serialize(encoded) == Result::SUCCESS);
+    TileMeta decoded;
+    REQUIRE(decoded.deserialize(encoded) == Result::SUCCESS);
+    const auto filtered = FilterTiles(decoded, IsLayoutPane);
+    REQUIRE(filtered.has_value());
+    const auto dock = ToDockTiles(*filtered, LayoutToDockPanes("graph"));
+    REQUIRE(dock.has_value());
+    REQUIRE(dock->children.size() == 2);
+    CHECK(dock->children[0].minimized);
+    CHECK(dock->children[1].maximized);
+    const auto restored = ToTileMeta(*dock, DockToLayoutPanes("graph"));
+    REQUIRE(restored.has_value());
+    CHECK(Parser::Hash(*restored) == Parser::Hash(*filtered));
+}
+
 TEST_CASE("Mapping tiles drops empty and rejected leaves", "[core][compositor][tiles]") {
     const auto identity = [](const std::string& pane) -> std::optional<std::string> {
         return pane;
@@ -474,8 +497,10 @@ TEST_CASE("Flowgraph layouts map between layout panes and dock panes", "[core][c
     REQUIRE_FALSE(toLayout("stack:graph:stack_0").has_value());
 
     CHECK(IsTransientPane(kLayoutDocumentationPane));
-    CHECK(IsTransientPane(kLayoutEnvironmentPane));
-    CHECK(IsTransientPane(kLayoutDescriptionPane));
+    CHECK_FALSE(IsTransientPane(kLayoutEnvironmentPane));
+    CHECK_FALSE(IsTransientPane(kLayoutDescriptionPane));
+    CHECK(IsLayoutPane(kLayoutEnvironmentPane));
+    CHECK(IsLayoutPane(kLayoutDescriptionPane));
     CHECK_FALSE(IsTransientPane(kLayoutEditorPane));
     CHECK_FALSE(IsTransientPane("config:fft"));
 }

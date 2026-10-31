@@ -351,55 +351,49 @@ TEST_CASE("Gallery examples open from the cached registry by key", "[core][compo
     CHECK_FALSE(notice.empty());
     CHECK_FALSE(state.interface.pendingFocusedFlowgraph.has_value());
 
-    CHECK(state.flowgraph.gallery.empty());
+    CHECK(state.flowgraph.closedDescriptions.empty());
 
     REQUIRE(actions.handle(MailOpenFlowgraphExample{.key = state.registry.flowgraphs.front().key}) == Result::SUCCESS);
     CHECK(commands == 1);
     REQUIRE(state.interface.pendingFocusedFlowgraph.has_value());
-    REQUIRE(state.flowgraph.gallery.size() == 1);
-    REQUIRE(state.flowgraph.gallery.contains(*state.interface.pendingFocusedFlowgraph));
-    const auto& opened = state.registry.flowgraphs.front();
-    CHECK(state.flowgraph.gallery.at(*state.interface.pendingFocusedFlowgraph) ==
-          FlowgraphActions::GalleryDescription(opened));
 
     const auto& content = state.registry.flowgraphs.front().content;
     REQUIRE(actions.handle(MailOpenFlowgraphBlob{{content.begin(), content.end()}}) == Result::SUCCESS);
     CHECK(commands == 2);
-    CHECK(state.flowgraph.gallery.size() == 1);
-    CHECK_FALSE(state.flowgraph.gallery.contains(*state.interface.pendingFocusedFlowgraph));
+    CHECK(state.flowgraph.closedDescriptions.empty());
 
     REQUIRE(completions.size() == 2);
     const auto blobName = *state.interface.pendingFocusedFlowgraph;
     completions[0](Result::ERROR);
-    CHECK(state.flowgraph.gallery.empty());
+    CHECK(state.flowgraph.closedDescriptions.empty());
     CHECK(state.interface.pendingFocusedFlowgraph == blobName);
     completions[1](Result::ERROR);
     CHECK_FALSE(state.interface.pendingFocusedFlowgraph.has_value());
 }
 
-TEST_CASE("Gallery and environment entries outlive a pending open and drop when their flowgraph closes",
+TEST_CASE("Description dismissal and environment entries outlive a pending open and drop when their flowgraph closes",
           "[core][compositor][start-tab]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
     WorkbenchActions actions(state, callbacks);
 
-    state.flowgraph.gallery["first"] = "First";
-    state.flowgraph.gallery["second"] = "Second";
+    state.flowgraph.closedDescriptions.insert("first");
+    state.flowgraph.closedDescriptions.insert("second");
     state.interface.pendingFocusedFlowgraph = "second";
     actions.reconcileFlowgraphs();
-    CHECK(state.flowgraph.gallery.size() == 2);
+    CHECK(state.flowgraph.closedDescriptions.size() == 2);
 
     state.flowgraph.items["first"] = std::make_shared<Flowgraph>();
     state.flowgraph.environment["first"] = "";
     actions.reconcileFlowgraphs();
-    CHECK(state.flowgraph.gallery.size() == 2);
+    CHECK(state.flowgraph.closedDescriptions.size() == 2);
     CHECK(state.flowgraph.environment.contains("first"));
 
     state.flowgraph.items.erase("first");
     actions.reconcileFlowgraphs();
-    CHECK_FALSE(state.flowgraph.gallery.contains("first"));
+    CHECK_FALSE(state.flowgraph.closedDescriptions.contains("first"));
     CHECK_FALSE(state.flowgraph.environment.contains("first"));
-    CHECK(state.flowgraph.gallery.contains("second"));
+    CHECK(state.flowgraph.closedDescriptions.contains("second"));
 }
 
 TEST_CASE("Recent flowgraph history records a path only after its open or save succeeds",

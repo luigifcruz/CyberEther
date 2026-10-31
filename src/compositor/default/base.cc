@@ -255,12 +255,8 @@ Result DefaultCompositor::poll() {
 
     // Dispatch the mail tree after snapshots are refreshed.
 
-    for (const auto& mail : pending) {
-        if (!state.system.instance) {
-            continue;
-        }
-
-        JST_CHECK(actions.handle(mail));
+    if (state.system.instance) {
+        JST_CHECK(actions.dispatch(pending));
     }
 
     agent.poll();
@@ -283,10 +279,8 @@ Result DefaultCompositor::poll() {
 
     pending.clear();
     pending.swap(pendingMail);
-    for (const auto& mail : pending) {
-        if (state.system.instance) {
-            JST_CHECK(actions.handle(mail));
-        }
+    if (state.system.instance) {
+        JST_CHECK(actions.dispatch(pending));
     }
 
     // Update the state snapshots used by presenters.
