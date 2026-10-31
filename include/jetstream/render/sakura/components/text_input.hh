@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_TEXT_INPUT_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -33,6 +34,10 @@ struct TextInput : public Component {
         std::string backgroundColorKey = "card";
         Callback<void()> onCancel;
         Extent2D<F32> padding = {12.0f, 5.0f};
+        F32 fontSize = Typography::FontSize;
+        std::string fontName = Typography::MonoFont;
+        std::string borderColorKey;
+        F32 rounding = 8.0f;
 
         bool operator==(const Config&) const = default;
     };

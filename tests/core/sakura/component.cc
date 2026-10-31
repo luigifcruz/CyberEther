@@ -19,11 +19,13 @@ namespace {
 
 struct Board : Sakura::Component {
     using Component::children;
+    using Component::clearChildren;
     using Component::clip;
     using Component::mouseEventChildren;
     using Component::frame;
     using Component::inheritedClip;
     using Component::mountChildren;
+    using Component::removeChild;
     using Component::setChildren;
 
     std::vector<std::pair<Sakura::Component*, Rect>> slots;
@@ -526,4 +528,115 @@ TEST_CASE("Parking a child through mountChildren cancels its press and releases 
 
     update();
     CHECK(probe.count(MouseEventType::Cancel) == cancels + 1);
+}
+
+TEST_CASE("Child mutation stays safe when a cancel callback destroys a child or the parent",
+          "[core][sakura][component][lifetime]") {
+    struct Fragile : Probe {
+        std::function<void()> onCancel;
+
+        bool mouseEvent(const MouseEvent& event) override {
+            if (event.type == MouseEventType::Cancel && onCancel) {
+                const auto callback = std::move(onCancel);
+                onCancel = {};
+                callback();
+                return false;
+            }
+            return Probe::mouseEvent(event);
+        }
+    };
+    const int mode = GENERATE(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+    CAPTURE(mode);
+    auto board = std::make_unique<Board>();
+    auto a = std::make_unique<Fragile>();
+    auto b = std::make_unique<Fragile>();
+    auto c = std::make_unique<Fragile>();
+    board->attach(*a);
+    board->attach(*b);
+    board->attach(*c);
+    Fragile* third = c.get();
+    const auto detached = [](const Sakura::Component& child) { return &Sakura::Access::root(child) == &child; };
+
+    switch (mode) {
+        case 0:
+            a->onCancel = [&] { b.reset(); a.reset(); };
+            board->mountChildren({third});
+            CHECK(board->children() == std::vector<Sakura::Component*>{third});
+            CHECK(third->visible());
+            break;
+        case 1:
+            a->onCancel = [&] { board.reset(); };
+            board->mountChildren({third});
+            CHECK(board == nullptr);
+            CHECK(detached(*b));
+            CHECK(detached(*third));
+            break;
+        case 2:
+            a->onCancel = [&] { board.reset(); };
+            board->removeChild(*a);
+            CHECK(board == nullptr);
+            CHECK(detached(*a));
+            CHECK(detached(*b));
+            break;
+        case 3:
+            a->onCancel = [&] { b.reset(); };
+            board->clearChildren();
+            CHECK(board->children().empty());
+            CHECK(detached(*a));
+            CHECK(detached(*third));
+            break;
+        case 4:
+            a->onCancel = [&] { b.reset(); };
+            board->setChildren({third, b.get()});
+            CHECK(board->children() == std::vector<Sakura::Component*>{third});
+            CHECK(detached(*a));
+            break;
+        case 5:
+            a->onCancel = [&] { b.reset(); };
+            board->mouseEventChildren(Mouse(MouseEventType::Cancel, 0.0f, 0.0f));
+            CHECK(b == nullptr);
+            CHECK(third->count(MouseEventType::Cancel) == 1);
+            break;
+        case 6: {
+            Board other;
+            a->onCancel = [&] { a.reset(); };
+            Fragile* moved = a.get();
+            other.attach(*moved);
+            CHECK(a == nullptr);
+            CHECK(other.children().empty());
+            CHECK(board->children() == std::vector<Sakura::Component*>{b.get(), third});
+            break;
+        }
+        case 7:
+        case 8:
+        case 9: {
+            Board other;
+            Board elsewhere;
+            auto early = std::make_unique<Fragile>();
+            auto late = std::make_unique<Fragile>();
+            Fragile* first = early.get();
+            other.attach(*late);
+            late->onCancel = [&] {
+                if (mode == 7) {
+                    early.reset();
+                } else {
+                    elsewhere.attach(*early);
+                }
+            };
+            if (mode == 9) {
+                board->setChildren({first, late.get(), first, third});
+            } else {
+                board->setChildren({first, late.get(), third});
+            }
+            CHECK(board->children() == std::vector<Sakura::Component*>{late.get(), third});
+            CHECK(other.children().empty());
+            if (mode == 7) {
+                CHECK(early == nullptr);
+            } else {
+                CHECK(elsewhere.children() == std::vector<Sakura::Component*>{first});
+                CHECK(early->count(MouseEventType::Cancel) == 1);
+            }
+            break;
+        }
+    }
 }

@@ -301,6 +301,37 @@ class TestSurface final : public Render::Surface {
     std::atomic<bool> destructionStarted = false;
 };
 
+class ResizingSurface final : public Render::Surface {
+ public:
+    explicit ResizingSurface(const Config& config) : Surface(config) {}
+
+    Result create() override {
+        live = true;
+        resizeResult = Result::SUCCESS;
+        resetFramebuffer();
+        return Result::SUCCESS;
+    }
+    Result destroy() override {
+        live = false;
+        return Result::SUCCESS;
+    }
+
+    Result frame() { return prepare(); }
+    bool resized() const { return framebufferResized; }
+    Result bindingResult() const { return drawResult(); }
+
+    bool live = false;
+    U64 rebuilds = 0;
+    Result rebuildResult = Result::SUCCESS;
+
+ protected:
+    bool created() const override { return live; }
+    Result rebuildFramebuffer() override {
+        ++rebuilds;
+        return rebuildResult;
+    }
+};
+
 class TestWindow final : public RenderTest::Window {
  public:
     TestWindow() {
@@ -425,6 +456,63 @@ class TestViewport final : public Viewport::Generic {
     U64 drags = 0;
     U64 zooms = 0;
     std::vector<bool> activations;
+};
+
+class AppearanceViewport final : public Viewport::Generic {
+ public:
+    AppearanceViewport() : Generic({}) {}
+
+    std::string id() const override { return "appearance"; }
+    std::string name() const override { return "Appearance"; }
+    DeviceType device() const override { return DeviceType::None; }
+    Result create() override { ready = true; appearance.reset(); return Result::SUCCESS; }
+    Result destroy() override { ready = false; appearance.reset(); return Result::SUCCESS; }
+    Result waitEvents() override { return Result::SUCCESS; }
+    Result pollEvents() override { return Result::SUCCESS; }
+    bool keepRunning() override { return true; }
+
+    bool setDarkAppearance(bool dark) override {
+        if (ready && appearance == dark) {
+            return true;
+        }
+        ++requests;
+        if (!ready) {
+            return false;
+        }
+        appearance = dark;
+        appearances.push_back(dark);
+        return true;
+    }
+
+    bool ready = false;
+    U64 requests = 0;
+    std::optional<bool> appearance;
+    std::vector<bool> appearances;
+};
+
+class AppearanceWindow final : public RenderTest::Window {
+ public:
+    ~AppearanceWindow() override { close(); }
+
+    AppearanceViewport native;
+    Viewport::Generic* target = &native;
+    Result creationResult = Result::SUCCESS;
+
+ protected:
+    Viewport::Generic* underlyingViewport() const override { return target; }
+    Result underlyingCreate() override {
+        JST_CHECK(RenderTest::Window::underlyingCreate());
+        if (target) {
+            JST_CHECK(target->create());
+        }
+        return creationResult;
+    }
+    Result underlyingDestroy() override {
+        if (target) {
+            JST_CHECK(target->destroy());
+        }
+        return RenderTest::Window::underlyingDestroy();
+    }
 };
 
 std::shared_ptr<TestBuffer> MakeBuffer(std::array<U32, 2>& source) {
@@ -2018,6 +2106,13 @@ TEST_CASE("Render window chrome forwards to its viewport in logical units", "[co
     REQUIRE(viewport.drags == 1);
     REQUIRE(viewport.zooms == 2);
 
+    window.setDarkAppearance(true);
+    window.setDarkAppearance(true);
+    window.setDarkAppearance(false);
+    window.setDarkAppearance(false);
+    window.setDarkAppearance(true);
+    CHECK(viewport.appearances == std::vector<bool>{true, false, true});
+
     REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
@@ -2032,6 +2127,176 @@ TEST_CASE("Failed render window destruction remains retryable", "[core][render][
     window.nextDestructionResult(Result::SUCCESS);
     REQUIRE(window.destroy() == Result::SUCCESS);
     REQUIRE(window.destructionCount() == 2);
+}
+
+TEST_CASE("Render window appearance lets the current native target deduplicate updates",
+          "[core][render][window][appearance]") {
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        AppearanceViewport replacement;
+        AppearanceWindow window;
+        REQUIRE(window.create() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        window.setDarkAppearance(dark);
+        CHECK(window.native.appearances == std::vector<bool>{dark});
+        REQUIRE(replacement.create() == Result::SUCCESS);
+        window.target = &replacement;
+        window.setDarkAppearance(dark);
+        window.setDarkAppearance(dark);
+        CHECK(replacement.appearances == std::vector<bool>{dark});
+        window.target = nullptr;
+        window.setDarkAppearance(dark);
+        window.target = &replacement;
+        window.setDarkAppearance(dark);
+        CHECK(replacement.appearances == std::vector<bool>{dark});
+    }
+}
+
+TEST_CASE("Render window appearance follows a replacement viewport across recreation",
+          "[core][render][window][appearance]") {
+    AppearanceViewport replacement;
+    AppearanceWindow window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    window.setDarkAppearance(false);
+    REQUIRE(window.native.appearance == false);
+    window.close();
+    window.target = &replacement;
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(replacement.appearance == false);
+    window.setDarkAppearance(false);
+    CHECK(replacement.appearances == std::vector<bool>{false});
+}
+
+TEST_CASE("Render window appearance is restored when the same viewport recreates its native window",
+          "[core][render][window][appearance]") {
+    AppearanceWindow window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    window.setDarkAppearance(true);
+    REQUIRE(window.native.appearance == true);
+    window.close();
+    REQUIRE_FALSE(window.native.appearance.has_value());
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(window.native.appearance == true);
+    window.setDarkAppearance(true);
+    CHECK(window.native.appearances == std::vector<bool>{true, true});
+    window.close();
+    window.setDarkAppearance(false);
+    CHECK_FALSE(window.native.appearance.has_value());
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(window.native.appearance == false);
+    window.setDarkAppearance(false);
+    CHECK(window.native.appearances == std::vector<bool>{true, true, false});
+}
+
+TEST_CASE("Render window appearance requests before native creation preserve the latest theme",
+          "[core][render][window][appearance]") {
+    for (const auto result : {Result::SUCCESS, Result::RELOAD}) {
+        for (const bool dark : {false, true}) {
+            CAPTURE(static_cast<int>(result), dark);
+            AppearanceWindow window;
+            window.creationResult = result;
+            window.setDarkAppearance(!dark);
+            window.setDarkAppearance(dark);
+            window.setDarkAppearance(dark);
+            CHECK(window.native.appearances.empty());
+            CHECK(window.native.requests == 3);
+            REQUIRE(window.create() == result);
+            CHECK(window.native.appearance == dark);
+            window.setDarkAppearance(dark);
+            CHECK(window.native.appearances == std::vector<bool>{dark});
+            CHECK(window.native.requests == 4);
+        }
+    }
+}
+
+TEST_CASE("Render window appearance reaches native recreation without a render lifecycle change",
+          "[core][render][window][appearance]") {
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        AppearanceWindow window;
+        REQUIRE(window.create() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        REQUIRE(window.native.appearance == dark);
+        REQUIRE(window.native.destroy() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        CHECK_FALSE(window.native.appearance.has_value());
+        REQUIRE(window.native.create() == Result::SUCCESS);
+        const auto requests = window.native.requests;
+        window.setDarkAppearance(dark);
+        CHECK(window.native.appearance == dark);
+        CHECK(window.native.requests == requests + 1);
+        window.setDarkAppearance(dark);
+        CHECK(window.native.appearances == std::vector<bool>{dark, dark});
+        CHECK(window.native.requests == requests + 1);
+    }
+}
+
+TEST_CASE("Render window appearance reaches a new viewport lifetime at the same address",
+          "[core][render][window][appearance]") {
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        std::optional<AppearanceViewport> storage;
+        storage.emplace();
+        AppearanceWindow window;
+        window.target = &*storage;
+        REQUIRE(window.create() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        REQUIRE(storage->appearance == dark);
+        const auto* address = window.target;
+        storage.reset();
+        storage.emplace();
+        window.target = &*storage;
+        REQUIRE(window.target == address);
+        REQUIRE(storage->create() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        CHECK(storage->appearance == dark);
+        CHECK(storage->requests == 1);
+        window.setDarkAppearance(dark);
+        CHECK(storage->appearances == std::vector<bool>{dark});
+        CHECK(storage->requests == 1);
+    }
+}
+
+TEST_CASE("Render window appearance retries null and late native targets",
+          "[core][render][window][appearance]") {
+    AppearanceWindow window;
+    window.target = nullptr;
+    window.setDarkAppearance(false);
+    window.setDarkAppearance(true);
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(window.native.requests == 0);
+    window.target = &window.native;
+    window.setDarkAppearance(true);
+    window.setDarkAppearance(true);
+    CHECK(window.native.requests == 2);
+    CHECK_FALSE(window.native.appearance.has_value());
+    REQUIRE(window.native.create() == Result::SUCCESS);
+    window.setDarkAppearance(true);
+    window.setDarkAppearance(true);
+    CHECK(window.native.appearances == std::vector<bool>{true});
+    CHECK(window.native.requests == 3);
+    CHECK_FALSE(window.native.Viewport::Generic::setDarkAppearance(false));
+    CHECK(window.native.appearance == true);
+}
+
+TEST_CASE("Render window appearance remains retryable after failed creation rolls back the native target",
+          "[core][render][window][appearance]") {
+    AppearanceWindow window;
+    REQUIRE(window.native.create() == Result::SUCCESS);
+    window.setDarkAppearance(false);
+    REQUIRE(window.native.appearance == false);
+    window.creationResult = Result::ERROR;
+    REQUIRE(window.create() == Result::ERROR);
+    CHECK_FALSE(window.native.ready);
+    CHECK_FALSE(window.native.appearance.has_value());
+    const auto requests = window.native.requests;
+    window.setDarkAppearance(false);
+    CHECK(window.native.requests == requests + 1);
+    window.creationResult = Result::SUCCESS;
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(window.native.appearance == false);
+    window.setDarkAppearance(false);
+    CHECK(window.native.appearances == std::vector<bool>{false, false});
 }
 
 TEST_CASE("Surfaces lease shared resources once", "[core][render][window][surface]") {
@@ -3366,4 +3631,61 @@ TEST_CASE("Texture revisions can be sampled while their producer reallocates",
     REQUIRE(monotonic);
     REQUIRE(texture->allocation() == 20000);
     REQUIRE(texture->contentRevision() == 10000);
+}
+
+TEST_CASE("Surface resizes apply at once after creation and failed rebuilds retry until they succeed",
+          "[core][render][surface][resize]") {
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {8, 6}});
+    ResizingSurface surface(Render::Surface::Config{.framebuffer = texture});
+
+    CHECK(surface.size({16, 12}) == Extent2D<U64>{8, 6});
+    CHECK(surface.rebuilds == 0);
+
+    REQUIRE(surface.create() == Result::SUCCESS);
+    REQUIRE(surface.frame() == Result::SUCCESS);
+    CHECK(texture->size() == Extent2D<U64>{16, 12});
+    CHECK(surface.rebuilds == 1);
+    CHECK(surface.resized());
+
+    REQUIRE(surface.frame() == Result::SUCCESS);
+    CHECK_FALSE(surface.resized());
+
+    CHECK(surface.size({20, 10}) == Extent2D<U64>{20, 10});
+    CHECK(surface.rebuilds == 2);
+    CHECK(surface.resized());
+    CHECK(surface.size({20, 10}) == Extent2D<U64>{20, 10});
+    CHECK(surface.rebuilds == 2);
+
+    surface.rebuildResult = Result::ERROR;
+    CHECK(surface.size({24, 12}) == Extent2D<U64>{24, 12});
+    CHECK(surface.rebuilds == 3);
+    CHECK(surface.bindingResult() == Result::ERROR);
+    CHECK(surface.frame() == Result::ERROR);
+    CHECK(surface.rebuilds == 4);
+    CHECK(surface.frame() == Result::ERROR);
+    CHECK(surface.rebuilds == 5);
+
+    surface.rebuildResult = Result::SUCCESS;
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 6);
+    CHECK(surface.resized());
+    CHECK(surface.bindingResult() == Result::SUCCESS);
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 6);
+    CHECK_FALSE(surface.resized());
+
+    CHECK(surface.size({32, 16}) == Extent2D<U64>{32, 16});
+    CHECK(surface.bindingResult() == Result::SUCCESS);
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 7);
+
+    surface.rebuildResult = Result::ERROR;
+    CHECK(surface.size({40, 20}) == Extent2D<U64>{40, 20});
+    CHECK(surface.bindingResult() == Result::ERROR);
+    REQUIRE(surface.destroy() == Result::SUCCESS);
+    REQUIRE(surface.create() == Result::SUCCESS);
+    CHECK(surface.bindingResult() == Result::SUCCESS);
+    surface.rebuildResult = Result::SUCCESS;
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 8);
 }

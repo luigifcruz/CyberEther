@@ -15,6 +15,7 @@ enum class PopupPlacement {
     Side,
     Tooltip,
     Center,
+    Inside,
 };
 
 struct Popup : public Component {

@@ -99,8 +99,9 @@ TEST_CASE("PskDemod - Costas frequency state uses integral gain",
             Runtime runtime("test", impl.device, impl.runtime);
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
 
             const F64 expected = beta * static_cast<F64>(input.at<CF32>(0).imag());
@@ -263,8 +264,9 @@ TEST_CASE("PskDemod - Fractional output waits for a complete tensor",
             Runtime runtime("test", impl.device, impl.runtime);
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
             REQUIRE(skippedModules.size() == 1);
             REQUIRE(skippedModules.contains("test"));
@@ -276,8 +278,9 @@ TEST_CASE("PskDemod - Fractional output waits for a complete tensor",
 
             fillInput(100.0f);
             skippedModules.clear();
+            stalledModules.clear();
             failedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
             REQUIRE(skippedModules.empty());
             REQUIRE(failedModules.empty());
@@ -356,8 +359,9 @@ TEST_CASE("PskDemod - Incomplete lane skips the entire batched tensor",
             Runtime runtime("test", impl.device, impl.runtime);
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
             REQUIRE(skippedModules.contains("test"));
             REQUIRE(states[0].pendingSymbols.size() == 10);
@@ -368,8 +372,9 @@ TEST_CASE("PskDemod - Incomplete lane skips the entire batched tensor",
 
             fillInput(1000.0f);
             skippedModules.clear();
+            stalledModules.clear();
             failedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
             REQUIRE(skippedModules.empty());
             REQUIRE(output.at<CF32>(0, 0, 0) == CF32(1.0f, 0.0f));
@@ -446,8 +451,9 @@ TEST_CASE("PskDemod - Timing history stays bounded across submissions",
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
             for (U64 submission = 0; submission < 64; ++submission) {
                 std::unordered_set<std::string> skippedModules;
+                std::unordered_set<std::string> stalledModules;
                 std::unordered_set<std::string> failedModules;
-                REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+                REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                         Result::SUCCESS);
 
                 for (U64 lane = 0; lane < states.size(); ++lane) {
@@ -536,8 +542,9 @@ TEST_CASE("PskDemod - Excess symbols are emitted in later submissions",
             Runtime runtime("test", impl.device, impl.runtime);
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
 
             const Tensor output = module->outputs().at("signal").tensor;
@@ -559,8 +566,9 @@ TEST_CASE("PskDemod - Excess symbols are emitted in later submissions",
                 state.timingOmega = 4.0;
             }
             skippedModules.clear();
+            stalledModules.clear();
             failedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
             REQUIRE(output.at<CF32>(0, 0, 0) == CF32(21.0f, 0.0f));
             REQUIRE(output.at<CF32>(1, 0, 0) == CF32(23.0f, 0.0f));
@@ -576,8 +584,9 @@ TEST_CASE("PskDemod - Excess symbols are emitted in later submissions",
 
             fillInput(200.0f);
             skippedModules.clear();
+            stalledModules.clear();
             failedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
             REQUIRE(output.at<CF32>(0, 0, 0) == CF32(101.0f, 0.0f));
             REQUIRE(output.at<CF32>(1, 0, 0) == CF32(105.0f, 0.0f));
@@ -598,8 +607,9 @@ TEST_CASE("PskDemod - Excess symbols are emitted in later submissions",
                  submission < 16 && overrunResult == Result::SUCCESS;
                  ++submission) {
                 skippedModules.clear();
+                stalledModules.clear();
                 failedModules.clear();
-                overrunResult = runtime.compute({}, skippedModules, failedModules);
+                overrunResult = runtime.compute({}, skippedModules, stalledModules, failedModules);
             }
             REQUIRE(overrunResult == Result::ERROR);
             for (const auto& state : states) {

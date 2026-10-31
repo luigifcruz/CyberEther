@@ -34,7 +34,8 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Extent2D<F32> displaySize() const;
     Extent2D<F32> framebufferSize() const;
 
-    void* nextDrawable();
+    MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable);
+    Extent2D<U64> getSwapchainExtent() const;
     
     Result waitEvents();
     Result pollEvents();
@@ -45,8 +46,11 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     void setIntegratedTitlebar(bool enabled);
     void beginWindowDrag();
     void zoomWindow();
+    bool setDarkAppearance(bool dark);
 
  private:
+    void setCaptureEnabled(bool enabled);
+
     GLFWwindow* window = nullptr;
     std::shared_ptr<CocoaTitlebar> titlebar;
     CA::MetalLayer* swapchain;

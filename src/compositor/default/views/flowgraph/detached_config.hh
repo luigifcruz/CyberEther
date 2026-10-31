@@ -6,7 +6,6 @@
 #include "editor/config/stack.hh"
 
 #include <algorithm>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -20,7 +19,7 @@ struct FlowgraphDetachedConfig {
         std::string id;
         std::string title;
         std::vector<FlowgraphConfigFieldConfig> configFields;
-        std::function<void()> onClose;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {
@@ -50,7 +49,7 @@ struct FlowgraphDetachedConfig {
         return config.title;
     }
 
-    std::function<void()> closeCallback() const {
+    Sakura::Callback<void()> closeCallback() const {
         return config.onClose;
     }
 

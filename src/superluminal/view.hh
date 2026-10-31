@@ -3,7 +3,7 @@
 
 #include "jetstream/logger.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/surface.hh"
 
 #include "render/sakura/metrics.hh"
@@ -325,11 +325,16 @@ struct SuperluminalView {
                         invalidate(Dirty::Layout);
                     }
                 },
+                .onOverscroll = [this] {
+                    requestFrame();
+                },
             });
             layoutChild(ctx, scroller, bounds);
             if (config.content) {
+                const F32 overscroll = scroller.overscroll(ctx).y;
                 layoutChild(ctx, *config.content,
-                            {bounds.x, bounds.y - offset, width, overflow ? natural : bounds.height}, bounds);
+                            {bounds.x, bounds.y - offset - overscroll, width, overflow ? natural : bounds.height},
+                            bounds);
             }
             const Extent2D<F32> reported = {std::ceil(natural) / ctx.pixelRatio, bounds.height / ctx.pixelRatio};
             if (config.onLayout && reported != last) {
@@ -846,7 +851,7 @@ struct SuperluminalView {
                 .id = GlobalPane,
                 .title = GlobalTitle,
                 .group = group(GlobalPane),
-                .icon = ICON_FA_SLIDERS,
+                .icon = ICON_LC_SLIDERS_HORIZONTAL,
                 .content = &global.component(),
                 .closable = false,
                 .padding = Sakura::Dock::ContentPadding,
@@ -888,7 +893,7 @@ struct SuperluminalView {
                 .id = id,
                 .title = tile.name,
                 .group = group(id),
-                .icon = interface ? ICON_FA_SLIDERS : ICON_FA_CHART_AREA,
+                .icon = interface ? ICON_LC_SLIDERS_HORIZONTAL : ICON_LC_CHART_AREA,
                 .content = content,
                 .closable = false,
                 .padding = Sakura::Dock::ContentPadding,

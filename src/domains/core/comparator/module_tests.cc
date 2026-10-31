@@ -405,8 +405,9 @@ TEST_CASE("Comparator Module - Validation-only and rejected updates preserve liv
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
             REQUIRE_THAT(module->outputs().at("error").tensor.at<F32>(0),
                          Catch::Matchers::WithinAbs(0.25f, 1e-6f));
 
@@ -418,8 +419,9 @@ TEST_CASE("Comparator Module - Validation-only and rejected updates preserve liv
 
             inputs.at("input1").tensor.at<F32>(0) = 0.4f;
             skippedModules.clear();
+            stalledModules.clear();
             failedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
             REQUIRE(module->outputs().at("error").tensor.id() == outputId);
             REQUIRE_THAT(module->outputs().at("error").tensor.at<F32>(0),
                          Catch::Matchers::WithinAbs(0.4f, 1e-6f));
@@ -433,8 +435,9 @@ TEST_CASE("Comparator Module - Validation-only and rejected updates preserve liv
 
             inputs.at("input1").tensor.at<F32>(0) = 0.75f;
             skippedModules.clear();
+            stalledModules.clear();
             failedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
             REQUIRE(module->outputs().at("error").tensor.id() == outputId);
             REQUIRE_THAT(module->outputs().at("error").tensor.at<F32>(0),
                          Catch::Matchers::WithinAbs(0.75f, 1e-6f));

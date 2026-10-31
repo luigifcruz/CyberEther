@@ -3,6 +3,7 @@
 
 #include "detached_config.hh"
 #include "editor/base.hh"
+#include "environment.hh"
 #include "labels.hh"
 #include "layout.hh"
 #include "surface.hh"
@@ -15,6 +16,7 @@
 
 #include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_view.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <memory>
@@ -30,12 +32,14 @@ struct FlowgraphPanePresenter {
     LayoutPresenter layout;
     FlowgraphDetachedSurfacePresenter surfaces;
     FlowgraphDetachedConfigPresenter configs;
+    FlowgraphEnvironmentPresenter environment;
 
     explicit FlowgraphPanePresenter(const PresenterContext& context) : context(context),
                                                                         editor(context),
                                                                         layout(context),
                                                                         surfaces(context),
-                                                                        configs(context) {}
+                                                                        configs(context),
+                                                                        environment(context) {}
 
     FlowgraphPane::Config build(const std::string& flowgraphId,
                                 const std::shared_ptr<Flowgraph>& flowgraph) const {
@@ -52,7 +56,10 @@ struct FlowgraphPanePresenter {
             .detachedSurfaces = surfaces.build(flowgraphId, flowgraph),
             .detachedConfigs = configs.build(flowgraphId, flowgraph),
             .documentation = documentation(flowgraphId),
+            .environment = environment.build(flowgraphId, flowgraph),
+            .description = description(flowgraphId, enqueue),
             .empty = flowgraph->view().empty(),
+            .showTips = context.state.interface.showTips,
             .dependencyReviewAvailable = hasDependencyReview(flowgraph),
             .dependencyReviewTone = dependencyReviewTone(),
             .dependencyReviewMessage = dependencyReviewMessage(),
@@ -75,8 +82,9 @@ struct FlowgraphPanePresenter {
                     .flowgraph = flowgraphId,
                 });
             },
-            .onOpenExamples = [enqueue]() {
-                enqueue(MailOpenModal{.content = ModalContent::FlowgraphExamples});
+            .onOpenGallery = [enqueue]() {
+                enqueue(MailOpenStartTab{});
+                enqueue(MailSetWelcomeSection{.section = WelcomeSection::Flowgraphs});
             },
             .onMeasure = [layout = context.callbacks.layout, flowgraphId](FlowgraphEditor::Measured measured) {
                 if (!layout) {
@@ -86,13 +94,31 @@ struct FlowgraphPanePresenter {
                 for (auto& [block, node] : measured.nodes) {
                     converted.nodes[block] = {node.bounds, node.size, node.content};
                 }
-                converted.viewport = Agent::Tools::Layout::Viewport{measured.viewport, measured.toolbar};
+                converted.viewport = Agent::Tools::Layout::Viewport{.visible = measured.viewport};
                 layout(flowgraphId, std::move(converted));
             },
         };
     }
 
  private:
+    std::optional<FlowgraphPane::Description> description(const std::string& flowgraphId,
+                                                          const Sakura::Callback<void(Mail&&)>& enqueue) const {
+        const auto entry = context.state.flowgraph.gallery.find(flowgraphId);
+        if (entry == context.state.flowgraph.gallery.end() || Text::TrimBlank(entry->second).empty()) {
+            return std::nullopt;
+        }
+        return FlowgraphPane::Description{
+            .id = kLayoutDescriptionPane,
+            .markdown = entry->second,
+            .onClose = [enqueue, flowgraphId]() {
+                enqueue(MailCloseFlowgraphDescription{.flowgraph = flowgraphId});
+            },
+            .onOpenUrl = [enqueue](const std::string& url) {
+                enqueue(MailOpenUrl{.url = url, .notifyResult = true});
+            },
+        };
+    }
+
     std::optional<FlowgraphDocumentation::Config> documentation(const std::string& flowgraphId) const {
         const auto entry = context.state.flowgraph.documentation.find(flowgraphId);
         if (entry == context.state.flowgraph.documentation.end()) {

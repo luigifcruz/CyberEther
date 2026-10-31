@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_FLOATING_LAYER_HH
 
 #include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/style.hh>
 #include <jetstream/types.hh>
 
 #include <memory>
@@ -12,7 +13,7 @@
 namespace Jetstream::Sakura {
 
 struct FloatingLayer : public Layer {
-    static constexpr F32 Rounding = 12.0f;
+    static constexpr F32 Rounding = Sakura::Rounding::Card;
 
     struct Window {
         std::string id;

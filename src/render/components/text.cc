@@ -52,12 +52,14 @@ struct Text::Impl {
         return std::max(1.0f, std::round(static_cast<F32>(font->lineHeight()) * scale));
     }
 
-    struct UniformBuffer {
-        glm::vec3 color;
+    struct alignas(8) UniformBuffer {
+        glm::vec2 translation;
         F32 sharpness;
         F32 atlasPixelRange;
-        F32 padding;
-        glm::vec2 translation;
+        F32 weight;
+        F32 emboss;
+        F32 em;
+        F32 backdrop;
     };
 
     struct InstanceData {
@@ -429,6 +431,44 @@ F32 Text::lineHeight(F32 scale) const {
     return Impl::ScaledLineHeight(config.font.get(), scale);
 }
 
+F32 Text::inkOffset(const std::string& fill, F32 scale) const {
+    const auto* font = config.font.get();
+    if (!font) {
+        return 0.0f;
+    }
+    const F32 texel = scale / font->atlasScale();
+    const F32 lineHeight = Impl::ScaledLineHeight(font, scale);
+    const F32 ascent = std::round(static_cast<F32>(font->ascent()) * scale);
+    U64 lineCount = 1;
+    F32 rowOffset = 0.0f;
+    F32 top = std::numeric_limits<F32>::max();
+    F32 bottom = std::numeric_limits<F32>::lowest();
+    for (U64 i = 0; i < fill.size();) {
+        U32 codepoint = 0;
+        i += std::max<U64>(1, Unicode::Decode(fill, i, codepoint));
+        if (codepoint == '\n') {
+            ++lineCount;
+            rowOffset += lineHeight;
+            continue;
+        }
+        if (codepoint <= ' ') {
+            continue;
+        }
+        const auto& glyph = font->glyph(static_cast<I32>(codepoint));
+        if (glyph.y1 <= glyph.y0) {
+            continue;
+        }
+        const F32 y0 = rowOffset + ascent + glyph.yOffset * scale;
+        top = std::min(top, y0);
+        bottom = std::max(bottom, y0 + static_cast<F32>(glyph.y1 - glyph.y0) * texel);
+    }
+    if (top > bottom) {
+        return 0.0f;
+    }
+    const F32 blockHeight = lineHeight * static_cast<F32>(lineCount);
+    return (top + bottom - blockHeight) * 0.5f;
+}
+
 Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
     // Check if pixel size has changed. Use epsilon to avoid tiny float jitter.
     constexpr F32 pixelSizeEpsilon = 1e-6f;
@@ -471,9 +511,20 @@ Result Text::updateColor(const ColorRGBA<F32>& color) {
         return Result::SUCCESS;
     }
     config.color = color;
-    JST_CHECK(pimpl->updateUniforms());
     JST_CHECK(pimpl->updateInstances());
     return Result::SUCCESS;
+}
+
+Result Text::updateStyle(F32 sharpness, F32 weight, F32 emboss, F32 embossBackdrop) {
+    if (config.sharpness == sharpness && config.weight == weight &&
+        config.emboss == emboss && config.embossBackdrop == embossBackdrop) {
+        return Result::SUCCESS;
+    }
+    config.sharpness = sharpness;
+    config.weight = weight;
+    config.emboss = emboss;
+    config.embossBackdrop = embossBackdrop;
+    return pimpl->updateUniforms();
 }
 
 void Text::enabled(bool value) {
@@ -482,9 +533,12 @@ void Text::enabled(bool value) {
 
 Result Text::Impl::updateUniforms() {
     // Set data.
-    uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);
     uniforms.sharpness = config.sharpness;
+    uniforms.weight = config.weight;
     uniforms.atlasPixelRange = config.font->atlasPixelRange();
+    uniforms.emboss = config.emboss;
+    uniforms.em = config.font->getConfig().size * config.font->atlasScale();
+    uniforms.backdrop = config.embossBackdrop;
 
     // Set flag to update buffer.
     updateFontUniformBufferFlag = true;

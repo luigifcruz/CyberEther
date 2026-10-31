@@ -74,7 +74,7 @@ A `.cep` file is a `tar.gz` archive with a `.cep` extension. It must include a
 metadata:
   name: cyberether-blueprint-plugin
   version: 0.1.0
-  minimumJetstreamVersion: 1.15.0
+  minimumJetstreamVersion: 1.17.0
 
 targets:
   - path: targets/macos-arm64-cpu/cyberether_blueprint_plugin.dylib
@@ -184,7 +184,7 @@ blueprint directory:
   --output build/cyberether_blueprint_plugin.cep \
   --name cyberether-blueprint-plugin \
   --version 0.1.0 \
-  --minimum-jetstream-version 1.15.0 \
+  --minimum-jetstream-version 1.17.0 \
   --target path=build/cyberether_blueprint_plugin.dylib,system=macos,device=cpu,arch=arm64 \
   --example examples/blueprint_gain.yml
 ```
@@ -271,5 +271,5 @@ CyberEther loads plugins through its plugin loader. At load time, CyberEther:
 
 After the plugin is loaded, its registered blocks can be built like other
 CyberEther blocks. The user-facing side of this flow, including registration
-through the preferences window, is covered in
+through Settings, is covered in
 [Installing Plugins](/docs/installing-plugins).

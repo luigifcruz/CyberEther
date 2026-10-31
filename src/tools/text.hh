@@ -53,6 +53,13 @@ inline std::string ToLower(std::string value) {
     return value;
 }
 
+inline std::string ToUpper(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](const unsigned char ch) {
+        return static_cast<char>(std::toupper(ch));
+    });
+    return value;
+}
+
 inline constexpr const char* kBlankCharacters = " \t\r\n";
 
 inline bool IsBlank(const std::string& text) {

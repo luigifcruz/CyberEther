@@ -8,7 +8,6 @@
 #include <jetstream/flowgraph_view.hh>
 #include <jetstream/runtime_context.hh>
 
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -73,7 +72,7 @@ inline void ApplyLiveMarkdown(std::vector<FlowgraphConfigFieldConfig>& fields,
 }
 
 inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigFields(
-    const std::function<void(Mail&&)>& enqueue,
+    const Sakura::Callback<void(Mail&&)>& enqueue,
     const DefaultCompositorState::FlowgraphState& flowgraphs,
     const std::string& flowgraphId,
     const std::string& blockName,
@@ -84,7 +83,7 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigField
     for (auto& field : fields) {
         field.onApply = [enqueue, flowgraphId, blockName](Parser::Map patch,
                                                           const bool silent,
-                                                          std::function<void(Result)> onComplete) {
+                                                          Sakura::Callback<void(Result)> onComplete) {
             enqueue(MailReconfigureBlock{flowgraphId,
                                          blockName,
                                          std::move(patch),
@@ -96,13 +95,16 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigField
         };
         field.onBrowsePath = [enqueue](const bool save,
                                        std::vector<std::string> extensions,
-                                       std::function<void(std::string)> onSelect) {
+                                       Sakura::Callback<void(std::string)> onSelect) {
             enqueue(MailBrowseConfigPath{
                 .path = "",
                 .save = save,
                 .extensions = std::move(extensions),
                 .onSelect = std::move(onSelect),
             });
+        };
+        field.onOpenUrl = [enqueue](const std::string& url) {
+            enqueue(MailOpenUrl{.url = url, .notifyResult = true});
         };
     }
     return fields;

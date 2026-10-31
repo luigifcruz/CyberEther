@@ -8,6 +8,8 @@
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/plugin.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/runtime_context_python.hh"
 #include "jetstream/settings.hh"
@@ -26,6 +28,7 @@
 #include "jetstream/render/sakura/toast.hh"
 
 #include <atomic>
+#include <chrono>
 #include <future>
 #include <map>
 #include <memory>
@@ -115,9 +118,15 @@ struct DefaultCompositorState {
 
         struct UiState {
             bool visible = false;
+            bool unread = false;
             bool voiceVisible = false;
             bool settingsShown = false;
             U64 chatFocusRequests = 0;
+        };
+
+        struct McpState {
+            std::string url;
+            std::string error;
         };
 
         Settings::Intelligence settings;
@@ -128,6 +137,7 @@ struct DefaultCompositorState {
         ChatState chat;
         VoiceState voice;
         UiState ui;
+        McpState mcp;
     };
 
     struct SystemState {
@@ -140,22 +150,42 @@ struct DefaultCompositorState {
         Sakura::Runtime runtime;
         std::string themeKey = "Dark";
         Sakura::Palette colorMap;
+
+        bool dark() const {
+            return themeKey != "Light";
+        }
     };
 
     struct InterfaceState {
+        static constexpr U64 MaxRecentFlowgraphs = 5;
+
         bool filePending = false;
         bool backgroundParticles = true;
-        bool flowgraphMetadataVisible = false;
-        std::string flowgraphMetadataSearch;
-        bool flowgraphEnvironmentVisible = false;
-        std::string flowgraphEnvironmentSearch;
+        bool showTips = true;
+        std::vector<Settings::Interface::FlowgraphEntry> recentFlowgraphs;
+        std::vector<Settings::Interface::FlowgraphEntry> favoriteFlowgraphs;
 
         std::optional<std::string> focusedFlowgraph;
         std::optional<std::string> pendingFocusedFlowgraph;
+        std::optional<std::string> closingFlowgraph;
+        std::optional<WorkspaceTab> focusedTab;
+        bool tabNavigationPending = false;
         bool startTab = false;
-        bool startTabFocused = false;
         U64 startTabBaseline = 0;
         U64 startTabRequests = 0;
+        WelcomeSection welcomeSection = WelcomeSection::All;
+        bool welcomeSidebarOpen = true;
+        std::string welcomeQuery;
+        std::string welcomeCategory;
+        U64 welcomePage = 0;
+        bool settingsTab = false;
+        U64 settingsTabRequests = 0;
+        bool docsTab = false;
+        U64 docsTabRequests = 0;
+        std::string docsPage;
+        std::string docsAnchor;
+        U64 docsNavigations = 0;
+        std::string docsQuery;
     };
 
     struct GraphicsState {
@@ -165,6 +195,9 @@ struct DefaultCompositorState {
 
     struct SettingsState {
         SettingsSection section = SettingsSection::General;
+        RegistryPage registryPage = RegistryPage::Overview;
+        std::string registryPlugin;
+        IntelligencePage intelligencePage = IntelligencePage::Overview;
     };
 
     struct RuntimeState {
@@ -228,6 +261,8 @@ struct DefaultCompositorState {
         std::unordered_map<std::string, std::vector<BlockSnapshot>> blocks;
         std::unordered_map<std::string, std::string> liveMarkdown;
         std::unordered_map<std::string, Documentation> documentation;
+        std::unordered_map<std::string, std::string> environment;
+        std::unordered_map<std::string, std::string> gallery;
         SurfaceTracks surfaces;
     };
 
@@ -256,10 +291,46 @@ struct DefaultCompositorState {
         bool started = false;
         U64 clientCount = 0;
         std::string inviteUrl;
-        std::string roomId;
-        std::string accessToken;
         std::vector<Instance::Remote::ClientInfo> clients;
         std::vector<std::string> waitlist;
+    };
+
+    struct RegistryState {
+        struct BlockEntry {
+            std::string type;
+            std::string domain;
+            std::string title;
+            std::string summary;
+        };
+
+        struct PluginEntry {
+            std::string path;
+            std::optional<Plugin::Info> info;
+            bool exists = false;
+        };
+
+        struct GalleryFetch {
+            struct Fetched {
+                std::vector<Registry::FlowgraphRegistration> flowgraphs;
+                bool complete = true;
+            };
+
+            std::vector<Registry::FlowgraphRegistration> flowgraphs;
+            std::future<std::optional<Fetched>> future;
+            std::shared_ptr<std::atomic<bool>> cancel;
+            std::chrono::steady_clock::time_point started;
+            std::chrono::steady_clock::time_point next;
+            bool cached = false;
+            bool loading = false;
+            bool attempted = false;
+            bool failed = false;
+        };
+
+        bool stale = true;
+        std::vector<BlockEntry> blocks;
+        std::vector<Registry::FlowgraphRegistration> flowgraphs;
+        GalleryFetch gallery;
+        std::vector<PluginEntry> registered;
     };
 
     struct FilePickerState {
@@ -300,8 +371,55 @@ struct DefaultCompositorState {
     BenchmarkState benchmark;
     ClipboardState clipboard;
     RemoteState remote;
+    RegistryState registry;
     FilePickerState filePicker;
     FeedbackState feedback;
+
+    bool startTabShown() const {
+        return interface.startTab || flowgraph.items.empty();
+    }
+
+    bool tabShown(WorkspaceTab tab) const {
+        switch (tab) {
+            case WorkspaceTab::Start:
+                return startTabShown();
+            case WorkspaceTab::Settings:
+                return interface.settingsTab;
+            case WorkspaceTab::Docs:
+                return interface.docsTab;
+        }
+        return false;
+    }
+
+    bool tabActive(WorkspaceTab tab) const {
+        return interface.focusedTab == tab && tabShown(tab);
+    }
+
+    bool startTabActive() const {
+        return tabActive(WorkspaceTab::Start);
+    }
+
+    bool settingsTabActive() const {
+        return tabActive(WorkspaceTab::Settings);
+    }
+
+    bool docsTabActive() const {
+        return tabActive(WorkspaceTab::Docs);
+    }
+
+    std::optional<std::string> activeFlowgraph() const {
+        if (startTabActive() || settingsTabActive() || docsTabActive()) {
+            return std::nullopt;
+        }
+        if (!interface.focusedFlowgraph.has_value() || !flowgraph.items.contains(*interface.focusedFlowgraph)) {
+            return std::nullopt;
+        }
+        return interface.focusedFlowgraph;
+    }
+
+    bool tabsHidden() const {
+        return flowgraph.items.empty() && !interface.startTab && !interface.settingsTab && !interface.docsTab;
+    }
 };
 
 }  // namespace Jetstream

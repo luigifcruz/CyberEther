@@ -54,13 +54,21 @@ inline bool OpaqueCovers(const Rect& shape,
     if (color.a < 1.0f || shape.empty() || target.empty()) {
         return false;
     }
-    const F32 radius = std::max(0.0f, cornerRadius);
-    const Rect body = {shape.x + radius, shape.y + radius, shape.width - 2.0f * radius, shape.height - 2.0f * radius};
     const auto inside = [&](const Rect& outer) {
         return target.x >= outer.x && target.y >= outer.y && target.right() <= outer.right() &&
                target.bottom() <= outer.bottom();
     };
-    return inside(body) && (!clip.has_value() || inside(*clip));
+    if (!inside(shape) || (clip.has_value() && !inside(*clip))) {
+        return false;
+    }
+    const F32 radius = std::min({std::max(0.0f, cornerRadius), shape.width * 0.5f, shape.height * 0.5f});
+    const auto rounded = [&](F32 x, F32 y) {
+        const F32 cx = std::clamp(x, shape.x + radius, shape.right() - radius);
+        const F32 cy = std::clamp(y, shape.y + radius, shape.bottom() - radius);
+        return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= radius * radius;
+    };
+    return rounded(target.x, target.y) && rounded(target.right(), target.y) && rounded(target.x, target.bottom()) &&
+           rounded(target.right(), target.bottom());
 }
 
 template<typename Covered>

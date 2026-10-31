@@ -55,6 +55,7 @@ Result Implementation::create() {
     swapchain = CA::MetalLayer::layer()->retain();
     swapchain->setDevice(device);
     swapchain->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+    swapchain->setFramebufferOnly(true);
 
     auto* native = static_cast<NS::Window*>(glfwGetCocoaWindow(window));
     native->contentView()->setLayer(swapchain);
@@ -105,7 +106,7 @@ Extent2D<F32> Implementation::framebufferSize() const {
     return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
-void* Implementation::nextDrawable() {
+MTL::Texture* Implementation::nextDrawable(CA::MetalDrawable*& drawable) {
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
     swapchain->setDrawableSize({
@@ -113,7 +114,19 @@ void* Implementation::nextDrawable() {
         static_cast<CGFloat>(height)
     });
 
-    return static_cast<void*>(swapchain->nextDrawable());
+    drawable = swapchain->nextDrawable();
+    return drawable ? drawable->texture() : nullptr;
+}
+
+Extent2D<U64> Implementation::getSwapchainExtent() const {
+    int width = 0;
+    int height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    return {static_cast<U64>(width), static_cast<U64>(height)};
+}
+
+void Implementation::setCaptureEnabled(bool enabled) {
+    swapchain->setFramebufferOnly(!enabled);
 }
 
 Result Implementation::waitEvents() {
@@ -156,6 +169,10 @@ void Implementation::zoomWindow() {
     if (titlebar) {
         titlebar->zoom();
     }
+}
+
+bool Implementation::setDarkAppearance(bool dark) {
+    return CocoaTitlebar::SetAppearance(window, dark);
 }
 
 }  // namespace Jetstream::Viewport

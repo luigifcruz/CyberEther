@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_TITLEBAR_HH
 
 #include "context.hh"
+#include "agent/voice.hh"
 
 #include "../model/messages.hh"
 #include "../views/titlebar.hh"
@@ -10,20 +11,26 @@
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 namespace Jetstream {
 
 struct TitlebarPresenter {
     const PresenterContext& context;
+    AgentVoicePresenter voice;
 
-    explicit TitlebarPresenter(const PresenterContext& context) : context(context) {}
+    explicit TitlebarPresenter(const PresenterContext& context) : context(context), voice(context) {}
 
     TitlebarView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
-        const auto focusedFlowgraph = context.state.interface.focusedFlowgraph;
-        const bool startTabFocused = context.state.interface.startTab && context.state.interface.startTabFocused;
-        const bool flowgraphMetadataVisible = context.state.interface.flowgraphMetadataVisible;
-        const bool flowgraphEnvironmentVisible = context.state.interface.flowgraphEnvironmentVisible;
+        const auto activeFlowgraph = context.state.activeFlowgraph();
+        const bool startTabActive = context.state.startTabActive();
+        const bool settingsTabActive = context.state.settingsTabActive();
+        const bool docsTabActive = context.state.docsTabActive();
+        std::unordered_set<std::string> environmentFlowgraphs;
+        for (const auto& [flowgraph, _] : context.state.flowgraph.environment) {
+            environmentFlowgraphs.insert(flowgraph);
+        }
         const bool canCheckForUpdates = context.state.update.supported &&
                                         !context.state.update.checking &&
                                         !context.state.update.available &&
@@ -38,24 +45,25 @@ struct TitlebarPresenter {
         };
 
         return TitlebarView::Config{
-            .id = "main-titlebar",
             .leadingInset = chrome.leadingInset,
             .height = chrome.height,
-            .remoteSupported = context.state.remote.supported,
             .remoteStarted = context.state.remote.started,
             .updateAvailable = context.state.update.available,
             .updateReady = context.state.update.ready,
             .intelligenceEnabled = context.state.agent.settings.enabled,
-            .agentVisible = context.state.agent.ui.visible,
-            .voiceVisible = context.state.agent.ui.voiceVisible,
-            .focusedFlowgraph = focusedFlowgraph,
-            .flowgraphMetadataVisible = flowgraphMetadataVisible,
-            .flowgraphEnvironmentVisible = flowgraphEnvironmentVisible,
+            .agentUnread = context.state.agent.ui.unread,
+            .voice = voice.build(),
+            .environmentFlowgraphs = environmentFlowgraphs,
             .debugTimingEnabled = context.state.debug.timingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
-            .onAction = [enqueue, focusedFlowgraph, startTabFocused, canCheckForUpdates, missing,
+            .sidebarOpen = context.state.tabsHidden() && context.state.startTabShown()
+                               ? std::optional<bool>(context.state.interface.welcomeSidebarOpen)
+                               : std::nullopt,
+            .onAction = [enqueue, activeFlowgraph, startTabActive, settingsTabActive, docsTabActive, canCheckForUpdates,
+                         missing,
                          timing = context.state.debug.timingEnabled,
                          agentVisible = context.state.agent.ui.visible,
+                         sidebarOpen = context.state.interface.welcomeSidebarOpen,
                          voiceVisible = context.state.agent.ui.voiceVisible](TitlebarView::Action action) {
                 using Action = TitlebarView::Action;
                 switch (action) {
@@ -63,31 +71,31 @@ struct TitlebarPresenter {
                         enqueue(MailOpenModal{.content = ModalContent::About});
                         break;
                     case Action::Settings:
-                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::General});
+                        enqueue(MailOpenSettings{.section = SettingsSection::General});
                         break;
                     case Action::CheckForUpdates:
-                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::About});
+                        enqueue(MailOpenSettings{.section = SettingsSection::About});
                         if (canCheckForUpdates) {
                             enqueue(MailCheckForUpdates{});
                         }
                         break;
                     case Action::OpenUpdateModal:
-                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::About});
+                        enqueue(MailOpenSettings{.section = SettingsSection::About});
                         break;
                     case Action::RemoteStreaming:
-                        enqueue(MailOpenModal{.content = ModalContent::RemoteStreaming});
+                        enqueue(MailOpenStartTab{});
                         break;
                     case Action::ToggleAgent:
-                        enqueue(MailSetAgentChatVisible{.value = !agentVisible});
+                        enqueue(MailSetAgentChatVisible{.value = !agentVisible, .focus = !agentVisible});
                         break;
                     case Action::ToggleVoice:
                         enqueue(MailSetAgentVoiceVisible{.value = !voiceVisible});
                         break;
                     case Action::GettingStarted:
-                        enqueue(MailOpenUrl{.url = "https://cyberether.org/docs/quick-start", .notifyResult = true});
+                        enqueue(MailOpenDocs{.page = "quick-start"});
                         break;
                     case Action::Documentation:
-                        enqueue(MailOpenUrl{.url = "https://cyberether.org/docs", .notifyResult = true});
+                        enqueue(MailOpenDocs{});
                         break;
                     case Action::OpenRepository:
                         enqueue(MailOpenUrl{.url = "https://github.com/luigifcruz/CyberEther", .notifyResult = true});
@@ -111,42 +119,46 @@ struct TitlebarPresenter {
                         enqueue(MailReloadAllPlugins{});
                         break;
                     case Action::OpenDeveloperSettings:
-                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Developer});
+                        enqueue(MailOpenSettings{.section = SettingsSection::Developer});
                         break;
                     case Action::NewTab:
                         enqueue(MailOpenStartTab{});
                         break;
+                    case Action::ToggleSidebar:
+                        enqueue(MailSetWelcomeSidebar{.open = !sidebarOpen});
+                        break;
                     case Action::Quit:
                         enqueue(MailQuit{});
-                        break;
-                    case Action::NewFlowgraph:
-                        enqueue(MailNewFlowgraph{});
                         break;
                     case Action::OpenFlowgraph:
                         enqueue(MailOpenFlowgraph{});
                         break;
                     case Action::SaveFlowgraph:
-                        if (focusedFlowgraph.has_value()) {
-                            enqueue(MailSaveFlowgraph{.flowgraph = focusedFlowgraph.value()});
+                        if (activeFlowgraph.has_value()) {
+                            enqueue(MailSaveFlowgraph{.flowgraph = activeFlowgraph.value()});
                         } else {
                             missing("No focused flowgraph to save.");
                         }
                         break;
                     case Action::ShowFlowgraphInfo:
-                        if (focusedFlowgraph.has_value()) {
+                        if (activeFlowgraph.has_value()) {
                             enqueue(MailOpenModal{
                                 .content = ModalContent::FlowgraphInfo,
-                                .flowgraph = focusedFlowgraph.value(),
+                                .flowgraph = activeFlowgraph.value(),
                             });
                         } else {
                             missing("No focused flowgraph to display information.");
                         }
                         break;
                     case Action::CloseFlowgraph:
-                        if (startTabFocused) {
+                        if (startTabActive) {
                             enqueue(MailCloseStartTab{});
-                        } else if (focusedFlowgraph.has_value()) {
-                            enqueue(MailCloseFlowgraph{focusedFlowgraph.value()});
+                        } else if (settingsTabActive) {
+                            enqueue(MailCloseSettings{});
+                        } else if (docsTabActive) {
+                            enqueue(MailCloseDocs{});
+                        } else if (activeFlowgraph.has_value()) {
+                            enqueue(MailCloseFlowgraph{activeFlowgraph.value()});
                         } else {
                             missing("No focused flowgraph to close.");
                         }
@@ -156,13 +168,9 @@ struct TitlebarPresenter {
             .onLogLevel = [enqueue](I32 level) {
                 enqueue(MailSetDebugLogLevel{.value = level});
             },
-            .onTabAction = [enqueue,
-                            focusedFlowgraph,
-                            flowgraphMetadataVisible,
-                            flowgraphEnvironmentVisible](TitlebarView::TabAction action,
-                                                         const std::string& flowgraph) {
+            .onTabAction = [enqueue, environmentFlowgraphs](TitlebarView::TabAction action,
+                                                            const std::string& flowgraph) {
                 using TabAction = TitlebarView::TabAction;
-                const bool focused = focusedFlowgraph == flowgraph;
                 switch (action) {
                     case TabAction::Save:
                         enqueue(MailSaveFlowgraph{.flowgraph = flowgraph});
@@ -171,17 +179,11 @@ struct TitlebarPresenter {
                     case TabAction::Info:
                         enqueue(MailOpenModal{.content = ModalContent::FlowgraphInfo, .flowgraph = flowgraph});
                         break;
-                    case TabAction::ToggleMetadata:
-                        if (!focused) {
-                            enqueue(MailFocusFlowgraph{.flowgraph = flowgraph});
-                        }
-                        enqueue(MailSetFlowgraphMetadataVisible{.value = !focused || !flowgraphMetadataVisible});
-                        break;
                     case TabAction::ToggleEnvironment:
-                        if (!focused) {
-                            enqueue(MailFocusFlowgraph{.flowgraph = flowgraph});
-                        }
-                        enqueue(MailSetFlowgraphEnvironmentVisible{.value = !focused || !flowgraphEnvironmentVisible});
+                        enqueue(MailSetFlowgraphEnvironmentVisible{
+                            .flowgraph = flowgraph,
+                            .value = !environmentFlowgraphs.contains(flowgraph),
+                        });
                         break;
                     case TabAction::Close:
                         enqueue(MailCloseFlowgraph{flowgraph});

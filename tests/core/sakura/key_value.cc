@@ -1,7 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "compositor/default/presenters/flowgraph/environment.hh"
-#include "compositor/default/presenters/flowgraph/metadata.hh"
 #include "flowgraph_fixture.hh"
 
 #include <memory>
@@ -21,25 +20,19 @@ struct KeyValueScene {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
     std::vector<Mail> mail;
+    std::shared_ptr<Flowgraph> flowgraph;
 
-    explicit KeyValueScene(Flowgraph& flowgraph) {
-        state.flowgraph.items["graph"] = BorrowFixtureFlowgraph(flowgraph);
-        state.interface.focusedFlowgraph = "graph";
-        state.interface.flowgraphMetadataVisible = true;
-        state.interface.flowgraphEnvironmentVisible = true;
+    explicit KeyValueScene(Flowgraph& flowgraph) : flowgraph(BorrowFixtureFlowgraph(flowgraph)) {
+        state.flowgraph.items["graph"] = this->flowgraph;
+        state.flowgraph.environment["graph"] = "";
         callbacks.enqueueMail = [this](Mail&& next) {
             mail.push_back(std::move(next));
         };
     }
 
-    std::optional<FlowgraphKeyValueWindow::Config> metadata() const {
+    std::optional<FlowgraphEnvironment::Config> environment() const {
         const PresenterContext context{state, callbacks};
-        return FlowgraphMetadataWindowPresenter(context).build();
-    }
-
-    std::optional<FlowgraphKeyValueWindow::Config> environment() const {
-        const PresenterContext context{state, callbacks};
-        return FlowgraphEnvironmentWindowPresenter(context).build();
+        return FlowgraphEnvironmentPresenter(context).build("graph", flowgraph);
     }
 };
 
@@ -54,48 +47,17 @@ std::vector<std::string> Labels(const Sakura::Table::Nodes& nodes) {
 }  // namespace
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Key-value trees keep metadata identities and labels distinct",
+                 "Environment labels containing id markers stay literal and distinct",
                  "[core][sakura][compositor][key-value]") {
     KeyValueScene scene(*flowgraph);
-
     const Parser::Map firstValue{{"child-A", "first value"}};
     const Parser::Map secondValue{{"child-B", "second value"}};
-    bool environment = false;
-    std::string firstLabel;
-    std::string secondLabel;
+    const std::string firstLabel = "alpha##literal###suffix";
+    const std::string secondLabel = "beta##literal###suffix";
+    REQUIRE(flowgraph->environment().set(firstLabel, firstValue) == Result::SUCCESS);
+    REQUIRE(flowgraph->environment().set(secondLabel, secondValue) == Result::SUCCESS);
 
-    SECTION("slashes in block names and keys do not alias") {
-        REQUIRE(flowgraph->blockCreate("a", TestFlowgraph::kSyntheticIsolatedType, {}, {}) == Result::SUCCESS);
-        REQUIRE(flowgraph->blockCreate("a/b", TestFlowgraph::kSyntheticIsolatedType, {}, {}) == Result::SUCCESS);
-        REQUIRE(flowgraph->metadata().set("b/c", firstValue, "a") == Result::SUCCESS);
-        REQUIRE(flowgraph->metadata().set("c", secondValue, "a/b") == Result::SUCCESS);
-        firstLabel = "a.b/c";
-        secondLabel = "a/b.c";
-    }
-
-    SECTION("flowgraph and block metadata may have identical display labels") {
-        REQUIRE(flowgraph->blockCreate("a", TestFlowgraph::kSyntheticIsolatedType, {}, {}) == Result::SUCCESS);
-        REQUIRE(flowgraph->metadata().set("a.metadata", firstValue) == Result::SUCCESS);
-        REQUIRE(flowgraph->metadata().set("metadata", secondValue, "a") == Result::SUCCESS);
-        firstLabel = secondLabel = "a.metadata";
-    }
-
-    SECTION("metadata labels containing id markers remain literal") {
-        firstLabel = "alpha##literal###suffix";
-        secondLabel = "beta##literal###suffix";
-        REQUIRE(flowgraph->metadata().set(firstLabel, firstValue) == Result::SUCCESS);
-        REQUIRE(flowgraph->metadata().set(secondLabel, secondValue) == Result::SUCCESS);
-    }
-
-    SECTION("environment labels containing id markers remain literal") {
-        environment = true;
-        firstLabel = "alpha##literal###suffix";
-        secondLabel = "beta##literal###suffix";
-        REQUIRE(flowgraph->environment().set(firstLabel, firstValue) == Result::SUCCESS);
-        REQUIRE(flowgraph->environment().set(secondLabel, secondValue) == Result::SUCCESS);
-    }
-
-    const auto initial = environment ? scene.environment() : scene.metadata();
+    const auto initial = scene.environment();
     REQUIRE(initial.has_value());
     REQUIRE(initial->nodes.size() == 2);
     REQUIRE(initial->nodes[0].id != initial->nodes[1].id);
@@ -104,65 +66,20 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Key-value windows build only while visible for a focused open flowgraph",
+                 "Environment tiles build only while open for their flowgraph",
                  "[core][sakura][compositor][key-value]") {
     KeyValueScene scene(*flowgraph);
-    REQUIRE(scene.metadata().has_value());
     REQUIRE(scene.environment().has_value());
 
-    SECTION("hidden windows") {
-        scene.state.interface.flowgraphMetadataVisible = false;
-        scene.state.interface.flowgraphEnvironmentVisible = false;
-    }
+    scene.state.flowgraph.environment.erase("graph");
+    CHECK_FALSE(scene.environment().has_value());
 
-    SECTION("no focused flowgraph") {
-        scene.state.interface.focusedFlowgraph.reset();
-    }
-
-    SECTION("focused flowgraph that is no longer open") {
-        scene.state.interface.focusedFlowgraph = "closed";
-    }
-
-    CHECK_FALSE(scene.metadata().has_value());
+    scene.state.flowgraph.environment["other"] = "";
     CHECK_FALSE(scene.environment().has_value());
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Metadata windows filter display keys case-insensitively and count shown against all entries",
-                 "[core][sakura][compositor][key-value]") {
-    KeyValueScene scene(*flowgraph);
-    const Parser::Map value{{"child", std::string("value")}};
-    REQUIRE(flowgraph->blockCreate("Radio", TestFlowgraph::kSyntheticIsolatedType, {}, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->metadata().set("Gain", value) == Result::SUCCESS);
-    REQUIRE(flowgraph->metadata().set("alpha", value) == Result::SUCCESS);
-    REQUIRE(flowgraph->metadata().set("gain", value, "Radio") == Result::SUCCESS);
-
-    const auto all = scene.metadata();
-    REQUIRE(all.has_value());
-    CHECK(Labels(all->nodes) == std::vector<std::string>{"Gain", "Radio.gain", "alpha"});
-    CHECK(all->entryCount == "3 of 3 entries");
-    CHECK(all->id == "flowgraph-metadata-window");
-    CHECK(all->title == "Flowgraph Metadata (graph)");
-    for (const auto& node : all->nodes) {
-        CHECK(node.open);
-    }
-
-    scene.state.interface.flowgraphMetadataSearch = "GAIN";
-    const auto filtered = scene.metadata();
-    REQUIRE(filtered.has_value());
-    CHECK(Labels(filtered->nodes) == std::vector<std::string>{"Gain", "Radio.gain"});
-    CHECK(filtered->entryCount == "2 of 3 entries");
-    CHECK(filtered->search == "GAIN");
-
-    scene.state.interface.flowgraphMetadataSearch = "radio.";
-    const auto byBlock = scene.metadata();
-    REQUIRE(byBlock.has_value());
-    CHECK(Labels(byBlock->nodes) == std::vector<std::string>{"Radio.gain"});
-    CHECK(byBlock->entryCount == "1 of 3 entries");
-}
-
-TEST_CASE_METHOD(FlowgraphFixture,
-                 "Environment windows sort keys and expand nested maps into child rows",
+                 "Environment tiles sort keys and expand nested maps into child rows",
                  "[core][sakura][compositor][key-value]") {
     KeyValueScene scene(*flowgraph);
     REQUIRE(flowgraph->environment().set("zeta", Parser::Map{{"z", std::string("last")}}) == Result::SUCCESS);
@@ -170,50 +87,44 @@ TEST_CASE_METHOD(FlowgraphFixture,
                                          Parser::Map{{"a", std::string("one")}, {"b", std::string("two")}}) ==
             Result::SUCCESS);
 
-    const auto window = scene.environment();
-    REQUIRE(window.has_value());
-    CHECK(window->id == "flowgraph-environment-window");
-    CHECK(window->title == "Flowgraph Environment (graph)");
-    CHECK(window->entryCount == "2 of 2 entries");
-    REQUIRE(Labels(window->nodes) == std::vector<std::string>{"alpha", "zeta"});
+    const auto tile = scene.environment();
+    REQUIRE(tile.has_value());
+    CHECK(tile->id == kLayoutEnvironmentPane);
+    CHECK(tile->title == "Environment");
+    CHECK(tile->entryCount == "2 of 2 entries");
+    REQUIRE(Labels(tile->nodes) == std::vector<std::string>{"alpha", "zeta"});
 
-    const auto& alpha = window->nodes[0];
+    const auto& alpha = tile->nodes[0];
     CHECK(alpha.open);
     CHECK(alpha.secondary);
     CHECK(alpha.cells == std::vector<std::string>{"2 keys"});
     CHECK(Labels(alpha.children) == std::vector<std::string>{"a", "b"});
 
-    scene.state.interface.flowgraphEnvironmentSearch = "ZET";
+    scene.state.flowgraph.environment["graph"] = "ZET";
     const auto filtered = scene.environment();
     REQUIRE(filtered.has_value());
     CHECK(Labels(filtered->nodes) == std::vector<std::string>{"zeta"});
     CHECK(filtered->entryCount == "1 of 2 entries");
+    CHECK(filtered->search == "ZET");
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Key-value window search and close callbacks enqueue the matching mail",
+                 "Environment tile search and close callbacks enqueue mails for their flowgraph",
                  "[core][sakura][compositor][key-value]") {
     KeyValueScene scene(*flowgraph);
-
-    const auto metadata = scene.metadata();
-    REQUIRE(metadata.has_value());
-    metadata->onSearchChange("rate");
-    metadata->onClose();
 
     const auto environment = scene.environment();
     REQUIRE(environment.has_value());
     environment->onSearchChange("path");
     environment->onClose();
 
-    REQUIRE(scene.mail.size() == 4);
-    REQUIRE(std::holds_alternative<MailSetFlowgraphMetadataSearch>(scene.mail[0]));
-    CHECK(std::get<MailSetFlowgraphMetadataSearch>(scene.mail[0]).value == "rate");
-    REQUIRE(std::holds_alternative<MailSetFlowgraphMetadataVisible>(scene.mail[1]));
-    CHECK_FALSE(std::get<MailSetFlowgraphMetadataVisible>(scene.mail[1]).value);
-    REQUIRE(std::holds_alternative<MailSetFlowgraphEnvironmentSearch>(scene.mail[2]));
-    CHECK(std::get<MailSetFlowgraphEnvironmentSearch>(scene.mail[2]).value == "path");
-    REQUIRE(std::holds_alternative<MailSetFlowgraphEnvironmentVisible>(scene.mail[3]));
-    CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(scene.mail[3]).value);
+    REQUIRE(scene.mail.size() == 2);
+    REQUIRE(std::holds_alternative<MailSetFlowgraphEnvironmentSearch>(scene.mail[0]));
+    CHECK(std::get<MailSetFlowgraphEnvironmentSearch>(scene.mail[0]).flowgraph == "graph");
+    CHECK(std::get<MailSetFlowgraphEnvironmentSearch>(scene.mail[0]).value == "path");
+    REQUIRE(std::holds_alternative<MailSetFlowgraphEnvironmentVisible>(scene.mail[1]));
+    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(scene.mail[1]).flowgraph == "graph");
+    CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(scene.mail[1]).value);
 }
 
 TEST_CASE("Key-value nodes render scalars, vectors, and nested containers as text",
@@ -256,26 +167,23 @@ TEST_CASE("Key-value entry counts pluralize by the total", "[core][sakura][compo
     CHECK(FlowgraphKeyValueDetail::EntryCount(2, 5) == "2 of 5 entries");
 }
 
-TEST_CASE("Key-value window views expose the configured floating window", "[core][sakura][compositor][key-value]") {
-    FlowgraphKeyValueWindow view;
+TEST_CASE("Environment tile views expose their identity, title and close callback",
+          "[core][sakura][compositor][key-value]") {
+    FlowgraphEnvironment view;
     bool closed = false;
     view.update({
-        .id = "kv",
-        .title = "Key Values",
+        .id = "environment",
+        .title = "Environment",
         .search = "abc",
         .entryCount = "1 of 1 entry",
         .nodes = {{.id = "a", .label = "a", .cells = {"1"}}},
         .onClose = [&] { closed = true; },
     });
 
-    const auto window = view.window();
-    CHECK(window.id == "kv");
-    CHECK(window.title == "Key Values");
-    CHECK(window.content != nullptr);
-    CHECK(window.size.x == 500.0f);
-    CHECK(window.size.y == 700.0f);
-    CHECK(window.padding == 8.0f);
-    REQUIRE(window.onClose);
-    window.onClose();
+    CHECK(view.id() == "environment");
+    CHECK(view.title() == "Environment");
+    const auto close = view.closeCallback();
+    REQUIRE(close);
+    close();
     CHECK(closed);
 }

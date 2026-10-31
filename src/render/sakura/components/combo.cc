@@ -21,6 +21,7 @@ namespace Jetstream::Sakura {
 struct Combo::Impl {
     Config config;
     Box frame;
+    Box outline;
     Polyline arrow;
     Label preview;
     Dropdown dropdown;
@@ -30,6 +31,7 @@ struct Combo::Impl {
 Combo::Combo() {
     impl = std::make_unique<Impl>();
     addChild(impl->frame);
+    addChild(impl->outline);
     addChild(impl->arrow);
     addChild(impl->preview);
 }
@@ -81,6 +83,15 @@ void Combo::layout(const Context& ctx) {
         .clip = bounds,
         .cornerRadius = Px(ctx, kFrameRounding),
     });
+    impl->outline.update({
+        .instances = {{.rect = bounds, .visible = !bounds.empty() && !config.borderColorKey.empty(),
+                       .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
+        .clip = bounds,
+        .cornerRadius = Px(ctx, kFrameRounding),
+        .borderWidth = Px(ctx, 1.0f),
+        .borderColor = WithAlpha(ctx.color(config.borderColorKey), alpha),
+        .strokeFringe = true,
+    });
 
     const F32 fontSize = FontPx(ctx);
     const F32 padY = Px(ctx, kFramePaddingY);
@@ -117,6 +128,7 @@ void Combo::layout(const Context& ctx) {
     });
 
     layoutChild(ctx, impl->frame, bounds);
+    layoutChild(ctx, impl->outline, bounds);
     layoutChild(ctx, impl->arrow, bounds);
     layoutChild(ctx, impl->preview, bounds);
 

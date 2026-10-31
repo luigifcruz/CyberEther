@@ -4,9 +4,8 @@
 #include "../components/callout.hh"
 #include "../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -38,7 +37,7 @@ struct DependencyReviewView {
         bool installEnabled = false;
         std::string output;
         std::string message;
-        std::function<void()> onInstall;
+        Sakura::Callback<void()> onInstall;
     };
 
     void update(Config config) {
@@ -47,7 +46,7 @@ struct DependencyReviewView {
 
         this->config = std::move(config);
         header.update({
-            .title = ICON_FA_BOX " Install Python Dependencies",
+            .title = ICON_LC_PACKAGE " Install Python Dependencies",
             .description = "Review and install the Python packages requested by blocks.",
         });
         overviewText.update({
@@ -61,7 +60,7 @@ struct DependencyReviewView {
         });
         thirdPartyCallout.update({
             .str = "Python packages are third-party code. Only approve dependencies you trust.",
-            .icon = ICON_FA_SHIELD_HALVED,
+            .icon = ICON_LC_SHIELD_HALF,
             .tone = Callout::Tone::Warning,
         });
         while (dependencyCells.size() < this->config.dependencies.size()) {

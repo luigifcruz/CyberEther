@@ -111,8 +111,6 @@ struct RootComponent : public Component {
 
     void prepareInput() override;
 
-    bool coveredAbove(U64 index, const Extent2D<F32>& point) const;
-
     Extent2D<F32> measure(const Context&, Extent2D<F32> available) override {
         return {FillLength(available.x), FillLength(available.y)};
     }

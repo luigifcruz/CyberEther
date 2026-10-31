@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_MODEL_PICKER_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/style.hh>
 #include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
@@ -31,7 +32,7 @@ struct ModelPicker : public Component {
         bool disabled = false;
         F32 fontSize = Typography::FontSize;
         F32 rounding = 0.0f;
-        F32 popupRounding = 15.0f;
+        F32 popupRounding = Rounding::Popup;
         std::string colorKey = "transparent";
         std::string hoveredColorKey = "button_hovered";
         std::string activeColorKey = "button_active";

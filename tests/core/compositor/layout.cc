@@ -583,6 +583,58 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "A gallery description tile stays in the session layout and is never saved",
+                 "[core][compositor][layout][description]") {
+    DefaultCompositorState::FlowgraphState state;
+    LayoutActions actions(state);
+    state.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
+    state.restoredLayouts.insert("graph");
+    const TileMeta tiles{
+        .split = "row",
+        .children = std::vector<TileMeta>{
+            {.weight = 300.0f, .pane = "description"},
+            {.weight = 700.0f, .pane = "flowgraph"},
+        },
+    };
+
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
+    CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph"});
+
+    state.gallery["graph"] = "## Overview";
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
+    CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"description", "flowgraph"});
+    TileMeta saved;
+    REQUIRE(flowgraph->metadata().get("layout", saved) == Result::SUCCESS);
+    CHECK(Panes(saved) == std::vector<std::string>{"flowgraph"});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Closing the gallery description drops it and its tile from the session layout",
+                 "[core][compositor][layout][description]") {
+    DefaultCompositorState::FlowgraphState state;
+    LayoutActions actions(state);
+    state.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
+    state.restoredLayouts.insert("graph");
+    state.gallery["graph"] = "## Overview";
+    const TileMeta tiles{
+        .split = "row",
+        .children = std::vector<TileMeta>{
+            {.weight = 300.0f, .pane = "description"},
+            {.weight = 700.0f, .pane = "flowgraph"},
+        },
+    };
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
+    REQUIRE(Panes(state.layouts.at("graph")) == std::vector<std::string>{"description", "flowgraph"});
+
+    REQUIRE(actions.handle(MailCloseFlowgraphDescription{.flowgraph = "graph"}) == Result::SUCCESS);
+    CHECK_FALSE(state.gallery.contains("graph"));
+    CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph"});
+
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
+    CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph"});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Documentation follows a renamed block and closes when that block is deleted",
                  "[core][compositor][layout][documentation]") {
     REQUIRE(flowgraph->blockCreate("fft", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);

@@ -3,12 +3,15 @@
 
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/curves.hh>
+#include <jetstream/render/sakura/components/div.hh>
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
+#include <jetstream/render/sakura/components/text.hh>
 
 #include "render/sakura/context.hh"
 #include "render/sakura/detail/access.hh"
@@ -22,6 +25,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <algorithm>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -201,6 +205,41 @@ std::vector<T*> Direct(Jetstream::Sakura::Component& root) {
     return found;
 }
 
+inline bool Labeled(Jetstream::Sakura::Component& root, const std::string& label) {
+    const auto texts = Find<Jetstream::Sakura::Text>(root);
+    return std::any_of(texts.begin(), texts.end(), [&](auto* text) {
+        return text->config().str.find(label) != std::string::npos;
+    });
+}
+
+inline Jetstream::Sakura::Text* ShownText(Jetstream::Sakura::Component& root, const std::string& str) {
+    for (auto* text : Find<Jetstream::Sakura::Text>(root)) {
+        if (text->config().str == str) {
+            return text;
+        }
+    }
+    return nullptr;
+}
+
+inline Jetstream::Sakura::Button* LabeledButton(Jetstream::Sakura::Component& root, const std::string& label) {
+    for (auto* button : Find<Jetstream::Sakura::Button>(root)) {
+        if (Labeled(*button, label)) {
+            return button;
+        }
+    }
+    return nullptr;
+}
+
+inline Jetstream::Sakura::Div* Owner(Jetstream::Sakura::Component& root, const std::string& label) {
+    Jetstream::Sakura::Div* found = nullptr;
+    for (auto* div : Find<Jetstream::Sakura::Div>(root)) {
+        if (Labeled(*div, label) && (!found || Peek::Frame(*div).height < Peek::Frame(*found).height)) {
+            found = div;
+        }
+    }
+    return found;
+}
+
 struct Probe : Jetstream::Sakura::Component {
     Extent2D<F32> desired = {0.0f, 0.0f};
     bool consume = true;
@@ -279,6 +318,17 @@ struct Flow : Probe {
     }
 };
 
+struct BackdropProbe : Probe {
+    using Probe::Probe;
+    std::string backdrop;
+
+ protected:
+    void layout(const Jetstream::Sakura::Context& ctx) override {
+        Probe::layout(ctx);
+        backdrop = ctx.backdropColorKey;
+    }
+};
+
 struct Host : Jetstream::Sakura::Component {
     explicit Host(Jetstream::Sakura::Component& child, bool clipsChildren = false) : child(child) {
         setClipsChildren(clipsChildren);
@@ -330,17 +380,23 @@ struct Place : Jetstream::Sakura::Component {
         invalidate(Dirty::Layout);
     }
 
+    void pan(Extent2D<F32> next) {
+        shift = next;
+        invalidate(Dirty::Layout);
+    }
+
     bool send(const MouseEvent& event) {
         return mouseEventChildren(event);
     }
 
  protected:
     void layout(const Jetstream::Sakura::Context& ctx) override {
-        layoutChild(ctx, child, target);
+        layoutChild(ctx.translated(shift), child, target);
     }
 
  private:
     Jetstream::Sakura::Component& child;
+    Extent2D<F32> shift = {0.0f, 0.0f};
 };
 
 struct LayerHost : Jetstream::Sakura::RootComponent {

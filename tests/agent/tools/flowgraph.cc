@@ -380,6 +380,36 @@ TEST_CASE("Agent tools read and write node position and size", "[agent][tools][f
     REQUIRE(flowgraph->destroy() == Result::SUCCESS);
 }
 
+TEST_CASE("Flowgraph inspection reports only the visible canvas rectangle as the viewport",
+          "[agent][tools][flowgraph]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto flowgraph = std::make_shared<Flowgraph>();
+    REQUIRE(flowgraph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    GraphHost host(flowgraph);
+    Agent::Tools tools(host);
+    auto call = tools.prepare(flowgraph, "inspect_flowgraph", "{}");
+    auto output = tools.run(call);
+    REQUIRE_FALSE(output.error);
+
+    Agent::Tools::Layout layout;
+    layout.viewport = Agent::Tools::Layout::Viewport{.visible = {10.0f, 20.0f, 800.0f, 600.0f}};
+    Agent::Tools::Annotate(call, output, layout);
+
+    const auto body = nlohmann::json::parse(output.content);
+    REQUIRE(body.contains("viewport"));
+    const auto& viewport = body["viewport"];
+    CHECK(viewport.size() == 1);
+    REQUIRE(viewport.contains("visible"));
+    CHECK_FALSE(viewport.contains("toolbar"));
+    CHECK_FALSE(viewport.contains("open_area"));
+    CHECK(viewport["visible"]["x"] == 10.0);
+    CHECK(viewport["visible"]["y"] == 20.0);
+    CHECK(viewport["visible"]["width"] == 800.0);
+    CHECK(viewport["visible"]["height"] == 600.0);
+}
+
 TEST_CASE("Text patches require unique matches after anchors", "[agent][tools][text]") {
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
 

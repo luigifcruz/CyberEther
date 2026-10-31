@@ -31,19 +31,20 @@ DefaultCompositor::DefaultCompositor() :
         .enqueueMail = [this](Mail&& mail) {
             enqueue(std::move(mail));
         },
-        .enqueueCommand = [this](std::function<Result()> fn, bool silent) {
-            Compositor::Impl::enqueue(std::move(fn), silent);
+        .enqueueCommand = [this](Sakura::Callback<Result()> fn, bool silent) {
+            Compositor::Impl::enqueue(std::move(fn).release(), silent);
         },
-        .enqueueCommandWithCompletion = [this](std::function<Result()> fn, bool silent,
-                                               std::function<void(Result)> onComplete) {
-            Compositor::Impl::enqueue(std::move(fn), silent, std::move(onComplete));
+        .enqueueCommandWithCompletion = [this](Sakura::Callback<Result()> fn, bool silent,
+                                               Sakura::Callback<void(Result)> onComplete) {
+            Compositor::Impl::enqueue(std::move(fn).release(), silent, std::move(onComplete).release());
         },
-        .enqueueCommandWithMail = [this](std::function<Result()> fn, bool silent, Mail mail) {
-            Compositor::Impl::enqueue(std::move(fn), silent, [this, mail = std::move(mail)](const Result result) {
-                if (result == Result::SUCCESS) {
-                    enqueue(Mail(mail));
-                }
-            });
+        .enqueueCommandWithMail = [this](Sakura::Callback<Result()> fn, bool silent, Mail mail) {
+            Compositor::Impl::enqueue(std::move(fn).release(), silent,
+                                      [this, mail = std::move(mail)](const Result result) {
+                                          if (result == Result::SUCCESS) {
+                                              enqueue(Mail(mail));
+                                          }
+                                      });
         },
         .notify = [](Sakura::ToastType type, I32 durationMs, const std::string& message) {
             Sakura::PushToast(type, durationMs, message);
@@ -68,9 +69,6 @@ DefaultCompositor::DefaultCompositor() :
         },
         .applyUpdate = [this]() {
             return updater.apply();
-        },
-        .dismissUpdate = [this]() {
-            updater.dismiss();
         },
         .submitFeedback = [this](const std::string& text) {
             feedback.submit(text);
@@ -104,6 +102,9 @@ Result DefaultCompositor::create() {
 
     state.sakura.themeKey = Sakura::ResolveThemeKey(settings.interface.themeKey);
     state.sakura.colorMap = Sakura::Themes.at(state.sakura.themeKey);
+    if (render) {
+        render->setDarkAppearance(state.sakura.dark());
+    }
 
     // Restore graphics preferences.
 
@@ -113,6 +114,9 @@ Result DefaultCompositor::create() {
     // Restore interface preferences.
 
     state.interface.backgroundParticles = settings.interface.backgroundParticles;
+    state.interface.showTips = settings.interface.showTips;
+    state.interface.recentFlowgraphs = settings.interface.recentFlowgraphs;
+    state.interface.favoriteFlowgraphs = settings.interface.favoriteFlowgraphs;
 
     // Restore intelligence preferences.
 
@@ -217,6 +221,7 @@ Result DefaultCompositor::destroy() {
     actions.cancelFilePicker();
     agent.shutdown();
     actions.shutdownAgent();
+    actions.shutdownGallery();
     updater.shutdown();
     feedback.shutdown();
     if (Settings::Flush() != Result::SUCCESS) {
@@ -295,6 +300,8 @@ Result DefaultCompositor::poll() {
     actions.reconcileFilePicker();
     actions.restoreLayouts();
     actions.settleStartTab();
+    actions.reconcileGallery();
+    actions.refreshRegistry();
     actions.refreshLiveMarkdown();
     actions.refreshMetrics();
     actions.reconcileAgent();
@@ -321,63 +328,9 @@ Result DefaultCompositor::present() {
 }
 
 void DefaultCompositor::updateWorkbenchState() {
-    if (state.interface.pendingFocusedFlowgraph.has_value() &&
-        state.flowgraph.items.contains(*state.interface.pendingFocusedFlowgraph)) {
-        state.interface.focusedFlowgraph = state.interface.pendingFocusedFlowgraph;
-        state.interface.pendingFocusedFlowgraph.reset();
-    }
-
-    if (state.flowgraph.items.empty()) {
-        state.interface.focusedFlowgraph.reset();
-        state.interface.flowgraphMetadataVisible = false;
-        state.interface.flowgraphMetadataSearch.clear();
-        state.interface.flowgraphEnvironmentVisible = false;
-        state.interface.flowgraphEnvironmentSearch.clear();
-    } else if (state.interface.focusedFlowgraph.has_value() &&
-               !state.flowgraph.items.contains(state.interface.focusedFlowgraph.value())) {
-        state.interface.focusedFlowgraph.reset();
-        state.interface.flowgraphMetadataVisible = false;
-        state.interface.flowgraphMetadataSearch.clear();
-        state.interface.flowgraphEnvironmentVisible = false;
-        state.interface.flowgraphEnvironmentSearch.clear();
-    }
-
-    if (!state.interface.focusedFlowgraph.has_value() &&
-        !state.interface.pendingFocusedFlowgraph.has_value() &&
-        state.flowgraph.items.size() == 1) {
-        state.interface.focusedFlowgraph = state.flowgraph.items.begin()->first;
-    }
-
-    if (!state.modal.content.has_value()) {
-        state.modal.flowgraph.reset();
-        return;
-    }
-
-    if (state.modal.content == ModalContent::FlowgraphInfo ||
-        state.modal.content == ModalContent::FlowgraphClose) {
-        const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
-            ? state.modal.flowgraph
-            : state.interface.focusedFlowgraph;
-        if (!targetFlowgraph.has_value() || !state.flowgraph.items.contains(targetFlowgraph.value())) {
-            state.modal.content.reset();
-            state.modal.flowgraph.reset();
-        }
-        return;
-    }
-
-    if (state.modal.content == ModalContent::RenameBlock) {
-        const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
-            ? state.modal.flowgraph
-            : state.interface.focusedFlowgraph;
-        if (!targetFlowgraph.has_value() ||
-            !state.flowgraph.items.contains(targetFlowgraph.value()) ||
-            !state.modal.renameBlockOldName.has_value() ||
-            !state.flowgraph.items.at(targetFlowgraph.value())->view().has(state.modal.renameBlockOldName.value())) {
-            state.modal.content.reset();
-            state.modal.flowgraph.reset();
-            state.modal.renameBlockOldName.reset();
-        }
-    }
+    actions.settlePendingFocus();
+    actions.reconcileFlowgraphs();
+    actions.reconcileModal();
 }
 
 void DefaultCompositor::updateFlowgraphBlockState() {
@@ -439,8 +392,6 @@ void DefaultCompositor::updateRemoteState() {
     state.remote.started = remoteStarted;
     state.remote.clientCount = remoteStarted ? remote->clients().size() : 0;
     state.remote.inviteUrl = remoteStarted ? remote->inviteUrl() : "";
-    state.remote.roomId = remoteStarted ? remote->roomId() : "";
-    state.remote.accessToken = remoteStarted ? remote->accessToken() : "";
     state.remote.clients = remoteStarted ? remote->clients() : std::vector<Instance::Remote::ClientInfo>{};
     state.remote.waitlist = remoteStarted ? remote->waitlist() : std::vector<std::string>{};
 }

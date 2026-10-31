@@ -53,6 +53,13 @@ struct FlowgraphConfigMarkdownField {
                 editing = false;
             },
             .onContentOverflow = this->config.onContentOverflow,
+            .onLink = [this](const std::string& url) {
+                if (!this->config.onOpenUrl) {
+                    return false;
+                }
+                this->config.onOpenUrl(url);
+                return true;
+            },
         });
         return Result::SUCCESS;
     }

@@ -14,6 +14,8 @@ namespace Jetstream {
 
 inline constexpr const char* kLayoutEditorPane = "flowgraph";
 inline constexpr const char* kLayoutDocumentationPane = "documentation";
+inline constexpr const char* kLayoutEnvironmentPane = "environment";
+inline constexpr const char* kLayoutDescriptionPane = "description";
 
 inline std::string MakeSurfaceTileKey(const std::string& block, const std::string& surface) {
     return jst::fmt::format("surface:{}:{}", block, surface);
@@ -117,6 +119,10 @@ inline bool ContainsTilePane(const TileMeta& tiles, const std::string& pane) {
 
 inline bool IsLayoutPane(const std::string& pane) {
     return pane == kLayoutEditorPane || TileBlock(pane).has_value();
+}
+
+inline bool IsTransientPane(const std::string& pane) {
+    return pane == kLayoutDocumentationPane || pane == kLayoutEnvironmentPane || pane == kLayoutDescriptionPane;
 }
 
 inline TileMeta AppendColumn(const TileMeta& layout, const std::string& pane) {

@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_SUPPORT_AGENT_RUNTIME_HH
 
 #include "executor.hh"
+#include "mcp.hh"
 #include "../../model/state.hh"
 
 #include "jetstream/agent/session.hh"
@@ -10,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Jetstream {
@@ -45,6 +47,7 @@ class AgentRuntime {
                                        const Settings::Intelligence::Voice& voice,
                                        Agent::Session::ToolExecutor executeTool);
     static std::string SystemPrompt();
+    static std::string McpPrompt();
     static std::string VoicePrompt();
 
  private:
@@ -53,8 +56,11 @@ class AgentRuntime {
     Agent::Session conversation;
     AgentExecutor tools;
     Agent::Session::Cursor cursor;
+    AgentMcp mcp;
+    std::optional<std::pair<std::string, U64>> served;
 
     void publish();
+    void serve();
 };
 
 }  // namespace Jetstream

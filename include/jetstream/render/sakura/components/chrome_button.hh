@@ -23,6 +23,7 @@ struct ChromeButton : public Component {
         std::string label;
         Text::Font font = Text::Font::Body;
         F32 scale = 1.0f;
+        F32 emboss = 0.0f;
         std::string colorKey;
         Glyph glyph = Glyph::None;
         F32 height = 28.0f;

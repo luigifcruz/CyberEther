@@ -52,6 +52,9 @@ Result FileWriterImplNativeCpu::computeSubmit() {
 
     const auto& input = inputs().at("buffer").tensor;
     const U64 bytesToWrite = input.sizeBytes();
+
+    JST_CHECK(format->track(input, bytesWritten.get() / input.elementSize()));
+
     const std::streampos previousPosition = dataFile.tellp();
     if (previousPosition == std::streampos(-1)) {
         JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed to query '{}' write position.", filepath);
@@ -85,7 +88,7 @@ Result FileWriterImplNativeCpu::computeSubmit() {
     const U64 actualBytesWritten = static_cast<U64>(committedBytes);
     bytesWritten.publish(bytesWritten.get() + actualBytesWritten);
     if (actualBytesWritten > 0) {
-        updateBandwidth(actualBytesWritten);
+        updateThroughput(actualBytesWritten);
     }
 
     return Result::SUCCESS;

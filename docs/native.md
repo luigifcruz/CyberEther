@@ -100,7 +100,7 @@ CyberEther saves its settings in a `settings.yaml` file:
 | macOS | `~/Library/Application Support/CyberEther/` |
 | Windows | `%APPDATA%\CyberEther\` |
 
-On Linux, `XDG_CONFIG_HOME` replaces `~/.config` when it is set. Most settings are easier to change in the **Settings** window. Command line options override the saved values for one run only and never modify the file.
+On Linux, `XDG_CONFIG_HOME` replaces `~/.config` when it is set. Most settings are easier to change in the **Settings** tab. Command line options override the saved values for one run only and never modify the file.
 
 ## Troubleshooting
 

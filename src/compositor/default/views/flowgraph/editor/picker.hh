@@ -2,13 +2,12 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_PICKER_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include "jetstream/types.hh"
 #include "tools/value.hh"
 
 #include <algorithm>
-#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -35,25 +34,13 @@ struct FlowgraphBlockPicker {
         ProviderType provider = "generic";
     };
 
-    enum class Mode {
-        Closed,
-        Pill,
-        Cursor,
-    };
-
-    static constexpr F32 PillWidth = 240.0f;
-    static constexpr F32 PillHeight = 34.0f;
-    static constexpr F32 PillMargin = 12.0f;
-
     struct Config {
-        std::string id;
-        std::function<void()> onOpenRequest;
-        std::function<void(const std::string&, Extent2D<F32>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
+        Sakura::Callback<void(const std::string&, Extent2D<F32>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
     };
 
-    void open(std::vector<BlockOption> catalog, Mode next, Extent2D<F32> gridPosition) {
+    void open(std::vector<BlockOption> catalog, Extent2D<F32> gridPosition) {
         blocks = std::move(catalog);
-        mode = next;
+        opened = true;
         position = gridPosition;
         query.clear();
         group.clear();
@@ -66,7 +53,7 @@ struct FlowgraphBlockPicker {
             }
             items.push_back({
                 .id = block.type,
-                .icon = ICON_FA_CUBE,
+                .icon = ICON_LC_BOX,
                 .title = block.title,
                 .summary = block.summary,
                 .group = block.category == "Other" ? std::string() : block.category,
@@ -77,42 +64,29 @@ struct FlowgraphBlockPicker {
     }
 
     void close() {
-        mode = Mode::Closed;
+        opened = false;
         query.clear();
         selected = 0;
     }
 
     bool isOpen() const {
-        return mode != Mode::Closed;
+        return opened;
     }
 
     void update(Config config) {
         this->config = std::move(config);
-        using Pill = Sakura::PillField;
 
-        const auto onChange = [this](const std::string& value) {
-            query = value;
-            selected = 0;
-        };
-        pill.update(Pill::Config{
-            .icon = ICON_FA_MAGNIFYING_GLASS,
-            .placeholder = "Search blocks",
-            .query = mode == Mode::Pill ? query : std::string(),
-            .editing = mode == Mode::Pill,
-            .size = {PillWidth, PillHeight},
-            .onOpen = this->config.onOpenRequest,
-            .onChange = onChange,
-            .onCancel = [this]() {
-                close();
-            },
-        });
-        cursorField.update(Pill::Config{
-            .icon = ICON_FA_MAGNIFYING_GLASS,
+        field.update({
+            .icon = ICON_LC_SEARCH,
             .placeholder = "Search blocks",
             .query = query,
-            .editing = mode == Mode::Cursor,
-            .size = {0.0f, PillHeight},
-            .onChange = onChange,
+            .editing = opened,
+            .scale = Sakura::Typography::Scale::Large,
+            .size = {0.0f, FieldHeight},
+            .onChange = [this](const std::string& value) {
+                query = value;
+                selected = 0;
+            },
             .onCancel = [this]() {
                 close();
             },
@@ -124,10 +98,12 @@ struct FlowgraphBlockPicker {
             .query = query,
             .activeGroup = group,
             .selected = selected,
-            .field = mode == Mode::Cursor ? &cursorField : nullptr,
-            .docsSide = mode == Mode::Pill ? Sakura::SearchCatalog::DocsSide::Left
-                                           : Sakura::SearchCatalog::DocsSide::Right,
+            .field = &field,
+            .docsSide = Sakura::SearchCatalog::DocsSide::Right,
             .emptyLabel = "No matching blocks.",
+            .docsWidth = DocsWidth,
+            .height = Height,
+            .rounding = FieldHeight * 0.5f,
             .onSelect = [this](U64 index) {
                 selected = index;
             },
@@ -143,15 +119,12 @@ struct FlowgraphBlockPicker {
 
         popup.update({
             .content = &keys,
-            .open = isOpen(),
-            .placement = mode == Mode::Pill ? Sakura::PopupPlacement::BelowEnd
-                                            : Sakura::PopupPlacement::Point,
-            .atCursor = mode == Mode::Cursor,
+            .open = opened,
+            .placement = Sakura::PopupPlacement::Inside,
             .panel = false,
             .onDismiss = [this]() {
                 close();
             },
-            .passthroughAnchor = mode == Mode::Pill,
         });
 
         const auto submit = [this]() {
@@ -168,16 +141,12 @@ struct FlowgraphBlockPicker {
                 {.key = KeyCode::KeypadEnter, .onPressed = submit},
                 {.key = KeyCode::Escape, .onPressed = [this]() { close(); }},
             },
-            .enabled = isOpen(),
+            .enabled = opened,
             .content = &catalog,
         });
     }
 
-    Sakura::Component& pillComponent() {
-        return pill;
-    }
-
-    Sakura::Component& popupComponent() {
+    Sakura::Component& component() {
         return popup;
     }
 
@@ -208,8 +177,12 @@ struct FlowgraphBlockPicker {
         }
     }
 
+    static constexpr F32 FieldHeight = 44.0f;
+    static constexpr F32 DocsWidth = 585.0f;
+    static constexpr F32 Height = 664.0f;
+
     Config config;
-    Mode mode = Mode::Closed;
+    bool opened = false;
     Extent2D<F32> position = {0.0f, 0.0f};
     std::vector<BlockOption> blocks;
     std::vector<Sakura::SearchCatalog::Item> items;
@@ -217,8 +190,7 @@ struct FlowgraphBlockPicker {
     std::string group;
     U64 selected = 0;
     Sakura::Shortcuts keys;
-    Sakura::PillField pill;
-    Sakura::PillField cursorField;
+    Sakura::PillField field;
     Sakura::SearchCatalog catalog;
     Sakura::Popup popup;
 };

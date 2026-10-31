@@ -1,4 +1,3 @@
-#include <chrono>
 #include <limits>
 
 #include <jetstream/memory/macros.hh>
@@ -43,9 +42,7 @@ Result SoapyImplNativeCpu::hasPendingCompute() {
     }
 
     if (stream.size() < buffer.size()) {
-        // Keep waits bounded so receive-thread failures reach the scheduler.
-        const auto result = stream.waitForSize(buffer.size(), std::chrono::milliseconds(100));
-        return errored ? Result::ERROR : result;
+        return Result::TIMEOUT;
     }
 
     return Result::SUCCESS;

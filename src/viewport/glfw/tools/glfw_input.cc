@@ -1,5 +1,13 @@
 #include "glfw_input.hh"
 
+#ifdef JST_OS_MAC
+#include "cocoa_pointer.hh"
+#endif
+
+#ifdef JST_OS_BROWSER
+#include "browser_wheel.hh"
+#endif
+
 #include <GLFW/glfw3.h>
 
 #include <array>
@@ -220,11 +228,37 @@ struct GlfwInput::Impl {
     mutable std::mutex clipboardMutex;
     std::string clipboard;
     std::optional<std::string> pendingClipboard;
+#ifdef JST_OS_MAC
+    std::unique_ptr<CocoaPointer> pointer;
+#endif
+#ifdef JST_OS_BROWSER
+    std::unique_ptr<BrowserWheel> wheel;
+#endif
 
     Impl(GLFWwindow* window, Generic& viewport) : window(window), viewport(viewport) {}
 
+    Render::InputQueue::Wheel takeWheel(const Extent2D<F32>& delta) {
+        Render::InputQueue::Wheel event{.delta = delta};
+#if defined(JST_OS_MAC)
+        if (pointer) {
+            if (const auto scroll = pointer->take()) {
+                viewport.input().push(Render::InputQueue::Modifiers{scroll->modifiers});
+                event.phase = scroll->phase;
+            }
+        }
+#elif defined(JST_OS_BROWSER)
+        event.precise = wheel && wheel->take(event.delta);
+#endif
+        return event;
+    }
+
     void readClipboard() {
+        GLFWerrorfun previous = glfwSetErrorCallback(nullptr);
         const char* text = glfwGetClipboardString(nullptr);
+        glfwSetErrorCallback(previous);
+#ifndef __EMSCRIPTEN__
+        (void)glfwGetError(nullptr);
+#endif
         std::lock_guard lock(clipboardMutex);
         clipboard = text ? std::string(text) : std::string();
     }
@@ -294,7 +328,7 @@ struct GlfwInput::Impl {
 
     static void OnScroll(GLFWwindow* window, double x, double y) {
         auto& impl = From(window);
-        impl.viewport.input().push(Render::InputQueue::Wheel{{static_cast<F32>(x), static_cast<F32>(y)}});
+        impl.viewport.input().push(impl.takeWheel({static_cast<F32>(x), static_cast<F32>(y)}));
     }
 
     static void OnKey(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -378,9 +412,23 @@ GlfwInput::GlfwInput(GLFWwindow* window, Generic& viewport) {
     (void)glfwGetError(nullptr);
 #endif
     impl->readClipboard();
+#ifdef JST_OS_MAC
+    impl->pointer = std::make_unique<CocoaPointer>(window, [input = impl.get()]() {
+        Impl::OnScroll(input->window, 0.0, 0.0);
+    });
+#endif
+#ifdef JST_OS_BROWSER
+    impl->wheel = std::make_unique<BrowserWheel>();
+#endif
 }
 
 GlfwInput::~GlfwInput() {
+#ifdef JST_OS_MAC
+    impl->pointer.reset();
+#endif
+#ifdef JST_OS_BROWSER
+    impl->wheel.reset();
+#endif
     glfwSetWindowFocusCallback(impl->window, nullptr);
     glfwSetCursorEnterCallback(impl->window, nullptr);
     glfwSetCursorPosCallback(impl->window, nullptr);

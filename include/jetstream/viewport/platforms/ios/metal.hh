@@ -30,13 +30,16 @@ class iOS<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Extent2D<F32> displaySize() const;
     Extent2D<F32> framebufferSize() const;
 
-    void* nextDrawable();
+    MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable);
+    Extent2D<U64> getSwapchainExtent() const;
     
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
 
  private:
+    void setCaptureEnabled(bool enabled);
+
     CA::MetalLayer* swapchain;
 };
 

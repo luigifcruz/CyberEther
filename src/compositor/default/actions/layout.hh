@@ -9,6 +9,7 @@
 #include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/flowgraph_view.hh"
 
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <string>
@@ -27,7 +28,10 @@ struct LayoutActions {
                               MailRemoveLayoutBlock,
                               MailRenameLayoutBlock,
                               MailOpenDocumentation,
-                              MailCloseDocumentation>;
+                              MailCloseDocumentation,
+                              MailCloseFlowgraphDescription,
+                              MailSetFlowgraphEnvironmentVisible,
+                              MailSetFlowgraphEnvironmentSearch>;
     using FlowgraphState = DefaultCompositorState::FlowgraphState;
 
     FlowgraphState& state;
@@ -76,7 +80,14 @@ struct LayoutActions {
         if (!state.items.contains(msg.flowgraph) || !msg.tiles.has_value()) {
             return Result::SUCCESS;
         }
-        auto tiles = state.documentation.contains(msg.flowgraph) ? msg.tiles : WithoutDocumentation(*msg.tiles);
+        auto tiles = state.documentation.contains(msg.flowgraph) ? msg.tiles
+                                                                 : WithoutPane(*msg.tiles, kLayoutDocumentationPane);
+        if (tiles.has_value() && !state.environment.contains(msg.flowgraph)) {
+            tiles = WithoutPane(*tiles, kLayoutEnvironmentPane);
+        }
+        if (tiles.has_value() && !state.gallery.contains(msg.flowgraph)) {
+            tiles = WithoutPane(*tiles, kLayoutDescriptionPane);
+        }
         if (!tiles.has_value()) {
             return Result::SUCCESS;
         }
@@ -215,16 +226,61 @@ struct LayoutActions {
 
     Result handle(const MailCloseDocumentation& msg) {
         state.documentation.erase(msg.flowgraph);
-        return editLayout(msg.flowgraph, WithoutDocumentation);
+        return editLayout(msg.flowgraph, [](const TileMeta& tiles) {
+            return WithoutPane(tiles, kLayoutDocumentationPane);
+        });
+    }
+
+    Result handle(const MailSetFlowgraphEnvironmentVisible& msg) {
+        if (!state.items.contains(msg.flowgraph)) {
+            return Result::SUCCESS;
+        }
+        if (msg.value) {
+            state.environment.try_emplace(msg.flowgraph);
+            return place(msg.flowgraph, kLayoutEnvironmentPane);
+        }
+        state.environment.erase(msg.flowgraph);
+        return editLayout(msg.flowgraph, [](const TileMeta& tiles) {
+            return WithoutPane(tiles, kLayoutEnvironmentPane);
+        });
+    }
+
+    Result handle(const MailCloseFlowgraphDescription& msg) {
+        if (!state.items.contains(msg.flowgraph)) {
+            return Result::SUCCESS;
+        }
+        state.gallery.erase(msg.flowgraph);
+        return editLayout(msg.flowgraph, [](const TileMeta& tiles) {
+            return WithoutPane(tiles, kLayoutDescriptionPane);
+        });
+    }
+
+    Result handle(const MailSetFlowgraphEnvironmentSearch& msg) {
+        const auto entry = state.environment.find(msg.flowgraph);
+        if (entry != state.environment.end()) {
+            entry->second = msg.value;
+        }
+        return Result::SUCCESS;
     }
 
  private:
-    static std::optional<TileMeta> WithoutDocumentation(const TileMeta& tiles) {
-        if (!ContainsTilePane(tiles, kLayoutDocumentationPane)) {
+    static std::optional<TileMeta> WithoutPane(const TileMeta& tiles, const std::string& pane) {
+        if (!ContainsTilePane(tiles, pane)) {
+            return tiles;
+        }
+        return FilterTiles(tiles, [&pane](const std::string& candidate) {
+            return candidate != pane;
+        });
+    }
+
+    static std::optional<TileMeta> Persistent(const TileMeta& tiles) {
+        std::vector<std::string> panes;
+        CollectTilePanes(tiles, panes);
+        if (std::none_of(panes.begin(), panes.end(), IsTransientPane)) {
             return tiles;
         }
         return FilterTiles(tiles, [](const std::string& pane) {
-            return pane != kLayoutDocumentationPane;
+            return !IsTransientPane(pane);
         });
     }
 
@@ -234,7 +290,7 @@ struct LayoutActions {
         }
         auto& metadata = state.items.at(flowgraphId)->metadata();
         const auto layout = state.layouts.find(flowgraphId);
-        const auto saved = layout == state.layouts.end() ? std::nullopt : WithoutDocumentation(layout->second);
+        const auto saved = layout == state.layouts.end() ? std::nullopt : Persistent(layout->second);
         if (!saved.has_value()) {
             return metadata.has("layout") ? metadata.clear("layout") : Result::SUCCESS;
         }

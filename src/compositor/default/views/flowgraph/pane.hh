@@ -5,12 +5,12 @@
 #include "detached_config.hh"
 #include "documentation.hh"
 #include "editor/base.hh"
+#include "environment.hh"
 #include "surface.hh"
 #include "../components/callout.hh"
 
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -21,6 +21,17 @@
 namespace Jetstream {
 
 struct FlowgraphPane {
+    static constexpr F32 DescriptionBottomPadding = Sakura::Spacing::Small;
+    static constexpr F32 DescriptionWidth = 520.0f;
+    static constexpr F32 DescriptionFontSize = Sakura::Typography::FontSize * Sakura::Typography::Scale::Lead;
+
+    struct Description {
+        std::string id;
+        std::string markdown;
+        Sakura::Callback<void()> onClose;
+        Sakura::Callback<void(const std::string&)> onOpenUrl;
+    };
+
     struct Config {
         std::string id;
         std::string title;
@@ -28,20 +39,23 @@ struct FlowgraphPane {
         std::string layoutGroup;
         std::string editorPane;
         std::optional<Sakura::DockTiles> layout;
-        std::function<std::string(const std::string&)> describe;
+        Sakura::Callback<std::string(const std::string&)> describe;
         std::vector<FlowgraphDetachedSurface::Config> detachedSurfaces;
         std::vector<FlowgraphDetachedConfig::Config> detachedConfigs;
         std::optional<FlowgraphDocumentation::Config> documentation;
+        std::optional<FlowgraphEnvironment::Config> environment;
+        std::optional<Description> description;
         bool empty = false;
+        bool showTips = true;
         bool dependencyReviewAvailable = false;
         Callout::Tone dependencyReviewTone = Callout::Tone::Info;
         std::string dependencyReviewMessage;
-        std::function<void()> onFocus;
-        std::function<void()> onClose;
-        std::function<void(std::optional<Sakura::DockTiles>)> onLayout;
-        std::function<void()> onReviewDependencies;
-        std::function<void()> onOpenExamples;
-        std::function<void(FlowgraphEditor::Measured)> onMeasure;
+        Sakura::Callback<void()> onFocus;
+        Sakura::Callback<void()> onClose;
+        Sakura::Callback<void(std::optional<Sakura::DockTiles>)> onLayout;
+        Sakura::Callback<void()> onReviewDependencies;
+        Sakura::Callback<void()> onOpenGallery;
+        Sakura::Callback<void(FlowgraphEditor::Measured)> onMeasure;
     };
 
     void update(Config config) {
@@ -67,7 +81,7 @@ struct FlowgraphPane {
             .icon = dependencyIcon,
             .iconColorKey = dependencyColor,
             .placeholder = this->config.dependencyReviewMessage,
-            .size = {0.0f, FlowgraphBlockPicker::PillHeight},
+            .size = {0.0f, FlowgraphEditor::PillHeight},
             .onOpen = this->config.onReviewDependencies,
         });
         editor.update(std::move(editorConfig));
@@ -115,47 +129,78 @@ struct FlowgraphPane {
         if (this->config.documentation.has_value()) {
             documentation.update(std::move(*this->config.documentation));
         }
+        if (this->config.environment.has_value()) {
+            environment.update(std::move(*this->config.environment));
+        }
+        if (this->config.description.has_value()) {
+            const F32 side = DescriptionFontSize * Sakura::Typography::TextPaddingRatio;
+            description.update({
+                .id = this->config.description->id + ":markdown",
+                .value = this->config.description->markdown,
+                .fontSize = DescriptionFontSize,
+                .padding = Sakura::Padding{side, 0.0f, side, DescriptionBottomPadding},
+                .scrollbar = true,
+                .onLink = [this](const std::string& url) {
+                    if (!this->config.description.has_value() || !this->config.description->onOpenUrl) {
+                        return false;
+                    }
+                    this->config.description->onOpenUrl(url);
+                    return true;
+                },
+            });
+        }
 
         if (this->config.empty) {
             hint.update({
-                .id = this->config.id + ":empty-hint",
+                .icon = ICON_LC_SPARKLES,
                 .title = "Getting Started",
                 .subtitle = "Add your first block, or open a ready-made example.",
                 .steps = {
-                    "Double-click the canvas or use Search blocks.",
+                    "Double-click the canvas or use the add button.",
                     "Pick a block from the list.",
                     "Connect block outputs to inputs.",
                     "Processing starts automatically.",
                 },
-                .hints = flowgraphHints,
                 .actions = {
                     {
-                        .id = "open-examples",
-                        .label = ICON_FA_FLASK " Open Examples",
-                        .variant = Sakura::Button::Variant::Action,
-                        .onClick = this->config.onOpenExamples,
+                        .label = ICON_LC_LAYOUT_GRID " Open Gallery",
+                        .tone = CardButton::Tone::Primary,
+                        .onClick = this->config.onOpenGallery,
                     },
                 },
-                .size = {420.0f, 430.0f},
+                .width = 380.0f,
             });
         }
 
+        const bool onboarding = this->config.empty && !editor.pickerOpen();
+        tip.update({
+            .str = flowgraphHints[std::hash<std::string>{}(this->config.id) % flowgraphHints.size()],
+            .icon = ICON_LC_LIGHTBULB,
+            .persistent = onboarding,
+        });
+
         using Item = Sakura::Overlay::Item;
         std::vector<Item> items = {{.child = &editor.component()}};
-        if (this->config.empty) {
+        if (onboarding) {
             items.push_back({
                 .child = &hint.component(),
                 .anchor = Sakura::Anchor::Center,
                 .size = hint.size(),
             });
         }
+        if (this->config.showTips) {
+            items.push_back({
+                .child = &tip,
+                .anchor = Sakura::Anchor::BottomRight,
+                .offset = {-FlowgraphEditor::PillMargin,
+                           -(FlowgraphEditor::PillMargin + FlowgraphEditor::PillHeight + FlowgraphEditor::PillGap)},
+            });
+        }
         if (this->config.dependencyReviewAvailable) {
             items.push_back({
                 .child = &dependencyPill,
                 .anchor = Sakura::Anchor::TopRight,
-                .offset = {-(FlowgraphBlockPicker::PillMargin + FlowgraphBlockPicker::PillWidth + FlowgraphEditor::PillGap +
-                             FlowgraphEditor::ZoomPillWidth + FlowgraphEditor::PillGap),
-                           FlowgraphBlockPicker::PillMargin},
+                .offset = {-FlowgraphEditor::PillMargin, FlowgraphEditor::PillMargin},
             });
         }
         paneOverlay.update({.items = std::move(items)});
@@ -164,7 +209,7 @@ struct FlowgraphPane {
             .id = this->config.editorPane,
             .title = "Flowgraph",
             .group = this->config.layoutGroup,
-            .icon = ICON_FA_CUBES,
+            .icon = ICON_LC_BOXES,
             .content = &paneOverlay,
             .closable = false,
             .padding = Sakura::Dock::ContentPadding,
@@ -175,7 +220,7 @@ struct FlowgraphPane {
                 .id = surfaceId,
                 .title = surface.title(),
                 .group = this->config.layoutGroup,
-                .icon = ICON_FA_CHART_AREA,
+                .icon = ICON_LC_CHART_AREA,
                 .content = &surface.component(),
                 .padding = Sakura::Dock::ContentPadding,
                 .onClose = surface.closeCallback(),
@@ -188,7 +233,7 @@ struct FlowgraphPane {
                 .id = configId,
                 .title = detached.title(),
                 .group = this->config.layoutGroup,
-                .icon = ICON_FA_SLIDERS,
+                .icon = ICON_LC_SLIDERS_HORIZONTAL,
                 .content = &detached.component(),
                 .padding = Sakura::Dock::ContentPadding,
                 .onClose = detached.closeCallback(),
@@ -199,10 +244,37 @@ struct FlowgraphPane {
                 .id = documentation.id(),
                 .title = documentation.title(),
                 .group = this->config.layoutGroup,
-                .icon = ICON_FA_BOOK,
+                .icon = ICON_LC_BOOK,
                 .content = &documentation.component(),
                 .padding = Sakura::Dock::ContentPadding,
                 .onClose = documentation.closeCallback(),
+            });
+        }
+        if (this->config.description.has_value()) {
+            layoutPanes.push_back({
+                .id = this->config.description->id,
+                .title = "Description",
+                .group = this->config.layoutGroup,
+                .icon = ICON_LC_BOOK_OPEN,
+                .content = &description,
+                .closeOnlyMinimized = true,
+                .maximizable = false,
+                .leftmost = true,
+                .startMinimized = true,
+                .width = DescriptionWidth,
+                .padding = Sakura::Dock::ContentPadding,
+                .onClose = this->config.description->onClose,
+            });
+        }
+        if (this->config.environment.has_value()) {
+            layoutPanes.push_back({
+                .id = environment.id(),
+                .title = environment.title(),
+                .group = this->config.layoutGroup,
+                .icon = ICON_LC_TABLE_PROPERTIES,
+                .content = &environment.component(),
+                .padding = Sakura::Dock::ContentPadding,
+                .onClose = environment.closeCallback(),
             });
         }
         layoutDock.update({
@@ -222,6 +294,7 @@ struct FlowgraphPane {
             .id = config.id,
             .title = config.title.empty() ? config.id : config.title,
             .group = "main",
+            .icon = ICON_LC_WORKFLOW,
             .content = &layoutDock,
             .onClose = config.onClose,
             .onFocus = config.onFocus,
@@ -236,26 +309,29 @@ struct FlowgraphPane {
     std::pair<const char*, const char*> dependencyGlyph() const {
         switch (config.dependencyReviewTone) {
             case Callout::Tone::Error:
-                return {ICON_FA_CIRCLE_EXCLAMATION, "error_red"};
+                return {ICON_LC_CIRCLE_ALERT, "error_red"};
             case Callout::Tone::Warning:
-                return {ICON_FA_TRIANGLE_EXCLAMATION, "warning_yellow"};
+                return {ICON_LC_TRIANGLE_ALERT, "warning_yellow"};
             case Callout::Tone::Success:
-                return {ICON_FA_CIRCLE_CHECK, "success_green"};
+                return {ICON_LC_CIRCLE_CHECK, "success_green"};
             case Callout::Tone::Info:
                 break;
         }
-        return {ICON_FA_BOX, "info_blue"};
+        return {ICON_LC_PACKAGE, "info_blue"};
     }
 
     Config config;
     Sakura::PillField dependencyPill;
     FlowgraphEditor editor;
     HintOverlay hint;
+    Sakura::TipBanner tip;
     std::vector<std::string> detachedSurfaceOrder;
     std::unordered_map<std::string, FlowgraphDetachedSurface> detachedSurfaceViews;
     std::vector<std::string> detachedConfigOrder;
     std::unordered_map<std::string, FlowgraphDetachedConfig> detachedConfigViews;
     FlowgraphDocumentation documentation;
+    FlowgraphEnvironment environment;
+    Sakura::Markdown description;
     Sakura::Overlay paneOverlay;
     Sakura::Dock layoutDock;
 };

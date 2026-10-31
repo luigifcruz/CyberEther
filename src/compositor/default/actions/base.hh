@@ -6,6 +6,7 @@
 #include "feedback.hh"
 #include "file_picker.hh"
 #include "flowgraph.hh"
+#include "gallery.hh"
 #include "layout.hh"
 #include "live_markdown.hh"
 #include "metrics.hh"
@@ -39,6 +40,7 @@ class DefaultActions {
         metrics = std::make_shared<MetricActions>(state.flowgraph);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
         agent = std::make_shared<AgentActions>(state, callbacks, runtime);
+        gallery = std::make_shared<GalleryActions>(state);
     }
 
     Result handle(const Mail& mail) {
@@ -90,6 +92,22 @@ class DefaultActions {
         workbench->settleStartTab();
     }
 
+    void refreshRegistry() {
+        gallery->refreshRegistry();
+    }
+
+    void settlePendingFocus() {
+        workbench->settlePendingFocus();
+    }
+
+    void reconcileFlowgraphs() {
+        workbench->reconcileFlowgraphs();
+    }
+
+    void reconcileModal() {
+        workbench->reconcileModal();
+    }
+
     void restoreLayouts() {
         layouts->restoreFromMetadata();
     }
@@ -112,6 +130,14 @@ class DefaultActions {
 
     void shutdownAgent() {
         agent->shutdown();
+    }
+
+    void reconcileGallery() {
+        gallery->reconcile();
+    }
+
+    void shutdownGallery() {
+        gallery->shutdown();
     }
 
  private:
@@ -144,6 +170,7 @@ class DefaultActions {
     std::shared_ptr<WorkbenchActions> workbench;
     std::shared_ptr<FeedbackActions> feedback;
     std::shared_ptr<AgentActions> agent;
+    std::shared_ptr<GalleryActions> gallery;
 };
 
 }  // namespace Jetstream

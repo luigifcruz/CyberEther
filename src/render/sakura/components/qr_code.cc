@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -16,15 +15,16 @@ namespace Jetstream::Sakura {
 struct QrCode::Impl {
     Config config;
     Box modules;
-    Rect code;
 
     static constexpr int kBorder = 2;
 
-    F32 side(const Context& ctx) const {
-        if (config.width <= 0 || config.data.empty()) {
+    F32 side(const Context& ctx, F32 limit) const {
+        if (config.width <= 0 || config.data.empty() || config.heightRatio <= 0.0f) {
             return 0.0f;
         }
-        return static_cast<F32>(config.width + 2 * kBorder) * Px(ctx, config.moduleSize);
+        const F32 modules = static_cast<F32>(config.width + 2 * kBorder);
+        const F32 target = std::min(Px(ctx, config.heightRatio * LogicalViewportHeight(ctx)), limit);
+        return modules * std::max(1.0f, std::floor(target / modules));
     }
 };
 
@@ -39,31 +39,25 @@ void QrCode::update(Config config) {
     if (config != impl->config) {
         invalidate(Dirty::Layout);
     }
-    if (config.data == impl->config.data && config.width == impl->config.width &&
-        config.moduleSize == impl->config.moduleSize) {
-        impl->config.onClick = std::move(config.onClick);
-        return;
-    }
     impl->config = std::move(config);
 }
 
 Extent2D<F32> QrCode::measure(const Context& ctx, Extent2D<F32> available) {
-    const F32 side = impl->side(ctx);
+    const F32 side = impl->side(ctx, std::min(available.x, available.y));
     return FitExtent({std::isfinite(available.x) ? std::max(available.x, side) : side, side}, available);
 }
 
 void QrCode::layout(const Context& ctx) {
     const Rect bounds = frame();
     const auto& config = impl->config;
-    const F32 side = impl->side(ctx);
-    const F32 module = Px(ctx, config.moduleSize);
+    const F32 side = impl->side(ctx, std::min(bounds.width, bounds.height));
+    const F32 module = side > 0.0f ? side / static_cast<F32>(config.width + 2 * Impl::kBorder) : 0.0f;
     const F32 x0 = std::floor(bounds.x + std::max(0.0f, (bounds.width - side) * 0.5f));
     const F32 y0 = std::floor(bounds.y);
-    impl->code = {x0, y0, side, side};
 
     std::vector<Box::Instance> instances;
     if (side > 0.0f) {
-        instances.push_back({.rect = impl->code, .backgroundColor = {1.0f, 1.0f, 1.0f, 1.0f}});
+        instances.push_back({.rect = {x0, y0, side, side}, .backgroundColor = {1.0f, 1.0f, 1.0f, 1.0f}});
         for (int y = 0; y < config.width; ++y) {
             int x = 0;
             while (x < config.width) {
@@ -91,22 +85,6 @@ void QrCode::layout(const Context& ctx) {
     }
     impl->modules.update({.instances = std::move(instances), .clip = bounds});
     layoutChild(ctx, impl->modules, bounds);
-}
-
-bool QrCode::mouseEvent(const MouseEvent& event) {
-    if (event.type != MouseEventType::Click || event.button != MouseButton::Left ||
-        !impl->code.contains(event.position.x, event.position.y) || !impl->config.onClick) {
-        return false;
-    }
-    impl->config.onClick();
-    return true;
-}
-
-std::optional<SurfaceCursor> QrCode::cursorAt(const Extent2D<F32>& point) const {
-    if (!impl->code.contains(point.x, point.y)) {
-        return std::nullopt;
-    }
-    return SurfaceCursor::Hand;
 }
 
 }  // namespace Jetstream::Sakura

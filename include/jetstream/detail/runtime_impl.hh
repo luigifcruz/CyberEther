@@ -16,6 +16,7 @@ struct JETSTREAM_API Runtime::Impl {
 
     virtual Result compute(const std::vector<std::string>& modules,
                            std::unordered_set<std::string>& skippedModules,
+                           std::unordered_set<std::string>& stalledModules,
                            std::unordered_set<std::string>& failedModules) = 0;
 
  protected:
@@ -26,7 +27,8 @@ struct JETSTREAM_API Runtime::Impl {
     std::atomic<bool> presentRunning{false};
 
     static bool hasSkippedInputs(const std::shared_ptr<Module>& module,
-                                 const std::unordered_set<std::string>& skippedModules);
+                                 const std::unordered_set<std::string>& skippedModules,
+                                 const std::unordered_set<std::string>& stalledModules);
 
     friend class Runtime;
 };

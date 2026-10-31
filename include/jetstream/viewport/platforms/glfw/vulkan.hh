@@ -54,6 +54,7 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     void setIntegratedTitlebar(bool enabled);
     void beginWindowDrag();
     void zoomWindow();
+    bool setDarkAppearance(bool dark);
 
     Result nextDrawable(VkSemaphore& semaphore);
     Result commitDrawable(std::vector<VkSemaphore>& semaphores);

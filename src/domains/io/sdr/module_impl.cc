@@ -5,6 +5,7 @@
 #include <new>
 
 #include <jetstream/memory/axis.hh>
+#include <jetstream/scheduler_context.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -89,7 +90,7 @@ Result SdrImpl::create() {
 
     errored = false;
     streaming = false;
-    bufferHealth.publish(0.0f);
+    bufferFill.publish(0.0f);
     throughput.publish({0.0f, 0.0f});
     deviceGaps.publish(0);
     deviceLostSamples.publish(0);
@@ -142,7 +143,7 @@ Result SdrImpl::create() {
 Result SdrImpl::destroy() {
     stopReceiver();
     radio.reset();
-    bufferHealth.publish(0.0f);
+    bufferFill.publish(0.0f);
     throughput.publish({0.0f, 0.0f});
     return Result::SUCCESS;
 }
@@ -251,6 +252,7 @@ Result SdrImpl::startReceiver() {
             if (result != Result::SUCCESS) {
                 errored = true;
             }
+            Scheduler::Context::NotifyPendingCompute();
         });
     } catch (const std::exception& e) {
         streaming = false;
@@ -291,10 +293,11 @@ Result SdrImpl::receiveLoop() {
             case Radio::Device::Status::Samples: {
                 stream.push(capture.generation, scratch.data(), capture.count, capture.timestamp,
                             capture.epoch);
+                Scheduler::Context::NotifyPendingCompute();
                 const U64 capacity = stream.capacity();
                 if (capacity > 0) {
                     const F32 level = static_cast<F32>(stream.size()) / static_cast<F32>(capacity);
-                    bufferHealth.publish(bufferHealth.get() * 0.99f + level * 0.01f);
+                    bufferFill.publish(bufferFill.get() * 0.99f + level * 0.01f);
                 }
                 const auto current = stream.metadata();
                 throughput.publish({
@@ -320,8 +323,8 @@ Result SdrImpl::receiveLoop() {
     return Result::SUCCESS;
 }
 
-F32 SdrImpl::getBufferHealth() const {
-    return bufferHealth.get();
+F32 SdrImpl::getBufferFill() const {
+    return bufferFill.get();
 }
 
 SdrImpl::LossSnapshot SdrImpl::getLoss() const {

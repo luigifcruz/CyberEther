@@ -6,8 +6,12 @@ core_test_domains = {
     'application': ['application/instance_backend.cc'],
     'compositor': [
         'compositor/compositor.cc',
+        'compositor/docs.cc',
+        'compositor/file_picker.cc',
+        'compositor/gallery.cc',
         'compositor/layout.cc',
         'compositor/metrics.cc',
+        'compositor/settings_tab.cc',
         'compositor/start_tab.cc',
         'compositor/tiles.cc',
     ],
@@ -40,6 +44,7 @@ core_test_domains = {
     'render': [
         'render/colormap.cc',
         'render/components.cc',
+        'render/browser_wheel.cc',
         'render/input_state.cc',
         'render/present_list.cc',
         'render/transfers.cc',
@@ -51,17 +56,19 @@ core_test_domains = {
     'sakura': [
         'sakura/chat.cc',
         'sakura/chat_composer.cc',
-        'sakura/chat_dock.cc',
         'sakura/interface_controls.cc',
         'sakura/scissor.cc',
         'sakura/key_value.cc',
         'sakura/flowgraph_editor_views.cc',
         'sakura/flowgraph_node_view.cc',
         'sakura/flowgraph_pane.cc',
+        'sakura/metric_progress_bar.cc',
         'sakura/node_metadata.cc',
         'sakura/component.cc',
         'sakura/card.cc',
         'sakura/controls.cc',
+        'sakura/tip_banner.cc',
+        'sakura/voice.cc',
         'sakura/dock.cc',
         'sakura/geometry.cc',
         'sakura/idle_input.cc',
@@ -76,9 +83,13 @@ core_test_domains = {
         'sakura/retention.cc',
         'sakura/retention_shell.cc',
         'sakura/search.cc',
+        'sakura/settings_components.cc',
+        'sakura/flowgraph_card.cc',
+        'sakura/pill_tabs.cc',
         'sakura/shell.cc',
         'sakura/table.cc',
         'sakura/views.cc',
+        'sakura/view_components.cc',
         'sakura/sizing.cc',
         'sakura/surface_view.cc',
         'sakura/input_bridge.cc',
@@ -114,6 +125,7 @@ if not jst_is_windows
             'compositor/config_edits.cc',
             'compositor/live_markdown.cc',
             'compositor/agent_bridge.cc',
+            'compositor/agent_providers.cc',
             'compositor/agent_responsiveness.cc',
         ],
     }
@@ -130,6 +142,16 @@ if jst_is_macos and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     core_test_targets += [cocoa_titlebar_tests]
     test('core-cocoa-titlebar', cocoa_titlebar_tests,
          suite: 'core', is_parallel: false, timeout: 60)
+    cocoa_pointer_tests = executable(
+        'jetstream-core-cocoa-pointer-tests',
+        'render/cocoa_pointer.mm',
+        dependencies: dep_lst + [catch2_dep],
+        link_with: libjetstream,
+        include_directories: inc_lst + [core_test_includes],
+    )
+    core_test_targets += [cocoa_pointer_tests]
+    test('core-cocoa-pointer', cocoa_pointer_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
 endif
 if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
     metal_program_cache_sources = ['render/metal_program_cache.cc']
@@ -138,6 +160,16 @@ if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
     endif
     core_test_domains += {
         'metal-program-cache': metal_program_cache_sources,
+    }
+endif
+if not jst_is_browser
+    core_test_domains += {
+        'platform': core_test_domains['platform'] + ['platform/socket.cc'],
+    }
+endif
+if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
+    core_test_domains += {
+        'render': core_test_domains['render'] + ['render/metal_capture.cc'],
     }
 endif
 if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_windows

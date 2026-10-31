@@ -84,6 +84,8 @@ class JETSTREAM_API Provider {
         U64 contextLength = 0;
         U64 outputLength = 0;
         std::vector<std::string> reasoningEfforts;
+        std::optional<F64> inputCost;
+        std::optional<F64> outputCost;
     };
 
     struct Function {
@@ -153,6 +155,7 @@ class JETSTREAM_API Provider {
         std::string path;
         std::string modelsPath;
         std::function<std::string()> apiKey;
+        bool requireApiKey = false;
         U64 timeoutSeconds = 120;
         U32 retries = 0;
         bool requestReasoning = false;

@@ -11,11 +11,10 @@
 #include "jetstream/block.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/texture.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
 #include <cmath>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -158,13 +157,13 @@ struct FlowgraphDiagnosticTooltip {
             return;
         }
         headerIcon.update({
-            .str = ICON_FA_TRIANGLE_EXCLAMATION,
+            .str = ICON_LC_TRIANGLE_ALERT,
             .colorKey = colorKey,
         });
         headerLabel.update({.str = "Diagnostic"});
         header.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 12.0f,
+            .spacing = Sakura::Spacing::Medium,
             .items = {
                 {.child = &headerIcon},
                 {.child = &headerLabel},
@@ -238,8 +237,10 @@ struct FlowgraphNode {
         std::shared_ptr<const Render::Texture> texture;
         F32 height = 512.0f;
         bool detached = false;
-        std::function<void()> onDetach;
-        std::function<void(const Sakura::SurfaceResize&)> onAttachedSize;
+        Sakura::Callback<void(bool)> onDetach;
+        Sakura::Callback<void(const Sakura::SurfaceResize&)> onAttachedSize;
+        Sakura::Callback<void(InputEvent)> onInput;
+        Sakura::Callback<SurfaceCursor()> resolveCursor;
     };
 
     struct DeviceOption {
@@ -263,9 +264,6 @@ struct FlowgraphNode {
         std::string name;
         std::string module;
         std::string title;
-        DeviceType device = DeviceType::CPU;
-        RuntimeType runtime = RuntimeType::NATIVE;
-        ProviderType provider = "generic";
         Block::State state = Block::State::None;
         Block::NodeSize nodeSize = Block::NodeSize::S;
         std::string diagnostic;
@@ -288,18 +286,18 @@ struct FlowgraphNode {
         BlockData block;
         bool pasteEnabled = false;
         bool timingEnabled = false;
-        std::function<void()> onCopy;
-        std::function<void(Extent2D<F32>)> onPaste;
-        std::function<void()> onRename;
-        std::function<void()> onReload;
-        std::function<void(Parser::Map)> onInspectApply;
-        std::function<void()> onDelete;
-        std::function<void()> onDocumentation;
-        std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
-        std::function<void(F32, F32, F32, F32)> onLayout;
-        std::function<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
-        std::function<void(bool)> onConfigCollapse;
-        std::function<void(bool)> onConfigDetach;
+        Sakura::Callback<void()> onCopy;
+        Sakura::Callback<void(Extent2D<F32>)> onPaste;
+        Sakura::Callback<void()> onRename;
+        Sakura::Callback<void()> onReload;
+        Sakura::Callback<void(Parser::Map)> onInspectApply;
+        Sakura::Callback<void()> onDelete;
+        Sakura::Callback<void()> onDocumentation;
+        Sakura::Callback<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
+        Sakura::Callback<void(F32, F32, F32, F32)> onLayout;
+        Sakura::Callback<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
+        Sakura::Callback<void(bool)> onConfigCollapse;
+        Sakura::Callback<void(bool)> onConfigDetach;
     };
 
     static constexpr F32 MinimumNodeWidth = 120.0f;
@@ -314,7 +312,7 @@ struct FlowgraphNode {
 
     void update(Config config) {
         std::optional<Layout> previousLayout;
-        std::function<void(F32, F32, F32, F32)> previousOnLayout;
+        Sakura::Callback<void(F32, F32, F32, F32)> previousOnLayout;
         if (layoutChanged) {
             previousLayout = this->config.block.layout;
             previousOnLayout = this->config.onLayout;
@@ -400,9 +398,9 @@ struct FlowgraphNode {
                 .id = surface.id,
                 .texture = surface.texture,
                 .minimumHeight = SurfaceHeightSpec().minimum,
-                .detachOverlay = true,
                 .onSize = surface.onAttachedSize,
-                .onDetach = surface.onDetach,
+                .onInput = surface.detached ? nullptr : surface.onInput,
+                .resolveCursor = surface.detached ? nullptr : surface.resolveCursor,
             });
         }
 
@@ -461,6 +459,9 @@ struct FlowgraphNode {
                     this->config.onConfigCollapse(!this->config.block.configCollapsed);
                 }
             },
+            .onDetach = attachedSurfaceCount > 0 ? Sakura::Callback<void()>([this]() {
+                setSurfacesDetached(true);
+            }) : Sakura::Callback<void()>(),
             .pins = std::move(pins),
             .content = &content,
             .resize = resizeAxes,
@@ -491,11 +492,12 @@ struct FlowgraphNode {
         }
 
         menu.update({
-            .id = this->config.id + ":context-menu",
             .open = menuOpen,
             .pasteEnabled = this->config.pasteEnabled,
             .configDetachEnabled = hasConfigFields,
             .configDetached = block.configDetached,
+            .plotDetachEnabled = hasSurfaces,
+            .plotDetached = allSurfacesDetached,
             .devices = deviceOptions,
             .onCopy = this->config.onCopy,
             .onPaste = [this]() {
@@ -519,6 +521,9 @@ struct FlowgraphNode {
                 if (this->config.onConfigDetach) {
                     this->config.onConfigDetach(!this->config.block.configDetached);
                 }
+            },
+            .onTogglePlotDetach = [this, allSurfacesDetached]() {
+                setSurfacesDetached(!allSurfacesDetached);
             },
             .onReload = this->config.onReload,
             .onDelete = this->config.onDelete,
@@ -548,6 +553,14 @@ struct FlowgraphNode {
                 inspectorOpen = false;
             },
         });
+    }
+
+    void setSurfacesDetached(bool detached) {
+        for (const auto& surface : config.block.surfaces) {
+            if (surface.detached != detached && surface.onDetach) {
+                surface.onDetach(detached);
+            }
+        }
     }
 
     NodeEditor::Node takeNode() {

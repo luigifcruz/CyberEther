@@ -1,12 +1,30 @@
 SKIP = object()
 
 
-def _jetstream_check_skip(skip):
-    if globals().get("SKIP") is skip:
-        return
+class _JetstreamYield:
+    __slots__ = ("delay",)
 
-    globals()["SKIP"] = skip
-    raise RuntimeError("Python source cannot redefine the reserved SKIP sentinel.")
+    def __init__(self, delay=float("inf")):
+        self.delay = delay
+
+    def __call__(self, seconds):
+        seconds = float(seconds)
+        if not seconds >= 0.0:
+            raise ValueError("YIELD() takes a delay of zero or more seconds.")
+        return _JetstreamYield(seconds)
+
+
+YIELD = _JetstreamYield()
+
+
+def _jetstream_check_reserved(skip, yield_):
+    if globals().get("SKIP") is not skip:
+        globals()["SKIP"] = skip
+        raise RuntimeError("Python source cannot redefine the reserved SKIP sentinel.")
+
+    if globals().get("YIELD") is not yield_:
+        globals()["YIELD"] = yield_
+        raise RuntimeError("Python source cannot redefine the reserved YIELD sentinel.")
 
 
 def _jetstream_exec_source(source, source_file):
@@ -20,11 +38,12 @@ def _jetstream_load_compute(
     source,
     source_file="",
     _exec_source=_jetstream_exec_source,
-    _check_skip=_jetstream_check_skip,
+    _check_reserved=_jetstream_check_reserved,
     _skip=SKIP,
+    _yield=YIELD,
 ):
     _exec_source(source, source_file)
-    _check_skip(_skip)
+    _check_reserved(_skip, _yield)
     function = globals().get("compute")
     if not callable(function):
         raise RuntimeError("Python source must define a callable compute() function.")
@@ -34,8 +53,10 @@ def _jetstream_load_compute(
 def _jetstream_bind_compute(
     function,
     ctx,
-    _check_skip=_jetstream_check_skip,
+    _check_reserved=_jetstream_check_reserved,
     _skip=SKIP,
+    _yield=YIELD,
+    _yield_type=_JetstreamYield,
 ):
     def _runner():
         completed = False
@@ -45,9 +66,14 @@ def _jetstream_bind_compute(
         finally:
             if not completed:
                 globals()["SKIP"] = _skip
+                globals()["YIELD"] = _yield
 
-        _check_skip(_skip)
-        return result is _skip
+        _check_reserved(_skip, _yield)
+        if result is _skip:
+            return (1, 0.0)
+        if isinstance(result, _yield_type):
+            return (2, result.delay)
+        return (0, 0.0)
 
     return _runner
 

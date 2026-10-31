@@ -153,6 +153,10 @@ class MetalBackend final : public Backend {
         return buffer;
     }
 
+    const void* hostAddress() const override {
+        return buffer ? buffer->contents() : nullptr;
+    }
+
     bool isBorrowed() const override {
         return borrowed;
     }

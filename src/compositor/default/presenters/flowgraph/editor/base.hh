@@ -14,7 +14,6 @@
 #include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_view.hh"
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -90,7 +89,7 @@ struct FlowgraphEditorPresenter {
             .onReconfigureBlock = [enqueue, flowgraphId](const std::string& blockName,
                                                          Parser::Map blockConfig,
                                                          const bool silent,
-                                                         std::function<void(Result)> onComplete) {
+                                                         Sakura::Callback<void(Result)> onComplete) {
                 enqueue(MailReconfigureBlock{flowgraphId, blockName,
                                              std::move(blockConfig), silent,
                                              std::move(onComplete)});
@@ -101,13 +100,16 @@ struct FlowgraphEditorPresenter {
             },
             .onBrowseConfigPath = [enqueue](bool save,
                                             std::vector<std::string> extensions,
-                                            std::function<void(std::string)> onSelect) {
+                                            Sakura::Callback<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{
                     .path = "",
                     .save = save,
                     .extensions = std::move(extensions),
                     .onSelect = std::move(onSelect),
                 });
+            },
+            .onOpenUrl = [enqueue](const std::string& url) {
+                enqueue(MailOpenUrl{.url = url, .notifyResult = true});
             },
             .onNodeLayout = [enqueue, flowgraphId](const std::string& blockName,
                                                    F32 x,
@@ -136,6 +138,17 @@ struct FlowgraphEditorPresenter {
 
         const auto& agent = context.state.agent;
         config.measure = agent.chat.conversation.streaming || agent.voice.phase != Agent::Session::Phase::Idle;
+        config.paused = flowgraph->paused();
+        config.onTogglePause = [enqueue, flowgraphId, paused = config.paused]() {
+            enqueue(MailSetFlowgraphPaused{.flowgraph = flowgraphId, .paused = !paused});
+        };
+        config.onSave = [enqueue, flowgraphId]() {
+            enqueue(MailSaveFlowgraph{.flowgraph = flowgraphId});
+        };
+        config.onToggleEnvironment = [enqueue, flowgraphId,
+                                      open = context.state.flowgraph.environment.contains(flowgraphId)]() {
+            enqueue(MailSetFlowgraphEnvironmentVisible{.flowgraph = flowgraphId, .value = !open});
+        };
 
         const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
         if (blocks == context.state.flowgraph.blocks.end()) {

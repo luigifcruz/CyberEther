@@ -219,11 +219,14 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
             return false;
         }
     }, event);
-    if (!hostFocused && !remote) {
-        track(event);
+    const bool passive = std::holds_alternative<InputQueue::Pointer>(event) ||
+                         std::holds_alternative<InputQueue::Hover>(event) ||
+                         std::holds_alternative<InputQueue::Wheel>(event) ||
+                         std::holds_alternative<InputQueue::Modifiers>(event);
+    if (!hostFocused && !remote && !passive) {
         return true;
     }
-    if (!focused) {
+    if (!focused && (hostFocused || remote)) {
         focused = true;
         focusLost = false;
         if (pointerInside) {
@@ -266,10 +269,11 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
     }
 
     if (const auto* wheel = std::get_if<InputQueue::Wheel>(&event)) {
-        if (wheel->delta.x == 0.0f && wheel->delta.y == 0.0f) {
+        if (wheel->delta.x == 0.0f && wheel->delta.y == 0.0f && wheel->phase == ScrollPhase::None &&
+            !wheel->precise) {
             return true;
         }
-        if (trickle.moved || trickle.buttons.any()) {
+        if (trickle.buttons.any()) {
             return false;
         }
         trickle.wheeled = true;
@@ -279,6 +283,8 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
         scroll.scroll = wheel->delta;
         scroll.modifiers = currentModifiers;
         scroll.positioned = pointerPosition.has_value();
+        scroll.phase = wheel->phase;
+        scroll.precise = wheel->precise;
         frameEvents.push_back(scroll);
         return true;
     }
@@ -338,31 +344,11 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
     return true;
 }
 
-void InputState::track(const InputQueue::Event& event) {
-    if (const auto* pointer = std::get_if<InputQueue::Pointer>(&event)) {
-        pointerPosition = PixelPosition(pointer->position);
-        pointerInside = pointerPosition.has_value();
-        if (pointerPosition.has_value()) {
-            lastValidPointer = pointerPosition;
-        }
-    } else if (const auto* hover = std::get_if<InputQueue::Hover>(&event)) {
-        if (hover->entered) {
-            pointerPosition = lastValidPointer;
-            pointerInside = true;
-        } else {
-            pointerPosition.reset();
-            pointerInside = false;
-        }
-    } else if (const auto* modifiers = std::get_if<InputQueue::Modifiers>(&event)) {
-        currentModifiers = modifiers->modifiers;
-    }
-}
-
 bool InputState::movePointer(const std::optional<Extent2D<F32>>& next, Trickle& trickle) {
     if (pointerPosition == next) {
         return true;
     }
-    if (trickle.buttons.any() || trickle.wheeled || trickle.keyChanged) {
+    if (trickle.buttons.any() || trickle.keyChanged) {
         return false;
     }
     trickle.moved = true;
@@ -459,7 +445,6 @@ void InputState::clear() {
     keys.fill(false);
     keyDuration.fill(-1.0f);
     currentModifiers = {};
-    pointerPosition.reset();
     buttonDown.fill(false);
     clickCount.fill(0);
     clickTime.fill(-std::numeric_limits<F64>::infinity());

@@ -41,6 +41,10 @@ struct TableBody : public Component {
         mountChildren(children);
     }
 
+    bool owns(const Component& child) const {
+        return hasChild(child);
+    }
+
     bool dispatch(const MouseEvent& event) {
         return mouseEventChildren(event);
     }
@@ -76,6 +80,7 @@ struct Table::Impl {
     std::vector<F32> rowHeights;
     std::vector<F32> columnX;
     F32 scrollY = 0.0f;
+    F32 overscrollY = 0.0f;
     F32 contentHeight = 0.0f;
     F32 headerHeight = 0.0f;
     Rect bodyRect;
@@ -246,7 +251,7 @@ struct Table::Impl {
     }
 
     F32 rowTop(const Rect& bounds, U64 index) const {
-        return bounds.y + rowTops[index] - (rows[index].header ? 0.0f : scrollY);
+        return bounds.y + rowTops[index] - (rows[index].header ? 0.0f : scrollY + overscrollY);
     }
 
     std::optional<U64> rowAt(const Rect& bounds, F32 x, F32 y) const {
@@ -275,7 +280,12 @@ Table::Table() {
 Table::~Table() = default;
 
 void Table::update(Config config) {
-    if (impl->built && config == impl->config) {
+    const bool mounted = std::all_of(config.cellRows.begin(), config.cellRows.end(), [this](const auto& cells) {
+        return std::all_of(cells.begin(), cells.end(), [this](const Component* cell) {
+            return !cell || hasChild(*cell) || impl->body.owns(*cell);
+        });
+    });
+    if (impl->built && mounted && config == impl->config) {
         impl->config = std::move(config);
         return;
     }
@@ -351,8 +361,12 @@ void Table::layout(const Context& ctx) {
             impl->scrollY = next;
             invalidate(Dirty::Layout);
         },
+        .onOverscroll = [this] {
+            requestFrame();
+        },
     });
     layoutChild(ctx, impl->scroll, body);
+    impl->overscrollY = impl->scroll.overscroll(ctx).y;
     layoutChild(ctx, impl->body, body);
 
     const Rect bodyClip = body;
@@ -419,7 +433,7 @@ void Table::layout(const Context& ctx) {
     }
 
     std::vector<Box::Instance> frameLines;
-    const F32 bottom = std::min(bounds.bottom(), bounds.y + impl->contentHeight - impl->scrollY);
+    const F32 bottom = std::min(bounds.bottom(), bounds.y + impl->contentHeight - impl->scrollY - impl->overscrollY);
     const F32 height = std::max(0.0f, bottom - bounds.y);
     const auto light = ctx.color("table_border_light");
     const auto strong = ctx.color("table_border_strong");

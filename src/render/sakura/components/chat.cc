@@ -12,6 +12,7 @@
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
@@ -28,6 +29,11 @@ struct Chat::Impl {
     ChatTranscript transcript;
     Box cover;
     ChatComposer composer;
+    std::vector<Component*> mounted;
+
+    bool empty() const {
+        return config.snapshot.messages.empty() && !config.snapshot.streaming;
+    }
 
     F32 padding(const Context& ctx) const {
         return Px(ctx, kSurfacePadding * config.fontSize / Typography::FontSize);
@@ -66,6 +72,22 @@ void Chat::update(Config config) {
     }
     impl->config = std::move(config);
     const auto& current = impl->config;
+    std::vector<Component*> children = {&impl->background};
+    if (current.transcriptOpacity > 0.0f) {
+        children.push_back(&impl->transcript);
+    }
+    children.push_back(&impl->cover);
+    children.push_back(&impl->composer);
+    if (current.placeholder && impl->empty()) {
+        children.push_back(current.placeholder);
+    }
+    const bool owned = std::all_of(children.begin(), children.end(), [this](const Component* child) {
+        return hasChild(*child);
+    });
+    if (children != impl->mounted || !owned) {
+        mountChildren(children);
+        impl->mounted = std::move(children);
+    }
     impl->transcript.update({
         .id = current.id + ":transcript",
         .snapshot = current.snapshot,
@@ -83,6 +105,7 @@ void Chat::update(Config config) {
         .onCancel = current.onCancel,
         .onClear = current.onClear,
         .onVoice = current.onVoice,
+        .voiceHint = current.voiceHint,
         .onFocusChange = current.onFocusChange,
         .focusRequest = current.focusRequest,
         .clearRequest = current.clearRequest,
@@ -118,13 +141,6 @@ void Chat::layout(const Context& ctx) {
     const Rect transcriptRect = {columnX, top, column, std::max(0.0f, composerRect.y - pad - top)};
     const F32 opacity = std::clamp(config.transcriptOpacity, 0.0f, 1.0f);
     const bool shown = opacity > 0.0f;
-    if (state.transcript.visible() != shown) {
-        if (!shown) {
-            cancelMouse(state.transcript);
-            releaseFocusWithin(state.transcript);
-        }
-        state.transcript.setVisible(shown);
-    }
     layoutChild(inner, state.transcript, transcriptRect);
 
     state.cover.update({
@@ -133,6 +149,12 @@ void Chat::layout(const Context& ctx) {
         .clip = transcriptRect,
     });
     layoutChild(ctx, state.cover, transcriptRect);
+    if (config.placeholder && hasChild(*config.placeholder) && config.placeholder->visible()) {
+        const F32 height = std::min(measureChild(*config.placeholder, inner, {column, kUnbounded}).y, transcriptRect.height);
+        layoutChild(inner, *config.placeholder,
+                    {columnX, transcriptRect.y + std::round((transcriptRect.height - height) * 0.5f), column, height},
+                    transcriptRect);
+    }
     layoutChild(inner, state.composer, composerRect);
 }
 

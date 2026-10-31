@@ -68,6 +68,7 @@ struct NodeEditor : public Component {
         bool collapsible = false;
         bool collapsed = false;
         Callback<void()> onToggleCollapse;
+        Callback<void()> onDetach;
         std::vector<Pin> pins;
         NodeContentStack* content = nullptr;
         ResizeAxes resize = ResizeAxes::X;
@@ -94,6 +95,8 @@ struct NodeEditor : public Component {
     struct Config {
         std::string id;
         bool pasteEnabled = false;
+        bool frameOnOpen = false;
+        F32 scale = 1.0f;
         std::vector<Node> nodes;
         std::vector<Link> links;
         Callback<void(Extent2D<F32>)> onEditorContextMenu;
@@ -115,6 +118,7 @@ struct NodeEditor : public Component {
     bool canZoom(int direction) const;
     void zoomStep(int direction);
     void zoomReset();
+    void stopFraming();
     bool shown() const;
 
  protected:

@@ -3,9 +3,8 @@
 
 #include "../../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <optional>
 #include <string>
 
@@ -20,13 +19,13 @@ struct FlowgraphInfoView {
         std::string license;
         std::string description;
         std::string path;
-        std::function<void(const std::string&)> onTitleChange;
-        std::function<void(const std::string&)> onSummaryChange;
-        std::function<void(const std::string&)> onAuthorChange;
-        std::function<void(const std::string&)> onLicenseChange;
-        std::function<void(const std::string&)> onDescriptionChange;
-        std::function<void(const std::string&, std::function<void(std::string)>)> onBrowse;
-        std::function<void(const std::string&)> onSave;
+        Sakura::Callback<void(const std::string&)> onTitleChange;
+        Sakura::Callback<void(const std::string&)> onSummaryChange;
+        Sakura::Callback<void(const std::string&)> onAuthorChange;
+        Sakura::Callback<void(const std::string&)> onLicenseChange;
+        Sakura::Callback<void(const std::string&)> onDescriptionChange;
+        Sakura::Callback<void(const std::string&, Sakura::Callback<void(std::string)>)> onBrowse;
+        Sakura::Callback<void(const std::string&)> onSave;
     };
 
     void update(Config config) {
@@ -37,7 +36,7 @@ struct FlowgraphInfoView {
         }
         this->config = std::move(config);
         header.update({
-            .title = ICON_FA_CIRCLE_INFO " Flowgraph Information",
+            .title = ICON_LC_INFO " Flowgraph Information",
             .description = "Edit the focused flowgraph metadata and save location.",
         });
         titleInput.update({
@@ -86,7 +85,7 @@ struct FlowgraphInfoView {
             },
         });
         saveButton.update({
-            .str = ICON_FA_FLOPPY_DISK " Save Flowgraph",
+            .str = ICON_LC_SAVE " Save Flowgraph",
             .size = {Sakura::Fill, 40.0f},
             .variant = Sakura::Button::Variant::Action,
             .onClick = [this]() {

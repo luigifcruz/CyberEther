@@ -1,0 +1,33 @@
+diff --git a/httplib.h b/httplib.h
+--- a/httplib.h
++++ b/httplib.h
+@@ -23571,14 +23571,25 @@
+   std::unique_lock<std::mutex> read_lock(read_mutex_, std::try_to_lock);
+   if (!read_lock.owns_lock()) { return; }
+ 
+-  // Use a short timeout to avoid hanging if the peer doesn't respond.
+-  strm_.set_read_timeout(CPPHTTPLIB_WEBSOCKET_CLOSE_TIMEOUT_SECOND, 0);
++  // Use a short timeout to avoid hanging if the peer doesn't respond, and an
++  // absolute deadline so a peer that keeps sending other frames cannot extend it.
++  const auto deadline =
++      std::chrono::steady_clock::now() +
++      std::chrono::seconds(CPPHTTPLIB_WEBSOCKET_CLOSE_TIMEOUT_SECOND);
+ 
+   Opcode op;
+   std::string resp;
+   bool fin;
+-  while (impl::read_websocket_frame(strm_, op, resp, fin, is_server_, 125) ==
+-         impl::FrameRead::Ok) {
++  while (true) {
++    const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(
++        deadline - std::chrono::steady_clock::now());
++    if (remaining.count() <= 0) { break; }
++    strm_.set_read_timeout(static_cast<time_t>(remaining.count() / 1000000),
++                           static_cast<time_t>(remaining.count() % 1000000));
++    if (impl::read_websocket_frame(strm_, op, resp, fin, is_server_, 125) !=
++        impl::FrameRead::Ok) {
++      break;
++    }
+     if (op == Opcode::Close) { break; }
+   }
+ }

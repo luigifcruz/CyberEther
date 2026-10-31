@@ -282,9 +282,8 @@ std::vector<Entry> Toolbox::Inspect() {
             "measured outer bounds in graph coordinates when layout_status is "
             "'measured'; bounds is null while 'pending'. node omits width and height "
             "while the node uses automatic sizing. When the graph is on screen, "
-            "viewport gives the visible canvas rectangle, the toolbar rectangle "
-            "floating over its top edge, and the open_area below the toolbar, "
-            "all in graph coordinates.",
+            "viewport.visible gives the visible canvas rectangle in graph "
+            "coordinates.",
             R"({"type":"object","properties":{"detail":{"type":"string","enum":["summary","routing","full"]},"sink":{"type":"string","description":"For routing detail, the downstream block to trace, such as an audio or visualization sink."}},"additionalProperties":false})",
             {.needsGraph = true, .reportsLayout = true},
         }, InspectFlowgraph);

@@ -2,9 +2,8 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MENU_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,22 +17,24 @@ struct FlowgraphNodeMenu {
     };
 
     struct Config {
-        std::string id;
         bool open = false;
         bool pasteEnabled = false;
         bool configDetachEnabled = false;
         bool configDetached = false;
+        bool plotDetachEnabled = false;
+        bool plotDetached = false;
         std::vector<DeviceOption> devices;
-        std::function<void()> onCopy;
-        std::function<void()> onPaste;
-        std::function<void()> onRename;
-        std::function<void()> onInspect;
-        std::function<void()> onToggleConfigDetach;
-        std::function<void()> onReload;
-        std::function<void()> onDelete;
-        std::function<void()> onDocumentation;
-        std::function<void(U64)> onDeviceSelect;
-        std::function<void()> onClose;
+        Sakura::Callback<void()> onCopy;
+        Sakura::Callback<void()> onPaste;
+        Sakura::Callback<void()> onRename;
+        Sakura::Callback<void()> onInspect;
+        Sakura::Callback<void()> onToggleConfigDetach;
+        Sakura::Callback<void()> onTogglePlotDetach;
+        Sakura::Callback<void()> onReload;
+        Sakura::Callback<void()> onDelete;
+        Sakura::Callback<void()> onDocumentation;
+        Sakura::Callback<void(U64)> onDeviceSelect;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {
@@ -59,48 +60,54 @@ struct FlowgraphNodeMenu {
         menu.update({
             .entries = {
                 {
-                    .label = ICON_FA_COPY " Copy Block",
+                    .label = ICON_LC_COPY " Copy Block",
                     .shortcut = "CTRL+C",
                     .onClick = this->config.onCopy,
                 },
                 {
-                    .label = ICON_FA_PASTE " Paste Block",
+                    .label = ICON_LC_CLIPBOARD_PASTE " Paste Block",
                     .shortcut = "CTRL+V",
                     .enabled = this->config.pasteEnabled,
                     .onClick = this->config.onPaste,
                 },
                 {
-                    .label = ICON_FA_TAG " Rename Block",
+                    .label = ICON_LC_TAG " Rename Block",
                     .onClick = this->config.onRename,
                 },
                 {
-                    .label = ICON_FA_CODE " Inspect & Edit",
+                    .label = ICON_LC_CODE " Inspect & Edit",
                     .onClick = this->config.onInspect,
                 },
                 {
-                    .label = this->config.configDetached ? ICON_FA_WINDOW_RESTORE " Attach Config"
-                                                         : ICON_FA_UP_RIGHT_FROM_SQUARE " Detach Config",
+                    .label = this->config.configDetached ? ICON_LC_APP_WINDOW " Attach Config"
+                                                         : ICON_LC_EXTERNAL_LINK " Detach Config",
                     .enabled = this->config.configDetachEnabled,
                     .onClick = this->config.onToggleConfigDetach,
                 },
+                {
+                    .label = this->config.plotDetached ? ICON_LC_MINIMIZE_2 " Attach Plot"
+                                                       : ICON_LC_MAXIMIZE_2 " Detach Plot",
+                    .enabled = this->config.plotDetachEnabled,
+                    .onClick = this->config.onTogglePlotDetach,
+                },
                 {.separator = true},
                 {
-                    .label = ICON_FA_MICROCHIP " Change Device",
+                    .label = ICON_LC_CPU " Change Device",
                     .enabled = !devices.empty(),
                     .children = std::move(devices),
                 },
                 {
-                    .label = ICON_FA_ARROW_ROTATE_RIGHT " Reload Block",
+                    .label = ICON_LC_ROTATE_CW " Reload Block",
                     .onClick = this->config.onReload,
                 },
                 {.separator = true},
                 {
-                    .label = ICON_FA_BOOK " Documentation",
+                    .label = ICON_LC_BOOK " Documentation",
                     .onClick = this->config.onDocumentation,
                 },
                 {.separator = true},
                 {
-                    .label = ICON_FA_XMARK " Delete Block",
+                    .label = ICON_LC_X " Delete Block",
                     .colorKey = "error_red",
                     .onClick = this->config.onDelete,
                 },

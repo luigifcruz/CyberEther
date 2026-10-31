@@ -1,23 +1,117 @@
 #include <jetstream/render/sakura/components/div.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
+#include <jetstream/render/sakura/components/polyline.hh>
 
 #include "../context.hh"
+#include "../detail/helpers.hh"
 #include "../metrics.hh"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <utility>
 #include <vector>
 
 namespace Jetstream::Sakura {
 
+namespace {
+
+constexpr F32 kWavePeriod = 56.0f;
+constexpr F32 kWaveRow = 28.0f;
+constexpr F32 kWaveAmplitude = 10.5f;
+constexpr F32 kWaveThickness = 1.3f;
+constexpr F32 kWaveAlpha = 0.25f;
+constexpr U64 kWaveCapacity = 65536;
+constexpr F32 kCornerChord = 1.0f - 1.0f / std::numbers::sqrt2_v<F32>;
+constexpr F32 kFloatShadowSoftness = 18.0f;
+constexpr F32 kFloatShadowDrop = 6.0f;
+constexpr const char* kShadowColorKey = "tile_shadow";
+
+}  // namespace
+
 struct Div::Impl {
     Config config;
+    Box shadow;
     Box frame;
+    Card card;
+    Polyline waves;
     bool hovered = false;
+    std::string fillKey;
+    std::string strokeKey;
+    ColorRGBA<F32> fillFrom = {0.0f, 0.0f, 0.0f, 0.0f};
+    ColorRGBA<F32> strokeFrom = {0.0f, 0.0f, 0.0f, 0.0f};
+    ColorRGBA<F32> fill = {0.0f, 0.0f, 0.0f, 0.0f};
+    ColorRGBA<F32> stroke = {0.0f, 0.0f, 0.0f, 0.0f};
+    std::optional<F64> blendStart;
+
+    void blend(const Context& ctx, const std::string& nextFill, const std::string& nextStroke) {
+        const auto targetFill = ctx.color(nextFill);
+        const auto targetStroke = ctx.color(nextStroke);
+        const bool changed = nextFill != fillKey || nextStroke != strokeKey;
+        if (changed && config.colorTransition > 0.0 && !fillKey.empty()) {
+            fillFrom = fill;
+            strokeFrom = stroke;
+            blendStart = ctx.time;
+        }
+        fillKey = nextFill;
+        strokeKey = nextStroke;
+        if (!blendStart.has_value()) {
+            fill = targetFill;
+            stroke = targetStroke;
+            return;
+        }
+        const F32 t = static_cast<F32>(std::clamp((ctx.time - *blendStart) / config.colorTransition, 0.0, 1.0));
+        const F32 eased = Smoothstep(t);
+        const auto mix = [eased](ColorRGBA<F32> from, ColorRGBA<F32> to) {
+            return ColorRGBA<F32>{from.r + (to.r - from.r) * eased, from.g + (to.g - from.g) * eased,
+                                  from.b + (to.b - from.b) * eased, from.a + (to.a - from.a) * eased};
+        };
+        fill = mix(fillFrom, targetFill);
+        stroke = mix(strokeFrom, targetStroke);
+        if (t >= 1.0f) {
+            blendStart.reset();
+        }
+    }
+
+    static U64 waveCapacity(const Context& ctx) {
+        const F32 row = std::max(Px(ctx, kWaveRow), 1.0f);
+        const U64 rows = static_cast<U64>(std::ceil(static_cast<F32>(ctx.framebufferSize.y) / row)) + 2;
+        return std::max(kWaveCapacity, std::bit_ceil(WaveRowCapacity(ctx, Px(ctx, kWavePeriod)) * rows));
+    }
+
+    std::vector<Polyline::Instance> waveRows(const Context& ctx,
+                                             const Rect& area,
+                                             const Rect& visible,
+                                             ColorRGBA<F32> color,
+                                             U64 capacity) const {
+        std::vector<Polyline::Instance> rows;
+        const F32 period = Px(ctx, kWavePeriod);
+        const F32 row = Px(ctx, kWaveRow);
+        const F32 amplitude = Px(ctx, kWaveAmplitude);
+        const F32 thickness = Px(ctx, kWaveThickness);
+        if (area.empty() || visible.empty() || period <= 0.0f || row <= 0.0f) {
+            return rows;
+        }
+        const F32 reach = amplitude + thickness;
+        U64 vertices = 0;
+        for (F32 center = area.y + row * 0.5f; center - amplitude < area.bottom(); center += row) {
+            if (center + reach < visible.y || center - reach > visible.bottom()) {
+                continue;
+            }
+            auto points = WavePoints(area.x, center, area.width, period, amplitude, visible.x, visible.right());
+            vertices += kWavePointVertices * points.size();
+            if (vertices > capacity) {
+                break;
+            }
+            rows.push_back({.points = std::move(points), .color = color, .thickness = thickness});
+        }
+        return rows;
+    }
 
     bool interactive() const {
         return static_cast<bool>(config.onClick) || static_cast<bool>(config.onDoubleClick);
@@ -26,7 +120,9 @@ struct Div::Impl {
 
 Div::Div() {
     impl = std::make_unique<Impl>();
+    addChild(impl->shadow);
     addChild(impl->frame);
+    addChild(impl->card);
 }
 
 Div::~Div() = default;
@@ -35,7 +131,8 @@ void Div::update(Config config) {
     if (config != impl->config) {
         invalidate(Dirty::Layout);
     }
-    std::vector<Component*> children = {&impl->frame};
+    std::vector<Component*> children = {&impl->shadow, &impl->frame, &impl->card, &impl->waves};
+    impl->waves.setVisible(config.waves);
     if (config.content) {
         children.push_back(config.content);
     }
@@ -69,16 +166,62 @@ void Div::layout(const Context& ctx) {
     const F32 padding = Px(ctx, config.padding);
     const bool highlighted = config.selected || (impl->hovered && impl->interactive());
     const auto key = config.selected ? config.selectedColorKey : highlighted ? config.hoveredColorKey : config.colorKey;
-    const auto borderColor = ctx.color(config.borderColorKey);
+    const bool shadowed = config.shadow && !config.chrome;
+    const F32 softness = Px(ctx, kFloatShadowSoftness);
+    const F32 drop = Px(ctx, kFloatShadowDrop);
+    impl->shadow.setVisible(shadowed);
+    impl->shadow.update({
+        .instances = {{
+            .rect = Inflate({bounds.x, bounds.y + drop, bounds.width, bounds.height}, softness),
+            .visible = shadowed && !bounds.empty(),
+            .backgroundColor = ctx.color(kShadowColorKey),
+        }},
+        .clip = clip(),
+        .cornerRadius = Px(ctx, config.rounding),
+        .softness = softness,
+    });
+    layoutChild(ctx, impl->shadow, bounds);
+    impl->blend(ctx, key, config.borderColorKey);
+    if (impl->blendStart.has_value()) {
+        requestFrame();
+    }
+    impl->frame.setVisible(!config.chrome);
     impl->frame.update({
-        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color(key)}},
+        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = impl->fill,
+                       .corners = config.corners}},
         .clip = bounds,
         .cornerRadius = Px(ctx, config.rounding),
         .borderWidth = config.border ? Px(ctx, config.borderWidth) : 0.0f,
-        .borderColor = borderColor,
+        .borderColor = impl->stroke,
         .strokeFringe = true,
     });
     layoutChild(ctx, impl->frame, bounds);
+    impl->card.setVisible(config.chrome);
+    impl->card.update({
+        .rects = {bounds},
+        .clip = clip(),
+        .cornerRadius = Px(ctx, config.rounding),
+        .softness = config.shadow ? softness : 0.0f,
+        .drop = config.shadow ? drop : 0.0f,
+        .borderWidth = config.border ? Px(ctx, config.borderWidth) : 0.0f,
+        .lineWidth = Px(ctx, 1.0f),
+        .fillKey = key,
+        .capacity = 1,
+    });
+    layoutChild(ctx, impl->card, bounds);
+    if (config.waves) {
+        const F32 corner = Px(ctx, config.rounding) * kCornerChord;
+        const Rect area = Inset(bounds, std::max(corner, config.border ? Px(ctx, config.borderWidth) : 0.0f));
+        const U64 capacity = Impl::waveCapacity(ctx);
+        impl->waves.update({
+            .instances = impl->waveRows(ctx, bounds, Intersect(bounds, clip()),
+                                        WithAlpha(ctx.color(config.borderColorKey), kWaveAlpha), capacity),
+            .clip = area,
+            .fringe = Fringe(ctx),
+            .capacity = capacity,
+        });
+        layoutChild(ctx, impl->waves, bounds);
+    }
     if (config.content) {
         layoutChild(ctx, *config.content, {bounds.x + padding, bounds.y + padding,
                                            std::max(0.0f, bounds.width - 2.0f * padding),

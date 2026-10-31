@@ -34,11 +34,15 @@ struct PillButton::Impl {
     Text label;
     bool hovered = false;
 
+    F32 alpha() const {
+        return config.disabled ? kDisabledAlpha : 1.0f;
+    }
+
     void prepare() {
         icon.update({.str = config.icon, .colorKey = config.colorKey,
-                     .scale = kPillButtonIcon / Typography::FontSize});
+                     .scale = kPillButtonIcon / Typography::FontSize, .opacity = alpha()});
         label.update({.str = config.label, .font = Text::Font::Display, .colorKey = config.colorKey,
-                      .scale = kPillButtonText / Typography::FontSize});
+                      .scale = kPillButtonText / Typography::FontSize, .opacity = alpha()});
     }
 };
 
@@ -54,6 +58,9 @@ void PillButton::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
+    if (impl->config.disabled) {
+        impl->hovered = false;
+    }
     impl->prepare();
     markConfigured();
 }
@@ -77,7 +84,9 @@ void PillButton::layout(const Context& ctx) {
     const F32 infinite = std::numeric_limits<F32>::infinity();
     s.fill.update({
         .instances = {{.rect = bounds,
-                       .backgroundColor = ctx.color(s.hovered ? s.config.hoverColorKey : s.config.backgroundColorKey)}},
+                       .backgroundColor = WithAlpha(ctx.color(s.hovered ? s.config.hoverColorKey
+                                                                         : s.config.backgroundColorKey),
+                                                    s.alpha())}},
         .cornerRadius = bounds.height * 0.5f,
         .capacity = 1,
     });
@@ -88,7 +97,7 @@ void PillButton::layout(const Context& ctx) {
         .instances = {{.rect = {bounds.x - softness, bounds.y + drop - softness, bounds.width + 2.0f * softness,
                                 bounds.height + 2.0f * softness},
                        .visible = s.config.raised,
-                       .backgroundColor = ctx.color("tile_shadow")}},
+                       .backgroundColor = WithAlpha(ctx.color("tile_shadow"), s.alpha())}},
         .cornerRadius = bounds.height * 0.5f,
         .softness = softness,
         .capacity = 1,
@@ -98,7 +107,7 @@ void PillButton::layout(const Context& ctx) {
         .instances = {{.rect = bounds, .visible = s.config.raised, .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
         .cornerRadius = bounds.height * 0.5f,
         .borderWidth = Px(ctx, 1.0f),
-        .borderColor = ctx.color("action_btn_highlight"),
+        .borderColor = WithAlpha(ctx.color("action_btn_highlight"), s.alpha()),
         .strokeFringe = true,
         .topLit = true,
         .capacity = 1,
@@ -127,6 +136,9 @@ void PillButton::layout(const Context& ctx) {
 
 bool PillButton::mouseEvent(const MouseEvent& event) {
     auto& s = *impl;
+    if (s.config.disabled) {
+        return false;
+    }
     const bool inside = frame().contains(event.position.x, event.position.y);
     switch (event.type) {
         case MouseEventType::Move:
@@ -147,13 +159,15 @@ bool PillButton::mouseEvent(const MouseEvent& event) {
                 invalidate(Dirty::Layout);
             }
             return false;
+        case MouseEventType::Scroll:
+            return false;
         default:
             return inside;
     }
 }
 
 std::optional<SurfaceCursor> PillButton::cursorAt(const Extent2D<F32>& point) const {
-    if (frame().contains(point.x, point.y)) {
+    if (!impl->config.disabled && frame().contains(point.x, point.y)) {
         return SurfaceCursor::Hand;
     }
     return std::nullopt;
