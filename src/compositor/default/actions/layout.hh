@@ -38,6 +38,51 @@ struct LayoutActions {
 
     explicit LayoutActions(FlowgraphState& state) : state(state) {}
 
+    static void AppendPane(FlowgraphState& state, const std::string& flowgraphId, const std::string& pane) {
+        state.restoredLayouts.insert(flowgraphId);
+        const auto layout = state.layouts.find(flowgraphId);
+        const TileMeta base = layout != state.layouts.end() ? layout->second : TileMeta{.pane = kLayoutEditorPane};
+        state.layouts[flowgraphId] = AppendColumn(base, pane);
+    }
+
+    static void SplitPane(FlowgraphState& state, const std::string& flowgraphId, const std::string& target,
+                          const std::string& pane, bool stacked) {
+        if (const auto layout = state.layouts.find(flowgraphId); layout != state.layouts.end()) {
+            layout->second = SplitColumnPane(layout->second, target, pane, stacked);
+        }
+    }
+
+    static void ReplacePane(FlowgraphState& state, const std::string& flowgraphId, const std::string& pane,
+                            const TileMeta& replacement) {
+        if (const auto layout = state.layouts.find(flowgraphId); layout != state.layouts.end()) {
+            layout->second = ReplaceTilePane(layout->second, pane, replacement);
+        }
+    }
+
+    static void KeepPanes(FlowgraphState& state, const std::string& flowgraphId,
+                          const std::function<bool(const std::string&)>& keep) {
+        const auto layout = state.layouts.find(flowgraphId);
+        if (layout == state.layouts.end()) {
+            return;
+        }
+        if (auto kept = FilterTiles(layout->second, keep)) {
+            layout->second = std::move(*kept);
+        }
+    }
+
+    static std::optional<TileMeta> TakePanes(FlowgraphState& state, const std::string& flowgraphId,
+                                             const std::function<bool(const std::string&)>& take) {
+        const auto layout = state.layouts.find(flowgraphId);
+        if (layout == state.layouts.end()) {
+            return std::nullopt;
+        }
+        auto taken = FilterTiles(layout->second, take);
+        KeepPanes(state, flowgraphId, [&take](const std::string& pane) {
+            return !take(pane);
+        });
+        return taken;
+    }
+
     void restoreFromMetadata() {
         for (const auto& [flowgraphId, flowgraph] : state.items) {
             if (!flowgraph || state.restoredLayouts.contains(flowgraphId)) {

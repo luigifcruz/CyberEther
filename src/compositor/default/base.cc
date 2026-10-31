@@ -222,6 +222,7 @@ Result DefaultCompositor::destroy() {
     agent.shutdown();
     actions.shutdownAgent();
     actions.shutdownGallery();
+    actions.shutdownTerminals();
     updater.shutdown();
     feedback.shutdown();
     if (Settings::Flush() != Result::SUCCESS) {
@@ -305,6 +306,7 @@ Result DefaultCompositor::poll() {
     actions.refreshLiveMarkdown();
     actions.refreshMetrics();
     actions.reconcileAgent();
+    actions.reconcileTerminals();
     updateFeedbackState();
 
     // Build view configs while flowgraph access is confined to poll.

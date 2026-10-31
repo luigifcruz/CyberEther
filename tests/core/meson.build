@@ -36,6 +36,7 @@ core_test_domains = {
     ],
     'platform': [
         'platform/paths.cc',
+        'platform/pseudo_terminal.cc',
         'platform/secrets.cc',
         'platform/storage.cc',
         'platform/thread.cc',
@@ -88,6 +89,7 @@ core_test_domains = {
         'sakura/pill_tabs.cc',
         'sakura/shell.cc',
         'sakura/table.cc',
+        'sakura/terminal.cc',
         'sakura/views.cc',
         'sakura/view_components.cc',
         'sakura/sizing.cc',
@@ -124,6 +126,7 @@ if not jst_is_windows
         'compositor': core_test_domains['compositor'] + [
             'compositor/config_edits.cc',
             'compositor/live_markdown.cc',
+            'compositor/terminal.cc',
             'compositor/agent_bridge.cc',
             'compositor/agent_providers.cc',
             'compositor/agent_responsiveness.cc',
@@ -198,15 +201,28 @@ foreach domain, sources : core_test_domains
         ] : [],
     )
     core_test_targets += [domain_tests]
-    if jst_is_browser
-        test('core-' + domain, node,
-             args: [files('../browser/run.cjs'), domain_tests.full_path()],
-             depends: domain_tests,
-             suite: ['core', 'wasm'], is_parallel: false, timeout: 180)
-    else
-        test('core-' + domain, domain_tests,
-             suite: 'core', is_parallel: false, timeout: 180)
-    endif
+    # Sakura's 1,500+ cases exceed a single test's watchdog on slower runners.
+    # Catch2 partitions the same executable so every case still runs exactly
+    # once, with stable ordering and the same watchdog for each group.
+    shard_count = domain == 'sakura' ? 8 : 1
+    foreach shard : range(shard_count)
+        test_name = 'core-' + domain
+        test_args = []
+        if shard_count > 1
+            test_name += '-' + shard.to_string()
+            test_args = ['--order', 'lex', '--shard-count', shard_count.to_string(),
+                         '--shard-index', shard.to_string()]
+        endif
+        if jst_is_browser
+            test(test_name, node,
+                 args: [files('../browser/run.cjs'), domain_tests.full_path(), '--'] + test_args,
+                 depends: domain_tests,
+                 suite: ['core', 'wasm'], is_parallel: false, timeout: 180)
+        else
+            test(test_name, domain_tests, args: test_args,
+                 suite: 'core', is_parallel: false, timeout: 180)
+        endif
+    endforeach
 endforeach
 
 # TODO: Re-enable after CLI output capture supports separate Windows static CRTs.

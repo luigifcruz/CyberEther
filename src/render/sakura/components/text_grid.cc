@@ -2221,7 +2221,7 @@ struct TextGrid::Impl {
         }
         const bool enter = key == KeyCode::Enter || key == KeyCode::KeypadEnter;
         if (config.singleLine) {
-            if (enter && !repeat && config.submitOnEnter && config.onSubmit) {
+            if (enter && !repeat && !mods.shift && config.submitOnEnter && config.onSubmit) {
                 submit();
                 return true;
             }

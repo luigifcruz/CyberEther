@@ -25,6 +25,7 @@ src_lst += files([
     'dropdown.cc',
     'text.cc',
     'table.cc',
+    'terminal.cc',
     'menu.cc',
     'background_layer.cc',
     'badge.cc',

@@ -45,6 +45,7 @@ struct TitlebarView {
         ReloadPlugins,
         OpenDeveloperSettings,
         NewTab,
+        OpenTerminal,
         ToggleSidebar,
     };
 
@@ -262,6 +263,7 @@ struct TitlebarView {
             bind(KeyCode::I, Action::ShowFlowgraphInfo),
             bind(KeyCode::G, Action::SendFeedback),
             bind(KeyCode::Comma, Action::Settings),
+            bind(KeyCode::GraveAccent, Action::OpenTerminal),
         };
 #ifndef JST_OS_BROWSER
         if (config.intelligenceEnabled) {

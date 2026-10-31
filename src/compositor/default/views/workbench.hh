@@ -9,6 +9,7 @@
 #include "docs.hh"
 #include "settings/base.hh"
 #include "start_tab/base.hh"
+#include "terminal.hh"
 #include "titlebar.hh"
 
 #include <optional>
@@ -36,10 +37,17 @@ struct WorkspaceShellView {
     }
 
     void updatePanes(Config config) {
+        std::unordered_set<std::string> terminals;
+        for (const auto& pane : config.panes) {
+            if (pane.group == TerminalView::Group) {
+                terminals.insert(pane.id);
+            }
+        }
         workspace.update({
             .tabs = true,
             .hideTabs = config.hideTabs,
             .accepts = "main",
+            .adopts = {TerminalView::Group},
             .panes = std::move(config.panes),
             .activate = std::move(config.activate),
             .leading = &titlebar.leading(),
@@ -51,8 +59,9 @@ struct WorkspaceShellView {
             .leadingInset = titlebar.leadingInset(),
             .trailingInset = titlebar.trailingInset(),
             .leadingReach = titlebar.leadingReach(),
-            .onTabMenu = [this](const std::string& pane, Extent2D<F32> point) {
-                if (pane != StartTabView::PaneId && pane != SettingsView::PaneId && pane != DocsView::PaneId) {
+            .onTabMenu = [this, terminals = std::move(terminals)](const std::string& pane, Extent2D<F32> point) {
+                if (pane != StartTabView::PaneId && pane != SettingsView::PaneId && pane != DocsView::PaneId &&
+                    !terminals.contains(pane)) {
                     titlebar.openTabMenu(pane, point);
                 }
             },
@@ -123,6 +132,11 @@ struct WorkbenchView {
         std::optional<FlowgraphClosePromptView::Config> closePrompt;
         ModalView::Config modal;
         std::vector<FlowgraphPane::Config> flowgraphs;
+        std::vector<TerminalView::Config> terminals;
+        std::vector<TerminalTabView::Config> terminalTabs;
+        std::optional<std::string> terminalRequested;
+        U64 terminalRequests = 0;
+        bool terminalFocused = false;
         FilePickerView::Config filePicker;
     };
 
@@ -162,11 +176,51 @@ struct WorkbenchView {
 
         huds.update({});
 
+        std::unordered_set<std::string> activeTerminals;
+        for (const auto& terminalConfig : this->config.terminals) {
+            activeTerminals.insert(terminalConfig.id);
+        }
+        for (auto& [id, view] : terminalViews) {
+            if (!activeTerminals.contains(id)) {
+                view.retire();
+            }
+        }
+        std::unordered_map<std::string, std::vector<Sakura::Dock::Pane>> tiledTerminals;
+        std::unordered_map<std::string, std::vector<Sakura::Dock::Pane>> tabTerminals;
+        for (auto& terminalConfig : this->config.terminals) {
+            const std::string id = terminalConfig.id;
+            auto& view = terminalViews[id];
+            view.update(std::move(terminalConfig));
+            if (view.flowgraph().has_value()) {
+                tiledTerminals[*view.flowgraph()].push_back(view.pane());
+            } else if (view.tab().has_value()) {
+                tabTerminals[*view.tab()].push_back(view.pane());
+            }
+        }
+        terminalOrder.clear();
+        std::unordered_set<std::string> activeTabs;
+        for (auto& tabConfig : this->config.terminalTabs) {
+            const std::string id = tabConfig.id;
+            terminalOrder.push_back(id);
+            activeTabs.insert(id);
+            terminalTabViews[id].update(std::move(tabConfig), std::move(tabTerminals[id]));
+        }
+        std::erase_if(terminalTabViews, [&](const auto& entry) {
+            return !activeTabs.contains(entry.first);
+        });
+        std::erase_if(terminalViews, [&](const auto& entry) {
+            return !activeTerminals.contains(entry.first);
+        });
+
         flowgraphOrder.clear();
         std::unordered_set<std::string> activeFlowgraphs;
         for (auto& flowgraphConfig : this->config.flowgraphs) {
             flowgraphOrder.push_back(flowgraphConfig.id);
             activeFlowgraphs.insert(flowgraphConfig.id);
+            flowgraphConfig.adopts = {TerminalView::Group};
+            if (auto tiled = tiledTerminals.find(flowgraphConfig.id); tiled != tiledTerminals.end()) {
+                flowgraphConfig.terminals = std::move(tiled->second);
+            }
             flowgraphPanes[flowgraphConfig.id].update(std::move(flowgraphConfig));
         }
         std::erase_if(flowgraphPanes, [&](const auto& entry) {
@@ -179,6 +233,9 @@ struct WorkbenchView {
             auto& window = flowgraphPanes.at(flowgraphId);
             window.appendPanes(panes);
             window.appendWindows(windows);
+        }
+        for (const auto& tabId : terminalOrder) {
+            panes.push_back(terminalTabViews.at(tabId).pane());
         }
         std::optional<std::string> activate;
         if (this->config.startTab.has_value()) {
@@ -210,6 +267,11 @@ struct WorkbenchView {
             }
         }
         docsTabRequests = this->config.docsTabRequests;
+        if (this->config.terminalRequests != terminalRequests && this->config.terminalRequested.has_value() &&
+            this->config.terminalFocused) {
+            activate = this->config.terminalRequested;
+        }
+        terminalRequests = this->config.terminalRequests;
         workspaceShell.updatePanes({
             .panes = std::move(panes),
             .activate = std::move(activate),
@@ -269,6 +331,10 @@ struct WorkbenchView {
     WorkspaceShellView workspaceShell;
     std::vector<std::string> flowgraphOrder;
     std::unordered_map<std::string, FlowgraphPane> flowgraphPanes;
+    std::vector<std::string> terminalOrder;
+    std::unordered_map<std::string, TerminalView> terminalViews;
+    std::unordered_map<std::string, TerminalTabView> terminalTabViews;
+    U64 terminalRequests = 0;
     ModalView modal;
     FilePickerView filePicker;
 };

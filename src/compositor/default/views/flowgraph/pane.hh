@@ -44,6 +44,8 @@ struct FlowgraphPane {
         std::vector<FlowgraphDetachedConfig::Config> detachedConfigs;
         std::optional<FlowgraphDocumentation::Config> documentation;
         std::optional<FlowgraphEnvironment::Config> environment;
+        std::vector<Sakura::Dock::Pane> terminals;
+        std::vector<std::string> adopts;
         std::optional<Description> description;
         bool empty = false;
         bool showTips = true;
@@ -277,9 +279,13 @@ struct FlowgraphPane {
                 .onClose = environment.closeCallback(),
             });
         }
+        for (auto& pane : this->config.terminals) {
+            layoutPanes.push_back(std::move(pane));
+        }
         layoutDock.update({
             .tabs = false,
             .accepts = this->config.layoutGroup,
+            .adopts = this->config.adopts,
             .panes = std::move(layoutPanes),
             .tiles = this->config.layout,
             .describe = this->config.describe,

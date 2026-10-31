@@ -99,7 +99,7 @@ jobs:
           apt-get update --fix-missing
           apt-get install -y --no-install-recommends \
             git build-essential pkg-config python3-pip python-is-python3 \
-            curl ca-certificates bison flex nasm patchelf binutils \
+            curl ca-certificates bison flex nasm patchelf binutils xz-utils \
             glslang-tools \
             libudev-dev \
             libwayland-dev wayland-protocols libxkbcommon-dev \
@@ -114,6 +114,12 @@ jobs:
           set -euo pipefail
           python -m pip install meson ninja numpy mapbox_earcut
 
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.17.0'
+          cache-key: ${{ matrix.tag }}
+
       - name: Build binary
         run: |
           set -euo pipefail
@@ -123,7 +129,8 @@ jobs:
             -Dprefix=/opt/cyberether \
             -Dbuildtype=release \
             -Dexamples=false \
-            -Dremote=enabled
+            -Dremote=enabled \
+            -Dterminal=enabled
           meson compile -C build cyberether jetstream-core-tests jetstream-modules-tests
 
       - name: Validate binary
