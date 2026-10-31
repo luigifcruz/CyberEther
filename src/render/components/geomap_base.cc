@@ -1542,7 +1542,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         fill.fades.assign(kTileFillVertices * 2, 0.0f);
         fill.indices.assign(kTileFillIndices, 0);
         fill.indexCount = fill.indices.size();
-        JST_CHECK(buildMergedFill(fill, true));
+        JST_CHECK(buildMergedFill(fill));
     }
 
     if (pimpl->bathymetry.program) {
@@ -2626,7 +2626,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
             if (fill.program) {
                 copyCamera(fill.gpuUniforms);
                 fill.gpuUniforms.lineWidth = 0.0f;
-                fill.gpuUniforms.lineOpacity = tileOpacity;
+                fill.gpuUniforms.lineOpacity = 1.0f;
                 fill.gpuUniforms.dashScale = kTileFadeSeconds;
                 fill.gpuUniforms.dashPhase = tileTime;
                 JST_CHECK(fill.uniformBuffer->update());

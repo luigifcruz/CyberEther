@@ -15,9 +15,5 @@ void main() {
         uniforms.targetNormal.w) {
         discard;
     }
-    float alpha = uniforms.lineOpacity * tileFade(vFade);
-    if (alpha <= 0.0) {
-        discard;
-    }
-    outColor = vec4(vColor, alpha);
+    outColor = vec4(vColor, 1.0);
 }
