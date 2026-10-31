@@ -1,7 +1,7 @@
 ---
 version: 2
 title: QPSK Eye Diagram
-summary: Explore a pulse-shaped QPSK eye at eight samples per symbol.
+summary: View a QPSK eye diagram.
 author: Luigi & Paulo
 license: MIT
 description: 'Generates noisy, root-raised-cosine-shaped QPSK with Python, then displays its eye diagram, spectrum, waterfall, and recovered constellation. Requires Python with NumPy.'
