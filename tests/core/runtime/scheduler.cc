@@ -9,7 +9,6 @@
 #include <latch>
 #include <memory>
 #include <stdexcept>
-#include <stop_token>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -742,9 +741,21 @@ TEST_CASE("Scheduler resume restarts a compute thread polling while paused",
     REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
 
     std::atomic<U64> loops{0};
-    std::jthread computeThread([&](std::stop_token token) {
+    struct ComputeWorker {
+        std::atomic<bool> stopRequested{false};
+        std::thread thread;
+
+        ~ComputeWorker() {
+            stopRequested.store(true);
+            if (thread.joinable()) {
+                thread.join();
+            }
+        }
+    } worker;
+
+    worker.thread = std::thread([&] {
         std::unordered_set<std::string> computeFailures;
-        while (!token.stop_requested()) {
+        while (!worker.stopRequested.load()) {
             (void)fixture.scheduler.compute(computeFailures);
             loops.fetch_add(1);
             if (fixture.scheduler.paused()) {
@@ -766,8 +777,6 @@ TEST_CASE("Scheduler resume restarts a compute thread polling while paused",
 
     REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
     REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
-    computeThread.request_stop();
-    computeThread.join();
 }
 
 TEST_CASE("Scheduler pause cancels source polling before compute submission",
