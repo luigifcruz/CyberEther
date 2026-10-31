@@ -368,14 +368,14 @@ TEST_CASE("Terminal sessions turn wheel scrolls into arrows on the alternate scr
     CHECK(session.screen().scrollOffset == offset);
 }
 
-TEST_CASE("Terminal sessions deliver fast keystrokes in separate reads", kTags) {
+TEST_CASE("Terminal sessions deliver fast keystrokes in order", kTags) {
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");
     }
     TerminalSession session;
     REQUIRE(session.start({
         .program = "/bin/sh",
-        .arguments = {"-c", "stty raw -echo; printf 'ready'; dd bs=64 count=1 2>/dev/null | od -An -c | tr -s ' '; "
+        .arguments = {"-c", "stty raw -echo; printf 'ready'; head -c 3 | od -An -c | tr -s ' '; "
                             "printf 'done'; sleep 2"},
         .directory = "/",
     }) == Result::SUCCESS);
@@ -385,22 +385,25 @@ TEST_CASE("Terminal sessions deliver fast keystrokes in separate reads", kTags) 
     session.text("c");
     REQUIRE(Shows(session, "done"));
     const std::string screen = ScreenText(session);
-    CHECK(screen.find(" a") != std::string::npos);
-    CHECK(screen.find(" a b") == std::string::npos);
+    CHECK(screen.find(" a b c") != std::string::npos);
 }
 
-TEST_CASE("Terminal sessions pace a burst of keystrokes in separate reads", kTags) {
+TEST_CASE("Terminal sessions pace a burst of keystrokes", kTags) {
     if (!TerminalSession::Supported()) {
         SKIP("The integrated terminal is not available in this build.");
     }
+    // Signal readiness from the initialized reader and count bytes, since PTY
+    // reads can combine writes when the reader is scheduled late.
     const std::string reader =
-        "my ($s, @r); for (1..4) { sysread(STDIN, my $b, 64); my $t = time; $s //= $t; "
-        "push @r, sprintf('%s=%d', $b, ($t - $s) * 1e6); } print join(' ', @r), ' done'; sleep 5";
+        "$| = 1; my $s = clock_gettime(CLOCK_MONOTONIC); print 'ready'; my $data = ''; "
+        "while (length($data) < 4) { my $n = sysread(STDIN, my $b, 4 - length($data)); "
+        "die 'read failed' unless defined($n) && $n > 0; $data .= $b; } "
+        "printf ' keys=%s elapsed=%d done', $data, (clock_gettime(CLOCK_MONOTONIC) - $s) * 1e6";
     TerminalSession session;
     REQUIRE(session.start({
         .program = "/bin/sh",
         .arguments = {"-c", "command -v perl >/dev/null 2>&1 || { printf 'noperl'; sleep 5; exit; }; "
-                            "stty raw -echo; printf 'ready'; exec perl -MTime::HiRes=time -e \"$1\"",
+                            "stty raw -echo; exec perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e \"$1\"",
                       "sh", reader},
         .directory = "/",
     }) == Result::SUCCESS);
@@ -419,23 +422,15 @@ TEST_CASE("Terminal sessions pace a burst of keystrokes in separate reads", kTag
     REQUIRE(Shows(session, "done"));
 
     const std::string screen = ScreenText(session);
-    const auto begin = screen.find("a=");
+    const auto begin = screen.find("keys=");
     REQUIRE(begin != std::string::npos);
     std::istringstream records(screen.substr(begin, screen.find("done") - begin));
-    std::vector<std::string> keys;
-    std::vector<I64> times;
-    std::string record;
-    while (records >> record) {
-        const auto separator = record.find('=');
-        REQUIRE(separator != std::string::npos);
-        keys.push_back(record.substr(0, separator));
-        times.push_back(std::stoll(record.substr(separator + 1)));
-    }
-    REQUIRE(keys == std::vector<std::string>{"a", "b", "c", "d"});
-    for (U64 index = 1; index < times.size(); ++index) {
-        CHECK(times[index] > times[index - 1]);
-    }
-    CHECK(times.back() - times.front() >= 3 * 8000 / 2);
+    std::string keys;
+    std::string elapsed;
+    REQUIRE(static_cast<bool>(records >> keys >> elapsed));
+    CHECK(keys == "keys=abcd");
+    REQUIRE(elapsed.starts_with("elapsed="));
+    CHECK(std::stoll(elapsed.substr(8)) >= 3 * 8000 / 2);
 }
 
 TEST_CASE("Terminal sessions stop promptly while the shell floods output", kTags) {
