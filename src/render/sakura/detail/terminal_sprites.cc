@@ -29,7 +29,7 @@ constexpr U8 kLines[128] = {
 constexpr U8 kHorizontalLight = (Light << 2) | (Light << 6);
 constexpr U8 kVerticalLight = Light | (Light << 4);
 constexpr U64 kArcSegments = 8;
-constexpr F32 kArcControl = 0.25f;
+constexpr F32 kArcControl = 0.4477f;
 constexpr F32 kPointEpsilon = 0.01f;
 constexpr F32 kArrowInset = 0.1f;
 constexpr F32 kArrowHead = 0.36f;
@@ -313,25 +313,30 @@ void TerminalSprites::dashes(const Cell& cell, bool vertical, I32 count, I32 thi
 }
 
 void TerminalSprites::arc(const Cell& cell, bool top, bool left) {
-    const F32 width = static_cast<F32>(cell.width);
-    const F32 height = static_cast<F32>(cell.height);
-    const F32 thickness = static_cast<F32>(cell.light);
-    const F32 centerX = static_cast<F32>(Sub(cell.width, cell.light) / 2) + thickness * 0.5f;
-    const F32 centerY = static_cast<F32>(Sub(cell.height, cell.light) / 2) + thickness * 0.5f;
-    const F32 radius = std::min(width, height) * 0.5f;
+    const I32 light = cell.light;
+    const I32 lineLeft = Sub(cell.width, light) / 2;
+    const I32 lineTop = Sub(cell.height, light) / 2;
+    const F32 thickness = static_cast<F32>(light);
+    const F32 centerX = static_cast<F32>(lineLeft) + thickness * 0.5f;
+    const F32 centerY = static_cast<F32>(lineTop) + thickness * 0.5f;
+    const F32 radius = std::max(thickness, static_cast<F32>(std::min(cell.width, cell.height)) * 0.5f - thickness);
     const F32 sx = left ? -1.0f : 1.0f;
     const F32 sy = top ? -1.0f : 1.0f;
+    const I32 stubY = std::clamp(static_cast<I32>(std::round(centerY + sy * radius)), 0, cell.height);
+    const I32 stubX = std::clamp(static_cast<I32>(std::round(centerX + sx * radius)), 0, cell.width);
 
-    std::vector<Extent2D<F32>> points;
-    points.push_back({centerX, top ? 0.0f : height});
-    const auto curve = Polyline::Bezier({centerX, centerY + sy * radius},
-                                        {centerX, centerY + sy * kArcControl * radius},
-                                        {centerX + sx * kArcControl * radius, centerY},
-                                        {centerX + sx * radius, centerY},
-                                        kArcSegments);
-    points.insert(points.end(), curve.begin(), curve.end());
-    points.push_back({left ? 0.0f : width, centerY});
-    stroke(cell, std::move(points), thickness);
+    rect(cell, lineLeft, top ? 0 : stubY, lineLeft + light, top ? stubY : cell.height);
+    rect(cell, left ? 0 : stubX, lineTop, left ? stubX : cell.width, lineTop + light);
+
+    const F32 reachY = std::abs(static_cast<F32>(stubY) - centerY);
+    const F32 reachX = std::abs(static_cast<F32>(stubX) - centerX);
+    stroke(cell,
+           Polyline::Bezier({centerX, static_cast<F32>(stubY)},
+                            {centerX, centerY + sy * kArcControl * reachY},
+                            {centerX + sx * kArcControl * reachX, centerY},
+                            {static_cast<F32>(stubX), centerY},
+                            kArcSegments),
+           thickness);
 }
 
 void TerminalSprites::diagonal(const Cell& cell, bool rising) {

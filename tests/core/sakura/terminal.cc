@@ -1170,6 +1170,10 @@ TEST_CASE("Terminal arcs, diagonals, and powerline separators draw cell geometry
         {.column = 2, .text = "╱", .color = kWhite},
         {.column = 4, .text = "", .color = kBlue},
     };
+    screen.lines[2].spans = {
+        {.column = 6, .text = "│", .color = kWhite},
+        {.column = 8, .text = "─", .color = kWhite},
+    };
     Terminal terminal;
     Place place(terminal, kBounds);
     Frames frames(place, kScreen, scene.context());
@@ -1179,8 +1183,31 @@ TEST_CASE("Terminal arcs, diagonals, and powerline separators draw cell geometry
     const auto& strokes = SpriteStrokes(place).config().instances;
     REQUIRE(strokes.size() == 3);
     const Rect arcCell = GridCell(grid, 0, 0);
-    CHECK(strokes[0].points.front().y == arcCell.bottom());
-    CHECK(strokes[0].points.back().x == arcCell.right());
+    const auto& sprites = Sprites(place);
+    const Rect verticalCell = GridCell(grid, 6, 2);
+    const Rect horizontalCell = GridCell(grid, 8, 2);
+    const auto vertical = InsideCell(sprites, verticalCell);
+    const auto horizontal = InsideCell(sprites, horizontalCell);
+    REQUIRE(vertical.size() == 1);
+    REQUIRE(horizontal.size() == 1);
+    const auto stubs = InsideCell(sprites, arcCell);
+    REQUIRE(stubs.size() == 2);
+    const auto down = std::find_if(stubs.begin(), stubs.end(), [&](const auto& stub) {
+        return stub.rect.bottom() == arcCell.bottom();
+    });
+    const auto across = std::find_if(stubs.begin(), stubs.end(), [&](const auto& stub) {
+        return stub.rect.right() == arcCell.right();
+    });
+    REQUIRE(down != stubs.end());
+    REQUIRE(across != stubs.end());
+    CHECK(down->rect.x - arcCell.x == vertical[0].rect.x - verticalCell.x);
+    CHECK(down->rect.width == vertical[0].rect.width);
+    CHECK(across->rect.y - arcCell.y == horizontal[0].rect.y - horizontalCell.y);
+    CHECK(across->rect.height == horizontal[0].rect.height);
+    CHECK(strokes[0].points.front().y == down->rect.y);
+    CHECK(strokes[0].points.back().x == across->rect.x);
+    CHECK(strokes[0].thickness == vertical[0].rect.width);
+    CHECK(SpriteStrokes(place).config().fringe == 1.0f);
     CHECK_FALSE(strokes[0].filled);
     CHECK(strokes[1].points.size() == 2);
     const Rect powerCell = GridCell(grid, 4, 0);

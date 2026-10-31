@@ -41,6 +41,7 @@ constexpr U64 kIsolatedGlyphsPerRow = 4;
 constexpr U64 kSpriteRectsPerCell = 8;
 constexpr U64 kSpriteStrokesPerCell = 2;
 constexpr U64 kSpriteVerticesPerCell = 48;
+constexpr F32 kSpriteFringe = 1.0f;
 constexpr F32 kLineThicknessRatio = 0.05f;
 constexpr std::array<const char*, 2> kFallbackFonts = {Typography::BodyFont, Typography::DisplayRegularFont};
 constexpr U64 kRegularFace = 1;
@@ -662,7 +663,7 @@ struct Terminal::Impl {
         sprites.update({.instances = canvas.rects, .capacity = spriteCapacity});
         spriteStrokes.update({
             .instances = canvas.strokes,
-            .fringe = Fringe(ctx),
+            .fringe = kSpriteFringe,
             .capacity = cells * kSpriteVerticesPerCell,
         });
         decorations.update({.instances = std::move(lines), .capacity = lineCapacity});
