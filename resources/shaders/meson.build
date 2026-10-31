@@ -8,7 +8,6 @@ subdir('constellation')
 subdir('frame')
 subdir('signal_view')
 subdir('map')
-subdir('spectrogram')
 
 foreach shader_pkg: shader_pkg_lst
     name = shader_pkg.get('name')

@@ -12,6 +12,8 @@ struct Lineplot : public Block::Config {
     U64 averaging = 1;
     bool maxHold = false;
     bool fill = true;
+    bool density = false;
+    U64 persistence = 256;
     F32 rangeMin = -100.0f;
     F32 rangeMax = 0.0f;
     std::string xLabel = "Frequency (MHz)";
@@ -22,7 +24,7 @@ struct Lineplot : public Block::Config {
     JST_BLOCK_TYPE(lineplot);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(averaging, maxHold, fill, rangeMin, rangeMax,
+    JST_BLOCK_PARAMS(averaging, maxHold, fill, density, persistence, rangeMin, rangeMax,
                      xLabel, yLabel, markers, pins);
     JST_BLOCK_DESCRIPTION(
         "Lineplot",
@@ -34,7 +36,7 @@ struct Lineplot : public Block::Config {
         "source.\n"
         "\n"
         "- **Values from 0 to 1 span the plot.** Values past either end are compressed "
-        "softly toward the edge.\n"
+        "softly toward the edge, or clipped when Spectral Density is on.\n"
         "- **The level axis reads -100 to 0 dBFS.** The labels assume that range, "
         "whatever produced the values.\n"
         "- **The axis shows MHz from the input.** It reads `frequency` and `sampleRate`"
@@ -59,6 +61,10 @@ struct Lineplot : public Block::Config {
         "exponential average over about this many buffers. |\n"
         "| **Max Hold** | Off | On, Off | Adds a trace of the highest level seen, "
         "starting once Averaging buffers have arrived. Changing Averaging clears it. |\n"
+        "| **Spectral Density** | Off | On, Off | Draws how often each level occurs "
+        "behind the trace, with a linear amplitude axis. |\n"
+        "| **Persistence** | 256 spectra | 1 or more, slider up to 4,096 | Spectra it "
+        "takes for the density to fade to half. Hidden while Spectral Density is off. |\n"
         "\n"
         "## Recipes\n"
         "\n"
@@ -75,6 +81,9 @@ struct Lineplot : public Block::Config {
         "highest level seen |\n"
         "| Batched spectra | Defaults | 8 batches x 1,024 bins per buffer | A trace of "
         "1,024 points, each the mean of 8 spectra |\n"
+        "| Signal density | Spectral Density on, Averaging 8 | 8,192 bins per buffer | "
+        "A density that fades to half in 1.05 seconds, behind a trace averaged over "
+        "about 33 ms |\n"
         "\n"
         "## Troubleshooting\n"
         "\n"
@@ -111,8 +120,10 @@ struct Lineplot : public Block::Config {
         "## Under the Hood\n"
         "\n"
         "Batches are averaged, then the trace keeps an exponential average and "
-        "compresses values past the range softly instead of clipping. The peak trace "
-        "holds the highest displayed value of each point.\n"
+        "compresses values past the range softly, or clips them with Spectral Density "
+        "on. The density map counts the level of every spectrum in each column and "
+        "fades older counts exponentially. The peak trace holds the highest displayed "
+        "value of each point.\n"
         "\n"
         "## See Also\n"
         "\n"

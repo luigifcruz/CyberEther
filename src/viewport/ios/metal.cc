@@ -37,8 +37,8 @@ Result Implementation::createImgui() {
 }
 
 Extent2D<F32> Implementation::displaySize() const {
-    return {static_cast<F32>(swapchain->drawableSize().x / 2.0),
-            static_cast<F32>(swapchain->drawableSize().y / 2.0)};
+    return {static_cast<F32>(swapchain->drawableSize().width / 2.0),
+            static_cast<F32>(swapchain->drawableSize().height / 2.0)};
 }
 
 F32 Implementation::scale(const F32& scale) const {
@@ -50,7 +50,7 @@ Result Implementation::destroyImgui() {
     return Result::SUCCESS;
 }
 
-void* Implementation::nextDrawable() {
+MTL::Texture* Implementation::nextDrawable(CA::MetalDrawable*& drawable) {
     auto currentTime = std::chrono::high_resolution_clock::now();
     float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
     lastTime = currentTime;
@@ -58,13 +58,23 @@ void* Implementation::nextDrawable() {
     // Update ImGui state.
 
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize.x = swapchain->drawableSize().x / 2.0;
-    io.DisplaySize.y = swapchain->drawableSize().y / 2.0;
+    io.DisplaySize.x = swapchain->drawableSize().width / 2.0;
+    io.DisplaySize.y = swapchain->drawableSize().height / 2.0;
     io.DisplayFramebufferScale.x = 2.0;
     io.DisplayFramebufferScale.y = 2.0;
     io.DeltaTime = deltaTime;
     
-    return static_cast<void*>(swapchain->nextDrawable());
+    drawable = swapchain->nextDrawable();
+    return drawable ? drawable->texture() : nullptr;
+}
+
+Extent2D<U64> Implementation::getSwapchainExtent() const {
+    return {static_cast<U64>(swapchain->drawableSize().width),
+            static_cast<U64>(swapchain->drawableSize().height)};
+}
+
+void Implementation::setCaptureEnabled(bool enabled) {
+    swapchain->setFramebufferOnly(!enabled);
 }
 
 Result Implementation::waitEvents() {

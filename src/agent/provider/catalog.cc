@@ -66,14 +66,14 @@ Result Provider::Catalog::fetch(Provider::Error* error, const Cancellation& canc
     }
 
     try {
-        Platform::Http::Request http;
+        Platform::Http::Client::Request http;
         http.host = kCatalogHost;
         http.path = "/api.json";
         http.timeoutSeconds = 15;
         http.cancelled = cancelled;
 
         nlohmann::json body;
-        if (auto failure = Diagnostics::Response(Platform::Http::Send(http), body)) {
+        if (auto failure = Diagnostics::Response(Platform::Http::Client::Send(http), body)) {
             return Diagnostics::Report(std::move(failure), error, kCatalogContext, {});
         }
 

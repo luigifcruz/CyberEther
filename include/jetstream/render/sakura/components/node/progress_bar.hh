@@ -15,6 +15,7 @@ struct NodeProgressBar {
         F32 value = 0.0f;
         std::string overlay;
         Extent2D<F32> size = {-1.0f, 0.0f};
+        std::string colorKey = "button_active";
     };
 
     NodeProgressBar();

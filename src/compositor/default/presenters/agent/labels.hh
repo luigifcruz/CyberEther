@@ -101,21 +101,6 @@ class AgentLabels {
         }
         return Health(entry->second);
     }
-
-    static std::string Voice(AgentProviders::VoiceAvailability::State state) {
-        using State = AgentProviders::VoiceAvailability::State;
-        switch (state) {
-            case State::Unsupported:
-                return "Unsupported";
-            case State::NoBackend:
-                return "No OpenAI model";
-            case State::MissingKey:
-                return "Key not set";
-            case State::Ready:
-                break;
-        }
-        return "Ready";
-    }
 };
 
 }  // namespace Jetstream

@@ -6,6 +6,7 @@ if py.found()
             meson.project_source_root() / 'examples/flowgraphs/simple-fm.yml',
             meson.project_source_root() / 'examples/flowgraphs/multi-fm.yml',
             meson.project_source_root() / 'examples/flowgraphs/python-qpsk.yml',
+            meson.project_source_root() / 'examples/flowgraphs/eye-diagram.yml',
             meson.project_source_root() / 'examples/flowgraphs/overlap-add-fold.yml',
             meson.project_source_root() / 'examples/flowgraphs/spectrum-analyzer.yml',
             meson.project_source_root() / 'examples/flowgraphs/sdr-sweep.yml',

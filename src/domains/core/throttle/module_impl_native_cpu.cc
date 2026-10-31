@@ -1,5 +1,3 @@
-#include <thread>
-
 #include <jetstream/backend/devices/cpu/helpers.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
@@ -18,17 +16,16 @@ struct ThrottleImplNativeCpu : public ThrottleImpl,
 };
 
 Result ThrottleImplNativeCpu::computeSubmit() {
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - lastExecutionTime);
-
-    // Sleep until the configured interval has elapsed.
-    if (elapsed < std::chrono::milliseconds(intervalMs)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs) - elapsed);
+    const auto now = std::chrono::steady_clock::now();
+    if (now < schedule.deadline) {
+        Scheduler::Context::NotifyPendingComputeAt(schedule.deadline);
+        return Result::YIELD;
     }
 
-    // Update the timestamp for the next delay interval.
-    lastExecutionTime = std::chrono::steady_clock::now();
+    if (pacing == "sampleRate") {
+        schedule.interval = bufferDuration();
+    }
+    schedule.advance(now);
 
     return Result::SUCCESS;
 }

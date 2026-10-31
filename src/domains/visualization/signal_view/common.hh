@@ -23,7 +23,6 @@ namespace Jetstream::Modules {
 namespace detail {
 
 constexpr F32 kSignalViewLineThickness = 1.0f;
-
 inline bool SignalViewHasLineplot(const std::string& mode) {
     return mode == "lineplot" || mode == "lineplot_waterfall";
 }
@@ -35,6 +34,10 @@ inline bool SignalViewHasWaterfall3D(const std::string& mode) {
 inline bool SignalViewHasWaterfall(const std::string& mode) {
     return mode == "waterfall" || mode == "lineplot_waterfall" ||
            SignalViewHasWaterfall3D(mode);
+}
+
+inline bool SignalViewHasDensity(const SignalView& config) {
+    return config.density && SignalViewHasLineplot(config.mode);
 }
 
 inline bool HostReadable(const Tensor& tensor) {
@@ -219,10 +222,12 @@ struct WaterfallDirtyPlan {
 struct WaterfallHistory {
     U64 writeIndex = 0;
     U64 dirtyRows = 0;
+    U64 elapsedRows = 0;
 
     void advance(const U64 numberOfBatches, const U64 height) {
         writeIndex = (writeIndex + (numberOfBatches % height)) % height;
         dirtyRows += std::min(numberOfBatches, height - dirtyRows);
+        elapsedRows += numberOfBatches;
     }
 
     WaterfallDirtyPlan dirtyPlan(const U64 height) const {
@@ -237,6 +242,7 @@ struct WaterfallHistory {
 
     void clearDirty() {
         dirtyRows = 0;
+        elapsedRows = 0;
     }
 };
 
@@ -244,6 +250,7 @@ struct WaterfallFrame {
     const F32* bins = nullptr;
     U64 writeIndex = 0;
     WaterfallDirtyPlan dirty;
+    U64 elapsedRows = 0;
 };
 
 struct SignalViewFrequency {
@@ -258,6 +265,7 @@ struct SignalViewFrequency {
 
 struct SignalViewLineplot;
 struct SignalViewWaterfall;
+struct SignalViewDensity;
 
 struct SignalViewCanvas {
     struct Context {
@@ -266,6 +274,7 @@ struct SignalViewCanvas {
         U64 numberOfElements = 0;
         SignalViewLineplot* lineplot = nullptr;
         SignalViewWaterfall* waterfall = nullptr;
+        SignalViewDensity* density = nullptr;
     };
 
     struct Edits {

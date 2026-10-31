@@ -6,6 +6,23 @@
 
 namespace Jetstream::Blocks {
 
+namespace {
+
+std::string FormatBytes(const U64 bytes) {
+    if (bytes < 1024) {
+        return std::to_string(bytes) + " B";
+    }
+    if (bytes < 1024 * 1024) {
+        return std::to_string(bytes / 1024) + " KiB";
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+        return std::to_string(bytes / (1024 * 1024)) + " MiB";
+    }
+    return std::to_string(bytes / (1024 * 1024 * 1024)) + " GiB";
+}
+
+}  // namespace
+
 struct FileReaderImpl : public Block::Impl, public DynamicConfig<Blocks::FileReader> {
     Result configure() override;
     Result define() override;
@@ -28,31 +45,40 @@ Result FileReaderImpl::configure() {
 }
 
 Result FileReaderImpl::define() {
+    const auto& config = *candidate();
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
                                     "The output buffer containing samples read from the file."));
 
     JST_CHECK(defineInterfaceConfig("filepath",
                                     "File Path",
-                                    "Path to the raw binary file to read.",
-                                    {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat"})}}));
+                                    "Path to the file or stream to read, such as /dev/stdin. "
+                                    "SigMF takes the .sigmf-meta or .sigmf-data file.",
+                                    {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat", "sigmf-meta", "sigmf-data"})}}));
 
+    Parser::Sequence formats;
+    for (const auto& option : Modules::FileReaderFormat::Options()) {
+        formats.emplace_back(Parser::Map{{"label", option.label}, {"value", option.value}});
+    }
     JST_CHECK(defineInterfaceConfig("fileFormat",
                                     "File Format",
                                     "The format of the input file.",
-                                    {{"type", "dropdown"}, {"options", Parser::Sequence{Parser::Map{{"label", "Raw"}, {"value", "raw"}}}}}));
+                                    {{"type", "dropdown"}, {"options", std::move(formats)}}));
 
-    Parser::Sequence dataTypes;
-    for (const std::string type : {"CF64", "F64", "CF32", "F32", "CI8", "I8", "CU8", "U8", "CI16", "I16", "CU16", "U16"}) {
-        dataTypes.emplace_back(Parser::Map{{"label", type}, {"value", type}});
+    const auto format = Modules::FileReaderFormat::Create(config.fileFormat, config.filepath);
+    if (!format || !format->describesSamples()) {
+        Parser::Sequence dataTypes;
+        for (const std::string type : {"CF64", "F64", "CF32", "F32", "CI8", "I8", "CU8", "U8", "CI16", "I16", "CU16", "U16"}) {
+            dataTypes.emplace_back(Parser::Map{{"label", type}, {"value", type}});
+        }
+        JST_CHECK(defineInterfaceConfig("dataType",
+                                        "Data Type",
+                                        "The data type of samples in the file.",
+                                        {{"type", "dropdown"}, {"options", std::move(dataTypes)}}));
     }
-    JST_CHECK(defineInterfaceConfig("dataType",
-                                    "Data Type",
-                                    "The data type of samples in the file.",
-                                    {{"type", "dropdown"}, {"options", std::move(dataTypes)}}));
 
     JST_CHECK(defineInterfaceConfig("batchSize",
-                                    "Batch Size",
+                                    "Samples",
                                     "Samples read per cycle and the FFT size downstream.",
                                     {{"type", "uint"}, {"unit", "samples"}}));
 
@@ -68,11 +94,14 @@ Result FileReaderImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("progress",
                                     "Position",
-                                    "Current file position.",
+                                    "Current file position, or the data read so far from a stream.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
+            }
+            if (moduleImpl->isStream()) {
+                return std::pair<std::string, F32>{FormatBytes(moduleImpl->getCurrentPosition()), 0.0f};
             }
             const U64 size = moduleImpl->getFileSize();
             if (size == 0) {
@@ -83,15 +112,15 @@ Result FileReaderImpl::define() {
             return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", progress * 100.0f), progress};
         }));
 
-    JST_CHECK(defineInterfaceMetric("currentBandwidth",
-                                    "Bandwidth",
-                                    "Smoothed recent file read rate.",
+    JST_CHECK(defineInterfaceMetric("throughput",
+                                    "Throughput",
+                                    "Smoothed recent read rate.",
                                     {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("N/A");
             }
-            return jst::fmt::format("{:.1f} MB/s", moduleImpl->getCurrentBandwidth());
+            return jst::fmt::format("{:.1f} MB/s", moduleImpl->getThroughput());
         }));
 
     return Result::SUCCESS;

@@ -5,6 +5,7 @@
 
 #include "../../../src/instance_remote_impl.hh"
 #include "jetstream/platform.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 #include "jetstream/backend/base.hh"
@@ -21,7 +22,14 @@
 #include <openssl/x509.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
+
+#if defined(JST_OS_LINUX)
+#include "agent_provider.hh"
+#include "compositor/default/support/agent/providers.hh"
+#include "tools/random.hh"
+#endif
 
 using namespace Jetstream;
 using namespace std::chrono_literals;
@@ -29,6 +37,12 @@ using namespace std::chrono_literals;
 extern "C" void gst_init_static_plugins();
 
 namespace {
+
+void SkipRemoteEncodingOnCI() {
+    if (std::getenv("CI")) {
+        SKIP("Remote encoding tests are disabled in CI.");
+    }
+}
 
 template<typename Predicate>
 bool WaitFor(Predicate predicate, std::chrono::milliseconds timeout = 3s) {
@@ -44,6 +58,10 @@ struct Stream {
     std::vector<unsigned char> frame = std::vector<unsigned char>(320 * 240 * 4, 0x7f);
     std::atomic<bool> running = false;
     std::thread producer;
+
+    Stream() {
+        SkipRemoteEncodingOnCI();
+    }
 
     void start(bool produceFrames = true) {
         gst_init(nullptr, nullptr);
@@ -817,6 +835,66 @@ TEST_CASE("Remote RTP delivery survives reconnects while other viewers keep rece
     }
 }
 
+#if defined(JST_OS_LINUX)
+TEST_CASE("Keyring credentials and authenticated discovery coexist with WebRTC reconnects",
+          "[core][application][remote][keyring][store]") {
+    std::string enabled;
+    if (Platform::EnvironmentVariable("CYBERETHER_TEST_SECRET_STORE", enabled) != Result::SUCCESS || enabled != "1") {
+        SKIP("Set CYBERETHER_TEST_SECRET_STORE=1 inside an isolated keyring session");
+    }
+
+    Stream stream;
+    stream.start();
+    REQUIRE(Platform::SecretStoreAvailable());
+
+    AgentTest::ProviderServer server;
+    std::atomic<unsigned> authenticated = 0;
+    server.server.Get("/models", [&](const auto& request, auto& response) {
+        if (request.get_header_value("Authorization") != "Bearer keyring-webrtc-test-key") {
+            response.status = 401;
+            return;
+        }
+        ++authenticated;
+        response.set_content(R"({"data":[{"id":"test-model"}]})", "application/json");
+    });
+    server.start();
+
+    struct StoredKey {
+        std::string id = "webrtc-test-" + Random::HexToken();
+        ~StoredKey() {
+            AgentProviders::Erase(id);
+        }
+    } key;
+    REQUIRE(AgentProviders::Store(key.id, server.origin, "keyring-webrtc-test-key").success);
+    const Settings::Intelligence::Provider provider{
+        .name = "Keyring WebRTC test",
+        .host = server.origin,
+        .modelsPath = "/models",
+        .apiKeyId = key.id,
+    };
+    const auto client = AgentProviders::Client(provider);
+
+    for (unsigned connection = 0; connection < 2; ++connection) {
+        CAPTURE(connection);
+        std::vector<Agent::Provider::Model> models;
+        Agent::Provider::Error error;
+        REQUIRE(client->models(models, &error) == Result::SUCCESS);
+        REQUIRE(models.size() == 1);
+        CHECK(models.front().id == "test-model");
+        CHECK(authenticated.load() == connection + 1);
+
+        Peer viewer(stream, "keyring-viewer");
+        viewer.connect();
+        REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+    }
+
+    REQUIRE(AgentProviders::Erase(key.id).success);
+    std::string secret;
+    CHECK(Platform::ReadSecret("CyberEther Intelligence", key.id, secret) == Result::ERROR);
+    CHECK(AgentProviders::Erase(key.id).success);
+}
+#endif
+
 TEST_CASE("Remote pipeline services its bus and sends RTCP sender reports",
           "[core][application][remote][stream]") {
     Stream stream;
@@ -893,6 +971,7 @@ TEST_CASE("Remote pipeline can stop and restart on the same instance",
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 TEST_CASE("Remote NVENC shares the input CUDA context across stream restarts",
           "[core][application][remote][stream][cuda]") {
+    SkipRemoteEncodingOnCI();
     gst_init(nullptr, nullptr);
     gst_init_static_plugins();
     GstElementFactory* factory = gst_element_factory_find("nvh264enc");
@@ -938,6 +1017,72 @@ TEST_CASE("Remote NVENC shares the input CUDA context across stream restarts",
 }
 #endif
 
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+TEST_CASE("Headless Metal frames reach a remote WebRTC viewer after restart",
+          "[core][application][remote][stream][metal]") {
+    SkipRemoteEncodingOnCI();
+    const auto encoder = GENERATE(Instance::Remote::EncoderType::Software,
+                                 Instance::Remote::EncoderType::VideoToolbox);
+    struct Host {
+        Instance instance;
+        bool created = false;
+
+        Host() {
+            REQUIRE(instance.create({.headless = true,
+                                     .size = {320, 240}, .framerate = 120}) == Result::SUCCESS);
+            created = true;
+            REQUIRE(instance.start() == Result::SUCCESS);
+        }
+
+        ~Host() {
+            if (created) {
+                instance.destroy();
+            }
+        }
+    } host;
+    std::shared_ptr<Viewport::Generic> viewport;
+    REQUIRE(host.instance.viewportGet(viewport) == Result::SUCCESS);
+    REQUIRE(viewport->device() == DeviceType::Metal);
+    REQUIRE(host.instance.remote()->supported());
+    const auto encoders = host.instance.remote()->available(Instance::Remote::CodecType::H264);
+    if (std::find(encoders.begin(), encoders.end(), encoder) == encoders.end()) {
+        SKIP("Requested H264 encoder is unavailable.");
+    }
+
+    Stream stream;
+    auto& remote = stream.remote;
+    remote.viewport = viewport.get();
+    remote.viewportDevice = viewport->device();
+    Instance::Remote::Config config;
+    config.video.encoder = encoder;
+    config.broker = {.address = "127.0.0.1", .port = 0};
+
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        CAPTURE(attempt, encoder);
+        REQUIRE(remote.create(config) == Result::SUCCESS);
+        {
+            Peer peer(stream, "metal-viewer");
+            peer.connect();
+            const auto deadline = std::chrono::steady_clock::now() + 10s;
+            while (peer.packets < 3 && std::chrono::steady_clock::now() < deadline) {
+                REQUIRE(host.instance.present() == Result::SUCCESS);
+                REQUIRE(remote.captureFrame() == Result::SUCCESS);
+            }
+            REQUIRE(peer.packets >= 3);
+        }
+        REQUIRE(remote.destroy() == Result::SUCCESS);
+    }
+
+    const auto ownedRemote = host.instance.remote();
+    REQUIRE(ownedRemote->create(config) == Result::SUCCESS);
+    for (unsigned i = 0; i < 4; ++i) {
+        REQUIRE(host.instance.present() == Result::SUCCESS);
+    }
+    REQUIRE(host.instance.destroy() == Result::SUCCESS);
+    host.created = false;
+    REQUIRE_FALSE(ownedRemote->started());
+}
+#endif
 
 TEST_CASE("Remote broker rejects incomplete or unreadable TLS configuration",
           "[core][application][remote][broker]") {

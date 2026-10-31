@@ -44,7 +44,7 @@ graph:
         ## Common surprises
         - **Hiss and no music** means no station at that frequency, a loose antenna, or a tuning error. Check the plot for a hump.
         - **Music but no sound** means the wrong output. Reopen the **Device** dropdown on the **Audio** block and pick your speakers or headphones.
-        - **Stutters** point to the computer falling behind or a struggling USB port. Watch **Buffer Health** climb before it happens.
+        - **Stutters** point to the computer falling behind or a struggling USB port. Watch **Buffer Fill** climb before it happens.
         
         **Next:** open **Multi-FM Receiver** to pull two stations out of one wider capture with a filter.
     meta:

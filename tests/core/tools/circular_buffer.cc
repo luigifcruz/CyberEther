@@ -435,3 +435,67 @@ TEST_CASE("Circular buffer statistics are consistent during concurrent overwrite
     REQUIRE(buffer.statistics().pushedElements == transferCount);
     REQUIRE(buffer.statistics().overwrittenElements == transferCount - 1);
 }
+
+TEST_CASE("Circular buffer reports readiness transitions across wrapped writes and reads",
+          "[tools][circular_buffer][wake][wrap]") {
+    Tools::CircularBuffer<I8> buffer(12);
+    const std::array<I8, 8> input = {1, 2, 3, 4, 5, 6, 7, 8};
+    bool becameReady = true;
+
+    REQUIRE(buffer.push(input.data(), 3, 8, becameReady) == Result::SUCCESS);
+    REQUIRE_FALSE(becameReady);
+    REQUIRE(buffer.push(input.data() + 3, 5, 8, becameReady) == Result::SUCCESS);
+    REQUIRE(becameReady);
+    REQUIRE(buffer.push(input.data(), 2, 8, becameReady) == Result::SUCCESS);
+    REQUIRE_FALSE(becameReady);
+
+    std::array<I8, 8> output;
+    REQUIRE(buffer.pop(output.data(), output.size()) == Result::SUCCESS);
+    REQUIRE(output == input);
+    REQUIRE(buffer.push(input.data() + 2, 6, 8, becameReady) == Result::SUCCESS);
+    REQUIRE(becameReady);
+    REQUIRE(buffer.pop(output.data(), output.size()) == Result::SUCCESS);
+    REQUIRE(output == input);
+    REQUIRE(buffer.empty());
+
+    REQUIRE(buffer.push(input.data(), input.size(), 8, becameReady) == Result::SUCCESS);
+    REQUIRE(becameReady);
+}
+
+TEST_CASE("Circular buffer readiness accounts for overflow and unsuccessful writes",
+          "[tools][circular_buffer][wake][overflow]") {
+    const std::array<I8, 8> input = {1, 2, 3, 4, 5, 6, 7, 8};
+    bool becameReady = true;
+
+    SECTION("overwrite uses the retained size and coalesces an existing backlog") {
+        Tools::CircularBuffer<I8> buffer(4);
+        REQUIRE(buffer.push(input.data(), 8, 4, becameReady) == Result::SUCCESS);
+        REQUIRE(becameReady);
+        REQUIRE(buffer.push(input.data(), 8, 4, becameReady) == Result::SUCCESS);
+        REQUIRE_FALSE(becameReady);
+        REQUIRE(buffer.statistics().overwrittenElements == 12);
+
+        std::array<I8, 4> output;
+        REQUIRE(buffer.pop(output.data(), output.size()) == Result::SUCCESS);
+        REQUIRE(output == std::array<I8, 4>{5, 6, 7, 8});
+        REQUIRE(buffer.push(input.data(), 8, 5, becameReady) == Result::SUCCESS);
+        REQUIRE_FALSE(becameReady);
+    }
+
+    SECTION("failed and empty writes never report readiness") {
+        Tools::CircularBuffer<I8> buffer(4, OverflowPolicy::Reject);
+        REQUIRE(buffer.push(input.data(), 3, 4, becameReady) == Result::SUCCESS);
+        REQUIRE_FALSE(becameReady);
+        becameReady = true;
+        REQUIRE(buffer.push(input.data(), 2, 4, becameReady) == Result::INCOMPLETE);
+        REQUIRE_FALSE(becameReady);
+        becameReady = true;
+        REQUIRE(buffer.push(nullptr, 1, 4, becameReady) == Result::ERROR);
+        REQUIRE_FALSE(becameReady);
+        becameReady = true;
+        REQUIRE(buffer.push(nullptr, 0, 4, becameReady) == Result::SUCCESS);
+        REQUIRE_FALSE(becameReady);
+        REQUIRE(buffer.push(input.data(), 1, 4, becameReady) == Result::SUCCESS);
+        REQUIRE(becameReady);
+    }
+}

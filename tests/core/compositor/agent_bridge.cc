@@ -20,6 +20,7 @@
 
 #if defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
 #include "agent_provider.hh"
+#include "environment.hh"
 #endif
 
 using namespace Jetstream;
@@ -406,6 +407,63 @@ TEST_CASE("Agent tools return fresh rendered bounds without changing automatic s
 }
 
 #if defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
+
+TEST_CASE("Missing environment provider keys block requests instead of allowing anonymous access",
+          "[agent][compositor][authentication]") {
+    AgentTest::ProviderServer server;
+    std::atomic<int> requests{0};
+    std::atomic<bool> authenticated{false};
+    server.server.Post("/chat", [&](const auto& request, auto& response) {
+        ++requests;
+        authenticated = request.get_header_value("Authorization") == "Bearer external-test-key";
+        response.set_content(AgentTest::Sse::Delta({{"content", "Hello"}}) + AgentTest::Sse::Done(),
+                             "text/event-stream");
+    });
+    server.server.Get("/models", [&](const auto&, auto& response) {
+        ++requests;
+        response.set_content(R"({"data":[{"id":"test-model"}]})", "application/json");
+    });
+    server.start();
+
+    TestSupport::ScopedEnvironment environment("CYBERETHER_TEST_PROVIDER_API_KEY");
+    Settings::Intelligence::Provider provider{
+        .name = "Local",
+        .host = server.origin,
+        .chatPath = "/chat",
+        .modelsPath = "/models",
+        .apiKeyEnv = environment.name(),
+    };
+
+    REQUIRE(environment.set("external-test-key\n"));
+    const auto client = AgentProviders::Client(provider);
+    const std::vector<Agent::Provider::Message> messages{{.role = "user", .content = "Hello"}};
+    Agent::Provider::Response response;
+    REQUIRE(client->stream(AgentTest::Request(messages), {}, response) == Result::SUCCESS);
+    CHECK(authenticated.load());
+    REQUIRE(requests.load() == 1);
+
+    for (const auto& value : {std::optional<std::string>{}, std::optional<std::string>{" \t\r\n"}}) {
+        REQUIRE(environment.set(value));
+        CHECK(client->stream(AgentTest::Request(messages), {}, response) == Result::ERROR);
+        CHECK(response.error.kind == Agent::Provider::Error::Kind::MissingCredentials);
+
+        std::vector<Agent::Provider::Model> models;
+        Agent::Provider::Error error;
+        CHECK(client->models(models, &error) == Result::ERROR);
+        CHECK(error.kind == Agent::Provider::Error::Kind::MissingCredentials);
+        CHECK(requests.load() == 1);
+    }
+
+    REQUIRE(environment.set("external-test-key\n"));
+    REQUIRE(client->stream(AgentTest::Request(messages), {}, response) == Result::SUCCESS);
+    CHECK(authenticated.load());
+    CHECK(requests.load() == 2);
+
+    provider.apiKeyEnv.clear();
+    REQUIRE(AgentProviders::Client(provider)->stream(AgentTest::Request(messages), {}, response) == Result::SUCCESS);
+    CHECK_FALSE(authenticated.load());
+    CHECK(requests.load() == 3);
+}
 
 TEST_CASE("Model discovery failures reach the model picker with provider diagnostics",
           "[agent][compositor][models]") {

@@ -46,6 +46,7 @@ core_test_domains = {
         'sakura/interface_controls.cc',
         'sakura/key_value.cc',
         'sakura/metric_label.cc',
+        'sakura/metric_progress_bar.cc',
         'sakura/node.cc',
         'sakura/node_metadata.cc',
         'sakura/surface_view.cc',
@@ -82,6 +83,7 @@ if not jst_is_windows
             'compositor/config_edits.cc',
             'compositor/live_markdown.cc',
             'compositor/agent_bridge.cc',
+            'compositor/agent_providers.cc',
             'compositor/agent_responsiveness.cc',
         ],
         'render': core_test_domains['render'] + [
@@ -93,6 +95,16 @@ if not jst_is_windows
 endif
 
 core_test_targets = []
+if not jst_is_browser
+    core_test_domains += {
+        'platform': core_test_domains['platform'] + ['platform/socket.cc'],
+    }
+endif
+if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
+    core_test_domains += {
+        'render': core_test_domains['render'] + ['render/metal_capture.cc'],
+    }
+endif
 if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_windows
     core_test_domains += {
         'application': core_test_domains['application'] + ['application/remote_stream.cc'],

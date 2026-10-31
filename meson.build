@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.15.0',  # [VERSION HOOK]
+    version: '1.18.0',  # [VERSION HOOK]
     meson_version: '>=1.11.0',
     default_options: [
         'cpp_std=c++20',
@@ -107,6 +107,10 @@ module_test_lst = []
 dep_lst = [
     dependency('threads'),
 ]
+if jst_is_linux
+    # Snapshot<T> needs atomic runtime support independently of remote/GLib.
+    dep_lst += dependency('atomic')
+endif
 whole_dep_lst = []
 lib_link_args = []
 inc_lst = [

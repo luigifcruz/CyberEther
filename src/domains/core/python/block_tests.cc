@@ -283,7 +283,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "Python F64 plot metadata errors only the consuming plot block",
                  "[modules][python][block][visualization][metadata][regression]") {
     const std::string attribute = GENERATE("frequency", "sampleRate");
-    const std::string plotType = GENERATE("lineplot", "waterfall", "waterfall_3d", "spectrogram");
+    const std::string plotType = GENERATE("lineplot", "waterfall", "waterfall_3d");
     CAPTURE(attribute, plotType);
 
     Blocks::Python config;

@@ -153,6 +153,7 @@ class JETSTREAM_API Provider {
         std::string path;
         std::string modelsPath;
         std::function<std::string()> apiKey;
+        bool requireApiKey = false;
         U64 timeoutSeconds = 120;
         U32 retries = 0;
         bool requestReasoning = false;

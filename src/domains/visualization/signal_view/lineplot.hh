@@ -26,20 +26,27 @@ constexpr bool LineplotMaxHoldReady(const U64 completedBlocks,
 
 inline std::optional<F64> LineplotAmplitudeValue(const F32 position,
                                                  const F32 min,
-                                                 const F32 max) {
-    if (!std::isfinite(position) || position <= -1.0f || position >= 1.0f) {
+                                                 const F32 max,
+                                                 const bool linear = false) {
+    if (!std::isfinite(position)) {
+        return std::nullopt;
+    }
+    if (linear ? (position < -1.0f || position > 1.0f)
+               : (position <= -1.0f || position >= 1.0f)) {
         return std::nullopt;
     }
     const F64 lower = std::min(min, max);
     const F64 upper = std::max(min, max);
-    const F64 normalized = 0.5 + 0.25 * std::atanh(static_cast<F64>(position));
+    const F64 normalized = linear ? 0.5 + 0.5 * static_cast<F64>(position)
+                                  : 0.5 + 0.25 * std::atanh(static_cast<F64>(position));
     return lower + normalized * (upper - lower);
 }
 
 inline std::string LineplotAmplitudeLabel(const F32 position,
                                           const F32 min,
-                                          const F32 max) {
-    const auto value = LineplotAmplitudeValue(position, min, max);
+                                          const F32 max,
+                                          const bool linear = false) {
+    const auto value = LineplotAmplitudeValue(position, min, max, linear);
     if (!value) {
         return {};
     }
@@ -66,6 +73,7 @@ struct SignalViewLineplot {
         U64 numberOfElements = 0;
         bool fill = true;
         bool maxHold = false;
+        bool overlay = false;
     };
 
     struct Tensors {
