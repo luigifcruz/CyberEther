@@ -19,6 +19,7 @@ class GeoMapTiles {
         Canal,
         River,
         Building,
+        ServiceRoad,
         MinorRoad,
         SecondaryRoad,
         PrimaryRoad,
@@ -30,18 +31,20 @@ class GeoMapTiles {
         Taxiway,
         Runway,
     };
-    static constexpr U64 LineCount = 14;
+    static constexpr U64 LineCount = 15;
 
     enum class Fill : U8 {
         Land,
         Urban,
-        Water,
         Airport,
+        Grass,
+        Water,
+        Apron,
         Building,
         BuildingMid,
         BuildingTall,
     };
-    static constexpr U64 FillCount = 7;
+    static constexpr U64 FillCount = 9;
     static constexpr U64 FirstBuildingFill = static_cast<U64>(Fill::Building);
 
     enum class Place : U8 {

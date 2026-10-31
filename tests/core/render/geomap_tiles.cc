@@ -593,7 +593,7 @@ TEST_CASE("GeoMap rendering choices remove disabled tile layers and restore them
             CHECK(hasLine(GeoMapTiles::Line::River) == config.rendering.rivers);
             CHECK(hasLine(GeoMapTiles::Line::CountryBorder) == config.rendering.borders);
             CHECK(hasLine(GeoMapTiles::Line::Runway) == config.rendering.airports);
-            CHECK(g.fills[static_cast<U64>(GeoMapTiles::Fill::Airport)].indices.empty() == !config.rendering.airports);
+            CHECK(g.fills[static_cast<U64>(GeoMapTiles::Fill::Apron)].indices.empty() == !config.rendering.airports);
             CHECK(g.labels.size() == (config.rendering.places ? 1u + config.rendering.airports : 0u));
             CHECK(observed->fetches.load() == 1);
         }

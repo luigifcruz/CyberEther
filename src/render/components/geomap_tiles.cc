@@ -47,6 +47,7 @@ constexpr U8 MaxFallbackLevels = 6;
 constexpr U8 PreviewLevels = 2;
 constexpr F32 LevelHysteresis = 0.65f;
 constexpr F64 SimplifyPixels = 0.5;
+constexpr U8 MinGrassZoom = 12;
 constexpr auto AssemblyInterval = std::chrono::milliseconds(250);
 constexpr auto DiskMaxAge = std::chrono::hours(24 * 30);
 
@@ -926,8 +927,8 @@ void Subdivide(GeoMapTiles::Mesh& mesh) {
 
 class Decoder {
  public:
-    explicit Decoder(const MapRenderingOptions& options = {}, F64 tolerance = 0.0)
-        : options(options), tolerance(tolerance) {}
+    explicit Decoder(const MapRenderingOptions& options = {}, F64 tolerance = 0.0, U8 zoom = 0)
+        : options(options), tolerance(tolerance), zoom(zoom) {}
 
     std::shared_ptr<TileData> run(std::string_view data) {
         tile = std::make_shared<TileData>();
@@ -948,6 +949,7 @@ class Decoder {
  private:
     MapRenderingOptions options;
     F64 tolerance = 0.0;
+    U8 zoom = 0;
     using Line = GeoMapTiles::Line;
     using Fill = GeoMapTiles::Fill;
     using Place = GeoMapTiles::Place;
@@ -1360,7 +1362,8 @@ class Decoder {
         }
         if (name != "water" && name != "landuse" && name != "waterway" &&
             name != "transportation" && name != "boundary" && name != "place" &&
-            name != "aeroway" && name != "aerodrome_label" && name != "building") {
+            name != "aeroway" && name != "aerodrome_label" && name != "building" &&
+            name != "landcover") {
             return true;
         }
 
@@ -1410,6 +1413,10 @@ class Decoder {
                     kind != "industrial" && kind != "retail") continue;
                 if (!decodeGeometry(feature.geometry, feature.type)) return false;
                 if (!addPolygons(Fill::Urban, layer.extent, nullptr)) return false;
+            } else if (name == "landcover") {
+                if (feature.type != 3 || kind != "grass" || zoom < MinGrassZoom) continue;
+                if (!decodeGeometry(feature.geometry, feature.type)) return false;
+                if (!addPolygons(Fill::Grass, layer.extent, nullptr)) return false;
             } else if (name == "building") {
                 if (feature.type != 3) continue;
                 if (!decodeGeometry(feature.geometry, feature.type)) return false;
@@ -1436,6 +1443,7 @@ class Decoder {
                 else if (kind == "primary") line = Line::PrimaryRoad;
                 else if (kind == "secondary" || kind == "tertiary") line = Line::SecondaryRoad;
                 else if (kind == "minor") line = Line::MinorRoad;
+                else if (kind == "service") line = Line::ServiceRoad;
                 else if (kind == "rail" && text(subclassKey) != "subway") line = Line::Rail;
                 if (!line) continue;
                 if (!decodeGeometry(feature.geometry, feature.type)) return false;
@@ -1454,7 +1462,8 @@ class Decoder {
                     if (kind != "aerodrome" && kind != "apron" && kind != "runway" &&
                         kind != "taxiway") continue;
                     if (!decodeGeometry(feature.geometry, feature.type)) return false;
-                    if (!addPolygons(Fill::Airport, layer.extent, nullptr)) return false;
+                    if (!addPolygons(kind == "apron" ? Fill::Apron : Fill::Airport,
+                                     layer.extent, nullptr)) return false;
                     continue;
                 }
                 if (feature.type != 2) continue;
@@ -1776,7 +1785,7 @@ struct GeoMapTiles::Impl {
         if (key.z < source->maxZoom()) {
             tolerance = SimplifyPixels / (config.tilePixels * std::exp2(LevelHysteresis));
         }
-        Decoder decoder(config.rendering, tolerance);
+        Decoder decoder(config.rendering, tolerance, key.z);
         return decoder.run(data);
     }
 

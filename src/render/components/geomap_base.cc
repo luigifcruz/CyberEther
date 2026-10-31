@@ -654,7 +654,7 @@ struct BathymetryOverlay {
 
 static constexpr U64 kTileBuildingVertices = 2u << 20;
 static constexpr std::array<U64, GeoMapTiles::LineCount> kTileLineCapacity = {
-    16384, 16384, 131072, kTileBuildingVertices, 524288, 262144, 262144, 163840, 98304, 65536, 32768, 98304, 65536, 16384,
+    16384, 16384, 131072, kTileBuildingVertices, 262144, 524288, 262144, 262144, 163840, 98304, 65536, 32768, 98304, 65536, 16384,
 };
 static constexpr std::array<F32, 3> kRoadCasingColor = {0.055f, 0.058f, 0.054f};
 static constexpr U64 kTileFillVertices = 1u << 20;
@@ -861,6 +861,8 @@ static constexpr std::array<F32, 3> kBuildingColor = {0.165f, 0.170f, 0.155f};
 static constexpr std::array<F32, 3> kBuildingMidColor = {0.182f, 0.187f, 0.171f};
 static constexpr std::array<F32, 3> kBuildingTallColor = {0.202f, 0.207f, 0.190f};
 static constexpr std::array<F32, 3> kAirportColor = {0.150f, 0.152f, 0.155f};
+static constexpr std::array<F32, 3> kApronColor = {0.176f, 0.178f, 0.183f};
+static constexpr std::array<F32, 3> kGrassColor = {0.100f, 0.121f, 0.094f};
 
 static std::string PlaceNameKey(const std::string& name) {
     static constexpr std::string_view Latin1 =
@@ -1366,6 +1368,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
             thin(river(6), 1.5f),
             thin(river(4), 2.0f),
             LineStyle{.width = 1.0f, .color = {0.235f, 0.238f, 0.220f}},
+            LineStyle{.width = 1.0f, .color = {0.165f, 0.165f, 0.162f}},
             LineStyle{.width = 1.2f, .color = {0.19f, 0.19f, 0.19f}},
             LineStyle{.width = 1.6f, .color = {0.23f, 0.23f, 0.22f}},
             LineStyle{.width = 2.0f, .color = {0.27f, 0.26f, 0.25f}},
@@ -1419,7 +1422,8 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         using TileLine = GeoMapTiles::Line;
         for (U64 i = 0; i < pimpl->tileLines.size(); ++i) {
             const auto kind = static_cast<TileLine>(i);
-            const bool road = kind == TileLine::MinorRoad || kind == TileLine::SecondaryRoad ||
+            const bool road = kind == TileLine::ServiceRoad || kind == TileLine::MinorRoad ||
+                              kind == TileLine::SecondaryRoad ||
                               kind == TileLine::PrimaryRoad || kind == TileLine::Motorway;
             pimpl->tileLineWidths[i] = styles[i].width;
             pimpl->tileLineScaled[i] = kind != TileLine::StateBorder &&
@@ -2329,7 +2333,7 @@ Result GeoMapBaseLayer::surface(Render::Surface::Config& config) {
         }
     }
 
-    const U64 firstRoad = static_cast<U64>(GeoMapTiles::Line::MinorRoad);
+    const U64 firstRoad = static_cast<U64>(GeoMapTiles::Line::ServiceRoad);
     for (U64 i = 0; i < firstRoad; ++i) {
         if (pimpl->tileLines[i].program) {
             config.programs.push_back(pimpl->tileLines[i].program);
@@ -2557,8 +2561,10 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                 const std::array<std::array<F32, 3>, GeoMapTiles::FillCount> colors = {
                     kLandColor,
                     kUrbanColor,
-                    std::array<F32, 3>{kWaterSphereR, kWaterSphereG, kWaterSphereB},
                     kAirportColor,
+                    kGrassColor,
+                    std::array<F32, 3>{kWaterSphereR, kWaterSphereG, kWaterSphereB},
+                    kApronColor,
                     kBuildingColor,
                     kBuildingMidColor,
                     kBuildingTallColor,
@@ -2758,6 +2764,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                     case TileLine::River:
                         enabled = enabled && tuning.rivers;
                         break;
+                    case TileLine::ServiceRoad:
                     case TileLine::MinorRoad:
                     case TileLine::SecondaryRoad:
                     case TileLine::PrimaryRoad:
