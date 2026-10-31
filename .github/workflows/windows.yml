@@ -47,6 +47,8 @@ env:
     jetstream.dll
   VULKAN_VERSION: 1.4.309.0
   VULKAN_SDK_SHA256: 48b132169b64fe65cdb0f20970195335a65354e73f1ea5373032c2a8bbad4297
+  MESA_VERSION: 26.2.5
+  MESA_SHA256: 997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2
 
 jobs:
   bin:
@@ -94,6 +96,24 @@ jobs:
 
           "VULKAN_SDK=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "$sdkRoot\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install Vulkan software driver
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $archivePath = Join-Path $env:RUNNER_TEMP 'mesa3d.7z'
+          $driverRoot = Join-Path $env:RUNNER_TEMP 'mesa3d'
+          Invoke-WebRequest -Uri "https://github.com/pal1000/mesa-dist-win/releases/download/$env:MESA_VERSION/mesa3d-$env:MESA_VERSION-release-msvc.7z" -OutFile $archivePath
+
+          $sha = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sha -ne $env:MESA_SHA256) {
+            throw "Unexpected Mesa SHA256: $sha"
+          }
+
+          7z x $archivePath "-o$driverRoot" -y | Out-Null
+          $env:VK_DRIVER_FILES = Join-Path $driverRoot 'x64\lvp_icd.x86_64.json'
+          "VK_DRIVER_FILES=$env:VK_DRIVER_FILES" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          vulkaninfo --summary
 
       - name: Build Windows binary
         run: |
