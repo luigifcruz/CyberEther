@@ -8,6 +8,9 @@
 #ifdef ERROR
 #undef ERROR
 #endif
+#ifdef interface
+#undef interface
+#endif
 #include <nlohmann/json.hpp>
 
 #include <span>
