@@ -529,7 +529,7 @@ TEST_CASE("Flowgraph layouts drop unknown panes on their way to the dock and kee
 }
 
 TEST_CASE("Tiles describe configs and surfaces by block", "[core][compositor][tiles]") {
-    REQUIRE(DescribeTile("config:fft") == "fft Config");
+    REQUIRE(DescribeTile("config:fft") == "fft Controls");
     REQUIRE(DescribeTile("surface:fft:default") == "fft (default)");
     REQUIRE(DescribeTile("flowgraph") == "flowgraph");
     REQUIRE(DescribeTile("documentation") == "Documentation");
@@ -542,8 +542,8 @@ TEST_CASE("Flowgraph labels fall back to identifiers", "[core][compositor][tiles
 
     REQUIRE(MakeSurfaceTileTitle("fft", "Spectrum") == "Spectrum (fft)");
     REQUIRE(MakeSurfaceTileTitle("fft", "") == "fft (fft)");
-    REQUIRE(MakeConfigTileTitle("fft", "Spectrum") == "Spectrum Config (fft)");
-    REQUIRE(MakeConfigTileTitle("fft", "") == "fft Config (fft)");
+    REQUIRE(MakeConfigTileTitle("fft", "Spectrum") == "Spectrum Controls (fft)");
+    REQUIRE(MakeConfigTileTitle("fft", "") == "fft Controls (fft)");
 
     REQUIRE(MakeEditorPaneId("graph") == "editor:graph");
     REQUIRE(MakeFlowgraphLayoutGroup("graph") == "layout:graph");

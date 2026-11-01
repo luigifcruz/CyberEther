@@ -32,7 +32,7 @@ inline std::string DescribeTile(const std::string& key) {
         return "Terminal";
     }
     if (auto config = ParseConfigTileKey(key)) {
-        return *config + " Config";
+        return *config + " Controls";
     }
     if (auto surface = ParseSurfaceTileKey(key)) {
         return jst::fmt::format("{} ({})", surface->first, surface->second);

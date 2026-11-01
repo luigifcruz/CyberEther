@@ -23,7 +23,7 @@ inline std::string MakeSurfaceTileTitle(const std::string& blockName, const std:
 
 inline std::string MakeConfigTileTitle(const std::string& blockName, const std::string& blockTitle) {
     const std::string title = blockTitle.empty() ? blockName : blockTitle;
-    return jst::fmt::format("{} Config ({})", title, blockName);
+    return jst::fmt::format("{} Controls ({})", title, blockName);
 }
 
 inline std::string MakeDocumentationTileTitle(const std::string& blockName, const std::string& blockTitle) {

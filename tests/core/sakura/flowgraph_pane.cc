@@ -359,7 +359,7 @@ TEST_CASE("Each flowgraph contributes one main tab whose content is its layout d
     CHECK(config.editorPane == "editor:graph");
     CHECK_FALSE(config.layout.has_value());
     REQUIRE(config.describe);
-    CHECK(config.describe("config:fft") == "fft Config");
+    CHECK(config.describe("config:fft") == "fft Controls");
 
     rig.frame();
     REQUIRE(rig.panes.size() == 1);

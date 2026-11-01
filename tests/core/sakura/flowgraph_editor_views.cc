@@ -661,7 +661,7 @@ TEST_CASE("Detached configs fill their tile with a field panel and keep the titl
     FlowgraphDetachedConfig view;
     FlowgraphDetachedConfig::Config config{
         .id = "config:fft",
-        .title = "FFT Config (fft)",
+        .title = "FFT Controls (fft)",
         .configFields = {RangeField("fft:low"), RangeField("fft:high")},
         .onClose = [&] { ++closed; },
     };
@@ -681,7 +681,7 @@ TEST_CASE("Detached configs fill their tile with a field panel and keep the titl
         CHECK(frame.right() <= bounds.right());
         CHECK(frame.y >= bounds.y);
     }
-    CHECK(view.title() == "FFT Config (fft)");
+    CHECK(view.title() == "FFT Controls (fft)");
     const auto close = view.closeCallback();
     REQUIRE(close);
     close();
@@ -702,7 +702,7 @@ TEST_CASE("Detached configs settle under identical updates", "[core][sakura][flo
     const auto update = [&] {
         view.update({
             .id = "config:fft",
-            .title = "FFT Config (fft)",
+            .title = "FFT Controls (fft)",
             .configFields = {RangeField("fft:low"), RangeField("fft:high")},
         });
     };
