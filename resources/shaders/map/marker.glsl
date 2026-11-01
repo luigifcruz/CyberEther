@@ -8,7 +8,7 @@ layout(location = 0) out vec2 vLocal;
 layout(location = 1) out float vOpacity;
 
 void main() {
-    vec3 p = lonLatToSphere(inMarker.x, inMarker.y);
+    vec3 p = mapSphere(inMarker.xy);
     if (dot(p, uniforms.targetNormal.xyz) < uniforms.targetNormal.w) {
         gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
         vLocal = vec2(0.0);
@@ -18,5 +18,5 @@ void main() {
 
     vLocal = inQuad;
     vOpacity = inMarker.w;
-    gl_Position = vec4(projectToNdc(p) + inQuad * inMarker.z * mapPixelSize(), 0.0, 1.0);
+    gl_Position = vec4(projectToNdc(mapLocal(inMarker.xy)) + inQuad * inMarker.z * mapPixelSize(), 0.0, 1.0);
 }

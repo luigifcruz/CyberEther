@@ -749,3 +749,40 @@ TEST_CASE("Settings reports an error when Windows config environment is unavaila
 }
 
 #endif
+
+TEST_CASE("Map rendering preferences preserve old defaults and persist each layer", "[core][settings][maps]") {
+    SettingsSandbox sandbox("map-rendering");
+    WriteFile(sandbox.path, "maps:\n  highResolution: false\n  futureOption: retained\n");
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    CHECK_FALSE(settings.maps.highResolution);
+    CHECK(settings.maps.rendering == Render::Components::MapRenderingOptions{});
+
+    settings.maps.rendering = {
+        .buildings = false,
+        .buildingOutlines = false,
+        .roads = false,
+        .rivers = false,
+        .borders = false,
+        .places = false,
+        .airports = false,
+        .bathymetry = false,
+    };
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    Settings restored;
+    const auto document = ReadDocument(sandbox.path);
+    REQUIRE(restored.deserialize(document) == Result::SUCCESS);
+    CHECK(restored.maps.rendering == settings.maps.rendering);
+    CHECK_FALSE(restored.maps.highResolution);
+    CHECK(Scalar(Section(document, "maps"), "futureOption") == "retained");
+
+    settings.maps.rendering.buildings = true;
+    settings.maps.rendering.rivers = true;
+    settings.maps.rendering.places = true;
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    Settings mixed;
+    REQUIRE(mixed.deserialize(ReadDocument(sandbox.path)) == Result::SUCCESS);
+    CHECK(mixed.maps.rendering == settings.maps.rendering);
+}

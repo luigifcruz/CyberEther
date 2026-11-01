@@ -143,6 +143,7 @@ struct LegalSettingsPanel {
                    "- robin-map - MIT License\n"
                    "- Google Turbo colormap - Apache License 2.0\n"
                    "- Natural Earth - Public Domain\n"
+                   "- OpenStreetMap data via OpenFreeMap and OpenMapTiles - ODbL 1.0, CC-BY 4.0\n"
                    "- Velopack - MIT License\n"
                    // [NEW DEPENDENCY HOOK]
         });

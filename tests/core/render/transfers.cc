@@ -96,6 +96,12 @@ class TestTransfer final : public Render::Transfer {
         return reserveRange(used, size, alignment, offset);
     }
 
+    static bool reservePage(std::vector<U64>& pages, const U64 size,
+                            const U64 alignment, const U64 limit,
+                            U64& page, U64& offset) {
+        return reservePageRange(pages, size, alignment, limit, page, offset);
+    }
+
     static bool capacity(const U64 required, const U64 alignment, U64& result) {
         return calculateCapacity(required, alignment, result);
     }
@@ -309,6 +315,59 @@ TEST_CASE("Render transfer ranges align and reject overflow", "[core][render][tr
 
     used = std::numeric_limits<U64>::max();
     REQUIRE_FALSE(TestTransfer::reserve(used, 1, 4, offset));
+}
+
+TEST_CASE("Render transfer staging pages stay within their limit",
+          "[core][render][transfer]") {
+    std::vector<U64> pages;
+    U64 page = 0;
+    U64 offset = 0;
+
+    REQUIRE(TestTransfer::reservePage(pages, 252, 4, 512, page, offset));
+    REQUIRE(page == 0);
+    REQUIRE(offset == 0);
+    REQUIRE(TestTransfer::reservePage(pages, 256, 256, 512, page, offset));
+    REQUIRE(page == 0);
+    REQUIRE(offset == 256);
+    REQUIRE(TestTransfer::reservePage(pages, 512, 4, 512, page, offset));
+    REQUIRE(page == 1);
+    REQUIRE(offset == 0);
+    REQUIRE(TestTransfer::reservePage(pages, 4, 4, 512, page, offset));
+    REQUIRE(page == 2);
+    REQUIRE(offset == 0);
+    REQUIRE(pages == std::vector<U64>{512, 512, 4});
+}
+
+TEST_CASE("Render transfer staging pages account for texture alignment",
+          "[core][render][transfer]") {
+    std::vector<U64> pages;
+    U64 page = 0;
+    U64 offset = 0;
+
+    REQUIRE(TestTransfer::reservePage(pages, 260, 4, 512, page, offset));
+    REQUIRE(TestTransfer::reservePage(pages, 256, 256, 512, page, offset));
+    REQUIRE(page == 1);
+    REQUIRE(offset == 0);
+    REQUIRE(pages == std::vector<U64>{260, 256});
+
+    const auto retainedPages = pages;
+    REQUIRE_FALSE(TestTransfer::reservePage(pages, 513, 4, 512, page, offset));
+    REQUIRE_FALSE(TestTransfer::reservePage(pages, 4, 0, 512, page, offset));
+    REQUIRE_FALSE(TestTransfer::reservePage(pages, 0, 4, 512, page, offset));
+    REQUIRE_FALSE(TestTransfer::reservePage(pages, 4, 4, 0, page, offset));
+    REQUIRE(pages == retainedPages);
+}
+
+TEST_CASE("Render transfer staging pages recover from alignment overflow",
+          "[core][render][transfer]") {
+    std::vector<U64> pages{std::numeric_limits<U64>::max()};
+    U64 page = 0;
+    U64 offset = 0;
+    REQUIRE(TestTransfer::reservePage(pages, 4, 4,
+                                     std::numeric_limits<U64>::max(), page, offset));
+    REQUIRE(page == 1);
+    REQUIRE(offset == 0);
+    REQUIRE(pages.back() == 4);
 }
 
 TEST_CASE("Render transfer capacities grow and align", "[core][render][transfer]") {

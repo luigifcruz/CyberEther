@@ -1,5 +1,6 @@
 #include "jetstream/render/devices/webgpu/transfer.hh"
 
+#include <algorithm>
 #include <limits>
 
 #include "jetstream/render/devices/webgpu/buffer.hh"
@@ -9,31 +10,27 @@ namespace Jetstream::Render {
 
 using Implementation = TransferImp<DeviceType::WebGPU>;
 
-Result Implementation::ensureCapacity(const U64& required) {
-    if (required <= capacity) {
+Result Implementation::ensureCapacity(const U64& page,
+                                      const U64& required,
+                                      const U64& maximumBufferSize) {
+    if (stagingBuffers.size() <= page) {
+        stagingBuffers.resize(page + 1);
+    }
+    auto& staging = stagingBuffers[page];
+    if (required <= staging.capacity) {
         return Result::SUCCESS;
     }
 
     auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
-    WGPULimits limits = WGPU_LIMITS_INIT;
-    if (wgpuDeviceGetLimits(device, &limits) != WGPUStatus_Success) {
-        JST_ERROR("[WebGPU] Failed to query device limits.");
-        return Result::ERROR;
-    }
-    if (required > limits.maxBufferSize) {
-        JST_ERROR("[WebGPU] Required transfer buffer exceeds the device limit.");
-        return Result::ERROR;
-    }
-
     U64 replacementCapacity = 0;
     if (!calculateCapacity(required, 4, replacementCapacity)) {
         return Result::ERROR;
     }
-    if (replacementCapacity > limits.maxBufferSize &&
+    if (replacementCapacity > maximumBufferSize &&
         !calculateAlignedSize(required, 4, replacementCapacity)) {
         return Result::ERROR;
     }
-    if (replacementCapacity > limits.maxBufferSize) {
+    if (replacementCapacity > maximumBufferSize) {
         JST_ERROR("[WebGPU] Aligned transfer buffer exceeds the device limit.");
         return Result::ERROR;
     }
@@ -47,14 +44,14 @@ Result Implementation::ensureCapacity(const U64& required) {
         return Result::ERROR;
     }
 
-    if (buffer) {
-        wgpuBufferRelease(buffer);
+    if (staging.buffer) {
+        wgpuBufferRelease(staging.buffer);
     }
-    buffer = replacement;
-    capacity = replacementCapacity;
+    staging.buffer = replacement;
+    staging.capacity = replacementCapacity;
 
     JST_DEBUG("[WebGPU] Grew transfer buffer to {:.2f} MB.",
-              static_cast<F32>(capacity) / JST_MB);
+              static_cast<F32>(staging.capacity) / JST_MB);
     return Result::SUCCESS;
 }
 
@@ -65,8 +62,22 @@ Result Implementation::encode(Transfer::Batch& batch,
         return Result::ERROR;
     }
 
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
+    WGPULimits limits = WGPU_LIMITS_INIT;
+    if (wgpuDeviceGetLimits(device, &limits) != WGPUStatus_Success) {
+        JST_ERROR("[WebGPU] Failed to query device limits.");
+        return Result::ERROR;
+    }
+    const U64 pageLimit = std::min<U64>(limits.maxBufferSize, MaximumPageSize) /
+                          RowAlignment * RowAlignment;
+    if (pageLimit == 0) {
+        JST_ERROR("[WebGPU] Device buffer limit is too small for transfer staging.");
+        return Result::ERROR;
+    }
+
     struct BufferCopy {
         std::shared_ptr<BufferImp<DeviceType::WebGPU>> destination;
+        U64 page;
         U64 sourceOffset;
         U64 destinationOffset;
         U64 size;
@@ -75,6 +86,7 @@ Result Implementation::encode(Transfer::Batch& batch,
 
     struct TextureCopy {
         std::shared_ptr<TextureImp<DeviceType::WebGPU>> destination;
+        U64 page;
         U64 sourceOffset;
         U64 destinationRow;
         U64 rowCount;
@@ -86,7 +98,7 @@ Result Implementation::encode(Transfer::Batch& batch,
 
     std::vector<BufferCopy> bufferCopies;
     std::vector<TextureCopy> textureCopies;
-    U64 required = 0;
+    std::vector<U64> pages;
 
     for (const auto& transfer : batch.buffers()) {
         const U64 size = transfer.upload.data.size();
@@ -102,16 +114,21 @@ Result Implementation::encode(Transfer::Batch& batch,
             return Result::ERROR;
         }
 
-        U64 sourceOffset = 0;
-        if (!reserveRange(required, size, 4, sourceOffset)) {
-            return Result::ERROR;
+        for (U64 copied = 0; copied < size;) {
+            const U64 chunkSize = std::min(size - copied, pageLimit);
+            U64 page = 0;
+            U64 sourceOffset = 0;
+            if (!reservePageRange(pages, chunkSize, 4, pageLimit, page, sourceOffset)) {
+                return Result::ERROR;
+            }
+            bufferCopies.push_back({destination,
+                                    page,
+                                    sourceOffset,
+                                    transfer.destinationOffset + copied,
+                                    chunkSize,
+                                    transfer.upload.data.data() + copied});
+            copied += chunkSize;
         }
-
-        bufferCopies.push_back({destination,
-                                sourceOffset,
-                                transfer.destinationOffset,
-                                size,
-                                transfer.upload.data.data()});
     }
 
     for (const auto& transfer : batch.textures()) {
@@ -130,7 +147,7 @@ Result Implementation::encode(Transfer::Batch& batch,
 
         U64 encodedRowByteSize = 0;
         if (!calculateAlignedSize(transfer.rowByteSize,
-                                  256,
+                                  RowAlignment,
                                   encodedRowByteSize)) {
             return Result::ERROR;
         }
@@ -142,89 +159,111 @@ Result Implementation::encode(Transfer::Batch& batch,
             return Result::ERROR;
         }
 
-        U64 sourceOffset = 0;
-        if (!reserveRange(required,
-                          rowCount * encodedRowByteSize,
-                          256,
-                          sourceOffset)) {
+        if (encodedRowByteSize > pageLimit) {
+            JST_ERROR("[WebGPU] Texture transfer row exceeds the staging buffer limit.");
             return Result::ERROR;
         }
-
-        textureCopies.push_back({destination,
-                                 sourceOffset,
-                                  transfer.destinationRow,
-                                  rowCount,
-                                  transfer.destinationSize.x,
-                                  transfer.rowByteSize,
-                                 encodedRowByteSize,
-                                 transfer.upload.data.data()});
-    }
-
-    JST_CHECK(ensureCapacity(required));
-
-    if (required > std::numeric_limits<size_t>::max()) {
-        return Result::ERROR;
-    }
-    data.resize(static_cast<size_t>(required));
-
-    for (const auto& copy : bufferCopies) {
-        if (!copyBuffer(data.data() + copy.sourceOffset,
-                        copy.source,
-                        copy.size)) {
-            return Result::ERROR;
-        }
-    }
-    for (const auto& copy : textureCopies) {
-        if (!copyTextureRows(data.data() + copy.sourceOffset,
-                             copy.source,
-                             copy.rowCount,
-                             copy.rowByteSize,
-                             copy.encodedRowByteSize)) {
-            return Result::ERROR;
+        for (U64 copiedRows = 0; copiedRows < rowCount;) {
+            const U64 chunkRows = std::min(rowCount - copiedRows, pageLimit / encodedRowByteSize);
+            U64 page = 0;
+            U64 sourceOffset = 0;
+            if (!reservePageRange(pages, chunkRows * encodedRowByteSize,
+                                  RowAlignment, pageLimit, page, sourceOffset)) {
+                return Result::ERROR;
+            }
+            textureCopies.push_back({destination,
+                                     page,
+                                     sourceOffset,
+                                     transfer.destinationRow + copiedRows,
+                                     chunkRows,
+                                     transfer.destinationSize.x,
+                                     transfer.rowByteSize,
+                                     encodedRowByteSize,
+                                     transfer.upload.data.data() + copiedRows * transfer.rowByteSize});
+            copiedRows += chunkRows;
         }
     }
 
-    wgpuQueueWriteBuffer(queue, buffer, 0, data.data(), data.size());
-
-    for (const auto& copy : bufferCopies) {
-        wgpuCommandEncoderCopyBufferToBuffer(encoder,
-                                             buffer,
-                                             copy.sourceOffset,
-                                             copy.destination->buffer,
-                                             copy.destinationOffset,
-                                             copy.size);
+    for (U64 page = 0; page < pages.size(); ++page) {
+        JST_CHECK(ensureCapacity(page, pages[page], limits.maxBufferSize));
     }
 
-    for (const auto& copy : textureCopies) {
-        WGPUTexelCopyBufferInfo source = WGPU_TEXEL_COPY_BUFFER_INFO_INIT;
-        source.buffer = buffer;
-        source.layout.offset = copy.sourceOffset;
-        source.layout.bytesPerRow = static_cast<U32>(copy.encodedRowByteSize);
-        source.layout.rowsPerImage = static_cast<U32>(copy.rowCount);
+    for (U64 page = 0; page < pages.size(); ++page) {
+        const auto buffer = stagingBuffers[page].buffer;
+        data.resize(static_cast<size_t>(pages[page]));
 
-        WGPUTexelCopyTextureInfo destination = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-        destination.texture = copy.destination->texture;
-        destination.mipLevel = 0;
-        destination.origin = WGPUOrigin3D{0, static_cast<U32>(copy.destinationRow), 0};
-        destination.aspect = WGPUTextureAspect_All;
+        for (const auto& copy : bufferCopies) {
+            if (copy.page != page) {
+                continue;
+            }
+            if (!copyBuffer(data.data() + copy.sourceOffset,
+                            copy.source,
+                            copy.size)) {
+                return Result::ERROR;
+            }
+        }
+        for (const auto& copy : textureCopies) {
+            if (copy.page != page) {
+                continue;
+            }
+            if (!copyTextureRows(data.data() + copy.sourceOffset,
+                                 copy.source,
+                                 copy.rowCount,
+                                 copy.rowByteSize,
+                                 copy.encodedRowByteSize)) {
+                return Result::ERROR;
+            }
+        }
 
-        WGPUExtent3D extent = {
-            static_cast<U32>(copy.width),
-            static_cast<U32>(copy.rowCount),
-            1,
-        };
-        wgpuCommandEncoderCopyBufferToTexture(encoder, &source, &destination, &extent);
+        wgpuQueueWriteBuffer(queue, buffer, 0, data.data(), data.size());
+
+        for (const auto& copy : bufferCopies) {
+            if (copy.page != page) {
+                continue;
+            }
+            wgpuCommandEncoderCopyBufferToBuffer(encoder,
+                                                 buffer,
+                                                 copy.sourceOffset,
+                                                 copy.destination->buffer,
+                                                 copy.destinationOffset,
+                                                 copy.size);
+        }
+
+        for (const auto& copy : textureCopies) {
+            if (copy.page != page) {
+                continue;
+            }
+            WGPUTexelCopyBufferInfo source = WGPU_TEXEL_COPY_BUFFER_INFO_INIT;
+            source.buffer = buffer;
+            source.layout.offset = copy.sourceOffset;
+            source.layout.bytesPerRow = static_cast<U32>(copy.encodedRowByteSize);
+            source.layout.rowsPerImage = static_cast<U32>(copy.rowCount);
+
+            WGPUTexelCopyTextureInfo destination = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+            destination.texture = copy.destination->texture;
+            destination.mipLevel = 0;
+            destination.origin = WGPUOrigin3D{0, static_cast<U32>(copy.destinationRow), 0};
+            destination.aspect = WGPUTextureAspect_All;
+
+            WGPUExtent3D extent = {
+                static_cast<U32>(copy.width),
+                static_cast<U32>(copy.rowCount),
+                1,
+            };
+            wgpuCommandEncoderCopyBufferToTexture(encoder, &source, &destination, &extent);
+        }
     }
 
     return Result::SUCCESS;
 }
 
 void Implementation::destroy() {
-    if (buffer) {
-        wgpuBufferRelease(buffer);
-        buffer = nullptr;
+    for (auto& staging : stagingBuffers) {
+        if (staging.buffer) {
+            wgpuBufferRelease(staging.buffer);
+        }
     }
-    capacity = 0;
+    stagingBuffers.clear();
     data.clear();
 }
 
