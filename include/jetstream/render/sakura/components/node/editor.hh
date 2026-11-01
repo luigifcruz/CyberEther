@@ -111,6 +111,7 @@ struct NodeEditor : public Component {
         Callback<void(PinRef, PinRef)> onLinkCreated;
         Callback<void(const std::string&)> onLinkDestroyed;
         Callback<void(const std::vector<std::string>&)> onCopyShortcut;
+        Callback<void(const std::vector<std::string>&)> onSelectionChange;
         Callback<void(Extent2D<F32>)> onPasteShortcut;
         Callback<void(Rect)> onViewportGridChange;
         std::optional<View> view;

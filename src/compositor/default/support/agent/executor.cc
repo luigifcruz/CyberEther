@@ -3,6 +3,7 @@
 #include "../../model/callbacks.hh"
 #include "../../model/meta.hh"
 #include "../../model/state.hh"
+#include "../docs.hh"
 #include "jetstream/agent/tools.hh"
 #include "jetstream/instance.hh"
 
@@ -167,6 +168,36 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
 
     std::optional<F32> width(Block::NodeSize size) override {
         return DefaultNodeWidth(size);
+    }
+
+    std::optional<std::vector<DocMatch>> searchDocs(const std::string& query, U64 limit) override {
+        const auto& docs = Docs::Bundled();
+        const auto& pages = docs.pages();
+
+        std::vector<DocMatch> matches;
+        if (query.find_first_not_of(" \t\n") == std::string::npos) {
+            for (const auto& page : pages) {
+                matches.push_back({page.slug, page.title, {}, {}, page.description});
+            }
+            return matches;
+        }
+
+        for (const auto& hit : docs.search(query, limit)) {
+            const auto& page = pages.at(hit.page);
+            matches.push_back({page.slug, page.title, hit.heading, hit.anchor, hit.snippet});
+        }
+        return matches;
+    }
+
+    std::optional<DocPage> readDocs(const std::string& slug) override {
+        const auto& docs = Docs::Bundled();
+        const auto index = docs.find(slug);
+        if (!index) {
+            return std::nullopt;
+        }
+
+        const auto& page = docs.pages().at(*index);
+        return DocPage{page.slug, page.title, page.description, page.body};
     }
 
     void failFocus(const std::string& name) {

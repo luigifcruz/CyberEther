@@ -45,7 +45,7 @@ Session::Impl::Turn::Turn(Impl& session, Target target, Config config, std::shar
       aborted([flag = this->abort]() {
           return flag->load();
       }),
-      tools(this->config.executeTool, std::move(outputs), this->config.maxToolTurns) {
+      tools(this->config.executeTool, std::move(outputs)) {
     if (!this->config.tools.empty()) {
         this->config.tools.push_back(Detail::OutputStore::Schema());
     }
@@ -101,7 +101,7 @@ const std::vector<Provider::Message>& Session::Impl::Turn::history() const {
 }
 
 void Session::Impl::Turn::loop() {
-    while (!tools.exhausted()) {
+    while (true) {
         if (aborted()) {
             result = Result::ERROR;
             return;
@@ -119,12 +119,7 @@ void Session::Impl::Turn::loop() {
             .toolCalls = response.toolCalls,
             .state = std::move(response.state),
         });
-        execute(response.toolCalls, tools.advance());
-    }
-
-    if (result == Result::SUCCESS && !aborted()) {
-        auto response = stream(false);
-        finish(response);
+        execute(response.toolCalls);
     }
 }
 
@@ -300,7 +295,7 @@ bool Session::Impl::Turn::compact(U64 targetBudget) {
     return true;
 }
 
-Provider::Response Session::Impl::Turn::stream(bool allowTools) {
+Provider::Response Session::Impl::Turn::stream() {
     announced = 0;
     Detail::Context::Trim(messages, config.maxImages);
 
@@ -309,20 +304,20 @@ Provider::Response Session::Impl::Turn::stream(bool allowTools) {
         return {};
     }
 
-    auto response = request(messages, allowTools);
+    auto response = request(messages, true);
 
     const bool contextRejected = bounded() && error.kind == Provider::Error::Kind::ContextLength;
     const bool nothingStreamed = response.text.empty() && !streamed;
     if (contextRejected && nothingStreamed && !aborted()) {
         if (compact(budget() / 2)) {
-            response = request(messages, allowTools);
+            response = request(messages, true);
         }
     }
 
     return response;
 }
 
-void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& calls, bool lastRound) {
+void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& calls) {
     std::vector<Provider::Message> imageMessages;
     for (U64 index = 0; index < calls.size(); ++index) {
         const auto& call = calls[index];
@@ -336,7 +331,7 @@ void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& cal
         }
         note({Segment::Kind::ToolCall, call.arguments, 1, call.name});
 
-        const Tools::Output output = tools.run(call, resultLimit(), lastRound, aborted);
+        const Tools::Output output = tools.run(call, resultLimit(), aborted);
         note({Segment::Kind::ToolResult, output.content, 1, call.name, output.images.size()});
 
         append({

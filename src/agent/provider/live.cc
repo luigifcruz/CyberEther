@@ -50,10 +50,6 @@ constexpr U64 kPingIntervalSeconds = 20;
 constexpr auto kIdleWait = std::chrono::milliseconds(10);
 constexpr const char* kGreeting = "Greet the user now with one short sentence and ask what they want "
                                   "to work on, then pause and listen.";
-constexpr const char* kSummaryRequest = "The tool budget for this request is used up. Do not call any tools. "
-                                        "Summarize for the user what was done and what remains.";
-constexpr const char* kBudgetNotice = "Tell the user in one short sentence that the tool budget for this request "
-                                      "ran out, then ask how they want to continue.";
 
 std::string EventError(const nlohmann::json& event) {
     auto message = Detail::Wire::Error(event);
@@ -103,7 +99,6 @@ struct Live::Impl {
     std::atomic<bool> closing{false};
     std::atomic<bool> sessionClosed{false};
     std::atomic<bool> delegating{false};
-    std::atomic<bool> toolsExhausted{false};
     std::atomic<bool> readerDone{false};
     std::atomic<bool> orphaned{false};
     std::atomic<std::thread::id> ioId{};
@@ -369,9 +364,6 @@ struct Live::Impl {
         }
 
         const bool input = type == "session.input_transcript.done";
-        if (input) {
-            toolsExhausted.store(false);
-        }
         emit(input ? callbacks.onInputTranscriptDone : callbacks.onOutputTranscriptDone);
         return true;
     }
@@ -566,7 +558,6 @@ struct Live::Impl {
     void resetSession() {
         closing.store(false);
         sessionClosed.store(false);
-        toolsExhausted.store(false);
         receivedEvents.store(0);
         sentEvents.store(0);
         lastEventLabel.clear();
@@ -708,9 +699,7 @@ void Live::send(const std::vector<I16>& samples) {
     impl->queue(impl->audioAppendEvent(samples));
 }
 
-void Live::reply(const ToolOutputs& outputs, bool disableTools) {
-    const bool stalled = impl->toolsExhausted.exchange(disableTools) && disableTools;
-
+void Live::reply(const ToolOutputs& outputs) {
     for (const auto& [call, result] : outputs) {
         impl->sendEvent({
             {"type", "response.item.create"},
@@ -724,14 +713,6 @@ void Live::reply(const ToolOutputs& outputs, bool disableTools) {
         }
     }
 
-    if (stalled) {
-        impl->appendCommentary(kBudgetNotice);
-        impl->emit(impl->callbacks.onDelegation, false);
-        return;
-    }
-    if (disableTools) {
-        impl->appendUserMessage(kSummaryRequest);
-    }
     impl->sendEvent({{"type", "response.create"}});
 }
 

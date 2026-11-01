@@ -58,11 +58,14 @@ class Toolbox {
     static std::vector<Entry> Connections();
     static std::vector<Entry> Environment();
     static std::vector<Entry> Capture();
+    static std::vector<Entry> Docs();
+    static std::vector<Entry> Log();
     static std::vector<Entry> Text();
 };
 
 class Response {
  public:
+    static std::string Dump(const Json& body);
     static Json Error(const std::string& message);
     static bool Failed(const Json& body);
     static Tools::Output Reply(const Json& body, std::vector<std::string> images = {});

@@ -1,12 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 
 #include <nlohmann/json.hpp>
 
 #include "jetstream/agent/tools.hh"
+#include "jetstream/logger.hh"
 #include "jetstream/domains/core/slice/block.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/flowgraph_view.hh"
@@ -26,6 +29,24 @@ struct GraphHost : Agent::Tools::Host {
 
     Result create(const std::string&, std::shared_ptr<Flowgraph>&) override {
         return Result::ERROR;
+    }
+};
+
+struct DocsHost : GraphHost {
+    DocsHost() : GraphHost(nullptr) {}
+
+    std::optional<std::vector<DocMatch>> searchDocs(const std::string& query, U64) override {
+        if (query.empty()) {
+            return std::vector<DocMatch>{{"remote", "Remote", {}, {}, "Share a session."}};
+        }
+        return std::vector<DocMatch>{{"remote", "Remote", "Pairing", "pairing", "Scan the code."}};
+    }
+
+    std::optional<DocPage> readDocs(const std::string& slug) override {
+        if (slug != "remote") {
+            return std::nullopt;
+        }
+        return DocPage{"remote", "Remote", "Share a session.", "# Remote"};
     }
 };
 
@@ -58,6 +79,9 @@ TEST_CASE("Agent exposes the consolidated tool surface", "[agent][tools]") {
         "list_examples",
         "get_example",
         "open_example",
+        "search_docs",
+        "read_docs",
+        "read_log",
     };
 
     std::set<std::string> actual;
@@ -551,4 +575,96 @@ TEST_CASE("Full block inspection preserves numeric arrays and UTF-8 text",
     REQUIRE(graph->blockDestroy("note", false) == Result::SUCCESS);
     REQUIRE(graph->blockDestroy("taps", false) == Result::SUCCESS);
     REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Agent docs tools read through the host", "[agent][tools][docs]") {
+    GraphHost bare(nullptr);
+    const auto unavailable = nlohmann::json::parse(Agent::Tools(bare).execute(nullptr, "search_docs", "{}").content);
+    REQUIRE(unavailable.contains("error"));
+
+    DocsHost host;
+    const Agent::Tools tools(host);
+
+    const auto search = nlohmann::json::parse(tools.execute(nullptr, "search_docs", R"({"query":"pair"})").content);
+    REQUIRE(search["matches"].size() == 1);
+    CHECK(search["matches"][0]["page"] == "remote");
+    CHECK(search["matches"][0]["section"] == "Pairing");
+
+    const auto page = nlohmann::json::parse(tools.execute(nullptr, "read_docs", R"({"page":"remote"})").content);
+    CHECK(page["body"] == "# Remote");
+
+    const auto missing = nlohmann::json::parse(tools.execute(nullptr, "read_docs", R"({"page":"remot"})").content);
+    REQUIRE(missing.contains("error"));
+    CHECK(missing["error"].get<std::string>().find("remote") != std::string::npos);
+}
+
+TEST_CASE("Agent log tool reads recent entries by severity", "[agent][tools][log]") {
+    const int level = _JST_LOG_DEBUG_LEVEL();
+    JST_LOG_SET_DEBUG_LEVEL(2);
+    std::ostringstream output;
+    std::ostream* previous = &JST_LOG_SINK();
+    JST_LOG_SET_SINK(&output);
+    JST_INFO("agent log probe info");
+    JST_ERROR("agent log probe error");
+    JST_ERROR("agent log detail header:\nsecond line detail");
+    std::string accented;
+    for (int i = 0; i < 3000; ++i) {
+        accented += "\xC3\xA9";
+    }
+    JST_ERROR("agent log wide {}", accented);
+    JST_ERROR("agent log escape before \x1b[2@after \x1b]0;title\x07" "done");
+    JST_ERROR("agent log invalid \xFF byte");
+    JST_LOG_SET_SINK(previous);
+    JST_LOG_SET_DEBUG_LEVEL(level);
+    CHECK(output.str().find("agent log probe error") != std::string::npos);
+
+    const auto errors = nlohmann::json::parse(ExecuteTool(nullptr, "read_log", R"({"query":"agent log probe"})").content);
+    REQUIRE(errors["entries"].size() == 1);
+    CHECK(errors["entries"][0]["level"] == "error");
+    CHECK(errors["entries"][0]["message"] == "agent log probe error");
+
+    const auto all = nlohmann::json::parse(
+        ExecuteTool(nullptr, "read_log", R"({"level":"info","query":"agent log probe"})").content);
+    CHECK(all["entries"].size() == 2);
+
+    const auto detail = nlohmann::json::parse(ExecuteTool(nullptr, "read_log", R"({"query":"second line"})").content);
+    REQUIRE(detail["entries"].size() == 1);
+    CHECK(detail["entries"][0]["message"] == "agent log detail header:\nsecond line detail");
+
+    const auto wide = ExecuteTool(nullptr, "read_log", R"({"query":"agent log wide"})");
+    const auto parsed = nlohmann::json::parse(wide.content, nullptr, false);
+    REQUIRE_FALSE(parsed.is_discarded());
+    REQUIRE(parsed["entries"].size() == 1);
+
+    const auto escape = nlohmann::json::parse(ExecuteTool(nullptr, "read_log", R"({"query":"agent log escape"})").content);
+    REQUIRE(escape["entries"].size() == 1);
+    CHECK(escape["entries"][0]["message"] == "agent log escape before after done");
+
+    const auto bytes = nlohmann::json::parse(
+        ExecuteTool(nullptr, "read_log", R"({"query":"agent log invalid"})").content, nullptr, false);
+    REQUIRE_FALSE(bytes.is_discarded());
+    REQUIRE(bytes["entries"].size() == 1);
+
+    const auto invalid = nlohmann::json::parse(ExecuteTool(nullptr, "read_log", R"({"level":"loud"})").content);
+    CHECK(invalid.contains("error"));
+}
+
+TEST_CASE("Flowgraph inspection reports the editor selection", "[agent][tools][layout]") {
+    Agent::Tools::Call call{.tool = "inspect_flowgraph"};
+    for (const auto& definition : Agent::Tools::Definitions()) {
+        if (definition.function.name == "inspect_flowgraph") {
+            call.definition = &definition;
+        }
+    }
+    REQUIRE(call.definition);
+
+    Agent::Tools::Layout layout;
+    Agent::Tools::Output output{R"({"blocks":[]})"};
+    Agent::Tools::Annotate(call, output, layout);
+    CHECK_FALSE(nlohmann::json::parse(output.content).contains("selected"));
+
+    layout.selected = {"filter", "source"};
+    Agent::Tools::Annotate(call, output, layout);
+    const auto body = nlohmann::json::parse(output.content);
+    CHECK(body["selected"] == nlohmann::json::array({"filter", "source"}));
 }

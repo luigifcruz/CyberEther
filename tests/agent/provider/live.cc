@@ -161,9 +161,9 @@ Agent::Live::ToolOutputs Outputs() {
              Agent::Tools::Output{R"({"ok":true})"}}};
 }
 
-std::vector<Json> Reply(LiveServer& server, Agent::Live& live, bool disableTools, std::size_t expected) {
+std::vector<Json> Reply(LiveServer& server, Agent::Live& live, std::size_t expected) {
     const auto before = server.size();
-    live.reply(Outputs(), disableTools);
+    live.reply(Outputs());
     REQUIRE(LiveServer::WaitFor([&] {
         return server.size() >= before + expected;
     }));
@@ -201,7 +201,7 @@ TEST_CASE("Voice sessions greet the user once after the session starts", "[agent
     CHECK(client.state.load() == Agent::Live::State::Closed);
 }
 
-TEST_CASE("Voice tool replies always end an exhausted turn with speech", "[agent][providers][live]") {
+TEST_CASE("Voice tool replies send outputs and request a response", "[agent][providers][live]") {
     LiveServer server;
     LiveClient client(server);
 
@@ -210,63 +210,15 @@ TEST_CASE("Voice tool replies always end an exhausted turn with speech", "[agent
         return !server.typed("session.commentary.append").empty();
     }));
 
-    const auto open = Reply(server, *client.live, false, 2);
-    CHECK(Types(open) == std::vector<std::string>{"response.item.create", "response.create"});
-    CHECK(open[0]["item"]["type"] == "function_call_output");
-    CHECK(open[0]["item"]["call_id"] == "call-1");
-    CHECK_FALSE(open[1].contains("response"));
-
-    const auto exhausted = Reply(server, *client.live, true, 3);
-    REQUIRE(Types(exhausted) ==
-            std::vector<std::string>{"response.item.create", "response.item.create", "response.create"});
-    CHECK(exhausted[0]["item"]["type"] == "function_call_output");
-    CHECK(exhausted[1]["item"]["type"] == "message");
-    CHECK(exhausted[1]["item"]["role"] == "user");
-    CHECK(exhausted[1]["item"]["content"][0]["text"].get<std::string>().find("Do not call any tools") !=
-          std::string::npos);
-    CHECK_FALSE(exhausted[2].contains("response"));
+    for (int round = 0; round < 3; ++round) {
+        const auto events = Reply(server, *client.live, 2);
+        REQUIRE(Types(events) == std::vector<std::string>{"response.item.create", "response.create"});
+        CHECK(events[0]["item"]["type"] == "function_call_output");
+        CHECK(events[0]["item"]["call_id"] == "call-1");
+    }
     CHECK(client.delegated().empty());
 
-    const auto stalled = Reply(server, *client.live, true, 2);
-    REQUIRE(Types(stalled) == std::vector<std::string>{"response.item.create", "session.commentary.append"});
-    CHECK(stalled[0]["item"]["type"] == "function_call_output");
-    CHECK(stalled[1]["delegation_id"].is_null());
-    CHECK(stalled[1]["content"].get<std::string>().find("tool budget") != std::string::npos);
-    CHECK(client.delegated() == std::vector<bool>{false});
-
-    server.push({{"type", "session.input_transcript.done"}});
-    REQUIRE(LiveServer::WaitFor([&] {
-        return client.inputDone.load();
-    }));
-
-    const auto renewed = Reply(server, *client.live, true, 3);
-    CHECK(Types(renewed) ==
-          std::vector<std::string>{"response.item.create", "response.item.create", "response.create"});
-
     client.live->stop();
-}
-
-TEST_CASE("Restarted voice sessions reset their exhausted tool budget state", "[agent][providers][live]") {
-    LiveServer server;
-    LiveClient client(server);
-
-    for (std::size_t session = 0; session < 2; ++session) {
-        REQUIRE(client.live->start() == Result::SUCCESS);
-        REQUIRE(LiveServer::WaitFor([&] {
-            return server.typed("session.commentary.append").size() == session + 1;
-        }));
-
-        const auto exhausted = Reply(server, *client.live, true, 3);
-        REQUIRE(Types(exhausted) ==
-                std::vector<std::string>{"response.item.create", "response.item.create", "response.create"});
-        CHECK(exhausted[1]["item"]["role"] == "user");
-        CHECK(exhausted[1]["item"]["content"][0]["text"].get<std::string>().find("Do not call any tools") !=
-              std::string::npos);
-        CHECK(client.delegated().empty());
-
-        client.live->stop();
-        CHECK(client.state.load() == Agent::Live::State::Closed);
-    }
 }
 
 #endif

@@ -145,7 +145,8 @@ struct FlowgraphEditorPresenter {
         config.onViewChange = [enqueue, flowgraphId](Sakura::NodeEditor::View view) {
             enqueue(MailSetEditorMeta{.flowgraph = flowgraphId, .meta = {view.pan.x, view.pan.y, view.zoom}});
         };
-        config.measure = agent.chat.conversation.streaming || agent.voice.phase != Agent::Session::Phase::Idle;
+        config.measure = agent.chat.conversation.streaming || agent.voice.phase != Agent::Session::Phase::Idle ||
+                         !agent.mcp.url.empty();
         config.paused = flowgraph->paused();
         config.onTogglePause = [enqueue, flowgraphId, paused = config.paused]() {
             enqueue(MailSetFlowgraphPaused{.flowgraph = flowgraphId, .paused = !paused});

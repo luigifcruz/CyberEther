@@ -69,6 +69,7 @@ struct Graph {
     std::vector<Extent2D<F32>> menus;
     std::vector<Extent2D<F32>> doubleClicks;
     std::vector<std::vector<std::string>> copies;
+    std::vector<std::vector<std::string>> selections;
     std::optional<Rect> viewport;
     std::optional<Extent2D<F32>> center;
     U64 centerReports = 0;
@@ -159,6 +160,9 @@ struct Graph {
             },
             .onCopyShortcut = [this](const std::vector<std::string>& ids) {
                 copies.push_back(ids);
+            },
+            .onSelectionChange = [this](const std::vector<std::string>& ids) {
+                selections.push_back(ids);
             },
             .onViewportGridChange = [this](Rect next) {
                 viewport = next;
@@ -2028,4 +2032,53 @@ TEST_CASE("The editor only consumes a middle release after its own middle press"
     CHECK(graph.send(MouseEventType::Click, 300.0f, 300.0f, MouseButton::Middle));
     CHECK(graph.send(MouseEventType::Release, 300.0f, 300.0f, MouseButton::Middle));
     CHECK_FALSE(graph.send(MouseEventType::Release, 300.0f, 300.0f, MouseButton::Middle));
+}
+
+TEST_CASE("Selection changes are reported once per change and follow removed nodes",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    Block& b = graph.add("b", {300.0f, 40.0f});
+    a.content.consume = false;
+    b.content.consume = false;
+    graph.step();
+    REQUIRE(graph.selections.size() == 1);
+    CHECK(graph.selections.back().empty());
+
+    graph.click(100.0f, 100.0f);
+    REQUIRE(graph.selections.size() == 2);
+    CHECK(graph.selections.back() == std::vector<std::string>{"a"});
+
+    graph.click(100.0f, 100.0f);
+    CHECK(graph.selections.size() == 2);
+
+    graph.press(360.0f, 100.0f, MouseButton::Left, 1, {.shift = true});
+    graph.release(360.0f, 100.0f);
+    REQUIRE(graph.selections.size() == 3);
+    CHECK(graph.selections.back() == std::vector<std::string>{"a", "b"});
+
+    a.present = false;
+    graph.step();
+    REQUIRE(graph.selections.size() == 4);
+    CHECK(graph.selections.back() == std::vector<std::string>{"b"});
+
+    graph.click(700.0f, 500.0f);
+    REQUIRE(graph.selections.size() == 5);
+    CHECK(graph.selections.back().empty());
+}
+
+TEST_CASE("Box selection reports nodes as the marquee covers them", "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    a.content.consume = false;
+    graph.step();
+    graph.selections.clear();
+
+    graph.press(20.0f, 20.0f, MouseButton::Left, 1, {.shift = true});
+    graph.move(200.0f, 200.0f);
+    REQUIRE_FALSE(graph.selections.empty());
+    CHECK(graph.selections.back() == std::vector<std::string>{"a"});
+
+    graph.release(200.0f, 200.0f);
+    CHECK(graph.selections.back() == std::vector<std::string>{"a"});
 }
