@@ -201,9 +201,6 @@ TEST_CASE("Colon-containing metric identities refresh and disappear independentl
 
 TEST_CASE("Metric schema changes reach the presenter with a compatible value immediately", "[core][compositor][metrics]") {
     DefaultCompositorState state;
-    DefaultCompositorCallbacks callbacks;
-    const PresenterContext context{state, callbacks};
-    FlowgraphNodePresenter presenter(context);
     MetricActions actions(state.flowgraph);
     const auto start = Clock::now();
 
@@ -216,7 +213,7 @@ TEST_CASE("Metric schema changes reach the presenter with a compatible value imm
     const auto changed = start + Clock::duration(1);
     actions.refresh(changed);
     FlowgraphNode::BlockData shown;
-    presenter.buildBlockMetrics(shown, "graph:soapy", state.flowgraph.blocks.at("graph").front().data);
+    shown.metrics = BuildFlowgraphMetrics("graph:soapy", state.flowgraph.blocks.at("graph").front().data);
     REQUIRE(shown.metrics.size() == 1);
     CHECK(Parser::Get<std::string>(shown.metrics[0].format, "type") == "progressbar");
     CHECK(shown.metrics[0].label == "Progress");
@@ -235,8 +232,7 @@ TEST_CASE("Metric schema changes reach the presenter with a compatible value imm
 
     Current(state) = Label("throughput", "returned label");
     actions.refresh(changed + MetricActions::RefreshInterval + Clock::duration(1));
-    shown.metrics.clear();
-    presenter.buildBlockMetrics(shown, "graph:soapy", state.flowgraph.blocks.at("graph").front().data);
+    shown.metrics = BuildFlowgraphMetrics("graph:soapy", state.flowgraph.blocks.at("graph").front().data);
     REQUIRE(shown.metrics.size() == 1);
     CHECK(Parser::Get<std::string>(shown.metrics[0].format, "type") == "label");
     CHECK(std::any_cast<std::string>(shown.metrics[0].value) == "returned label");

@@ -58,6 +58,9 @@ struct FlowgraphDetachedConfigPresenter {
             configs.push_back({
                 .id = key,
                 .title = MakeConfigTileTitle(blockName, blockData.title),
+                .metrics = pending
+                    ? std::vector<FlowgraphMetricConfig>{}
+                    : BuildFlowgraphMetrics(key, blockData),
                 .configFields = pending
                     ? std::vector<FlowgraphConfigFieldConfig>{}
                     : BuildFlowgraphDetachedConfigFields(enqueue,

@@ -4,6 +4,7 @@
 #include "../../model/messages.hh"
 #include "../../model/state.hh"
 #include "../../views/flowgraph/editor/config/types.hh"
+#include "../../views/flowgraph/editor/metrics/types.hh"
 
 #include <jetstream/flowgraph_view.hh>
 #include <jetstream/runtime_context.hh>
@@ -13,6 +14,25 @@
 #include <vector>
 
 namespace Jetstream {
+
+inline std::vector<FlowgraphMetricConfig> BuildFlowgraphMetrics(
+    const std::string& viewId, const Flowgraph::View::BlockData& block) {
+    std::vector<FlowgraphMetricConfig> metrics;
+    for (const auto& metric : block.metrics) {
+        if (Parser::Get<std::string>(metric.format, "visibility") == "internal") {
+            continue;
+        }
+
+        metrics.push_back({
+            .id = jst::fmt::format("{}:metric:{}", viewId, metric.name),
+            .label = metric.label,
+            .help = metric.help,
+            .format = metric.format,
+            .value = metric.value,
+        });
+    }
+    return metrics;
+}
 
 inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
     const std::string& viewId, const Flowgraph::View::BlockData& block) {

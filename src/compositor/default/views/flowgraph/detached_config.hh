@@ -4,6 +4,7 @@
 #include "jetstream/render/sakura/base.hh"
 
 #include "editor/config/stack.hh"
+#include "editor/metrics/base.hh"
 
 #include <algorithm>
 #include <memory>
@@ -18,6 +19,7 @@ struct FlowgraphDetachedConfig {
     struct Config {
         std::string id;
         std::string title;
+        std::vector<FlowgraphMetricConfig> metrics;
         std::vector<FlowgraphConfigFieldConfig> configFields;
         Sakura::Callback<void()> onClose;
     };
@@ -26,8 +28,25 @@ struct FlowgraphDetachedConfig {
         using Stack = Sakura::NodeContentStack;
 
         this->config = std::move(config);
+
+        while (metrics.size() > this->config.metrics.size()) {
+            metrics.pop_back();
+        }
+        while (metrics.size() < this->config.metrics.size()) {
+            metrics.push_back(std::make_unique<FlowgraphMetricInstance>());
+        }
+        for (U64 i = 0; i < metrics.size(); ++i) {
+            metrics[i]->update(std::move(this->config.metrics[i]));
+        }
+
         fields.update(std::move(this->config.configFields));
         std::vector<Stack::Item> items;
+        for (const auto& metric : metrics) {
+            items.push_back({.child = &metric->component()});
+        }
+        if (!metrics.empty()) {
+            items.back().trailingGap = Stack::Spacing;
+        }
         fields.appendItems(items);
 
         content.update({
@@ -57,6 +76,7 @@ struct FlowgraphDetachedConfig {
     Config config;
     Sakura::NodeContentStack content;
     Sakura::NodeFieldPanel panel;
+    std::vector<std::unique_ptr<FlowgraphMetricInstance>> metrics;
     FlowgraphConfigFieldStack fields;
 };
 
