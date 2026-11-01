@@ -648,3 +648,23 @@ TEST_CASE("Agent log tool reads recent entries by severity", "[agent][tools][log
     const auto invalid = nlohmann::json::parse(ExecuteTool(nullptr, "read_log", R"({"level":"loud"})").content);
     CHECK(invalid.contains("error"));
 }
+
+TEST_CASE("Flowgraph inspection reports the editor selection", "[agent][tools][layout]") {
+    Agent::Tools::Call call{.tool = "inspect_flowgraph"};
+    for (const auto& definition : Agent::Tools::Definitions()) {
+        if (definition.function.name == "inspect_flowgraph") {
+            call.definition = &definition;
+        }
+    }
+    REQUIRE(call.definition);
+
+    Agent::Tools::Layout layout;
+    Agent::Tools::Output output{R"({"blocks":[]})"};
+    Agent::Tools::Annotate(call, output, layout);
+    CHECK_FALSE(nlohmann::json::parse(output.content).contains("selected"));
+
+    layout.selected = {"filter", "source"};
+    Agent::Tools::Annotate(call, output, layout);
+    const auto body = nlohmann::json::parse(output.content);
+    CHECK(body["selected"] == nlohmann::json::array({"filter", "source"}));
+}

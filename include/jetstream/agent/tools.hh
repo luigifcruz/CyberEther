@@ -35,6 +35,7 @@ class JETSTREAM_API Tools {
 
         std::unordered_map<std::string, Node> nodes;
         std::optional<Viewport> viewport;
+        std::vector<std::string> selected;
     };
 
     class JETSTREAM_API Host {

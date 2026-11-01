@@ -283,11 +283,17 @@ std::vector<Entry> Toolbox::Inspect() {
             "'measured'; bounds is null while 'pending'. node omits width and height "
             "while the node uses automatic sizing. When the graph is on screen, "
             "viewport.visible gives the visible canvas rectangle in graph "
-            "coordinates.",
+            "coordinates. selected lists the blocks the user has selected in "
+            "the editor, when any.",
             R"({"type":"object","properties":{"detail":{"type":"string","enum":["summary","routing","full"]},"sink":{"type":"string","description":"For routing detail, the downstream block to trace, such as an audio or visualization sink."}},"additionalProperties":false})",
             {.needsGraph = true, .reportsLayout = true},
         }, InspectFlowgraph);
-    flowgraph.annotate = [](Json& body, const Json&, const Layout& layout) { Geometry::Viewport(body, layout); };
+    flowgraph.annotate = [](Json& body, const Json&, const Layout& layout) {
+        Geometry::Viewport(body, layout);
+        if (!layout.selected.empty() && !body.contains("error")) {
+            body["selected"] = layout.selected;
+        }
+    };
     return {
         std::move(flowgraph),
         Entry::FromJson({

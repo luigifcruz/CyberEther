@@ -944,6 +944,7 @@ struct GraphRoot : public Component {
     std::unordered_map<std::string, std::unique_ptr<NodeFrame>> frames;
     std::vector<std::string> depth;
     std::vector<std::string> selection;
+    std::optional<std::vector<std::string>> reportedSelection;
 
     Polyline grid;
     Curves links;
@@ -1085,6 +1086,15 @@ struct GraphRoot : public Component {
         }
         config = std::move(next);
         rebuildOrder();
+        reportSelection();
+    }
+
+    void reportSelection() {
+        if (!config.onSelectionChange || reportedSelection == selection) {
+            return;
+        }
+        reportedSelection = selection;
+        config.onSelectionChange(selection);
     }
 
     void rebuildOrder() {
@@ -1377,6 +1387,7 @@ struct GraphRoot : public Component {
 
         autoPan(ctx);
         updateDrags();
+        reportSelection();
 
         Context measureCtx = ctx;
         measureCtx.pixelRatio = ratio;
@@ -1744,6 +1755,7 @@ struct GraphRoot : public Component {
             ((interaction != Interaction::None || tooltipFollowing) && mousePx != previous)) {
             invalidate(Dirty::Layout);
         }
+        reportSelection();
         return handled;
     }
 

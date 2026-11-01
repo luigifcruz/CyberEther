@@ -62,6 +62,8 @@ constexpr const char* kGuidance =
     "for discovery; search_docs and read_docs for application features, "
     "flowgraph files, and workflows beyond a single block; read_log for "
     "failures that block status does not explain.\n"
+    "- When the user refers to blocks without naming them, check the "
+    "selected blocks that inspect_flowgraph reports.\n"
     "- Use returned identifiers, ports, and allowed values. Consult block "
     "documentation for units; configuration uses base values, which can differ "
     "from scaled UI displays. Clarify undocumented units rather than guessing.\n"

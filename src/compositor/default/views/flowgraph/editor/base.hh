@@ -35,6 +35,7 @@ struct FlowgraphEditor {
 
         std::unordered_map<std::string, Node> nodes;
         Rect viewport;
+        std::vector<std::string> selected;
     };
 
     struct Config {
@@ -292,6 +293,9 @@ struct FlowgraphEditor {
                 if (!selectedNodes.empty() && liveBlocks.contains(selectedNodes[0]) && this->config.onCopyBlock) {
                     this->config.onCopyBlock(selectedNodes[0]);
                 }
+            },
+            .onSelectionChange = [this](const std::vector<std::string>& selected) {
+                measured.selected = selected;
             },
             .onPasteShortcut = [this](Extent2D<F32> gridPosition) {
                 if (this->config.onPasteBlock) {
