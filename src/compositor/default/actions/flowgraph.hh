@@ -65,6 +65,7 @@ struct FlowgraphActions {
                               MailSetNodeMeta,
                               MailSetEditorMeta,
                               MailSetConfigCollapsed,
+                              MailSetMetricsCollapsed,
                               MailSurfaceInput,
                               MailResizeSurface>;
 
@@ -738,6 +739,19 @@ struct FlowgraphActions {
         ConfigMeta existing;
         flowgraph->metadata().get("config", existing, msg.block);
         existing.collapsed = msg.collapsed;
+        flowgraph->metadata().set("config", existing, msg.block);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetMetricsCollapsed& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            return Result::SUCCESS;
+        }
+
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        ConfigMeta existing;
+        flowgraph->metadata().get("config", existing, msg.block);
+        existing.tileMetricsCollapsed = msg.collapsed;
         flowgraph->metadata().set("config", existing, msg.block);
         return Result::SUCCESS;
     }

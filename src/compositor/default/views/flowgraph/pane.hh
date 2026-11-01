@@ -239,6 +239,7 @@ struct FlowgraphPane {
                 .content = &detached.component(),
                 .padding = Sakura::Dock::ContentPadding,
                 .onClose = detached.closeCallback(),
+                .actions = detached.actions(),
             });
         }
         if (this->config.documentation.has_value()) {
