@@ -8,6 +8,7 @@
 #include <initializer_list>
 #include <latch>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -45,6 +46,7 @@ struct SyntheticSpec {
     Module::Taint taint = Module::Taint::CLEAN;
     std::chrono::milliseconds computeDelay{0};
     std::function<void()> computeAction;
+    std::function<void()> captureAction;
     std::vector<Result> initializeResults;
     std::vector<Result> deinitializeResults;
     std::vector<Result> pendingComputeResults;
@@ -63,6 +65,7 @@ struct SyntheticState {
     std::unordered_map<std::string, U64> counts;
     std::unordered_map<std::string, std::vector<std::vector<F32>>> reads;
     std::vector<std::string> events;
+    std::mutex invokeMutex;
 
     void reset() {
         specs.clear();
@@ -107,6 +110,7 @@ struct SyntheticState {
     Result invoke(const std::string& operation,
                   const std::string& name,
                   const std::vector<Result>& results) {
+        std::lock_guard lock(invokeMutex);
         const std::string key = operation + ":" + name;
         events.push_back(key);
         counts[key] += 1;
@@ -265,6 +269,9 @@ struct SyntheticModuleBase : Module::Impl,
 
     Result presentCapture() override {
         const auto& spec = syntheticState().spec(name());
+        if (spec.captureAction) {
+            spec.captureAction();
+        }
         return syntheticState().invoke("capture", name(), spec.presentCaptureResults);
     }
 
@@ -932,6 +939,90 @@ TEST_CASE("Scheduler mutates and stops cleanly while paused",
 
     REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
     REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
+    REQUIRE(fixture.shutdown() == Result::SUCCESS);
+}
+
+TEST_CASE("Scheduler pause releases a compute parked for a delayed presentation",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("parked_surface").surface = true;
+
+    SchedulerFixture fixture;
+    auto surface = fixture.module("parked_surface");
+    REQUIRE(fixture.scheduler.add(surface) == Result::SUCCESS);
+
+    const auto attempt = [&] {
+        std::latch polled(1);
+        state.configure("parked_surface").pollAction = [&] {
+            polled.count_down();
+        };
+
+        std::latch captureEntered(1);
+        std::latch captureRelease(1);
+        std::atomic<bool> captureHeld{true};
+        state.configure("parked_surface").captureAction = [&] {
+            if (captureHeld.exchange(false)) {
+                captureEntered.count_down();
+                captureRelease.wait();
+            }
+        };
+
+        std::thread delayedPresenter([&] {
+            std::unordered_set<std::string> presentFailures;
+            (void)fixture.scheduler.present(presentFailures);
+        });
+        captureEntered.wait();
+
+        std::atomic<bool> requesting{true};
+        std::atomic<U64> requests{0};
+        std::thread requestingPresenter([&] {
+            std::unordered_set<std::string> presentFailures;
+            while (requesting.load()) {
+                (void)fixture.scheduler.present(presentFailures);
+                requests.fetch_add(1);
+            }
+        });
+        while (requests.load() == 0) {
+            std::this_thread::yield();
+        }
+
+        auto computed = std::async(std::launch::async, [&fixture] {
+            std::unordered_set<std::string> computeFailures;
+            return fixture.scheduler.compute(computeFailures);
+        });
+        polled.wait();
+        const bool parked = computed.wait_for(std::chrono::milliseconds(20)) == std::future_status::timeout;
+
+        const auto pauseResult = fixture.scheduler.pause();
+        const bool released = computed.wait_for(std::chrono::milliseconds(200)) == std::future_status::ready;
+
+        requesting.store(false);
+        requestingPresenter.join();
+        captureRelease.count_down();
+        delayedPresenter.join();
+        state.configure("parked_surface").captureAction = {};
+
+        CHECK(parked);
+        CHECK(pauseResult == Result::SUCCESS);
+        CHECK(computed.get() == Result::SUCCESS);
+        CHECK(fixture.scheduler.resume() == Result::SUCCESS);
+
+        return released;
+    };
+
+    bool released = false;
+    for (U64 round = 0; round < 20 && !released; ++round) {
+        released = attempt();
+    }
+
+    REQUIRE(released);
+    REQUIRE(state.count("compute", "parked_surface") == 0);
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(state.count("compute", "parked_surface") == 1);
     REQUIRE(fixture.shutdown() == Result::SUCCESS);
 }
 

@@ -4,7 +4,8 @@
 //   - Present waits at most kPresentWait for compute to reach a segment boundary, then
 //     skips the frame. It always withdraws its request before returning.
 //   - Present has priority: compute parks at segment boundaries while present wants in,
-//     and never waits for a later frame.
+//     and never waits for a later frame. Pause releases a park before the first segment,
+//     a cycle that already started keeps yielding until it completes.
 //   - Present capture copies compute data under the data lock, submit runs every
 //     frame without it and is only excluded by state modifications.
 //   - State modifications (add/remove/reload) safely halt both threads.
@@ -93,7 +94,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     std::unique_lock<std::mutex> tryExclusiveSharedLock();
     void waitForPresentToFinish(std::unique_lock<std::mutex>& lock);
     bool waitForPresentTurn(std::chrono::steady_clock::time_point deadline);
-    void yieldToPresent();
+    void yieldToPresent(bool started);
     void notifyCompute();
     void notifyPresent();
     void wakePresent();
@@ -261,7 +262,11 @@ Result SynchronousScheduler::stop() {
 }
 
 Result SynchronousScheduler::pause() {
-    pausing.store(true, std::memory_order_release);
+    {
+        std::lock_guard lock(handoffMutex);
+        pausing.store(true, std::memory_order_release);
+    }
+    handoffCond.notify_all();
 
     return Result::SUCCESS;
 }
@@ -540,13 +545,13 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         // Priority Yield: Check if present wants in before each segment.
 
         if (isPresentRequested()) {
-            yieldToPresent();
+            yieldToPresent(started);
 
             if (isStopping()) {
                 return Result::SUCCESS;
             }
 
-            if (isComputeHalted()) {
+            if (isComputeHalted() || (!started && paused())) {
                 return Result::SUCCESS;
             }
         }
@@ -1386,10 +1391,10 @@ bool SynchronousScheduler::waitForPresentTurn(const Clock::time_point deadline) 
     return !isStopping() && !isPresentHalted();
 }
 
-void SynchronousScheduler::yieldToPresent() {
+void SynchronousScheduler::yieldToPresent(const bool started) {
     std::unique_lock lock(handoffMutex);
     handoffCond.wait(lock, [&] {
-        return !isPresentRequested() || isStopping() || isComputeHalted();
+        return !isPresentRequested() || isStopping() || isComputeHalted() || (!started && paused());
     });
 }
 
