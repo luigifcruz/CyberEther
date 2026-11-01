@@ -59,6 +59,7 @@ const std::vector<Entry>& Toolbox::All() {
             Connections,
             Environment,
             Capture,
+            Docs,
         };
 
         std::vector<Entry> result;
@@ -131,6 +132,18 @@ void Tools::Annotate(const Call& call, Tools::Output& output, const Layout& layo
     }
 
     output.content = body.dump();
+}
+
+std::optional<F32> Tools::Host::width(Block::NodeSize) {
+    return std::nullopt;
+}
+
+std::optional<std::vector<Tools::Host::DocMatch>> Tools::Host::searchDocs(const std::string&, U64) {
+    return std::nullopt;
+}
+
+std::optional<Tools::Host::DocPage> Tools::Host::readDocs(const std::string&) {
+    return std::nullopt;
 }
 
 Tools::Tools(Host& host) : host(host) {}

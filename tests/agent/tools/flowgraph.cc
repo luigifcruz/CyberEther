@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -26,6 +27,24 @@ struct GraphHost : Agent::Tools::Host {
 
     Result create(const std::string&, std::shared_ptr<Flowgraph>&) override {
         return Result::ERROR;
+    }
+};
+
+struct DocsHost : GraphHost {
+    DocsHost() : GraphHost(nullptr) {}
+
+    std::optional<std::vector<DocMatch>> searchDocs(const std::string& query, U64) override {
+        if (query.empty()) {
+            return std::vector<DocMatch>{{"remote", "Remote", {}, {}, "Share a session."}};
+        }
+        return std::vector<DocMatch>{{"remote", "Remote", "Pairing", "pairing", "Scan the code."}};
+    }
+
+    std::optional<DocPage> readDocs(const std::string& slug) override {
+        if (slug != "remote") {
+            return std::nullopt;
+        }
+        return DocPage{"remote", "Remote", "Share a session.", "# Remote"};
     }
 };
 
@@ -58,6 +77,8 @@ TEST_CASE("Agent exposes the consolidated tool surface", "[agent][tools]") {
         "list_examples",
         "get_example",
         "open_example",
+        "search_docs",
+        "read_docs",
     };
 
     std::set<std::string> actual;
@@ -551,4 +572,25 @@ TEST_CASE("Full block inspection preserves numeric arrays and UTF-8 text",
     REQUIRE(graph->blockDestroy("note", false) == Result::SUCCESS);
     REQUIRE(graph->blockDestroy("taps", false) == Result::SUCCESS);
     REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Agent docs tools read through the host", "[agent][tools][docs]") {
+    GraphHost bare(nullptr);
+    const auto unavailable = nlohmann::json::parse(Agent::Tools(bare).execute(nullptr, "search_docs", "{}").content);
+    REQUIRE(unavailable.contains("error"));
+
+    DocsHost host;
+    const Agent::Tools tools(host);
+
+    const auto search = nlohmann::json::parse(tools.execute(nullptr, "search_docs", R"({"query":"pair"})").content);
+    REQUIRE(search["matches"].size() == 1);
+    CHECK(search["matches"][0]["page"] == "remote");
+    CHECK(search["matches"][0]["section"] == "Pairing");
+
+    const auto page = nlohmann::json::parse(tools.execute(nullptr, "read_docs", R"({"page":"remote"})").content);
+    CHECK(page["body"] == "# Remote");
+
+    const auto missing = nlohmann::json::parse(tools.execute(nullptr, "read_docs", R"({"page":"remot"})").content);
+    REQUIRE(missing.contains("error"));
+    CHECK(missing["error"].get<std::string>().find("remote") != std::string::npos);
 }

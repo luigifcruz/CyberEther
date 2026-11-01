@@ -67,7 +67,7 @@ struct VoiceLink {
 
         void send(const std::vector<Jetstream::I16>&) override {}
 
-        void reply(const ToolOutputs& outputs, bool) override {
+        void reply(const ToolOutputs& outputs) override {
             std::lock_guard lock(link.mutex);
             link.outputs.push_back(outputs);
             link.changed.notify_all();

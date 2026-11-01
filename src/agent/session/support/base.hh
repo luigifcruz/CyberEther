@@ -32,13 +32,9 @@ class OutputStore {
 
 class ToolRunner {
  public:
-    ToolRunner(Session::ToolExecutor execute, std::shared_ptr<OutputStore> outputs, U64 maxRounds);
+    ToolRunner(Session::ToolExecutor execute, std::shared_ptr<OutputStore> outputs);
 
-    bool advance();
-    bool exhausted() const;
-    void reset();
-    Tools::Output run(const Provider::FunctionCall& call, U64 resultLimit, bool lastRound,
-                      const Cancellation& cancel) const;
+    Tools::Output run(const Provider::FunctionCall& call, U64 resultLimit, const Cancellation& cancel) const;
 
     static std::optional<Provider::Message> Attachment(const Provider::FunctionCall& call,
                                                        const Tools::Output& result);
@@ -46,8 +42,6 @@ class ToolRunner {
  private:
     Session::ToolExecutor execute;
     std::shared_ptr<OutputStore> outputs;
-    U64 maxRounds;
-    std::atomic<U64> rounds{0};
 };
 
 class Context {

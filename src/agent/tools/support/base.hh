@@ -58,6 +58,7 @@ class Toolbox {
     static std::vector<Entry> Connections();
     static std::vector<Entry> Environment();
     static std::vector<Entry> Capture();
+    static std::vector<Entry> Docs();
     static std::vector<Entry> Text();
 };
 
