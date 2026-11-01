@@ -40,6 +40,7 @@ subprojects/*
 !subprojects/limesuite.wrap
 !subprojects/libsrtp2.wrap
 !subprojects/libzmq.wrap
+!subprojects/miniaudio.wrap
 !subprojects/naga.wrap
 !subprojects/nanobench.wrap
 !subprojects/nanobind.wrap
