@@ -18,11 +18,20 @@ class JETSTREAM_API TransferImp<DeviceType::WebGPU> : public Transfer {
     void destroy();
 
  private:
-    WGPUBuffer buffer = nullptr;
-    U64 capacity = 0;
+    static constexpr U64 MaximumPageSize = 64 * 1024 * 1024;
+    static constexpr U64 RowAlignment = 256;
+
+    struct StagingBuffer {
+        WGPUBuffer buffer = nullptr;
+        U64 capacity = 0;
+    };
+
+    std::vector<StagingBuffer> stagingBuffers;
     std::vector<U8> data;
 
-    Result ensureCapacity(const U64& required);
+    Result ensureCapacity(const U64& page,
+                          const U64& required,
+                          const U64& maximumBufferSize);
 };
 
 }  // namespace Jetstream::Render
