@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_BASE_HH
 
 #include "benchmark.hh"
+#include "config_drafts.hh"
 #include "dependencies.hh"
 #include "feedback.hh"
 #include "file_picker.hh"
@@ -39,6 +40,7 @@ class DefaultActions {
         dependencies = std::make_shared<DependencyActions>(callbacks);
         layouts = std::make_shared<LayoutActions>(state.flowgraph);
         liveMarkdown = std::make_shared<LiveMarkdownActions>(state.flowgraph);
+        configDrafts = std::make_shared<ConfigDraftActions>(state.flowgraph);
         metrics = std::make_shared<MetricActions>(state.flowgraph);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
         agent = std::make_shared<AgentActions>(state, callbacks, runtime);
@@ -95,6 +97,9 @@ class DefaultActions {
         if (Handle(*layouts, mail, result)) {
             return result;
         }
+        if (Handle(*configDrafts, mail, result)) {
+            return result;
+        }
         if (Handle(*feedback, mail, result)) {
             return result;
         }
@@ -143,6 +148,10 @@ class DefaultActions {
 
     void refreshLiveMarkdown() {
         liveMarkdown->refresh();
+    }
+
+    void refreshConfigDrafts() {
+        configDrafts->refresh();
     }
 
     void refreshMetrics() {
@@ -200,6 +209,7 @@ class DefaultActions {
     std::shared_ptr<FilePickerActions> filePicker;
     std::shared_ptr<FlowgraphActions> flowgraph;
     std::shared_ptr<LiveMarkdownActions> liveMarkdown;
+    std::shared_ptr<ConfigDraftActions> configDrafts;
     std::shared_ptr<MetricActions> metrics;
     std::shared_ptr<RemoteActions> remote;
     std::shared_ptr<SettingsActions> settings;

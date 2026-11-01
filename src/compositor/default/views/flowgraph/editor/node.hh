@@ -333,7 +333,7 @@ struct FlowgraphNode {
         const bool isBusy = Busy(block.state);
         const bool isPending = isBusy ||
                                block.state == Block::State::Incomplete;
-        const bool configHidden = block.configCollapsed || block.configDetached;
+        const bool configHidden = block.configCollapsed;
         const auto nodeState = block.state == Block::State::Errored
             ? NodeEditor::NodeState::Error
             : isBusy ? NodeEditor::NodeState::Loading
@@ -452,7 +452,7 @@ struct FlowgraphNode {
             .state = nodeState,
             .diagnostic = hasDiagnostic ? block.diagnostic : std::string(),
             .diagnosticTooltip = hasDiagnostic ? diagnosticTooltip.overlay() : Sakura::NodeOverlay{},
-            .collapsible = hasConfigFields && !block.configDetached,
+            .collapsible = hasConfigFields,
             .collapsed = block.configCollapsed,
             .onToggleCollapse = [this]() {
                 if (this->config.onConfigCollapse) {
@@ -590,7 +590,7 @@ struct FlowgraphNode {
         const auto& next = *geometry;
         const Extent2D<F32> inner = next.contentDimensions;
         std::optional<Extent2D<F32>> content;
-        if (next.onscreen && !block.configCollapsed && !block.configDetached) {
+        if (next.onscreen && !block.configCollapsed) {
             content = fieldStack.content(inner, next.minimumHeight);
         }
         config.onBounds({next.gridPosition.x, next.gridPosition.y, next.dimensions.x, next.dimensions.y},

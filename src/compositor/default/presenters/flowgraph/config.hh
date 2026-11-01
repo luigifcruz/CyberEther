@@ -84,10 +84,42 @@ inline void ApplyLiveMarkdown(std::vector<FlowgraphConfigFieldConfig>& fields,
             continue;
         }
         const auto preview = flowgraphs.liveMarkdown.find(
-            DefaultCompositorState::FlowgraphState::LiveMarkdownKey(flowgraphId, blockName, field.name));
+            DefaultCompositorState::FlowgraphState::FieldKey(flowgraphId, blockName, field.name));
         if (preview != flowgraphs.liveMarkdown.end()) {
             field.preview = preview->second;
         }
+    }
+}
+
+inline void ApplyConfigDrafts(std::vector<FlowgraphConfigFieldConfig>& fields,
+                              const Sakura::Callback<void(Mail&&)>& enqueue,
+                              const DefaultCompositorState::FlowgraphState& flowgraphs,
+                              const std::string& flowgraphId,
+                              const std::string& blockName) {
+    for (auto& field : fields) {
+        const auto type = Parser::Get<std::string>(field.format, "type");
+        if (type != "python" && type != "multiline" && type != "markdown") {
+            continue;
+        }
+        const auto draft = flowgraphs.configDrafts.find(
+            DefaultCompositorState::FlowgraphState::FieldKey(flowgraphId, blockName, field.name));
+        if (draft != flowgraphs.configDrafts.end()) {
+            std::string committed;
+            if (Parser::Deserialize(field.values, field.name, committed) == Result::SUCCESS &&
+                committed == draft->second.base) {
+                field.draft = draft->second.text;
+            }
+        }
+        field.onDraft = [enqueue, flowgraphId, blockName, name = field.name](std::optional<std::string> text,
+                                                                              std::string base) {
+            enqueue(MailSetConfigDraft{
+                .flowgraph = flowgraphId,
+                .block = blockName,
+                .field = name,
+                .base = std::move(base),
+                .text = std::move(text),
+            });
+        };
     }
 }
 
@@ -100,6 +132,7 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigField
     const Flowgraph::View::BlockData& block) {
     auto fields = BuildFlowgraphConfigFields(viewId, block);
     ApplyLiveMarkdown(fields, flowgraphs, flowgraphId, blockName);
+    ApplyConfigDrafts(fields, enqueue, flowgraphs, flowgraphId, blockName);
     for (auto& field : fields) {
         field.onApply = [enqueue, flowgraphId, blockName](Parser::Map patch,
                                                           const bool silent,

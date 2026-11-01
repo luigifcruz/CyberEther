@@ -86,6 +86,7 @@ struct FlowgraphNodePresenter {
         block.config = blockData.config;
         block.configFields = BuildFlowgraphConfigFields(nodeViewId, blockData);
         ApplyLiveMarkdown(block.configFields, context.state.flowgraph, flowgraphId, blockName);
+        ApplyConfigDrafts(block.configFields, context.callbacks.enqueueMail, context.state.flowgraph, flowgraphId, blockName);
     }
 
     void buildTiming(FlowgraphNode::BlockData& block,

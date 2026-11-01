@@ -250,7 +250,15 @@ struct DefaultCompositorState {
             std::string markdown;
         };
 
-        static std::string LiveMarkdownKey(const std::string& flowgraphId,
+        struct ConfigDraft {
+            std::string flowgraph;
+            std::string block;
+            std::string field;
+            std::string base;
+            std::string text;
+        };
+
+        static std::string FieldKey(const std::string& flowgraphId,
                                            const std::string& blockName,
                                            const std::string& fieldName) {
             return jst::fmt::format("{}:{}:{}", flowgraphId, blockName, fieldName);
@@ -261,6 +269,7 @@ struct DefaultCompositorState {
         std::unordered_set<std::string> restoredLayouts;
         std::unordered_map<std::string, std::vector<BlockSnapshot>> blocks;
         std::unordered_map<std::string, std::string> liveMarkdown;
+        std::unordered_map<std::string, ConfigDraft> configDrafts;
         std::unordered_map<std::string, Documentation> documentation;
         std::unordered_map<std::string, std::string> environment;
         std::unordered_set<std::string> closedDescriptions;

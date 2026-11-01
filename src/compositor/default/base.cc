@@ -298,6 +298,7 @@ Result DefaultCompositor::poll() {
     actions.reconcileGallery();
     actions.refreshRegistry();
     actions.refreshLiveMarkdown();
+    actions.refreshConfigDrafts();
     actions.refreshMetrics();
     actions.reconcileAgent();
     actions.reconcileTerminals();

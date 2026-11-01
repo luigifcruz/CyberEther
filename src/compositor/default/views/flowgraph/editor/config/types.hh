@@ -40,6 +40,8 @@ struct FlowgraphConfigFieldConfig {
     Sakura::Callback<void(Result, std::string)> onError;
     Sakura::Callback<void(bool, std::vector<std::string>, Sakura::Callback<void(std::string)>)> onBrowsePath;
     std::optional<std::string> preview;
+    std::optional<std::string> draft;
+    Sakura::Callback<void(std::optional<std::string>, std::string)> onDraft;
     Sakura::Callback<void(Extent2D<F32>)> onContentOverflow;
     Sakura::Callback<void(const std::string&)> onOpenUrl;
 };

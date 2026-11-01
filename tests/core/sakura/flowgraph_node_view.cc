@@ -1501,7 +1501,7 @@ TEST_CASE("Config grids reflow beside an attached surface and collapsing hands t
     }
 }
 
-TEST_CASE("Detaching the config hides its fields and chevron while keeping the editor height",
+TEST_CASE("Detaching the config keeps its fields, chevron, and editor height on the node",
           "[core][sakura][flowgraph][node-view]") {
     auto config = MakeConfig(MakeBlock("detached-config"));
     config.block.configFields.push_back(EditorField("detached-config:code"));
@@ -1512,9 +1512,9 @@ TEST_CASE("Detaching the config hides its fields and chevron while keeping the e
 
     session.config.block.configDetached = true;
     session.run();
-    CHECK_FALSE(session.collapsible);
-    CHECK(session.axes == NodeEditor::ResizeAxes::X);
-    CHECK(session.size().y < 300.0f);
+    CHECK(session.collapsible);
+    CHECK(session.axes == NodeEditor::ResizeAxes::XY);
+    CHECK(session.size().y == Catch::Approx(400.0f).margin(1.0f));
     CHECK(session.meta.height == Catch::Approx(400.0f).margin(1.0f));
 
     session.config.block.configDetached = false;

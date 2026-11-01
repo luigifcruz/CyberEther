@@ -555,6 +555,14 @@ struct MailReconfigureBlock {
     Sakura::Callback<void(Result)> onComplete;
 };
 
+struct MailSetConfigDraft {
+    std::string flowgraph;
+    std::string block;
+    std::string field;
+    std::string base;
+    std::optional<std::string> text;
+};
+
 struct MailCopyBlock {
     std::string flowgraph;
     std::string blockId;
@@ -786,6 +794,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailConnectBlock,
                           MailDisconnectBlock,
                           MailReconfigureBlock,
+                          MailSetConfigDraft,
                           MailCopyBlock,
                           MailPasteBlock,
                           MailSetNodeMeta,
