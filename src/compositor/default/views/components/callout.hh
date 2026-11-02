@@ -22,6 +22,7 @@ struct Callout : public Sakura::Div {
         std::string icon;
         Tone tone = Tone::Info;
         Sakura::Text::Font font = Sakura::Text::Font::Body;
+        F32 rounding = Sakura::Rounding::Control;
     };
 
     void update(Config config) {
@@ -48,7 +49,7 @@ struct Callout : public Sakura::Div {
         Div::update({
             .content = &row,
             .padding = Sakura::Spacing::Medium,
-            .rounding = Sakura::Rounding::Control,
+            .rounding = this->config.rounding,
             .border = true,
             .colorKey = jst::fmt::format("banner_{}_bg", key),
             .borderColorKey = jst::fmt::format("banner_{}_border", key),

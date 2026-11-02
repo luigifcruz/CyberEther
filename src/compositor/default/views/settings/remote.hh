@@ -56,6 +56,7 @@ struct RemoteSettingsView {
             .str = "Changes apply when the current stream ends.",
             .tone = Callout::Tone::Warning,
             .font = Sakura::Text::Font::Sans,
+            .rounding = Sakura::Rounding::Card,
         });
         activeTrailing.update({.lines = 4});
 
