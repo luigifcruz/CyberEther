@@ -92,6 +92,7 @@ struct RemoteSettingsView {
             .items = std::move(codecItems),
             .selected = codecIndex,
             .compact = true,
+            .track = true,
             .onSelect = [this](U64 index) {
                 if (index < RemoteCodecTypes.size() && this->config.onCodecChange) {
                     this->config.onCodecChange(RemoteCodecTypes[index]);
@@ -196,6 +197,7 @@ struct RemoteSettingsView {
             .items = std::move(transportItems),
             .selected = transportIndex,
             .compact = true,
+            .track = true,
             .onSelect = [this](U64 index) {
                 if (index < RemoteTransportTypes.size() && this->config.onTransportChange) {
                     this->config.onTransportChange(RemoteTransportTypes[index]);

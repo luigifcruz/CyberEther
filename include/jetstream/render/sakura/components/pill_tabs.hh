@@ -23,6 +23,7 @@ struct PillTabs : public Component {
         std::vector<Item> items;
         U64 selected = 0;
         bool compact = false;
+        bool track = false;
         Callback<void(U64)> onSelect;
 
         bool operator==(const Config&) const = default;

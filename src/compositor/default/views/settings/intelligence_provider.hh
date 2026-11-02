@@ -145,6 +145,7 @@ struct IntelligenceProviderView {
             .items = {{.label = ChatCompletionsLabel}, {.label = ResponsesLabel}},
             .selected = api == "responses" ? 1u : 0u,
             .compact = true,
+            .track = true,
             .onSelect = [this](U64 index) {
                 const std::string next = index == 1 ? "responses" : "chat_completions";
                 if (this->config.saving || api == next) {
@@ -180,6 +181,7 @@ struct IntelligenceProviderView {
             .items = {{.icon = ICON_LC_KEY_ROUND, .label = KeychainLabel}, {.icon = ICON_LC_VARIABLE, .label = EnvironmentLabel}},
             .selected = keySource == KeySource::Environment ? 1u : 0u,
             .compact = true,
+            .track = true,
             .onSelect = [this](U64 index) {
                 const auto next = index == 1 ? KeySource::Environment : KeySource::Keychain;
                 if (this->config.saving || keySource == next) {

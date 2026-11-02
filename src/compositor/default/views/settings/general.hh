@@ -52,6 +52,7 @@ struct GeneralSettingsView {
             .items = std::move(themeItems),
             .selected = themeIndex,
             .compact = true,
+            .track = true,
             .onSelect = [this](U64 index) {
                 if (index < this->config.themes.size() && this->config.onThemeChange) {
                     this->config.onThemeChange(this->config.themes[index]);
@@ -101,6 +102,7 @@ struct GeneralSettingsView {
             .items = std::move(rendererItems),
             .selected = rendererIndex,
             .compact = true,
+            .track = true,
             .onSelect = [this](U64 index) {
                 const auto labels = rendererLabels();
                 if (index < labels.size() && this->config.onRendererChange) {
