@@ -972,6 +972,87 @@ TEST_CASE("Markdown underlines second level headings only", "[core][sakura][mark
     CHECK(underlines("### Section\nBody.").first.empty());
 }
 
+TEST_CASE("Links inside callouts take the callout color and stay underlined", "[core][sakura][markdown]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    ctx.palette = DistinctPalette();
+    TextMarkdown markdown;
+    Host host(markdown);
+    markdown.update({.id = "callout-link", .value = "> [!NOTE]\n> See [docs](https://example.com) now.\n\nOut [here](https://example.com).",
+                     .fontSize = 15.0f});
+    host.place(ctx, {0.0f, 0.0f, 600.0f, 300.0f});
+
+    std::optional<Sakura::Label::Instance> body;
+    std::optional<Sakura::Label::Instance> inside;
+    std::optional<Sakura::Label::Instance> outside;
+    for (const auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            if (!instance.visible) {
+                continue;
+            }
+            if (instance.str.starts_with("See")) {
+                body = instance;
+            } else if (instance.str == "docs") {
+                inside = instance;
+            } else if (instance.str == "here") {
+                outside = instance;
+            }
+        }
+    }
+    REQUIRE(body.has_value());
+    REQUIRE(inside.has_value());
+    REQUIRE(outside.has_value());
+    CHECK(inside->color == body->color);
+    CHECK(inside->color != outside->color);
+
+    const auto underlined = [&](const Sakura::Label::Instance& link) {
+        for (const auto* box : Find<Sakura::Box>(markdown)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.rect.height <= 2.0f && instance.rect.y >= link.rect.y &&
+                    instance.rect.x <= link.rect.x + 1.0f && instance.rect.right() >= link.rect.x + 1.0f &&
+                    instance.rect.y <= link.rect.bottom() + 4.0f) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    CHECK(underlined(*inside));
+    CHECK(underlined(*outside));
+}
+
+TEST_CASE("Callout links keep the configured link scale", "[core][sakura][markdown]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    TextMarkdown markdown;
+    Host host(markdown);
+    TextMarkdown::Config config{.id = "callout-link-scale",
+                                .value = "> [!NOTE]\n> See [docs](https://example.com) now.\n\nOut [here](https://example.com).",
+                                .fontSize = 15.0f};
+    config.styleScales.resize(TextMarkdown::Style::Link, 0.0f);
+    config.styleScales[TextMarkdown::Style::Link - 1] = 1.5f;
+    markdown.update(config);
+    host.place(ctx, {0.0f, 0.0f, 600.0f, 300.0f});
+
+    std::optional<F32> inside;
+    std::optional<F32> outside;
+    for (const auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.str == "docs") {
+                inside = instance.fontSize;
+            } else if (instance.visible && instance.str == "here") {
+                outside = instance.fontSize;
+            }
+        }
+    }
+    REQUIRE(inside.has_value());
+    REQUIRE(outside.has_value());
+    CHECK(*inside == *outside);
+    CHECK(*inside == Catch::Approx(22.5f));
+}
+
 TEST_CASE("Markdown hides lines that are only an HTML comment", "[core][sakura][markdown]") {
     const auto ctx = MakeContext();
     TextMarkdown markdown;

@@ -425,6 +425,8 @@ void TintStyles(std::vector<StyleId>& styles, StyleId tone) {
     for (auto& style : styles) {
         if (style <= Style::BoldItalic) {
             style = Style::Callout(tone, style);
+        } else if (style == Style::Link) {
+            style = Style::Callout(tone, Style::CalloutLink);
         }
     }
 }
@@ -1862,6 +1864,10 @@ struct TextMarkdown::Impl {
         if (id >= Style::FootnoteBase && id < Style::FootnoteRef) {
             return static_cast<StyleId>(id - Style::FootnoteBase);
         }
+        if (id >= Style::CalloutBase && id < Style::SyntaxBase &&
+            (id - Style::CalloutBase) % Style::CalloutVariants == Style::CalloutLink) {
+            return Style::Link;
+        }
         return id;
     }
 
@@ -1884,7 +1890,8 @@ struct TextMarkdown::Impl {
         return config.styleFonts[id - 1];
     }
 
-    bool styleHasBackground(StyleId id) const {
+    bool styleHasBackground(StyleId style) const {
+        const StyleId id = configStyle(style);
         return id != 0 && id <= config.styleBackgroundColorKeys.size() &&
                !config.styleBackgroundColorKeys[id - 1].empty();
     }
@@ -2066,6 +2073,9 @@ struct TextMarkdown::Impl {
     std::vector<F32> gridStyleScales() const {
         auto scales = config.styleScales;
         scales.resize(Style::SyntaxBase - 1, 0.0f);
+        for (StyleId tone = 0; tone < kCalloutTones; ++tone) {
+            scales[Style::Callout(tone, Style::CalloutLink) - 1] = scales[Style::Link - 1];
+        }
         scales.resize(Style::SyntaxBase - 1 + Style::SyntaxStyles, styleScale(Style::CodeBlock));
         scales.push_back(0.0f);
         scales.resize(Style::FootnoteRef - 1, 0.0f);
@@ -2073,6 +2083,15 @@ struct TextMarkdown::Impl {
         scales.push_back(0.0f);
         scales.push_back(0.0f);
         return scales;
+    }
+
+    std::vector<std::string> gridStyleBackgroundColorKeys() const {
+        auto keys = config.styleBackgroundColorKeys;
+        keys.resize(std::max<U64>(keys.size(), Style::SyntaxBase - 1));
+        for (StyleId tone = 0; tone < kCalloutTones; ++tone) {
+            keys[Style::Callout(tone, Style::CalloutLink) - 1] = keys[Style::Link - 1];
+        }
+        return keys;
     }
 
     std::vector<std::string> gridStyleFonts() const {
@@ -2083,6 +2102,7 @@ struct TextMarkdown::Impl {
             for (StyleId emphasis = Style::Bold; emphasis <= Style::BoldItalic; ++emphasis) {
                 fonts.push_back(config.styleFonts.size() >= emphasis ? config.styleFonts[emphasis - 1] : "");
             }
+            fonts.push_back(styleFont(Style::Link));
         }
         fonts.resize(Style::SyntaxBase - 1 + Style::SyntaxStyles, styleFont(Style::CodeBlock));
         fonts.push_back(styleFont(Style::Bold));
@@ -2096,8 +2116,11 @@ struct TextMarkdown::Impl {
     }
 
     static std::vector<bool> gridStyleUnderlines() {
-        std::vector<bool> underlines(Style::Link, false);
-        underlines.back() = true;
+        std::vector<bool> underlines(Style::SyntaxBase - 1, false);
+        underlines[Style::Link - 1] = true;
+        for (StyleId tone = 0; tone < kCalloutTones; ++tone) {
+            underlines[Style::Callout(tone, Style::CalloutLink) - 1] = true;
+        }
         return underlines;
     }
 
@@ -2179,7 +2202,7 @@ struct TextMarkdown::Impl {
             .scrollbarThumbColorKey = config.scrollbarThumbColorKey,
             .styleColorKeys = gridStyleColorKeys(),
             .styleFonts = gridStyleFonts(),
-            .styleBackgroundColorKeys = config.styleBackgroundColorKeys,
+            .styleBackgroundColorKeys = gridStyleBackgroundColorKeys(),
             .styleScales = gridStyleScales(),
             .styleRaises = gridStyleRaises(),
             .styleUnderlines = gridStyleUnderlines(),
