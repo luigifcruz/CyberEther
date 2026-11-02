@@ -24,7 +24,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     Result destroy() override;
     Result reconfigure() override;
 
-    F32 getBufferHealth() const;
+    F32 getBufferFill() const;
     F64 getBufferLoss() const;
     U64 getDeviceOverflows() const;
     std::pair<F32, F32> getThroughput() const;
@@ -49,7 +49,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     Radio::StreamBuffer::Metadata publishedMetadata;
     U64 generation = 0;
 
-    Tools::Snapshot<F32> bufferHealth{0.0f};
+    Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<U64> deviceOverflows{0};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<std::optional<SoapyAbi::Range>> gainRange;

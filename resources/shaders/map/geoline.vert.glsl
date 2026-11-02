@@ -17,8 +17,10 @@ layout(location = 0) out vec2 vNormal;
 layout(location = 1) out float vDashCoord;
 
 void main() {
-    vec3 a = lonLatToSphere(inSegment.x, inSegment.y);
-    vec3 b = lonLatToSphere(inSegment.z, inSegment.w);
+    vec3 a = mapSphere(inSegment.xy);
+    vec3 b = mapSphere(inSegment.zw);
+    vec3 a0 = a;
+    vec3 b0 = b;
     if (!clipLineToHorizon(a, b, uniforms.targetNormal.xyz,
                           uniforms.targetNormal.w)) {
         gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
@@ -27,8 +29,8 @@ void main() {
         return;
     }
 
-    vec2 start = projectToNdc(a);
-    vec2 end = projectToNdc(b);
+    vec2 start = projectToNdc(clippedLocal(a, a0, inSegment.xy));
+    vec2 end = projectToNdc(clippedLocal(b, b0, inSegment.zw));
     vec2 current = mix(start, end, inQuad.x);
 
     vec2 direction = end - start;

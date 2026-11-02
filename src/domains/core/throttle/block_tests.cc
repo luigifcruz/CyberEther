@@ -34,3 +34,21 @@ TEST_CASE_METHOD(FlowgraphFixture, "Throttle block rejects zero interval",
     REQUIRE(flowgraph->blockCreate("thr_bad", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("thr_bad").state == Block::State::Errored);
 }
+
+TEST_CASE_METHOD(FlowgraphFixture, "Throttle block keeps whole and fractional millisecond intervals",
+                 "[modules][throttle][block]") {
+    Blocks::Window source;
+    REQUIRE(flowgraph->blockCreate("thr_ms_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("thr_ms_src", "window");
+
+    REQUIRE(flowgraph->blockCreate("thr_saved", "throttle", {{"intervalMs", U64{30}}}, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("thr_saved").state == Block::State::Created);
+    REQUIRE(Parser::Get<F32>(viewBlock("thr_saved").config, "intervalMs") == 30.0f);
+
+    REQUIRE(flowgraph->blockReconfigure("thr_saved", {{"intervalMs", 0.25f}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("thr_saved").state == Block::State::Created);
+    REQUIRE(Parser::Get<F32>(viewBlock("thr_saved").config, "intervalMs") == 0.25f);
+}

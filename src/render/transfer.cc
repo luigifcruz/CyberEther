@@ -76,6 +76,31 @@ bool Transfer::reserveRange(U64& used,
     return true;
 }
 
+bool Transfer::reservePageRange(std::vector<U64>& pages,
+                                const U64& size,
+                                const U64& alignment,
+                                const U64& limit,
+                                U64& page,
+                                U64& offset) {
+    if (size == 0 || size > limit || alignment == 0) {
+        return false;
+    }
+
+    if (pages.empty()) {
+        pages.push_back(0);
+    }
+
+    U64 used = pages.back();
+    if (!reserveRange(used, size, alignment, offset) || used > limit) {
+        pages.push_back(0);
+        offset = 0;
+        used = size;
+    }
+    pages.back() = used;
+    page = pages.size() - 1;
+    return true;
+}
+
 bool Transfer::calculateCapacity(const U64& required,
                                  const U64& alignment,
                                  U64& capacity) {

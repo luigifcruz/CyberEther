@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_DROPDOWN_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -21,6 +22,7 @@ struct Dropdown {
         F32 padding = 12.0f;
         Extent2D<F32> rowPadding = {12.0f, 5.0f};
         U64 visibleRows = 8;
+        std::string fontName = Typography::MonoFont;
         Callback<void(U64)> onSelect;
 
         bool operator==(const Config&) const = default;

@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
+#include <mutex>
 #include <utility>
 
 extern "C" const TSLanguage* tree_sitter_python(void);
@@ -180,6 +182,32 @@ const SyntaxGrammar& GrammarFor(Language language) {
     return grammars[static_cast<U64>(language)];
 }
 
+const TSQuery* SharedQuery(Language language) {
+    struct DeleteQuery {
+        void operator()(TSQuery* query) const {
+            ts_query_delete(query);
+        }
+    };
+    struct Entry {
+        std::once_flag once;
+        std::unique_ptr<TSQuery, DeleteQuery> query;
+    };
+    static std::array<Entry, SyntaxHighlighter::LanguageCount> entries;
+    auto& entry = entries[static_cast<U64>(language)];
+    std::call_once(entry.once, [&entry, language] {
+        const auto& grammar = GrammarFor(language);
+        U32 errorOffset = 0;
+        TSQueryError errorType = TSQueryErrorNone;
+        entry.query.reset(ts_query_new(grammar.grammar(), grammar.highlightQuery.data(),
+                                       static_cast<U32>(grammar.highlightQuery.size()), &errorOffset, &errorType));
+        if (!entry.query) {
+            JST_ERROR("[SAKURA] Failed to compile {} highlight query at byte {} (error {}).",
+                      grammar.name, errorOffset, static_cast<U32>(errorType));
+        }
+    });
+    return entry.query.get();
+}
+
 StyleId StyleForCapture(std::string_view capture) {
     if (capture == "comment") {
         return Style::Comment;
@@ -265,11 +293,6 @@ SyntaxHighlighter::~SyntaxHighlighter() {
     if (tree) {
         ts_tree_delete(tree);
     }
-    for (TSQuery* query : queries) {
-        if (query) {
-            ts_query_delete(query);
-        }
-    }
     if (parser) {
         ts_parser_delete(parser);
     }
@@ -340,20 +363,8 @@ bool SyntaxHighlighter::ensureTreeSitter(Language language) {
     if (queries[index]) {
         return true;
     }
-    if (queryFailed[index]) {
-        return false;
-    }
-    U32 errorOffset = 0;
-    TSQueryError errorType = TSQueryErrorNone;
-    queries[index] = ts_query_new(grammar.grammar(), grammar.highlightQuery.data(),
-                                  static_cast<U32>(grammar.highlightQuery.size()), &errorOffset, &errorType);
-    if (!queries[index]) {
-        queryFailed[index] = true;
-        JST_ERROR("[SAKURA] Failed to compile {} highlight query at byte {} (error {}).",
-                  grammar.name, errorOffset, static_cast<U32>(errorType));
-        return false;
-    }
-    return true;
+    queries[index] = SharedQuery(language);
+    return queries[index] != nullptr;
 }
 
 void SyntaxHighlighter::applyQuery(const TSQuery* query, std::vector<std::vector<StyleId>>& styles,

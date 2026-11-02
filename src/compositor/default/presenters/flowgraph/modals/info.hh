@@ -6,7 +6,6 @@
 #include "../../../model/messages.hh"
 #include "../../../views/flowgraph/modals/info.hh"
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -50,7 +49,7 @@ struct FlowgraphInfoModalPresenter {
             .onDescriptionChange = [enqueue, flowgraphId](const std::string& value) {
                 enqueue(MailSetFlowgraphInfo{.flowgraph = flowgraphId, .description = value});
             },
-            .onBrowse = [enqueue](const std::string& currentPath, std::function<void(std::string)> onSelect) {
+            .onBrowse = [enqueue](const std::string& currentPath, Sakura::Callback<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{
                     .path = currentPath,
                     .save = true,

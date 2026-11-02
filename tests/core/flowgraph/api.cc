@@ -418,6 +418,57 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph file APIs are covered", "[core][fl
     }
 }
 
+TEST_CASE("Flowgraph titles read from a file without importing it", "[core][flowgraph][api][file]") {
+    const TempFlowgraphFile titled("titled");
+    {
+        std::ofstream file(titled.path, std::ios::binary);
+        file << "---\nversion: 2\ntitle: 'Radio: Wideband'\nsummary: Quick look.\ngraph: []\n";
+    }
+    std::string title = "stale";
+    REQUIRE(Flowgraph::ReadTitle(Platform::PathToUtf8(titled.path), title) == Result::SUCCESS);
+    CHECK(title == "Radio: Wideband");
+
+    const TempFlowgraphFile untitled("untitled");
+    {
+        std::ofstream file(untitled.path, std::ios::binary);
+        file << "---\nversion: 2\ngraph: []\n";
+    }
+    title = "stale";
+    REQUIRE(Flowgraph::ReadTitle(Platform::PathToUtf8(untitled.path), title) == Result::SUCCESS);
+    CHECK(title.empty());
+
+    const TempFlowgraphFile missing("missing-title");
+    title = "stale";
+    CHECK(Flowgraph::ReadTitle(Platform::PathToUtf8(missing.path), title) == Result::ERROR);
+    CHECK(title.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph imports accept gallery fields at the document root",
+                 "[core][flowgraph][api][metadata]") {
+    const std::string yaml = R"(---
+version: 2
+revision: 1
+title: Gallery Graph
+summary: A short gallery summary.
+category: Basics
+accent: '#12c8d8'
+featured: true
+diagram: |-
+  gen[Gen] --> add[Add]
+  add --> plot[Plot]
+compatibility: '>=1.16.0'
+graph:
+  - name: gen1
+    module: flowgraph_test_source
+)";
+
+    const std::vector<char> blob(yaml.begin(), yaml.end());
+    REQUIRE(flowgraph->importFromBlob(blob) == Result::SUCCESS);
+    CHECK(flowgraph->title() == "Gallery Graph");
+    CHECK(flowgraph->summary() == "A short gallery summary.");
+    CHECK(flowgraph->view().size() == 1);
+}
+
 TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph blob APIs are covered", "[core][flowgraph][api][serialization]") {
     SECTION("importFromBlob rejects unsupported versions") {
         const std::string yaml = R"(---

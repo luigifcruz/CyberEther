@@ -227,7 +227,7 @@ TEST_CASE("Invalid button indices are ignored before alias handling", "[core][re
     CHECK_FALSE(feed.state.hasPending());
 }
 
-TEST_CASE("Losing focus releases held state and keeps the window inert until focus returns",
+TEST_CASE("Losing focus releases held state and passes only hover and scroll until focus returns",
           "[core][render][input_state]") {
     Feed feed;
     feed.frame({
@@ -248,7 +248,8 @@ TEST_CASE("Losing focus releases held state and keeps the window inert until foc
     CHECK_FALSE(feed.state.keyDown(KeyCode::LeftAlt));
     CHECK_FALSE(feed.state.buttons()[1]);
     CHECK_FALSE(feed.state.modifiers().alt);
-    CHECK_FALSE(feed.state.pointer().has_value());
+    REQUIRE(feed.state.pointer().has_value());
+    CHECK(*feed.state.pointer() == Extent2D<F32>{5.0f, 5.0f});
 
     for (U64 frame = 0; frame < 60; ++frame) {
         feed.frame({
@@ -258,8 +259,17 @@ TEST_CASE("Losing focus releases held state and keeps the window inert until foc
             Queue::Text{'a'},
         });
         CHECK_FALSE(feed.state.windowFocused());
-        CHECK(feed.state.events().empty());
-        CHECK_FALSE(feed.state.pointer().has_value());
+        CHECK(Only<KeyEvent>(feed.state.events()).empty());
+        CHECK(Only<TextEvent>(feed.state.events()).empty());
+        CHECK(Only<FocusEvent>(feed.state.events()).empty());
+        const auto mouse = Only<MouseEvent>(feed.state.events());
+        REQUIRE(mouse.size() == 2);
+        CHECK(mouse[0].type == MouseEventType::Move);
+        CHECK(mouse[1].type == MouseEventType::Scroll);
+        CHECK(mouse[1].position == Extent2D<F32>{20.0f + static_cast<F32>(frame), 30.0f});
+        CHECK_FALSE(feed.state.keyDown(KeyCode::A));
+        REQUIRE(feed.state.pointer().has_value());
+        CHECK(*feed.state.pointer() == Extent2D<F32>{20.0f + static_cast<F32>(frame), 30.0f});
     }
 
     feed.frame({Queue::Focus{false}, Queue::Focus{true}});
@@ -269,12 +279,58 @@ TEST_CASE("Losing focus releases held state and keeps the window inert until foc
     CHECK(regained[0].focused);
 }
 
+TEST_CASE("A wheel right after focus loss scrolls at the resting pointer without a new move",
+          "[core][render][input_state]") {
+    Feed feed;
+    feed.frame({Queue::Pointer{Extent2D<F32>{40.0f, 50.0f}}});
+    feed.frame({Queue::Focus{false}, Queue::Wheel{{0.0f, -1.0f}}});
+    CHECK_FALSE(feed.state.windowFocused());
+    const auto scrolls = Mouse(feed.state);
+    REQUIRE(scrolls.size() == 1);
+    CHECK(scrolls[0].type == MouseEventType::Scroll);
+    CHECK(scrolls[0].positioned);
+    CHECK(scrolls[0].position == Extent2D<F32>{40.0f, 50.0f});
+    CHECK(scrolls[0].scroll == Extent2D<F32>{0.0f, -1.0f});
+}
+
+TEST_CASE("A phased wheel frames after focus loss still scrolls at the stationary pointer",
+          "[core][render][input_state]") {
+    Feed feed;
+    feed.frame({Queue::Pointer{Extent2D<F32>{40.0f, 50.0f}}});
+    feed.frame({Queue::Focus{false}});
+    for (U64 frame = 0; frame < 5; ++frame) {
+        feed.frame({});
+        CHECK(Mouse(feed.state).empty());
+    }
+    feed.frame({Queue::Wheel{{0.0f, 0.0f}, false, ScrollPhase::Began, true},
+                Queue::Wheel{{0.0f, -3.0f}, false, ScrollPhase::Changed, true}});
+    CHECK_FALSE(feed.state.windowFocused());
+    const auto scrolls = Mouse(feed.state);
+    REQUIRE(scrolls.size() == 2);
+    for (const auto& scroll : scrolls) {
+        CHECK(scroll.type == MouseEventType::Scroll);
+        CHECK(scroll.positioned);
+        CHECK(scroll.position == Extent2D<F32>{40.0f, 50.0f});
+        CHECK(scroll.precise);
+    }
+    CHECK(scrolls[0].phase == ScrollPhase::Began);
+    CHECK(scrolls[1].phase == ScrollPhase::Changed);
+    CHECK(scrolls[1].scroll == Extent2D<F32>{0.0f, -3.0f});
+    REQUIRE(feed.state.pointer().has_value());
+    CHECK(*feed.state.pointer() == Extent2D<F32>{40.0f, 50.0f});
+}
+
 TEST_CASE("The click that refocuses the window lands where the pointer moved while inactive",
           "[core][render][input_state]") {
     Feed feed;
     feed.frame({Queue::Focus{false}});
     feed.frame({Queue::Pointer{Extent2D<F32>{40.0f, 50.0f}}});
-    CHECK_FALSE(feed.state.pointer().has_value());
+    REQUIRE(feed.state.pointer().has_value());
+    CHECK(*feed.state.pointer() == Extent2D<F32>{40.0f, 50.0f});
+    const auto hover = Only<MouseEvent>(feed.state.events());
+    REQUIRE(hover.size() == 1);
+    CHECK(hover[0].type == MouseEventType::Move);
+    CHECK_FALSE(feed.state.windowFocused());
 
     feed.frame({Queue::Focus{true}, Queue::Button{MouseButton::Left, true}});
     REQUIRE(feed.state.pointer().has_value());
@@ -292,7 +348,8 @@ TEST_CASE("Focus restores a cached pointer only while it is inside", "[core][ren
     Feed feed;
     feed.frame({Queue::Pointer{Extent2D<F32>{40.0f, 50.0f}}});
     feed.frame({Queue::Focus{false}});
-    CHECK_FALSE(feed.state.pointer().has_value());
+    REQUIRE(feed.state.pointer().has_value());
+    CHECK(*feed.state.pointer() == Extent2D<F32>{40.0f, 50.0f});
     if (outside) {
         feed.frame({Queue::Hover{false}});
     }
@@ -351,7 +408,7 @@ TEST_CASE("Focus loss forgets click history and click counts saturate", "[core][
     CHECK(clicks == std::numeric_limits<U8>::max());
 }
 
-TEST_CASE("Remote input engages an unfocused window while local input stays gated",
+TEST_CASE("Remote input engages an unfocused window while local buttons and keys stay gated and scroll passes",
           "[core][render][input_state]") {
     Feed feed;
     feed.frame({Queue::Focus{false}});
@@ -376,7 +433,9 @@ TEST_CASE("Remote input engages an unfocused window while local input stays gate
 
     feed.frame({Queue::Wheel{{0.0f, 1.0f}}, Queue::Button{MouseButton::Right, true}});
     CHECK(feed.state.windowFocused());
-    CHECK(feed.state.events().empty());
+    const auto localScroll = Mouse(feed.state);
+    REQUIRE(localScroll.size() == 1);
+    CHECK(localScroll[0].type == MouseEventType::Scroll);
     CHECK_FALSE(feed.state.buttons()[1]);
     CHECK_FALSE(feed.state.hasPending());
 
@@ -620,4 +679,67 @@ TEST_CASE("Releasing and pressing a held key in one batch restarts the repeat de
         }
     }
     CHECK(repeated == std::vector<U64>{14});
+}
+
+TEST_CASE("Wheel events carry their gesture phase and precision and empty wheels pass only when they mark a phase",
+          "[core][render][input_state]") {
+    Feed feed;
+    const auto events = feed.settle({
+        Queue::Pointer{Extent2D<F32>{10.0f, 10.0f}},
+        Queue::Wheel{.delta = {0.0f, 0.2f}, .phase = ScrollPhase::Changed},
+        Queue::Wheel{.delta = {0.0f, 0.0f}, .phase = ScrollPhase::Ended},
+        Queue::Wheel{.delta = {0.0f, 1.0f}},
+        Queue::Wheel{.delta = {0.0f, 0.0f}},
+        Queue::Wheel{.delta = {0.0f, 0.1f}, .phase = ScrollPhase::Momentum},
+        Queue::Wheel{.delta = {0.0f, 1.5f}, .precise = true},
+    });
+
+    std::vector<MouseEvent> wheels;
+    for (const auto& event : Only<MouseEvent>(events)) {
+        if (event.type == MouseEventType::Scroll) {
+            wheels.push_back(event);
+        }
+    }
+    REQUIRE(wheels.size() == 5);
+    CHECK(wheels[0].phase == ScrollPhase::Changed);
+    CHECK_FALSE(wheels[0].precise);
+    CHECK(wheels[1].phase == ScrollPhase::Ended);
+    CHECK(wheels[1].scroll.y == 0.0f);
+    CHECK(wheels[2].phase == ScrollPhase::None);
+    CHECK(wheels[3].phase == ScrollPhase::Momentum);
+    CHECK(wheels[3].scroll.y == 0.1f);
+    CHECK_FALSE(wheels[3].precise);
+    CHECK(wheels[4].phase == ScrollPhase::None);
+    CHECK(wheels[4].precise);
+    CHECK(wheels[4].scroll.y == 1.5f);
+}
+
+TEST_CASE("Wheel events and pointer moves share a frame in order while buttons still split frames",
+          "[core][render][input_state]") {
+    Feed feed;
+    feed.frame({Queue::Pointer{Extent2D<F32>{10.0f, 10.0f}}});
+
+    feed.frame({
+        Queue::Pointer{Extent2D<F32>{12.0f, 10.0f}},
+        Queue::Wheel{.delta = {0.0f, 0.2f}, .phase = ScrollPhase::Changed},
+        Queue::Pointer{Extent2D<F32>{14.0f, 10.0f}},
+        Queue::Wheel{.delta = {0.0f, 0.3f}, .phase = ScrollPhase::Changed},
+    });
+    const auto mouse = Only<MouseEvent>(feed.state.events());
+    REQUIRE(mouse.size() == 4);
+    CHECK(mouse[0].type == MouseEventType::Move);
+    CHECK(mouse[1].type == MouseEventType::Scroll);
+    CHECK(mouse[1].position.x == 12.0f);
+    CHECK(mouse[2].type == MouseEventType::Move);
+    CHECK(mouse[3].type == MouseEventType::Scroll);
+    CHECK(mouse[3].position.x == 14.0f);
+    CHECK_FALSE(feed.state.hasPending());
+
+    feed.frame({Queue::Button{MouseButton::Left, true}, Queue::Wheel{.delta = {0.0f, 1.0f}}});
+    CHECK(Buttons(feed.state.events()).size() == 1);
+    CHECK(feed.state.hasPending());
+    feed.frame({});
+    const auto later = Only<MouseEvent>(feed.state.events());
+    REQUIRE(later.size() == 1);
+    CHECK(later[0].type == MouseEventType::Scroll);
 }

@@ -20,6 +20,7 @@ struct Label : public Component {
         ColorRGBA<F32> color = {1.0f, 1.0f, 1.0f, 1.0f};
         F32 fontSize = Typography::FontSize;
         Extent2D<I32> alignment = {0, 0};
+        F32 rotation = 0.0f;
 
         bool operator==(const Instance&) const = default;
     };
@@ -27,8 +28,11 @@ struct Label : public Component {
     struct Config {
         std::vector<Instance> instances;
         std::optional<Rect> clip;
-        std::string fontName = "default_mono";
+        std::string fontName = Typography::MonoFont;
         F32 sharpness = 0.45f;
+        F32 weight = 0.0f;
+        F32 emboss = 0.0f;
+        F32 embossBackdrop = 0.0f;
         U64 maxCharacters = 128;
         U64 capacity = 0;
 

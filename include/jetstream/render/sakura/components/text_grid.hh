@@ -35,20 +35,34 @@ struct TextGrid : public Component {
         F32 height = 0.0f;
     };
 
+    struct RegionMetrics {
+        F32 scrollX = 0.0f;
+        F32 maxScrollX = 0.0f;
+    };
+
     struct Metrics {
         F32 contentHeight = 0.0f;
         F32 contentWidth = 0.0f;
         F32 scrollX = 0.0f;
         F32 scrollY = 0.0f;
+        Extent2D<F32> overscroll = {0.0f, 0.0f};
         F32 scrollbarGutter = 0.0f;
         Padding padding;
         std::vector<LineMetrics> sourceLines;
+        std::vector<RegionMetrics> regions;
     };
 
     enum class RowMode : U8 {
         Next,
         Same,
         Below,
+    };
+
+    struct ScrollRegion {
+        U64 first = 0;
+        U64 last = 0;
+
+        bool operator==(const ScrollRegion&) const = default;
     };
 
     struct WidthLayout {
@@ -67,7 +81,7 @@ struct TextGrid : public Component {
         F32 fontSize = Typography::FontSize;
         F32 fontScale = 1.0f;
         F32 lineHeight = Typography::CodeLineHeight;
-        std::string fontName = "default_mono";
+        std::string fontName = Typography::MonoFont;
         bool monospace = true;
         bool lineNumbers = false;
         bool showActiveLine = true;
@@ -86,6 +100,7 @@ struct TextGrid : public Component {
         std::vector<F32> lineWrapWidth;
         std::vector<F32> lineRightInset;
         F32 contentMinWidth = 0.0f;
+        std::vector<ScrollRegion> scrollRegions;
         U64 visibleLineCapacity = 64;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";
@@ -101,6 +116,8 @@ struct TextGrid : public Component {
         std::vector<std::string> styleFonts;
         std::vector<std::string> styleBackgroundColorKeys;
         std::vector<F32> styleScales;
+        std::vector<F32> styleRaises;
+        std::vector<bool> styleUnderlines;
         std::string iconFont = Typography::IconFont;
         U64 maxLineSegments = 64;
         U64 styleRevision = 0;
@@ -144,6 +161,8 @@ struct TextGrid : public Component {
     void blur();
     void revert();
     void moveCursorRows(I64 delta, bool extendSelection = false);
+    void scrollToLine(U64 line, U64 column = 0);
+    F32 positionTop(Position position) const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

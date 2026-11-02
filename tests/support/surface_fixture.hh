@@ -24,15 +24,15 @@ inline Jetstream::Result PresentFrame(Jetstream::Scheduler::Context& presenter) 
 }
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
-// Describes render resources without creating a device. Attachments stay in the
-// bind queue because the window never begins a frame.
+// Builds offscreen Vulkan resources without a native window or a render thread.
 class SurfaceTestWindow final : public Jetstream::Render::Window {
  public:
     SurfaceTestWindow() : Window(Config{}) {
         Jetstream::Render::Components::Font::Config font;
         font.data = jbmm_compressed_data;
         font.size = 32.0f;
-        addFont("default_mono", std::make_shared<Jetstream::Render::Components::Font>(font));
+        REQUIRE(addFont("default_mono", std::make_shared<Jetstream::Render::Components::Font>(font)) ==
+                Jetstream::Result::SUCCESS);
     }
 
     std::string info() const override { return "SurfaceTestWindow"; }

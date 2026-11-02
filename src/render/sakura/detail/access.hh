@@ -6,6 +6,10 @@
 namespace Jetstream::Sakura {
 
 struct Access {
+    static Rect frame(const Component& component) {
+        return component.frame();
+    }
+
     static void layout(Component& root, const Context& ctx, Rect viewport) {
         root.layoutRoot(ctx, viewport);
     }
@@ -58,6 +62,15 @@ struct Access {
                 invalidateSubtree(*child);
             }
         }
+    }
+
+    static bool within(const Component& component, const void* ancestor) {
+        for (const Component* node = &component; node; node = node->impl->parent) {
+            if (node == ancestor) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static bool reachable(const Component& component) {

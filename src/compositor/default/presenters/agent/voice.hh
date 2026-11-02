@@ -2,52 +2,67 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_AGENT_VOICE_HH
 
 #include "../context.hh"
-#include "../../views/agent/voice.hh"
+
+#include "../../model/messages.hh"
+#include "../../views/titlebar.hh"
 
 #include <algorithm>
+#include <cmath>
+#include <optional>
 
 namespace Jetstream {
 
-inline Sakura::Voice::Phase VoicePhase(Agent::Session::Phase phase) {
-    using Phase = Sakura::Voice::Phase;
-    switch (phase) {
-        case Agent::Session::Phase::Connecting:
-            return Phase::Connecting;
-        case Agent::Session::Phase::Listening:
-            return Phase::Listening;
-        case Agent::Session::Phase::Delegating:
-            return Phase::Busy;
-        case Agent::Session::Phase::Idle:
-            break;
-    }
-    return Phase::Idle;
-}
-
 struct AgentVoicePresenter {
+    static constexpr F32 QuietDecibels = -54.0f;
+    static constexpr F32 LoudDecibels = -14.0f;
+
     const PresenterContext& context;
 
-    AgentVoiceView::Config build() const {
-        const auto& agent = context.state.agent;
-        const auto enqueue = context.callbacks.enqueueMail;
-        AgentVoiceView::Config config;
-        config.visible = agent.ui.voiceVisible;
-        if (!config.visible) {
-            return config;
-        }
+    explicit AgentVoicePresenter(const PresenterContext& context) : context(context) {}
 
+    static F32 Loudness(F32 rms) {
+        if (rms <= 0.0f) {
+            return 0.0f;
+        }
+        const F32 decibels = 20.0f * std::log10(rms);
+        return std::clamp((decibels - QuietDecibels) / (LoudDecibels - QuietDecibels), 0.0f, 1.0f);
+    }
+
+    static TitlebarView::VoiceIndicator::Phase IndicatorPhase(Agent::Session::Phase phase) {
+        using Phase = TitlebarView::VoiceIndicator::Phase;
+        switch (phase) {
+            case Agent::Session::Phase::Connecting:
+                return Phase::Connecting;
+            case Agent::Session::Phase::Listening:
+                return Phase::Listening;
+            case Agent::Session::Phase::Delegating:
+                return Phase::Busy;
+            case Agent::Session::Phase::Idle:
+                break;
+        }
+        return Phase::Idle;
+    }
+
+    std::optional<TitlebarView::VoiceIndicator> build() const {
+        const auto& agent = context.state.agent;
+        if (!agent.ui.voiceVisible) {
+            return std::nullopt;
+        }
+        const auto enqueue = context.callbacks.enqueueMail;
         const auto& voice = agent.voice;
-        auto& view = config.voice;
-        view.phase = VoicePhase(voice.phase);
-        view.level = std::clamp(std::max(voice.output * 3.0f, voice.input * 2.0f), 0.0f, 1.0f);
-        view.onDismiss = [enqueue]() {
-            enqueue(MailSetAgentVoiceVisible{.value = false});
+        TitlebarView::VoiceIndicator indicator{
+            .phase = IndicatorPhase(voice.phase),
+            .level = std::max(Loudness(voice.input), Loudness(voice.output)),
+            .onStop = [enqueue]() {
+                enqueue(MailSetAgentVoiceVisible{.value = false});
+            },
         };
-        if (view.phase == Sakura::Voice::Phase::Idle) {
-            view.onStart = [enqueue]() {
+        if (indicator.phase == TitlebarView::VoiceIndicator::Phase::Idle) {
+            indicator.onStart = [enqueue]() {
                 enqueue(MailStartAgentVoice{});
             };
         }
-        return config;
+        return indicator;
     }
 };
 

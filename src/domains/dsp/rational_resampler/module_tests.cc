@@ -122,8 +122,9 @@ void RequireStreaming(const Modules::RationalResampler& config, const U64 sample
             }
         }
         std::unordered_set<std::string> skipped;
+        std::unordered_set<std::string> stalled;
         std::unordered_set<std::string> failed;
-        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
         REQUIRE(failed.empty());
         const U64 ticks = (frame + 1) * batches * samples * config.interpolation;
         const U64 available = (ticks + config.decimation - 1) / config.decimation;
@@ -244,11 +245,12 @@ TEST_CASE("Rational Resampler - Chains before sample rate is published",
     REQUIRE(downstreamRuntime.create({{"test", downstream}}) == Result::SUCCESS);
     const auto computeChain = [&]() {
         std::unordered_set<std::string> skipped;
+        std::unordered_set<std::string> stalled;
         std::unordered_set<std::string> failed;
-        REQUIRE(upstreamRuntime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(upstreamRuntime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
         REQUIRE(skipped.empty());
         REQUIRE(failed.empty());
-        REQUIRE(downstreamRuntime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(downstreamRuntime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
         REQUIRE(skipped.empty());
         REQUIRE(failed.empty());
     };

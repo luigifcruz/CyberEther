@@ -1,0 +1,9 @@
+[wrap-file]
+directory = miniaudio-0.11.26
+source_url = https://codeload.github.com/mackron/miniaudio/tar.gz/refs/tags/0.11.26
+source_filename = miniaudio-0.11.26.tar.gz
+source_hash = 838ba55a21c9142adf7b76bdc4351e5cd8b7ae128f46b25ec25f94ae9969c600
+patch_directory = miniaudio
+
+[provide]
+miniaudio = miniaudio_dep

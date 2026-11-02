@@ -10,10 +10,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <utility>
 
 namespace Jetstream::Sakura {
+
+namespace {
+
+constexpr F64 kColorFadeSeconds = 0.25;
+
+}  // namespace
 
 struct NodeProgressBar::Impl {
     Config config;
@@ -21,6 +28,26 @@ struct NodeProgressBar::Impl {
     Box fill;
     Label overlay;
     TextMetrics metrics;
+    std::string fadeKey;
+    ColorRGBA<F32> fadeFrom;
+    F64 fadeStart = -std::numeric_limits<F64>::infinity();
+
+    ColorRGBA<F32> blend(const ColorRGBA<F32>& target, F64 now) const {
+        const F32 t = static_cast<F32>(std::clamp((now - fadeStart) / kColorFadeSeconds, 0.0, 1.0));
+        return t >= 1.0f ? target : MixColor(fadeFrom, target, Smoothstep(t));
+    }
+
+    ColorRGBA<F32> fillColor(const Context& ctx, bool& fading) {
+        if (fadeKey != config.colorKey) {
+            if (!fadeKey.empty()) {
+                fadeFrom = blend(ctx.color(fadeKey), ctx.time);
+                fadeStart = ctx.time;
+            }
+            fadeKey = config.colorKey;
+        }
+        fading = ctx.time - fadeStart < kColorFadeSeconds;
+        return blend(ctx.color(config.colorKey), ctx.time);
+    }
 };
 
 NodeProgressBar::NodeProgressBar() {
@@ -60,9 +87,14 @@ void NodeProgressBar::layout(const Context& ctx) {
     const F32 fillEnd = fraction <= 0.0f ? bounds.x
                       : fraction >= 1.0f ? bounds.right()
                       : std::clamp(std::round(bounds.x + bounds.width * fraction), bounds.x, bounds.right());
+    bool fading = false;
+    const auto fillColor = impl->fillColor(ctx, fading);
+    if (fading) {
+        requestFrame();
+    }
     impl->fill.update({
         .instances = {{.rect = Snap(bounds), .visible = !bounds.empty() && fillEnd > bounds.x,
-                       .backgroundColor = ctx.color(config.colorKey)}},
+                       .backgroundColor = fillColor}},
         .clip = Intersect(bounds, {bounds.x, bounds.y, std::max(0.0f, fillEnd - bounds.x), bounds.height}),
         .cornerRadius = rounding,
     });

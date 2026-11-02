@@ -23,6 +23,7 @@ struct Backend {
 
     virtual void* rawHandle() = 0;
     virtual const void* rawHandle() const = 0;
+    virtual const void* hostAddress() const = 0;
 
     virtual bool isBorrowed() const = 0;
     virtual Location location() const = 0;

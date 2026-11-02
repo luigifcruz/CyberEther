@@ -50,8 +50,14 @@ struct WaterfallCameraMember {
     friend Type InputMember(WaterfallCameraMember);
 };
 
+struct WaterfallHomeMember {
+    using Type = bool Modules::SignalViewWaterfall3D::*;
+    friend Type InputMember(WaterfallHomeMember);
+};
+
 template struct InputMemberAccess<WaterfallInputMember, &Modules::SignalViewWaterfall3D::processInputEvents>;
 template struct InputMemberAccess<WaterfallCameraMember, &Modules::SignalViewWaterfall3D::cameraGoal>;
+template struct InputMemberAccess<WaterfallHomeMember, &Modules::SignalViewWaterfall3D::cameraHome>;
 
 struct Feed {
     SakuraTest::FakeWindow window;
@@ -290,7 +296,7 @@ TEST_CASE("The input bridge samples a frame once however often it is asked",
     CHECK(frame.events.empty());
 }
 
-TEST_CASE("The input bridge reports focus changes and stays inert while unfocused",
+TEST_CASE("The input bridge reports focus changes and samples only hover while unfocused",
           "[core][sakura][input][bridge]") {
     Feed feed;
     Sakura::InputFrame frame;
@@ -308,7 +314,8 @@ TEST_CASE("The input bridge reports focus changes and stays inert while unfocuse
     Sakura::Private::SampleInput(frame, feed.state);
     CHECK_FALSE(frame.windowFocused);
     CHECK_FALSE(frame.buttons[0]);
-    CHECK_FALSE(frame.pointer.has_value());
+    REQUIRE(frame.pointer.has_value());
+    CHECK(*frame.pointer == Extent2D<F32>{10.0f, 10.0f});
     CHECK_FALSE(frame.modifiers.shift);
     const auto lost = Only<FocusEvent>(frame.events);
     REQUIRE(lost.size() == 1);
@@ -317,8 +324,13 @@ TEST_CASE("The input bridge reports focus changes and stays inert while unfocuse
     feed.frame({Queue::Pointer{Extent2D<F32>{20.0f, 20.0f}}, Queue::Button{MouseButton::Left, true}});
     Sakura::Private::SampleInput(frame, feed.state);
     CHECK_FALSE(frame.windowFocused);
-    CHECK_FALSE(frame.pointer.has_value());
-    CHECK(frame.events.empty());
+    REQUIRE(frame.pointer.has_value());
+    CHECK(*frame.pointer == Extent2D<F32>{20.0f, 20.0f});
+    CHECK_FALSE(frame.buttons[0]);
+    const auto hover = Only<MouseEvent>(frame.events);
+    REQUIRE(frame.events.size() == 1);
+    REQUIRE(hover.size() == 1);
+    CHECK(hover[0].type == MouseEventType::Move);
 
     feed.frame({Queue::Focus{true}});
     Sakura::Private::SampleInput(frame, feed.state);
@@ -394,7 +406,7 @@ TEST_CASE("All cancellation boundaries balance three buttons and keys without un
     const auto cancelled = router.route(frame, rect);
     CHECK_FALSE(cancelled.active);
     CHECK_FALSE(cancelled.middle);
-    CHECK_FALSE(cancelled.hovered);
+    CHECK(cancelled.hovered == (boundary == 0 || boundary == 6));
     const auto keys = Only<KeyEvent>(cancelled.events);
     REQUIRE(keys.size() == 1);
     CHECK(keys[0].type == KeyEventType::Release);
@@ -414,7 +426,11 @@ TEST_CASE("All cancellation boundaries balance three buttons and keys without un
                     MouseEvent{.type = MouseEventType::Scroll, .position = {25, 25}, .scroll = {0, 1}},
                     KeyEvent{KeyEventType::Press, KeyCode::A, {}}, TextEvent{U'x', {}}};
     const auto unfocused = router.route(frame, {0, 0, 100, 100});
-    CHECK(unfocused.events.empty());
+    const auto passive = Only<MouseEvent>(unfocused.events);
+    REQUIRE(unfocused.events.size() == 1);
+    REQUIRE(passive.size() == 1);
+    CHECK(passive[0].type == MouseEventType::Scroll);
+    CHECK(unfocused.hovered);
     CHECK_FALSE(unfocused.active);
 }
 
@@ -500,6 +516,26 @@ TEST_CASE("Cancelled releases leave frame zoom and the waterfall camera unchange
                             layout, {100, 100}, 1.0f, true, commit));
     CHECK_FALSE(splitter.dragging);
     CHECK_FALSE(commit);
+}
+
+TEST_CASE("Zero delta gesture phases leave the waterfall camera at home",
+          "[core][sakura][surface][bridge]") {
+    Modules::SignalViewWaterfall3D waterfall;
+    auto& camera = waterfall.*InputMember(WaterfallCameraMember{});
+    const bool& home = waterfall.*InputMember(WaterfallHomeMember{});
+    const auto before = camera;
+    const auto process = InputMember(WaterfallInputMember{});
+    REQUIRE(home);
+    for (const auto phase : {ScrollPhase::Began, ScrollPhase::Ended, ScrollPhase::MomentumEnded}) {
+        (waterfall.*process)({MouseEvent{.type = MouseEventType::Scroll, .position = {0.5f, 0.5f}, .phase = phase}});
+    }
+    CHECK(home);
+    CHECK(camera.distance == before.distance);
+
+    (waterfall.*process)({MouseEvent{.type = MouseEventType::Scroll, .position = {0.5f, 0.5f}, .scroll = {0.0f, 1.0f},
+                                    .phase = ScrollPhase::Changed}});
+    CHECK_FALSE(home);
+    CHECK(camera.distance != before.distance);
 }
 
 TEST_CASE("SignalView marker clearing followed by a cancelled left release preserves the clear",

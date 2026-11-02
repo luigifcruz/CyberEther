@@ -10,6 +10,11 @@
 #include "jetstream/viewport/capture/vulkan.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+#include "jetstream/viewport/adapters/metal.hh"
+#include "jetstream/viewport/capture/metal.hh"
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <condition_variable>
@@ -95,12 +100,27 @@ std::vector<std::string> Instance::Remote::waitlist() const {
     return impl->waitlist_;
 }
 
-Result Instance::Remote::approveClient(const std::string& code) {
-    return impl->approveClient(code);
+Result Instance::Remote::approveClient(const std::string& sessionId) {
+    return impl->approveClient(sessionId);
+}
+
+Result Instance::Remote::removeClient(const std::string& sessionId) {
+    return impl->removeClient(sessionId);
 }
 
 bool Instance::Remote::Impl::supported() const {
-    return this->viewportDevice == DeviceType::Vulkan;
+    switch (this->viewportDevice) {
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        case DeviceType::Vulkan:
+            return true;
+#endif
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+        case DeviceType::Metal:
+            return true;
+#endif
+        default:
+            return false;
+    }
 }
 
 Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
@@ -130,6 +150,15 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
     }
 
     // Get viewport size
+    this->size = {};
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if (this->viewportDevice == DeviceType::Metal) {
+        auto* metalAdapter = dynamic_cast<Viewport::Adapter<DeviceType::Metal>*>(this->viewport);
+        if (metalAdapter) {
+            this->size = metalAdapter->getSwapchainExtent();
+        }
+    }
+#endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     if (this->viewportDevice == DeviceType::Vulkan) {
         auto* vulkanAdapter = dynamic_cast<Viewport::Adapter<DeviceType::Vulkan>*>(this->viewport);
@@ -154,18 +183,23 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
     }
 
     // Create frame capture
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if (this->viewportDevice == DeviceType::Metal) {
+        this->frameCapture = std::make_unique<Viewport::FrameCaptureMetal>();
+    }
+#endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     if (this->viewportDevice == DeviceType::Vulkan) {
         this->frameCapture = std::make_unique<Viewport::FrameCaptureVulkan>();
-        if (this->frameCapture->create(this->viewport, inputMemoryDevice_) != Result::SUCCESS) {
-            this->rollbackCreate();
-            return Result::ERROR;
-        }
     }
 #endif
 
     if (!this->frameCapture) {
         JST_ERROR("[REMOTE] No frame capture available for device type.");
+        this->rollbackCreate();
+        return Result::ERROR;
+    }
+    if (this->frameCapture->create(this->viewport, inputMemoryDevice_) != Result::SUCCESS) {
         this->rollbackCreate();
         return Result::ERROR;
     }
@@ -313,41 +347,58 @@ Result Instance::Remote::Impl::processInput() {
     return Result::SUCCESS;
 }
 
-Result Instance::Remote::Impl::approveClient(const std::string& code) {
+Result Instance::Remote::Impl::approveClient(const std::string& sessionId) {
     if (!this->started_) {
         JST_ERROR("[REMOTE] Can't approve client when session is not started.");
         return Result::ERROR;
     }
 
-    auto to_lower = [](std::string_view s) {
-        std::string out(s);
-        std::transform(out.begin(), out.end(), out.begin(),
-                       [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
-        return out;
-    };
-
-    std::vector<std::string> waitlist;
+    bool waiting = false;
     {
         std::lock_guard<std::mutex> lock(remoteStateMutex);
-        waitlist = waitlist_;
+        waiting = !sessionId.empty() && std::ranges::find(waitlist_, sessionId) != waitlist_.end();
     }
-    for (const auto& sessionId : waitlist) {
-        JST_DEBUG("[REMOTE] Candidate session: {}", sessionId);
-
-        if (sessionId.ends_with(to_lower(code))) {
-            JST_INFO("[REMOTE] Client authorization code '{}' approved.", code);
-
-            if (!sendSignallerMessage({{"type", "approveSession"}, {"sessionId", sessionId}})) {
-                JST_ERROR("[REMOTE] Failed to send client approval.");
-                return Result::ERROR;
-            }
-
-            return Result::SUCCESS;
-        }
+    if (!waiting) {
+        JST_ERROR("[REMOTE] Client session '{}' not found.", sessionId);
+        return Result::ERROR;
     }
 
-    JST_ERROR("[REMOTE] Client authorization code '{}' not found.", code);
-    return Result::ERROR;
+    if (!sendSignallerMessage({{"type", "approveSession"}, {"sessionId", sessionId}})) {
+        JST_ERROR("[REMOTE] Failed to send client approval.");
+        return Result::ERROR;
+    }
+
+    JST_INFO("[REMOTE] Client session '{}' approved.", sessionId);
+    return Result::SUCCESS;
+}
+
+Result Instance::Remote::Impl::removeClient(const std::string& sessionId) {
+    if (!this->started_) {
+        JST_ERROR("[REMOTE] Can't remove client when session is not started.");
+        return Result::ERROR;
+    }
+
+    bool known = false;
+    {
+        std::lock_guard<std::mutex> lock(remoteStateMutex);
+        known = !sessionId.empty() &&
+                (std::ranges::find(waitlist_, sessionId) != waitlist_.end() ||
+                 std::ranges::any_of(clients_, [&](const auto& client) {
+                     return client.sessionId == sessionId;
+                 }));
+    }
+    if (!known) {
+        JST_ERROR("[REMOTE] Client session '{}' not found.", sessionId);
+        return Result::ERROR;
+    }
+
+    if (!sendSignallerMessage({{"type", "endSession"}, {"sessionId", sessionId}})) {
+        JST_ERROR("[REMOTE] Failed to remove client.");
+        return Result::ERROR;
+    }
+
+    JST_INFO("[REMOTE] Client session '{}' removed.", sessionId);
+    return Result::SUCCESS;
 }
 
 //

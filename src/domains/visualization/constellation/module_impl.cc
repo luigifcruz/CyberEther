@@ -293,8 +293,9 @@ Result ConstellationImpl::updateAxisState() {
         return jst::fmt::format("{:.2f}", position / zoom);
     };
 
-    axis->setShowFrameTicks(interaction.placement != SurfacePlacementType::Attached);
-
+    JST_CHECK(axis->setMinorTicks(interaction.placement == SurfacePlacementType::Attached
+        ? Render::Components::Axis::AttachedMinorTicks
+        : Render::Components::Axis::DetachedMinorTicks));
     JST_CHECK(axis->updateTickFormatters(formatter, formatter));
 
     const auto& vs = interaction.viewSize;

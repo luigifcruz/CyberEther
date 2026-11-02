@@ -3,6 +3,7 @@
 #include "../../model/callbacks.hh"
 #include "../../model/meta.hh"
 #include "../../model/state.hh"
+#include "../docs.hh"
 #include "jetstream/agent/tools.hh"
 #include "jetstream/instance.hh"
 
@@ -169,6 +170,36 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
         return DefaultNodeWidth(size);
     }
 
+    std::optional<std::vector<DocMatch>> searchDocs(const std::string& query, U64 limit) override {
+        const auto& docs = Docs::Bundled();
+        const auto& pages = docs.pages();
+
+        std::vector<DocMatch> matches;
+        if (query.find_first_not_of(" \t\n") == std::string::npos) {
+            for (const auto& page : pages) {
+                matches.push_back({page.slug, page.title, {}, {}, page.description});
+            }
+            return matches;
+        }
+
+        for (const auto& hit : docs.search(query, limit)) {
+            const auto& page = pages.at(hit.page);
+            matches.push_back({page.slug, page.title, hit.heading, hit.anchor, hit.snippet});
+        }
+        return matches;
+    }
+
+    std::optional<DocPage> readDocs(const std::string& slug) override {
+        const auto& docs = Docs::Bundled();
+        const auto index = docs.find(slug);
+        if (!index) {
+            return std::nullopt;
+        }
+
+        const auto& page = docs.pages().at(*index);
+        return DocPage{page.slug, page.title, page.description, page.body};
+    }
+
     void failFocus(const std::string& name) {
         std::lock_guard lock(mutex);
         failedFocus.push_back(name);
@@ -293,15 +324,18 @@ void AgentExecutor::shutdown() {
 
 Agent::Session::ToolExecutor AgentExecutor::bind() {
     auto binding = std::make_shared<Binding>();
-    if (state.interface.focusedFlowgraph) {
-        const auto found = state.flowgraph.items.find(*state.interface.focusedFlowgraph);
-        if (found != state.flowgraph.items.end()) {
-            binding->graph = found->second;
-        }
+    if (const auto active = state.activeFlowgraph()) {
+        binding->graph = state.flowgraph.items.at(*active);
     }
 
     return [this, binding](const auto& name, const auto& args, const auto& cancelled) {
         return execute(name, args, cancelled, binding);
+    };
+}
+
+Agent::Session::ToolExecutor AgentExecutor::focused() {
+    return [this](const auto& name, const auto& args, const auto& cancelled) {
+        return execute(name, args, cancelled, nullptr);
     };
 }
 
@@ -470,10 +504,11 @@ void AgentExecutor::dispatch() {
     }
 
     shared->graphs = state.flowgraph.items;
-    if (state.interface.focusedFlowgraph.has_value()) {
-        const auto it = state.flowgraph.items.find(*state.interface.focusedFlowgraph);
+    for (const auto& focus : {state.interface.pendingFocusedFlowgraph, state.activeFlowgraph()}) {
+        const auto it = focus ? state.flowgraph.items.find(*focus) : state.flowgraph.items.end();
         if (it != state.flowgraph.items.end()) {
             shared->focused = it->second;
+            break;
         }
     }
 

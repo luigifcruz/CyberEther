@@ -1,5 +1,3 @@
-#include <chrono>
-
 #include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
@@ -23,13 +21,7 @@ Result SdrSweepImplNativeCpu::hasPendingCompute() {
         return Result::ERROR;
     }
 
-    std::unique_lock lock(slotMutex);
-    slotReady.wait_for(lock, std::chrono::milliseconds(100), [&] {
-        return slotFresh || errored;
-    });
-    if (errored) {
-        return Result::ERROR;
-    }
+    std::lock_guard lock(slotMutex);
     expireFrame(Clock::now());
     return slotFresh ? Result::SUCCESS : Result::TIMEOUT;
 }

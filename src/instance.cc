@@ -1,4 +1,5 @@
 #include "jetstream/instance.hh"
+#include "jetstream/detail/scheduler_impl.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
@@ -15,7 +16,8 @@
 #include "resources/fonts/compressed_sgr.hh"
 #include "resources/fonts/compressed_sgsb.hh"
 #include "resources/fonts/compressed_inter.hh"
-#include "resources/fonts/compressed_fa.hh"
+#include "resources/fonts/compressed_fa_node.hh"
+#include "resources/fonts/compressed_lucide.hh"
 
 #include <unordered_map>
 #include <chrono>
@@ -117,7 +119,7 @@ Result Instance::create(const Config& config) {
         };
 #endif  // JETSTREAM_VIEWPORT_GLFW_AVAILABLE
 
-#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+#if defined(JETSTREAM_RENDER_VULKAN_AVAILABLE) || defined(JETSTREAM_RENDER_METAL_AVAILABLE)
         auto buildHeadless = [&]<DeviceType D>() -> Result {
             JST_CHECK(Backend::Initialize<D>(backendConfig));
 
@@ -138,12 +140,18 @@ Result Instance::create(const Config& config) {
 
             return Result::SUCCESS;
         };
-#endif  // JETSTREAM_RENDER_VULKAN_AVAILABLE
+#endif
 
         std::optional<Result> result;
 
         for (const auto& device : priority) {
             if (config.headless) {
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+                if (device == DeviceType::Metal) {
+                    result = buildHeadless.template operator()<DeviceType::Metal>();
+                    break;
+                }
+#endif
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
                 if (device == DeviceType::Vulkan) {
                     result = buildHeadless.template operator()<DeviceType::Vulkan>();
@@ -275,12 +283,24 @@ Result Instance::create(const Config& config) {
         std::shared_ptr<Render::Components::Font> font;
 
         Render::Components::Font::Config cfg;
-        cfg.data = fas_compressed_data;
+        cfg.data = lucide_compressed_data;
         cfg.size = 32.0f;
         cfg.icons = true;
 
         JST_CHECK(impl->render->build(font, cfg));
         JST_CHECK(impl->render->addFont("default_icons", font));
+    }
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = fa_node_compressed_data;
+        cfg.size = 32.0f;
+        cfg.icons = true;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_node_icons", font));
     }
 
     {
@@ -470,6 +490,8 @@ Result Instance::compute() {
         JST_ASSERT(false, "[INSTANCE] Instance not started.");
     }
 
+    const U64 epoch = Scheduler::Impl::BeginComputeRound();
+
     // Copy flowgraph pointers while holding lock, then release before compute.
 
     std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
@@ -486,9 +508,17 @@ Result Instance::compute() {
         return Result::SUCCESS;
     }
 
+    bool active = false;
     for (const auto& flowgraph : flowgraphs) {
         JST_CHECK(flowgraph->compute());
+        active = active || !flowgraph->paused();
     }
+
+    if (!active) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    Scheduler::Impl::WaitComputeRound(epoch, std::chrono::milliseconds(100));
 
     return Result::SUCCESS;
 }

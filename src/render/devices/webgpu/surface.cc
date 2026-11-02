@@ -61,7 +61,8 @@ Result Implementation::create() {
         JST_CHECK(kernel->create());
     }
 
-    requestedSize = framebuffer->size();
+    ready = true;
+    resizeResult = Result::SUCCESS;
     resetFramebuffer();
 
     return Result::SUCCESS;
@@ -69,6 +70,8 @@ Result Implementation::create() {
 
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying surface.");
+
+    ready = false;
 
     for (auto& kernel : kernels) {
         JST_CHECK(kernel->destroy());
@@ -81,24 +84,24 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::prepare() {
-    framebufferChanged = framebuffer->size(requestedSize);
-    if (framebufferChanged) {
-        resetFramebuffer();
-        JST_CHECK(framebuffer->destroy());
-        JST_CHECK(framebuffer->create());
-    }
+bool Implementation::created() const {
+    return ready;
+}
+
+Result Implementation::rebuildFramebuffer() {
+    JST_CHECK(framebuffer->destroy());
+    JST_CHECK(framebuffer->create());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::draw(WGPUCommandEncoder& commandEncoder, bool visible) {
-    const bool required = shouldDraw(framebufferChanged);
+    const bool required = shouldDraw(framebufferResized);
     JST_CHECK(drawResult());
     if (!required) {
         return Result::SUCCESS;
     }
-    if (hiddenAndIdle(visible, framebufferChanged)) {
+    if (hiddenAndIdle(visible, framebufferResized)) {
         shouldDrawGraphics(visible);
         return Result::SUCCESS;
     }
@@ -153,17 +156,6 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder, bool visible) {
     wgpuRenderPassEncoderEnd(renderPassEncoder);
 
     return Result::SUCCESS;
-}
-
-const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
-    if (!framebuffer) {
-        return NullSize2D;
-    }
-
-    requestedSize = size;
-    invalidate();
-
-    return framebuffer->size();
 }
 
 }  // namespace Jetstream::Render

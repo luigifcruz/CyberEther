@@ -1970,7 +1970,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
             return entry.name == name;
         });
         REQUIRE(it != metrics.end());
-        REQUIRE(it->format == Parser::Map{{"type", "progressbar"}});
+        REQUIRE(Parser::Get<std::string>(it->format, "type") == "progressbar");
         return std::any_cast<std::pair<std::string, F32>>(it->value);
     };
 

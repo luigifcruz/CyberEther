@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_BUTTON_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -24,17 +25,20 @@ struct Button : public Component {
         Extent2D<F32> size = {0.0f, 0.0f};
         Variant variant = Variant::Default;
         bool disabled = false;
+        bool chrome = false;
         std::string colorKey;
         std::string hoveredColorKey;
         std::string activeColorKey;
         std::string borderColorKey;
         std::string textColorKey;
+        std::string hoveredTextColorKey;
         F32 textScale = 1.0f;
         F32 rounding = 8.0f;
         Extent2D<F32> padding = {12.0f, 5.0f};
         F32 textAlign = 0.5f;
         Callback<void()> onClick;
         Callback<void()> onDoubleClick;
+        Text::Font font = Text::Font::Body;
 
         bool operator==(const Config&) const = default;
     };

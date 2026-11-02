@@ -4,6 +4,7 @@
 #include "meta.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <optional>
 #include <string>
@@ -14,6 +15,8 @@ namespace Jetstream {
 
 inline constexpr const char* kLayoutEditorPane = "flowgraph";
 inline constexpr const char* kLayoutDocumentationPane = "documentation";
+inline constexpr const char* kLayoutEnvironmentPane = "environment";
+inline constexpr const char* kLayoutDescriptionPane = "description";
 
 inline std::string MakeSurfaceTileKey(const std::string& block, const std::string& surface) {
     return jst::fmt::format("surface:{}:{}", block, surface);
@@ -32,6 +35,36 @@ inline std::optional<std::pair<std::string, std::string>> ParseSurfaceTileKey(co
     }
 
     return std::make_pair(rest.substr(0, delimiter), rest.substr(delimiter + 1));
+}
+
+inline std::optional<U64> ParseIndexedKey(const std::string& key, const std::string& prefix) {
+    if (key.rfind(prefix, 0) != 0 || key.size() == prefix.size()) {
+        return std::nullopt;
+    }
+    U64 index = 0;
+    for (const char digit : key.substr(prefix.size())) {
+        if (digit < '0' || digit > '9') {
+            return std::nullopt;
+        }
+        index = index * 10 + static_cast<U64>(digit - '0');
+    }
+    return index;
+}
+
+inline std::string MakeTerminalPaneKey(U64 terminal) {
+    return jst::fmt::format("terminal:{}", terminal);
+}
+
+inline std::optional<U64> ParseTerminalPaneKey(const std::string& key) {
+    return ParseIndexedKey(key, "terminal:");
+}
+
+inline std::string MakeTerminalTabKey(U64 tab) {
+    return jst::fmt::format("terminals:{}", tab);
+}
+
+inline std::optional<U64> ParseTerminalTabKey(const std::string& key) {
+    return ParseIndexedKey(key, "terminals:");
 }
 
 inline std::string MakeConfigTileKey(const std::string& block) {
@@ -67,12 +100,13 @@ inline std::optional<TileMeta> MapTiles(const TileMeta& tiles,
         if (!pane.has_value() || pane->empty()) {
             return std::nullopt;
         }
-        return TileMeta{.weight = tiles.weight, .pane = std::move(*pane)};
+        return TileMeta{.size = tiles.size, .pane = std::move(*pane),
+                        .minimized = tiles.minimized, .maximized = tiles.maximized};
     }
     std::vector<TileMeta> children;
     for (const auto& child : *tiles.children) {
         if (auto mapped = MapTiles(child, map)) {
-            mapped->weight = child.weight.value_or(1.0f);
+            mapped->size = child.size;
             children.push_back(std::move(*mapped));
         }
     }
@@ -81,14 +115,32 @@ inline std::optional<TileMeta> MapTiles(const TileMeta& tiles,
     }
     if (children.size() == 1) {
         auto single = std::move(children.front());
-        single.weight = tiles.weight;
+        single.size = tiles.size;
         return single;
     }
     return TileMeta{
         .split = tiles.split == "column" ? "column" : "row",
-        .weight = tiles.weight,
+        .size = tiles.size,
         .children = std::move(children),
     };
+}
+
+inline bool IsTileLayout(const TileMeta& tiles) {
+    if (tiles.split.has_value() && *tiles.split != "row" && *tiles.split != "column") {
+        return false;
+    }
+    if (tiles.size.has_value() && (!std::isfinite(*tiles.size) || *tiles.size < 0.0f)) {
+        return false;
+    }
+    if (IsTileLeaf(tiles)) {
+        return tiles.pane.has_value() && !tiles.pane->empty();
+    }
+    if (!tiles.split.has_value()) {
+        return false;
+    }
+    return std::all_of(tiles.children->begin(), tiles.children->end(), [](const TileMeta& child) {
+        return child.size.has_value() && IsTileLayout(child);
+    });
 }
 
 inline std::optional<TileMeta> FilterTiles(const TileMeta& tiles, const std::function<bool(const std::string&)>& keep) {
@@ -116,22 +168,29 @@ inline bool ContainsTilePane(const TileMeta& tiles, const std::string& pane) {
 }
 
 inline bool IsLayoutPane(const std::string& pane) {
-    return pane == kLayoutEditorPane || TileBlock(pane).has_value();
+    return pane == kLayoutEditorPane || pane == kLayoutEnvironmentPane || pane == kLayoutDescriptionPane ||
+           TileBlock(pane).has_value();
 }
 
-inline TileMeta AppendColumn(const TileMeta& layout, const std::string& pane) {
-    TileMeta leaf{.pane = pane};
-    if (!IsTileLeaf(layout) && layout.split != "column") {
-        TileMeta row = layout;
-        row.children->push_back(std::move(leaf));
-        return row;
+inline bool IsTransientPane(const std::string& pane) {
+    return pane == kLayoutDocumentationPane ||
+           ParseTerminalPaneKey(pane).has_value() || ParseTerminalTabKey(pane).has_value();
+}
+
+inline TileMeta ReplaceTilePane(const TileMeta& tiles, const std::string& pane, const TileMeta& replacement) {
+    if (IsTileLeaf(tiles)) {
+        if (tiles.pane != pane) {
+            return tiles;
+        }
+        TileMeta replaced = replacement;
+        replaced.size = tiles.size;
+        return replaced;
     }
-    TileMeta first = layout;
-    first.weight.reset();
-    return TileMeta{
-        .split = "row",
-        .children = std::vector<TileMeta>{std::move(first), std::move(leaf)},
-    };
+    TileMeta copy = tiles;
+    for (auto& child : *copy.children) {
+        child = ReplaceTilePane(child, pane, replacement);
+    }
+    return copy;
 }
 
 }  // namespace Jetstream

@@ -125,7 +125,7 @@ struct TileDock {
     Probe d;
     bool withD = false;
     Dock dock;
-    std::optional<DockTiles> tiles = Row({0.5f, 0.5f}, {Leaf("a"), Column({0.5f, 0.5f}, {Leaf("b"), Leaf("c")})});
+    std::optional<DockTiles> tiles = Row({500.0f, 500.0f}, {Leaf("a"), Column({500.0f, 500.0f}, {Leaf("b"), Leaf("c")})});
 
     void update() {
         std::vector<Dock::Pane> panes = {MakePane("a", &a), MakePane("b", &b), MakePane("c", &c)};
@@ -497,8 +497,7 @@ TEST_CASE("The drop preview repaints only while it eases or fades and stays clea
     };
     REQUIRE(frames.settle(update));
     const U64 rebuilds = frames.rebuilds;
-    const Rect top = {403.0f, 303.0f, 391.0f, 145.5f};
-    const Rect right = {598.5f, 303.0f, 195.5f, 291.0f};
+    const F32 half = (291.0f - 6.0f) * 0.5f;
 
     Press(host, frames, 200.0f, 21.0f);
     at(1.0);
@@ -506,7 +505,11 @@ TEST_CASE("The drop preview repaints only while it eases or fades and stays clea
     REQUIRE(host.drag.active);
     CHECK(RepaintOnly(at(1.0)));
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == top);
+    const Rect top = host.drag.target->preview;
+    CHECK(top.x == 403.0f);
+    CHECK(top.y == 303.0f);
+    CHECK(top.width == 391.0f);
+    CHECK(std::abs(top.height - half) <= 1.0f);
     CHECK(host.motion.alpha == 0.0f);
     CHECK(RepaintOnly(at(1.04)));
     CHECK(host.motion.alpha > 0.0f);
@@ -524,17 +527,20 @@ TEST_CASE("The drop preview repaints only while it eases or fades and stays clea
         CHECK(at(time).clean());
     }
 
-    Hover(host, frames, 780.0f, 450.0f);
+    Hover(host, frames, 600.0f, 580.0f);
     CHECK(RepaintOnly(at(2.0)));
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == right);
+    const Rect bottom = host.drag.target->preview;
+    CHECK(bottom.x == 403.0f);
+    CHECK(bottom.bottom() == 594.0f);
+    CHECK(std::abs(bottom.height - half) <= 1.0f);
     CHECK(RepaintOnly(at(2.06)));
-    CHECK(host.motion.rect.x > top.x);
-    CHECK(host.motion.rect.x < right.x);
+    CHECK(host.motion.rect.y > top.y);
+    CHECK(host.motion.rect.y < bottom.y);
     CHECK(RepaintOnly(at(2.13)));
-    CHECK(host.motion.rect == right);
+    CHECK(host.motion.rect == bottom);
     CHECK(at(2.2).clean());
-    Hover(host, frames, 780.0f, 450.0f);
+    Hover(host, frames, 600.0f, 580.0f);
     CHECK(at(2.3).clean());
 
     Hover(host, frames, 20.0f, 300.0f);
@@ -543,7 +549,7 @@ TEST_CASE("The drop preview repaints only while it eases or fades and stays clea
     CHECK(RepaintOnly(at(3.06)));
     CHECK(host.motion.alpha > 0.0f);
     CHECK(host.motion.alpha < 1.0f);
-    CHECK(host.motion.rect == right);
+    CHECK(host.motion.rect == bottom);
     CHECK(RepaintOnly(at(3.13)));
     CHECK(host.motion.alpha == 0.0f);
     CHECK(at(3.2).clean());
@@ -647,7 +653,7 @@ TEST_CASE("Changing a tile dock's tiles or panes never rebuilds and settles agai
     REQUIRE(frames.settle(update));
     const U64 rebuilds = frames.rebuilds;
 
-    tiles.tiles = Column({0.3f, 0.7f}, {Leaf("a"), Row({0.5f, 0.5f}, {Leaf("b"), Leaf("c")})});
+    tiles.tiles = Column({300.0f, 700.0f}, {Leaf("a"), Row({500.0f, 500.0f}, {Leaf("b"), Leaf("c")})});
     CHECK(RepaintOnly(frames.run(update)));
     REQUIRE(frames.settle(update));
     CHECK(DirtyFrames(frames, update) == 0);
@@ -1865,7 +1871,7 @@ TEST_CASE("A column dock at a pixel ratio of two settles and stays clean, and a 
 TEST_CASE("Dragging and double clicking the divider between stacked panes repaints only and settles",
           "[core][sakura][retention]") {
     ColumnDock columns;
-    columns.tiles = Row({0.0f, 0.0f}, {Leaf("a"), Column({0.5f, 0.5f}, {Leaf("b"), Leaf("c")})});
+    columns.tiles = Row({0.0f, 0.0f}, {Leaf("a"), Column({500.0f, 500.0f}, {Leaf("b"), Leaf("c")})});
     Sakura::Layer layer;
     layer.update({.content = &columns.dock});
     LayerHost host({&layer});
@@ -1960,11 +1966,11 @@ TEST_CASE("A column dock cancelled or left in the middle of a press settles clea
     REQUIRE(frames.settle(update, 30));
     CHECK(DirtyFrames(frames, update) == 0);
 
-    Press(host, frames, 495.0f, 300.0f);
+    Press(host, frames, 544.0f, 300.0f);
     frames.run(update);
-    Hover(host, frames, 525.0f, 300.0f);
+    Hover(host, frames, 574.0f, 300.0f);
     CHECK(RepaintOnly(frames.run(update)));
-    host.send(Mouse(MouseEventType::Leave, 525.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Leave, 574.0f, 300.0f));
     CHECK_FALSE(frames.run(update).rebuilt);
     REQUIRE(frames.settle(update, 30));
     CHECK(DirtyFrames(frames, update) == 0);

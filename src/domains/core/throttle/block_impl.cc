@@ -15,6 +15,7 @@ struct ThrottleImpl : public Block::Impl, public DynamicConfig<Blocks::Throttle>
 };
 
 Result ThrottleImpl::configure() {
+    throttleConfig->pacing = pacing;
     throttleConfig->intervalMs = intervalMs;
 
     return Result::SUCCESS;
@@ -29,10 +30,20 @@ Result ThrottleImpl::define() {
                                     "Output",
                                     "Throttled output data (same as input)."));
 
-    JST_CHECK(defineInterfaceConfig("intervalMs",
-                                    "Interval",
-                                    "Minimum time between outputs in milliseconds.",
-                                    {{"type", "uint"}, {"unit", "ms"}}));
+    JST_CHECK(defineInterfaceConfig("pacing",
+                                    "Pacing",
+                                    "What sets the time between outputs.",
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "Interval"}, {"value", "interval"}},
+                                        Parser::Map{{"label", "Sample Rate"}, {"value", "sampleRate"}},
+                                    }}}));
+
+    if (candidate()->pacing == "interval") {
+        JST_CHECK(defineInterfaceConfig("intervalMs",
+                                        "Interval",
+                                        "Time between outputs in milliseconds.",
+                                        {{"type", "float"}, {"unit", "ms"}, {"precision", 3}}));
+    }
 
     return Result::SUCCESS;
 }

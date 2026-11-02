@@ -1,12 +1,27 @@
 // Synchronous Scheduler Implementation
 //
 // Coordinates compute and present threads with the following guarantees:
-//   - Present never blocks waiting for compute (skips capture if busy).
-//   - Present has priority: compute yields at segment boundaries when present wants in.
+//   - Present waits at most kPresentWait for compute to reach a segment boundary, then
+//     skips the frame. It always withdraws its request before returning.
+//   - Present has priority: compute parks at segment boundaries while present wants in,
+//     and never waits for a later frame. Pause releases a park before the first segment,
+//     a cycle that already started keeps yielding until it completes.
 //   - Present capture copies compute data under the data lock, submit runs every
 //     frame without it and is only excluded by state modifications.
 //   - State modifications (add/remove/reload) safely halt both threads.
 //   - Compute polling (hasPendingCompute) doesn't hold locks, allowing fast state changes.
+//   - Branches run independently: a module runs only when every input is fresh, and a
+//     producer waits until every consumer has read its output.
+//   - Every output carries the source frames it derives from, and a join only pairs inputs
+//     whose shared sources agree. Outputs only move forward, so an input older than what
+//     another input has already delivered can never pair and is discarded, emitting an
+//     empty output for the discarded frames.
+//   - A skip emits an empty output that flows downstream without compute. A module that
+//     receives one waits for a frame on every input and drops them all together, so every
+//     module consumes exactly one frame per input per step. A throttled module that is not
+//     due drops its frames the same way.
+//   - Idle cycles report their next throttle deadline instead of sleeping, so the instance
+//     sleeps once per round only when every flowgraph is idle.
 
 #include <jetstream/detail/scheduler_impl.hh>
 #include <jetstream/scheduler_context.hh>
@@ -29,12 +44,22 @@
 
 namespace Jetstream {
 
+namespace {
+
+constexpr auto kPresentWait = std::chrono::milliseconds(2);
+constexpr auto kPresentPoll = std::chrono::microseconds(250);
+
+}  // namespace
+
 struct SynchronousScheduler : public Scheduler::Impl {
  public:
     Result create() override;
     Result destroy() override;
     Result start() override;
     Result stop() override;
+    Result pause() override;
+    Result resume() override;
+    bool paused() const override;
 
     Result add(const std::shared_ptr<Module>& module) override;
     Result remove(const std::shared_ptr<Module>& module) override;
@@ -68,6 +93,8 @@ struct SynchronousScheduler : public Scheduler::Impl {
     std::unique_lock<std::mutex> exclusiveSharedLock();
     std::unique_lock<std::mutex> tryExclusiveSharedLock();
     void waitForPresentToFinish(std::unique_lock<std::mutex>& lock);
+    bool waitForPresentTurn(std::chrono::steady_clock::time_point deadline);
+    void yieldToPresent(bool started);
     void notifyCompute();
     void notifyPresent();
     void wakePresent();
@@ -83,30 +110,85 @@ struct SynchronousScheduler : public Scheduler::Impl {
     bool presentSync = false;
     bool computeSync = false;
     std::atomic<bool> presentWantsIn{false};
+    std::atomic<bool> presentable{false};
+    std::mutex handoffMutex;
+    std::condition_variable handoffCond;
     std::atomic<bool> stopping{false};
+    std::atomic<bool> pausing{false};
     std::atomic<U64> generation{0};
     std::weak_ptr<Viewport::Generic> viewport;
 
+    using Clock = std::chrono::steady_clock;
+    using Stamp = std::vector<std::pair<U64, U64>>;
+
+    struct Node {
+        std::string name;
+        std::vector<U64> producers;
+        std::vector<U64> reads;
+        std::vector<U64> aliases;
+        std::vector<U64> consumers;
+        std::vector<U64> views;
+        bool constant = false;
+        bool fixed = false;
+        bool settled = false;
+        bool throttled = false;
+        bool retrying = false;
+        bool empty = true;
+        U64 sequence = 0;
+        U64 frame = 0;
+        Stamp stamp;
+        Clock::time_point deadline{};
+    };
+
     std::unordered_map<std::string, std::shared_ptr<Module>> modules;
-    std::vector<std::string> topoOrder;
-    std::vector<std::string> sourceModules;
+    std::vector<Node> nodes;
+    std::vector<U64> sourceNodes;
     std::vector<std::string> presentModules;
-    std::unordered_set<std::string> staticModules;
     std::unordered_set<std::string> settledModules;
     std::unordered_map<std::string, Module::Timing> settledTimings;
+    std::vector<U8> selectedNodes;
+    std::vector<Stamp> projectedStamps;
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
+    Stamp newestStamp;
+    Stamp lostStamp;
+    U64 stateVersion = 1;
+    mutable std::vector<U64> heldVersions;
+    mutable std::vector<U8> heldValues;
+    mutable std::vector<U64> currentVersions;
+    mutable std::vector<U8> currentValues;
 
     static constexpr std::chrono::milliseconds throttleInterval{100};
-    std::unordered_set<std::string> throttledModules;
-    std::unordered_map<std::string, std::chrono::steady_clock::time_point> throttleDeadlines;
 
     struct RuntimeSegment {
         std::shared_ptr<Runtime> runtime;
-        std::vector<std::string> modules;
+        std::vector<U64> nodes;
     };
     std::vector<RuntimeSegment> runtimes;
 
     Result rebuildOrder();
     Result rebuildRuntimes();
+    void touch();
+    bool isDue(const Node& node, const Clock::time_point& now) const;
+    bool isCurrent(U64 index) const;
+    bool isFresh(const Node& node, U64 slot) const;
+    bool isAvailable(const Node& node, U64 slot) const;
+    bool isHeld(U64 index, const Clock::time_point& now) const;
+    const Stamp& stampOf(U64 index) const;
+    bool align(U64 index, const Clock::time_point& now, bool& progressed);
+    bool hasEmptyInput(const Node& node) const;
+    bool bubble(U64 index, bool whole);
+    bool isRunnable(U64 index,
+                    const std::vector<U8>& readyNodes,
+                    const Clock::time_point& now,
+                    bool& progressed);
+    void project(U64 index);
+    bool advance(const RuntimeSegment& segment,
+                 const std::unordered_set<std::string>& skippedModules,
+                 const std::unordered_set<std::string>& stalledModules,
+                 const Clock::time_point& now);
+    void settle(Node& node);
+    std::chrono::milliseconds idleTimeout(const Clock::time_point& cycleStart);
 };
 
 Result SynchronousScheduler::create() {
@@ -139,14 +221,13 @@ Result SynchronousScheduler::destroy() {
         }
 
         runtimes.clear();
-        topoOrder.clear();
-        sourceModules.clear();
+        nodes.clear();
+        sourceNodes.clear();
         presentModules.clear();
-        staticModules.clear();
         settledModules.clear();
         settledTimings.clear();
-        throttledModules.clear();
-        throttleDeadlines.clear();
+        selectedNodes.clear();
+        projectedStamps.clear();
         modules.clear();
 
         return result;
@@ -159,9 +240,13 @@ Result SynchronousScheduler::start() {
     stopping.store(false, std::memory_order_release);
     clearPresentRequest();
 
-    auto lock = exclusiveSharedLock();
-    presentSync = false;
-    computeSync = false;
+    {
+        auto lock = exclusiveSharedLock();
+        presentSync = false;
+        computeSync = false;
+    }
+
+    Scheduler::Context::NotifyPendingCompute();
 
     return Result::SUCCESS;
 }
@@ -171,8 +256,30 @@ Result SynchronousScheduler::stop() {
     clearPresentRequest();
     notifyCompute();
     notifyPresent();
+    Scheduler::Context::NotifyPendingCompute();
 
     return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::pause() {
+    {
+        std::lock_guard lock(handoffMutex);
+        pausing.store(true, std::memory_order_release);
+    }
+    handoffCond.notify_all();
+
+    return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::resume() {
+    pausing.store(false, std::memory_order_release);
+    Scheduler::Context::NotifyPendingCompute();
+
+    return Result::SUCCESS;
+}
+
+bool SynchronousScheduler::paused() const {
+    return pausing.load(std::memory_order_acquire);
 }
 
 Result SynchronousScheduler::add(const std::shared_ptr<Module>& module) {
@@ -252,8 +359,7 @@ Result SynchronousScheduler::synchronize(const std::function<Result()>& fn) {
 Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModules) {
     failedModules.clear();
 
-    if (isStopping() || isPresentHalted()) {
-        clearPresentRequest();
+    if (isStopping() || isPresentHalted() || !presentable.load(std::memory_order_acquire)) {
         return Result::SUCCESS;
     }
 
@@ -262,67 +368,47 @@ Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModu
 }
 
 Result SynchronousScheduler::capture(std::unordered_set<std::string>& failedModules) {
-    {
-        auto dataLock = trySharedDataLock();
-        if (!dataLock.owns_lock()) {
-            requestPresentEntry();
-            return Result::SUCCESS;
-        }
+    const auto deadline = Clock::now() + kPresentWait;
 
-        if (presentModules.empty()) {
-            clearPresentRequest();
-            return Result::SUCCESS;
-        }
+    while (true) {
+        {
+            auto dataLock = trySharedDataLock();
+            auto lock = dataLock.owns_lock() ? tryExclusiveSharedLock() : std::unique_lock<std::mutex>();
 
-        if (isStopping() || isPresentHalted()) {
-            clearPresentRequest();
-            return Result::SUCCESS;
-        }
+            if (lock.owns_lock() && !isComputeActive()) {
+                if (presentModules.empty() || isStopping() || isPresentHalted()) {
+                    clearPresentRequest();
+                    return Result::SUCCESS;
+                }
 
-        auto lock = tryExclusiveSharedLock();
-        if (!lock.owns_lock()) {
-            if (isStopping()) {
+                setPresentActive();
                 clearPresentRequest();
-                return Result::SUCCESS;
-            }
 
-            requestPresentEntry();
-            return Result::SUCCESS;
-        }
+                Result res = Result::SUCCESS;
 
-        if (isStopping()) {
-            clearPresentRequest();
-            return Result::SUCCESS;
-        }
+                for (const auto& name : presentModules) {
+                    const auto& mod = modules.at(name);
+                    res = mod->context()->scheduler()->presentCapture();
+                    if (res != Result::SUCCESS && res != Result::RELOAD) {
+                        failedModules.insert(name);
+                        break;
+                    }
+                }
 
-        if (isComputeActive()) {
-            if (isStopping()) {
-                clearPresentRequest();
-                return Result::SUCCESS;
-            }
+                clearPresentActive();
 
-            requestPresentEntry();
-            return Result::SUCCESS;
-        }
+                if (res != Result::SUCCESS && res != Result::RELOAD) {
+                    return res;
+                }
 
-        setPresentActive();
-        clearPresentRequest();
-
-        Result res = Result::SUCCESS;
-
-        for (const auto& name : presentModules) {
-            const auto& mod = modules.at(name);
-            res = mod->context()->scheduler()->presentCapture();
-            if (res != Result::SUCCESS && res != Result::RELOAD) {
-                failedModules.insert(name);
                 break;
             }
         }
 
-        clearPresentActive();
-
-        if (res != Result::SUCCESS && res != Result::RELOAD) {
-            return res;
+        if (!waitForPresentTurn(deadline)) {
+            clearPresentRequest();
+            wakePresent();
+            return Result::SUCCESS;
         }
     }
 
@@ -362,19 +448,21 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         return Result::SUCCESS;
     }
 
+    if (paused()) {
+        return Result::SUCCESS;
+    }
+
     // Phase 1: Snapshot source modules.
 
-    std::vector<std::shared_ptr<Module>> localSourceModules;
+    std::vector<std::pair<U64, std::shared_ptr<Module>>> localSourceModules;
+    std::vector<U8> readyNodes;
     U64 localGeneration;
     U64 localRuntimeCount;
-    bool throttled = false;
-    bool settled = false;
     {
         auto lock = sharedDataLock();
 
         localRuntimeCount = runtimes.size();
         if (localRuntimeCount == 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
             return Result::SUCCESS;
         }
 
@@ -383,113 +471,73 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         }
 
         localGeneration = currentGeneration();
+        readyNodes.assign(nodes.size(), 0);
 
-        for (const auto& name : sourceModules) {
-            if (modules.contains(name) && !settledModules.contains(name)) {
-                localSourceModules.push_back(modules.at(name));
-            }
-        }
-
-        settled = !modules.empty() && settledModules.size() == modules.size();
-
-        // If every unsettled module is throttled and none is due, slow the loop
-        // instead of polling sources and submitting skipped work.
-
-        const bool allPendingModulesThrottled = std::ranges::all_of(modules, [&](const auto& entry) {
-            return settledModules.contains(entry.first) || throttledModules.contains(entry.first);
-        });
-
-        if (allPendingModulesThrottled) {
-            throttled = true;
-
-            const auto now = std::chrono::steady_clock::now();
-
-            for (const auto& name : throttledModules) {
-                if (settledModules.contains(name)) {
-                    continue;
-                }
-
-                const auto it = throttleDeadlines.find(name);
-                if (it == throttleDeadlines.end() || now >= it->second) {
-                    throttled = false;
-                    break;
-                }
+        for (const auto index : sourceNodes) {
+            if (!nodes[index].settled) {
+                localSourceModules.emplace_back(index, modules.at(nodes[index].name));
             }
         }
     }
 
-    if (throttled || settled) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        return Result::SUCCESS;
-    }
+    // Phase 2: Poll source modules (no lock held, must return promptly).
 
-    // Phase 2: Poll source modules (no lock held, can block).
-
-    {
-        while (true) {
-            if (isStopping()) {
-                clearPresentRequest();
-                return Result::SUCCESS;
-            }
-
-            if (currentGeneration() != localGeneration) {
-                return Result::SUCCESS;
-            }
-
-            bool allReady = true;
-
-            for (const auto& mod : localSourceModules) {
-                if (isComputeHalted()) {
-                    return Result::SUCCESS;
-                }
-
-                if (currentGeneration() != localGeneration) {
-                    return Result::SUCCESS;
-                }
-
-                const auto& ctx = mod->context();
-
-                if (!ctx) {
-                    continue;
-                }
-
-                const auto& schedulerCtx = ctx->scheduler();
-
-                if (!schedulerCtx) {
-                    continue;
-                }
-
-                const auto& res = schedulerCtx->hasPendingCompute();
-
-                if (isComputeHalted()) {
-                    return Result::SUCCESS;
-                }
-
-                if (currentGeneration() != localGeneration) {
-                    return Result::SUCCESS;
-                }
-
-                if (res == Result::YIELD || res == Result::TIMEOUT) {
-                    allReady = false;
-                    break;
-                }
-
-                if (res != Result::SUCCESS && res != Result::RELOAD) {
-                    failedModules.insert(mod->name());
-                    return res;
-                }
-            }
-
-            if (allReady) {
-                break;
-            }
+    for (const auto& [index, mod] : localSourceModules) {
+        if (isStopping()) {
+            clearPresentRequest();
+            return Result::SUCCESS;
         }
+
+        if (isComputeHalted()) {
+            return Result::SUCCESS;
+        }
+
+        if (currentGeneration() != localGeneration || paused()) {
+            return Result::SUCCESS;
+        }
+
+        const auto& ctx = mod->context();
+
+        if (!ctx || !ctx->scheduler()) {
+            readyNodes[index] = 1;
+            continue;
+        }
+
+        const auto& res = ctx->scheduler()->hasPendingCompute();
+
+        if (isComputeHalted()) {
+            return Result::SUCCESS;
+        }
+
+        if (currentGeneration() != localGeneration || paused()) {
+            return Result::SUCCESS;
+        }
+
+        if (res == Result::YIELD || res == Result::TIMEOUT) {
+            continue;
+        }
+
+        if (res != Result::SUCCESS && res != Result::RELOAD) {
+            failedModules.insert(mod->name());
+            return res;
+        }
+
+        readyNodes[index] = 1;
     }
 
-    // Phase 3: Execute modules with priority yield mechanism.
+    // Phase 3: Execute runnable modules with priority yield mechanism.
 
     Result res = Result::SUCCESS;
-    std::unordered_set<std::string> skippedModules;
+    skippedModules.clear();
+    stalledModules.clear();
+    bool progressed = false;
+    bool started = false;
+    const auto now = Clock::now();
+
+    {
+        auto lock = sharedDataLock();
+        touch();
+    }
 
     for (U64 i = 0; i < localRuntimeCount; i++) {
         std::vector<std::string> pendingModules;
@@ -497,20 +545,13 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         // Priority Yield: Check if present wants in before each segment.
 
         if (isPresentRequested()) {
-            wakePresent();
-            while (isPresentRequested()) {
-                if (isStopping()) {
-                    clearPresentRequest();
-                    return Result::SUCCESS;
-                }
+            yieldToPresent(started);
 
-                if (isComputeHalted()) {
-                    return Result::SUCCESS;
-                }
-                std::this_thread::yield();
+            if (isStopping()) {
+                return Result::SUCCESS;
             }
 
-            if (isComputeHalted()) {
+            if (isComputeHalted() || (!started && paused())) {
                 return Result::SUCCESS;
             }
         }
@@ -518,19 +559,22 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         {
             std::unique_lock dataLock(dataMutex);
 
-            if (currentGeneration() != localGeneration) {
+            if (currentGeneration() != localGeneration || (!started && paused())) {
                 return Result::SUCCESS;
             }
 
-            if (isComputeHalted() || topoOrder.empty()) {
+            if (isComputeHalted() || nodes.empty()) {
                 return Result::SUCCESS;
             }
 
-            pendingModules.reserve(runtimes[i].modules.size());
+            const auto& segment = runtimes[i];
+            pendingModules.reserve(segment.nodes.size());
 
-            for (const auto& name : runtimes[i].modules) {
-                if (!settledModules.contains(name)) {
-                    pendingModules.push_back(name);
+            for (const auto index : segment.nodes) {
+                if (isRunnable(index, readyNodes, now, progressed)) {
+                    selectedNodes[index] = 1;
+                    project(index);
+                    pendingModules.push_back(nodes[index].name);
                 }
             }
 
@@ -538,51 +582,36 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
                 continue;
             }
 
+            const auto clearSelection = [&]() {
+                for (const auto index : segment.nodes) {
+                    selectedNodes[index] = 0;
+                }
+            };
+
             auto lock = exclusiveSharedLock();
             waitForPresentToFinish(lock);
 
             if (isStopping()) {
+                clearSelection();
                 clearPresentRequest();
                 return Result::SUCCESS;
             }
 
             if (isComputeHalted()) {
+                clearSelection();
                 return Result::SUCCESS;
             }
 
             setComputeActive();
 
-            const auto now = std::chrono::steady_clock::now();
-
-            for (const auto& name : pendingModules) {
-                if (!throttledModules.contains(name)) {
-                    continue;
-                }
-
-                auto& deadline = throttleDeadlines[name];
-                if (now < deadline) {
-                    skippedModules.insert(name);
-                } else {
-                    deadline = now + throttleInterval;
-                }
-            }
-
-            res = runtimes[i].runtime->compute(pendingModules, skippedModules, failedModules);
+            started = true;
+            res = segment.runtime->compute(pendingModules, skippedModules, stalledModules, failedModules);
 
             if (res == Result::SUCCESS) {
-                for (const auto& name : pendingModules) {
-                    if (staticModules.contains(name) && !skippedModules.contains(name)) {
-                        const bool inserted = settledModules.insert(name).second;
-                        if (inserted) {
-                            auto timing = modules.at(name)->timing();
-                            settledTimings[name] = timing;
-                            timing.computeTime = 0.0f;
-                            modules.at(name)->timing(timing);
-                        }
-                    }
-                }
+                progressed |= advance(segment, skippedModules, stalledModules, now);
             }
 
+            clearSelection();
             clearComputeActive();
         }
 
@@ -598,11 +627,22 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         }
     }
 
-    if (res == Result::YIELD || res == Result::TIMEOUT) {
+    if (progressed) {
+        ReportComputeProgress();
+    }
+
+    if (res != Result::SUCCESS || progressed) {
+        return res;
+    }
+
+    if (isStopping()) {
+        clearPresentRequest();
         return Result::SUCCESS;
     }
 
-    return res;
+    ReportComputeDeadline(Clock::now() + idleTimeout(now));
+
+    return Result::SUCCESS;
 }
 
 std::shared_ptr<Scheduler::Impl> SynchronousSchedulerFactory() {
@@ -610,86 +650,139 @@ std::shared_ptr<Scheduler::Impl> SynchronousSchedulerFactory() {
 }
 
 Result SynchronousScheduler::rebuildOrder() {
-    topoOrder.clear();
-    sourceModules.clear();
+    std::unordered_map<std::string, Clock::time_point> deadlines;
+    for (const auto& node : nodes) {
+        deadlines[node.name] = node.deadline;
+    }
+
+    nodes.clear();
+    sourceNodes.clear();
     presentModules.clear();
-    staticModules.clear();
+    selectedNodes.clear();
+    projectedStamps.clear();
 
-    // Build adjacency list and calculate in-degrees for topological sort.
+    // Build adjacency lists and calculate in-degrees for topological sort.
 
-    std::unordered_map<std::string, std::vector<std::string>> adj;
+    std::unordered_map<std::string, std::vector<std::string>> consumerNames;
     std::unordered_map<std::string, size_t> inDegree;
 
     for (const auto& [name, _] : modules) {
         inDegree[name] = 0;
-        adj[name];
+        consumerNames[name];
     }
 
     for (const auto& [consumerName, mod] : modules) {
-        const auto& inputs = mod->inputs();
-
-        for (const auto& [slot, link] : inputs) {
+        for (const auto& [slot, link] : mod->inputs()) {
             (void)slot;
 
-            if (!link.producer.has_value()) {
+            if (!link.producer.has_value() || !modules.contains(link.producer->module)) {
                 continue;
             }
 
-            if (!modules.contains(link.producer->module)) {
-                continue;
-            }
-
-            adj[link.producer->module].push_back(consumerName);
+            consumerNames[link.producer->module].push_back(consumerName);
             inDegree[consumerName] += 1;
         }
-    }
 
-    // Collect modules tainted with THROTTLED so compute slows them down.
-
-    throttledModules.clear();
-
-    for (const auto& [name, mod] : modules) {
-        if ((mod->taint() & Module::Taint::THROTTLED) != Module::Taint::CLEAN) {
-            throttledModules.insert(name);
+        if ((mod->taint() & Module::Taint::SURFACE) != Module::Taint::CLEAN) {
+            presentModules.push_back(consumerName);
         }
     }
-
-    std::erase_if(throttleDeadlines, [&](const auto& entry) {
-        return !throttledModules.contains(entry.first);
-    });
 
     // Kahn's algorithm for topological sort.
 
     std::queue<std::string> q;
+    std::vector<std::string> order;
 
     for (const auto& [name, deg] : inDegree) {
         if (deg == 0) {
             q.push(name);
-            sourceModules.push_back(name);
-        }
-
-        if ((modules.at(name)->taint() & Module::Taint::SURFACE) != Module::Taint::CLEAN) {
-            presentModules.push_back(name);
         }
     }
 
     while (!q.empty()) {
         auto u = q.front();
         q.pop();
-        topoOrder.push_back(u);
+        order.push_back(u);
 
-        for (const auto& v : adj[u]) {
+        for (const auto& v : consumerNames[u]) {
             if (--inDegree[v] == 0) {
                 q.push(v);
             }
         }
     }
 
-    if (topoOrder.size() != modules.size()) {
+    if (order.size() != modules.size()) {
         JST_ERROR("[SCHEDULER_SYNCHRONOUS] Detected cycle or unresolved dependencies in the module DAG.");
-        topoOrder.clear();
+        presentModules.clear();
         return Result::ERROR;
     }
+
+    // Lay nodes out in topological order and resolve their connections.
+
+    std::unordered_map<std::string, U64> indices;
+    nodes.resize(order.size());
+
+    for (U64 index = 0; index < order.size(); ++index) {
+        indices[order[index]] = index;
+        nodes[index].name = order[index];
+    }
+
+    for (U64 index = 0; index < order.size(); ++index) {
+        auto& node = nodes[index];
+        const auto& mod = modules.at(node.name);
+
+        for (const auto& [slot, link] : mod->inputs()) {
+            (void)slot;
+
+            if (!link.producer.has_value() || !modules.contains(link.producer->module)) {
+                continue;
+            }
+
+            const U64 producer = indices.at(link.producer->module);
+            const bool aliasesInput = std::ranges::any_of(mod->outputs(), [&tensor = link.tensor](const auto& entry) {
+                return entry.second.tensor.sharesStorage(tensor) ||
+                       entry.second.tensor.inheritsAttributes(tensor) ||
+                       entry.second.tensor.derivesAttributes();
+            });
+
+            if (aliasesInput) {
+                node.aliases.push_back(node.producers.size());
+
+                auto& views = nodes[producer].views;
+                if (std::ranges::find(views, index) == views.end()) {
+                    views.push_back(index);
+                }
+            }
+
+            node.producers.push_back(producer);
+            node.reads.push_back(0);
+
+            auto& consumers = nodes[producer].consumers;
+            if (std::ranges::find(consumers, index) == consumers.end()) {
+                consumers.push_back(index);
+            }
+        }
+
+        if (node.producers.empty()) {
+            sourceNodes.push_back(index);
+            node.constant = (mod->taint() & Module::Taint::STATIC_OUTPUT) != Module::Taint::CLEAN;
+        }
+
+        node.throttled = (mod->taint() & Module::Taint::THROTTLED) != Module::Taint::CLEAN;
+        node.settled = settledModules.contains(node.name);
+
+        if (node.throttled && deadlines.contains(node.name)) {
+            node.deadline = deadlines.at(node.name);
+        }
+    }
+
+    selectedNodes.assign(nodes.size(), 0);
+    projectedStamps.resize(nodes.size());
+    heldVersions.assign(nodes.size(), 0);
+    heldValues.assign(nodes.size(), 0);
+    currentVersions.assign(nodes.size(), 0);
+    currentValues.assign(nodes.size(), 0);
+    touch();
 
     // Input mutation can invalidate retained or aliased static buffers. Disable
     // settling until the scheduler has enough alias information to prove safety.
@@ -705,11 +798,11 @@ Result SynchronousScheduler::rebuildOrder() {
     // Derive static descendants from explicit roots. STATELESS modules only inherit
     // staticness when every input has a known static producer in this graph.
 
-    for (const auto& name : topoOrder) {
-        const auto& mod = modules.at(name);
+    for (auto& node : nodes) {
+        const auto& mod = modules.at(node.name);
 
         if ((mod->taint() & Module::Taint::STATIC_OUTPUT) != Module::Taint::CLEAN) {
-            staticModules.insert(name);
+            node.fixed = true;
             continue;
         }
 
@@ -718,16 +811,12 @@ Result SynchronousScheduler::rebuildOrder() {
             continue;
         }
 
-        const bool hasOnlyStaticInputs = std::ranges::all_of(mod->inputs(), [&](const auto& entry) {
+        node.fixed = std::ranges::all_of(mod->inputs(), [&](const auto& entry) {
             const auto& link = entry.second;
             return link.producer.has_value() &&
-                   modules.contains(link.producer->module) &&
-                   staticModules.contains(link.producer->module);
+                   indices.contains(link.producer->module) &&
+                   nodes[indices.at(link.producer->module)].fixed;
         });
-
-        if (hasOnlyStaticInputs) {
-            staticModules.insert(name);
-        }
     }
 
     return Result::SUCCESS;
@@ -741,14 +830,14 @@ Result SynchronousScheduler::rebuildRuntimes() {
     }
     runtimes.clear();
 
-    if (topoOrder.empty()) {
+    if (nodes.empty()) {
         return Result::SUCCESS;
     }
 
-    DeviceType currentDevice = modules.at(topoOrder.front())->device();
-    RuntimeType currentRuntime = modules.at(topoOrder.front())->runtime();
+    DeviceType currentDevice = modules.at(nodes.front().name)->device();
+    RuntimeType currentRuntime = modules.at(nodes.front().name)->runtime();
     Runtime::Modules segmentModules;
-    std::vector<std::string> segmentNames;
+    std::vector<U64> segmentNodes;
 
     auto flushSegment = [&]() -> Result {
         if (segmentModules.empty()) {
@@ -759,15 +848,15 @@ Result SynchronousScheduler::rebuildRuntimes() {
         auto runtime = std::make_shared<Runtime>(runtimeName, currentDevice, currentRuntime);
         JST_CHECK(runtime->create(segmentModules));
 
-        runtimes.push_back({std::move(runtime), std::move(segmentNames)});
+        runtimes.push_back({std::move(runtime), std::move(segmentNodes)});
         segmentModules.clear();
-        segmentNames.clear();
+        segmentNodes.clear();
 
         return Result::SUCCESS;
     };
 
-    for (const auto& name : topoOrder) {
-        const auto& mod = modules.at(name);
+    for (U64 index = 0; index < nodes.size(); ++index) {
+        const auto& mod = modules.at(nodes[index].name);
         const DeviceType dev = mod->device();
         const RuntimeType run = mod->runtime();
 
@@ -777,13 +866,422 @@ Result SynchronousScheduler::rebuildRuntimes() {
             currentRuntime = run;
         }
 
-        segmentModules[name] = mod;
-        segmentNames.push_back(name);
+        segmentModules[nodes[index].name] = mod;
+        segmentNodes.push_back(index);
     }
 
     JST_CHECK(flushSegment());
 
     return Result::SUCCESS;
+}
+
+void SynchronousScheduler::touch() {
+    stateVersion += 1;
+}
+
+bool SynchronousScheduler::isDue(const Node& node, const Clock::time_point& now) const {
+    return !node.throttled || now >= node.deadline;
+}
+
+bool SynchronousScheduler::isCurrent(const U64 index) const {
+    if (currentVersions[index] == stateVersion) {
+        return currentValues[index];
+    }
+
+    const auto& node = nodes[index];
+    const bool current = !node.empty && std::ranges::all_of(node.aliases, [&](const auto slot) {
+        const U64 producer = node.producers[slot];
+        return isCurrent(producer) && node.reads[slot] == nodes[producer].sequence;
+    });
+
+    currentVersions[index] = stateVersion;
+    currentValues[index] = current;
+    return current;
+}
+
+bool SynchronousScheduler::isFresh(const Node& node, const U64 slot) const {
+    const U64 producer = node.producers[slot];
+    return node.reads[slot] != nodes[producer].sequence &&
+           (nodes[producer].empty || isCurrent(producer));
+}
+
+bool SynchronousScheduler::isAvailable(const Node& node, const U64 slot) const {
+    const U64 producer = node.producers[slot];
+    return nodes[producer].settled || selectedNodes[producer] || isFresh(node, slot);
+}
+
+bool SynchronousScheduler::isHeld(const U64 index, const Clock::time_point& now) const {
+    if (heldVersions[index] == stateVersion) {
+        return heldValues[index];
+    }
+
+    const auto direct = [&]() {
+        for (const auto consumer : nodes[index].consumers) {
+            const auto& node = nodes[consumer];
+
+            if (node.settled) {
+                continue;
+            }
+
+            for (U64 slot = 0; slot < node.producers.size(); ++slot) {
+                if (node.producers[slot] == index && isFresh(node, slot)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    };
+
+    const bool held = direct() || std::ranges::any_of(nodes[index].views, [&](const auto view) {
+        return isHeld(view, now);
+    });
+
+    heldVersions[index] = stateVersion;
+    heldValues[index] = held;
+    return held;
+}
+
+const SynchronousScheduler::Stamp& SynchronousScheduler::stampOf(const U64 index) const {
+    return selectedNodes[index] ? projectedStamps[index] : nodes[index].stamp;
+}
+
+bool SynchronousScheduler::align(const U64 index, const Clock::time_point& now, bool& progressed) {
+    auto& node = nodes[index];
+
+    if (node.producers.size() < 2 || isHeld(index, now)) {
+        return node.producers.size() < 2;
+    }
+
+    const auto raise = [](Stamp& stamp, const U64 source, const U64 frame) {
+        const auto entry = std::ranges::find(stamp, source, &Stamp::value_type::first);
+        if (entry == stamp.end()) {
+            stamp.emplace_back(source, frame);
+        } else {
+            entry->second = std::max(entry->second, frame);
+        }
+    };
+
+    lostStamp.clear();
+    bool discarded = false;
+
+    while (true) {
+        newestStamp.clear();
+
+        for (U64 slot = 0; slot < node.producers.size(); ++slot) {
+            const U64 producer = node.producers[slot];
+            const bool available = isAvailable(node, slot);
+
+            for (const auto& [source, frame] : stampOf(producer)) {
+                raise(newestStamp, source, available ? frame : frame + 1);
+            }
+        }
+
+        bool aligned = true;
+        bool changed = false;
+
+        for (U64 slot = 0; slot < node.producers.size(); ++slot) {
+            if (!isAvailable(node, slot)) {
+                continue;
+            }
+
+            const U64 producer = node.producers[slot];
+            const bool behind = std::ranges::any_of(stampOf(producer), [&](const auto& entry) {
+                return std::ranges::find(newestStamp, entry.first, &Stamp::value_type::first)->second > entry.second;
+            });
+
+            if (!behind) {
+                continue;
+            }
+
+            aligned = false;
+
+            if (!nodes[producer].settled && !selectedNodes[producer]) {
+                for (const auto& [source, frame] : nodes[producer].stamp) {
+                    raise(lostStamp, source, frame);
+                }
+                node.reads[slot] = nodes[producer].sequence;
+                discarded = true;
+                changed = true;
+                touch();
+            }
+        }
+
+        if (changed) {
+            continue;
+        }
+
+        if (!discarded) {
+            return aligned;
+        }
+
+        node.stamp = lostStamp;
+        node.sequence += 1;
+        node.empty = true;
+        node.retrying = false;
+        progressed = true;
+        touch();
+
+        return false;
+    }
+}
+
+bool SynchronousScheduler::hasEmptyInput(const Node& node) const {
+    for (U64 slot = 0; slot < node.producers.size(); ++slot) {
+        const U64 producer = node.producers[slot];
+        if (!selectedNodes[producer] && nodes[producer].empty && isFresh(node, slot)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool SynchronousScheduler::bubble(const U64 index, const bool whole) {
+    auto& node = nodes[index];
+
+    bool lost = whole;
+
+    for (U64 slot = 0; slot < node.producers.size(); ++slot) {
+        const U64 producer = node.producers[slot];
+        if (nodes[producer].settled) {
+            continue;
+        }
+
+        if (selectedNodes[producer] || !isFresh(node, slot)) {
+            return false;
+        }
+
+        if (!whole && nodes[producer].empty && isFresh(node, slot)) {
+            lost = true;
+        }
+    }
+
+    if (!lost) {
+        return false;
+    }
+
+    auto& stamp = projectedStamps[index];
+    stamp.clear();
+
+    lost = false;
+
+    for (U64 slot = 0; slot < node.producers.size(); ++slot) {
+        const U64 producer = node.producers[slot];
+        if (nodes[producer].settled || !isFresh(node, slot)) {
+            continue;
+        }
+
+        for (const auto& [source, frame] : nodes[producer].stamp) {
+            const auto entry = std::ranges::find(stamp, source, &Stamp::value_type::first);
+            if (entry == stamp.end()) {
+                stamp.emplace_back(source, frame);
+            } else {
+                entry->second = std::max(entry->second, frame);
+            }
+        }
+
+        node.reads[slot] = nodes[producer].sequence;
+        lost = true;
+    }
+
+    if (!lost) {
+        return false;
+    }
+
+    node.stamp = stamp;
+    node.sequence += 1;
+    node.empty = true;
+    node.retrying = false;
+    touch();
+
+    return true;
+}
+
+bool SynchronousScheduler::isRunnable(const U64 index,
+                                      const std::vector<U8>& readyNodes,
+                                      const Clock::time_point& now,
+                                      bool& progressed) {
+    const auto& node = nodes[index];
+
+    if (node.settled || isHeld(index, now)) {
+        return false;
+    }
+
+    if (node.producers.empty()) {
+        return isDue(node, now) && readyNodes[index];
+    }
+
+    if (!isDue(node, now)) {
+        if (!node.retrying) {
+            progressed |= bubble(index, true);
+        }
+        return false;
+    }
+
+    if (hasEmptyInput(node) && bubble(index, false)) {
+        progressed = true;
+        return false;
+    }
+
+    const bool aligned = align(index, now, progressed);
+
+    if (isHeld(index, now)) {
+        return false;
+    }
+
+    for (U64 slot = 0; slot < node.producers.size(); ++slot) {
+        if (!isAvailable(node, slot)) {
+            return false;
+        }
+
+        const U64 producer = node.producers[slot];
+        if (!selectedNodes[producer] && !nodes[producer].settled && nodes[producer].empty) {
+            return false;
+        }
+    }
+
+    return aligned;
+}
+
+void SynchronousScheduler::project(const U64 index) {
+    const auto& node = nodes[index];
+    auto& stamp = projectedStamps[index];
+    stamp.clear();
+
+    if (node.fixed) {
+        return;
+    }
+
+    if (node.producers.empty()) {
+        if (!node.constant) {
+            stamp.emplace_back(index, node.frame + 1);
+        }
+        return;
+    }
+
+    for (const auto producer : node.producers) {
+        for (const auto& [source, frame] : stampOf(producer)) {
+            const auto entry = std::ranges::find(stamp, source, &Stamp::value_type::first);
+            if (entry == stamp.end()) {
+                stamp.emplace_back(source, frame);
+            } else {
+                entry->second = std::max(entry->second, frame);
+            }
+        }
+    }
+
+    if (stamp.empty() && !node.fixed) {
+        stamp.emplace_back(index, node.frame + 1);
+    }
+}
+
+bool SynchronousScheduler::advance(const RuntimeSegment& segment,
+                                   const std::unordered_set<std::string>& skippedModules,
+                                   const std::unordered_set<std::string>& stalledModules,
+                                   const Clock::time_point& now) {
+    bool progressed = false;
+    const auto submitted = Clock::now();
+
+    for (const auto index : segment.nodes) {
+        auto& node = nodes[index];
+
+        if (!selectedNodes[index]) {
+            if (node.settled) {
+                continue;
+            }
+
+            if (isHeld(index, now)) {
+                continue;
+            }
+
+            if (!isDue(node, now)) {
+                if (!node.retrying) {
+                    progressed |= bubble(index, true);
+                }
+            } else if (hasEmptyInput(node) && bubble(index, false)) {
+                progressed = true;
+            } else {
+                align(index, now, progressed);
+            }
+            continue;
+        }
+
+        selectedNodes[index] = 0;
+        touch();
+
+        if (stalledModules.contains(node.name)) {
+            const bool attempted = std::ranges::none_of(node.producers, [&](const auto producer) {
+                return skippedModules.contains(nodes[producer].name) || stalledModules.contains(nodes[producer].name);
+            });
+
+            if (attempted) {
+                node.retrying = true;
+                if (node.throttled) {
+                    node.deadline = submitted + throttleInterval;
+                }
+            }
+
+            progressed |= bubble(index, false);
+            continue;
+        }
+
+        progressed = true;
+
+        if (node.throttled) {
+            node.deadline = submitted + throttleInterval;
+        }
+
+        for (U64 slot = 0; slot < node.producers.size(); ++slot) {
+            node.reads[slot] = nodes[node.producers[slot]].sequence;
+        }
+
+        node.frame += 1;
+        node.stamp = projectedStamps[index];
+        node.sequence += 1;
+        node.retrying = false;
+        node.empty = skippedModules.contains(node.name);
+
+        if (!node.empty && node.fixed) {
+            settle(node);
+        }
+    }
+
+    return progressed;
+}
+
+void SynchronousScheduler::settle(Node& node) {
+    node.settled = true;
+    touch();
+
+    if (!settledModules.insert(node.name).second) {
+        return;
+    }
+
+    const auto& mod = modules.at(node.name);
+    auto timing = mod->timing();
+    settledTimings[node.name] = timing;
+    timing.computeTime = 0.0f;
+    mod->timing(timing);
+}
+
+std::chrono::milliseconds SynchronousScheduler::idleTimeout(const Clock::time_point& cycleStart) {
+    auto lock = sharedDataLock();
+
+    const auto now = Clock::now();
+    auto deadline = now + throttleInterval;
+
+    for (const auto& node : nodes) {
+        if (node.throttled && !node.settled && node.deadline > cycleStart) {
+            deadline = std::min(deadline, node.deadline);
+        }
+    }
+
+    if (deadline <= now) {
+        return std::chrono::milliseconds(0);
+    }
+
+    return std::chrono::ceil<std::chrono::milliseconds>(deadline - now);
 }
 
 void SynchronousScheduler::haltAll() {
@@ -819,11 +1317,16 @@ void SynchronousScheduler::incrementGeneration() {
 }
 
 void SynchronousScheduler::requestPresentEntry() {
+    std::lock_guard lock(handoffMutex);
     presentWantsIn.store(true, std::memory_order_release);
 }
 
 void SynchronousScheduler::clearPresentRequest() {
-    presentWantsIn.store(false, std::memory_order_release);
+    {
+        std::lock_guard lock(handoffMutex);
+        presentWantsIn.store(false, std::memory_order_release);
+    }
+    handoffCond.notify_all();
 }
 
 bool SynchronousScheduler::isPresentRequested() const {
@@ -876,11 +1379,33 @@ void SynchronousScheduler::waitForPresentToFinish(std::unique_lock<std::mutex>& 
     });
 }
 
+bool SynchronousScheduler::waitForPresentTurn(const Clock::time_point deadline) {
+    if (isStopping() || isPresentHalted() || Clock::now() >= deadline) {
+        return false;
+    }
+
+    requestPresentEntry();
+
+    std::unique_lock lock(handoffMutex);
+    presentCond.wait_until(lock, std::min(deadline, Clock::now() + kPresentPoll));
+    return !isStopping() && !isPresentHalted();
+}
+
+void SynchronousScheduler::yieldToPresent(const bool started) {
+    std::unique_lock lock(handoffMutex);
+    handoffCond.wait(lock, [&] {
+        return !isPresentRequested() || isStopping() || isComputeHalted() || (!started && paused());
+    });
+}
+
 void SynchronousScheduler::notifyCompute() {
     computeCond.notify_all();
 }
 
 void SynchronousScheduler::notifyPresent() {
+    {
+        std::lock_guard lock(handoffMutex);
+    }
     presentCond.notify_all();
 }
 
@@ -911,8 +1436,18 @@ Result SynchronousScheduler::lockState(const std::function<Result()>& func) {
     settledTimings.clear();
     settledModules.clear();
 
+    for (auto& node : nodes) {
+        node.settled = false;
+        node.retrying = false;
+        for (U64 slot = 0; slot < node.producers.size(); ++slot) {
+            node.reads[slot] = nodes[node.producers[slot]].sequence;
+        }
+    }
+    touch();
+
     Result res = func();
 
+    presentable.store(!presentModules.empty(), std::memory_order_release);
     incrementGeneration();
     clearPresentRequest();
     computeSync = false;
@@ -925,6 +1460,8 @@ Result SynchronousScheduler::lockState(const std::function<Result()>& func) {
     notifyPresent();
 
     resumeAll();
+
+    Scheduler::Context::NotifyPendingCompute();
 
     return res;
 }

@@ -3,39 +3,35 @@
 
 #include "../context.hh"
 #include "key_value.hh"
-#include "labels.hh"
 
 #include "../../model/messages.hh"
-#include "../../views/flowgraph/key_value.hh"
+#include "../../model/tiles.hh"
+#include "../../views/flowgraph/environment.hh"
 
+#include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_environment.hh"
 
-#include <algorithm>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace Jetstream {
 
-struct FlowgraphEnvironmentWindowPresenter {
+struct FlowgraphEnvironmentPresenter {
     const PresenterContext& context;
 
-    explicit FlowgraphEnvironmentWindowPresenter(const PresenterContext& context) : context(context) {}
+    explicit FlowgraphEnvironmentPresenter(const PresenterContext& context) : context(context) {}
 
-    std::optional<FlowgraphKeyValueWindow::Config> build() const {
-        if (!context.state.interface.flowgraphEnvironmentVisible ||
-            !context.state.interface.focusedFlowgraph.has_value()) {
+    std::optional<FlowgraphEnvironment::Config> build(const std::string& flowgraphId,
+                                                      const std::shared_ptr<Flowgraph>& flowgraph) const {
+        const auto entry = context.state.flowgraph.environment.find(flowgraphId);
+        if (entry == context.state.flowgraph.environment.end()) {
             return std::nullopt;
         }
 
-        const std::string flowgraphId = context.state.interface.focusedFlowgraph.value();
-        if (!context.state.flowgraph.items.contains(flowgraphId)) {
-            return std::nullopt;
-        }
-
-        const auto& flowgraph = context.state.flowgraph.items.at(flowgraphId);
-        const std::string filter = Text::ToLower(
-            context.state.interface.flowgraphEnvironmentSearch);
+        const std::string& search = entry->second;
+        const std::string filter = Text::ToLower(search);
 
         std::vector<std::string> keys;
         if (flowgraph->environment().keys(keys) != Result::SUCCESS) {
@@ -59,18 +55,18 @@ struct FlowgraphEnvironmentWindowPresenter {
         FlowgraphKeyValueDetail::SortNodes(nodes);
 
         const auto enqueue = context.callbacks.enqueueMail;
-        return FlowgraphKeyValueWindow::Config{
-            .id = "flowgraph-environment-window",
-            .title = jst::fmt::format("Flowgraph Environment ({})", MakeFlowgraphTitle(flowgraphId, flowgraph)),
-            .search = context.state.interface.flowgraphEnvironmentSearch,
+        return FlowgraphEnvironment::Config{
+            .id = kLayoutEnvironmentPane,
+            .title = "Environment",
+            .search = search,
             .searchHint = "Search environment keys...",
             .entryCount = FlowgraphKeyValueDetail::EntryCount(nodes.size(), keys.size()),
             .nodes = std::move(nodes),
-            .onSearchChange = [enqueue](const std::string& value) {
-                enqueue(MailSetFlowgraphEnvironmentSearch{.value = value});
+            .onSearchChange = [enqueue, flowgraphId](const std::string& value) {
+                enqueue(MailSetFlowgraphEnvironmentSearch{.flowgraph = flowgraphId, .value = value});
             },
-            .onClose = [enqueue]() {
-                enqueue(MailSetFlowgraphEnvironmentVisible{.value = false});
+            .onClose = [enqueue, flowgraphId]() {
+                enqueue(MailSetFlowgraphEnvironmentVisible{.flowgraph = flowgraphId, .value = false});
             },
         };
     }

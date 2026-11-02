@@ -18,6 +18,7 @@ struct NativeCudaRuntime : public Runtime::Impl {
 
     Result compute(const std::vector<std::string>& modules,
                    std::unordered_set<std::string>& skippedModules,
+                   std::unordered_set<std::string>& stalledModules,
                    std::unordered_set<std::string>& failedModules) override;
 
  private:
@@ -184,6 +185,7 @@ Result NativeCudaRuntime::destroy() {
 
 Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
                                   std::unordered_set<std::string>& skippedModules,
+                                  std::unordered_set<std::string>& stalledModules,
                                   std::unordered_set<std::string>& failedModules) {
     JST_CHECK(Backend::State<DeviceType::CUDA>()->activate());
 
@@ -199,8 +201,12 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
 
         const auto& module = modulesMap.at(name);
 
-        if (skippedModules.contains(name) || hasSkippedInputs(module, skippedModules)) {
-            skippedModules.insert(name);
+        if (skippedModules.contains(name) || stalledModules.contains(name)) {
+            continue;
+        }
+
+        if (hasSkippedInputs(module, skippedModules, stalledModules)) {
+            stalledModules.insert(name);
             continue;
         }
 
@@ -214,7 +220,8 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
         const auto result = getRuntimeContext(module)->computeSubmit(stream);
 
         if (result == Result::YIELD || result == Result::TIMEOUT) {
-            return result;
+            stalledModules.insert(name);
+            continue;
         }
 
         if (result != Result::SUCCESS && result != Result::RELOAD && result != Result::SKIP) {

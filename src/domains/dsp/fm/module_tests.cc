@@ -456,8 +456,9 @@ TEST_CASE("FM - Preserves phase differences across submissions",
             Runtime runtime("test", impl.device, impl.runtime);
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
 
             for (U64 i = 0; i < input.size(); ++i) {
@@ -466,8 +467,9 @@ TEST_CASE("FM - Preserves phase differences across submissions",
                 input.at<CF32>(i) = std::polar(1.0f, phase);
             }
             skippedModules.clear();
+            stalledModules.clear();
             failedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
 
             const F32 kf = 100e3f / sampleRate;

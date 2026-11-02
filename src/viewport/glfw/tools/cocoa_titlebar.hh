@@ -24,6 +24,8 @@ class CocoaTitlebar {
     void beginDrag();
     void zoom();
 
+    static bool SetAppearance(GLFWwindow* window, bool dark);
+
  private:
     struct State;
 

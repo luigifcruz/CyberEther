@@ -45,6 +45,80 @@ struct CircularBuffer<T>::Impl {
         }
     }
 
+    Result push(const T* data, U64 size, U64 stride, U64 threshold, bool* becameReady) {
+        if (becameReady) {
+            *becameReady = false;
+        }
+        if (size > 0 && data == nullptr) {
+            return Result::ERROR;
+        }
+
+        bool notifyWaiters = false;
+        {
+            std::lock_guard lock(mutex);
+            const U64 bufferCapacity = static_cast<U64>(storage.size());
+            if (size == 0) {
+                return Result::SUCCESS;
+            }
+            if (bufferCapacity == 0) {
+                ++overflowCount;
+                return Result::ERROR;
+            }
+
+            const bool wasReady = occupancy >= threshold;
+            U64 sourceOffset = 0;
+            U64 writeSize = size;
+            if (size > bufferCapacity - occupancy) {
+                ++overflowCount;
+                if (policy == CircularBufferOverflowPolicy::Reject) {
+                    return size > bufferCapacity ? Result::ERROR : Result::INCOMPLETE;
+                }
+
+                stats.overwrittenElements += size - (bufferCapacity - occupancy);
+                if (size >= bufferCapacity) {
+                    sourceOffset = size - bufferCapacity;
+                    writeSize = bufferCapacity;
+                    head = 0;
+                    occupancy = 0;
+                } else {
+                    discard(occupancy + size - bufferCapacity);
+                }
+            }
+
+            const U64 tail = physicalIndex(occupancy);
+            if (stride == 1) {
+                const U64 firstSize = std::min(writeSize, bufferCapacity - tail);
+                std::copy_n(data + sourceOffset,
+                            static_cast<std::size_t>(firstSize),
+                            storage.data() + tail);
+                if (firstSize < writeSize) {
+                    std::copy_n(data + sourceOffset + firstSize,
+                                static_cast<std::size_t>(writeSize - firstSize),
+                                storage.data());
+                }
+            } else {
+                for (U64 i = 0; i < writeSize; ++i) {
+                    U64 destination = tail + i;
+                    if (destination >= bufferCapacity) {
+                        destination -= bufferCapacity;
+                    }
+                    storage[static_cast<std::size_t>(destination)] =
+                        data[(sourceOffset + i) * stride];
+                }
+            }
+            occupancy += writeSize;
+            stats.pushedElements += size;
+            if (becameReady) {
+                *becameReady = !wasReady && occupancy >= threshold;
+            }
+            notifyWaiters = waiters > 0;
+        }
+        if (notifyWaiters) {
+            dataAvailable.notify_all();
+        }
+        return Result::SUCCESS;
+    }
+
     void discard(U64 size) {
         if (size == 0) {
             return;
@@ -79,6 +153,7 @@ struct CircularBuffer<T>::Impl {
 
     mutable std::mutex mutex;
     std::condition_variable dataAvailable;
+    U64 waiters = 0;
     std::vector<T> storage;
     CircularBufferOverflowPolicy policy =
         CircularBufferOverflowPolicy::OverwriteOldest;
@@ -126,61 +201,20 @@ CircularBuffer<T>& CircularBuffer<T>::operator=(CircularBuffer&& other) noexcept
 
 template<class T>
 Result CircularBuffer<T>::push(const T* data, const U64 size) {
-    return pushStrided(data, size, 1);
+    return pimpl->push(data, size, 1, 0, nullptr);
+}
+
+template<class T>
+Result CircularBuffer<T>::push(const T* data, const U64 size,
+                               const U64 threshold, bool& becameReady) {
+    return pimpl->push(data, size, 1, threshold, &becameReady);
 }
 
 template<class T>
 Result CircularBuffer<T>::pushStrided(const T* data,
                                       const U64 size,
                                       const U64 stride) {
-    if (size > 0 && data == nullptr) {
-        return Result::ERROR;
-    }
-
-    {
-        std::lock_guard lock(pimpl->mutex);
-        const U64 bufferCapacity = static_cast<U64>(pimpl->storage.size());
-        if (size == 0) {
-            return Result::SUCCESS;
-        }
-        if (bufferCapacity == 0) {
-            ++pimpl->overflowCount;
-            return Result::ERROR;
-        }
-
-        U64 sourceOffset = 0;
-        U64 writeSize = size;
-        if (size > bufferCapacity - pimpl->occupancy) {
-            ++pimpl->overflowCount;
-            if (pimpl->policy == CircularBufferOverflowPolicy::Reject) {
-                return size > bufferCapacity ? Result::ERROR : Result::INCOMPLETE;
-            }
-
-            pimpl->stats.overwrittenElements += size - (bufferCapacity - pimpl->occupancy);
-            if (size >= bufferCapacity) {
-                sourceOffset = size - bufferCapacity;
-                writeSize = bufferCapacity;
-                pimpl->head = 0;
-                pimpl->occupancy = 0;
-            } else {
-                pimpl->discard(pimpl->occupancy + size - bufferCapacity);
-            }
-        }
-
-        const U64 tail = pimpl->physicalIndex(pimpl->occupancy);
-        for (U64 i = 0; i < writeSize; ++i) {
-            U64 destination = tail + i;
-            if (destination >= bufferCapacity) {
-                destination -= bufferCapacity;
-            }
-            pimpl->storage[static_cast<std::size_t>(destination)] =
-                data[(sourceOffset + i) * stride];
-        }
-        pimpl->occupancy += writeSize;
-        pimpl->stats.pushedElements += size;
-    }
-    pimpl->dataAvailable.notify_all();
-    return Result::SUCCESS;
+    return pimpl->push(data, size, stride, 0, nullptr);
 }
 
 template<class T>
@@ -200,7 +234,11 @@ Result CircularBuffer<T>::popStrided(T* data,
     if (size > pimpl->occupancy) {
         return Result::INCOMPLETE;
     }
-    pimpl->copyOutStrided(0, data, size, stride);
+    if (stride == 1) {
+        pimpl->copyOut(0, data, size);
+    } else {
+        pimpl->copyOutStrided(0, data, size, stride);
+    }
     pimpl->discard(size);
     pimpl->updateThroughput(size);
     return Result::SUCCESS;
@@ -272,9 +310,12 @@ Result CircularBuffer<T>::waitForSize(
     if (size > pimpl->storage.size()) {
         return Result::ERROR;
     }
-    if (!pimpl->dataAvailable.wait_for(lock, timeout, [&] {
-            return pimpl->occupancy >= size || size > pimpl->storage.size();
-        })) {
+    ++pimpl->waiters;
+    const bool ready = pimpl->dataAvailable.wait_for(lock, timeout, [&] {
+        return pimpl->occupancy >= size || size > pimpl->storage.size();
+    });
+    --pimpl->waiters;
+    if (!ready) {
         return Result::TIMEOUT;
     }
     return size > pimpl->storage.size() ? Result::ERROR : Result::SUCCESS;

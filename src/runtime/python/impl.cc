@@ -18,6 +18,7 @@ struct PythonRuntime : public Runtime::Impl {
 
     Result compute(const std::vector<std::string>& modules,
                    std::unordered_set<std::string>& skippedModules,
+                   std::unordered_set<std::string>& stalledModules,
                    std::unordered_set<std::string>& failedModules) override;
 
  private:
@@ -25,7 +26,12 @@ struct PythonRuntime : public Runtime::Impl {
         return std::dynamic_pointer_cast<PythonRuntimeContext>(module->context()->runtime());
     }
 
-    Runtime::Modules modulesMap;
+    struct Entry {
+        std::shared_ptr<Module> module;
+        std::shared_ptr<PythonRuntimeContext> context;
+    };
+
+    std::unordered_map<std::string, Entry> modulesMap;
     std::vector<std::string> moduleNames;
 };
 
@@ -60,7 +66,7 @@ Result PythonRuntime::create(const Runtime::Modules& modules) {
 
             cleanup(name, context);
             for (auto it = moduleNames.rbegin(); it != moduleNames.rend(); ++it) {
-                cleanup(*it, getRuntimeContext(modulesMap.at(*it)));
+                cleanup(*it, modulesMap.at(*it).context);
             }
             modulesMap.clear();
             moduleNames.clear();
@@ -73,7 +79,7 @@ Result PythonRuntime::create(const Runtime::Modules& modules) {
         timing.backend = GetRuntimePrettyName(backend);
         module->timing(timing);
 
-        modulesMap[name] = module;
+        modulesMap[name] = {module, context};
         moduleNames.push_back(name);
     }
 
@@ -84,7 +90,7 @@ Result PythonRuntime::destroy() {
     Result result = Result::SUCCESS;
     for (auto it = moduleNames.rbegin(); it != moduleNames.rend(); ++it) {
         const auto deinitializeResult =
-            getRuntimeContext(modulesMap.at(*it))->computeDeinitialize();
+            modulesMap.at(*it).context->computeDeinitialize();
         if (result == Result::SUCCESS && deinitializeResult != Result::SUCCESS &&
             deinitializeResult != Result::RELOAD) {
             result = deinitializeResult;
@@ -99,29 +105,36 @@ Result PythonRuntime::destroy() {
 
 Result PythonRuntime::compute(const std::vector<std::string>& modules,
                               std::unordered_set<std::string>& skippedModules,
+                              std::unordered_set<std::string>& stalledModules,
                               std::unordered_set<std::string>& failedModules) {
     const auto& targetNames = modules.empty() ? moduleNames : modules;
 
     for (const auto& name : targetNames) {
-        if (!modulesMap.contains(name)) {
+        const auto entry = modulesMap.find(name);
+        if (entry == modulesMap.end()) {
             failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_PYTHON] Context for module '{}' not found.", name);
             return Result::ERROR;
         }
 
-        const auto& module = modulesMap.at(name);
+        const auto& module = entry->second.module;
 
-        if (skippedModules.contains(name) || hasSkippedInputs(module, skippedModules)) {
-            skippedModules.insert(name);
+        if (skippedModules.contains(name) || stalledModules.contains(name)) {
+            continue;
+        }
+
+        if (hasSkippedInputs(module, skippedModules, stalledModules)) {
+            stalledModules.insert(name);
             continue;
         }
 
         const auto start = std::chrono::steady_clock::now();
-        const auto result = getRuntimeContext(module)->computeSubmit();
+        const auto result = entry->second.context->computeSubmit();
         const auto end = std::chrono::steady_clock::now();
 
         if (result == Result::YIELD || result == Result::TIMEOUT) {
-            return result;
+            stalledModules.insert(name);
+            continue;
         }
 
         if (result != Result::SUCCESS && result != Result::RELOAD && result != Result::SKIP) {

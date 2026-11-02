@@ -19,9 +19,12 @@
 EM_JS_DEPS(jst_http_deps, "$UTF8ToString,$stringToNewUTF8,malloc,free");
 #elif defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
 #include <httplib.h>
+#ifdef ERROR
+#undef ERROR
+#endif
 #endif
 
-// TODO: Port src/compositor/default/support/feedback.cc to Platform::Http.
+// TODO: Port src/compositor/default/support/feedback.cc to Platform::Http::Client.
 
 namespace Jetstream::Platform {
 
@@ -33,15 +36,23 @@ namespace {
     });
 }
 
-}  // namespace
-
-std::string Http::Response::header(std::string_view name) const {
+std::string FindHeader(const Http::Headers& headers, std::string_view name) {
     for (const auto& [key, value] : headers) {
         if (SameName(key, name)) {
             return value;
         }
     }
     return {};
+}
+
+}  // namespace
+
+std::string Http::Client::Response::header(std::string_view name) const {
+    return FindHeader(headers, name);
+}
+
+std::string Http::Server::Request::header(std::string_view name) const {
+    return FindHeader(headers, name);
 }
 
 #if defined(JST_OS_BROWSER)
@@ -152,7 +163,7 @@ void jst_http_on_done(U32 id, I32 kind, const char* message) {
 
 }
 
-Http::Response Http::Send(const Request& request) {
+Http::Client::Response Http::Client::Send(const Request& request) {
     Response response;
     if (request.cancelled && request.cancelled()) {
         response.error = {Error::Kind::Cancelled, "Request cancelled"};
@@ -390,7 +401,7 @@ Http::Error ConvertError(httplib::Error error, bool idle) {
 
 }  // namespace
 
-Http::Response Http::Send(const Request& request) {
+Http::Client::Response Http::Client::Send(const Request& request) {
     Response response;
     if (request.cancelled && request.cancelled()) {
         response.error = {Error::Kind::Cancelled, httplib::to_string(httplib::Error::Canceled)};
@@ -473,12 +484,141 @@ Http::Response Http::Send(const Request& request) {
 
 #else
 
-Http::Response Http::Send(const Request&) {
+Http::Client::Response Http::Client::Send(const Request&) {
     Response response;
     response.error = {Error::Kind::Unsupported, "This build has no HTTP support"};
     return response;
 }
 
 #endif
+
+#if !defined(JST_OS_BROWSER) && defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
+
+struct Http::Server::Impl {
+    httplib::Server server;
+    std::thread thread;
+    Handler handler;
+    U16 port = 0;
+
+    void serve(const httplib::Request& request, httplib::Response& response) const {
+        if (request.is_multipart_form_data()) {
+            response.status = 415;
+            return;
+        }
+
+        const auto separator = request.target.find('?');
+        const auto reply = handler({
+            .method = request.method,
+            .path = request.path,
+            .query = separator == std::string::npos ? std::string{} : request.target.substr(separator + 1),
+            .headers = {request.headers.begin(), request.headers.end()},
+            .body = request.body,
+        });
+
+        response.status = reply.status;
+        for (const auto& [key, value] : reply.headers) {
+            response.set_header(key, value);
+        }
+        if (!reply.body.empty() || !reply.contentType.empty()) {
+            auto type = reply.contentType.empty() ? FindHeader(reply.headers, "Content-Type") : reply.contentType;
+            response.set_content(reply.body, type.empty() ? "text/plain" : type);
+        }
+    }
+};
+
+Http::Server::Server() = default;
+
+Http::Server::~Server() {
+    stop();
+}
+
+Result Http::Server::start(const Config& config) {
+    stop();
+
+    if (!config.handler) {
+        return Result::ERROR;
+    }
+
+    auto next = std::make_unique<Impl>();
+    next->handler = config.handler;
+
+    auto& server = next->server;
+    server.set_payload_max_length(config.maxBodyBytes);
+    server.set_socket_options([](const socket_t socket) {
+#ifdef JST_OS_WINDOWS
+        httplib::set_socket_opt(socket, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, 1);
+#else
+        httplib::set_socket_opt(socket, SOL_SOCKET, SO_REUSEADDR, 1);
+#endif
+        DisableSocketSigPipe(static_cast<std::uintptr_t>(socket));
+    });
+
+    const auto serve = [impl = next.get()](const httplib::Request& request, httplib::Response& response) {
+        impl->serve(request, response);
+    };
+    server.Get(".*", serve);
+    server.Post(".*", serve);
+    server.Put(".*", serve);
+    server.Patch(".*", serve);
+    server.Delete(".*", serve);
+    server.Options(".*", serve);
+
+    const int port = config.port == 0 ? server.bind_to_any_port(config.address)
+                                      : (server.bind_to_port(config.address, config.port) ? config.port : -1);
+    if (port <= 0) {
+        return Result::ERROR;
+    }
+    next->port = static_cast<U16>(port);
+
+    try {
+        next->thread = std::thread([impl = next.get()]() {
+            impl->server.listen_after_bind();
+        });
+    } catch (const std::exception&) {
+        server.stop();
+        return Result::ERROR;
+    }
+
+    impl = std::move(next);
+    return Result::SUCCESS;
+}
+
+void Http::Server::stop() {
+    if (!impl) {
+        return;
+    }
+
+    impl->server.stop();
+    if (impl->thread.joinable()) {
+        impl->thread.join();
+    }
+    impl.reset();
+}
+
+#else
+
+struct Http::Server::Impl {
+    U16 port = 0;
+};
+
+Http::Server::Server() = default;
+
+Http::Server::~Server() = default;
+
+Result Http::Server::start(const Config&) {
+    return Result::ERROR;
+}
+
+void Http::Server::stop() {}
+
+#endif
+
+bool Http::Server::running() const {
+    return impl != nullptr;
+}
+
+U16 Http::Server::port() const {
+    return impl ? impl->port : 0;
+}
 
 }  // namespace Jetstream::Platform

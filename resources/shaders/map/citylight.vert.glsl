@@ -17,7 +17,7 @@ const float HaloScale = 3.5;
 const float MinRadiusPixels = 2.5;
 
 void main() {
-    vec3 p = lonLatToSphere(inLight.x, inLight.y);
+    vec3 p = mapSphere(inLight.xy);
     float facing = dot(p, uniforms.targetNormal.xyz);
     float horizon = uniforms.targetNormal.w;
     float lit = sunLights(p) * sun.lights.x;
@@ -34,10 +34,10 @@ void main() {
     vec3 east = cross(vec3(0.0, 1.0, 0.0), p);
     east = length(east) < 1.0e-3 ? vec3(1.0, 0.0, 0.0) : normalize(east);
     vec3 north = cross(p, east);
-    vec2 center = projectToNdc(p);
+    vec2 center = projectToNdc(mapLocal(inLight.xy));
     vec2 pixel = mapPixelSize();
-    vec2 eastPx = (projectToNdc(normalize(p + east * inLight.z)) - center) / pixel;
-    vec2 northPx = (projectToNdc(normalize(p + north * inLight.z)) - center) / pixel;
+    vec2 eastPx = (projectToNdc(sphereLocal(normalize(p + east * inLight.z))) - center) / pixel;
+    vec2 northPx = (projectToNdc(sphereLocal(normalize(p + north * inLight.z))) - center) / pixel;
     float radiusPx = max(length(eastPx), length(northPx));
     float haloPx = radiusPx * HaloScale;
     float drawnPx = max(haloPx, MinRadiusPixels);

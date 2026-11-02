@@ -3,7 +3,7 @@
 
 #include "jetstream/logger.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/surface.hh"
 
 #include "render/sakura/metrics.hh"
@@ -40,6 +40,7 @@ struct SuperluminalView {
     static constexpr F32 GlobalLimit = 0.6f;
     static constexpr F32 GlobalHeight = 120.0f;
     static constexpr F32 FitSlack = 1.0f;
+    static constexpr F32 MosaicCell = 240.0f;
     static constexpr I32 SliderPrecision = 3;
     static constexpr F32 MarkdownMinimum = 48.0f;
     static constexpr U64 ParkedUpdates = 120;
@@ -325,11 +326,16 @@ struct SuperluminalView {
                         invalidate(Dirty::Layout);
                     }
                 },
+                .onOverscroll = [this] {
+                    requestFrame();
+                },
             });
             layoutChild(ctx, scroller, bounds);
             if (config.content) {
+                const F32 overscroll = scroller.overscroll(ctx).y;
                 layoutChild(ctx, *config.content,
-                            {bounds.x, bounds.y - offset, width, overflow ? natural : bounds.height}, bounds);
+                            {bounds.x, bounds.y - offset - overscroll, width, overflow ? natural : bounds.height},
+                            bounds);
             }
             const Extent2D<F32> reported = {std::ceil(natural) / ctx.pixelRatio, bounds.height / ctx.pixelRatio};
             if (config.onLayout && reported != last) {
@@ -818,7 +824,7 @@ struct SuperluminalView {
             globalHeight = GlobalHeight;
             layout = free ? (hasGlobal ? std::optional<Sakura::DockTiles>(Sakura::DockTiles{.pane = GlobalPane})
                                        : std::nullopt)
-                          : Stacked(GlobalWeight);
+                          : Stacked();
         }
 
         std::unordered_set<std::string> boxNames;
@@ -846,7 +852,7 @@ struct SuperluminalView {
                 .id = GlobalPane,
                 .title = GlobalTitle,
                 .group = group(GlobalPane),
-                .icon = ICON_FA_SLIDERS,
+                .icon = ICON_LC_SLIDERS_HORIZONTAL,
                 .content = &global.component(),
                 .closable = false,
                 .padding = Sakura::Dock::ContentPadding,
@@ -888,7 +894,7 @@ struct SuperluminalView {
                 .id = id,
                 .title = tile.name,
                 .group = group(id),
-                .icon = interface ? ICON_FA_SLIDERS : ICON_FA_CHART_AREA,
+                .icon = interface ? ICON_LC_SLIDERS_HORIZONTAL : ICON_LC_CHART_AREA,
                 .content = content,
                 .closable = false,
                 .padding = Sakura::Dock::ContentPadding,
@@ -956,6 +962,15 @@ struct SuperluminalView {
                 .offset = {config.chrome.leadingInset + TitleInset, barCenter - TitleSize * 0.5f},
             }},
         });
+        barContent.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = 0.0f,
+            .centerCross = false,
+            .items = {
+                {.child = &barRow, .grow = 1.0f},
+                {.child = &nativeControlsSpace, .size = config.chrome.trailingInset},
+            },
+        });
         Sakura::Callback<void()> press;
         Sakura::Callback<void()> zoom;
         if (config.onBarPress) {
@@ -967,7 +982,7 @@ struct SuperluminalView {
             };
         }
         bar.update({
-            .content = &barRow,
+            .content = &barContent,
             .border = false,
             .colorKey = "background",
             .hoveredColorKey = "background",
@@ -1113,7 +1128,7 @@ struct SuperluminalView {
                 const auto child = vertical ? Cut(band, x0, low, x1, high, failed) : Cut(band, low, y0, high, y1, failed);
                 if (child.has_value()) {
                     node.children.push_back(*child);
-                    node.weights.push_back(static_cast<F32>(high - low));
+                    node.sizes.push_back(MosaicCell * static_cast<F32>(high - low));
                 }
             }
             if (node.children.size() == 1) {
@@ -1132,13 +1147,13 @@ struct SuperluminalView {
         }
         F32 sum = 0.0f;
         for (U64 index = 0; index < tiles->children.size(); ++index) {
-            sum += index < tiles->weights.size() ? tiles->weights[index] : 1.0f;
+            sum += index < tiles->sizes.size() ? tiles->sizes[index] : 0.0f;
         }
-        const F32 first = tiles->weights.empty() ? 1.0f : tiles->weights.front();
+        const F32 first = tiles->sizes.empty() ? 0.0f : tiles->sizes.front();
         return sum > 0.0f ? first / sum : -1.0f;
     }
 
-    std::optional<Sakura::DockTiles> Stacked(F32 weight) const {
+    std::optional<Sakura::DockTiles> Stacked() const {
         if (!withGlobal) {
             return mosaic;
         }
@@ -1147,7 +1162,7 @@ struct SuperluminalView {
         }
         return Sakura::DockTiles{
             .vertical = true,
-            .weights = {weight, 1.0f - weight},
+            .sizes = {GlobalHeight, GlobalHeight * (1.0f - GlobalWeight) / GlobalWeight},
             .children = {Sakura::DockTiles{.pane = GlobalPane}, *mosaic},
         };
     }
@@ -1176,16 +1191,16 @@ struct SuperluminalView {
             return;
         }
         auto next = *layout;
-        next.weights.resize(next.children.size(), 1.0f);
+        next.sizes.resize(next.children.size(), 0.0f);
         F32 sum = 0.0f;
-        for (const F32 value : next.weights) {
+        for (const F32 value : next.sizes) {
             sum += value;
         }
         const F32 scale = (1.0f - weight) / (1.0f - current);
-        for (U64 index = 1; index < next.weights.size(); ++index) {
-            next.weights[index] *= scale;
+        for (U64 index = 1; index < next.sizes.size(); ++index) {
+            next.sizes[index] *= scale;
         }
-        next.weights.front() = weight * sum;
+        next.sizes.front() = weight * sum;
         layout = std::move(next);
     }
 
@@ -1225,6 +1240,8 @@ struct SuperluminalView {
     Mosaic mosaicFrames;
     Sakura::Text barTitle;
     Sakura::Overlay barRow;
+    Sakura::Overlay nativeControlsSpace;
+    Sakura::Stack barContent;
     Sakura::Div bar;
     Sakura::Stack shell;
     Shell window;

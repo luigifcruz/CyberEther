@@ -54,7 +54,7 @@ void NodeBoolInput::layout(const Context& ctx) {
     const F32 pad = Px(ctx, kNodeFramePadX);
     const F32 iconSize = fontSize * 0.8f;
     const char* glyph = config.value ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF;
-    const F32 iconWidth = impl->metrics.measure(Typography::IconFont, glyph, iconSize);
+    const F32 iconWidth = impl->metrics.measure(Typography::NodeIconFont, glyph, iconSize);
 
     impl->background.update({
         .instances = {{.rect = Snap(bounds), .visible = !bounds.empty(), .backgroundColor = ctx.color("card")}},
@@ -84,7 +84,7 @@ void NodeBoolInput::layout(const Context& ctx) {
             .alignment = {0, 1},
         }},
         .clip = bounds,
-        .fontName = Typography::IconFont,
+        .fontName = Typography::NodeIconFont,
         .maxCharacters = 4,
     });
 

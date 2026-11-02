@@ -781,9 +781,10 @@ Result FrameImpl::updateTextState() {
     auto header = text->get("header");
     header.position = {-padding.x + pixelSize.x * tickOffset,
                        padding.y - pixelSize.y * tickOffset};
+    const bool zoomed = std::abs(view.zoom - 1.0f) > 0.01f;
     if (attached) {
-        header.fill = " ";
-    } else if (std::abs(view.zoom - 1.0f) > 0.01f) {
+        header.fill = zoomed ? jst::fmt::format("ZOOM {:.1f}x", view.zoom) : " ";
+    } else if (zoomed) {
         header.fill = jst::fmt::format("{}   ZOOM {:.1f}x", frameLabel, view.zoom);
     } else {
         header.fill = frameLabel;

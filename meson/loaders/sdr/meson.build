@@ -13,6 +13,9 @@ if jst_is_macos or jst_is_linux or jst_is_windows or jst_is_browser
     if not jst_is_browser
         sdr_families += {'PLUTOSDR': ['libad9361', 'libad9361_dep']}
     endif
+    if jst_is_macos or jst_is_linux
+        sdr_families += {'BIRRIASDR': ['birriasdr', 'birriasdr_dep']}
+    endif
 
     foreach family, source : sdr_families
         family_dep = subproject(
@@ -33,13 +36,13 @@ if jst_is_macos or jst_is_linux or jst_is_windows or jst_is_browser
         lib_link_args += [
             '-Wl,--exclude-libs,liblibrtlsdr.a:liblibairspy.a:liblibairspyhf.a:libhackrf.a:' +
             'libLimeSuite.a:' +
-            'libbladeRF.a:libiio.a:libad9361.a:libxml2.a:libusb-1.0.a',
+            'libbladeRF.a:libiio.a:libad9361.a:libxml2.a:libbirriasdr.a:libusb-1.0.a',
         ]
     endif
 
     if jst_is_macos and not jst_is_static
         foreach symbols : ['_rtlsdr_*', '_airspy_*', '_airspyhf_*', '_hackrf_*', '_bladerf_*', '_LMS_*',
-                           '_iio_*', '_ad9361_*', '_xml*', '___xml*', '_libusb_*', '__ZN4lime*']
+                           '_birriasdr_*', '_iio_*', '_ad9361_*', '_xml*', '___xml*', '_libusb_*', '__ZN4lime*']
             lib_link_args += '-Wl,-unexported_symbol,' + symbols
         endforeach
     endif

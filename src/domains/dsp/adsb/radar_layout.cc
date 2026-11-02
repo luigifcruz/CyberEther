@@ -22,7 +22,7 @@ std::optional<F32> ProjectHeading(const AdsbMapAircraft& aircraft,
                            -std::sin(lat) * std::cos(lon)};
     const glm::vec3 east{std::cos(lon), 0.0f, -std::sin(lon)};
     const glm::vec3 tangent = north * std::cos(heading) + east * std::sin(heading);
-    const glm::vec4 direction = context.camera.viewProjection * glm::vec4(tangent, 0.0f);
+    const glm::vec4 direction(context.worldViewProjection * glm::dvec4(glm::dvec3(tangent), 0.0));
 
     // Differentiate clip.xy / clip.w along the local heading. The common
     // positive 1/clip.w factor cancels in atan2; logical pixels account for

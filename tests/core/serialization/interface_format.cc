@@ -79,6 +79,11 @@ TEST_CASE("Interface descriptors validate every control and internal metric",
         REQUIRE(Block::Interface::ValidateFormat({{"type", type}, {"visibility", "public"}}, true) == Result::SUCCESS);
         REQUIRE(Block::Interface::ValidateFormat({{"type", type}, {"visibility", "internal"}}, true) == Result::SUCCESS);
     }
+    REQUIRE(Block::Interface::ValidateFormat({{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
+                                             true) == Result::SUCCESS);
+    REQUIRE(Block::Interface::ValidateFormat({{"type", "progressbar"}, {"warning_below", 0.95f}, {"error_below", 0.8f}},
+                                             true) == Result::SUCCESS);
+    REQUIRE(Block::Interface::ValidateFormat({{"type", "progressbar"}, {"error_above", 0.0f}}, true) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "vector"}, {"value_type", "float"}}) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "vector"}, {"value_type", "uint"}}) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "timing"}, {"visibility", "internal"}}, true) == Result::SUCCESS);
@@ -105,6 +110,7 @@ TEST_CASE("Malformed interface descriptors fail without throwing",
         {{"type", "multiline"}, {"collapsible", 2}},
         {{"type", "filepicker"}, {"extensions", "iq,raw"}},
         {{"type", "dropdown"}},
+        {{"type", "float"}, {"warning_above", 0.5f}},
         {{"type", "dropdown"}, {"options", Parser::Sequence{Parser::Map{{"label", "Missing value"}}}}},
         {{"type", "dropdown"}, {"options", Parser::Sequence{std::string("not an option")}}},
         {{"type", "dropdown"}, {"options", Parser::Sequence{Parser::Map{{"label", "Number"}, {"value", U64{1}}}}}},
@@ -115,6 +121,17 @@ TEST_CASE("Malformed interface descriptors fail without throwing",
     };
     for (const auto& format : formats) {
         REQUIRE(Block::Interface::ValidateFormat(format) == Result::ERROR);
+    }
+    const std::vector<Parser::Map> metrics{
+        {{"type", "label"}, {"warning_above", 0.5f}},
+        {{"type", "progressbar"}, {"warning_above", "high"}},
+        {{"type", "progressbar"}, {"error_above", std::numeric_limits<F32>::quiet_NaN()}},
+        {{"type", "progressbar"}, {"warning_above", 0.75f}, {"error_above", 0.5f}},
+        {{"type", "progressbar"}, {"warning_below", 0.8f}, {"error_below", 0.95f}},
+        {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_below", 0.1f}},
+    };
+    for (const auto& format : metrics) {
+        REQUIRE(Block::Interface::ValidateFormat(format, true) == Result::ERROR);
     }
 }
 

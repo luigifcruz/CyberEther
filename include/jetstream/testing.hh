@@ -37,6 +37,7 @@ class JETSTREAM_API TestContext {
     Result run();
     Result start();
     Result compute();
+    bool stalled() const;
     Result reconfigure(const Module::Config& config, bool validateOnly = false);
     Result stop();
     Tensor& output(const std::string& name);

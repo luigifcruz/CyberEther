@@ -1520,3 +1520,22 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[core][flowgraph]
         REQUIRE(flowgraph->author() == "Test Author");
     }
 }
+
+TEST_CASE_METHOD(FlowgraphFixture, "Paused flowgraphs keep accepting edits and resume on request", "[core][flowgraph][pause]") {
+    REQUIRE_FALSE(flowgraph->paused());
+    REQUIRE(flowgraph->pause() == Result::SUCCESS);
+    REQUIRE(flowgraph->paused());
+
+    REQUIRE(flowgraph->blockCreate("gen1", kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("gen1").state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(flowgraph->present() == Result::SUCCESS);
+
+    REQUIRE(flowgraph->resume() == Result::SUCCESS);
+    REQUIRE_FALSE(flowgraph->paused());
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    REQUIRE(flowgraph->pause() == Result::SUCCESS);
+    REQUIRE(flowgraph->stop() == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+}

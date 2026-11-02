@@ -227,12 +227,12 @@ TEST_CASE("Constellation redraws its retained surface only on input and new data
     REQUIRE(constellation);
     auto& surface = *(constellation->*ConstellationImplAccess::renderSurfaceMember());
 
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     F32 level = 0.1f;
     const auto compute = [&] {
         std::fill_n(input.data<CF32>(), input.size(), CF32(level, -level));
         level += 0.1f;
-        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
     };
 
     compute();

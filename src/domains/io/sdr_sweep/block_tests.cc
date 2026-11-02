@@ -38,15 +38,19 @@ TEST_CASE_METHOD(FlowgraphFixture,
     std::vector<Flowgraph::View::MetricEntry> metrics;
     REQUIRE(flowgraph->view().metrics("sweep", metrics) == Result::SUCCESS);
     REQUIRE(metrics.size() == 3);
-    const std::vector<std::string> names{"bufferHealth", "bufferLoss", "sweepSpeed"};
-    const std::vector<std::string> labels{"Buffer Health", "Buffer Loss", "Sweep Speed"};
+    const std::vector<std::string> names{"bufferFill", "bufferLoss", "sweepSpeed"};
+    const std::vector<std::string> labels{"Buffer Fill", "Buffer Loss", "Sweep Speed"};
     const std::vector<std::string> expectedValues{"0%", "0.0%", "0.00 GHz/s (0.0 Hz)"};
+    const std::vector<Parser::Map> formats{
+        {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
+        {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}},
+    };
     for (U64 i = 0; i < metrics.size(); ++i) {
         REQUIRE(metrics[i].name == names[i]);
         REQUIRE(metrics[i].label == labels[i]);
     }
     for (U64 i = 0; i < 2; ++i) {
-        REQUIRE(metrics[i].format == Parser::Map{{"type", "progressbar"}});
+        REQUIRE(metrics[i].format == formats[i]);
         const auto [value, fraction] = std::any_cast<std::pair<std::string, F32>>(metrics[i].value);
         REQUIRE(value == expectedValues[i]);
         REQUIRE(fraction == 0.0f);

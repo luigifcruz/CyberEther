@@ -17,15 +17,8 @@ struct FlowgraphConfigMarkdownField {
 
     Result update(Config config) {
         this->config = std::move(config);
-        std::string nextValue;
-        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, nextValue));
-        if (nextValue != parsedEncoded) {
-            value = nextValue;
-            parsedEncoded = nextValue;
-            if (!editing) {
-                buffer = value;
-            }
-        }
+        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
+        typed.reset();
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
@@ -35,24 +28,33 @@ struct FlowgraphConfigMarkdownField {
         });
         markdownField.update({
             .id = this->config.id + "Markdown",
-            .value = editing ? buffer : this->config.preview.value_or(value),
+            .value = editing ? this->config.draft.value_or(value) : this->config.preview.value_or(value),
             .editing = editing,
             .onChange = [this](std::string nextValue) {
-                buffer = std::move(nextValue);
+                typed = nextValue;
+                if (this->config.onDraft) {
+                    this->config.onDraft(std::move(nextValue), value);
+                }
             },
             .onEdit = [this]() {
-                buffer = value;
                 editing = true;
             },
             .onDone = [this]() {
                 Parser::Map patch;
-                patch[this->config.name] = buffer;
+                patch[this->config.name] = typed.value_or(this->config.draft.value_or(value));
                 if (this->config.onApply) {
                     this->config.onApply(std::move(patch), false, {});
                 }
                 editing = false;
             },
             .onContentOverflow = this->config.onContentOverflow,
+            .onLink = [this](const std::string& url) {
+                if (!this->config.onOpenUrl) {
+                    return false;
+                }
+                this->config.onOpenUrl(url);
+                return true;
+            },
         });
         return Result::SUCCESS;
     }
@@ -63,10 +65,9 @@ struct FlowgraphConfigMarkdownField {
 
  private:
     Config config;
-    std::string parsedEncoded;
     std::string value;
+    std::optional<std::string> typed;
     bool editing = false;
-    std::string buffer;
     Sakura::NodeField frame;
     Sakura::MarkdownEditor markdownField;
 };

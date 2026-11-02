@@ -21,6 +21,7 @@ struct Stack : public Component {
         Component* child = nullptr;
         F32 size = 0.0f;
         F32 grow = 0.0f;
+        F32 shrink = 0.0f;
 
         bool operator==(const Item&) const = default;
     };
@@ -29,6 +30,7 @@ struct Stack : public Component {
         Axis axis = Axis::Vertical;
         F32 spacing = Spacing;
         bool centerCross = true;
+        Component* widthOf = nullptr;
         std::vector<Item> items;
 
         bool operator==(const Config&) const = default;
