@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <array>
@@ -48,6 +49,59 @@ void RequireCastValidationError(const Registry::ModuleRegistration& impl,
 }
 
 }  // namespace
+
+TEST_CASE("Cast honors sample scale and updates it after conversion",
+          "[modules][cast][scale]") {
+    const std::string outputType = GENERATE("CF32", "CF64", "CI8", "CU8", "CI16");
+    for (const auto& impl : CastImplementations()) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Output: " << outputType) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+            Modules::Cast config;
+            config.outputType = outputType;
+            ctx.setConfig(config);
+            auto input = ctx.createTensor<CI16>({2});
+            input.at(0) = {4096, -8192};
+            input.at(1) = {0, 2048};
+            REQUIRE(input.setAttribute("sampleScale", 1.0f / 8192.0f) ==
+                    Result::SUCCESS);
+            ctx.setInput("buffer", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            auto& output = ctx.output("buffer");
+            const auto scale = std::any_cast<F32>(output.attribute("sampleScale"));
+            if (outputType == "CF32") {
+                REQUIRE(output.at<CF32>(0) == CF32(0.5f, -1.0f));
+                REQUIRE(scale == 1.0f);
+            } else if (outputType == "CF64") {
+                REQUIRE(output.at<CF64>(0) == CF64(0.5, -1.0));
+                REQUIRE(scale == 1.0f);
+            } else if (outputType == "CI8") {
+                REQUIRE(output.at<CI8>(0) == CI8(16, -32));
+                REQUIRE(scale == 1.0f / 32.0f);
+            } else if (outputType == "CU8") {
+                REQUIRE(output.at<CU8>(0) == CU8(144, 96));
+                REQUIRE(scale == 1.0f / 32.0f);
+            } else {
+                REQUIRE(output.at<CI16>(0) == input.at(0));
+                REQUIRE(scale == 1.0f / 8192.0f);
+            }
+            TestContext normalized("cast", impl.device, impl.runtime, impl.provider);
+            normalized.setConfig(Modules::Cast{});
+            normalized.setInput("buffer", output);
+            REQUIRE(normalized.run() == Result::SUCCESS);
+            REQUIRE(normalized.output("buffer").at<CF32>(0) == CF32(0.5f, -1.0f));
+        }
+    }
+}
+
+TEST_CASE("Cast rejects invalid sample scales", "[modules][cast][scale][validation]") {
+    const F32 scale = GENERATE(0.0f, -1.0f, std::numeric_limits<F32>::infinity(),
+                               std::numeric_limits<F32>::quiet_NaN());
+    for (const auto& impl : CastImplementations()) {
+        auto input = MakeCastTensor(impl, DataType::CI16, {4});
+        REQUIRE(input.setAttribute("sampleScale", scale) == Result::SUCCESS);
+        RequireCastValidationError(impl, Modules::Cast{}, input);
+    }
+}
 
 TEST_CASE("Cast Module - CI8 to CF32", "[modules][cast][CI8]") {
     auto implementations = CastImplementations();

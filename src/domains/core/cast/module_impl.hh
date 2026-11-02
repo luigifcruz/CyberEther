@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_DOMAINS_CORE_CAST_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_CORE_CAST_MODULE_IMPL_HH
 
+#include <optional>
+
 #include <jetstream/domains/core/cast/module.hh>
 #include <jetstream/detail/module_impl.hh>
 
@@ -24,6 +26,7 @@ struct CastImpl : public Module::Impl, public DynamicConfig<Cast> {
  protected:
     DataType validatedOutputDtype = DataType::None;
     bool validatedBypass = false;
+    std::optional<F32> validatedSampleScale;
     U64 validatedOutputElementCount = 0;
     U64 validatedOutputSizeBytes = 0;
 

@@ -29,6 +29,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     U64 getDeviceOverflows() const;
     std::pair<F32, F32> getThroughput() const;
     std::vector<std::string> listAntennas() const;
+    std::vector<std::string> listDataTypes() const;
     bool supportsBiasTee() const;
     std::optional<SoapyAbi::Range> getGainRange() const;
 
@@ -36,6 +37,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
 
  protected:
     Tensor buffer;
+    DataType validatedDataType = DataType::CF32;
 
     U64 validatedOutputSizeBytes = 0;
     U64 validatedInternalElements = 0;

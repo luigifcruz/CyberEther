@@ -9,6 +9,7 @@ struct Soapy : public Block::Config {
     std::string modulePath = "";
     std::string deviceString = "";
     std::string streamString = "";
+    std::string dataType = "CF32";
     std::string antenna = "";
     F32 frequency = 96.9e6;
     F32 frequencyStep = 1000000.0;
@@ -23,7 +24,7 @@ struct Soapy : public Block::Config {
     JST_BLOCK_TYPE(soapy);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
-    JST_BLOCK_PARAMS(modulePath, deviceString, streamString,
+    JST_BLOCK_PARAMS(modulePath, deviceString, streamString, dataType,
                      antenna, frequency, frequencyStep, sampleRate,
                      automaticGain, manualGain, biasTee, numberOfBatches,
                      numberOfTimeSamples, bufferMultiplier);
@@ -40,6 +41,9 @@ struct Soapy : public Block::Config {
         "the first time it is used.\n"
         "- **Changes drop older samples.** Retuning drops buffered samples, but the "
         "driver can still deliver a few older ones.\n"
+        "- **Data Type selects the output.** CF32 keeps existing flowgraphs working. "
+        "Changing it restarts the receiver; integer outputs may need a Cast before "
+        "floating-point processing.\n"
         "- **A slow chain loses samples.** When the chain falls behind, the oldest "
         "samples are overwritten and Buffer Loss rises.\n"
         "- **Automatic Gain off uses Manual Gain.** The saved gain is reapplied after "
@@ -49,9 +53,10 @@ struct Soapy : public Block::Config {
         "\n"
         "| Port | Type | Shape |\n"
         "|---|---|---|\n"
-        "| **Output** (out) | CF32 | Batches x Samples, on a `batchAxis` then a "
+        "| **Output** (out) | Data Type | Batches x Samples, on a `batchAxis` then a "
         "`sampleAxis`. Sets `frequency` and `sampleRate` to the values applied to these"
-        " samples. |\n"
+        " samples. Integer values are unscaled; `sampleScale` describes their "
+        "conversion to normalized floating point. |\n"
         "\n"
         "## Settings\n"
         "\n"
@@ -62,6 +67,9 @@ struct Soapy : public Block::Config {
         "|\n"
         "| **Antenna** | Default | Default and the radio's receive ports | Receive "
         "port. Default keeps the driver's choice. |\n"
+        "| **Data Type** | CF32 | CF32, CF64, CI16, CI8, CU8, as supported by the "
+        "radio | Type delivered by SoapySDR and passed downstream. CI16 and CI8 "
+        "request CS16 and CS8. This does not select the radio's wire format. |\n"
         "| **Frequency** | 96.9 MHz | Within the radio's range | Center frequency of "
         "the output. |\n"
         "| **Sample Rate** | 2 MHz | Within the radio's range | Complex samples per "
@@ -87,7 +95,7 @@ struct Soapy : public Block::Config {
         "since the stream started. Overflows the radio reported show next to it as OVF."
         " |\n"
         "| **Throughput** | Rate the chain reads in MB/s, next to the rate the radio "
-        "sends at 8 bytes per sample. |\n"
+        "sends using the selected type's bytes per complex sample. |\n"
         "\n"
         "## Recipes\n"
         "\n"

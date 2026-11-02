@@ -21,6 +21,13 @@ Result SoapyImpl::validate() {
     validatedInternalElements = 0;
     validatedInternalSizeBytes = 0;
 
+    validatedDataType = NameToDataType(config.dataType);
+    if (!FindSoapySampleFormat(validatedDataType)) {
+        JST_ERROR("[MODULE_SOAPY] Unsupported data type '{}'.", config.dataType);
+        return Result::ERROR;
+    }
+    const U64 sampleBytes = DataTypeSize(validatedDataType);
+
     if (!std::isfinite(config.frequency)) {
         JST_ERROR("[MODULE_SOAPY] Frequency must be finite.");
         return Result::ERROR;
@@ -61,7 +68,7 @@ Result SoapyImpl::validate() {
 
     U64 outputSizeBytes = 0;
     if (!detail::CheckedMultiply(outputElements,
-                                 static_cast<U64>(sizeof(CF32)),
+                                 sampleBytes,
                                  outputSizeBytes)) {
         JST_ERROR("[MODULE_SOAPY] Output buffer layout is too large.");
         return Result::ERROR;
@@ -73,7 +80,7 @@ Result SoapyImpl::validate() {
                                  config.bufferMultiplier,
                                  internalElements) ||
         !detail::CheckedMultiply(internalElements,
-                                 static_cast<U64>(sizeof(CF32)),
+                                 sampleBytes,
                                  internalSizeBytes)) {
         JST_ERROR("[MODULE_SOAPY] Internal buffer layout is too large.");
         return Result::ERROR;
@@ -112,10 +119,12 @@ Result SoapyImpl::create() {
 
     JST_CHECK(receiverDevice.open(deviceString));
     JST_CHECK(receiverDevice.validateSettings(sampleRate, frequency));
+    JST_CHECK(receiverDevice.validateDataType(validatedDataType));
     JST_CHECK(allocateBuffers());
     JST_CHECK(configureDevice());
 
     outputs()["signal"].produced(name(), "signal", buffer);
+    JST_CHECK(buffer.setAttribute("sampleScale", receiverDevice.sampleScale()));
 
     generation = 0;
     resetStream(frequency, sampleRate);
@@ -129,12 +138,14 @@ Result SoapyImpl::create() {
 
 Result SoapyImpl::allocateBuffers() {
     try {
-        JST_CHECK(buffer.create(device(), DataType::CF32, {numberOfBatches, numberOfTimeSamples}));
+        JST_CHECK(buffer.create(device(), validatedDataType,
+                                 {numberOfBatches, numberOfTimeSamples}));
         JST_CHECK(SetSignalAxes(buffer, {
             .sample = Index{1},
             .batch = Index{0},
         }));
-        JST_CHECK(stream.resize(validatedInternalElements));
+        JST_CHECK(stream.resize(validatedInternalElements,
+                                 DataTypeSize(buffer.dtype())));
     } catch (const std::bad_array_new_length&) {
         JST_ERROR("[MODULE_SOAPY] Internal buffer dimensions are too large.");
         return Result::ERROR;
@@ -157,7 +168,7 @@ Result SoapyImpl::configureDevice() {
     JST_CHECK(applyTuning(desired, true));
     manualGain = tuned.gain;
     JST_CHECK(receiverDevice.setBiasTee(biasTee));
-    JST_CHECK(receiverDevice.startStream(streamString));
+    JST_CHECK(receiverDevice.startStream(streamString, buffer.dtype()));
     return Result::SUCCESS;
 }
 
@@ -214,6 +225,7 @@ Result SoapyImpl::reconfigure() {
     if (errored || newConfig.modulePath != modulePath ||
         newConfig.deviceString != deviceString ||
         newConfig.streamString != streamString ||
+        newConfig.dataType != dataType ||
         newConfig.antenna != antenna ||
         newConfig.biasTee != biasTee ||
         newConfig.numberOfBatches != numberOfBatches ||
@@ -272,7 +284,7 @@ Result SoapyImpl::publishMetadata(const Radio::StreamBuffer::Metadata& metadata)
 
 Result SoapyImpl::emitFrame() {
     Radio::StreamBuffer::Metadata metadata;
-    const auto result = stream.pop(buffer.data<CF32>(), buffer.size(), metadata);
+    const auto result = stream.pop(buffer.data(), buffer.size(), metadata);
     if (result == Result::INCOMPLETE) {
         return Result::YIELD;
     }
@@ -282,9 +294,10 @@ Result SoapyImpl::emitFrame() {
 
 Result SoapyImpl::soapyThreadLoop() {
     constexpr std::size_t temporaryBufferSize = 8192;
-    std::vector<CF32> tmp(temporaryBufferSize);
     const auto readSize = std::min<std::size_t>(temporaryBufferSize, stream.capacity());
-    const auto readBuffer = std::span<CF32>{tmp.data(), readSize};
+    Tensor temporary;
+    JST_CHECK(temporary.create(device(), buffer.dtype(), {readSize}));
+    const U64 sampleBytes = DataTypeSize(buffer.dtype());
     SoapyReceiveStatus receiveStatus;
 
     while (streaming) {
@@ -294,7 +307,7 @@ Result SoapyImpl::soapyThreadLoop() {
         }
 
         const U64 readGeneration = stream.metadata().generation;
-        const auto received = receiverDevice.read(readBuffer);
+        const auto received = receiverDevice.read(temporary.data(), readSize);
         if (!streaming || errored) {
             break;
         }
@@ -302,6 +315,7 @@ Result SoapyImpl::soapyThreadLoop() {
         const auto action = receiveStatus.handle(received.status);
         if (received.status == SoapyReceiver::ReadStatus::Overflow) {
             deviceOverflows.publish(receiveStatus.deviceOverflows);
+            stream.split(readGeneration);
         }
         if (action == SoapyReceiveStatus::Action::Fail) {
             JST_ERROR("[MODULE_SOAPY] Failed to read stream on '{}': {}. Stopping reception.",
@@ -309,7 +323,7 @@ Result SoapyImpl::soapyThreadLoop() {
             errored = true;
             break;
         } else if (action == SoapyReceiveStatus::Action::Samples) {
-            stream.push(readGeneration, tmp.data(), received.sampleCount);
+            stream.push(readGeneration, temporary.data(), received.sampleCount);
             Scheduler::Context::NotifyPendingCompute();
             const U64 capacity = stream.capacity();
             if (capacity > 0) {
@@ -318,8 +332,10 @@ Result SoapyImpl::soapyThreadLoop() {
                 const F32 smoothedFill = bufferFill.get() * 0.99f + newFill * 0.01f;
                 bufferFill.publish(smoothedFill);
             }
-            const F32 actualMB = static_cast<F32>(stream.throughput() * sizeof(CF32)) / 1e6f;
-            const F32 expectedMB = static_cast<F32>(stream.metadata().sampleRate * sizeof(CF32)) / 1e6f;
+            const F32 actualMB =
+                static_cast<F32>(stream.throughput() * sampleBytes) / 1e6f;
+            const F32 expectedMB =
+                static_cast<F32>(stream.metadata().sampleRate * sampleBytes) / 1e6f;
             throughput.publish({actualMB, expectedMB});
         }
     }
@@ -348,6 +364,10 @@ std::pair<F32, F32> SoapyImpl::getThroughput() const {
 
 std::vector<std::string> SoapyImpl::listAntennas() const {
     return receiverDevice.listAntennas();
+}
+
+std::vector<std::string> SoapyImpl::listDataTypes() const {
+    return receiverDevice.listDataTypes();
 }
 
 bool SoapyImpl::supportsBiasTee() const {

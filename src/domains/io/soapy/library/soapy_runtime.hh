@@ -18,7 +18,6 @@ constexpr int HasTime = 1 << 2;
 constexpr int Timeout = -1;
 constexpr int StreamError = -2;
 constexpr int Overflow = -4;
-constexpr const char* FormatCF32 = "CF32";
 
 struct Range {
     double minimum;
@@ -87,6 +86,10 @@ struct SoapyApi {
     int (*setGain)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
     SoapyAbi::ArgInfo* (*getSettingInfo)(const SoapyAbi::Device*, std::size_t*) = nullptr;
     int (*writeSetting)(SoapyAbi::Device*, const char*, const char*) = nullptr;
+    char** (*getStreamFormats)(const SoapyAbi::Device*, int, std::size_t,
+                               std::size_t*) = nullptr;
+    char* (*getNativeStreamFormat)(const SoapyAbi::Device*, int, std::size_t,
+                                   double*) = nullptr;
     SoapyAbi::Stream* (*setupStream)(SoapyAbi::Device*, int, const char*, const std::size_t*,
                                      std::size_t, const SoapyAbi::Kwargs*) = nullptr;
     int (*closeStream)(SoapyAbi::Device*, SoapyAbi::Stream*) = nullptr;

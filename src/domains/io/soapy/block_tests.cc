@@ -7,6 +7,7 @@
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/io/soapy/block.hh"
 #include "library/soapysdr.hh"
+#include "scripted_soapy.hh"
 
 using namespace Jetstream;
 
@@ -32,6 +33,7 @@ TEST_CASE("Soapy block preserves public defaults and saved settings",
     REQUIRE(config.modulePath.empty());
     REQUIRE(config.deviceString.empty());
     REQUIRE(config.streamString.empty());
+    REQUIRE(config.dataType == "CF32");
     REQUIRE(config.antenna.empty());
     REQUIRE(config.frequency == 96.9e6f);
     REQUIRE(config.frequencyStep == 1000000.0f);
@@ -46,6 +48,7 @@ TEST_CASE("Soapy block preserves public defaults and saved settings",
     config.modulePath = "saved-device-module";
     config.deviceString = "driver=saved,serial=123";
     config.streamString = "bufflen=8192";
+    config.dataType = "CI16";
     config.antenna = "RX";
     config.automaticGain = false;
     config.manualGain = 20.0f;
@@ -55,6 +58,46 @@ TEST_CASE("Soapy block preserves public defaults and saved settings",
     Blocks::Soapy restored;
     REQUIRE(restored.deserialize(saved) == Result::SUCCESS);
     REQUIRE(restored.hash() == config.hash());
+    saved.erase("dataType");
+    Blocks::Soapy legacy;
+    REQUIRE(legacy.deserialize(saved) == Result::SUCCESS);
+    REQUIRE(legacy.dataType == "CF32");
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy formats preserve old FM graphs and validate changed outputs",
+                 "[modules][io][soapy][block][formats]") {
+    const TestSoapy::Runtime runtime;
+    TestSoapy::State().streamFormats = {"CF32", "CS16", "CS12"};
+    Blocks::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto radio = viewBlock("radio");
+    REQUIRE(radio.state == Block::State::Created);
+    const auto field = std::find_if(radio.interfaceConfigs.begin(),
+                                    radio.interfaceConfigs.end(),
+                                    [](const auto& entry) {
+                                        return entry.name == "dataType";
+                                    });
+    REQUIRE(field != radio.interfaceConfigs.end());
+    REQUIRE(Parser::Get<std::vector<Parser::Map>>(field->format, "options") ==
+            std::vector<Parser::Map>{{{"label", "CF32"}, {"value", "CF32"}},
+                                     {{"label", "CI16"}, {"value", "CI16"}}});
+    TensorMap inputs;
+    inputs["signal"].requested("radio", "signal");
+    REQUIRE(flowgraph->blockCreate("fm", "fm", {}, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("fm").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"dataType", std::string("CI16")}}) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(viewBlock("fm").state == Block::State::Errored);
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"dataType", std::string("CF32")}}) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("fm").state == Block::State::Created);
+    REQUIRE(flowgraph->blockDestroy("fm", false) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockDestroy("radio", false) == Result::SUCCESS);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

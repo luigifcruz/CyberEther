@@ -7,13 +7,13 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <span>
 #include <string>
 #include <vector>
 
 #include <jetstream/types.hh>
 
 #include "soapy_runtime.hh"
+#include "formats.hh"
 
 namespace Jetstream::Modules {
 
@@ -77,6 +77,8 @@ class JETSTREAM_API SoapyReceiver {
     Result openArgs(const SoapyKwargs& args);
     Result validateSettings(F32 sampleRate, F32 frequency) const;
     const std::vector<std::string>& listAntennas() const;
+    const std::vector<std::string>& listDataTypes() const;
+    Result validateDataType(const DataType& dtype) const;
     const std::optional<SoapyAbi::Range>& getGainRange() const;
     bool supportsBiasTee() const;
     F32 clampGain(F32 gain) const;
@@ -86,11 +88,12 @@ class JETSTREAM_API SoapyReceiver {
     Result setAutomaticGain(bool automaticGain);
     Result setGain(F32 gain);
     Result setBiasTee(bool enabled);
-    Result startStream(const std::string& streamString);
-    Result startStreamArgs(const SoapyKwargs& args);
+    Result startStream(const std::string& streamString, const DataType& dtype);
+    Result startStreamArgs(const SoapyKwargs& args, const DataType& dtype);
     void reset();
 
-    ReadResult read(std::span<CF32> samples);
+    ReadResult read(void* samples, std::size_t count);
+    F32 sampleScale() const;
 
  private:
     enum class State {
@@ -111,6 +114,8 @@ class JETSTREAM_API SoapyReceiver {
     std::vector<SoapyAbi::Range> sampleRateRanges;
     std::vector<SoapyAbi::Range> frequencyRanges;
     std::vector<std::string> antennas;
+    std::vector<std::string> dataTypes;
+    F32 scale = 1.0f;
     std::optional<SoapyAbi::Range> gainRange;
     bool biasTeeSupported = false;
     bool biasTeeNeedsCleanup = false;

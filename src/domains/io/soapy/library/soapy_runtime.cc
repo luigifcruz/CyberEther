@@ -64,6 +64,10 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.setGain, "SoapySDRDevice_setGain", missing) &&
            Resolve(handle, api.getSettingInfo, "SoapySDRDevice_getSettingInfo", missing) &&
            Resolve(handle, api.writeSetting, "SoapySDRDevice_writeSetting", missing) &&
+           Resolve(handle, api.getStreamFormats,
+                   "SoapySDRDevice_getStreamFormats", missing) &&
+           Resolve(handle, api.getNativeStreamFormat,
+                   "SoapySDRDevice_getNativeStreamFormat", missing) &&
            Resolve(handle, api.setupStream, "SoapySDRDevice_setupStream", missing) &&
            Resolve(handle, api.closeStream, "SoapySDRDevice_closeStream", missing) &&
            Resolve(handle, api.activateStream, "SoapySDRDevice_activateStream", missing) &&

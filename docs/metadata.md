@@ -121,6 +121,20 @@ if (signal.hasAttribute("sampleRate")) {
 
 Attributes do not propagate through a block automatically. A block that transforms a stream and wants to preserve its description copies what applies, either selectively with `setAttribute` or wholesale with `propagateAttributes(source)`, and then overrides what it changed. A decimator, for example, propagates the input attributes and rewrites `sampleRate`.
 
+### Sample Scale
+
+`sampleScale` is an optional positive, finite `F32` multiplier for converting integer
+samples to normalized floating point. Signed samples are multiplied directly; unsigned
+samples first subtract the midpoint of their storage type (128 for CU8). Floating-point
+samples are already normalized and use a scale of 1.
+
+SoapySDR publishes this attribute for the selected output type. For a native integer
+format it uses the driver's valid full-scale value; otherwise it uses the storage
+format's full scale. The samples themselves stay in the selected type. Cast applies
+the factor when converting integers to floats, sets it to 1 on floating output, and
+adjusts it for integer width changes. Without the attribute, Cast uses its usual
+storage-width normalization.
+
 ### Signal Axes
 
 Signal tensors describe their layout with three standard attributes. The `sampleAxis` attribute identifies the dimension processed as signal samples and is required by consumers that operate on sample sequences. A rank-one tensor with no signal-axis attributes implicitly uses axis `0` as its sample axis. The `batchAxis` attribute optionally identifies ordered element windows processed together, while `channelAxis` identifies independent channels. A tensor containing channel values but no sample dimension may set only `channelAxis`, with an optional `batchAxis`; consumers explicitly declare whether they support this channel-only layout. No other axis meaning is inferred from tensor shape.

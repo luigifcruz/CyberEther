@@ -1,14 +1,20 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <array>
+#include <cstring>
 #include <limits>
 
 #include "environment.hh"
+#include "jetstream/module_context.hh"
+#include "jetstream/runtime_context_native_cpu.hh"
+#include "jetstream/scheduler_context.hh"
 #include "jetstream/domains/io/soapy/module.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
 #include "library/soapysdr.hh"
 #include "scripted_soapy.hh"
+#include "module_impl.hh"
 
 using namespace Jetstream;
 
@@ -33,6 +39,23 @@ std::shared_ptr<Module> BuildSoapyModule() {
     return module;
 }
 
+struct ModuleCleanup {
+    std::shared_ptr<Module> module;
+    ~ModuleCleanup() { static_cast<void>(module->destroy()); }
+};
+
+template<typename Predicate>
+bool WaitFor(Predicate predicate) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return predicate();
+}
+
 }  // namespace
 
 TEST_CASE("Soapy validates configuration before accessing the runtime",
@@ -54,6 +77,9 @@ TEST_CASE("Soapy validates configuration before accessing the runtime",
     SECTION("overflowing buffer dimensions") {
         config.numberOfBatches = std::numeric_limits<U64>::max();
     }
+    SECTION("unsupported sample type") {
+        config.dataType = "F32";
+    }
 
     const auto module = BuildSoapyModule();
     REQUIRE(module->create("test", config, {}) == Result::ERROR);
@@ -62,6 +88,215 @@ TEST_CASE("Soapy validates configuration before accessing the runtime",
     REQUIRE(module->outputs().empty());
     REQUIRE(static_cast<const Modules::Soapy&>(module->config()).deviceString.empty());
     REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy preserves samples and shape in every supported format",
+                 "[modules][soapy][formats]") {
+    const auto format = GENERATE(0, 1, 2, 3, 4);
+    const auto& selected = Modules::SoapySampleFormats[format];
+    CAPTURE(selected.name);
+    auto& script = TestSoapy::State();
+    const U64 sampleBytes = DataTypeSize(selected.dtype);
+    script.samples.resize(8 * sampleBytes);
+    for (U64 i = 0; i < script.samples.size(); ++i) {
+        script.samples[i] = static_cast<I8>(i % 128);
+    }
+    script.reads = {3, Modules::SoapyAbi::Timeout, 5};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.dataType = std::string(DataTypeToName(selected.dtype));
+    config.numberOfBatches = 2;
+    config.numberOfTimeSamples = 4;
+    const auto module = BuildSoapyModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    REQUIRE(script.streamFormat == selected.name);
+    REQUIRE(WaitFor([&] {
+        return module->context()->scheduler()->hasPendingCompute() == Result::SUCCESS;
+    }));
+    const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
+        module->context()->runtime());
+    REQUIRE(runtime);
+    REQUIRE(runtime->computeSubmit() == Result::SUCCESS);
+    const auto& output = module->outputs().at("signal").tensor;
+    REQUIRE(output.dtype() == selected.dtype);
+    REQUIRE(output.shape() == Shape{2, 4});
+    REQUIRE(std::memcmp(output.data(), script.samples.data(), 8 * sampleBytes) == 0);
+    REQUIRE(std::any_cast<F32>(output.attribute("sampleScale")) ==
+            1.0f / selected.fullScale);
+    REQUIRE(module->context()->scheduler()->hasPendingCompute() == Result::TIMEOUT);
+    REQUIRE(runtime->computeSubmit() == Result::YIELD);
+    REQUIRE(WaitFor([&] {
+        return module->getImpl<Modules::SoapyImpl>()->getThroughput().second ==
+               config.sampleRate * sampleBytes / 1e6f;
+    }));
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy only offers implemented formats advertised by the device",
+                 "[modules][soapy][formats]") {
+    TestSoapy::State().streamFormats = {"CS12", "CS16", "CF32", "CS16"};
+    Modules::SoapyReceiver receiver;
+    REQUIRE(receiver.open("driver=scripted") == Result::SUCCESS);
+    REQUIRE(receiver.listDataTypes() == std::vector<std::string>{"CF32", "CI16"});
+    REQUIRE(receiver.startStream("", DataType::CI8) == Result::ERROR);
+    REQUIRE(TestSoapy::State().streamFormat.empty());
+    REQUIRE(receiver.startStream("", DataType::CI16) == Result::SUCCESS);
+    REQUIRE(TestSoapy::State().streamFormat == "CS16");
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy scaling only uses a valid full scale for the requested format",
+                 "[modules][soapy][formats][scale]") {
+    auto& script = TestSoapy::State();
+    DataType dtype = DataType::CI16;
+    F32 expected = 1.0f / 32768.0f;
+    SECTION("native signed integers") {
+        script.fullScale = 8192.0;
+        expected = 1.0f / 8192.0f;
+    }
+    SECTION("converted integers") {
+        script.nativeFormat = "CS8";
+        script.fullScale = 128.0;
+    }
+    SECTION("invalid native range") { script.fullScale = 65536.0; }
+    SECTION("zero native range") { script.fullScale = 0.0; }
+    SECTION("non-finite native range") {
+        script.fullScale = std::numeric_limits<F64>::quiet_NaN();
+    }
+    SECTION("missing native query") {
+        auto api = TestSoapy::Api();
+        api.getNativeStreamFormat = nullptr;
+        Modules::SoapyRuntime::Override(api);
+    }
+    SECTION("floating point") {
+        dtype = DataType::CF32;
+        script.fullScale = 8192.0;
+        expected = 1.0f;
+    }
+    SECTION("unsigned midpoint uses the format width") {
+        dtype = DataType::CU8;
+        expected = 1.0f / 128.0f;
+    }
+    Modules::SoapyReceiver receiver;
+    REQUIRE(receiver.open("driver=scripted") == Result::SUCCESS);
+    REQUIRE(receiver.startStream("", dtype) == Result::SUCCESS);
+    REQUIRE(receiver.sampleScale() == expected);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy defaults to CF32 and recreates its stream for format changes",
+                 "[modules][soapy][formats][reconfigure]") {
+    Modules::Soapy config;
+    REQUIRE(config.deserialize({{"deviceString", std::string("driver=scripted")}}) ==
+            Result::SUCCESS);
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    const auto module = BuildSoapyModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    REQUIRE(TestSoapy::State().streamFormat == "CF32");
+    for (const auto& selected : Modules::SoapySampleFormats) {
+        const std::string type(DataTypeToName(selected.dtype));
+        const auto result = module->reconfigure({{"dataType", type}});
+        if (config.dataType == type) {
+            REQUIRE(result == Result::SUCCESS);
+        } else {
+            REQUIRE(result == Result::RECREATE);
+            REQUIRE(module->destroy() == Result::SUCCESS);
+            config.dataType = type;
+            REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        }
+        REQUIRE(module->outputs().at("signal").tensor.dtype() == selected.dtype);
+        REQUIRE(TestSoapy::State().streamFormat == selected.name);
+    }
+    REQUIRE(TestSoapy::State().concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy discards partial integer frames on overflow",
+                 "[modules][soapy][formats][overflow]") {
+    auto& script = TestSoapy::State();
+    const std::vector<CI16> samples{{1, -1}, {2, -2}, {3, -3}, {4, -4},
+                                   {5, -5}, {6, -6}};
+    script.samples.resize(samples.size() * sizeof(CI16));
+    std::memcpy(script.samples.data(), samples.data(), script.samples.size());
+    script.reads = {2, Modules::SoapyAbi::Overflow, 4};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.dataType = "CI16";
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 4;
+    const auto module = BuildSoapyModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
+        module->context()->runtime());
+    REQUIRE(runtime);
+    REQUIRE(WaitFor([&] { return runtime->computeSubmit() == Result::SUCCESS; }));
+    const auto& output = module->outputs().at("signal").tensor;
+    REQUIRE(output.data<CI16>()[0] == samples[2]);
+    REQUIRE(output.data<CI16>()[3] == samples[5]);
+    REQUIRE(module->getImpl<Modules::SoapyImpl>()->getDeviceOverflows() == 1);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy reads use sample counts and reject oversized driver results",
+                 "[modules][soapy][formats][read]") {
+    auto api = TestSoapy::Api();
+    api.readStream = [](Modules::SoapyAbi::Device*, Modules::SoapyAbi::Stream*,
+                         void* const*, std::size_t count, int*, long long*, long) {
+        CHECK(count == 8);
+        return 9;
+    };
+    Modules::SoapyRuntime::Override(api);
+    Modules::SoapyReceiver receiver;
+    std::array<CI16, 8> samples{};
+    REQUIRE(receiver.read(samples.data(), samples.size()).status ==
+            Modules::SoapyReceiver::ReadStatus::Error);
+    REQUIRE(receiver.open("driver=scripted") == Result::SUCCESS);
+    REQUIRE(receiver.startStream("", DataType::CI16) == Result::SUCCESS);
+    REQUIRE(receiver.read(nullptr, 8).status ==
+            Modules::SoapyReceiver::ReadStatus::Error);
+    REQUIRE(receiver.read(samples.data(), 0).status ==
+            Modules::SoapyReceiver::ReadStatus::Error);
+    REQUIRE(receiver.read(samples.data(), samples.size()).error ==
+            "Device returned more samples than requested");
+}
+
+TEST_CASE("Stream buffers count complete samples for every Soapy format",
+          "[modules][soapy][formats][buffer]") {
+    const U64 bytes = GENERATE(2, 4, 8, 16);
+    Radio::StreamBuffer stream;
+    REQUIRE(stream.resize(4, bytes) == Result::SUCCESS);
+    REQUIRE(stream.capacity() == 4);
+    stream.reset({.generation = 1});
+    std::vector<I8> samples(6 * bytes);
+    for (U64 i = 0; i < samples.size(); ++i) {
+        samples[i] = static_cast<I8>(i);
+    }
+    std::vector<I8> output(4 * bytes);
+    Radio::StreamBuffer::Metadata metadata;
+    REQUIRE(stream.push(1, samples.data(), 6));
+    REQUIRE(stream.size() == 4);
+    REQUIRE(stream.statistics().overwrittenSamples == 2);
+    REQUIRE(stream.pop(output.data(), 4, metadata) == Result::SUCCESS);
+    REQUIRE(std::memcmp(output.data(), samples.data() + 2 * bytes, output.size()) == 0);
+    REQUIRE(stream.push(1, samples.data(), 2, 0));
+    REQUIRE(stream.push(1, samples.data(), 2, 4));
+    REQUIRE(stream.pop(output.data(), 4, metadata) == Result::INCOMPLETE);
+    REQUIRE(stream.statistics().discardedSamples == 2);
+    REQUIRE(stream.push(1, samples.data(), 2, 6));
+    REQUIRE(stream.pop(output.data(), 4, metadata) == Result::SUCCESS);
+    stream.reset({.generation = 2});
+    REQUIRE_FALSE(stream.push(1, samples.data(), 2));
+    REQUIRE(stream.statistics().rejectedSamples == 2);
+    REQUIRE(stream.statistics().pushedSamples == 12);
+    REQUIRE(stream.statistics().overwrittenSamples == 2);
+    REQUIRE(stream.resize(std::numeric_limits<U64>::max(), bytes) == Result::ERROR);
+    REQUIRE(stream.resize(4, 0) == Result::ERROR);
+    REQUIRE(stream.capacity() == 4);
 }
 
 TEST_CASE("Soapy missing runtime retains saved module configuration",

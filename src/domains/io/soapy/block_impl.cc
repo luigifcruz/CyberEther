@@ -24,6 +24,7 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
  private:
     Result updateAntennaFormat();
     Result updateManualGainFormat();
+    Parser::Map dataTypeFormat(const std::string& selected);
     Parser::Map antennaFormat(const std::string& selected,
                               const std::vector<std::string>& antennas = {});
     Parser::Map manualGainFormat(const std::optional<Modules::SoapyAbi::Range>& range = std::nullopt);
@@ -48,6 +49,7 @@ Result SoapyImpl::configure() {
     moduleConfig->modulePath = modulePath;
     moduleConfig->deviceString = deviceString;
     moduleConfig->streamString = streamString;
+    moduleConfig->dataType = dataType;
     moduleConfig->antenna = antenna;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
@@ -90,6 +92,13 @@ Result SoapyImpl::define() {
                                     "Antenna",
                                     "Receive antenna port. Changes restart the receiver.",
                                     antennaFormat(config.antenna)));
+
+    JST_CHECK(defineInterfaceConfig("dataType",
+                                    "Data Type",
+                                    "Sample type delivered by SoapySDR. Changes "
+                                    "restart the receiver and must match downstream "
+                                    "inputs.",
+                                    dataTypeFormat(config.dataType)));
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
@@ -194,6 +203,7 @@ Result SoapyImpl::create() {
     moduleImpl = moduleHandle("soapy")->getImpl<Modules::SoapyImpl>();
     JST_CHECK(updateAntennaFormat());
     JST_CHECK(updateManualGainFormat());
+    JST_CHECK(updateInterfaceConfigFormat("dataType", dataTypeFormat(dataType)));
 
     return Result::SUCCESS;
 }
@@ -201,8 +211,36 @@ Result SoapyImpl::create() {
 Result SoapyImpl::reconfigure() {
     JST_CHECK(updateAntennaFormat());
     JST_CHECK(updateManualGainFormat());
+    JST_CHECK(updateInterfaceConfigFormat("dataType", dataTypeFormat(dataType)));
 
     return Result::SUCCESS;
+}
+
+Parser::Map SoapyImpl::dataTypeFormat(const std::string& selected) {
+    Parser::Sequence options;
+    const auto module = moduleHandle("soapy");
+    const auto& config = *candidate();
+    const bool known = module && module->state() == Module::State::CREATED &&
+                       config.deviceString == deviceString &&
+                       config.modulePath == modulePath;
+    std::vector<std::string> types;
+    if (known) {
+        types = module->getImpl<Modules::SoapyImpl>()->listDataTypes();
+    } else {
+        for (const auto& format : Modules::SoapySampleFormats) {
+            types.emplace_back(DataTypeToName(format.dtype));
+        }
+    }
+    bool selectionListed = false;
+    for (const auto& type : types) {
+        selectionListed |= type == selected;
+        options.emplace_back(Parser::Map{{"label", type}, {"value", type}});
+    }
+    if (!selectionListed) {
+        options.emplace_back(Parser::Map{{"label", selected + " (unsupported)"},
+                                         {"value", selected}});
+    }
+    return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
 Result SoapyImpl::updateAntennaFormat() {

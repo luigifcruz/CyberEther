@@ -297,6 +297,25 @@ Result SoapyReceiver::queryCapabilities() {
     }
     api.stringsClear(&names, antennaCount);
 
+    std::size_t formatCount = 0;
+    char** formats = api.getStreamFormats(device, SoapyAbi::RX, 0, &formatCount);
+    const bool formatsValid = api.lastStatus() == 0;
+    if (formatsValid && formats) {
+        for (const auto& supported : SoapySampleFormats) {
+            for (std::size_t i = 0; i < formatCount; ++i) {
+                if (formats[i] && std::string(formats[i]) == supported.name) {
+                    dataTypes.emplace_back(DataTypeToName(supported.dtype));
+                    break;
+                }
+            }
+        }
+    }
+    api.stringsClear(&formats, formatCount);
+    if (!formatsValid) {
+        JST_ERROR("[MODULE_SOAPY] Failed to query receive formats: {}", failure());
+        return Result::ERROR;
+    }
+
     queryGainRange();
 
     return Result::SUCCESS;
@@ -332,6 +351,20 @@ Result SoapyReceiver::validateSettings(const F32 sampleRate, const F32 frequency
 
 const std::vector<std::string>& SoapyReceiver::listAntennas() const {
     return antennas;
+}
+
+const std::vector<std::string>& SoapyReceiver::listDataTypes() const {
+    return dataTypes;
+}
+
+Result SoapyReceiver::validateDataType(const DataType& dtype) const {
+    const auto name = DataTypeToName(dtype);
+    if (std::find(dataTypes.begin(), dataTypes.end(), name) == dataTypes.end()) {
+        JST_ERROR("[MODULE_SOAPY] Data type '{}' is not supported by this device.",
+                  name);
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
 }
 
 bool SoapyReceiver::supportsBiasTee() const {
@@ -480,31 +513,50 @@ Result SoapyReceiver::setBiasTee(const bool enabled) {
     return Result::SUCCESS;
 }
 
-Result SoapyReceiver::startStream(const std::string& streamString) {
+Result SoapyReceiver::startStream(const std::string& streamString,
+                                 const DataType& dtype) {
     if (!library) {
         JST_ERROR("[MODULE_SOAPY] Cannot setup stream without an active device.");
         return Result::ERROR;
     }
     SoapyKwargs args;
     JST_CHECK(library->kwargsFromString(streamString, args));
-    return startStreamArgs(args);
+    return startStreamArgs(args, dtype);
 }
 
-Result SoapyReceiver::startStreamArgs(const SoapyKwargs& args) {
+Result SoapyReceiver::startStreamArgs(const SoapyKwargs& args, const DataType& dtype) {
     if (state != State::Open) {
         JST_ERROR("[MODULE_SOAPY] Cannot setup stream in the current device state.");
         return Result::ERROR;
     }
     const auto& api = library->api();
+    JST_CHECK(validateDataType(dtype));
+    const auto* format = FindSoapySampleFormat(dtype);
+    if (!format) {
+        return Result::ERROR;
+    }
 
     const std::size_t channels[] = {0};
     const SoapyKwargsView view(args);
-    stream = api.setupStream(device, SoapyAbi::RX, SoapyAbi::FormatCF32, channels, 1, view.get());
+    stream = api.setupStream(device, SoapyAbi::RX, format->name,
+                             channels, 1, view.get());
     if (stream == nullptr) {
         JST_ERROR("[MODULE_SOAPY] Failed to setup stream: {}", failure());
         return Result::ERROR;
     }
     state = State::StreamReady;
+
+    scale = 1.0f / format->fullScale;
+    if (format->fullScale > 1.0f && api.getNativeStreamFormat) {
+        double fullScale = 0.0;
+        char* native = api.getNativeStreamFormat(device, SoapyAbi::RX, 0, &fullScale);
+        if (api.lastStatus() == 0 && native && std::string(native) == format->name &&
+            std::isfinite(fullScale) && fullScale >= 1.0 &&
+            fullScale <= format->fullScale) {
+            scale = static_cast<F32>(1.0 / fullScale);
+        }
+        api.free(native);
+    }
 
     const int activationResult = api.activateStream(device, stream, 0, 0, 0);
     if (activationResult != 0) {
@@ -517,22 +569,26 @@ Result SoapyReceiver::startStreamArgs(const SoapyKwargs& args) {
     return Result::SUCCESS;
 }
 
-SoapyReceiver::ReadResult SoapyReceiver::read(const std::span<CF32> samples) {
+F32 SoapyReceiver::sampleScale() const {
+    return scale;
+}
+
+SoapyReceiver::ReadResult SoapyReceiver::read(void* samples, const std::size_t count) {
     if (state != State::Streaming) {
         return {.error = "Cannot read without an active stream"};
     }
-    if (samples.empty()) {
+    if (!samples || count == 0) {
         return {.error = "Receive buffer cannot be empty"};
     }
 
-    void* buffers[] = {samples.data()};
+    void* buffers[] = {samples};
     int flags = 0;
     long long timeNs = 0;
-    const int result = library->api().readStream(device, stream, buffers, samples.size(),
+    const int result = library->api().readStream(device, stream, buffers, count,
                                                  &flags, &timeNs, 100000);
 
     if (result > 0) {
-        if (static_cast<std::size_t>(result) > samples.size()) {
+        if (static_cast<std::size_t>(result) > count) {
             return {.error = "Device returned more samples than requested"};
         }
         ReadResult received{
@@ -586,6 +642,8 @@ void SoapyReceiver::reset() {
     sampleRateRanges.clear();
     frequencyRanges.clear();
     antennas.clear();
+    dataTypes.clear();
+    scale = 1.0f;
     gainRange.reset();
     biasTeeSupported = false;
     biasTeeNeedsCleanup = false;
