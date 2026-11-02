@@ -725,9 +725,9 @@ TEST_CASE("Pill controls scale their paddings and heights with the pixel ratio",
                                         .colorKey = "text_primary",
                                         .scale = 14.0f / Sakura::Typography::FontSize};
     CHECK(stepperHost.measureOf(scene.ctx, unbounded) ==
-          Extent2D<F32>{std::ceil(70.0f + TextWidth(scene.ctx, value)), 34.0f});
+          Extent2D<F32>{std::ceil(76.0f + TextWidth(scene.ctx, value)), 34.0f});
     CHECK(stepperHost.measureOf(doubled, unbounded) ==
-          Extent2D<F32>{std::ceil(140.0f + TextWidth(doubled, value)), 68.0f});
+          Extent2D<F32>{std::ceil(152.0f + TextWidth(doubled, value)), 68.0f});
 
     Sakura::PillButton button;
     Host buttonHost(button);
