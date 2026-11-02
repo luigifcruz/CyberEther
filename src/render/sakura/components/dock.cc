@@ -3,6 +3,8 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/spinner.hh>
+#include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
 #include <jetstream/render/tools/icons_lucide.hh>
@@ -26,6 +28,7 @@ namespace Jetstream::Sakura {
 namespace {
 
 constexpr F32 kDragThreshold = 6.0f;
+constexpr F32 kPlaceholderSpinner = 18.0f;
 constexpr F32 kCardGap = Dock::ContentPadding;
 constexpr F32 kColumnWidth = 420.0f;
 constexpr F32 kFlexColumnWidth = 480.0f;
@@ -558,7 +561,12 @@ struct Dock::Impl {
     TextMetrics metrics;
     std::unordered_map<std::string, Caption> tabCaptions;
     std::unordered_map<std::string, Caption> headerCaptions;
-    std::unordered_map<std::string, std::unique_ptr<Text>> placeholders;
+    struct Placeholder {
+        Spinner spinner;
+        Text text;
+        Stack stack;
+    };
+    std::unordered_map<std::string, std::unique_ptr<Placeholder>> placeholders;
 
     Rect bounds;
     Rect tabBar;
@@ -606,7 +614,7 @@ struct Dock::Impl {
                 captionParts(it->second);
             }
             if (const auto it = placeholders.find(id); it != placeholders.end()) {
-                managed.push_back(it->second.get());
+                managed.push_back(&it->second->stack);
             }
         }
         managed.insert(managed.end(), mountedChrome.begin(), mountedChrome.end());
@@ -1770,12 +1778,19 @@ void Dock::update(Config config) {
             caption(impl->headerCaptions, id, impl->describe(id), {});
             auto& placeholder = impl->placeholders[id];
             if (!placeholder) {
-                placeholder = std::make_unique<Text>();
+                placeholder = std::make_unique<Impl::Placeholder>();
             }
-            placeholder->update({
-                .str = "Loading...",
+            placeholder->spinner.update({.diameter = kPlaceholderSpinner});
+            placeholder->text.update({
+                .str = "Loading",
+                .font = Text::Font::Sans,
                 .tone = Text::Tone::Secondary,
                 .align = Text::Align::Center,
+                .scale = Typography::Scale::Small,
+            });
+            placeholder->stack.update({
+                .spacing = Spacing::Small,
+                .items = {{.child = &placeholder->spinner}, {.child = &placeholder->text}},
             });
         }
     }
@@ -2092,13 +2107,13 @@ void Dock::layout(const Context& ctx) {
     const F32 titleSize = Px(ctx, kHeaderTitleSize);
     for (auto& leaf : s.leaves) {
         const auto* item = s.pane(leaf.pane);
-        Text* placeholder = nullptr;
+        Component* placeholder = nullptr;
         if (!item) {
             const auto it = s.placeholders.find(leaf.pane);
             if (it == s.placeholders.end()) {
                 continue;
             }
-            placeholder = it->second.get();
+            placeholder = &it->second->stack;
         }
         const bool closable = item ? item->closable : true;
         const bool bare = !s.config.loneHeader && s.maximized.empty() && expanded == 1 && !leaf.minimized && item &&
@@ -2254,10 +2269,14 @@ void Dock::layout(const Context& ctx) {
             contents.push_back(item->content);
         }
         if (placeholder) {
-            const F32 height = measureChild(*placeholder, ctx, {leaf.content.width, infinite}).y;
-            layoutChild(ctx, *placeholder, {leaf.content.x, leaf.content.y + std::floor((leaf.content.height - height) * 0.5f),
-                                            leaf.content.width, height});
-            labels.push_back(placeholder);
+            const auto size = measureChild(*placeholder, ctx, {leaf.content.width, infinite});
+            if (!leaf.body.empty() && size.y <= leaf.content.height) {
+                layoutChild(ctx, *placeholder,
+                            {leaf.content.x + std::floor((leaf.content.width - size.x) * 0.5f),
+                             leaf.content.y + std::floor((leaf.content.height - size.y) * 0.5f), size.x, size.y},
+                            leaf.body);
+                labels.push_back(placeholder);
+            }
         }
     }
 

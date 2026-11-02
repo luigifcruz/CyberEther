@@ -7,6 +7,8 @@
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/spinner.hh>
+#include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/surface_image.hh>
 #include <jetstream/render/sakura/components/text.hh>
@@ -4082,18 +4084,27 @@ TEST_CASE("Unknown leaves in column mode hold a centered loading placeholder unt
     host.place(ctx, kWideDock);
 
     const auto loading = [&]() -> std::optional<Rect> {
-        for (auto* text : Direct<Sakura::Text>(rig.dock)) {
-            if (text->config().str == "Loading...") {
-                return Peek::Frame(*text);
+        for (auto* stack : Direct<Sakura::Stack>(rig.dock)) {
+            const auto spinners = Find<Sakura::Spinner>(*stack);
+            auto* label = ShownText(*stack, "Loading");
+            if (!spinners.empty() && label != nullptr) {
+                CHECK(label->config().align == Sakura::Text::Align::Center);
+                return Peek::Frame(*spinners.front());
             }
         }
         return std::nullopt;
     };
     const auto placeholder = loading();
     REQUIRE(placeholder.has_value());
-    CHECK(placeholder->x == 748.0f);
-    CHECK(placeholder->width == 420.0f);
-    CHECK(placeholder->y + placeholder->height * 0.5f == Catch::Approx(310.0f).margin(1.0f));
+    CHECK(placeholder->x + placeholder->width * 0.5f == Catch::Approx(958.0f).margin(1.0f));
+    CHECK(placeholder->height == 18.0f);
+    CHECK(placeholder->y > 280.0f);
+    CHECK(placeholder->bottom() < 310.0f);
+
+    host.place(ctx, {kWideDock.x, kWideDock.y, kWideDock.width, 60.0f});
+    CHECK_FALSE(loading().has_value());
+    host.place(ctx, kWideDock);
+    REQUIRE(loading().has_value());
     CHECK(rig.b.laidFrame.x == 1174.0f);
     CHECK(rig.emitted.empty());
 
