@@ -28,12 +28,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     F64 getBufferLoss() const;
     U64 getDeviceOverflows() const;
     std::pair<F32, F32> getThroughput() const;
-    std::vector<std::string> listAntennas() const;
-    std::vector<std::string> listDataTypes() const;
-    bool supportsBiasTee() const;
-    std::optional<SoapyAbi::Range> getGainRange() const;
-
-    Result setBiasTee(bool enabled);
+    SoapyDeviceInfo getDeviceInfo() const;
 
  protected:
     Tensor buffer;
@@ -54,7 +49,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<U64> deviceOverflows{0};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
-    Tools::Snapshot<std::optional<SoapyAbi::Range>> gainRange;
+    Tools::Snapshot<SoapyDeviceInfo> deviceInfo;
 
     Result soapyThreadLoop();
     Result emitFrame();
@@ -74,7 +69,8 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     Result allocateBuffers();
     Result configureDevice();
     Result applyTuning(const Tuning& desired, bool force = false);
-    void resetStream(F32 appliedFrequency, F32 appliedSampleRate);
+    Result updateDeviceInfo(bool reset);
+    void resetStream(F64 appliedFrequency, F64 appliedSampleRate);
     Result publishMetadata(const Radio::StreamBuffer::Metadata& metadata);
     Result startReceiver();
     void stopReceiver();

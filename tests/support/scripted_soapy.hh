@@ -8,6 +8,7 @@
 #include <deque>
 #include <mutex>
 #include <thread>
+#include <type_traits>
 
 #include "domains/io/soapy/library/soapysdr.hh"
 
@@ -27,7 +28,15 @@ struct Script {
     std::mutex mutex;
     Settings applied;
     std::string failure;
+    std::atomic<int> queryStatus{0};
+    std::atomic<U64> queries{0};
+    F64 sampleRateStep = 0.0;
+    F64 frequencyStep = 0.0;
+    std::vector<SoapyAbi::Range> sampleRateRanges{{1.0e6, 10.0e6, 0.0}};
+    std::vector<SoapyAbi::Range> frequencyRanges{{10.0e6, 2000.0e6, 0.0}};
     bool automaticGainSupported = true;
+    bool biasTeeSupported = false;
+    bool biasTeeEnabled = false;
     std::vector<std::string> streamFormats{"CF32", "CF64", "CS16", "CS8", "CU8"};
     std::string nativeFormat = "CS16";
     F64 fullScale = 32768.0;
@@ -45,7 +54,15 @@ struct Script {
         std::lock_guard lock(mutex);
         applied = {};
         failure.clear();
+        queryStatus = 0;
+        queries = 0;
+        sampleRateStep = 0.0;
+        frequencyStep = 0.0;
+        sampleRateRanges = {{1.0e6, 10.0e6, 0.0}};
+        frequencyRanges = {{10.0e6, 2000.0e6, 0.0}};
         automaticGainSupported = true;
+        biasTeeSupported = false;
+        biasTeeEnabled = false;
         streamFormats = {"CF32", "CF64", "CS16", "CS8", "CU8"};
         nativeFormat = "CS16";
         fullScale = 32768.0;
@@ -70,8 +87,26 @@ struct Script {
         failure = call;
     }
 
+    void query(const char* name) {
+        std::lock_guard lock(mutex);
+        ++queries;
+        if (activeReads > 0) {
+            ++concurrentChanges;
+        }
+        queryStatus = failure == name ? -1 : 0;
+        if (queryStatus != 0) {
+            failure.clear();
+        }
+    }
+
     template<typename T>
-    int set(const char* name, T Settings::* field, const T value) {
+    T get(const char* name, T Settings::* field) {
+        query(name);
+        return settings().*field;
+    }
+
+    template<typename T>
+    int set(const char* name, T Settings::* field, T value) {
         std::lock_guard lock(mutex);
         if (activeReads > 0) {
             ++concurrentChanges;
@@ -79,6 +114,13 @@ struct Script {
         if (failure == name) {
             failure.clear();
             return -1;
+        }
+        if constexpr (std::is_same_v<T, F64>) {
+            const F64 step = field == &Settings::sampleRate ? sampleRateStep
+                           : field == &Settings::frequency ? frequencyStep : 0.0;
+            if (step > 0.0) {
+                value = std::round(value / step) * step;
+            }
         }
         applied.*field = value;
         return 0;
@@ -93,7 +135,7 @@ inline Script& State() {
 inline SoapyApi Api() {
     SoapyApi api;
     api.lastError = [] { return "injected failure"; };
-    api.lastStatus = [] { return 0; };
+    api.lastStatus = [] { return State().queryStatus.load(); };
     api.errToStr = [](int) { return "injected error"; };
     api.free = [](void*) {};
     api.stringsClear = [](char***, std::size_t) {};
@@ -114,26 +156,61 @@ inline SoapyApi Api() {
         return reinterpret_cast<SoapyAbi::Device*>(&State());
     };
     api.unmake = [](SoapyAbi::Device*) { return 0; };
-    api.getSampleRateRange = [](const SoapyAbi::Device*, int, std::size_t, std::size_t* count) {
-        static SoapyAbi::Range range{1.0e6, 10.0e6, 0.0};
-        *count = 1;
-        return &range;
+    api.getSampleRateRange = [](const SoapyAbi::Device*, int, std::size_t,
+                                 std::size_t* count) {
+        State().query("sampleRateRange");
+        *count = State().sampleRateRanges.size();
+        return State().sampleRateRanges.data();
     };
-    api.getFrequencyRange = [](const SoapyAbi::Device*, int, std::size_t, std::size_t* count) {
-        static SoapyAbi::Range range{10.0e6, 2000.0e6, 0.0};
-        *count = 1;
-        return &range;
+    api.getFrequencyRange = [](const SoapyAbi::Device*, int, std::size_t,
+                                std::size_t* count) {
+        State().query("frequencyRange");
+        *count = State().frequencyRanges.size();
+        return State().frequencyRanges.data();
     };
-    api.getSettingInfo = [](const SoapyAbi::Device*, std::size_t* count) -> SoapyAbi::ArgInfo* {
+    api.getSettingInfo = [](const SoapyAbi::Device*, std::size_t* count)
+        -> SoapyAbi::ArgInfo* {
+        State().query("settings");
+        if (State().biasTeeSupported) {
+            static SoapyAbi::ArgInfo info{};
+            static char key[] = "biastee";
+            info.key = key;
+            *count = 1;
+            return &info;
+        }
         *count = 0;
         return nullptr;
     };
-    api.listAntennas = [](const SoapyAbi::Device*, int, std::size_t, std::size_t* count) -> char** {
+    api.writeSetting = [](SoapyAbi::Device*, const char*, const char* value) {
+        State().biasTeeEnabled = std::string(value) == "true";
+        return 0;
+    };
+    api.listAntennas = [](const SoapyAbi::Device*, int, std::size_t, std::size_t* count)
+        -> char** {
+        State().query("antennas");
         *count = 0;
         return nullptr;
+    };
+    api.getAntenna = [](const SoapyAbi::Device*, int, std::size_t) {
+        State().query("getAntenna");
+        static char antenna[] = "RX";
+        return antenna;
     };
     api.getGainRange = [](const SoapyAbi::Device*, int, std::size_t) {
+        State().query("gainRange");
         return SoapyAbi::Range{0.0, 60.0, 0.0};
+    };
+    api.getFrequency = [](const SoapyAbi::Device*, int, std::size_t) {
+        return State().get("getFrequency", &Settings::frequency);
+    };
+    api.getSampleRate = [](const SoapyAbi::Device*, int, std::size_t) {
+        return State().get("getSampleRate", &Settings::sampleRate);
+    };
+    api.getGain = [](const SoapyAbi::Device*, int, std::size_t) {
+        return State().get("getGain", &Settings::gain);
+    };
+    api.getGainMode = [](const SoapyAbi::Device*, int, std::size_t) {
+        return State().get("getGainMode", &Settings::automaticGain);
     };
     api.setFrequency = [](SoapyAbi::Device*, int, std::size_t, double value, const SoapyAbi::Kwargs*) {
         return State().set("frequency", &Settings::frequency, value);
@@ -142,6 +219,7 @@ inline SoapyApi Api() {
         return State().set("sampleRate", &Settings::sampleRate, value);
     };
     api.hasGainMode = [](const SoapyAbi::Device*, int, std::size_t) {
+        State().query("gainModeSupport");
         return State().automaticGainSupported;
     };
     api.setGainMode = [](SoapyAbi::Device*, int, std::size_t, bool value) {
@@ -157,6 +235,7 @@ inline SoapyApi Api() {
     api.getStreamFormats = [](const SoapyAbi::Device*, int, std::size_t,
                               std::size_t* count) {
         auto& state = State();
+        state.query("formats");
         state.formatPointers.clear();
         for (auto& format : state.streamFormats) {
             state.formatPointers.push_back(format.data());
@@ -166,6 +245,7 @@ inline SoapyApi Api() {
     };
     api.getNativeStreamFormat = [](const SoapyAbi::Device*, int, std::size_t,
                                     double* fullScale) {
+        State().query("nativeFormat");
         *fullScale = State().fullScale;
         return State().nativeFormat.data();
     };

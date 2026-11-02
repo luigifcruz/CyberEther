@@ -118,7 +118,6 @@ Result SoapyImpl::create() {
     throughput.publish({0.0f, 0.0f});
 
     JST_CHECK(receiverDevice.open(deviceString));
-    JST_CHECK(receiverDevice.validateSettings(sampleRate, frequency));
     JST_CHECK(receiverDevice.validateDataType(validatedDataType));
     JST_CHECK(allocateBuffers());
     JST_CHECK(configureDevice());
@@ -127,7 +126,8 @@ Result SoapyImpl::create() {
     JST_CHECK(buffer.setAttribute("sampleScale", receiverDevice.sampleScale()));
 
     generation = 0;
-    resetStream(frequency, sampleRate);
+    resetStream(*receiverDevice.info().state.frequency.value,
+                *receiverDevice.info().state.sampleRate.value);
     publishedMetadata = {};
     JST_CHECK(publishMetadata(stream.metadata()));
 
@@ -166,9 +166,9 @@ Result SoapyImpl::configureDevice() {
     };
     JST_CHECK(receiverDevice.setAntenna(antenna));
     JST_CHECK(applyTuning(desired, true));
-    manualGain = tuned.gain;
     JST_CHECK(receiverDevice.setBiasTee(biasTee));
     JST_CHECK(receiverDevice.startStream(streamString, buffer.dtype()));
+    JST_CHECK(updateDeviceInfo(true));
     return Result::SUCCESS;
 }
 
@@ -212,6 +212,7 @@ void SoapyImpl::stopReceiver() {
 Result SoapyImpl::destroy() {
     stopReceiver();
     receiverDevice.reset();
+    deviceInfo.publish({});
 
     bufferFill.publish(0.0f);
     throughput.publish({0.0f, 0.0f});
@@ -234,11 +235,6 @@ Result SoapyImpl::reconfigure() {
         return Result::RECREATE;
     }
 
-    if ((newConfig.frequency != frequency || newConfig.sampleRate != sampleRate) &&
-        receiverDevice.validateSettings(newConfig.sampleRate, newConfig.frequency) != Result::SUCCESS) {
-        return Result::WARNING;
-    }
-
     return access.change([&] {
         const Tuning desired{
             .frequency = newConfig.frequency,
@@ -259,12 +255,12 @@ Result SoapyImpl::reconfigure() {
         frequency = newConfig.frequency;
         sampleRate = newConfig.sampleRate;
         automaticGain = newConfig.automaticGain;
-        manualGain = tuned.gain;
+        manualGain = newConfig.manualGain;
         return Result::SUCCESS;
     });
 }
 
-void SoapyImpl::resetStream(const F32 appliedFrequency, const F32 appliedSampleRate) {
+void SoapyImpl::resetStream(const F64 appliedFrequency, const F64 appliedSampleRate) {
     stream.reset({
         .frequency = appliedFrequency,
         .sampleRate = appliedSampleRate,
@@ -362,54 +358,57 @@ std::pair<F32, F32> SoapyImpl::getThroughput() const {
     return throughput.get();
 }
 
-std::vector<std::string> SoapyImpl::listAntennas() const {
-    return receiverDevice.listAntennas();
+SoapyDeviceInfo SoapyImpl::getDeviceInfo() const {
+    return deviceInfo.get();
 }
 
-std::vector<std::string> SoapyImpl::listDataTypes() const {
-    return receiverDevice.listDataTypes();
-}
-
-bool SoapyImpl::supportsBiasTee() const {
-    return receiverDevice.supportsBiasTee();
-}
-
-std::optional<SoapyAbi::Range> SoapyImpl::getGainRange() const {
-    return gainRange.get();
-}
-
-Result SoapyImpl::applyTuning(const Tuning& desired, const bool force) {
-    if (force || desired.sampleRate != tuned.sampleRate) {
-        JST_CHECK(receiverDevice.setSampleRate(desired.sampleRate));
-        tuned.sampleRate = desired.sampleRate;
-        resetStream(tuned.frequency, tuned.sampleRate);
+Result SoapyImpl::updateDeviceInfo(const bool reset) {
+    const auto result = receiverDevice.refresh();
+    deviceInfo.publish(receiverDevice.info());
+    JST_CHECK(result);
+    const auto& current = receiverDevice.info().state;
+    const auto actualFrequency = *current.frequency.value;
+    const auto actualSampleRate = *current.sampleRate.value;
+    if (!std::isfinite(static_cast<F32>(actualFrequency)) ||
+        !std::isfinite(static_cast<F32>(actualSampleRate)) ||
+        static_cast<F32>(actualSampleRate) <= 0.0f) {
+        JST_ERROR("[MODULE_SOAPY] Actual tuning exceeds signal metadata precision.");
+        return Result::ERROR;
     }
-
-    const bool retuned = force || desired.frequency != tuned.frequency;
-    if (retuned) {
-        JST_CHECK(receiverDevice.setTunerFrequency(desired.frequency));
-        tuned.frequency = desired.frequency;
-        resetStream(tuned.frequency, tuned.sampleRate);
-        gainRange.publish(receiverDevice.getGainRange());
+    const auto previous = stream.metadata();
+    if (reset || previous.frequency != actualFrequency ||
+        previous.sampleRate != actualSampleRate) {
+        resetStream(actualFrequency, actualSampleRate);
     }
-
-    const bool modeChanged = force || desired.automaticGain != tuned.automaticGain;
-    if (modeChanged) {
-        JST_CHECK(receiverDevice.setAutomaticGain(desired.automaticGain));
-        tuned.automaticGain = desired.automaticGain;
-    }
-
-    const F32 applied = receiverDevice.clampGain(desired.gain);
-    if (!tuned.automaticGain && (applied != tuned.gain || retuned || modeChanged)) {
-        JST_CHECK(receiverDevice.setGain(applied));
-    }
-    tuned.gain = applied;
-
     return Result::SUCCESS;
 }
 
-Result SoapyImpl::setBiasTee(const bool enabled) {
-    return access.change([&] { return receiverDevice.setBiasTee(enabled); });
+Result SoapyImpl::applyTuning(const Tuning& desired, const bool force) {
+    const bool rateChanged = force || desired.sampleRate != tuned.sampleRate;
+    const bool retuned = force || desired.frequency != tuned.frequency;
+    if (rateChanged) {
+        JST_CHECK(receiverDevice.setSampleRate(desired.sampleRate));
+    }
+    if (retuned) {
+        JST_CHECK(receiverDevice.setTunerFrequency(desired.frequency));
+    }
+
+    const bool modeChanged = force || desired.automaticGain != tuned.automaticGain;
+    if (modeChanged || retuned || rateChanged) {
+        JST_CHECK(receiverDevice.setAutomaticGain(desired.automaticGain));
+    }
+    const auto& caps = receiverDevice.info().capabilities;
+    const bool manual = caps.automaticGain.value == false ||
+                        (!desired.automaticGain && caps.automaticGain.value == true);
+    const bool adjustable = caps.gain.value &&
+                            caps.gain.value->minimum < caps.gain.value->maximum;
+    if (manual && adjustable &&
+        (force || desired.gain != tuned.gain || retuned || rateChanged || modeChanged)) {
+        JST_CHECK(receiverDevice.setGain(receiverDevice.clampGain(desired.gain)));
+    }
+    JST_CHECK(updateDeviceInfo(retuned || rateChanged));
+    tuned = desired;
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream::Modules

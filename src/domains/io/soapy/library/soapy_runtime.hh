@@ -77,13 +77,18 @@ struct SoapyApi {
                                           std::size_t*) = nullptr;
     char** (*listAntennas)(const SoapyAbi::Device*, int, std::size_t, std::size_t*) = nullptr;
     int (*setAntenna)(SoapyAbi::Device*, int, std::size_t, const char*) = nullptr;
+    char* (*getAntenna)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setFrequency)(SoapyAbi::Device*, int, std::size_t, double,
                         const SoapyAbi::Kwargs*) = nullptr;
     int (*setSampleRate)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
+    double (*getFrequency)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
+    double (*getSampleRate)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     bool (*hasGainMode)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setGainMode)(SoapyAbi::Device*, int, std::size_t, bool) = nullptr;
+    bool (*getGainMode)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     SoapyAbi::Range (*getGainRange)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setGain)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
+    double (*getGain)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     SoapyAbi::ArgInfo* (*getSettingInfo)(const SoapyAbi::Device*, std::size_t*) = nullptr;
     int (*writeSetting)(SoapyAbi::Device*, const char*, const char*) = nullptr;
     char** (*getStreamFormats)(const SoapyAbi::Device*, int, std::size_t,

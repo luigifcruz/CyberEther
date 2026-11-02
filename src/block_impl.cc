@@ -391,6 +391,13 @@ Result Block::Impl::updateInterfaceConfigFormat(const std::string& key,
     return Result::ERROR;
 }
 
+Result Block::Impl::removeInterfaceConfig(const std::string& key) {
+    std::erase_if(_interface->impl->configs, [&](const auto& config) {
+        return config.first == key;
+    });
+    return Result::SUCCESS;
+}
+
 Result Block::Impl::defineInterfaceMetric(const std::string& key,
                                           const std::string& label,
                                           const std::string& help,

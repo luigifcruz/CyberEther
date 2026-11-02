@@ -17,27 +17,35 @@
 
 namespace Jetstream::Modules {
 
-inline bool SoapyRangeContains(const std::vector<SoapyAbi::Range>& ranges, const F32 value) {
-    for (const auto& range : ranges) {
-        const F32 minimum = static_cast<F32>(range.minimum);
-        const F32 maximum = static_cast<F32>(range.maximum);
-        if (value < minimum || value > maximum) {
-            continue;
-        }
+template<typename T>
+struct SoapyQuery {
+    std::optional<T> value;
+    std::string error;
+};
 
-        const double step = range.step;
-        if (!std::isfinite(step) || step <= 0.0) {
-            return true;
-        }
+struct SoapyCapabilities {
+    SoapyQuery<std::vector<SoapyAbi::Range>> sampleRates;
+    SoapyQuery<std::vector<SoapyAbi::Range>> frequencies;
+    SoapyQuery<std::vector<std::string>> antennas;
+    SoapyQuery<std::vector<std::string>> dataTypes;
+    SoapyQuery<SoapyAbi::Range> gain;
+    SoapyQuery<bool> automaticGain;
+    SoapyQuery<bool> biasTee;
+};
 
-        const double stepCount = std::round((static_cast<double>(value) - range.minimum) / step);
-        const F32 closest = static_cast<F32>(range.minimum + stepCount * step);
-        if (value == closest) {
-            return true;
-        }
-    }
-    return false;
-}
+struct SoapyDeviceState {
+    SoapyQuery<F64> frequency;
+    SoapyQuery<F64> sampleRate;
+    SoapyQuery<std::string> antenna;
+    SoapyQuery<bool> automaticGain;
+    SoapyQuery<F64> gain;
+};
+
+struct SoapyDeviceInfo {
+    bool connected = false;
+    SoapyCapabilities capabilities;
+    SoapyDeviceState state;
+};
 
 struct JETSTREAM_API SoapyDiscovery {
     using Clock = std::chrono::steady_clock;
@@ -75,12 +83,9 @@ class JETSTREAM_API SoapyReceiver {
 
     Result open(const std::string& deviceString);
     Result openArgs(const SoapyKwargs& args);
-    Result validateSettings(F32 sampleRate, F32 frequency) const;
-    const std::vector<std::string>& listAntennas() const;
-    const std::vector<std::string>& listDataTypes() const;
+    const SoapyDeviceInfo& info() const;
+    Result refresh();
     Result validateDataType(const DataType& dtype) const;
-    const std::optional<SoapyAbi::Range>& getGainRange() const;
-    bool supportsBiasTee() const;
     F32 clampGain(F32 gain) const;
     Result setAntenna(const std::string& antenna);
     Result setTunerFrequency(F32 frequency);
@@ -104,20 +109,16 @@ class JETSTREAM_API SoapyReceiver {
     };
 
     Result queryCapabilities();
-    void queryGainRange();
+    void queryTuningCapabilities();
+    Result queryState();
     std::string failure() const;
 
     State state = State::Closed;
     std::shared_ptr<SoapyLibrary> library;
     SoapyAbi::Device* device = nullptr;
     SoapyAbi::Stream* stream = nullptr;
-    std::vector<SoapyAbi::Range> sampleRateRanges;
-    std::vector<SoapyAbi::Range> frequencyRanges;
-    std::vector<std::string> antennas;
-    std::vector<std::string> dataTypes;
+    SoapyDeviceInfo deviceInfo;
     F32 scale = 1.0f;
-    std::optional<SoapyAbi::Range> gainRange;
-    bool biasTeeSupported = false;
     bool biasTeeNeedsCleanup = false;
 };
 

@@ -207,3 +207,67 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(block.diagnostic.find(diagnostic) != std::string::npos);
     REQUIRE(flowgraph->blockDestroy("radio", false) == Result::SUCCESS);
 }
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy controls follow capabilities immediately and after device changes",
+                 "[modules][io][soapy][block][capabilities]") {
+    const TestSoapy::Runtime runtime;
+    TestSoapy::State().automaticGainSupported = false;
+    Blocks::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.manualGain = 18.0f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto hasField = [&](const std::string& name) {
+        const auto block = viewBlock("radio");
+        return std::any_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                           [&](const auto& field) { return field.name == name; });
+    };
+    REQUIRE_FALSE(hasField("automaticGain"));
+    REQUIRE_FALSE(hasField("antenna"));
+    REQUIRE_FALSE(hasField("biasTee"));
+    REQUIRE(hasField("manualGain"));
+    REQUIRE(TestSoapy::State().settings().gain == 18.0);
+    REQUIRE(Parser::Get<bool>(viewBlock("radio").config, "automaticGain"));
+
+    TestSoapy::State().automaticGainSupported = true;
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", "driver=scripted,new=1"}}) ==
+            Result::SUCCESS);
+    REQUIRE(hasField("automaticGain"));
+    REQUIRE_FALSE(hasField("manualGain"));
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"automaticGain", false}}) ==
+            Result::SUCCESS);
+    REQUIRE(hasField("manualGain"));
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"automaticGain", true}}) ==
+            Result::SUCCESS);
+    REQUIRE_FALSE(hasField("manualGain"));
+    REQUIRE(flowgraph->blockDestroy("radio", false) == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy actual settings show rounded values without changing saved requests",
+                 "[modules][io][soapy][block][readback]") {
+    const TestSoapy::Runtime runtime;
+    TestSoapy::State().sampleRateStep = 1.0e6;
+    Blocks::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.sampleRate = 2.4e6f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto queries = TestSoapy::State().queries.load();
+    std::vector<Flowgraph::View::MetricEntry> metrics;
+    REQUIRE(flowgraph->view().metrics("radio", metrics) == Result::SUCCESS);
+    const auto metric = std::find_if(metrics.begin(), metrics.end(), [](const auto& entry) {
+        return entry.name == "actualSettings";
+    });
+    REQUIRE(metric != metrics.end());
+    const auto table = std::any_cast<Parser::Map>(metric->value);
+    const auto rows = Parser::Get<std::vector<std::vector<std::string>>>(table, "rows");
+    REQUIRE(std::find(rows.begin(), rows.end(),
+                      std::vector<std::string>{"Sample Rate", "2000000 S/s"}) != rows.end());
+    REQUIRE(Parser::Get<F32>(viewBlock("radio").config, "sampleRate") == 2.4e6f);
+    REQUIRE(TestSoapy::State().queries == queries);
+    REQUIRE(flowgraph->blockDestroy("radio", false) == Result::SUCCESS);
+}

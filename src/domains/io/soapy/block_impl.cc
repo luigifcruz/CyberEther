@@ -22,12 +22,14 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
     Modules::SoapyImpl* moduleImpl = nullptr;
 
  private:
-    Result updateAntennaFormat();
-    Result updateManualGainFormat();
-    Parser::Map dataTypeFormat(const std::string& selected);
+    Result updateDeviceInterface();
+    Modules::SoapyDeviceInfo deviceInfo();
+    Parser::Map dataTypeFormat(const std::string& selected,
+                              const Modules::SoapyDeviceInfo& info);
     Parser::Map antennaFormat(const std::string& selected,
-                              const std::vector<std::string>& antennas = {});
-    Parser::Map manualGainFormat(const std::optional<Modules::SoapyAbi::Range>& range = std::nullopt);
+                              const Modules::SoapyDeviceInfo& info);
+    Parser::Map manualGainFormat(const Modules::SoapyDeviceInfo& info);
+
 };
 
 Result SoapyImpl::validate() {
@@ -65,6 +67,7 @@ Result SoapyImpl::configure() {
 
 Result SoapyImpl::define() {
     const auto& config = *candidate();
+    const auto info = deviceInfo();
 
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
@@ -91,14 +94,14 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("antenna",
                                     "Antenna",
                                     "Receive antenna port. Changes restart the receiver.",
-                                    antennaFormat(config.antenna)));
+                                    antennaFormat(config.antenna, info)));
 
     JST_CHECK(defineInterfaceConfig("dataType",
                                     "Data Type",
                                     "Sample type delivered by SoapySDR. Changes "
                                     "restart the receiver and must match downstream "
                                     "inputs.",
-                                    dataTypeFormat(config.dataType)));
+                                    dataTypeFormat(config.dataType, info)));
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
@@ -118,23 +121,17 @@ Result SoapyImpl::define() {
                                     "Enable automatic gain control.",
                                     {{"type", "bool"}}));
 
-    if (!config.automaticGain) {
-        JST_CHECK(defineInterfaceConfig("manualGain",
-                                        "Manual Gain",
-                                        "Receive gain applied while automatic gain is off.",
-                                        manualGainFormat()));
-    }
+    JST_CHECK(defineInterfaceConfig("manualGain",
+                                    "Manual Gain",
+                                    "Requested receive gain while automatic gain is off. "
+                                    "The radio may clamp or round it; Actual Settings shows "
+                                    "the last readback.",
+                                    manualGainFormat(info)));
 
-    const auto module = moduleHandle("soapy");
-    const bool knownWithoutBiasTee = module && module->state() == Module::State::CREATED &&
-                                     config.deviceString == deviceString &&
-                                     !module->getImpl<Modules::SoapyImpl>()->supportsBiasTee();
-    if (!knownWithoutBiasTee) {
-        JST_CHECK(defineInterfaceConfig("biasTee",
-                                        "Bias-T",
-                                        "Enable antenna power through the antenna cable.",
-                                        {{"type", "bool"}}));
-    }
+    JST_CHECK(defineInterfaceConfig("biasTee",
+                                    "Bias-T",
+                                    "Enable antenna power through the antenna cable.",
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("numberOfBatches",
                                     "Batches",
@@ -150,6 +147,49 @@ Result SoapyImpl::define() {
                                     "Buffer Multiplier",
                                     "Internal buffer size multiplier.",
                                     {{"type", "uint"}, {"unit", "x"}}));
+
+    JST_CHECK(defineInterfaceMetric("actualSettings",
+                                    "Actual Settings",
+                                    "Values read after the last control change. "
+                                    "Automatic gain may change between readbacks.",
+                                    {{"type", "table"}},
+        [this]() -> std::any {
+            const auto info = moduleImpl ? moduleImpl->getDeviceInfo()
+                                         : Modules::SoapyDeviceInfo{};
+            std::vector<std::vector<std::string>> rows;
+            if (info.connected) {
+                const auto number = [](const auto& query, const char* unit) {
+                    return query.value
+                        ? jst::fmt::format("{:.9g} {}", *query.value, unit)
+                        : (query.error.empty() ? "Unavailable" : query.error);
+                };
+                const auto& state = info.state;
+                rows = {{"Frequency", number(state.frequency, "Hz")},
+                        {"Sample Rate", number(state.sampleRate, "S/s")},
+                        {"Gain", number(state.gain, "dB")},
+                        {"Antenna", state.antenna.value.value_or("Unavailable")},
+                        {"Automatic Gain", state.automaticGain.value
+                            ? (*state.automaticGain.value ? "On" : "Off")
+                            : "Unavailable"}};
+                const auto& caps = info.capabilities;
+                for (const auto& [label, error] : std::vector<std::pair<std::string, std::string>>{
+                         {"Frequency Range", caps.frequencies.error},
+                         {"Sample Rate Range", caps.sampleRates.error},
+                         {"Gain Range", caps.gain.error},
+                         {"Gain Mode", caps.automaticGain.error},
+                         {"Antennas", caps.antennas.error},
+                         {"Bias-T", caps.biasTee.error}}) {
+                    if (!error.empty()) {
+                        rows.push_back({label, error});
+                    }
+                }
+            }
+            Parser::Map table;
+            static_cast<void>(Parser::Serialize(table, "columns",
+                                                std::vector<std::string>{"Setting", "Value"}));
+            static_cast<void>(Parser::Serialize(table, "rows", rows));
+            return table;
+        }));
 
     JST_CHECK(defineInterfaceMetric("bufferFill",
                                     "Buffer Fill",
@@ -197,36 +237,56 @@ Result SoapyImpl::define() {
 }
 
 Result SoapyImpl::create() {
+    moduleImpl = nullptr;
     JST_CHECK(moduleCreate("soapy", moduleConfig, {}));
     JST_CHECK(moduleExposeOutput("signal", {"soapy", "signal"}));
 
     moduleImpl = moduleHandle("soapy")->getImpl<Modules::SoapyImpl>();
-    JST_CHECK(updateAntennaFormat());
-    JST_CHECK(updateManualGainFormat());
-    JST_CHECK(updateInterfaceConfigFormat("dataType", dataTypeFormat(dataType)));
-
-    return Result::SUCCESS;
+    return updateDeviceInterface();
 }
 
 Result SoapyImpl::reconfigure() {
-    JST_CHECK(updateAntennaFormat());
-    JST_CHECK(updateManualGainFormat());
-    JST_CHECK(updateInterfaceConfigFormat("dataType", dataTypeFormat(dataType)));
+    return updateDeviceInterface();
+}
 
+Modules::SoapyDeviceInfo SoapyImpl::deviceInfo() {
+    const auto module = moduleHandle("soapy");
+    const auto& config = *candidate();
+    if (!module || module->state() != Module::State::CREATED ||
+        config.deviceString != deviceString || config.modulePath != modulePath ||
+        config.streamString != streamString || config.antenna != antenna) {
+        return {};
+    }
+    return module->getImpl<Modules::SoapyImpl>()->getDeviceInfo();
+}
+
+Result SoapyImpl::updateDeviceInterface() {
+    const auto info = moduleImpl->getDeviceInfo();
+    JST_CHECK(updateInterfaceConfigFormat("dataType", dataTypeFormat(dataType, info)));
+    JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(antenna, info)));
+    JST_CHECK(updateInterfaceConfigFormat("manualGain", manualGainFormat(info)));
+    const auto& caps = info.capabilities;
+    if (caps.automaticGain.value != true) {
+        JST_CHECK(removeInterfaceConfig("automaticGain"));
+    }
+    if ((automaticGain && caps.automaticGain.value != false) ||
+        !caps.gain.value || caps.gain.value->minimum == caps.gain.value->maximum) {
+        JST_CHECK(removeInterfaceConfig("manualGain"));
+    }
+    if (caps.biasTee.value != true) {
+        JST_CHECK(removeInterfaceConfig("biasTee"));
+    }
+    if (!caps.antennas.value || caps.antennas.value->empty()) {
+        JST_CHECK(removeInterfaceConfig("antenna"));
+    }
     return Result::SUCCESS;
 }
 
-Parser::Map SoapyImpl::dataTypeFormat(const std::string& selected) {
+Parser::Map SoapyImpl::dataTypeFormat(const std::string& selected,
+                                     const Modules::SoapyDeviceInfo& info) {
     Parser::Sequence options;
-    const auto module = moduleHandle("soapy");
-    const auto& config = *candidate();
-    const bool known = module && module->state() == Module::State::CREATED &&
-                       config.deviceString == deviceString &&
-                       config.modulePath == modulePath;
-    std::vector<std::string> types;
-    if (known) {
-        types = module->getImpl<Modules::SoapyImpl>()->listDataTypes();
-    } else {
+    auto types = info.capabilities.dataTypes.value.value_or(std::vector<std::string>{});
+    if (!info.connected) {
         for (const auto& format : Modules::SoapySampleFormats) {
             types.emplace_back(DataTypeToName(format.dtype));
         }
@@ -243,32 +303,15 @@ Parser::Map SoapyImpl::dataTypeFormat(const std::string& selected) {
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
-Result SoapyImpl::updateAntennaFormat() {
-    return updateInterfaceConfigFormat("antenna",
-                                       antennaFormat(antenna, moduleImpl->listAntennas()));
-}
-
-Result SoapyImpl::updateManualGainFormat() {
-    if (moduleImpl->getGainRange()) {
-        manualGain = moduleImpl->manualGain;
-        moduleConfig->manualGain = manualGain;
-    }
-
-    if (!automaticGain) {
-        JST_CHECK(updateInterfaceConfigFormat("manualGain",
-                                              manualGainFormat(moduleImpl->getGainRange())));
-    }
-
-    return Result::SUCCESS;
-}
-
 Parser::Map SoapyImpl::antennaFormat(const std::string& selected,
-                                     const std::vector<std::string>& antennas) {
+                                    const Modules::SoapyDeviceInfo& info) {
     Parser::Sequence options{Parser::Map{{"label", "Default"}, {"value", ""}}};
     bool selectionListed = selected.empty();
-    for (const auto& antenna : antennas) {
-        selectionListed = selectionListed || antenna == selected;
-        options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
+    if (const auto& antennas = info.capabilities.antennas.value) {
+        for (const auto& antenna : *antennas) {
+            selectionListed |= antenna == selected;
+            options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
+        }
     }
     if (!selectionListed) {
         options.emplace_back(Parser::Map{{"label", selected}, {"value", selected}});
@@ -276,7 +319,8 @@ Parser::Map SoapyImpl::antennaFormat(const std::string& selected,
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
-Parser::Map SoapyImpl::manualGainFormat(const std::optional<Modules::SoapyAbi::Range>& range) {
+Parser::Map SoapyImpl::manualGainFormat(const Modules::SoapyDeviceInfo& info) {
+    const auto& range = info.capabilities.gain.value;
     const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
     const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
     return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};

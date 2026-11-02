@@ -12,15 +12,48 @@ namespace Jetstream::Modules {
 
 namespace {
 
-bool SampleRateInRanges(const std::vector<SoapyAbi::Range>& ranges, const F32 rate) {
-    if (!std::isfinite(rate) || rate <= 0.0f) {
-        return false;
+template<typename T, typename Read>
+SoapyQuery<T> QueryValue(const SoapyLibrary& library, Read&& read) {
+    SoapyQuery<T> result;
+    const T value = read();
+    if (library.api().lastStatus() == 0) {
+        result.value = value;
+    } else {
+        result.error = library.lastError();
+        if (result.error.empty()) {
+            result.error = "Device query failed.";
+        }
     }
+    return result;
+}
 
-    return std::any_of(ranges.begin(), ranges.end(), [rate](const auto& range) {
-        return rate >= static_cast<F32>(range.minimum) &&
-               rate <= static_cast<F32>(range.maximum);
-    });
+bool ValidRange(const SoapyAbi::Range& range) {
+    return std::isfinite(range.minimum) && std::isfinite(range.maximum) &&
+           std::isfinite(range.step) && range.minimum <= range.maximum &&
+           range.step >= 0.0;
+}
+
+SoapyQuery<std::vector<SoapyAbi::Range>> QueryRanges(
+    const SoapyLibrary& library, SoapyAbi::Device* device, auto function) {
+    SoapyQuery<std::vector<SoapyAbi::Range>> result;
+    std::size_t length = 0;
+    auto* list = function(device, SoapyAbi::RX, 0, &length);
+    if (library.api().lastStatus() != 0) {
+        result.error = library.lastError();
+        if (result.error.empty()) {
+            result.error = "Device query failed.";
+        }
+    } else if ((length != 0 && !list) ||
+               (list && !std::all_of(list, list + length, ValidRange))) {
+        result.error = "Driver returned invalid ranges.";
+    } else {
+        result.value.emplace();
+        if (list) {
+            result.value->assign(list, list + length);
+        }
+    }
+    library.api().free(list);
+    return result;
 }
 
 using DiscoveryClock = SoapyDiscovery::Clock;
@@ -256,126 +289,157 @@ Result SoapyReceiver::openArgs(const SoapyKwargs& args) {
     return queryCapabilities();
 }
 
+const SoapyDeviceInfo& SoapyReceiver::info() const {
+    return deviceInfo;
+}
+
 Result SoapyReceiver::queryCapabilities() {
     const auto& api = library->api();
+    auto& caps = deviceInfo.capabilities;
+    deviceInfo.connected = true;
+    queryTuningCapabilities();
 
-    const auto readRanges = [&](auto function, std::vector<SoapyAbi::Range>& ranges) {
-        std::size_t length = 0;
-        auto* list = function(device, SoapyAbi::RX, 0, &length);
-        const bool ok = api.lastStatus() == 0;
-        if (ok && list) {
-            ranges.assign(list, list + length);
-        }
-        api.free(list);
-        return ok;
-    };
-    if (!readRanges(api.getSampleRateRange, sampleRateRanges) ||
-        !readRanges(api.getFrequencyRange, frequencyRanges)) {
-        JST_ERROR("[MODULE_SOAPY] Failed to get device ranges: {}", failure());
-        return Result::ERROR;
-    }
-
+    caps.biasTee = {};
     std::size_t settingCount = 0;
     auto* settings = api.getSettingInfo(device, &settingCount);
-    if (api.lastStatus() == 0) {
+    if (api.lastStatus() == 0 && (settingCount == 0 || settings)) {
+        caps.biasTee.value = false;
         for (std::size_t i = 0; i < settingCount; ++i) {
-            biasTeeSupported |= settings[i].key && std::string(settings[i].key) == "biastee";
+            if (settings[i].key && std::string(settings[i].key) == "biastee") {
+                caps.biasTee.value = true;
+            }
         }
     } else {
-        JST_WARN("[MODULE_SOAPY] Failed to query optional device settings: {}", failure());
+        caps.biasTee.error = failure();
     }
     api.argInfoListClear(settings, settingCount);
 
-    std::size_t antennaCount = 0;
-    char** names = api.listAntennas(device, SoapyAbi::RX, 0, &antennaCount);
-    if (api.lastStatus() == 0) {
-        for (std::size_t i = 0; i < antennaCount; ++i) {
-            antennas.emplace_back(names[i] ? names[i] : "");
-        }
-    } else {
-        JST_WARN("[MODULE_SOAPY] Failed to query receive antennas: {}", failure());
-    }
-    api.stringsClear(&names, antennaCount);
-
-    std::size_t formatCount = 0;
-    char** formats = api.getStreamFormats(device, SoapyAbi::RX, 0, &formatCount);
-    const bool formatsValid = api.lastStatus() == 0;
-    if (formatsValid && formats) {
-        for (const auto& supported : SoapySampleFormats) {
-            for (std::size_t i = 0; i < formatCount; ++i) {
-                if (formats[i] && std::string(formats[i]) == supported.name) {
-                    dataTypes.emplace_back(DataTypeToName(supported.dtype));
-                    break;
+    const auto readNames = [&](auto function) {
+        SoapyQuery<std::vector<std::string>> result;
+        std::size_t count = 0;
+        char** names = function(device, SoapyAbi::RX, 0, &count);
+        if (api.lastStatus() == 0 && (count == 0 || names)) {
+            result.value.emplace();
+            for (std::size_t i = 0; i < count; ++i) {
+                if (names[i] && *names[i]) {
+                    result.value->emplace_back(names[i]);
                 }
             }
+        } else {
+            result.error = failure();
+        }
+        api.stringsClear(&names, count);
+        return result;
+    };
+    caps.antennas = readNames(api.listAntennas);
+    caps.dataTypes = readNames(api.getStreamFormats);
+    if (!caps.dataTypes.value) {
+        JST_ERROR("[MODULE_SOAPY] Failed to query receive formats: {}",
+                  caps.dataTypes.error);
+        return Result::ERROR;
+    }
+    const auto formats = *caps.dataTypes.value;
+    caps.dataTypes.value->clear();
+    for (const auto& supported : SoapySampleFormats) {
+        if (std::find(formats.begin(), formats.end(), supported.name) != formats.end()) {
+            caps.dataTypes.value->emplace_back(DataTypeToName(supported.dtype));
         }
     }
-    api.stringsClear(&formats, formatCount);
-    if (!formatsValid) {
-        JST_ERROR("[MODULE_SOAPY] Failed to query receive formats: {}", failure());
-        return Result::ERROR;
-    }
-
-    queryGainRange();
-
     return Result::SUCCESS;
 }
 
-void SoapyReceiver::queryGainRange() {
-    gainRange.reset();
-
-    const auto range = library->api().getGainRange(device, SoapyAbi::RX, 0);
-    if (library->api().lastStatus() != 0) {
-        JST_WARN("[MODULE_SOAPY] Failed to query receive gain range: {}", failure());
-        return;
-    }
-    if (std::isfinite(range.minimum) && std::isfinite(range.maximum) &&
-        range.minimum <= range.maximum) {
-        gainRange = range;
+void SoapyReceiver::queryTuningCapabilities() {
+    const auto& api = library->api();
+    auto& caps = deviceInfo.capabilities;
+    caps.sampleRates = QueryRanges(*library, device, api.getSampleRateRange);
+    caps.frequencies = QueryRanges(*library, device, api.getFrequencyRange);
+    caps.automaticGain = QueryValue<bool>(*library, [&] {
+        return api.hasGainMode(device, SoapyAbi::RX, 0);
+    });
+    caps.gain = QueryValue<SoapyAbi::Range>(*library, [&] {
+        return api.getGainRange(device, SoapyAbi::RX, 0);
+    });
+    if (caps.gain.value &&
+        (!ValidRange(*caps.gain.value) ||
+         !std::isfinite(static_cast<F32>(caps.gain.value->minimum)) ||
+         !std::isfinite(static_cast<F32>(caps.gain.value->maximum)))) {
+        caps.gain.value.reset();
+        caps.gain.error = "Driver returned an invalid gain range.";
     }
 }
 
-Result SoapyReceiver::validateSettings(const F32 sampleRate, const F32 frequency) const {
-    if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
-        JST_ERROR("[MODULE_SOAPY] Sample rate ({:.3f} MHz) not supported.", sampleRate / 1e6);
+Result SoapyReceiver::queryState() {
+    const auto& api = library->api();
+    auto& current = deviceInfo.state;
+    const auto readNumber = [&](auto function, const bool positive = false) {
+        SoapyQuery<F64> result;
+        if (!function) {
+            result.error = "Readback is unavailable.";
+            return result;
+        }
+        result = QueryValue<F64>(*library, [&] {
+            return function(device, SoapyAbi::RX, 0);
+        });
+        if (result.value && (!std::isfinite(*result.value) ||
+                             (positive && *result.value <= 0.0))) {
+            result.value.reset();
+            result.error = "Driver returned an invalid value.";
+        }
+        return result;
+    };
+    current.frequency = readNumber(api.getFrequency);
+    current.sampleRate = readNumber(api.getSampleRate, true);
+    current.gain = readNumber(api.getGain);
+    current.automaticGain = {};
+    if (deviceInfo.capabilities.automaticGain.value == false) {
+        current.automaticGain.value = false;
+    } else if (api.getGainMode) {
+        current.automaticGain = QueryValue<bool>(*library, [&] {
+            return api.getGainMode(device, SoapyAbi::RX, 0);
+        });
+    } else {
+        current.automaticGain.error = "Readback is unavailable.";
+    }
+    current.antenna = {};
+    if (api.getAntenna) {
+        char* name = api.getAntenna(device, SoapyAbi::RX, 0);
+        if (api.lastStatus() == 0 && name) {
+            current.antenna.value = name;
+        } else {
+            current.antenna.error = failure();
+        }
+        api.free(name);
+    } else {
+        current.antenna.error = "Readback is unavailable.";
+    }
+    if (!current.frequency.value || !current.sampleRate.value) {
+        JST_ERROR("[MODULE_SOAPY] Failed to read actual tuning: frequency: {}; "
+                  "sample rate: {}", current.frequency.error, current.sampleRate.error);
         return Result::ERROR;
     }
-
-    if (!SoapyRangeContains(frequencyRanges, frequency)) {
-        JST_ERROR("[MODULE_SOAPY] Frequency ({:.3f} MHz) not supported.", frequency / 1e6);
-        return Result::ERROR;
-    }
-
     return Result::SUCCESS;
 }
 
-const std::vector<std::string>& SoapyReceiver::listAntennas() const {
-    return antennas;
-}
-
-const std::vector<std::string>& SoapyReceiver::listDataTypes() const {
-    return dataTypes;
+Result SoapyReceiver::refresh() {
+    if (!device) {
+        return Result::ERROR;
+    }
+    JST_CHECK(queryCapabilities());
+    return queryState();
 }
 
 Result SoapyReceiver::validateDataType(const DataType& dtype) const {
+    const auto& types = deviceInfo.capabilities.dataTypes.value;
     const auto name = DataTypeToName(dtype);
-    if (std::find(dataTypes.begin(), dataTypes.end(), name) == dataTypes.end()) {
-        JST_ERROR("[MODULE_SOAPY] Data type '{}' is not supported by this device.",
-                  name);
+    if (!types || std::find(types->begin(), types->end(), name) == types->end()) {
+        JST_ERROR("[MODULE_SOAPY] Data type '{}' is not supported by this device.", name);
         return Result::ERROR;
     }
     return Result::SUCCESS;
 }
 
-bool SoapyReceiver::supportsBiasTee() const {
-    return biasTeeSupported;
-}
-
-const std::optional<SoapyAbi::Range>& SoapyReceiver::getGainRange() const {
-    return gainRange;
-}
-
 F32 SoapyReceiver::clampGain(const F32 gain) const {
+    const auto& gainRange = deviceInfo.capabilities.gain.value;
     if (!gainRange) {
         return gain;
     }
@@ -398,7 +462,9 @@ Result SoapyReceiver::setAntenna(const std::string& antenna) {
     if (antenna.empty()) {
         return Result::SUCCESS;
     }
-    if (std::find(antennas.begin(), antennas.end(), antenna) == antennas.end()) {
+    const auto& antennas = deviceInfo.capabilities.antennas.value;
+    if (antennas && std::find(antennas->begin(), antennas->end(), antenna) ==
+                        antennas->end()) {
         JST_ERROR("[MODULE_SOAPY] Receive antenna '{}' is not supported by the selected device.", antenna);
         return Result::ERROR;
     }
@@ -417,9 +483,9 @@ Result SoapyReceiver::setTunerFrequency(const F32 frequency) {
         return Result::ERROR;
     }
 
-    if (!SoapyRangeContains(frequencyRanges, frequency)) {
-        JST_WARN("[MODULE_SOAPY] Frequency ({:.3f} MHz) not supported.", frequency / 1e6);
-        return Result::WARNING;
+    if (!std::isfinite(frequency)) {
+        JST_ERROR("[MODULE_SOAPY] Frequency must be finite.");
+        return Result::ERROR;
     }
 
     const SoapyKwargsView args({});
@@ -428,7 +494,7 @@ Result SoapyReceiver::setTunerFrequency(const F32 frequency) {
         return Result::ERROR;
     }
 
-    queryGainRange();
+    queryTuningCapabilities();
 
     return Result::SUCCESS;
 }
@@ -439,15 +505,17 @@ Result SoapyReceiver::setSampleRate(const F32 sampleRate) {
         return Result::ERROR;
     }
 
-    if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
-        JST_WARN("[MODULE_SOAPY] Sample rate ({:.3f} MHz) not supported.", sampleRate / 1e6);
-        return Result::WARNING;
+    if (!std::isfinite(sampleRate) || sampleRate <= 0.0f) {
+        JST_ERROR("[MODULE_SOAPY] Sample rate must be finite and positive.");
+        return Result::ERROR;
     }
 
     if (library->api().setSampleRate(device, SoapyAbi::RX, 0, sampleRate) != 0) {
         JST_ERROR("[MODULE_SOAPY] Failed to set sample rate: {}", failure());
         return Result::ERROR;
     }
+
+    queryTuningCapabilities();
 
     return Result::SUCCESS;
 }
@@ -459,14 +527,11 @@ Result SoapyReceiver::setAutomaticGain(const bool automaticGain) {
     }
 
     const auto& api = library->api();
-    const bool supported = api.hasGainMode(device, SoapyAbi::RX, 0);
-    if (api.lastStatus() != 0) {
-        JST_ERROR("[MODULE_SOAPY] Failed to query gain mode support: {}", failure());
-        return Result::ERROR;
-    }
-    if (!supported) {
-        if (automaticGain) {
-            JST_WARN("[MODULE_SOAPY] Automatic gain control is not supported by the selected device.");
+    const auto& supported = deviceInfo.capabilities.automaticGain;
+    if (!supported.value || !*supported.value) {
+        if (automaticGain && !supported.error.empty()) {
+            JST_WARN("[MODULE_SOAPY] Gain mode capability is unavailable: {}",
+                     supported.error);
         }
         return Result::SUCCESS;
     }
@@ -499,7 +564,8 @@ Result SoapyReceiver::setBiasTee(const bool enabled) {
         return Result::ERROR;
     }
 
-    if (biasTeeSupported) {
+    if (deviceInfo.capabilities.biasTee.value == true ||
+        (!enabled && biasTeeNeedsCleanup)) {
         biasTeeNeedsCleanup = true;
         if (library->api().writeSetting(device, "biastee", enabled ? "true" : "false") != 0) {
             JST_ERROR("[MODULE_SOAPY] Failed to set Bias-T: {}", failure());
@@ -639,13 +705,8 @@ void SoapyReceiver::reset() {
         state = State::Closed;
     }
 
-    sampleRateRanges.clear();
-    frequencyRanges.clear();
-    antennas.clear();
-    dataTypes.clear();
+    deviceInfo = {};
     scale = 1.0f;
-    gainRange.reset();
-    biasTeeSupported = false;
     biasTeeNeedsCleanup = false;
     library.reset();
 }
