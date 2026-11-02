@@ -1,10 +1,11 @@
 #include <jetstream/render/sakura/components/combo.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/dropdown.hh>
 #include <jetstream/render/sakura/components/label.hh>
-#include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/typography.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -18,11 +19,19 @@
 
 namespace Jetstream::Sakura {
 
+namespace {
+
+constexpr F32 kComboText = 14.0f;
+constexpr F32 kComboPadX = 14.0f;
+constexpr F32 kComboChevron = 13.0f;
+
+}  // namespace
+
 struct Combo::Impl {
     Config config;
-    Box frame;
-    Box outline;
-    Polyline arrow;
+    Card card;
+    Box hover;
+    Label chevron;
     Label preview;
     Dropdown dropdown;
     bool hovered = false;
@@ -30,9 +39,10 @@ struct Combo::Impl {
 
 Combo::Combo() {
     impl = std::make_unique<Impl>();
-    addChild(impl->frame);
-    addChild(impl->outline);
-    addChild(impl->arrow);
+    setClipsChildren(false);
+    addChild(impl->card);
+    addChild(impl->hover);
+    addChild(impl->chevron);
     addChild(impl->preview);
 }
 
@@ -44,92 +54,91 @@ void Combo::update(Config config) {
     }
     impl->config = std::move(config);
     const auto& current = impl->config;
-    if (current.disabled && impl->dropdown.isOpen()) {
-        impl->dropdown.close();
+    if (current.disabled) {
+        impl->hovered = false;
+        if (impl->dropdown.isOpen()) {
+            impl->dropdown.close();
+        }
     }
     impl->dropdown.update({
         .id = current.id,
         .options = current.options,
         .selected = SelectedOption(current),
         .padding = 8.0f,
-        .rowPadding = {4.0f, 4.0f},
+        .rowPadding = {6.0f, 4.0f},
+        .fontName = Typography::DisplayFont,
         .onSelect = OptionSelected(impl->config),
     });
 }
 
 Extent2D<F32> Combo::measure(const Context& ctx, Extent2D<F32> available) {
     return {ResolveLength(ctx, impl->config.width, Px(ctx, kNaturalControlWidth), available.x),
-            FitLength(FrameHeightPx(ctx), available.y)};
+            FitLength(Px(ctx, kPillHeight), available.y)};
 }
 
 void Combo::layout(const Context& ctx) {
     const auto& config = impl->config;
     const Rect bounds = frame();
     const F32 alpha = config.disabled ? kDisabledAlpha : 1.0f;
-    const F32 arrowSize = bounds.height;
-    const F32 valueX2 = std::max(bounds.x, bounds.right() - arrowSize);
-    const bool hasValue = valueX2 > bounds.x;
-    const bool hovered = impl->hovered && !config.disabled;
-    const auto frameColor = WithAlpha(ctx.color(hovered ? "frame_bg_hovered" : "card"), alpha);
-    const auto buttonColor = WithAlpha(ctx.color(impl->dropdown.isOpen() || hovered ? "button_hovered" : "button"), alpha);
-    impl->frame.update({
-        .instances = {
-            {.rect = {bounds.x, bounds.y, valueX2 - bounds.x, bounds.height}, .visible = !bounds.empty() && hasValue,
-             .backgroundColor = frameColor, .corners = static_cast<U8>(Box::TopLeft | Box::BottomLeft)},
-            {.rect = {valueX2, bounds.y, bounds.right() - valueX2, bounds.height}, .visible = !bounds.empty(),
-             .backgroundColor = buttonColor,
-             .corners = hasValue ? static_cast<U8>(Box::TopRight | Box::BottomRight) : Box::AllCorners},
-        },
-        .clip = bounds,
-        .cornerRadius = Px(ctx, kFrameRounding),
+    const bool active = impl->dropdown.isOpen() || (impl->hovered && !config.disabled);
+    const bool visible = !bounds.empty();
+    const F32 radius = bounds.height * 0.5f;
+
+    impl->card.update({
+        .rects = {bounds},
+        .clip = clip(),
+        .cornerRadius = radius,
+        .softness = Px(ctx, kPillShadowSoftness),
+        .drop = Px(ctx, kPillShadowDrop),
+        .borderWidth = Px(ctx, kPillBorder),
+        .lineWidth = Px(ctx, 1.0f),
+        .fillKey = kPillFill,
+        .opacity = alpha,
     });
-    impl->outline.update({
-        .instances = {{.rect = bounds, .visible = !bounds.empty() && !config.borderColorKey.empty(),
-                       .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
-        .clip = bounds,
-        .cornerRadius = Px(ctx, kFrameRounding),
-        .borderWidth = Px(ctx, 1.0f),
-        .borderColor = WithAlpha(ctx.color(config.borderColorKey), alpha),
-        .strokeFringe = true,
+    impl->hover.update({
+        .instances = {{.rect = bounds, .visible = visible && active, .backgroundColor = ctx.color(kPillHover)}},
+        .cornerRadius = radius,
+        .capacity = 1,
     });
 
-    const F32 fontSize = FontPx(ctx);
-    const F32 padY = Px(ctx, kFramePaddingY);
-    const F32 r = fontSize * 0.40f;
-    const Extent2D<F32> center = {valueX2 + padY + fontSize * 0.5f, bounds.y + padY + fontSize * 0.5f};
-    impl->arrow.update({
+    const F32 fontSize = Px(ctx, kComboText);
+    const F32 padX = Px(ctx, kComboPadX);
+    const F32 chevronSize = Px(ctx, kComboChevron);
+    const F32 chevronX = bounds.right() - padX - chevronSize;
+    const F32 valueX2 = std::max(bounds.x + padX, chevronX - Px(ctx, kPillIconGap));
+
+    impl->chevron.update({
         .instances = {{
-            .points = {
-                {center.x, center.y + 0.75f * r},
-                {center.x - 0.866f * r, center.y - 0.75f * r},
-                {center.x + 0.866f * r, center.y - 0.75f * r},
-            },
-            .color = WithAlpha(ctx.color("text_primary"), alpha),
-            .filled = true,
-            .visible = !bounds.empty(),
+            .rect = {chevronX, bounds.y, chevronSize, bounds.height},
+            .str = ICON_LC_CHEVRON_DOWN,
+            .visible = visible && chevronX > bounds.x + padX,
+            .color = WithAlpha(ctx.color(active ? "text_primary" : "text_secondary"), alpha),
+            .fontSize = chevronSize,
+            .alignment = {0, 1},
         }},
         .clip = bounds,
-        .fringe = Fringe(ctx),
+        .fontName = Typography::IconFont,
+        .maxCharacters = 4,
+        .capacity = 1,
     });
 
-    const F32 padX = Px(ctx, kFramePaddingX);
     impl->preview.update({
         .instances = {{
-            .rect = {bounds.x + padX, bounds.y + padY, std::max(0.0f, valueX2 - bounds.x - padX), fontSize},
+            .rect = {bounds.x + padX, bounds.y, std::max(0.0f, valueX2 - bounds.x - padX), bounds.height},
             .str = config.value.empty() ? std::string("Select") : config.value,
-            .visible = !bounds.empty(),
-            .color = WithAlpha(ctx.color("text_primary"), alpha),
+            .visible = visible,
+            .color = WithAlpha(ctx.color(config.value.empty() ? "text_secondary" : "text_primary"), alpha),
             .fontSize = fontSize,
             .alignment = {0, 1},
         }},
-        .clip = Intersect(bounds, {bounds.x, bounds.y, std::max(0.0f, valueX2 - bounds.x), bounds.height}),
-        .fontName = Typography::MonoFont,
+        .clip = Rect{bounds.x, bounds.y, std::max(0.0f, valueX2 - bounds.x), bounds.height},
+        .fontName = Typography::DisplayFont,
         .maxCharacters = 128,
     });
 
-    layoutChild(ctx, impl->frame, bounds);
-    layoutChild(ctx, impl->outline, bounds);
-    layoutChild(ctx, impl->arrow, bounds);
+    layoutChild(ctx, impl->card, bounds);
+    layoutChild(ctx, impl->hover, bounds);
+    layoutChild(ctx, impl->chevron, bounds);
     layoutChild(ctx, impl->preview, bounds);
 
     impl->dropdown.request(ctx, bounds);

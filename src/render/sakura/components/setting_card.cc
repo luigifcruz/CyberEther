@@ -20,7 +20,7 @@ namespace {
 
 constexpr F32 kCardPadY = 14.0f;
 constexpr F32 kCardControlGap = 24.0f;
-constexpr F32 kCardControlMax = 220.0f;
+constexpr F32 kCardControlMax = 260.0f;
 constexpr F32 kCardWideControl = 0.6f;
 constexpr F32 kCardLineGap = 3.0f;
 constexpr F32 kCardLabel = 15.5f;

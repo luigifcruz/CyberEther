@@ -22,7 +22,6 @@ struct Combo : public Component {
         std::optional<U64> selectedIndex;
         Callback<void(const std::string&)> onChange;
         Callback<void(U64)> onSelect;
-        std::string borderColorKey;
 
         bool operator==(const Config&) const = default;
     };

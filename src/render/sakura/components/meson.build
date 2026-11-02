@@ -54,6 +54,7 @@ src_lst += files([
     'panel.cc',
     'pill_button.cc',
     'pill_field.cc',
+    'pill_input.cc',
     'pill_icon_button.cc',
     'pill_stepper.cc',
     'popup.cc',

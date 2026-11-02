@@ -8,6 +8,7 @@
 #include "../components/status_badge.hh"
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/settings.hh"
 
 #include <algorithm>
@@ -21,8 +22,8 @@ namespace Jetstream {
 struct IntelligenceProviderView {
     static constexpr const char* ChatCompletionsLabel = "Chat Completions";
     static constexpr const char* ResponsesLabel = "Responses";
-    static constexpr const char* KeychainLabel = "System Keychain";
-    static constexpr const char* EnvironmentLabel = "Environment Variable";
+    static constexpr const char* KeychainLabel = "Keychain";
+    static constexpr const char* EnvironmentLabel = "Environment";
 
     struct Preset {
         std::string label;
@@ -53,8 +54,6 @@ struct IntelligenceProviderView {
     };
 
     void update(Config config) {
-        using TextInput = Sakura::TextInput;
-
         this->config = std::move(config);
 
         if (this->config.session != lastSession) {
@@ -97,29 +96,28 @@ struct IntelligenceProviderView {
                 applyPreset(value);
                 markDirty();
             },
-            .borderColorKey = "border",
         });
         nameInput.update({
+            .icon = ICON_LC_TAG,
             .value = name,
             .hint = "Local Ollama",
-            .submit = TextInput::Submit::OnEdit,
+            .submit = Sakura::TextInput::Submit::OnEdit,
             .disabled = this->config.saving,
             .onChange = [this](const std::string& value) {
                 name = value;
                 markDirty();
             },
-            .borderColorKey = "border",
         });
         hostInput.update({
+            .icon = ICON_LC_GLOBE,
             .value = host,
             .hint = "http://localhost:11434",
-            .submit = TextInput::Submit::OnEdit,
+            .submit = Sakura::TextInput::Submit::OnEdit,
             .disabled = this->config.saving,
             .onChange = [this](const std::string& value) {
                 host = value;
                 markDirty();
             },
-            .borderColorKey = "border",
         });
         endpointGroup.update({
             .title = "Endpoint",
@@ -143,80 +141,76 @@ struct IntelligenceProviderView {
             },
         });
 
-        apiCombo.update({
-            .id = "intelligence-provider:api",
-            .options = {ChatCompletionsLabel, ResponsesLabel},
-            .value = api == "responses" ? ResponsesLabel : ChatCompletionsLabel,
-            .disabled = this->config.saving,
-            .onChange = [this](const std::string& value) {
-                const std::string next = value == ResponsesLabel ? "responses" : "chat_completions";
-                if (api == next) {
+        apiTabs.update({
+            .items = {{.label = ChatCompletionsLabel}, {.label = ResponsesLabel}},
+            .selected = api == "responses" ? 1u : 0u,
+            .compact = true,
+            .onSelect = [this](U64 index) {
+                const std::string next = index == 1 ? "responses" : "chat_completions";
+                if (this->config.saving || api == next) {
                     return;
                 }
                 api = next;
                 markDirty();
             },
-            .borderColorKey = "border",
         });
         chatPathInput.update({
+            .icon = ICON_LC_ROUTE,
             .value = chatPath,
             .hint = this->config.chatPathHint,
-            .submit = TextInput::Submit::OnEdit,
+            .submit = Sakura::TextInput::Submit::OnEdit,
             .disabled = this->config.saving,
             .onChange = [this](const std::string& value) {
                 chatPath = value;
                 markDirty();
             },
-            .borderColorKey = "border",
         });
         modelsPathInput.update({
+            .icon = ICON_LC_ROUTE,
             .value = modelsPath,
             .hint = this->config.modelsPathHint,
-            .submit = TextInput::Submit::OnEdit,
+            .submit = Sakura::TextInput::Submit::OnEdit,
             .disabled = this->config.saving,
             .onChange = [this](const std::string& value) {
                 modelsPath = value;
                 markDirty();
             },
-            .borderColorKey = "border",
         });
-        keySourceCombo.update({
-            .id = "intelligence-provider:key-source",
-            .options = {KeychainLabel, EnvironmentLabel},
-            .value = keySourceLabel(),
-            .disabled = this->config.saving,
-            .onChange = [this](const std::string& value) {
-                const auto next = value == EnvironmentLabel ? KeySource::Environment : KeySource::Keychain;
-                if (keySource == next) {
+        keySourceTabs.update({
+            .items = {{.icon = ICON_LC_KEY_ROUND, .label = KeychainLabel}, {.icon = ICON_LC_VARIABLE, .label = EnvironmentLabel}},
+            .selected = keySource == KeySource::Environment ? 1u : 0u,
+            .compact = true,
+            .onSelect = [this](U64 index) {
+                const auto next = index == 1 ? KeySource::Environment : KeySource::Keychain;
+                if (this->config.saving || keySource == next) {
                     return;
                 }
                 keySource = next;
                 markDirty();
             },
-            .borderColorKey = "border",
         });
         keySourceInput.update({
+            .icon = ICON_LC_VARIABLE,
             .value = apiKeyEnv,
             .hint = "OPENROUTER_API_KEY",
-            .submit = TextInput::Submit::OnEdit,
+            .submit = Sakura::TextInput::Submit::OnEdit,
             .disabled = this->config.saving,
             .onChange = [this](const std::string& value) {
                 apiKeyEnv = value;
                 markDirty();
             },
-            .borderColorKey = "border",
         });
         keyInput.update({
+            .icon = ICON_LC_KEY_ROUND,
             .value = apiKey,
             .hint = keyHint(),
-            .submit = TextInput::Submit::OnEdit,
+            .submit = Sakura::TextInput::Submit::OnEdit,
             .password = true,
             .disabled = this->config.saving,
             .onChange = [this](const std::string& value) {
                 apiKey = value;
                 markDirty();
             },
-            .borderColorKey = "border",
         });
         apiGroup.update({
             .title = "API",
@@ -225,7 +219,8 @@ struct IntelligenceProviderView {
                 {
                     .label = "Request Format",
                     .description = "The API the endpoint speaks.",
-                    .control = &apiCombo,
+                    .control = &apiTabs,
+                    .wide = true,
                 },
                 {
                     .label = "Chat Path",
@@ -240,7 +235,8 @@ struct IntelligenceProviderView {
                 {
                     .label = "Key Source",
                     .description = "Where the API key comes from.",
-                    .control = &keySourceCombo,
+                    .control = &keySourceTabs,
+                    .wide = true,
                 },
                 {
                     .label = keySource == KeySource::Environment ? "Variable Name" : "API Key",
@@ -254,6 +250,7 @@ struct IntelligenceProviderView {
         testStatus.update(statusBadge());
         testButton.update({
             .str = this->config.testRunning ? "Testing..." : "Test",
+            .icon = ICON_LC_PLUG,
             .disabled = !testEnabled(),
             .onClick = [this]() {
                 if (testEnabled() && this->config.onTest) {
@@ -291,6 +288,7 @@ struct IntelligenceProviderView {
                 .label = "Connection Test",
                 .description = testDescription(),
                 .control = &testControls,
+                .wide = true,
             }},
             .footer = &saveButton,
         });
@@ -364,10 +362,6 @@ struct IntelligenceProviderView {
     void applyKeySource(const Settings::Intelligence::Provider& provider) {
         apiKeyEnv = provider.apiKeyEnv;
         keySource = !apiKeyEnv.empty() ? KeySource::Environment : KeySource::Keychain;
-    }
-
-    std::string keySourceLabel() const {
-        return keySource == KeySource::Environment ? EnvironmentLabel : KeychainLabel;
     }
 
     std::string keychainKey() const {
@@ -489,15 +483,15 @@ struct IntelligenceProviderView {
     SettingsBreadcrumb breadcrumb;
     SettingsHeader header;
     Sakura::Combo typeCombo;
-    Sakura::TextInput nameInput;
-    Sakura::TextInput hostInput;
+    Sakura::PillInput nameInput;
+    Sakura::PillInput hostInput;
     SectionGroup endpointGroup;
-    Sakura::Combo apiCombo;
-    Sakura::TextInput chatPathInput;
-    Sakura::TextInput modelsPathInput;
-    Sakura::Combo keySourceCombo;
-    Sakura::TextInput keyInput;
-    Sakura::TextInput keySourceInput;
+    Sakura::PillTabs apiTabs;
+    Sakura::PillInput chatPathInput;
+    Sakura::PillInput modelsPathInput;
+    Sakura::PillTabs keySourceTabs;
+    Sakura::PillInput keyInput;
+    Sakura::PillInput keySourceInput;
     SectionGroup apiGroup;
     StatusBadge testStatus;
     CompactButton testButton;

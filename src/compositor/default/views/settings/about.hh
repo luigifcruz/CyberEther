@@ -7,6 +7,7 @@
 #include "../components/section_group.hh"
 #include "components/settings_header.hh"
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include "jetstream/config.hh"
 
@@ -62,7 +63,8 @@ struct AboutSettingsView {
             .onApplyUpdate = this->config.onApplyUpdate,
         });
         feedbackButton.update({
-            .str = "Send",
+            .str = "Send Feedback",
+            .icon = ICON_LC_SEND,
             .onClick = [this]() {
                 if (this->config.onSendFeedback) {
                     this->config.onSendFeedback();

@@ -26,8 +26,8 @@ struct StatusBadge : public Sakura::Badge {
             case Tone::Neutral:
                 Badge::update({
                     .label = std::move(config.label),
-                    .backgroundColorKey = "header_hovered",
-                    .borderColorKey = "border",
+                    .backgroundColorKey = "pill_bg",
+                    .borderColorKey = "tile_border",
                     .textColorKey = "text_secondary",
                 });
                 return;

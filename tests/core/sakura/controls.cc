@@ -18,6 +18,8 @@
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
+#include <jetstream/render/sakura/typography.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "harness.hh"
 #include "scene.hh"
@@ -392,10 +394,10 @@ TEST_CASE("Combo measure uses its configured width or the available width", "[co
     combo.update({.options = {"alpha"}});
     Host host(combo);
 
-    CHECK(host.measureOf(scene.ctx, {320.0f, 500.0f}) == Extent2D<F32>{320.0f, 25.0f});
-    CHECK(host.measureOf(scene.ctx, {kInfinite, 500.0f}) == Extent2D<F32>{200.0f, 25.0f});
+    CHECK(host.measureOf(scene.ctx, {320.0f, 500.0f}) == Extent2D<F32>{320.0f, 34.0f});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, 500.0f}) == Extent2D<F32>{200.0f, 34.0f});
     combo.update({.options = {"alpha"}, .width = 150.0f});
-    CHECK(host.measureOf(scene.ctx, {320.0f, 500.0f}) == Extent2D<F32>{150.0f, 25.0f});
+    CHECK(host.measureOf(scene.ctx, {320.0f, 500.0f}) == Extent2D<F32>{150.0f, 34.0f});
 }
 
 TEST_CASE("QR codes size from the viewport height ratio and center the code", "[core][sakura][controls]") {
@@ -703,7 +705,7 @@ TEST_CASE("Disabled pill buttons ignore clicks, drop hover and the hand cursor, 
         button.update({.icon = "+", .label = "Send", .disabled = disabled, .onClick = [&] { ++clicked; }});
     };
     const auto fill = [&] {
-        return Find<Sakura::Box>(button).at(1)->config().instances.at(0).backgroundColor;
+        return Find<Sakura::Box>(button).at(2)->config().instances.at(0).backgroundColor;
     };
     Host host(button);
     configure(false);
@@ -909,4 +911,111 @@ TEST_CASE("Pill buttons let wheel events pass to the views around them", "[core]
     host.place(ctx, {0.0f, 0.0f, 120.0f, 28.0f});
     CHECK_FALSE(host.send(Wheel(60.0f, 14.0f, -1.0f)));
     CHECK(host.send(Mouse(MouseEventType::Click, 60.0f, 14.0f)));
+}
+
+TEST_CASE("Pill buttons click on release inside and ignore releases they did not start",
+          "[core][sakura][controls]") {
+    const Scene scene;
+    U64 clicked = 0;
+    Sakura::PillButton button;
+    button.update({.label = "Remove", .height = 34.0f, .onClick = [&] { ++clicked; }});
+    Host host(button);
+    host.place(scene.ctx, {10.0f, 10.0f, 120.0f, 34.0f});
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 27.0f)));
+    CHECK(clicked == 0);
+    CHECK(host.send(Mouse(MouseEventType::Release, 60.0f, 27.0f)));
+    CHECK(clicked == 1);
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 27.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Release, 400.0f, 400.0f)));
+    CHECK(clicked == 1);
+
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 50.0f, 27.0f)));
+    CHECK(clicked == 1);
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 27.0f)));
+    host.send(Mouse(MouseEventType::Cancel, 50.0f, 27.0f));
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 50.0f, 27.0f)));
+    CHECK(clicked == 1);
+}
+
+TEST_CASE("Outlined pill buttons draw their outline and sit raised on an opaque base", "[core][sakura][controls]") {
+    const Scene scene;
+    auto ctx = scene.context();
+    ctx.palette = DistinctPalette();
+    Sakura::PillButton button;
+    button.update({.label = "Remove", .colorKey = "tint_red_text", .backgroundColorKey = "tint_red_bg",
+                   .hoverColorKey = "tint_red_hover", .outlineColorKey = "tint_red_border", .raised = true,
+                   .height = 34.0f});
+    Host host(button);
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 34.0f});
+    const auto boxes = Direct<Sakura::Box>(button);
+    REQUIRE(boxes.size() == 4);
+    CHECK(boxes[0]->config().instances.front().visible);
+    CHECK(boxes[1]->config().instances.front().backgroundColor == ctx.color("pill_field_bg"));
+    CHECK(boxes[2]->config().instances.front().backgroundColor == ctx.color("tint_red_bg"));
+    const auto& outline = boxes[3]->config();
+    CHECK(outline.instances.front().visible);
+    CHECK(outline.borderColor == ctx.color("tint_red_border"));
+    CHECK_FALSE(outline.topLit);
+    CHECK(outline.cornerRadius == 17.0f);
+
+    button.update({.label = "Open", .height = 34.0f});
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 34.0f});
+    CHECK_FALSE(boxes[0]->config().instances.front().visible);
+    CHECK_FALSE(boxes[1]->config().instances.front().visible);
+    CHECK_FALSE(boxes[3]->config().instances.front().visible);
+}
+
+TEST_CASE("Pill button padding and text size widen the measure and offset the content", "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::PillButton button;
+    Host host(button);
+    button.update({.icon = "+", .label = "Add"});
+    const auto base = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    button.update({.icon = "+", .label = "Add", .padLeft = 12.0f, .padRight = 15.0f});
+    const auto padded = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    CHECK(padded.x == base.x + 7.0f);
+    host.place(scene.ctx, {0.0f, 0.0f, padded.x, padded.y});
+    auto* icon = ShownText(button, "+");
+    REQUIRE(icon != nullptr);
+    CHECK(Peek::Frame(*icon).x == 12.0f);
+    button.update({.icon = "+", .label = "Add", .textSize = 18.0f, .padLeft = 12.0f, .padRight = 15.0f});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).x > padded.x);
+}
+
+TEST_CASE("Combos draw a pill with a chevron and list their options in the display font",
+          "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::Combo combo;
+    combo.update({.id = "pill", .options = {"alpha", "beta"}, .value = "alpha"});
+    LayerSlot mount;
+    mount.hold(combo, {100.0f, 100.0f, 200.0f, 34.0f});
+    LayerHost host({&mount});
+    host.place(scene.ctx, kScreen);
+
+    bool chevron = false;
+    bool preview = false;
+    for (auto* label : Find<Sakura::Label>(combo)) {
+        for (const auto& instance : label->config().instances) {
+            chevron = chevron || (instance.visible && instance.str == ICON_LC_CHEVRON_DOWN &&
+                                  label->config().fontName == Sakura::Typography::IconFont);
+            preview = preview || (instance.visible && instance.str == "alpha" &&
+                                  label->config().fontName == Sakura::Typography::DisplayFont);
+        }
+    }
+    CHECK(chevron);
+    CHECK(preview);
+
+    host.click(150.0f, 117.0f);
+    host.place(scene.ctx, kScreen);
+    bool listed = false;
+    for (auto* label : Find<Sakura::Label>(host.popups)) {
+        for (const auto& instance : label->config().instances) {
+            listed = listed || (instance.visible && instance.str == "beta" &&
+                                label->config().fontName == Sakura::Typography::DisplayFont);
+        }
+    }
+    CHECK(listed);
 }

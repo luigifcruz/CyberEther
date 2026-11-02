@@ -1,12 +1,14 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REGISTRY_PLUGIN_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REGISTRY_PLUGIN_HH
 
+#include "../components/compact_button.hh"
 #include "components/settings_breadcrumb.hh"
 #include "../components/section_group.hh"
 #include "components/settings_header.hh"
 #include "../components/status_badge.hh"
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <array>
 #include <string>
@@ -55,22 +57,22 @@ struct RegistryPluginView {
         });
         reloadButton.update({
             .str = "Reload",
+            .icon = ICON_LC_REFRESH_CW,
             .onClick = [this]() {
                 if (this->config.onReload) {
                     this->config.onReload(this->config.plugin.path);
                 }
             },
-            .font = Sakura::Text::Font::Sans,
         });
         removeButton.update({
             .str = "Remove",
-            .variant = Sakura::Button::Variant::Destructive,
+            .icon = ICON_LC_TRASH_2,
+            .tone = CompactButton::Tone::Danger,
             .onClick = [this]() {
                 if (this->config.onRemove) {
                     this->config.onRemove(this->config.plugin.path);
                 }
             },
-            .font = Sakura::Text::Font::Sans,
         });
         actions.update({
             .axis = Sakura::Stack::Axis::Horizontal,
@@ -147,8 +149,8 @@ struct RegistryPluginView {
     Config config;
     SettingsBreadcrumb breadcrumb;
     SettingsHeader header;
-    Sakura::Button reloadButton;
-    Sakura::Button removeButton;
+    CompactButton reloadButton;
+    CompactButton removeButton;
     Sakura::Stack actions;
     StatusBadge statusBadge;
     std::array<Sakura::Text, 2> aboutValues;

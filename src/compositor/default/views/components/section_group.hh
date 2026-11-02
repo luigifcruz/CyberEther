@@ -41,7 +41,7 @@ struct SectionGroup : public Sakura::Stack {
             .wrapped = !config.action,
             .lineHeight = 1.05f,
         });
-        warningCallout.update({.str = config.warning, .tone = Callout::Tone::Warning});
+        warningCallout.update({.str = config.warning, .tone = Callout::Tone::Warning, .font = Sakura::Text::Font::Sans});
         warningSpacing.update({});
         cardSpacing.update({.lines = 2});
         toolbarSpacing.update({.lines = 2});

@@ -311,3 +311,28 @@ TEST_CASE("Pill tabs outline the selected pill in both sizes", "[core][sakura][p
         CHECK(outlined);
     }
 }
+
+TEST_CASE("Pill tabs squeezed below their natural width keep every tab reachable", "[core][sakura][pill-tabs]") {
+    const Scene scene;
+    std::vector<U64> picks;
+    Sakura::PillTabs tabs;
+    tabs.update({
+        .items = {{.label = "Chat Completions"}, {.label = "Responses"}, {.label = "Other"}},
+        .compact = true,
+        .onSelect = [&](U64 index) { picks.push_back(index); },
+    });
+    Host host(tabs);
+    const auto natural = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    const Rect bounds = {0.0f, 0.0f, std::floor(natural.x * 0.5f), natural.y};
+    host.place(scene.ctx, bounds);
+
+    const F32 third = bounds.width / 3.0f;
+    for (U64 index = 0; index < 3; ++index) {
+        const F32 x = third * (static_cast<F32>(index) + 0.5f);
+        host.click(x, bounds.height * 0.5f);
+    }
+    CHECK(picks == std::vector<U64>{0, 1, 2});
+    for (auto* text : Find<Sakura::Text>(tabs)) {
+        CHECK(Peek::Frame(*text).right() <= bounds.right() + 0.5f);
+    }
+}

@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_RUNTIME_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_RUNTIME_HH
 
+#include "../components/compact_button.hh"
+#include "../components/file_field.hh"
 #include "../components/section_group.hh"
 #include "components/settings_header.hh"
 #include "../components/status_badge.hh"
@@ -30,8 +32,6 @@ struct RuntimeSettingsView {
     };
 
     void update(Config config) {
-        using Stack = Sakura::Stack;
-
         this->config = std::move(config);
         header.update({
             .title = "Runtime",
@@ -44,22 +44,17 @@ struct RuntimeSettingsView {
             .onChange = [this](const std::string& value) {
                 handleRuntimeOptionChange(value);
             },
-            .borderColorKey = "border",
         });
-        pythonPathInput.update({
+        pythonPathField.update({
+            .icon = ICON_LC_TERMINAL,
             .value = this->config.pythonPath,
             .hint = "/path/to/python",
-            .submit = Sakura::TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 if (this->config.onPythonPathChange) {
                     this->config.onPythonPathChange(value);
                 }
             },
-            .borderColorKey = "border",
-        });
-        browseButton.update({
-            .str = "Browse",
-            .onClick = [this]() {
+            .onBrowse = [this]() {
                 if (this->config.onBrowsePythonPath) {
                     this->config.onBrowsePythonPath(this->config.pythonPath, [this](std::string path) {
                         if (this->config.onPythonPathChange) {
@@ -68,19 +63,6 @@ struct RuntimeSettingsView {
                     });
                 }
             },
-        });
-        pythonPathControls.update({
-            .axis = Stack::Axis::Horizontal,
-            .items = {
-                {.child = &pythonPathInput, .size = 1.0f, .grow = 1.0f},
-                {.child = &browseButton},
-            },
-        });
-        pythonPathField.update({
-            .content = &pythonPathControls,
-            .border = false,
-            .colorKey = "transparent",
-            .hoveredColorKey = "transparent",
         });
         statusBadge.update({
             .label = validationBadge(),
@@ -125,7 +107,6 @@ struct RuntimeSettingsView {
                     this->config.onDependencyPolicyChange(dependencyPolicyValue(label));
                 }
             },
-            .borderColorKey = "border",
         });
         dependencyGroup.update({
             .title = "Dependencies",
@@ -139,6 +120,7 @@ struct RuntimeSettingsView {
 
         cacheButton.update({
             .str = "Open Folder",
+            .icon = ICON_LC_FOLDER_OPEN,
             .onClick = this->config.onOpenPythonEnvironmentCache,
         });
         cacheGroup.update({
@@ -276,15 +258,12 @@ struct RuntimeSettingsView {
     Config config;
     SettingsHeader header;
     Sakura::Combo runtimeCombo;
-    Sakura::TextInput pythonPathInput;
-    Sakura::Button browseButton;
-    Sakura::Stack pythonPathControls;
-    Sakura::Div pythonPathField;
+    FileField pythonPathField;
     StatusBadge statusBadge;
     SectionGroup pythonGroup;
     Sakura::Combo dependencyPolicyCombo;
     SectionGroup dependencyGroup;
-    Sakura::Button cacheButton;
+    CompactButton cacheButton;
     SectionGroup cacheGroup;
     Sakura::Stack stack;
     bool customPathSelected = false;

@@ -44,6 +44,7 @@
 #include <jetstream/render/sakura/components/panel.hh>
 #include <jetstream/render/sakura/components/pill_button.hh>
 #include <jetstream/render/sakura/components/pill_field.hh>
+#include <jetstream/render/sakura/components/pill_input.hh>
 #include <jetstream/render/sakura/components/pill_icon_button.hh>
 #include <jetstream/render/sakura/components/pill_stepper.hh>
 #include <jetstream/render/sakura/components/polyline.hh>

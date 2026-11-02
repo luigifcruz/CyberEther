@@ -21,20 +21,33 @@ struct Callout : public Sakura::Div {
         std::string str;
         std::string icon;
         Tone tone = Tone::Info;
+        Sakura::Text::Font font = Sakura::Text::Font::Body;
     };
 
     void update(Config config) {
         this->config = std::move(config);
         const std::string key = toneKey();
+        icon.update({
+            .str = this->config.icon.empty() ? toneIcon() : this->config.icon,
+            .colorKey = jst::fmt::format("banner_{}_text", key),
+        });
         text.update({
-            .str = jst::fmt::format("{} {}", this->config.icon.empty() ? toneIcon() : this->config.icon,
-                                    this->config.str),
+            .str = this->config.str,
+            .font = this->config.font,
             .colorKey = jst::fmt::format("banner_{}_text", key),
             .wrapped = true,
         });
+        row.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = Sakura::Spacing::Small,
+            .items = {
+                {.child = &icon},
+                {.child = &text, .grow = 1.0f, .shrink = 1.0f},
+            },
+        });
         Div::update({
-            .content = &text,
-            .padding = Sakura::Spacing::Small,
+            .content = &row,
+            .padding = Sakura::Spacing::Medium,
             .rounding = Sakura::Rounding::Control,
             .border = true,
             .colorKey = jst::fmt::format("banner_{}_bg", key),
@@ -72,7 +85,9 @@ struct Callout : public Sakura::Div {
     }
 
     Config config;
+    Sakura::Text icon;
     Sakura::Text text;
+    Sakura::Stack row;
 };
 
 }  // namespace Jetstream

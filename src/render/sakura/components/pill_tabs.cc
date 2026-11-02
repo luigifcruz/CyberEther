@@ -173,11 +173,20 @@ void PillTabs::layout(const Context& ctx) {
     const F32 padX = Px(ctx, s.metrics().padX);
     const F32 rounding = Px(ctx, s.metrics().rounding);
     s.rects.clear();
+    const U64 count = s.config.items.size();
+    const F32 spacing = Px(ctx, kPillTabSpacing);
+    std::vector<F32> widths(count, 0.0f);
+    F32 natural = 0.0f;
+    for (U64 index = 0; index < count; ++index) {
+        widths[index] = s.itemWidth(*this, ctx, index);
+        natural += widths[index];
+    }
+    const F32 room = std::max(0.0f, bounds.width - spacing * static_cast<F32>(count > 1 ? count - 1 : 0));
+    const F32 fit = natural > room && natural > 0.0f ? room / natural : 1.0f;
     F32 x = bounds.x;
-    for (U64 index = 0; index < s.config.items.size(); ++index) {
+    for (U64 index = 0; index < count; ++index) {
         auto& entry = *s.entries[index];
-        const Rect rect = {x, bounds.y, std::min(s.itemWidth(*this, ctx, index), std::max(0.0f, bounds.right() - x)),
-                           bounds.height};
+        const Rect rect = {x, bounds.y, std::floor(widths[index] * fit), bounds.height};
         s.rects.push_back(rect);
         F32 cursor = rect.x + padX;
         if (!s.config.items[index].icon.empty()) {
@@ -186,13 +195,13 @@ void PillTabs::layout(const Context& ctx) {
                         rect);
             cursor += icon.x + Px(ctx, kPillTabIconGap);
         }
-        const F32 room = std::max(0.0f, rect.right() - padX - cursor);
-        s.fitLabel(ctx, index, room);
+        const F32 labelRoom = std::max(0.0f, rect.right() - padX - cursor);
+        s.fitLabel(ctx, index, labelRoom);
         const auto label = measureChild(entry.label, ctx, {infinite, infinite});
         layoutChild(ctx, entry.label,
-                    {cursor, std::round(rect.y + (rect.height - label.y) * 0.5f), std::min(label.x, room), label.y},
+                    {cursor, std::round(rect.y + (rect.height - label.y) * 0.5f), std::min(label.x, labelRoom), label.y},
                     rect);
-        x = rect.right() + Px(ctx, kPillTabSpacing);
+        x = rect.right() + spacing;
     }
 
     const bool selected = s.config.selected < s.rects.size();

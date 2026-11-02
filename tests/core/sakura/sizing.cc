@@ -476,16 +476,16 @@ TEST_CASE("Progress bars and combos fall back to their natural width", "[core][s
     Sakura::Combo combo;
     Host comboHost(combo);
     combo.update({.options = {"Alpha", "Beta"}, .value = "Alpha", .width = 0.0f});
-    CHECK(comboHost.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{200.0f, 25.0f});
-    CHECK(comboHost.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{200.0f, 25.0f});
+    CHECK(comboHost.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{200.0f, 34.0f});
+    CHECK(comboHost.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{200.0f, 34.0f});
     CHECK(comboHost.measureOf(scene.ctx, {150.0f, 20.0f}) == Extent2D<F32>{150.0f, 20.0f});
 
     combo.update({.options = {"Alpha", "Beta"}, .value = "Alpha", .width = 120.0f});
-    CHECK(comboHost.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{120.0f, 25.0f});
+    CHECK(comboHost.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{120.0f, 34.0f});
 
     combo.update({.options = {"Alpha", "Beta"}, .value = "Alpha"});
-    CHECK(comboHost.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 25.0f});
-    CHECK(comboHost.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{200.0f, 25.0f});
+    CHECK(comboHost.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 34.0f});
+    CHECK(comboHost.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{200.0f, 34.0f});
 }
 
 TEST_CASE("Filling pill fields take the available space", "[core][sakura][sizing]") {
@@ -691,8 +691,8 @@ TEST_CASE("Controls scale their frames and paddings with the pixel ratio", "[cor
     Sakura::Combo combo;
     Host comboHost(combo);
     combo.update({.options = {"Alpha", "Beta"}, .value = "Alpha"});
-    CHECK(comboHost.measureOf(scene.ctx, unbounded) == Extent2D<F32>{200.0f, 25.0f});
-    CHECK(comboHost.measureOf(doubled, unbounded) == Extent2D<F32>{400.0f, 50.0f});
+    CHECK(comboHost.measureOf(scene.ctx, unbounded) == Extent2D<F32>{200.0f, 34.0f});
+    CHECK(comboHost.measureOf(doubled, unbounded) == Extent2D<F32>{400.0f, 68.0f});
 
     Sakura::NavigationItem item;
     Host itemHost(item);

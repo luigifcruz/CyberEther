@@ -3,6 +3,8 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/pill_button.hh>
+#include <jetstream/render/sakura/components/pill_input.hh>
 #include <jetstream/render/sakura/components/text.hh>
 
 #include "component_harness.hh"
@@ -11,12 +13,16 @@
 
 #include "compositor/default/views/components/card_button.hh"
 #include "compositor/default/views/components/compact_button.hh"
+#include "compositor/default/views/components/file_field.hh"
+#include "compositor/default/views/components/option_stepper.hh"
 #include "compositor/default/views/components/flowgraph_cell.hh"
 #include "compositor/default/views/components/pagination.hh"
 #include "compositor/default/views/components/sidebar_heading.hh"
 #include "compositor/default/views/components/sidebar_navigation.hh"
 #include "compositor/default/views/components/sidebar_tiles.hh"
 #include "compositor/default/views/components/status_badge.hh"
+
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -84,8 +90,8 @@ TEST_CASE("Compact buttons measure before placement, scale, repaint on tone chan
         button.update({.str = "Check", .tone = tone, .onClick = [&calls, tag] { calls.push_back(tag); }});
     };
     REQUIRE(frames.settle(update));
-    for (const auto next : {CompactButton::Tone::Primary, CompactButton::Tone::Strong, CompactButton::Tone::Action,
-                            CompactButton::Tone::Warning, CompactButton::Tone::Default}) {
+    for (const auto next : {CompactButton::Tone::Primary, CompactButton::Tone::Warning, CompactButton::Tone::Danger,
+                            CompactButton::Tone::Default}) {
         CAPTURE(static_cast<int>(next));
         tone = next;
         CHECK(RepaintOnly(frames.run(update)));
@@ -309,4 +315,87 @@ TEST_CASE("Flowgraph cells measure before placement, scale, repaint on favorite 
     CHECK(ClickAt(place, Middle(*buttons.front())));
     CHECK(ClickAt(place, {60.0f, 60.0f}));
     CHECK(calls == std::vector<std::string>{"bstar", "bopen"});
+}
+
+TEST_CASE("Option steppers step within their options, reset to the fallback and disable the ends",
+          "[core][sakura][view-components]") {
+    const Scene scene;
+    std::vector<U64> picks;
+    OptionStepper stepper;
+    U64 selected = 0;
+    const auto update = [&] {
+        stepper.update({.options = {"15 fps", "30 fps", "60 fps"}, .selected = selected, .fallback = 1,
+                        .onSelect = [&](U64 index) { picks.push_back(index); }});
+    };
+    update();
+    Host host(stepper);
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{132.0f, 34.0f});
+    const Rect bounds = {0.0f, 0.0f, 132.0f, 34.0f};
+    host.place(scene.ctx, bounds);
+    CHECK(ShownText(stepper, "15 fps") != nullptr);
+
+    host.click(17.0f, 17.0f);
+    CHECK(picks.empty());
+    host.click(bounds.right() - 17.0f, 17.0f);
+    host.click(66.0f, 17.0f);
+    CHECK(picks == std::vector<U64>{1, 1});
+
+    picks.clear();
+    selected = 2;
+    update();
+    host.place(scene.ctx, bounds);
+    host.click(bounds.right() - 17.0f, 17.0f);
+    host.click(17.0f, 17.0f);
+    CHECK(picks == std::vector<U64>{1});
+
+    picks.clear();
+    selected = 9;
+    update();
+    host.place(scene.ctx, bounds);
+    CHECK(ShownText(stepper, "60 fps") != nullptr);
+}
+
+TEST_CASE("File fields edit the path and browse from an icon button beside it", "[core][sakura][view-components]") {
+    const Scene scene;
+    std::vector<std::string> calls;
+    FileField field;
+    field.update({.value = "/etc/cert.pem", .hint = "None",
+                  .onChange = [&](const std::string& value) { calls.push_back("change:" + value); },
+                  .onBrowse = [&] { calls.push_back("browse"); }});
+    Host host(field);
+    const auto size = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    CHECK(size == Extent2D<F32>{260.0f, 34.0f});
+    host.place(scene.ctx, {0.0f, 0.0f, size.x, size.y});
+
+    auto inputs = Find<Sakura::PillInput>(field);
+    auto pills = Find<Sakura::PillButton>(field);
+    REQUIRE(inputs.size() == 1);
+    REQUIRE(pills.size() == 1);
+    CHECK(Peek::Frame(*inputs[0]).width == 218.0f);
+    CHECK(Peek::Frame(*pills[0]).width == 34.0f);
+    CHECK(Peek::Frame(*pills[0]).right() == size.x);
+    CHECK(ShownText(*pills[0], ICON_LC_FOLDER_OPEN) != nullptr);
+    const auto browse = Middle(*pills[0]);
+    CHECK(host.click(browse.x, browse.y));
+    CHECK(calls == std::vector<std::string>{"browse"});
+}
+
+TEST_CASE("Danger compact buttons are outlined red pills", "[core][sakura][view-components]") {
+    const Scene scene;
+    auto ctx = scene.context();
+    ctx.palette = DistinctPalette();
+    CompactButton button;
+    button.update({.str = "Remove", .icon = ICON_LC_TRASH_2, .tone = CompactButton::Tone::Danger});
+    Host host(button);
+    const auto size = host.measureOf(ctx, {kInfinite, kInfinite});
+    CHECK(size.y == 34.0f);
+    host.place(ctx, {0.0f, 0.0f, size.x, size.y});
+    const auto boxes = Direct<Sakura::Box>(button);
+    REQUIRE(boxes.size() == 4);
+    CHECK(boxes[0]->config().instances.front().visible);
+    CHECK(boxes[2]->config().instances.front().backgroundColor == ctx.color("tint_red_bg"));
+    CHECK(boxes[3]->config().borderColor == ctx.color("tint_red_border"));
+    auto* label = ShownText(button, "Remove");
+    REQUIRE(label != nullptr);
+    CHECK(label->config().colorKey == "tint_red_text");
 }

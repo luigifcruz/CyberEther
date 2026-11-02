@@ -6,6 +6,7 @@
 #include "../../components/status_badge.hh"
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <string>
 #include <utility>
@@ -48,7 +49,6 @@ struct AboutUpdateCard : public SectionGroup {
             .options = {"Stable"},
             .value = "Stable",
             .disabled = true,
-            .borderColorKey = "border",
         });
         unsupportedBadge.update({.label = "Unsupported"});
 
@@ -62,7 +62,7 @@ struct AboutUpdateCard : public SectionGroup {
 
         checkButton.update({
             .str = this->config.checking ? "Checking..." : "Check for Updates",
-            .tone = CompactButton::Tone::Strong,
+            .icon = ICON_LC_REFRESH_CW,
             .disabled = !this->config.supported || this->config.checking,
             .onClick = [this]() {
                 if (this->config.onCheckForUpdates) {
@@ -73,6 +73,7 @@ struct AboutUpdateCard : public SectionGroup {
         if (this->config.ready || this->config.applying) {
             actionButton.update({
                 .str = "Restart to Update",
+                .icon = ICON_LC_ROTATE_CCW,
                 .tone = CompactButton::Tone::Warning,
                 .disabled = this->config.applying,
                 .onClick = [this]() {
@@ -84,7 +85,8 @@ struct AboutUpdateCard : public SectionGroup {
         } else {
             actionButton.update({
                 .str = "Download",
-                .tone = CompactButton::Tone::Action,
+                .icon = ICON_LC_DOWNLOAD,
+                .tone = CompactButton::Tone::Primary,
                 .disabled = this->config.downloading,
                 .onClick = [this]() {
                     if (this->config.onDownloadUpdate) {

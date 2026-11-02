@@ -15,9 +15,9 @@ namespace Jetstream::Sakura {
 
 namespace {
 
-constexpr F32 kBadgeHeight = 22.0f;
-constexpr F32 kBadgePadX = 10.0f;
-constexpr F32 kBadgeText = 13.0f;
+constexpr F32 kBadgeHeight = 34.0f;
+constexpr F32 kBadgePadX = 14.0f;
+constexpr F32 kBadgeText = 14.0f;
 
 }  // namespace
 
@@ -41,7 +41,7 @@ void Badge::update(Config config) {
     impl->config = std::move(config);
     impl->label.update({
         .str = impl->config.label,
-        .font = Text::Font::Sans,
+        .font = Text::Font::Display,
         .colorKey = impl->config.textColorKey,
         .scale = kBadgeText / Typography::FontSize,
         .weight = kLabelWeight,
@@ -61,7 +61,7 @@ void Badge::layout(const Context& ctx) {
     const Rect pill = {bounds.x, bounds.y + std::floor((bounds.height - height) * 0.5f), bounds.width, height};
     s.pill.update({
         .instances = {{.rect = pill, .visible = !pill.empty(), .backgroundColor = ctx.color(s.config.backgroundColorKey)}},
-        .cornerRadius = std::min(height * 0.5f, Px(ctx, kFrameRounding)),
+        .cornerRadius = height * 0.5f,
         .borderWidth = Px(ctx, 1.0f),
         .borderColor = ctx.color(s.config.borderColorKey),
         .strokeFringe = true,

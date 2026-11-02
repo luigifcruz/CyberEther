@@ -68,6 +68,7 @@ core_test_domains = {
         'sakura/component.cc',
         'sakura/card.cc',
         'sakura/controls.cc',
+        'sakura/pill_input.cc',
         'sakura/tip_banner.cc',
         'sakura/voice.cc',
         'sakura/dock.cc',

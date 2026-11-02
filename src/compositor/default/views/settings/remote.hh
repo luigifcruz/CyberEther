@@ -2,6 +2,8 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REMOTE_HH
 
 #include "../components/callout.hh"
+#include "../components/file_field.hh"
+#include "../components/option_stepper.hh"
 #include "../components/section_group.hh"
 #include "components/settings_header.hh"
 
@@ -43,8 +45,6 @@ struct RemoteSettingsView {
     };
 
     void update(Config config) {
-        using TextInput = Sakura::TextInput;
-
         this->config = std::move(config);
 
         header.update({
@@ -55,6 +55,7 @@ struct RemoteSettingsView {
         activeCallout.update({
             .str = "Changes apply when the current stream ends.",
             .tone = Callout::Tone::Warning,
+            .font = Sakura::Text::Font::Sans,
         });
         activeTrailing.update({.lines = 4});
 
@@ -67,38 +68,34 @@ struct RemoteSettingsView {
             },
         });
 
-        framerateCombo.update({
-            .id = "settings:framerate",
-            .options = {
-                "15 FPS",
-                "30 FPS",
-                "60 FPS",
-                "120 FPS",
-            },
-            .value = framerateLabel(this->config.framerate),
-            .onChange = [this](const std::string& label) {
+        framerateStepper.update({
+            .options = {"15 fps", "30 fps", "60 fps", "120 fps"},
+            .selected = framerateIndex(this->config.framerate),
+            .fallback = 1,
+            .onSelect = [this](U64 index) {
                 if (this->config.onFramerateChange) {
-                    this->config.onFramerateChange(framerateValue(label));
+                    this->config.onFramerateChange(framerates()[index]);
                 }
             },
-            .borderColorKey = "border",
         });
 
-        codecCombo.update({
-            .id = "settings:codec",
-            .options = {
-                "H264",
-                "AV1",
-                "VP8",
-                "VP9",
-            },
-            .value = codecLabel(this->config.codec),
-            .onChange = [this](const std::string& label) {
-                if (this->config.onCodecChange) {
-                    this->config.onCodecChange(codecValue(label));
+        std::vector<Sakura::PillTabs::Item> codecItems;
+        U64 codecIndex = 0;
+        for (U64 index = 0; index < RemoteCodecTypes.size(); ++index) {
+            codecItems.push_back({.label = codecLabel(RemoteCodecTypes[index])});
+            if (RemoteCodecTypes[index] == this->config.codec) {
+                codecIndex = index;
+            }
+        }
+        codecTabs.update({
+            .items = std::move(codecItems),
+            .selected = codecIndex,
+            .compact = true,
+            .onSelect = [this](U64 index) {
+                if (index < RemoteCodecTypes.size() && this->config.onCodecChange) {
+                    this->config.onCodecChange(RemoteCodecTypes[index]);
                 }
             },
-            .borderColorKey = "border",
         });
 
         encoderCombo.update({
@@ -111,23 +108,21 @@ struct RemoteSettingsView {
                     this->config.onEncoderChange(encoderValue(label));
                 }
             },
-            .borderColorKey = "border",
         });
 
         brokerAddressInput.update({
+            .icon = ICON_LC_NETWORK,
             .value = this->config.broker.address,
-            .submit = TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 auto broker = this->config.broker;
                 broker.address = value.empty() ? Instance::Remote::Config::Broker{}.address : value;
                 changeBroker(broker);
             },
-            .borderColorKey = "border",
         });
 
         brokerPortInput.update({
+            .icon = ICON_LC_ETHERNET_PORT,
             .value = jst::fmt::format("{}", this->config.broker.port),
-            .submit = TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 U16 port = 0;
                 if (portValue(value, port)) {
@@ -136,13 +131,12 @@ struct RemoteSettingsView {
                     changeBroker(broker);
                 }
             },
-            .borderColorKey = "border",
         });
 
         brokerPublicUrlInput.update({
+            .icon = ICON_LC_GLOBE,
             .value = this->config.broker.publicUrl,
             .hint = "Automatic",
-            .submit = TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 if (!value.empty() && !IsRemotePublicUrlValid(value)) {
                     return;
@@ -151,24 +145,18 @@ struct RemoteSettingsView {
                 broker.publicUrl = value;
                 changeBroker(broker);
             },
-            .borderColorKey = "border",
         });
 
-        brokerCertificateInput.update({
+        brokerCertificateField.update({
+            .icon = ICON_LC_FILE_BADGE,
             .value = this->config.broker.certificate,
             .hint = "None",
-            .submit = TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 auto broker = this->config.broker;
                 broker.certificate = value;
                 changeBroker(broker);
             },
-            .borderColorKey = "border",
-        });
-
-        brokerCertificateBrowse.update({
-            .str = "Browse",
-            .onClick = [this]() {
+            .onBrowse = [this]() {
                 browseFile(this->config.broker.certificate, {"pem", "crt", "cer"}, [this](std::string path) {
                     auto broker = this->config.broker;
                     broker.certificate = std::move(path);
@@ -177,35 +165,16 @@ struct RemoteSettingsView {
             },
         });
 
-        brokerCertificateControls.update({
-            .axis = Sakura::Stack::Axis::Horizontal,
-            .items = {
-                {.child = &brokerCertificateInput, .size = 1.0f, .grow = 1.0f},
-                {.child = &brokerCertificateBrowse},
-            },
-        });
-        brokerCertificateField.update({
-            .content = &brokerCertificateControls,
-            .border = false,
-            .colorKey = "transparent",
-            .hoveredColorKey = "transparent",
-        });
-
-        brokerKeyInput.update({
+        brokerKeyField.update({
+            .icon = ICON_LC_FILE_KEY,
             .value = this->config.broker.key,
             .hint = "None",
-            .submit = TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 auto broker = this->config.broker;
                 broker.key = value;
                 changeBroker(broker);
             },
-            .borderColorKey = "border",
-        });
-
-        brokerKeyBrowse.update({
-            .str = "Browse",
-            .onClick = [this]() {
+            .onBrowse = [this]() {
                 browseFile(this->config.broker.key, {"pem", "key"}, [this](std::string path) {
                     auto broker = this->config.broker;
                     broker.key = std::move(path);
@@ -214,36 +183,29 @@ struct RemoteSettingsView {
             },
         });
 
-        brokerKeyControls.update({
-            .axis = Sakura::Stack::Axis::Horizontal,
-            .items = {
-                {.child = &brokerKeyInput, .size = 1.0f, .grow = 1.0f},
-                {.child = &brokerKeyBrowse},
-            },
-        });
-        brokerKeyField.update({
-            .content = &brokerKeyControls,
-            .border = false,
-            .colorKey = "transparent",
-            .hoveredColorKey = "transparent",
-        });
-
-        transportCombo.update({
-            .id = "settings:transport",
-            .options = transportOptions(),
-            .value = GetRemoteTransportPrettyName(this->config.transport),
-            .onChange = [this](const std::string& label) {
-                if (this->config.onTransportChange) {
-                    this->config.onTransportChange(transportValue(label));
+        std::vector<Sakura::PillTabs::Item> transportItems;
+        U64 transportIndex = 0;
+        for (U64 index = 0; index < RemoteTransportTypes.size(); ++index) {
+            transportItems.push_back({.label = GetRemoteTransportPrettyName(RemoteTransportTypes[index])});
+            if (RemoteTransportTypes[index] == this->config.transport) {
+                transportIndex = index;
+            }
+        }
+        transportTabs.update({
+            .items = std::move(transportItems),
+            .selected = transportIndex,
+            .compact = true,
+            .onSelect = [this](U64 index) {
+                if (index < RemoteTransportTypes.size() && this->config.onTransportChange) {
+                    this->config.onTransportChange(RemoteTransportTypes[index]);
                 }
             },
-            .borderColorKey = "border",
         });
 
         portRangeInput.update({
+            .icon = ICON_LC_ETHERNET_PORT,
             .value = GetRemotePortRangeName(this->config.minPort, this->config.maxPort),
             .hint = "Any",
-            .submit = TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 U16 minPort = 0;
                 U16 maxPort = 0;
@@ -251,19 +213,17 @@ struct RemoteSettingsView {
                     this->config.onPortRangeChange(minPort, maxPort);
                 }
             },
-            .borderColorKey = "border",
         });
 
         mediaAddressInput.update({
+            .icon = ICON_LC_NETWORK,
             .value = this->config.mediaAddress,
             .hint = "Automatic",
-            .submit = TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 if (this->config.onMediaAddressChange) {
                     this->config.onMediaAddressChange(value);
                 }
             },
-            .borderColorKey = "border",
         });
 
         accessGroup.update({
@@ -282,12 +242,13 @@ struct RemoteSettingsView {
                 {
                     .label = "Video Framerate",
                     .description = "Target framerate for the outgoing video stream.",
-                    .control = &framerateCombo,
+                    .control = &framerateStepper,
                 },
                 {
                     .label = "Video Codec",
                     .description = "The video compression format used for streaming.",
-                    .control = &codecCombo,
+                    .control = &codecTabs,
+                    .wide = true,
                 },
                 {
                     .label = "Video Encoder",
@@ -335,7 +296,8 @@ struct RemoteSettingsView {
                 {
                     .label = "Media Transport",
                     .description = "The network protocols offered for the media connection. TCP helps on networks that block UDP.",
-                    .control = &transportCombo,
+                    .control = &transportTabs,
+                    .wide = true,
                 },
                 {
                     .label = "Media Port Range",
@@ -410,30 +372,15 @@ struct RemoteSettingsView {
         return "H264";
     }
 
-    static Instance::Remote::CodecType codecValue(const std::string& label) {
-        if (label == "H264") return Instance::Remote::CodecType::H264;
-        if (label == "AV1") return Instance::Remote::CodecType::AV1;
-        if (label == "VP8") return Instance::Remote::CodecType::VP8;
-        if (label == "VP9") return Instance::Remote::CodecType::VP9;
-        return Instance::Remote::CodecType::H264;
+    static const std::vector<U32>& framerates() {
+        static const std::vector<U32> values = {15, 30, 60, 120};
+        return values;
     }
 
-    static std::string framerateLabel(U32 framerate) {
-        switch (framerate) {
-            case 15: return "15 FPS";
-            case 30: return "30 FPS";
-            case 60: return "60 FPS";
-            case 120: return "120 FPS";
-        }
-        return "30 FPS";
-    }
-
-    static U32 framerateValue(const std::string& label) {
-        if (label == "15 FPS") return 15;
-        if (label == "30 FPS") return 30;
-        if (label == "60 FPS") return 60;
-        if (label == "120 FPS") return 120;
-        return 30;
+    static U64 framerateIndex(U32 framerate) {
+        const auto& values = framerates();
+        const auto it = std::find(values.begin(), values.end(), framerate);
+        return it == values.end() ? 1 : static_cast<U64>(it - values.begin());
     }
 
     static std::string encoderLabel(Instance::Remote::EncoderType encoder,
@@ -453,24 +400,6 @@ struct RemoteSettingsView {
         return options;
     }
 
-    static std::vector<std::string> transportOptions() {
-        std::vector<std::string> options;
-        options.reserve(RemoteTransportTypes.size());
-        for (const auto transport : RemoteTransportTypes) {
-            options.push_back(GetRemoteTransportPrettyName(transport));
-        }
-        return options;
-    }
-
-    static Instance::Remote::TransportType transportValue(const std::string& label) {
-        for (const auto transport : RemoteTransportTypes) {
-            if (label == GetRemoteTransportPrettyName(transport)) {
-                return transport;
-            }
-        }
-        return Instance::Remote::TransportType::Auto;
-    }
-
     static Instance::Remote::EncoderType encoderValue(const std::string& label) {
         try {
             return StringToRemoteEncoder(label);
@@ -484,23 +413,17 @@ struct RemoteSettingsView {
     Callout activeCallout;
     Sakura::Spacer activeTrailing;
     Sakura::Toggle approvalToggle;
-    Sakura::Combo framerateCombo;
-    Sakura::Combo codecCombo;
+    OptionStepper framerateStepper;
+    Sakura::PillTabs codecTabs;
     Sakura::Combo encoderCombo;
-    Sakura::TextInput brokerAddressInput;
-    Sakura::TextInput brokerPortInput;
-    Sakura::TextInput brokerPublicUrlInput;
-    Sakura::TextInput brokerCertificateInput;
-    Sakura::Button brokerCertificateBrowse;
-    Sakura::Stack brokerCertificateControls;
-    Sakura::Div brokerCertificateField;
-    Sakura::TextInput brokerKeyInput;
-    Sakura::Button brokerKeyBrowse;
-    Sakura::Stack brokerKeyControls;
-    Sakura::Div brokerKeyField;
-    Sakura::Combo transportCombo;
-    Sakura::TextInput portRangeInput;
-    Sakura::TextInput mediaAddressInput;
+    Sakura::PillInput brokerAddressInput;
+    Sakura::PillInput brokerPortInput;
+    Sakura::PillInput brokerPublicUrlInput;
+    FileField brokerCertificateField;
+    FileField brokerKeyField;
+    Sakura::PillTabs transportTabs;
+    Sakura::PillInput portRangeInput;
+    Sakura::PillInput mediaAddressInput;
     SectionGroup accessGroup;
     SectionGroup videoGroup;
     SectionGroup brokerGroup;

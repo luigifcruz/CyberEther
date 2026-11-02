@@ -11,6 +11,7 @@
 #include "../../model/ui.hh"
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/settings.hh"
 
 #include <algorithm>
@@ -172,6 +173,7 @@ struct IntelligenceSettingsView {
             controls.status.update(provider.status);
             controls.edit.update({
                 .str = "Edit",
+                .icon = ICON_LC_PENCIL,
                 .onClick = [this, name = provider.name]() {
                     if (config.onEditProvider) {
                         config.onEditProvider(name);
@@ -180,6 +182,8 @@ struct IntelligenceSettingsView {
             });
             controls.remove.update({
                 .str = "Remove",
+                .icon = ICON_LC_TRASH_2,
+                .tone = CompactButton::Tone::Danger,
                 .onClick = [this, name = provider.name]() {
                     if (config.onRemoveProvider) {
                         config.onRemoveProvider(name);
@@ -195,10 +199,11 @@ struct IntelligenceSettingsView {
                     {.child = &controls.remove},
                 },
             });
-            rows.push_back({.label = provider.name, .control = &controls.row});
+            rows.push_back({.label = provider.name, .control = &controls.row, .wide = true});
         }
         addProviderButton.update({
             .str = "Add",
+            .icon = ICON_LC_PLUS,
             .tone = CompactButton::Tone::Primary,
             .onClick = [this]() {
                 if (config.onOpenAddProvider) {
@@ -226,6 +231,8 @@ struct IntelligenceSettingsView {
             auto& controls = *modelControls[index];
             controls.remove.update({
                 .str = "Remove",
+                .icon = ICON_LC_TRASH_2,
+                .tone = CompactButton::Tone::Danger,
                 .onClick = [this, model]() {
                     if (config.onRemoveModel) {
                         config.onRemoveModel(model);
@@ -255,6 +262,7 @@ struct IntelligenceSettingsView {
         }
         addModelButton.update({
             .str = "Add",
+            .icon = ICON_LC_PLUS,
             .tone = CompactButton::Tone::Primary,
             .onClick = [this]() {
                 if (config.onOpenAddModel) {
@@ -311,8 +319,6 @@ struct IntelligenceSettingsView {
     }
 
     void updateMcp() {
-        using TextInput = Sakura::TextInput;
-
         const auto& mcp = config.mcp;
         mcpToggle.update({
             .value = mcp.settings.enabled,
@@ -329,18 +335,17 @@ struct IntelligenceSettingsView {
                                        : StatusBadge::Tone::Neutral,
         });
         mcpAddressInput.update({
+            .icon = ICON_LC_NETWORK,
             .value = mcp.settings.address,
-            .submit = TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 auto settings = config.mcp.settings;
                 settings.address = value.empty() ? Settings::Intelligence::Mcp{}.address : value;
                 changeMcp(settings);
             },
-            .borderColorKey = "border",
         });
         mcpPortInput.update({
+            .icon = ICON_LC_ETHERNET_PORT,
             .value = jst::fmt::format("{}", mcp.settings.port),
-            .submit = TextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 U16 port = 0;
                 if (portValue(value, port)) {
@@ -349,7 +354,6 @@ struct IntelligenceSettingsView {
                     changeMcp(settings);
                 }
             },
-            .borderColorKey = "border",
         });
         mcpGroup.update({
             .title = "MCP Server",
@@ -420,7 +424,6 @@ struct IntelligenceSettingsView {
                     onSelect(index);
                 }
             },
-            .borderColorKey = "border",
         };
     }
 
@@ -441,8 +444,8 @@ struct IntelligenceSettingsView {
     SectionGroup voiceGroup;
     Sakura::Toggle mcpToggle;
     StatusBadge mcpStatus;
-    Sakura::TextInput mcpAddressInput;
-    Sakura::TextInput mcpPortInput;
+    Sakura::PillInput mcpAddressInput;
+    Sakura::PillInput mcpPortInput;
     SectionGroup mcpGroup;
     IntelligenceProviderView providerPage;
     IntelligenceModelView modelPage;
