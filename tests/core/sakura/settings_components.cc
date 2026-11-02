@@ -150,9 +150,28 @@ TEST_CASE("Badges wrap their label in padding and repaint without rebuilding on 
     measured.update({.label = "Ready"});
     Host host(measured);
     const auto size = host.measureOf(scene.ctx, {500.0f, 500.0f});
-    CHECK(size.y == 22.0f);
+    CHECK(size.y == 34.0f);
     CHECK(size.x > 20.0f);
-    CHECK(host.measureOf(Doubled(scene.ctx), {500.0f, 500.0f}).y == 44.0f);
+    CHECK(host.measureOf(Doubled(scene.ctx), {500.0f, 500.0f}).y == 68.0f);
+}
+
+TEST_CASE("Badges are full pills with a border and a display font label", "[core][sakura][settings]") {
+    const Scene scene;
+    auto ctx = scene.context();
+    ctx.palette = DistinctPalette();
+    Sakura::Badge badge;
+    badge.update({.label = "Ready", .backgroundColorKey = "pill_bg", .borderColorKey = "tile_border",
+                  .textColorKey = "text_secondary"});
+    Host host(badge);
+    host.place(ctx, {0.0f, 0.0f, 100.0f, 34.0f});
+    const auto boxes = Direct<Sakura::Box>(badge);
+    REQUIRE(boxes.size() == 1);
+    CHECK(boxes[0]->config().cornerRadius == 17.0f);
+    CHECK(boxes[0]->config().borderWidth == 1.0f);
+    CHECK(boxes[0]->config().borderColor == ctx.color("tile_border"));
+    auto* text = ShownText(badge, "Ready");
+    REQUIRE(text != nullptr);
+    CHECK(text->config().font == Sakura::Text::Font::Display);
 }
 
 TEST_CASE("Setting card rows click on release inside the same row", "[core][sakura][settings]") {
@@ -233,8 +252,8 @@ TEST_CASE("Setting cards show the empty message, size wide controls, and collaps
     }});
     Host host(card);
     host.place(scene.ctx, {0.0f, 0.0f, 600.0f, 200.0f});
-    CHECK(Peek::Frame(narrow).width == 220.0f);
-    CHECK(Peek::Frame(wide).width > 220.0f);
+    CHECK(Peek::Frame(narrow).width == 260.0f);
+    CHECK(Peek::Frame(wide).width > 260.0f);
     CHECK(Peek::Frame(wide).width <= (600.0f - 36.0f) * 0.6f);
 }
 
@@ -366,10 +385,7 @@ TEST_CASE("Text inputs and combos draw an outline only when a border color is se
     Sakura::Combo combo;
     combo.update({.options = {"A"}, .value = "A"});
     Host comboHost(combo);
-    comboHost.place(scene.ctx, {0.0f, 0.0f, 200.0f, 25.0f});
-    CHECK_FALSE(bordered(combo));
-    combo.update({.options = {"A"}, .value = "A", .borderColorKey = "border"});
-    comboHost.place(scene.ctx, {0.0f, 0.0f, 200.0f, 25.0f});
+    comboHost.place(scene.ctx, {0.0f, 0.0f, 200.0f, 34.0f});
     CHECK(bordered(combo));
 }
 

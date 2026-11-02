@@ -8,59 +8,60 @@
 
 namespace Jetstream {
 
-struct CompactButton : public Sakura::Button {
+struct CompactButton : public Sakura::PillButton {
     enum class Tone {
         Default,
         Primary,
-        Strong,
-        Action,
         Warning,
+        Danger,
     };
 
     struct Config {
         std::string str;
+        std::string icon;
         Tone tone = Tone::Default;
         bool disabled = false;
         Sakura::Callback<void()> onClick;
     };
 
     void update(Config config) {
-        Sakura::Button::Config button{
-            .str = std::move(config.str),
+        Sakura::PillButton::Config pill{
+            .icon = std::move(config.icon),
+            .label = std::move(config.str),
+            .backgroundColorKey = "pill_field_bg",
+            .hoverColorKey = "pill_hover_bg",
+            .outlineColorKey = "tile_border",
+            .raised = true,
             .disabled = config.disabled,
-            .padding = {14.0f, 5.0f},
+            .height = 34.0f,
+            .textSize = 15.0f,
+            .padLeft = 12.0f,
+            .padRight = 15.0f,
             .onClick = std::move(config.onClick),
-            .font = Sakura::Text::Font::SansBold,
         };
         switch (config.tone) {
             case Tone::Default:
-                button.textScale = 0.9f;
-                button.padding = {9.0f, 5.0f};
-                button.font = Sakura::Text::Font::Sans;
                 break;
             case Tone::Primary:
-                button.colorKey = "primary_btn";
-                button.hoveredColorKey = "primary_btn_hovered";
-                button.activeColorKey = "primary_btn_hovered";
-                button.borderColorKey = "primary_btn";
-                button.textColorKey = "primary_btn_text";
-                button.font = Sakura::Text::Font::Sans;
-                break;
-            case Tone::Strong:
-                break;
-            case Tone::Action:
-                button.variant = Sakura::Button::Variant::Action;
+                pill.colorKey = "action_btn_text";
+                pill.backgroundColorKey = "action_btn";
+                pill.hoverColorKey = "action_btn_hovered";
+                pill.outlineColorKey = "";
                 break;
             case Tone::Warning:
-                button.variant = Sakura::Button::Variant::Action;
-                button.colorKey = "warning_btn";
-                button.hoveredColorKey = "warning_btn_hovered";
-                button.activeColorKey = "warning_btn_active";
-                button.borderColorKey = "warning_btn_outline";
-                button.textColorKey = "warning_btn_text";
+                pill.colorKey = "warning_btn_text";
+                pill.backgroundColorKey = "warning_btn";
+                pill.hoverColorKey = "warning_btn_hovered";
+                pill.outlineColorKey = "warning_btn_outline";
+                break;
+            case Tone::Danger:
+                pill.colorKey = "tint_red_text";
+                pill.backgroundColorKey = "tint_red_bg";
+                pill.hoverColorKey = "tint_red_hover";
+                pill.outlineColorKey = "tint_red_border";
                 break;
         }
-        Button::update(std::move(button));
+        PillButton::update(std::move(pill));
     }
 };
 

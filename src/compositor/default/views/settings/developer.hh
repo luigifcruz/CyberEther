@@ -2,13 +2,16 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_DEVELOPER_HH
 
 #include "../components/compact_button.hh"
+#include "../components/option_stepper.hh"
 #include "../components/section_group.hh"
 #include "components/settings_header.hh"
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include "jetstream/logger.hh"
 
+#include <algorithm>
 #include <string>
 
 namespace Jetstream {
@@ -37,23 +40,15 @@ struct DeveloperSettingsView {
                 }
             },
         });
-        logLevelCombo.update({
-            .id = "settings:log-level",
-            .options = {
-                "Fatal / Error",
-                "Warnings",
-                "Info",
-                "Debug",
-                "Trace",
-            },
-            .value = logLevelLabel(this->config.logLevel),
-            .onChange = [this](const std::string& label) {
-                const int value = logLevelValue(label);
+        logLevelStepper.update({
+            .options = {"Error", "Warning", "Info", "Debug", "Trace"},
+            .selected = static_cast<U64>(std::clamp(this->config.logLevel, 0, 4)),
+            .fallback = static_cast<U64>(JST_LOG_DEBUG_DEFAULT_LEVEL),
+            .onSelect = [this](U64 index) {
                 if (this->config.onLogLevelChange) {
-                    this->config.onLogLevelChange(value);
+                    this->config.onLogLevelChange(static_cast<int>(index));
                 }
             },
-            .borderColorKey = "border",
         });
         diagnosticsGroup.update({
             .title = "Diagnostics",
@@ -67,12 +62,13 @@ struct DeveloperSettingsView {
                 {
                     .label = "Log Level",
                     .description = "Verbosity of console and file log output.",
-                    .control = &logLevelCombo,
+                    .control = &logLevelStepper,
                 },
             },
         });
         benchmarksButton.update({
             .str = "Open",
+            .icon = ICON_LC_GAUGE,
             .onClick = [this]() {
                 if (this->config.onShowBenchmarks) {
                     this->config.onShowBenchmarks();
@@ -81,6 +77,7 @@ struct DeveloperSettingsView {
         });
         reloadButton.update({
             .str = "Reload",
+            .icon = ICON_LC_REFRESH_CW,
             .onClick = [this]() {
                 if (this->config.onReloadPlugins) {
                     this->config.onReloadPlugins();
@@ -118,30 +115,10 @@ struct DeveloperSettingsView {
     }
 
  private:
-    static std::string logLevelLabel(int logLevel) {
-        switch (logLevel) {
-            case 0: return "Fatal / Error";
-            case 1: return "Warnings";
-            case 2: return "Info";
-            case 3: return "Debug";
-            case 4: return "Trace";
-        }
-        return "Unknown";
-    }
-
-    static int logLevelValue(const std::string& label) {
-        if (label == "Fatal / Error") return 0;
-        if (label == "Warnings") return 1;
-        if (label == "Info") return 2;
-        if (label == "Debug") return 3;
-        if (label == "Trace") return 4;
-        return JST_LOG_DEBUG_DEFAULT_LEVEL;
-    }
-
     Config config;
     SettingsHeader header;
     Sakura::Toggle timingToggle;
-    Sakura::Combo logLevelCombo;
+    OptionStepper logLevelStepper;
     SectionGroup diagnosticsGroup;
     CompactButton benchmarksButton;
     CompactButton reloadButton;

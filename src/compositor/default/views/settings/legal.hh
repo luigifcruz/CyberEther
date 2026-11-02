@@ -1,10 +1,12 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_LEGAL_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_LEGAL_HH
 
+#include "../components/compact_button.hh"
 #include "../components/section_group.hh"
 #include "components/settings_header.hh"
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <memory>
 #include <string>
@@ -67,8 +69,8 @@ struct LegalSettingsView {
         for (U64 index = 0; index < dependencies.size(); ++index) {
             licenses[index]->update({
                 .label = dependencies[index].license,
-                .backgroundColorKey = "header_hovered",
-                .borderColorKey = "border",
+                .backgroundColorKey = "pill_bg",
+                .borderColorKey = "tile_border",
                 .textColorKey = "text_secondary",
             });
             rows.push_back({
@@ -79,14 +81,12 @@ struct LegalSettingsView {
         }
         fullLicensesButton.update({
             .str = "View Full Licenses",
-            .textScale = 0.9f,
-            .padding = {9.0f, 5.0f},
+            .icon = ICON_LC_SCALE,
             .onClick = [this]() {
                 if (this->config.onViewFullLicenses) {
                     this->config.onViewFullLicenses();
                 }
             },
-            .font = Sakura::Text::Font::Sans,
         });
         thirdPartyGroup.update({
             .title = "Third-Party Software",
@@ -182,7 +182,7 @@ struct LegalSettingsView {
     SettingsHeader header;
     SectionGroup licenseGroup;
     std::vector<std::unique_ptr<Sakura::Badge>> licenses;
-    Sakura::Button fullLicensesButton;
+    CompactButton fullLicensesButton;
     SectionGroup thirdPartyGroup;
     Sakura::Stack stack;
 };

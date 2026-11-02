@@ -2,7 +2,9 @@
 
 #include <jetstream/render/sakura/components/pill_icon_button.hh>
 #include <jetstream/render/sakura/components/pill_tabs.hh>
+#include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/text.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/render/tools/icons_lucide.hh>
 
 #include "component_harness.hh"
@@ -310,4 +312,67 @@ TEST_CASE("Pill tabs outline the selected pill in both sizes", "[core][sakura][p
         }
         CHECK(outlined);
     }
+}
+
+TEST_CASE("Pill tabs squeezed below their natural width keep every tab reachable", "[core][sakura][pill-tabs]") {
+    const Scene scene;
+    std::vector<U64> picks;
+    Sakura::PillTabs tabs;
+    tabs.update({
+        .items = {{.label = "Chat Completions"}, {.label = "Responses"}, {.label = "Other"}},
+        .compact = true,
+        .onSelect = [&](U64 index) { picks.push_back(index); },
+    });
+    Host host(tabs);
+    const auto natural = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    const Rect bounds = {0.0f, 0.0f, std::floor(natural.x * 0.5f), natural.y};
+    host.place(scene.ctx, bounds);
+
+    const F32 third = bounds.width / 3.0f;
+    for (U64 index = 0; index < 3; ++index) {
+        const F32 x = third * (static_cast<F32>(index) + 0.5f);
+        host.click(x, bounds.height * 0.5f);
+    }
+    CHECK(picks == std::vector<U64>{0, 1, 2});
+    for (auto* text : Find<Sakura::Text>(tabs)) {
+        CHECK(Peek::Frame(*text).right() <= bounds.right() + 0.5f);
+    }
+}
+
+TEST_CASE("Tracked pill tabs sit inside a pill track at pill height with the selection inset",
+          "[core][sakura][pill-tabs]") {
+    const Scene scene;
+    std::vector<U64> picks;
+    Sakura::PillTabs tabs;
+    tabs.update({
+        .items = {{.label = "Auto"}, {.label = "UDP"}, {.label = "TCP"}},
+        .selected = 1,
+        .compact = true,
+        .track = true,
+        .onSelect = [&](U64 index) { picks.push_back(index); },
+    });
+    Host host(tabs);
+    const auto natural = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    CHECK(natural.y == 34.0f);
+    const Rect bounds = {10.0f, 10.0f, natural.x, natural.y};
+    host.place(scene.ctx, bounds);
+
+    auto* label = ShownText(tabs, "UDP");
+    REQUIRE(label != nullptr);
+    CHECK(label->config().scale * Sakura::Typography::FontSize == 14.0f);
+
+    bool selection = false;
+    for (auto* box : Direct<Sakura::Box>(tabs)) {
+        const auto& config = box->config();
+        if (config.instances.size() == 1 && config.instances.front().visible && config.borderWidth > 0.0f) {
+            const auto rect = config.instances.front().rect;
+            selection = rect.y == bounds.y + 3.0f && rect.height == bounds.height - 6.0f &&
+                        config.cornerRadius == rect.height * 0.5f;
+        }
+    }
+    CHECK(selection);
+
+    const auto tcp = Peek::Frame(*ShownText(tabs, "TCP"));
+    host.click(tcp.x + 2.0f, bounds.y + 17.0f);
+    CHECK(picks == std::vector<U64>{2});
 }

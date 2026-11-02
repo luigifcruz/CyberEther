@@ -63,6 +63,17 @@ std::vector<Sakura::Button*> IconButtons(Sakura::Component& root, const char* ic
     return buttons;
 }
 
+std::vector<Sakura::Component*> Actions(Sakura::Component& root) {
+    std::vector<Sakura::Component*> actions;
+    for (auto* component : Find<Sakura::Component>(root)) {
+        auto* button = dynamic_cast<Sakura::Button*>(component);
+        if ((button && !dynamic_cast<Sakura::NavigationItem*>(button)) || dynamic_cast<Sakura::PillButton*>(component)) {
+            actions.push_back(component);
+        }
+    }
+    return actions;
+}
+
 Sakura::PillButton* Pill(Sakura::Component& root, const std::string& label) {
     for (auto* pill : Find<Sakura::PillButton>(root)) {
         if (Labeled(*pill, label)) {
@@ -489,6 +500,18 @@ bool Checked(LayerHost& host, const std::string& label) {
 
 std::string Flag(bool value) {
     return value ? "true" : "false";
+}
+
+template<typename HostType>
+bool PressLabel(HostType& host, Sakura::Component& root, const std::string& label) {
+    auto* text = ShownText(root, label);
+    return text && Press(host, *text);
+}
+
+template<typename HostType>
+bool Step(HostType& host, const Sakura::PillStepper& stepper, bool up) {
+    const Jetstream::Rect frame = Peek::Frame(stepper);
+    return host.click(up ? frame.right() - 17.0f : frame.x + 17.0f, frame.y + frame.height * 0.5f);
 }
 
 template<typename HostType>
@@ -1188,6 +1211,7 @@ TEST_CASE("Titlebar presenter open terminal action opens a terminal in the activ
     }
     REQUIRE(mailbox.count<MailOpenTerminal>() == 1);
     CHECK(mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+    CHECK_FALSE(mailbox.last<MailOpenTerminal>()->tile);
 
     mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
     mailbox.state.interface.focusedFlowgraph = "a";
@@ -1195,6 +1219,7 @@ TEST_CASE("Titlebar presenter open terminal action opens a terminal in the activ
     config.onAction(Action::OpenTerminal);
     REQUIRE(mailbox.count<MailOpenTerminal>() == 2);
     CHECK(mailbox.last<MailOpenTerminal>()->flowgraph == "a");
+    CHECK(mailbox.last<MailOpenTerminal>()->tile);
 
     mailbox.state.terminal.items[1] = {.tab = 1};
     mailbox.state.terminal.tabs[1] = TileMeta{.pane = "terminal:1"};
@@ -1203,7 +1228,33 @@ TEST_CASE("Titlebar presenter open terminal action opens a terminal in the activ
     config.onAction(Action::OpenTerminal);
     REQUIRE(mailbox.count<MailOpenTerminal>() == 3);
     CHECK(mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+    CHECK_FALSE(mailbox.last<MailOpenTerminal>()->tile);
     CHECK(mailbox.mails.size() == 3);
+}
+
+TEST_CASE("Titlebar terminal button sits between the assistant and help buttons and opens a terminal",
+          "[core][sakura][views][terminal]") {
+    using Action = TitlebarView::Action;
+    Mailbox mailbox;
+    CHECK(TitlebarPresenter(mailbox.context()).build().terminalEnabled == TerminalSession::Supported());
+
+    TitleRig rig;
+    CHECK(Indicator(rig.shell.bar(), ICON_LC_SQUARE_TERMINAL) == nullptr);
+
+    rig.config.intelligenceEnabled = true;
+    rig.config.terminalEnabled = true;
+    rig.update();
+    rig.place();
+    auto* assistant = Indicator(rig.shell.bar(), ICON_LC_WAND_SPARKLES);
+    auto* terminal = Indicator(rig.shell.bar(), ICON_LC_SQUARE_TERMINAL);
+    REQUIRE(assistant != nullptr);
+    REQUIRE(terminal != nullptr);
+    const auto help = Peek::Frame(Help(rig.shell.bar()));
+    CHECK(Peek::Frame(*assistant).right() <= Peek::Frame(*terminal).x);
+    CHECK(Peek::Frame(*terminal).right() <= help.x);
+
+    CHECK(Press(rig.host, *terminal));
+    CHECK(rig.actions == std::vector<Action>{Action::OpenTerminal});
 }
 
 TEST_CASE("Terminal tabs in the title row open no tab menu while flowgraph tabs still do",
@@ -2763,6 +2814,22 @@ TEST_CASE("Callouts wrap long text to the available width for every tone", "[cor
     }
 }
 
+TEST_CASE("Callouts draw their icon apart from the text in the requested font", "[core][sakura][views]") {
+    Scene scene{kWide};
+    Callout callout;
+    callout.update({.str = "Do not expose the broker.", .tone = Callout::Tone::Warning, .font = Sakura::Text::Font::Sans});
+    Host host(callout);
+    const auto size = host.measureOf(scene.ctx, {600.0f, kInfinite});
+    host.place(scene.ctx, {0.0f, 0.0f, 600.0f, size.y});
+    auto* icon = ShownText(callout, ICON_LC_TRIANGLE_ALERT);
+    auto* text = ShownText(callout, "Do not expose the broker.");
+    REQUIRE(icon != nullptr);
+    REQUIRE(text != nullptr);
+    CHECK(text->config().font == Sakura::Text::Font::Sans);
+    CHECK(Peek::Frame(*text).x - Peek::Frame(*icon).right() >= 8.0f);
+    CHECK(Peek::Frame(*icon).x >= 12.0f);
+}
+
 TEST_CASE("Retained tooltips show their panel only on the frame after being requested and keep it once prepared",
           "[core][sakura][views]") {
     Probe content({100.0f, 20.0f});
@@ -3229,11 +3296,16 @@ TEST_CASE("Settings navigation reports every section in order", "[core][sakura][
 TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::General);
-    CHECK(rig.combos().size() == 3);
+    CHECK(rig.combos().empty());
+    CHECK(Find<Sakura::PillTabs>(rig.view.component()).size() == 2);
+    CHECK(Find<Sakura::PillStepper>(rig.view.component()).size() == 1);
     CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 2);
 
     rig.show(SettingsSection::Remote);
-    CHECK(rig.combos().size() == 4);
+    CHECK(rig.combos().size() == 1);
+    CHECK(Find<Sakura::PillTabs>(rig.view.component()).size() == 2);
+    CHECK(Find<Sakura::PillStepper>(rig.view.component()).size() == 1);
+    CHECK(Find<Sakura::PillInput>(rig.view.component()).size() == 7);
     CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 1);
 
     rig.show(SettingsSection::Registry);
@@ -3249,13 +3321,15 @@ TEST_CASE("General settings report theme, scale, background particles, and tips"
     SettingsRig rig;
     rig.show(SettingsSection::General);
 
-    rig.choose(0, 1);
-    rig.choose(1, 0);
+    CHECK(PressLabel(rig.host, rig.view.component(), "Light"));
+    auto steppers = Find<Sakura::PillStepper>(rig.view.component());
+    REQUIRE(steppers.size() == 1);
+    CHECK(Step(rig.host, *steppers[0], false));
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
     REQUIRE(toggles.size() == 2);
     CHECK(Press(rig.host, *toggles[0]));
     CHECK(Press(rig.host, *toggles[1]));
-    CHECK(rig.calls == std::vector<std::string>{"theme:Light", "scale:" + std::to_string(0.5f),
+    CHECK(rig.calls == std::vector<std::string>{"theme:Light", "scale:" + std::to_string(0.95f),
                                                  "particles:false", "tips:false"});
 }
 
@@ -3266,8 +3340,11 @@ TEST_CASE("Developer settings report toggles and the log level", "[core][sakura]
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
     REQUIRE(toggles.size() == 1);
     CHECK(Press(rig.host, *toggles[0]));
-    rig.choose(0, 4);
-    CHECK(rig.calls == std::vector<std::string>{"timing:false", "log:4"});
+    auto steppers = Find<Sakura::PillStepper>(rig.view.component());
+    REQUIRE(steppers.size() == 1);
+    CHECK(Step(rig.host, *steppers[0], true));
+    CHECK(Step(rig.host, *steppers[0], false));
+    CHECK(rig.calls == std::vector<std::string>{"timing:false", "log:3", "log:1"});
 }
 
 TEST_CASE("Developer settings open the benchmarks and reload plugins", "[core][sakura][views]") {
@@ -3276,10 +3353,7 @@ TEST_CASE("Developer settings open the benchmarks and reload plugins", "[core][s
     rig.config.developer.onReloadPlugins = [&] { rig.calls.push_back("plugins"); };
     rig.show(SettingsSection::Developer);
 
-    std::vector<Sakura::Button*> buttons;
-    for (auto* button : Buttons(rig.view.component())) {
-        buttons.push_back(button);
-    }
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() >= 2);
     CHECK(Press(rig.host, *buttons[buttons.size() - 2]));
     rig.place();
@@ -3302,13 +3376,15 @@ TEST_CASE("Remote settings report codec, framerate, and approval while the encod
           "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::Remote);
-    REQUIRE(rig.combos().size() == 4);
+    REQUIRE(rig.combos().size() == 1);
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
     REQUIRE(toggles.size() == 1);
+    auto steppers = Find<Sakura::PillStepper>(rig.view.component());
+    REQUIRE(steppers.size() == 1);
 
-    rig.choose(1, 1);
-    rig.choose(0, 2);
-    rig.choose(2, 0);
+    CHECK(PressLabel(rig.host, rig.view.component(), "AV1"));
+    CHECK(Step(rig.host, *steppers[0], true));
+    rig.choose(0, 0);
     CHECK(Press(rig.host, *toggles[0]));
     CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true"});
 }
@@ -3320,7 +3396,7 @@ TEST_CASE("Runtime settings pick interpreters and browse for a custom path", "[c
 
     rig.choose(1, 1);
     rig.choose(0, 1);
-    auto buttons = Buttons(rig.view.component());
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 1);
     CHECK(Press(rig.host, *buttons[0]));
     CHECK(rig.calls == std::vector<std::string>{"policy:allow", "python:/opt/homebrew/bin/python3", "cache"});
@@ -3329,7 +3405,7 @@ TEST_CASE("Runtime settings pick interpreters and browse for a custom path", "[c
     rig.choose(0, 2);
     CHECK(rig.calls.empty());
     rig.show(SettingsSection::Runtime);
-    buttons = Buttons(rig.view.component());
+    buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 2);
     CHECK(Press(rig.host, *buttons[0]));
     CHECK(rig.calls == std::vector<std::string>{"browse:", "python:/custom/python"});
@@ -3339,7 +3415,7 @@ TEST_CASE("Registry overview lists plugins by name and navigates to their pages"
     SettingsRig rig;
     rig.show(SettingsSection::Registry);
 
-    auto buttons = Buttons(rig.view.component());
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 1);
     CHECK(Press(rig.host, *buttons[0]));
     CHECK(Find<Sakura::Badge>(rig.view.component()).empty());
@@ -3355,7 +3431,7 @@ TEST_CASE("Registry overview lists plugins by name and navigates to their pages"
     rig.config.registry.plugins.clear();
     rig.config.registry.domains.clear();
     rig.show(SettingsSection::Registry);
-    CHECK(Buttons(rig.view.component()).size() == 1);
+    CHECK(Actions(rig.view.component()).size() == 1);
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
 }
 
@@ -3366,7 +3442,7 @@ TEST_CASE("Registry plugin page reloads, removes, and returns to the overview", 
     rig.show(SettingsSection::Registry);
 
     CHECK(Find<Sakura::Badge>(rig.view.component()).size() == 1);
-    auto buttons = Buttons(rig.view.component());
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 3);
     for (auto* button : buttons) {
         CHECK(Press(rig.host, *button));
@@ -3384,28 +3460,28 @@ TEST_CASE("Registry add page registers a browsed path only after the source is t
     rig.config.registry.page = RegistryPage::AddPlugin;
     rig.show(SettingsSection::Registry);
 
-    auto buttons = Buttons(rig.view.component());
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 3);
     Press(rig.host, *buttons[2]);
     CHECK(rig.calls.empty());
 
     CHECK(Press(rig.host, *buttons[1]));
     rig.show(SettingsSection::Registry);
-    Press(rig.host, *Buttons(rig.view.component())[2]);
+    Press(rig.host, *Actions(rig.view.component())[2]);
     CHECK(rig.calls == std::vector<std::string>{"browse-plugin:"});
 
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
     REQUIRE(toggles.size() == 1);
     CHECK(Press(rig.host, *toggles[0]));
     rig.show(SettingsSection::Registry);
-    CHECK(Press(rig.host, *Buttons(rig.view.component())[2]));
+    CHECK(Press(rig.host, *Actions(rig.view.component())[2]));
     CHECK(rig.calls == std::vector<std::string>{"browse-plugin:", "register:/plugins/gamma.cep"});
 
     rig.config.registry.page = RegistryPage::Overview;
     rig.show(SettingsSection::Registry);
     rig.config.registry.page = RegistryPage::AddPlugin;
     rig.show(SettingsSection::Registry);
-    Press(rig.host, *Buttons(rig.view.component())[2]);
+    Press(rig.host, *Actions(rig.view.component())[2]);
     CHECK(rig.calls.size() == 2);
 }
 
@@ -3430,7 +3506,7 @@ TEST_CASE("Intelligence settings toggle features and manage providers and models
 
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 5);
     CHECK(Find<Sakura::Badge>(rig.view.component()).size() == 4);
-    auto buttons = Buttons(rig.view.component());
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 5);
     for (auto* button : buttons) {
         CHECK(Press(rig.host, *button));
@@ -3461,8 +3537,8 @@ TEST_CASE("Intelligence model rows keep Remove reachable when their tags overflo
     rig.view.update(rig.config);
     rig.ModalRig::show({.content = &rig.view.component(), .size = Extent2D<F32>{800.0f, 900.0f}});
 
-    std::vector<Sakura::Button*> removes;
-    for (auto* button : Buttons(rig.view.component())) {
+    std::vector<Sakura::Component*> removes;
+    for (auto* button : Actions(rig.view.component())) {
         if (Peek::Frame(*button).width > 0.0f) {
             removes.push_back(button);
         }
@@ -3505,7 +3581,7 @@ TEST_CASE("Intelligence provider page tests the draft and returns to the overvie
     rig.ModalRig::show({.content = &rig.view.component(), .size = Extent2D<F32>{1200.0f, 1180.0f}});
 
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 3);
-    auto buttons = Buttons(rig.view.component());
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 3);
     for (auto* button : buttons) {
         Press(rig.host, *button);
@@ -3532,7 +3608,7 @@ TEST_CASE("Intelligence model page lists models and adds the chosen one", "[core
     };
     rig.show(SettingsSection::Intelligence);
 
-    auto buttons = Buttons(rig.view.component());
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 3);
     for (auto* button : buttons) {
         CHECK(Press(rig.host, *button));
@@ -3541,7 +3617,7 @@ TEST_CASE("Intelligence model page lists models and adds the chosen one", "[core
 
     rig.config.intelligence.model.models.clear();
     rig.show(SettingsSection::Intelligence);
-    CHECK(Buttons(rig.view.component()).size() == 1);
+    CHECK(Actions(rig.view.component()).size() == 1);
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 1);
 }
 
@@ -3549,7 +3625,7 @@ TEST_CASE("About settings check for updates, send feedback, and list info tables
     SettingsRig rig;
     rig.show(SettingsSection::About);
 
-    auto buttons = Buttons(rig.view.component());
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 2);
     CHECK(Press(rig.host, *buttons[0]));
     CHECK(Press(rig.host, *buttons[1]));
@@ -3571,7 +3647,7 @@ TEST_CASE("About update card offers the action for each update state", "[core][s
         config.onApplyUpdate = [&] { calls.push_back("apply"); };
         card.update(config);
         stage.place(scene.ctx);
-        auto buttons = Buttons(card);
+        auto buttons = Actions(card);
         for (auto* button : buttons) {
             Press(stage.host, *button);
         }
@@ -3598,7 +3674,7 @@ TEST_CASE("Legal settings list the license and third-party software with a full 
 
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
     CHECK_FALSE(Find<Sakura::Badge>(rig.view.component()).empty());
-    auto buttons = Buttons(rig.view.component());
+    auto buttons = Actions(rig.view.component());
     REQUIRE(buttons.size() == 1);
     CHECK(Press(rig.host, *buttons[0]));
     CHECK(rig.calls == std::vector<std::string>{"licenses"});
@@ -4239,7 +4315,7 @@ TEST_CASE("Settings modal settles under identical updates", "[core][sakura][view
     }
 }
 
-TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without rebuilding and settle",
+TEST_CASE("Settings navigation, toggles, tabs, and text fields repaint without rebuilding and settle",
           "[core][sakura][views]") {
     KeyedModalRig rig;
     SettingsView::Config config;
@@ -4294,27 +4370,15 @@ TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without
     CHECK(rig.settles());
     CHECK(rig.move(away).clean());
 
-    auto& theme = *Find<Sakura::Combo>(view.component()).at(0);
-    const Jetstream::Rect combo = Peek::Frame(theme);
-    CheckHover(rig.host, step, theme, away);
-    CHECK(Press(rig.host, theme));
-    CHECK(RepaintOnly(rig.frame()));
-    CHECK(rig.settles());
-    REQUIRE_FALSE(PopupFrames(rig.host).empty());
-    rig.host.click(combo.x + combo.width * 0.5f, combo.bottom() + 8.0f + 23.0f + 11.5f);
+    auto& themes = *Find<Sakura::PillTabs>(view.component()).at(0);
+    CheckHover(rig.host, step, themes, away);
+    auto* light = ShownText(themes, "Light");
+    REQUIRE(light != nullptr);
+    CHECK(Press(rig.host, *light));
     CHECK(config.general.currentThemeKey == "Light");
     CHECK(RepaintOnly(rig.frame()));
     CHECK(rig.settles());
-    CHECK(PopupFrames(rig.host).empty());
-
-    CHECK(Press(rig.host, theme));
-    CHECK(RepaintOnly(rig.frame()));
-    CHECK(rig.settles());
-    REQUIRE_FALSE(PopupFrames(rig.host).empty());
-    CHECK(RepaintOnly(rig.click(away)));
-    CHECK(rig.settles());
-    CHECK(PopupFrames(rig.host).empty());
-    CHECK(config.general.currentThemeKey == "Light");
+    CHECK(rig.move(away).clean());
 
     CHECK(Press(rig.host, *sections[static_cast<U64>(SettingsSection::Remote)]));
     CHECK(RepaintOnly(rig.frame()));
@@ -4892,22 +4956,23 @@ TEST_CASE("Help button is always in the top right corner, faint, and opens the d
             glyph = text;
         }
     }
-    REQUIRE(boxes.size() == 3);
+    REQUIRE(boxes.size() == 4);
     REQUIRE(glyph);
     CHECK(glyph->config().str == ICON_LC_CIRCLE_QUESTION_MARK);
     CHECK(glyph->config().colorKey == "text_secondary");
     const auto glyphFrame = Peek::Frame(*glyph);
     CHECK(std::abs(glyphFrame.x + glyphFrame.width * 0.5f - (frame.x + 14.0f)) <= 0.5f);
-    CHECK(boxes[1]->config().instances.front().backgroundColor.a == 0.0f);
+    CHECK(boxes[2]->config().instances.front().backgroundColor.a == 0.0f);
     CHECK_FALSE(boxes[0]->config().instances.front().visible);
-    CHECK_FALSE(boxes[2]->config().instances.front().visible);
+    CHECK_FALSE(boxes[1]->config().instances.front().visible);
+    CHECK_FALSE(boxes[3]->config().instances.front().visible);
 
     const F32 cx = frame.x + 14.0f;
     const F32 cy = frame.y + 14.0f;
     rig.host.send(Mouse(MouseEventType::Move, cx, cy));
     rig.place();
-    CHECK(boxes[1]->config().instances.front().backgroundColor == rig.scene.ctx.color("chrome_button_hover"));
-    CHECK(boxes[1]->config().cornerRadius == 14.0f);
+    CHECK(boxes[2]->config().instances.front().backgroundColor == rig.scene.ctx.color("chrome_button_hover"));
+    CHECK(boxes[2]->config().cornerRadius == 14.0f);
 
     rig.host.click(cx, cy);
     rig.place();

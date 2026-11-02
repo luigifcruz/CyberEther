@@ -130,6 +130,7 @@ struct RegistrySettingsView {
         }
         addButton.update({
             .str = "Add",
+            .icon = ICON_LC_PLUS,
             .tone = CompactButton::Tone::Primary,
             .onClick = [this]() {
                 navigate(RegistryPage::AddPlugin, "");

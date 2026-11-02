@@ -8,6 +8,7 @@
 #include "../components/status_badge.hh"
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/settings.hh"
 
 #include <memory>
@@ -49,17 +50,15 @@ struct IntelligenceModelView {
             .description = "Pick a model from the configured providers.",
         });
         filterInput.update({
+            .icon = ICON_LC_SEARCH,
             .value = this->config.search,
             .hint = "Filter models",
             .submit = Sakura::TextInput::Submit::OnEdit,
-            .height = 34.0f,
             .onChange = [this](const std::string& value) {
                 if (this->config.onSearch) {
                     this->config.onSearch(value);
                 }
             },
-            .borderColorKey = "border",
-            .rounding = Sakura::Rounding::Card,
         });
 
         while (entries.size() < models.size()) {
@@ -73,6 +72,7 @@ struct IntelligenceModelView {
             entry.id.update({.label = item.model.id});
             entry.add.update({
                 .str = "Add",
+                .icon = ICON_LC_PLUS,
                 .onClick = [this, model = item.model]() {
                     if (this->config.onCommit) {
                         this->config.onCommit(model);
@@ -127,7 +127,7 @@ struct IntelligenceModelView {
     Config config;
     SettingsBreadcrumb breadcrumb;
     SettingsHeader header;
-    Sakura::TextInput filterInput;
+    Sakura::PillInput filterInput;
     std::vector<std::unique_ptr<Entry>> entries;
     SectionGroup modelsGroup;
     Sakura::Stack stack;

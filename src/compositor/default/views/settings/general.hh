@@ -1,14 +1,15 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_GENERAL_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_GENERAL_HH
 
+#include "../components/option_stepper.hh"
 #include "../components/section_group.hh"
 #include "components/settings_header.hh"
 
 #include "jetstream/memory/types.hh"
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
-#include <iomanip>
-#include <sstream>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -32,45 +33,42 @@ struct GeneralSettingsView {
     void update(Config config) {
         this->config = std::move(config);
         renderer = this->config.renderer.empty() ? "Metal" : this->config.renderer;
-        interfaceScale = scaleLabel(this->config.interfaceScale);
 
         header.update({
             .title = "General",
             .description = "Manage workspace layout, theme, and rendering.",
         });
 
-        themeCombo.update({
-            .id = "settings:theme",
-            .options = this->config.themes,
-            .value = this->config.currentThemeKey,
-            .onChange = [this](const std::string& themeKey) {
-                if (this->config.onThemeChange) {
-                    this->config.onThemeChange(themeKey);
+        std::vector<Sakura::PillTabs::Item> themeItems;
+        U64 themeIndex = 0;
+        for (U64 index = 0; index < this->config.themes.size(); ++index) {
+            const auto& theme = this->config.themes[index];
+            themeItems.push_back({.icon = theme == "Light" ? ICON_LC_SUN : ICON_LC_MOON, .label = theme});
+            if (theme == this->config.currentThemeKey) {
+                themeIndex = index;
+            }
+        }
+        themeTabs.update({
+            .items = std::move(themeItems),
+            .selected = themeIndex,
+            .compact = true,
+            .track = true,
+            .onSelect = [this](U64 index) {
+                if (index < this->config.themes.size() && this->config.onThemeChange) {
+                    this->config.onThemeChange(this->config.themes[index]);
                 }
             },
-            .borderColorKey = "border",
         });
 
-        scaleCombo.update({
-            .id = "settings:scale",
-            .options = {
-                "0.50x",
-                "0.75x",
-                "1.00x",
-                "1.15x",
-                "1.25x",
-                "1.50x",
-                "2.00x",
-                "3.00x",
-            },
-            .value = interfaceScale,
-            .onChange = [this](const std::string& value) {
-                interfaceScale = value;
+        scaleStepper.update({
+            .options = scaleLabels(),
+            .selected = scaleIndex(this->config.interfaceScale),
+            .fallback = 10,
+            .onSelect = [this](U64 index) {
                 if (this->config.onInterfaceScaleChange) {
-                    this->config.onInterfaceScaleChange(scaleValue(value));
+                    this->config.onInterfaceScaleChange(scaleValues()[index]);
                 }
             },
-            .borderColorKey = "border",
         });
 
         particlesToggle.update({
@@ -91,27 +89,26 @@ struct GeneralSettingsView {
             },
         });
 
-        rendererCombo.update({
-            .id = "settings:renderer",
-            .options = {
-#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
-                "Metal",
-#endif
-#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
-                "Vulkan",
-#endif
-#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
-                "WebGPU",
-#endif
-            },
-            .value = renderer,
-            .onChange = [this](const std::string& value) {
-                renderer = value;
-                if (this->config.onRendererChange) {
-                    this->config.onRendererChange(rendererValue(value));
+        const auto renderers = rendererLabels();
+        U64 rendererIndex = 0;
+        std::vector<Sakura::PillTabs::Item> rendererItems;
+        for (U64 index = 0; index < renderers.size(); ++index) {
+            rendererItems.push_back({.label = renderers[index]});
+            if (renderers[index] == renderer) {
+                rendererIndex = index;
+            }
+        }
+        rendererTabs.update({
+            .items = std::move(rendererItems),
+            .selected = rendererIndex,
+            .compact = true,
+            .track = true,
+            .onSelect = [this](U64 index) {
+                const auto labels = rendererLabels();
+                if (index < labels.size() && this->config.onRendererChange) {
+                    this->config.onRendererChange(rendererValue(labels[index]));
                 }
             },
-            .borderColorKey = "border",
         });
 
         appearanceGroup.update({
@@ -121,12 +118,12 @@ struct GeneralSettingsView {
                 {
                     .label = "Theme",
                     .description = "Select the color theme for the entire interface.",
-                    .control = &themeCombo,
+                    .control = &themeTabs,
                 },
                 {
                     .label = "Interface Scale",
                     .description = "Adjust the interface scale.",
-                    .control = &scaleCombo,
+                    .control = &scaleStepper,
                 },
                 {
                     .label = "Background Particles",
@@ -147,7 +144,7 @@ struct GeneralSettingsView {
             .rows = {{
                 .label = "Graphics Renderer",
                 .description = "Changing the renderer requires restarting CyberEther.",
-                .control = &rendererCombo,
+                .control = &rendererTabs,
             }},
         });
 
@@ -173,45 +170,61 @@ struct GeneralSettingsView {
         return DeviceType::None;
     }
 
-    static std::string scaleLabel(F32 scale) {
-        if (scale == 0.5f) return "0.50x";
-        if (scale == 0.75f) return "0.75x";
-        if (scale == 1.0f) return "1.00x";
-        if (scale == 1.15f) return "1.15x";
-        if (scale == 1.25f) return "1.25x";
-        if (scale == 1.5f) return "1.50x";
-        if (scale == 2.0f) return "2.00x";
-        if (scale == 3.0f) return "3.00x";
-
-        std::ostringstream stream;
-        stream << std::fixed << std::setprecision(2) << scale << "x";
-        return stream.str();
+    static std::vector<std::string> rendererLabels() {
+        return {
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+            "Metal",
+#endif
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+            "Vulkan",
+#endif
+#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
+            "WebGPU",
+#endif
+        };
     }
 
-    static F32 scaleValue(const std::string& label) {
-        if (label == "0.50x") return 0.5f;
-        if (label == "0.75x") return 0.75f;
-        if (label == "1.00x") return 1.0f;
-        if (label == "1.15x") return 1.15f;
-        if (label == "1.25x") return 1.25f;
-        if (label == "1.50x") return 1.5f;
-        if (label == "2.00x") return 2.0f;
-        if (label == "3.00x") return 3.0f;
-        return 1.0f;
+    static const std::vector<F32>& scaleValues() {
+        static const std::vector<F32> values = [] {
+            std::vector<F32> steps;
+            for (U32 percent = 50; percent <= 300; percent += 5) {
+                steps.push_back(static_cast<F32>(percent) / 100.0f);
+            }
+            return steps;
+        }();
+        return values;
+    }
+
+    static std::vector<std::string> scaleLabels() {
+        std::vector<std::string> labels;
+        for (const F32 value : scaleValues()) {
+            labels.push_back(jst::fmt::format("{:.0f}%", value * 100.0f));
+        }
+        return labels;
+    }
+
+    static U64 scaleIndex(F32 scale) {
+        const auto& values = scaleValues();
+        U64 best = 0;
+        for (U64 index = 0; index < values.size(); ++index) {
+            if (std::abs(values[index] - scale) < std::abs(values[best] - scale)) {
+                best = index;
+            }
+        }
+        return best;
     }
 
     Config config;
     SettingsHeader header;
-    Sakura::Combo themeCombo;
-    Sakura::Combo scaleCombo;
-    Sakura::Combo rendererCombo;
+    Sakura::PillTabs themeTabs;
+    OptionStepper scaleStepper;
+    Sakura::PillTabs rendererTabs;
     Sakura::Toggle particlesToggle;
     Sakura::Toggle tipsToggle;
     SectionGroup appearanceGroup;
     SectionGroup renderingGroup;
     Sakura::Stack stack;
     std::string renderer;
-    std::string interfaceScale = "1.00x";
 };
 
 }  // namespace Jetstream

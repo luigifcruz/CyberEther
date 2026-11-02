@@ -1,6 +1,7 @@
 #include <jetstream/render/sakura/components/pill_tabs.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
 
@@ -27,6 +28,11 @@ struct PillMetrics {
 
 constexpr PillMetrics kRegular = {40.0f, 14.0f, 10.0f};
 constexpr PillMetrics kCompact = {32.0f, 12.0f, 8.0f};
+constexpr PillMetrics kTrack = {kPillHeight, 14.0f, kPillHeight * 0.5f};
+constexpr F32 kTrackText = 14.0f;
+constexpr F32 kTrackIcon = 13.0f;
+constexpr F32 kTrackInset = 3.0f;
+constexpr F32 kTrackSpacing = 4.0f;
 constexpr F32 kPillTabText = 18.0f;
 constexpr F32 kCompactIdleOpacity = 0.65f;
 constexpr F32 kPillTabIconGap = 10.0f;
@@ -44,6 +50,7 @@ struct PillTabs::Impl {
     };
 
     Config config;
+    Card track;
     Box selection;
     Box hover;
     TextMetrics textMetrics;
@@ -54,17 +61,37 @@ struct PillTabs::Impl {
     std::optional<U64> pressed;
 
     const PillMetrics& metrics() const {
-        return config.compact ? kCompact : kRegular;
+        return config.track ? kTrack : config.compact ? kCompact : kRegular;
+    }
+
+    F32 textSize() const {
+        return config.track ? kTrackText : kPillTabText;
+    }
+
+    F32 iconSize() const {
+        return config.track ? kTrackIcon : kPillTabIcon;
+    }
+
+    F32 spacing() const {
+        return config.track ? kTrackSpacing : kPillTabSpacing;
+    }
+
+    F32 iconGap() const {
+        return config.track ? kPillIconGap : kPillTabIconGap;
+    }
+
+    F32 inset() const {
+        return config.track ? kTrackInset : 0.0f;
     }
 
     F32 labelWidth(const Context& ctx, U64 index) {
-        return textMetrics.measure(Typography::DisplayFont, config.items[index].label, Px(ctx, kPillTabText));
+        return textMetrics.measure(Typography::DisplayFont, config.items[index].label, Px(ctx, textSize()));
     }
 
     void fitLabel(const Context& ctx, U64 index, F32 room) {
         auto& entry = *entries[index];
         const auto& label = config.items[index].label;
-        const F32 size = Px(ctx, kPillTabText);
+        const F32 size = Px(ctx, textSize());
         const std::string fitted =
             labelWidth(ctx, index) <= std::ceil(room) ? label : textMetrics.ellipsize(Typography::DisplayFont, label, size, room);
         if (fitted == entry.fitted) {
@@ -90,13 +117,14 @@ struct PillTabs::Impl {
         auto& entry = *entries[index];
         const F32 icon = config.items[index].icon.empty() ? 0.0f
                                                           : self.measureChild(entry.icon, ctx, {infinite, infinite}).x +
-                                                                Px(ctx, kPillTabIconGap);
+                                                                Px(ctx, iconGap());
         return std::ceil(2.0f * Px(ctx, metrics().padX) + icon + labelWidth(ctx, index));
     }
 };
 
 PillTabs::PillTabs() {
     impl = std::make_unique<Impl>();
+    setClipsChildren(false);
 }
 
 PillTabs::~PillTabs() = default;
@@ -117,14 +145,19 @@ void PillTabs::update(Config config) {
         impl->pressed.reset();
     }
 
-    std::vector<Component*> children = {&impl->hover, &impl->selection};
+    std::vector<Component*> children;
+    if (impl->config.track) {
+        children.push_back(&impl->track);
+    }
+    children.push_back(&impl->hover);
+    children.push_back(&impl->selection);
     for (U64 index = 0; index < items.size(); ++index) {
         auto& entry = *impl->entries[index];
         const bool selected = index == impl->config.selected;
         entry.icon.update({
             .str = items[index].icon,
             .colorKey = selected ? "cyber_blue" : "text_secondary",
-            .scale = kPillTabIcon / Typography::FontSize,
+            .scale = impl->iconSize() / Typography::FontSize,
         });
         const bool compact = impl->config.compact;
         if (entry.source != items[index].label) {
@@ -135,7 +168,7 @@ void PillTabs::update(Config config) {
             .str = entry.fitted,
             .font = Text::Font::Display,
             .colorKey = "text_primary",
-            .scale = kPillTabText / Typography::FontSize,
+            .scale = impl->textSize() / Typography::FontSize,
             .opacity = compact && !selected ? kCompactIdleOpacity : 1.0f,
         });
         if (!items[index].icon.empty()) {
@@ -160,39 +193,65 @@ Extent2D<F32> PillTabs::measure(const Context& ctx, Extent2D<F32> available) {
         width += impl->itemWidth(*this, ctx, index);
     }
     if (items.size() > 1) {
-        width += Px(ctx, kPillTabSpacing) * static_cast<F32>(items.size() - 1);
+        width += Px(ctx, impl->spacing()) * static_cast<F32>(items.size() - 1);
     }
+    width += 2.0f * Px(ctx, impl->inset());
     return {FitLength(width, available.x), FitLength(Px(ctx, impl->metrics().height), available.y)};
 }
 
 void PillTabs::layout(const Context& ctx) {
     auto& s = *impl;
     s.textMetrics.setWindow(ctx.render);
-    const Rect bounds = frame();
+    const Rect outer = frame();
     const F32 infinite = std::numeric_limits<F32>::infinity();
+    if (s.config.track) {
+        s.track.update({
+            .rects = {outer},
+            .clip = clip(),
+            .cornerRadius = outer.height * 0.5f,
+            .softness = Px(ctx, kPillShadowSoftness),
+            .drop = Px(ctx, kPillShadowDrop),
+            .borderWidth = Px(ctx, kPillBorder),
+            .lineWidth = Px(ctx, 1.0f),
+            .fillKey = kPillFill,
+        });
+        layoutChild(ctx, s.track, outer);
+    }
+    const F32 inset = Px(ctx, s.inset());
+    const Rect bounds = {outer.x + inset, outer.y + inset, std::max(0.0f, outer.width - 2.0f * inset),
+                         std::max(0.0f, outer.height - 2.0f * inset)};
     const F32 padX = Px(ctx, s.metrics().padX);
-    const F32 rounding = Px(ctx, s.metrics().rounding);
+    const F32 rounding = s.config.track ? bounds.height * 0.5f : Px(ctx, s.metrics().rounding);
     s.rects.clear();
+    const U64 count = s.config.items.size();
+    const F32 spacing = Px(ctx, s.spacing());
+    std::vector<F32> widths(count, 0.0f);
+    F32 natural = 0.0f;
+    for (U64 index = 0; index < count; ++index) {
+        widths[index] = s.itemWidth(*this, ctx, index);
+        natural += widths[index];
+    }
+    const F32 room = std::max(0.0f, bounds.width - spacing * static_cast<F32>(count > 1 ? count - 1 : 0));
+    const F32 fit = natural > room && natural > 0.0f ? room / natural : 1.0f;
     F32 x = bounds.x;
-    for (U64 index = 0; index < s.config.items.size(); ++index) {
+    for (U64 index = 0; index < count; ++index) {
         auto& entry = *s.entries[index];
-        const Rect rect = {x, bounds.y, std::min(s.itemWidth(*this, ctx, index), std::max(0.0f, bounds.right() - x)),
-                           bounds.height};
+        const Rect rect = {x, bounds.y, std::floor(widths[index] * fit), bounds.height};
         s.rects.push_back(rect);
         F32 cursor = rect.x + padX;
         if (!s.config.items[index].icon.empty()) {
             const auto icon = measureChild(entry.icon, ctx, {infinite, infinite});
             layoutChild(ctx, entry.icon, {cursor, std::round(rect.y + (rect.height - icon.y) * 0.5f), icon.x, icon.y},
                         rect);
-            cursor += icon.x + Px(ctx, kPillTabIconGap);
+            cursor += icon.x + Px(ctx, s.iconGap());
         }
-        const F32 room = std::max(0.0f, rect.right() - padX - cursor);
-        s.fitLabel(ctx, index, room);
+        const F32 labelRoom = std::max(0.0f, rect.right() - padX - cursor);
+        s.fitLabel(ctx, index, labelRoom);
         const auto label = measureChild(entry.label, ctx, {infinite, infinite});
         layoutChild(ctx, entry.label,
-                    {cursor, std::round(rect.y + (rect.height - label.y) * 0.5f), std::min(label.x, room), label.y},
+                    {cursor, std::round(rect.y + (rect.height - label.y) * 0.5f), std::min(label.x, labelRoom), label.y},
                     rect);
-        x = rect.right() + Px(ctx, kPillTabSpacing);
+        x = rect.right() + spacing;
     }
 
     const bool selected = s.config.selected < s.rects.size();

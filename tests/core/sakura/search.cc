@@ -748,10 +748,11 @@ TEST_CASE("Pill button is a capsule with an icon and label that highlights and c
             texts.push_back(text);
         }
     }
-    REQUIRE(boxes.size() == 3);
-    fill = boxes[1];
+    REQUIRE(boxes.size() == 4);
+    fill = boxes[2];
     CHECK_FALSE(boxes[0]->config().instances.front().visible);
-    CHECK_FALSE(boxes[2]->config().instances.front().visible);
+    CHECK_FALSE(boxes[1]->config().instances.front().visible);
+    CHECK_FALSE(boxes[3]->config().instances.front().visible);
     REQUIRE(texts.size() == 2);
     CHECK(fill->config().cornerRadius == 14.0f);
     CHECK(fill->config().instances.front().backgroundColor == scene.ctx.color("pill_bg"));
@@ -785,13 +786,14 @@ TEST_CASE("Raised pill button adds a soft drop shadow and a top lit edge", "[cor
             boxes.push_back(box);
         }
     }
-    REQUIRE(boxes.size() == 3);
+    REQUIRE(boxes.size() == 4);
     const auto& shadow = boxes[0]->config();
     CHECK(shadow.instances.front().visible);
     CHECK(shadow.softness == 4.0f);
     CHECK(shadow.instances.front().rect.y == 10.0f + 1.0f - 4.0f);
     CHECK(shadow.instances.front().backgroundColor == scene.ctx.color("tile_shadow"));
-    const auto& edge = boxes[2]->config();
+    CHECK(boxes[1]->config().instances.front().visible);
+    const auto& edge = boxes[3]->config();
     CHECK(edge.instances.front().visible);
     CHECK(edge.topLit);
     CHECK(edge.borderWidth == 1.0f);

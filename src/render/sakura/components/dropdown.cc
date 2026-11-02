@@ -26,6 +26,7 @@ constexpr U64 kMaxCharacters = 128;
 
 struct DropdownBody : public Component {
     struct Metrics {
+        std::string fontName = Typography::MonoFont;
         F32 fontSize = Typography::FontSize;
         F32 padX = 0.0f;
         F32 padY = 0.0f;
@@ -93,7 +94,7 @@ struct DropdownBody : public Component {
         textMetrics.setWindow(ctx.render);
         F32 labelWidth = 0.0f;
         for (const auto& option : options) {
-            labelWidth = std::max(labelWidth, textMetrics.measure(Typography::MonoFont, option, metrics.fontSize * unit));
+            labelWidth = std::max(labelWidth, textMetrics.measure(metrics.fontName, option, metrics.fontSize * unit));
         }
         const U64 count = options.size();
         const F32 rowHeight = (metrics.fontSize + 2.0f * metrics.padY) * unit;
@@ -201,7 +202,7 @@ struct DropdownBody : public Component {
         texts.update({
             .instances = std::move(labels),
             .clip = viewport,
-            .fontName = Typography::MonoFont,
+            .fontName = metrics.fontName,
             .maxCharacters = kMaxCharacters,
             .capacity = kRowSlots,
         });
@@ -325,6 +326,7 @@ void Dropdown::update(Config config) {
     const F32 padY = impl->config.rowPadding.y;
     const F32 margin = std::max(impl->config.padding, 1.0f);
     const DropdownBody::Metrics metrics = {
+        .fontName = impl->config.fontName,
         .fontSize = Typography::FontSize,
         .padX = padX,
         .padY = padY,

@@ -71,7 +71,6 @@ struct FlowgraphEditor {
         Sakura::Callback<void()> onTogglePause;
         Sakura::Callback<void()> onSave;
         Sakura::Callback<void()> onToggleEnvironment;
-        Sakura::Callback<void()> onOpenTerminal;
     };
 
     void update(Config config) {
@@ -366,12 +365,6 @@ struct FlowgraphEditor {
             .size = {PillHeight, PillHeight},
             .onClick = this->config.onToggleEnvironment,
         });
-        terminalButton.update({
-            .icon = ICON_LC_SQUARE_TERMINAL,
-            .tooltip = "Terminal",
-            .size = {PillHeight, PillHeight},
-            .onClick = this->config.onOpenTerminal,
-        });
         zoomPill.update({
             .label = jst::fmt::format("{}%", std::lround(zoom * 100.0f)),
             .canDecrement = nodeEditor.canZoom(-1),
@@ -398,9 +391,6 @@ struct FlowgraphEditor {
             edge += width + PillGap;
         };
         place(zoomPill, ZoomPillWidth);
-        if (this->config.onOpenTerminal) {
-            place(terminalButton, PillHeight);
-        }
         place(environmentButton, PillHeight);
         place(addButton, PillHeight);
         place(saveButton, PillHeight);
@@ -466,7 +456,6 @@ struct FlowgraphEditor {
     Sakura::PillIconButton saveButton;
     Sakura::PillIconButton addButton;
     Sakura::PillIconButton environmentButton;
-    Sakura::PillIconButton terminalButton;
     Sakura::Menu flowgraphContextMenu;
     bool flowgraphContextMenuOpen = false;
     Extent2D<F32> flowgraphContextMenuGridPos;

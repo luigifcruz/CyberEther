@@ -1,11 +1,13 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REGISTRY_ADD_PLUGIN_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REGISTRY_ADD_PLUGIN_HH
 
+#include "../components/file_field.hh"
 #include "components/settings_breadcrumb.hh"
 #include "../components/section_group.hh"
 #include "components/settings_header.hh"
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <string>
 #include <utility>
@@ -49,38 +51,21 @@ struct RegistryAddPluginView {
             .title = "Add Plugin",
             .description = "Load a plugin bundle that registers additional blocks.",
         });
-        pathInput.update({
+        pathField.update({
+            .icon = ICON_LC_PACKAGE,
             .value = pendingPath,
             .hint = "/path/to/plugin.cep",
             .submit = Sakura::TextInput::Submit::OnEdit,
             .onChange = [this](const std::string& value) {
                 setPendingPath(value);
             },
-            .borderColorKey = "border",
-        });
-        browseButton.update({
-            .str = "Browse",
-            .onClick = [this]() {
+            .onBrowse = [this]() {
                 if (this->config.onBrowse) {
                     this->config.onBrowse(pendingPath, [this](std::string path) {
                         setPendingPath(std::move(path));
                     });
                 }
             },
-            .font = Sakura::Text::Font::Sans,
-        });
-        pathControls.update({
-            .axis = Sakura::Stack::Axis::Horizontal,
-            .items = {
-                {.child = &pathInput, .size = 1.0f, .grow = 1.0f},
-                {.child = &browseButton},
-            },
-        });
-        pathField.update({
-            .content = &pathControls,
-            .border = false,
-            .colorKey = "transparent",
-            .hoveredColorKey = "transparent",
         });
         trustToggle.update({
             .value = trusted,
@@ -132,10 +117,7 @@ struct RegistryAddPluginView {
     SettingsBreadcrumb breadcrumb;
     SettingsHeader header;
     Sakura::Button registerButton;
-    Sakura::TextInput pathInput;
-    Sakura::Button browseButton;
-    Sakura::Stack pathControls;
-    Sakura::Div pathField;
+    FileField pathField;
     Sakura::Toggle trustToggle;
     SectionGroup sourceGroup;
     Sakura::Stack stack;

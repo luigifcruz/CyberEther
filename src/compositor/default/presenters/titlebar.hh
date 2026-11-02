@@ -54,6 +54,7 @@ struct TitlebarPresenter {
             .updateReady = context.state.update.ready,
             .intelligenceEnabled = context.state.agent.settings.enabled,
             .agentUnread = context.state.agent.ui.unread,
+            .terminalEnabled = TerminalSession::Supported(),
             .voice = voice.build(),
             .environmentFlowgraphs = environmentFlowgraphs,
             .debugTimingEnabled = context.state.debug.timingEnabled,
@@ -129,7 +130,10 @@ struct TitlebarPresenter {
                         break;
                     case Action::OpenTerminal:
                         if (terminalSupported) {
-                            enqueue(MailOpenTerminal{.flowgraph = activeFlowgraph.value_or("")});
+                            enqueue(MailOpenTerminal{
+                                .flowgraph = activeFlowgraph.value_or(""),
+                                .tile = activeFlowgraph.has_value(),
+                            });
                         }
                         break;
                     case Action::ToggleSidebar:

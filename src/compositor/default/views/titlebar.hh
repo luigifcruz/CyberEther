@@ -83,6 +83,7 @@ struct TitlebarView {
         bool updateReady = false;
         bool intelligenceEnabled = false;
         bool agentUnread = false;
+        bool terminalEnabled = false;
         std::optional<VoiceIndicator> voice;
         std::unordered_set<std::string> environmentFlowgraphs;
         bool debugTimingEnabled = false;
@@ -180,6 +181,13 @@ struct TitlebarView {
             .hoverColorKey = "chrome_button_hover",
             .onClick = action(Action::ToggleAgent),
         });
+        terminalButton.update({
+            .icon = ICON_LC_SQUARE_TERMINAL,
+            .colorKey = "text_secondary",
+            .backgroundColorKey = "transparent",
+            .hoverColorKey = "chrome_button_hover",
+            .onClick = action(Action::OpenTerminal),
+        });
         std::vector<Sakura::Stack::Item> indicators;
         if (this->config.remoteStarted) {
             indicators.push_back({.child = &remoteButton});
@@ -203,6 +211,9 @@ struct TitlebarView {
             indicators.push_back({.child = &assistantButton});
         }
 #endif
+        if (this->config.terminalEnabled) {
+            indicators.push_back({.child = &terminalButton});
+        }
         indicators.push_back({.child = &helpButton});
         indicatorRow.update({
             .axis = Sakura::Stack::Axis::Horizontal,
@@ -414,6 +425,7 @@ struct TitlebarView {
     Sakura::PillButton updateButton;
     Sakura::PillButton assistantButton;
     Sakura::Voice voicePill;
+    Sakura::PillButton terminalButton;
     Sakura::PillButton helpButton;
     Sakura::Stack indicatorRow;
     Sakura::Menu tabMenu;
