@@ -5,12 +5,23 @@
 #include "component_harness.hh"
 #include "scene.hh"
 
+#include <jetstream/render/sakura/components/background_layer.hh>
+#include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/card.hh>
+#include <jetstream/render/sakura/components/chrome_button.hh>
 #include <jetstream/render/sakura/components/dropdown.hh>
+#include <jetstream/render/sakura/components/floating_layer.hh>
+#include <jetstream/render/sakura/components/hud_layer.hh>
+#include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/menu.hh>
+#include <jetstream/render/sakura/components/modal_layer.hh>
+#include <jetstream/render/sakura/components/overlay.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
-#include <jetstream/render/sakura/components/shell.hh>
+#include <jetstream/render/sakura/components/popup.hh>
+#include <jetstream/render/sakura/components/text.hh>
+#include <jetstream/render/sakura/components/toast_layer.hh>
 #include <jetstream/render/sakura/toast.hh>
-#include <jetstream/render/tools/imgui_icons_ext.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "render/sakura/toast_queue.hh"
 
@@ -62,8 +73,14 @@ struct ToastProbe : Sakura::ToastLayer {
     std::vector<T*> parts() const {
         std::vector<T*> found;
         for (auto* child : children()) {
-            if (auto* match = dynamic_cast<T*>(child); match && child->visible()) {
-                found.push_back(match);
+            if (!child->visible()) {
+                continue;
+            }
+            const bool card = dynamic_cast<Sakura::Card*>(child) != nullptr;
+            for (auto* part : card ? Peek::Children(*child) : std::vector<Sakura::Component*>{child}) {
+                if (auto* match = dynamic_cast<T*>(part); match && part->visible()) {
+                    found.push_back(match);
+                }
             }
         }
         return found;
@@ -86,8 +103,14 @@ struct FloatingProbe : Sakura::FloatingLayer {
     std::vector<T*> parts() const {
         std::vector<T*> found;
         for (auto* child : children()) {
-            if (auto* match = dynamic_cast<T*>(child); match && child->visible()) {
-                found.push_back(match);
+            if (!child->visible()) {
+                continue;
+            }
+            const bool card = dynamic_cast<Sakura::Card*>(child) != nullptr;
+            for (auto* part : card ? Peek::Children(*child) : std::vector<Sakura::Component*>{child}) {
+                if (auto* match = dynamic_cast<T*>(part); match && part->visible()) {
+                    found.push_back(match);
+                }
             }
         }
         return found;
@@ -187,6 +210,16 @@ TEST_CASE("Center popups ignore the anchor and center on the layer", "[core][sak
     Probe offset({100.0f, 50.0f});
     CHECK(PlacePopup(offset, {.placement = Sakura::PopupPlacement::Center}, {40.0f, 20.0f, 400.0f, 300.0f}) ==
           Rect{190.0f, 145.0f, 100.0f, 50.0f});
+}
+
+TEST_CASE("Inside popups center on their anchor and stay within the layer", "[core][sakura][shell]") {
+    Probe content({100.0f, 50.0f});
+    CHECK(PlacePopup(content, {.anchor = {100.0f, 40.0f, 300.0f, 200.0f},
+                               .placement = Sakura::PopupPlacement::Inside}) == Rect{200.0f, 115.0f, 100.0f, 50.0f});
+
+    Probe clamped({100.0f, 50.0f});
+    CHECK(PlacePopup(clamped, {.anchor = {760.0f, 580.0f, 20.0f, 10.0f},
+                               .placement = Sakura::PopupPlacement::Inside}) == Rect{700.0f, 550.0f, 100.0f, 50.0f});
 }
 
 TEST_CASE("Popups with an explicit size skip measurement and stay within the layer",
@@ -503,8 +536,56 @@ TEST_CASE("Clickable HUDs call onClick for clicks their content does not handle"
     CHECK(clicked == 1);
 }
 
+TEST_CASE("HUDs with an oversized natural size stay inside the margin", "[core][sakura][shell]") {
+    Probe content({1000.0f, 700.0f});
+    Sakura::HudLayer layer;
+    layer.update({.huds = {{.content = &content, .anchor = Sakura::Anchor::TopLeft}}});
+    LayerHost host({&layer});
+    host.place(MakeContext(), kScreen);
+    CHECK(content.laidFrame == Rect{24.0f, 24.0f, 752.0f, 552.0f});
+    CHECK(layer.covers({787.0f, 587.0f}));
+    CHECK_FALSE(layer.covers({789.0f, 589.0f}));
+}
+
+TEST_CASE("Modals without a close button drop the footer, center their content and still close on Escape",
+          "[core][sakura][shell]") {
+    SakuraTest::FakeWindow window;
+    Probe content({100.0f, 50.0f});
+    U64 closed = 0;
+    bool closeButton = true;
+    Sakura::ModalLayer modal;
+    const auto update = [&] {
+        modal.update({.content = &content, .closeButton = closeButton, .onClose = [&] { ++closed; }});
+    };
+    update();
+    LayerHost host({&modal});
+    host.place(WindowContext(window), kScreen);
+    CHECK(Find<Sakura::Button>(modal).size() == 1);
+    const Rect footed = content.laidFrame;
+
+    closeButton = false;
+    update();
+    host.place(WindowContext(window), kScreen);
+    CHECK(Find<Sakura::Button>(modal).empty());
+    CHECK(content.laidFrame.y > footed.y);
+    const F32 center = content.laidFrame.y + content.laidFrame.height * 0.5f;
+    CHECK(center > 299.0f);
+    CHECK(center < 301.0f);
+
+    CHECK(Sakura::Access::key(host, {KeyEventType::Press, KeyCode::Escape, {}}));
+    CHECK(closed == 1);
+
+    Frames frames(host, kScreen, WindowContext(window));
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    closeButton = true;
+    REQUIRE(frames.settle(update));
+    CHECK(Find<Sakura::Button>(modal).size() == 1);
+    CHECK(content.laidFrame == footed);
+    CHECK(Retains(frames, update));
+}
+
 TEST_CASE("Modal layer centers its content at the minimum width", "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     Probe content({100.0f, 50.0f});
     Sakura::ModalLayer modal;
@@ -522,7 +603,6 @@ TEST_CASE("Modal layer centers its content at the minimum width", "[core][sakura
 
 TEST_CASE("Modal width is clamped to the layer and an explicit size is honoured",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     Probe narrow({100.0f, 50.0f});
     Sakura::ModalLayer clamped;
@@ -567,7 +647,6 @@ TEST_CASE("Modal layer covers everything only while it has content", "[core][sak
 
 TEST_CASE("Modal footer close button calls onClose while dim clicks are swallowed",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     Probe content({100.0f, 50.0f});
     Probe below({800.0f, 600.0f});
@@ -614,6 +693,20 @@ TEST_CASE("Floating windows are centered and cascade, with content below the tit
     CHECK_FALSE(layer.covers({576.0f, 300.0f}));
     CHECK_FALSE(layer.covers({249.0f, 200.0f}));
     CHECK_FALSE(layer.covers({100.0f, 100.0f}));
+}
+
+TEST_CASE("Floating windows keep their logical geometry across pixel ratio changes", "[core][sakura][shell]") {
+    Probe content;
+    Sakura::FloatingLayer layer;
+    layer.update({.windows = {{.id = "a", .title = "A", .content = &content, .size = {300.0f, 200.0f}}}});
+    LayerHost host({&layer});
+    host.place(MakeContext(), kScreen);
+    const Rect before = content.laidFrame;
+
+    auto dense = MakeContext({kScreen.width * 2.0f, kScreen.height * 2.0f});
+    dense.pixelRatio = 2.0f;
+    host.place(dense, {0.0f, 0.0f, kScreen.width * 2.0f, kScreen.height * 2.0f});
+    CHECK(content.laidFrame == Rect{before.x * 2.0f, before.y * 2.0f, before.width * 2.0f, before.height * 2.0f});
 }
 
 TEST_CASE("Floating window close button calls onClose", "[core][sakura][shell]") {
@@ -741,15 +834,14 @@ TEST_CASE("Floating window chrome matches the tile outline with no visible grip"
             topLit += box->config().topLit ? 1 : 0;
         }
     }
-    CHECK(strokes == 3);
-    CHECK(topLit == 2);
+    CHECK(strokes == 2);
+    CHECK(topLit == 1);
     CHECK(layer.parts<Sakura::Polyline>().empty());
     CHECK(content.laidFrame == Rect{250.0f, 232.0f, 300.0f, 168.0f});
 }
 
 TEST_CASE("Toast layer drains the queue and stacks titled cards upward from the bottom left",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;
@@ -801,7 +893,6 @@ TEST_CASE("Toast layer drains the queue and stacks titled cards upward from the 
 }
 
 TEST_CASE("Toasts slide in from the left while they fade in", "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;
@@ -831,7 +922,6 @@ TEST_CASE("Toasts slide in from the left while they fade in", "[core][sakura][sh
 
 TEST_CASE("Hovering a toast shows its close badge and holds it, and the badge dismisses it across updates",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;
@@ -848,7 +938,7 @@ TEST_CASE("Hovering a toast shows its close badge and holds it, and the badge di
 
     const auto glyph = [&]() -> const Sakura::Text* {
         for (auto* text : layer.parts<Sakura::Text>()) {
-            if (text->config().str == ICON_FA_XMARK) {
+            if (text->config().str == ICON_LC_X) {
                 return text;
             }
         }
@@ -1212,7 +1302,7 @@ TEST_CASE("The drag ghost is a pill with the pane icon and title that follows th
     host.drag.active = true;
     host.drag.pane = "scope";
     host.drag.title = "Scope";
-    host.drag.icon = ICON_FA_CHART_LINE;
+    host.drag.icon = ICON_LC_CHART_LINE;
     auto ctx = MakeContext();
     ctx.mouse = Extent2D<F32>{300.0f, 200.0f};
     host.send(Mouse(MouseEventType::Move, 300.0f, 200.0f));
@@ -1408,7 +1498,6 @@ TEST_CASE("HUD offsets shift the HUD away from its anchor", "[core][sakura][shel
 
 TEST_CASE("Menu entries draw a checkmark when selected, a shortcut column, and their label color",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     MonoFontWindow window;
     auto ctx = WindowContext(window);
     ctx.palette = Tones();
@@ -1736,7 +1825,7 @@ TEST_CASE("Floating window close glyph lights up on hover with a single repaint"
         layer.update(config);
     };
     const auto glyph = [&] {
-        auto* text = Named(layer, ICON_FA_XMARK);
+        auto* text = Named(layer, ICON_LC_X);
         return text ? text->config().colorKey : std::string();
     };
     REQUIRE(frames.settle(update));
@@ -2068,7 +2157,6 @@ TEST_CASE("Cancelling or leaving over a clickable HUD reaches its content withou
 
 TEST_CASE("Modal layers scale their margin, padding, fixed size and close button at a pixel ratio of two",
           "[core][sakura][shell][pixel-ratio]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     auto ctx = WindowContext(window, {1600.0f, 1200.0f});
     ctx.pixelRatio = 2.0f;
@@ -2109,7 +2197,6 @@ TEST_CASE("Modal layers scale their margin, padding, fixed size and close button
 
 TEST_CASE("Modal sizes fill the room inside the margin or measure the content width when natural",
           "[core][sakura][shell][sizing]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     const auto place = [&](Probe& content, Extent2D<F32> size, U64* closed = nullptr) {
         auto modal = std::make_unique<Sakura::ModalLayer>();
@@ -2185,7 +2272,6 @@ TEST_CASE("Floating windows scale their initial size, title bar, padding, close 
 
 TEST_CASE("Toasts scale their margin, spacing, padding and card metrics at a pixel ratio of two",
           "[core][sakura][shell][pixel-ratio]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     struct Cards {
         std::vector<Rect> rects;
@@ -2647,7 +2733,6 @@ TEST_CASE("Open dropdowns follow their anchor width without any other body chang
 
 TEST_CASE("An open chrome button menu runs the newest entry callback after a callback-only update",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     MonoFontWindow window;
     Sakura::ChromeButton button;
     U64 stale = 0;
@@ -2685,7 +2770,6 @@ TEST_CASE("An open chrome button menu runs the newest entry callback after a cal
 
 TEST_CASE("Closing a toast after a long clean hover starts its fade instead of expiring it at once",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;
@@ -2704,7 +2788,7 @@ TEST_CASE("Closing a toast after a long clean hover starts its fade instead of e
 
     const auto glyph = [&]() -> const Sakura::Text* {
         for (auto* text : layer.parts<Sakura::Text>()) {
-            if (text->config().str == ICON_FA_XMARK) {
+            if (text->config().str == ICON_LC_X) {
                 return text;
             }
         }
@@ -2733,7 +2817,6 @@ TEST_CASE("Closing a toast after a long clean hover starts its fade instead of e
 
 TEST_CASE("Hovering a toast late in its life pauses only from the hover onward",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;

@@ -20,6 +20,8 @@ Result LineplotImpl::configure() {
     signalViewConfig->lineplotAveraging = averaging;
     signalViewConfig->maxHold = maxHold;
     signalViewConfig->fill = fill;
+    signalViewConfig->density = density;
+    signalViewConfig->persistence = persistence;
     signalViewConfig->rangeMin = rangeMin;
     signalViewConfig->rangeMax = rangeMax;
     signalViewConfig->xLabel = xLabel;
@@ -42,6 +44,18 @@ Result LineplotImpl::define() {
                                     "Max Hold",
                                     "Enable maximum hold trace.",
                                     {{"type", "bool"}}));
+
+    JST_CHECK(defineInterfaceConfig("density",
+                                    "Spectral Density",
+                                    "Enable spectral density behind the trace.",
+                                    {{"type", "bool"}}));
+
+    if (candidate()->density) {
+        JST_CHECK(defineInterfaceConfig("persistence",
+                                        "Persistence",
+                                        "Number of spectra for the density to fade to half.",
+                                        {{"type", "range"}, {"min", 1.0f}, {"max", 4096.0f}, {"value_type", "uint"}, {"unit", "spectra"}}));
+    }
 
     return Result::SUCCESS;
 }

@@ -32,9 +32,9 @@ inline void UpdateDashRanges(std::span<const F32> vertices,
                              std::span<F32> ranges) {
     const auto pixel = context.pixelSize();
     auto project = [&](const glm::vec3& p) {
-        const auto clip = context.camera.viewProjection * glm::vec4(p, 1.0f);
-        return glm::vec2(clip.x / (clip.w * pixel.x),
-                         clip.y / (clip.w * pixel.y));
+        const auto clip = context.worldViewProjection * glm::dvec4(glm::dvec3(p), 1.0);
+        return glm::vec2(static_cast<F32>(clip.x / (clip.w * pixel.x)),
+                         static_cast<F32>(clip.y / (clip.w * pixel.y)));
     };
     F32 distance = 0.0f;
     for (U64 i = 0; i < vertices.size() / 4; ++i) {

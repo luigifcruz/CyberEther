@@ -168,6 +168,7 @@ Result PickFolder(std::string& path,
 }
 
 Result SaveFile(std::string& path,
+                const std::vector<std::string>& extensions,
                 std::function<void(std::string)> callback) {
     __block Result result = Result::ERROR;
 
@@ -176,6 +177,22 @@ Result SaveFile(std::string& path,
     dispatch_async(dispatch_get_main_queue(), ^{
 #ifdef JST_OS_MAC
         NSSavePanel* panel = [NSSavePanel savePanel];
+
+        if (!path.empty()) {
+            const auto name = PathToUtf8(PathFromUtf8(path).filename());
+            [panel setNameFieldStringValue:[NSString stringWithUTF8String:name.c_str()]];
+        }
+
+        NSMutableArray* allowedTypes = [NSMutableArray array];
+        for (const auto& ext : extensions) {
+            UTType* type = [UTType typeWithFilenameExtension:[NSString stringWithUTF8String:ext.c_str()]];
+            if (type) {
+                [allowedTypes addObject:type];
+            }
+        }
+        if ([allowedTypes count] > 0) {
+            [panel setAllowedContentTypes:allowedTypes];
+        }
 
         if ([panel runModal] == NSModalResponseOK) {
             NSURL* url = [panel URL];

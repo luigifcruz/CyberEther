@@ -13,7 +13,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
 
 layout(location = 0) in vec4 PosNor; // xy = position, zw = normal
 
-layout(location = 0) out vec3 fragColor;
+layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec2 fragNormal;
 
 void main() {
@@ -32,7 +32,7 @@ void main() {
     bool isBorder = lineIndex >= minorTickEnd;
     bool isTick = lineIndex >= interiorEnd && lineIndex < minorTickEnd;
 
-    fragColor = (isBorder || isTick) ? uniforms.majorColor.rgb
-                                     : uniforms.gridColor.rgb;
+    fragColor = (isBorder || isTick) ? uniforms.majorColor
+                                     : uniforms.gridColor;
     fragNormal = PosNor.zw;
 }

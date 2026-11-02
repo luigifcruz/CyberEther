@@ -1,0 +1,32 @@
+Propagate RTL-SDR endpoint reset and R82xx PLL lock failures.
+
+diff --git a/src/librtlsdr.c b/src/librtlsdr.c
+--- a/src/librtlsdr.c
++++ b/src/librtlsdr.c
+@@ -1704,8 +1704,10 @@
+ 	if (!dev)
+ 		return -1;
+ 
+-	rtlsdr_write_reg(dev, USBB, USB_EPA_CTL, 0x1002, 2);
+-	rtlsdr_write_reg(dev, USBB, USB_EPA_CTL, 0x0000, 2);
++	if (rtlsdr_write_reg(dev, USBB, USB_EPA_CTL, 0x1002, 2) < 0)
++		return -1;
++	if (rtlsdr_write_reg(dev, USBB, USB_EPA_CTL, 0x0000, 2) < 0)
++		return -1;
+ 
+ 	return 0;
+ }
+diff --git a/src/tuner_r82xx.c b/src/tuner_r82xx.c
+--- a/src/tuner_r82xx.c
++++ b/src/tuner_r82xx.c
+@@ -1149,7 +1149,9 @@
+ 		goto err;
+ 
+ 	rc = r82xx_set_pll(priv, lo_freq);
+-	if (rc < 0 || !priv->has_lock)
++	if (rc >= 0 && !priv->has_lock)
++		rc = -1;
++	if (rc < 0)
+ 		goto err;
+ 
+ 	if (is_rtlsdr_blog_v4) {

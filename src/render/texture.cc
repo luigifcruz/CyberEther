@@ -64,6 +64,31 @@ Result Texture::validateFillRow(const U64& y, const U64& height) const {
     return Result::SUCCESS;
 }
 
+Result Texture::dump(std::vector<U8>& output) const {
+    output.clear();
+
+    if (config.multisampled) {
+        JST_ERROR("[TEXTURE] Can't dump multisampled texture.");
+        return Result::ERROR;
+    }
+
+    const U64 bytesPerPixel = pixelByteSize();
+    if (config.size.x == 0 || config.size.y == 0 ||
+        config.size.x > std::numeric_limits<U64>::max() / bytesPerPixel ||
+        config.size.y > output.max_size() / (config.size.x * bytesPerPixel)) {
+        JST_ERROR("[TEXTURE] Invalid texture dimensions for dump.");
+        return Result::ERROR;
+    }
+
+    output.resize(config.size.x * config.size.y * bytesPerPixel);
+    return underlyingDump(output.data());
+}
+
+Result Texture::underlyingDump(uint8_t*) const {
+    JST_ERROR("[TEXTURE] Texture readback is not implemented for this backend.");
+    return Result::ERROR;
+}
+
 U64 Texture::pixelByteSize() const {
     const U64 channels = config.pfmt == PixelFormat::RGBA ? 4 : 1;
     const U64 channelByteSize = config.ptype == PixelType::F32 ? 4 : 1;

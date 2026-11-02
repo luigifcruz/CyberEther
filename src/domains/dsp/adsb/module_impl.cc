@@ -3,7 +3,9 @@
 #include <any>
 #include <chrono>
 #include <cmath>
+#include <optional>
 
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/render/base.hh"
 
@@ -38,26 +40,14 @@ Result AdsbImpl::validate() {
         return Result::ERROR;
     }
 
-    if (inputTensor.hasAttribute("frequency")) {
-        const std::any value = inputTensor.attribute("frequency");
-        if (!std::any_cast<F32>(&value)) {
-            JST_ERROR("[MODULE_ADSB] Input frequency metadata must have type F32.");
-            return Result::ERROR;
-        }
-    }
-
-    if (inputTensor.hasAttribute("sampleRate")) {
-        const std::any value = inputTensor.attribute("sampleRate");
-        const auto* sampleRate = std::any_cast<F32>(&value);
-        if (!sampleRate) {
-            JST_ERROR("[MODULE_ADSB] Input sample rate metadata must have type F32.");
-            return Result::ERROR;
-        }
-        if (!std::isfinite(*sampleRate) || *sampleRate != 2.0e6f) {
-            JST_ERROR("[MODULE_ADSB] Input sample rate must be 2 MHz ({}).",
-                      *sampleRate);
-            return Result::ERROR;
-        }
+    std::optional<F32> frequency;
+    std::optional<F32> sampleRate;
+    JST_CHECK(ReadAttribute(inputTensor, "frequency", frequency));
+    JST_CHECK(ReadAttribute(inputTensor, "sampleRate", sampleRate));
+    if (sampleRate && *sampleRate != 2.0e6f) {
+        JST_ERROR("[MODULE_ADSB] Input sample rate must be 2 MHz ({}).",
+                  *sampleRate);
+        return Result::ERROR;
     }
 
     validatedSampleAxis = *axes.sample;
@@ -77,18 +67,15 @@ Result AdsbImpl::create() {
     sampleAxis = validatedSampleAxis;
     batchAxis = validatedBatchAxis;
 
-    if (input.hasAttribute("frequency")) {
-        const std::any value = input.attribute("frequency");
-        if (const auto* frequency = std::any_cast<F32>(&value)) {
-            JST_INFO("[MODULE_ADSB] Input frequency: {:.2f} MHz", *frequency / 1e6f);
-        }
+    std::optional<F32> frequency;
+    std::optional<F32> sampleRate;
+    JST_CHECK(ReadAttribute(input, "frequency", frequency));
+    JST_CHECK(ReadAttribute(input, "sampleRate", sampleRate));
+    if (frequency) {
+        JST_INFO("[MODULE_ADSB] Input frequency: {:.2f} MHz", *frequency / 1e6f);
     }
-
-    if (input.hasAttribute("sampleRate")) {
-        const std::any value = input.attribute("sampleRate");
-        if (const auto* sampleRate = std::any_cast<F32>(&value)) {
-            JST_INFO("[MODULE_ADSB] Input sample rate: {:.2f} MHz", *sampleRate / 1e6f);
-        }
+    if (sampleRate) {
+        JST_INFO("[MODULE_ADSB] Input sample rate: {:.2f} MHz", *sampleRate / 1e6f);
     }
 
     {
@@ -185,7 +172,7 @@ Result AdsbImpl::destroyPresent() {
     return Result::SUCCESS;
 }
 
-Result AdsbImpl::present() {
+Result AdsbImpl::capture() {
     if (!renderSurface || !geoMapComponent) return Result::SUCCESS;
 
     // One coherent presentation snapshot: icon positions, tracks and picking
@@ -216,6 +203,14 @@ Result AdsbImpl::present() {
         }
     }
 
+    return Result::SUCCESS;
+}
+
+Result AdsbImpl::present() {
+    if (!renderSurface || !geoMapComponent) return Result::SUCCESS;
+
+    const auto now = static_cast<U64>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
     const auto surfaceEvents = surfaceConsumeSurfaceEvents();
     std::vector<MouseEvent> mouseEvents;
     for (const auto& input : surfaceConsumeInputEvents()) {

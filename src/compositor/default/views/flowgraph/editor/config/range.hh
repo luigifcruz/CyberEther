@@ -5,8 +5,10 @@
 
 #include "../field_tooltip.hh"
 
+#include <atomic>
 #include <cmath>
 #include <limits>
+#include <memory>
 
 namespace Jetstream {
 
@@ -14,6 +16,9 @@ struct FlowgraphConfigRangeField {
     using Config = FlowgraphConfigFieldConfig;
 
     Result update(Config config) {
+        if (this->config.id != config.id) {
+            pending.reset();
+        }
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
             parseFormat();
@@ -21,6 +26,12 @@ struct FlowgraphConfigRangeField {
         value = minValue;
         JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
         help.update(this->config.id, this->config.help);
+        if (pending && pending->complete) {
+            pending.reset();
+        }
+        if (pending) {
+            value = pending->value;
+        }
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
@@ -58,7 +69,10 @@ struct FlowgraphConfigRangeField {
                     patch[this->config.name] = nextValue;
                 }
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(patch), true);
+                    pending = std::make_shared<Pending>();
+                    pending->value = unsignedInteger ? std::round(nextValue) : nextValue;
+                    this->config.onApply(std::move(patch), true,
+                        [submission = pending](Result) { submission->complete = true; });
                 }
             },
         });
@@ -70,6 +84,11 @@ struct FlowgraphConfigRangeField {
     }
 
  private:
+    struct Pending {
+        F32 value = 0.0f;
+        std::atomic<bool> complete{false};
+    };
+
     void parseFormat() {
         parsedFormat = config.format;
         unit = Parser::Get<std::string>(config.format, "unit");
@@ -79,6 +98,7 @@ struct FlowgraphConfigRangeField {
     }
 
     Config config;
+    std::shared_ptr<Pending> pending;
     Parser::Map parsedFormat;
     std::string unit;
     F32 minValue = 0.0f;

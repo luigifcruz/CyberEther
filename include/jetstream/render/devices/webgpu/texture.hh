@@ -20,6 +20,8 @@ class JETSTREAM_API TextureImp<DeviceType::WebGPU> : public Texture {
     }
 
  protected:
+    Result underlyingDump(uint8_t* output) const override;
+
     constexpr WGPUTexture getHandle() const {
         return texture;
     }
@@ -46,7 +48,6 @@ class JETSTREAM_API TextureImp<DeviceType::WebGPU> : public Texture {
 
     static WGPUTextureFormat ConvertPixelFormat(const PixelFormat&,
                                                 const PixelType&);
-    static U64 GetPixelByteSize(const WGPUTextureFormat&);
 
  private:
     WGPUTexture texture = nullptr;

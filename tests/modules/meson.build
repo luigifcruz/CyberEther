@@ -5,6 +5,7 @@ if catch2_dep.found() and module_test_lst.length() > 0
         'jetstream-modules-test-main',
         'main.cc',
         dependencies: module_test_dependencies,
+        include_directories: include_directories('../support'),
     )
     module_test_targets = []
 
@@ -17,6 +18,9 @@ if catch2_dep.found() and module_test_lst.length() > 0
             test_kind = 'module'
         elif test_filename == 'block_tests.cc'
             test_kind = 'block'
+        elif test_filename == 'tests.cc'
+            test_kind = 'device'
+            test_domain = module_test_fs.name(module_test_fs.parent(module_test_fs.parent(test_component_path)))
         else
             error('Unsupported module test source: ' + test_filename)
         endif
@@ -28,16 +32,21 @@ if catch2_dep.found() and module_test_lst.length() > 0
             dependencies: module_test_dependencies,
             link_with: module_test_main,
             include_directories: include_directories('../support'),
+            link_args: test_link_args,
+            link_depends: browser_exe_link_depends,
+            build_by_default: test_build_by_default,
         )
         module_test_targets += [test_target]
 
-        test(
-            'modules-' + test_name,
-            test_target,
-            suite: 'modules',
-            is_parallel: false,
-            timeout: 180,
-        )
+        if jst_is_browser
+            test('modules-' + test_name, node,
+                 args: [files('../browser/run.cjs'), test_target.full_path()],
+                 depends: test_target,
+                 suite: ['modules', 'wasm'], is_parallel: false, timeout: 180)
+        else
+            test('modules-' + test_name, test_target,
+                 suite: 'modules', is_parallel: false, timeout: 180)
+        endif
     endforeach
 
     alias_target(

@@ -17,13 +17,31 @@ constexpr Rect Intersect(Rect a, Rect b) {
     return {x0, y0, std::max(0.0f, x1 - x0), std::max(0.0f, y1 - y0)};
 }
 
+constexpr Rect Union(Rect a, Rect b) {
+    const F32 x0 = std::min(a.x, b.x);
+    const F32 y0 = std::min(a.y, b.y);
+    return {x0, y0, std::max(a.right(), b.right()) - x0, std::max(a.bottom(), b.bottom()) - y0};
+}
+
 constexpr Rect Inset(const Rect& rect, F32 inset) {
     return {rect.x + inset, rect.y + inset, std::max(0.0f, rect.width - 2.0f * inset),
             std::max(0.0f, rect.height - 2.0f * inset)};
 }
 
+constexpr bool Overlaps(const Rect& a, const Rect& b) {
+    return a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom();
+}
+
 constexpr Rect Inflate(const Rect& rect, F32 amount) {
     return {rect.x - amount, rect.y - amount, rect.width + 2.0f * amount, rect.height + 2.0f * amount};
+}
+
+inline Rect Snap(Rect rect) {
+    const F32 x0 = std::round(rect.x);
+    const F32 y0 = std::round(rect.y);
+    const F32 x1 = std::round(rect.x + rect.width);
+    const F32 y1 = std::round(rect.y + rect.height);
+    return {x0, y0, std::max(0.0f, x1 - x0), std::max(0.0f, y1 - y0)};
 }
 
 inline Extent2D<F32> PixelToNdc(const Extent2D<U64>& framebufferSize, F32 x, F32 y) {

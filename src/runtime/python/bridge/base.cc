@@ -4,9 +4,13 @@
 #include "runtime/python/bridge/cpython/base.hh"
 #include "runtime/python/bridge/prelude/bridge.hh"
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstddef>
 
 #include "jetstream/logger.hh"
+#include "jetstream/scheduler_context.hh"
 
 namespace Jetstream {
 
@@ -15,6 +19,7 @@ using namespace CPython;
 namespace {
 
 constexpr const char* kComputeErrorStatus = "Compute error.";
+constexpr double kMaxYieldDelay = 60.0;
 
 struct ThreadStateScope {
     CPython::PyThreadState* state = nullptr;
@@ -438,9 +443,14 @@ Result Bridge::run() {
         setError(kComputeErrorStatus);
         return Result::SKIP;
     }
-    const int skipRequested = PyObject_IsTrue(result);
+    auto* statusItem = PySequence_GetItem(result, 0);
+    auto* delayItem = PySequence_GetItem(result, 1);
     Py_DecRef(result);
-    if (skipRequested < 0) {
+    const long long status = statusItem ? PyLong_AsLongLong(statusItem) : -1;
+    const double delay = delayItem ? PyFloat_AsDouble(delayItem) : -1.0;
+    if (statusItem) { Py_DecRef(statusItem); }
+    if (delayItem) { Py_DecRef(delayItem); }
+    if (status < 0 || status > 2 || delay < 0.0) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't read Python compute() result.");
         setError(kComputeErrorStatus);
         return Result::SKIP;
@@ -452,7 +462,17 @@ Result Bridge::run() {
     (void)consoleRefresh();
     setInfo("Running.");
 
-    return skipRequested ? Result::SKIP : Result::SUCCESS;
+    if (status == 2) {
+        if (std::isfinite(delay)) {
+            const auto wait = std::chrono::duration<double>(std::min(delay, kMaxYieldDelay));
+            Scheduler::Context::NotifyPendingComputeAt(
+                std::chrono::steady_clock::now() +
+                std::chrono::ceil<std::chrono::steady_clock::duration>(wait));
+        }
+        return Result::YIELD;
+    }
+
+    return status == 1 ? Result::SKIP : Result::SUCCESS;
 }
 
 }  // namespace Jetstream

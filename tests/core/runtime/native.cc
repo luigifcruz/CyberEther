@@ -452,8 +452,9 @@ TEST_CASE("Native context defaults provide no-op runtime lifecycle", "[core][run
     REQUIRE(runtime.create({{"native_context_default", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules = {"stale"};
-    REQUIRE(runtime.compute({"native_context_default"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"native_context_default"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
     REQUIRE(module->timing().cycles == 1);
@@ -479,9 +480,11 @@ TEST_CASE("Native runtime follows the requested submission order", "[core][runti
     }) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules = {"stale"};
     REQUIRE(runtime.compute({"order_third", "order_first", "order_second"},
                             skippedModules,
+                            stalledModules,
                             failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
@@ -492,7 +495,7 @@ TEST_CASE("Native runtime follows the requested submission order", "[core][runti
     destroyModules(modules);
 }
 
-TEST_CASE("Native runtime resumes YIELD and TIMEOUT submissions", "[core][runtime][native]") {
+TEST_CASE("Native runtime stalls YIELD and TIMEOUT submissions with their consumers", "[core][runtime][native]") {
     for (const auto status : {Result::YIELD, Result::TIMEOUT}) {
         CAPTURE(status);
         auto& state = skipTestState();
@@ -509,16 +512,66 @@ TEST_CASE("Native runtime resumes YIELD and TIMEOUT submissions", "[core][runtim
         REQUIRE(runtime.create({{"poll_source", source}, {"poll_sink", sink}}) == Result::SUCCESS);
 
         std::unordered_set<std::string> skippedModules;
+        std::unordered_set<std::string> stalledModules;
         std::unordered_set<std::string> failedModules;
-        REQUIRE(runtime.compute({"poll_source", "poll_sink"}, skippedModules, failedModules) == status);
+        REQUIRE(runtime.compute({"poll_source", "poll_sink"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
+        REQUIRE(skippedModules.empty());
+        REQUIRE(stalledModules == std::unordered_set<std::string>{"poll_source", "poll_sink"});
         REQUIRE(failedModules.empty());
         REQUIRE(state.submissions == std::vector<std::string>{"poll_source"});
 
-        REQUIRE(runtime.compute({"poll_source", "poll_sink"}, skippedModules, failedModules) == Result::SUCCESS);
+        stalledModules.clear();
+        REQUIRE(runtime.compute({"poll_source", "poll_sink"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
         REQUIRE(skippedModules.empty());
+        REQUIRE(stalledModules.empty());
         REQUIRE(failedModules.empty());
         REQUIRE(state.submissions == std::vector<std::string>{
                                          "poll_source", "poll_source", "poll_sink"});
+
+        REQUIRE(runtime.destroy() == Result::SUCCESS);
+        destroyModules(modules);
+    }
+}
+
+TEST_CASE("Native runtime continues independent modules after a stall", "[core][runtime][native]") {
+    for (const auto status : {Result::YIELD, Result::TIMEOUT}) {
+        CAPTURE(status);
+        auto& state = skipTestState();
+        state.reset();
+        state.setResult("stall_source", status);
+
+        auto source = createModule("skip_test_source", "stall_source");
+        TensorMap sinkInputs;
+        sinkInputs["in"].produced("stall_source", "out", makeTensor());
+        auto sink = createModule("skip_test_passthrough", "stall_sink", sinkInputs);
+        auto other = createModule("skip_test_source", "stall_other");
+        TensorMap otherInputs;
+        otherInputs["in"].produced("stall_other", "out", makeTensor());
+        auto otherSink = createModule("skip_test_passthrough", "stall_other_sink", otherInputs);
+        std::vector<std::shared_ptr<Module>> modules = {source, sink, other, otherSink};
+
+        Runtime runtime("stall", DeviceType::CPU, RuntimeType::NATIVE);
+        REQUIRE(runtime.create({
+            {"stall_source", source},
+            {"stall_sink", sink},
+            {"stall_other", other},
+            {"stall_other_sink", otherSink},
+        }) == Result::SUCCESS);
+
+        std::unordered_set<std::string> skippedModules;
+        std::unordered_set<std::string> stalledModules;
+        std::unordered_set<std::string> failedModules;
+        REQUIRE(runtime.compute({"stall_source", "stall_sink", "stall_other", "stall_other_sink"},
+                                skippedModules,
+                                stalledModules,
+                                failedModules) == Result::SUCCESS);
+        REQUIRE(skippedModules.empty());
+        REQUIRE(stalledModules == std::unordered_set<std::string>{"stall_source", "stall_sink"});
+        REQUIRE(failedModules.empty());
+        REQUIRE(state.submissions == std::vector<std::string>{
+                                         "stall_source", "stall_other", "stall_other_sink"});
+        REQUIRE(source->timing().cycles == 0);
+        REQUIRE(otherSink->timing().cycles == 1);
 
         REQUIRE(runtime.destroy() == Result::SUCCESS);
         destroyModules(modules);
@@ -567,9 +620,11 @@ TEST_CASE("Native runtime stops and reports the failed module", "[core][runtime]
     state.setResult("failed_module_source", Result::ERROR);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules = {"stale"};
     REQUIRE(runtime.compute({"failed_module_source", "failed_module_later"},
                             skippedModules,
+                            stalledModules,
                             failedModules) == Result::ERROR);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules == std::unordered_set<std::string>{"failed_module_source"});
@@ -599,13 +654,15 @@ TEST_CASE("Native runtime propagates SKIP across compute barriers", "[core][runt
     state.setResult("barrier_source", Result::SKIP);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(upstream.compute({"barrier_source"}, skippedModules, failedModules) == Result::SUCCESS);
-    REQUIRE(downstream.compute({"barrier_sink"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(upstream.compute({"barrier_source"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
+    REQUIRE(downstream.compute({"barrier_sink"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
     REQUIRE(state.callCount("barrier_source") == 1);
     REQUIRE(state.callCount("barrier_sink") == 0);
-    REQUIRE(skippedModules == std::unordered_set<std::string>{"barrier_source", "barrier_sink"});
+    REQUIRE(skippedModules == std::unordered_set<std::string>{"barrier_source"});
+    REQUIRE(stalledModules == std::unordered_set<std::string>{"barrier_sink"});
     REQUIRE(failedModules.empty());
 
     REQUIRE(downstream.destroy() == Result::SUCCESS);
@@ -614,7 +671,7 @@ TEST_CASE("Native runtime propagates SKIP across compute barriers", "[core][runt
     REQUIRE(source->destroy() == Result::SUCCESS);
 }
 
-TEST_CASE("Native runtime skips fan-in consumers when any input skips", "[core][runtime][native]") {
+TEST_CASE("Native runtime stalls fan-in consumers when any input skips", "[core][runtime][native]") {
     auto& state = skipTestState();
     state.reset();
 
@@ -636,17 +693,19 @@ TEST_CASE("Native runtime skips fan-in consumers when any input skips", "[core][
     state.setResult("fanin_source_skip", Result::SKIP);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
     REQUIRE(runtime.compute({
         "fanin_source_skip",
         "fanin_source_run",
         "fanin_merge",
-    }, skippedModules, failedModules) == Result::SUCCESS);
+    }, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
     REQUIRE(state.callCount("fanin_source_skip") == 1);
     REQUIRE(state.callCount("fanin_source_run") == 1);
     REQUIRE(state.callCount("fanin_merge") == 0);
-    REQUIRE(skippedModules == std::unordered_set<std::string>{"fanin_source_skip", "fanin_merge"});
+    REQUIRE(skippedModules == std::unordered_set<std::string>{"fanin_source_skip"});
+    REQUIRE(stalledModules == std::unordered_set<std::string>{"fanin_merge"});
     REQUIRE(failedModules.empty());
 
     REQUIRE(runtime.destroy() == Result::SUCCESS);
@@ -768,8 +827,9 @@ TEST_CASE("Native runtime reports unknown requested module contexts",
     REQUIRE(runtime.create({{"known_context", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules = {"stale"};
-    REQUIRE(runtime.compute({"missing_context"}, skippedModules, failedModules) == Result::ERROR);
+    REQUIRE(runtime.compute({"missing_context"}, skippedModules, stalledModules, failedModules) == Result::ERROR);
     REQUIRE(failedModules == std::unordered_set<std::string>{"missing_context"});
     REQUIRE(state.submissions.empty());
 
@@ -791,9 +851,11 @@ TEST_CASE("Native runtime treats RELOAD as successful progress",
     REQUIRE(runtime.create({{"reload_source", source}, {"reload_later", later}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules = {"stale"};
     REQUIRE(runtime.compute({"reload_source", "reload_later"},
                             skippedModules,
+                            stalledModules,
                             failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());

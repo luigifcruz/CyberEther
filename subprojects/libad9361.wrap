@@ -1,0 +1,9 @@
+[wrap-file]
+directory = libad9361-iio-0.3
+source_url = https://github.com/analogdevicesinc/libad9361-iio/archive/refs/tags/v0.3.tar.gz
+source_filename = libad9361-iio-0.3.tar.gz
+source_hash = 1dc35dd997e1938a97489fa1f349ee16889f9de8901a2c7af46184468dc90598
+patch_directory = libad9361
+
+[provide]
+libad9361 = libad9361_dep

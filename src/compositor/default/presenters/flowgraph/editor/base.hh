@@ -14,7 +14,6 @@
 #include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_view.hh"
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -89,9 +88,11 @@ struct FlowgraphEditorPresenter {
             },
             .onReconfigureBlock = [enqueue, flowgraphId](const std::string& blockName,
                                                          Parser::Map blockConfig,
-                                                         const bool silent) {
+                                                         const bool silent,
+                                                         Sakura::Callback<void(Result)> onComplete) {
                 enqueue(MailReconfigureBlock{flowgraphId, blockName,
-                                             std::move(blockConfig), silent});
+                                             std::move(blockConfig), silent,
+                                             std::move(onComplete)});
             },
             .onConfigError =
                 [enqueue](const Result result, const std::string& message) {
@@ -99,7 +100,7 @@ struct FlowgraphEditorPresenter {
             },
             .onBrowseConfigPath = [enqueue](bool save,
                                             std::vector<std::string> extensions,
-                                            std::function<void(std::string)> onSelect) {
+                                            Sakura::Callback<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{
                     .path = "",
                     .save = save,
@@ -107,13 +108,21 @@ struct FlowgraphEditorPresenter {
                     .onSelect = std::move(onSelect),
                 });
             },
+            .onOpenUrl = [enqueue](const std::string& url) {
+                enqueue(MailOpenUrl{.url = url, .notifyResult = true});
+            },
             .onNodeLayout = [enqueue, flowgraphId](const std::string& blockName,
                                                    F32 x,
                                                    F32 y,
                                                    F32 width,
-                                                   F32 height) {
+                                                   F32 height,
+                                                   std::optional<FlowgraphNode::Layout> base) {
+                std::optional<NodeMeta> saved;
+                if (base.has_value()) {
+                    saved = NodeMeta{base->x, base->y, base->width, base->height};
+                }
                 enqueue(MailSetNodeMeta{
-                    flowgraphId, blockName, NodeMeta{x, y, width, height}});
+                    flowgraphId, blockName, NodeMeta{x, y, width, height}, saved});
             },
             .onNodeConfigCollapse = [enqueue, flowgraphId](const std::string& blockName,
                                                            bool collapsed) {
@@ -125,6 +134,28 @@ struct FlowgraphEditorPresenter {
                 enqueue(MailSetConfigDetached{
                     flowgraphId, blockName, detached});
             },
+        };
+
+        const auto& agent = context.state.agent;
+        EditorMeta editor;
+        if (flowgraph->metadata().tryGet("editor", editor)) {
+            config.view = Sakura::NodeEditor::View{.pan = {editor.x, editor.y}, .zoom = editor.zoom};
+        }
+        config.onViewChange = [enqueue, flowgraphId](Sakura::NodeEditor::View view) {
+            enqueue(MailSetEditorMeta{.flowgraph = flowgraphId, .meta = {view.pan.x, view.pan.y, view.zoom}});
+        };
+        config.measure = agent.chat.conversation.streaming || agent.voice.phase != Agent::Session::Phase::Idle ||
+                         !agent.mcp.url.empty();
+        config.paused = flowgraph->paused();
+        config.onTogglePause = [enqueue, flowgraphId, paused = config.paused]() {
+            enqueue(MailSetFlowgraphPaused{.flowgraph = flowgraphId, .paused = !paused});
+        };
+        config.onSave = [enqueue, flowgraphId]() {
+            enqueue(MailSaveFlowgraph{.flowgraph = flowgraphId});
+        };
+        config.onToggleEnvironment = [enqueue, flowgraphId,
+                                      open = context.state.flowgraph.environment.contains(flowgraphId)]() {
+            enqueue(MailSetFlowgraphEnvironmentVisible{.flowgraph = flowgraphId, .value = !open});
         };
 
         const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);

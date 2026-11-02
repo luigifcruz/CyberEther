@@ -19,6 +19,7 @@ struct FrameImplNativeCpu : public FrameImpl,
     Result create() final;
 
     Result presentInitialize() override;
+    Result presentCapture() override;
     Result presentSubmit() override;
     Result computeSubmit() override;
 };
@@ -53,11 +54,17 @@ Result FrameImplNativeCpu::presentInitialize() {
     return createPresent();
 }
 
+Result FrameImplNativeCpu::presentCapture() {
+    return capture();
+}
+
 Result FrameImplNativeCpu::presentSubmit() {
     return present();
 }
 
 Result FrameImplNativeCpu::computeSubmit() {
+    updateFrameFlag = true;
+
     if (!autoRange || input.size() == 0 || channels == 0) {
         return Result::SUCCESS;
     }
@@ -81,8 +88,8 @@ Result FrameImplNativeCpu::computeSubmit() {
     }
 
     if (lower <= upper) {
-        autoRangeMin.store(lower);
-        autoRangeMax.store(upper);
+        autoRangeMin = lower;
+        autoRangeMax = upper;
     }
 
     return Result::SUCCESS;

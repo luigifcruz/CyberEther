@@ -72,7 +72,7 @@ struct FlowgraphConfigVectorField {
         std::vector<Sakura::NodeFieldGrid::Item> items;
         for (U64 i = 0; i < count; ++i) {
             frames[i]->update({
-                .id = config.id + "Frame" + std::to_string(i),
+                .id = jst::fmt::format("{}Frame{}", config.id, i),
                 .label = config.label,
                 .tooltip = help.overlay(),
                 .content = valueType == "float" ? static_cast<Sakura::Component*>(floatInputs[i].get())
@@ -87,7 +87,7 @@ struct FlowgraphConfigVectorField {
         if (valueType == "float") {
             for (U64 i = 0; i < count; ++i) {
                 floatInputs[i]->update({
-                    .id = config.id + "Float" + std::to_string(i),
+                    .id = jst::fmt::format("{}Float{}", config.id, i),
                     .value = floatValues[i] / multiplier,
                     .unit = unit,
                     .precision = precision,
@@ -99,7 +99,7 @@ struct FlowgraphConfigVectorField {
                         }
                         patch[config.name] = nextValues;
                         if (config.onApply) {
-                            config.onApply(std::move(patch), false);
+                            config.onApply(std::move(patch), false, {});
                         }
                     },
                 });
@@ -107,7 +107,7 @@ struct FlowgraphConfigVectorField {
         } else if (valueType == "uint") {
             for (U64 i = 0; i < count; ++i) {
                 uintInputs[i]->update({
-                    .id = config.id + "UInt" + std::to_string(i),
+                    .id = jst::fmt::format("{}UInt{}", config.id, i),
                     .value = uintValues[i],
                     .unit = unit,
                     .onChange = [this, i](U64 value) {
@@ -118,7 +118,7 @@ struct FlowgraphConfigVectorField {
                         }
                         patch[config.name] = nextValues;
                         if (config.onApply) {
-                            config.onApply(std::move(patch), false);
+                            config.onApply(std::move(patch), false, {});
                         }
                     },
                 });

@@ -1,5 +1,4 @@
 #include "cocoa_titlebar.hh"
-#include "imgui_impl_glfw_internal.hh"
 
 #define GLFW_INCLUDE_NONE
 #define GLFW_EXPOSE_NATIVE_COCOA
@@ -12,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <mutex>
+#include <utility>
 
 namespace Jetstream::Viewport {
 
@@ -45,7 +45,6 @@ struct CocoaTitlebar::State {
     id monitor = nil;
     NSMutableArray* observers = nil;
     NSEvent* pressEvent = nil;
-    std::function<void()> releaseLeftButton;
     std::mutex dragMutex;
     U64 generation = 0;
     bool pressed = false;
@@ -64,15 +63,27 @@ struct CocoaTitlebar::State {
     NSTitlebarSeparatorStyle originalSeparatorStyle = NSTitlebarSeparatorStyleAutomatic;
     BOOL originalMovable = NO;
     std::array<NSRect, 3> originalButtonFrames{};
+    std::function<void()> release;
+
+    void releaseLeftButton() {
+        std::function<void()> callback;
+        {
+            std::lock_guard lock(mutex);
+            callback = release;
+        }
+        if (callback) {
+            callback();
+        }
+    }
 
     void finishDrag(U64 expected = 0) {
-        bool release;
+        bool released;
         {
             std::lock_guard lock(dragMutex);
             if (expected && generation != expected) {
                 return;
             }
-            release = pending || dragging;
+            released = pending || dragging;
             ++generation;
             pressed = false;
             pending = false;
@@ -81,10 +92,9 @@ struct CocoaTitlebar::State {
         if (window) {
             [window setMovable:NO];
         }
-        if (release && releaseLeftButton) {
+        if (released) {
             releaseLeftButton();
         }
-        releaseLeftButton = {};
         [pressEvent release];
         pressEvent = nil;
     }
@@ -95,7 +105,6 @@ struct CocoaTitlebar::State {
             return;
         }
         pressEvent = [event retain];
-        releaseLeftButton = ImGui_ImplGlfw_MakeLeftButtonRelease(handle);
         std::lock_guard lock(dragMutex);
         pressed = true;
         requested = false;
@@ -163,7 +172,7 @@ struct CocoaTitlebar::State {
             const NSSize size = [buttons[i] frame].size;
             const CGFloat margin = std::round((TitlebarHeight - size.height) / 2.0);
             const CGFloat drop = [[buttons[i] superview] isFlipped] ? RowDrop : -RowDrop;
-            const NSPoint origin = NSMakePoint(margin + static_cast<CGFloat>(i) * spacing, margin + drop);
+            const NSPoint origin = NSMakePoint(margin + RowDrop + static_cast<CGFloat>(i) * spacing, margin + drop);
             if (!NSEqualPoints([buttons[i] frame].origin, origin)) {
                 [buttons[i] setFrameOrigin:origin];
             }
@@ -253,7 +262,9 @@ struct CocoaTitlebar::State {
     }
 };
 
-CocoaTitlebar::CocoaTitlebar(GLFWwindow* handle) : state(std::make_shared<State>()) {
+CocoaTitlebar::CocoaTitlebar(GLFWwindow* handle, std::function<void()> releaseLeftButton)
+    : state(std::make_shared<State>()) {
+    state->release = std::move(releaseLeftButton);
     @autoreleasepool {
         NSWindow* window = glfwGetCocoaWindow(handle);
         if (!window) {
@@ -296,6 +307,10 @@ CocoaTitlebar::CocoaTitlebar(GLFWwindow* handle) : state(std::make_shared<State>
 
 CocoaTitlebar::~CocoaTitlebar() {
     state->finishDrag();
+    {
+        std::lock_guard lock(state->mutex);
+        state->release = nullptr;
+    }
     if (state->monitor) {
         [NSEvent removeMonitor:state->monitor];
         state->monitor = nil;
@@ -336,6 +351,23 @@ void CocoaTitlebar::poll() {
         state->layout();
         state->measure();
     }
+}
+
+bool CocoaTitlebar::SetAppearance(GLFWwindow* handle, bool dark) {
+    NSWindow* window = handle ? [glfwGetCocoaWindow(handle) retain] : nil;
+    if (!window) {
+        return false;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            NSString* name = dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua;
+            if (![[[window appearance] name] isEqualToString:name]) {
+                [window setAppearance:[NSAppearance appearanceNamed:name]];
+            }
+            [window release];
+        }
+    });
+    return true;
 }
 
 Render::TitlebarChrome CocoaTitlebar::chrome() const {

@@ -2,15 +2,19 @@
 
 #include <any>
 #include <algorithm>
+#include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "flowgraph_fixture.hh"
+#include "jetstream/block_context.hh"
 #include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/visualization/spectrum_analyzer/block.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/scheduler.hh"
 
 using namespace Jetstream;
 
@@ -343,8 +347,92 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(hasConfig("lineplotAveraging"));
     REQUIRE(hasConfig("waterfallHeight"));
 
+    REQUIRE(hasConfig("density"));
+    REQUIRE_FALSE(hasConfig("persistence"));
+
+    Parser::Map withDensity;
+    withDensity["density"] = true;
+    withDensity["persistence"] = U64{64};
+    REQUIRE(flowgraph->blockReconfigure("analyzer", withDensity) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").state == Block::State::Created);
+    REQUIRE(viewBlock("analyzer").surfaces.size() == 1);
+    REQUIRE(hasConfig("persistence"));
+    REQUIRE(hasConfig("waterfallHeight"));
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
     Parser::Map invalid;
     invalid["mode"] = std::string("surface");
     REQUIRE(flowgraph->blockReconfigure("analyzer", invalid) == Result::SUCCESS);
     REQUIRE(viewBlock("analyzer").state == Block::State::Errored);
+}
+
+TEST_CASE("Spectrum Analyzer skips its window only for synthetic sweep spectra",
+          "[modules][spectrum-analyzer][block][sweep]") {
+    Tensor input(DeviceType::CPU, DataType::CF32, {1, 65});
+    REQUIRE(SetSignalAxes(input, {
+        .sample = Index{1},
+        .batch = Index{0},
+    }) == Result::SUCCESS);
+    std::vector<std::string> expected = {
+        "window", "invert", "reshape_window", "multiply", "fft", "amplitude", "range", "signal_view",
+    };
+    SECTION("ordinary samples") {}
+    SECTION("sweep metadata marking captured samples") {
+        REQUIRE(input.setAttribute("sweepSynthetic", false) == Result::SUCCESS);
+    }
+    SECTION("synthetic sweep") {
+        REQUIRE(input.setAttribute("sweepSynthetic", true) == Result::SUCCESS);
+        expected = {"invert", "fft", "amplitude", "range", "signal_view"};
+    }
+
+    const auto scheduler = std::make_shared<Scheduler>(SchedulerType::SYNCHRONOUS);
+    REQUIRE(scheduler->create(nullptr) == Result::SUCCESS);
+    std::shared_ptr<Block> block;
+    REQUIRE(Registry::BuildBlock("spectrum_analyzer", block) == Result::SUCCESS);
+
+    Blocks::SpectrumAnalyzer analyzer;
+    analyzer.waterfallHeight = 8;
+    Parser::Map config;
+    REQUIRE(analyzer.serialize(config) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["buffer"].produced("source", "signal", input);
+    const auto context = std::make_shared<Block::Context>(nullptr, nullptr, scheduler, nullptr, nullptr);
+    REQUIRE(block->create("analyzer", DeviceType::CPU, RuntimeType::NATIVE, "generic",
+                          config, inputs, context) == Result::SUCCESS);
+    REQUIRE(block->state() == Block::State::Created);
+    REQUIRE(block->modules() == expected);
+
+    std::unordered_set<std::string> failed;
+    REQUIRE(scheduler->compute(failed) == Result::SUCCESS);
+    REQUIRE(failed.empty());
+    REQUIRE(block->destroy() == Result::SUCCESS);
+    REQUIRE(scheduler->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum Analyzer rejects malformed sweep metadata",
+                 "[modules][spectrum-analyzer][block][validation][metadata][sweep]") {
+    Blocks::OnesTensor source;
+    source.shape = {1, 64};
+    source.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("src", source, {}) == Result::SUCCESS);
+    Tensor sourceTensor = viewBlock("src").outputs.at("buffer").tensor;
+    REQUIRE(SetSignalAxes(sourceTensor, {
+        .sample = Index{1},
+        .batch = Index{0},
+    }) == Result::SUCCESS);
+    REQUIRE(sourceTensor.setAttribute("sweepSynthetic", std::string("yes")) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("src", "buffer");
+    Blocks::SpectrumAnalyzer config;
+    config.waterfallHeight = 8;
+    REQUIRE(flowgraph->blockCreate("analyzer", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").state == Block::State::Errored);
+
+    REQUIRE(sourceTensor.setAttribute("sweepSynthetic", true) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockDestroy("analyzer", false) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("analyzer", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
 }

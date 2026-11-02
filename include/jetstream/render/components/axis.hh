@@ -18,11 +18,15 @@ class JETSTREAM_API Axis : public Generic {
  public:
     using TickFormatter = std::function<std::string(F32)>;
 
+    static constexpr U64 AttachedMinorTicks = 2;
+    static constexpr U64 DetachedMinorTicks = 4;
+
     struct Config {
         F32 thickness = 1.0f;
         bool showInteriorGrid = true;
         F32 verticalScale = 1.0f;
         bool showFrameTicks = false;
+        U64 minorTicks = DetachedMinorTicks;
         F32 majorTickLengthPx = 16.0f;
         F32 minorTickLengthPx = 12.0f;
         F32 minXLabelSpacingPx = 150.0f;
@@ -55,6 +59,7 @@ class JETSTREAM_API Axis : public Generic {
     Result updateScissorRect(const Render::ScissorRect& rect);
 
     Result setShowFrameTicks(bool visible);
+    Result setMinorTicks(U64 count);
 
     Result updateColors(const ColorRGBA<F32>& gridColor,
                         const ColorRGBA<F32>& majorGridColor,

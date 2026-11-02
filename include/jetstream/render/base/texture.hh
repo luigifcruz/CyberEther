@@ -4,6 +4,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
@@ -95,6 +96,7 @@ class JETSTREAM_API Texture : public WindowAttachment {
 
  protected:
     Result validateFillRow(const U64& y, const U64& height) const;
+    virtual Result underlyingDump(uint8_t* output) const;
 
     void markAllocated() {
         allocationLive.store(true, std::memory_order_release);
@@ -109,6 +111,7 @@ class JETSTREAM_API Texture : public WindowAttachment {
 
     U64 pixelByteSize() const;
  private:
+    Result dump(std::vector<U8>& output) const;
     Result fillRowLocked(const U64& y, const U64& height);
     void restorePendingUploads(std::vector<Transfer::PendingUpload> uploads);
 
@@ -123,6 +126,7 @@ class JETSTREAM_API Texture : public WindowAttachment {
 
     friend class Transfer;
     friend class Transfer::Batch;
+    friend class Window;
 };
 
 }  // namespace Jetstream::Render

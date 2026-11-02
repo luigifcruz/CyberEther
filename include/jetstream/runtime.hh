@@ -33,6 +33,7 @@ class JETSTREAM_API Runtime {
 
     Result compute(const std::vector<std::string>& modules,
                    std::unordered_set<std::string>& skippedModules,
+                   std::unordered_set<std::string>& stalledModules,
                    std::unordered_set<std::string>& failedModules);
 
  private:

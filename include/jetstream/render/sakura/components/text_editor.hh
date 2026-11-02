@@ -25,7 +25,7 @@ struct TextEditor : public Component {
         std::string value;
         F32 fontSize = Typography::FontSize;
         F32 lineHeight = Typography::CodeLineHeight;
-        std::string fontName = "default_mono";
+        std::string fontName = Typography::MonoFont;
         bool monospace = true;
         bool lineNumbers = true;
         bool showActiveLine = false;
@@ -58,6 +58,7 @@ struct TextEditor : public Component {
     ~TextEditor();
 
     void update(Config config);
+    const TextGrid::Metrics& metrics() const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

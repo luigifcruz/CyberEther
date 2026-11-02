@@ -1,0 +1,9 @@
+[wrap-file]
+directory = libiio-0.26
+source_url = https://github.com/analogdevicesinc/libiio/archive/refs/tags/v0.26.tar.gz
+source_filename = libiio-0.26.tar.gz
+source_hash = fb445fb860ef1248759f45d4273a4eff360534480ec87af64c6b8db3b99be7e5
+patch_directory = libiio
+
+[provide]
+libiio = libiio_dep

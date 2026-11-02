@@ -1,0 +1,112 @@
+diff --git a/httplib.h b/httplib.h
+--- a/httplib.h
++++ b/httplib.h
+@@ -2045,6 +2045,10 @@
+ 
+ protected:
+   Error error_ = Error::Success;
++#ifdef _WIN32
++  const std::atomic<bool> *cancelled_ = nullptr;
++  friend class ClientImpl;
++#endif
+ };
+ 
+ class TaskQueue {
+@@ -3023,6 +3027,9 @@
+   size_t socket_requests_in_flight_ = 0;
+   std::thread::id socket_requests_are_from_thread_ = std::thread::id();
+   bool socket_should_be_closed_when_request_is_done_ = false;
++#ifdef _WIN32
++  std::atomic<bool> socket_cancelled_{false};
++#endif
+ 
+   // Hostname to connection target map. The value is an IP literal or another
+   // hostname; only the connection target changes, never the identity.
+@@ -6721,6 +6728,32 @@
+   return select_impl(sock, POLLOUT, sec, usec);
+ }
+ 
++#ifdef _WIN32
++// Winsock shutdown does not reliably wake WSAPoll. Bound each wait so
++// ClientImpl::stop() also interrupts a blocked write, preserving the full
++// write timeout when the request has not been cancelled.
++inline ssize_t select_write(socket_t sock, time_t sec, time_t usec,
++                            const std::atomic<bool> *cancelled) {
++  if (!cancelled) { return select_write(sock, sec, usec); }
++
++  auto timeout = sec < 0 ? -1 : static_cast<int>(sec * 1000 + usec / 1000);
++  const auto deadline = std::chrono::steady_clock::now() +
++                        std::chrono::milliseconds(timeout);
++  while (!cancelled->load()) {
++    auto interval = timeout < 0 ? 20 : (std::min)(timeout, 20);
++    auto ret = select_impl(sock, POLLOUT, 0, interval * 1000);
++    if (ret != 0 || timeout == 0) { return ret; }
++    if (timeout > 0) {
++      const auto remaining = deadline - std::chrono::steady_clock::now();
++      if (remaining <= std::chrono::steady_clock::duration::zero()) { return 0; }
++      timeout = static_cast<int>(
++          std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count());
++    }
++  }
++  return -1;
++}
++#endif
++
+ // The point sec and usec from now, for select_until(). A negative sec never
+ // comes, as a negative timeout waits forever in select_impl().
+ inline std::chrono::steady_clock::time_point deadline_after(time_t sec,
+@@ -12662,7 +12695,11 @@
+ }
+ 
+ inline bool SocketStream::wait_writable() const {
++#ifdef _WIN32
++  return select_write(sock_, write_timeout_sec_, write_timeout_usec_, cancelled_) > 0;
++#else
+   return select_write(sock_, write_timeout_sec_, write_timeout_usec_) > 0;
++#endif
+ }
+ 
+ inline bool SocketStream::ensure_readable() {
+@@ -13233,7 +13270,11 @@
+ }
+ 
+ inline bool SSLSocketStream::wait_writable() const {
++#ifdef _WIN32
++  return select_write(sock_, write_timeout_sec_, write_timeout_usec_, cancelled_) > 0 &&
++#else
+   return select_write(sock_, write_timeout_sec_, write_timeout_usec_) > 0 &&
++#endif
+          !tls::is_peer_closed(session_, sock_);
+ }
+ 
+@@ -15651,6 +15692,9 @@
+     // of the request, we know another thread instructed us to close the
+     // socket.
+     socket_should_be_closed_when_request_is_done_ = false;
++#ifdef _WIN32
++    socket_cancelled_ = false;
++#endif
+ 
+     auto is_alive = false;
+     if (socket_.is_open()) {
+@@ -15717,6 +15761,10 @@
+   });
+ 
+   ret = process_socket(socket_, req.start_time_, [&](Stream &strm) {
++#ifdef _WIN32
++    strm.cancelled_ = &socket_cancelled_;
++    strm.set_read_interrupt([this] { return socket_cancelled_.load(); });
++#endif
+     return handle_request(strm, req, res, close_connection, error);
+   });
+ 
+@@ -17920,6 +17968,9 @@
+     // Aside from that, we set a flag for the socket to be closed when we're
+     // done.
+     socket_should_be_closed_when_request_is_done_ = true;
++#ifdef _WIN32
++    socket_cancelled_ = true;
++#endif
+     return;
+   }
+ 

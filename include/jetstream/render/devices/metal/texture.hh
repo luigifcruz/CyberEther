@@ -20,6 +20,8 @@ class JETSTREAM_API TextureImp<DeviceType::Metal> : public Texture {
     }
 
  protected:
+    Result underlyingDump(uint8_t* output) const override;
+
     constexpr MTL::PixelFormat getPixelFormat() const {
         return pixelFormat;
     }
@@ -34,7 +36,6 @@ class JETSTREAM_API TextureImp<DeviceType::Metal> : public Texture {
 
     static MTL::PixelFormat ConvertPixelFormat(const PixelFormat&,
                                                const PixelType&);
-    static U64 GetPixelByteSize(const MTL::PixelFormat&);
 
  private:
     MTL::Texture* texture = nullptr;

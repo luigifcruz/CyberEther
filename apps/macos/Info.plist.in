@@ -38,6 +38,9 @@
     <key>LSMinimumSystemVersion</key>
     <string>@MIN_MACOS@</string>
 
+    <key>NSMicrophoneUsageDescription</key>
+    <string>@APP_NAME@ uses the microphone for voice conversations with the agent.</string>
+
     <key>NSHighResolutionCapable</key>
     <true/>
 

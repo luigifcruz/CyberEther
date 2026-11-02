@@ -7,7 +7,6 @@
 namespace SakuraTest {
 
 struct Scene {
-    ImGuiContextGuard imgui;
     MonoFontWindow window;
     Jetstream::Sakura::Context ctx;
 

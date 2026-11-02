@@ -12,7 +12,6 @@
 namespace SakuraTest {
 
 struct Typist {
-    SakuraTest::HeadlessUi ui{1.0f, ImVec2(800.0f, 600.0f)};
     MonoFontWindow window;
     Jetstream::Sakura::Context ctx = MakeContext();
     std::function<void()> place;
@@ -23,7 +22,7 @@ struct Typist {
     }
 
     void frame() {
-        ui.frame([&] { place(); });
+        window.frame([&] { place(); });
     }
 
     void type(const std::string& text) {

@@ -7,6 +7,7 @@
 
 #include "common.hh"
 #include "lineplot.hh"
+#include "density.hh"
 #include "waterfall.hh"
 #include "waterfall_3d.hh"
 
@@ -34,6 +35,7 @@ struct SignalViewImpl : public Module::Impl,
     bool lineplotAveragingInitialized = false;
     bool waterfallEnabled = false;
     bool waterfall3dEnabled = false;
+    bool densityEnabled = false;
     U64 waterfallAveragingCount = 0;
 
     U64 validatedNumberOfElements = 0;
@@ -44,6 +46,7 @@ struct SignalViewImpl : public Module::Impl,
     bool validatedLineplotEnabled = false;
     bool validatedWaterfallEnabled = false;
     bool validatedWaterfall3dEnabled = false;
+    bool validatedDensityEnabled = false;
 
     Tensor signalPoints;
     Tensor signalVertices;
@@ -57,18 +60,27 @@ struct SignalViewImpl : public Module::Impl,
     Tensor waterfallBins;
     WaterfallHistory waterfallHistory;
 
+    Tensor densityBins;
+    WaterfallHistory densityHistory;
+
+    SignalViewFrequency inputFrequency;
+
     SignalViewCanvas canvas;
     SignalViewLineplot lineplot;
     SignalViewWaterfall waterfall;
     SignalViewWaterfall3D waterfall3d;
+    SignalViewDensity densityMap;
     bool updateLayoutFlag = false;
+    bool redrawFlag = false;
 
     Result createPresent();
     Result destroyPresent();
+    Result capture();
     Result present();
 
     SignalViewCanvas::Context canvasContext();
     WaterfallFrame waterfallFrame() const;
+    WaterfallFrame densityFrame() const;
     SignalViewWaterfall3DLabels waterfall3dLabels() const;
     Result resetLineplotHistory();
     Result resetHistoryState();

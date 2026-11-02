@@ -42,6 +42,7 @@ struct SpectrumAnalyzerImpl : public Block::Impl,
         Index sampleAxis = 0;
         U64 windowSize = 0;
         std::string windowShape;
+        bool synthetic = false;
     };
 
     std::shared_ptr<Modules::Window> windowConfig =
@@ -106,8 +107,15 @@ Result SpectrumAnalyzerImpl::validate() {
         }
     }
 
+    std::optional<bool> synthetic;
+    if (ReadAttribute(inputTensor, "sweepSynthetic", synthetic) != Result::SUCCESS) {
+        JST_ERROR("[BLOCK_SPECTRUM_ANALYZER] Input sweep metadata is invalid.");
+        return Result::ERROR;
+    }
+
     CandidatePlan plan;
     plan.sampleAxis = *axes.sample;
+    plan.synthetic = synthetic.value_or(false);
     plan.windowSize = inputTensor.shape(plan.sampleAxis);
     plan.windowShape = "[";
     for (Index dimension = 0; dimension < inputTensor.rank(); ++dimension) {
@@ -137,6 +145,8 @@ Result SpectrumAnalyzerImpl::configure() {
     signalViewConfig->rangeMax = rangeMax;
     signalViewConfig->waterfallHeight = waterfallHeight;
     signalViewConfig->colormap = colormap;
+    signalViewConfig->density = density;
+    signalViewConfig->persistence = persistence;
     signalViewConfig->splitRatio = splitRatio;
     signalViewConfig->markers = markers;
     signalViewConfig->pins = pins;
@@ -155,7 +165,7 @@ Result SpectrumAnalyzerImpl::define() {
     JST_CHECK(defineInterfaceConfig("mode", "Mode",
                                     "Which views the analyzer renders.",
                                     {{"type", "dropdown"}, {"options", Parser::Sequence{
-                                        Parser::Map{{"label", "Lineplot + Waterfall"}, {"value", "lineplot_waterfall"}},
+                                        Parser::Map{{"label", "Spectrum + Waterfall"}, {"value", "lineplot_waterfall"}},
                                         Parser::Map{{"label", "Spectrum"}, {"value", "lineplot"}},
                                         Parser::Map{{"label", "Waterfall"}, {"value", "waterfall"}},
                                         Parser::Map{{"label", "3D Waterfall"}, {"value", "waterfall_3d"}},
@@ -172,7 +182,7 @@ Result SpectrumAnalyzerImpl::define() {
                                     "Maximum displayed amplitude.",
                                     {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}, {"unit", "dBFS"}}));
     if (SpectrumAnalyzerHasLineplot(candidateMode)) {
-        JST_CHECK(defineInterfaceConfig("lineplotAveraging", "Lineplot Averaging",
+        JST_CHECK(defineInterfaceConfig("lineplotAveraging", "Spectrum Averaging",
                                         "Trace smoothing factor.",
                                         {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"value_type", "uint"}}));
     }
@@ -185,6 +195,14 @@ Result SpectrumAnalyzerImpl::define() {
         JST_CHECK(defineInterfaceConfig("maxHold", "Max Hold",
                                         "Enable maximum hold trace.",
                                         {{"type", "bool"}}));
+        JST_CHECK(defineInterfaceConfig("density", "Spectral Density",
+                                        "Enable spectral density behind the trace.",
+                                        {{"type", "bool"}}));
+        if (candidate()->density) {
+            JST_CHECK(defineInterfaceConfig("persistence", "Persistence",
+                                            "Number of spectra for the density to fade to half.",
+                                            {{"type", "range"}, {"min", 1.0f}, {"max", 4096.0f}, {"value_type", "uint"}, {"unit", "spectra"}}));
+        }
     }
     if (SpectrumAnalyzerHasWaterfall(candidateMode)) {
         JST_CHECK(defineInterfaceConfig("waterfallHeight", "Waterfall Height",
@@ -201,35 +219,45 @@ Result SpectrumAnalyzerImpl::create() {
         return Result::ERROR;
     }
 
-    windowConfig->size = candidatePlan->windowSize;
-    reshapeWindowConfig->shape = candidatePlan->windowShape;
+    if (candidatePlan->synthetic) {
+        JST_CHECK(moduleCreate("invert", invertConfig, {
+            {"signal", inputs().at("buffer")}
+        }));
 
-    JST_CHECK(moduleCreate("window", windowConfig, {}));
-    auto windowOutput = moduleGetOutput({"window", "window"});
-    JST_CHECK(SetSignalAxes(windowOutput.tensor, {
-        .sample = Index{0},
-    }));
+        JST_CHECK(moduleCreate("fft", fftConfig, {
+            {"signal", moduleGetOutput({"invert", "signal"})}
+        }));
+    } else {
+        windowConfig->size = candidatePlan->windowSize;
+        reshapeWindowConfig->shape = candidatePlan->windowShape;
 
-    JST_CHECK(moduleCreate("invert", invertConfig, {
-        {"signal", windowOutput}
-    }));
+        JST_CHECK(moduleCreate("window", windowConfig, {}));
+        auto windowOutput = moduleGetOutput({"window", "window"});
+        JST_CHECK(SetSignalAxes(windowOutput.tensor, {
+            .sample = Index{0},
+        }));
 
-    JST_CHECK(moduleCreate("reshape_window", reshapeWindowConfig, {
-        {"buffer", moduleGetOutput({"invert", "signal"})}
-    }));
-    auto reshapedWindow = moduleGetOutput({"reshape_window", "buffer"});
-    JST_CHECK(SetSignalAxes(reshapedWindow.tensor, {
-        .sample = candidatePlan->sampleAxis,
-    }));
+        JST_CHECK(moduleCreate("invert", invertConfig, {
+            {"signal", windowOutput}
+        }));
 
-    JST_CHECK(moduleCreate("multiply", multiplyConfig, {
-        {"a", inputs().at("buffer")},
-        {"b", reshapedWindow}
-    }));
+        JST_CHECK(moduleCreate("reshape_window", reshapeWindowConfig, {
+            {"buffer", moduleGetOutput({"invert", "signal"})}
+        }));
+        auto reshapedWindow = moduleGetOutput({"reshape_window", "buffer"});
+        JST_CHECK(SetSignalAxes(reshapedWindow.tensor, {
+            .sample = candidatePlan->sampleAxis,
+        }));
 
-    JST_CHECK(moduleCreate("fft", fftConfig, {
-        {"signal", moduleGetOutput({"multiply", "product"})}
-    }));
+        JST_CHECK(moduleCreate("multiply", multiplyConfig, {
+            {"a", inputs().at("buffer")},
+            {"b", reshapedWindow}
+        }));
+
+        JST_CHECK(moduleCreate("fft", fftConfig, {
+            {"signal", moduleGetOutput({"multiply", "product"})}
+        }));
+    }
 
     JST_CHECK(moduleCreate("amplitude", amplitudeConfig, {
         {"signal", moduleGetOutput({"fft", "signal"})}

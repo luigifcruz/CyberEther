@@ -84,7 +84,6 @@ struct PopupLifetimeFixture {
 
 TEST_CASE("Popup backgrounds reclaim dead contents and release their attachment programs without disturbing open caches",
           "[core][sakura][popup-lifetime]") {
-    const SakuraTest::ImGuiContextGuard imgui;
     PopupLifetimeFixture fixture;
     PopupContent persistent;
     fixture.requester.show({&persistent});

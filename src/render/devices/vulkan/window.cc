@@ -4,8 +4,7 @@
 #include "jetstream/render/devices/vulkan/surface.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
-#include "tools/imgui_impl_vulkan.h"
-#include "jetstream/render/tools/imgui_blend_ext.h"
+#include "presenter.hh"
 
 const size_t MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -17,6 +16,8 @@ Implementation::WindowImp(const Config& config,
                           const std::shared_ptr<Viewport::Adapter<DeviceType::Vulkan>>& viewport)
          : Window(config), viewport(viewport) {
 }
+
+Implementation::~WindowImp() = default;
 
 Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
     auto _resource = std::dynamic_pointer_cast<SurfaceImp<DeviceType::Vulkan>>(surface);
@@ -44,10 +45,6 @@ Result Implementation::underlyingCreate() {
     auto& headless = Backend::State<DeviceType::Vulkan>()->headless();
     auto& physicalDevice = Backend::State<DeviceType::Vulkan>()->getPhysicalDevice();
 
-    // Reseting internal variables.
-
-    statsData.droppedFrames = 0;
-    statsData.recreatedFrames = 0;
     transferEncoder.create(MAX_FRAMES_IN_FLIGHT);
 
     // Create render pass.
@@ -133,9 +130,10 @@ Result Implementation::underlyingCreate() {
 
     // Create submodules.
 
-    JST_CHECK(createImgui());
+    JST_CHECK(createPresenter());
     JST_CHECK(createFramebuffer());
     JST_CHECK(createSynchronizationObjects());
+    this->updateMetrics(*viewport);
 
     windowCreated = true;
     return Result::SUCCESS;
@@ -156,12 +154,9 @@ Result Implementation::underlyingDestroy() {
 
     destroySynchronizationObjects();
     destroyFramebuffer();
-    if (imguiCreated) {
-        const Result imguiResult = destroyImgui();
-        if ((result == Result::SUCCESS || result == Result::RELOAD) &&
-            imguiResult != Result::SUCCESS && imguiResult != Result::RELOAD) {
-            result = imguiResult;
-        }
+    if (presenter) {
+        presenter->destroy();
+        presenter.reset();
     }
 
     transferEncoder.destroy();
@@ -188,7 +183,7 @@ Result Implementation::underlyingDestroy() {
     return result;
 }
 
-Result Implementation::recreate() {
+Result Implementation::underlyingRecreate() {
     JST_CHECK(underlyingSynchronize());
 
     JST_CHECK(destroySynchronizationObjects());
@@ -244,90 +239,13 @@ Result Implementation::destroyFramebuffer() {
     return Result::SUCCESS;
 }
 
-Result Implementation::createImgui() {
-    JST_DEBUG("[VULKAN] Creating ImGui.");
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-
-    io = &ImGui::GetIO();
-    style = &ImGui::GetStyle();
-    io->IniFilename = nullptr;
-
-    Result viewportResult;
-    try {
-        viewportResult = viewport->createImgui();
-    } catch (...) {
-        ImGui::DestroyContext();
-        io = nullptr;
-        style = nullptr;
-        throw;
+Result Implementation::createPresenter() {
+    presenter = std::make_unique<Presenter>();
+    const Result result = presenter->create(renderPass, MAX_FRAMES_IN_FLIGHT);
+    if (result != Result::SUCCESS) {
+        presenter.reset();
     }
-    if (viewportResult != Result::SUCCESS && viewportResult != Result::RELOAD) {
-        ImGui::DestroyContext();
-        io = nullptr;
-        style = nullptr;
-        return viewportResult;
-    }
-
-    try {
-        this->updateScalingFactor(*viewport);
-
-        auto& backend = Backend::State<DeviceType::Vulkan>();
-
-        ImGui_ImplVulkan_InitInfo init_info{};
-        init_info.Instance = backend->getInstance();
-        init_info.PhysicalDevice = backend->getPhysicalDevice();
-        init_info.Device = backend->getDevice();
-        init_info.QueueFamily = Backend::FindQueueFamilies(backend->getPhysicalDevice()).graphicFamily.value();
-        init_info.Queue = backend->getGraphicsQueue();
-        init_info.DescriptorPool = backend->getDescriptorPool();
-        init_info.RenderPass = renderPass;
-        init_info.MinImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount());
-        init_info.ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount());
-        init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-        ImGui_ImplVulkan_Init(&init_info);
-        ImGui::RegisterPremultipliedAlphaCallback(ImGui_ImplVulkan_PremultipliedAlphaCallback);
-    } catch (...) {
-        viewport->destroyImgui();
-        ImGui::DestroyContext();
-        io = nullptr;
-        style = nullptr;
-        throw;
-    }
-    imguiCreated = true;
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::destroyImgui() {
-    JST_DEBUG("[VULKAN] Destroying ImGui.");
-
-    ImGui::UnregisterPremultipliedAlphaCallback(ImGui_ImplVulkan_PremultipliedAlphaCallback);
-    ImGui_ImplVulkan_Shutdown();
-    const Result result = viewport->destroyImgui();
-    ImGui::DestroyContext();
-    io = nullptr;
-    style = nullptr;
-    imguiCreated = false;
-
     return result;
-}
-
-Result Implementation::beginImgui() {
-    ImGui_ImplVulkan_NewFrame();
-
-    this->updateScalingFactor(*viewport);
-
-    ImGui::NewFrame();
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::endImgui() {
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[currentFrame]);
-
-    return Result::SUCCESS;
 }
 
 Result Implementation::underlyingBegin() {
@@ -342,26 +260,6 @@ Result Implementation::underlyingBegin() {
                                  UINT64_MAX), [&]{
         JST_ERROR("[VULKAN] Failed to wait for an in-flight frame.");
     });
-
-    // Get next viewport framebuffer.
-
-    const Result& result = viewport->nextDrawable(imageAvailableSemaphores[currentFrame]);
-
-    if (result == Result::SKIP) {
-        statsData.droppedFrames += 1;
-        return Result::SKIP;
-    }
-
-    if (result == Result::RECREATE) {
-        statsData.recreatedFrames += 1;
-        JST_CHECK(recreate());
-        return Result::SKIP;
-    }
-
-    if (result != Result::SUCCESS) {
-        JST_FATAL("[VULKAN] Failed to acquire next viewport drawable.");
-        return Result::ERROR;
-    }
 
     const auto abortFrame = [&](const Result& abortResult) {
         const Result recovery = underlyingCancel();
@@ -390,12 +288,8 @@ Result Implementation::underlyingBegin() {
         }
     }
 
-    // Begin secondary renders.
-
-    const Result beginResult = beginImgui();
-    if (beginResult != Result::SUCCESS && beginResult != Result::RELOAD) {
-        return abortFrame(beginResult);
-    }
+    this->updateMetrics(*viewport);
+    this->updateInput(*viewport);
 
     return Result::SUCCESS;
 }
@@ -421,8 +315,6 @@ Result Implementation::underlyingEnd() {
         }
     }
 
-    prepareImgui();
-
     for (auto& surface : surfaces) {
         const auto& framebuffer = *surface->getConfig().framebuffer;
         result = surface->encode(commandBuffers[currentFrame],
@@ -432,30 +324,25 @@ Result Implementation::underlyingEnd() {
         }
     }
 
-    VkRenderPassBeginInfo renderPassBeginInfo = {};
-    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassBeginInfo.renderPass = renderPass;
-    renderPassBeginInfo.framebuffer = swapchainFramebuffers[viewport->currentDrawableIndex()];
-    renderPassBeginInfo.renderArea.offset = {0, 0};
-    const auto extent = viewport->getSwapchainExtent();
-    renderPassBeginInfo.renderArea.extent = {static_cast<U32>(extent.x), static_cast<U32>(extent.y)};
-
-    const auto& background = frameClearColor();
-    VkClearValue clearColor = {{{background.r, background.g, background.b, background.a}}};
-    renderPassBeginInfo.clearValueCount = 1;
-    renderPassBeginInfo.pClearValues = &clearColor;
-    vkCmdBeginRenderPass(commandBuffers[currentFrame], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    // End secondary renders.
-
-    result = endImgui();
-    if (result != Result::SUCCESS && result != Result::RELOAD) {
-        return abortFrame(result);
+    auto pass = beginPresent(transfers);
+    if (pass.presenting) {
+        const Result acquisition = viewport->nextDrawable(imageAvailableSemaphores[currentFrame]);
+        if (acquisition == Result::RECREATE) {
+            acquired(pass, Acquire::Recreate);
+        } else if (acquisition == Result::SKIP) {
+            acquired(pass, Acquire::Dropped);
+        } else if (acquisition != Result::SUCCESS) {
+            JST_ERROR("[VULKAN] Failed to acquire next viewport drawable.");
+            return abortFrame(Result::ERROR);
+        }
     }
 
-    // End render pass and command buffer.
-
-    vkCmdEndRenderPass(commandBuffers[currentFrame]);
+    if (pass.presenting) {
+        result = encodePresent();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return abortFrame(result);
+        }
+    }
 
     if (vkEndCommandBuffer(commandBuffers[currentFrame]) != VK_SUCCESS) {
         JST_ERROR("[VULKAN] Can't end command buffer.");
@@ -468,17 +355,19 @@ Result Implementation::underlyingEnd() {
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
     VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.waitSemaphoreCount = 1;
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    submitInfo.pWaitDstStageMask = waitStages;
+    std::vector<VkSemaphore> signalSemaphores;
+    if (pass.presenting) {
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitDstStageMask = waitStages;
+        signalSemaphores.push_back(renderFinishedSemaphores[currentFrame]);
+        submitInfo.pSignalSemaphores = signalSemaphores.data();
+        submitInfo.signalSemaphoreCount = static_cast<U32>(signalSemaphores.size());
+    }
 
     submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
     submitInfo.commandBufferCount = 1;
-
-    std::vector<VkSemaphore> signalSemaphores = { renderFinishedSemaphores[currentFrame] };
-    submitInfo.pSignalSemaphores = signalSemaphores.data();
-    submitInfo.signalSemaphoreCount = signalSemaphores.size();
 
     auto& backend = Backend::State<DeviceType::Vulkan>();
     auto& graphicsQueue = backend->getGraphicsQueue();
@@ -498,26 +387,43 @@ Result Implementation::underlyingEnd() {
     }
     transfers.commit();
 
-    // Commit framebuffer to viewport.
-
-    const auto& presentResult = viewport->commitDrawable(signalSemaphores);
-
-    if (presentResult == Result::RECREATE) {
-        statsData.recreatedFrames += 1;
-        JST_CHECK(recreate());
-        return Result::SKIP;
+    if (pass.presenting) {
+        const auto& presentResult = viewport->commitDrawable(signalSemaphores);
+        if (presentResult == Result::RECREATE) {
+            acquired(pass, Acquire::Recreate);
+        } else if (presentResult != Result::SUCCESS) {
+            acquired(pass, Acquire::Recreate);
+            const Result recovery = finishPresent(pass);
+            return recovery == Result::SKIP ? presentResult : recovery;
+        }
     }
-
-    if (presentResult != Result::SUCCESS) {
-        const Result recovery = recreate();
-        return recovery == Result::SUCCESS ? presentResult : recovery;
-    }
-
-    // Increment frame counter.
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
-    return Result::SUCCESS;
+    return finishPresent(pass);
+}
+
+Result Implementation::encodePresent() {
+    VkRenderPassBeginInfo renderPassBeginInfo = {};
+    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassBeginInfo.renderPass = renderPass;
+    renderPassBeginInfo.framebuffer = swapchainFramebuffers[viewport->currentDrawableIndex()];
+    renderPassBeginInfo.renderArea.offset = {0, 0};
+    const auto extent = viewport->getSwapchainExtent();
+    renderPassBeginInfo.renderArea.extent = {static_cast<U32>(extent.x), static_cast<U32>(extent.y)};
+
+    const auto& background = frameClearColor();
+    VkClearValue clearColor = {{{background.r, background.g, background.b, background.a}}};
+    renderPassBeginInfo.clearValueCount = 1;
+    renderPassBeginInfo.pClearValues = &clearColor;
+    vkCmdBeginRenderPass(commandBuffers[currentFrame], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    const Result result = presenter->encode(commandBuffers[currentFrame], currentFrame, framePresentList(), metrics(),
+                                            extent);
+
+    vkCmdEndRenderPass(commandBuffers[currentFrame]);
+
+    return result;
 }
 
 Result Implementation::underlyingCancel() {
@@ -525,7 +431,7 @@ Result Implementation::underlyingCancel() {
     if (!reset) {
         JST_ERROR("[VULKAN] Can't reset cancelled command buffer.");
     }
-    const Result recovery = recreate();
+    const Result recovery = underlyingRecreate();
     return reset ? recovery
                  : (recovery == Result::SUCCESS ? Result::ERROR : recovery);
 }
@@ -609,10 +515,6 @@ std::string Implementation::info() const {
     auto& backend = Backend::State<DeviceType::Vulkan>();
     return jst::fmt::format("{} ({:.0f} GB)", backend->getDeviceName(),
                                               (float)backend->getPhysicalMemory() / (1024*1024*1024));
-}
-
-const Window::Stats& Implementation::stats() const {
-    return statsData;
 }
 
 }  // namespace Jetstream::Render

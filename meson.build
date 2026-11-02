@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.13.0',  # [VERSION HOOK]
+    version: '1.19.0',  # [VERSION HOOK]
     meson_version: '>=1.11.0',
     default_options: [
         'cpp_std=c++20',
@@ -46,6 +46,7 @@ endif
 if jst_is_browser
     threads_dep = declare_dependency(compile_args: ['-pthread'], link_args: ['-pthread'])
     meson.override_dependency('threads', threads_dep)
+    add_project_link_arguments('-Wl,-mllvm,-wasm-enable-eh', language: 'cpp')
 endif
 
 browser_exe_link_args = []
@@ -106,12 +107,16 @@ module_test_lst = []
 dep_lst = [
     dependency('threads'),
 ]
+if jst_is_linux
+    # Snapshot<T> needs atomic runtime support independently of remote/GLib.
+    dep_lst += dependency('atomic')
+endif
 whole_dep_lst = []
+lib_link_args = []
 inc_lst = [
     include_directories('include'),
     include_directories('src'),
     include_directories('include/jetstream/backend/devices/metal'),
-    include_directories('include/jetstream/render/tools'),
 ]
 
 #
@@ -174,6 +179,7 @@ else
         cpp_args: ['-DJST_IS_LIBRARY'],
         include_directories: inc_lst,
         dependencies: dep_lst + whole_dep_lst,
+        link_args: lib_link_args,
         install: true
     )
 
@@ -247,7 +253,6 @@ endif
 #
 
 if get_option('tests') and \
-   not jst_is_browser and \
    not jst_is_ios and \
    not jst_is_android
     subdir('tests')

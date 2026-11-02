@@ -26,6 +26,8 @@ struct ScissorRect {
     U32 y = 0;
     U32 width = 0;
     U32 height = 0;
+
+    bool operator==(const ScissorRect&) const = default;
 };
 
 struct TitlebarChrome {
@@ -33,6 +35,7 @@ struct TitlebarChrome {
     F32 leadingInset = 0.0f;
     F32 height = 0.0f;
     F32 controlsCenter = 0.0f;
+    F32 trailingInset = 0.0f;
 };
 
 }  // namespace Jetstream::Render

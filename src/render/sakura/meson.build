@@ -5,6 +5,7 @@ src_lst += files([
     'palette.cc',
     'toast.cc',
     'surface_view.cc',
+    'themes.cc',
 ])
 
 subdir('detail')

@@ -14,6 +14,7 @@ struct Soapy : public Module::Config {
     F32 frequency = 96.9e6;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
+    F32 manualGain = 0.0f;
     bool biasTee = false;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
@@ -22,7 +23,7 @@ struct Soapy : public Module::Config {
     JST_MODULE_TYPE(soapy);
     JST_MODULE_PARAMS(modulePath, deviceString, streamString,
                       antenna, frequency, sampleRate,
-                      automaticGain, biasTee, numberOfBatches,
+                      automaticGain, manualGain, biasTee, numberOfBatches,
                       numberOfTimeSamples, bufferMultiplier);
 };
 

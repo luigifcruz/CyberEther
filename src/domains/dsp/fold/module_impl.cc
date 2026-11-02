@@ -1,5 +1,9 @@
 #include "module_impl.hh"
 
+#include <optional>
+#include <vector>
+
+#include <jetstream/memory/attributes.hh>
 #include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
@@ -34,13 +38,8 @@ Result FoldImpl::validate() {
         return Result::ERROR;
     }
 
-    if (inputTensor.hasAttribute("sampleRate")) {
-        const std::any value = inputTensor.attribute("sampleRate");
-        if (!std::any_cast<F32>(&value)) {
-            JST_ERROR("[MODULE_FOLD] Input sample rate metadata must have type F32.");
-            return Result::ERROR;
-        }
-    }
+    std::optional<F32> sampleRate;
+    JST_CHECK(ReadAttribute(inputTensor, "sampleRate", sampleRate));
 
     const U64 axisSize = inputTensor.shape(*axes.sample);
     if (axisSize % config.size != 0) {
@@ -50,21 +49,9 @@ Result FoldImpl::validate() {
         return Result::ERROR;
     }
 
-    std::vector<U64> channelOffsets;
-    if (inputTensor.hasAttribute("channelOffsets")) {
-        const std::any value = inputTensor.attribute("channelOffsets");
-        const auto* typedOffsets = std::any_cast<std::vector<U64>>(&value);
-        if (typedOffsets == nullptr) {
-            JST_ERROR("[MODULE_FOLD] Input channelOffsets metadata must have "
-                      "type vector<U64>.");
-            return Result::ERROR;
-        }
-        if (typedOffsets->empty()) {
-            JST_ERROR("[MODULE_FOLD] Input channelOffsets metadata cannot be empty.");
-            return Result::ERROR;
-        }
-        channelOffsets = *typedOffsets;
-    }
+    std::optional<std::vector<U64>> typedOffsets;
+    JST_CHECK(ReadAttribute(inputTensor, "channelOffsets", typedOffsets));
+    const std::vector<U64> channelOffsets = typedOffsets.value_or(std::vector<U64>{});
 
     if (channelOffsets.empty()) {
         if (axisSize < config.offset) {

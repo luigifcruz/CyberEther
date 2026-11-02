@@ -38,10 +38,12 @@ struct CodeEditor : public Component {
         bool showActiveLine = true;
         std::optional<Padding> padding;
         F32 fontSize = Typography::FontSize;
+        std::string fontName = Typography::MonoFont;
         std::string backgroundColorKey = "editor_background";
         F32 rounding = 0.0f;
         Callback<void(std::string)> onChange;
         Callback<void(std::string)> onSubmit;
+        Callback<void(Extent2D<F32>)> onContentOverflow;
 
         bool operator==(const Config&) const = default;
     };

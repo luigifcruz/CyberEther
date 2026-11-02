@@ -1,0 +1,205 @@
+--- a/pocketfft_hdronly.h
++++ b/pocketfft_hdronly.h
+@@ -59,6 +59,10 @@
+ #include <complex>
+ #include <algorithm>
+ #include <type_traits>
++#if defined(__aarch64__) && (defined(__ARM_NEON) || defined(__ARM_NEON__)) && !defined(POCKETFFT_NO_VECTORS)
++#include <arm_neon.h>
++#define POCKETFFT_NEON_INTRATRANSFORM
++#endif
+ #if POCKETFFT_CACHE_SIZE!=0
+ #include <array>
+ #include <mutex>
+@@ -293,6 +297,96 @@
+   { auto tmp_=a.r; a.r=-a.i; a.i=tmp_; }
+ template<bool fwd, typename T> void ROTX90(cmplx<T> &a)
+   { auto tmp_= fwd ? -a.r : a.r; a.r = fwd ? a.i : -a.i; a.i=tmp_; }
++
++#ifdef POCKETFFT_NEON_INTRATRANSFORM
++inline cmplx<float32x4_t> neon_load(const cmplx<float> *p)
++  {
++  auto v = vld2q_f32(reinterpret_cast<const float *>(p));
++  return {v.val[0], v.val[1]};
++  }
++inline void neon_store(cmplx<float> *p, const cmplx<float32x4_t> &v)
++  {
++  float32x4x2_t pair{{v.r, v.i}};
++  vst2q_f32(reinterpret_cast<float *>(p), pair);
++  }
++
++// The arithmetic below is PocketFFT's radix-8 butterfly, with vector lanes
++// supplied by load/store adapters for adjacent i values or terminal k groups.
++template<bool fwd, typename Load, typename Store>
++__attribute__((always_inline)) inline void neon_butterfly8(
++  const Load &load, const Store &store)
++  {
++  using C = cmplx<float32x4_t>;
++  constexpr float hsqt2 = 0.707106781186547524400844362104849f;
++  C a0, a1, a2, a3, a4, a5, a6, a7;
++  PM(a1,a5,load(1),load(5));
++  PM(a3,a7,load(3),load(7));
++  ROTX90<fwd>(a7);
++  PMINPLACE(a1,a3);
++  ROTX90<fwd>(a3);
++  PMINPLACE(a5,a7);
++  auto tmp = a5.r;
++  a5.r = hsqt2*(fwd ? a5.r+a5.i : a5.r-a5.i);
++  a5.i = hsqt2*(fwd ? a5.i-tmp : a5.i+tmp);
++  tmp = a7.r;
++  a7.r = hsqt2*(fwd ? a7.i-a7.r : -a7.r-a7.i);
++  a7.i = hsqt2*(fwd ? -tmp-a7.i : tmp-a7.i);
++  PM(a0,a4,load(0),load(4));
++  PM(a2,a6,load(2),load(6));
++  PMINPLACE(a0,a2);
++  store(0,a0+a1); store(4,a0-a1);
++  store(2,a2+a3); store(6,a2-a3);
++  ROTX90<fwd>(a6);
++  PMINPLACE(a4,a6);
++  store(1,a4+a5); store(5,a4-a5);
++  store(3,a6+a7); store(7,a6-a7);
++  }
++
++// These lanes belong to one transform; batch SIMD still uses the generic path.
++template<bool fwd> size_t neon_pass8(size_t ido, size_t l1, size_t k,
++  const cmplx<float> *POCKETFFT_RESTRICT cc,
++  cmplx<float> *POCKETFFT_RESTRICT ch,
++  const cmplx<float> *POCKETFFT_RESTRICT wa)
++  {
++  size_t i=1;
++  for (; i+4<=ido; i+=4)
++    {
++    auto load = [&](size_t j) { return neon_load(cc+i+ido*(j+8*k)); };
++    auto store = [&](size_t j, const cmplx<float32x4_t> &v)
++      {
++      auto value = j==0 ? v
++        : v.template special_mul<fwd>(neon_load(wa+i-1+(j-1)*(ido-1)));
++      neon_store(ch+i+ido*(k+l1*j), value);
++      };
++    neon_butterfly8<fwd>(load, store);
++    }
++  return i;
++  }
++
++template<bool fwd> size_t neon_pass8_terminal(size_t l1,
++  const cmplx<float> *POCKETFFT_RESTRICT cc,
++  cmplx<float> *POCKETFFT_RESTRICT ch)
++  {
++  size_t k=0;
++  for (; k+4<=l1; k+=4)
++    {
++    auto load = [&](size_t j)
++      {
++      const auto p = cc+j+8*k;
++      auto a = vcombine_f32(vld1_f32(reinterpret_cast<const float *>(p)),
++        vld1_f32(reinterpret_cast<const float *>(p+8)));
++      auto b = vcombine_f32(vld1_f32(reinterpret_cast<const float *>(p+16)),
++        vld1_f32(reinterpret_cast<const float *>(p+24)));
++      return cmplx<float32x4_t>(vuzp1q_f32(a,b), vuzp2q_f32(a,b));
++      };
++    auto store = [&](size_t j, const cmplx<float32x4_t> &v)
++      { neon_store(ch+k+l1*j, v); };
++    neon_butterfly8<fwd>(load, store);
++    }
++  return k;
++  }
++
++#endif
+ 
+ //
+ // twiddle factor section
+@@ -1142,7 +1236,7 @@
+     { auto tmp_=a.r; a.r=hsqt2*(-a.r-a.i); a.i=hsqt2*(tmp_-a.i); }
+   }
+ 
+-template<bool fwd, typename T> void pass8 (size_t ido, size_t l1,
++template<bool fwd, typename T, bool use_neon=false> void pass8 (size_t ido, size_t l1,
+   const T * POCKETFFT_RESTRICT cc, T * POCKETFFT_RESTRICT ch,
+   const cmplx<T0> * POCKETFFT_RESTRICT wa) const
+   {
+@@ -1154,7 +1248,15 @@
+     { return wa[i-1+x*(ido-1)]; };
+ 
+   if (ido==1)
+-    for (size_t k=0; k<l1; ++k)
++    {
++    size_t k=0;
++#ifdef POCKETFFT_NEON_INTRATRANSFORM
++    if (use_neon && std::is_same<T,cmplx<float>>::value && std::is_same<T0,float>::value)
++      k = neon_pass8_terminal<fwd>(l1,
++        reinterpret_cast<const cmplx<float> *>(cc),
++        reinterpret_cast<cmplx<float> *>(ch));
++#endif
++    for (; k<l1; ++k)
+       {
+       T a0, a1, a2, a3, a4, a5, a6, a7;
+       PM(a1,a5,CC(0,1,k),CC(0,5,k));
+@@ -1175,6 +1277,7 @@
+       PM(CH(0,k,1),CH(0,k,5),a4+a6,a5);
+       PM(CH(0,k,3),CH(0,k,7),a4-a6,a7);
+       }
++    }
+   else
+     for (size_t k=0; k<l1; ++k)
+       {
+@@ -1198,7 +1301,15 @@
+       PM(CH(0,k,1),CH(0,k,5),a4+a6,a5);
+       PM(CH(0,k,3),CH(0,k,7),a4-a6,a7);
+       }
+-      for (size_t i=1; i<ido; ++i)
++      size_t i=1;
++#ifdef POCKETFFT_NEON_INTRATRANSFORM
++      if (use_neon && std::is_same<T,cmplx<float>>::value && std::is_same<T0,float>::value)
++        i = neon_pass8<fwd>(ido, l1, k,
++          reinterpret_cast<const cmplx<float> *>(cc),
++          reinterpret_cast<cmplx<float> *>(ch),
++          reinterpret_cast<const cmplx<float> *>(wa));
++#endif
++      for (; i<ido; ++i)
+         {
+         T a0, a1, a2, a3, a4, a5, a6, a7;
+         PM(a1,a5,CC(i,1,k),CC(i,5,k));
+@@ -1424,7 +1535,7 @@
+     }
+   }
+ 
+-template<bool fwd, typename T> void pass_all(T c[], T0 fct) const
++template<bool fwd, typename T, bool use_neon=false> void pass_all(T c[], T0 fct) const
+   {
+   if (length==1) { c[0]*=fct; return; }
+   size_t l1=1;
+@@ -1439,7 +1550,7 @@
+     if     (ip==4)
+       pass4<fwd> (ido, l1, p1, p2, fact[k1].tw);
+     else if(ip==8)
+-      pass8<fwd>(ido, l1, p1, p2, fact[k1].tw);
++      pass8<fwd,T,use_neon>(ido, l1, p1, p2, fact[k1].tw);
+     else if(ip==2)
+       pass2<fwd>(ido, l1, p1, p2, fact[k1].tw);
+     else if(ip==3)
+@@ -1474,7 +1585,17 @@
+ 
+   public:
+     template<typename T> void exec(T c[], T0 fct, bool fwd) const
+-      { fwd ? pass_all<true>(c, fct) : pass_all<false>(c, fct); }
++      {
++#ifdef POCKETFFT_NEON_INTRATRANSFORM
++      if (std::is_same<T,cmplx<float>>::value && std::is_same<T0,float>::value
++        && (length<=single_transform_limit))
++        {
++        fwd ? pass_all<true,T,true>(c, fct) : pass_all<false,T,true>(c, fct);
++        return;
++        }
++#endif
++      fwd ? pass_all<true>(c, fct) : pass_all<false>(c, fct);
++      }
+ 
+   private:
+     POCKETFFT_NOINLINE void factorize()
+@@ -3634,5 +3755,6 @@
+ 
+ #undef POCKETFFT_NOINLINE
+ #undef POCKETFFT_RESTRICT
++#undef POCKETFFT_NEON_INTRATRANSFORM
+ 
+ #endif // POCKETFFT_HDRONLY_H

@@ -20,6 +20,7 @@
 #include <jetstream/domains/dsp/fold/module.hh>
 #include <jetstream/domains/dsp/overlap_add/module.hh>
 #include <jetstream/domains/dsp/phase_correction/module.hh>
+#include <jetstream/memory/attributes.hh>
 #include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
@@ -277,44 +278,16 @@ Result FilterEngineImpl::validate() {
             return Result::ERROR;
         }
 
-        const auto readAttribute = [&](const char* key,
-                                       std::optional<F32>& value) -> Result {
-            if (!filterTensor->hasAttribute(key)) {
-                return Result::SUCCESS;
-            }
+        JST_CHECK(ReadAttribute(*filterTensor, "sampleRate", sampleRate));
+        JST_CHECK(ReadAttribute(*filterTensor, "bandwidth", bandwidth));
 
-            const std::any attribute = filterTensor->attribute(key);
-            const auto* typedAttribute = std::any_cast<F32>(&attribute);
-            if (typedAttribute == nullptr) {
-                JST_ERROR("[BLOCK_FILTER_ENGINE] Filter attribute '{}' must be "
-                          "F32.", key);
-                return Result::ERROR;
-            }
-
-            value = *typedAttribute;
-            return Result::SUCCESS;
-        };
-
-        JST_CHECK(readAttribute("sampleRate", sampleRate));
-        JST_CHECK(readAttribute("bandwidth", bandwidth));
-        if (filterTensor->hasAttribute("center")) {
-            const std::any attribute = filterTensor->attribute("center");
-            if (const auto* scalar = std::any_cast<F32>(&attribute)) {
-                centers = std::vector<F32>{*scalar};
-                scalarCenter = true;
-            } else if (const auto* vector =
-                           std::any_cast<std::vector<F32>>(&attribute)) {
-                if (vector->empty()) {
-                    JST_ERROR("[BLOCK_FILTER_ENGINE] Filter attribute 'center' "
-                              "cannot be empty.");
-                    return Result::ERROR;
-                }
-                centers = *vector;
-            } else {
-                JST_ERROR("[BLOCK_FILTER_ENGINE] Filter attribute 'center' must "
-                          "be F32 or vector<F32>.");
-                return Result::ERROR;
-            }
+        std::any center;
+        JST_CHECK(ReadAttribute(*filterTensor, "center", center));
+        if (const auto* scalar = std::any_cast<F32>(&center)) {
+            centers = std::vector<F32>{*scalar};
+            scalarCenter = true;
+        } else if (const auto* vector = std::any_cast<std::vector<F32>>(&center)) {
+            centers = *vector;
         }
     }
 

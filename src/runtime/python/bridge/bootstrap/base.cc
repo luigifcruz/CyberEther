@@ -62,6 +62,19 @@ Result SwitchPythonEnvironmentPath(const std::string& previousPath,
         return Result::ERROR;
     }
 
+    const auto keptCount = PySequence_Size(result);
+    for (Py_ssize_t i = 0; i < keptCount; ++i) {
+        auto* item = PySequence_GetItem(result, i);
+        const char* name = item ? PyUnicode_AsUTF8(item) : nullptr;
+        if (name) {
+            JST_WARN("[RUNTIME_CONTEXT_PYTHON] Package '{}' contains native code and "
+                     "can't be reloaded. Keeping the loaded copy instead of the one "
+                     "from the new dependency environment until restart.", name);
+        }
+        if (item) { Py_DecRef(item); }
+    }
+    (void)ClearPythonError();
+
     Py_DecRef(result);
     Py_DecRef(globals);
     return Result::SUCCESS;

@@ -1,0 +1,192 @@
+--- a/pocketfft_hdronly.h
++++ b/pocketfft_hdronly.h
+@@ -62,6 +62,9 @@
+ #if defined(__aarch64__) && (defined(__ARM_NEON) || defined(__ARM_NEON__)) && !defined(POCKETFFT_NO_VECTORS)
+ #include <arm_neon.h>
+ #define POCKETFFT_NEON_INTRATRANSFORM
++#endif
++#if defined(__SSE2__) && !defined(POCKETFFT_NO_VECTORS)
++#include <xmmintrin.h>
+ #endif
+ #if POCKETFFT_CACHE_SIZE!=0
+ #include <array>
+@@ -132,6 +135,15 @@
+ #undef POCKETFFT_NO_VECTORS
+ #endif
+ #endif
++#endif
++
++// The blocked C2C path needs four float lanes and GCC/Clang vector arithmetic.
++// Keep NEON's tested packing kernels; SSE2 supplies equivalent x86 adapters.
++#ifdef POCKETFFT_NEON_INTRATRANSFORM
++#define POCKETFFT_BLOCKED_C2C
++#elif defined(__SSE2__) && !defined(POCKETFFT_NO_VECTORS)
++#define POCKETFFT_SSE_BLOCKED_C2C
++#define POCKETFFT_BLOCKED_C2C
+ #endif
+ 
+ template<typename T> struct VLEN { static constexpr size_t val=1; };
+@@ -1670,6 +1682,135 @@
+       comp_twiddle();
+       }
+   };
++
++
++#ifdef POCKETFFT_BLOCKED_C2C
++// A two-dimensional Cooley-Tukey decomposition of x[j*r+i]. Transform j,
++// multiply by exp(-/+2*pi*i*k/N), then transform i to produce X[l*c+k].
++// SIMD lanes are four independent sub-transforms, so the existing FFTPACK
++// butterflies vectorize every radix without new butterfly implementations.
++class c2c_blocked
++  {
++#ifdef POCKETFFT_SSE_BLOCKED_C2C
++  using F = float __attribute__ ((vector_size (4*sizeof(float))));
++#else
++  using F=float32x4_t;
++#endif
++  using V=cmplx<F>;
++  size_t n, r, c;
++  cfftp<float> rows, cols;
++  arr<V> phase;
++
++  static V load4(const cmplx<float> *p)
++    {
++#ifdef POCKETFFT_SSE_BLOCKED_C2C
++    const float *f=reinterpret_cast<const float *>(p);
++    auto a=_mm_loadu_ps(f), b=_mm_loadu_ps(f+4);
++    return {_mm_shuffle_ps(a,b,_MM_SHUFFLE(2,0,2,0)),
++            _mm_shuffle_ps(a,b,_MM_SHUFFLE(3,1,3,1))};
++#else
++    return neon_load(p);
++#endif
++    }
++
++  static void store4(cmplx<float> *p, const V &v)
++    {
++#ifdef POCKETFFT_SSE_BLOCKED_C2C
++    float *f=reinterpret_cast<float *>(p);
++    _mm_storeu_ps(f,_mm_unpacklo_ps(v.r,v.i));
++    _mm_storeu_ps(f+4,_mm_unpackhi_ps(v.r,v.i));
++#else
++    neon_store(p,v);
++#endif
++    }
++
++  static void transpose4(F a, F b, F c, F d, F *out)
++    {
++#ifdef POCKETFFT_SSE_BLOCKED_C2C
++    _MM_TRANSPOSE4_PS(a,b,c,d);
++    out[0]=a; out[1]=b; out[2]=c; out[3]=d;
++#else
++    auto x=vtrn1q_f32(a,b), y=vtrn2q_f32(a,b);
++    auto z=vtrn1q_f32(c,d), w=vtrn2q_f32(c,d);
++    out[0]=vcombine_f32(vget_low_f32(x),vget_low_f32(z));
++    out[1]=vcombine_f32(vget_low_f32(y),vget_low_f32(w));
++    out[2]=vcombine_f32(vget_high_f32(x),vget_high_f32(z));
++    out[3]=vcombine_f32(vget_high_f32(y),vget_high_f32(w));
++#endif
++    }
++
++  template<bool forward> void execute(const cmplx<float> *in,
++    cmplx<float> *out, float fct) const
++    {
++    arr<V> data(n/4), work(r);
++    for (size_t g=0; g<r/4; ++g)
++      for (size_t j=0; j<c; ++j)
++        data[g*c+j]=load4(in+j*r+4*g);
++    for (size_t g=0; g<r/4; ++g)
++      {
++      rows.exec(data.data()+g*c,1.f,forward);
++      for (size_t j=0; j<c; ++j)
++        data[g*c+j]=data[g*c+j].template special_mul<forward>(phase[g*c+j]);
++      }
++    size_t k=0;
++    for (; k+4<=c; k+=4)
++      {
++      for (size_t g=0; g<r/4; ++g)
++        {
++        const V *p=data.data()+g*c+k;
++        F re[4],im[4];
++        transpose4(p[0].r,p[1].r,p[2].r,p[3].r,re);
++        transpose4(p[0].i,p[1].i,p[2].i,p[3].i,im);
++        for (size_t i=0; i<4; ++i) work[4*g+i]={re[i],im[i]};
++        }
++      cols.exec(work.data(),fct,forward);
++      for (size_t j=0; j<r; ++j) store4(out+j*c+k,work[j]);
++      }
++    if (k<c)
++      {
++      arr<cmplx<float>> tail(r);
++      for (; k<c; ++k)
++        {
++        for (size_t j=0; j<r; ++j)
++          {
++          const auto &v=data[(j/4)*c+k];
++          tail[j]={v.r[j%4],v.i[j%4]};
++          }
++        cols.exec(tail.data(),fct,forward);
++        for (size_t j=0; j<r; ++j) out[j*c+k]=tail[j];
++        }
++      }
++    }
++
++  public:
++    static size_t split(size_t n)
++      {
++      if (n<2048 || n>1048576 || n%4) return 0;
++      // Sub-plans use direct FFTPACK; leave large prime factors to Bluestein.
++      if (util::largest_prime_factor(n)>127) return 0;
++      size_t best=0, cost=n;
++      for (size_t d=4; d*d<=n; d+=4)
++        if (n%d==0 && n/d<cost) { best=d; cost=n/d; }
++      if (best<16) return 0;
++      return best;
++      }
++    explicit c2c_blocked(size_t size)
++      : n(size), r(split(n)), c(r ? n/r : 0), rows(c), cols(r), phase(n/4)
++      {
++      sincos_2pibyn<float> trig(n);
++      for (size_t g=0; g<r/4; ++g)
++        for (size_t j=0; j<c; ++j)
++          {
++          cmplx<float> w[4];
++          for (size_t i=0; i<4; ++i) w[i]=trig[(4*g+i)*j];
++          phase[g*c+j]=load4(w);
++          }
++      }
++    size_t length() const { return n; }
++    void exec(const cmplx<float> *in, cmplx<float> *out, float fct, bool forward) const
++      { forward ? execute<true>(in,out,fct) : execute<false>(in,out,fct); }
++  };
++#endif
+ 
+ //
+ // real-valued FFTPACK transforms
+@@ -3522,6 +3663,19 @@
+   {
+   if (util::prod(shape)==0) return;
+   util::sanity_check(shape, stride_in, stride_out, data_in==data_out, axes);
++#ifdef POCKETFFT_BLOCKED_C2C
++  if (std::is_same<T,float>::value && axes.size()==1
++    && util::prod(shape)==shape[axes[0]]
++    && stride_in[axes[0]]==sizeof(std::complex<T>)
++    && stride_out[axes[0]]==sizeof(std::complex<T>)
++    && c2c_blocked::split(shape[axes[0]]))
++    {
++    auto plan=get_plan<c2c_blocked>(shape[axes[0]]);
++    plan->exec(reinterpret_cast<const cmplx<float> *>(data_in),
++      reinterpret_cast<cmplx<float> *>(data_out),float(fct),forward);
++    return;
++    }
++#endif
+   // A single contiguous transform does not need ND views or a lane iterator.
+   if ((axes.size()==1) && (shape[axes[0]]<=single_transform_limit)
+     && (util::prod(shape)==shape[axes[0]])
+@@ -3756,5 +3910,7 @@
+ #undef POCKETFFT_NOINLINE
+ #undef POCKETFFT_RESTRICT
+ #undef POCKETFFT_NEON_INTRATRANSFORM
++#undef POCKETFFT_SSE_BLOCKED_C2C
++#undef POCKETFFT_BLOCKED_C2C
+ 
+ #endif // POCKETFFT_HDRONLY_H

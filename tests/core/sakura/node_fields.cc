@@ -6,20 +6,35 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
-#include <jetstream/render/sakura/components/node/display.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/node/bool_input.hh>
+#include <jetstream/render/sakura/components/node/combo.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/field.hh>
-#include <jetstream/render/sakura/components/node/inputs.hh>
-#include <jetstream/render/sakura/components/node/panel.hh>
+#include <jetstream/render/sakura/components/node/field_grid.hh>
+#include <jetstream/render/sakura/components/node/field_panel.hh>
+#include <jetstream/render/sakura/components/node/float_input.hh>
+#include <jetstream/render/sakura/components/node/input_row.hh>
+#include <jetstream/render/sakura/components/node/int_input.hh>
+#include <jetstream/render/sakura/components/node/label.hh>
+#include <jetstream/render/sakura/components/node/path_input.hh>
+#include <jetstream/render/sakura/components/node/progress_bar.hh>
+#include <jetstream/render/sakura/components/node/range_input.hh>
+#include <jetstream/render/sakura/components/node/surface.hh>
+#include <jetstream/render/sakura/components/node/table.hh>
+#include <jetstream/render/sakura/components/node/text_input.hh>
+#include <jetstream/render/sakura/components/node/uint_input.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
-#include <jetstream/render/tools/imgui.h>
 
 #include "harness.hh"
 #include "compositor/default/views/components/tooltip.hh"
 #include "compositor/default/views/flowgraph/editor/field_tooltip.hh"
-#include "render/sakura/components/node/common.hh"
+#include "render/sakura/metrics.hh"
+#include "render/sakura/detail/text_metrics.hh"
 #include "scene.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <string>
@@ -46,7 +61,7 @@ Sakura::Context NodeContext(Render::Window* window) {
     auto ctx = MakeContext();
     ctx.render = window;
     ctx.palette = DistinctPalette();
-    ctx.fontSize = Sakura::NodeStyle::NodeFont;
+    ctx.fontSize = Sakura::kNodeFont;
     ctx.mouse = Extent2D<F32>{790.0f, 590.0f};
     return ctx;
 }
@@ -64,7 +79,6 @@ struct Pointer {
 };
 
 struct Bench {
-    ImGuiContextGuard imgui;
     MonoFontWindow window;
     LayerSlot slot;
     LayerHost host{std::vector<Sakura::Layer*>{&slot}};
@@ -470,6 +484,19 @@ TEST_CASE("Node field grids split into as many 140 pixel columns as fit and stre
     CHECK(c.laidFrame == Rect{0.0f, 55.0f, 281.0f, 10.0f});
 }
 
+TEST_CASE("Node field grids measured without a width bound stack in one finite column", kTags) {
+    const auto ctx = MakeContext();
+    Probe a({0.0f, 21.0f});
+    Probe b({0.0f, 30.0f});
+    Sakura::NodeFieldGrid grid;
+    grid.update({.id = "unbounded-grid", .items = {{.child = &a}, {.child = &b}}});
+    Host host(grid);
+
+    const auto size = host.measureOf(ctx, {kInfinite, kInfinite});
+    CHECK(std::isfinite(size.x));
+    CHECK(size.y == 53.0f);
+}
+
 TEST_CASE("Full width node grid items break the column groups around them", kTags) {
     const auto ctx = MakeContext();
     Probe a({0.0f, 21.0f});
@@ -652,16 +679,6 @@ TEST_CASE("Node field panels measure their content naturally, by its minimum whe
 }
 
 TEST_CASE("Node field panels pass their parent's backdrop to their content", kTags) {
-    struct BackdropProbe : Probe {
-        std::string backdrop;
-
-     protected:
-        void layout(const Sakura::Context& ctx) override {
-            Probe::layout(ctx);
-            backdrop = ctx.backdropColorKey;
-        }
-    };
-
     BackdropProbe content;
     content.resize({0.0f, 30.0f});
     Sakura::NodeContentStack stack;
@@ -857,6 +874,79 @@ TEST_CASE("Node range inputs draw their dragged value when the owner does not ec
     bench.frames.run(update);
     bench.frames.run(update);
     CHECK(shown() == "4");
+}
+
+TEST_CASE("Node range inputs hold their dragged value against owner echoes until release", kTags) {
+    Sakura::NodeRangeInput range;
+    Bench bench(range, {10.0f, 10.0f, 200.0f, 19.5f});
+    bench.frames.verify = false;
+    std::vector<F32> reported;
+    F32 value = 4.0f;
+    const auto update = [&] {
+        range.update({.id = "range", .min = 0.0f, .max = 10.0f, .value = value, .unit = "dB",
+                      .onChange = [&](F32 next) { reported.push_back(next); }});
+    };
+    const auto shown = [&]() -> std::string {
+        for (auto* label : Find<Sakura::Label>(range)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.str != "dB") {
+                    return instance.str;
+                }
+            }
+        }
+        return {};
+    };
+    REQUIRE(bench.settle(update));
+
+    bench.pointer.send(Mouse(MouseEventType::Click, 60.0f, 15.0f));
+    bench.frames.run(update);
+    bench.pointer.send(Mouse(MouseEventType::Move, 160.0f, 15.0f));
+    bench.frames.run(update);
+    REQUIRE(shown() == "8");
+    REQUIRE(reported == std::vector<F32>{2.5f, 7.5f});
+
+    for (const F32 echo : {2.5f, 7.0f, 6.0f}) {
+        value = echo;
+        for (int frame = 0; frame < 3; ++frame) {
+            bench.pointer.send(Mouse(MouseEventType::Move, 160.0f, 15.0f));
+            bench.frames.run(update);
+            CHECK(shown() == "8");
+        }
+    }
+    CHECK(reported == std::vector<F32>{2.5f, 7.5f});
+
+    bench.pointer.send(Mouse(MouseEventType::Release, 160.0f, 15.0f));
+    bench.frames.run(update);
+    bench.frames.run(update);
+    CHECK(shown() == "6");
+    CHECK(reported == std::vector<F32>{2.5f, 7.5f});
+}
+
+TEST_CASE("Node range inputs drop a drag when they are reused for another field", kTags) {
+    Sakura::NodeRangeInput range;
+    Bench bench(range, {10.0f, 10.0f, 200.0f, 19.5f});
+    bench.frames.verify = false;
+    std::vector<F32> reported;
+    std::string id = "first";
+    F32 value = 4.0f;
+    const auto update = [&] {
+        range.update({.id = id, .min = 0.0f, .max = 10.0f, .value = value,
+                      .onChange = [&](F32 next) { reported.push_back(next); }});
+    };
+    REQUIRE(bench.settle(update));
+
+    bench.pointer.send(Mouse(MouseEventType::Click, 60.0f, 15.0f));
+    bench.frames.run(update);
+    REQUIRE(reported == std::vector<F32>{2.5f});
+
+    id = "second";
+    value = 1.0f;
+    bench.frames.run(update);
+    bench.pointer.send(Mouse(MouseEventType::Move, 160.0f, 15.0f));
+    bench.frames.run(update);
+    bench.pointer.send(Mouse(MouseEventType::Release, 160.0f, 15.0f));
+    bench.frames.run(update);
+    CHECK(reported == std::vector<F32>{2.5f});
 }
 
 TEST_CASE("Node range inputs draw their value with the configured precision unless integer", kTags) {
@@ -1605,23 +1695,17 @@ TEST_CASE("Node progress bars and tables measure to fixed row heights", kTags) {
     host.place(ctx, {0.0f, 0.0f, 300.0f, 92.0f});
 }
 
-TEST_CASE("Node surfaces report their size and detach only from the hovered corner button", kTags) {
+TEST_CASE("Node surfaces report their size and scale their minimum height", kTags) {
     const Scene scene;
     auto ctx = scene.ctx;
     std::vector<Sakura::SurfaceResize> sizes;
-    U64 detached = 0;
     Sakura::NodeSurface surface;
-    const auto configure = [&](bool overlay) {
-        surface.update({.id = "surface", .detachOverlay = overlay,
-                        .onSize = [&](const Sakura::SurfaceResize& size) { sizes.push_back(size); },
-                        .onDetach = [&] { ++detached; }});
-    };
-    configure(true);
+    surface.update({.id = "surface",
+                    .onSize = [&](const Sakura::SurfaceResize& size) { sizes.push_back(size); }});
     Host host(surface);
 
     CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 150.0f});
     host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-    host.send(Mouse(MouseEventType::Move, 150.0f, 75.0f));
     host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
     REQUIRE(sizes.size() == 1);
     CHECK(sizes[0].logicalSize == Extent2D<U64>{300, 150});
@@ -1631,26 +1715,54 @@ TEST_CASE("Node surfaces report their size and detach only from the hovered corn
     host.place(ctx, {0.0f, 0.0f, 240.0f, 150.0f});
     REQUIRE(sizes.size() == 2);
     CHECK(sizes[1].logicalSize == Extent2D<U64>{240, 150});
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 150.0f, 75.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f, MouseButton::Right)));
-    CHECK(detached == 0);
-    CHECK(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
-    CHECK(detached == 1);
-
-    host.send(Mouse(MouseEventType::Leave, 150.0f, 75.0f));
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
-
-    host.send(Mouse(MouseEventType::Move, 150.0f, 75.0f));
-    configure(false);
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
-    CHECK(detached == 1);
 
     surface.update({.id = "surface", .minimumHeight = 90.0f});
     CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 90.0f});
+    ctx.pixelRatio = 2.0f;
+    CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 180.0f});
+}
+
+TEST_CASE("Attached node surfaces forward every mouse event to the plot", kTags) {
+    const Scene scene;
+    auto ctx = scene.ctx;
+    std::vector<MouseEvent> forwarded;
+    Sakura::NodeSurface surface;
+    surface.update({
+        .id = "surface",
+        .onInput = [&](InputEvent event) {
+            if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                forwarded.push_back(*mouse);
+            }
+        },
+        .resolveCursor = [] { return SurfaceCursor::Hand; },
+    });
+    Host host(surface);
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
+    CHECK(Sakura::Access::cursor(host, {150.0f, 75.0f}) == SurfaceCursor::Hand);
+
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Move, 150.0f, 75.0f)));
+    REQUIRE(forwarded.size() == 1);
+    CHECK(forwarded[0].type == MouseEventType::Move);
+    CHECK(forwarded[0].position == Extent2D<F32>{0.5f, 0.5f});
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 75.0f, 30.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Release, 75.0f, 30.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Click, 75.0f, 30.0f, MouseButton::Right)));
+    CHECK(host.send(Wheel(75.0f, 30.0f, -1.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
+    REQUIRE(forwarded.size() == 6);
+    CHECK(forwarded[1].type == MouseEventType::Click);
+    CHECK(forwarded[1].position == Extent2D<F32>{0.25f, 0.2f});
+    CHECK(forwarded[2].type == MouseEventType::Release);
+    CHECK(forwarded[3].button == MouseButton::Right);
+    CHECK(forwarded[4].type == MouseEventType::Scroll);
+    CHECK(forwarded[5].type == MouseEventType::Click);
+
+    surface.update({.id = "surface"});
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
+    CHECK(Sakura::Access::cursor(host, {150.0f, 75.0f}) != SurfaceCursor::Hand);
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 150.0f, 75.0f)));
+    CHECK_FALSE(host.send(Wheel(150.0f, 75.0f, -1.0f)));
 }
 
 TEST_CASE("Node text ellipsizing keeps fitting text and cuts long text on a character boundary", kTags) {
@@ -1662,17 +1774,17 @@ TEST_CASE("Node text ellipsizing keeps fitting text and cuts long text on a char
     REQUIRE(glyph > 0.0f);
     REQUIRE(metrics.measure(font, "AAAAA", 15.0f) == glyph * 5.0f);
 
-    CHECK(Sakura::NodeStyle::Ellipsize(metrics, font, "abc", 15.0f, 1000.0f) == "abc");
-    CHECK(Sakura::NodeStyle::Ellipsize(metrics, font, "abcde", 15.0f, glyph * 5.0f) == "abcde");
+    CHECK(metrics.ellipsize(font, "abc", 15.0f, 1000.0f) == "abc");
+    CHECK(metrics.ellipsize(font, "abcde", 15.0f, glyph * 5.0f) == "abcde");
 
     const F32 width = glyph * 5.0f + 0.5f;
-    const std::string cut = Sakura::NodeStyle::Ellipsize(metrics, font, "abcdefghij", 15.0f, width);
+    const std::string cut = metrics.ellipsize(font, "abcdefghij", 15.0f, width);
     CHECK(cut == "ab...");
     CHECK(metrics.measure(font, cut, 15.0f) <= width);
-    CHECK(Sakura::NodeStyle::Ellipsize(metrics, font, "abcdefghij", 15.0f, glyph) == "...");
+    CHECK(metrics.ellipsize(font, "abcdefghij", 15.0f, glyph) == "...");
 
     const std::string accents = "\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9";
-    const std::string accented = Sakura::NodeStyle::Ellipsize(metrics, font, accents, 15.0f, width);
+    const std::string accented = metrics.ellipsize(font, accents, 15.0f, width);
     REQUIRE(accented.size() >= 3);
     CHECK(accented.substr(accented.size() - 3) == "...");
     CHECK((accented.size() - 3) % 2 == 0);
@@ -2014,7 +2126,16 @@ TEST_CASE("Node progress bars settle and repaint only when their value, overlay 
     overlay = "60%";
     CheckRepaintOnly(bench.frames, update);
     colorKey = "success_green";
-    CheckRepaintOnly(bench.frames, update);
+    bench.frames.timeStep = 0.1;
+    U64 repaints = 0;
+    for (U64 i = 0; i < 4; ++i) {
+        const auto stats = bench.frames.run(update);
+        CHECK_FALSE(stats.rebuilt);
+        CHECK_FALSE(stats.restructured);
+        repaints += stats.repainted ? 1 : 0;
+    }
+    CHECK(repaints >= 2);
+    CHECK(Retains(bench.frames, update));
     CHECK(bench.unchanged());
 }
 
@@ -2405,52 +2526,6 @@ TEST_CASE("Node field grid gaps and column minimums scale with the pixel ratio",
 
     CHECK(host.measureOf(ctx, {564.0f, kInfinite}).y == 44.0f);
     CHECK(host.measureOf(ctx, {563.0f, kInfinite}) == Extent2D<F32>{563.0f, 69.0f});
-}
-
-TEST_CASE("Node surfaces scale their minimum height and detach button with the pixel ratio", kTags) {
-    const Scene scene;
-    auto ctx = scene.ctx;
-    ctx.pixelRatio = 2.0f;
-    U64 detached = 0;
-    Sakura::NodeSurface surface;
-    surface.update({.id = "surface", .detachOverlay = true, .onDetach = [&] { ++detached; }});
-    Host host(surface);
-
-    CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 300.0f});
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 300.0f});
-    host.send(Mouse(MouseEventType::Move, 150.0f, 150.0f));
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 300.0f});
-
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 290.0f, 10.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 240.0f, 66.0f)));
-    CHECK(detached == 0);
-    CHECK(host.send(Mouse(MouseEventType::Click, 240.0f, 60.0f)));
-    CHECK(detached == 1);
-
-    surface.update({.id = "surface", .minimumHeight = 90.0f});
-    CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 180.0f});
-}
-
-TEST_CASE("Node surfaces detach on the press itself and ignore releases and cancels", kTags) {
-    const Scene scene;
-    auto ctx = scene.ctx;
-    U64 detached = 0;
-    Sakura::NodeSurface surface;
-    surface.update({.id = "surface", .detachOverlay = true, .onDetach = [&] { ++detached; }});
-    Host host(surface);
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-    host.send(Mouse(MouseEventType::Move, 150.0f, 75.0f));
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-
-    CHECK(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
-    CHECK(detached == 1);
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Cancel, 280.0f, 20.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 280.0f, 20.0f)));
-    CHECK(detached == 1);
-
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 500.0f, 500.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 280.0f, 20.0f)));
-    CHECK(detached == 1);
 }
 
 TEST_CASE("A cancelled press on a node combo row selects nothing and keeps the dropdown open", kTags) {

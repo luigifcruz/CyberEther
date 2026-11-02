@@ -1,5 +1,6 @@
 #include "jetstream/render/devices/metal/buffer.hh"
 #include "jetstream/render/devices/metal/kernel.hh"
+#include "jetstream/backend/devices/metal/helpers.hh"
 
 namespace Jetstream::Render {
 
@@ -21,31 +22,18 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
-    NS::Error* err = nullptr;
     const auto& kernels = config.kernels[DeviceType::Metal];
     auto device = Backend::State<DeviceType::Metal>()->getDevice();
 
-    auto opts = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
-    opts->setFastMathEnabled(true);
-    opts->setLanguageVersion(MTL::LanguageVersion3_0);
-    opts->setLibraryType(MTL::LibraryTypeExecutable);
-
-    auto source = NS::TransferPtr(NS::String::alloc()->init((char*)kernels[0].data(), kernels[0].size(), NS::UTF8StringEncoding, false));
-    auto library = NS::TransferPtr(device->newLibrary(source.get(), opts.get(), &err));
-
-    if (!library) {
-        JST_ERROR("Library error:\n{}", err->description()->utf8String());
+    auto func = NS::TransferPtr(Backend::LoadShader(kernels[0], device));
+    if (!func) {
         return Result::ERROR;
     }
 
-    auto func = NS::TransferPtr(library->newFunction(
-        NS::String::string("main0", NS::UTF8StringEncoding)
-    ));
-    JST_ASSERT(func, "Failed to create function.");
-
+    NS::Error* err = nullptr;
     pipelineState = device->newComputePipelineState(func.get(), &err);
     if (!pipelineState) {
-        JST_ERROR("Failed to create pipeline state:\n{}", err->description()->utf8String());
+        JST_ERROR("[METAL] Failed to create pipeline state:\n{}", err ? err->description()->utf8String() : "unknown");
         return Result::ERROR;
     }
 

@@ -6,7 +6,9 @@
 #include <chrono>
 #include <cstdint>
 #include <exception>
+#include <future>
 #include <limits>
+#include <memory>
 #include <new>
 #include <optional>
 #include <stdexcept>
@@ -19,6 +21,8 @@
 #include "jetstream/render/base/transfer.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/viewport/adapters/generic.hh"
+
+#include "harness.hh"
 
 using namespace Jetstream;
 
@@ -69,9 +73,13 @@ class TestTexture final : public Render::Texture {
         return Result::SUCCESS;
     }
     uint64_t raw() const override { return 0; }
+    Result underlyingDump(uint8_t* output) const override {
+        return dumpHandler ? dumpHandler(output) : Result::ERROR;
+    }
 
     void nextCreationResult(const Result result) { creationResult = result; }
 
+    std::function<Result(uint8_t*)> dumpHandler;
     U64 createCount = 0;
     U64 destroyCount = 0;
     std::function<Result()> creationHandler;
@@ -118,6 +126,12 @@ class TestTransfer final : public Render::Transfer {
 
     static bool reserve(U64& used, const U64 size, const U64 alignment, U64& offset) {
         return reserveRange(used, size, alignment, offset);
+    }
+
+    static bool reservePage(std::vector<U64>& pages, const U64 size,
+                            const U64 alignment, const U64 limit,
+                            U64& page, U64& offset) {
+        return reservePageRange(pages, size, alignment, limit, page, offset);
     }
 
     static bool capacity(const U64 required, const U64 alignment, U64& result) {
@@ -294,13 +308,48 @@ class TestSurface final : public Render::Surface {
     std::atomic<bool> destructionStarted = false;
 };
 
-class TestWindow final : public Render::Window {
+class ResizingSurface final : public Render::Surface {
  public:
-    TestWindow() : Window(Config{}) {}
+    explicit ResizingSurface(const Config& config) : Surface(config) {}
 
-    constexpr DeviceType device() const override { return DeviceType::None; }
-    const Stats& stats() const override { return statsData; }
-    std::string info() const override { return "Test"; }
+    Result create() override {
+        live = true;
+        resizeResult = Result::SUCCESS;
+        resetFramebuffer();
+        return Result::SUCCESS;
+    }
+    Result destroy() override {
+        live = false;
+        return Result::SUCCESS;
+    }
+
+    Result frame() { return prepare(); }
+    bool resized() const { return framebufferResized; }
+    Result bindingResult() const { return drawResult(); }
+
+    bool live = false;
+    U64 rebuilds = 0;
+    Result rebuildResult = Result::SUCCESS;
+
+ protected:
+    bool created() const override { return live; }
+    Result rebuildFramebuffer() override {
+        ++rebuilds;
+        return rebuildResult;
+    }
+};
+
+class TestWindow final : public RenderTest::Window {
+ public:
+    TestWindow() {
+        attached = false;
+        viewport.content = {2.0f, 2.0f};
+        viewport.policy = Render::WindowMetrics::Policy::ContentScale;
+        viewport.chrome = Render::TitlebarChrome{
+            .integrated = true, .leadingInset = 80.0f, .height = 32.0f, .trailingInset = 276.0f};
+    }
+
+    bool supportsCapture() const override { return true; }
 
     Result collectFrameTransfers(Render::Transfer::Batch& batch) const {
         return collectTransfers(batch);
@@ -328,14 +377,12 @@ class TestWindow final : public Render::Window {
     U64 outstandingSubmissions = 0;
     U64 registeredSurfaceCount() const { return surfaces.size(); }
 
-    void attachViewport(Viewport::Generic* viewport) {
-        attachedViewport = viewport;
-        updateScalingFactor(*viewport);
+    void attachViewport() {
+        attached = true;
+        updateMetrics(viewport);
     }
 
  protected:
-    Viewport::Generic* underlyingViewport() const override { return attachedViewport; }
-
     Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
         surfaces.push_back(std::dynamic_pointer_cast<TestSurface>(surface));
         return bindHandler ? bindHandler(surface) : Result::SUCCESS;
@@ -382,13 +429,11 @@ class TestWindow final : public Render::Window {
     }
 
  private:
-    Stats statsData{};
     Result creationResult = Result::SUCCESS;
     Result destructionResult = Result::SUCCESS;
     Result submissionResult = Result::SUCCESS;
     U64 destructions = 0;
     std::vector<std::shared_ptr<TestSurface>> surfaces;
-    Viewport::Generic* attachedViewport = nullptr;
 };
 
 class TestViewport final : public Viewport::Generic {
@@ -401,11 +446,6 @@ class TestViewport final : public Viewport::Generic {
 
     Result create() override { return Result::SUCCESS; }
     Result destroy() override { return Result::SUCCESS; }
-    Result createImgui() override { return Result::SUCCESS; }
-    Result destroyImgui() override { return Result::SUCCESS; }
-
-    F32 scale(const F32&) const override { return 2.0f; }
-
     Result waitEvents() override { return Result::SUCCESS; }
     Result pollEvents() override { return Result::SUCCESS; }
     bool keepRunning() override { return true; }
@@ -426,6 +466,63 @@ class TestViewport final : public Viewport::Generic {
     std::vector<bool> activations;
 };
 
+class AppearanceViewport final : public Viewport::Generic {
+ public:
+    AppearanceViewport() : Generic({}) {}
+
+    std::string id() const override { return "appearance"; }
+    std::string name() const override { return "Appearance"; }
+    DeviceType device() const override { return DeviceType::None; }
+    Result create() override { ready = true; appearance.reset(); return Result::SUCCESS; }
+    Result destroy() override { ready = false; appearance.reset(); return Result::SUCCESS; }
+    Result waitEvents() override { return Result::SUCCESS; }
+    Result pollEvents() override { return Result::SUCCESS; }
+    bool keepRunning() override { return true; }
+
+    bool setDarkAppearance(bool dark) override {
+        if (ready && appearance == dark) {
+            return true;
+        }
+        ++requests;
+        if (!ready) {
+            return false;
+        }
+        appearance = dark;
+        appearances.push_back(dark);
+        return true;
+    }
+
+    bool ready = false;
+    U64 requests = 0;
+    std::optional<bool> appearance;
+    std::vector<bool> appearances;
+};
+
+class AppearanceWindow final : public RenderTest::Window {
+ public:
+    ~AppearanceWindow() override { close(); }
+
+    AppearanceViewport native;
+    Viewport::Generic* target = &native;
+    Result creationResult = Result::SUCCESS;
+
+ protected:
+    Viewport::Generic* underlyingViewport() const override { return target; }
+    Result underlyingCreate() override {
+        JST_CHECK(RenderTest::Window::underlyingCreate());
+        if (target) {
+            JST_CHECK(target->create());
+        }
+        return creationResult;
+    }
+    Result underlyingDestroy() override {
+        if (target) {
+            JST_CHECK(target->destroy());
+        }
+        return RenderTest::Window::underlyingDestroy();
+    }
+};
+
 std::shared_ptr<TestBuffer> MakeBuffer(std::array<U32, 2>& source) {
     return std::make_shared<TestBuffer>(Render::Buffer::Config{
         .size = source.size(),
@@ -433,6 +530,25 @@ std::shared_ptr<TestBuffer> MakeBuffer(std::array<U32, 2>& source) {
         .elementByteSize = sizeof(U32),
         .buffer = source.data(),
     });
+}
+
+TEST_CASE("Window attachment binding does not depend on allocator contents",
+          "[core][render][transfers][regression]") {
+    // Reproduce nonzero allocator fills such as Linux MALLOC_PERTURB_.
+    alignas(TestWindow) std::array<unsigned char, sizeof(TestWindow)> storage;
+    storage.fill(1);
+    const auto destruct = [](TestWindow* window) { std::destroy_at(window); };
+    std::unique_ptr<TestWindow, decltype(destruct)> window(
+        new (storage.data()) TestWindow, destruct);
+    std::array<U32, 2> source = {1, 2};
+    auto buffer = MakeBuffer(source);
+
+    // Components may bind resources before Window::create(), as fonts do.
+    REQUIRE(window->bind(buffer) == Result::SUCCESS);
+    CHECK(buffer->createCount == 1);
+    REQUIRE(window->create() == Result::SUCCESS);
+    REQUIRE(window->destroy() == Result::SUCCESS);
+    CHECK(buffer->destroyCount == 1);
 }
 
 std::shared_ptr<TestSurface> MakeRetainedSurface(
@@ -1543,6 +1659,59 @@ TEST_CASE("Render transfer ranges align and reject overflow", "[core][render][tr
     REQUIRE_FALSE(TestTransfer::reserve(used, 1, 4, offset));
 }
 
+TEST_CASE("Render transfer staging pages stay within their limit",
+          "[core][render][transfer]") {
+    std::vector<U64> pages;
+    U64 page = 0;
+    U64 offset = 0;
+
+    REQUIRE(TestTransfer::reservePage(pages, 252, 4, 512, page, offset));
+    REQUIRE(page == 0);
+    REQUIRE(offset == 0);
+    REQUIRE(TestTransfer::reservePage(pages, 256, 256, 512, page, offset));
+    REQUIRE(page == 0);
+    REQUIRE(offset == 256);
+    REQUIRE(TestTransfer::reservePage(pages, 512, 4, 512, page, offset));
+    REQUIRE(page == 1);
+    REQUIRE(offset == 0);
+    REQUIRE(TestTransfer::reservePage(pages, 4, 4, 512, page, offset));
+    REQUIRE(page == 2);
+    REQUIRE(offset == 0);
+    REQUIRE(pages == std::vector<U64>{512, 512, 4});
+}
+
+TEST_CASE("Render transfer staging pages account for texture alignment",
+          "[core][render][transfer]") {
+    std::vector<U64> pages;
+    U64 page = 0;
+    U64 offset = 0;
+
+    REQUIRE(TestTransfer::reservePage(pages, 260, 4, 512, page, offset));
+    REQUIRE(TestTransfer::reservePage(pages, 256, 256, 512, page, offset));
+    REQUIRE(page == 1);
+    REQUIRE(offset == 0);
+    REQUIRE(pages == std::vector<U64>{260, 256});
+
+    const auto retainedPages = pages;
+    REQUIRE_FALSE(TestTransfer::reservePage(pages, 513, 4, 512, page, offset));
+    REQUIRE_FALSE(TestTransfer::reservePage(pages, 4, 0, 512, page, offset));
+    REQUIRE_FALSE(TestTransfer::reservePage(pages, 0, 4, 512, page, offset));
+    REQUIRE_FALSE(TestTransfer::reservePage(pages, 4, 4, 0, page, offset));
+    REQUIRE(pages == retainedPages);
+}
+
+TEST_CASE("Render transfer staging pages recover from alignment overflow",
+          "[core][render][transfer]") {
+    std::vector<U64> pages{std::numeric_limits<U64>::max()};
+    U64 page = 0;
+    U64 offset = 0;
+    REQUIRE(TestTransfer::reservePage(pages, 4, 4,
+                                     std::numeric_limits<U64>::max(), page, offset));
+    REQUIRE(page == 1);
+    REQUIRE(offset == 0);
+    REQUIRE(pages.back() == 4);
+}
+
 TEST_CASE("Render transfer capacities grow and align", "[core][render][transfer]") {
     U64 capacity = 0;
 
@@ -1959,6 +2128,7 @@ TEST_CASE("Render window chrome defaults to the system frame", "[core][render][w
     const auto chrome = window.titlebarChrome();
     REQUIRE_FALSE(chrome.integrated);
     REQUIRE(chrome.leadingInset == 0.0f);
+    REQUIRE(chrome.trailingInset == 0.0f);
     REQUIRE(chrome.height == 0.0f);
 
     window.beginWindowDrag();
@@ -1970,7 +2140,7 @@ TEST_CASE("Render window chrome defaults to the system frame", "[core][render][w
     window.zoomWindow();
     REQUIRE(window.destroy() == Result::SUCCESS);
 
-    TestViewport viewport;
+    RenderTest::Viewport viewport;
     const auto fallback = viewport.Viewport::Generic::titlebarChrome();
     REQUIRE_FALSE(fallback.integrated);
     REQUIRE(fallback.leadingInset == 0.0f);
@@ -2001,14 +2171,15 @@ TEST_CASE("Integrated titlebar activation is opt in and forwards through the vie
 
 TEST_CASE("Render window chrome forwards to its viewport in logical units", "[core][render][window]") {
     TestWindow window;
-    TestViewport viewport;
+    auto& viewport = window.viewport;
 
     REQUIRE(window.create() == Result::SUCCESS);
-    window.attachViewport(&viewport);
+    window.attachViewport();
 
     const auto chrome = window.titlebarChrome();
     REQUIRE(chrome.integrated);
     REQUIRE(chrome.leadingInset == 40.0f);
+    REQUIRE(chrome.trailingInset == 138.0f);
     REQUIRE(chrome.height == 16.0f);
 
     window.beginWindowDrag();
@@ -2016,6 +2187,13 @@ TEST_CASE("Render window chrome forwards to its viewport in logical units", "[co
     window.zoomWindow();
     REQUIRE(viewport.drags == 1);
     REQUIRE(viewport.zooms == 2);
+
+    window.setDarkAppearance(true);
+    window.setDarkAppearance(true);
+    window.setDarkAppearance(false);
+    window.setDarkAppearance(false);
+    window.setDarkAppearance(true);
+    CHECK(viewport.appearances == std::vector<bool>{true, false, true});
 
     REQUIRE(window.destroy() == Result::SUCCESS);
 }
@@ -2031,6 +2209,176 @@ TEST_CASE("Failed render window destruction remains retryable", "[core][render][
     window.nextDestructionResult(Result::SUCCESS);
     REQUIRE(window.destroy() == Result::SUCCESS);
     REQUIRE(window.destructionCount() == 2);
+}
+
+TEST_CASE("Render window appearance lets the current native target deduplicate updates",
+          "[core][render][window][appearance]") {
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        AppearanceViewport replacement;
+        AppearanceWindow window;
+        REQUIRE(window.create() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        window.setDarkAppearance(dark);
+        CHECK(window.native.appearances == std::vector<bool>{dark});
+        REQUIRE(replacement.create() == Result::SUCCESS);
+        window.target = &replacement;
+        window.setDarkAppearance(dark);
+        window.setDarkAppearance(dark);
+        CHECK(replacement.appearances == std::vector<bool>{dark});
+        window.target = nullptr;
+        window.setDarkAppearance(dark);
+        window.target = &replacement;
+        window.setDarkAppearance(dark);
+        CHECK(replacement.appearances == std::vector<bool>{dark});
+    }
+}
+
+TEST_CASE("Render window appearance follows a replacement viewport across recreation",
+          "[core][render][window][appearance]") {
+    AppearanceViewport replacement;
+    AppearanceWindow window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    window.setDarkAppearance(false);
+    REQUIRE(window.native.appearance == false);
+    window.close();
+    window.target = &replacement;
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(replacement.appearance == false);
+    window.setDarkAppearance(false);
+    CHECK(replacement.appearances == std::vector<bool>{false});
+}
+
+TEST_CASE("Render window appearance is restored when the same viewport recreates its native window",
+          "[core][render][window][appearance]") {
+    AppearanceWindow window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    window.setDarkAppearance(true);
+    REQUIRE(window.native.appearance == true);
+    window.close();
+    REQUIRE_FALSE(window.native.appearance.has_value());
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(window.native.appearance == true);
+    window.setDarkAppearance(true);
+    CHECK(window.native.appearances == std::vector<bool>{true, true});
+    window.close();
+    window.setDarkAppearance(false);
+    CHECK_FALSE(window.native.appearance.has_value());
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(window.native.appearance == false);
+    window.setDarkAppearance(false);
+    CHECK(window.native.appearances == std::vector<bool>{true, true, false});
+}
+
+TEST_CASE("Render window appearance requests before native creation preserve the latest theme",
+          "[core][render][window][appearance]") {
+    for (const auto result : {Result::SUCCESS, Result::RELOAD}) {
+        for (const bool dark : {false, true}) {
+            CAPTURE(static_cast<int>(result), dark);
+            AppearanceWindow window;
+            window.creationResult = result;
+            window.setDarkAppearance(!dark);
+            window.setDarkAppearance(dark);
+            window.setDarkAppearance(dark);
+            CHECK(window.native.appearances.empty());
+            CHECK(window.native.requests == 3);
+            REQUIRE(window.create() == result);
+            CHECK(window.native.appearance == dark);
+            window.setDarkAppearance(dark);
+            CHECK(window.native.appearances == std::vector<bool>{dark});
+            CHECK(window.native.requests == 4);
+        }
+    }
+}
+
+TEST_CASE("Render window appearance reaches native recreation without a render lifecycle change",
+          "[core][render][window][appearance]") {
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        AppearanceWindow window;
+        REQUIRE(window.create() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        REQUIRE(window.native.appearance == dark);
+        REQUIRE(window.native.destroy() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        CHECK_FALSE(window.native.appearance.has_value());
+        REQUIRE(window.native.create() == Result::SUCCESS);
+        const auto requests = window.native.requests;
+        window.setDarkAppearance(dark);
+        CHECK(window.native.appearance == dark);
+        CHECK(window.native.requests == requests + 1);
+        window.setDarkAppearance(dark);
+        CHECK(window.native.appearances == std::vector<bool>{dark, dark});
+        CHECK(window.native.requests == requests + 1);
+    }
+}
+
+TEST_CASE("Render window appearance reaches a new viewport lifetime at the same address",
+          "[core][render][window][appearance]") {
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        std::optional<AppearanceViewport> storage;
+        storage.emplace();
+        AppearanceWindow window;
+        window.target = &*storage;
+        REQUIRE(window.create() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        REQUIRE(storage->appearance == dark);
+        const auto* address = window.target;
+        storage.reset();
+        storage.emplace();
+        window.target = &*storage;
+        REQUIRE(window.target == address);
+        REQUIRE(storage->create() == Result::SUCCESS);
+        window.setDarkAppearance(dark);
+        CHECK(storage->appearance == dark);
+        CHECK(storage->requests == 1);
+        window.setDarkAppearance(dark);
+        CHECK(storage->appearances == std::vector<bool>{dark});
+        CHECK(storage->requests == 1);
+    }
+}
+
+TEST_CASE("Render window appearance retries null and late native targets",
+          "[core][render][window][appearance]") {
+    AppearanceWindow window;
+    window.target = nullptr;
+    window.setDarkAppearance(false);
+    window.setDarkAppearance(true);
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(window.native.requests == 0);
+    window.target = &window.native;
+    window.setDarkAppearance(true);
+    window.setDarkAppearance(true);
+    CHECK(window.native.requests == 2);
+    CHECK_FALSE(window.native.appearance.has_value());
+    REQUIRE(window.native.create() == Result::SUCCESS);
+    window.setDarkAppearance(true);
+    window.setDarkAppearance(true);
+    CHECK(window.native.appearances == std::vector<bool>{true});
+    CHECK(window.native.requests == 3);
+    CHECK_FALSE(window.native.Viewport::Generic::setDarkAppearance(false));
+    CHECK(window.native.appearance == true);
+}
+
+TEST_CASE("Render window appearance remains retryable after failed creation rolls back the native target",
+          "[core][render][window][appearance]") {
+    AppearanceWindow window;
+    REQUIRE(window.native.create() == Result::SUCCESS);
+    window.setDarkAppearance(false);
+    REQUIRE(window.native.appearance == false);
+    window.creationResult = Result::ERROR;
+    REQUIRE(window.create() == Result::ERROR);
+    CHECK_FALSE(window.native.ready);
+    CHECK_FALSE(window.native.appearance.has_value());
+    const auto requests = window.native.requests;
+    window.setDarkAppearance(false);
+    CHECK(window.native.requests == requests + 1);
+    window.creationResult = Result::SUCCESS;
+    REQUIRE(window.create() == Result::SUCCESS);
+    CHECK(window.native.appearance == false);
+    window.setDarkAppearance(false);
+    CHECK(window.native.appearances == std::vector<bool>{false, false});
 }
 
 TEST_CASE("Surfaces lease shared resources once", "[core][render][window][surface]") {
@@ -2306,6 +2654,78 @@ TEST_CASE("Concurrent binding can snapshot retirement records while backend clea
     REQUIRE(window.stop() == Result::SUCCESS);
     REQUIRE(window.destroy() == Result::SUCCESS);
     for (const auto& buffer : unrelated) REQUIRE(buffer->destroyCount == 1);
+}
+
+TEST_CASE("Texture capture synchronizes GPU work and excludes concurrent resize",
+          "[core][render][window][capture]") {
+    using namespace std::chrono_literals;
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {4, 3}});
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(texture) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+
+    bool synchronized = false;
+    bool dumpAfterSync = false;
+    window.synchronizeHandler = [&] {
+        synchronized = true;
+        return Result::SUCCESS;
+    };
+    std::promise<void> dumping;
+    auto dumpingStarted = dumping.get_future();
+    std::promise<void> releaseDump;
+    auto mayDump = releaseDump.get_future();
+    texture->dumpHandler = [&](uint8_t* output) {
+        dumpAfterSync = synchronized;
+        dumping.set_value();
+        if (mayDump.wait_for(2s) != std::future_status::ready) return Result::ERROR;
+        std::fill_n(output, texture->size().x * texture->size().y * 4, U8{73});
+        return Result::SUCCESS;
+    };
+
+    Extent2D<U64> size{};
+    std::vector<U8> pixels;
+    auto captured = std::async(std::launch::async, [&] { return window.capture(texture, size, pixels); });
+    REQUIRE(dumpingStarted.wait_for(2s) == std::future_status::ready);
+    std::promise<void> rendering;
+    auto renderingStarted = rendering.get_future();
+    auto resized = std::async(std::launch::async, [&] {
+        rendering.set_value();
+        JST_CHECK(window.begin());
+        texture->size({8, 6});
+        return window.end();
+    });
+    REQUIRE(renderingStarted.wait_for(2s) == std::future_status::ready);
+    CHECK(resized.wait_for(20ms) == std::future_status::timeout);
+    releaseDump.set_value();
+    REQUIRE(captured.get() == Result::SUCCESS);
+    REQUIRE(resized.get() == Result::SUCCESS);
+    CHECK(dumpAfterSync);
+    CHECK(size == Extent2D<U64>{4, 3});
+    CHECK(pixels == std::vector<U8>(4 * 3 * 4, 73));
+    CHECK(texture->size() == Extent2D<U64>{8, 6});
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Texture capture rejects unowned resources and failed GPU synchronization",
+          "[core][render][window][capture]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {4, 3}});
+    REQUIRE(window.create() == Result::SUCCESS);
+    bool dumped = false;
+    texture->dumpHandler = [&](uint8_t*) { dumped = true; return Result::SUCCESS; };
+    Extent2D<U64> size{};
+    std::vector<U8> pixels;
+    CHECK(window.capture(texture, size, pixels) == Result::ERROR);
+    CHECK_FALSE(dumped);
+    REQUIRE(window.bind(texture) == Result::SUCCESS);
+    window.synchronizeHandler = [] { return Result::ERROR; };
+    CHECK(window.capture(texture, size, pixels) == Result::ERROR);
+    CHECK_FALSE(dumped);
+    CHECK(pixels.empty());
+    window.synchronizeHandler = {};
+    REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Cancelled render frames release the window", "[core][render][window]") {
@@ -3293,4 +3713,61 @@ TEST_CASE("Texture revisions can be sampled while their producer reallocates",
     REQUIRE(monotonic);
     REQUIRE(texture->allocation() == 20000);
     REQUIRE(texture->contentRevision() == 10000);
+}
+
+TEST_CASE("Surface resizes apply at once after creation and failed rebuilds retry until they succeed",
+          "[core][render][surface][resize]") {
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {8, 6}});
+    ResizingSurface surface(Render::Surface::Config{.framebuffer = texture});
+
+    CHECK(surface.size({16, 12}) == Extent2D<U64>{8, 6});
+    CHECK(surface.rebuilds == 0);
+
+    REQUIRE(surface.create() == Result::SUCCESS);
+    REQUIRE(surface.frame() == Result::SUCCESS);
+    CHECK(texture->size() == Extent2D<U64>{16, 12});
+    CHECK(surface.rebuilds == 1);
+    CHECK(surface.resized());
+
+    REQUIRE(surface.frame() == Result::SUCCESS);
+    CHECK_FALSE(surface.resized());
+
+    CHECK(surface.size({20, 10}) == Extent2D<U64>{20, 10});
+    CHECK(surface.rebuilds == 2);
+    CHECK(surface.resized());
+    CHECK(surface.size({20, 10}) == Extent2D<U64>{20, 10});
+    CHECK(surface.rebuilds == 2);
+
+    surface.rebuildResult = Result::ERROR;
+    CHECK(surface.size({24, 12}) == Extent2D<U64>{24, 12});
+    CHECK(surface.rebuilds == 3);
+    CHECK(surface.bindingResult() == Result::ERROR);
+    CHECK(surface.frame() == Result::ERROR);
+    CHECK(surface.rebuilds == 4);
+    CHECK(surface.frame() == Result::ERROR);
+    CHECK(surface.rebuilds == 5);
+
+    surface.rebuildResult = Result::SUCCESS;
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 6);
+    CHECK(surface.resized());
+    CHECK(surface.bindingResult() == Result::SUCCESS);
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 6);
+    CHECK_FALSE(surface.resized());
+
+    CHECK(surface.size({32, 16}) == Extent2D<U64>{32, 16});
+    CHECK(surface.bindingResult() == Result::SUCCESS);
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 7);
+
+    surface.rebuildResult = Result::ERROR;
+    CHECK(surface.size({40, 20}) == Extent2D<U64>{40, 20});
+    CHECK(surface.bindingResult() == Result::ERROR);
+    REQUIRE(surface.destroy() == Result::SUCCESS);
+    REQUIRE(surface.create() == Result::SUCCESS);
+    CHECK(surface.bindingResult() == Result::SUCCESS);
+    surface.rebuildResult = Result::SUCCESS;
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 8);
 }

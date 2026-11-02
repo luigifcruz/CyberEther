@@ -31,7 +31,6 @@ class ComponentWindow final : public Render::Window {
     ComponentWindow() : Window(Config{}) {}
     std::vector<std::shared_ptr<Render::SurfaceImp<D>>> surfaces;
     Result collect(Render::Transfer::Batch& batch) { return collectTransfers(batch); }
-    const Stats& stats() const override { return windowStats; }
     std::string info() const override { return "ComponentWindow"; }
     constexpr DeviceType device() const override { return D; }
     bool supportsEraseBlending() const override { return eraseSupported; }
@@ -52,8 +51,6 @@ class ComponentWindow final : public Render::Window {
     Result underlyingEnd() override { return Result::SUCCESS; }
     Result underlyingSynchronize() override { return Result::SUCCESS; }
 
- private:
-    Stats windowStats{};
 };
 
 template<DeviceType D>

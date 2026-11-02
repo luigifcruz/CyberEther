@@ -1,0 +1,11 @@
+--- a/pocketfft_hdronly.h
++++ b/pocketfft_hdronly.h
+@@ -48,7 +48,7 @@
+ #endif
+ 
+ #ifndef POCKETFFT_CACHE_SIZE
+-#define POCKETFFT_CACHE_SIZE 0
++#define POCKETFFT_CACHE_SIZE 128
+ #endif
+ 
+ #include <cmath>

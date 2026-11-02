@@ -4,30 +4,27 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <optional>
 
 #include <jetstream/tools/numeric.hh>
+#include <jetstream/memory/attributes.hh>
 
 namespace Jetstream::Modules {
 
 namespace {
 
-std::any ResampledSampleRate(const Tensor& input, const U64 interpolation,
-                            const U64 decimation) {
-    if (!input.hasAttribute("sampleRate")) {
-        return {};
+std::optional<F32> ResampledSampleRate(const F32 rate, const U64 interpolation,
+                                       const U64 decimation) {
+    if (rate <= 0.0f) {
+        return std::nullopt;
     }
-    const auto value = input.attribute("sampleRate");
-    const auto* rate = std::any_cast<F32>(&value);
-    if (!rate || !std::isfinite(*rate) || *rate <= 0.0f) {
-        return {};
-    }
-    const F64 scaled = static_cast<F64>(*rate) *
+    const F64 scaled = static_cast<F64>(rate) *
                        (static_cast<F64>(interpolation) / decimation);
     if (!std::isfinite(scaled) || scaled > std::numeric_limits<F32>::max()) {
-        return {};
+        return std::nullopt;
     }
     const F32 result = static_cast<F32>(scaled);
-    return result > 0.0f ? std::any(result) : std::any{};
+    return result > 0.0f ? std::optional<F32>(result) : std::nullopt;
 }
 
 }  // namespace
@@ -82,9 +79,10 @@ Result RationalResamplerImpl::validate() {
         JST_ERROR("[MODULE_RATIONAL_RESAMPLER] Input must contain valid signal axes.");
         return Result::ERROR;
     }
-    if (tensor.hasAttribute("sampleRate") &&
-        !ResampledSampleRate(tensor, p.interpolation, p.decimation).has_value()) {
-        JST_ERROR("[MODULE_RATIONAL_RESAMPLER] Sample rate must be positive F32 "
+    std::optional<F32> sampleRate;
+    JST_CHECK(ReadAttribute(tensor, "sampleRate", sampleRate));
+    if (sampleRate && !ResampledSampleRate(*sampleRate, p.interpolation, p.decimation)) {
+        JST_ERROR("[MODULE_RATIONAL_RESAMPLER] Sample rate must be positive "
                   "with a representable resampled rate.");
         return Result::ERROR;
     }
@@ -129,17 +127,19 @@ Result RationalResamplerImpl::create() {
 }
 
 Result RationalResamplerImpl::updateSampleRate() {
-    if (!input.hasAttribute("sampleRate")) {
+    std::optional<F32> sampleRate;
+    JST_CHECK(ReadAttribute(input, "sampleRate", sampleRate));
+    if (!sampleRate) {
         // Mask live inheritance until the next submission publishes a scaled rate.
         return output.removeAttribute("sampleRate");
     }
-    const auto rate = ResampledSampleRate(input, plan.interpolation, plan.decimation);
-    if (!rate.has_value()) {
-        JST_ERROR("[MODULE_RATIONAL_RESAMPLER] Sample rate must be positive F32 "
+    const auto rate = ResampledSampleRate(*sampleRate, plan.interpolation, plan.decimation);
+    if (!rate) {
+        JST_ERROR("[MODULE_RATIONAL_RESAMPLER] Sample rate must be positive "
                   "with a representable resampled rate.");
         return Result::ERROR;
     }
-    return output.setAttribute("sampleRate", rate);
+    return output.setAttribute("sampleRate", *rate);
 }
 
 Result RationalResamplerImpl::reconfigure() {

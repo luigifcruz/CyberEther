@@ -1,4 +1,3 @@
-#include <chrono>
 #include <limits>
 
 #include <jetstream/memory/macros.hh>
@@ -42,11 +41,8 @@ Result SoapyImplNativeCpu::hasPendingCompute() {
         return Result::ERROR;
     }
 
-    if (circularBuffer.size() < buffer.size()) {
-        // Keep waits bounded so receive-thread failures reach the scheduler.
-        const auto result = circularBuffer.waitForSize(buffer.size(),
-                                                       std::chrono::milliseconds(100));
-        return errored ? Result::ERROR : result;
+    if (stream.size() < buffer.size()) {
+        return Result::TIMEOUT;
     }
 
     return Result::SUCCESS;
@@ -57,14 +53,7 @@ Result SoapyImplNativeCpu::computeSubmit() {
         return Result::ERROR;
     }
 
-    if (circularBuffer.size() < buffer.size()) {
-        return Result::YIELD;
-    }
-
-    JST_CHECK(circularBuffer.pop(
-        reinterpret_cast<CF32*>(buffer.data()), buffer.size()));
-
-    return Result::SUCCESS;
+    return emitFrame();
 }
 
 JST_REGISTER_MODULE(SoapyImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");

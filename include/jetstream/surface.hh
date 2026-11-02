@@ -62,7 +62,7 @@ enum class JETSTREAM_API KeyCode : U16 {
     CapsLock, ScrollLock, NumLock, PrintScreen, Pause,
     Keypad0, Keypad1, Keypad2, Keypad3, Keypad4, Keypad5, Keypad6, Keypad7, Keypad8, Keypad9,
     KeypadDecimal, KeypadDivide, KeypadMultiply, KeypadSubtract, KeypadAdd, KeypadEnter, KeypadEqual,
-    AppBack, AppForward, Oem102,
+    Oem102,
 };
 
 enum class JETSTREAM_API KeyEventType : U8 {
@@ -98,6 +98,15 @@ enum class JETSTREAM_API MouseEventType : U8 {
     Cancel = 6,
 };
 
+enum class JETSTREAM_API ScrollPhase : U8 {
+    None = 0,
+    Began = 1,
+    Changed = 2,
+    Ended = 3,
+    Momentum = 4,
+    MomentumEnded = 5,
+};
+
 struct JETSTREAM_API MouseEvent {
     MouseEventType type;
     MouseButton button;
@@ -106,6 +115,10 @@ struct JETSTREAM_API MouseEvent {
     KeyModifiers modifiers;
     U8 clicks = 1;
     bool cancel = false;
+    bool positioned = true;
+    ScrollPhase phase = ScrollPhase::None;
+    bool precise = false;
+    bool smooth = false;
 };
 
 struct JETSTREAM_API FocusEvent {

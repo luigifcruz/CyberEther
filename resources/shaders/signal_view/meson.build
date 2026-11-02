@@ -8,6 +8,10 @@ shader_pkg_lst += [{
         files(['frame.vert.glsl', 'frame.frag.glsl']),
         files(['trace.vert.glsl', 'trace.frag.glsl']),
         files(['skirt.vert.glsl', 'skirt.frag.glsl']),
+        files(['density.vert.glsl', 'density.frag.glsl']),
     ],
-    'kernels': [files(['waterfall_filter.comp'])],
+    'kernels': [
+        files(['waterfall_filter.comp']),
+        files(['density_accumulate.comp']),
+    ],
 }]

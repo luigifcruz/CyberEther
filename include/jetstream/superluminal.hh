@@ -61,10 +61,9 @@ class Superluminal {
         std::string windowTitle = "Superluminal";
         DeviceType device = DeviceType::None;
         bool remote = false;
-        std::string remoteBroker = "https://cyberether.org";
         std::string remoteCodec = "h264";
         std::string remoteEncoder = "auto";
-        bool remoteAutoJoin = false;
+        bool remoteAutoApprove = false;
         U32 remoteFramerate = 30;
         DeviceType preferredDevice = DeviceType::CPU;
     };

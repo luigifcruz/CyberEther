@@ -173,7 +173,7 @@ struct FlowgraphConfigVectorInlineField {
         }
 
         if (config.onApply) {
-            config.onApply(std::move(patch), false);
+            config.onApply(std::move(patch), false, {});
         }
         return true;
     }

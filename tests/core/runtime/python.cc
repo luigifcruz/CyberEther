@@ -19,6 +19,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "environment.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/detail/module_impl.hh"
 #include "jetstream/domains/core/python/block.hh"
@@ -67,71 +68,21 @@ class PythonTempDirectory {
     std::filesystem::path root;
 };
 
-#if defined(_WIN32)
-class PythonEnvironmentGuard {
- public:
-    explicit PythonEnvironmentGuard(const wchar_t* name) : name_(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~PythonEnvironmentGuard() {
-        (void)_wputenv_s(name_.c_str(), previous_ ? previous_->c_str() : L"");
-    }
-
-    bool set(const std::wstring& value) const {
-        return _wputenv_s(name_.c_str(), value.c_str()) == 0;
-    }
-
- private:
-    std::wstring name_;
-    std::optional<std::wstring> previous_;
-};
-#else
-class PythonEnvironmentGuard {
- public:
-    explicit PythonEnvironmentGuard(const char* name) : name_(name) {
-        if (const char* value = std::getenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~PythonEnvironmentGuard() {
-        if (previous_) {
-            (void)setenv(name_.c_str(), previous_->c_str(), 1);
-        } else {
-            (void)unsetenv(name_.c_str());
-        }
-    }
-
-    bool set(const std::string& value) const {
-        return setenv(name_.c_str(), value.c_str(), 1) == 0;
-    }
-
- private:
-    std::string name_;
-    std::optional<std::string> previous_;
-};
-#endif
+using PythonEnvironmentGuard = TestSupport::ScopedEnvironment;
 
 class PythonCacheSandbox {
  public:
     PythonCacheSandbox()
         : directory_("cache"),
 #if defined(_WIN32)
-          environment_(L"LOCALAPPDATA"), noIndex_(L"PIP_NO_INDEX")
+          environment_("LOCALAPPDATA"), noIndex_("PIP_NO_INDEX")
 #elif defined(__APPLE__)
           environment_("CFFIXED_USER_HOME"), noIndex_("PIP_NO_INDEX")
 #else
           environment_("XDG_CACHE_HOME"), noIndex_("PIP_NO_INDEX")
 #endif
     {
-#if defined(_WIN32)
-        const bool configured = environment_.set(directory_.root.wstring()) && noIndex_.set(L"1");
-#else
-        const bool configured = environment_.set(directory_.root.string()) && noIndex_.set("1");
-#endif
+        const bool configured = environment_.set(Platform::PathToUtf8(directory_.root)) && noIndex_.set("1");
         if (!configured) {
             throw std::runtime_error("failed to configure Python cache sandbox");
         }
@@ -1188,9 +1139,10 @@ TEST_CASE("Python runtime executes compute() with tensor inputs and outputs", "[
     REQUIRE(runtime.create({{"python_runtime_smoke", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_smoke"}, skippedModules, failedModules) == Result::SUCCESS);
-    REQUIRE(runtime.compute({"python_runtime_smoke"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_smoke"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_smoke"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
 
@@ -1256,8 +1208,9 @@ def compute(ctx):
             output.at<F32>(i) = -1.0f;
         }
         std::unordered_set<std::string> skippedModules;
+        std::unordered_set<std::string> stalledModules;
         std::unordered_set<std::string> failedModules;
-        REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+        REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
         REQUIRE(skippedModules.empty());
         REQUIRE(failedModules.empty());
         for (Index i = 0; i < output.size(); ++i) {
@@ -1266,6 +1219,11 @@ def compute(ctx):
     };
     checkOutput(2.0f);
     SECTION("successful switch") {}
+    SECTION("NumPy stays usable when the next environment supplies it") {
+        const auto metadata = secondEnvironment.root / "numpy-0.dist-info";
+        std::filesystem::create_directory(metadata);
+        WritePythonTestFile(metadata / "top_level.txt", "numpy\n");
+    }
     SECTION("failed reload restores the previous environment and computation") {
         WritePythonTestFile(secondEnvironment.root / "cyberether_environment_fixture.py",
                             "raise RuntimeError('fixture cannot load')\n");
@@ -1328,18 +1286,21 @@ def cleanup():
     REQUIRE(runtime.create({{"python_runtime_skip", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules == std::unordered_set<std::string>{"python_runtime_skip"});
     REQUIRE(failedModules.empty());
 
     skippedModules.clear();
-    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, failedModules) == Result::SUCCESS);
+
+    stalledModules.clear();
+    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
     REQUIRE(module->outputs().at("out").tensor.at<F32>(0) == 10.0f);
 
-    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules == std::unordered_set<std::string>{"python_runtime_skip"});
     REQUIRE(failedModules.empty());
 
@@ -1390,8 +1351,9 @@ def compute(ctx):
     REQUIRE(runtime.create({{"python_runtime_piece_smoke", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_piece_smoke"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_piece_smoke"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
 
@@ -1435,9 +1397,10 @@ TEST_CASE("Python runtime compute can run on a different thread than creation", 
 
     Result computeResult = Result::ERROR;
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
     std::thread computeThread([&] {
-        computeResult = runtime->compute({"python_runtime_smoke"}, skippedModules, failedModules);
+        computeResult = runtime->compute({"python_runtime_smoke"}, skippedModules, stalledModules, failedModules);
     });
     computeThread.join();
     REQUIRE(computeResult == Result::SUCCESS);
@@ -1515,9 +1478,11 @@ def compute(ctx):
     std::thread computeThread([&] {
         for (int iteration = 0; iteration < 16; ++iteration) {
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
             const auto result = runtime->compute({"python_runtime_numpy_buffer"},
                                                  skippedModules,
+                                                 stalledModules,
                                                  failedModules);
             if (result != Result::SUCCESS || !skippedModules.empty() || !failedModules.empty()) {
                 computeResult = result == Result::SUCCESS ? Result::ERROR : result;
@@ -1575,8 +1540,9 @@ def cleanup():
     REQUIRE(runtime.create({{"python_runtime_cleanup", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_cleanup"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_cleanup"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
 
@@ -1630,8 +1596,9 @@ def compute(ctx):
     REQUIRE(runtime.create({{"python_runtime_multiprocessing_cleanup", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_multiprocessing_cleanup"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_multiprocessing_cleanup"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
 
@@ -1664,9 +1631,12 @@ def compute(ctx):
     REQUIRE(verifyRuntime.create({{"python_runtime_multiprocessing_verify", verifier}}) == Result::SUCCESS);
 
     skippedModules.clear();
+
+    stalledModules.clear();
     failedModules.clear();
     const auto verifyComputeResult = verifyRuntime.compute({"python_runtime_multiprocessing_verify"},
                                                            skippedModules,
+                                                           stalledModules,
                                                            failedModules);
     const auto verifyDiagnostic = verifier->context()->runtime()->diagnostic();
     for (const auto& line : verifyDiagnostic.console) {

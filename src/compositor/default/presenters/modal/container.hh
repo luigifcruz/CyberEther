@@ -3,14 +3,11 @@
 
 #include "benchmark.hh"
 #include "dependencies.hh"
+#include "docs_search.hh"
 #include "feedback.hh"
-#include "plugin.hh"
-#include "remote.hh"
-#include "settings/base.hh"
+#include "remote_qr.hh"
 
 #include "../context.hh"
-#include "../flowgraph/modals/close.hh"
-#include "../flowgraph/modals/examples.hh"
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 
@@ -21,39 +18,29 @@ namespace Jetstream {
 
 struct ModalPresenter {
     const PresenterContext& context;
-    SettingsModalPresenter settings;
-    FlowgraphExamplesModalPresenter flowgraphExamples;
     FlowgraphInfoModalPresenter flowgraphInfo;
-    FlowgraphCloseModalPresenter flowgraphClose;
     RenameBlockModalPresenter renameBlock;
     BenchmarkModalPresenter benchmark;
-    RemoteStreamingModalPresenter remoteStreaming;
-    PluginPresenter plugin;
     DependencyReviewModalPresenter dependencies;
     FeedbackModalPresenter feedback;
+    RemoteQrModalPresenter remoteQr;
+    DocsSearchModalPresenter docsSearch;
 
     explicit ModalPresenter(const PresenterContext& context) : context(context),
-                                                               settings(context),
-                                                               flowgraphExamples(context),
                                                                flowgraphInfo(context),
-                                                               flowgraphClose(context),
                                                                renameBlock(context),
                                                                benchmark(context),
-                                                               remoteStreaming(context),
-                                                               plugin(context),
                                                                dependencies(context),
-                                                               feedback(context) {}
+                                                               feedback(context),
+                                                               remoteQr(context),
+                                                               docsSearch(context) {}
 
     ModalView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
 
         ModalView::Config config;
         config.content = context.state.modal.content;
-        config.onClose = [enqueue, content = config.content]() {
-            if (content == ModalContent::Plugin) {
-                enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Registry});
-                return;
-            }
+        config.onClose = [enqueue]() {
             enqueue(MailCloseModal{});
         };
 
@@ -64,14 +51,8 @@ struct ModalPresenter {
         switch (config.content.value()) {
             case ModalContent::About:
                 break;
-            case ModalContent::FlowgraphExamples:
-                config.flowgraphExamples = flowgraphExamples.build();
-                break;
             case ModalContent::FlowgraphInfo:
                 config.flowgraphInfo = flowgraphInfo.build();
-                break;
-            case ModalContent::FlowgraphClose:
-                config.flowgraphClose = flowgraphClose.build();
                 break;
             case ModalContent::RenameBlock:
                 config.renameBlock = renameBlock.build();
@@ -79,20 +60,17 @@ struct ModalPresenter {
             case ModalContent::Benchmark:
                 config.benchmark = benchmark.build();
                 break;
-            case ModalContent::RemoteStreaming:
-                config.remoteStreaming = remoteStreaming.build();
-                break;
-            case ModalContent::Settings:
-                config.appSettings = settings.build();
-                break;
-            case ModalContent::Plugin:
-                config.plugin = plugin.build();
-                break;
             case ModalContent::Dependencies:
                 config.dependencies = dependencies.build();
                 break;
             case ModalContent::Feedback:
                 config.feedback = feedback.build();
+                break;
+            case ModalContent::RemoteQr:
+                config.remoteQr = remoteQr.build();
+                break;
+            case ModalContent::DocsSearch:
+                config.docsSearch = docsSearch.build();
                 break;
         }
 

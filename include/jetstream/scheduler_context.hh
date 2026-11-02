@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_SCHEDULER_CONTEXT_HH
 #define JETSTREAM_SCHEDULER_CONTEXT_HH
 
+#include <chrono>
+
 #include "jetstream/scheduler.hh"
 
 namespace Jetstream {
@@ -8,10 +10,13 @@ namespace Jetstream {
 struct JETSTREAM_API Scheduler::Context {
  public:
     virtual Result presentInitialize();
+    virtual Result presentCapture();
     virtual Result presentSubmit();
 
     virtual Result hasPendingCompute();
-    virtual Result hasPendingPresent();
+
+    static void NotifyPendingCompute();
+    static void NotifyPendingComputeAt(std::chrono::steady_clock::time_point deadline);
 };
 
 }  // namespace Jetstream

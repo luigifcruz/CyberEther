@@ -2,6 +2,9 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include <jetstream/render/sakura/components/image.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/popup.hh>
+#include <jetstream/render/sakura/components/surface_image.hh>
 
 #include "harness.hh"
 #include "scene.hh"
@@ -84,7 +87,6 @@ struct InputRoot : Sakura::RootComponent {
 };
 
 struct InputFixture {
-    ImGuiContext* imgui = ImGui::CreateContext();
     SakuraTest::FakeWindow window;
     Sakura::Context ctx;
 
@@ -94,8 +96,6 @@ struct InputFixture {
         ctx.framebufferSize = {800, 300};
         ctx.windowFocused = true;
     }
-
-    ~InputFixture() { ImGui::DestroyContext(imgui); }
 
     void place(InputRoot& root) {
         ++ctx.frame;

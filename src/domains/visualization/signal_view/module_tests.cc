@@ -12,6 +12,7 @@
 #include <optional>
 #include <stdexcept>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "jetstream/domains/visualization/signal_view/module.hh"
@@ -25,6 +26,7 @@
 #include "jetstream/scheduler_context.hh"
 #include "jetstream/testing.hh"
 #include "flowgraph_fixture.hh"
+#include "surface_fixture.hh"
 
 #include "module_impl.hh"
 #include "waterfall_3d.hh"
@@ -54,6 +56,14 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
         return &SignalViewImplAccess::waterfallHistory;
     }
 
+    static auto densityBinsMember() {
+        return &SignalViewImplAccess::densityBins;
+    }
+
+    static auto densityHistoryMember() {
+        return &SignalViewImplAccess::densityHistory;
+    }
+
     static Modules::SignalViewCanvas& canvasOf(Modules::SignalViewImpl& impl) {
         return impl.*&SignalViewImplAccess::canvas;
     }
@@ -64,6 +74,10 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
 
     static Modules::SignalViewWaterfall& waterfallOf(Modules::SignalViewImpl& impl) {
         return impl.*&SignalViewImplAccess::waterfall;
+    }
+
+    static Modules::SignalViewWaterfall3D& waterfall3dOf(Modules::SignalViewImpl& impl) {
+        return impl.*&SignalViewImplAccess::waterfall3d;
     }
 
     static auto configChangePendingMember() {
@@ -116,33 +130,6 @@ struct InteractiveSignalViewBlock : Block::Impl, DynamicConfig<InteractiveSignal
 JST_REGISTER_BLOCK(InteractiveSignalViewBlock, {"signal_view"});
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
-// Build the axis's CPU-side label state without creating GPU resources or a
-// viewport. The Vulkan resource constructors only describe pending resources.
-class LabelTestWindow final : public Render::Window {
- public:
-    LabelTestWindow() : Window(Config{}) {}
-
-    const Stats& stats() const override { return windowStats; }
-    std::string info() const override { return "LabelTestWindow"; }
-    constexpr DeviceType device() const override { return DeviceType::Vulkan; }
-
- protected:
-    Result bindSurface(const std::shared_ptr<Render::Surface>&) override {
-        return Result::SUCCESS;
-    }
-    Result unbindSurface(const std::shared_ptr<Render::Surface>&) override {
-        return Result::SUCCESS;
-    }
-    Result underlyingCreate() override { return Result::SUCCESS; }
-    Result underlyingDestroy() override { return Result::SUCCESS; }
-    Result underlyingBegin() override { return Result::SUCCESS; }
-    Result underlyingEnd() override { return Result::SUCCESS; }
-    Result underlyingSynchronize() override { return Result::SUCCESS; }
-
- private:
-    Stats windowStats{};
-};
-
 class LabelTestAxis final : public Render::Components::Axis {
  public:
     explicit LabelTestAxis(const Config& config) : Axis(config) {}
@@ -238,7 +225,7 @@ void SignalViewImplAccess::wirePresentResources(
 }
 
 std::shared_ptr<LabelTestText> MakeMarkerText(const std::shared_ptr<Render::Components::Font>& font,
-                                              LabelTestWindow& window) {
+                                              SurfaceTestWindow& window) {
     Render::Components::Text::Config config;
     config.font = font;
     config.maxCharacters = 1024;
@@ -403,8 +390,9 @@ SignalViewSnapshot ComputeSignalViewSnapshot(const Registry::ModuleRegistration&
     Runtime runtime("signal_view", impl.device, impl.runtime);
     REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
     std::unordered_set<std::string> skipped;
+    std::unordered_set<std::string> stalled;
     std::unordered_set<std::string> failed;
-    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
     SignalViewSnapshot snapshot{
         .signalPoints = ReadSignalPoints(module),
@@ -457,10 +445,36 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
     }
 }
 
+TEST_CASE("Signal View headers drop the span first and then the zoom label when narrow",
+          "[modules][signal_view][lineplot][labels]") {
+    using Modules::detail::FitSignalViewHeader;
+    const F32 full = 260.0f;
+    const F32 brief = 120.0f;
+    const F32 zoom = 70.0f;
+    const F32 gap = 10.0f;
+
+    auto fit = FitSignalViewHeader(400.0f, full, brief, zoom, gap);
+    CHECK(fit.span);
+    CHECK(fit.zoom);
+
+    fit = FitSignalViewHeader(full + gap + zoom - 1.0f, full, brief, zoom, gap);
+    CHECK_FALSE(fit.span);
+    CHECK(fit.zoom);
+
+    fit = FitSignalViewHeader(brief + gap + zoom - 1.0f, full, brief, zoom, gap);
+    CHECK_FALSE(fit.span);
+    CHECK_FALSE(fit.zoom);
+
+    fit = FitSignalViewHeader(full, full, brief, 0.0f, gap);
+    CHECK(fit.span);
+    fit = FitSignalViewHeader(full - 1.0f, full, brief, 0.0f, gap);
+    CHECK_FALSE(fit.span);
+}
+
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
 TEST_CASE("Axis vertical scale can move the divider without recreating resources",
           "[modules][signal_view][split][axis][regression]") {
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config config;
     config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     LabelTestAxis axis(config);
@@ -484,7 +498,7 @@ TEST_CASE("Axis vertical scale can move the divider without recreating resources
 
 TEST_CASE("Axis created in split mode reserves full height tick geometry",
           "[modules][signal_view][split][axis][capacity][regression]") {
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config config;
     config.verticalScale = 0.5f;
     config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
@@ -537,8 +551,34 @@ TEST_CASE("Axis created in split mode reserves full height tick geometry",
     REQUIRE(axis.destroy(&window) == Result::SUCCESS);
 }
 
-TEST_CASE("Standalone waterfall presents live metadata without view changes",
-          "[modules][signal_view][waterfall][present][metadata][regression]") {
+TEST_CASE("Axis clamps minor ticks to the reserved capacity without reallocating",
+          "[modules][signal_view][axis][capacity]") {
+    using Axis = Render::Components::Axis;
+    SurfaceTestWindow window;
+    Axis::Config config;
+    config.minorTicks = 9;
+    config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    LabelTestAxis axis(config);
+    REQUIRE(axis.create(&window) == Result::SUCCESS);
+    REQUIRE(axis.getConfig().minorTicks == Axis::DetachedMinorTicks);
+    REQUIRE(axis.updatePixelSize({2.0f / 16384.0f, 2.0f / 16384.0f}) == Result::SUCCESS);
+    REQUIRE(axis.setShowFrameTicks(true) == Result::SUCCESS);
+
+    Render::Surface::Config resources;
+    REQUIRE(axis.surfaceUnderlay(resources) == Result::SUCCESS);
+    const auto& points = resources.kernels.front()->getConfig().buffers[1].first->getConfig();
+    const auto* originalPoints = points.buffer;
+
+    REQUIRE(axis.setMinorTicks(Axis::AttachedMinorTicks) == Result::SUCCESS);
+    CHECK(axis.getConfig().minorTicks == Axis::AttachedMinorTicks);
+    REQUIRE(axis.setMinorTicks(7) == Result::SUCCESS);
+    CHECK(axis.getConfig().minorTicks == Axis::DetachedMinorTicks);
+    CHECK(points.buffer == originalPoints);
+    REQUIRE(axis.destroy(&window) == Result::SUCCESS);
+}
+
+TEST_CASE("Signal View safely presents live metadata without view changes",
+          "[modules][signal_view][present][metadata][regression]") {
     Tensor input(DeviceType::CPU, DataType::F32, {32});
     F32 frequency = 100.0e6f;
     F32 sampleRate = 2.0e6f;
@@ -565,11 +605,11 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
                                   RuntimeType::NATIVE, "generic", module) ==
             Result::SUCCESS);
     Modules::SignalView config;
-    config.mode = "waterfall";
+    config.mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
     config.waterfallHeight = 4;
     REQUIRE(module->create("waterfall", config, inputs) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.showInteriorGrid = false;
     axisConfig.font = std::make_shared<Render::Components::Font>(
@@ -579,11 +619,7 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
 
     auto* impl = module->getImpl<Modules::SignalViewImpl>();
     REQUIRE(impl);
-    SignalViewImplAccess::canvasOf(*impl).axis = axis;
-    SignalViewImplAccess::canvasOf(*impl).renderSurface =
-        std::make_shared<LabelTestSurface>();
-    SignalViewImplAccess::waterfallOf(*impl).uniformBuffer =
-        std::make_shared<LabelTestBuffer>();
+    SignalViewImplAccess::wirePresentResources(*impl, axis, {});
     auto* presenter = module->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
 
@@ -592,7 +628,7 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
     const auto present = [&] {
         frequencyReads = 0;
         sampleRateReads = 0;
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
         CHECK_FALSE(SignalViewImplAccess::canvasOf(*impl).interaction.viewChanged);
         CHECK(frequencyReads > 0);
         CHECK(sampleRateReads > 0);
@@ -605,6 +641,139 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
     sampleRate = 4.0e6f;
     present();
 
+    for (const auto* attribute : {"frequency", "sampleRate"}) {
+        for (const auto& value : {std::any{}, std::any{std::string("invalid")},
+                                  std::any{F64{2.0e6}},
+                                  std::any{std::numeric_limits<F64>::infinity()},
+                                  std::any{std::numeric_limits<F32>::quiet_NaN()}}) {
+            CAPTURE(config.mode, attribute, value.type().name());
+            REQUIRE(input.setDerivedAttribute(attribute, [value] { return value; }) ==
+                    Result::SUCCESS);
+            REQUIRE(PresentFrame(*presenter) == Result::ERROR);
+            CHECK(JST_LOG_LAST_ERROR().find(attribute) != std::string::npos);
+            REQUIRE(PresentFrame(*presenter) == Result::ERROR);
+
+            // The direct presenter returns a recoverable error to the scheduler.
+            REQUIRE(input.setDerivedAttribute(attribute, [=]() -> std::any {
+                return std::string(attribute) == "frequency" ? frequency : sampleRate;
+            }) == Result::SUCCESS);
+            REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+        }
+    }
+
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Signal View recolors its axis from the surface theme",
+          "[modules][signal_view][present][theme]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {32});
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) ==
+            Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
+    config.waterfallHeight = 4;
+    CAPTURE(config.mode);
+    REQUIRE(module->create("signal_view", config, inputs) == Result::SUCCESS);
+
+    SurfaceTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.showInteriorGrid = false;
+    axisConfig.font = std::make_shared<Render::Components::Font>(
+        Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, {});
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+
+    const auto apply = [&](const SurfaceTheme& theme) {
+        module->surface()->pushSurfaceEvent({
+            .type = SurfaceEventType::Resize,
+            .size = {512, 512},
+            .theme = theme,
+        });
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+        const auto& applied = axis->getConfig();
+        CHECK(applied.gridColor == theme.grid);
+        CHECK(applied.majorGridColor == theme.majorGrid);
+        CHECK(applied.labelColor == theme.foreground);
+    };
+
+    SurfaceTheme light;
+    light.background = {0.98f, 0.98f, 0.985f, 1.0f};
+    light.foreground = {0.12f, 0.12f, 0.14f, 1.0f};
+    light.grid = {0.89f, 0.89f, 0.90f, 1.0f};
+    light.majorGrid = {0.58f, 0.58f, 0.61f, 1.0f};
+    apply(light);
+    apply(SurfaceTheme{});
+
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Signal View cursor readout uses frequency only when both attributes are F32",
+          "[modules][signal_view][present][metadata][regression]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {8});
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = "lineplot";
+    REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
+
+    SurfaceTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config cursorConfig;
+    cursorConfig.font = axisConfig.font;
+    cursorConfig.maxCharacters = 64;
+    cursorConfig.elements = {{"cursor-x", {}}, {"cursor-y", {}}};
+    auto cursorText = std::make_shared<LabelTestText>(cursorConfig);
+    REQUIRE(cursorText->create(&window) == Result::SUCCESS);
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, {}, cursorText);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+
+    const auto cursorX = [&]() {
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+        });
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+        return cursorText->get("cursor-x").fill;
+    };
+
+    CHECK(cursorX() == "0.0000");
+    REQUIRE(input.setAttribute("frequency", F32{100.0e6f}) == Result::SUCCESS);
+    CHECK(cursorX() == "0.0000");
+    REQUIRE(input.setAttribute("sampleRate", F32{2.0e6f}) == Result::SUCCESS);
+    CHECK(cursorX() == "100.0000 MHz");
+    REQUIRE(input.setAttribute("frequency", F32{-1.0e6f}) == Result::SUCCESS);
+    CHECK(cursorX() == "-1.0000 MHz");
+    REQUIRE(input.removeAttribute("frequency") == Result::SUCCESS);
+    CHECK(cursorX() == "0.0000");
+
+    REQUIRE(input.setAttribute("sampleRate", F64{2.0e6}) == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find("sampleRate") != std::string::npos);
+    REQUIRE(input.setAttribute("sampleRate", F32{2.0e6f}) == Result::SUCCESS);
+    CHECK(cursorX() == "0.0000");
+
+    REQUIRE(cursorText->destroy(&window) == Result::SUCCESS);
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
@@ -655,7 +824,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
     REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -680,10 +849,10 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     auto* presenter = module->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
 
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     std::fill_n(input.data<F32>(), input.size(), 0.4f);
-    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     REQUIRE(cursorText->get("cursor-y").fill == " ");
 
@@ -698,7 +867,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f, 0.5f},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == "100.0000 MHz");
     REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(4));
 
@@ -706,7 +875,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f + 0.25f * padding.x, 0.5f},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == "100.5000 MHz");
     REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(5));
 
@@ -721,7 +890,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
             .position = position,
             .modifiers = {.shift = true},
         });
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
         REQUIRE_FALSE(interaction.dragging);
         REQUIRE(interaction.zoom == Catch::Approx(1.0f));
     };
@@ -756,7 +925,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
             .type = MouseEventType::Move,
             .position = {(tag.x + 1.0f) * 0.5f, (1.0f - tag.y) * 0.5f},
         });
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     };
     REQUIRE(spanLabel(0, "label") == " ");
     REQUIRE(spanLabel(1, "label") == " ");
@@ -780,7 +949,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
         module->surface()->pushInputEvent(MouseEvent{
             .type = MouseEventType::Move, .position = {0.5f - 0.05f * padding.x, 0.5f},
         });
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     };
     moveAway();
     REQUIRE(cursorText->get("cursor-x").fill == "99.9000 MHz");
@@ -789,7 +958,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f, 0.5f},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     REQUIRE(cursorText->get("cursor-y").fill == " ");
     REQUIRE(spanLabel(0, "label") == " ");
@@ -804,7 +973,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
         module->surface()->pushInputEvent(MouseEvent{
             .type = MouseEventType::Release, .button = MouseButton::Left, .position = position,
         });
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
         REQUIRE_FALSE(interaction.dragging);
     };
     clickTag(0);
@@ -831,7 +1000,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     REQUIRE(spanLabel(0, "label") == "500.0 kHz");
     REQUIRE(spanLabel(1, "label") == "500.0 kHz");
     module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Escape, {}});
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(spanLabel(0, "label") == " ");
     REQUIRE(spanLabel(1, "label") == " ");
     clickTag(0);
@@ -855,15 +1024,15 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
         module->surface()->pushInputEvent(MouseEvent{
             .type = MouseEventType::Click, .button = MouseButton::Left, .position = from,
         });
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
         module->surface()->pushInputEvent(MouseEvent{
             .type = MouseEventType::Move, .position = to,
         });
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
         module->surface()->pushInputEvent(MouseEvent{
             .type = MouseEventType::Release, .button = MouseButton::Left, .position = to,
         });
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
         REQUIRE_FALSE(interaction.dragging);
         REQUIRE(interaction.zoom == Catch::Approx(1.0f));
         REQUIRE(interaction.offset == Catch::Approx(0.0f));
@@ -880,7 +1049,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     REQUIRE(spanLabel(0, "label") == "250.0 kHz");
     REQUIRE(spanLabel(1, "label") == " ");
     module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Escape, {}});
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(spanLabel(0, "label") == " ");
     REQUIRE(spanLabel(1, "label") == " ");
     for (U64 extra = 1; extra <= 16; ++extra) {
@@ -897,50 +1066,66 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f + 0.25f * padding.x, 0.5f},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
 
     module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     const auto heldAmplitude = cursorText->get("cursor-y").fill;
     REQUIRE(heldAmplitude == amplitudeAt(5));
     std::fill_n(input.data<F32>(), input.size(), 0.9f);
-    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-y").fill == heldAmplitude);
     if (lineplot) REQUIRE(heldAmplitude != amplitudeAt(5));
     module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(5));
 
     shiftClick(quarter);
     REQUIRE(markerLabel(0, "tag") == "M1");
     REQUIRE(markerLabel(0, "x") == "100.5000 MHz");
+    REQUIRE(axis->getConfig().minorTicks == Render::Components::Axis::DetachedMinorTicks);
     module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
                                          .size = {512, 512},
                                          .placement = SurfacePlacementType::Attached});
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(axis->getConfig().minorTicks == Render::Components::Axis::AttachedMinorTicks);
+    if (lineplot) REQUIRE(text->get("header").fill == "CENTER 100.000 MHz   SPAN 2.000 MHz");
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     REQUIRE(cursorText->get("cursor-y").fill == " ");
     REQUIRE(markerLabel(0, "tag") == "M1");
     REQUIRE(markerLabel(0, "id") == " ");
     REQUIRE(markerLabel(0, "x") == " ");
     REQUIRE(markerLabel(0, "y") == " ");
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+    });
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == "100.0000 MHz");
+    REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(4));
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = quarter,
+    });
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == " ");
 
     module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
                                          .size = {512, 512},
                                          .placement = SurfacePlacementType::Detached});
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(axis->getConfig().minorTicks == Render::Components::Axis::DetachedMinorTicks);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f, 0.5f},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == "100.0000 MHz");
     REQUIRE(markerLabel(0, "id") == "M1");
     REQUIRE(markerLabel(0, "x") == "100.5000 MHz");
 
     module->surface()->pushInputEvent(FocusEvent{false});
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     REQUIRE(cursorText->get("cursor-y").fill == " ");
 
@@ -968,7 +1153,7 @@ TEST_CASE("Standalone marker displays survive resizing and follow reconfiguratio
     config.markers = {0.5f};
     REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -979,7 +1164,7 @@ TEST_CASE("Standalone marker displays survive resizing and follow reconfiguratio
     SignalViewImplAccess::wirePresentResources(*impl, axis, {}, {}, markerText);
     auto* presenter = module->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
-    const auto present = [&] { REQUIRE(presenter->presentSubmit() == Result::SUCCESS); };
+    const auto present = [&] { REQUIRE(PresentFrame(*presenter) == Result::SUCCESS); };
     const auto& positions = SignalViewImplAccess::canvasOf(*impl).markerPositions;
     present();
     REQUIRE(markerText->get("marker-0-tag").fill == "M1");
@@ -1102,7 +1287,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Production plot markers persist after recrea
     REQUIRE(observer.module);
     const auto original = observer.module;
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -1114,7 +1299,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Production plot markers persist after recrea
         SignalViewImplAccess::wirePresentResources(*impl, axis, {}, {}, markerText);
     };
     const auto present = [&] {
-        REQUIRE(observer.module->getImpl<Scheduler::Context>()->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*observer.module->getImpl<Scheduler::Context>()) == Result::SUCCESS);
     };
     const auto stored = [&](Flowgraph& graph) {
         return std::any_cast<std::vector<F32>>(ViewBlock(graph, "plot").config.at("markers"));
@@ -1177,7 +1362,7 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
     REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -1203,13 +1388,13 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     const auto& cursor = SignalViewImplAccess::canvasOf(*impl).cursor;
     const auto& interaction = SignalViewImplAccess::canvasOf(*impl).interaction;
 
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     for (U64 b = 0; b < 2; ++b) {
         input.data<F32>()[b * 2 + 0] = 0.25f;
         input.data<F32>()[b * 2 + 1] = 0.75f;
     }
-    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     const auto points = ReadSignalPoints(module);
     REQUIRE(points[1] == Catch::Approx(std::tanh(-1.0f)));
     REQUIRE(points[3] == Catch::Approx(std::tanh(1.0f)));
@@ -1225,7 +1410,7 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Scroll, .position = {0.5f, 0.5f}, .scroll = {0, 90},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(interaction.zoom == Catch::Approx(10.0f));
     REQUIRE(interaction.offset == Catch::Approx(0.0f).margin(1e-6f));
     const auto padding = axis->paddingScale();
@@ -1233,7 +1418,7 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f, 0.5f},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursor.visible);
     REQUIRE(cursor.marker);
     REQUIRE(cursor.plot.x == Catch::Approx(0.0f).margin(1e-5f));
@@ -1244,7 +1429,7 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f + 0.25f * padding.x, 0.5f},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursor.visible);
     REQUIRE(cursor.marker);
     REQUIRE(std::abs(cursor.plot.x) <= padding.x);
@@ -1256,7 +1441,7 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f + 0.49f * padding.x, 0.5f},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(cursor.visible);
     REQUIRE(std::abs(cursor.plot.x) <= padding.x);
     REQUIRE(cursor.plot.x == Catch::Approx(0.98f * padding.x));
@@ -1271,7 +1456,7 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f, 0.5f},
     });
-    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     REQUIRE(axis->paddingScale().x == Catch::Approx(-0.25f));
     REQUIRE(cursor.visible);
     REQUIRE(cursor.marker);
@@ -1312,7 +1497,7 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
     REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -1336,7 +1521,7 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     std::vector<F32> uploadedWaterfall(waterfall ? (8 + 16) * 4 : 0);
     auto displayedUniforms = SignalViewImplAccess::waterfallOf(*impl).uniforms;
     const auto present = [&] {
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
         U64 bytes = ApplyBufferUploads(SignalViewImplAccess::lineplotOf(*impl).signalPointsBuffer,
                                        displayedSignal.data());
         bytes += ApplyBufferUploads(SignalViewImplAccess::lineplotOf(*impl).maxHoldPointsBuffer,
@@ -1352,11 +1537,11 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
                             &displayedUniforms);
         return bytes;
     };
-    std::unordered_set<std::string> skipped, failed;
+    std::unordered_set<std::string> skipped, stalled, failed;
     F32 average = -0.8f;
     const auto compute = [&](F32 value) {
         std::fill_n(input.data<F32>(), input.size(), value);
-        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
         REQUIRE(skipped.empty());
         REQUIRE(failed.empty());
         average = 0.5f * average + 0.5f * (2.0f * value - 1.0f);
@@ -1375,10 +1560,11 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     const auto frozenWaterfall = displayedWaterfall;
     const auto frozenIndex = displayedUniforms.index;
 
-    compute(0.2f);
     module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
     REQUIRE(present() == 0);
     REQUIRE(holdLabel() == (lineplot ? "HOLD" : ""));
+    compute(0.2f);
+    REQUIRE(present() == 0);
     for (U64 frame = 0; frame < heldFrames; ++frame) {
         compute(0.3f + 0.05f * frame);
         module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}, true});
@@ -1407,6 +1593,7 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
 
     module->surface()->pushInputEvent(FocusEvent{true});
     module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+    REQUIRE(present() == 0);
     REQUIRE(present() > 0);
     REQUIRE(holdLabel() == (lineplot ? " " : ""));
     if (lineplot) {
@@ -1452,7 +1639,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Marker drags commit the release position wit
     const auto& interaction = SignalViewImplAccess::canvasOf(*impl).interaction;
     const auto& cursor = SignalViewImplAccess::canvasOf(*impl).cursor;
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.verticalScale = 0.5f;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
@@ -1462,7 +1649,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Marker drags commit the release position wit
     SignalViewImplAccess::wirePresentResources(*impl, axis, {}, {}, markerText);
     auto* presenter = module->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
-    const auto present = [&] { REQUIRE(presenter->presentSubmit() == Result::SUCCESS); };
+    const auto present = [&] { REQUIRE(PresentFrame(*presenter) == Result::SUCCESS); };
     const auto pending = [&] {
         return (impl->*SignalViewImplAccess::configChangePendingMember())();
     };
@@ -1546,7 +1733,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owni
     REQUIRE(impl);
     const auto& cursor = SignalViewImplAccess::canvasOf(*impl).cursor;
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.verticalScale = 0.5f;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
@@ -1564,7 +1751,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owni
     auto* presenter = original->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
     const auto present = [&] {
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     };
     const auto pending = [&] {
         return (impl->*SignalViewImplAccess::configChangePendingMember())();
@@ -1705,7 +1892,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     auto& splitter = SignalViewImplAccess::canvasOf(*impl).splitter;
     auto& interaction = SignalViewImplAccess::canvasOf(*impl).interaction;
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.verticalScale = 0.5f;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
@@ -1722,7 +1909,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     auto* presenter = original->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
     const auto present = [&] {
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     };
     const auto pending = [&] {
         return (impl->*SignalViewImplAccess::configChangePendingMember())();
@@ -1797,6 +1984,78 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     REQUIRE(text->destroy(&window) == Result::SUCCESS);
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
 }
+
+TEST_CASE("Signal view redraws its retained surface only on input and new data",
+          "[modules][signal_view][present][retained]") {
+    const std::string mode = GENERATE("lineplot_waterfall", "waterfall_3d");
+    CAPTURE(mode);
+    const bool flat = mode != "waterfall_3d";
+
+    Tensor input(DeviceType::CPU, DataType::F32, {2, 8});
+    REQUIRE(SetSignalAxes(input, {.sample = Index{1}, .batch = Index{0}}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    auto window = std::make_shared<SurfaceTestWindow>();
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = mode;
+    config.waterfallHeight = 4;
+    REQUIRE(module->create("plot", config, inputs, window) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
+
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    auto& surface = flat ? *SignalViewImplAccess::canvasOf(*impl).renderSurface
+                         : *SignalViewImplAccess::waterfall3dOf(*impl).surface();
+
+    std::unordered_set<std::string> skipped, stalled, failed;
+    F32 level = 0.1f;
+    const auto compute = [&] {
+        std::fill_n(input.data<F32>(), input.size(), level);
+        level += 0.1f;
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
+    };
+
+    compute();
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    SurfaceProbe::consumeInvalidation(surface);
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    compute();
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize, .size = {640, 480}});
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    if (flat) {
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+        });
+        REQUIRE(PresentRedraws(*presenter, surface));
+        REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+        module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+        REQUIRE(PresentRedraws(*presenter, surface));
+        compute();
+        REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+        module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+        REQUIRE(PresentRedraws(*presenter, surface));
+        REQUIRE(PresentRedraws(*presenter, surface));
+        REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+    }
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
 #endif
 
 TEST_CASE("Signal View splitter hit testing uses the padded plot and commits on release",
@@ -1908,9 +2167,9 @@ TEST_CASE("Signal View split reconfiguration preserves trace and waterfall histo
             REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
             Runtime runtime("plot", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
+            std::unordered_set<std::string> skipped, stalled, failed;
             for (U64 cycle = 0; cycle < 3; ++cycle) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
             const auto trace = ReadSignalPoints(module);
             const auto hold = ReadMaxHoldPoints(module);
@@ -2070,6 +2329,14 @@ TEST_CASE("Signal View validation is mode aware",
                 REQUIRE(ctx.run() == Result::ERROR);
             }
 
+            SECTION("density settings") {
+                Modules::SignalView config;
+                config.mode = "lineplot";
+                config.density = true;
+                config.persistence = 0;
+                RequireSignalViewValidationError(implementation, config, input);
+            }
+
             SECTION("waterfall accepts one column") {
                 TestContext ctx("signal_view", implementation.device,
                                 implementation.runtime, implementation.provider);
@@ -2082,6 +2349,109 @@ TEST_CASE("Signal View validation is mode aware",
                 ctx.setInput("signal", oneColumn);
                 REQUIRE(ctx.run() == Result::SUCCESS);
             }
+        }
+    }
+}
+
+TEST_CASE("Density columns cap wide spectra and cover every bin",
+          "[modules][signal_view][density]") {
+    const auto narrow = Modules::detail::PlanDensityColumns(1024);
+    REQUIRE(narrow.binsPerColumn == 1);
+    REQUIRE(narrow.columns == 1024);
+
+    const auto limit = Modules::detail::PlanDensityColumns(
+        Modules::detail::kDensityMaxColumns);
+    REQUIRE(limit.binsPerColumn == 1);
+    REQUIRE(limit.columns == Modules::detail::kDensityMaxColumns);
+
+    for (const U64 width : {U64{8193}, U64{65536}, U64{100000}}) {
+        const auto plan = Modules::detail::PlanDensityColumns(width);
+        REQUIRE(plan.columns <= Modules::detail::kDensityMaxColumns);
+        REQUIRE(plan.columns * plan.binsPerColumn >= width);
+        REQUIRE((plan.columns - 1) * plan.binsPerColumn < width);
+    }
+
+    REQUIRE(Modules::detail::DensityDecay(1.0f) == Catch::Approx(0.5f));
+    REQUIRE(std::pow(Modules::detail::DensityDecay(256.0f), 256.0f) ==
+            Catch::Approx(0.5f));
+}
+
+TEST_CASE("Signal View spectral density keeps its own history ring under a linear trace",
+          "[modules][signal_view][density]") {
+    const auto implementations = Registry::ListAvailableModules("signal_view");
+    REQUIRE(!implementations.empty());
+    const std::string mode = GENERATE("lineplot", "lineplot_waterfall");
+    CAPTURE(mode);
+
+    for (const auto& implementation : implementations) {
+        DYNAMIC_SECTION("Device: " << implementation.device
+                        << " Runtime: " << implementation.runtime) {
+            Tensor cpuInput;
+            REQUIRE(cpuInput.create(DeviceType::CPU, DataType::F32, {3, 16}) ==
+                    Result::SUCCESS);
+            REQUIRE(SetSignalAxes(cpuInput, {
+                .sample = Index{1},
+                .batch = Index{0},
+            }) == Result::SUCCESS);
+            for (U64 i = 0; i < cpuInput.size(); ++i) {
+                cpuInput.data<F32>()[i] = static_cast<F32>(i) / cpuInput.size();
+            }
+
+            Tensor input;
+            if (implementation.device == DeviceType::CPU) {
+                input = cpuInput;
+            } else {
+                REQUIRE(input.create(implementation.device, cpuInput) == Result::SUCCESS);
+            }
+
+            TensorMap inputs;
+            inputs["signal"].requested("source", "signal");
+            inputs["signal"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("signal_view",
+                                          implementation.device,
+                                          implementation.runtime,
+                                          implementation.provider,
+                                          module) == Result::SUCCESS);
+
+            Modules::SignalView config;
+            config.mode = mode;
+            config.density = true;
+            config.waterfallHeight = 4;
+            REQUIRE(module->create("signal_view", config, inputs) == Result::SUCCESS);
+
+            Runtime runtime("signal_view", implementation.device, implementation.runtime);
+            REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
+            std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> stalled;
+            std::unordered_set<std::string> failed;
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
+
+            auto* impl = module->getImpl<Modules::SignalViewImpl>();
+            REQUIRE(impl != nullptr);
+            const auto bins = ReadTensor(impl->*SignalViewImplAccess::densityBinsMember(),
+                                         "density history");
+            REQUIRE(bins.size() == Modules::detail::kDensityHistoryRows * 16);
+            for (U64 i = 0; i < cpuInput.size(); ++i) {
+                REQUIRE(bins[i] == cpuInput.data<F32>()[i]);
+            }
+            const auto& history = impl->*SignalViewImplAccess::densityHistoryMember();
+            REQUIRE(history.writeIndex == 3);
+            REQUIRE(history.dirtyRows == 3);
+            if (mode == "lineplot_waterfall") {
+                REQUIRE(ReadWaterfallBins(module).size() == 4 * 16);
+            }
+
+            const auto& lineplot = SignalViewImplAccess::lineplotOf(*impl);
+            REQUIRE(lineplot.config.overlay);
+            REQUIRE_FALSE(lineplot.config.fill);
+            const auto points = ReadSignalPoints(module);
+            REQUIRE(points.size() == 32);
+            REQUIRE(points[1] == Catch::Approx(-1.0f / 3.0f).margin(1e-5f));
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 }
@@ -2155,7 +2525,7 @@ TEST_CASE("Signal View validates signal axis roles",
     }
 }
 
-TEST_CASE("Signal View rejects non-finite configuration and metadata",
+TEST_CASE("Signal View rejects non-finite configuration",
           "[modules][signal_view][validation]") {
     const auto implementations = Registry::ListAvailableModules("signal_view");
     REQUIRE(!implementations.empty());
@@ -2170,14 +2540,52 @@ TEST_CASE("Signal View rejects non-finite configuration and metadata",
             Modules::SignalView config;
             config.rangeMin = -std::numeric_limits<F32>::infinity();
             RequireSignalViewValidationError(implementation, config, input);
-
-            REQUIRE(input.setAttribute("sampleRate", F64{1.0e6}) ==
-                    Result::SUCCESS);
-            RequireSignalViewValidationError(implementation,
-                                             Modules::SignalView{},
-                                             input);
         }
     }
+}
+
+TEST_CASE("Signal View rejects invalid frequency metadata at creation and presentation",
+          "[modules][signal_view][metadata][regression]") {
+    const auto attribute = GENERATE("frequency", "sampleRate");
+    const auto value = GENERATE(std::any{}, std::any{std::string("invalid")},
+                               std::any{F64{2.0e6}},
+                               std::any{I64{123}}, std::any{true},
+                               std::any{std::vector<F32>{1.0f}}, std::any{CF32{1, 2}},
+                               std::any{std::numeric_limits<F32>::quiet_NaN()},
+                               std::any{std::numeric_limits<F64>::quiet_NaN()},
+                               std::any{std::numeric_limits<F32>::infinity()},
+                               std::any{-std::numeric_limits<F64>::infinity()},
+                               std::any{std::numeric_limits<F64>::max()});
+    const auto mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall", "waterfall_3d");
+    CAPTURE(mode, attribute, value.type().name());
+    Tensor input(DeviceType::CPU, DataType::F32, {32});
+    // A malformed attribute is an error even if its companion is absent.
+    REQUIRE(input.setAttribute(attribute, value) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].produced("source", "signal", input);
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = mode;
+    config.waterfallHeight = 4;
+    REQUIRE(module->create("plot", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    CHECK(JST_LOG_LAST_ERROR().find(attribute) != std::string::npos);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+
+    REQUIRE(input.removeAttribute(attribute) == Result::SUCCESS);
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    REQUIRE(input.setAttribute(attribute, value) == Result::SUCCESS);
+    REQUIRE(PresentFrame(*presenter) == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find(attribute) != std::string::npos);
+    REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Waterfall history tracks wrapped dirty rows",
@@ -2253,8 +2661,9 @@ TEST_CASE("Combined signal view keeps full-resolution traces and waterfall rows"
                             implementation.runtime);
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             const std::vector<F32> expected = {
                 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f,
@@ -2382,15 +2791,16 @@ TEST_CASE("Signal View preserves waterfall history across runtime rebuilds",
             std::vector<F32> expected(height * width, 0.0f);
             U64 expectedWriteIndex = 0;
             std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             ApplyReferenceRows(expected, expectedWriteIndex, cpuInput, height);
             REQUIRE(ReadWaterfallBins(module) == expected);
             REQUIRE(ReadWaterfallHistory(module).writeIndex == expectedWriteIndex);
 
             REQUIRE(runtime.destroy() == Result::SUCCESS);
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             ApplyReferenceRows(expected, expectedWriteIndex, cpuInput, height);
             REQUIRE(ReadWaterfallBins(module) == expected);
             REQUIRE(ReadWaterfallHistory(module).writeIndex == expectedWriteIndex);
@@ -2435,15 +2845,16 @@ TEST_CASE("Signal View reconfigure preserves applied waterfall state",
                             implementation.runtime);
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             Parser::Map recreate;
             recreate["waterfallHeight"] = U64{8};
             REQUIRE(module->reconfigure(recreate, true) == Result::SUCCESS);
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             REQUIRE(module->reconfigure(recreate) == Result::RECREATE);
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             const auto& applied =
                 static_cast<const Modules::SignalView&>(module->config());
             REQUIRE(applied.waterfallHeight == config.waterfallHeight);
@@ -2453,7 +2864,7 @@ TEST_CASE("Signal View reconfigure preserves applied waterfall state",
             REQUIRE(module->reconfigure(rejected) == Result::ERROR);
             REQUIRE(module->state() == Module::State::CREATED);
             REQUIRE(applied.waterfallHeight == config.waterfallHeight);
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             REQUIRE(runtime.destroy() == Result::SUCCESS);
             REQUIRE(module->destroy() == Result::SUCCESS);
         }
@@ -2541,7 +2952,7 @@ TEST_CASE("Waterfall emits complete averaged rows across batches and runtime reb
             REQUIRE(module->create("waterfall", config, inputs) == Result::SUCCESS);
             Runtime runtime("waterfall", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"waterfall", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
+            std::unordered_set<std::string> skipped, stalled, failed;
 
             for (U64 start = 0; start < 36; start += batches) {
                 for (U64 row = 0; row < batches; ++row) {
@@ -2550,7 +2961,7 @@ TEST_CASE("Waterfall emits complete averaged rows across batches and runtime reb
                                           element * input.stride(sampleAxis)] = sample(start + row, element);
                     }
                 }
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
                 const U64 total = (start + batches) / averaging;
                 const U64 first = total > height ? total - height : 0;
                 const auto bins = ReadWaterfallBins(module);
@@ -2621,8 +3032,8 @@ TEST_CASE("Waterfall group averages retain finite extreme amplitudes",
             REQUIRE(module->create("waterfall", config, inputs) == Result::SUCCESS);
             Runtime runtime("waterfall", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"waterfall", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            std::unordered_set<std::string> skipped, stalled, failed;
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             REQUIRE(ReadWaterfallBins(module) == std::vector<F32>{large, small, 0.0f, 0.0f});
             REQUIRE(runtime.destroy() == Result::SUCCESS);
             REQUIRE(module->destroy() == Result::SUCCESS);
@@ -2660,12 +3071,12 @@ TEST_CASE("Signal View applies independent lineplot and waterfall averaging stre
             REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
             Runtime runtime("plot", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            std::unordered_set<std::string> skipped, stalled, failed;
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             input.at<F32>(0) = 0.75f;
             input.at<F32>(1) = 0.25f;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             const F32 lineValue = std::tanh(-1.0f + 2.0f / static_cast<F32>(lineplotAveraging));
             RequirePoints(ReadSignalPoints(module), {-1.0f, lineValue, 1.0f, -lineValue});
             const std::vector<F32> expectedWaterfall = waterfallAveraging == 1
@@ -2713,13 +3124,13 @@ TEST_CASE("Waterfall averaging edits preserve history and discard affected parti
             REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
             Runtime runtime("plot", implementation.device, implementation.runtime);
             REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
-            std::unordered_set<std::string> skipped, failed;
+            std::unordered_set<std::string> skipped, stalled, failed;
             const auto compute = [&](const F32 value, const std::optional<F32> expected = std::nullopt) {
                 CAPTURE(value, expected);
                 const auto previousHistory = ReadWaterfallHistory(module);
                 const auto previousBins = ReadWaterfallBins(module);
                 std::fill_n(input.data<F32>(), input.size(), value);
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
                 const auto history = ReadWaterfallHistory(module);
                 const auto bins = ReadWaterfallBins(module);
                 if (expected) {
@@ -2921,9 +3332,9 @@ TEST_CASE("Amplitude and Range feed true log averages to both Signal View traces
                     }
                 }
                 const U64 row = ReadWaterfallHistory(plot).writeIndex;
-                std::unordered_set<std::string> skipped, failed;
+                std::unordered_set<std::string> skipped, stalled, failed;
                 REQUIRE(runtime.compute({"amplitude", "range", "signal_view"},
-                                         skipped, failed) == Result::SUCCESS);
+                                         skipped, stalled, failed) == Result::SUCCESS);
                 REQUIRE(skipped.empty());
                 REQUIRE(failed.empty());
                 const auto points = ReadSignalPoints(plot);
@@ -3032,12 +3443,14 @@ TEST_CASE("Signal View averages keep updating after NaN and infinity inputs",
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             const auto compute = [&] {
                 if (implementation.device != DeviceType::CPU) {
                     REQUIRE(input.copyFrom(cpuInput) == Result::SUCCESS);
                 }
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
                 REQUIRE(skipped.empty());
                 REQUIRE(failed.empty());
                 for (const F32 value : ReadWaterfallBins(module)) {
@@ -3143,9 +3556,11 @@ TEST_CASE("Signal View clears lineplot history on range reconfiguration",
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 8; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
 
             const auto settledHold = ReadMaxHoldPoints(module);
@@ -3165,7 +3580,7 @@ TEST_CASE("Signal View clears lineplot history on range reconfiguration",
                 REQUIRE(resetHold[(index * 2) + 1] == -1.0f);
             }
 
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             const auto freshPoints = ReadSignalPoints(module);
             const auto freshHold = ReadMaxHoldPoints(module);
@@ -3220,9 +3635,11 @@ TEST_CASE("Signal View clears lineplot history on averaging reconfiguration",
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 8; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
 
             Parser::Map averaging;
@@ -3236,7 +3653,7 @@ TEST_CASE("Signal View clears lineplot history on averaging reconfiguration",
                 REQUIRE(resetHold[(index * 2) + 1] == -1.0f);
             }
 
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             const auto freshPoints = ReadSignalPoints(module);
             const auto freshHold = ReadMaxHoldPoints(module);
@@ -3292,9 +3709,11 @@ TEST_CASE("Signal View preserves waterfall history on averaging reconfiguration"
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 3; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
             REQUIRE(ReadWaterfallHistory(module).writeIndex == 2);
 
@@ -3356,9 +3775,11 @@ TEST_CASE("Signal View clears waterfall history on range reconfiguration",
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 3; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
             REQUIRE(ReadWaterfallHistory(module).writeIndex == 2);
 
@@ -3375,7 +3796,7 @@ TEST_CASE("Signal View clears waterfall history on range reconfiguration",
                 REQUIRE(value == 0.0f);
             }
 
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             const auto freshBins = ReadWaterfallBins(module);
             for (U64 row = 0; row < 4; ++row) {
                 for (U64 sample = 0; sample < 8; ++sample) {
@@ -3430,8 +3851,10 @@ TEST_CASE("Signal View max hold captures the first observation with averaging on
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
 
             const auto hold = ReadMaxHoldPoints(module);
             for (U64 index = 0; index < input.shape(1); ++index) {
@@ -3484,9 +3907,11 @@ TEST_CASE("Signal View max hold captures the seeded trace after its configured w
             REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skipped;
+
+            std::unordered_set<std::string> stalled;
             std::unordered_set<std::string> failed;
             for (U64 i = 0; i < 4; i++) {
-                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
             }
 
             const auto hold = ReadMaxHoldPoints(module);

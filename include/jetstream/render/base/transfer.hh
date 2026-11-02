@@ -75,7 +75,7 @@ class JETSTREAM_API Transfer {
 
         bool empty() const;
         bool contains(const std::shared_ptr<Buffer>& buffer) const;
-        bool contains(const std::shared_ptr<Texture>& texture) const;
+        bool contains(const std::shared_ptr<const Texture>& texture) const;
         void collect(const std::shared_ptr<Buffer>& buffer);
         void collect(const std::shared_ptr<Texture>& texture);
         void commit();
@@ -102,6 +102,12 @@ class JETSTREAM_API Transfer {
                              const U64& size,
                              const U64& alignment,
                              U64& offset);
+    static bool reservePageRange(std::vector<U64>& pages,
+                                 const U64& size,
+                                 const U64& alignment,
+                                 const U64& limit,
+                                 U64& page,
+                                 U64& offset);
     static bool calculateCapacity(const U64& required,
                                   const U64& alignment,
                                   U64& capacity);

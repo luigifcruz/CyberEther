@@ -21,7 +21,11 @@ void Runtime::update(Config config) {
 
 Context Runtime::context() {
     const auto& config = this->impl->config;
-    Private::SampleInput(this->impl->input);
+    if (config.render) {
+        Private::SampleInput(this->impl->input, config.render->input());
+    } else {
+        Private::ResetInput(this->impl->input);
+    }
     return Context{
         .palette = config.palette ? *config.palette : EmptyPalette(),
         .render = config.render,

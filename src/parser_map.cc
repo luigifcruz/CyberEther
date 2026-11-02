@@ -42,6 +42,9 @@ bool Parser::Equal(const std::any& lhs, const std::any& rhs) {
     if (!lhs.has_value()) {
         return true;
     }
+    if (lhs.type() == typeid(std::nullptr_t)) {
+        return true;
+    }
     if (const auto* map = std::any_cast<Map>(&lhs)) {
         return *map == std::any_cast<const Map&>(rhs);
     }

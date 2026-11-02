@@ -4,6 +4,7 @@ src_lst += files([
     'lineplot.cc',
     'waterfall.cc',
     'waterfall_3d.cc',
+    'density.cc',
     'module_impl_native_cpu.cc',
     'module_benchmarks.cc',
 ])

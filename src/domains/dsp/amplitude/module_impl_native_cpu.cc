@@ -77,6 +77,13 @@ Result AmplitudeImplNativeCpu::kernelCF32() {
         [coeff](const auto& in, auto& out) {
             const F32 real = in.real();
             const F32 imag = in.imag();
+            const F32 power = real * real + imag * imag;
+            // Work in power units when squaring stays in the normal range.
+            // Keep hypot's scaling and special-value handling otherwise.
+            if (power >= std::numeric_limits<F32>::min() && std::isfinite(power)) {
+                out = 10.0f * Backend::ApproxLog10(power) + coeff;
+                return;
+            }
             const F32 magnitude = std::hypot(real, imag);
             out = magnitude == 0.0f
                       ? -std::numeric_limits<F32>::infinity()

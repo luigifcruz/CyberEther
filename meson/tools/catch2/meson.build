@@ -1,7 +1,6 @@
 if get_option('tests') and \
    not jst_is_ios and \
-   not jst_is_android and \
-   not jst_is_browser
+    not jst_is_android
     catch2_dep = subproject(
         'catch2',
         required: true,

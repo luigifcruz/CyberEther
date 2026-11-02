@@ -3,6 +3,7 @@
 #include <utility>
 
 #include <jetstream/detail/flowgraph_impl.hh>
+#include <jetstream/render/base/window.hh>
 
 namespace Jetstream {
 
@@ -45,6 +46,20 @@ void CopyMetricEntries(const std::shared_ptr<Block>& block,
 }  // namespace
 
 Flowgraph::View::View(const std::shared_ptr<Flowgraph::Impl>& impl) : impl(impl) {}
+
+bool Flowgraph::View::canCapture() const {
+    const auto graph = impl.lock();
+    return graph && graph->render && graph->render->supportsCapture();
+}
+
+Result Flowgraph::View::capture(const std::shared_ptr<const Render::Texture>& texture,
+                              Extent2D<U64>& size, std::vector<U8>& pixels) const {
+    const auto graph = impl.lock();
+    if (!graph || !graph->render) {
+        return Result::ERROR;
+    }
+    return graph->render->capture(texture, size, pixels);
+}
 
 bool Flowgraph::View::has(const std::string& block) const {
     const auto graph = impl.lock();

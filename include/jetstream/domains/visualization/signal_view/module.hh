@@ -18,6 +18,8 @@ struct SignalView : public Module::Config {
     F32 rangeMin = -100.0f;
     F32 rangeMax = 0.0f;
     U64 waterfallHeight = 1024;
+    bool density = false;
+    U64 persistence = 256;
     std::string colormap = "turbo";
     F32 splitRatio = 0.5f;
     std::vector<F32> markers;
@@ -29,7 +31,9 @@ struct SignalView : public Module::Config {
     JST_MODULE_TYPE(signal_view);
     JST_MODULE_PARAMS(mode, lineplotAveraging, waterfallAveraging,
                       maxHold, fill, rangeMin, rangeMax, waterfallHeight,
-                      colormap, splitRatio, markers, pins, xLabel, amplitudeLabel, waterfallLabel);
+                      density, persistence,
+                      colormap, splitRatio,
+                      markers, pins, xLabel, amplitudeLabel, waterfallLabel);
 };
 
 }  // namespace Jetstream::Modules

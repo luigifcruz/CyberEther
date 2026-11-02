@@ -15,7 +15,7 @@ The core suite covers all generic CyberEther behavior that is not specific to a 
 | `core-registry` | `jetstream-core-registry-tests` | `registry/` |
 | `core-render` | `jetstream-core-render-tests` | `render/` |
 | `core-runtime` | `jetstream-core-runtime-tests` | `runtime/` |
-| `core-sakura` | `jetstream-core-sakura-tests` | `sakura/` |
+| `core-sakura-0` through `core-sakura-7` | `jetstream-core-sakura-tests` | `sakura/` |
 | `core-serialization` | `jetstream-core-serialization-tests` | `serialization/` |
 | `core-settings` | `jetstream-core-settings-tests` | `settings/` |
 | `core-tools` | `jetstream-core-tools-tests` | `tools/` |
@@ -36,6 +36,9 @@ Build and run one domain when diagnosing a focused failure:
 meson compile -C build jetstream-core-flowgraph-tests
 meson test -C build core-flowgraph --no-rebuild --num-processes 1 --print-errorlogs
 ```
+
+Sakura runs in eight disjoint Catch2 shards to keep each group within the suite
+watchdog. Run all of them with `meson test -C build 'core-sakura-*' --no-rebuild --print-errorlogs`.
 
 Some assertions intentionally describe desired behavior that the current implementation violates. They remain active regression failures and have a short defect comment immediately above the assertion.
 

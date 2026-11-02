@@ -4,12 +4,14 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 #include "jetstream/domains/core/python/module.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime.hh"
@@ -80,8 +82,9 @@ TEST_CASE("Python module runs configured compute code", "[modules][python][modul
     REQUIRE(runtime.create({{"python_module", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_module"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_module"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
     const Tensor& output = module->outputs().at("output0").tensor;
     const auto* data = output.data<F32>();
@@ -140,8 +143,9 @@ TEST_CASE("Python module exposes non-contiguous input tensors", "[modules][pytho
     REQUIRE(runtime.create({{"python_strided", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_strided"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_strided"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
 
     const Tensor& output = module->outputs().at("output0").tensor;
@@ -195,8 +199,9 @@ TEST_CASE("Python module exposes tensor attributes", "[modules][python][module]"
     REQUIRE(runtime.create({{"python_attrs", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_attrs"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
 
     const auto requireHalvedRate = [](const std::any& value) {
@@ -215,7 +220,7 @@ TEST_CASE("Python module exposes tensor attributes", "[modules][python][module]"
     REQUIRE(output.hasAttribute("decimated"));
     REQUIRE(std::any_cast<bool>(output.attribute("decimated")) == true);
 
-    REQUIRE(runtime.compute({"python_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_attrs"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     requireHalvedRate(output.attribute("sampleRate"));
 
     REQUIRE(runtime.destroy() == Result::SUCCESS);
@@ -251,11 +256,13 @@ def compute(ctx):
     _cycle += 1
     if _cycle == 1:
         ctx.output_attrs[0]["frequency"] = np.float64(1.0)
+        ctx.output_attrs[0]["sampleRate"] = 2.0e6
         ctx.output_attrs[0]["counter"] = np.int64(7)
         ctx.output_attrs[0]["phase"] = np.complex128(1 + 2j)
         ctx.output_attrs[0]["window"] = np.array([1.0, 2.0], dtype=np.float64)
     else:
         ctx.output_attrs[0]["frequency"] = np.float32(2.0)
+        ctx.output_attrs[0]["sampleRate"] = np.float32(2.0e6)
         ctx.output_attrs[0]["counter"] = np.int16(-7)
         ctx.output_attrs[0]["phase"] = np.complex64(3 + 4j)
         ctx.output_attrs[0]["window"] = np.array([3.0, 4.0], dtype=np.float32)
@@ -277,9 +284,10 @@ def compute(ctx):
             Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
     REQUIRE(runtime.compute({"python_numpy_attribute_width"},
-                            skippedModules, failedModules) == Result::SUCCESS);
+                            skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
     const Tensor& output = module->outputs().at("output0").tensor;
     REQUIRE(output.hasAttribute("numpyAvailable"));
@@ -292,6 +300,11 @@ def compute(ctx):
 
     REQUIRE(output.attribute("frequency").type() == typeid(F64));
     REQUIRE(std::any_cast<F64>(output.attribute("frequency")) == 1.0);
+    REQUIRE(output.attribute("sampleRate").type() == typeid(F64));
+    std::optional<F32> sampleRate;
+    REQUIRE(ReadAttribute(output, "sampleRate", sampleRate) == Result::ERROR);
+    REQUIRE(JST_LOG_LAST_ERROR().find("F64") != std::string::npos);
+    REQUIRE(JST_LOG_LAST_ERROR().find("np.float32") != std::string::npos);
     REQUIRE(output.attribute("counter").type() == typeid(I64));
     REQUIRE(std::any_cast<I64>(output.attribute("counter")) == 7);
     REQUIRE(output.attribute("phase").type() == typeid(CF64));
@@ -302,9 +315,12 @@ def compute(ctx):
     REQUIRE(wideWindow == expectedWideWindow);
 
     REQUIRE(runtime.compute({"python_numpy_attribute_width"},
-                            skippedModules, failedModules) == Result::SUCCESS);
+                            skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(output.attribute("frequency").type() == typeid(F32));
     REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == 2.0f);
+    REQUIRE(output.attribute("sampleRate").type() == typeid(F32));
+    REQUIRE(ReadAttribute(output, "sampleRate", sampleRate) == Result::SUCCESS);
+    REQUIRE(sampleRate == 2.0e6f);
     REQUIRE(output.attribute("counter").type() == typeid(I16));
     REQUIRE(std::any_cast<I16>(output.attribute("counter")) == -7);
     REQUIRE(output.attribute("phase").type() == typeid(CF32));
@@ -357,8 +373,9 @@ def compute(ctx):
     REQUIRE(runtime.create({{"python_nested_attrs", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_nested_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_nested_attrs"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
 
     const Tensor& output = module->outputs().at("output0").tensor;
@@ -368,7 +385,7 @@ def compute(ctx):
         REQUIRE(std::any_cast<I64>(meta.at("stage")) == 1);
     }
 
-    REQUIRE(runtime.compute({"python_nested_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_nested_attrs"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     {
         const auto meta = std::any_cast<Parser::Map>(output.attribute("meta"));
         REQUIRE(std::any_cast<I64>(meta.at("stage")) == 2);
@@ -403,8 +420,9 @@ TEST_CASE("Python module creates a configured output without inputs", "[modules]
     REQUIRE(runtime.create({{"python_configured_source", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_configured_source"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_configured_source"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
 
     const Tensor& output = module->outputs().at("output0").tensor;
@@ -465,8 +483,9 @@ TEST_CASE("Python module reports invalid source without failing flowgraph execut
     REQUIRE(runtime.create({{"python_invalid_source", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_invalid_source"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_invalid_source"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.contains("python_invalid_source"));
 
     REQUIRE(runtime.destroy() == Result::SUCCESS);
@@ -505,8 +524,9 @@ TEST_CASE("Python module reports runtime exceptions without failing flowgraph ex
     REQUIRE(runtime.create({{"python_runtime_error", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_error"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_error"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.contains("python_runtime_error"));
 
     const auto diagnostic = module->context()->runtime()->diagnostic();
@@ -523,8 +543,10 @@ TEST_CASE("Python module reports runtime exceptions without failing flowgraph ex
     REQUIRE(sawError);
 
     skippedModules.clear();
+
+    stalledModules.clear();
     failedModules.clear();
-    REQUIRE(runtime.compute({"python_runtime_error"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_error"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.contains("python_runtime_error"));
 
     const auto retryDiagnostic = module->context()->runtime()->diagnostic();
@@ -584,8 +606,9 @@ TEST_CASE("Python module captures stdout for the active module", "[modules][pyth
             Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_stdout_first"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_stdout_first"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
 
     const auto firstDiagnostic = firstModule->context()->runtime()->diagnostic();
@@ -698,8 +721,9 @@ TEST_CASE("Python module publishes declared signal axes on created outputs",
     REQUIRE(runtime.create({{"python_axes", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_axes"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_axes"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
     REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == 0);
     REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == 1);
@@ -772,8 +796,9 @@ TEST_CASE("Python module ignores compute writes to declared signal axes",
     REQUIRE(runtime.create({{"python_axes_edit", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_axes_edit"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_axes_edit"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
     const Tensor& output = module->outputs().at("output0").tensor;
     REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 1);
@@ -814,8 +839,9 @@ TEST_CASE("Python module ignores compute writes that introduce omitted signal ax
     REQUIRE(runtime.create({{"python_axes_omit", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_axes_omit"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_axes_omit"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
     const Tensor& output = module->outputs().at("output0").tensor;
     REQUIRE_FALSE(output.hasAttribute("batchAxis"));

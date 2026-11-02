@@ -31,23 +31,26 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Result create();
     Result destroy();
 
-    Result createImgui();
-    Result destroyImgui();
     Extent2D<F32> displaySize() const;
-    F32 scale(const F32& scale) const;
+    Extent2D<F32> framebufferSize() const;
 
-    void* nextDrawable();
+    MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable);
+    Extent2D<U64> getSwapchainExtent() const;
     
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
+    bool retainedPresent() const;
 
     Render::TitlebarChrome titlebarChrome() const;
-    void setIntegratedTitlebar(bool enabled) override;
+    void setIntegratedTitlebar(bool enabled);
     void beginWindowDrag();
     void zoomWindow();
+    bool setDarkAppearance(bool dark);
 
  private:
+    void setCaptureEnabled(bool enabled);
+
     GLFWwindow* window = nullptr;
     std::shared_ptr<CocoaTitlebar> titlebar;
     CA::MetalLayer* swapchain;

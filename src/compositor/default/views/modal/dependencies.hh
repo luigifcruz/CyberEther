@@ -4,9 +4,8 @@
 #include "../components/callout.hh"
 #include "../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -38,7 +37,7 @@ struct DependencyReviewView {
         bool installEnabled = false;
         std::string output;
         std::string message;
-        std::function<void()> onInstall;
+        Sakura::Callback<void()> onInstall;
     };
 
     void update(Config config) {
@@ -47,20 +46,21 @@ struct DependencyReviewView {
 
         this->config = std::move(config);
         header.update({
-            .title = ICON_FA_BOX " Install Python Dependencies",
+            .title = ICON_LC_PACKAGE " Install Python Dependencies",
             .description = "Review and install the Python packages requested by blocks.",
         });
         overviewText.update({
-            .str = "Blocks declared " + packageNoun() + " that are not installed yet. "
-                   "Approving installs them with pip into a shared environment managed by "
-                   "CyberEther, separate from your system Python. Blocks that depend on them "
-                   "stay paused until installation completes, then reload automatically.",
+            .str = jst::fmt::format("Blocks declared {} that are not installed yet. "
+                                     "Approving installs them with pip into a shared environment managed by "
+                                     "CyberEther, separate from your system Python. Blocks that depend on them "
+                                     "stay paused until installation completes, then reload automatically.",
+                                     packageNoun()),
             .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
         thirdPartyCallout.update({
             .str = "Python packages are third-party code. Only approve dependencies you trust.",
-            .icon = ICON_FA_SHIELD_HALVED,
+            .icon = ICON_LC_SHIELD_HALF,
             .tone = Callout::Tone::Warning,
         });
         while (dependencyCells.size() < this->config.dependencies.size()) {
@@ -195,7 +195,7 @@ struct DependencyReviewView {
         if (count == 0) {
             return "Python packages";
         }
-        return std::to_string(count) + (count == 1 ? " Python package" : " Python packages");
+        return jst::fmt::format("{} Python {}", count, count == 1 ? "package" : "packages");
     }
 
     std::string installLabel() const {
@@ -220,11 +220,10 @@ struct DependencyReviewView {
                            : config.message;
             case State::Installing:
                 return config.message.empty()
-                           ? "Installing " + packageNoun() +
-                                 " with pip. This may take a few minutes."
+                           ? jst::fmt::format("Installing {} with pip. This may take a few minutes.", packageNoun())
                            : config.message;
             case State::Installed:
-                return config.message.empty() ? "Installed " + packageNoun() + " successfully."
+                return config.message.empty() ? jst::fmt::format("Installed {} successfully.", packageNoun())
                                               : config.message;
             case State::Failed:
                 return config.approved

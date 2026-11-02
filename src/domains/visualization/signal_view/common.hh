@@ -23,7 +23,6 @@ namespace Jetstream::Modules {
 namespace detail {
 
 constexpr F32 kSignalViewLineThickness = 1.0f;
-
 inline bool SignalViewHasLineplot(const std::string& mode) {
     return mode == "lineplot" || mode == "lineplot_waterfall";
 }
@@ -35,6 +34,10 @@ inline bool SignalViewHasWaterfall3D(const std::string& mode) {
 inline bool SignalViewHasWaterfall(const std::string& mode) {
     return mode == "waterfall" || mode == "lineplot_waterfall" ||
            SignalViewHasWaterfall3D(mode);
+}
+
+inline bool SignalViewHasDensity(const SignalView& config) {
+    return config.density && SignalViewHasLineplot(config.mode);
 }
 
 inline bool HostReadable(const Tensor& tensor) {
@@ -170,6 +173,24 @@ struct SignalViewSplitInteraction {
     }
 };
 
+struct SignalViewHeaderFit {
+    bool span = true;
+    bool zoom = true;
+};
+
+inline SignalViewHeaderFit FitSignalViewHeader(F32 room, F32 full, F32 brief, F32 zoom, F32 gap) {
+    const auto fits = [&](F32 header, F32 trailing) {
+        return header + (trailing > 0.0f ? gap + trailing : 0.0f) <= room;
+    };
+    if (fits(full, zoom)) {
+        return {.span = true, .zoom = true};
+    }
+    if (fits(brief, zoom)) {
+        return {.span = false, .zoom = true};
+    }
+    return {.span = false, .zoom = false};
+}
+
 }  // namespace detail
 
 
@@ -219,10 +240,12 @@ struct WaterfallDirtyPlan {
 struct WaterfallHistory {
     U64 writeIndex = 0;
     U64 dirtyRows = 0;
+    U64 elapsedRows = 0;
 
     void advance(const U64 numberOfBatches, const U64 height) {
         writeIndex = (writeIndex + (numberOfBatches % height)) % height;
         dirtyRows += std::min(numberOfBatches, height - dirtyRows);
+        elapsedRows += numberOfBatches;
     }
 
     WaterfallDirtyPlan dirtyPlan(const U64 height) const {
@@ -237,6 +260,7 @@ struct WaterfallHistory {
 
     void clearDirty() {
         dirtyRows = 0;
+        elapsedRows = 0;
     }
 };
 
@@ -244,6 +268,7 @@ struct WaterfallFrame {
     const F32* bins = nullptr;
     U64 writeIndex = 0;
     WaterfallDirtyPlan dirty;
+    U64 elapsedRows = 0;
 };
 
 struct SignalViewFrequency {
@@ -251,13 +276,14 @@ struct SignalViewFrequency {
     F32 center = 0.0f;
     F32 sampleRate = 0.0f;
 
+    Result read(const Tensor& input);
+
     bool operator==(const SignalViewFrequency&) const = default;
 };
 
-SignalViewFrequency SignalViewFrequencyOf(const Tensor& input);
-
 struct SignalViewLineplot;
 struct SignalViewWaterfall;
+struct SignalViewDensity;
 
 struct SignalViewCanvas {
     struct Context {
@@ -266,6 +292,7 @@ struct SignalViewCanvas {
         U64 numberOfElements = 0;
         SignalViewLineplot* lineplot = nullptr;
         SignalViewWaterfall* waterfall = nullptr;
+        SignalViewDensity* density = nullptr;
     };
 
     struct Edits {
@@ -338,7 +365,7 @@ struct SignalViewCanvas {
     std::shared_ptr<Render::Components::Text> markerTagText;
 
  private:
-    void updateLabels(const Context& context);
+    Result updateLabels(const Context& context);
     Result updateCursor(const Context& context);
     Result updateMarkers(const Context& context);
     F32 viewTranslation() const;

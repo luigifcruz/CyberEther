@@ -4,6 +4,7 @@ source_url = https://github.com/steve-m/librtlsdr/archive/797f8143266d983c56d8f3
 source_filename = librtlsdr-797f8143266d983c56d8f35d2d442527529dd8a5.zip
 source_hash = 8f903af53b81e33427e35d6bb7adbd9e4415d0f2cea9369e44b062a43b6fcdee
 patch_directory = librtlsdr
+diff_files = librtlsdr/tune-reset-errors.diff
 wrapdb_version = 2.0.3
 
 [provide]

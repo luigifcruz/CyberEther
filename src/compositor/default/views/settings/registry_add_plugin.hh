@@ -1,0 +1,128 @@
+#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REGISTRY_ADD_PLUGIN_HH
+#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REGISTRY_ADD_PLUGIN_HH
+
+#include "../components/file_field.hh"
+#include "components/settings_breadcrumb.hh"
+#include "../components/section_group.hh"
+#include "components/settings_header.hh"
+
+#include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
+
+#include <string>
+#include <utility>
+
+namespace Jetstream {
+
+struct RegistryAddPluginView {
+    struct Config {
+        Sakura::Callback<void(const std::string&, Sakura::Callback<void(std::string)>)> onBrowse;
+        Sakura::Callback<void(const std::string&)> onRegister;
+        Sakura::Callback<void()> onBack;
+    };
+
+    void reset() {
+        pendingPath.clear();
+        trusted = false;
+    }
+
+    void update(Config config) {
+        this->config = std::move(config);
+        breadcrumb.update({
+            .root = "Registry",
+            .current = "Add Plugin",
+            .onRoot = this->config.onBack,
+        });
+        const bool ready = trusted && !pendingPath.empty();
+        registerButton.update({
+            .str = "Register Plugin",
+            .size = {Sakura::Fill, 40.0f},
+            .variant = Sakura::Button::Variant::Action,
+            .disabled = !ready,
+            .rounding = Sakura::Rounding::Card,
+            .onClick = [this]() {
+                if (trusted && !pendingPath.empty() && this->config.onRegister) {
+                    this->config.onRegister(pendingPath);
+                }
+            },
+            .font = Sakura::Text::Font::SansBold,
+        });
+        header.update({
+            .title = "Add Plugin",
+            .description = "Load a plugin bundle that registers additional blocks.",
+        });
+        pathField.update({
+            .icon = ICON_LC_PACKAGE,
+            .value = pendingPath,
+            .hint = "/path/to/plugin.cep",
+            .submit = Sakura::TextInput::Submit::OnEdit,
+            .onChange = [this](const std::string& value) {
+                setPendingPath(value);
+            },
+            .onBrowse = [this]() {
+                if (this->config.onBrowse) {
+                    this->config.onBrowse(pendingPath, [this](std::string path) {
+                        setPendingPath(std::move(path));
+                    });
+                }
+            },
+        });
+        trustToggle.update({
+            .value = trusted,
+            .onChange = [this](bool value) {
+                trusted = value;
+            },
+        });
+        sourceGroup.update({
+            .warning = "Only register plugins you built yourself or received from a source you trust.",
+            .rows = {
+                {
+                    .label = "Plugin Path",
+                    .description = "Path to a .cep plugin bundle that registers additional blocks.",
+                    .control = &pathField,
+                },
+                {
+                    .label = "Trust Source",
+                    .description = "Confirm that you trust the source of this plugin.",
+                    .control = &trustToggle,
+                },
+            },
+            .footer = &registerButton,
+        });
+        stack.update({
+            .spacing = Sakura::Spacing::XSmall,
+            .items = {
+                {.child = &breadcrumb},
+                {.child = &header},
+                {.child = &sourceGroup},
+            },
+        });
+    }
+
+    Sakura::Component& content() {
+        return stack;
+    }
+
+ private:
+    void setPendingPath(std::string path) {
+        if (path != pendingPath) {
+            trusted = false;
+        }
+        pendingPath = std::move(path);
+    }
+
+    Config config;
+    std::string pendingPath;
+    bool trusted = false;
+    SettingsBreadcrumb breadcrumb;
+    SettingsHeader header;
+    Sakura::Button registerButton;
+    FileField pathField;
+    Sakura::Toggle trustToggle;
+    SectionGroup sourceGroup;
+    Sakura::Stack stack;
+};
+
+}  // namespace Jetstream
+
+#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REGISTRY_ADD_PLUGIN_HH

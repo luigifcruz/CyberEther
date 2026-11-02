@@ -3,9 +3,8 @@
 
 #include "node.hh"
 
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -13,7 +12,7 @@
 namespace Jetstream {
 
 inline std::string FlowgraphLinkId(const std::string& consumerName, const std::string& inputSlot) {
-    return consumerName + ":" + inputSlot + "link";
+    return jst::fmt::format("{}:{}link", consumerName, inputSlot);
 }
 
 struct FlowgraphLink {
@@ -104,12 +103,12 @@ struct FlowgraphLink {
         const bool hasAttributes = !attributeRows.empty();
 
         tooltipTitle.update({
-            .str = ICON_FA_MEMORY " Tensor Metadata",
+            .str = ICON_LC_MEMORY_STICK " Tensor Metadata",
             .wrapped = true,
         });
         tooltipHeaderDivider.update({.spacing = 0.0f});
         tooltipHelp.update({
-            .str = ICON_FA_CIRCLE_INFO " Click on the end of the link to detach it.",
+            .str = ICON_LC_INFO " Click on the end of the link to detach it.",
             .tone = Text::Tone::Secondary,
             .wrapped = true,
         });

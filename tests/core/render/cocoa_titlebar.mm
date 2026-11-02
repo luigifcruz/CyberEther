@@ -3,12 +3,14 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_session.hpp>
-#include <atomic>
 #include <functional>
 #include <thread>
 #include <vector>
 
-#include "../../../src/viewport/glfw/tools/imgui_impl_glfw.cpp"
+#define GLFW_INCLUDE_NONE
+#define GLFW_EXPOSE_NATIVE_COCOA
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
 
 namespace {
 
@@ -18,6 +20,7 @@ std::vector<dispatch_block_t> queuedBlocks;
 NSString* doubleClickAction = nil;
 bool legacyMiniaturize = false;
 std::function<void()> nativeDrag;
+std::function<id(GLFWwindow*)> nativeWindowLookup;
 
 }  // namespace
 
@@ -66,6 +69,23 @@ std::function<void()> nativeDrag;
 }
 @end
 
+@interface TitlebarTestAppearance : NSObject {
+    NSString* appearanceName;
+}
++ (id)appearanceNamed:(NSString*)name;
+- (NSString*)name;
+@end
+
+@implementation TitlebarTestAppearance
++ (id)appearanceNamed:(NSString*)name {
+    auto* appearance = [[[TitlebarTestAppearance alloc] init] autorelease];
+    appearance->appearanceName = [name copy];
+    return appearance;
+}
+- (NSString*)name { return appearanceName; }
+- (void)dealloc { [appearanceName release]; [super dealloc]; }
+@end
+
 @interface TitlebarTestWindow : NSObject {
  @public
     NSUInteger mask;
@@ -77,7 +97,11 @@ std::function<void()> nativeDrag;
     int zooms;
     int minimizations;
     TitlebarTestEvent* lastDragEvent;
+    id currentAppearance;
+    int appearanceChanges;
 }
+- (id)appearance;
+- (void)setAppearance:(id)value;
 @end
 
 @implementation TitlebarTestWindow
@@ -101,12 +125,20 @@ std::function<void()> nativeDrag;
 }
 - (void)zoom:(id)sender { (void)sender; ++zooms; }
 - (void)miniaturize:(id)sender { (void)sender; ++minimizations; }
+- (id)appearance { return currentAppearance; }
+- (void)setAppearance:(id)value {
+    CHECK([NSThread isMainThread]);
+    [currentAppearance release];
+    currentAppearance = [value retain];
+    ++appearanceChanges;
+}
+- (void)dealloc { [currentAppearance release]; [super dealloc]; }
 @end
 
 namespace {
 
 id TestCocoaWindow(GLFWwindow* handle) {
-    return reinterpret_cast<id>(handle);
+    return nativeWindowLookup ? nativeWindowLookup(handle) : reinterpret_cast<id>(handle);
 }
 
 void QueueBlock(dispatch_queue_t queue, dispatch_block_t block) {
@@ -130,10 +162,18 @@ void DrainQueue() {
 #define NSUserDefaults TitlebarTestDefaults
 #define glfwGetCocoaWindow TestCocoaWindow
 #define dispatch_async(queue, block) QueueBlock(queue, block)
+#ifndef NSAppearance
+#define NSAppearance TitlebarTestAppearance
+#define JST_TEST_OWNS_APPEARANCE_MACRO
+#endif
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wcompare-distinct-pointer-types"
 #include "../../../src/viewport/glfw/tools/cocoa_titlebar.mm"
 #pragma clang diagnostic pop
+#ifdef JST_TEST_OWNS_APPEARANCE_MACRO
+#undef NSAppearance
+#undef JST_TEST_OWNS_APPEARANCE_MACRO
+#endif
 #undef dispatch_async
 #undef glfwGetCocoaWindow
 #undef NSUserDefaults
@@ -148,27 +188,18 @@ class TitlebarFixture {
         eventMonitors = [[NSMutableArray alloc] init];
         a = [[TitlebarTestWindow alloc] init];
         b = [[TitlebarTestWindow alloc] init];
-        contextA = ImGui::CreateContext();
-        contextB = ImGui::CreateContext();
-        ImGui_ImplGlfw_InputOwner_Init(contextA);
-        ImGui_ImplGlfw_InputOwner_Init(contextB);
-        ImGui_ImplGlfw_ContextMap_Add(handle(a), contextA);
-        ImGui_ImplGlfw_ContextMap_Add(handle(b), contextB);
-        titlebar = std::make_unique<Jetstream::Viewport::CocoaTitlebar>(handle(a));
+        titlebar = make();
+    }
+
+    std::unique_ptr<Jetstream::Viewport::CocoaTitlebar> make() {
+        return std::make_unique<Jetstream::Viewport::CocoaTitlebar>(handle(a), [this] { ++releases; });
     }
 
     ~TitlebarFixture() {
         titlebar.reset();
         DrainQueue();
-        ImGui_ImplGlfw_ContextMap_Remove(handle(a));
-        ImGui_ImplGlfw_ContextMap_Remove(handle(b));
-        if (contextA) {
-            ImGui_ImplGlfw_InputOwner_Shutdown(contextA);
-            ImGui::DestroyContext(contextA);
-        }
-        ImGui_ImplGlfw_InputOwner_Shutdown(contextB);
-        ImGui::DestroyContext(contextB);
         nativeDrag = {};
+        nativeWindowLookup = {};
         doubleClickAction = nil;
         legacyMiniaturize = false;
         pressedButtons = 0;
@@ -199,29 +230,63 @@ class TitlebarFixture {
 
     void pressA() {
         deliver(a, NSEventTypeLeftMouseDown);
-        contextA->IO.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
-    }
-
-    int releases(ImGuiContext* context) const {
-        int count = 0;
-        for (const auto& event : context->InputEventsQueue) {
-            if (event.Type == ImGuiInputEventType_MouseButton &&
-                event.MouseButton.Button == ImGuiMouseButton_Left && !event.MouseButton.Down) {
-                ++count;
-            }
-        }
-        return count;
     }
 
     NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
     TitlebarTestWindow* a = nil;
     TitlebarTestWindow* b = nil;
-    ImGuiContext* contextA = nullptr;
-    ImGuiContext* contextB = nullptr;
+    int releases = 0;
     std::unique_ptr<Jetstream::Viewport::CocoaTitlebar> titlebar;
 };
 
 }  // namespace
+
+TEST_CASE("Cocoa appearance deduplicates native updates in main queue order", "[core][render][cocoa][appearance]") {
+    REQUIRE([NSThread isMainThread]);
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        TitlebarFixture fixture;
+        const auto handle = TitlebarFixture::handle(fixture.a);
+        for (const bool value : {dark, dark, !dark, !dark, dark}) {
+            REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, value));
+        }
+        CHECK(fixture.a->appearanceChanges == 0);
+        REQUIRE(queuedBlocks.size() == 5);
+        DrainQueue();
+        CHECK(fixture.a->appearanceChanges == 3);
+        CHECK([[[fixture.a appearance] name] isEqualToString:dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua]);
+        REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        DrainQueue();
+        CHECK(fixture.a->appearanceChanges == 3);
+    }
+}
+
+TEST_CASE("Cocoa appearance follows a recreated native window behind the same handle", "[core][render][cocoa][appearance]") {
+    REQUIRE([NSThread isMainThread]);
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        TitlebarFixture fixture;
+        const auto handle = TitlebarFixture::handle(fixture.a);
+        id target = fixture.a;
+        nativeWindowLookup = [&](GLFWwindow*) { return target; };
+        REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        DrainQueue();
+        REQUIRE(fixture.a->appearanceChanges == 1);
+        target = nil;
+        CHECK_FALSE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        CHECK(queuedBlocks.empty());
+        target = fixture.b;
+        REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        DrainQueue();
+        CHECK(fixture.b->appearanceChanges == 1);
+        CHECK([[[fixture.b appearance] name] isEqualToString:dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua]);
+        REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        DrainQueue();
+        CHECK(fixture.a->appearanceChanges == 1);
+        CHECK(fixture.b->appearanceChanges == 1);
+        nativeWindowLookup = {};
+    }
+}
 
 TEST_CASE("Cocoa pending drag cannot attach to another window press", "[core][render][cocoa]") {
     TitlebarFixture fixture;
@@ -232,8 +297,7 @@ TEST_CASE("Cocoa pending drag cannot attach to another window press", "[core][re
     DrainQueue();
     REQUIRE(fixture.a->drags == 0);
     REQUIRE_FALSE(fixture.a->movable);
-    REQUIRE(fixture.releases(fixture.contextA) == 1);
-    REQUIRE(fixture.releases(fixture.contextB) == 0);
+    REQUIRE(fixture.releases == 1);
     fixture.titlebar->beginDrag();
     DrainQueue();
     REQUIRE(fixture.a->drags == 0);
@@ -248,7 +312,7 @@ TEST_CASE("Cocoa integrated titlebar teardown restores the native chrome and can
     fixture.a->transparent = NO;
     fixture.a->titleVisibility = NSWindowTitleVisible;
     fixture.a->separatorStyle = NSTitlebarSeparatorStyleLine;
-    fixture.titlebar = std::make_unique<Jetstream::Viewport::CocoaTitlebar>(TitlebarFixture::handle(fixture.a));
+    fixture.titlebar = fixture.make();
     REQUIRE_FALSE(fixture.a->movable);
     REQUIRE(fixture.a->transparent);
     REQUIRE(fixture.a->titleVisibility == NSWindowTitleHidden);
@@ -266,30 +330,26 @@ TEST_CASE("Cocoa integrated titlebar teardown restores the native chrome and can
     CHECK(fixture.a->mask == (NSWindowStyleMaskTitled | NSWindowStyleMaskResizable));
     CHECK(fixture.a->drags == 0);
     CHECK(fixture.a->zooms == 0);
-    CHECK(fixture.releases(fixture.contextA) == 1);
+    CHECK(fixture.releases == 1);
     CHECK([eventMonitors count] == 0);
 
-    fixture.titlebar = std::make_unique<Jetstream::Viewport::CocoaTitlebar>(TitlebarFixture::handle(fixture.a));
+    fixture.titlebar = fixture.make();
     CHECK_FALSE(fixture.a->movable);
     fixture.titlebar.reset();
     CHECK(fixture.a->movable);
 }
 
-TEST_CASE("Cocoa drag completion releases only its living input owner", "[core][render][cocoa]") {
+TEST_CASE("Cocoa drag completion releases the left button once", "[core][render][cocoa]") {
     TitlebarFixture fixture;
     fixture.pressA();
     auto* press = fixture.deliver(fixture.a, NSEventTypeLeftMouseDown);
-    fixture.contextB->IO.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
     fixture.titlebar->beginDrag();
-    ImGui::SetCurrentContext(fixture.contextB);
     nativeDrag = [] { pressedButtons = 0; };
     DrainQueue();
     REQUIRE(fixture.a->drags == 1);
     REQUIRE(fixture.a->lastDragEvent == press);
     REQUIRE_FALSE(fixture.a->movable);
-    REQUIRE(fixture.releases(fixture.contextA) == 1);
-    REQUIRE(fixture.releases(fixture.contextB) == 0);
-    REQUIRE(ImGui::GetCurrentContext() == fixture.contextB);
+    REQUIRE(fixture.releases == 1);
 }
 
 TEST_CASE("Cocoa drag requests are single use within one press generation", "[core][render][cocoa]") {
@@ -343,8 +403,7 @@ TEST_CASE("Cocoa pending drags cancel on release polling focus loss and window c
     DrainQueue();
     REQUIRE(fixture.a->drags == 0);
     REQUIRE_FALSE(fixture.a->movable);
-    REQUIRE(fixture.releases(fixture.contextA) == 1);
-    REQUIRE(fixture.releases(fixture.contextB) == 0);
+    REQUIRE(fixture.releases == 1);
 }
 
 TEST_CASE("Cocoa titlebar teardown invalidates retained pending blocks", "[core][render][cocoa]") {
@@ -366,36 +425,7 @@ TEST_CASE("Cocoa titlebar teardown invalidates retained pending blocks", "[core]
     REQUIRE(fixture.a->drags == expectedDrags);
     REQUIRE_FALSE(fixture.a->movable);
     REQUIRE(fixture.a->zooms == 0);
-    REQUIRE(fixture.releases(fixture.contextA) == 1);
-}
-
-TEST_CASE("Cocoa queued releases tolerate input owner destruction or unregistration", "[core][render][cocoa]") {
-    TitlebarFixture fixture;
-    fixture.pressA();
-    fixture.titlebar->beginDrag();
-    nativeDrag = [] { pressedButtons = 0; };
-    SECTION("Context shutdown hook invalidates the owner before queued execution") {
-        ImGui::DestroyContext(fixture.contextA);
-        fixture.contextA = nullptr;
-    }
-    SECTION("Context shutdown hook invalidates the owner during native execution") {
-        nativeDrag = [&] {
-            ImGui::DestroyContext(fixture.contextA);
-            fixture.contextA = nullptr;
-            pressedButtons = 0;
-        };
-    }
-    SECTION("Window context routing removed before queued execution") {
-        ImGui_ImplGlfw_ContextMap_Remove(TitlebarFixture::handle(fixture.a));
-    }
-    SECTION("Window context routing replaced before queued execution") {
-        ImGui_ImplGlfw_ContextMap_Remove(TitlebarFixture::handle(fixture.a));
-        ImGui_ImplGlfw_ContextMap_Add(TitlebarFixture::handle(fixture.a), fixture.contextB);
-    }
-    ImGui::SetCurrentContext(fixture.contextB);
-    DrainQueue();
-    REQUIRE(fixture.releases(fixture.contextB) == 0);
-    REQUIRE(ImGui::GetCurrentContext() == fixture.contextB);
+    REQUIRE(fixture.releases == 1);
 }
 
 TEST_CASE("Cocoa ordinary presses do not synthesize unrequested releases", "[core][render][cocoa]") {
@@ -407,8 +437,7 @@ TEST_CASE("Cocoa ordinary presses do not synthesize unrequested releases", "[cor
     fixture.titlebar.reset();
     DrainQueue();
     REQUIRE(fixture.a->drags == 0);
-    REQUIRE(fixture.releases(fixture.contextA) == 0);
-    REQUIRE(fixture.releases(fixture.contextB) == 0);
+    REQUIRE(fixture.releases == 0);
 }
 
 TEST_CASE("Cocoa native drag nested cancellation cannot finish a newer press", "[core][render][cocoa]") {
@@ -424,7 +453,7 @@ TEST_CASE("Cocoa native drag nested cancellation cannot finish a newer press", "
     fixture.titlebar->beginDrag();
     DrainQueue();
     REQUIRE(fixture.a->drags == 2);
-    REQUIRE(fixture.releases(fixture.contextA) == 2);
+    REQUIRE(fixture.releases == 2);
 }
 
 TEST_CASE("Cocoa zoom honors read only preferences and queued teardown", "[core][render][cocoa]") {
@@ -451,79 +480,6 @@ TEST_CASE("Cocoa zoom honors read only preferences and queued teardown", "[core]
     fixture.titlebar->zoom();
     DrainQueue();
     REQUIRE(fixture.a->zooms == 2);
-}
-
-TEST_CASE("Cocoa native press ownership cannot mutate an executing frame hook range", "[core][render][cocoa][hooks]") {
-    TitlebarFixture fixture;
-    auto* context = fixture.contextA;
-    struct Gate {
-        std::atomic<bool> entered = false;
-        std::atomic<bool> resume = false;
-        std::atomic<int> completed = 0;
-    } gate;
-    ImGuiContextHook hook;
-    hook.Type = ImGuiContextHookType_EndFramePost;
-    hook.UserData = &gate;
-    hook.Callback = [](ImGuiContext*, ImGuiContextHook* hook) {
-        auto* gate = static_cast<Gate*>(hook->UserData);
-        gate->entered.store(true, std::memory_order_release);
-        while (!gate->resume.load(std::memory_order_acquire)) {
-            std::this_thread::yield();
-        }
-    };
-    ImGui::AddContextHook(context, &hook);
-    hook.Callback = [](ImGuiContext*, ImGuiContextHook* hook) {
-        static_cast<Gate*>(hook->UserData)->completed.fetch_add(1, std::memory_order_relaxed);
-    };
-    while (context->Hooks.Size < context->Hooks.Capacity) {
-        ImGui::AddContextHook(context, &hook);
-    }
-    auto* originalData = context->Hooks.Data;
-    const auto originalSize = context->Hooks.Size;
-    const auto originalCapacity = context->Hooks.Capacity;
-    const std::vector<ImGuiContextHook> originalHooks(context->Hooks.begin(), context->Hooks.end());
-    std::thread renderer([&] { ImGui::CallContextHooks(context, ImGuiContextHookType_EndFramePost); });
-    while (!gate.entered.load(std::memory_order_acquire)) {
-        std::this_thread::yield();
-    }
-    for (int i = 0; i < 64; ++i) {
-        fixture.deliver(fixture.a, NSEventTypeLeftMouseDown);
-        fixture.deliver(fixture.a, NSEventTypeLeftMouseUp);
-    }
-    gate.resume.store(true, std::memory_order_release);
-    renderer.join();
-    REQUIRE(context->Hooks.Data == originalData);
-    REQUIRE(context->Hooks.Size == originalSize);
-    REQUIRE(context->Hooks.Capacity == originalCapacity);
-    REQUIRE(gate.completed.load(std::memory_order_relaxed) == originalSize - 2);
-    for (int i = 0; i < originalSize; ++i) {
-        REQUIRE(context->Hooks[i].HookId == originalHooks[i].HookId);
-        REQUIRE(context->Hooks[i].Type == originalHooks[i].Type);
-        REQUIRE(context->Hooks[i].Callback == originalHooks[i].Callback);
-        REQUIRE(context->Hooks[i].UserData == originalHooks[i].UserData);
-    }
-    REQUIRE(context->InputEventsQueue.empty());
-    REQUIRE(fixture.contextB->InputEventsQueue.empty());
-}
-
-TEST_CASE("Cocoa input callbacks cannot follow reused window or backend registrations", "[core][render][cocoa]") {
-    TitlebarFixture fixture;
-    fixture.contextA->IO.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
-    auto stale = ImGui_ImplGlfw_MakeLeftButtonRelease(TitlebarFixture::handle(fixture.a));
-    ImGui_ImplGlfw_ContextMap_Remove(TitlebarFixture::handle(fixture.a));
-    SECTION("Replacement registration in the same backend") {}
-    SECTION("Replacement backend in the same context") {
-        ImGui_ImplGlfw_InputOwner_Shutdown(fixture.contextA);
-        ImGui_ImplGlfw_InputOwner_Init(fixture.contextA);
-    }
-    ImGui_ImplGlfw_ContextMap_Add(TitlebarFixture::handle(fixture.a), fixture.contextA);
-    stale();
-    REQUIRE(fixture.releases(fixture.contextA) == 0);
-    REQUIRE(fixture.releases(fixture.contextB) == 0);
-    auto replacement = ImGui_ImplGlfw_MakeLeftButtonRelease(TitlebarFixture::handle(fixture.a));
-    REQUIRE(static_cast<bool>(replacement));
-    replacement();
-    REQUIRE(fixture.releases(fixture.contextA) == 1);
 }
 
 int main(int argc, char* argv[]) {

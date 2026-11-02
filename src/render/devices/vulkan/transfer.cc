@@ -28,52 +28,16 @@ Result Implementation::ensureCapacity(Arena& arena, const U64& required) {
         return Result::ERROR;
     }
 
-    Arena replacement;
+    Backend::HostVisibleBuffer created;
+    JST_CHECK(Backend::CreateHostVisibleBuffer(device, backend->getPhysicalDevice(), capacity,
+                                               VK_BUFFER_USAGE_TRANSFER_SRC_BIT, created));
 
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = capacity;
-    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &replacement.buffer) != VK_SUCCESS) {
-        JST_ERROR("[VULKAN] Failed to create a {} byte transfer arena.", capacity);
-        return Result::ERROR;
-    }
-
-    VkMemoryRequirements memoryRequirements;
-    vkGetBufferMemoryRequirements(device, replacement.buffer, &memoryRequirements);
-
-    VkMemoryAllocateInfo allocationInfo{};
-    allocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocationInfo.allocationSize = memoryRequirements.size;
-    allocationInfo.memoryTypeIndex = Backend::FindMemoryType(
-        backend->getPhysicalDevice(),
-        memoryRequirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    if (vkAllocateMemory(device, &allocationInfo, nullptr, &replacement.memory) != VK_SUCCESS) {
-        vkDestroyBuffer(device, replacement.buffer, nullptr);
-        JST_ERROR("[VULKAN] Failed to allocate transfer arena memory.");
-        return Result::ERROR;
-    }
-
-    if (vkBindBufferMemory(device, replacement.buffer, replacement.memory, 0) != VK_SUCCESS) {
-        vkDestroyBuffer(device, replacement.buffer, nullptr);
-        vkFreeMemory(device, replacement.memory, nullptr);
-        JST_ERROR("[VULKAN] Failed to bind transfer arena memory.");
-        return Result::ERROR;
-    }
-
-    void* mapped = nullptr;
-    if (vkMapMemory(device, replacement.memory, 0, VK_WHOLE_SIZE, 0, &mapped) != VK_SUCCESS) {
-        vkDestroyBuffer(device, replacement.buffer, nullptr);
-        vkFreeMemory(device, replacement.memory, nullptr);
-        JST_ERROR("[VULKAN] Failed to map transfer arena memory.");
-        return Result::ERROR;
-    }
-
-    replacement.mapped = static_cast<U8*>(mapped);
-    replacement.capacity = capacity;
+    Arena replacement{
+        .buffer = created.buffer,
+        .memory = created.memory,
+        .mapped = created.mapped,
+        .capacity = capacity,
+    };
 
     destroyArena(arena);
     arena = replacement;
@@ -336,10 +300,8 @@ void Implementation::destroyArena(Arena& arena) {
         return;
     }
 
-    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
-    vkUnmapMemory(device, arena.memory);
-    vkDestroyBuffer(device, arena.buffer, nullptr);
-    vkFreeMemory(device, arena.memory, nullptr);
+    Backend::HostVisibleBuffer buffer{arena.buffer, arena.memory, arena.mapped};
+    Backend::DestroyHostVisibleBuffer(Backend::State<DeviceType::Vulkan>()->getDevice(), buffer);
     arena = {};
 }
 

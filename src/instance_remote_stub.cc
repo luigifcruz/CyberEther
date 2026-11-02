@@ -1,5 +1,4 @@
 #include "jetstream/instance_remote.hh"
-#include "jetstream/viewport/adapters/generic.hh"
 #include "jetstream/logger.hh"
 
 #include <memory>
@@ -7,8 +6,6 @@
 namespace Jetstream {
 
 struct Instance::Remote::Impl {
-    Viewport::Generic* viewport = nullptr;
-    DeviceType viewportDevice = DeviceType::None;
     bool started_ = false;
     std::string roomId_;
     std::string consumerToken;
@@ -33,19 +30,21 @@ struct Instance::Remote::Impl {
         return Result::SUCCESS;
     }
 
-    Result captureFrame() {
+    Result captureFrame(bool) {
         return Result::SUCCESS;
     }
 
     Result approveClient(const std::string&) {
         return Result::ERROR;
     }
+
+    Result removeClient(const std::string&) {
+        return Result::ERROR;
+    }
 };
 
-Instance::Remote::Remote(Viewport::Generic* viewport) {
+Instance::Remote::Remote(Viewport::Generic*) {
     impl = std::make_shared<Impl>();
-    impl->viewport = viewport;
-    impl->viewportDevice = viewport ? viewport->device() : DeviceType::None;
 }
 
 Instance::Remote::~Remote() = default;
@@ -59,14 +58,6 @@ std::vector<Instance::Remote::EncoderType> Instance::Remote::available(CodecType
 }
 
 Result Instance::Remote::create(const Config& config) {
-    if (config.broker.empty()) {
-        JST_ERROR("[REMOTE] Missing broker address.");
-        return Result::ERROR;
-    }
-    if (!IsRemoteBrokerSchemeSupported(config.broker)) {
-        JST_ERROR("[REMOTE] Broker URL must use HTTP or HTTPS.");
-        return Result::ERROR;
-    }
     return impl->create(config);
 }
 
@@ -78,8 +69,8 @@ bool Instance::Remote::started() const {
     return impl->started_;
 }
 
-Result Instance::Remote::captureFrame() {
-    return impl->captureFrame();
+Result Instance::Remote::captureFrame(bool presented) {
+    return impl->captureFrame(presented);
 }
 
 const std::string& Instance::Remote::roomId() const {
@@ -102,8 +93,12 @@ std::vector<std::string> Instance::Remote::waitlist() const {
     return impl->waitlist_;
 }
 
-Result Instance::Remote::approveClient(const std::string& code) {
-    return impl->approveClient(code);
+Result Instance::Remote::approveClient(const std::string& sessionId) {
+    return impl->approveClient(sessionId);
+}
+
+Result Instance::Remote::removeClient(const std::string& sessionId) {
+    return impl->removeClient(sessionId);
 }
 
 }  // namespace Jetstream

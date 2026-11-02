@@ -126,11 +126,31 @@ constexpr PolynomialColormap kPlasma = {{
     {-3.658713842777788f, -22.93153465461149f, 18.19190778539828f},
 }};
 
+struct GradientStop {
+    F32 position;
+    std::array<U8, 3> color;
+};
+
+using GradientColormap = std::array<GradientStop, 9>;
+
+constexpr GradientColormap kDensity = {{
+    {0.00f, {14, 14, 14}},
+    {0.06f, {60, 40, 110}},
+    {0.14f, {30, 50, 190}},
+    {0.30f, {20, 140, 230}},
+    {0.45f, {40, 210, 120}},
+    {0.62f, {200, 235, 60}},
+    {0.78f, {250, 160, 40}},
+    {0.92f, {235, 70, 40}},
+    {1.00f, {250, 150, 150}},
+}};
+
 struct ColormapEntry {
     const char* value;
     const char* label;
     const TableColormap* table;
     const PolynomialColormap* polynomial;
+    const GradientColormap* gradient = nullptr;
 };
 
 constexpr ColormapEntry kColormaps[] = {
@@ -141,6 +161,7 @@ constexpr ColormapEntry kColormaps[] = {
     {"magma", "Magma", nullptr, &kMagma},
     {"plasma", "Plasma", nullptr, &kPlasma},
     {"jet", "Jet", &kJet, nullptr},
+    {"density", "Density", nullptr, nullptr, &kDensity},
 };
 
 const ColormapEntry* FindColormap(const std::string& name) {
@@ -164,6 +185,19 @@ U8 Sample(const ColormapEntry* entry, const U64 index, const U64 channel) {
             value = c[k][channel] + t * value;
         }
         return static_cast<U8>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
+    }
+    if (entry && entry->gradient) {
+        const auto& stops = *entry->gradient;
+        const F32 t = static_cast<F32>(index) / 255.0f;
+        U64 upper = 1;
+        while (upper < stops.size() - 1 && stops[upper].position < t) {
+            ++upper;
+        }
+        const auto& a = stops[upper - 1];
+        const auto& b = stops[upper];
+        const F32 mix = std::clamp((t - a.position) / (b.position - a.position), 0.0f, 1.0f);
+        const F32 value = a.color[channel] + (b.color[channel] - a.color[channel]) * mix;
+        return static_cast<U8>(value + 0.5f);
     }
     return static_cast<U8>(index);
 }

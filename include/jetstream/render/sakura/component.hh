@@ -47,7 +47,6 @@ struct Component {
 
     bool visible() const;
     void setVisible(bool visible);
-    void markOffscreen(U64 frame);
 
  protected:
     void addChild(Component& child);
@@ -75,6 +74,7 @@ struct Component {
     bool requestFocus();
     void offerFocus(bool offered = true);
     void releaseFocus();
+    void releaseFocusWithin(Component& child);
     bool hasFocus() const;
     bool textEditorFocused() const;
 
@@ -110,6 +110,8 @@ struct Component {
  private:
     struct Impl;
     std::unique_ptr<Impl> impl;
+
+    void markOffscreen(U64 frame);
 
     friend struct Access;
     friend struct Canvas;

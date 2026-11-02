@@ -2,7 +2,8 @@
 #define JETSTREAM_RENDER_SAKURA_DETAIL_POPUP_LAYER_HH
 
 #include <jetstream/render/sakura/components/box.hh>
-#include <jetstream/render/sakura/components/root.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/popup.hh>
 
 #include "../context.hh"
 

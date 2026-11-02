@@ -225,8 +225,9 @@ Result Superluminal::initialize(const InstanceConfig& config) {
         JST_CHECK(terminate());
     }
 
-    if (config.remote && config.device != DeviceType::None && config.device != DeviceType::Vulkan) {
-        JST_ERROR("[SUPERLUMINAL] Remote requires the Vulkan backend.");
+    if (config.remote && config.device != DeviceType::None &&
+        config.device != DeviceType::Vulkan && config.device != DeviceType::Metal) {
+        JST_ERROR("[SUPERLUMINAL] Remote requires the Vulkan or Metal backend.");
         return Result::ERROR;
     }
 
@@ -242,9 +243,7 @@ Result Superluminal::initialize(const InstanceConfig& config) {
         .scale = impl->config.interfaceScale,
     };
 
-    if (impl->config.remote && impl->config.device == DeviceType::None) {
-        instanceConfig.device = DeviceType::Vulkan;
-    } else if (impl->config.device != DeviceType::None) {
+    if (impl->config.device != DeviceType::None) {
         instanceConfig.device = impl->config.device;
     }
 
@@ -257,17 +256,16 @@ Result Superluminal::initialize(const InstanceConfig& config) {
 
     if (impl->config.remote) {
         Instance::Remote::Config remoteConfig;
-        remoteConfig.broker = impl->config.remoteBroker;
         try {
-            remoteConfig.codec = StringToRemoteCodec(impl->config.remoteCodec);
-            remoteConfig.encoder = StringToRemoteEncoder(impl->config.remoteEncoder);
+            remoteConfig.video.codec = StringToRemoteCodec(impl->config.remoteCodec);
+            remoteConfig.video.encoder = StringToRemoteEncoder(impl->config.remoteEncoder);
         } catch (const Result&) {
             JST_CHECK(impl->instance->destroy());
             impl->instance.reset();
             return Result::ERROR;
         }
-        remoteConfig.autoJoinSessions = impl->config.remoteAutoJoin;
-        remoteConfig.framerate = impl->config.remoteFramerate;
+        remoteConfig.access.autoApprove = impl->config.remoteAutoApprove;
+        remoteConfig.video.framerate = impl->config.remoteFramerate;
         result = impl->instance->remote()->create(remoteConfig);
         if (result != Result::SUCCESS && result != Result::RELOAD) {
             JST_CHECK(impl->instance->destroy());
@@ -369,7 +367,7 @@ Result Superluminal::start() {
     if (impl->config.remote && impl->instance->remote()) {
         impl->supervisor = std::make_unique<Instance::Remote::Supervisor>(
             impl->instance->remote().get(),
-            impl->config.remoteAutoJoin);
+            impl->config.remoteAutoApprove);
         impl->supervisor->start();
     }
 
@@ -1759,13 +1757,17 @@ Result Superluminal::markdown(const std::string& content) {
 }
 
 void Superluminal::Impl::createView() {
-    palette = Sakura::Themes.at(Sakura::ResolveThemeKey({}));
+    const auto themeKey = Sakura::ResolveThemeKey({});
+    palette = Sakura::Themes.at(themeKey);
     render.reset();
     instance->renderGet(render);
     instance->viewportGet(viewport);
     if (viewport && !previousIntegratedTitlebar.has_value()) {
         previousIntegratedTitlebar = viewport->integratedTitlebar();
         viewport->setIntegratedTitlebar(true);
+    }
+    if (render) {
+        render->setDarkAppearance(themeKey != "Light");
     }
     view = std::make_unique<SuperluminalView>();
     root = std::make_unique<Sakura::Root>();

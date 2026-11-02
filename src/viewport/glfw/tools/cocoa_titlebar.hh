@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_VIEWPORT_GLFW_COCOA_TITLEBAR_HH
 #define JETSTREAM_VIEWPORT_GLFW_COCOA_TITLEBAR_HH
 
+#include <functional>
 #include <memory>
 
 #include "jetstream/render/types.hh"
@@ -11,7 +12,7 @@ namespace Jetstream::Viewport {
 
 class CocoaTitlebar {
  public:
-    explicit CocoaTitlebar(GLFWwindow* window);
+    CocoaTitlebar(GLFWwindow* window, std::function<void()> releaseLeftButton);
     ~CocoaTitlebar();
 
     CocoaTitlebar(const CocoaTitlebar&) = delete;
@@ -22,6 +23,8 @@ class CocoaTitlebar {
     Render::TitlebarChrome chrome() const;
     void beginDrag();
     void zoom();
+
+    static bool SetAppearance(GLFWwindow* window, bool dark);
 
  private:
     struct State;

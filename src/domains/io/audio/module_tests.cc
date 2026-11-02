@@ -183,8 +183,9 @@ TEST_CASE("Audio module interleaves batched planar stereo input",
             Runtime runtime("test", impl.device, impl.runtime);
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
 
             const auto& orderedInput =
@@ -251,8 +252,9 @@ TEST_CASE("Audio module preserves stereo frames across downsampling calls",
             Runtime runtime("test", impl.device, impl.runtime);
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
 
             const auto& firstOutput = audio->*AudioImplAccess::bufferMember();
@@ -265,7 +267,7 @@ TEST_CASE("Audio module preserves stereo frames across downsampling calls",
                     std::vector<F32>{63.0f, 1063.0f});
 
             fillChunk(framesPerChunk);
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
             const auto& secondOutput = audio->*AudioImplAccess::bufferMember();
             chunkedOutput.insert(chunkedOutput.end(),
@@ -307,7 +309,7 @@ TEST_CASE("Audio module preserves stereo frames across downsampling calls",
             Runtime referenceRuntime("reference", impl.device, impl.runtime);
             REQUIRE(referenceRuntime.create({{"reference", referenceModule}}) ==
                     Result::SUCCESS);
-            REQUIRE(referenceRuntime.compute({}, skippedModules, failedModules) ==
+            REQUIRE(referenceRuntime.compute({}, skippedModules, stalledModules, failedModules) ==
                     Result::SUCCESS);
 
             const auto& referenceOutput =

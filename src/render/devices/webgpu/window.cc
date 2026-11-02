@@ -3,8 +3,7 @@
 #include "jetstream/render/devices/webgpu/window.hh"
 #include "jetstream/render/devices/webgpu/surface.hh"
 
-#include "tools/imgui_impl_wgpu.h"
-#include "jetstream/render/tools/imgui_blend_ext.h"
+#include "presenter.hh"
 
 namespace Jetstream::Render {
 
@@ -14,6 +13,8 @@ Implementation::WindowImp(const Config& config,
                           const std::shared_ptr<Viewport::Adapter<DeviceType::WebGPU>>& viewport)
          : Window(config), viewport(viewport) {
 }
+
+Implementation::~WindowImp() = default;
 
 Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
     auto _resource = std::dynamic_pointer_cast<SurfaceImp<DeviceType::WebGPU>>(surface);
@@ -40,15 +41,10 @@ Result Implementation::underlyingCreate() {
 
     auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
-
     queue = wgpuDeviceGetQueue(device);
 
-    JST_CHECK(createImgui());
-
-    // Reseting internal variables.
-
-    statsData.droppedFrames = 0;
-    statsData.recreatedFrames = 0;
+    JST_CHECK(createPresenter());
+    this->updateMetrics(*viewport);
 
     return Result::SUCCESS;
 }
@@ -58,12 +54,9 @@ Result Implementation::underlyingDestroy() {
 
     Result result = underlyingCancel();
 
-    if (imguiCreated) {
-        const Result imguiResult = destroyImgui();
-        if ((result == Result::SUCCESS || result == Result::RELOAD) &&
-            imguiResult != Result::SUCCESS && imguiResult != Result::RELOAD) {
-            result = imguiResult;
-        }
+    if (presenter) {
+        presenter->destroy();
+        presenter.reset();
     }
 
     transferEncoder.destroy();
@@ -76,142 +69,54 @@ Result Implementation::underlyingDestroy() {
     return result;
 }
 
-Result Implementation::createImgui() {
-    JST_DEBUG("[WebGPU] Creating ImGui.");
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-
-    io = &ImGui::GetIO();
-    style = &ImGui::GetStyle();
-    io->IniFilename = nullptr;
-
-    Result viewportResult;
-    try {
-        viewportResult = viewport->createImgui();
-    } catch (...) {
-        ImGui::DestroyContext();
-        io = nullptr;
-        style = nullptr;
-        throw;
+Result Implementation::createPresenter() {
+    presenter = std::make_unique<Presenter>();
+    const Result result = presenter->create(WGPUTextureFormat_BGRA8Unorm);
+    if (result != Result::SUCCESS) {
+        presenter.reset();
     }
-    if (viewportResult != Result::SUCCESS && viewportResult != Result::RELOAD) {
-        ImGui::DestroyContext();
-        io = nullptr;
-        style = nullptr;
-        return viewportResult;
-    }
-
-    try {
-        this->updateScalingFactor(*viewport);
-
-        auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
-
-        ImGui_ImplWGPU_InitInfo info{};
-        info.Device = device;
-        info.NumFramesInFlight = 3;
-        info.RenderTargetFormat = WGPUTextureFormat_BGRA8Unorm;
-        info.DepthStencilFormat = WGPUTextureFormat_Undefined;
-        ImGui_ImplWGPU_Init(&info);
-        ImGui::RegisterPremultipliedAlphaCallback(ImGui_ImplWGPU_PremultipliedAlphaCallback);
-    } catch (...) {
-        viewport->destroyImgui();
-        ImGui::DestroyContext();
-        io = nullptr;
-        style = nullptr;
-        throw;
-    }
-    imguiCreated = true;
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::destroyImgui() {
-    JST_DEBUG("[WebGPU] Destroying ImGui.");
-
-    ImGui::UnregisterPremultipliedAlphaCallback(ImGui_ImplWGPU_PremultipliedAlphaCallback);
-    ImGui_ImplWGPU_InvalidateDeviceObjects();
-    ImGui_ImplWGPU_Shutdown();
-    const Result result = viewport->destroyImgui();
-    ImGui::DestroyContext();
-    io = nullptr;
-    style = nullptr;
-    imguiCreated = false;
-
     return result;
 }
 
-Result Implementation::recreate() {
+Result Implementation::underlyingRecreate() {
     JST_CHECK(viewport->destroySwapchain());
     JST_CHECK(viewport->createSwapchain());
 
     return Result::SUCCESS;
 }
 
-Result Implementation::beginImgui() {
-    ImGui_ImplWGPU_NewFrame();
-
-    this->updateScalingFactor(*viewport);
-
-    ImGui::NewFrame();
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::endImgui() {
+Result Implementation::encodePresent() {
     const auto& background = frameClearColor();
-    colorAttachments.clearValue = {background.r, background.g, background.b, background.a};
 
-    // Begin the render pass using the C API.
+    WGPURenderPassColorAttachment colorAttachment = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+    colorAttachment.loadOp = WGPULoadOp_Clear;
+    colorAttachment.storeOp = WGPUStoreOp_Store;
+    colorAttachment.view = framebufferTexture;
+    colorAttachment.clearValue = {background.r, background.g, background.b, background.a};
+
+    WGPURenderPassDescriptor renderPassDesc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+    renderPassDesc.colorAttachmentCount = 1;
+    renderPassDesc.colorAttachments = &colorAttachment;
+    renderPassDesc.depthStencilAttachment = nullptr;
+
     WGPURenderPassEncoder renderPassEncoder = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
-    ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPassEncoder);
+    const Result result = presenter->encode(renderPassEncoder, queue, framePresentList(), metrics(),
+                                            viewport->getSwapchainSize());
     wgpuRenderPassEncoderEnd(renderPassEncoder);
+    wgpuRenderPassEncoderRelease(renderPassEncoder);
 
-    return Result::SUCCESS;
+    return result;
 }
 
 Result Implementation::underlyingBegin() {
-    const auto& result = viewport->nextDrawable();
+    JST_CHECK(viewport->pollEvents());
 
-    if (result == Result::SKIP) {
-        statsData.droppedFrames += 1;
-        return Result::SKIP;
-    }
-
-    if (result == Result::RECREATE) {
-        statsData.recreatedFrames += 1;
-        JST_CHECK(recreate());
-        return Result::SKIP;
-    }
-
-    if (result != Result::SUCCESS) {
-        JST_FATAL("[VULKAN] Failed to acquire next viewport drawable.");
-        return Result::ERROR;
-    }
-
-    framebufferTexture = {};
-    JST_CHECK(viewport->commitDrawable(&framebufferTexture));
-
-    colorAttachments = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-    colorAttachments.loadOp = WGPULoadOp_Clear;
-    colorAttachments.storeOp = WGPUStoreOp_Store;
-    colorAttachments.clearValue.r = 0.0f;
-    colorAttachments.clearValue.g = 0.0f;
-    colorAttachments.clearValue.b = 0.0f;
-    colorAttachments.clearValue.a = 1.0f;
-    colorAttachments.view = framebufferTexture;
-
-    renderPassDesc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
-    renderPassDesc.colorAttachmentCount = 1;
-    renderPassDesc.colorAttachments = &colorAttachments;
-    renderPassDesc.depthStencilAttachment = nullptr;
+    framebufferTexture = nullptr;
 
     auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
     WGPUCommandEncoderDescriptor encDesc = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
     encoder = wgpuDeviceCreateCommandEncoder(device, &encDesc);
     if (!encoder) {
-        wgpuTextureViewRelease(framebufferTexture);
-        framebufferTexture = nullptr;
         return Result::ERROR;
     }
 
@@ -220,20 +125,12 @@ Result Implementation::underlyingBegin() {
         if (prepareResult != Result::SUCCESS && prepareResult != Result::RELOAD) {
             wgpuCommandEncoderRelease(encoder);
             encoder = nullptr;
-            wgpuTextureViewRelease(framebufferTexture);
-            framebufferTexture = nullptr;
             return prepareResult;
         }
     }
 
-    const Result beginResult = beginImgui();
-    if (beginResult != Result::SUCCESS && beginResult != Result::RELOAD) {
-        wgpuCommandEncoderRelease(encoder);
-        encoder = nullptr;
-        wgpuTextureViewRelease(framebufferTexture);
-        framebufferTexture = nullptr;
-        return beginResult;
-    }
+    this->updateMetrics(*viewport);
+    this->updateInput(*viewport);
 
     return Result::SUCCESS;
 }
@@ -257,7 +154,6 @@ Result Implementation::underlyingEnd() {
         }
     }
 
-    prepareImgui();
     for (auto& surface : surfaces) {
         const auto& framebuffer = *surface->getConfig().framebuffer;
         result = surface->draw(encoder, textureVisibleForPresentation(framebuffer));
@@ -266,9 +162,26 @@ Result Implementation::underlyingEnd() {
         }
     }
 
-    result = endImgui();
-    if (result != Result::SUCCESS && result != Result::RELOAD) {
-        return abortFrame(result);
+    auto pass = beginPresent(transfers);
+    if (pass.presenting) {
+        result = viewport->nextDrawable();
+        if (result == Result::SUCCESS) {
+            result = viewport->commitDrawable(&framebufferTexture);
+        }
+        if (result == Result::RECREATE) {
+            acquired(pass, Acquire::Recreate);
+        } else if (result == Result::SKIP || (result == Result::SUCCESS && !framebufferTexture)) {
+            acquired(pass, Acquire::Dropped);
+        } else if (result != Result::SUCCESS) {
+            return abortFrame(result);
+        }
+    }
+
+    if (pass.presenting) {
+        result = encodePresent();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return abortFrame(result);
+        }
     }
 
     WGPUCommandBufferDescriptor cmdBufferDesc = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
@@ -291,7 +204,7 @@ Result Implementation::underlyingEnd() {
         framebufferTexture = nullptr;
     }
 
-    return Result::SUCCESS;
+    return finishPresent(pass);
 }
 
 Result Implementation::underlyingCancel() {
@@ -313,10 +226,6 @@ Result Implementation::underlyingSynchronize() {
 std::string Implementation::info() const {
     // WebGPU doesn't expose any useful device information.
     return "WebGPU Device";
-}
-
-const Window::Stats& Implementation::stats() const {
-    return statsData;
 }
 
 }  // namespace Jetstream::Render

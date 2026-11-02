@@ -1,17 +1,17 @@
 #ifndef JETSTREAM_RENDER_SAKURA_INPUT_HH
 #define JETSTREAM_RENDER_SAKURA_INPUT_HH
 
+#include <jetstream/render/base/input.hh>
 #include <jetstream/surface.hh>
 #include <jetstream/types.hh>
 
 #include <array>
 #include <optional>
-#include <variant>
 #include <vector>
 
 namespace Jetstream::Sakura {
 
-using FrameEvent = std::variant<MouseEvent, KeyEvent, TextEvent, FocusEvent>;
+using FrameEvent = Render::InputState::Event;
 
 struct InputFrame {
     U64 serial = 0;
@@ -34,10 +34,13 @@ struct InputFrame {
     }
 };
 
+struct Context;
+
 namespace Private {
 
-void SampleInput(InputFrame& frame);
-void ApplyCursor(SurfaceCursor cursor);
+void SampleInput(InputFrame& frame, const Render::InputState& state);
+void ResetInput(InputFrame& frame);
+void ApplyCursor(const Context& ctx, SurfaceCursor cursor);
 
 }  // namespace Private
 

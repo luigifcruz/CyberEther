@@ -8,8 +8,7 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr F32 kTraceFillAlpha = 0.25f;
-constexpr F32 kHoldShade = 0.6f;
-constexpr F32 kHoldAlpha = 0.7f;
+constexpr ColorRGBA<F32> kHoldColor = {0.85f, 0.12f, 0.1f, 0.75f};
 
 }  // namespace
 
@@ -188,10 +187,10 @@ void SignalViewLineplot::applyTheme(const SurfaceTheme& theme) {
     signalUniforms.traceColor[2] = accent.b;
     signalUniforms.traceColor[3] = kTraceFillAlpha;
 
-    holdUniforms.traceColor[0] = accent.r * kHoldShade;
-    holdUniforms.traceColor[1] = accent.g * kHoldShade;
-    holdUniforms.traceColor[2] = accent.b * kHoldShade;
-    holdUniforms.traceColor[3] = kHoldAlpha;
+    holdUniforms.traceColor[0] = kHoldColor.r;
+    holdUniforms.traceColor[1] = kHoldColor.g;
+    holdUniforms.traceColor[2] = kHoldColor.b;
+    holdUniforms.traceColor[3] = kHoldColor.a;
 
     uniformsDirty = true;
 }
@@ -218,11 +217,11 @@ void SignalViewLineplot::layout(const glm::mat4& transform,
                                 const F32 panelScale,
                                 const F32 zoom,
                                 const Render::ScissorRect& scissor) {
+    const F32 width = detail::kSignalViewLineThickness * (config.overlay ? 2.0f : 3.0f);
     for (auto* uniforms : {&signalUniforms, &holdUniforms}) {
         uniforms->transform = transform;
-        uniforms->thickness[0] = pixelSize.x * detail::kSignalViewLineThickness * 3.0f;
-        uniforms->thickness[1] =
-            pixelSize.y * detail::kSignalViewLineThickness * 3.0f / panelScale;
+        uniforms->thickness[0] = pixelSize.x * width;
+        uniforms->thickness[1] = pixelSize.y * width / panelScale;
         uniforms->zoom = zoom;
         uniforms->numberOfPoints = config.numberOfElements;
     }

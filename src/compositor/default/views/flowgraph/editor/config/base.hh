@@ -146,7 +146,7 @@ struct FlowgraphConfigFieldInstance {
                 break;
         }
         if (result != Result::SUCCESS) {
-            const auto message = "Invalid configuration value for '" + name + "'.";
+            const auto message = jst::fmt::format("Invalid configuration value for '{}'.", name);
             if (onError && notifiedDecodeError != errorId) {
                 notifiedDecodeError = errorId;
                 onError(result, message);

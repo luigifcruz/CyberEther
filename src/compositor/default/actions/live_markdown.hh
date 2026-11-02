@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_LIVE_MARKDOWN_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_LIVE_MARKDOWN_HH
 
-#include "../live_markdown.hh"
+#include "../support/live_markdown.hh"
 #include "../model/state.hh"
 
 #include "jetstream/flowgraph_environment.hh"
@@ -54,7 +54,7 @@ struct LiveMarkdownActions {
                         continue;
                     }
 
-                    const auto key = FlowgraphState::LiveMarkdownKey(flowgraphId, block.name, entry.name);
+                    const auto key = FlowgraphState::FieldKey(flowgraphId, block.name, entry.name);
                     auto& cached = entries[key];
                     seen.insert(key);
                     const bool edited = cached.compiled.source() != source;

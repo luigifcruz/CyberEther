@@ -15,7 +15,7 @@ namespace Jetstream::Sakura {
 
 namespace {
 
-constexpr const char* kFallbackFontName = "default_mono";
+constexpr const char* kFallbackFontName = Typography::MonoFont;
 
 std::string LabelElementId(U64 index) {
     return jst::fmt::format("label{:06}", index);
@@ -47,7 +47,6 @@ struct Label::Impl : public Drawable {
     bool sameResources(const Config& other) const {
         return requiredCapacity(other) == capacity &&
                config.fontName == other.fontName &&
-               config.sharpness == other.sharpness &&
                config.maxCharacters == other.maxCharacters;
     }
 
@@ -94,6 +93,9 @@ struct Label::Impl : public Drawable {
         attachedFontName = fontName;
         textConfig.pixelSize = context->pixelSize();
         textConfig.sharpness = config.sharpness;
+        textConfig.weight = config.weight;
+        textConfig.emboss = config.emboss;
+        textConfig.embossBackdrop = config.embossBackdrop;
         for (U64 i = 0; i < capacity; ++i) {
             textConfig.elements[LabelElementId(i)] = {
                 .scale = 1.0f,
@@ -132,6 +134,7 @@ struct Label::Impl : public Drawable {
         const U64 characterCapacity = std::max<U64>(1, text->getConfig().maxCharacters);
 
         JST_CHECK(text->updatePixelSize(context->pixelSize()));
+        JST_CHECK(text->updateStyle(config.sharpness, config.weight, config.emboss, config.embossBackdrop));
         JST_CHECK(text->updateTranslation(translationNdc()));
         JST_CHECK(text->updateScissorRect(scissor(config.clip)));
 
@@ -165,6 +168,7 @@ struct Label::Impl : public Drawable {
                 .scale = instance.fontSize / fontPixelSize(),
                 .position = PixelToNdc(framebufferSize, anchor.x, anchor.y),
                 .alignment = instance.alignment,
+                .rotationDeg = instance.rotation,
                 .fill = instance.str.substr(0, Unicode::Advance(instance.str, 0, characterCapacity)),
                 .color = instance.color,
             }));
@@ -189,7 +193,11 @@ const Label::Config& Label::config() const {
 void Label::update(Config config) {
     markConfigured();
     const bool instancesChanged = this->impl->config.instances != config.instances;
-    const bool visualsChanged = instancesChanged || this->impl->config.clip != config.clip;
+    const bool visualsChanged = instancesChanged || this->impl->config.clip != config.clip ||
+                                this->impl->config.sharpness != config.sharpness ||
+                                this->impl->config.weight != config.weight ||
+                                this->impl->config.emboss != config.emboss ||
+                                this->impl->config.embossBackdrop != config.embossBackdrop;
     this->impl->instancesDirty |= instancesChanged;
     const bool resourcesChanged = !this->impl->sameResources(config) || this->impl->resolvedFontChanged(config);
     this->impl->config = std::move(config);

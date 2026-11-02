@@ -24,6 +24,9 @@ struct MetricActions {
     struct Entry {
         Flowgraph::View::MetricEntry metric;
         Clock::time_point sampled;
+
+        Entry(const Flowgraph::View::MetricEntry& metric, Clock::time_point sampled)
+            : metric(metric), sampled(sampled) {}
     };
 
     FlowgraphState& state;

@@ -5,6 +5,7 @@
 #include <span>
 
 #include <glm/mat4x4.hpp>
+#include <glm/ext/matrix_double4x4.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
@@ -14,11 +15,11 @@
 namespace Jetstream::Render::Components {
 
 struct JETSTREAM_API MapContext {
-    static constexpr F32 MaxZoom = 12.0f;
+    static constexpr F32 MaxZoom = 15.0f;
 
     struct Uniforms {
-        float centerLon = 0.0f;
-        float centerLat = 0.0f;
+        double centerLon = 0.0;
+        double centerLat = 0.0;
         float zoom = 0.0f;
         float detailZoom = 0.0f;
         float aspectRatio = 1.0f;
@@ -45,8 +46,10 @@ struct JETSTREAM_API MapContext {
         float dashPhase;
         float outlineStrength;
         float lineOpacity;
+        glm::vec4 anchor;
     } camera{};
 
+    glm::dmat4 worldViewProjection{1.0};
     glm::mat4 skyViewProjection{1.0f};
     std::optional<Extent2D<F32>> cursor;
 
@@ -55,7 +58,8 @@ struct JETSTREAM_API MapContext {
 
     std::optional<Uniforms> fitView(std::span<const Extent2D<F32>> points,
                                     F32 padding = 0.2f, F32 maxZoom = MaxZoom) const;
-    bool projectLonLat(F32 lon, F32 lat, F32& ndcX, F32& ndcY) const;
+    bool projectLonLat(F64 lon, F64 lat, F32& ndcX, F32& ndcY) const;
+    glm::vec4 origin(F64 lon, F64 lat) const;
     Extent2D<F32> pixelSize() const;
 
     static glm::vec3 LonLatToSphere(F32 lon, F32 lat);
@@ -74,8 +78,8 @@ class JETSTREAM_API MapNavigation {
  private:
     bool dragging = false;
     Extent2D<F32> dragAnchor{};
-    F32 dragStartLon = 0.0f;
-    F32 dragStartLat = 0.0f;
+    F64 dragStartLon = 0.0;
+    F64 dragStartLat = 0.0;
 };
 
 }  // namespace Jetstream::Render::Components

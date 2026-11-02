@@ -1,8 +1,6 @@
 #ifndef JETSTREAM_VIEWPORT_PLATFORM_IOS_METAL_HH
 #define JETSTREAM_VIEWPORT_PLATFORM_IOS_METAL_HH
 
-#include <chrono>
-
 #include "jetstream/viewport/adapters/metal.hh"
 #include "jetstream/viewport/platforms/ios/generic.hh"
 
@@ -29,21 +27,20 @@ class iOS<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Result create();
     Result destroy();
 
-    Result createImgui();
-    Result destroyImgui();
     Extent2D<F32> displaySize() const;
-    F32 scale(const F32& scale) const;
+    Extent2D<F32> framebufferSize() const;
 
-    void* nextDrawable();
+    MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable);
+    Extent2D<U64> getSwapchainExtent() const;
     
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
 
  private:
-    CA::MetalLayer* swapchain;
+    void setCaptureEnabled(bool enabled);
 
-    std::chrono::high_resolution_clock::time_point lastTime;
+    CA::MetalLayer* swapchain;
 };
 
 }  // namespace Jetstream::Viewport

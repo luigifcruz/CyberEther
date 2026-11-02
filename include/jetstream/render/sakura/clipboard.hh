@@ -5,10 +5,14 @@
 
 #include <string>
 
+namespace Jetstream::Render {
+class Window;
+}  // namespace Jetstream::Render
+
 namespace Jetstream::Sakura {
 
-void SetClipboardText(const std::string& value);
-JETSTREAM_API std::string GetClipboardText();
+void SetClipboardText(Render::Window* window, const std::string& value);
+JETSTREAM_API std::string GetClipboardText(Render::Window* window);
 
 }  // namespace Jetstream::Sakura
 
