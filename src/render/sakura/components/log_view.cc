@@ -27,7 +27,7 @@ struct LogView::Impl {
             .id = jst::fmt::format("log:{}", static_cast<const void*>(this)),
             .value = config.value,
             .fontSize = config.fontSize * pixelRatio,
-            .fontName = "default_mono",
+            .fontName = Typography::MonoFont,
             .monospace = true,
             .lineNumbers = false,
             .stickToBottom = config.stickToBottom,

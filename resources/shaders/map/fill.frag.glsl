@@ -15,5 +15,5 @@ void main() {
         uniforms.targetNormal.w) {
         discard;
     }
-    outColor = vec4(vColor, 1.0);
+    outColor = vec4(vColor, uniforms.lineOpacity);
 }

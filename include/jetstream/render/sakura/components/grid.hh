@@ -12,6 +12,7 @@ namespace Jetstream::Sakura {
 struct Grid : public Component {
     struct Config {
         U64 columns = 2;
+        F32 minCellWidth = 0.0f;
         Extent2D<F32> size = {Fill, 0.0f};
         Extent2D<F32> cellPadding = {4.0f, 2.0f};
         bool outerPadding = true;

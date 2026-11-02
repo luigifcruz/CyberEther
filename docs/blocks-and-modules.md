@@ -371,21 +371,22 @@ configuration. The in-place path preserves trace averaging and waterfall history
 
 ### Compute Contract
 
-The compute hooks come from the runtime context, for example `computeInitialize`, `computeSubmit`, and `computeDeinitialize` on `NativeCpuRuntimeContext`. The scheduler executes modules in topological order once per cycle, and what `computeSubmit` returns matters:
+The compute hooks come from the runtime context, for example `computeInitialize`, `computeSubmit`, and `computeDeinitialize` on `NativeCpuRuntimeContext`. The scheduler executes modules in topological order, running each one at most once per cycle and only when every input carries a frame it has not read yet. What `computeSubmit` returns matters:
 
 | Return | Meaning |
 |---|---|
-| `SUCCESS` | Normal completion. |
+| `SUCCESS` | Normal completion. The output is a new frame for every consumer. |
 | `RELOAD` | Accepted as successful progress by the runtime. |
-| `SKIP` | Nothing to do this cycle. The module is skipped and the skip propagates to every downstream module for the rest of the cycle. |
-| `YIELD` | Abort the rest of the cycle quietly. Used when a precondition disappeared mid-cycle. |
-| `TIMEOUT` | Abort the rest of the cycle quietly after a bounded wait or unavailable resource. |
+| `SKIP` | Nothing to emit for this frame, for example a decimator still collecting input. The module emits an empty frame instead, and every module that receives it drops the frames it holds for that step without computing. Writing partial results to the output before skipping is fine, since an empty frame is never read. |
+| `YIELD` | Not ready yet. The module keeps its inputs unread, the modules that depend on it wait, and the scheduler retries it on a later cycle. The rest of the flowgraph keeps running. |
+| `TIMEOUT` | Same as `YIELD`. Sources return it from `hasPendingCompute()` when no full buffer is ready. |
 | `ERROR` | The module failed. Its block becomes errored with the last log message as the diagnostic, and downstream blocks are recreated as incomplete. The rest of the flowgraph keeps running. |
 
-Three rules govern the whole design:
+Four rules govern the whole design:
 
-- **Compute must never block.** The scheduler is synchronous, so a stalled `computeSubmit` stalls every block in the flowgraph. Anything that waits on the outside world belongs in a background thread that `computeSubmit` drains.
-- **Sources pace the graph.** A module with no inputs is a source, and before each cycle the scheduler polls every source's `hasPendingCompute()` from `Scheduler::Context`. The default returns immediately, which makes the graph free-running. A real ingest source blocks there until data is available, which is what gives a flowgraph its natural rate. Note that the scheduler waits for all sources, so a slow source paces everything.
+- **Compute must not wait on someone else's clock.** Every branch runs on one compute thread, so a stalled `computeSubmit` stalls every block in every flowgraph. Data that arrives on its own schedule, from a radio, a socket, or a sound device, is read by a background thread into a ring buffer that `computeSubmit` drains, because data read late is lost. Sending a buffer or reading and writing a file works on data the module already holds, so it runs inline with bounded timeouts, and a slow sink paces the chain instead of losing data.
+- **Sources answer right away.** A module with no inputs is a source. Each cycle the scheduler asks every source's `hasPendingCompute()` from `Scheduler::Context` whether a full buffer is ready, and it must return immediately, with `SUCCESS` when ready and `TIMEOUT` when not. The default returns `SUCCESS`, which makes the source free-running. An ingest source fills a ring buffer from a background thread and calls `Scheduler::Context::NotifyPendingCompute()` after every push, so an idle scheduler wakes as soon as data arrives. A slow source only paces the modules that depend on it.
+- **Frames stay aligned.** Every module consumes exactly one frame from each input per step, by computing, by dropping it because an input was skipped, or by dropping it because a throttled module was not due. Each output records the source frames it derives from, and a module with several inputs only runs when they come from the same source frames. A producer reuses one output buffer, so it waits until every consumer has read it, and a slow consumer paces its producer. A module whose output is a view of its input, inherits its attributes, or computes derived attributes counts as part of that buffer, so the producer also waits until that module's output has been read, and a held frame never sees newer samples or metadata. Joining sources that run at different rates paces the fast one to the slow one until the fast one overflows its buffer, so resample to a common rate or share a clock before such a join. The scheduler reads attribute links when the graph is built, so call `propagateAttributes` and `setDerivedAttribute` from `create()`, never from `computeSubmit`.
 - **Shapes are fixed at creation.** A module publishes its outputs in `create()` and their shape holds for as long as it lives, so a shape-changing edit goes through `RECREATE` as described in [Block Lifecycle](/docs/blocks-and-modules#block-lifecycle).
 
 ### Module Taints
@@ -395,12 +396,12 @@ Taints are opt-in capability and behavior contracts declared from the module's `
 | Taint | Module contract | Framework behavior |
 |---|---|---|
 | `CLEAN` | No special capabilities or scheduling guarantees. | Applies the default validation and executes the module every eligible cycle. It is represented by zero, so it does not need to be declared. |
-| `IN_PLACE` | The module may overwrite storage belonging to one or more input tensors. | Static settlement is conservatively disabled for a graph containing the module because retained or aliased static buffers could otherwise be mutated. |
+| `IN_PLACE` | The module may overwrite storage belonging to one or more input tensors. It must not write into storage that another module still reads, because the scheduler does not hold back those other readers while it runs. | Static settlement is conservatively disabled for a graph containing the module because retained or aliased static buffers could otherwise be mutated. |
 | `DISCONTIGUOUS` | The implementation correctly handles input tensor shapes, strides, and offsets instead of assuming tightly packed storage. | Allows non-contiguous input tensors during module creation. Without it, non-contiguous inputs are rejected. |
 | `SURFACE` | The module owns a renderable surface and implements the presentation lifecycle. | Initializes the presentation context and includes the module in scheduler `present()` submissions. Compute settlement does not stop presentation. |
 | `BROWSER_MAIN_THREAD` | Browser-side creation and destruction must execute on the browser's main runtime thread. | Proxies the module's create and destroy hooks to the main thread in browser builds. It has no effect on native builds. |
 | `CROSS_DEVICE` | The implementation can directly consume input tensors whose device differs from the module's device. | Allows cross-device input during module creation. Without it, device mismatch is rejected and the block must provide an explicit bridge. |
-| `THROTTLED` | Compute should run at the scheduler's slower fixed cadence rather than every loop cycle. | Defers the module until its deadline. While it is not due, the module is added to the cycle's skipped set and its downstream dependents are skipped. |
+| `THROTTLED` | Compute should run at the scheduler's slower fixed cadence rather than every loop cycle. | Runs the module at most once per throttle interval. While it is not due, the module consumes and drops each incoming frame like a skip, so its producers keep flowing and its consumers receive an empty frame. |
 | `STATIC_OUTPUT` | After one successful compute, every output remains valid and unchanged for the current scheduler state epoch, and omitting later compute calls has no observable side effects. | Treats the module as an explicit static root. After successful materialization, the scheduler omits it without adding it to the skipped set and stops polling it as a source. |
 | `STATELESS` | For fixed configuration and logical input values, compute has the same outputs and return behavior and has no externally observable side effects. | Allows staticness to propagate from static inputs. A stateless module settles only when every input has a known static producer. The `STATELESS` trait alone does not make a zero-input module a static root. |
 
@@ -429,8 +430,9 @@ The scheduler applies these rules:
 - A static candidate settles only after its runtime segment completes successfully and the module was not skipped.
 - The `SKIP`, `YIELD`, `TIMEOUT`, and failure results do not settle a module. The scheduler retries it on a later cycle.
 - Settled modules are omitted from runtime submission and source polling, but are never added to `skippedModules`. Their retained output remains available to dynamic consumers and across runtime or device segment boundaries.
+- A settled module carries no source frame numbers, so it never holds back a module that also reads a live input.
 - Timing presentation reports zero current compute cost for settled modules. Before invalidation, the scheduler restores its pre-settlement timing snapshot. A runtime rebuild that follows initializes fresh timing.
-- If every module is settled, the scheduler idles instead of spinning at full speed.
+- If every module is settled, the cycle reports no progress and the instance sleeps instead of spinning at full speed.
 
 Settlement lasts for a scheduler state epoch:
 
@@ -438,7 +440,7 @@ Settlement lasts for a scheduler state epoch:
 |---|---|
 | Successful compute followed by another cycle | Preserved because settled modules are omitted. |
 | Scheduler `stop()` followed by `start()` | Preserved because runtime and module state remain initialized. |
-| Synchronized state mutation | Cleared so static roots and descendants can refresh. |
+| Synchronized state mutation | Cleared so static roots and descendants can refresh. Every unread frame in the graph is dropped at the same time, so all branches restart from the same step. |
 | Module add, remove, or scheduler reload | Cleared while the runtime plan is rebuilt. |
 | Block recreation or configuration change requiring recreation | Cleared through module removal and re-addition. |
 | Presentation of a settled `SURFACE` module | Presentation continues while only compute submission is settled. |
@@ -462,7 +464,7 @@ Examples that must not declare `STATELESS` include SignalGenerator because it ad
 
 The `STATELESS` and `IN_PLACE` traits are conceptually incompatible because mutating an input is an observable side effect. The scheduler currently disables static settlement whenever `IN_PLACE` appears in the graph because tensor views can alias storage across more than one module.
 
-Most importantly, settlement is not `SKIP`. A `SKIP` result means output is unavailable for the current cycle and therefore propagates to downstream modules. Settlement means a previously computed output is still valid, so downstream modules continue normally.
+Most importantly, settlement is not `SKIP`. A `SKIP` result means output is unavailable for that frame, so downstream modules drop the frame too. Settlement means a previously computed output is still valid, so downstream modules continue normally.
 
 ### Surface Input
 

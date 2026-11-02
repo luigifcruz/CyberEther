@@ -1,8 +1,58 @@
 #include "module_impl.hh"
 
+#include <cmath>
+#include <limits>
+
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
+
+namespace {
+
+template<typename T>
+CastImpl::Scale IntegerScale() {
+    using Limits = std::numeric_limits<T>;
+
+    CastImpl::Scale scale;
+    scale.integer = true;
+    scale.isUnsigned = !Limits::is_signed;
+    scale.bits = Limits::digits + Limits::is_signed;
+    scale.fullScale = std::ldexp(1.0, static_cast<int>(scale.bits) - 1);
+    return scale;
+}
+
+}  // namespace
+
+CastImpl::Scale CastImpl::ScaleOf(const DataType& dtype) {
+    switch (dtype) {
+        case DataType::I8:
+        case DataType::CI8:
+            return IntegerScale<I8>();
+        case DataType::I16:
+        case DataType::CI16:
+            return IntegerScale<I16>();
+        case DataType::I32:
+        case DataType::CI32:
+            return IntegerScale<I32>();
+        case DataType::I64:
+        case DataType::CI64:
+            return IntegerScale<I64>();
+        case DataType::U8:
+        case DataType::CU8:
+            return IntegerScale<U8>();
+        case DataType::U16:
+        case DataType::CU16:
+            return IntegerScale<U16>();
+        case DataType::U32:
+        case DataType::CU32:
+            return IntegerScale<U32>();
+        case DataType::U64:
+        case DataType::CU64:
+            return IntegerScale<U64>();
+        default:
+            return {};
+    }
+}
 
 Result CastImpl::validate() {
     const auto& config = *candidate();
@@ -14,7 +64,6 @@ Result CastImpl::validate() {
     }
 
     bool candidateBypass = false;
-    F32 candidateScaler = 1.0f;
     U64 candidateOutputElementCount = 0;
     U64 candidateOutputSizeBytes = 0;
 
@@ -46,34 +95,18 @@ Result CastImpl::validate() {
                 JST_ERROR("[MODULE_CAST] Output exceeds the supported byte range.");
                 return Result::ERROR;
             }
+        }
 
-            switch (candidateInput.dtype()) {
-                case DataType::I8:
-                case DataType::CI8:
-                case DataType::U8:
-                case DataType::CU8:
-                    candidateScaler = 128.0f;
-                    break;
-                case DataType::I16:
-                case DataType::CI16:
-                case DataType::U16:
-                case DataType::CU16:
-                    candidateScaler = 32768.0f;
-                    break;
-                case DataType::I32:
-                case DataType::CI32:
-                case DataType::U32:
-                case DataType::CU32:
-                    candidateScaler = 2147483648.0f;
-                    break;
-                default:
-                    break;
-            }
+        if (!candidateBypass && IsDataTypeComplex(candidateInput.dtype()) &&
+            !IsDataTypeComplex(candidateOutputDtype)) {
+            JST_ERROR("[MODULE_CAST] Cannot cast complex '{}' to real '{}'. Use a "
+                      "Complex Split to pick the parts.",
+                      candidateInput.dtype(), candidateOutputDtype);
+            return Result::ERROR;
         }
     }
 
     validatedOutputDtype = candidateOutputDtype;
-    validatedScaler = candidateScaler;
     validatedBypass = candidateBypass;
     validatedOutputElementCount = candidateOutputElementCount;
     validatedOutputSizeBytes = candidateOutputSizeBytes;
@@ -92,7 +125,8 @@ Result CastImpl::define() {
 Result CastImpl::create() {
     input = inputs().at("buffer").tensor;
     outputDtype = validatedOutputDtype;
-    scaler = validatedScaler;
+    inputScale = ScaleOf(input.dtype());
+    outputScale = ScaleOf(outputDtype);
     bypass = validatedBypass;
 
     if (bypass) {

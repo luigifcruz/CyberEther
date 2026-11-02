@@ -26,6 +26,7 @@ constexpr U64 kMaxCharacters = 128;
 
 struct DropdownBody : public Component {
     struct Metrics {
+        std::string fontName = Typography::MonoFont;
         F32 fontSize = Typography::FontSize;
         F32 padX = 0.0f;
         F32 padY = 0.0f;
@@ -52,6 +53,7 @@ struct DropdownBody : public Component {
     std::optional<U64> selected;
     Metrics metrics;
     F32 scrollY = 0.0f;
+    F32 overscrollY = 0.0f;
     bool revealSelected = false;
     std::optional<U64> hovered;
     std::optional<U64> pressed;
@@ -76,7 +78,7 @@ struct DropdownBody : public Component {
         if (stride <= 0.0f || !viewport.contains(point.x, point.y)) {
             return std::nullopt;
         }
-        const F32 offset = point.y - content.y + scrollY;
+        const F32 offset = point.y - content.y + scrollY + overscrollY;
         if (offset < 0.0f) {
             return std::nullopt;
         }
@@ -92,7 +94,7 @@ struct DropdownBody : public Component {
         textMetrics.setWindow(ctx.render);
         F32 labelWidth = 0.0f;
         for (const auto& option : options) {
-            labelWidth = std::max(labelWidth, textMetrics.measure(Typography::MonoFont, option, metrics.fontSize * unit));
+            labelWidth = std::max(labelWidth, textMetrics.measure(metrics.fontName, option, metrics.fontSize * unit));
         }
         const U64 count = options.size();
         const F32 rowHeight = (metrics.fontSize + 2.0f * metrics.padY) * unit;
@@ -154,14 +156,19 @@ struct DropdownBody : public Component {
                 scrollY = next;
                 invalidate(Dirty::Layout);
             },
+            .onOverscroll = [this] {
+                requestFrame();
+            },
         });
         layoutChild(ctx, scroll, bounds);
+        overscrollY = scroll.overscroll(ctx).y;
 
         std::vector<Box::Instance> boxes;
         std::vector<Label::Instance> labels;
-        const U64 first = stride > 0.0f ? static_cast<U64>(std::max(0.0f, std::floor(scrollY / stride))) : 0;
+        const F32 visual = scrollY + overscrollY;
+        const U64 first = stride > 0.0f ? static_cast<U64>(std::max(0.0f, std::floor(visual / stride))) : 0;
         for (U64 row = first; row < count && labels.size() < kRowSlots; ++row) {
-            const F32 top = content.y + static_cast<F32>(row) * stride - scrollY;
+            const F32 top = content.y + static_cast<F32>(row) * stride - visual;
             if (top >= viewport.bottom()) {
                 break;
             }
@@ -195,7 +202,7 @@ struct DropdownBody : public Component {
         texts.update({
             .instances = std::move(labels),
             .clip = viewport,
-            .fontName = Typography::MonoFont,
+            .fontName = metrics.fontName,
             .maxCharacters = kMaxCharacters,
             .capacity = kRowSlots,
         });
@@ -287,6 +294,8 @@ Dropdown::~Dropdown() = default;
 void Dropdown::open() {
     impl->open = true;
     impl->body.scrollY = 0.0f;
+    impl->body.overscrollY = 0.0f;
+    impl->body.scroll.reset();
     impl->body.revealSelected = true;
     impl->body.hovered.reset();
     impl->body.pressed.reset();
@@ -317,6 +326,7 @@ void Dropdown::update(Config config) {
     const F32 padY = impl->config.rowPadding.y;
     const F32 margin = std::max(impl->config.padding, 1.0f);
     const DropdownBody::Metrics metrics = {
+        .fontName = impl->config.fontName,
         .fontSize = Typography::FontSize,
         .padX = padX,
         .padY = padY,

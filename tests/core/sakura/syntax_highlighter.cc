@@ -2,11 +2,36 @@
 
 #include "render/sakura/detail/syntax_highlighter.hh"
 
+#include <future>
 #include <string>
 #include <vector>
 
 using namespace Jetstream;
 using Highlighter = Sakura::SyntaxHighlighter;
+
+TEST_CASE("Independent highlighters share rules without sharing parse state", "[core][sakura][syntax][shared-query]") {
+    std::vector<std::future<bool>> workers;
+    for (int worker = 0; worker < 2; ++worker) {
+        workers.push_back(std::async(std::launch::async, [worker] {
+            const std::vector<std::string> cpp = {"int value = " + std::to_string(worker) + "; // note"};
+            const std::vector<std::string> python = {"def f():", "    return 1"};
+            const std::vector<std::string> json = {"{\"a\": 1}"};
+            for (int iteration = 0; iteration < 3; ++iteration) {
+                Highlighter highlighter;
+                if (highlighter.styles(cpp, 1, Highlighter::Language::Cpp)[0][0] != Highlighter::Type ||
+                    highlighter.styles(python, 1, Highlighter::Language::Python)[0][0] != Highlighter::Keyword ||
+                    highlighter.styles(json, 1, Highlighter::Language::Json)[0][6] != Highlighter::Number ||
+                    highlighter.styles(cpp, 1, Highlighter::Language::Cpp)[0][0] != Highlighter::Type) {
+                    return false;
+                }
+            }
+            return true;
+        }));
+    }
+    for (auto& worker : workers) {
+        CHECK(worker.get());
+    }
+}
 
 TEST_CASE("Fence tags resolve to highlighter languages", "[core][sakura][syntax]") {
     CHECK(Highlighter::LanguageForTag("python") == Highlighter::Language::Python);

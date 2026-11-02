@@ -183,18 +183,6 @@ void RootComponent::prepareInput() {
     }
 }
 
-bool RootComponent::coveredAbove(U64 index, const Extent2D<F32>& point) const {
-    if (popups.covers(point)) {
-        return true;
-    }
-    for (U64 above = index + 1; above < layers.size(); ++above) {
-        if (acceptsInput(*layers[above]) && layers[above]->covers(point)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 void RootComponent::layout(const Context& ctx) {
     const auto token = Access::alive(*this);
     prepareInput();

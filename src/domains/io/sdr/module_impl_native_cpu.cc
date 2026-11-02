@@ -1,4 +1,3 @@
-#include <chrono>
 #include <limits>
 
 #include <jetstream/memory/macros.hh>
@@ -41,8 +40,7 @@ Result SdrImplNativeCpu::hasPendingCompute() {
     }
 
     if (stream.size() < buffer.size()) {
-        const auto result = stream.waitForSize(buffer.size(), std::chrono::milliseconds(100));
-        return errored ? Result::ERROR : result;
+        return Result::TIMEOUT;
     }
 
     return Result::SUCCESS;

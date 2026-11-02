@@ -78,6 +78,7 @@ class JETSTREAM_API Generic {
     bool integratedTitlebar() const;
     virtual void beginWindowDrag();
     virtual void zoomWindow();
+    virtual bool setDarkAppearance(bool dark);
 
     virtual bool macOSBehaviors() const;
     virtual bool retainedPresent() const;
@@ -88,6 +89,7 @@ class JETSTREAM_API Generic {
     std::string clipboardText() const;
     void setClipboardText(const std::string& text);
     void requestRedraw();
+    void refreshSnapshot();
     bool consumeRedraw();
 
     Render::InputQueue& input();

@@ -1,0 +1,19 @@
+--- a/src/terminal/Terminal.zig
++++ b/src/terminal/Terminal.zig
+@@ -5043,7 +5043,6 @@
+         // we disable it.
+         .@"1049" => if (enabled) {
+             assert(self.screens.active_key == .alternate);
+-            self.eraseDisplay(.complete, false);
+ 
+             // When we enter alt screen with 1049, we always copy the
+             // cursor from the primary screen (if we weren't already
+@@ -5058,6 +5057,8 @@
+                     );
+                 };
+             }
++
++            self.eraseDisplay(.complete, false);
+         } else {
+             assert(self.screens.active_key == .primary);
+             self.restoreCursor();

@@ -34,6 +34,7 @@ class JETSTREAM_API CircularBuffer {
     CircularBuffer& operator=(CircularBuffer&&) noexcept;
 
     Result push(const T* data, U64 size);
+    Result push(const T* data, U64 size, U64 threshold, bool& becameReady);
     Result pushStrided(const T* data, U64 size, U64 stride);
     Result pop(T* data, U64 size);
     Result popStrided(T* data, U64 size, U64 stride);

@@ -6,6 +6,7 @@
 #include "harness.hh"
 #include "component_harness.hh"
 #include "scene.hh"
+#include "render/sakura/metrics.hh"
 
 #include <vector>
 
@@ -39,7 +40,7 @@ std::vector<const Sakura::Box::Config*> Boxes(Sakura::Card& card) {
 
 }  // namespace
 
-TEST_CASE("Full cards draw a dropped shadow, a bordered fill, a lit edge and an inset rim",
+TEST_CASE("Full cards draw a dropped shadow, a bordered fill and a tonal rim on the outline",
           "[core][sakura][card]") {
     Scene scene;
     const auto ctx = scene.context();
@@ -49,7 +50,7 @@ TEST_CASE("Full cards draw a dropped shadow, a bordered fill, a lit edge and an 
     host.place(ctx, kScreen);
 
     const auto boxes = Boxes(card);
-    REQUIRE(boxes.size() == 4);
+    REQUIRE(boxes.size() == 3);
     const auto& shadow = *boxes[0];
     REQUIRE(shadow.instances.size() == 1);
     CHECK(shadow.instances[0].rect == Rect{14.0f, 26.0f, 212.0f, 112.0f});
@@ -60,15 +61,12 @@ TEST_CASE("Full cards draw a dropped shadow, a bordered fill, a lit edge and an 
     CHECK(fill.instances[0].backgroundColor == ctx.color("tile_bg"));
     CHECK(fill.borderWidth == 1.5f);
     CHECK(fill.borderColor == ctx.color("tile_border"));
-    const auto& highlight = *boxes[2];
-    CHECK(highlight.topLit);
-    CHECK(highlight.borderWidth == 1.0f);
-    CHECK(highlight.borderColor == ctx.color("tile_highlight"));
-    const auto& rim = *boxes[3];
+    const auto& rim = *boxes[2];
     CHECK(rim.topLit);
-    CHECK(rim.instances[0].rect == Rect{21.0f, 31.0f, 198.0f, 98.0f});
-    CHECK(rim.cornerRadius == 11.0f);
-    CHECK(rim.borderColor == ctx.color("tile_rim"));
+    CHECK(rim.borderWidth == 1.0f);
+    CHECK(rim.instances[0].rect == kCard);
+    CHECK(rim.cornerRadius == 12.0f);
+    CHECK(rim.borderColor == Sakura::RimColor(ctx.color("tile_bg")));
 }
 
 TEST_CASE("Base and frame cards split the tile into the parts below and above content",
@@ -91,12 +89,11 @@ TEST_CASE("Base and frame cards split the tile into the parts below and above co
     CHECK(below[1]->borderWidth == 0.0f);
 
     const auto above = Boxes(frame);
-    REQUIRE(above.size() == 3);
+    REQUIRE(above.size() == 2);
     CHECK(above[0]->borderWidth == 1.5f);
     CHECK(above[0]->borderColor == ctx.color("tile_border"));
     CHECK_FALSE(above[0]->topLit);
     CHECK(above[1]->topLit);
-    CHECK(above[2]->topLit);
     for (const auto* box : above) {
         CHECK(box->instances[0].backgroundColor.a == 0.0f);
     }
@@ -112,7 +109,7 @@ TEST_CASE("Card opacity fades every color and hides the card at zero", "[core][s
     card.update(config);
     host.place(ctx, kScreen);
     auto boxes = Boxes(card);
-    REQUIRE(boxes.size() == 4);
+    REQUIRE(boxes.size() == 3);
     CHECK(boxes[1]->instances[0].backgroundColor.a == ctx.color("tile_bg").a * 0.5f);
     CHECK(boxes[1]->borderColor.a == ctx.color("tile_border").a * 0.5f);
 

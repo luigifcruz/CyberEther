@@ -8,6 +8,7 @@
 #include "jetstream/settings.hh"
 
 #include <cctype>
+#include <cmath>
 #include <string>
 
 namespace Jetstream {
@@ -26,6 +27,37 @@ class AgentLabels {
         }
         const auto slash = model.id.rfind('/');
         return slash == std::string::npos ? model.id : model.id.substr(slash + 1);
+    }
+
+    static std::string Title(const std::string& id) {
+        std::string label;
+        std::string word;
+        const auto flush = [&]() {
+            if (word.empty()) {
+                return;
+            }
+            if (word == "gpt" || word == "tts" || word == "api") {
+                for (auto& c : word) {
+                    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                }
+            } else {
+                word.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(word.front())));
+            }
+            if (!label.empty()) {
+                label += ' ';
+            }
+            label += word;
+            word.clear();
+        };
+        for (const char c : id) {
+            if (c == '-' || c == '_' || c == ' ') {
+                flush();
+            } else {
+                word += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+        }
+        flush();
+        return label;
     }
 
     static std::string Effort(const std::string& effort) {
@@ -51,11 +83,15 @@ class AgentLabels {
         if (value.back() == '.') {
             value.pop_back();
         }
-        return value + "M";
+        return jst::fmt::format("{}M", value);
     }
 
-    static std::string Context(U64 tokens) {
-        return tokens == 0 ? "" : Tokens(tokens);
+    static std::string Price(F64 dollars) {
+        if (dollars <= 0.0) {
+            return "Free";
+        }
+        const bool cents = std::abs(dollars * 100.0 - std::round(dollars * 100.0)) < 1e-6;
+        return cents ? jst::fmt::format("${:.2f}", dollars) : jst::fmt::format("${:.3f}", dollars);
     }
 
     static AgentProviderStatus Health(Agent::Provider::Error::Kind kind) {

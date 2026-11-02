@@ -139,6 +139,9 @@ Result Window::create() {
     Result result;
     try {
         result = underlyingCreate();
+        if ((result == Result::SUCCESS || result == Result::RELOAD) && _darkAppearance.has_value()) {
+            setDarkAppearance(*_darkAppearance);
+        }
     } catch (...) {
         try {
             underlyingDestroy();
@@ -1295,6 +1298,7 @@ TitlebarChrome Window::titlebarChrome() const {
         chrome.leadingInset /= scale;
         chrome.height /= scale;
         chrome.controlsCenter /= scale;
+        chrome.trailingInset /= scale;
     }
     return chrome;
 }
@@ -1308,6 +1312,13 @@ void Window::beginWindowDrag() {
 void Window::zoomWindow() {
     if (auto* viewport = underlyingViewport()) {
         viewport->zoomWindow();
+    }
+}
+
+void Window::setDarkAppearance(bool dark) {
+    _darkAppearance = dark;
+    if (auto* viewport = underlyingViewport()) {
+        viewport->setDarkAppearance(dark);
     }
 }
 

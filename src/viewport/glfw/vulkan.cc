@@ -7,6 +7,8 @@
 
 #ifdef JST_OS_MAC
 #include "tools/cocoa_titlebar.hh"
+#elif defined(JST_OS_WINDOWS)
+#include "tools/windows_titlebar.hh"
 #endif
 
 static void PrintGLFWError(int, const char* description) {
@@ -115,9 +117,9 @@ Result Implementation::destroy() {
 
 void Implementation::setIntegratedTitlebar(bool enabled) {
     Generic::setIntegratedTitlebar(enabled);
-#ifdef JST_OS_MAC
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (enabled && window && !titlebar) {
-        titlebar = std::make_shared<CocoaTitlebar>(window, [this]() {
+        titlebar = std::make_shared<decltype(titlebar)::element_type>(window, [this]() {
             input().push(Render::InputQueue::Button{MouseButton::Left, false});
         });
     } else if (!enabled) {
@@ -438,7 +440,9 @@ Extent2D<U64> Implementation::getSwapchainExtent() const {
 
 Result Implementation::waitEvents() {
     {
+#ifndef JST_OS_MAC
         std::scoped_lock lock(frameScopeMutex);
+#endif
         glfwPollEvents();
 #ifdef JST_OS_MAC
         if (titlebar) {
@@ -447,13 +451,20 @@ Result Implementation::waitEvents() {
 #endif
         pumpPlatform();
     }
+#ifdef JST_OS_WINDOWS
+    if (titlebar) {
+        titlebar->poll();
+    }
+#endif
     std::this_thread::sleep_for(std::chrono::milliseconds(3));
     return Result::SUCCESS;
 }
 
 Result Implementation::pollEvents() {
     {
+#ifndef JST_OS_MAC
         std::scoped_lock lock(frameScopeMutex);
+#endif
         glfwPollEvents();
 #ifdef JST_OS_MAC
         if (titlebar) {
@@ -462,6 +473,11 @@ Result Implementation::pollEvents() {
 #endif
         pumpPlatform();
     }
+#ifdef JST_OS_WINDOWS
+    if (titlebar) {
+        titlebar->poll();
+    }
+#endif
     return Result::SUCCESS;
 }
 
@@ -474,7 +490,7 @@ bool Implementation::keepRunning() {
 }
 
 Render::TitlebarChrome Implementation::titlebarChrome() const {
-#ifdef JST_OS_MAC
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (titlebar) {
         return titlebar->chrome();
     }
@@ -483,7 +499,7 @@ Render::TitlebarChrome Implementation::titlebarChrome() const {
 }
 
 void Implementation::beginWindowDrag() {
-#ifdef JST_OS_MAC
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (titlebar) {
         titlebar->beginDrag();
     }
@@ -491,10 +507,21 @@ void Implementation::beginWindowDrag() {
 }
 
 void Implementation::zoomWindow() {
-#ifdef JST_OS_MAC
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (titlebar) {
         titlebar->zoom();
     }
+#endif
+}
+
+bool Implementation::setDarkAppearance(bool dark) {
+#ifdef JST_OS_MAC
+    return CocoaTitlebar::SetAppearance(window, dark);
+#elif defined(JST_OS_WINDOWS)
+    return WindowsTitlebar::SetAppearance(window, dark);
+#else
+    (void)dark;
+    return false;
 #endif
 }
 

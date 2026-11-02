@@ -326,6 +326,10 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         return mappedPtr;
     }
 
+    const void* hostAddress() const override {
+        return hostAccessible ? mappedPtr : nullptr;
+    }
+
     bool isBorrowed() const override {
         return borrowed;
     }

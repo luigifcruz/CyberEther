@@ -8,13 +8,21 @@ namespace Jetstream::Modules {
 
 struct CastImpl : public Module::Impl, public DynamicConfig<Cast> {
  public:
+    struct Scale {
+        bool integer = false;
+        bool isUnsigned = false;
+        U64 bits = 0;
+        F64 fullScale = 1.0;
+    };
+
+    static Scale ScaleOf(const DataType& dtype);
+
     Result validate() override;
     Result define() override;
     Result create() override;
 
  protected:
     DataType validatedOutputDtype = DataType::None;
-    F32 validatedScaler = 1.0f;
     bool validatedBypass = false;
     U64 validatedOutputElementCount = 0;
     U64 validatedOutputSizeBytes = 0;
@@ -22,7 +30,8 @@ struct CastImpl : public Module::Impl, public DynamicConfig<Cast> {
     Tensor input;
     Tensor output;
     DataType outputDtype = DataType::CF32;
-    F32 scaler = 1.0f;
+    Scale inputScale;
+    Scale outputScale;
     bool bypass = false;
 };
 

@@ -1139,9 +1139,10 @@ TEST_CASE("Python runtime executes compute() with tensor inputs and outputs", "[
     REQUIRE(runtime.create({{"python_runtime_smoke", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_smoke"}, skippedModules, failedModules) == Result::SUCCESS);
-    REQUIRE(runtime.compute({"python_runtime_smoke"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_smoke"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_smoke"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
 
@@ -1207,8 +1208,9 @@ def compute(ctx):
             output.at<F32>(i) = -1.0f;
         }
         std::unordered_set<std::string> skippedModules;
+        std::unordered_set<std::string> stalledModules;
         std::unordered_set<std::string> failedModules;
-        REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+        REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
         REQUIRE(skippedModules.empty());
         REQUIRE(failedModules.empty());
         for (Index i = 0; i < output.size(); ++i) {
@@ -1284,18 +1286,21 @@ def cleanup():
     REQUIRE(runtime.create({{"python_runtime_skip", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules == std::unordered_set<std::string>{"python_runtime_skip"});
     REQUIRE(failedModules.empty());
 
     skippedModules.clear();
-    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, failedModules) == Result::SUCCESS);
+
+    stalledModules.clear();
+    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
     REQUIRE(module->outputs().at("out").tensor.at<F32>(0) == 10.0f);
 
-    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules == std::unordered_set<std::string>{"python_runtime_skip"});
     REQUIRE(failedModules.empty());
 
@@ -1346,8 +1351,9 @@ def compute(ctx):
     REQUIRE(runtime.create({{"python_runtime_piece_smoke", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_piece_smoke"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_piece_smoke"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
 
@@ -1391,9 +1397,10 @@ TEST_CASE("Python runtime compute can run on a different thread than creation", 
 
     Result computeResult = Result::ERROR;
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
     std::thread computeThread([&] {
-        computeResult = runtime->compute({"python_runtime_smoke"}, skippedModules, failedModules);
+        computeResult = runtime->compute({"python_runtime_smoke"}, skippedModules, stalledModules, failedModules);
     });
     computeThread.join();
     REQUIRE(computeResult == Result::SUCCESS);
@@ -1471,9 +1478,11 @@ def compute(ctx):
     std::thread computeThread([&] {
         for (int iteration = 0; iteration < 16; ++iteration) {
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
             const auto result = runtime->compute({"python_runtime_numpy_buffer"},
                                                  skippedModules,
+                                                 stalledModules,
                                                  failedModules);
             if (result != Result::SUCCESS || !skippedModules.empty() || !failedModules.empty()) {
                 computeResult = result == Result::SUCCESS ? Result::ERROR : result;
@@ -1531,8 +1540,9 @@ def cleanup():
     REQUIRE(runtime.create({{"python_runtime_cleanup", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_cleanup"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_cleanup"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
 
@@ -1586,8 +1596,9 @@ def compute(ctx):
     REQUIRE(runtime.create({{"python_runtime_multiprocessing_cleanup", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"python_runtime_multiprocessing_cleanup"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({"python_runtime_multiprocessing_cleanup"}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
     REQUIRE(failedModules.empty());
 
@@ -1620,9 +1631,12 @@ def compute(ctx):
     REQUIRE(verifyRuntime.create({{"python_runtime_multiprocessing_verify", verifier}}) == Result::SUCCESS);
 
     skippedModules.clear();
+
+    stalledModules.clear();
     failedModules.clear();
     const auto verifyComputeResult = verifyRuntime.compute({"python_runtime_multiprocessing_verify"},
                                                            skippedModules,
+                                                           stalledModules,
                                                            failedModules);
     const auto verifyDiagnostic = verifier->context()->runtime()->diagnostic();
     for (const auto& line : verifyDiagnostic.console) {

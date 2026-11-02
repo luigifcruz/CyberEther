@@ -4,7 +4,7 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/text_input.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../../detail/helpers.hh"
 #include "../../detail/text_metrics.hh"
@@ -78,12 +78,12 @@ void NodePathInput::layout(const Context& ctx) {
     });
 
     const F32 iconSize = Px(ctx, NodeFontOf(ctx)) * 0.7f;
-    const F32 iconWidth = impl->metrics.measure(Typography::IconFont, ICON_FA_FOLDER_OPEN, iconSize);
+    const F32 iconWidth = impl->metrics.measure(Typography::IconFont, ICON_LC_FOLDER_OPEN, iconSize);
     impl->icon.update({
         .instances = {{
             .rect = {impl->buttonRect.x + (impl->buttonRect.width - iconWidth) * 0.5f, impl->buttonRect.y,
                      iconWidth, impl->buttonRect.height},
-            .str = ICON_FA_FOLDER_OPEN,
+            .str = ICON_LC_FOLDER_OPEN,
             .visible = !bounds.empty(),
             .color = ctx.color("text_primary"),
             .fontSize = iconSize,

@@ -1,4 +1,5 @@
 subdir('constellation')
+subdir('eye_diagram')
 subdir('frame')
 subdir('lineplot')
 subdir('note')

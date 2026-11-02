@@ -234,34 +234,6 @@ TEST_CASE("Interrupted replies are marked incomplete and do not replay opaque co
     CHECK_FALSE(followup[2].state);
 }
 
-TEST_CASE("Final budget response retains tool schemas while disabling execution", "[agent][conversation][budget]") {
-    int calls = 0;
-    int executions = 0;
-    bool toolsRetained = false;
-
-    auto config = Config([&](const auto& request, const auto&, auto& response) {
-        if (++calls == 1) {
-            response.toolCalls = {{"call", "inspect", "{}"}};
-        } else {
-            toolsRetained = !request.allowTools && request.tools.size() == 2;
-            response.text = "Budget reached.";
-        }
-        return Result::SUCCESS;
-    });
-    config.maxToolTurns = 1;
-    config.executeTool = [&](const auto&, const auto&, const auto&) {
-        ++executions;
-        return Agent::Tools::Output{"{}"};
-    };
-
-    Agent::Session session;
-    REQUIRE(session.submit("Inspect", config));
-    REQUIRE(Wait(session));
-
-    CHECK(toolsRetained);
-    CHECK(executions == 0);
-}
-
 TEST_CASE("Compaction includes long message tails and middle constraints",
           "[agent][conversation][compaction]") {
     int calls = 0;

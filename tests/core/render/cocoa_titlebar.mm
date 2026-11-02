@@ -20,6 +20,7 @@ std::vector<dispatch_block_t> queuedBlocks;
 NSString* doubleClickAction = nil;
 bool legacyMiniaturize = false;
 std::function<void()> nativeDrag;
+std::function<id(GLFWwindow*)> nativeWindowLookup;
 
 }  // namespace
 
@@ -68,6 +69,23 @@ std::function<void()> nativeDrag;
 }
 @end
 
+@interface TitlebarTestAppearance : NSObject {
+    NSString* appearanceName;
+}
++ (id)appearanceNamed:(NSString*)name;
+- (NSString*)name;
+@end
+
+@implementation TitlebarTestAppearance
++ (id)appearanceNamed:(NSString*)name {
+    auto* appearance = [[[TitlebarTestAppearance alloc] init] autorelease];
+    appearance->appearanceName = [name copy];
+    return appearance;
+}
+- (NSString*)name { return appearanceName; }
+- (void)dealloc { [appearanceName release]; [super dealloc]; }
+@end
+
 @interface TitlebarTestWindow : NSObject {
  @public
     NSUInteger mask;
@@ -79,7 +97,11 @@ std::function<void()> nativeDrag;
     int zooms;
     int minimizations;
     TitlebarTestEvent* lastDragEvent;
+    id currentAppearance;
+    int appearanceChanges;
 }
+- (id)appearance;
+- (void)setAppearance:(id)value;
 @end
 
 @implementation TitlebarTestWindow
@@ -103,12 +125,20 @@ std::function<void()> nativeDrag;
 }
 - (void)zoom:(id)sender { (void)sender; ++zooms; }
 - (void)miniaturize:(id)sender { (void)sender; ++minimizations; }
+- (id)appearance { return currentAppearance; }
+- (void)setAppearance:(id)value {
+    CHECK([NSThread isMainThread]);
+    [currentAppearance release];
+    currentAppearance = [value retain];
+    ++appearanceChanges;
+}
+- (void)dealloc { [currentAppearance release]; [super dealloc]; }
 @end
 
 namespace {
 
 id TestCocoaWindow(GLFWwindow* handle) {
-    return reinterpret_cast<id>(handle);
+    return nativeWindowLookup ? nativeWindowLookup(handle) : reinterpret_cast<id>(handle);
 }
 
 void QueueBlock(dispatch_queue_t queue, dispatch_block_t block) {
@@ -132,10 +162,18 @@ void DrainQueue() {
 #define NSUserDefaults TitlebarTestDefaults
 #define glfwGetCocoaWindow TestCocoaWindow
 #define dispatch_async(queue, block) QueueBlock(queue, block)
+#ifndef NSAppearance
+#define NSAppearance TitlebarTestAppearance
+#define JST_TEST_OWNS_APPEARANCE_MACRO
+#endif
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wcompare-distinct-pointer-types"
 #include "../../../src/viewport/glfw/tools/cocoa_titlebar.mm"
 #pragma clang diagnostic pop
+#ifdef JST_TEST_OWNS_APPEARANCE_MACRO
+#undef NSAppearance
+#undef JST_TEST_OWNS_APPEARANCE_MACRO
+#endif
 #undef dispatch_async
 #undef glfwGetCocoaWindow
 #undef NSUserDefaults
@@ -161,6 +199,7 @@ class TitlebarFixture {
         titlebar.reset();
         DrainQueue();
         nativeDrag = {};
+        nativeWindowLookup = {};
         doubleClickAction = nil;
         legacyMiniaturize = false;
         pressedButtons = 0;
@@ -201,6 +240,53 @@ class TitlebarFixture {
 };
 
 }  // namespace
+
+TEST_CASE("Cocoa appearance deduplicates native updates in main queue order", "[core][render][cocoa][appearance]") {
+    REQUIRE([NSThread isMainThread]);
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        TitlebarFixture fixture;
+        const auto handle = TitlebarFixture::handle(fixture.a);
+        for (const bool value : {dark, dark, !dark, !dark, dark}) {
+            REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, value));
+        }
+        CHECK(fixture.a->appearanceChanges == 0);
+        REQUIRE(queuedBlocks.size() == 5);
+        DrainQueue();
+        CHECK(fixture.a->appearanceChanges == 3);
+        CHECK([[[fixture.a appearance] name] isEqualToString:dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua]);
+        REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        DrainQueue();
+        CHECK(fixture.a->appearanceChanges == 3);
+    }
+}
+
+TEST_CASE("Cocoa appearance follows a recreated native window behind the same handle", "[core][render][cocoa][appearance]") {
+    REQUIRE([NSThread isMainThread]);
+    for (const bool dark : {false, true}) {
+        CAPTURE(dark);
+        TitlebarFixture fixture;
+        const auto handle = TitlebarFixture::handle(fixture.a);
+        id target = fixture.a;
+        nativeWindowLookup = [&](GLFWwindow*) { return target; };
+        REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        DrainQueue();
+        REQUIRE(fixture.a->appearanceChanges == 1);
+        target = nil;
+        CHECK_FALSE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        CHECK(queuedBlocks.empty());
+        target = fixture.b;
+        REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        DrainQueue();
+        CHECK(fixture.b->appearanceChanges == 1);
+        CHECK([[[fixture.b appearance] name] isEqualToString:dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua]);
+        REQUIRE(Jetstream::Viewport::CocoaTitlebar::SetAppearance(handle, dark));
+        DrainQueue();
+        CHECK(fixture.a->appearanceChanges == 1);
+        CHECK(fixture.b->appearanceChanges == 1);
+        nativeWindowLookup = {};
+    }
+}
 
 TEST_CASE("Cocoa pending drag cannot attach to another window press", "[core][render][cocoa]") {
     TitlebarFixture fixture;

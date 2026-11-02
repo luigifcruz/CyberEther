@@ -1,3 +1,7 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
+
 #include "jetstream/platform.hh"
 
 #include <exception>
@@ -18,8 +22,14 @@ void* OpenDynamicLibrary(const std::string& path,
                          std::string& error) {
     error.clear();
 
+#if !defined(JST_OS_LINUX) || !defined(__GLIBC__)
+    if (visibility == DynamicLibraryVisibility::Isolated) {
+        error = "isolated dynamic library loading is not supported on this platform";
+        return nullptr;
+    }
+#endif
+
 #if defined(JST_OS_WINDOWS)
-    (void)visibility;
     try {
         const auto nativePath = PathFromUtf8(path);
         auto* handle = LoadLibraryW(nativePath.c_str());
@@ -37,7 +47,13 @@ void* OpenDynamicLibrary(const std::string& path,
     dlerror();
     const int flags = RTLD_NOW |
                       (visibility == DynamicLibraryVisibility::Global ? RTLD_GLOBAL : RTLD_LOCAL);
+#if defined(JST_OS_LINUX) && defined(__GLIBC__)
+    void* handle = visibility == DynamicLibraryVisibility::Isolated
+                       ? dlmopen(LM_ID_NEWLM, path.c_str(), flags)
+                       : dlopen(path.c_str(), flags);
+#else
     void* handle = dlopen(path.c_str(), flags);
+#endif
     if (!handle) {
         if (const char* loaderError = dlerror()) {
             error = loaderError;

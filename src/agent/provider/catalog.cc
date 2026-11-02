@@ -47,6 +47,21 @@ void ParseLimits(const nlohmann::json& model, auto& entry) {
     }
 }
 
+void ParseCost(const nlohmann::json& model, auto& entry) {
+    const auto cost = model.find("cost");
+    if (cost == model.end() || !cost->is_object()) {
+        return;
+    }
+
+    const auto input = cost->find("input");
+    const auto output = cost->find("output");
+    if (input == cost->end() || output == cost->end() || !input->is_number() || !output->is_number()) {
+        return;
+    }
+    entry.inputCost = input->get<F64>();
+    entry.outputCost = output->get<F64>();
+}
+
 void ParseModel(const nlohmann::json& model, auto& entry) {
     const auto name = model.find("name");
     if (name != model.end() && name->is_string()) {
@@ -55,6 +70,7 @@ void ParseModel(const nlohmann::json& model, auto& entry) {
 
     ParseReasoningEfforts(model, entry);
     ParseLimits(model, entry);
+    ParseCost(model, entry);
 }
 
 }  // namespace
@@ -66,14 +82,14 @@ Result Provider::Catalog::fetch(Provider::Error* error, const Cancellation& canc
     }
 
     try {
-        Platform::Http::Request http;
+        Platform::Http::Client::Request http;
         http.host = kCatalogHost;
         http.path = "/api.json";
         http.timeoutSeconds = 15;
         http.cancelled = cancelled;
 
         nlohmann::json body;
-        if (auto failure = Diagnostics::Response(Platform::Http::Send(http), body)) {
+        if (auto failure = Diagnostics::Response(Platform::Http::Client::Send(http), body)) {
             return Diagnostics::Report(std::move(failure), error, kCatalogContext, {});
         }
 

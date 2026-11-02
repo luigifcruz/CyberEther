@@ -1,20 +1,391 @@
 #include "jetstream/platform.hh"
 
+#include <algorithm>
+#include <cerrno>
+#include <cstring>
+#include <iterator>
+#include <limits>
+#include <system_error>
+
 #if defined(JST_OS_WINDOWS)
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <iphlpapi.h>
 #undef ERROR
 #undef FATAL
 #else
 #include <arpa/inet.h>
 #include <csignal>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 #endif
 
 namespace Jetstream::Platform {
+
+namespace {
+
+#if defined(JST_OS_WINDOWS)
+using SocketHandle = SOCKET;
+using SocketLength = int;
+constexpr SocketHandle InvalidSocket = INVALID_SOCKET;
+#else
+using SocketHandle = int;
+using SocketLength = socklen_t;
+constexpr SocketHandle InvalidSocket = -1;
+#endif
+
+struct InterfaceRecord {
+    std::string name;
+    U32 index = 0;
+    std::vector<sockaddr_storage> addresses;
+};
+
+int LastSocketError() {
+#if defined(JST_OS_WINDOWS)
+    return WSAGetLastError();
+#else
+    return errno;
+#endif
+}
+
+bool SocketTimedOut(const int code) {
+#if defined(JST_OS_WINDOWS)
+    return code == WSAETIMEDOUT || code == WSAEWOULDBLOCK;
+#else
+    return code == EAGAIN || code == EWOULDBLOCK || code == EINTR;
+#endif
+}
+
+std::string SocketErrorMessage(const int code) {
+    return std::system_category().message(code);
+}
+
+void CloseSocket(const SocketHandle handle) {
+#if defined(JST_OS_WINDOWS)
+    closesocket(handle);
+#else
+    ::close(handle);
+#endif
+}
+
+[[maybe_unused]] bool DisableSocketInheritance(const SocketHandle handle) {
+#if defined(JST_OS_WINDOWS)
+    return SetHandleInformation(reinterpret_cast<HANDLE>(handle), HANDLE_FLAG_INHERIT, 0) != 0;
+#else
+    return fcntl(handle, F_SETFD, FD_CLOEXEC) == 0;
+#endif
+}
+
+Result OpenSocket(const int family, const int type, const int protocol, SocketHandle& handle, std::string& error) {
+#if defined(SOCK_CLOEXEC)
+    handle = socket(family, type | SOCK_CLOEXEC, protocol);
+#else
+    handle = socket(family, type, protocol);
+#endif
+    if (handle == InvalidSocket) {
+        error = SocketErrorMessage(LastSocketError());
+        return Result::ERROR;
+    }
+#if defined(JST_OS_WINDOWS) || !defined(SOCK_CLOEXEC)
+    if (!DisableSocketInheritance(handle)) {
+        error = "Could not disable socket inheritance";
+        CloseSocket(handle);
+        handle = InvalidSocket;
+        return Result::ERROR;
+    }
+#endif
+    return Result::SUCCESS;
+}
+
+bool SetSocketBlocking(const SocketHandle handle, const bool blocking) {
+#if defined(JST_OS_WINDOWS)
+    u_long mode = blocking ? 0 : 1;
+    return ioctlsocket(handle, FIONBIO, &mode) == 0;
+#else
+    const int flags = fcntl(handle, F_GETFL, 0);
+    if (flags < 0) {
+        return false;
+    }
+    return fcntl(handle, F_SETFL, blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK)) == 0;
+#endif
+}
+
+int WaitSocket(const SocketHandle handle, const bool writable, const U64 milliseconds) {
+    const int timeout = static_cast<int>(std::min<U64>(milliseconds, std::numeric_limits<int>::max()));
+#if defined(JST_OS_WINDOWS)
+    fd_set ready;
+    fd_set failed;
+    FD_ZERO(&ready);
+    FD_ZERO(&failed);
+    FD_SET(handle, &ready);
+    FD_SET(handle, &failed);
+    timeval wait{};
+    wait.tv_sec = timeout / 1000;
+    wait.tv_usec = (timeout % 1000) * 1000;
+    return select(0, writable ? nullptr : &ready, writable ? &ready : nullptr, &failed, &wait);
+#else
+    pollfd entry{};
+    entry.fd = handle;
+    entry.events = writable ? POLLOUT : POLLIN;
+    int result = 0;
+    do {
+        result = poll(&entry, 1, timeout);
+    } while (result < 0 && errno == EINTR);
+    return result;
+#endif
+}
+
+template<typename T>
+bool SetSocketOption(const SocketHandle handle, const int level, const int name, const T& value) {
+    return setsockopt(handle, level, name, reinterpret_cast<const char*>(&value), sizeof(value)) == 0;
+}
+
+bool SetSocketTimeout(const SocketHandle handle, const int name, const U64 milliseconds) {
+#if defined(JST_OS_WINDOWS)
+    const DWORD timeout = static_cast<DWORD>(std::min<U64>(milliseconds, std::numeric_limits<DWORD>::max()));
+#else
+    timeval timeout{};
+    timeout.tv_sec = static_cast<decltype(timeout.tv_sec)>(milliseconds / 1000);
+    timeout.tv_usec = static_cast<decltype(timeout.tv_usec)>((milliseconds % 1000) * 1000);
+#endif
+    return SetSocketOption(handle, SOL_SOCKET, name, timeout);
+}
+
+void SetSocketBuffer(const SocketHandle handle, const int name, const U64 bytes) {
+    if (bytes == 0) {
+        return;
+    }
+    int size = static_cast<int>(std::min<U64>(bytes, std::numeric_limits<int>::max()));
+    while (size >= 64 * 1024 && !SetSocketOption(handle, SOL_SOCKET, name, size)) {
+        size /= 2;
+    }
+}
+
+const in_addr& Ipv4(const sockaddr_storage& address) {
+    return reinterpret_cast<const sockaddr_in&>(address).sin_addr;
+}
+
+const in6_addr& Ipv6(const sockaddr_storage& address) {
+    return reinterpret_cast<const sockaddr_in6&>(address).sin6_addr;
+}
+
+bool IsMulticast(const sockaddr_storage& address) {
+    if (address.ss_family == AF_INET) {
+        return (ntohl(Ipv4(address).s_addr) & 0xF0000000u) == 0xE0000000u;
+    }
+    if (address.ss_family == AF_INET6) {
+        return Ipv6(address).s6_addr[0] == 0xFF;
+    }
+    return false;
+}
+
+bool IsLinkLocal(const sockaddr_storage& address) {
+    const auto& bytes = Ipv6(address).s6_addr;
+    return address.ss_family == AF_INET6 && bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80;
+}
+
+sockaddr_storage Unmapped(const sockaddr_storage& address) {
+    const auto& bytes = Ipv6(address).s6_addr;
+    constexpr U8 prefix[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF};
+    if (address.ss_family != AF_INET6 || std::memcmp(bytes, prefix, sizeof(prefix)) != 0) {
+        return address;
+    }
+
+    sockaddr_storage ipv4{};
+    auto& target = reinterpret_cast<sockaddr_in&>(ipv4);
+    target.sin_family = AF_INET;
+    std::memcpy(&target.sin_addr, bytes + 12, sizeof(target.sin_addr));
+    return ipv4;
+}
+
+bool SameHost(const sockaddr_storage& a, const sockaddr_storage& b) {
+    const sockaddr_storage left = Unmapped(a);
+    const sockaddr_storage right = Unmapped(b);
+    if (left.ss_family != right.ss_family) {
+        return false;
+    }
+    if (left.ss_family == AF_INET) {
+        return Ipv4(left).s_addr == Ipv4(right).s_addr;
+    }
+    if (left.ss_family != AF_INET6 || std::memcmp(&Ipv6(left), &Ipv6(right), sizeof(in6_addr)) != 0) {
+        return false;
+    }
+    const auto scope = reinterpret_cast<const sockaddr_in6&>(right).sin6_scope_id;
+    return scope == 0 || reinterpret_cast<const sockaddr_in6&>(left).sin6_scope_id == scope;
+}
+
+std::string FormatAddress(const sockaddr_storage& address) {
+    char text[NI_MAXHOST] = {};
+    const SocketLength length = address.ss_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+    if (getnameinfo(reinterpret_cast<const sockaddr*>(&address), length,
+                    text, sizeof(text), nullptr, 0, NI_NUMERICHOST) != 0) {
+        return {};
+    }
+    return text;
+}
+
+Result ResolveAddress(const std::string& address,
+                      const U16 port,
+                      const bool passive,
+                      const int family,
+                      sockaddr_storage& resolved,
+                      SocketLength& length) {
+    addrinfo hints{};
+    hints.ai_family = family;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_protocol = IPPROTO_UDP;
+    hints.ai_flags = passive ? AI_PASSIVE : 0;
+
+    addrinfo* results = nullptr;
+    const std::string service = std::to_string(port);
+    const char* node = address.empty() ? nullptr : address.c_str();
+    if (getaddrinfo(node, service.c_str(), &hints, &results) != 0 || !results) {
+        return Result::ERROR;
+    }
+
+    std::memcpy(&resolved, results->ai_addr, results->ai_addrlen);
+    length = static_cast<SocketLength>(results->ai_addrlen);
+    freeaddrinfo(results);
+
+    return Result::SUCCESS;
+}
+
+Result ResolveHosts(const std::string& address, const int family, std::vector<sockaddr_storage>& resolved) {
+    addrinfo hints{};
+    hints.ai_family = family;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_protocol = IPPROTO_UDP;
+
+    addrinfo* results = nullptr;
+    if (getaddrinfo(address.c_str(), nullptr, &hints, &results) != 0 || !results) {
+        return Result::ERROR;
+    }
+
+    resolved.clear();
+    for (const auto* entry = results; entry; entry = entry->ai_next) {
+        sockaddr_storage host{};
+        std::memcpy(&host, entry->ai_addr, std::min<std::size_t>(entry->ai_addrlen, sizeof(host)));
+        resolved.push_back(host);
+    }
+    freeaddrinfo(results);
+
+    return Result::SUCCESS;
+}
+
+std::vector<InterfaceRecord> CollectInterfaces() {
+    std::vector<InterfaceRecord> records;
+
+#if defined(JST_OS_WINDOWS)
+    ULONG size = 16 * 1024;
+    std::vector<U8> buffer;
+    ULONG status = ERROR_BUFFER_OVERFLOW;
+    for (int attempt = 0; attempt < 3 && status == ERROR_BUFFER_OVERFLOW; ++attempt) {
+        buffer.resize(size);
+        status = GetAdaptersAddresses(AF_UNSPEC,
+                                      GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
+                                      nullptr,
+                                      reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()),
+                                      &size);
+    }
+    if (status != NO_ERROR) {
+        return records;
+    }
+
+    for (auto* adapter = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()); adapter; adapter = adapter->Next) {
+        if (adapter->OperStatus != IfOperStatusUp) {
+            continue;
+        }
+
+        InterfaceRecord record;
+        record.name = PathToUtf8(std::filesystem::path(adapter->FriendlyName));
+        record.index = adapter->Ipv6IfIndex != 0 ? adapter->Ipv6IfIndex : adapter->IfIndex;
+        for (auto* unicast = adapter->FirstUnicastAddress; unicast; unicast = unicast->Next) {
+            const auto* address = unicast->Address.lpSockaddr;
+            if (!address || (address->sa_family != AF_INET && address->sa_family != AF_INET6)) {
+                continue;
+            }
+            sockaddr_storage entry{};
+            std::memcpy(&entry, address, std::min<std::size_t>(unicast->Address.iSockaddrLength, sizeof(entry)));
+            record.addresses.push_back(entry);
+        }
+        records.push_back(std::move(record));
+    }
+#else
+    ifaddrs* list = nullptr;
+    if (getifaddrs(&list) != 0) {
+        return records;
+    }
+
+    for (auto* entry = list; entry; entry = entry->ifa_next) {
+        if (!entry->ifa_addr || !(entry->ifa_flags & IFF_UP)) {
+            continue;
+        }
+        const int family = entry->ifa_addr->sa_family;
+        if (family != AF_INET && family != AF_INET6) {
+            continue;
+        }
+
+        auto record = std::find_if(records.begin(), records.end(), [&](const auto& candidate) {
+            return candidate.name == entry->ifa_name;
+        });
+        if (record == records.end()) {
+            records.push_back({entry->ifa_name, if_nametoindex(entry->ifa_name), {}});
+            record = std::prev(records.end());
+        }
+
+        sockaddr_storage address{};
+        std::memcpy(&address, entry->ifa_addr, family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6));
+        record->addresses.push_back(address);
+    }
+
+    freeifaddrs(list);
+#endif
+
+    return records;
+}
+
+Result FindInterface(const std::string& name, InterfaceRecord& record, std::string& error) {
+    for (auto& candidate : CollectInterfaces()) {
+        if (candidate.name == name) {
+            record = std::move(candidate);
+            return Result::SUCCESS;
+        }
+    }
+    error = "Interface not found";
+    return Result::ERROR;
+}
+
+bool InterfaceAddress(const InterfaceRecord& record, const int family, sockaddr_storage& address) {
+    const sockaddr_storage* fallback = nullptr;
+    for (const auto& candidate : record.addresses) {
+        if (candidate.ss_family != family) {
+            continue;
+        }
+        if (!IsLinkLocal(candidate)) {
+            address = candidate;
+            return true;
+        }
+        fallback = fallback ? fallback : &candidate;
+    }
+    if (fallback) {
+        address = *fallback;
+    }
+    return fallback != nullptr;
+}
+
+}  // namespace
 
 bool ShutdownSocketRead(const std::uintptr_t socket) noexcept {
 #if defined(JST_OS_WINDOWS)
@@ -85,6 +456,616 @@ Result LocalNetworkAddress(std::string& address) {
 #endif
 
     return found ? Result::SUCCESS : Result::ERROR;
+}
+
+struct UdpSocket::Impl {
+    SocketHandle handle = InvalidSocket;
+    std::vector<sockaddr_storage> sources;
+    bool connected = false;
+    bool filtered = false;
+
+#if defined(JST_OS_WINDOWS)
+    bool started = false;
+
+    Impl() {
+        WSADATA data;
+        started = WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }
+
+    ~Impl() {
+        if (started) {
+            WSACleanup();
+        }
+    }
+#endif
+
+    Result create(const int family, std::string& error) {
+        return OpenSocket(family, SOCK_DGRAM, IPPROTO_UDP, handle, error);
+    }
+
+    Result fail(std::string& error) {
+        error = SocketErrorMessage(LastSocketError());
+        release();
+        return Result::ERROR;
+    }
+
+    Result fail(std::string& error, const char* reason) {
+        error = reason;
+        release();
+        return Result::ERROR;
+    }
+
+    void release() {
+        if (handle != InvalidSocket) {
+            CloseSocket(handle);
+        }
+        handle = InvalidSocket;
+        connected = false;
+        filtered = false;
+    }
+};
+
+Result UdpSocket::ListInterfaces(std::vector<Interface>& interfaces) {
+    interfaces.clear();
+
+#if defined(JST_OS_WINDOWS)
+    WSADATA data;
+    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) {
+        return Result::ERROR;
+    }
+#endif
+
+    for (const auto& record : CollectInterfaces()) {
+        Interface entry{.name = record.name};
+        for (const bool linkLocal : {false, true}) {
+            for (const int family : {AF_INET, AF_INET6}) {
+                for (const auto& address : record.addresses) {
+                    if (address.ss_family == family && IsLinkLocal(address) == linkLocal) {
+                        entry.addresses.push_back(FormatAddress(address));
+                    }
+                }
+            }
+        }
+        if (!entry.addresses.empty()) {
+            interfaces.push_back(std::move(entry));
+        }
+    }
+
+#if defined(JST_OS_WINDOWS)
+    WSACleanup();
+#endif
+
+    return Result::SUCCESS;
+}
+
+UdpSocket::UdpSocket() : impl(std::make_unique<Impl>()) {}
+
+UdpSocket::~UdpSocket() {
+    close();
+}
+
+Result UdpSocket::bind(const Config& config, std::string& error) {
+    close();
+
+    sockaddr_storage address{};
+    SocketLength length = 0;
+    if (ResolveAddress(config.address, config.port, true, AF_UNSPEC, address, length) != Result::SUCCESS) {
+        error = "Could not resolve the address";
+        return Result::ERROR;
+    }
+
+    InterfaceRecord selected;
+    const bool pinned = !config.interfaceName.empty();
+    if (pinned) {
+        JST_CHECK(FindInterface(config.interfaceName, selected, error));
+    }
+
+    const bool multicast = IsMulticast(address);
+    sockaddr_storage local = address;
+    sockaddr_storage interfaceAddress{};
+    const bool hasInterfaceAddress = pinned && InterfaceAddress(selected, address.ss_family, interfaceAddress);
+    if (multicast) {
+#if defined(JST_OS_WINDOWS)
+        if (local.ss_family == AF_INET) {
+            reinterpret_cast<sockaddr_in&>(local).sin_addr.s_addr = htonl(INADDR_ANY);
+        } else {
+            reinterpret_cast<sockaddr_in6&>(local).sin6_addr = in6addr_any;
+        }
+#else
+        if (local.ss_family == AF_INET6 && pinned) {
+            reinterpret_cast<sockaddr_in6&>(local).sin6_scope_id = selected.index;
+        }
+#endif
+    }
+
+    if (!config.source.empty()) {
+        const int sourceFamily = address.ss_family == AF_INET ? AF_INET : AF_UNSPEC;
+        if (ResolveHosts(config.source, sourceFamily, impl->sources) != Result::SUCCESS) {
+            error = "Could not resolve the source address";
+            return Result::ERROR;
+        }
+    }
+
+    JST_CHECK(impl->create(address.ss_family, error));
+    impl->filtered = !config.source.empty();
+
+    const int enabled = 1;
+    if (multicast && !SetSocketOption(impl->handle, SOL_SOCKET, SO_REUSEADDR, enabled)) {
+        return impl->fail(error);
+    }
+#if defined(SO_REUSEPORT)
+    if (multicast && !SetSocketOption(impl->handle, SOL_SOCKET, SO_REUSEPORT, enabled)) {
+        return impl->fail(error);
+    }
+#endif
+    if (address.ss_family == AF_INET6) {
+        const int disabled = 0;
+        SetSocketOption(impl->handle, IPPROTO_IPV6, IPV6_V6ONLY, disabled);
+    }
+
+    SetSocketBuffer(impl->handle, SO_RCVBUF, config.bufferBytes);
+    if (config.timeoutMilliseconds > 0 &&
+        !SetSocketTimeout(impl->handle, SO_RCVTIMEO, config.timeoutMilliseconds)) {
+        return impl->fail(error);
+    }
+
+    if (::bind(impl->handle, reinterpret_cast<const sockaddr*>(&local), length) != 0) {
+        return impl->fail(error);
+    }
+
+    if (multicast && address.ss_family == AF_INET) {
+        if (pinned && !hasInterfaceAddress) {
+            return impl->fail(error, "Interface has no IPv4 address");
+        }
+        ip_mreq request{};
+        request.imr_multiaddr = Ipv4(address);
+        request.imr_interface.s_addr = pinned ? Ipv4(interfaceAddress).s_addr : htonl(INADDR_ANY);
+        if (!SetSocketOption(impl->handle, IPPROTO_IP, IP_ADD_MEMBERSHIP, request)) {
+            return impl->fail(error);
+        }
+    } else if (multicast) {
+        ipv6_mreq request{};
+        request.ipv6mr_multiaddr = Ipv6(address);
+        request.ipv6mr_interface = pinned ? selected.index : reinterpret_cast<const sockaddr_in6&>(address).sin6_scope_id;
+        if (!SetSocketOption(impl->handle, IPPROTO_IPV6, IPV6_JOIN_GROUP, request)) {
+            return impl->fail(error);
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result UdpSocket::connect(const Config& config, std::string& error) {
+    close();
+
+    sockaddr_storage address{};
+    SocketLength length = 0;
+    if (ResolveAddress(config.address, config.port, false, AF_UNSPEC, address, length) != Result::SUCCESS) {
+        error = "Could not resolve the address";
+        return Result::ERROR;
+    }
+
+    InterfaceRecord selected;
+    const bool pinned = !config.interfaceName.empty();
+    if (pinned) {
+        JST_CHECK(FindInterface(config.interfaceName, selected, error));
+    }
+
+    JST_CHECK(impl->create(address.ss_family, error));
+
+    const int enabled = 1;
+    if (address.ss_family == AF_INET &&
+        !SetSocketOption(impl->handle, SOL_SOCKET, SO_BROADCAST, enabled)) {
+        return impl->fail(error);
+    }
+
+    if (pinned && IsMulticast(address) && address.ss_family == AF_INET) {
+        sockaddr_storage interfaceAddress{};
+        if (!InterfaceAddress(selected, AF_INET, interfaceAddress)) {
+            return impl->fail(error, "Interface has no IPv4 address");
+        }
+        if (!SetSocketOption(impl->handle, IPPROTO_IP, IP_MULTICAST_IF, Ipv4(interfaceAddress))) {
+            return impl->fail(error);
+        }
+    } else if (pinned && IsMulticast(address)) {
+        const unsigned int index = selected.index;
+        if (!SetSocketOption(impl->handle, IPPROTO_IPV6, IPV6_MULTICAST_IF, index)) {
+            return impl->fail(error);
+        }
+    }
+
+    SetSocketBuffer(impl->handle, SO_SNDBUF, config.bufferBytes);
+    if (config.timeoutMilliseconds > 0 &&
+        !SetSocketTimeout(impl->handle, SO_SNDTIMEO, config.timeoutMilliseconds)) {
+        return impl->fail(error);
+    }
+
+    if (::connect(impl->handle, reinterpret_cast<const sockaddr*>(&address), length) != 0) {
+        return impl->fail(error);
+    }
+    impl->connected = true;
+
+    return Result::SUCCESS;
+}
+
+Result UdpSocket::receive(void* data, const U64 size, U64& received) {
+    received = 0;
+    if (!open()) {
+        return Result::ERROR;
+    }
+
+    sockaddr_storage sender{};
+    SocketLength senderLength = sizeof(sender);
+    auto* senderAddress = reinterpret_cast<sockaddr*>(&sender);
+#if defined(JST_OS_WINDOWS)
+    const int capacity = static_cast<int>(std::min<U64>(size, std::numeric_limits<int>::max()));
+    const int count = ::recvfrom(impl->handle, static_cast<char*>(data), capacity, 0, senderAddress, &senderLength);
+#else
+    const ssize_t count = ::recvfrom(impl->handle, data, size, 0, senderAddress, &senderLength);
+#endif
+    if (count < 0) {
+        return SocketTimedOut(LastSocketError()) ? Result::TIMEOUT : Result::ERROR;
+    }
+
+    if (impl->filtered && std::none_of(impl->sources.begin(), impl->sources.end(), [&](const auto& source) {
+            return SameHost(sender, source);
+        })) {
+        return Result::SKIP;
+    }
+
+    received = static_cast<U64>(count);
+    return Result::SUCCESS;
+}
+
+Result UdpSocket::send(const void* data, const U64 size) {
+    if (!open() || !impl->connected) {
+        return Result::ERROR;
+    }
+
+    while (true) {
+#if defined(JST_OS_WINDOWS)
+        const int count = ::send(impl->handle, static_cast<const char*>(data),
+                                static_cast<int>(std::min<U64>(size, std::numeric_limits<int>::max())), 0);
+#else
+        const ssize_t count = ::send(impl->handle, data, size, 0);
+#endif
+        if (count >= 0) {
+            return static_cast<U64>(count) == size ? Result::SUCCESS : Result::ERROR;
+        }
+
+        const int code = LastSocketError();
+#if !defined(JST_OS_WINDOWS)
+        if (code == EINTR) {
+            continue;
+        }
+#endif
+        return SocketTimedOut(code) ? Result::TIMEOUT : Result::ERROR;
+    }
+}
+
+void UdpSocket::close() {
+    impl->release();
+}
+
+bool UdpSocket::open() const {
+    return impl->handle != InvalidSocket;
+}
+
+struct TcpSocket::Impl {
+    SocketHandle handle = InvalidSocket;
+    Config config;
+
+#if defined(JST_OS_WINDOWS)
+    bool started = false;
+
+    Impl() {
+        WSADATA data;
+        started = WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }
+
+    ~Impl() {
+        if (started) {
+            WSACleanup();
+        }
+    }
+#endif
+
+    Result configure(std::string& error) {
+        const int enabled = 1;
+        DisableSocketSigPipe(static_cast<std::uintptr_t>(handle));
+        SetSocketOption(handle, IPPROTO_TCP, TCP_NODELAY, enabled);
+        SetSocketBuffer(handle, SO_SNDBUF, config.bufferBytes);
+        SetSocketBuffer(handle, SO_RCVBUF, config.bufferBytes);
+        if ((config.readTimeoutMilliseconds > 0 &&
+             !SetSocketTimeout(handle, SO_RCVTIMEO, config.readTimeoutMilliseconds)) ||
+            (config.writeTimeoutMilliseconds > 0 &&
+             !SetSocketTimeout(handle, SO_SNDTIMEO, config.writeTimeoutMilliseconds))) {
+            return fail(error);
+        }
+        return Result::SUCCESS;
+    }
+
+    Result fail(std::string& error) {
+        error = SocketErrorMessage(LastSocketError());
+        release();
+        return Result::ERROR;
+    }
+
+    Result fail(std::string& error, const char* reason) {
+        error = reason;
+        release();
+        return Result::ERROR;
+    }
+
+    void release() {
+        if (handle != InvalidSocket) {
+            CloseSocket(handle);
+        }
+        handle = InvalidSocket;
+    }
+};
+
+TcpSocket::TcpSocket() : impl(std::make_unique<Impl>()) {}
+
+TcpSocket::~TcpSocket() {
+    close();
+}
+
+Result TcpSocket::listen(const Config& config, std::string& error) {
+    close();
+
+    sockaddr_storage address{};
+    SocketLength length = 0;
+    if (ResolveAddress(config.address, config.port, true, AF_UNSPEC, address, length) != Result::SUCCESS) {
+        error = "Could not resolve the address";
+        return Result::ERROR;
+    }
+
+    impl->config = config;
+    JST_CHECK(OpenSocket(address.ss_family, SOCK_STREAM, IPPROTO_TCP, impl->handle, error));
+
+    const int enabled = 1;
+#if defined(JST_OS_WINDOWS)
+    if (!SetSocketOption(impl->handle, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, enabled)) {
+        return impl->fail(error);
+    }
+#else
+    if (!SetSocketOption(impl->handle, SOL_SOCKET, SO_REUSEADDR, enabled)) {
+        return impl->fail(error);
+    }
+#endif
+    if (address.ss_family == AF_INET6) {
+        const int disabled = 0;
+        SetSocketOption(impl->handle, IPPROTO_IPV6, IPV6_V6ONLY, disabled);
+    }
+
+    if (::bind(impl->handle, reinterpret_cast<const sockaddr*>(&address), length) != 0 ||
+        ::listen(impl->handle, SOMAXCONN) != 0) {
+        return impl->fail(error);
+    }
+
+    return Result::SUCCESS;
+}
+
+Result TcpSocket::accept(TcpSocket& connection, const U64 timeoutMilliseconds, std::string& error) {
+    connection.close();
+    if (!open()) {
+        error = "Socket is not listening";
+        return Result::ERROR;
+    }
+
+    const int ready = WaitSocket(impl->handle, false, timeoutMilliseconds);
+    if (ready == 0) {
+        return Result::TIMEOUT;
+    }
+    if (ready < 0) {
+        error = SocketErrorMessage(LastSocketError());
+        return Result::ERROR;
+    }
+
+#if defined(SOCK_CLOEXEC) && defined(__linux__)
+    const SocketHandle accepted = ::accept4(impl->handle, nullptr, nullptr, SOCK_CLOEXEC);
+#else
+    const SocketHandle accepted = ::accept(impl->handle, nullptr, nullptr);
+#endif
+    if (accepted == InvalidSocket) {
+        const int code = LastSocketError();
+#if defined(JST_OS_WINDOWS)
+        if (code == WSAECONNRESET || code == WSAEWOULDBLOCK || code == WSAEINTR) {
+            return Result::TIMEOUT;
+        }
+#else
+        if (code == ECONNABORTED || code == EAGAIN || code == EWOULDBLOCK || code == EINTR) {
+            return Result::TIMEOUT;
+        }
+#endif
+        error = SocketErrorMessage(code);
+        return Result::ERROR;
+    }
+
+    connection.impl->handle = accepted;
+    connection.impl->config = impl->config;
+#if defined(JST_OS_WINDOWS) || !(defined(SOCK_CLOEXEC) && defined(__linux__))
+    if (!DisableSocketInheritance(accepted)) {
+        return connection.impl->fail(error, "Could not disable socket inheritance");
+    }
+#endif
+    if (!SetSocketBlocking(accepted, true)) {
+        return connection.impl->fail(error);
+    }
+    return connection.impl->configure(error);
+}
+
+Result TcpSocket::connect(const Config& config, std::string& error) {
+    close();
+
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+
+    addrinfo* results = nullptr;
+    const std::string service = std::to_string(config.port);
+    if (getaddrinfo(config.address.c_str(), service.c_str(), &hints, &results) != 0 || !results) {
+        error = "Could not resolve the address";
+        return Result::ERROR;
+    }
+
+    impl->config = config;
+    error = "Could not connect";
+    for (const auto* entry = results; entry; entry = entry->ai_next) {
+        if (OpenSocket(entry->ai_family, SOCK_STREAM, IPPROTO_TCP, impl->handle, error) != Result::SUCCESS) {
+            continue;
+        }
+        if (!SetSocketBlocking(impl->handle, false)) {
+            impl->fail(error);
+            continue;
+        }
+
+        if (::connect(impl->handle, entry->ai_addr, static_cast<SocketLength>(entry->ai_addrlen)) != 0) {
+            const int code = LastSocketError();
+#if defined(JST_OS_WINDOWS)
+            const bool pending = code == WSAEWOULDBLOCK;
+#else
+            const bool pending = code == EINPROGRESS;
+#endif
+            if (!pending) {
+                error = SocketErrorMessage(code);
+                impl->release();
+                continue;
+            }
+
+            const int ready = WaitSocket(impl->handle, true, config.connectTimeoutMilliseconds);
+            int failure = 0;
+            SocketLength failureLength = sizeof(failure);
+            if (ready <= 0 ||
+                getsockopt(impl->handle, SOL_SOCKET, SO_ERROR,
+                           reinterpret_cast<char*>(&failure), &failureLength) != 0 ||
+                failure != 0) {
+                error = ready == 0 ? std::string("Connection timed out")
+                                   : SocketErrorMessage(failure != 0 ? failure : LastSocketError());
+                impl->release();
+                continue;
+            }
+        }
+
+        if (!SetSocketBlocking(impl->handle, true) || impl->configure(error) != Result::SUCCESS) {
+            impl->release();
+            continue;
+        }
+
+        freeaddrinfo(results);
+        return Result::SUCCESS;
+    }
+
+    freeaddrinfo(results);
+    return Result::ERROR;
+}
+
+Result TcpSocket::receive(void* data, const U64 size, U64& received) {
+    received = 0;
+    if (!open()) {
+        return Result::ERROR;
+    }
+
+    while (true) {
+#if defined(JST_OS_WINDOWS)
+        const int capacity = static_cast<int>(std::min<U64>(size, std::numeric_limits<int>::max()));
+        const int count = ::recv(impl->handle, static_cast<char*>(data), capacity, 0);
+#else
+        const ssize_t count = ::recv(impl->handle, data, size, 0);
+#endif
+        if (count > 0) {
+            received = static_cast<U64>(count);
+            return Result::SUCCESS;
+        }
+        if (count == 0) {
+            return Result::ERROR;
+        }
+
+        const int code = LastSocketError();
+#if !defined(JST_OS_WINDOWS)
+        if (code == EINTR) {
+            continue;
+        }
+#endif
+        return SocketTimedOut(code) ? Result::TIMEOUT : Result::ERROR;
+    }
+}
+
+Result TcpSocket::send(const void* data, const U64 size) {
+    if (!open()) {
+        return Result::ERROR;
+    }
+
+#if defined(MSG_NOSIGNAL)
+    constexpr int flags = MSG_NOSIGNAL;
+#else
+    constexpr int flags = 0;
+#endif
+
+    const auto* bytes = static_cast<const char*>(data);
+    U64 sent = 0;
+    while (sent < size) {
+        const U64 remaining = size - sent;
+#if defined(JST_OS_WINDOWS)
+        const int count = ::send(impl->handle, bytes + sent,
+                                 static_cast<int>(std::min<U64>(remaining, std::numeric_limits<int>::max())),
+                                 flags);
+#else
+        const ssize_t count = ::send(impl->handle, bytes + sent, remaining, flags);
+#endif
+        if (count > 0) {
+            sent += static_cast<U64>(count);
+            continue;
+        }
+
+        const int code = LastSocketError();
+#if !defined(JST_OS_WINDOWS)
+        if (count < 0 && code == EINTR) {
+            continue;
+        }
+#endif
+        return count < 0 && SocketTimedOut(code) ? Result::TIMEOUT : Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+bool TcpSocket::alive() {
+    if (!open()) {
+        return false;
+    }
+
+    const int ready = WaitSocket(impl->handle, false, 0);
+    if (ready == 0) {
+        return true;
+    }
+    if (ready < 0) {
+        return false;
+    }
+
+    char discard[4096];
+#if defined(JST_OS_WINDOWS)
+    const int count = ::recv(impl->handle, discard, sizeof(discard), 0);
+#else
+    const ssize_t count = ::recv(impl->handle, discard, sizeof(discard), 0);
+#endif
+    if (count > 0) {
+        return true;
+    }
+    if (count == 0) {
+        return false;
+    }
+    return SocketTimedOut(LastSocketError());
+}
+
+void TcpSocket::close() {
+    impl->release();
+}
+
+bool TcpSocket::open() const {
+    return impl->handle != InvalidSocket;
 }
 
 }  // namespace Jetstream::Platform

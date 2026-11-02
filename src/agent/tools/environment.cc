@@ -144,7 +144,7 @@ bool DescendKey(const Parser::Map& root,
         }
 
         error = jst::fmt::format("Key '{}' not found at {}. Available keys: {}",
-                                 step.key, location, Json(available).dump());
+                                 step.key, location, Response::Dump(available));
         return false;
     }
 

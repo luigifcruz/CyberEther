@@ -193,11 +193,12 @@ TEST_CASE("Map overlays receive events topmost first and can capture the pointer
 
 TEST_CASE("Map GPU uniforms match the packed shader layout", "[render][geomap]") {
     using GpuUniforms = MapContext::GpuUniforms;
-    REQUIRE(sizeof(GpuUniforms) == 144);
+    REQUIRE(sizeof(GpuUniforms) == 160);
     REQUIRE(offsetof(GpuUniforms, surfaceScale) == 96);
     REQUIRE(offsetof(GpuUniforms, lineWidth) == 108);
     REQUIRE(offsetof(GpuUniforms, outlineStrength) == 136);
     REQUIRE(offsetof(GpuUniforms, lineOpacity) == 140);
+    REQUIRE(offsetof(GpuUniforms, anchor) == 144);
 }
 
 TEST_CASE("Map sun model tracks the subsolar point", "[render][geomap]") {
@@ -255,7 +256,7 @@ TEST_CASE("Shared map camera matches the previous globe projection", "[render][g
                 glm::lookAt(distance * normal, glm::vec3(0), up);
             for (int c = 0; c < 4; ++c) {
                 for (int r = 0; r < 4; ++r) {
-                    REQUIRE(context.camera.viewProjection[c][r] ==
+                    REQUIRE(static_cast<F32>(context.worldViewProjection[c][r]) ==
                             Approx(expected[c][r]).margin(1e-6f));
                 }
             }

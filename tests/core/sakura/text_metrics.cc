@@ -1,5 +1,7 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "fonts.hh"
 #include "harness.hh"
 #include "render/sakura/detail/text_metrics.hh"
 
@@ -170,4 +172,100 @@ TEST_CASE("Per-byte text advances do not consult or populate the width cache",
     CHECK(metrics.widths.size() == 1);
     CHECK(metrics.measure("", value, 16.0f) == 77.0f);
     CHECK(metrics.advances("", "", 16.0f).empty());
+}
+
+TEST_CASE("Ink offsets measure where visible glyphs sit against the line box without touching the width cache",
+          "[core][sakura][text-metrics]") {
+    SakuraTest::MonoFontWindow window;
+    Sakura::TextMetrics metrics;
+    metrics.setWindow(&window);
+
+    CHECK(metrics.inkOffset("default_mono", "", 16.0f) == 0.0f);
+    CHECK(metrics.inkOffset("default_mono", "   ", 16.0f) == 0.0f);
+    const F32 low = metrics.inkOffset("default_mono", "___", 32.0f);
+    const F32 high = metrics.inkOffset("default_mono", "^^^", 32.0f);
+    CHECK(low > 0.0f);
+    CHECK(high < 0.0f);
+    CHECK(metrics.inkOffset("default_mono", "_^", 32.0f) > high);
+    CHECK(metrics.inkOffset("default_mono", "_^", 32.0f) < low);
+    CHECK(metrics.inkOffset("default_mono", "___", 16.0f) == Catch::Approx(low * 0.5f).margin(1.0f));
+    CHECK(metrics.inkOffset("missing", "___", 32.0f) == Catch::Approx(low));
+    CHECK(metrics.inkOffset("default_mono", "\xC2\xA0\xC2\xA0", 32.0f) == 0.0f);
+    CHECK(metrics.inkOffset("default_mono", "___\xC2\xA0", 32.0f) == low);
+    CHECK(metrics.inkOffset("default_mono", "\xC2\xA0^^^", 32.0f) == high);
+    CHECK(metrics.widths.empty());
+}
+
+TEST_CASE("Multiline ink offsets use glyph line positions and the full block height",
+          "[core][sakura][text-metrics]") {
+    SakuraTest::MonoFontWindow window;
+    Sakura::TextMetrics metrics;
+    metrics.setWindow(&window);
+
+    // At 32 px, the bundled font's glyph quads span [21.5, 32] for '_'
+    // and [3, 21] for '^', with a 32 px line box.
+    struct Sample {
+        const char* value;
+        F32 offset;
+    };
+    const Sample samples[] = {
+        {"___", 10.75f},
+        {"^^^", -4.0f},
+        {"_^", 1.5f},
+        {"\n___", 26.75f},
+        {"___\n", -5.25f},
+        {"\n\n___", 42.75f},
+        {"___\n\n", -21.25f},
+        {"\n___\n", 10.75f},
+        {"___\n___", 10.75f},
+        {"___\n^^^", 5.25f},
+        {"^^^\n___", 1.5f},
+        {"___\n\n^^^", 5.25f},
+        {"\n___\n^^^\n", 5.25f},
+    };
+    for (const auto& sample : samples) {
+        CAPTURE(sample.value);
+        CHECK(metrics.inkOffset("default_mono", sample.value, 32.0f) == Catch::Approx(sample.offset));
+    }
+    CHECK(metrics.widths.empty());
+}
+
+TEST_CASE("Multiline ink offsets preserve scaled line spacing and ignore no-ink text and cached widths",
+          "[core][sakura][text-metrics]") {
+    SakuraTest::MonoFontWindow window;
+    Sakura::TextMetrics metrics;
+    CHECK(metrics.inkOffset("default_mono", "\n___\n", 32.0f) == 0.0f);
+    metrics.setWindow(&window);
+    auto* text = metrics.label("default_mono");
+    REQUIRE(text);
+
+    CHECK(metrics.measure("default_mono", "\n___", 32.0f) > 0.0f);
+    REQUIRE(metrics.widths.size() == 1);
+    metrics.widths.begin()->second = 77.0f;
+    const auto widths = metrics.widths;
+
+    for (const F32 size : {0.5f, 8.0f, 15.5f, 16.0f, 32.0f, 64.0f}) {
+        const F32 scale = size / text->getConfig().font->getConfig().size;
+        const F32 halfLine = text->lineHeight(scale) * 0.5f;
+        for (const std::string value : {"___", "^^^", "_^", "\xC3\xA9\xC3\x85"}) {
+            CAPTURE(size, value);
+            const F32 offset = metrics.inkOffset("default_mono", value, size);
+            CHECK(metrics.inkOffset("default_mono", "\n" + value, size) ==
+                  Catch::Approx(offset + halfLine).margin(1e-5f));
+            CHECK(metrics.inkOffset("default_mono", value + "\n", size) ==
+                  Catch::Approx(offset - halfLine).margin(1e-5f));
+            CHECK(metrics.inkOffset("default_mono", "\n\n" + value + "\n", size) ==
+                  Catch::Approx(offset + halfLine).margin(1e-5f));
+            CHECK(metrics.inkOffset("default_mono", value + "\n\n" + value, size) ==
+                  Catch::Approx(offset).margin(1e-5f));
+            CHECK(metrics.inkOffset("default_mono", "\t \r" + value + "\xC2\xA0", size) ==
+                  Catch::Approx(offset).margin(1e-5f));
+        }
+        for (const std::string value : {"", "\n", "\n\n", " \n\t\r\n ", "\xC2\xA0\n\xC2\xA0"}) {
+            CAPTURE(size, value);
+            CHECK(metrics.inkOffset("default_mono", value, size) == 0.0f);
+        }
+    }
+    CHECK(metrics.widths == widths);
+    CHECK(metrics.measure("default_mono", "\n___", 32.0f) == 77.0f);
 }

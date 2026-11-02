@@ -30,7 +30,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
     };
 
     struct MetricSnapshot {
-        F32 bufferHealth = 0.0f;
+        F32 bufferFill = 0.0f;
         F64 bufferLoss = 0.0;
         F32 sweepSpeed = 0.0f;
         F32 sweepRate = 0.0f;
@@ -61,7 +61,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
         U64 droppedFrames = 0;
         U64 sampledFrames = 0;
         F64 spanGHz = 0.0;
-        F64 health = 0.0;
+        F64 fill = 0.0;
         F64 speed = 0.0;
         F64 cadence = 0.0;
         Clock::time_point occupancyUpdated{};

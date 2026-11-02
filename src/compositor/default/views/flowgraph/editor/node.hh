@@ -11,11 +11,10 @@
 #include "jetstream/block.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/texture.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
 #include <cmath>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -158,13 +157,13 @@ struct FlowgraphDiagnosticTooltip {
             return;
         }
         headerIcon.update({
-            .str = ICON_FA_TRIANGLE_EXCLAMATION,
+            .str = ICON_LC_TRIANGLE_ALERT,
             .colorKey = colorKey,
         });
         headerLabel.update({.str = "Diagnostic"});
         header.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 12.0f,
+            .spacing = Sakura::Spacing::Medium,
             .items = {
                 {.child = &headerIcon},
                 {.child = &headerLabel},
@@ -238,8 +237,10 @@ struct FlowgraphNode {
         std::shared_ptr<const Render::Texture> texture;
         F32 height = 512.0f;
         bool detached = false;
-        std::function<void()> onDetach;
-        std::function<void(const Sakura::SurfaceResize&)> onAttachedSize;
+        Sakura::Callback<void(bool)> onDetach;
+        Sakura::Callback<void(const Sakura::SurfaceResize&)> onAttachedSize;
+        Sakura::Callback<void(InputEvent)> onInput;
+        Sakura::Callback<SurfaceCursor()> resolveCursor;
     };
 
     struct DeviceOption {
@@ -263,9 +264,6 @@ struct FlowgraphNode {
         std::string name;
         std::string module;
         std::string title;
-        DeviceType device = DeviceType::CPU;
-        RuntimeType runtime = RuntimeType::NATIVE;
-        ProviderType provider = "generic";
         Block::State state = Block::State::None;
         Block::NodeSize nodeSize = Block::NodeSize::S;
         std::string diagnostic;
@@ -288,18 +286,18 @@ struct FlowgraphNode {
         BlockData block;
         bool pasteEnabled = false;
         bool timingEnabled = false;
-        std::function<void()> onCopy;
-        std::function<void(Extent2D<F32>)> onPaste;
-        std::function<void()> onRename;
-        std::function<void()> onReload;
-        std::function<void(Parser::Map)> onInspectApply;
-        std::function<void()> onDelete;
-        std::function<void()> onDocumentation;
-        std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
-        std::function<void(F32, F32, F32, F32)> onLayout;
-        std::function<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
-        std::function<void(bool)> onConfigCollapse;
-        std::function<void(bool)> onConfigDetach;
+        Sakura::Callback<void()> onCopy;
+        Sakura::Callback<void(Extent2D<F32>)> onPaste;
+        Sakura::Callback<void()> onRename;
+        Sakura::Callback<void()> onReload;
+        Sakura::Callback<void(Parser::Map)> onInspectApply;
+        Sakura::Callback<void()> onDelete;
+        Sakura::Callback<void()> onDocumentation;
+        Sakura::Callback<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
+        Sakura::Callback<void(F32, F32, F32, F32)> onLayout;
+        Sakura::Callback<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
+        Sakura::Callback<void(bool)> onConfigCollapse;
+        Sakura::Callback<void(bool)> onConfigDetach;
     };
 
     static constexpr F32 MinimumNodeWidth = 120.0f;
@@ -314,7 +312,7 @@ struct FlowgraphNode {
 
     void update(Config config) {
         std::optional<Layout> previousLayout;
-        std::function<void(F32, F32, F32, F32)> previousOnLayout;
+        Sakura::Callback<void(F32, F32, F32, F32)> previousOnLayout;
         if (layoutChanged) {
             previousLayout = this->config.block.layout;
             previousOnLayout = this->config.onLayout;
@@ -332,18 +330,20 @@ struct FlowgraphNode {
         const U64 surfaceCount = block.surfaces.size();
         const bool hasSurfaces = surfaceCount > 0;
         const bool hasConfigFields = !block.configFields.empty();
-        const bool isCreating = block.state == Block::State::Creating;
-        const bool isPending = isCreating ||
+        const bool isBusy = Busy(block.state);
+        const bool isPending = isBusy ||
                                block.state == Block::State::Incomplete;
-        const bool configHidden = block.configCollapsed || block.configDetached;
+        const bool configHidden = block.configCollapsed;
         const auto nodeState = block.state == Block::State::Errored
             ? NodeEditor::NodeState::Error
-            : isCreating ? NodeEditor::NodeState::Loading
+            : isBusy ? NodeEditor::NodeState::Loading
                          : isPending ? NodeEditor::NodeState::Pending : NodeEditor::NodeState::Normal;
 
-        fieldStack.update(std::move(block.configFields), [this]() {
-            reportBounds();
-        });
+        if (!isBusy) {
+            fieldStack.update(std::move(block.configFields), [this]() {
+                reportBounds();
+            });
+        }
         const bool hasFlexibleFields = fieldStack.hasFlexible();
 
         bool allSurfacesDetached = hasSurfaces;
@@ -380,17 +380,17 @@ struct FlowgraphNode {
         dimensions.x = std::max(MinimumNodeWidth, dimensions.x);
 
         Extent2D<F32> nodeDimensions = dimensions;
-        if ((!verticalResize && (!isCreating || configHidden)) || (allSurfacesDetached && !hasFlexibleFields)) {
+        if ((!verticalResize && (!isBusy || configHidden)) || (allSurfacesDetached && !hasFlexibleFields)) {
             nodeDimensions.y = 0.0f;
             // Hidden flexible fields still own the expanded height. Render
             // at auto height without overwriting it in the saved layout.
-            if (!hasFlexibleFields && !isCreating) {
+            if (!hasFlexibleFields && !isBusy) {
                 layoutChanged = layoutChanged || dimensions.y > 0.0f;
                 dimensions.y = 0.0f;
             }
         }
 
-        updateContent(block, isCreating, configHidden);
+        updateContent(block, isBusy, configHidden);
 
         for (U64 i = 0; i < surfaceCount; ++i) {
             const auto& surface = block.surfaces[i];
@@ -398,13 +398,16 @@ struct FlowgraphNode {
                 .id = surface.id,
                 .texture = surface.texture,
                 .minimumHeight = SurfaceHeightSpec().minimum,
-                .detachOverlay = true,
                 .onSize = surface.onAttachedSize,
-                .onDetach = surface.onDetach,
+                .onInput = surface.detached ? nullptr : surface.onInput,
+                .resolveCursor = surface.detached ? nullptr : surface.resolveCursor,
             });
         }
 
-        pinTooltips.resize(block.inputs.size() + block.outputs.size());
+        const U64 pinCount = block.inputs.size() + block.outputs.size();
+        if (!isBusy || pinTooltips.size() < pinCount) {
+            pinTooltips.resize(pinCount);
+        }
         for (auto& tooltip : pinTooltips) {
             if (!tooltip) {
                 tooltip = std::make_unique<FlowgraphPinTooltip>();
@@ -449,13 +452,16 @@ struct FlowgraphNode {
             .state = nodeState,
             .diagnostic = hasDiagnostic ? block.diagnostic : std::string(),
             .diagnosticTooltip = hasDiagnostic ? diagnosticTooltip.overlay() : Sakura::NodeOverlay{},
-            .collapsible = hasConfigFields && !block.configDetached,
+            .collapsible = hasConfigFields,
             .collapsed = block.configCollapsed,
             .onToggleCollapse = [this]() {
                 if (this->config.onConfigCollapse) {
                     this->config.onConfigCollapse(!this->config.block.configCollapsed);
                 }
             },
+            .onDetach = attachedSurfaceCount > 0 ? Sakura::Callback<void()>([this]() {
+                setSurfacesDetached(true);
+            }) : Sakura::Callback<void()>(),
             .pins = std::move(pins),
             .content = &content,
             .resize = resizeAxes,
@@ -465,10 +471,10 @@ struct FlowgraphNode {
             .onContextMenu = [this]() {
                 menuOpen = true;
             },
-            .onGeometryChange = [this, verticalResize, isCreating](const NodeEditor::Geometry& next) {
+            .onGeometryChange = [this, verticalResize, isBusy](const NodeEditor::Geometry& next) {
                 geometry = next;
                 this->dimensions.x = next.contentDimensions.x;
-                if (verticalResize && !isCreating) {
+                if (verticalResize && !isBusy) {
                     this->dimensions.y = next.contentDimensions.y;
                 }
                 layoutChanged = true;
@@ -486,11 +492,12 @@ struct FlowgraphNode {
         }
 
         menu.update({
-            .id = this->config.id + ":context-menu",
             .open = menuOpen,
             .pasteEnabled = this->config.pasteEnabled,
             .configDetachEnabled = hasConfigFields,
             .configDetached = block.configDetached,
+            .plotDetachEnabled = hasSurfaces,
+            .plotDetached = allSurfacesDetached,
             .devices = deviceOptions,
             .onCopy = this->config.onCopy,
             .onPaste = [this]() {
@@ -514,6 +521,9 @@ struct FlowgraphNode {
                 if (this->config.onConfigDetach) {
                     this->config.onConfigDetach(!this->config.block.configDetached);
                 }
+            },
+            .onTogglePlotDetach = [this, allSurfacesDetached]() {
+                setSurfacesDetached(!allSurfacesDetached);
             },
             .onReload = this->config.onReload,
             .onDelete = this->config.onDelete,
@@ -545,6 +555,14 @@ struct FlowgraphNode {
         });
     }
 
+    void setSurfacesDetached(bool detached) {
+        for (const auto& surface : config.block.surfaces) {
+            if (surface.detached != detached && surface.onDetach) {
+                surface.onDetach(detached);
+            }
+        }
+    }
+
     NodeEditor::Node takeNode() {
         return std::move(nodeSpec);
     }
@@ -560,15 +578,19 @@ struct FlowgraphNode {
     }
 
  private:
+    static bool Busy(const Block::State state) {
+        return state == Block::State::Creating || state == Block::State::Destroying;
+    }
+
     void reportBounds() const {
         const auto& block = config.block;
-        if (!geometry.has_value() || block.state == Block::State::Creating || !config.onBounds) {
+        if (!geometry.has_value() || Busy(block.state) || !config.onBounds) {
             return;
         }
         const auto& next = *geometry;
         const Extent2D<F32> inner = next.contentDimensions;
         std::optional<Extent2D<F32>> content;
-        if (next.onscreen && !block.configCollapsed && !block.configDetached) {
+        if (next.onscreen && !block.configCollapsed) {
             content = fieldStack.content(inner, next.minimumHeight);
         }
         config.onBounds({next.gridPosition.x, next.gridPosition.y, next.dimensions.x, next.dimensions.y},
@@ -576,19 +598,21 @@ struct FlowgraphNode {
                         content);
     }
 
-    void updateContent(const BlockData& block, bool isCreating, bool configHidden) {
+    void updateContent(const BlockData& block, bool isBusy, bool configHidden) {
         using Stack = Sakura::NodeContentStack;
 
         std::vector<Stack::Item> items;
 
-        while (metrics.size() > block.metrics.size()) {
-            metrics.pop_back();
-        }
-        while (metrics.size() < block.metrics.size()) {
-            metrics.push_back(std::make_unique<FlowgraphMetricInstance>());
-        }
-        for (U64 i = 0; i < metrics.size(); ++i) {
-            metrics[i]->update(block.metrics[i]);
+        if (!isBusy) {
+            while (metrics.size() > block.metrics.size()) {
+                metrics.pop_back();
+            }
+            while (metrics.size() < block.metrics.size()) {
+                metrics.push_back(std::make_unique<FlowgraphMetricInstance>());
+            }
+            for (U64 i = 0; i < metrics.size(); ++i) {
+                metrics[i]->update(block.metrics[i]);
+            }
         }
 
         while (surfaces.size() > block.surfaces.size()) {
@@ -598,7 +622,7 @@ struct FlowgraphNode {
             surfaces.push_back(std::make_unique<Sakura::NodeSurface>());
         }
 
-        if (!isCreating) {
+        if (!isBusy) {
             for (const auto& metric : metrics) {
                 items.push_back({.child = &metric->component()});
             }

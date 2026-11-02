@@ -4,7 +4,6 @@
 #include "base.hh"
 
 #include <algorithm>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -16,7 +15,7 @@ namespace Jetstream {
 struct FlowgraphConfigFieldStack {
     using Stack = Sakura::NodeContentStack;
 
-    void update(std::vector<FlowgraphConfigFieldConfig> configs, std::function<void()> onOverflow = {}) {
+    void update(std::vector<FlowgraphConfigFieldConfig> configs, Sakura::Callback<void()> onOverflow = {}) {
         this->onOverflow = std::move(onOverflow);
         while (fields.size() > configs.size()) {
             fields.pop_back();
@@ -118,7 +117,7 @@ struct FlowgraphConfigFieldStack {
     std::vector<std::unique_ptr<FlowgraphConfigFieldInstance>> fields;
     std::vector<std::optional<Extent2D<F32>>> overflows;
     std::vector<std::string> kinds;
-    std::function<void()> onOverflow;
+    Sakura::Callback<void()> onOverflow;
 };
 
 }  // namespace Jetstream

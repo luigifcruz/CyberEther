@@ -15,7 +15,7 @@ Tensors move the bulk data through a flowgraph, but most blocks also need to sha
 | Direction | Any block or host code, read and write | Producer writes, downstream reads | Owner publishes, anyone reads |
 | Lifetime | Persists with the flowgraph | Lives with the tensor | Computed on demand |
 | Typical use | Shared state, server-provided values, calibration | Signal description such as `sampleRate` and `frequency` | Progress, throughput, diagnostics |
-| UI surface | Environment window | Pin tooltips | Node body |
+| UI surface | Environment tile | Pin tooltips | Node body |
 
 A useful rule of thumb follows the data. If the value describes a specific stream, attach it to the tensor as an attribute so it travels with the connection. If it describes the state of one block and is only interesting to observers, publish it as a metric. If it is genuinely global, or must exist before blocks can start, put it in the environment.
 
@@ -63,7 +63,7 @@ Points worth knowing:
 
 - **Values are timestamped.** The full signature is `set(key, value, start, end)`, and `get(key, value, timestamp)` returns the newest entry whose range covers the timestamp. The defaults cover all time, which is the right choice unless you are recording values that change over a run.
 - **The epoch tracks changes.** Every write increments `environment()->epoch()`. Poll it to refresh cached reads cheaply instead of deserializing keys every cycle. The Python bridge uses the same mechanism internally.
-- **Keys persist and are visible.** Environment values are saved with the flowgraph and shown in the Environment window, so treat key names as a small public schema rather than scratch space.
+- **Keys persist and are visible.** Environment values are saved with the flowgraph and shown in the Environment tile, so treat key names as a small public schema rather than scratch space.
 - **Writers define the schema.** Python writes coerce to the type already stored, so a key seeded with exact widths, for example `F32` gain or a `vector<CF32>` of taps, keeps those widths across Python edits. Native `set()` calls replace the stored value verbatim, so C++ writers are responsible for publishing consistent types themselves.
 
 The Python view of the environment, including the write tracking and rollback semantics, is covered in [Flowgraph Environment](/docs/python-block#flowgraph-environment).
@@ -172,7 +172,7 @@ Result define() override {
 Choose a display format based on what you want to show:
 
 - **Text labels** are useful for readings such as "12.3 MB/s" or "Connected". Set the format's `type` to `label` and return a string containing the text you want to display. Convert numeric values to text first.
-- **Progress bars** work well for file positions, buffer usage, and similar measurements. Set the type to `progressbar` and return a pair containing the display text and a fraction between 0 and 1.
+- **Progress bars** work well for file positions, buffer usage, and similar measurements. Set the type to `progressbar` and return a pair containing the display text and a fraction between 0 and 1. To turn the bar amber or red when a reading needs attention, add `warning_above` and `error_above` for readings where higher is worse, or `warning_below` and `error_below` for readings where lower is worse. Return NaN as the fraction while there is no reading yet, which leaves the bar empty and uncolored.
 - **Tables** let you show several related values in rows and columns. Set the type to `table` and return a map with `columns` for the column names and `rows` for the cell text. Each row needs one cell per column. You can build both from vectors using `Parser::Serialize`, and the cell text can include tabs and line breaks.
 
 Metrics appear in the node by default. Set `visibility` to `internal` when a metric is intended for a dedicated view, as with runtime timing and Python diagnostics. This hides it from the node body but keeps it available to code. You can still read it from C++, or from Python when its value can be converted. The visibility setting is only available for metrics.

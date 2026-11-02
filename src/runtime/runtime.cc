@@ -76,6 +76,7 @@ Runtime::Context::Diagnostic Runtime::Context::diagnostic() const {
 
 Result Runtime::compute(const std::vector<std::string>& modules,
                         std::unordered_set<std::string>& skippedModules,
+                        std::unordered_set<std::string>& stalledModules,
                         std::unordered_set<std::string>& failedModules) {
     failedModules.clear();
 
@@ -85,7 +86,7 @@ Result Runtime::compute(const std::vector<std::string>& modules,
     }
 
     impl->computeRunning.store(true, std::memory_order_release);
-    Result result = impl->compute(modules, skippedModules, failedModules);
+    Result result = impl->compute(modules, skippedModules, stalledModules, failedModules);
     impl->computeRunning.store(false, std::memory_order_release);
 
     if (result == Result::SUCCESS) {
@@ -96,13 +97,19 @@ Result Runtime::compute(const std::vector<std::string>& modules,
 }
 
 bool Runtime::Impl::hasSkippedInputs(const std::shared_ptr<Module>& module,
-                                     const std::unordered_set<std::string>& skippedModules) {
+                                     const std::unordered_set<std::string>& skippedModules,
+                                     const std::unordered_set<std::string>& stalledModules) {
+    if (skippedModules.empty() && stalledModules.empty()) {
+        return false;
+    }
+
     for (const auto& [_, link] : module->inputs()) {
         if (!link.producer.has_value()) {
             continue;
         }
 
-        if (skippedModules.contains(link.producer->module)) {
+        if (skippedModules.contains(link.producer->module) ||
+            stalledModules.contains(link.producer->module)) {
             return true;
         }
     }

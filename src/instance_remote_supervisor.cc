@@ -71,12 +71,12 @@ void Instance::Remote::Supervisor::run() {
             });
 
             if (autoJoin) {
-                remote_->approveClient(code);
+                remote_->approveClient(sessionId);
                 continue;
             }
 
             if (prompt(code)) {
-                remote_->approveClient(code);
+                remote_->approveClient(sessionId);
             }
         }
     }

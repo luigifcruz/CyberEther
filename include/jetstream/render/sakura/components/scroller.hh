@@ -30,6 +30,7 @@ struct Scroller : public Component {
         Callback<void(Rect contentRect, std::optional<Rect> clipRect)> onLayout;
         Callback<void(F32 scrollY)> onScrollY;
         Callback<void(F32 scrollX)> onScrollX;
+        Callback<void()> onOverscroll;
 
         bool operator==(const Config&) const = default;
     };
@@ -38,6 +39,9 @@ struct Scroller : public Component {
     ~Scroller();
 
     void update(Config config);
+    void reset();
+    Extent2D<F32> overscroll(const Context& ctx);
+    bool wheel(const MouseEvent& event);
 
  protected:
     void layout(const Context& ctx) override;

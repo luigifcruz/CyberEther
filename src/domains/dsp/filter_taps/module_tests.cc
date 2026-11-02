@@ -414,15 +414,16 @@ TEST_CASE("Filter Taps - direct runtime rematerializes output",
     REQUIRE(runtime.create({{"filter_taps_rematerialize", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"filter_taps_rematerialize"}, skippedModules, failedModules) ==
+    REQUIRE(runtime.compute({"filter_taps_rematerialize"}, skippedModules, stalledModules, failedModules) ==
             Result::SUCCESS);
 
     Tensor output = module->outputs().at("coeffs").tensor;
     const CF32 expected = output.at<CF32>(0, 17);
     output.at<CF32>(0, 17) = CF32(123.0f, 456.0f);
 
-    REQUIRE(runtime.compute({"filter_taps_rematerialize"}, skippedModules, failedModules) ==
+    REQUIRE(runtime.compute({"filter_taps_rematerialize"}, skippedModules, stalledModules, failedModules) ==
             Result::SUCCESS);
     REQUIRE(output.at<CF32>(0, 17) == expected);
 

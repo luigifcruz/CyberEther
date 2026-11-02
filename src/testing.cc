@@ -22,6 +22,7 @@ struct TestContext::Impl {
 
     std::shared_ptr<Module> module;
     std::unique_ptr<Runtime> runtime;
+    bool stalled = false;
 
     ~Impl() {
         (void)cleanup();
@@ -168,14 +169,20 @@ Result TestContext::compute() {
     }
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    const auto computeResult = pimpl->runtime->compute({}, skippedModules, failedModules);
+    const auto computeResult = pimpl->runtime->compute({}, skippedModules, stalledModules, failedModules);
+    pimpl->stalled = !stalledModules.empty();
     if (computeResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to run compute: {}", pimpl->moduleType);
         return computeResult;
     }
 
     return pimpl->snapshotOutputs();
+}
+
+bool TestContext::stalled() const {
+    return pimpl->stalled;
 }
 
 Result TestContext::reconfigure(const Module::Config& config, const bool validateOnly) {

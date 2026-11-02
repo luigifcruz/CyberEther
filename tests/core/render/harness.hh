@@ -61,6 +61,12 @@ class Viewport final : public Jetstream::Viewport::Generic {
     }
     void beginWindowDrag() override { ++drags; }
     void zoomWindow() override { ++zooms; }
+    bool setDarkAppearance(bool dark) override {
+        if (appearances.empty() || appearances.back() != dark) {
+            appearances.push_back(dark);
+        }
+        return true;
+    }
 
     TestPlatform& platform() { return *state; }
 
@@ -74,6 +80,7 @@ class Viewport final : public Jetstream::Viewport::Generic {
     Jetstream::U64 idleWaits = 0;
     Jetstream::U64 drags = 0;
     Jetstream::U64 zooms = 0;
+    std::vector<bool> appearances;
 
  private:
     TestPlatform* state = nullptr;

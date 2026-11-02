@@ -6,6 +6,7 @@
 #include <jetstream/render/sakura/components/chat_composer.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
+#include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
@@ -234,6 +235,130 @@ TEST_CASE("Chats place the transcript above a centered composer column", "[core]
     CHECK(content.bottom() == Approx(column.y - 8.0f));
 }
 
+TEST_CASE("Chats center a placeholder in the transcript area only while the conversation is empty",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Sakura::Chat chat;
+    Probe placeholder({200.0f, 80.0f});
+    Host host(chat);
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+
+    const auto transcript = Peek::Frame(*Find<Transcript>(chat).at(0));
+    REQUIRE(placeholder.visible());
+    REQUIRE(placeholder.layouts > 0);
+    CHECK(placeholder.laidFrame.x == transcript.x);
+    CHECK(placeholder.laidFrame.width == transcript.width);
+    CHECK(placeholder.laidFrame.height == 80.0f);
+    CHECK(placeholder.laidFrame.y + 40.0f == Approx(transcript.y + transcript.height * 0.5f).margin(0.5f));
+    CHECK(placeholder.laidClip == transcript);
+
+    chat.update({.id = "chat", .snapshot = {.generation = 1, .streaming = true}, .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    CHECK_FALSE(placeholder.visible());
+
+    chat.update({.id = "chat", .snapshot = Conversation(2), .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    CHECK_FALSE(placeholder.visible());
+
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    CHECK(placeholder.visible());
+
+    placeholder.resize({200.0f, 1000.0f});
+    host.place(scene.ctx, kChatRect);
+    CHECK(placeholder.laidFrame == transcript);
+
+    chat.update({.id = "chat"});
+    host.place(scene.ctx, kChatRect);
+    CHECK(Find<Probe>(chat).empty());
+}
+
+TEST_CASE("Chats remount a placeholder that came back from another owner", "[core][sakura][chat]") {
+    Scene scene;
+    Sakura::Chat chat;
+    Probe thief;
+    Probe placeholder({200.0f, 80.0f});
+    Host host(chat);
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    REQUIRE(Find<Probe>(chat).size() == 1);
+
+    thief.adopt(placeholder);
+    REQUIRE(Find<Probe>(chat).empty());
+
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    const auto probes = Find<Probe>(chat);
+    REQUIRE(probes.size() == 1);
+    CHECK(probes.front() == &placeholder);
+    CHECK(placeholder.visible());
+}
+
+TEST_CASE("Chats keep a parked placeholder mounted and show it again as a repaint",
+          "[core][sakura][chat][retention]") {
+    Scene scene;
+    Sakura::Chat chat;
+    Sakura::Text placeholder;
+    placeholder.update({.str = "Ask anything"});
+    Place place(chat, kChatRect);
+    Frames frames(place, kScreen, scene.context());
+    Chat::Snapshot snapshot;
+    Sakura::Component* current = &placeholder;
+    const auto update = [&] {
+        chat.update({.id = "chat", .snapshot = snapshot, .placeholder = current});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(placeholder.visible());
+    snapshot = Conversation(2);
+    REQUIRE(frames.settle(update));
+    CHECK_FALSE(placeholder.visible());
+    snapshot = {};
+    REQUIRE(frames.settle(update));
+    CHECK(placeholder.visible());
+    const U64 restructures = frames.restructures;
+    const U64 rebuilds = frames.rebuilds;
+
+    current = nullptr;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK_FALSE(placeholder.visible());
+    const auto& children = Peek::Children(chat);
+    CHECK(std::find(children.begin(), children.end(), &placeholder) != children.end());
+
+    current = &placeholder;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(placeholder.visible());
+
+    snapshot = Conversation(2);
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK_FALSE(placeholder.visible());
+    snapshot = {};
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(placeholder.visible());
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == restructures);
+    CHECK(frames.rebuilds == rebuilds);
+}
+
+TEST_CASE("Chats cancel a press held on the placeholder when the conversation starts", "[core][sakura][chat]") {
+    Scene scene;
+    Sakura::Chat chat;
+    Probe placeholder({200.0f, 80.0f});
+    Host host(chat);
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    const auto frame = placeholder.laidFrame;
+    host.send(Mouse(MouseEventType::Click, frame.x + 10.0f, frame.y + 10.0f));
+    REQUIRE(placeholder.count(MouseEventType::Click) == 1);
+
+    chat.update({.id = "chat", .snapshot = Conversation(2), .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    CHECK_FALSE(placeholder.visible());
+    CHECK(placeholder.count(MouseEventType::Cancel) == 1);
+}
+
 TEST_CASE("Chats scale their surface padding and column width with the pixel ratio", "[core][sakura][chat]") {
     Scene scene;
     Sakura::Chat chat;
@@ -341,7 +466,7 @@ TEST_CASE("Chats settle under a persistent snapshot and fade the transcript with
     const Chat::Snapshot snapshot = Conversation(4);
     F32 opacity = 1.0f;
     const auto update = [&] {
-        chat.update({.id = "chat", .snapshot = snapshot, .transcriptOpacity = opacity, .surfaceColorKey = "agent_panel"});
+        chat.update({.id = "chat", .snapshot = snapshot, .transcriptOpacity = opacity, .surfaceColorKey = "tile_bg"});
     };
     const auto cover = [&] {
         return Direct<Sakura::Box>(chat).at(1)->config().instances.at(0);
@@ -358,7 +483,7 @@ TEST_CASE("Chats settle under a persistent snapshot and fade the transcript with
     opacity = 0.25f;
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
-    const auto panel = frames.ctx.palette.get().at("agent_panel");
+    const auto panel = frames.ctx.palette.get().at("tile_bg");
     CHECK(cover().visible);
     CHECK(cover().rect == Peek::Frame(*Find<Transcript>(chat).at(0)));
     CHECK(cover().backgroundColor.r == panel.r);
@@ -552,6 +677,39 @@ TEST_CASE("Chat transcripts follow the tail until the user scrolls up", "[core][
     CHECK(Bottom(transcript) > kRect.bottom() + 40.0f);
     ++tail;
     frames.run(update);
+    CHECK(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Chat transcripts stretch past the tail under a trackpad drag and spring back once released",
+          "[core][sakura][chat][retention]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    frames.timeStep = 1.0 / 60.0;
+    const Chat::Snapshot snapshot = Questions(30);
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    const auto gesture = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(200.0f, 150.0f, dy);
+        event.phase = phase;
+        place.send(event);
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
+
+    gesture(0.0f, ScrollPhase::Began);
+    gesture(-3.0f, ScrollPhase::Changed);
+    CHECK(Kept(frames.run(update)));
+    CHECK(Bottom(transcript) < kRect.bottom() - 1.0f);
+
+    gesture(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 120; ++frame) {
+        CHECK(Kept(frames.run(update)));
+    }
     CHECK(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
     REQUIRE(frames.settle(update));
     CHECK(Retains(frames, update));
@@ -885,14 +1043,14 @@ TEST_CASE("Busy chat disclosures shimmer only while visible and settle when busy
     };
     Chat::Snapshot snapshot = busySnapshot(true);
     const auto update = [&] {
-        transcript.update({.id = "chat", .snapshot = snapshot, .surfaceColorKey = "agent_panel"});
+        transcript.update({.id = "chat", .snapshot = snapshot, .surfaceColorKey = "tile_bg"});
     };
     REQUIRE(frames.settle(update));
     CHECK(Retains(frames, update));
 
     const auto strips = Shimmer(transcript).config().instances;
     const auto label = Toggles(transcript).config().instances.at(0).rect;
-    const auto panel = frames.ctx.palette.get().at("agent_panel");
+    const auto panel = frames.ctx.palette.get().at("tile_bg");
     REQUIRE(strips.size() == Transcript::ShimmerSteps);
     CHECK(strips.front().rect.x == Approx(kRect.x + 15.0f));
     CHECK(strips.back().rect.right() == Approx(label.right()));
@@ -987,4 +1145,204 @@ TEST_CASE("Chat transcripts keep fixed drawable capacities and pool sizes", "[co
     CHECK(Shimmer(transcript).config().instances.size() <= Transcript::DisclosureSlots * Transcript::ShimmerSteps);
     CHECK(Visible<Sakura::TextMarkdown>(transcript).size() <= Transcript::MarkdownSlots);
     CHECK(Visible<Sakura::TextView>(transcript).size() <= Transcript::UserSlots + Transcript::DisclosureSlots);
+}
+
+TEST_CASE("Replacing a chat conversation drops the previous conversation stretch", "[core][sakura][chat]") {
+    const bool changeId = GENERATE(false, true);
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    frames.timeStep = 1.0 / 60.0;
+    std::string id = "chat";
+    Chat::Snapshot snapshot = Questions(30);
+    const auto update = [&] {
+        transcript.update({.id = id, .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
+
+    auto event = Wheel(200.0f, 150.0f, -3.0f);
+    event.phase = ScrollPhase::Changed;
+    place.send(event);
+    frames.run(update);
+    REQUIRE(Bottom(transcript) < kRect.bottom() - 1.0f);
+
+    if (changeId) {
+        id = "other";
+    } else {
+        ++snapshot.generation;
+    }
+    frames.run(update);
+    CHECK(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
+}
+
+TEST_CASE("Expanding a details section inside a chat message grows its row instead of clipping it",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    Chat::Snapshot snapshot;
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(
+        1, 1, "<details>\n<summary>More</summary>\n\nLine one.\n\nLine two.\n\nLine three.\n\n</details>")}));
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    const auto markdowns = Find<Sakura::TextMarkdown>(transcript);
+    REQUIRE(markdowns.size() == 1);
+    auto& markdown = *markdowns.front();
+    const F32 collapsed = Peek::Frame(markdown).height;
+    const auto& row = markdown.metrics().sourceLines.at(0);
+    const Extent2D<F32> center = {Peek::Frame(markdown).x + 40.0f, row.top + row.height * 0.5f};
+    REQUIRE(Sakura::Access::cursor(markdown, center) == SurfaceCursor::Hand);
+    place.send(Mouse(MouseEventType::Click, center.x, center.y));
+    place.send(Mouse(MouseEventType::Release, center.x, center.y));
+    frames.run(update);
+
+    const Rect frame = Peek::Frame(markdown);
+    CHECK(frame.height > collapsed + 20.0f);
+    F32 bottom = 0.0f;
+    bool expanded = false;
+    for (auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && !instance.str.empty()) {
+                bottom = std::max(bottom, instance.rect.bottom());
+                expanded = expanded || instance.str.find("Line three.") != std::string::npos;
+            }
+        }
+    }
+    REQUIRE(expanded);
+    CHECK(bottom <= frame.bottom() + 0.5f);
+}
+
+TEST_CASE("A footnote back reference inside a chat message scrolls the transcript to its citation",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    std::string text = "Claim.[^a]\n\n";
+    for (int i = 0; i < 40; ++i) {
+        text += "Filler paragraph " + std::to_string(i) + ".\n\n";
+    }
+    text += "[^a]: Source.";
+    Chat::Snapshot snapshot;
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(1, 1, text)}));
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    const auto markdowns = Find<Sakura::TextMarkdown>(transcript);
+    REQUIRE(markdowns.size() == 1);
+    auto& markdown = *markdowns.front();
+    const F32 before = Peek::Frame(markdown).y;
+    REQUIRE(before < kRect.y - 100.0f);
+
+    const auto& footnote = markdown.metrics().sourceLines.back();
+    const F32 y = footnote.top + footnote.height * 0.5f;
+    std::optional<F32> x;
+    for (F32 probe = kRect.x; probe < kRect.right() && !x; probe += 1.0f) {
+        if (Sakura::Access::cursor(markdown, {probe, y}) == SurfaceCursor::Hand) {
+            x = probe + 2.0f;
+        }
+    }
+    REQUIRE(x.has_value());
+    place.send(Mouse(MouseEventType::Click, *x, y));
+    place.send(Mouse(MouseEventType::Release, *x, y));
+    frames.run(update);
+
+    CHECK(Peek::Frame(markdown).y > before + 100.0f);
+    const auto& citation = markdown.metrics().sourceLines.front();
+    CHECK(citation.top >= kRect.y - 1.0f);
+    CHECK(citation.top + citation.height <= kRect.bottom() + 1.0f);
+}
+
+TEST_CASE("Chat details stay expanded after their message scrolls out of the recycled views and back",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    Chat::Snapshot snapshot;
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(
+        1, 1, "<details>\n<summary>More</summary>\n\nLine one.\n\nLine two.\n\nLine three.\n\n</details>")}));
+    for (int i = 0; i < 40; ++i) {
+        snapshot.messages.push_back(AssistantMessage({MarkdownPart(1, 1, "Answer " + std::to_string(i) + ".")}));
+    }
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    const auto wheel = [&](F32 dy) {
+        place.send(Wheel(200.0f, 150.0f, dy));
+        frames.run(update);
+    };
+    const auto top = [&]() -> Sakura::TextMarkdown* {
+        Sakura::TextMarkdown* found = nullptr;
+        for (auto* markdown : Find<Sakura::TextMarkdown>(transcript)) {
+            if (!found || Peek::Frame(*markdown).y < Peek::Frame(*found).y) {
+                found = markdown;
+            }
+        }
+        return found;
+    };
+    const auto expanded = [&](Sakura::TextMarkdown& markdown) {
+        for (auto* label : Find<Sakura::Label>(markdown)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.visible && instance.str.find("Line three.") != std::string::npos) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    REQUIRE(frames.settle(update));
+    wheel(1000.0f);
+    auto* first = top();
+    REQUIRE(first != nullptr);
+    REQUIRE_FALSE(expanded(*first));
+    const auto& row = first->metrics().sourceLines.at(0);
+    const Extent2D<F32> summary = {Peek::Frame(*first).x + 40.0f, row.top + row.height * 0.5f};
+    REQUIRE(Sakura::Access::cursor(*first, summary) == SurfaceCursor::Hand);
+    place.send(Mouse(MouseEventType::Click, summary.x, summary.y));
+    place.send(Mouse(MouseEventType::Release, summary.x, summary.y));
+    frames.run(update);
+    REQUIRE(expanded(*top()));
+
+    wheel(-1000.0f);
+    wheel(1000.0f);
+    REQUIRE(top() != nullptr);
+    CHECK(expanded(*top()));
+}
+
+TEST_CASE("Chat messages with matching details summaries are measured with their own open state",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    const std::string body = "<summary>More</summary>\n\nLine one.\n\nLine two.\n\nLine three.\n\n</details>";
+    Chat::Snapshot snapshot;
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(1, 1, "<details>\n" + body)}));
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(1, 1, "<details open>\n" + body)}));
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    const auto markdowns = Find<Sakura::TextMarkdown>(transcript);
+    REQUIRE(markdowns.size() == 2);
+    bool expanded = false;
+    for (auto* markdown : markdowns) {
+        const Rect frame = Peek::Frame(*markdown);
+        for (auto* label : Find<Sakura::Label>(*markdown)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.visible && instance.str.find("Line three.") != std::string::npos) {
+                    expanded = true;
+                    CHECK(instance.rect.bottom() <= frame.bottom() + 0.5f);
+                }
+            }
+        }
+    }
+    CHECK(expanded);
 }

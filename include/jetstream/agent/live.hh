@@ -57,7 +57,7 @@ class JETSTREAM_API Live {
     virtual Result start();
     virtual void stop();
     virtual void send(const std::vector<I16>& samples);
-    virtual void reply(const ToolOutputs& outputs, bool disableTools);
+    virtual void reply(const ToolOutputs& outputs);
 
     static bool Available();
     static std::span<const std::string> Models();

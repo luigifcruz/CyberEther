@@ -20,6 +20,8 @@ EM_JS_DEPS(jst_secret_deps, "$UTF8ToString,$stringToNewUTF8");
 #include <wincred.h>
 #undef ERROR
 #undef FATAL
+#elif defined(JST_OS_LINUX)
+#include <dlfcn.h>
 #endif
 
 namespace Jetstream::Platform {
@@ -485,12 +487,26 @@ bool LoadSymbol(void* handle, const char* name, F& target) {
     return target != nullptr;
 }
 
+template<typename F>
+bool LoadGlibSymbol(void* handle, const char* name, F& target) {
+#if defined(__GLIBC__)
+    return LoadSymbol(handle, name, target);
+#else
+    return LoadSymbol(RTLD_DEFAULT, name, target) || LoadSymbol(handle, name, target);
+#endif
+}
+
 const Libsecret& GetLibsecret() {
     static Libsecret library;
     static std::once_flag flag;
     std::call_once(flag, [] {
+#if defined(__GLIBC__)
+        constexpr auto visibility = DynamicLibraryVisibility::Isolated;
+#else
+        constexpr auto visibility = DynamicLibraryVisibility::Local;
+#endif
         std::string error;
-        library.handle = OpenDynamicLibrary("libsecret-1.so.0", DynamicLibraryVisibility::Local, error);
+        library.handle = OpenDynamicLibrary("libsecret-1.so.0", visibility, error);
         if (!library.handle) {
             return;
         }
@@ -500,9 +516,9 @@ const Libsecret& GetLibsecret() {
                             LoadSymbol(library.handle, "secret_password_clear_sync", library.clear) &&
                             LoadSymbol(library.handle, "secret_password_free", library.free) &&
                             LoadSymbol(library.handle, "secret_password_search_sync", library.search) &&
-                            LoadSymbol(library.handle, "g_list_free_full", library.listFreeFull) &&
-                            LoadSymbol(library.handle, "g_object_unref", library.objectUnref) &&
-                            LoadSymbol(library.handle, "g_error_free", library.errorFree);
+                            LoadGlibSymbol(library.handle, "g_list_free_full", library.listFreeFull) &&
+                            LoadGlibSymbol(library.handle, "g_object_unref", library.objectUnref) &&
+                            LoadGlibSymbol(library.handle, "g_error_free", library.errorFree);
         if (!loaded) {
             CloseDynamicLibrary(library.handle);
             library = Libsecret{};
