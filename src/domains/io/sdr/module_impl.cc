@@ -165,7 +165,8 @@ Result SdrImpl::reconfigure() {
 
     const auto& caps = radio->capabilities();
     if (!Radio::Device::Range::Contains(caps.frequencyRanges, config.frequency)) {
-        JST_WARN("[MODULE_SDR] Frequency ({:.3f} MHz) not supported.", config.frequency / 1e6);
+        JST_WARN("[MODULE_SDR] Frequency ({:.3f} MHz) not supported. Use {}.",
+                 config.frequency / 1e6, Radio::Device::Range::Describe(caps.frequencyRanges));
         return Result::WARNING;
     }
     if (!Radio::Device::Range::Contains(caps.sampleRateRanges, config.sampleRate)) {

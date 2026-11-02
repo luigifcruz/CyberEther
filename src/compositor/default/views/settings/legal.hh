@@ -131,6 +131,7 @@ struct LegalSettingsView {
             {"LimeSuite", "Apache License 2.0"},
             {"libbladeRF", "LGPL-2.1-or-later"},
             {"Analog Devices no-OS", "Analog Devices BSD-style License"},
+            {"BirriaSDR", "MIT and BSD-3-Clause-Clear"},
             {"libmodes", "BSD-2-Clause"},
             {"tree-sitter", "MIT"},
             {"tree-sitter-python", "MIT"},
@@ -172,6 +173,7 @@ struct LegalSettingsView {
             {"robin-map", "MIT"},
             {"Google Turbo colormap", "Apache License 2.0"},
             {"Natural Earth", "Public Domain"},
+            {"OpenStreetMap data via OpenFreeMap and OpenMapTiles", "ODbL 1.0, CC-BY 4.0"},
             {"Velopack", "MIT"},
             // [NEW DEPENDENCY HOOK]
         };

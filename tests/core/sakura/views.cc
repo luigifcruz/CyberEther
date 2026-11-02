@@ -625,15 +625,24 @@ struct SettingsRig : ModalRig {
             .onSendFeedback = [log] { log("feedback"); },
         };
         config.legal = {.onViewFullLicenses = [log] { log("licenses"); }};
+        config.maps = {
+            .cacheAvailable = true,
+            .cacheBytes = 2500000,
+            .onHighResolutionChange = [log](bool value) { log("hires:" + Flag(value)); },
+            .onClearCache = [log] { log("clear"); },
+            .onRenderingChange = [log](const Render::Components::MapRenderingOptions& value) {
+                log("rendering:" + Flag(value.roads) + Flag(value.buildings) + Flag(value.buildingOutlines));
+            },
+        };
         config.onSectionChange = [log](SettingsSection section) {
             log("section:" + std::to_string(static_cast<I32>(section)));
         };
     }
 
-    void show(SettingsSection section) {
+    void show(SettingsSection section, Extent2D<F32> size = {1200.0f, 900.0f}) {
         config.section = section;
         view.update(config);
-        ModalRig::show({.content = &view.component(), .size = Extent2D<F32>{1200.0f, 900.0f}});
+        ModalRig::show({.content = &view.component(), .size = size});
     }
 
     std::vector<Sakura::Combo*> combos() {
@@ -3286,12 +3295,38 @@ TEST_CASE("Settings navigation reports every section in order", "[core][sakura][
     CHECK(Peek::Frame(rig.view.component()).width == 1176.0f);
 
     auto sections = Find<Sakura::SidebarItem>(rig.view.component());
-    REQUIRE(sections.size() == 8);
+    REQUIRE(sections.size() == 9);
     for (auto* section : sections) {
         CHECK(Press(rig.host, *section));
     }
     CHECK(rig.calls == std::vector<std::string>{"section:0", "section:1", "section:2", "section:3", "section:4",
-                                                 "section:5", "section:6", "section:7"});
+                                                 "section:5", "section:6", "section:7", "section:8"});
+}
+
+TEST_CASE("Maps settings toggle detail and layers and clear downloaded maps", "[core][sakura][views]") {
+    SettingsRig rig;
+    rig.show(SettingsSection::Maps, {1200.0f, 1200.0f});
+    auto toggles = Find<Sakura::Toggle>(rig.view.component());
+    REQUIRE(toggles.size() == 7);
+    REQUIRE(Find<Sakura::PillTabs>(rig.view.component()).size() == 1);
+    auto buttons = Find<CompactButton>(rig.view.component());
+    REQUIRE(buttons.size() == 1);
+
+    CHECK(Press(rig.host, *toggles[0]));
+    CHECK(Press(rig.host, *toggles[1]));
+    const auto page = Peek::Frame(*Find<Sakura::ScrollArea>(rig.view.component()).at(0));
+    REQUIRE(Peek::Frame(*buttons[0]).bottom() <= page.bottom());
+    CHECK(Press(rig.host, *buttons[0]));
+    CHECK(rig.calls == std::vector<std::string>{"hires:false", "rendering:falsetruetrue", "clear"});
+
+    rig.calls.clear();
+    rig.config.maps.cacheBytes = 0;
+    rig.config.maps.highResolution = false;
+    rig.show(SettingsSection::Maps, {1200.0f, 1200.0f});
+    toggles = Find<Sakura::Toggle>(rig.view.component());
+    Press(rig.host, *toggles[1]);
+    Press(rig.host, *Find<CompactButton>(rig.view.component()).at(0));
+    CHECK(rig.calls.empty());
 }
 
 TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]") {
@@ -4345,7 +4380,7 @@ TEST_CASE("Settings navigation, toggles, tabs, and text fields repaint without r
     const U64 rebuilds = rig.frames.rebuilds;
 
     auto sections = Find<Sakura::SidebarItem>(view.component());
-    REQUIRE(sections.size() == 8);
+    REQUIRE(sections.size() == 9);
     CheckHover(rig.host, step, *sections[1], away);
 
     for (const auto section : {SettingsSection::Remote, SettingsSection::Runtime}) {

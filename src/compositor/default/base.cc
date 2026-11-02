@@ -118,6 +118,13 @@ Result DefaultCompositor::create() {
     state.interface.recentFlowgraphs = settings.interface.recentFlowgraphs;
     state.interface.favoriteFlowgraphs = settings.interface.favoriteFlowgraphs;
 
+    // Restore map preferences.
+
+    state.maps.highResolution = settings.maps.highResolution;
+    state.maps.rendering = settings.maps.rendering;
+    Render::Components::GeoMapTiles::SetEnabled(settings.maps.highResolution);
+    Render::Components::GeoMap::SetRenderingOptions(settings.maps.rendering);
+
     // Restore intelligence preferences.
 
     state.agent.captureSupported = render && render->supportsCapture();
@@ -223,6 +230,7 @@ Result DefaultCompositor::destroy() {
     actions.shutdownAgent();
     actions.shutdownGallery();
     actions.shutdownTerminals();
+    actions.shutdownMaps();
     updater.shutdown();
     feedback.shutdown();
     if (Settings::Flush() != Result::SUCCESS) {
@@ -302,6 +310,7 @@ Result DefaultCompositor::poll() {
     actions.refreshMetrics();
     actions.reconcileAgent();
     actions.reconcileTerminals();
+    actions.reconcileMaps();
     updateFeedbackState();
 
     // Build view configs while flowgraph access is confined to poll.

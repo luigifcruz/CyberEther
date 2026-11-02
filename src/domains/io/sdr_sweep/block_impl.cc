@@ -206,7 +206,9 @@ Parser::Map SdrSweepImpl::manualGainFormat(const Blocks::SdrSweep& config) {
     const auto range = sweep ? sweep->getGainRange() : std::nullopt;
     const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
     const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
-    return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
+    const auto capabilities = Radio::Device::Cached(config.deviceString);
+    const auto unit = capabilities ? capabilities->gainUnit : "dB";
+    return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", unit}};
 }
 
 Parser::Map SdrSweepImpl::antennaFormat(const Blocks::SdrSweep& config) {

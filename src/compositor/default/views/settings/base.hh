@@ -9,6 +9,7 @@
 #include "general.hh"
 #include "intelligence.hh"
 #include "legal.hh"
+#include "maps.hh"
 #include "registry.hh"
 #include "remote.hh"
 #include "runtime.hh"
@@ -30,6 +31,7 @@ struct SettingsView {
         SettingsSection section = SettingsSection::General;
         GeneralSettingsView::Config general;
         RemoteSettingsView::Config remote;
+        MapsSettingsView::Config maps;
         RuntimeSettingsView::Config runtime;
         RegistrySettingsView::Config registry;
         IntelligenceSettingsView::Config intelligence;
@@ -45,6 +47,7 @@ struct SettingsView {
         this->config = std::move(config);
         navItem(SettingsSection::General, ICON_LC_MONITOR, "General");
         navItem(SettingsSection::Remote, ICON_LC_RADIO_TOWER, "Remote");
+        navItem(SettingsSection::Maps, ICON_LC_MAP, "Maps");
         navItem(SettingsSection::Runtime, ICON_LC_CPU, "Runtime");
         navItem(SettingsSection::Registry, ICON_LC_DATABASE, "Registry");
         navItem(SettingsSection::Intelligence, ICON_LC_WAND_SPARKLES, "Intelligence");
@@ -59,6 +62,7 @@ struct SettingsView {
         std::vector<Sakura::Component*> preferences;
         for (const auto section : {SettingsSection::General,
                                    SettingsSection::Remote,
+                                   SettingsSection::Maps,
                                    SettingsSection::Runtime,
                                    SettingsSection::Registry,
                                    SettingsSection::Intelligence}) {
@@ -144,6 +148,8 @@ struct SettingsView {
                 return Show(general, config.general);
             case SettingsSection::Remote:
                 return Show(remote, config.remote);
+            case SettingsSection::Maps:
+                return Show(maps, config.maps);
             case SettingsSection::Runtime:
                 return Show(runtime, config.runtime);
             case SettingsSection::Registry:
@@ -161,10 +167,11 @@ struct SettingsView {
     }
 
     Config config;
-    std::array<Sakura::SidebarItem, 8> navigationButtons;
+    std::array<Sakura::SidebarItem, 9> navigationButtons;
     SidebarNavigation navigation;
     GeneralSettingsView general;
     RemoteSettingsView remote;
+    MapsSettingsView maps;
     RuntimeSettingsView runtime;
     RegistrySettingsView registry;
     IntelligenceSettingsView intelligence;

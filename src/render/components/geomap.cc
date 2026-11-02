@@ -1,10 +1,41 @@
 #include "jetstream/render/components/geomap.hh"
 
+#include <array>
+#include <atomic>
 #include <cmath>
 
 #include "geomap_base.hh"
 
 namespace Jetstream::Render::Components {
+
+namespace {
+
+constexpr std::array RenderingFields = {
+    &MapRenderingOptions::buildings, &MapRenderingOptions::buildingOutlines,
+    &MapRenderingOptions::roads, &MapRenderingOptions::rivers,
+    &MapRenderingOptions::borders, &MapRenderingOptions::places,
+    &MapRenderingOptions::airports, &MapRenderingOptions::bathymetry,
+};
+std::atomic<U16> RenderingFlags{(1u << RenderingFields.size()) - 1};
+
+}  // namespace
+
+void GeoMap::SetRenderingOptions(const MapRenderingOptions& options) {
+    U16 flags = 0;
+    for (U64 i = 0; i < RenderingFields.size(); ++i) {
+        if (options.*RenderingFields[i]) flags |= 1u << i;
+    }
+    RenderingFlags.store(flags, std::memory_order_relaxed);
+}
+
+MapRenderingOptions GeoMap::RenderingOptions() {
+    const U16 flags = RenderingFlags.load(std::memory_order_relaxed);
+    MapRenderingOptions options;
+    for (U64 i = 0; i < RenderingFields.size(); ++i) {
+        options.*RenderingFields[i] = (flags & (1u << i)) != 0;
+    }
+    return options;
+}
 
 struct GeoMap::Impl {
     MapContext context;

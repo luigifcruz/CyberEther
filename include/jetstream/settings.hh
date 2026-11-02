@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "jetstream/parser.hh"
+#include "jetstream/render/components/map_options.hh"
 
 namespace Jetstream {
 
@@ -87,6 +88,13 @@ struct JETSTREAM_API Settings {
         std::vector<FlowgraphEntry> favoriteFlowgraphs;
 
         JST_SERDES(themeKey, backgroundParticles, showTips, recentFlowgraphs, favoriteFlowgraphs);
+    };
+
+    struct Maps {
+        bool highResolution = true;
+        Render::Components::MapRenderingOptions rendering;
+
+        JST_SERDES(highResolution, rendering);
     };
 
     struct Intelligence {
@@ -183,13 +191,14 @@ struct JETSTREAM_API Settings {
     Graphics graphics;
     Remote remote;
     Interface interface;
+    Maps maps;
     Intelligence intelligence;
     Developer developer;
     Benchmark benchmark;
     Registry registry;
     Runtime runtime;
 
-    JST_SERDES(graphics, remote, interface, intelligence, developer, registry, runtime);
+    JST_SERDES(graphics, remote, interface, maps, intelligence, developer, registry, runtime);
 
     static Result Get(Settings& settings);
     static Result Set(const Settings& settings, bool persist = true);

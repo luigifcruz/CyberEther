@@ -272,6 +272,16 @@ struct MailSetBackgroundParticles {
     bool value = false;
 };
 
+struct MailSetMapsHighResolution {
+    bool value = true;
+};
+
+struct MailClearMapsCache {};
+
+struct MailSetMapsRendering {
+    Render::Components::MapRenderingOptions value;
+};
+
 struct MailSetShowTips {
     bool value = false;
 };
@@ -731,6 +741,9 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailQuit,
                           MailSetBackgroundParticles,
                           MailSetShowTips,
+                          MailSetMapsHighResolution,
+                          MailSetMapsRendering,
+                          MailClearMapsCache,
                           MailSetFlowgraphEnvironmentVisible,
                           MailSetFlowgraphEnvironmentSearch,
                           MailOpenTerminal,

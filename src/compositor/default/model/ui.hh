@@ -41,6 +41,7 @@ enum class WorkspaceTab : I32 {
 enum class SettingsSection : I32 {
     General = 0,
     Remote,
+    Maps,
     Runtime,
     Registry,
     Intelligence,

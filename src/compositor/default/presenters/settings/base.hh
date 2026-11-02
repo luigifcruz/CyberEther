@@ -6,6 +6,7 @@
 #include "general.hh"
 #include "intelligence.hh"
 #include "legal.hh"
+#include "maps.hh"
 #include "registry.hh"
 #include "remote.hh"
 #include "runtime.hh"
@@ -21,6 +22,7 @@ struct SettingsPresenter {
     const PresenterContext& context;
     GeneralSettingsPresenter general;
     RemoteSettingsPresenter remote;
+    MapsSettingsPresenter maps;
     RuntimeSettingsPresenter runtime;
     RegistrySettingsPresenter registry;
     IntelligenceSettingsPresenter intelligence;
@@ -31,6 +33,7 @@ struct SettingsPresenter {
     explicit SettingsPresenter(const PresenterContext& context) : context(context),
                                                                   general(context),
                                                                   remote(context),
+                                                                  maps(context),
                                                                   runtime(context),
                                                                   registry(context),
                                                                   intelligence(context),
@@ -48,6 +51,9 @@ struct SettingsPresenter {
                 break;
             case SettingsSection::Remote:
                 config.remote = remote.build();
+                break;
+            case SettingsSection::Maps:
+                config.maps = maps.build();
                 break;
             case SettingsSection::Runtime:
                 config.runtime = runtime.build();

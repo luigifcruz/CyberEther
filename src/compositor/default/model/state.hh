@@ -324,6 +324,22 @@ struct DefaultCompositorState {
         std::stringstream output;
     };
 
+    struct MapsState {
+        struct CacheResult {
+            bool available = false;
+            bool cleared = false;
+            U64 bytes = 0;
+        };
+
+        bool highResolution = true;
+        Render::Components::MapRenderingOptions rendering;
+        bool measured = false;
+        bool clearing = false;
+        bool cacheAvailable = false;
+        std::optional<U64> cacheBytes;
+        std::future<CacheResult> task;
+    };
+
     struct RemoteState {
         Instance::Remote::Config config;
 
@@ -413,6 +429,7 @@ struct DefaultCompositorState {
     ClipboardState clipboard;
     RemoteState remote;
     RegistryState registry;
+    MapsState maps;
     FilePickerState filePicker;
     FeedbackState feedback;
 
