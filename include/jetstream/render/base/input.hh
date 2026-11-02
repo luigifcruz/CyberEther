@@ -66,8 +66,9 @@ class JETSTREAM_API InputQueue {
     void push(Event event);
     void pushText(const std::string& utf8);
     std::vector<Event> drain();
-    void wait(F64 seconds);
+    bool wait(F64 seconds, bool surfaces);
     void wake();
+    void wakeSurface();
 
     static std::vector<char32_t> DecodeUtf8(const std::string& utf8);
     static std::optional<MouseButton> ButtonFromIndex(I64 index);
@@ -77,6 +78,7 @@ class JETSTREAM_API InputQueue {
     Platform::DeadlineWaiter signal;
     std::vector<Event> events;
     bool woken = false;
+    bool surfaceWoken = false;
 };
 
 class JETSTREAM_API InputState {

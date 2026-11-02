@@ -79,23 +79,41 @@ std::vector<InputQueue::Event> InputQueue::drain() {
     return std::exchange(events, {});
 }
 
-void InputQueue::wait(F64 seconds) {
+bool InputQueue::wait(F64 seconds, bool surfaces) {
     const auto deadline = WaitDeadline(seconds);
+    const auto ready = [&] {
+        return woken || !events.empty() || (surfaces && surfaceWoken);
+    };
 
     std::unique_lock lock(mutex);
-    while (!woken && events.empty() && Platform::DeadlineWaiter::Clock::now() < deadline) {
+    while (!ready() && Platform::DeadlineWaiter::Clock::now() < deadline) {
         const auto generation = signal.generation();
         lock.unlock();
         signal.waitUntil(deadline, generation);
         lock.lock();
     }
+
+    const bool surfaceWake = surfaces && surfaceWoken;
     woken = false;
+    surfaceWoken = false;
+
+    return surfaceWake;
 }
 
 void InputQueue::wake() {
     {
         std::lock_guard lock(mutex);
         woken = true;
+    }
+    signal.notify();
+}
+
+void InputQueue::wakeSurface() {
+    {
+        std::lock_guard lock(mutex);
+        if (std::exchange(surfaceWoken, true)) {
+            return;
+        }
     }
     signal.notify();
 }

@@ -87,6 +87,8 @@ struct Window::PresentState {
     ColorRGBA<F32> clearColor = {0.0f, 0.0f, 0.0f, 0.0f};
     bool valid = false;
     bool idlePending = false;
+    bool surfaceWake = true;
+    bool surfaceFrame = false;
 
     bool changed(const WindowMetrics& next, const ColorRGBA<F32>& color) const {
         if (!valid || !(next == metrics) || !(color == clearColor) || entries.size() != list.quads.size()) {
@@ -293,10 +295,10 @@ Result Window::begin() {
         graphicalLoopThreadId = std::this_thread::get_id();
     }
 
-    if (std::exchange(presentState->idlePending, false)) {
-        if (auto* viewport = underlyingViewport()) {
-            viewport->waitIdle(kIdleInterval);
-        }
+    const bool idle = std::exchange(presentState->idlePending, false);
+    if (auto* viewport = underlyingViewport()) {
+        presentState->surfaceFrame = viewport->waitIdle(idle ? kIdleInterval : 0.0,
+                                                        idle && presentState->surfaceWake);
     }
 
     // Process attachment queues.
@@ -378,10 +380,14 @@ Result Window::finishPresent(const PresentPass& pass) {
     }
     if (pass.presenting) {
         presentState->presented(_metrics, frameBackground);
+        presentState->surfaceWake = true;
         ++frameStats.presentedFrames;
     } else if (!pass.required) {
         ++frameStats.skippedPresents;
         presentState->idlePending = !_input.hasPending();
+        if (presentState->surfaceFrame) {
+            presentState->surfaceWake = false;
+        }
     }
     return Result::SUCCESS;
 }

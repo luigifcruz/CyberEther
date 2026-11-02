@@ -54,7 +54,16 @@ class Viewport final : public Jetstream::Viewport::Generic {
     Jetstream::Render::WindowMetrics::Policy scalePolicy() const override { return policy; }
     bool macOSBehaviors() const override { return macOS; }
     bool retainedPresent() const override { return retained; }
-    void waitIdle(Jetstream::F64) override { ++idleWaits; }
+    bool waitIdle(Jetstream::F64 seconds, bool surfaces) override {
+        if (seconds > 0.0) {
+            ++idleWaits;
+            surfaceWaits.push_back(surfaces);
+        }
+        if (queueWaits) {
+            return Generic::waitIdle(seconds, surfaces);
+        }
+        return seconds > 0.0 && surfaces && surfaceWake;
+    }
 
     Jetstream::Render::TitlebarChrome titlebarChrome() const override {
         return chrome.value_or(Generic::titlebarChrome());
@@ -78,6 +87,9 @@ class Viewport final : public Jetstream::Viewport::Generic {
     bool macOS = false;
     bool retained = true;
     Jetstream::U64 idleWaits = 0;
+    std::vector<bool> surfaceWaits;
+    bool surfaceWake = false;
+    bool queueWaits = false;
     Jetstream::U64 drags = 0;
     Jetstream::U64 zooms = 0;
     std::vector<bool> appearances;

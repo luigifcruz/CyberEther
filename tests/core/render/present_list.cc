@@ -221,6 +221,39 @@ TEST_CASE("Identical consecutive frames skip presentation", "[core][render][pres
     CHECK(rig.viewport.idleWaits == 9);
 }
 
+TEST_CASE("Surface wakes pause after a woken frame skips presentation until a frame presents",
+          "[core][render][present][retained]") {
+    Rig rig;
+    rig.underlay = true;
+    rig.viewport.surfaceWake = true;
+    for (int frame = 0; frame < 4; ++frame) {
+        REQUIRE(rig.frame() == Result::SUCCESS);
+    }
+    CHECK(rig.presents() == 1);
+    CHECK(rig.viewport.surfaceWaits == std::vector<bool>{true, false});
+
+    rig.viewport.surfaceWake = false;
+    rig.upload();
+    for (int frame = 0; frame < 4; ++frame) {
+        REQUIRE(rig.frame() == Result::SUCCESS);
+    }
+    CHECK(rig.presents() == 2);
+    CHECK(rig.viewport.surfaceWaits.back());
+}
+
+TEST_CASE("A surface wake from before a presented frame does not end a later idle wait",
+          "[core][render][present][retained]") {
+    Rig rig;
+    rig.underlay = true;
+    rig.viewport.queueWaits = true;
+    rig.viewport.input().wakeSurface();
+    for (int frame = 0; frame < 4; ++frame) {
+        REQUIRE(rig.frame() == Result::SUCCESS);
+    }
+    CHECK(rig.presents() == 1);
+    CHECK(rig.viewport.surfaceWaits == std::vector<bool>{true, true});
+}
+
 TEST_CASE("A texture upload with nothing else changed presents once", "[core][render][present][retained]") {
     Rig rig;
     rig.underlay = true;

@@ -82,7 +82,7 @@ class JETSTREAM_API Generic {
 
     virtual bool macOSBehaviors() const;
     virtual bool retainedPresent() const;
-    virtual void waitIdle(F64 seconds);
+    virtual bool waitIdle(F64 seconds, bool surfaces);
 
     F64 inputTime() const;
     void setCursor(SurfaceCursor cursor);
