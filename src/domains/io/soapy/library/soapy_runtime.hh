@@ -18,6 +18,10 @@ constexpr int HasTime = 1 << 2;
 constexpr int Timeout = -1;
 constexpr int StreamError = -2;
 constexpr int Overflow = -4;
+constexpr int ArgBool = 0;
+constexpr int ArgInt = 1;
+constexpr int ArgFloat = 2;
+constexpr int ArgString = 3;
 
 struct Range {
     double minimum;
@@ -89,8 +93,21 @@ struct SoapyApi {
     SoapyAbi::Range (*getGainRange)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setGain)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
     double (*getGain)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
+    char** (*listGains)(const SoapyAbi::Device*, int, std::size_t, std::size_t*) = nullptr;
+    SoapyAbi::Range (*getGainElementRange)(const SoapyAbi::Device*, int, std::size_t,
+                                          const char*) = nullptr;
+    int (*setGainElement)(SoapyAbi::Device*, int, std::size_t, const char*, double) = nullptr;
+    double (*getGainElement)(const SoapyAbi::Device*, int, std::size_t,
+                             const char*) = nullptr;
+    SoapyAbi::Range* (*getBandwidthRange)(const SoapyAbi::Device*, int, std::size_t,
+                                          std::size_t*) = nullptr;
+    int (*setBandwidth)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
+    double (*getBandwidth)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     SoapyAbi::ArgInfo* (*getSettingInfo)(const SoapyAbi::Device*, std::size_t*) = nullptr;
     int (*writeSetting)(SoapyAbi::Device*, const char*, const char*) = nullptr;
+    char* (*readSetting)(const SoapyAbi::Device*, const char*) = nullptr;
+    SoapyAbi::ArgInfo* (*getStreamArgsInfo)(const SoapyAbi::Device*, int, std::size_t,
+                                           std::size_t*) = nullptr;
     char** (*getStreamFormats)(const SoapyAbi::Device*, int, std::size_t,
                                std::size_t*) = nullptr;
     char* (*getNativeStreamFormat)(const SoapyAbi::Device*, int, std::size_t,

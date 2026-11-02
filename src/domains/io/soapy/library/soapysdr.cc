@@ -36,6 +36,10 @@ bool ValidRange(const SoapyAbi::Range& range) {
 SoapyQuery<std::vector<SoapyAbi::Range>> QueryRanges(
     const SoapyLibrary& library, SoapyAbi::Device* device, auto function) {
     SoapyQuery<std::vector<SoapyAbi::Range>> result;
+    if (!function) {
+        result.error = "Query is unavailable.";
+        return result;
+    }
     std::size_t length = 0;
     auto* list = function(device, SoapyAbi::RX, 0, &length);
     if (library.api().lastStatus() != 0) {
@@ -54,6 +58,113 @@ SoapyQuery<std::vector<SoapyAbi::Range>> QueryRanges(
     }
     library.api().free(list);
     return result;
+}
+
+SoapyQuery<std::vector<std::string>> QueryNames(
+    const SoapyLibrary& library, SoapyAbi::Device* device, auto function) {
+    SoapyQuery<std::vector<std::string>> result;
+    if (!function) {
+        result.error = "Query is unavailable.";
+        return result;
+    }
+    std::size_t count = 0;
+    char** names = function(device, SoapyAbi::RX, 0, &count);
+    if (library.api().lastStatus() == 0 && (count == 0 || names)) {
+        result.value.emplace();
+        for (std::size_t i = 0; i < count; ++i) {
+            if (names[i] && *names[i]) {
+                result.value->emplace_back(names[i]);
+            }
+        }
+    } else {
+        result.error = library.lastError();
+    }
+    library.api().stringsClear(&names, count);
+    return result;
+}
+
+SoapyQuery<std::vector<SoapyCapabilities::Argument>> QueryArguments(
+    const SoapyLibrary& library, auto read) {
+    SoapyQuery<std::vector<SoapyCapabilities::Argument>> result;
+    std::size_t count = 0;
+    auto* args = read(&count);
+    if (library.api().lastStatus() == 0 && (count == 0 || args)) {
+        result.value.emplace();
+        const auto text = [](const char* value) { return value ? value : ""; };
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto& arg = args[i];
+            if (!arg.key || !*arg.key) {
+                continue;
+            }
+            SoapyCapabilities::Argument value{
+                .key = arg.key, .value = text(arg.value), .name = text(arg.name),
+                .description = text(arg.description), .units = text(arg.units),
+                .type = arg.type, .range = arg.range,
+            };
+            if (arg.options) {
+                for (std::size_t j = 0; j < arg.numOptions; ++j) {
+                    value.options.emplace_back(text(arg.options[j]));
+                    value.optionNames.emplace_back(
+                        arg.optionNames ? text(arg.optionNames[j]) : "");
+                }
+            }
+            result.value->push_back(std::move(value));
+        }
+    } else {
+        result.error = library.lastError();
+    }
+    library.api().argInfoListClear(args, count);
+    return result;
+}
+
+Result ArgumentValues(const Parser::Map& values,
+                       const SoapyQuery<std::vector<SoapyCapabilities::Argument>>& query,
+                       SoapyKwargs& args) {
+    for (const auto& [key, encoded] : values) {
+        if (!query.value) {
+            JST_ERROR("[MODULE_SOAPY] Cannot query parameter '{}': {}", key, query.error);
+            return Result::ERROR;
+        }
+        const auto found = std::find_if(query.value->begin(), query.value->end(),
+            [&](const auto& arg) { return arg.key == key; });
+        std::string value;
+        if (found == query.value->end() || !Parser::TryTypedToString(encoded, value)) {
+            JST_ERROR("[MODULE_SOAPY] Unknown or invalid parameter '{}'.", key);
+            return Result::ERROR;
+        }
+        const auto& arg = *found;
+        bool valid = true;
+        F64 number = 0.0;
+        if (arg.type == SoapyAbi::ArgBool) {
+            bool flag;
+            valid = Parser::StringToTyped(value, flag) == Result::SUCCESS;
+        } else if (arg.type == SoapyAbi::ArgInt) {
+            I64 integer;
+            valid = Parser::StringToTyped(value, integer) == Result::SUCCESS;
+            if (valid) {
+                number = static_cast<F64>(integer);
+            }
+        } else if (arg.type == SoapyAbi::ArgFloat) {
+            valid = Parser::StringToTyped(value, number) == Result::SUCCESS &&
+                    std::isfinite(number);
+        }
+        const bool numeric = arg.type == SoapyAbi::ArgInt ||
+                             arg.type == SoapyAbi::ArgFloat;
+        if (numeric && ValidRange(arg.range) &&
+            arg.range.maximum > arg.range.minimum) {
+            valid = valid && number >= arg.range.minimum && number <= arg.range.maximum;
+        }
+        if (!arg.options.empty()) {
+            valid = valid && std::find(arg.options.begin(), arg.options.end(), value) !=
+                             arg.options.end();
+        }
+        if (!valid) {
+            JST_ERROR("[MODULE_SOAPY] Invalid value '{}' for parameter '{}'.", value, key);
+            return Result::ERROR;
+        }
+        args[key] = std::move(value);
+    }
+    return Result::SUCCESS;
 }
 
 using DiscoveryClock = SoapyDiscovery::Clock;
@@ -299,40 +410,30 @@ Result SoapyReceiver::queryCapabilities() {
     deviceInfo.connected = true;
     queryTuningCapabilities();
 
+    caps.settings = QueryArguments(*library, [&](std::size_t* count) {
+        return api.getSettingInfo(device, count);
+    });
+    caps.streamArgs = {};
+    if (api.getStreamArgsInfo) {
+        caps.streamArgs = QueryArguments(*library, [&](std::size_t* count) {
+            return api.getStreamArgsInfo(device, SoapyAbi::RX, 0, count);
+        });
+    } else {
+        caps.streamArgs.error = "Query is unavailable.";
+    }
     caps.biasTee = {};
-    std::size_t settingCount = 0;
-    auto* settings = api.getSettingInfo(device, &settingCount);
-    if (api.lastStatus() == 0 && (settingCount == 0 || settings)) {
+    if (caps.settings.value) {
         caps.biasTee.value = false;
-        for (std::size_t i = 0; i < settingCount; ++i) {
-            if (settings[i].key && std::string(settings[i].key) == "biastee") {
+        for (const auto& setting : *caps.settings.value) {
+            if (setting.key == "biastee") {
                 caps.biasTee.value = true;
             }
         }
     } else {
-        caps.biasTee.error = failure();
+        caps.biasTee.error = caps.settings.error;
     }
-    api.argInfoListClear(settings, settingCount);
-
-    const auto readNames = [&](auto function) {
-        SoapyQuery<std::vector<std::string>> result;
-        std::size_t count = 0;
-        char** names = function(device, SoapyAbi::RX, 0, &count);
-        if (api.lastStatus() == 0 && (count == 0 || names)) {
-            result.value.emplace();
-            for (std::size_t i = 0; i < count; ++i) {
-                if (names[i] && *names[i]) {
-                    result.value->emplace_back(names[i]);
-                }
-            }
-        } else {
-            result.error = failure();
-        }
-        api.stringsClear(&names, count);
-        return result;
-    };
-    caps.antennas = readNames(api.listAntennas);
-    caps.dataTypes = readNames(api.getStreamFormats);
+    caps.antennas = QueryNames(*library, device, api.listAntennas);
+    caps.dataTypes = QueryNames(*library, device, api.getStreamFormats);
     if (!caps.dataTypes.value) {
         JST_ERROR("[MODULE_SOAPY] Failed to query receive formats: {}",
                   caps.dataTypes.error);
@@ -353,6 +454,23 @@ void SoapyReceiver::queryTuningCapabilities() {
     auto& caps = deviceInfo.capabilities;
     caps.sampleRates = QueryRanges(*library, device, api.getSampleRateRange);
     caps.frequencies = QueryRanges(*library, device, api.getFrequencyRange);
+    caps.bandwidths = QueryRanges(*library, device, api.getBandwidthRange);
+    caps.gains = QueryNames(*library, device, api.listGains);
+    caps.gainRanges.clear();
+    if (caps.gains.value && api.getGainElementRange) {
+        for (const auto& name : *caps.gains.value) {
+            auto range = QueryValue<SoapyAbi::Range>(*library, [&] {
+                return api.getGainElementRange(device, SoapyAbi::RX, 0, name.c_str());
+            });
+            if (range.value && (!ValidRange(*range.value) ||
+                !std::isfinite(static_cast<F32>(range.value->minimum)) ||
+                !std::isfinite(static_cast<F32>(range.value->maximum)))) {
+                range.value.reset();
+                range.error = "Driver returned an invalid gain range.";
+            }
+            caps.gainRanges[name] = std::move(range);
+        }
+    }
     caps.automaticGain = QueryValue<bool>(*library, [&] {
         return api.hasGainMode(device, SoapyAbi::RX, 0);
     });
@@ -390,6 +508,41 @@ Result SoapyReceiver::queryState() {
     current.frequency = readNumber(api.getFrequency);
     current.sampleRate = readNumber(api.getSampleRate, true);
     current.gain = readNumber(api.getGain);
+    current.bandwidth = readNumber(api.getBandwidth, true);
+    current.gains.clear();
+    if (deviceInfo.capabilities.gains.value) {
+        for (const auto& name : *deviceInfo.capabilities.gains.value) {
+            auto& gain = current.gains[name];
+            if (api.getGainElement) {
+                gain = QueryValue<F64>(*library, [&] {
+                    return api.getGainElement(device, SoapyAbi::RX, 0, name.c_str());
+                });
+                if (gain.value && !std::isfinite(*gain.value)) {
+                    gain.value.reset();
+                    gain.error = "Driver returned an invalid gain.";
+                }
+            } else {
+                gain.error = "Readback is unavailable.";
+            }
+        }
+    }
+    current.settings.clear();
+    if (deviceInfo.capabilities.settings.value) {
+        for (const auto& arg : *deviceInfo.capabilities.settings.value) {
+            auto& value = current.settings[arg.key];
+            if (api.readSetting) {
+                char* text = api.readSetting(device, arg.key.c_str());
+                if (api.lastStatus() == 0 && text) {
+                    value.value = text;
+                } else {
+                    value.error = failure();
+                }
+                api.free(text);
+            } else {
+                value.error = "Readback is unavailable.";
+            }
+        }
+    }
     current.automaticGain = {};
     if (deviceInfo.capabilities.automaticGain.value == false) {
         current.automaticGain.value = false;
@@ -577,6 +730,62 @@ Result SoapyReceiver::setBiasTee(const bool enabled) {
     }
 
     return Result::SUCCESS;
+}
+
+Result SoapyReceiver::setGainElement(const std::string& name, const F64 gain) {
+    const auto found = deviceInfo.capabilities.gainRanges.find(name);
+    if (!device || !library->api().setGainElement ||
+        found == deviceInfo.capabilities.gainRanges.end() || !found->second.value ||
+        !std::isfinite(gain)) {
+        JST_ERROR("[MODULE_SOAPY] Gain stage '{}' is unavailable or invalid.", name);
+        return Result::ERROR;
+    }
+    const auto& range = *found->second.value;
+    const F64 applied = std::clamp(gain, range.minimum, range.maximum);
+    if (library->api().setGainElement(device, SoapyAbi::RX, 0, name.c_str(), applied) != 0) {
+        JST_ERROR("[MODULE_SOAPY] Failed to set gain stage '{}': {}", name, failure());
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
+}
+
+Result SoapyReceiver::setBandwidth(const F64 bandwidth) {
+    const auto& ranges = deviceInfo.capabilities.bandwidths.value;
+    if (!device || !library->api().setBandwidth || !ranges || ranges->empty() ||
+        !std::isfinite(bandwidth) || bandwidth <= 0.0) {
+        JST_ERROR("[MODULE_SOAPY] Receive bandwidth is unavailable or invalid.");
+        return Result::ERROR;
+    }
+    if (library->api().setBandwidth(device, SoapyAbi::RX, 0, bandwidth) != 0) {
+        JST_ERROR("[MODULE_SOAPY] Failed to set bandwidth: {}", failure());
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
+}
+
+Result SoapyReceiver::writeSettings(const Parser::Map& settings) {
+    SoapyKwargs values;
+    JST_CHECK(ArgumentValues(settings, deviceInfo.capabilities.settings, values));
+    for (const auto& [key, value] : values) {
+        if (key == "biastee") {
+            JST_ERROR("[MODULE_SOAPY] Use the Bias-T control for antenna power.");
+            return Result::ERROR;
+        }
+    }
+    for (const auto& [key, value] : values) {
+        if (library->api().writeSetting(device, key.c_str(), value.c_str()) != 0) {
+            JST_ERROR("[MODULE_SOAPY] Failed to write setting '{}': {}", key, failure());
+            return Result::ERROR;
+        }
+    }
+    return settings.empty() ? Result::SUCCESS : queryCapabilities();
+}
+
+Result SoapyReceiver::streamArguments(const std::string& markup,
+                                      const Parser::Map& overrides,
+                                      SoapyKwargs& args) const {
+    JST_CHECK(library->kwargsFromString(markup, args));
+    return ArgumentValues(overrides, deviceInfo.capabilities.streamArgs, args);
 }
 
 Result SoapyReceiver::startStream(const std::string& streamString,

@@ -42,6 +42,19 @@ Result SoapyImpl::validate() {
         JST_ERROR("[MODULE_SOAPY] Manual gain must be finite.");
         return Result::ERROR;
     }
+    if ((config.gainMode != "total" && config.gainMode != "stages") ||
+        !std::isfinite(config.bandwidth) || config.bandwidth < 0.0) {
+        JST_ERROR("[MODULE_SOAPY] Invalid gain mode or bandwidth.");
+        return Result::ERROR;
+    }
+    for (const auto& [name, value] : config.gains) {
+        F64 gain = 0.0;
+        if (Parser::Deserialize(config.gains, name, gain) != Result::SUCCESS ||
+            !std::isfinite(gain)) {
+            JST_ERROR("[MODULE_SOAPY] Invalid gain for stage '{}'.", name);
+            return Result::ERROR;
+        }
+    }
 
     if (config.numberOfBatches == 0) {
         JST_ERROR("[MODULE_SOAPY] Number of batches cannot be zero.");
@@ -118,6 +131,7 @@ Result SoapyImpl::create() {
     throughput.publish({0.0f, 0.0f});
 
     JST_CHECK(receiverDevice.open(deviceString));
+    JST_CHECK(receiverDevice.writeSettings(settings));
     JST_CHECK(receiverDevice.validateDataType(validatedDataType));
     JST_CHECK(allocateBuffers());
     JST_CHECK(configureDevice());
@@ -163,11 +177,16 @@ Result SoapyImpl::configureDevice() {
         .sampleRate = sampleRate,
         .automaticGain = automaticGain,
         .gain = manualGain,
+        .gainMode = gainMode,
+        .gains = gains,
+        .bandwidth = bandwidth,
     };
     JST_CHECK(receiverDevice.setAntenna(antenna));
     JST_CHECK(applyTuning(desired, true));
     JST_CHECK(receiverDevice.setBiasTee(biasTee));
-    JST_CHECK(receiverDevice.startStream(streamString, buffer.dtype()));
+    SoapyKwargs args;
+    JST_CHECK(receiverDevice.streamArguments(streamString, streamArgs, args));
+    JST_CHECK(receiverDevice.startStreamArgs(args, buffer.dtype()));
     JST_CHECK(updateDeviceInfo(true));
     return Result::SUCCESS;
 }
@@ -226,6 +245,8 @@ Result SoapyImpl::reconfigure() {
     if (errored || newConfig.modulePath != modulePath ||
         newConfig.deviceString != deviceString ||
         newConfig.streamString != streamString ||
+        newConfig.streamArgs != streamArgs || newConfig.settings != settings ||
+        (bandwidth != 0.0 && newConfig.bandwidth == 0.0) ||
         newConfig.dataType != dataType ||
         newConfig.antenna != antenna ||
         newConfig.biasTee != biasTee ||
@@ -241,14 +262,40 @@ Result SoapyImpl::reconfigure() {
             .sampleRate = newConfig.sampleRate,
             .automaticGain = newConfig.automaticGain,
             .gain = newConfig.manualGain,
+            .gainMode = newConfig.gainMode,
+            .gains = newConfig.gains,
+            .bandwidth = newConfig.bandwidth,
         };
         const auto previous = tuned;
+        auto restore = previous;
+        const auto& state = receiverDevice.info().state;
+        if (desired.bandwidth != previous.bandwidth && !state.bandwidth.value) {
+            JST_ERROR("[MODULE_SOAPY] Cannot change bandwidth without a readback.");
+            return Result::ERROR;
+        }
+        if (desired.bandwidth != previous.bandwidth && state.bandwidth.value) {
+            restore.bandwidth = *state.bandwidth.value;
+        }
+        if (previous.gainMode == "stages") {
+            for (const auto& [name, gain] : state.gains) {
+                if (gain.value) {
+                    restore.gains[name] = *gain.value;
+                }
+            }
+            for (const auto& [name, value] : desired.gains) {
+                if (!restore.gains.contains(name)) {
+                    JST_ERROR("[MODULE_SOAPY] Cannot restore gain stage '{}'.", name);
+                    return Result::ERROR;
+                }
+            }
+        }
         const auto result = applyTuning(desired);
         if (result != Result::SUCCESS) {
-            if (applyTuning(previous, true) != Result::SUCCESS) {
+            if (applyTuning(restore, true) != Result::SUCCESS) {
                 errored = true;
                 JST_ERROR("[MODULE_SOAPY] Failed to restore the previous receiver settings.");
             }
+            tuned = previous;
             return result;
         }
 
@@ -256,6 +303,9 @@ Result SoapyImpl::reconfigure() {
         sampleRate = newConfig.sampleRate;
         automaticGain = newConfig.automaticGain;
         manualGain = newConfig.manualGain;
+        gainMode = newConfig.gainMode;
+        gains = newConfig.gains;
+        bandwidth = newConfig.bandwidth;
         return Result::SUCCESS;
     });
 }
@@ -402,11 +452,29 @@ Result SoapyImpl::applyTuning(const Tuning& desired, const bool force) {
                         (!desired.automaticGain && caps.automaticGain.value == true);
     const bool adjustable = caps.gain.value &&
                             caps.gain.value->minimum < caps.gain.value->maximum;
-    if (manual && adjustable &&
-        (force || desired.gain != tuned.gain || retuned || rateChanged || modeChanged)) {
+    const bool stages = desired.gainMode == "stages";
+    if (manual && stages && (!caps.gains.value || caps.gains.value->empty())) {
+        JST_ERROR("[MODULE_SOAPY] Gain stages are unavailable.");
+        return Result::ERROR;
+    }
+    const bool gainsChanged = force || desired.gainMode != tuned.gainMode ||
+                              desired.gains != tuned.gains;
+    if (manual && !stages && adjustable &&
+        (gainsChanged || desired.gain != tuned.gain || retuned || rateChanged || modeChanged)) {
         JST_CHECK(receiverDevice.setGain(receiverDevice.clampGain(desired.gain)));
     }
-    JST_CHECK(updateDeviceInfo(retuned || rateChanged));
+    if (manual && stages && (gainsChanged || retuned || rateChanged || modeChanged)) {
+        for (const auto& [name, value] : desired.gains) {
+            F64 gain = 0.0;
+            JST_CHECK(Parser::Deserialize(desired.gains, name, gain));
+            JST_CHECK(receiverDevice.setGainElement(name, gain));
+        }
+    }
+    const bool bandwidthChanged = desired.bandwidth != tuned.bandwidth;
+    if (desired.bandwidth > 0.0 && (force || bandwidthChanged || retuned || rateChanged)) {
+        JST_CHECK(receiverDevice.setBandwidth(desired.bandwidth));
+    }
+    JST_CHECK(updateDeviceInfo(retuned || rateChanged || bandwidthChanged || gainsChanged));
     tuned = desired;
     return Result::SUCCESS;
 }

@@ -16,6 +16,12 @@ struct Soapy : public Block::Config {
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
     F32 manualGain = 0.0f;
+    std::string gainMode = "total";
+    Parser::Map gains;
+    F64 bandwidth = 0.0;
+    bool advanced = false;
+    Parser::Map settings;
+    Parser::Map streamArgs;
     bool biasTee = false;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
@@ -26,7 +32,8 @@ struct Soapy : public Block::Config {
     JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(modulePath, deviceString, streamString, dataType,
                      antenna, frequency, frequencyStep, sampleRate,
-                     automaticGain, manualGain, biasTee, numberOfBatches,
+                     automaticGain, manualGain, gainMode, gains, bandwidth,
+                     advanced, settings, streamArgs, biasTee, numberOfBatches,
                      numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "SoapySDR",
@@ -48,8 +55,17 @@ struct Soapy : public Block::Config {
         "samples are overwritten and Buffer Loss rises.\n"
         "- **Manual Gain applies when AGC is off or unavailable.** The requested gain "
         "is reapplied after tuning and clamped to the radio's gain range.\n"
-        "- **Actual Settings shows readbacks.** The driver may round requested "
-        "settings. Saved requests stay unchanged; output metadata uses actual tuning.\n"
+        "- **Manual Gain Mode selects total or stage gains.** Stage names, ranges "
+        "and steps come from the driver. Only explicitly configured stages are set.\n"
+        "- **Bandwidth controls the hardware receive filter.** Zero leaves it to "
+        "the driver; returning to zero reopens the receiver.\n"
+        "- **Advanced Parameters exposes driver controls.** Device arguments, stream "
+        "arguments and driver settings are applied when the receiver opens. Changing "
+        "them restarts reception. Stream overrides take precedence over raw arguments.\n"
+        "- **Device status appears below each control.** Readbacks use small grey "
+        "text, amber when they differ from the request and red when a query fails. "
+        "These values refresh after control changes. Saved requests stay unchanged; "
+        "output metadata uses actual tuning.\n"
         "\n"
         "## Ports\n"
         "\n"
@@ -81,6 +97,16 @@ struct Soapy : public Block::Config {
         "| **Manual Gain** | 0 dB | Within the radio's gain range | Requested receive "
         "gain, shown when AGC is off or unsupported and gain is adjustable. "
         "Limits follow the tuned frequency. |\n"
+        "| **Manual Gain Mode** | Total | Total, Stages | Selects which manual gain "
+        "controls apply. Available when the driver reports gain stages and AGC is off. |\n"
+        "| **Stage Gain** | Driver choice | Driver's range and step | Sets an individual "
+        "gain stage. Total gain is not written in this mode. |\n"
+        "| **Bandwidth** | 0 | Driver supported | Hardware filter width in MHz; "
+        "independent of the sample rate. Zero preserves the driver's choice. |\n"
+        "| **Advanced Parameters** | Off | On, Off | Keeps the device selector and "
+        "shows raw device and stream "
+        "arguments plus typed stream overrides and settings reported by the driver. "
+        "Defaults shown in these controls are only saved after editing. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable, on "
         "radios that support it. Hidden once the radio is open and lacks it. |\n"
         "| **Batches** | 8 batches | 1 or more | Batches per output buffer. |\n"
@@ -93,9 +119,9 @@ struct Soapy : public Block::Config {
         "\n"
         "| Readout | Shows |\n"
         "|---|---|\n"
-        "| **Actual Settings** | Frequency, sample rate, gain mode, gain and antenna "
-        "read after the last control change. Optional query failures are reported "
-        "here. AGC can change gain between readbacks. |\n"
+        "| **Device status** | Frequency, sample rate, bandwidth, gains, driver "
+        "settings and antenna read after the last control change, below their "
+        "controls. AGC can change gain between readbacks. |\n"
         "| **Buffer Fill** | How full the internal buffer is, smoothed, from 0 to "
         "100%. Near 100% means the chain is falling behind. |\n"
         "| **Buffer Loss** | Share of samples overwritten before the chain read them "
@@ -133,6 +159,8 @@ struct Soapy : public Block::Config {
         "| The block reports that no SoapySDR devices were found | The radio is "
         "unplugged, or no installed module supports it | Plug it in and install the "
         "SoapySDR module for the radio. |\n"
+        "| A driver needs a custom library path | The library is outside the system "
+        "search path | Open Inspect from the node menu and set `modulePath`. |\n"
         "| The block reports that it failed to open the device | Another program holds "
         "the radio, or its driver failed | Close the other program and pick the radio "
         "again. |\n"

@@ -201,6 +201,10 @@ changed. Dropdown descriptions and values are never delimiter-split.
 | Multiline editor (`multiline`) | The `collapsible` property defaults to false. |
 | Tensor control (`tensor-config`) | The required `source` identifies the config key containing tensor specifications. The `index` property defaults to 0. |
 
+Controls can show a small `hint` below the input. Its `hint_tone` is `secondary`
+(default), `warning`, or `error`. The optional `config` property binds a control to
+another top-level config key; it cannot be combined with a `map` binding.
+
 Descriptions are validated at registration. Invalid types, malformed options, non-positive
 or non-finite scales, invalid bounds, and precision outside the integer range from 0 to 16
 return `Result::ERROR`. Descriptor payloads must support the Parser equality checks used for

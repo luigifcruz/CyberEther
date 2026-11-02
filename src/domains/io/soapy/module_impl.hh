@@ -60,6 +60,9 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
         F32 sampleRate = 0.0f;
         bool automaticGain = true;
         F32 gain = 0.0f;
+        std::string gainMode = "total";
+        Parser::Map gains;
+        F64 bandwidth = 0.0;
     };
 
     SoapyReceiver receiverDevice;

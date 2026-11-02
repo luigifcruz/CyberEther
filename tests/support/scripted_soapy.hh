@@ -22,6 +22,7 @@ struct Settings {
     F64 sampleRate = 2.0e6;
     bool automaticGain = false;
     F64 gain = 30.0;
+    F64 bandwidth = 8.0e6;
 };
 
 struct Script {
@@ -35,6 +36,15 @@ struct Script {
     std::vector<SoapyAbi::Range> sampleRateRanges{{1.0e6, 10.0e6, 0.0}};
     std::vector<SoapyAbi::Range> frequencyRanges{{10.0e6, 2000.0e6, 0.0}};
     SoapyAbi::Range gainRange{0.0, 60.0, 0.0};
+    bool controlsSupported = false;
+    std::map<std::string, F64> gainStages{{"LNA", 10.0}, {"VGA", 20.0}};
+    std::map<std::string, std::string> driverSettings{
+        {"enabled", "false"}, {"decimation", "2"}, {"correction", "0.5"},
+        {"mode", "fast"}, {"label", "original"}};
+    SoapyKwargs streamArgs;
+    U64 totalGainWrites = 0;
+    U64 bandwidthWrites = 0;
+    bool streamStarted = false;
     bool automaticGainSupported = true;
     bool biasTeeSupported = false;
     bool biasTeeEnabled = false;
@@ -62,6 +72,14 @@ struct Script {
         sampleRateRanges = {{1.0e6, 10.0e6, 0.0}};
         frequencyRanges = {{10.0e6, 2000.0e6, 0.0}};
         gainRange = {0.0, 60.0, 0.0};
+        controlsSupported = false;
+        gainStages = {{"LNA", 10.0}, {"VGA", 20.0}};
+        driverSettings = {{"enabled", "false"}, {"decimation", "2"},
+                          {"correction", "0.5"}, {"mode", "fast"}, {"label", "original"}};
+        streamArgs.clear();
+        totalGainWrites = 0;
+        bandwidthWrites = 0;
+        streamStarted = false;
         automaticGainSupported = true;
         biasTeeSupported = false;
         biasTeeEnabled = false;
@@ -173,19 +191,114 @@ inline SoapyApi Api() {
     api.getSettingInfo = [](const SoapyAbi::Device*, std::size_t* count)
         -> SoapyAbi::ArgInfo* {
         State().query("settings");
-        if (State().biasTeeSupported) {
-            static SoapyAbi::ArgInfo info{};
-            static char key[] = "biastee";
-            info.key = key;
-            *count = 1;
-            return &info;
+        static std::vector<SoapyAbi::ArgInfo> args;
+        args.clear();
+        const auto argument = [](const char* key, int type, const char* value,
+                                  SoapyAbi::Range range = {}) {
+            SoapyAbi::ArgInfo info{};
+            info.key = const_cast<char*>(key);
+            info.name = const_cast<char*>(key);
+            info.value = const_cast<char*>(value);
+            info.type = type;
+            info.range = range;
+            return info;
+        };
+        if (State().controlsSupported) {
+            args = {argument("enabled", 0, "false"),
+                    argument("decimation", 1, "2", {1.0, 8.0, 1.0}),
+                    argument("correction", 2, "0.5", {-1.0, 1.0, 0.25}),
+                    argument("mode", 3, "fast"), argument("label", 3, "original")};
+            static char* options[]{const_cast<char*>("fast"), const_cast<char*>("quiet")};
+            static char* names[]{const_cast<char*>("Fast"), const_cast<char*>("Quiet")};
+            args[3].numOptions = 2;
+            args[3].options = options;
+            args[3].optionNames = names;
         }
-        *count = 0;
-        return nullptr;
+        if (State().biasTeeSupported) {
+            args.push_back(argument("biastee", 0, "false"));
+        }
+        *count = args.size();
+        return args.data();
     };
-    api.writeSetting = [](SoapyAbi::Device*, const char*, const char* value) {
-        State().biasTeeEnabled = std::string(value) == "true";
+    api.writeSetting = [](SoapyAbi::Device*, const char* key, const char* value) {
+        auto& state = State();
+        std::lock_guard lock(state.mutex);
+        if (std::string(key) == "biastee") {
+            state.biasTeeEnabled = std::string(value) == "true";
+            return 0;
+        }
+        if (state.streamStarted) {
+            ++state.concurrentChanges;
+        }
+        if (state.failure == std::string("setting:") + key) {
+            state.failure.clear();
+            return -1;
+        }
+        state.driverSettings[key] = value;
         return 0;
+    };
+    api.readSetting = [](const SoapyAbi::Device*, const char* key) {
+        State().query("readSetting");
+        return State().driverSettings[key].data();
+    };
+    api.getStreamArgsInfo = [](const SoapyAbi::Device*, int, std::size_t,
+                               std::size_t* count) -> SoapyAbi::ArgInfo* {
+        State().query("streamArgs");
+        static char* options[]{const_cast<char*>("sc16"), const_cast<char*>("sc8")};
+        static SoapyAbi::ArgInfo wire{};
+        wire.key = const_cast<char*>("wire");
+        wire.value = const_cast<char*>("sc16");
+        wire.type = 3;
+        wire.numOptions = 2;
+        wire.options = options;
+        *count = State().controlsSupported ? 1 : 0;
+        return &wire;
+    };
+    api.listGains = [](const SoapyAbi::Device*, int, std::size_t, std::size_t* count) {
+        State().query("gains");
+        static char* names[]{const_cast<char*>("LNA"), const_cast<char*>("VGA")};
+        *count = State().controlsSupported ? 2 : 0;
+        return names;
+    };
+    api.getGainElementRange = [](const SoapyAbi::Device*, int, std::size_t,
+                                 const char* name) {
+        State().query("gainRange");
+        return SoapyAbi::Range{0.0, 30.0, std::string(name) == "LNA" ? 1.0 : 0.5};
+    };
+    api.getGainElement = [](const SoapyAbi::Device*, int, std::size_t, const char* name) {
+        State().query("gainElement");
+        std::lock_guard lock(State().mutex);
+        return State().gainStages.at(name);
+    };
+    api.setGainElement = [](SoapyAbi::Device*, int, std::size_t, const char* name,
+                            double value) {
+        auto& state = State();
+        std::lock_guard lock(state.mutex);
+        if (state.activeReads > 0) {
+            ++state.concurrentChanges;
+        }
+        if (state.failure == std::string("gain:") + name) {
+            state.failure.clear();
+            return -1;
+        }
+        state.gainStages.at(name) = value;
+        state.applied.gain = state.gainStages.at("LNA") + state.gainStages.at("VGA");
+        return 0;
+    };
+    api.getBandwidthRange = [](const SoapyAbi::Device*, int, std::size_t,
+                                std::size_t* count) {
+        State().query("bandwidthRange");
+        static SoapyAbi::Range range{1.0e6, 20.0e6, 1.0e6};
+        *count = State().controlsSupported ? 1 : 0;
+        return &range;
+    };
+    api.getBandwidth = [](const SoapyAbi::Device*, int, std::size_t) {
+        return State().get("getBandwidth", &Settings::bandwidth);
+    };
+    api.setBandwidth = [](SoapyAbi::Device*, int, std::size_t, double value) {
+        ++State().bandwidthWrites;
+        return State().set("bandwidth", &Settings::bandwidth,
+                            std::round(value / 1.0e6) * 1.0e6);
     };
     api.listAntennas = [](const SoapyAbi::Device*, int, std::size_t, std::size_t* count)
         -> char** {
@@ -232,6 +345,7 @@ inline SoapyApi Api() {
         return State().set("automaticGain", &Settings::automaticGain, value);
     };
     api.setGain = [](SoapyAbi::Device*, int, std::size_t, double value) {
+        ++State().totalGainWrites;
         return State().set("manualGain", &Settings::gain, value);
     };
     api.getStreamFormats = [](const SoapyAbi::Device*, int, std::size_t,
@@ -252,7 +366,11 @@ inline SoapyApi Api() {
         return State().nativeFormat.data();
     };
     api.setupStream = [](SoapyAbi::Device*, int, const char* format, const std::size_t*,
-                          std::size_t, const SoapyAbi::Kwargs*) {
+                          std::size_t, const SoapyAbi::Kwargs* args) {
+        State().streamArgs.clear();
+        for (std::size_t i = 0; i < args->size; ++i) {
+            State().streamArgs[args->keys[i]] = args->vals[i];
+        }
         State().streamFormat = format;
         State().position = 0;
         for (const auto& supported : SoapySampleFormats) {
@@ -263,10 +381,14 @@ inline SoapyApi Api() {
         return reinterpret_cast<SoapyAbi::Stream*>(&State());
     };
     api.activateStream = [](SoapyAbi::Device*, SoapyAbi::Stream*, int, long long, std::size_t) {
+        State().streamStarted = true;
         return 0;
     };
     api.deactivateStream = [](SoapyAbi::Device*, SoapyAbi::Stream*, int, long long) { return 0; };
-    api.closeStream = [](SoapyAbi::Device*, SoapyAbi::Stream*) { return 0; };
+    api.closeStream = [](SoapyAbi::Device*, SoapyAbi::Stream*) {
+        State().streamStarted = false;
+        return 0;
+    };
     api.readStream = [](SoapyAbi::Device*, SoapyAbi::Stream*, void* const* buffers,
                          std::size_t count, int*,
                          long long*, long) {

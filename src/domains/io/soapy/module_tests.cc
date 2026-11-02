@@ -82,6 +82,15 @@ TEST_CASE("Soapy validates configuration before accessing the runtime",
     SECTION("non-finite manual gain") {
         config.manualGain = std::numeric_limits<F32>::infinity();
     }
+    SECTION("invalid gain mode") {
+        config.gainMode = "unknown";
+    }
+    SECTION("negative bandwidth") {
+        config.bandwidth = -1.0;
+    }
+    SECTION("non-finite stage gain") {
+        config.gains = {{"LNA", std::numeric_limits<F64>::quiet_NaN()}};
+    }
     SECTION("overflowing buffer dimensions") {
         config.numberOfBatches = std::numeric_limits<U64>::max();
     }
@@ -583,4 +592,93 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     REQUIRE_FALSE(receiver.info().capabilities.biasTee.error.empty());
     receiver.reset();
     REQUIRE_FALSE(script.biasTeeEnabled);
+}
+
+TEST_CASE_METHOD(SoapyModuleFixture,
+                 "Soapy stage gains and bandwidth preserve requests and roll back together",
+                 "[modules][soapy][controls]") {
+    auto& script = TestSoapy::State();
+    script.controlsSupported = true;
+    config.automaticGain = false;
+    config.gainMode = "stages";
+    config.gains = {{"LNA", 8.0}, {"VGA", 12.5}};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    REQUIRE(script.totalGainWrites == 0);
+    REQUIRE(script.bandwidthWrites == 0);
+    const auto impl = module->getImpl<Modules::SoapyImpl>();
+    REQUIRE(impl->getDeviceInfo().state.gains.at("VGA").value == 12.5);
+    REQUIRE(module->reconfigure({{"gains", Parser::Map{{"LNA", 10.0}, {"VGA", 14.0}}},
+                                 {"bandwidth", 6.4e6}}) == Result::SUCCESS);
+    REQUIRE(impl->getDeviceInfo().state.bandwidth.value == 6.0e6);
+    REQUIRE(static_cast<const Modules::Soapy&>(module->config()).bandwidth == 6.4e6);
+    script.fail("gainElement");
+    REQUIRE(module->reconfigure({{"frequency", 110.0e6f}}) == Result::SUCCESS);
+    REQUIRE_FALSE(impl->getDeviceInfo().state.gains.at("LNA").value);
+    REQUIRE(module->reconfigure({{"frequency", 120.0e6f}}) == Result::SUCCESS);
+    const Parser::Map edit{{"gains", Parser::Map{{"LNA", 20.0}, {"VGA", 22.0}}},
+                           {"bandwidth", 12.0e6}};
+    script.fail("gain:VGA");
+    REQUIRE(module->reconfigure(edit) == Result::ERROR);
+    REQUIRE(script.gainStages == std::map<std::string, F64>{{"LNA", 10.0}, {"VGA", 14.0}});
+    REQUIRE(impl->getDeviceInfo().state.bandwidth.value == 6.0e6);
+    REQUIRE(static_cast<const Modules::Soapy&>(module->config()).bandwidth == 6.4e6);
+    REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+    REQUIRE(impl->getDeviceInfo().state.bandwidth.value == 12.0e6);
+    REQUIRE(module->reconfigure({{"gainMode", "total"}, {"manualGain", 17.0f}}) ==
+            Result::SUCCESS);
+    REQUIRE(script.totalGainWrites == 1);
+    REQUIRE(impl->getDeviceInfo().state.gain.value == 17.0);
+    REQUIRE(module->reconfigure({{"bandwidth", 0.0}}) == Result::RECREATE);
+    REQUIRE(script.concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(SoapyModuleFixture,
+                 "Soapy validates typed driver parameters and applies them before streaming",
+                 "[modules][soapy][controls][arguments]") {
+    auto& script = TestSoapy::State();
+    script.controlsSupported = true;
+    script.applied.sampleRate = 0.0;
+    config.settings = {{"enabled", true}, {"decimation", I64{4}}, {"correction", 0.75},
+                       {"mode", "quiet"}, {"label", "a,b=quoted: value"}};
+    config.streamArgs = {{"wire", "sc8"}};
+    SECTION("valid settings survive restart requests without live writes") {
+        REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        REQUIRE(script.driverSettings.at("enabled") == "true");
+        REQUIRE(script.driverSettings.at("decimation") == "4");
+        REQUIRE(script.driverSettings.at("correction") == "0.75");
+        REQUIRE(script.driverSettings.at("mode") == "quiet");
+        REQUIRE(script.driverSettings.at("label") == "a,b=quoted: value");
+        REQUIRE(script.streamArgs.at("wire") == "sc8");
+        const auto info = module->getImpl<Modules::SoapyImpl>()->getDeviceInfo();
+        REQUIRE(info.state.settings.at("mode").value == "quiet");
+        REQUIRE(module->reconfigure({{"settings", Parser::Map{{"mode", "fast"}}}}) ==
+                Result::RECREATE);
+        REQUIRE(module->reconfigure({{"streamArgs", Parser::Map{{"wire", "sc16"}}}}) ==
+                Result::RECREATE);
+        REQUIRE(script.driverSettings.at("mode") == "quiet");
+        REQUIRE(script.concurrentChanges == 0);
+    }
+    SECTION("invalid settings fail before any writes") {
+        const auto invalid = GENERATE(
+            std::pair{"enabled", "maybe"}, std::pair{"decimation", "1.5"},
+            std::pair{"correction", "nan"}, std::pair{"correction", "2"},
+            std::pair{"mode", "unknown"}, std::pair{"unknown", "x"},
+            std::pair{"biastee", "true"});
+        CAPTURE(invalid.first, invalid.second);
+        config.settings = {{invalid.first, invalid.second}};
+        const auto before = script.driverSettings;
+        REQUIRE(module->create("test", config, {}) == Result::ERROR);
+        REQUIRE(script.driverSettings == before);
+        REQUIRE_FALSE(script.streamStarted);
+    }
+    SECTION("invalid stream option") {
+        config.streamArgs = {{"wire", "unknown"}};
+        REQUIRE(module->create("test", config, {}) == Result::ERROR);
+        REQUIRE_FALSE(script.streamStarted);
+    }
+    SECTION("driver refuses a setting") {
+        script.fail("setting:mode");
+        REQUIRE(module->create("test", config, {}) == Result::ERROR);
+        REQUIRE_FALSE(script.streamStarted);
+    }
 }

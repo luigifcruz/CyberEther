@@ -3,6 +3,9 @@
 
 #include "types.hh"
 
+#include <cmath>
+#include <limits>
+
 namespace Jetstream {
 
 struct FlowgraphConfigFloatField {
@@ -15,7 +18,7 @@ struct FlowgraphConfigFloatField {
         }
         value = 0.0f;
         JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
-        step = 0.0f;
+        step = Parser::Get<F32>(this->config.format, "step", 0.0f);
         hasStep = !stepConfig.empty() && stepConfig != this->config.name && this->config.values.contains(stepConfig) &&
                   Parser::Deserialize(this->config.values, stepConfig, step) == Result::SUCCESS &&
                   std::isfinite(step) && step > 0.0f;
@@ -29,10 +32,23 @@ struct FlowgraphConfigFloatField {
             .value = value / multiplier,
             .unit = unit,
             .precision = precision,
-            .step = hasStep ? std::optional<F32>(step / multiplier) : std::nullopt,
+            .step = (hasStep || step > 0.0f) ? std::optional<F32>(step / multiplier)
+                                            : std::nullopt,
             .onChange = [this](F32 nextValue) {
+                const F32 requested = nextValue * multiplier;
+                if (!std::isfinite(requested) ||
+                    requested < Parser::Get<F32>(this->config.format, "min",
+                                                std::numeric_limits<F32>::lowest()) ||
+                    requested > Parser::Get<F32>(this->config.format, "max",
+                                                std::numeric_limits<F32>::max())) {
+                    if (this->config.onError) {
+                        this->config.onError(Result::ERROR,
+                            this->config.label + ": Value is outside the allowed range.");
+                    }
+                    return;
+                }
                 Parser::Map patch;
-                patch[this->config.name] = nextValue * multiplier;
+                patch[this->config.name] = requested;
                 if (this->config.onApply) {
                     this->config.onApply(std::move(patch), false, {});
                 }

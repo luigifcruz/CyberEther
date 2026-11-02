@@ -74,6 +74,16 @@ TEST_CASE("Interface descriptors validate every control and internal metric",
         REQUIRE(Block::Interface::ValidateFormat({{"type", type}}) == Result::SUCCESS);
     }
     REQUIRE(Block::Interface::ValidateFormat({{"type", "tensor-config"}, {"index", 2}, {"source", "outputs"}}) == Result::SUCCESS);
+    REQUIRE(Block::Interface::ValidateFormat({{"type", "range"}, {"map", "gains"},
+        {"key", "RF: stage.0"}, {"step", 0.5f}}) == Result::SUCCESS);
+    for (const auto& format : std::vector<Parser::Map>{
+             {{"type", "float"}, {"map", "gains"}},
+             {{"type", "float"}, {"map", ""}, {"key", "RF"}},
+             {{"type", "float"}, {"step", 0.0f}},
+             {{"type", "float"}, {"min", 1.0f}, {"max", 0.0f}},
+             {{"type", "float"}, {"step", std::numeric_limits<F32>::infinity()}}}) {
+        REQUIRE(Block::Interface::ValidateFormat(format) == Result::ERROR);
+    }
     for (const auto* type : {"label", "progressbar", "table"}) {
         REQUIRE(Block::Interface::ValidateFormat({{"type", type}}, true) == Result::SUCCESS);
         REQUIRE(Block::Interface::ValidateFormat({{"type", type}, {"visibility", "public"}}, true) == Result::SUCCESS);
@@ -90,6 +100,8 @@ TEST_CASE("Interface descriptors validate every control and internal metric",
     REQUIRE(Block::Interface::ValidateFormat({{"type", "python-diagnostic"}, {"visibility", "internal"}}, true) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "float"}, {"unit", "arbitrary"}, {"scale", 42.0},
                                              {"precision", 3}, {"step_config", "step"}}) == Result::SUCCESS);
+    REQUIRE(Block::Interface::ValidateFormat({{"type", "text"}, {"config", "deviceString"},
+        {"hint", "Device: RX"}, {"hint_tone", "secondary"}}) == Result::SUCCESS);
 }
 
 TEST_CASE("Malformed interface descriptors fail without throwing",
@@ -118,6 +130,11 @@ TEST_CASE("Malformed interface descriptors fail without throwing",
         {{"type", "bool"}, {"visibility", "hidden"}},
         {{"type", "bool"}, {"visibility", "public"}},
         {{"type", "bool"}, {"visibility", "internal"}},
+        {{"type", "text"}, {"config", ""}},
+        {{"type", "text"}, {"config", 1}},
+        {{"type", "text"}, {"config", "deviceString"}, {"map", "settings"}, {"key", "x"}},
+        {{"type", "float"}, {"hint", 1}},
+        {{"type", "float"}, {"hint_tone", "invalid"}},
     };
     for (const auto& format : formats) {
         REQUIRE(Block::Interface::ValidateFormat(format) == Result::ERROR);

@@ -35,10 +35,35 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
         (metric && visibility != "internal" && type != "label" && type != "progressbar" && type != "table")) {
         return invalid("unsupported type '" + type + "'.");
     }
-    for (const auto* key : {"unit", "step_config", "source"}) {
+    for (const auto* key : {"unit", "step_config", "source", "map", "key", "config",
+                            "hint", "hint_tone"}) {
         std::string value;
         if (format.contains(key) && Parser::Deserialize(format, key, value) != Result::SUCCESS) {
             return invalid(std::string("'") + key + "' must be a string.");
+        }
+    }
+    if (format.contains("config") &&
+        (metric || format.contains("map") ||
+         Parser::Get<std::string>(format, "config").empty())) {
+        return invalid("'config' must name a config value without a map binding.");
+    }
+    if (format.contains("hint_tone")) {
+        const auto tone = Parser::Get<std::string>(format, "hint_tone");
+        if (tone != "secondary" && tone != "warning" && tone != "error") {
+            return invalid("'hint_tone' must be secondary, warning or error.");
+        }
+    }
+    if (format.contains("map") != format.contains("key") ||
+        (format.contains("map") &&
+         (Parser::Get<std::string>(format, "map").empty() ||
+          Parser::Get<std::string>(format, "key").empty()))) {
+        return invalid("map controls require nonempty 'map' and 'key' strings.");
+    }
+    if (format.contains("step")) {
+        F32 step = 0.0f;
+        if (Parser::Deserialize(format, "step", step) != Result::SUCCESS ||
+            !std::isfinite(step) || step <= 0.0f) {
+            return invalid("'step' must be finite and positive.");
         }
     }
     F32 scale = 1.0f;
@@ -58,9 +83,10 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
             return invalid("'value_type' must be float or uint.");
         }
     }
-    if (type == "range") {
-        F32 minimum = 0.0f;
-        F32 maximum = valueType == "uint" ? 100.0f : 1.0f;
+    if (type == "range" || type == "float") {
+        F32 minimum = type == "float" ? std::numeric_limits<F32>::lowest() : 0.0f;
+        F32 maximum = type == "float" ? std::numeric_limits<F32>::max()
+                                      : (valueType == "uint" ? 100.0f : 1.0f);
         if ((format.contains("min") && Parser::Deserialize(format, "min", minimum) != Result::SUCCESS) ||
             (format.contains("max") && Parser::Deserialize(format, "max", maximum) != Result::SUCCESS) ||
             !std::isfinite(minimum) || !std::isfinite(maximum) || minimum > maximum ||

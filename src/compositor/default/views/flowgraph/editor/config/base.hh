@@ -30,10 +30,22 @@ struct FlowgraphConfigFieldInstance {
     }
 
     void update(FlowgraphConfigFieldConfig config) {
+        config = BindFlowgraphConfigField(std::move(config));
         kind = Parser::Get<std::string>(config.format, "type");
         const auto onError = config.onError;
         const auto name = config.name;
         const auto errorId = config.id + "Error";
+        const auto hintTone = Parser::Get<std::string>(config.format, "hint_tone");
+        hasHint = !Parser::Get<std::string>(config.format, "hint").empty();
+        hint.update({
+            .id = config.id + "Hint",
+            .str = Parser::Get<std::string>(config.format, "hint"),
+            .tone = hintTone == "warning" ? Sakura::Text::Tone::Warning
+                                         : Sakura::Text::Tone::Secondary,
+            .colorKey = hintTone == "error" ? "progress_error" : "",
+            .wrapped = true,
+            .scale = 0.75f,
+        });
         unknownFrame.update({
             .id = config.id,
             .label = config.label,
@@ -151,6 +163,9 @@ struct FlowgraphConfigFieldInstance {
                 unknownText.render(ctx);
             });
         }
+        if (hasHint) {
+            hint.render(ctx);
+        }
     }
 
  private:
@@ -168,6 +183,8 @@ struct FlowgraphConfigFieldInstance {
     std::string kind;
     std::string notifiedDecodeError;
     bool fullHeight = false;
+    bool hasHint = false;
+    Sakura::Text hint;
     FlowgraphConfigDropdownField dropdown;
     FlowgraphConfigFloatField floatField;
     FlowgraphConfigIntField intField;

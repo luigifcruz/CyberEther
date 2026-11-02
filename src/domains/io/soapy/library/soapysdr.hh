@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <jetstream/types.hh>
+#include <jetstream/parser.hh>
 
 #include "soapy_runtime.hh"
 #include "formats.hh"
@@ -31,6 +32,22 @@ struct SoapyCapabilities {
     SoapyQuery<SoapyAbi::Range> gain;
     SoapyQuery<bool> automaticGain;
     SoapyQuery<bool> biasTee;
+    SoapyQuery<std::vector<SoapyAbi::Range>> bandwidths;
+    SoapyQuery<std::vector<std::string>> gains;
+    std::map<std::string, SoapyQuery<SoapyAbi::Range>> gainRanges;
+    struct Argument {
+        std::string key;
+        std::string value;
+        std::string name;
+        std::string description;
+        std::string units;
+        int type = SoapyAbi::ArgString;
+        SoapyAbi::Range range{};
+        std::vector<std::string> options;
+        std::vector<std::string> optionNames;
+    };
+    SoapyQuery<std::vector<Argument>> settings;
+    SoapyQuery<std::vector<Argument>> streamArgs;
 };
 
 struct SoapyDeviceState {
@@ -39,6 +56,9 @@ struct SoapyDeviceState {
     SoapyQuery<std::string> antenna;
     SoapyQuery<bool> automaticGain;
     SoapyQuery<F64> gain;
+    SoapyQuery<F64> bandwidth;
+    std::map<std::string, SoapyQuery<F64>> gains;
+    std::map<std::string, SoapyQuery<std::string>> settings;
 };
 
 struct SoapyDeviceInfo {
@@ -92,6 +112,11 @@ class JETSTREAM_API SoapyReceiver {
     Result setSampleRate(F32 sampleRate);
     Result setAutomaticGain(bool automaticGain);
     Result setGain(F32 gain);
+    Result setGainElement(const std::string& name, F64 gain);
+    Result setBandwidth(F64 bandwidth);
+    Result writeSettings(const Parser::Map& settings);
+    Result streamArguments(const std::string& markup, const Parser::Map& overrides,
+                           SoapyKwargs& args) const;
     Result setBiasTee(bool enabled);
     Result startStream(const std::string& streamString, const DataType& dtype);
     Result startStreamArgs(const SoapyKwargs& args, const DataType& dtype);
