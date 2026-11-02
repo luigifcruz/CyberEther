@@ -35,6 +35,7 @@ core_test_domains = {
         'memory/tensor.cc',
     ],
     'platform': [
+        'platform/deadline_waiter.cc',
         'platform/paths.cc',
         'platform/pseudo_terminal.cc',
         'platform/secrets.cc',

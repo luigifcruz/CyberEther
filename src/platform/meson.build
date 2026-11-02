@@ -1,4 +1,5 @@
 src_lst += files([
+    'deadline_waiter.cc',
     'dialogs.cc',
     'dynamic_library.cc',
     'file.cc',

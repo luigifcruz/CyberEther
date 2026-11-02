@@ -3573,6 +3573,36 @@ TEST_CASE("Scheduler recomputes static outputs that were waiting unread when set
     REQUIRE(fixture.shutdown() == Result::SUCCESS);
 }
 
+TEST_CASE("Scheduler deadline waits remain interruptible",
+          "[core][runtime][scheduler][deadline]") {
+    using Clock = std::chrono::steady_clock;
+
+    SECTION("deadline expires without returning early") {
+        const auto epoch = Scheduler::Impl::BeginComputeRound();
+        const auto deadline = Clock::now() + std::chrono::milliseconds(5);
+        Scheduler::Context::NotifyPendingComputeAt(deadline);
+        Scheduler::Impl::WaitComputeRound(epoch, std::chrono::seconds(5));
+        REQUIRE(Clock::now() >= deadline);
+    }
+
+    SECTION("notification interrupts an armed deadline") {
+        std::promise<void> starting;
+        auto started = starting.get_future();
+        auto waiter = std::async(std::launch::async, [&] {
+            const auto epoch = Scheduler::Impl::BeginComputeRound();
+            Scheduler::Context::NotifyPendingComputeAt(Clock::now() + std::chrono::seconds(5));
+            starting.set_value();
+            Scheduler::Impl::WaitComputeRound(epoch, std::chrono::seconds(5));
+        });
+        started.wait();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        Scheduler::Context::NotifyPendingCompute();
+        const bool woke = waiter.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+        waiter.get();
+        REQUIRE(woke);
+    }
+}
+
 TEST_CASE("Scheduler start wakes an idle compute round",
           "[core][runtime][scheduler][wake]") {
     auto& state = syntheticState();

@@ -3,7 +3,6 @@
 
 #include <array>
 #include <bitset>
-#include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <optional>
@@ -11,6 +10,7 @@
 #include <variant>
 #include <vector>
 
+#include "jetstream/platform.hh"
 #include "jetstream/surface.hh"
 #include "jetstream/types.hh"
 
@@ -74,7 +74,7 @@ class JETSTREAM_API InputQueue {
 
  private:
     std::mutex mutex;
-    std::condition_variable signal;
+    Platform::DeadlineWaiter signal;
     std::vector<Event> events;
     bool woken = false;
 };
