@@ -90,9 +90,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "FileReader block current bandwidth metric updates after a read",
+                 "FileReader block throughput metric updates after a read",
                  "[modules][io][file_reader][block][metrics]") {
-    const auto path = TestFilePath("bandwidth");
+    const auto path = TestFilePath("throughput");
     Cleanup(path);
 
     std::vector<U8> data(8 * 1024 * 1024);
@@ -110,14 +110,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("reader", "file_reader", config, {}) ==
             Result::SUCCESS);
 
-    REQUIRE(MetricString(*flowgraph, "reader", "currentBandwidth") == "0.0 MB/s");
+    REQUIRE(MetricString(*flowgraph, "reader", "throughput") == "0.0 MB/s");
 
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
-    const auto metric = MetricString(*flowgraph, "reader", "currentBandwidth");
-    INFO("currentBandwidth=" << metric);
+    const auto metric = MetricString(*flowgraph, "reader", "throughput");
+    INFO("throughput=" << metric);
     REQUIRE(metric != "N/A");
     REQUIRE(metric != "0.0 MB/s");
 

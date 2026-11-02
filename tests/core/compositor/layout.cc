@@ -18,6 +18,14 @@ std::vector<std::string> Panes(const TileMeta& tiles) {
     return panes;
 }
 
+TileMeta Row(const std::vector<std::string>& panes) {
+    std::vector<TileMeta> children;
+    for (const auto& pane : panes) {
+        children.push_back({.size = 400.0f, .pane = pane});
+    }
+    return TileMeta{.split = "row", .children = std::move(children)};
+}
+
 }  // namespace
 
 TEST_CASE("Layout restoration waits for saved metadata and restores the layout once",
@@ -36,13 +44,13 @@ TEST_CASE("Layout restoration waits for saved metadata and restores the layout o
     const TileMeta layout{
         .split = "row",
         .children = std::vector<TileMeta>{
-            {.weight = 640.0f, .pane = "flowgraph"},
+            {.size = 640.0f, .pane = "flowgraph"},
             {
                 .split = "column",
-                .weight = 420.0f,
+                .size = 420.0f,
                 .children = std::vector<TileMeta>{
-                    {.weight = 1.0f, .pane = "surface:adsb:default"},
-                    {.weight = 1.0f, .pane = "config:adsb"},
+                    {.size = 1.0f, .pane = "surface:adsb:default"},
+                    {.size = 1.0f, .pane = "config:adsb"},
                 },
             },
         },
@@ -55,8 +63,8 @@ TEST_CASE("Layout restoration waits for saved metadata and restores the layout o
     const auto& restored = state.layouts.at("graph");
     REQUIRE(restored.split == "row");
     REQUIRE(restored.children->size() == 2);
-    CHECK(*restored.children->at(0).weight == Catch::Approx(640.0f));
-    CHECK(*restored.children->at(1).weight == Catch::Approx(420.0f));
+    CHECK(*restored.children->at(0).size == Catch::Approx(640.0f));
+    CHECK(*restored.children->at(1).size == Catch::Approx(420.0f));
     CHECK(Panes(restored) == std::vector<std::string>{"flowgraph", "surface:adsb:default", "config:adsb"});
 
     state.layouts["graph"] = TileMeta{.pane = "flowgraph"};
@@ -64,51 +72,32 @@ TEST_CASE("Layout restoration waits for saved metadata and restores the layout o
     CHECK(state.layouts.at("graph").pane == "flowgraph");
 }
 
-TEST_CASE("Old stack metadata completes restoration, is cleared, and stack panes leave the layout",
+TEST_CASE("Layout restoration falls back to the default layout when the saved layout uses weights",
           "[core][compositor][layout][metadata]") {
     DefaultCompositorState::FlowgraphState state;
     LayoutActions actions(state);
     auto flowgraph = std::make_shared<Flowgraph>();
     state.items["graph"] = flowgraph;
 
-    Parser::Map savedStacks;
+    Parser::Map old;
     REQUIRE(Parser::YamlDecode(R"(
-stack_0:
-  title: Stack 0
-  tiles:
-    pane: surface:adsb:default
-)", savedStacks) == Result::SUCCESS);
-    REQUIRE(flowgraph->metadata().set("stacks", savedStacks) == Result::SUCCESS);
+split: row
+children:
+  - pane: flowgraph
+    weight: 640
+  - pane: config:source
+    weight: 0.4
+)", old) == Result::SUCCESS);
+    REQUIRE(flowgraph->metadata().set("layout", old) == Result::SUCCESS);
 
-    SECTION("without a saved layout") {
-        actions.restoreFromMetadata();
-        REQUIRE(state.restoredLayouts.contains("graph"));
-        CHECK_FALSE(flowgraph->metadata().has("stacks"));
-        CHECK_FALSE(state.layouts.contains("graph"));
-        CHECK_FALSE(flowgraph->metadata().has("layout"));
-    }
-
-    SECTION("with a saved layout that references stacks") {
-        const TileMeta layout{
-            .split = "row",
-            .children = std::vector<TileMeta>{
-                {.weight = 0.6f, .pane = "flowgraph"},
-                {.weight = 0.4f, .pane = "stack_0"},
-            },
-        };
-        REQUIRE(flowgraph->metadata().set("layout", layout) == Result::SUCCESS);
-        actions.restoreFromMetadata();
-        CHECK_FALSE(flowgraph->metadata().has("stacks"));
-        REQUIRE(state.layouts.contains("graph"));
-        CHECK(state.layouts.at("graph").pane == "flowgraph");
-        TileMeta saved;
-        REQUIRE(flowgraph->metadata().get("layout", saved) == Result::SUCCESS);
-        CHECK(saved.pane == "flowgraph");
-    }
+    actions.restoreFromMetadata();
+    CHECK(state.restoredLayouts.contains("graph"));
+    CHECK_FALSE(state.layouts.contains("graph"));
+    CHECK_FALSE(flowgraph->metadata().has("layout"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Layout restoration places detached panes missing from the saved layout as new columns",
+                 "Layout restoration keeps the saved layout and leaves detached panes for the dock to append",
                  "[core][compositor][layout][metadata]") {
     REQUIRE(flowgraph->blockCreate("source", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
     DefaultCompositorState::FlowgraphState state;
@@ -120,19 +109,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->metadata().set("layout", TileMeta{.pane = "flowgraph"}) == Result::SUCCESS);
 
     actions.restoreFromMetadata();
-    const auto& layout = state.layouts.at("graph");
-    REQUIRE(layout.split == "row");
-    REQUIRE(layout.children->size() == 3);
-    CHECK(layout.children->at(0).pane == "flowgraph");
-    const auto panes = Panes(layout);
-    CHECK(std::find(panes.begin(), panes.end(), "config:source") != panes.end());
-    CHECK(std::find(panes.begin(), panes.end(), "surface:source:default") != panes.end());
-    for (const auto& child : *layout.children) {
-        CHECK_FALSE(child.weight.has_value());
-    }
+    REQUIRE(state.restoredLayouts.contains("graph"));
+    CHECK(state.layouts.at("graph").pane == "flowgraph");
+    CHECK(IsTileLeaf(state.layouts.at("graph")));
     TileMeta saved;
     REQUIRE(flowgraph->metadata().get("layout", saved) == Result::SUCCESS);
-    CHECK(Parser::Hash(saved) == Parser::Hash(layout));
+    CHECK(Parser::Hash(saved) == Parser::Hash(state.layouts.at("graph")));
 }
 
 TEST_CASE("Flowgraph layouts stay in memory until restored and are saved afterwards",
@@ -145,8 +127,8 @@ TEST_CASE("Flowgraph layouts stay in memory until restored and are saved afterwa
     const TileMeta layout{
         .split = "row",
         .children = std::vector<TileMeta>{
-            {.weight = 600.0f, .pane = "flowgraph"},
-            {.weight = 400.0f, .pane = "config:source"},
+            {.size = 600.0f, .pane = "flowgraph"},
+            {.size = 400.0f, .pane = "config:source"},
         },
     };
 
@@ -165,7 +147,7 @@ TEST_CASE("Flowgraph layouts stay in memory until restored and are saved afterwa
     TileMeta saved;
     REQUIRE(flowgraph->metadata().get("layout", saved) == Result::SUCCESS);
     REQUIRE(saved.children->size() == 2);
-    CHECK(*saved.children->at(0).weight == Catch::Approx(600.0f));
+    CHECK(*saved.children->at(0).size == Catch::Approx(600.0f));
     CHECK(saved.children->at(1).pane == "config:source");
 
     const TileMeta editorOnly{.pane = "flowgraph"};
@@ -177,7 +159,7 @@ TEST_CASE("Flowgraph layouts stay in memory until restored and are saved afterwa
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Detached items join the layout as new columns and are saved",
+                 "Detaching items leaves the layout to the dock and saves the layout it reports",
                  "[core][compositor][layout][detach]") {
     REQUIRE(flowgraph->blockCreate("source", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
     DefaultCompositorState::FlowgraphState state;
@@ -189,17 +171,13 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(actions.handle(MailSetConfigDetached{"graph", "source", true}) == Result::SUCCESS);
     REQUIRE(state.restoredLayouts.contains("graph"));
-    auto layout = state.layouts.at("graph");
-    REQUIRE(layout.split == "row");
-    REQUIRE(layout.children->size() == 2);
-    CHECK(layout.children->at(0).pane == "flowgraph");
-    CHECK(layout.children->at(1).pane == configKey);
-
+    CHECK_FALSE(state.layouts.contains("graph"));
     REQUIRE(actions.handle(MailSetSurfaceDetached{"graph", "source", "default", true}) == Result::SUCCESS);
-    layout = state.layouts.at("graph");
-    REQUIRE(layout.children->size() == 3);
-    CHECK(layout.children->at(2).pane == surfaceKey);
+    CHECK_FALSE(state.layouts.contains("graph"));
+    CHECK_FALSE(flowgraph->metadata().has("layout"));
 
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{"graph", Row({"flowgraph", configKey, surfaceKey})}) ==
+            Result::SUCCESS);
     REQUIRE(actions.handle(MailSetSurfaceDetached{"graph", "source", "default", true}) == Result::SUCCESS);
     CHECK(state.layouts.at("graph").children->size() == 3);
 
@@ -226,6 +204,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(actions.handle(MailSetConfigDetached{"graph", "source", true}) == Result::SUCCESS);
     REQUIRE(actions.handle(MailSetSurfaceDetached{"graph", "source", "default", true}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{"graph", Row({"flowgraph", "config:source",
+                                                                "surface:source:default"})}) == Result::SUCCESS);
 
     REQUIRE(actions.handle(MailSetConfigDetached{"graph", "source", false}) == Result::SUCCESS);
     CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph", "surface:source:default"});
@@ -270,16 +250,16 @@ TEST_CASE("Removing a layout block drops its surface and config tiles",
     state.layouts["graph"] = TileMeta{
         .split = "row",
         .children = std::vector<TileMeta>{
-            {.weight = 600.0f, .pane = "flowgraph"},
+            {.size = 600.0f, .pane = "flowgraph"},
             {
                 .split = "column",
-                .weight = 420.0f,
+                .size = 420.0f,
                 .children = std::vector<TileMeta>{
-                    {.weight = 1.0f, .pane = "surface:source:waterfall"},
-                    {.weight = 1.0f, .pane = "config:source"},
+                    {.size = 1.0f, .pane = "surface:source:waterfall"},
+                    {.size = 1.0f, .pane = "config:source"},
                 },
             },
-            {.weight = 300.0f, .pane = "surface:source2:default"},
+            {.size = 300.0f, .pane = "surface:source2:default"},
         },
     };
 
@@ -288,7 +268,7 @@ TEST_CASE("Removing a layout block drops its surface and config tiles",
     REQUIRE(layout.children->size() == 2);
     CHECK(layout.children->at(0).pane == "flowgraph");
     CHECK(layout.children->at(1).pane == "surface:source2:default");
-    CHECK(*layout.children->at(1).weight == Catch::Approx(300.0f));
+    CHECK(*layout.children->at(1).size == Catch::Approx(300.0f));
     TileMeta saved;
     REQUIRE(flowgraph->metadata().get("layout", saved) == Result::SUCCESS);
     CHECK(Parser::Hash(saved) == Parser::Hash(layout));
@@ -305,10 +285,10 @@ TEST_CASE("Renaming a layout block leaves similarly named blocks alone",
     state.layouts["graph"] = TileMeta{
         .split = "column",
         .children = std::vector<TileMeta>{
-            {.weight = 0.1f, .pane = "config:source"},
-            {.weight = 0.2f, .pane = "config:source2"},
-            {.weight = 0.3f, .pane = "surface:source:default"},
-            {.weight = 0.4f, .pane = "surface:source2:source"},
+            {.size = 0.1f, .pane = "config:source"},
+            {.size = 0.2f, .pane = "config:source2"},
+            {.size = 0.3f, .pane = "surface:source:default"},
+            {.size = 0.4f, .pane = "surface:source2:source"},
         },
     };
 
@@ -319,8 +299,8 @@ TEST_CASE("Renaming a layout block leaves similarly named blocks alone",
     CHECK(children[1].pane == "config:source2");
     CHECK(children[2].pane == "surface:renamed:default");
     CHECK(children[3].pane == "surface:source2:source");
-    CHECK(children[0].weight == 0.1f);
-    CHECK(children[3].weight == 0.4f);
+    CHECK(children[0].size == 0.1f);
+    CHECK(children[3].size == 0.4f);
     CHECK(flowgraph->metadata().has("layout"));
 }
 
@@ -348,6 +328,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     FlowgraphActions actions(state, callbacks);
     REQUIRE(layouts.handle(MailSetConfigDetached{"graph", "source", true}) == Result::SUCCESS);
     REQUIRE(layouts.handle(MailSetSurfaceDetached{"graph", "source", "default", true}) == Result::SUCCESS);
+    REQUIRE(layouts.handle(MailSetFlowgraphLayout{"graph", Row({"flowgraph", "config:source",
+                                                                "surface:source:default"})}) == Result::SUCCESS);
     const auto layoutHash = Parser::Hash(state.flowgraph.layouts.at("graph"));
 
     std::function<Result()> command;
@@ -396,8 +378,8 @@ TEST_CASE("Layout restoration erases a saved layout whose panes are all unknown"
     const TileMeta layout{
         .split = "row",
         .children = std::vector<TileMeta>{
-            {.weight = 0.5f, .pane = "stack_0"},
-            {.weight = 0.5f, .pane = "inspector"},
+            {.size = 0.5f, .pane = "stack_0"},
+            {.size = 0.5f, .pane = "inspector"},
         },
     };
     REQUIRE(flowgraph->metadata().set("layout", layout) == Result::SUCCESS);
@@ -435,8 +417,8 @@ children: none
         const TileMeta live{
             .split = "row",
             .children = std::vector<TileMeta>{
-                {.weight = 0.7f, .pane = "flowgraph"},
-                {.weight = 0.3f, .pane = "config:source"},
+                {.size = 0.7f, .pane = "flowgraph"},
+                {.size = 0.3f, .pane = "config:source"},
             },
         };
         REQUIRE(actions.handle(MailSetFlowgraphLayout{"graph", live}) == Result::SUCCESS);
@@ -532,7 +514,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Documentation reads the block from the flowgraph and joins the layout as one unsaved column",
+                 "Documentation reads the block from the flowgraph and stays out of the saved layout",
                  "[core][compositor][layout][documentation]") {
     REQUIRE(flowgraph->blockCreate("fft", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
     REQUIRE(flowgraph->blockCreate("filter", TestFlowgraph::kSyntheticIsolatedType, {}, {}) == Result::SUCCESS);
@@ -551,6 +533,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     CHECK(state.documentation.at("graph").title == "Synthetic Source");
     CHECK(state.documentation.at("graph").markdown == viewBlock("fft").description);
     CHECK_FALSE(state.documentation.at("graph").markdown.empty());
+    CHECK(state.restoredLayouts.contains("graph"));
+    CHECK_FALSE(state.layouts.contains("graph"));
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{"graph", Row({"flowgraph", "documentation"})}) == Result::SUCCESS);
     CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph", "documentation"});
     TileMeta saved;
     REQUIRE(flowgraph->metadata().get("layout", saved) == Result::SUCCESS);
@@ -565,8 +550,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const TileMeta moved{
         .split = "row",
         .children = std::vector<TileMeta>{
-            {.weight = 300.0f, .pane = "documentation"},
-            {.weight = 700.0f, .pane = "flowgraph"},
+            {.size = 300.0f, .pane = "documentation"},
+            {.size = 700.0f, .pane = "flowgraph"},
         },
     };
     REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = moved}) == Result::SUCCESS);
@@ -583,6 +568,59 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "A file description tile is included in the saved layout",
+                 "[core][compositor][layout][description]") {
+    DefaultCompositorState::FlowgraphState state;
+    LayoutActions actions(state);
+    state.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
+    state.restoredLayouts.insert("graph");
+    const TileMeta tiles{
+        .split = "row",
+        .children = std::vector<TileMeta>{
+            {.size = 300.0f, .pane = "description"},
+            {.size = 700.0f, .pane = "flowgraph"},
+        },
+    };
+
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
+    CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph"});
+
+    REQUIRE(flowgraph->setDescription("## Overview") == Result::SUCCESS);
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
+    CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"description", "flowgraph"});
+    TileMeta saved;
+    REQUIRE(flowgraph->metadata().get("layout", saved) == Result::SUCCESS);
+    CHECK(Panes(saved) == std::vector<std::string>{"description", "flowgraph"});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Closing the file description drops it and its tile from the session layout",
+                 "[core][compositor][layout][description]") {
+    DefaultCompositorState::FlowgraphState state;
+    LayoutActions actions(state);
+    state.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
+    state.restoredLayouts.insert("graph");
+    REQUIRE(flowgraph->setDescription("## Overview") == Result::SUCCESS);
+    const TileMeta tiles{
+        .split = "row",
+        .children = std::vector<TileMeta>{
+            {.size = 300.0f, .pane = "description"},
+            {.size = 700.0f, .pane = "flowgraph"},
+        },
+    };
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
+    REQUIRE(Panes(state.layouts.at("graph")) == std::vector<std::string>{"description", "flowgraph"});
+
+    REQUIRE(actions.handle(MailCloseFlowgraphDescription{.flowgraph = "graph"}) == Result::SUCCESS);
+    CHECK(state.closedDescriptions.contains("graph"));
+    CHECK(flowgraph->description() == "## Overview");
+    CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph"});
+
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{.flowgraph = "graph", .tiles = tiles}) == Result::SUCCESS);
+    CHECK(Panes(state.layouts.at("graph")) == std::vector<std::string>{"flowgraph"});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Documentation follows a renamed block and closes when that block is deleted",
                  "[core][compositor][layout][documentation]") {
     REQUIRE(flowgraph->blockCreate("fft", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
@@ -592,6 +630,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     state.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
     state.restoredLayouts.insert("graph");
     REQUIRE(actions.handle(MailOpenDocumentation{"graph", "fft"}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{"graph", Row({"flowgraph", "documentation"})}) == Result::SUCCESS);
 
     REQUIRE(actions.handle(MailRenameLayoutBlock{"graph", "fft", "spectrum"}) == Result::SUCCESS);
     CHECK(state.documentation.at("graph").block == "spectrum");
@@ -615,8 +654,8 @@ TEST_CASE("Layout restoration drops a documentation tile found in saved metadata
     const TileMeta layout{
         .split = "row",
         .children = std::vector<TileMeta>{
-            {.pane = "flowgraph"},
-            {.pane = "documentation"},
+            {.size = 600.0f, .pane = "flowgraph"},
+            {.size = 400.0f, .pane = "documentation"},
         },
     };
     REQUIRE(flowgraph->metadata().set("layout", layout) == Result::SUCCESS);

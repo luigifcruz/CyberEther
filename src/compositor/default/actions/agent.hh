@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_AGENT_HH
 
 #include "persist.hh"
+#include "workbench.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -45,7 +46,8 @@ struct AgentActions {
                               MailTestAgentProvider,
                               MailSetAgentVoiceBackend,
                               MailSetAgentVoiceModel,
-                              MailSetAgentVoiceName>;
+                              MailSetAgentVoiceName,
+                              MailSetAgentMcp>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -81,6 +83,7 @@ struct AgentActions {
 
         if (msg.value) {
             hideVoice();
+            ui.unread = false;
         }
         ui.visible = msg.value;
 
@@ -163,7 +166,7 @@ struct AgentActions {
     }
 
     Result handle(const MailOpenAgentModelPicker&) {
-        state.modal.content = ModalContent::IntelligenceModel;
+        openIntelligencePage(IntelligencePage::AddModel);
         state.agent.catalog.search.clear();
         ensureModels();
         return Result::SUCCESS;
@@ -236,7 +239,7 @@ struct AgentActions {
 
         providers.editSession++;
         resetProviderTest();
-        state.modal.content = ModalContent::IntelligenceProvider;
+        openIntelligencePage(IntelligencePage::Provider);
         return Result::SUCCESS;
     }
 
@@ -267,7 +270,9 @@ struct AgentActions {
         task.previousName = previousName;
         task.session = agent.providers.editSession;
 
-        if (!msg.apiKey.empty()) {
+        if (AgentProviders::External(provider)) {
+            provider.apiKeyId = previous.apiKeyId;
+        } else if (!msg.apiKey.empty()) {
             if (previous.apiKeyId.empty()) {
                 provider.apiKeyId = Random::HexToken();
             } else {
@@ -369,6 +374,11 @@ struct AgentActions {
         return persist();
     }
 
+    Result handle(const MailSetAgentMcp& msg) {
+        state.agent.settings.mcp = msg.value;
+        return persist();
+    }
+
     void refresh() {
         auto& agent = state.agent;
         auto& catalog = agent.catalog;
@@ -392,6 +402,7 @@ struct AgentActions {
     }
 
     void reconcile() {
+        checkUnread();
         checkContextLengths();
         checkSettingsSection();
         collectProviderTest();
@@ -464,7 +475,6 @@ struct AgentActions {
         }
 
         agent.ui.voiceVisible = true;
-        agent.ui.visible = false;
         runtime.listen(availability.voice);
 
         return true;
@@ -500,8 +510,12 @@ struct AgentActions {
     }
 
     void returnToSettings() {
-        state.settings.section = SettingsSection::Intelligence;
-        state.modal.content = ModalContent::Settings;
+        state.settings.intelligencePage = IntelligencePage::Overview;
+    }
+
+    void openIntelligencePage(IntelligencePage page) {
+        WorkbenchActions::OpenSettings(state, SettingsSection::Intelligence);
+        state.settings.intelligencePage = page;
     }
 
     void renameProvider(const std::string& previous, const std::string& next) {
@@ -546,7 +560,8 @@ struct AgentActions {
                          jst::fmt::format("Provider '{}' {}.", provider.name, verb));
 
         const bool sameSession = agent.providers.editSession == agent.providers.keyTask.session;
-        const bool editorOpen = state.modal.content == ModalContent::IntelligenceProvider;
+        const bool editorOpen = state.interface.settingsTab &&
+                                state.settings.intelligencePage == IntelligencePage::Provider;
         if (sameSession && editorOpen) {
             agent.providers.editTarget.reset();
             returnToSettings();
@@ -603,8 +618,14 @@ struct AgentActions {
         const auto result = task.future.get();
         task.running = false;
         if (!result.success) {
-            callbacks.notify(Sakura::ToastType::Error, 5000, result.message);
-            return;
+            using Kind = DefaultCompositorState::AgentState::ProviderKeyTask::Kind;
+            const bool removingExternal = task.kind == Kind::Remove && AgentProviders::External(task.provider);
+            if (!removingExternal) {
+                callbacks.notify(Sakura::ToastType::Error, 5000, result.message);
+                return;
+            }
+            JST_WARN("[AGENT] {}", result.message);
+            callbacks.notify(Sakura::ToastType::Warning, 5000, result.message);
         }
 
         Result commit;
@@ -618,6 +639,19 @@ struct AgentActions {
         }
     }
 
+    void checkUnread() {
+        auto& agent = state.agent;
+        const auto& conversation = agent.chat.conversation;
+        const bool shown = agent.settings.enabled && agent.ui.visible;
+        if (streaming && !conversation.streaming && !shown) {
+            agent.ui.unread = true;
+        }
+        if (shown || conversation.messages.empty()) {
+            agent.ui.unread = false;
+        }
+        streaming = conversation.streaming;
+    }
+
     void checkContextLengths() {
         auto& agent = state.agent;
         const auto& models = agent.settings.models;
@@ -628,7 +662,7 @@ struct AgentActions {
         agent.catalog.contextLengthsChecked = true;
         const bool missing = std::any_of(models.begin(), models.end(), [](const auto& model) {
             const bool missingLimits = model.contextLength == 0 || model.outputLength == 0;
-            const bool missingDetails = model.name.empty() || model.reasoningEfforts.empty();
+            const bool missingDetails = model.name.empty() || model.reasoningEfforts.empty() || !model.priced;
             return missingLimits || missingDetails;
         });
         if (missing && !agent.catalog.loading) {
@@ -638,8 +672,7 @@ struct AgentActions {
 
     void checkSettingsSection() {
         auto& agent = state.agent;
-        const bool shown = state.modal.content == ModalContent::Settings &&
-                           state.settings.section == SettingsSection::Intelligence;
+        const bool shown = state.interface.settingsTab && state.settings.section == SettingsSection::Intelligence;
         const bool entered = shown && !agent.ui.settingsShown;
         agent.ui.settingsShown = shown;
 
@@ -756,11 +789,19 @@ struct AgentActions {
             saved.reasoningEfforts = model.reasoningEfforts;
             changed = true;
         }
+        const bool repriced = model.inputCost != saved.inputCost || model.outputCost != saved.outputCost;
+        if (model.priced && (!saved.priced || repriced)) {
+            saved.priced = true;
+            saved.inputCost = model.inputCost;
+            saved.outputCost = model.outputCost;
+            changed = true;
+        }
 
         return changed;
     }
 
     bool stopping = false;
+    bool streaming = false;
 };
 
 }  // namespace Jetstream

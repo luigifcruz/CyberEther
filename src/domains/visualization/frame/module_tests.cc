@@ -2,16 +2,21 @@
 #include <catch2/catch_approx.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <unordered_set>
+#include <utility>
 
 #include "jetstream/domains/visualization/frame/module.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/runtime.hh"
 #include "jetstream/scheduler_context.hh"
 #include "jetstream/testing.hh"
 
 #include "module_impl.hh"
+#include "surface_fixture.hh"
 
 using namespace Jetstream;
 
@@ -20,6 +25,18 @@ namespace {
 struct FrameImplAccess : Modules::FrameImpl {
     static auto viewMember() {
         return &FrameImplAccess::view;
+    }
+
+    static auto displayRangeMember() {
+        return &FrameImplAccess::displayRange;
+    }
+
+    static auto renderSurfaceMember() {
+        return &FrameImplAccess::renderSurface;
+    }
+
+    static auto textMember() {
+        return &FrameImplAccess::text;
     }
 };
 
@@ -48,7 +65,7 @@ struct FrameViewFixture {
     void present() {
         auto* presenter = module->getImpl<Scheduler::Context>();
         REQUIRE(presenter);
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     }
 
     void zoomTo(const F32 zoom) {
@@ -114,6 +131,159 @@ void RequireFrameValidationError(const Registry::ModuleRegistration& impl,
 }
 
 }  // namespace
+
+TEST_CASE("Frame presents captured pixels with their captured auto range", "[modules][frame]") {
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2, 2}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["frame"].requested("test", "frame");
+    inputs["frame"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("frame", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::Frame{}, inputs) == Result::SUCCESS);
+    auto* frame = module->getImpl<Modules::FrameImpl>();
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(frame);
+    REQUIRE(presenter);
+
+    Runtime runtime("test", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+    std::unordered_set<std::string> skipped;
+    std::unordered_set<std::string> stalled;
+    std::unordered_set<std::string> failed;
+    const auto compute = [&](const std::array<F32, 4>& values) {
+        std::copy(values.begin(), values.end(), input.data<F32>());
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
+        REQUIRE(failed.empty());
+    };
+    const auto range = [&] {
+        return (frame->*FrameImplAccess::displayRangeMember())();
+    };
+
+    compute({0.25f, 0.5f, 0.75f, 1.0f});
+    REQUIRE(presenter->presentCapture() == Result::SUCCESS);
+    compute({-4.0f, 0.0f, 4.0f, 8.0f});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(range() == std::pair<F32, F32>{0.25f, 1.0f});
+
+    REQUIRE(presenter->presentCapture() == Result::SUCCESS);
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(range() == std::pair<F32, F32>{-4.0f, 8.0f});
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Frame redraws its retained surface only on input and new data",
+          "[modules][frame][present][retained]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {4, 4});
+    TensorMap inputs;
+    inputs["frame"].tensor = input;
+    auto window = std::make_shared<SurfaceTestWindow>();
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("frame", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::Frame{}, inputs, window) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    Runtime runtime("test", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+
+    auto* frame = module->getImpl<Modules::FrameImpl>();
+    REQUIRE(frame);
+    auto& surface = *(frame->*FrameImplAccess::renderSurfaceMember());
+
+    std::unordered_set<std::string> skipped, stalled, failed;
+    F32 level = 0.1f;
+    const auto compute = [&] {
+        std::fill_n(input.data<F32>(), input.size(), level);
+        level += 0.1f;
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
+    };
+
+    compute();
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    SurfaceProbe::consumeInvalidation(surface);
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    compute();
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize, .size = {640, 480}});
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Scroll, .position = {0.5f, 0.5f}, .scroll = {0.0f, 1.0f},
+    });
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Frame header shows only the zoom while attached and hides the readout",
+          "[modules][frame][present][attached]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {4, 4});
+    TensorMap inputs;
+    inputs["frame"].tensor = input;
+    auto window = std::make_shared<SurfaceTestWindow>();
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("frame", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::Frame{}, inputs, window) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    Runtime runtime("test", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+
+    auto* frame = module->getImpl<Modules::FrameImpl>();
+    REQUIRE(frame);
+    const auto& text = *(frame->*FrameImplAccess::textMember());
+
+    std::unordered_set<std::string> skipped, stalled, failed;
+    std::fill_n(input.data<F32>(), input.size(), 0.5f);
+    REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
+    module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Move, .position = {0.5f, 0.5f}});
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    const std::string frameLabel = text.get("header").fill;
+    REQUIRE(frameLabel.starts_with("4 x 4"));
+    REQUIRE(text.get("readout").fill.starts_with("X "));
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
+                                         .size = {512, 512},
+                                         .placement = SurfacePlacementType::Attached});
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(text.get("header").fill == " ");
+    REQUIRE(text.get("readout").fill == " ");
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Scroll,
+        .position = {0.5f, 0.5f},
+        .scroll = {0.0f, std::log(2.0f) / Modules::kFrameZoomSpeed},
+    });
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(text.get("header").fill == "ZOOM 2.0x");
+    REQUIRE(text.get("readout").fill == " ");
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
+                                         .size = {512, 512},
+                                         .placement = SurfacePlacementType::Detached});
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(text.get("header").fill == frameLabel + "   ZOOM 2.0x");
+    REQUIRE(text.get("readout").fill.starts_with("X "));
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+#endif
 
 TEST_CASE("Frame module accepts valid F32 frames", "[modules][frame]") {
     auto implementations = Registry::ListAvailableModules("frame");

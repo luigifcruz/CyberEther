@@ -24,6 +24,7 @@ struct ChatComposer : public Component {
         F32 borderWidth = 1.0f;
         std::optional<F32> rounding;
         bool compact = false;
+        bool chrome = false;
         F32 minLines = 1.0f;
         F32 maxLines = 6.0f;
         F32 padding = 7.0f;
@@ -65,6 +66,7 @@ struct ChatComposer : public Component {
         Callback<void()> onClear;
         Callback<void()> onAttach;
         Callback<void()> onVoice;
+        std::string voiceHint;
         Callback<void(bool)> onFocusChange;
         U64 focusRequest = 0;
         U64 clearRequest = 0;

@@ -39,6 +39,7 @@ class JETSTREAM_API Buffer {
 
     void* data();
     const void* data() const;
+    const void* hostData() const;
 
     void* backend() const;
 

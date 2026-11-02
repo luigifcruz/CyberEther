@@ -38,6 +38,7 @@ struct CodeEditor : public Component {
         bool showActiveLine = true;
         std::optional<Padding> padding;
         F32 fontSize = Typography::FontSize;
+        std::string fontName = Typography::MonoFont;
         std::string backgroundColorKey = "editor_background";
         F32 rounding = 0.0f;
         Callback<void(std::string)> onChange;

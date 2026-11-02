@@ -82,6 +82,7 @@ void ChromeButton::update(Config config) {
         .font = impl->config.font,
         .colorKey = impl->config.colorKey,
         .scale = impl->config.scale,
+        .emboss = impl->config.emboss,
     });
 }
 

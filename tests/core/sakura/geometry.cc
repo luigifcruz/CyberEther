@@ -11,6 +11,7 @@
 #include <jetstream/render/components/mesh.hh>
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/curves.hh>
+#include <jetstream/render/sakura/components/flowgraph_card.hh>
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
@@ -20,17 +21,113 @@
 #include "render/sakura/detail/helpers.hh"
 #include "render/sakura/detail/occlusion.hh"
 #include "render/sakura/detail/underlay.hh"
+#include "render/sakura/detail/voice_wave.hh"
 #include "render/sakura/surface_presenter.hh"
+#include "render/sakura/metrics.hh"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 using namespace Jetstream;
 using namespace SakuraTest;
+
+TEST_CASE("Wave row capacities cover subpixel periods and clipped sample phases", "[core][sakura][geometry][wave-metrics]") {
+    auto ctx = MakeContext();
+    ctx.framebufferSize = {3840, 2160};
+    for (const F32 period : {0.25f, 0.5f, 1.0f, 12.0f, 63.0f}) {
+        CAPTURE(period);
+        const auto points = Sakura::WavePoints(-10.0f, 100.0f, 3840.0f, period, 2.0f, -10.0f, 3830.0f);
+        REQUIRE(points.size() == static_cast<U64>(std::ceil(3840.0 * 12.0 / period)) + 1);
+        CHECK(points.size() * Sakura::kWavePointVertices <= Sakura::WaveRowCapacity(ctx, period));
+        CHECK(points.front().x == -10.0f);
+        CHECK(points.front().y == 100.0f);
+        CHECK(points[3].x == Catch::Approx(-10.0f + period * 0.25f));
+        CHECK(points[3].y == 98.0f);
+        CHECK(points[9].y == 102.0f);
+        CHECK(points.back().x >= 3830.0f);
+        CHECK(points.back().x <= 3830.0f + period / 12.0f);
+
+        const auto clipped = Sakura::WavePoints(-10.0f, 100.0f, 1e9f, period, 2.0f, 100.1f, 110.2f);
+        REQUIRE_FALSE(clipped.empty());
+        CHECK(clipped.front().x <= 100.1f);
+        CHECK(clipped.back().x >= 110.2f);
+        for (const auto& point : clipped) {
+            CHECK(std::find(points.begin(), points.end(), point) != points.end());
+        }
+
+        for (const F32 left : {-1000000.0f, -10.0f, 0.0f, 0.1f}) {
+            const auto visible = Sakura::WavePoints(left, 100.0f, 1e9f, period, 2.0f, 0.0f, 3840.0f);
+            REQUIRE_FALSE(visible.empty());
+            CHECK(visible.size() * Sakura::kWavePointVertices <= Sakura::WaveRowCapacity(ctx, period));
+        }
+    }
+}
+
+TEST_CASE("Wave ranges clip before sampling and retain their endpoint brackets", "[core][sakura][geometry][wave-metrics]") {
+    const auto whole = Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, 10.0f, 110.25f);
+    REQUIRE(whole.size() == 102);
+    CHECK(whole.front().x == 10.0f);
+    CHECK(whole.back().x == 111.0f);
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, -100.0f, 200.0f) == whole);
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, -100.0f, 9.9f).empty());
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, 110.5f, 200.0f).empty());
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, 20.0f, 10.0f).empty());
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 0.0f, 12.0f, 1.0f, 10.0f, 20.0f).empty());
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, -1.0f, 12.0f, 1.0f, 10.0f, 20.0f).empty());
+    const auto point = Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, 20.0f, 20.0f);
+    REQUIRE(point.size() == 1);
+    CHECK(point.front() == whole[10]);
+}
+
+TEST_CASE("Wave helpers reject nonfinite inputs and bound extreme finite sampling", "[core][sakura][geometry][wave-metrics]") {
+    auto ctx = MakeContext();
+    ctx.framebufferSize = {3840, 2160};
+    for (const F32 invalid : {std::numeric_limits<F32>::quiet_NaN(), std::numeric_limits<F32>::infinity(),
+                              -std::numeric_limits<F32>::infinity()}) {
+        for (U64 parameter = 0; parameter < 7; ++parameter) {
+            CAPTURE(invalid, parameter);
+            F32 args[] = {0.0f, 0.0f, 100.0f, 12.0f, 1.0f, 0.0f, 100.0f};
+            args[parameter] = invalid;
+            CHECK(Sakura::WavePoints(args[0], args[1], args[2], args[3], args[4], args[5], args[6]).empty());
+        }
+        CHECK(Sakura::WaveRowCapacity(ctx, invalid) == 0);
+    }
+    for (const F32 period : {0.0f, -1.0f}) {
+        CHECK(Sakura::WavePoints(0.0f, 0.0f, 100.0f, period, 1.0f, 0.0f, 100.0f).empty());
+        CHECK(Sakura::WaveRowCapacity(ctx, period) == 0);
+    }
+    for (const F32 period : {std::numeric_limits<F32>::denorm_min(), std::numeric_limits<F32>::min(), 1e-20f}) {
+        CAPTURE(period);
+        CHECK(Sakura::WavePoints(0.0f, 0.0f, 100.0f, period, 1.0f, 0.0f, 100.0f).empty());
+        CHECK(Sakura::WaveRowCapacity(ctx, period) <= Sakura::kWaveMaxPoints * Sakura::kWavePointVertices);
+    }
+
+    const F32 huge = std::numeric_limits<F32>::max();
+    CHECK(Sakura::WavePoints(-huge, 0.0f, huge, 12.0f, 1.0f, -10.0f, 0.0f).empty());
+    CHECK(Sakura::WavePoints(huge, 0.0f, huge, huge, 1.0f, huge, huge).size() == 1);
+    CHECK(Sakura::WavePoints(0.0f, huge, 100.0f, 12.0f, huge, 0.0f, 100.0f).empty());
+    CHECK(Sakura::WavePoints(0.0f, 0.0f, huge, 12.0f, 1.0f, 0.0f, huge).empty());
+    const auto distant = Sakura::WavePoints(-1e9f, 0.0f, 2e9f, 12.0f, 1.0f, 0.0f, 10.0f);
+    REQUIRE(distant.size() == 11);
+    CHECK(distant.front().x == 0.0f);
+    CHECK(distant.back().x == 10.0f);
+    CHECK(distant.front().y == Catch::Approx(-std::sin(2.0 * std::numbers::pi / 3.0)));
+
+    ctx.framebufferSize.x = std::numeric_limits<U64>::max();
+    CHECK(Sakura::WaveRowCapacity(ctx, 1.0f) == Sakura::kWaveMaxPoints * Sakura::kWavePointVertices);
+    ctx.framebufferSize.x = 0;
+    CHECK(Sakura::WaveRowCapacity(ctx, 12.0f) == 0);
+    const F32 limit = static_cast<F32>(Sakura::kWaveMaxPoints - 1);
+    CHECK(Sakura::WavePoints(0.0f, 0.0f, limit, 12.0f, 1.0f, 0.0f, limit).size() == Sakura::kWaveMaxPoints);
+    CHECK(Sakura::WavePoints(0.0f, 0.0f, limit + 1.0f, 12.0f, 1.0f, 0.0f, limit + 1.0f).empty());
+}
 
 namespace {
 
@@ -52,14 +149,21 @@ struct DeviceWindow : SakuraTest::FakeWindow {
     }
 };
 
-struct Rig {
-    DeviceWindow window;
+struct EraseWindow : DeviceWindow {
+    bool supportsEraseBlending() const override {
+        return true;
+    }
+};
+
+template<typename Window = DeviceWindow>
+struct BasicRig {
+    Window window;
     Sakura::Palette palette;
     Sakura::Context ctx = MakeContext();
     Render::Surface::Config surface;
     std::vector<Sakura::Drawable*> drawables;
 
-    Rig() {
+    BasicRig() {
         ctx.render = &window;
         ctx.palette = palette;
         ctx.attach = [this](const Sakura::Component&, Sakura::Drawable* drawable) {
@@ -68,8 +172,8 @@ struct Rig {
         };
     }
 
-    Rig(const Rig&) = delete;
-    Rig& operator=(const Rig&) = delete;
+    BasicRig(const BasicRig&) = delete;
+    BasicRig& operator=(const BasicRig&) = delete;
 
     bool supported() const {
         return window.device() != DeviceType::None;
@@ -91,6 +195,8 @@ struct Rig {
         return *surface.programs.back();
     }
 };
+
+using Rig = BasicRig<>;
 
 template<typename T>
 std::span<T> Contents(const std::shared_ptr<Render::Buffer>& buffer) {
@@ -953,6 +1059,122 @@ TEST_CASE("Attached labels rebuild only when their instance or character capacit
     CHECK_FALSE(Sakura::Access::resourceDirty(label));
 }
 
+TEST_CASE("Attached flowgraph cards redraw new content without rebuilding and stay within capacity",
+          "[core][sakura][geometry][retention]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound card resources require Vulkan or WebGPU support.");
+    }
+    MonoFontWindow fonts;
+    REQUIRE(rig.window.addFont("default_mono", fonts.font("default_mono")) == Result::SUCCESS);
+
+    Sakura::FlowgraphCard card;
+    Host host(card);
+    const auto show = [&](const std::string& diagram, const std::string& title, const std::string& description) {
+        card.update({.diagram = diagram, .category = "Basics", .title = title, .description = description});
+        host.place(rig.ctx, {0.0f, 0.0f, 260.0f, 320.0f});
+    };
+    show("a[A] --> b[B]", "First", "Short.");
+    REQUIRE(rig.build(host) == Result::SUCCESS);
+    REQUIRE_FALSE(Sakura::Access::resourceDirty(host));
+    const U64 programs = rig.surface.programs.size();
+    REQUIRE(programs > 0);
+
+    std::string chain = "n0[Node 0]";
+    for (U64 index = 1; index < 40; ++index) {
+        chain += " --> n" + std::to_string(index) + "[Node " + std::to_string(index) + "]";
+    }
+    show(chain, "Second", "Other words.");
+    CHECK_FALSE(Sakura::Access::resourceDirty(host));
+    CHECK_FALSE(Sakura::Access::structureDirty(host));
+    for (const auto* box : Find<Sakura::Box>(card)) {
+        const auto& config = box->config();
+        CAPTURE(config.instances.size(), config.capacity);
+        CHECK_FALSE(Sakura::Access::resourceDirty(*box));
+        CHECK((config.capacity == 0 || config.instances.size() <= config.capacity));
+    }
+    for (const auto* label : Find<Sakura::Label>(card)) {
+        const auto& config = label->config();
+        CAPTURE(config.instances.size(), config.capacity, config.fontName);
+        CHECK_FALSE(Sakura::Access::resourceDirty(*label));
+        CHECK((config.capacity == 0 || config.instances.size() <= config.capacity));
+    }
+    CHECK_FALSE(Sakura::Access::hasUnbuilt(host));
+    REQUIRE(Sakura::Access::buildPending(host, rig.ctx) == Result::SUCCESS);
+    CHECK(rig.surface.programs.size() == programs);
+
+    show("a[A] --> b[B]", "First", "Short.");
+    CHECK_FALSE(Sakura::Access::resourceDirty(host));
+    CHECK_FALSE(Sakura::Access::hasUnbuilt(host));
+    REQUIRE(Sakura::Access::buildPending(host, rig.ctx) == Result::SUCCESS);
+    CHECK(rig.surface.programs.size() == programs);
+}
+
+TEST_CASE("Attached voice waves upload every field at the translated rect and scissor to the combined clip",
+          "[core][sakura][geometry][voice]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound voice wave resources require Vulkan or WebGPU support.");
+    }
+    Sakura::VoiceWave wave;
+    Sakura::VoiceWave::Config config = {
+        .rect = {100.0f, 50.0f, 200.0f, 40.0f},
+        .pitch = 2.5f,
+        .dot = 0.85f,
+        .cornerRadius = 14.0f,
+        .margin = 2.35f,
+        .time = 1.5f,
+        .busy = 0.25f,
+        .activity = 0.5f,
+        .level = 0.75f,
+        .listeningColor = {0.1f, 0.2f, 0.3f, 1.0f},
+        .busyColor = {0.4f, 0.5f, 0.6f, 1.0f},
+        .dimColor = {0.7f, 0.8f, 0.9f, 1.0f},
+        .clip = Rect{100.0f, 50.0f, 100.0f, 40.0f},
+    };
+    wave.update(config);
+    REQUIRE(rig.build(wave) == Result::SUCCESS);
+    rig.drawable().translation = {10.0f, 20.0f};
+    rig.drawable().inherited = Rect{150.0f, 0.0f, 400.0f, 400.0f};
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    CHECK(rig.program().enabled());
+
+    const auto uniforms = Uniforms(rig.program());
+    REQUIRE(uniforms.size() == 28);
+    CHECK(uniforms[0] == Approx(-1.0f + 2.0f * 210.0f / 800.0f));
+    CHECK(uniforms[1] == Approx(1.0f - 2.0f * 90.0f / 600.0f));
+    CHECK(uniforms[2] == Approx(200.0f / 800.0f));
+    CHECK(uniforms[3] == Approx(-40.0f / 600.0f));
+    CHECK(std::vector<F32>(uniforms.begin() + 4, uniforms.end()) ==
+          std::vector<F32>{200.0f, 40.0f, 2.5f, 0.85f, 1.5f, 0.25f, 0.5f, 0.75f, 0.1f, 0.2f, 0.3f, 1.0f,
+                           0.4f, 0.5f, 0.6f, 1.0f, 0.7f, 0.8f, 0.9f, 1.0f, 14.0f, 2.35f, 0.0f, 0.0f});
+    const auto scissor = rig.program().getConfig().scissorRect;
+    REQUIRE(scissor.has_value());
+    CHECK(scissor->x == 160);
+    CHECK(scissor->y == 70);
+    CHECK(scissor->width == 50);
+    CHECK(scissor->height == 40);
+
+    config.clip.reset();
+    wave.update(config);
+    rig.drawable().inherited.reset();
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    CHECK_FALSE(rig.program().getConfig().scissorRect.has_value());
+
+    config.pitch = 0.0f;
+    wave.update(config);
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    CHECK_FALSE(rig.program().enabled());
+
+    config.pitch = 2.5f;
+    wave.update(config);
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    CHECK(rig.program().enabled());
+    rig.drawable().conceal();
+    CHECK_FALSE(rig.program().enabled());
+    CHECK_FALSE(Sakura::Access::resourceDirty(wave));
+}
+
 TEST_CASE("Attached images rebuild when the texture is swapped and repaint for visual changes",
           "[core][sakura][geometry][retention]") {
     Rig rig;
@@ -987,6 +1209,36 @@ TEST_CASE("Attached images rebuild when the texture is swapped and repaint for v
     REQUIRE(rig.build(image) == Result::SUCCESS);
     CHECK_FALSE(Sakura::Access::resourceDirty(image));
     CHECK(rig.surface.programs.size() == programs + 1);
+}
+
+TEST_CASE("Demoted live images keep their underlay until the in-canvas replacement is built",
+          "[core][sakura][geometry][underlay]") {
+    BasicRig<EraseWindow> rig;
+    if (!rig.supported()) {
+        SKIP("Unbound image resources require Vulkan or WebGPU support.");
+    }
+    rig.ctx.underlays = true;
+    const auto plot = std::make_shared<SizedTexture>(Extent2D<U64>{64, 64});
+    Sakura::Image image;
+    image.update({.texture = plot, .rect = {0.0f, 0.0f, 64.0f, 64.0f}, .live = true});
+    REQUIRE(rig.build(image) == Result::SUCCESS);
+    REQUIRE(Sakura::Access::paint(image) == Result::SUCCESS);
+    REQUIRE(rig.drawable().underlay().has_value());
+
+    rig.drawable().allowUnderlay(false);
+    CHECK(Sakura::Access::resourceDirty(image));
+    CHECK(rig.drawable().underlay().has_value());
+
+    REQUIRE(rig.build(image) == Result::SUCCESS);
+    REQUIRE(Sakura::Access::paint(image) == Result::SUCCESS);
+    CHECK_FALSE(rig.drawable().underlay().has_value());
+    CHECK(rig.drawable().liveRegion().has_value());
+
+    rig.drawable().allowUnderlay(true);
+    CHECK(Sakura::Access::resourceDirty(image));
+    REQUIRE(rig.build(image) == Result::SUCCESS);
+    REQUIRE(Sakura::Access::paint(image) == Result::SUCCESS);
+    CHECK(rig.drawable().underlay().has_value());
 }
 
 TEST_CASE("Corner mask updates fill four corners at exact capacity and clip to the visible rectangle",
@@ -1465,6 +1717,9 @@ TEST_CASE("Opaque covers hide a target only inside their rounded body and clip",
     const ColorRGBA<F32> opaque = {0.1f, 0.1f, 0.1f, 1.0f};
     REQUIRE(Sakura::OpaqueCovers(card, 8.0f, opaque, std::nullopt, {10.0f, 10.0f, 80.0f, 80.0f}));
     REQUIRE_FALSE(Sakura::OpaqueCovers(card, 8.0f, opaque, std::nullopt, {2.0f, 2.0f, 20.0f, 20.0f}));
+    REQUIRE(Sakura::OpaqueCovers(card, 13.0f, opaque, std::nullopt, {8.0f, 8.0f, 84.0f, 40.0f}));
+    REQUIRE_FALSE(Sakura::OpaqueCovers(card, 13.0f, opaque, std::nullopt, {3.0f, 3.0f, 40.0f, 40.0f}));
+    REQUIRE(Sakura::OpaqueCovers(card, 13.0f, opaque, std::nullopt, {0.0f, 20.0f, 100.0f, 40.0f}));
     REQUIRE_FALSE(Sakura::OpaqueCovers(card, 0.0f, {0.1f, 0.1f, 0.1f, 0.9f}, std::nullopt,
                                          {10.0f, 10.0f, 10.0f, 10.0f}));
     REQUIRE_FALSE(Sakura::OpaqueCovers(card, 0.0f, opaque, Rect{0.0f, 0.0f, 50.0f, 100.0f},
@@ -1541,6 +1796,35 @@ TEST_CASE("Box instances past capacity never occlude or cover what lies beneath"
     REQUIRE(rects == std::vector<Rect>{{1.0f, 1.0f, 198.0f, 198.0f}});
     CHECK(rig.drawable().covers({10.0f, 10.0f, 50.0f, 50.0f}));
     CHECK_FALSE(rig.drawable().covers({310.0f, 10.0f, 50.0f, 50.0f}));
+}
+
+TEST_CASE("Boxes never cover through a translucent border ring or their antialiased edge",
+          "[core][sakura][geometry][occlusion]") {
+    const auto covers = [](ColorRGBA<F32> border, const Rect& target) {
+        Rig rig;
+        if (!rig.supported()) {
+            return std::optional<bool>{};
+        }
+        Sakura::Box box;
+        box.update({
+            .instances = {{.rect = {0.0f, 0.0f, 200.0f, 200.0f}, .backgroundColor = {0.2f, 0.2f, 0.2f, 1.0f}}},
+            .borderWidth = 4.0f,
+            .borderColor = border,
+        });
+        REQUIRE(rig.build(box) == Result::SUCCESS);
+        REQUIRE(Sakura::Access::paint(box) == Result::SUCCESS);
+        return std::optional<bool>{rig.drawable().covers(target)};
+    };
+    const ColorRGBA<F32> translucent = {1.0f, 1.0f, 1.0f, 0.5f};
+    const ColorRGBA<F32> solid = {1.0f, 1.0f, 1.0f, 1.0f};
+    const auto ring = covers(translucent, {2.0f, 50.0f, 50.0f, 50.0f});
+    if (!ring.has_value()) {
+        SKIP("Unbound shape resources require Vulkan or WebGPU support.");
+    }
+    CHECK_FALSE(*ring);
+    CHECK(covers(translucent, {6.0f, 50.0f, 50.0f, 50.0f}) == std::optional<bool>{true});
+    CHECK(covers(solid, {2.0f, 50.0f, 50.0f, 50.0f}) == std::optional<bool>{true});
+    CHECK(covers(solid, {0.0f, 50.0f, 50.0f, 50.0f}) == std::optional<bool>{false});
 }
 
 TEST_CASE("Overlapping live images keep punching only when opaque paint separates them",

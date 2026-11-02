@@ -7,7 +7,7 @@
 #include "compositor/default/support/agent/executor.hh"
 #include "compositor/default/model/callbacks.hh"
 #include "compositor/default/model/state.hh"
-#include "compositor/default/presenters/modal/intelligence_model.hh"
+#include "compositor/default/presenters/settings/intelligence_model.hh"
 #include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/registry.hh"
 
@@ -20,6 +20,7 @@
 
 #if defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
 #include "agent_provider.hh"
+#include "environment.hh"
 #endif
 
 using namespace Jetstream;
@@ -234,6 +235,75 @@ TEST_CASE("A tool executor retains its graph across focus changes and rejects cl
     }
 }
 
+TEST_CASE("Tools bound while the Start, Settings or Docs tab is active never touch the hidden flowgraph",
+          "[agent][compositor][target]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("source", "signal_generator", {}, {}, DeviceType::CPU,
+                              RuntimeType::NATIVE, "generic") == Result::SUCCESS);
+
+    DefaultCompositorState state;
+    state.flowgraph.items = {{"hidden", graph}};
+    state.interface.focusedFlowgraph = "hidden";
+
+    DefaultCompositorCallbacks callbacks;
+    callbacks.enqueueCommand = [](std::function<Result()> command, bool) {
+        command();
+    };
+
+    AgentExecutor bridge(state, callbacks);
+
+    const auto invoke = [&](F32 x) {
+        auto executor = bridge.bind();
+        const auto args = jst::fmt::format(
+            R"({{"operations":[{{"op":"set_node_layout","name":"source","x":{}}}]}})", x);
+        auto future = std::async(std::launch::async, [&] {
+            return executor("apply_flowgraph_patch", args, {});
+        });
+
+        PollBridge(bridge, [&] {
+            return future.wait_for(0ms) == std::future_status::ready;
+        });
+        if (future.wait_for(0ms) != std::future_status::ready) {
+            bridge.shutdown();
+        }
+
+        return nlohmann::json::parse(future.get().content);
+    };
+
+    state.interface.settingsTab = true;
+    state.interface.focusedTab = WorkspaceTab::Settings;
+    REQUIRE_FALSE(state.activeFlowgraph().has_value());
+    CHECK(invoke(111).contains("error"));
+    CHECK_FALSE(graph->metadata().has("node", "source"));
+
+    state.interface.startTab = true;
+    state.interface.focusedTab = WorkspaceTab::Start;
+    REQUIRE_FALSE(state.activeFlowgraph().has_value());
+    CHECK(invoke(222).contains("error"));
+    CHECK_FALSE(graph->metadata().has("node", "source"));
+
+    state.interface.docsTab = true;
+    state.interface.focusedTab = WorkspaceTab::Docs;
+    REQUIRE_FALSE(state.activeFlowgraph().has_value());
+    CHECK(invoke(444).contains("error"));
+    CHECK_FALSE(graph->metadata().has("node", "source"));
+
+    state.interface.focusedTab.reset();
+    REQUIRE(state.activeFlowgraph() == "hidden");
+    CHECK(invoke(333)["status"] == "success");
+
+    Flowgraph::Metadata::NodeLayout layout;
+    REQUIRE(graph->metadata().get("node", layout, "source") == Result::SUCCESS);
+    CHECK(layout.x == 333);
+
+    bridge.shutdown();
+    REQUIRE(graph->blockDestroy("source", false) == Result::SUCCESS);
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Malformed open_example arguments return errors from the UI poll",
           "[agent][compositor][validation]") {
     DefaultCompositorState state;
@@ -405,7 +475,125 @@ TEST_CASE("Agent tools return fresh rendered bounds without changing automatic s
     REQUIRE(graph->destroy() == Result::SUCCESS);
 }
 
+TEST_CASE("Intelligence sub-pages open and focus the settings tab through the shared settings path",
+          "[agent][compositor][settings]") {
+    DefaultCompositorState state;
+    state.agent.settings.enabled = false;
+    state.interface.startTab = true;
+    state.interface.focusedTab = WorkspaceTab::Start;
+    state.settings.registryPage = RegistryPage::AddPlugin;
+    DefaultCompositorCallbacks callbacks;
+    AgentRuntime runtime(state, callbacks);
+    AgentActions actions(state, callbacks, runtime);
+
+    REQUIRE(actions.handle(MailOpenAgentProviderEditor{}) == Result::SUCCESS);
+    CHECK(state.interface.settingsTab);
+    CHECK(state.settingsTabActive());
+    CHECK_FALSE(state.startTabActive());
+    CHECK(state.interface.settingsTabRequests == 1);
+    CHECK(state.settings.section == SettingsSection::Intelligence);
+    CHECK(state.settings.intelligencePage == IntelligencePage::Provider);
+    CHECK(state.settings.registryPage == RegistryPage::Overview);
+
+    REQUIRE(actions.handle(MailOpenAgentModelPicker{}) == Result::SUCCESS);
+    CHECK(state.interface.settingsTabRequests == 2);
+    CHECK(state.settings.intelligencePage == IntelligencePage::AddModel);
+}
+
+TEST_CASE("A reply that finishes while the assistant is hidden stays unread until the chat is shown",
+          "[agent][compositor][unread]") {
+    DefaultCompositorState state;
+    state.agent.settings.enabled = true;
+    state.agent.settings.models.clear();
+    DefaultCompositorCallbacks callbacks;
+    AgentRuntime runtime(state, callbacks);
+    AgentActions actions(state, callbacks, runtime);
+    auto& conversation = state.agent.chat.conversation;
+    const auto reply = [&](bool visible) {
+        state.agent.ui.visible = visible;
+        conversation.streaming = true;
+        actions.reconcile();
+        conversation.messages.push_back(std::make_shared<const Agent::Session::Entry>());
+        conversation.streaming = false;
+        actions.reconcile();
+    };
+
+    reply(true);
+    CHECK_FALSE(state.agent.ui.unread);
+
+    reply(false);
+    CHECK(state.agent.ui.unread);
+    actions.reconcile();
+    CHECK(state.agent.ui.unread);
+
+    REQUIRE(actions.handle(MailSetAgentChatVisible{.value = true}) == Result::SUCCESS);
+    CHECK_FALSE(state.agent.ui.unread);
+
+    reply(false);
+    CHECK(state.agent.ui.unread);
+    conversation.messages.clear();
+    actions.reconcile();
+    CHECK_FALSE(state.agent.ui.unread);
+}
+
 #if defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
+
+TEST_CASE("Missing environment provider keys block requests instead of allowing anonymous access",
+          "[agent][compositor][authentication]") {
+    AgentTest::ProviderServer server;
+    std::atomic<int> requests{0};
+    std::atomic<bool> authenticated{false};
+    server.server.Post("/chat", [&](const auto& request, auto& response) {
+        ++requests;
+        authenticated = request.get_header_value("Authorization") == "Bearer external-test-key";
+        response.set_content(AgentTest::Sse::Delta({{"content", "Hello"}}) + AgentTest::Sse::Done(),
+                             "text/event-stream");
+    });
+    server.server.Get("/models", [&](const auto&, auto& response) {
+        ++requests;
+        response.set_content(R"({"data":[{"id":"test-model"}]})", "application/json");
+    });
+    server.start();
+
+    TestSupport::ScopedEnvironment environment("CYBERETHER_TEST_PROVIDER_API_KEY");
+    Settings::Intelligence::Provider provider{
+        .name = "Local",
+        .host = server.origin,
+        .chatPath = "/chat",
+        .modelsPath = "/models",
+        .apiKeyEnv = environment.name(),
+    };
+
+    REQUIRE(environment.set("external-test-key\n"));
+    const auto client = AgentProviders::Client(provider);
+    const std::vector<Agent::Provider::Message> messages{{.role = "user", .content = "Hello"}};
+    Agent::Provider::Response response;
+    REQUIRE(client->stream(AgentTest::Request(messages), {}, response) == Result::SUCCESS);
+    CHECK(authenticated.load());
+    REQUIRE(requests.load() == 1);
+
+    for (const auto& value : {std::optional<std::string>{}, std::optional<std::string>{" \t\r\n"}}) {
+        REQUIRE(environment.set(value));
+        CHECK(client->stream(AgentTest::Request(messages), {}, response) == Result::ERROR);
+        CHECK(response.error.kind == Agent::Provider::Error::Kind::MissingCredentials);
+
+        std::vector<Agent::Provider::Model> models;
+        Agent::Provider::Error error;
+        CHECK(client->models(models, &error) == Result::ERROR);
+        CHECK(error.kind == Agent::Provider::Error::Kind::MissingCredentials);
+        CHECK(requests.load() == 1);
+    }
+
+    REQUIRE(environment.set("external-test-key\n"));
+    REQUIRE(client->stream(AgentTest::Request(messages), {}, response) == Result::SUCCESS);
+    CHECK(authenticated.load());
+    CHECK(requests.load() == 2);
+
+    provider.apiKeyEnv.clear();
+    REQUIRE(AgentProviders::Client(provider)->stream(AgentTest::Request(messages), {}, response) == Result::SUCCESS);
+    CHECK_FALSE(authenticated.load());
+    CHECK(requests.load() == 3);
+}
 
 TEST_CASE("Model discovery failures reach the model picker with provider diagnostics",
           "[agent][compositor][models]") {

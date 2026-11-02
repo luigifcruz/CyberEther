@@ -34,6 +34,9 @@ class JETSTREAM_API Text : public Generic {
         ColorRGBA<F32> color = {1.0f, 1.0f, 1.0f, 1.0f};
         std::unordered_map<std::string, ElementConfig> elements;
         F32 sharpness = 0.5f;
+        F32 weight = 0.0f;
+        F32 emboss = 0.0f;
+        F32 embossBackdrop = 0.0f;
     };
 
     struct Unicode {
@@ -62,12 +65,14 @@ class JETSTREAM_API Text : public Generic {
     F32 advance(const std::string& fill, F32 scale = 1.0f) const;
     std::vector<F32> advances(const std::string& fill, F32 scale = 1.0f) const;
     F32 lineHeight(F32 scale = 1.0f) const;
+    F32 inkOffset(const std::string& fill, F32 scale = 1.0f) const;
     void enabled(bool value);
 
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
     Result updateTranslation(const Extent2D<F32>& translation);
     Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
     Result updateColor(const ColorRGBA<F32>& color);
+    Result updateStyle(F32 sharpness, F32 weight, F32 emboss, F32 embossBackdrop);
 
     constexpr const Config& getConfig() const {
         return config;

@@ -116,15 +116,13 @@ Result Font::create(Window* window) {
     addRange(0x0020, 0x007E);
     addRange(0x00A0, 0x017F);
     addRange(0x2010, 0x2027);
-    addRange(0x2030, 0x203C);
+    addRange(0x2030, 0x205E);
     addRange(0x20A0, 0x20BF);
     addRange(0x2100, 0x214F);
-    addRange(0x2190, 0x21FF);
-    addRange(0x2200, 0x2265);
-    addRange(0x25A0, 0x25CF);
-    addRange(0x2605, 0x2606);
-    addRange(0x2610, 0x2612);
-    addRange(0x2713, 0x2718);
+    addRange(0x2190, 0x23FF);
+    addRange(0x25A0, 0x27FF);
+    addRange(0x2900, 0x297F);
+    addRange(0x2B00, 0x2BFF);
     if (config.icons) {
         addRange(0xE000, 0xF8FF);
     }
@@ -263,6 +261,10 @@ const Font::Glyph& Font::glyph(const I32& code) const {
         it = glyphs.find(0xFFFD);
     }
     return it != glyphs.end() ? it->second : kEmpty;
+}
+
+bool Font::hasGlyph(I32 code) const {
+    return glyphs.contains(code);
 }
 
 I32 Font::ascent() const {

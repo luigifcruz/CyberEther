@@ -23,6 +23,7 @@ struct MarkdownEditor : public Component {
         Callback<void()> onEdit;
         Callback<void()> onDone;
         Callback<void(Extent2D<F32>)> onContentOverflow;
+        Callback<bool(const std::string&)> onLink;
 
         bool operator==(const Config&) const = default;
     };

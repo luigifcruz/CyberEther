@@ -94,6 +94,7 @@ class JETSTREAM_API Window {
     TitlebarChrome titlebarChrome() const;
     void beginWindowDrag();
     void zoomWindow();
+    void setDarkAppearance(bool dark);
 
     Result bind(const std::shared_ptr<Components::Generic>& component);
     Result unbind(const std::shared_ptr<Components::Generic>& component);
@@ -225,6 +226,7 @@ class JETSTREAM_API Window {
     WindowMetrics _metrics;
     InputState _input;
     SurfaceCursor _requestedCursor = SurfaceCursor::Default;
+    std::optional<bool> _darkAppearance;
     std::unique_ptr<PresentState> presentState;
     bool shouldDeferAttachmentQueueProcessing();
     bool attachmentQueueEmpty() const;
@@ -232,9 +234,9 @@ class JETSTREAM_API Window {
 
     std::vector<std::shared_ptr<Components::Generic>> components;
 
-    uint32_t frameCount;
+    uint32_t frameCount = 0;
     bool created = false;
-    bool graphicalLoopThreadStarted;
+    bool graphicalLoopThreadStarted = false;
     std::atomic_bool frameActive = false;
     std::thread::id graphicalLoopThreadId;
     std::mutex newFrameQueueMutex;

@@ -193,7 +193,8 @@ Provider::Error Validate(const Config& config, bool models, const std::string& m
     }
 
     const auto scope = models ? Provider::Scope::Models : Provider::Scope::Chat;
-    if (!Provider::Profile::Find(config.kind).ready(scope, !key.empty())) {
+    if ((config.requireApiKey && key.empty()) ||
+        !Provider::Profile::Find(config.kind).ready(scope, !key.empty())) {
         return {Kind::MissingCredentials, 0, Detail::Diagnostics::MissingKey()};
     }
 
@@ -312,8 +313,8 @@ class ChatCall {
         }
     }
 
-    Platform::Http::Response send(Attempt& attempt) const {
-        Platform::Http::Request http;
+    Platform::Http::Client::Response send(Attempt& attempt) const {
+        Platform::Http::Client::Request http;
         http.method = "POST";
         http.host = config.host;
         http.path = config.path;
@@ -331,12 +332,12 @@ class ChatCall {
             return attempt.consume(data);
         };
 
-        auto response = Platform::Http::Send(http);
+        auto response = Platform::Http::Client::Send(http);
         attempt.retryAfter = response.header("Retry-After");
         return response;
     }
 
-    Provider::Error diagnose(Attempt& attempt, const Platform::Http::Response& result) const {
+    Provider::Error diagnose(Attempt& attempt, const Platform::Http::Client::Response& result) const {
         auto& stream = *attempt.stream;
 
         const bool informational = attempt.status != 0 && attempt.status < 200;
@@ -461,7 +462,7 @@ Result Provider::models(std::vector<Model>& models, Provider::Error* error,
     }
 
     try {
-        Platform::Http::Request http;
+        Platform::Http::Client::Request http;
         http.host = config.host;
         http.path = config.modelsPath;
         http.headers = Headers(config, key, {});
@@ -469,7 +470,7 @@ Result Provider::models(std::vector<Model>& models, Provider::Error* error,
         http.cancelled = cancelled;
 
         nlohmann::json body;
-        if (auto failure = Detail::Diagnostics::Response(Platform::Http::Send(http), body)) {
+        if (auto failure = Detail::Diagnostics::Response(Platform::Http::Client::Send(http), body)) {
             return Fail(std::move(failure), error, config, key, " model discovery");
         }
 

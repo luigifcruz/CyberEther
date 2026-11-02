@@ -4,7 +4,6 @@
 #include "jetstream/parser.hh"
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -15,8 +14,8 @@ struct FlowgraphNodeInspector {
         std::string id;
         std::string name;
         Parser::Map value;
-        std::function<void(Parser::Map)> onApply;
-        std::function<void()> onClose;
+        Sakura::Callback<void(Parser::Map)> onApply;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {

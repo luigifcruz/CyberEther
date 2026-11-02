@@ -27,6 +27,7 @@ struct InputRouter {
         sampled = false;
         hovered = false;
         pointer.reset();
+        modifiers = {};
         position = {0.0f, 0.0f};
         buttons.fill(false);
         keys.clear();
@@ -39,6 +40,7 @@ struct InputRouter {
     bool sampled = false;
     bool hovered = false;
     std::optional<Extent2D<F32>> pointer;
+    KeyModifiers modifiers;
     Extent2D<F32> position = {0.0f, 0.0f};
     std::array<bool, 3> buttons{};
     std::vector<KeyCode> keys;

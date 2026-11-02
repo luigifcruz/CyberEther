@@ -24,6 +24,13 @@ endif
 if all_deps_found
     cfg_lst.set('JETSTREAM_LOADER_OPENSSL_AVAILABLE', true)
     dep_lst += deps
+
+    if jst_is_linux and not jst_is_static
+        # Keep bundled OpenSSL private. System Python extensions can otherwise
+        # bind some EVP calls to our static copy and others to system libcrypto,
+        # mixing incompatible private structures from different OpenSSL builds.
+        lib_link_args += '-Wl,--exclude-libs,libssl.a:libcrypto.a'
+    endif
 endif
 
 ldr_lst += {'OpenSSL': all_deps_found}

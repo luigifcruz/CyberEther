@@ -12,6 +12,8 @@
 #include "jetstream/render/components/curves.hh"
 #include "jetstream/render/components/image.hh"
 #include "jetstream/render/components/mesh.hh"
+#include "jetstream/render/components/text.hh"
+#include "../../../resources/fonts/compressed_jbmm.hh"
 #include "component_test_support.hh"
 
 using namespace Jetstream;
@@ -324,7 +326,7 @@ void ReleaseComponentSurface(ComponentWindow<D>& window, const std::shared_ptr<C
 }
 
 void CheckMeshIndexUpload(const Render::Transfer::Batch& batch,
-                          const std::array<U32, 6>& expected, U64 vertexLimit) {
+                          const std::array<U32, 6>& expected, U64 vertexLimit, U64 count = 6) {
     const auto& uploads = batch.buffers();
     const auto isIndex = [](const auto& upload) {
         return upload.destination->getConfig().target == Render::Buffer::Target::VERTEX_INDICES;
@@ -334,11 +336,12 @@ void CheckMeshIndexUpload(const Render::Transfer::Batch& batch,
     REQUIRE(upload.destinationOffset == 0);
     REQUIRE(upload.upload.start == 0);
     REQUIRE(upload.upload.unitByteSize == sizeof(U32));
-    REQUIRE(upload.upload.data.size() == sizeof(expected));
-    std::array<U32, 6> values;
-    std::memcpy(values.data(), upload.upload.data.data(), sizeof(values));
+    REQUIRE(count <= expected.size());
+    REQUIRE(upload.upload.data.size() == count * sizeof(U32));
+    std::vector<U32> values(count);
+    std::memcpy(values.data(), upload.upload.data.data(), count * sizeof(U32));
     REQUIRE(std::all_of(values.begin(), values.end(), [&](U32 index) { return index < vertexLimit; }));
-    REQUIRE(values == expected);
+    REQUIRE(std::equal(values.begin(), values.end(), expected.begin()));
     REQUIRE_FALSE(upload.destination->getConfig().enableZeroCopy);
 }
 
@@ -377,7 +380,7 @@ void CheckMeshIndexSnapshotBindings() {
         Render::Transfer::Batch retry;
         REQUIRE(window.collect(retry) == Result::SUCCESS);
         REQUIRE(retry.buffers().size() == 5);
-        CheckMeshIndexUpload(retry, {0, 1, 2, 0, 0, 0}, 3);
+        CheckMeshIndexUpload(retry, {0, 1, 2, 0, 0, 0}, 3, 3);
     }
     driver.render(window);
     CHECK(Pixel(driver.pixels(texture), 16, 12) > 0.99f);
@@ -445,7 +448,7 @@ void CheckMeshIndexSnapshotBindings() {
             Render::Transfer::Batch corrected;
             REQUIRE(window.collect(corrected) == Result::SUCCESS);
             REQUIRE(corrected.buffers().size() == 3);
-            CheckMeshIndexUpload(corrected, {0, 1, 2, 0, 0, 0}, 3);
+            CheckMeshIndexUpload(corrected, {0, 1, 2, 0, 0, 0}, 3, 3);
         }
         driver.render(window);
         CHECK(driver.pixels(texture) == baseline);
@@ -470,6 +473,78 @@ void CheckMeshIndexSnapshotBindings() {
     NoUploads(window);
     driver.render(window);
     CHECK(Pixel(driver.pixels(texture), 12, 12) < 0.001f);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+template<DeviceType D>
+void CheckMeshUploadRanges() {
+    if (!std::getenv("JETSTREAM_TEST_NATIVE_COMPONENTS")) {
+        SKIP("Set JETSTREAM_TEST_NATIVE_COMPONENTS=1 to run headless GPU regressions.");
+    }
+    REQUIRE(Backend::Initialize<D>(Backend::Config{.validationEnabled = false, .headless = true}) == Result::SUCCESS);
+    ComponentDriver<D> driver;
+    ComponentWindow<D> window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    Mesh mesh({.vertexCapacity = 6, .indexCapacity = 196608, .framebufferSize = {64, 64}});
+    REQUIRE(mesh.create(&window) == Result::SUCCESS);
+    FillMesh(mesh);
+    REQUIRE(mesh.update(3, 3) == Result::SUCCESS);
+    auto texture = Frame<D>();
+    auto surface = Attach(window, mesh, texture);
+    REQUIRE(mesh.present() == Result::SUCCESS);
+    driver.render(window);
+    const auto baseline = driver.pixels(texture);
+
+    for (int frame = 0; frame < 60; ++frame) {
+        REQUIRE(mesh.update(3, 3) == Result::SUCCESS);
+        REQUIRE(mesh.present() == Result::SUCCESS);
+        {
+            Render::Transfer::Batch batch;
+            REQUIRE(window.collect(batch) == Result::SUCCESS);
+            CheckMeshIndexUpload(batch, {0, 1, 2, 0, 0, 0}, 3, 3);
+        }
+        driver.render(window);
+    }
+    CHECK(driver.pixels(texture) == baseline);
+
+    auto indexBuffer = surface->getConfig().programs.front()->getConfig().draws.front()->getConfig().buffer->getConfig().indices;
+    auto& indexConfig = const_cast<Render::Buffer::Config&>(indexBuffer->getConfig());
+    void* indexSource = indexConfig.buffer;
+    REQUIRE(mesh.update(6, 6) == Result::SUCCESS);
+    indexConfig.buffer = nullptr;
+    const Result rejected = mesh.present();
+    indexConfig.buffer = indexSource;
+    REQUIRE(rejected == Result::ERROR);
+    REQUIRE(mesh.update(3, 3) == Result::SUCCESS);
+    REQUIRE(mesh.present() == Result::SUCCESS);
+    {
+        Render::Transfer::Batch retry;
+        REQUIRE(window.collect(retry) == Result::SUCCESS);
+        CheckMeshIndexUpload(retry, {0, 1, 2, 0, 0, 0}, 3);
+    }
+    driver.render(window);
+    CHECK(driver.pixels(texture) == baseline);
+
+    REQUIRE(mesh.update(6, 6) == Result::SUCCESS);
+    REQUIRE(mesh.present() == Result::SUCCESS);
+    driver.render(window);
+    CHECK(Pixel(driver.pixels(texture), 36, 36) > 0.99f);
+    REQUIRE(mesh.update(0, 0) == Result::SUCCESS);
+    REQUIRE(mesh.present() == Result::SUCCESS);
+    NoUploads(window);
+    REQUIRE(mesh.update(3, 3) == Result::SUCCESS);
+    REQUIRE(mesh.present() == Result::SUCCESS);
+    {
+        Render::Transfer::Batch batch;
+        REQUIRE(window.collect(batch) == Result::SUCCESS);
+        CheckMeshIndexUpload(batch, {0, 1, 2, 0, 0, 0}, 3);
+    }
+    driver.render(window);
+    CHECK(driver.pixels(texture) == baseline);
+    ReleaseComponentSurface(window, surface);
+    surface = Attach(window, mesh, texture);
+    driver.render(window);
+    CHECK(driver.pixels(texture) == baseline);
     REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
@@ -648,6 +723,56 @@ void CheckImages(ComponentDriver<D>& driver) {
 }
 
 template<DeviceType D>
+void CheckTextStyles(ComponentDriver<D>& driver) {
+    ComponentWindow<D> window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    auto font = std::make_shared<Font>(Font::Config{.size = 32.0f, .data = jbmm_compressed_data});
+    REQUIRE(font->create(&window) == Result::SUCCESS);
+    Text text({.maxCharacters = 4, .font = font, .pixelSize = {2.0f / 64, 2.0f / 64},
+               .elements = {{"label", {.position = {0, 0}, .alignment = {1, 1}, .fill = "A"}}}});
+    REQUIRE(text.create(&window) == Result::SUCCESS);
+    auto texture = Frame<D>();
+    auto surface = Attach(window, text, texture);
+    REQUIRE(text.present() == Result::SUCCESS);
+    driver.render(window);
+    const auto before = driver.pixels(texture);
+    Render::Surface::Config programsBefore;
+    REQUIRE(text.surface(programsBefore) == Result::SUCCESS);
+
+    REQUIRE(text.updateStyle(0.3f, 0.75f, 0.6f, 0.9f) == Result::SUCCESS);
+    REQUIRE(text.present() == Result::SUCCESS);
+    {
+        Render::Transfer::Batch batch;
+        REQUIRE(window.collect(batch) == Result::SUCCESS);
+        REQUIRE(batch.buffers().size() == 1);
+        CHECK(batch.buffers().front().upload.data.size() == 32);
+        CHECK(batch.textures().empty());
+    }
+    driver.render(window);
+    const auto after = driver.pixels(texture);
+    bool changed = false;
+    for (U64 i = 0; i < before.size(); ++i) changed |= std::abs(before[i] - after[i]) > 0.001f;
+    CHECK(changed);
+    Render::Surface::Config programsAfter;
+    REQUIRE(text.surface(programsAfter) == Result::SUCCESS);
+    CHECK(programsBefore.programs == programsAfter.programs);
+    REQUIRE(text.updateStyle(0.3f, 0.75f, 0.6f, 0.9f) == Result::SUCCESS);
+    REQUIRE(text.present() == Result::SUCCESS);
+    NoUploads(window);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+template<DeviceType D>
+void CheckNativeTextStyle() {
+    if (!std::getenv("JETSTREAM_TEST_NATIVE_COMPONENTS")) {
+        SKIP("Set JETSTREAM_TEST_NATIVE_COMPONENTS=1 to run headless GPU regressions.");
+    }
+    REQUIRE(Backend::Initialize<D>(Backend::Config{.validationEnabled = false, .headless = true}) == Result::SUCCESS);
+    ComponentDriver<D> driver;
+    CheckTextStyles(driver);
+}
+
+template<DeviceType D>
 void CheckNativeComponents() {
     if (!std::getenv("JETSTREAM_TEST_NATIVE_COMPONENTS")) {
         SKIP("Set JETSTREAM_TEST_NATIVE_COMPONENTS=1 to run headless GPU regressions.");
@@ -726,6 +851,11 @@ TEST_CASE("Program state changes invalidate retained surfaces without transfers"
 }
 
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+TEST_CASE("Metal text style changes update uniforms without rebuilding programs", "[core][render][native][metal][text-style]") {
+    auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+    CheckNativeTextStyle<DeviceType::Metal>();
+}
+
 TEST_CASE("Metal components retain state and retry failed uploads", "[core][render][components][native][metal]") {
     auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
     CheckNativeComponents<DeviceType::Metal>();
@@ -740,9 +870,18 @@ TEST_CASE("Metal mesh binds only validated index snapshots", "[core][render][com
     auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
     CheckMeshIndexSnapshotBindings<DeviceType::Metal>();
 }
+
+TEST_CASE("Metal mesh uploads active index ranges without changing pixels", "[core][render][components][native][metal][mesh-upload-ranges]") {
+    auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+    CheckMeshUploadRanges<DeviceType::Metal>();
+}
 #endif
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Vulkan text style changes update uniforms without rebuilding programs", "[core][render][native][vulkan][text-style]") {
+    CheckNativeTextStyle<DeviceType::Vulkan>();
+}
+
 TEST_CASE("Vulkan components retain state and retry failed uploads", "[core][render][components][native][vulkan]") {
     CheckNativeComponents<DeviceType::Vulkan>();
 }
@@ -753,5 +892,9 @@ TEST_CASE("Vulkan mesh rejects invalid indices before uploads", "[core][render][
 
 TEST_CASE("Vulkan mesh binds only validated index snapshots", "[core][render][components][native][vulkan][mesh-bind-indices]") {
     CheckMeshIndexSnapshotBindings<DeviceType::Vulkan>();
+}
+
+TEST_CASE("Vulkan mesh uploads active index ranges without changing pixels", "[core][render][components][native][vulkan][mesh-upload-ranges]") {
+    CheckMeshUploadRanges<DeviceType::Vulkan>();
 }
 #endif

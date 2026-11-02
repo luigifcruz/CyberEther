@@ -12,11 +12,11 @@ layout(location = 0) out vec3 vColor;
 layout(location = 1) out vec3 vSphere;
 
 void main() {
-    vec3 p = lonLatToSphere(inPosition.x, inPosition.y);
+    vec3 p = mapSphere(inPosition.xy);
     // Project the real sphere point (no vertex-level clamping); the fragment
     // stage discards pixels beyond the horizon so triangles that straddle the
     // limb meet the silhouette cleanly without distorting large primitives.
-    gl_Position = uniforms.viewProjection * vec4(p, 1.0);
+    gl_Position = uniforms.viewProjection * vec4(mapLocal(inPosition), 1.0);
     vColor = inColor;
     vSphere = p;
 }

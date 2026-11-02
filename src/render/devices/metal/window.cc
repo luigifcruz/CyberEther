@@ -95,9 +95,9 @@ Result Implementation::createPresenter() {
     return result;
 }
 
-void Implementation::encodePresent() {
+void Implementation::encodePresent(MTL::Texture* target) {
     auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0)->init();
-    colorAttachDescriptor->setTexture(drawable->texture());
+    colorAttachDescriptor->setTexture(target);
     colorAttachDescriptor->setLoadAction(MTL::LoadActionClear);
     colorAttachDescriptor->setStoreAction(MTL::StoreActionStore);
 
@@ -105,8 +105,8 @@ void Implementation::encodePresent() {
     colorAttachDescriptor->setClearColor(MTL::ClearColor(background.r, background.g, background.b, background.a));
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
 
-    const Extent2D<U64> target = {drawable->texture()->width(), drawable->texture()->height()};
-    presenter->encode(renderCmdEncoder, framePresentList(), metrics(), target);
+    const Extent2D<U64> extent = {target->width(), target->height()};
+    presenter->encode(renderCmdEncoder, framePresentList(), metrics(), extent);
 
     renderCmdEncoder->endEncoding();
 }
@@ -172,14 +172,21 @@ Result Implementation::underlyingEnd() {
     }
 
     auto pass = beginPresent(transfers);
+    MTL::Texture* target = nullptr;
     if (pass.presenting) {
-        drawable = static_cast<CA::MetalDrawable*>(viewport->nextDrawable());
-        acquired(pass, drawable ? Acquire::Ready : Acquire::Dropped);
+        target = viewport->nextDrawable(drawable);
+        acquired(pass, target ? Acquire::Ready : Acquire::Dropped);
     }
 
     if (pass.presenting) {
-        encodePresent();
-        commandBuffer->presentDrawable(drawable);
+        encodePresent(target);
+        result = viewport->encodeCapture(commandBuffer, target);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return abortFrame(result);
+        }
+        if (drawable) {
+            commandBuffer->presentDrawable(drawable);
+        }
     }
 
     commandBuffer->retain();

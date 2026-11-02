@@ -18,33 +18,37 @@ namespace Jetstream::Sakura {
 namespace {
 
 constexpr F32 kPillButtonHeight = 28.0f;
-constexpr F32 kPillButtonPadX = 10.0f;
 constexpr F32 kPillButtonIconGap = 6.0f;
 constexpr F32 kPillButtonIcon = 13.0f;
-constexpr F32 kPillButtonText = 14.0f;
 
 }  // namespace
 
 struct PillButton::Impl {
     Config config;
     Box shadow;
+    Box base;
     Box fill;
     Box highlight;
     Text icon;
     Text label;
     bool hovered = false;
+    bool pressed = false;
+
+    F32 alpha() const {
+        return config.disabled ? kDisabledAlpha : 1.0f;
+    }
 
     void prepare() {
         icon.update({.str = config.icon, .colorKey = config.colorKey,
-                     .scale = kPillButtonIcon / Typography::FontSize});
+                     .scale = kPillButtonIcon / Typography::FontSize, .opacity = alpha()});
         label.update({.str = config.label, .font = Text::Font::Display, .colorKey = config.colorKey,
-                      .scale = kPillButtonText / Typography::FontSize});
+                      .scale = config.textSize / Typography::FontSize, .opacity = alpha()});
     }
 };
 
 PillButton::PillButton() {
     impl = std::make_unique<Impl>();
-    mountChildren({&impl->shadow, &impl->fill, &impl->highlight, &impl->icon, &impl->label});
+    mountChildren({&impl->shadow, &impl->base, &impl->fill, &impl->highlight, &impl->icon, &impl->label});
 }
 
 PillButton::~PillButton() = default;
@@ -54,6 +58,10 @@ void PillButton::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
+    if (impl->config.disabled) {
+        impl->hovered = false;
+        impl->pressed = false;
+    }
     impl->prepare();
     markConfigured();
 }
@@ -64,7 +72,7 @@ Extent2D<F32> PillButton::measure(const Context& ctx, Extent2D<F32> available) {
     if (impl->config.label.empty()) {
         return FitExtent({height, height}, available);
     }
-    F32 width = 2.0f * Px(ctx, kPillButtonPadX) + measureChild(impl->label, ctx, {infinite, infinite}).x;
+    F32 width = Px(ctx, impl->config.padLeft) + Px(ctx, impl->config.padRight) + measureChild(impl->label, ctx, {infinite, infinite}).x;
     if (!impl->config.icon.empty()) {
         width += measureChild(impl->icon, ctx, {infinite, infinite}).x + Px(ctx, kPillButtonIconGap);
     }
@@ -75,37 +83,49 @@ void PillButton::layout(const Context& ctx) {
     auto& s = *impl;
     const Rect bounds = frame();
     const F32 infinite = std::numeric_limits<F32>::infinity();
-    s.fill.update({
-        .instances = {{.rect = bounds,
-                       .backgroundColor = ctx.color(s.hovered ? s.config.hoverColorKey : s.config.backgroundColorKey)}},
-        .cornerRadius = bounds.height * 0.5f,
-        .capacity = 1,
-    });
-    layoutChild(ctx, s.fill, bounds);
+    const F32 radius = bounds.height * 0.5f;
+    const bool outlined = !s.config.outlineColorKey.empty();
     const F32 softness = Px(ctx, kPillShadowSoftness);
     const F32 drop = Px(ctx, kPillShadowDrop);
     s.shadow.update({
         .instances = {{.rect = {bounds.x - softness, bounds.y + drop - softness, bounds.width + 2.0f * softness,
                                 bounds.height + 2.0f * softness},
                        .visible = s.config.raised,
-                       .backgroundColor = ctx.color("tile_shadow")}},
-        .cornerRadius = bounds.height * 0.5f,
+                       .backgroundColor = WithAlpha(ctx.color("tile_shadow"), s.alpha())}},
+        .cornerRadius = radius,
         .softness = softness,
         .capacity = 1,
     });
     layoutChild(ctx, s.shadow, bounds);
+    s.base.update({
+        .instances = {{.rect = bounds, .visible = s.config.raised,
+                       .backgroundColor = WithAlpha(ctx.color(kPillFill), s.alpha())}},
+        .cornerRadius = radius,
+        .capacity = 1,
+    });
+    layoutChild(ctx, s.base, bounds);
+    s.fill.update({
+        .instances = {{.rect = bounds,
+                       .backgroundColor = WithAlpha(ctx.color(s.hovered ? s.config.hoverColorKey
+                                                                         : s.config.backgroundColorKey),
+                                                    s.alpha())}},
+        .cornerRadius = radius,
+        .capacity = 1,
+    });
+    layoutChild(ctx, s.fill, bounds);
     s.highlight.update({
-        .instances = {{.rect = bounds, .visible = s.config.raised, .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
-        .cornerRadius = bounds.height * 0.5f,
+        .instances = {{.rect = bounds, .visible = s.config.raised || outlined,
+                       .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
+        .cornerRadius = radius,
         .borderWidth = Px(ctx, 1.0f),
-        .borderColor = ctx.color("action_btn_highlight"),
+        .borderColor = WithAlpha(ctx.color(outlined ? s.config.outlineColorKey : "action_btn_highlight"), s.alpha()),
         .strokeFringe = true,
-        .topLit = true,
+        .topLit = !outlined,
         .capacity = 1,
     });
     layoutChild(ctx, s.highlight, bounds);
     const bool iconOnly = s.config.label.empty();
-    F32 x = bounds.x + Px(ctx, kPillButtonPadX);
+    F32 x = bounds.x + Px(ctx, s.config.padLeft);
     const auto place = [&](Text& text) {
         const Extent2D<F32> size = measureChild(text, ctx, {infinite, infinite});
         if (iconOnly) {
@@ -127,6 +147,9 @@ void PillButton::layout(const Context& ctx) {
 
 bool PillButton::mouseEvent(const MouseEvent& event) {
     auto& s = *impl;
+    if (s.config.disabled) {
+        return false;
+    }
     const bool inside = frame().contains(event.position.x, event.position.y);
     switch (event.type) {
         case MouseEventType::Move:
@@ -136,16 +159,30 @@ bool PillButton::mouseEvent(const MouseEvent& event) {
             }
             return false;
         case MouseEventType::Click:
-            if (inside && event.button == MouseButton::Left && s.config.onClick) {
-                s.config.onClick();
+            if (event.button == MouseButton::Left) {
+                s.pressed = inside;
             }
             return inside;
+        case MouseEventType::Release: {
+            if (event.button != MouseButton::Left) {
+                return false;
+            }
+            const bool pressed = s.pressed;
+            s.pressed = false;
+            if (pressed && inside && s.config.onClick) {
+                s.config.onClick();
+            }
+            return pressed;
+        }
         case MouseEventType::Leave:
         case MouseEventType::Cancel:
+            s.pressed = false;
             if (s.hovered) {
                 s.hovered = false;
                 invalidate(Dirty::Layout);
             }
+            return false;
+        case MouseEventType::Scroll:
             return false;
         default:
             return inside;
@@ -153,7 +190,7 @@ bool PillButton::mouseEvent(const MouseEvent& event) {
 }
 
 std::optional<SurfaceCursor> PillButton::cursorAt(const Extent2D<F32>& point) const {
-    if (frame().contains(point.x, point.y)) {
+    if (!impl->config.disabled && frame().contains(point.x, point.y)) {
         return SurfaceCursor::Hand;
     }
     return std::nullopt;

@@ -35,6 +35,7 @@ class JETSTREAM_API Font : public Generic {
     I32 lineHeight() const;
     F32 atlasScale() const;
     F32 atlasPixelRange() const;
+    bool hasGlyph(I32 code) const;
 
  protected:
     struct Glyph {

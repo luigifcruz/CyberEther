@@ -58,8 +58,7 @@ struct SyntaxHighlighter {
 
  private:
     TSParser* parser = nullptr;
-    std::array<TSQuery*, LanguageCount> queries = {};
-    std::array<bool, LanguageCount> queryFailed = {};
+    std::array<const TSQuery*, LanguageCount> queries = {};
     TSTree* tree = nullptr;
     std::vector<std::vector<StyleId>> cachedStyles;
     U64 cachedRevision = 0;

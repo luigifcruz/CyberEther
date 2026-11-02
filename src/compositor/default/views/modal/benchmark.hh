@@ -3,11 +3,10 @@
 
 #include "../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include "jetstream/benchmark.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,9 +21,9 @@ struct BenchmarkView {
         std::vector<std::string> moduleOptions;
         std::string selectedModule;
         Benchmark::ResultMapType results;
-        std::function<void()> onRun;
-        std::function<void()> onReset;
-        std::function<void(const std::string&)> onModuleChange;
+        Sakura::Callback<void()> onRun;
+        Sakura::Callback<void()> onReset;
+        Sakura::Callback<void(const std::string&)> onModuleChange;
     };
 
     void update(Config config) {
@@ -34,7 +33,7 @@ struct BenchmarkView {
 
         this->config = std::move(config);
         header.update({
-            .title = ICON_FA_GAUGE_HIGH " Module Benchmarks",
+            .title = ICON_LC_GAUGE " Module Benchmarks",
             .description = "Run performance benchmarks for registered modules. Results show operations per second and timing information.",
         });
         moduleLabel.update({
@@ -53,7 +52,7 @@ struct BenchmarkView {
             },
         });
         runButton.update({
-            .str = ICON_FA_PLAY " Run Benchmarks",
+            .str = ICON_LC_PLAY " Run Benchmarks",
             .size = {Sakura::Fill, 36.0f},
             .variant = Button::Variant::Action,
             .disabled = this->config.running,
@@ -64,7 +63,7 @@ struct BenchmarkView {
             },
         });
         resetButton.update({
-            .str = ICON_FA_ROTATE_LEFT " Reset Results",
+            .str = ICON_LC_ROTATE_CCW " Reset Results",
             .size = {Sakura::Fill, 36.0f},
             .disabled = this->config.running || this->config.results.empty(),
             .onClick = [this]() {
@@ -95,7 +94,7 @@ struct BenchmarkView {
             block.title.update({
                 .str = module,
                 .font = Text::Font::H2,
-                .scale = 1.05f,
+                .scale = Sakura::Typography::Scale::Lead,
             });
             std::vector<std::vector<std::string>> rows;
             rows.reserve(entries.size());

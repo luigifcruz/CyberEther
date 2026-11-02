@@ -30,9 +30,31 @@ F32 MinDetailZoom(const MapContext::Uniforms& view) {
     return std::log2(BaseHeight / (distance - 1.0f)) - FitZoom(view);
 }
 
-void SphereToLonLat(const glm::vec3& p, F32& lon, F32& lat) {
-    lat = glm::degrees(std::asin(std::clamp(p.y, -1.0f, 1.0f)));
+glm::dvec3 LonLatToSphereD(F64 lon, F64 lat) {
+    const F64 r = glm::radians(lat);
+    const F64 lr = glm::radians(lon);
+    const F64 cl = std::cos(r);
+    return {cl * std::sin(lr), std::sin(r), cl * std::cos(lr)};
+}
+
+glm::dvec3 CameraUpD(const glm::dvec3& n) {
+    const glm::dvec3 proj = glm::dvec3(0.0, 1.0, 0.0) - n * n.y;
+    const F64 len = glm::length(proj);
+    if (len < 1e-4) {
+        return n.y > 0.0 ? glm::dvec3(0.0, 0.0, -1.0) : glm::dvec3(0.0, 0.0, 1.0);
+    }
+    return proj / len;
+}
+
+void SphereToLonLat(const glm::dvec3& p, F64& lon, F64& lat) {
+    lat = glm::degrees(std::asin(std::clamp(p.y, -1.0, 1.0)));
     lon = glm::degrees(std::atan2(p.x, p.z));
+}
+
+F64 WrapDegrees(F64 longitude) {
+    F64 wrapped = std::fmod(longitude + 180.0, 360.0);
+    if (wrapped < 0.0) wrapped += 360.0;
+    return wrapped - 180.0;
 }
 
 Result UpdateNavigation(MapContext::Uniforms view, MapContext& context) {
@@ -44,7 +66,7 @@ Result UpdateNavigation(MapContext::Uniforms view, MapContext& context) {
 }
 }  // namespace
 
-static_assert(sizeof(MapContext::GpuUniforms) == 144,
+static_assert(sizeof(MapContext::GpuUniforms) == 160,
               "Map uniforms must match the std140 ShaderUniforms block.");
 
 MapContext::MapContext() {
@@ -113,8 +135,8 @@ Result MapContext::update(const Uniforms& uniforms) {
     }
 
     view = uniforms;
-    view.centerLon = WrapLongitude(view.centerLon);
-    view.centerLat = std::clamp(view.centerLat, -MaxLatitude, MaxLatitude);
+    view.centerLon = WrapDegrees(view.centerLon);
+    view.centerLat = std::clamp<F64>(view.centerLat, -MaxLatitude, MaxLatitude);
     view.viewportWidth = std::isfinite(view.viewportWidth)
         ? std::max(view.viewportWidth, 1.0f) : 1.0f;
     view.viewportHeight = std::isfinite(view.viewportHeight)
@@ -124,21 +146,24 @@ Result MapContext::update(const Uniforms& uniforms) {
         view.aspectRatio = view.viewportWidth / view.viewportHeight;
     }
 
-    const F32 height = BaseHeight / std::pow(2.0f, view.zoom);
-    const F32 distance = 1.0f + height;
-    const glm::vec3 normal = LonLatToSphere(view.centerLon, view.centerLat);
-    const glm::vec3 position = distance * normal;
-    const glm::vec3 up = CameraUp(normal);
-    const glm::mat4 projection = glm::perspective(
-        static_cast<F32>(45.0 * JST_PI / 180.0), view.aspectRatio,
-        std::max(1e-7f, height * 1e-3f), distance + 2.0f);
+    const F64 height = BaseHeight / std::exp2(static_cast<F64>(view.zoom));
+    const F64 distance = 1.0 + height;
+    const glm::dvec3 normal = LonLatToSphereD(view.centerLon, view.centerLat);
+    const glm::dvec3 position = distance * normal;
+    const glm::dvec3 up = CameraUpD(normal);
+    const glm::dmat4 projection = glm::perspective(
+        45.0 * JST_PI / 180.0, static_cast<F64>(view.aspectRatio),
+        std::max(1e-7, height * 1e-3), distance + 2.0);
+    const F32 anchorLon = static_cast<F32>(view.centerLon);
+    const F32 anchorLat = static_cast<F32>(view.centerLat);
+    const glm::dvec3 anchor = LonLatToSphereD(anchorLon, anchorLat);
     camera = {};
-    camera.viewProjection = projection *
-        glm::lookAt(position, glm::vec3(0.0f), up);
-    skyViewProjection = projection *
-        glm::lookAt(glm::vec3(0.0f), -normal, up);
-    camera.cameraPos = glm::vec4(position, 1.0f);
-    camera.targetNormal = glm::vec4(normal, 1.0f / distance);
+    worldViewProjection = projection * glm::lookAt(position, glm::dvec3(0.0), up);
+    camera.viewProjection = glm::mat4(worldViewProjection * glm::translate(glm::dmat4(1.0), anchor));
+    skyViewProjection = glm::mat4(projection * glm::lookAt(glm::dvec3(0.0), -normal, up));
+    camera.cameraPos = glm::vec4(glm::vec3(position), 1.0f);
+    camera.targetNormal = glm::vec4(glm::vec3(normal), static_cast<F32>(1.0 / distance));
+    camera.anchor = glm::vec4(anchorLon, anchorLat, -anchorLon, -anchorLat);
     camera.surfaceScale = view.surfaceScale;
     camera.viewportWidth = view.viewportWidth;
     camera.viewportHeight = view.viewportHeight;
@@ -216,19 +241,25 @@ std::optional<MapContext::Uniforms> MapContext::fitView(
     return candidate.view;
 }
 
-bool MapContext::projectLonLat(F32 lon, F32 lat, F32& ndcX, F32& ndcY) const {
-    if (!std::isfinite(lon) || !std::isfinite(lat) || std::abs(lat) > 90.0f) {
+bool MapContext::projectLonLat(F64 lon, F64 lat, F32& ndcX, F32& ndcY) const {
+    if (!std::isfinite(lon) || !std::isfinite(lat) || std::abs(lat) > 90.0) {
         return false;
     }
-    const glm::vec3 p = LonLatToSphere(lon, lat);
-    if (glm::dot(p, glm::vec3(camera.targetNormal)) < camera.targetNormal.w) {
+    const glm::dvec3 p = LonLatToSphereD(lon, lat);
+    if (glm::dot(p, glm::dvec3(glm::vec3(camera.targetNormal))) < camera.targetNormal.w) {
         return false;
     }
-    const glm::vec4 clip = camera.viewProjection * glm::vec4(p, 1.0f);
-    if (clip.w <= 0.0f) return false;
-    ndcX = clip.x / clip.w;
-    ndcY = clip.y / clip.w;
+    const glm::dvec4 clip = worldViewProjection * glm::dvec4(p, 1.0);
+    if (clip.w <= 0.0) return false;
+    ndcX = static_cast<F32>(clip.x / clip.w);
+    ndcY = static_cast<F32>(clip.y / clip.w);
     return true;
+}
+
+glm::vec4 MapContext::origin(F64 lon, F64 lat) const {
+    return {camera.anchor.x, camera.anchor.y,
+            static_cast<F32>(WrapDegrees(lon - static_cast<F64>(camera.anchor.x))),
+            static_cast<F32>(lat - static_cast<F64>(camera.anchor.y))};
 }
 
 Extent2D<F32> MapContext::pixelSize() const {
@@ -256,15 +287,15 @@ Result MapNavigation::mouse(const MouseEvent& event, MapContext& context) {
                 view.detailZoom + event.scroll.y * 0.15f,
                 MinDetailZoom(view), MapContext::MaxZoom - fitZoom);
             if (newZoom == view.detailZoom) break;
-            const F32 oldHeight = BaseHeight / std::pow(2.0f, view.detailZoom + fitZoom);
-            const F32 newHeight = BaseHeight / std::pow(2.0f, newZoom + fitZoom);
-            const glm::vec3 normal = MapContext::LonLatToSphere(view.centerLon, view.centerLat);
-            const glm::vec3 north = MapContext::CameraUp(normal);
-            const glm::vec3 east = glm::normalize(glm::cross(north, normal));
-            const F32 x = (event.position.x - 0.5f) * 2.0f;
-            const F32 y = (0.5f - event.position.y) * 2.0f;
-            const glm::vec3 offset = (x * view.aspectRatio * HalfFovTan) * east +
-                                     (y * HalfFovTan) * north;
+            const F64 oldHeight = BaseHeight / std::exp2(static_cast<F64>(view.detailZoom + fitZoom));
+            const F64 newHeight = BaseHeight / std::exp2(static_cast<F64>(newZoom + fitZoom));
+            const glm::dvec3 normal = LonLatToSphereD(view.centerLon, view.centerLat);
+            const glm::dvec3 north = CameraUpD(normal);
+            const glm::dvec3 east = glm::normalize(glm::cross(north, normal));
+            const F64 x = (event.position.x - 0.5) * 2.0;
+            const F64 y = (0.5 - event.position.y) * 2.0;
+            const glm::dvec3 offset = (x * view.aspectRatio * HalfFovTan) * east +
+                                      (y * HalfFovTan) * north;
             SphereToLonLat(glm::normalize(normal + (oldHeight - newHeight) * offset),
                            view.centerLon, view.centerLat);
             view.detailZoom = newZoom;
@@ -280,12 +311,12 @@ Result MapNavigation::mouse(const MouseEvent& event, MapContext& context) {
             break;
         case MouseEventType::Move:
             if (dragging) {
-                const F32 height = BaseHeight / std::pow(2.0f, view.detailZoom + FitZoom(view));
-                const F32 x = (event.position.x - dragAnchor.x) * 2.0f;
-                const F32 y = (dragAnchor.y - event.position.y) * 2.0f;
-                const glm::vec3 normal = MapContext::LonLatToSphere(dragStartLon, dragStartLat);
-                const glm::vec3 north = MapContext::CameraUp(normal);
-                const glm::vec3 east = glm::normalize(glm::cross(north, normal));
+                const F64 height = BaseHeight / std::exp2(static_cast<F64>(view.detailZoom + FitZoom(view)));
+                const F64 x = (event.position.x - dragAnchor.x) * 2.0;
+                const F64 y = (dragAnchor.y - event.position.y) * 2.0;
+                const glm::dvec3 normal = LonLatToSphereD(dragStartLon, dragStartLat);
+                const glm::dvec3 north = CameraUpD(normal);
+                const glm::dvec3 east = glm::normalize(glm::cross(north, normal));
                 SphereToLonLat(glm::normalize(normal -
                     (x * height * view.aspectRatio * HalfFovTan) * east -
                     (y * height * HalfFovTan) * north), view.centerLon, view.centerLat);

@@ -317,6 +317,10 @@ class CudaBackend final : public CudaBufferBackend, public Backend {
         return buffer;
     }
 
+    const void* hostAddress() const override {
+        return (locationState == Location::Host || locationState == Location::Unified) ? buffer : nullptr;
+    }
+
     bool isBorrowed() const override {
         return borrowed;
     }

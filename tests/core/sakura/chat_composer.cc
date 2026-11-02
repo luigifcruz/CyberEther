@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "harness.hh"
@@ -6,18 +7,21 @@
 #include "scene.hh"
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/chat_composer.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/model_picker.hh>
 #include <jetstream/render/sakura/components/stack.hh>
+#include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "render/sakura/detail/text_metrics.hh"
 #include "render/sakura/metrics.hh"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -53,6 +57,7 @@ constexpr F32 kHighKnob = 227.0f;
 constexpr F32 kPad = 7.0f;
 constexpr F32 kTextPad = 6.0f;
 constexpr F32 kControl = 29.0f;
+constexpr F32 kStopMark = 9.0f;
 constexpr F32 kComposerWidth = 400.0f;
 
 std::vector<Sakura::Label::Instance> Texts(Sakura::Component& root, const std::string& str) {
@@ -321,7 +326,7 @@ TEST_CASE("Model pickers scale their field and panel with the pixel ratio", kPic
         }
         const Rect rect = config.instances.front().rect;
         if (rect.width == 440.0f && rect.height == 197.0f) {
-            panel = panel || (config.cornerRadius == 30.0f && config.borderWidth == 2.0f);
+            panel = panel || (config.cornerRadius == 2.0f * Sakura::Rounding::Popup && config.borderWidth == 2.0f);
         }
         if (rect == Rect{200.0f, 200.0f, 320.0f, 46.0f}) {
             field = field || config.cornerRadius == 29.0f;
@@ -343,15 +348,15 @@ TEST_CASE("Model pickers open an effort panel and select models by identity", kP
     CHECK(rig.host.popups.interactiveAt(kEffortBottom));
     CHECK(ShowsAt(rig.host, "Medium", kTitleY));
     CHECK(ShowsAt(rig.host, "Medium", kField.y));
-    CHECK(Shows(rig.host, ICON_FA_CHEVRON_RIGHT));
+    CHECK(Shows(rig.host, ICON_LC_CHEVRON_RIGHT));
 
     rig.click(kModelRow);
     REQUIRE(rig.settle());
     CHECK_FALSE(rig.host.popups.interactiveAt(kEffortBottom));
     CHECK(ShowsAt(rig.host, "Same label", kListTop));
     CHECK(ShowsAt(rig.host, "Same label", kListTop + kRowHeight));
-    REQUIRE(Texts(rig.host, ICON_FA_CHECK).size() == 1);
-    CHECK(Texts(rig.host, ICON_FA_CHECK).front().rect.y == kListTop);
+    REQUIRE(Texts(rig.host, ICON_LC_CHECK).size() == 1);
+    CHECK(Texts(rig.host, ICON_LC_CHECK).front().rect.y == kListTop);
 
     rig.click(kFirstRow);
     REQUIRE(rig.settle());
@@ -506,7 +511,7 @@ TEST_CASE("Model picker slider drags cancel without committing an effort", kPick
     CHECK(rig.open());
 }
 
-TEST_CASE("Model picker lists fit the space beside the field and scroll by rows", kPickerTags) {
+TEST_CASE("Model picker lists fit the space beside the field and scroll smoothly", kPickerTags) {
     PickerRig rig;
     rig.frames.verify = false;
     rig.config.models.clear();
@@ -532,10 +537,9 @@ TEST_CASE("Model picker lists fit the space beside the field and scroll by rows"
     rig.host.send(Wheel(150.0f, 100.0f, -1.0f));
     REQUIRE(rig.settle());
     CHECK_FALSE(ShowsAt(rig.host, "Model 00", top));
-    CHECK(ShowsAt(rig.host, "Model 00", kField.y));
     CHECK(ShowsAt(rig.host, "Model 01", top));
     CHECK(ShowsAt(rig.host, "Model 11", top + 10.0f * kRowHeight));
-    CHECK(Texts(rig.host, ICON_FA_CHECK).empty());
+    CHECK(Texts(rig.host, ICON_LC_CHECK).empty());
 
     for (U64 i = 0; i < 40; ++i) {
         rig.host.send(Wheel(150.0f, 100.0f, -1.0f));
@@ -547,6 +551,156 @@ TEST_CASE("Model picker lists fit the space beside the field and scroll by rows"
     rig.host.send(Wheel(150.0f, 100.0f, 1.0f));
     REQUIRE(rig.settle());
     CHECK(ShowsAt(rig.host, "Model 28", top + 10.0f * kRowHeight));
+
+    auto trackpad = Wheel(150.0f, 100.0f, kRowHeight / 10.0f * 0.5f);
+    trackpad.phase = ScrollPhase::Changed;
+    rig.host.send(trackpad);
+    REQUIRE(rig.settle());
+    const auto moved = Texts(rig.host, "Model 28");
+    REQUIRE(moved.size() == 1);
+    CHECK(moved.front().rect.y > top + 10.0f * kRowHeight);
+    CHECK(moved.front().rect.y < top + 11.0f * kRowHeight);
+    CHECK(Capacities(rig.host) == capacities);
+
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    REQUIRE_FALSE(rig.host.popups.interactiveAt({150.0f, 100.0f}));
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    REQUIRE(rig.host.popups.interactiveAt({150.0f, 100.0f}));
+    CHECK(ShowsAt(rig.host, "Model 00", top));
+}
+
+TEST_CASE("Model picker lists stretch past their ends and spring back", kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    rig.config.models.clear();
+    for (U64 i = 0; i < 30; ++i) {
+        const std::string index = (i < 10 ? "0" : "") + std::to_string(i);
+        rig.config.models.push_back({.id = "model-" + index, .label = "Model " + index, .detail = "Detail"});
+    }
+    rig.config.value = "model-00";
+    rig.config.efforts.clear();
+    rig.config.effort.clear();
+    REQUIRE(rig.settle());
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+
+    const F32 top = 13.0f;
+    REQUIRE(ShowsAt(rig.host, "Model 00", top));
+    const auto trackpad = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(150.0f, 100.0f, dy);
+        event.phase = phase;
+        rig.host.send(event);
+        rig.settle();
+    };
+
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    const auto stretched = Texts(rig.host, "Model 00");
+    CHECK(std::any_of(stretched.begin(), stretched.end(), [&](const auto& instance) {
+        return instance.rect.y > top && instance.rect.y < top + kRowHeight;
+    }));
+
+    trackpad(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 120; ++frame) {
+        rig.frames.ctx.time += 1.0 / 60.0;
+        rig.settle();
+    }
+    CHECK(ShowsAt(rig.host, "Model 00", top));
+}
+
+TEST_CASE("Model picker lists keep the hover on the row under the pointer after a wheel", kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    rig.config.models.clear();
+    for (U64 i = 0; i < 30; ++i) {
+        const std::string index = (i < 10 ? "0" : "") + std::to_string(i);
+        rig.config.models.push_back({.id = "model-" + index, .label = "Model " + index});
+    }
+    rig.config.value = "model-00";
+    rig.config.efforts.clear();
+    rig.config.effort.clear();
+    REQUIRE(rig.settle());
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+
+    const Extent2D<F32> point = {150.0f, 100.0f};
+    rig.host.send(Mouse(MouseEventType::Move, point.x, point.y));
+    REQUIRE(rig.settle());
+    rig.host.send(Wheel(point.x, point.y, -1.0f));
+    REQUIRE(rig.settle());
+
+    const auto hovered = rig.frames.ctx.color("button_hovered");
+    std::optional<Rect> highlight;
+    for (auto* box : Find<Sakura::Box>(rig.host.popups)) {
+        for (const auto& instance : box->config().instances) {
+            if (instance.visible && instance.backgroundColor == hovered) {
+                highlight = instance.rect;
+            }
+        }
+    }
+    REQUIRE(highlight.has_value());
+    CHECK(highlight->y <= point.y);
+    CHECK(highlight->bottom() > point.y);
+    CHECK(ShowsAt(rig.host, "Model 04", highlight->y));
+
+    rig.click(point);
+    REQUIRE_FALSE(rig.selected.empty());
+    CHECK(rig.selected.back() == "model-04");
+}
+
+TEST_CASE("Model pickers settle after leaving the list mid spring back", kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    rig.config.models.clear();
+    for (U64 i = 0; i < 30; ++i) {
+        const std::string index = (i < 10 ? "0" : "") + std::to_string(i);
+        rig.config.models.push_back({.id = "model-" + index, .label = "Model " + index});
+    }
+    rig.config.value = "model-00";
+    REQUIRE(rig.settle());
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    rig.click(kModelRow);
+    REQUIRE(rig.settle());
+
+    const auto row = [&]() -> std::optional<Rect> {
+        for (const auto& instance : Texts(rig.host, "Model 00")) {
+            if (instance.rect.y != kField.y) {
+                return instance.rect;
+            }
+        }
+        return std::nullopt;
+    };
+    const auto rest = row();
+    REQUIRE(rest.has_value());
+    auto pull = Wheel(rest->x + 10.0f, rest->y + rest->height * 0.5f, 3.0f);
+    pull.phase = ScrollPhase::Began;
+    rig.host.send(pull);
+    pull.phase = ScrollPhase::Changed;
+    rig.host.send(pull);
+    rig.step();
+    pull.scroll.y = 0.0f;
+    pull.phase = ScrollPhase::Ended;
+    rig.host.send(pull);
+    rig.step();
+
+    const auto stretched = row();
+    REQUIRE(stretched.has_value());
+    REQUIRE(stretched->y > rest->y);
+    rig.click({stretched->x + 10.0f, stretched->y + stretched->height * 0.5f});
+    rig.step();
+    CHECK(rig.selected.empty());
+    CHECK_FALSE(Shows(rig.host, "Model 01"));
+    CHECK(Shows(rig.host, "Medium"));
+
+    for (U64 frame = 0; frame < 120; ++frame) {
+        rig.frames.ctx.time += 1.0 / 60.0;
+        rig.step();
+    }
+    CHECK(rig.step().clean());
+    CHECK(rig.step().clean());
 }
 
 TEST_CASE("Closed model pickers settle and repaint once per hover transition and visual change",
@@ -726,10 +880,10 @@ TEST_CASE("Chat composers measure their input, controls, and margins before the 
     CHECK(rig.host.measureOf(ctx, {kComposerWidth, kInfinite}).y > first.y + 30.0f);
 
     rig.config.style.minLines = 1.0f;
-    rig.config.style.icon = ICON_FA_CHECK;
+    rig.config.style.icon = ICON_LC_CHECK;
     rig.place();
     CHECK(rig.points().grid.x == kPad + 1.8f * Sakura::Typography::FontSize);
-    CHECK(Shows(rig.host, ICON_FA_CHECK));
+    CHECK(Shows(rig.host, ICON_LC_CHECK));
 }
 
 TEST_CASE("Chat composers scale padding, margins, and rounding with the pixel ratio", kComposerTags) {
@@ -762,6 +916,86 @@ TEST_CASE("Chat composers scale padding, margins, and rounding with the pixel ra
     CHECK(Find<Sakura::Box>(host).front()->config().cornerRadius == 8.0f);
 }
 
+TEST_CASE("Chat composers with chrome draw the elevated card instead of the flat background", kComposerTags) {
+    Scene scene;
+    Sakura::ChatComposer composer;
+    Host host(composer);
+    const auto ctx = scene.context();
+    const auto place = [&](bool chrome) {
+        composer.update({.id = "composer", .style = {.backgroundColorKey = "card_surface", .chrome = chrome}});
+        const auto size = host.measureOf(ctx, {kComposerWidth, kInfinite});
+        host.place(ctx, {0.0f, 0.0f, kComposerWidth, size.y});
+        return Rect{0.0f, 0.0f, kComposerWidth, size.y};
+    };
+    const auto backgrounds = [&](const Rect& bounds) {
+        U64 count = 0;
+        for (auto* box : Direct<Sakura::Box>(composer)) {
+            for (const auto& instance : box->config().instances) {
+                count += instance.visible && instance.rect == bounds ? 1 : 0;
+            }
+        }
+        return count;
+    };
+
+    const auto flat = place(false);
+    CHECK(Find<Sakura::Card>(host).empty());
+    CHECK(backgrounds(flat) == 1);
+
+    const auto raised = place(true);
+    CHECK(raised.height == flat.height);
+    const auto cards = Find<Sakura::Card>(host);
+    REQUIRE(cards.size() == 1);
+    CHECK(Peek::Frame(*cards.front()) == raised);
+    CHECK(backgrounds(raised) == 0);
+    CHECK(Find<Sakura::TextGrid>(host).size() == 1);
+}
+
+TEST_CASE("Chat composers mount the flat background once and then switch chrome without restructuring", kComposerRetentionTags) {
+    Scene scene;
+    Sakura::ChatComposer composer;
+    Place place(composer, {10.0f, 10.0f, kComposerWidth, 100.0f});
+    Frames frames(place, kScreen, scene.context());
+    bool chrome = true;
+    const auto update = [&] {
+        composer.update({.id = "composer", .style = {.chrome = chrome}});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    chrome = false;
+    CHECK(frames.run(update).restructured);
+    CHECK(Retains(frames, update));
+    chrome = true;
+    CHECK(Kept(frames.run(update)));
+    CHECK(Retains(frames, update));
+    chrome = false;
+    CHECK(Kept(frames.run(update)));
+    CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Chat composer controls stay circular whatever rounding the card uses", kComposerTags) {
+    Scene scene;
+    Sakura::ChatComposer composer;
+    Host host(composer);
+    const auto ctx = scene.context();
+    const auto radius = [&](std::optional<F32> rounding) {
+        composer.update({.id = "composer", .style = {.rounding = rounding}, .onVoice = [] {}});
+        const auto size = host.measureOf(ctx, {kComposerWidth, kInfinite});
+        host.place(ctx, {0.0f, 0.0f, kComposerWidth, size.y});
+        std::optional<F32> found;
+        for (auto* box : Find<Sakura::Box>(host)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.rect.width == kControl && instance.rect.height == kControl) {
+                    found = box->config().cornerRadius;
+                }
+            }
+        }
+        return found;
+    };
+    CHECK(radius(std::nullopt) == std::optional<F32>(0.5f * kControl));
+    CHECK(radius(6.0f) == std::optional<F32>(0.5f * kControl));
+    CHECK(radius(40.0f) == std::optional<F32>(0.5f * kControl));
+}
+
 TEST_CASE("Chat composers cancel while busy and route the send button by state", kComposerTags) {
     ComposerRig rig;
     rig.config.busy = true;
@@ -769,7 +1003,11 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
     rig.config.focusRequest = 1;
     rig.place();
     REQUIRE(FocusOwner(rig.host) == rig.grid());
-    CHECK(Shows(rig.host, ICON_FA_STOP));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_SQUARE));
+    const auto stop = Squares(rig.host, kStopMark);
+    REQUIRE(stop.size() == 1);
+    CHECK(stop.front().x + 0.5f * kStopMark == Catch::Approx(rig.points().send.x).margin(0.5f));
+    CHECK(stop.front().y + 0.5f * kStopMark == Catch::Approx(rig.points().send.y).margin(0.5f));
     CHECK(VoiceBars(rig.host) == 0);
     CHECK(Shows(rig.host, "Ask"));
     rig.host.click(rig.points().send.x, rig.points().send.y);
@@ -777,8 +1015,8 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
 
     rig.config.busy = false;
     rig.place();
-    CHECK_FALSE(Shows(rig.host, ICON_FA_STOP));
-    CHECK_FALSE(Shows(rig.host, ICON_FA_ARROW_UP));
+    CHECK(Squares(rig.host, kStopMark).empty());
+    CHECK_FALSE(Shows(rig.host, ICON_LC_ARROW_UP));
     CHECK(VoiceBars(rig.host) == 5);
     rig.host.click(rig.points().send.x, rig.points().send.y);
     CHECK(rig.voices == 1);
@@ -786,7 +1024,7 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
 
     Type(rig.host, "hello");
     rig.place();
-    CHECK(Shows(rig.host, ICON_FA_ARROW_UP));
+    CHECK(Shows(rig.host, ICON_LC_ARROW_UP));
     CHECK(VoiceBars(rig.host) == 0);
     CHECK_FALSE(Shows(rig.host, "Ask"));
     rig.host.click(rig.points().send.x, rig.points().send.y);
@@ -800,7 +1038,7 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
 
     rig.config.onVoice = {};
     rig.place();
-    const auto arrows = Texts(rig.host, ICON_FA_ARROW_UP);
+    const auto arrows = Texts(rig.host, ICON_LC_ARROW_UP);
     REQUIRE(arrows.size() == 1);
     CHECK(arrows.front().color.a == Sakura::kDisabledAlpha);
     CHECK(Sakura::Access::cursor(rig.host, rig.points().send) != SurfaceCursor::Hand);
@@ -944,7 +1182,7 @@ TEST_CASE("Chat composer controls place attach, clear, the model picker, and the
     rig.config.style.compact = true;
     rig.place();
     CHECK(Find<Sakura::ModelPicker>(rig.host).empty());
-    CHECK_FALSE(Shows(rig.host, ICON_FA_PLUS));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_PLUS));
     CHECK(VisibleInstances(*BoxesWithCapacity(rig.host, 48).front()) == 0);
 }
 
@@ -1043,7 +1281,7 @@ TEST_CASE("Chat composers settle and repaint only for visual changes", kComposer
     background = "agent_composer";
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
-    icon = ICON_FA_CHECK;
+    icon = ICON_LC_CHECK;
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
     CHECK(frames.restructures == 0);
@@ -1107,7 +1345,7 @@ TEST_CASE("Typing into a chat composer switches the send button from voice to su
     Type(place, "a");
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(VoiceBars(place) == 0);
-    CHECK(Shows(place, ICON_FA_ARROW_UP));
+    CHECK(Shows(place, ICON_LC_ARROW_UP));
     CHECK_FALSE(Shows(place, "Ask"));
     CHECK(Retains(frames, update));
 }
@@ -1140,4 +1378,57 @@ TEST_CASE("Chat composer model pickers mount once and park when the selector goe
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
     CHECK(frames.restructures == restructures + 1);
+}
+
+TEST_CASE("Chat composer voice buttons show their shortcut hint after the hover delay only while voice is ready",
+          kComposerRetentionTags) {
+    Scene scene;
+    Sakura::ChatComposer composer;
+    LayerSlot slot;
+    LayerHost host({&slot});
+    const Rect bounds = {0.0f, 300.0f, kComposerWidth, 120.0f};
+    slot.hold(composer, bounds);
+    Frames frames(host, kScreen, scene.context());
+    frames.timeStep = 0.1;
+    frames.ctx.hoverDelay = 0.25f;
+    bool busy = false;
+    const auto update = [&] {
+        composer.update({.id = "composer", .busy = busy, .onVoice = [] {}, .voiceHint = "Start voice (Ctrl+J)"});
+    };
+    const auto hint = [&]() -> std::optional<Rect> {
+        for (auto* text : Find<Sakura::Text>(host.popups)) {
+            if (text->config().str == "Start voice (Ctrl+J)") {
+                return Peek::Frame(*text);
+            }
+        }
+        return std::nullopt;
+    };
+    REQUIRE(frames.settle(update));
+    const auto points = PointsOf(host, bounds);
+    CHECK_FALSE(hint().has_value());
+
+    Hover(host, frames, points.send.x, points.send.y);
+    frames.run(update);
+    CHECK_FALSE(hint().has_value());
+    for (U64 frame = 0; frame < 6; ++frame) {
+        frames.run(update);
+    }
+    REQUIRE(hint().has_value());
+    const Rect send = {points.send.x - 0.5f * kControl, points.send.y - 0.5f * kControl, kControl, kControl};
+    const Rect shown = *hint();
+    CHECK((shown.y >= send.bottom() || shown.bottom() <= send.y));
+    CHECK(shown.right() <= send.right() + kPad);
+    CHECK(Retains(frames, update));
+
+    Hover(host, frames, 100.0f, points.send.y);
+    frames.run(update);
+    CHECK_FALSE(hint().has_value());
+
+    busy = true;
+    frames.run(update);
+    Hover(host, frames, points.send.x, points.send.y);
+    for (U64 frame = 0; frame < 6; ++frame) {
+        frames.run(update);
+    }
+    CHECK_FALSE(hint().has_value());
 }

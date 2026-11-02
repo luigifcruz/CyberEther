@@ -180,7 +180,7 @@ Result Implementation::create() {
         JST_ERROR("[VULKAN] Failed to create surface framebuffer.");
     });
 
-    requestedSize = framebufferResolve->size();
+    resizeResult = Result::SUCCESS;
     resetFramebuffer();
 
     return Result::SUCCESS;
@@ -212,33 +212,34 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::prepare() {
-    framebufferChanged = framebufferResolve->size(requestedSize);
-    if (framebufferChanged) {
-        JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
-            JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
-        });
+bool Implementation::created() const {
+    return renderPass != VK_NULL_HANDLE;
+}
 
-        if (config.multisampled) {
-            framebuffer->size(requestedSize);
-        }
+Result Implementation::rebuildFramebuffer() {
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
+    });
 
-        JST_CHECK(destroy());
-        JST_CHECK(framebufferResolve->destroy());
-        JST_CHECK(framebufferResolve->create());
-        JST_CHECK(create());
+    if (config.multisampled) {
+        framebuffer->size(requestedSize);
     }
+
+    JST_CHECK(destroy());
+    JST_CHECK(framebufferResolve->destroy());
+    JST_CHECK(framebufferResolve->create());
+    JST_CHECK(create());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
-    const bool required = shouldDraw(framebufferChanged);
+    const bool required = shouldDraw(framebufferResized);
     JST_CHECK(drawResult());
     if (!required) {
         return Result::SUCCESS;
     }
-    if (hiddenAndIdle(visible, framebufferChanged)) {
+    if (hiddenAndIdle(visible, framebufferResized)) {
         shouldDrawGraphics(visible);
         return Result::SUCCESS;
     }
@@ -324,17 +325,6 @@ void Implementation::commit() {
         framebuffer->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
     commitDraw();
-}
-
-const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
-    if (!framebufferResolve) {
-        return NullSize2D;
-    }
-
-    requestedSize = size;
-    invalidate();
-
-    return framebufferResolve->size();
 }
 
 }  // namespace Jetstream::Render

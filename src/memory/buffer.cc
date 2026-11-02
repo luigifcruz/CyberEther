@@ -207,6 +207,10 @@ const void* Buffer::data() const {
     return impl && impl->backend ? impl->backend->rawHandle() : nullptr;
 }
 
+const void* Buffer::hostData() const {
+    return impl && impl->backend ? impl->backend->hostAddress() : nullptr;
+}
+
 void* Buffer::backend() const {
     return impl && impl->backend ? dynamic_cast<void*>(impl->backend.get()) : nullptr;
 }

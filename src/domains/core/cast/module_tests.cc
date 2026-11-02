@@ -2,6 +2,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <array>
+#include <cmath>
 #include <limits>
 
 #include "jetstream/testing.hh"
@@ -289,9 +290,11 @@ TEST_CASE("Cast Module - U8 to F32", "[modules][cast][U8]") {
 
             REQUIRE(out.dtype() == DataType::F32);
             REQUIRE_THAT(out.at<F32>(0),
-                         Catch::Matchers::WithinAbs(1.0f, 1e-3f));
+                         Catch::Matchers::WithinAbs(0.0f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(1),
-                         Catch::Matchers::WithinAbs(255.0f / 128.0f, 1e-3f));
+                         Catch::Matchers::WithinAbs(127.0f / 128.0f, 1e-6f));
+            REQUIRE_THAT(out.at<F32>(2),
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-6f));
         }
     }
 }
@@ -388,9 +391,9 @@ TEST_CASE("Cast Module - U16 to F32", "[modules][cast][U16]") {
 
             REQUIRE(out.dtype() == DataType::F32);
             REQUIRE_THAT(out.at<F32>(0),
-                         Catch::Matchers::WithinAbs(1.0f, 1e-3f));
+                         Catch::Matchers::WithinAbs(0.0f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(1),
-                         Catch::Matchers::WithinAbs(65535.0f / 32768.0f, 1e-3f));
+                         Catch::Matchers::WithinAbs(32767.0f / 32768.0f, 1e-6f));
         }
     }
 }
@@ -450,9 +453,9 @@ TEST_CASE("Cast Module - U32 to F32", "[modules][cast][U32]") {
 
             REQUIRE(out.dtype() == DataType::F32);
             REQUIRE_THAT(out.at<F32>(0),
-                         Catch::Matchers::WithinAbs(1.0f, 1e-3f));
-            REQUIRE_THAT(out.at<F32>(1),
                          Catch::Matchers::WithinAbs(0.0f, 1e-6f));
+            REQUIRE_THAT(out.at<F32>(1),
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-6f));
         }
     }
 }
@@ -513,13 +516,13 @@ TEST_CASE("Cast Module - CU8 to CF32", "[modules][cast][CU8]") {
             REQUIRE(out.dtype() == DataType::CF32);
 
             REQUIRE_THAT(out.at<CF32>(0).real(),
-                         Catch::Matchers::WithinAbs(1.0f, 1e-3f));
+                         Catch::Matchers::WithinAbs(0.0f, 1e-6f));
             REQUIRE_THAT(out.at<CF32>(0).imag(),
-                         Catch::Matchers::WithinAbs(0.0f, 1e-6f));
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-6f));
             REQUIRE_THAT(out.at<CF32>(1).real(),
-                         Catch::Matchers::WithinAbs(255.0f / 128.0f, 1e-3f));
+                         Catch::Matchers::WithinAbs(127.0f / 128.0f, 1e-6f));
             REQUIRE_THAT(out.at<CF32>(2).real(),
-                         Catch::Matchers::WithinAbs(0.0f, 1e-6f));
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-6f));
         }
     }
 }
@@ -548,11 +551,11 @@ TEST_CASE("Cast Module - CU16 to CF32", "[modules][cast][CU16]") {
             REQUIRE(out.dtype() == DataType::CF32);
 
             REQUIRE_THAT(out.at<CF32>(0).real(),
-                         Catch::Matchers::WithinAbs(1.0f, 1e-3f));
-            REQUIRE_THAT(out.at<CF32>(0).imag(),
                          Catch::Matchers::WithinAbs(0.0f, 1e-6f));
+            REQUIRE_THAT(out.at<CF32>(0).imag(),
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-6f));
             REQUIRE_THAT(out.at<CF32>(1).imag(),
-                         Catch::Matchers::WithinAbs(65535.0f / 32768.0f, 1e-3f));
+                         Catch::Matchers::WithinAbs(32767.0f / 32768.0f, 1e-6f));
         }
     }
 }
@@ -581,9 +584,9 @@ TEST_CASE("Cast Module - CU32 to CF32", "[modules][cast][CU32]") {
             REQUIRE(out.dtype() == DataType::CF32);
 
             REQUIRE_THAT(out.at<CF32>(0).real(),
-                         Catch::Matchers::WithinAbs(1.0f, 1e-3f));
-            REQUIRE_THAT(out.at<CF32>(0).imag(),
                          Catch::Matchers::WithinAbs(0.0f, 1e-6f));
+            REQUIRE_THAT(out.at<CF32>(0).imag(),
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-6f));
         }
     }
 }
@@ -685,20 +688,19 @@ TEST_CASE("Cast Module validation rejects invalid output spelling",
     }
 }
 
-TEST_CASE("Cast Module provider validation rejects unsupported pairs",
+TEST_CASE("Cast Module validation rejects complex to real",
           "[modules][cast][validation][pair]") {
     struct InvalidPair {
         DataType input;
         const char* output;
     };
-    constexpr std::array<InvalidPair, 7> kInvalidPairs = {{
+    constexpr std::array<InvalidPair, 6> kInvalidPairs = {{
         {DataType::CF32, "F32"},
-        {DataType::I16, "CF32"},
+        {DataType::CF64, "F64"},
         {DataType::CI16, "F32"},
-        {DataType::I64, "F32"},
-        {DataType::U64, "F32"},
-        {DataType::CI64, "CF32"},
-        {DataType::CU64, "CF32"},
+        {DataType::CI8, "I8"},
+        {DataType::CU8, "U8"},
+        {DataType::CI64, "I64"},
     }};
 
     const auto implementations = CastImplementations();
@@ -790,6 +792,404 @@ TEST_CASE("Cast Module CUDA validation rejects unsupported grid size",
             };
             const Tensor input = MakeCastTensor(impl, DataType::I8, shape, true);
             RequireCastValidationError(impl, config, input);
+        }
+    }
+}
+
+TEST_CASE("Cast Module - CF32 to CI8 rounds and clips", "[modules][cast][CI8][quantize]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            config.outputType = "CI8";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<CF32>({4});
+            input.at(0) = {0.5f, -0.5f};
+            input.at(1) = {1.0f, -1.0f};
+            input.at(2) = {0.3f, 4.0f};
+            input.at(3) = {std::numeric_limits<F32>::quiet_NaN(), -4.0f};
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("buffer");
+            REQUIRE(out.dtype() == DataType::CI8);
+            REQUIRE(out.at<CI8>(0) == CI8(64, -64));
+            REQUIRE(out.at<CI8>(1) == CI8(127, -128));
+            REQUIRE(out.at<CI8>(2) == CI8(38, 127));
+            REQUIRE(out.at<CI8>(3) == CI8(0, -128));
+        }
+    }
+}
+
+TEST_CASE("Cast Module - CF32 to CI8 inverts CI8 to CF32", "[modules][cast][CI8][roundtrip]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            config.outputType = "CI8";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<CF32>({256});
+            for (I32 value = -128; value < 128; ++value) {
+                input.at(value + 128) = {static_cast<F32>(value) / 128.0f,
+                                         static_cast<F32>(-value - 1) / 128.0f};
+            }
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("buffer");
+            for (I32 value = -128; value < 128; ++value) {
+                REQUIRE(out.at<CI8>(value + 128) ==
+                        CI8(static_cast<I8>(value), static_cast<I8>(-value - 1)));
+            }
+        }
+    }
+}
+
+TEST_CASE("Cast Module - CF32 to CU8 centers on the midpoint", "[modules][cast][CU8][quantize]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            config.outputType = "CU8";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<CF32>({3});
+            input.at(0) = {0.0f, -1.0f};
+            input.at(1) = {1.0f, 0.5f};
+            input.at(2) = {std::numeric_limits<F32>::quiet_NaN(), -2.0f};
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("buffer");
+            REQUIRE(out.dtype() == DataType::CU8);
+            REQUIRE(out.at<CU8>(0) == CU8(128, 0));
+            REQUIRE(out.at<CU8>(1) == CU8(255, 192));
+            REQUIRE(out.at<CU8>(2) == CU8(128, 0));
+        }
+    }
+}
+
+TEST_CASE("Cast Module - F32 to CU8 sets the imaginary part to the midpoint",
+          "[modules][cast][CU8][F32]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            config.outputType = "CU8";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2});
+            input.at(0) = 0.5f;
+            input.at(1) = -1.0f;
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("buffer");
+            REQUIRE(out.at<CU8>(0) == CU8(192, 128));
+            REQUIRE(out.at<CU8>(1) == CU8(0, 128));
+        }
+    }
+}
+
+TEST_CASE("Cast Module - I8 to CF32 adds a zero imaginary part", "[modules][cast][I8][CF32]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<I8>({2});
+            input.at(0) = -64;
+            input.at(1) = 127;
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("buffer");
+            REQUIRE(out.at<CF32>(0) == CF32(-0.5f, 0.0f));
+            REQUIRE(out.at<CF32>(1) == CF32(127.0f / 128.0f, 0.0f));
+        }
+    }
+}
+
+TEST_CASE("Cast Module - I16 to I8 keeps the level", "[modules][cast][I16][I8]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            config.outputType = "I8";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<I16>({5});
+            input.at(0) = 256;
+            input.at(1) = -32768;
+            input.at(2) = 32767;
+            input.at(3) = 384;
+            input.at(4) = 640;
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("buffer");
+            REQUIRE(out.dtype() == DataType::I8);
+            REQUIRE(out.at<I8>(0) == 1);
+            REQUIRE(out.at<I8>(1) == -128);
+            REQUIRE(out.at<I8>(2) == 127);
+            REQUIRE(out.at<I8>(3) == 2);
+            REQUIRE(out.at<I8>(4) == 2);
+        }
+    }
+}
+
+TEST_CASE("Cast Module - U8 to I8 flips the offset exactly", "[modules][cast][U8][I8]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            config.outputType = "I8";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<U8>({256});
+            for (U64 value = 0; value < 256; ++value) {
+                input.at(value) = static_cast<U8>(value);
+            }
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("buffer");
+            for (U64 value = 0; value < 256; ++value) {
+                REQUIRE(out.at<I8>(value) == static_cast<I8>(static_cast<I32>(value) - 128));
+            }
+        }
+    }
+}
+
+TEST_CASE("Cast Module - F64 to 64-bit integers clips at the type range",
+          "[modules][cast][I64][U64]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            {
+                TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+                Modules::Cast config;
+                config.outputType = "I64";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<F64>({3});
+                input.at(0) = 1.0;
+                input.at(1) = -1.0;
+                input.at(2) = 0.5;
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+
+                auto& out = ctx.output("buffer");
+                REQUIRE(out.at<I64>(0) == std::numeric_limits<I64>::max());
+                REQUIRE(out.at<I64>(1) == std::numeric_limits<I64>::min());
+                REQUIRE(out.at<I64>(2) == 4611686018427387904LL);
+            }
+
+            {
+                TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+                Modules::Cast config;
+                config.outputType = "U64";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<F64>({3});
+                input.at(0) = 1.0;
+                input.at(1) = -1.0;
+                input.at(2) = 0.0;
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+
+                auto& out = ctx.output("buffer");
+                REQUIRE(out.at<U64>(0) == std::numeric_limits<U64>::max());
+                REQUIRE(out.at<U64>(1) == 0ULL);
+                REQUIRE(out.at<U64>(2) == 9223372036854775808ULL);
+            }
+        }
+    }
+}
+
+TEST_CASE("Cast Module - Float conversions keep values", "[modules][cast][F64][CF64]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            {
+                TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+                Modules::Cast config;
+                config.outputType = "F64";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<F32>({2});
+                input.at(0) = 0.1f;
+                input.at(1) = -300.0f;
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+
+                auto& out = ctx.output("buffer");
+                REQUIRE(out.at<F64>(0) == static_cast<F64>(0.1f));
+                REQUIRE(out.at<F64>(1) == -300.0);
+            }
+
+            {
+                TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+                Modules::Cast config;
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<CF64>({1});
+                input.at(0) = {0.25, -3.5};
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+
+                auto& out = ctx.output("buffer");
+                REQUIRE(out.at<CF32>(0) == CF32(0.25f, -3.5f));
+            }
+        }
+    }
+}
+
+TEST_CASE("Cast Module - 64-bit integers convert without a float step",
+          "[modules][cast][I64][U64][precision]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            {
+                TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+                Modules::Cast config;
+                config.outputType = "CI64";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<I64>({1});
+                input.at(0) = 9007199254740993LL;
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+                REQUIRE(ctx.output("buffer").at<CI64>(0) == CI64(9007199254740993LL, 0));
+            }
+
+            {
+                TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+                Modules::Cast config;
+                config.outputType = "I64";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<U64>({2});
+                input.at(0) = 9223372036854775809ULL;
+                input.at(1) = std::numeric_limits<U64>::max();
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+                REQUIRE(ctx.output("buffer").at<I64>(0) == 1);
+                REQUIRE(ctx.output("buffer").at<I64>(1) == std::numeric_limits<I64>::max());
+            }
+
+            {
+                TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+                Modules::Cast config;
+                config.outputType = "F64";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<U64>({1});
+                input.at(0) = 9223372036854775809ULL;
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+                REQUIRE(ctx.output("buffer").at<F64>(0) == std::ldexp(1.0, -63));
+            }
+        }
+    }
+}
+
+TEST_CASE("Cast Module - Unsigned outputs round before the offset",
+          "[modules][cast][U8][U16][rounding]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            {
+                TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+                Modules::Cast config;
+                config.outputType = "U8";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<F32>({2});
+                input.at(0) = std::nextafter(1.5f / 128.0f, 0.0f);
+                input.at(1) = 1.5f / 128.0f;
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+                REQUIRE(ctx.output("buffer").at<U8>(0) == 129);
+                REQUIRE(ctx.output("buffer").at<U8>(1) == 130);
+            }
+
+            {
+                TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+                Modules::Cast config;
+                config.outputType = "U16";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<F32>({1});
+                input.at(0) = std::nextafter(1.5f / 32768.0f, 0.0f);
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+                REQUIRE(ctx.output("buffer").at<U16>(0) == 32769);
+            }
         }
     }
 }

@@ -18,11 +18,11 @@ namespace Jetstream::Sakura {
 
 namespace {
 
-constexpr F32 kStepperMark = 10.0f;
+constexpr F32 kStepperMark = 12.0f;
+constexpr F32 kStepperText = 14.0f;
 constexpr F32 kStepperStroke = 1.5f;
-constexpr F32 kStepperButton = 28.0f;
-constexpr F32 kStepperInset = 3.0f;
-constexpr F32 kStepperHalo = 24.0f;
+constexpr F32 kStepperHaloInset = 5.0f;
+constexpr F32 kStepperHaloGap = 2.0f;
 
 }  // namespace
 
@@ -79,7 +79,8 @@ void PillStepper::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
-    impl->value.update({.str = impl->config.label, .colorKey = "text_primary", .scale = 13.0f / Typography::FontSize});
+    impl->value.update({.str = impl->config.label, .font = Text::Font::Display, .colorKey = "text_primary",
+                        .scale = kStepperText / Typography::FontSize});
     markConfigured();
 }
 
@@ -91,7 +92,7 @@ Extent2D<F32> PillStepper::measure(const Context& ctx, Extent2D<F32> available) 
     }
     const F32 infinite = std::numeric_limits<F32>::infinity();
     const F32 label = measureChild(impl->value, ctx, {infinite, infinite}).x;
-    const F32 width = std::ceil(2.0f * (Px(ctx, kStepperButton) + Px(ctx, kStepperInset)) + label + Px(ctx, kPillIconGap));
+    const F32 width = std::ceil(2.0f * height + label + Px(ctx, kPillIconGap));
     return {ResolveLength(ctx, size.x, width, available.x), height};
 }
 
@@ -110,10 +111,9 @@ void PillStepper::layout(const Context& ctx) {
         .fillKey = kPillFill,
     });
     layoutChild(ctx, s.card, bounds);
-    const F32 inset = Px(ctx, kStepperInset);
-    const F32 button = Px(ctx, kStepperButton);
-    s.decrementRect = {bounds.x + inset, bounds.y, button, bounds.height};
-    s.incrementRect = {bounds.right() - inset - button, bounds.y, button, bounds.height};
+    const F32 button = std::min(bounds.height, bounds.width * 0.5f);
+    s.decrementRect = {bounds.x, bounds.y, button, bounds.height};
+    s.incrementRect = {bounds.right() - button, bounds.y, button, bounds.height};
     s.valueRect = {s.decrementRect.right(), bounds.y, std::max(0.0f, s.incrementRect.x - s.decrementRect.right()),
                    bounds.height};
 
@@ -127,21 +127,24 @@ void PillStepper::layout(const Context& ctx) {
     };
     const auto down = ctx.color(Impl::colorFor(s.config.canDecrement));
     const auto up = ctx.color(Impl::colorFor(s.config.canIncrement));
-    const F32 halo = Px(ctx, kStepperHalo);
+    const F32 halo = std::max(0.0f, std::round(bounds.height - 2.0f * Px(ctx, kStepperHaloInset)));
     std::vector<Box::Instance> hoverInstances;
     const auto circle = [&](const Rect& rect) {
         return Rect{std::round(rect.x + (rect.width - halo) * 0.5f), std::round(rect.y + (rect.height - halo) * 0.5f),
                     halo, halo};
     };
     if (s.hovered == Impl::Part::Decrement) {
-        hoverInstances.push_back({.rect = circle(s.decrementRect), .backgroundColor = ctx.color("chrome_button_hover")});
+        hoverInstances.push_back({.rect = circle(s.decrementRect), .backgroundColor = ctx.color(kPillHover)});
     } else if (s.hovered == Impl::Part::Increment) {
-        hoverInstances.push_back({.rect = circle(s.incrementRect), .backgroundColor = ctx.color("chrome_button_hover")});
+        hoverInstances.push_back({.rect = circle(s.incrementRect), .backgroundColor = ctx.color(kPillHover)});
     } else if (s.hovered == Impl::Part::Value) {
+        const F32 gap = Px(ctx, kStepperHaloGap);
+        const F32 left = circle(s.decrementRect).right() + gap;
+        const F32 right = circle(s.incrementRect).x - gap;
         hoverInstances.push_back({
-            .rect = {s.valueRect.x, std::round(s.valueRect.y + (s.valueRect.height - halo) * 0.5f), s.valueRect.width,
+            .rect = {left, std::round(s.valueRect.y + (s.valueRect.height - halo) * 0.5f), std::max(0.0f, right - left),
                      halo},
-            .backgroundColor = ctx.color("chrome_button_hover"),
+            .backgroundColor = ctx.color(kPillHover),
         });
     }
     s.hover.update({.instances = std::move(hoverInstances), .cornerRadius = halo * 0.5f,

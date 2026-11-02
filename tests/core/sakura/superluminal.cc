@@ -451,19 +451,19 @@ TEST_CASE("Superluminal mosaics map onto dock tiles that keep their arrangement"
     CHECK(View::Arrange({Tile("a", {0, 0}, {2, 2})}, {2, 2}) == Id(0));
 
     CHECK(View::Arrange({Tile("Controls", {0, 0}, {1, 2}), Tile("Sine", {1, 0}, {2, 2})}, {3, 2}) ==
-          Row({1.0f, 2.0f}, {Id(0), Id(1)}));
+          Row({View::MosaicCell, 2.0f * View::MosaicCell}, {Id(0), Id(1)}));
 
     CHECK(View::Arrange({Tile("Time", {0, 0}, {1, 1}), Tile("Frequency", {0, 1}, {1, 1})}, {1, 2}) ==
-          Column({1.0f, 1.0f}, {Id(0), Id(1)}));
+          Column({View::MosaicCell, View::MosaicCell}, {Id(0), Id(1)}));
 
     CHECK(View::Arrange({Tile("top", {0, 0}, {2, 1}), Tile("a", {0, 1}, {1, 2}), Tile("b", {1, 1}, {1, 2})},
                         {2, 3}) ==
-          Column({1.0f, 2.0f}, {Id(0), Row({1.0f, 1.0f}, {Id(1), Id(2)})}));
+          Column({View::MosaicCell, 2.0f * View::MosaicCell}, {Id(0), Row({View::MosaicCell, View::MosaicCell}, {Id(1), Id(2)})}));
 
     CHECK(View::Arrange({Tile("a", {0, 0}, {1, 1}), Tile("b", {1, 0}, {1, 1}),
                          Tile("c", {0, 1}, {1, 1}), Tile("d", {1, 1}, {1, 1})}, {2, 2}) ==
-          Column({1.0f, 1.0f}, {Row({1.0f, 1.0f}, {Id(0), Id(1)}),
-                                Row({1.0f, 1.0f}, {Id(2), Id(3)})}));
+          Column({View::MosaicCell, View::MosaicCell}, {Row({View::MosaicCell, View::MosaicCell}, {Id(0), Id(1)}),
+                                Row({View::MosaicCell, View::MosaicCell}, {Id(2), Id(3)})}));
 
     CHECK_FALSE(View::Arrange({Tile("a", {0, 0}, {1, 1}), Tile("b", {2, 0}, {1, 1})}, {3, 1}).has_value());
     CHECK_FALSE(View::Arrange({Tile("a", {0, 0}, {1, 1})}, {2, 1}).has_value());
@@ -558,7 +558,7 @@ TEST_CASE("Superluminal tiles are placed from the mosaic with the dock chrome an
     Frames frames(rig.host, kWide, rig.scene.context());
     REQUIRE(frames.settle([&] { rig.update(); }));
 
-    CHECK(rig.view.tiles() == Row({1.0f, 2.0f}, {Id(0), Id(1)}));
+    CHECK(rig.view.tiles() == Row({View::MosaicCell, 2.0f * View::MosaicCell}, {Id(0), Id(1)}));
     const auto titles = rig.headers();
     CHECK(std::find(titles.begin(), titles.end(), "Controls") != titles.end());
     CHECK(std::find(titles.begin(), titles.end(), "Sine") != titles.end());
@@ -769,8 +769,8 @@ TEST_CASE("The Superluminal global interface is a full width tile above the mosa
     CHECK(tiles->vertical);
     REQUIRE(tiles->children.size() == 2);
     CHECK(tiles->children[0] == Leaf(View::GlobalPane));
-    CHECK(tiles->children[1] == Row({1.0f, 1.0f}, {Id(0), Id(1)}));
-    CHECK(tiles->weights.front() != View::GlobalWeight);
+    CHECK(tiles->children[1] == Row({View::MosaicCell, View::MosaicCell}, {Id(0), Id(1)}));
+    CHECK(tiles->sizes.front() != View::GlobalHeight);
     const auto titles = rig.headers();
     CHECK(std::find(titles.begin(), titles.end(), View::GlobalTitle) != titles.end());
 
@@ -1108,6 +1108,54 @@ TEST_CASE("Superluminal viewports scroll overflowing content and stretch it when
     }
     CHECK(Peek::Frame(content).bottom() == Catch::Approx(210.0f));
     CHECK(frames.settle(update));
+}
+
+TEST_CASE("Superluminal viewports stretch during a phased gesture, hold on a frozen clock and spring back",
+          "[core][sakura][superluminal][scroll]") {
+    Probe content({100.0f, 500.0f});
+    content.consume = false;
+    View::ScrollView viewport;
+    Place place(viewport, {10.0f, 10.0f, 300.0f, 200.0f});
+    Frames frames(place, kScreen, MakeContext());
+    const auto update = [&] {
+        viewport.update({.content = &content});
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(Peek::Frame(content).y == 10.0f);
+
+    auto gesture = Wheel(100.0f, 100.0f, 0.0f, 0.0f);
+    gesture.precise = true;
+    gesture.phase = ScrollPhase::Began;
+    CHECK(place.send(gesture));
+    gesture.phase = ScrollPhase::Changed;
+    for (U64 step = 0; step < 4; ++step) {
+        gesture.scroll.y = 8.0f;
+        CHECK(place.send(gesture));
+        frames.run(update);
+    }
+    const F32 stretched = Peek::Frame(content).y;
+    CHECK(stretched > 10.0f);
+    CHECK(stretched < 210.0f);
+
+    for (U64 frame = 0; frame < 5; ++frame) {
+        CHECK(frames.run(update).clean());
+        CHECK(Peek::Frame(content).y == stretched);
+    }
+
+    gesture.scroll.y = 0.0f;
+    gesture.phase = ScrollPhase::Ended;
+    place.send(gesture);
+    frames.run(update);
+    const F32 released = Peek::Frame(content).y;
+    for (U64 frame = 0; frame < 5; ++frame) {
+        CHECK(frames.run(update).clean());
+        CHECK(Peek::Frame(content).y == released);
+    }
+
+    frames.timeStep = 1.0 / 60.0;
+    REQUIRE(frames.settle(update, 240));
+    CHECK(Peek::Frame(content).y == 10.0f);
+    CHECK(Retains(frames, update));
 }
 
 TEST_CASE("Superluminal markdown items render with text and sliders and change without rebuilding",
@@ -1579,7 +1627,7 @@ TEST_CASE("A user box named like an internal pane id lays out once without a Con
     };
     Frames frames(rig.host, kWide, rig.scene.context());
     REQUIRE(frames.settle([&] { rig.update(); }));
-    CHECK(rig.view.tiles() == Row({1.0f, 1.0f, 1.0f}, {Id(0), Id(1), Id(2)}));
+    CHECK(rig.view.tiles() == Row({View::MosaicCell, View::MosaicCell, View::MosaicCell}, {Id(0), Id(1), Id(2)}));
     const auto titles = rig.headers();
     CHECK(std::count(titles.begin(), titles.end(), "superluminal:global") == 1);
     CHECK(std::count(titles.begin(), titles.end(), "global") == 1);

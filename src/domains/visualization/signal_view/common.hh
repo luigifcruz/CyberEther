@@ -173,6 +173,24 @@ struct SignalViewSplitInteraction {
     }
 };
 
+struct SignalViewHeaderFit {
+    bool span = true;
+    bool zoom = true;
+};
+
+inline SignalViewHeaderFit FitSignalViewHeader(F32 room, F32 full, F32 brief, F32 zoom, F32 gap) {
+    const auto fits = [&](F32 header, F32 trailing) {
+        return header + (trailing > 0.0f ? gap + trailing : 0.0f) <= room;
+    };
+    if (fits(full, zoom)) {
+        return {.span = true, .zoom = true};
+    }
+    if (fits(brief, zoom)) {
+        return {.span = false, .zoom = true};
+    }
+    return {.span = false, .zoom = false};
+}
+
 }  // namespace detail
 
 
@@ -347,7 +365,7 @@ struct SignalViewCanvas {
     std::shared_ptr<Render::Components::Text> markerTagText;
 
  private:
-    void updateLabels(const Context& context);
+    Result updateLabels(const Context& context);
     Result updateCursor(const Context& context);
     Result updateMarkers(const Context& context);
     F32 viewTranslation() const;

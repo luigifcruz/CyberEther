@@ -25,7 +25,8 @@
 #include "jetstream/render/components/font.hh"
 #include "jetstream/render/devices/metal/window.hh"
 #include "jetstream/viewport/adapters/metal.hh"
-#include "../../../resources/fonts/compressed_fa.hh"
+#include "../../../resources/fonts/compressed_fa_node.hh"
+#include "../../../resources/fonts/compressed_lucide.hh"
 #include "../../../resources/fonts/compressed_inter.hh"
 #include "../../../resources/fonts/compressed_jbmb.hh"
 #include "../../../resources/fonts/compressed_jbmm.hh"
@@ -121,10 +122,15 @@ class MetalViewport final : public Viewport::Adapter<DeviceType::Metal> {
         platform->clock += seconds;
     }
 
-    void* nextDrawable() override {
+    MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable) override {
         platform->clock = std::ceil(platform->clock / kVsync) * kVsync;
         layer->setDrawableSize({kDisplay.x, kDisplay.y});
-        return static_cast<void*>(layer->nextDrawable());
+        drawable = layer->nextDrawable();
+        return drawable ? drawable->texture() : nullptr;
+    }
+
+    Extent2D<U64> getSwapchainExtent() const override {
+        return {static_cast<U64>(kDisplay.x), static_cast<U64>(kDisplay.y)};
     }
 
     RenderTest::TestPlatform* platform = nullptr;
@@ -194,7 +200,8 @@ struct Workbench : FlowgraphFixture {
         font("default_display", sg_compressed_data, 64.0f);
         font("default_display_semibold", sgsb_compressed_data, 32.0f);
         font("default_display_regular", sgr_compressed_data, 32.0f);
-        font("default_icons", fas_compressed_data, 32.0f, true);
+        font("default_icons", lucide_compressed_data, 32.0f, true);
+        font("default_node_icons", fa_node_compressed_data, 32.0f, true);
         font("default_body", inter_regular_compressed_data, 32.0f);
         font("default_body_italic", inter_italic_compressed_data, 32.0f);
         font("default_body_bold", inter_bold_compressed_data, 32.0f);
@@ -203,6 +210,7 @@ struct Workbench : FlowgraphFixture {
         state.system.render = window;
         state.system.viewport = viewport;
         state.interface.focusedFlowgraph = kGraph;
+        state.interface.showTips = false;
         state.flowgraph.items[kGraph] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
         callbacks.enqueueMail = [this](Mail&& mail) {
             mails.push_back(std::move(mail));
@@ -246,14 +254,13 @@ struct Workbench : FlowgraphFixture {
         pane.appendPanes(panes);
         std::vector<Sakura::FloatingLayer::Window> windows;
         pane.appendWindows(windows);
-        workspace.updateTitlebar({.focusedFlowgraph = kGraph});
-        workspace.updatePanes(panes);
+        workspace.updateTitlebar({});
+        workspace.updatePanes({.panes = panes});
         floating.update({.windows = std::move(windows)});
         root->update({.id = "workbench", .layers = {&content, &floating}});
         if (full) {
             full->update({
                 .backgroundParticles = WorkbenchPresenter(context).build().backgroundParticles,
-                .titlebar = {.focusedFlowgraph = kGraph},
                 .flowgraphs = {panePresenter.build(kGraph, state.flowgraph.items.at(kGraph))},
             });
         }

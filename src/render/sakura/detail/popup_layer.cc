@@ -71,6 +71,10 @@ Rect Place(const Context& ctx, const PopupRequest& request, F32 width, F32 heigh
             rect.x = bounds.x + std::floor((bounds.width - width) * 0.5f);
             rect.y = bounds.y + std::floor((bounds.height - height) * 0.5f);
             break;
+        case PopupPlacement::Inside:
+            rect.x = anchor.x + std::floor((anchor.width - width) * 0.5f);
+            rect.y = anchor.y + std::floor((anchor.height - height) * 0.5f);
+            break;
     }
     rect.x = std::round(rect.x);
     rect.y = std::round(rect.y);
@@ -401,6 +405,12 @@ void PopupLayer::arrange(const Context& ctx) {
     mountChildren(children);
     prune();
     if (revision != seen) {
+        return;
+    }
+    if (std::any_of(shown.begin(), shown.end(), [this](const PopupRequest& request) {
+            return !hasChild(*request.content);
+        })) {
+        changed();
         return;
     }
 

@@ -18,10 +18,8 @@ struct FlowgraphConfigMultilineField {
         }
         std::string nextValue;
         JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, nextValue));
-        if (nextValue != parsedEncoded) {
-            buffer = nextValue;
-            parsedEncoded = nextValue;
-        }
+        parsedEncoded = std::move(nextValue);
+        const std::string& shown = this->config.draft.value_or(parsedEncoded);
         help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
@@ -29,22 +27,26 @@ struct FlowgraphConfigMultilineField {
             .tooltip = help.overlay(),
             .content = &editor,
         });
-        const bool dirty = buffer != parsedEncoded;
+        const bool dirty = shown != parsedEncoded;
         editor.update({
             .id = this->config.id + "Editor",
-            .value = buffer,
+            .value = shown,
             .status = dirty ? "Edited. Press Ctrl+Enter to apply." : this->config.status,
             .height = 200.0f,
             .statusTone = dirty ? Sakura::StatusTone::Info : this->config.statusTone,
             .collapsible = collapsible,
             .backgroundColorKey = "card",
             .onChange = [this](std::string nextValue) {
-                buffer = std::move(nextValue);
+                if (this->config.onDraft) {
+                    this->config.onDraft(std::move(nextValue), parsedEncoded);
+                }
             },
             .onSubmit = [this](std::string nextValue) {
-                buffer = std::move(nextValue);
+                if (this->config.onDraft) {
+                    this->config.onDraft(nextValue, parsedEncoded);
+                }
                 Parser::Map patch;
-                patch[this->config.name] = buffer;
+                patch[this->config.name] = std::move(nextValue);
                 if (this->config.onApply) {
                     this->config.onApply(std::move(patch), false, {});
                 }
@@ -61,7 +63,6 @@ struct FlowgraphConfigMultilineField {
     Config config;
     Parser::Map parsedFormat;
     std::string parsedEncoded;
-    std::string buffer;
     bool collapsible = false;
     FlowgraphFieldTooltip help;
     Sakura::NodeField frame;

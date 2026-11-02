@@ -53,6 +53,8 @@ void Generic::beginWindowDrag() {}
 
 void Generic::zoomWindow() {}
 
+bool Generic::setDarkAppearance(bool) { return false; }
+
 F64 Generic::inputTime() const {
     if (platform) {
         return platform->time();
@@ -106,6 +108,13 @@ void Generic::pumpPlatform() {
         return;
     }
     platform->poll();
+    refreshSnapshot();
+}
+
+void Generic::refreshSnapshot() {
+    if (!platform) {
+        return;
+    }
     const Snapshot next = {displaySize(), framebufferSize(), contentScale()};
     std::lock_guard lock(snapshotMutex);
     snapshot = next;

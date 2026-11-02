@@ -1,9 +1,9 @@
 [wrap-file]
-directory = cpp-httplib-0.56.0
-source_url = https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.56.0.tar.gz
-source_filename = cpp-httplib-0.56.0.tar.gz
-source_hash = 41f214d844e3b9117b734a8cc305b6141c5b47d63009681944e03bc31d92b9ca
-diff_files = cpp-httplib/windows-cancellable-socket-waits.diff
+directory = cpp-httplib-0.63.0
+source_url = https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.63.0.tar.gz
+source_filename = cpp-httplib-0.63.0.tar.gz
+source_hash = 44ab42e16926e95f7641d286bc90d739ab1c16886114d7cc5bc7a9f905c5edf8
+diff_files = cpp-httplib/windows-cancellable-socket-waits.diff, cpp-httplib/websocket-full-frame-writes.diff, cpp-httplib/websocket-bounded-close.diff
 
 [provide]
 dependency_names = cpp-httplib

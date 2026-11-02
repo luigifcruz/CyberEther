@@ -11,6 +11,7 @@
 #include "../detail/text_metrics.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace Jetstream::Sakura {
@@ -50,7 +51,9 @@ void ProgressBar::layout(const Context& ctx) {
     const Rect bounds = frame();
     const F32 rounding = Px(ctx, kFrameRounding);
     const F32 fraction = std::clamp(config.value, 0.0f, 1.0f);
-    const F32 fillEnd = bounds.x + bounds.width * fraction;
+    const F32 fillEnd = fraction <= 0.0f ? bounds.x
+                      : fraction >= 1.0f ? bounds.right()
+                      : std::clamp(std::round(bounds.x + bounds.width * fraction), bounds.x, bounds.right());
     impl->background.update({
         .instances = {{.rect = bounds, .visible = !bounds.empty(),
                        .backgroundColor = ctx.color(config.backgroundColorKey.empty() ? "card"
@@ -59,7 +62,7 @@ void ProgressBar::layout(const Context& ctx) {
         .cornerRadius = rounding,
     });
     impl->fill.update({
-        .instances = {{.rect = bounds, .visible = !bounds.empty() && fraction > 0.0f,
+        .instances = {{.rect = bounds, .visible = !bounds.empty() && fillEnd > bounds.x,
                        .backgroundColor = ctx.color(config.colorKey)}},
         .clip = Intersect(bounds, {bounds.x, bounds.y, std::max(0.0f, fillEnd - bounds.x), bounds.height}),
         .cornerRadius = rounding,
@@ -67,8 +70,8 @@ void ProgressBar::layout(const Context& ctx) {
     impl->metrics.setWindow(ctx.render);
     const F32 fontSize = FontPx(ctx);
     const F32 textWidth = impl->metrics.measure(Typography::MonoFont, config.overlay, fontSize);
-    const F32 textX = std::clamp(fillEnd + Px(ctx, Stack::Spacing), bounds.x,
-                                 std::max(bounds.x, bounds.right() - textWidth - Px(ctx, kInnerSpacing)));
+    const F32 textX = std::round(std::clamp(fillEnd + Px(ctx, Stack::Spacing), bounds.x,
+                                            std::max(bounds.x, bounds.right() - textWidth - Px(ctx, kInnerSpacing))));
     impl->overlay.update({
         .instances = {{
             .rect = {textX, bounds.y, textWidth, bounds.height},

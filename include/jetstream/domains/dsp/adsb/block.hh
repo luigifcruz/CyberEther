@@ -58,7 +58,7 @@ struct Adsb : public Block::Config {
         "samples at 2 MS/s | 131 ms of air per buffer, with 0.1% of frames missed |\n"
         "| Low latency | SDR with Batches 1, Samples 2,048 | 2,048 complex samples at 2"
         " MS/s | 1 ms of air per buffer, with about 12% of frames missed |\n"
-        "| Recorded capture | File Reader with Batch Size 262,144 | 262,144 complex "
+        "| Recorded capture | File Reader with Samples 262,144 | 262,144 complex "
         "samples with no `sampleRate` | Decoded as 2 MS/s, since a missing rate is not "
         "checked |\n"
         "\n"

@@ -5,6 +5,7 @@
 #include "module_impl.hh"
 
 #include <cmath>
+#include <limits>
 
 namespace Jetstream::Blocks {
 
@@ -128,25 +129,25 @@ Result SdrImpl::define() {
                                     "Internal buffer size multiplier.",
                                     {{"type", "uint"}, {"unit", "x"}}));
 
-    JST_CHECK(defineInterfaceMetric("bufferHealth",
-                                    "Buffer Health",
-                                    "Current buffer occupancy level.",
-                                    {{"type", "progressbar"}},
+    JST_CHECK(defineInterfaceMetric("bufferFill",
+                                    "Buffer Fill",
+                                    "How full the internal buffer is. Near 100% means the chain is falling behind.",
+                                    {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
         [this]() -> std::any {
-            const F32 health = moduleImpl ? moduleImpl->getBufferHealth() : 0.0f;
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", health * 100.0f), health};
+            const F32 fill = moduleImpl ? moduleImpl->getBufferFill() : 0.0f;
+            return std::pair<std::string, F32>{jst::fmt::format("{:.0f}%", fill * 100.0f), fill};
         }));
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",
                                     "Buffer Loss",
-                                    "Samples overwritten before the chain read them, plus device "
-                                    "stream gaps (GAP) since the stream started.",
-                                    {{"type", "progressbar"}},
+                                    "Share of samples overwritten before the chain read them since the stream started. "
+                                    "Gaps the radio reported (GAP) show next to it.",
+                                    {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}},
         [this]() -> std::any {
             const auto loss = moduleImpl ? moduleImpl->getLoss()
                                          : Modules::SdrImpl::LossSnapshot{};
-            auto label = loss.bufferLoss > 0.0 && loss.bufferLoss < 0.0001
-                ? std::string("<0.01%") : jst::fmt::format("{:.2f}%", loss.bufferLoss * 100.0);
+            auto label = loss.bufferLoss > 0.0 && loss.bufferLoss < 0.001
+                ? std::string("<0.1%") : jst::fmt::format("{:.1f}%", loss.bufferLoss * 100.0);
             if (loss.deviceGaps > 0) {
                 label = jst::fmt::format("{} ({} GAP)", label, loss.deviceGaps);
             }
@@ -155,12 +156,13 @@ Result SdrImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
-                                    "Rate the chain reads relative to the rate the radio sends.",
-                                    {{"type", "progressbar"}},
+                                    "Rate the chain reads next to the rate the radio sends.",
+                                    {{"type", "progressbar"}, {"warning_below", 0.95f}, {"error_below", 0.8f}},
         [this]() -> std::any {
             const auto [actual, expected] = moduleImpl ? moduleImpl->getThroughput()
                                                        : std::pair<F32, F32>{0.0f, 0.0f};
-            const F32 fraction = expected > 0.0f ? actual / expected : 0.0f;
+            const F32 fraction = actual > 0.0f && expected > 0.0f ? actual / expected
+                                                                  : std::numeric_limits<F32>::quiet_NaN();
             return std::pair<std::string, F32>{
                 jst::fmt::format("{:.1f} / {:.1f} MB/s", actual, expected), fraction};
         }));
@@ -209,7 +211,9 @@ Parser::Map SdrImpl::manualGainFormat(const Blocks::Sdr& config) {
     const auto range = sdr ? sdr->getGainRange() : std::nullopt;
     const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
     const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
-    return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
+    const auto capabilities = Radio::Device::Cached(config.deviceString);
+    const auto unit = capabilities ? capabilities->gainUnit : "dB";
+    return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", unit}};
 }
 
 Parser::Map SdrImpl::antennaFormat(const Blocks::Sdr& config) {

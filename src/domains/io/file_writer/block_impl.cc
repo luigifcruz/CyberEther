@@ -13,12 +13,12 @@ std::string FormatBytes(const U64 bytes) {
         return std::to_string(bytes) + " B";
     }
     if (bytes < 1024 * 1024) {
-        return std::to_string(bytes / 1024) + " KB";
+        return std::to_string(bytes / 1024) + " KiB";
     }
     if (bytes < 1024 * 1024 * 1024) {
-        return std::to_string(bytes / (1024 * 1024)) + " MB";
+        return std::to_string(bytes / (1024 * 1024)) + " MiB";
     }
-    return std::to_string(bytes / (1024 * 1024 * 1024)) + " GB";
+    return std::to_string(bytes / (1024 * 1024 * 1024)) + " GiB";
 }
 
 }  // namespace
@@ -52,13 +52,18 @@ Result FileWriterImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("filepath",
                                     "File Path",
-                                    "Path to the output file.",
-                                    {{"type", "filesave"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat"})}}));
+                                    "Path to the output file. SigMF writes a .sigmf-data and a "
+                                    ".sigmf-meta file next to each other.",
+                                    {{"type", "filesave"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat", "sigmf-data", "sigmf-meta"})}}));
 
+    Parser::Sequence formats;
+    for (const auto& option : Modules::FileWriterFormat::Options()) {
+        formats.emplace_back(Parser::Map{{"label", option.label}, {"value", option.value}});
+    }
     JST_CHECK(defineInterfaceConfig("fileFormat",
                                     "File Format",
                                     "The format of the output file.",
-                                    {{"type", "dropdown"}, {"options", Parser::Sequence{Parser::Map{{"label", "Raw"}, {"value", "raw"}}}}}));
+                                    {{"type", "dropdown"}, {"options", std::move(formats)}}));
 
     JST_CHECK(defineInterfaceConfig("overwrite",
                                     "Overwrite",
@@ -82,15 +87,15 @@ Result FileWriterImpl::define() {
             return FormatBytes(moduleImpl->getBytesWritten());
         }));
 
-    JST_CHECK(defineInterfaceMetric("currentBandwidth",
-                                    "Bandwidth",
-                                    "Smoothed recent file write rate.",
+    JST_CHECK(defineInterfaceMetric("throughput",
+                                    "Throughput",
+                                    "Smoothed recent write rate.",
                                     {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("N/A");
             }
-            return jst::fmt::format("{:.1f} MB/s", moduleImpl->getCurrentBandwidth());
+            return jst::fmt::format("{:.1f} MB/s", moduleImpl->getThroughput());
         }));
 
     return Result::SUCCESS;

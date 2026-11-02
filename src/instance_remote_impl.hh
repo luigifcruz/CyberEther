@@ -44,7 +44,8 @@ struct Instance::Remote::Impl {
     void requestKeyframe();
     Result captureFrame(bool presented,
                         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
-    Result approveClient(const std::string& code);
+    Result approveClient(const std::string& sessionId);
+    Result removeClient(const std::string& sessionId);
 
     Config config;
     Viewport::Generic* viewport = nullptr;

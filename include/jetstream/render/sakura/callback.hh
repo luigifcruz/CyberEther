@@ -17,6 +17,10 @@ struct Callback : public std::function<Signature> {
     bool operator==(const Callback& other) const {
         return static_cast<bool>(*this) == static_cast<bool>(other);
     }
+
+    std::function<Signature> release() && {
+        return std::move(static_cast<std::function<Signature>&>(*this));
+    }
 };
 
 }  // namespace Jetstream::Sakura

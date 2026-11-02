@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_VISUALIZATION_CONSTELLATION_MODULE_IMPL_HH
 
 #include <optional>
+#include <vector>
 #include <jetstream/domains/visualization/constellation/module.hh>
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/surface.hh>
@@ -12,7 +13,7 @@
 
 namespace Jetstream::Modules {
 
-constexpr F32 kConstellationPointSize = 10.0f;
+constexpr F32 kConstellationPointSize = 4.0f;
 constexpr F32 kConstellationZoomSpeed = 0.15f;
 
 struct ConstellationImpl : public Module::Impl,
@@ -27,6 +28,10 @@ struct ConstellationImpl : public Module::Impl,
     Tensor input;
 
     U64 numberOfPoints = 0;
+
+    std::vector<CF32> samples;
+    std::vector<CF32> displayedSamples;
+    bool updateSamplesFlag = false;
 
     // Surface interaction state.
     SurfaceInteractionState interaction;
@@ -43,6 +48,7 @@ struct ConstellationImpl : public Module::Impl,
 
     Result createPresent();
     Result destroyPresent();
+    Result capture();
     Result present();
     Result applyTheme();
     Result updateAxisState();

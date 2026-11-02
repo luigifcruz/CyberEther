@@ -30,8 +30,8 @@ Result Implementation::destroy() {
 }
 
 Extent2D<F32> Implementation::displaySize() const {
-    return {static_cast<F32>(swapchain->drawableSize().x / 2.0),
-            static_cast<F32>(swapchain->drawableSize().y / 2.0)};
+    return {static_cast<F32>(swapchain->drawableSize().width / 2.0),
+            static_cast<F32>(swapchain->drawableSize().height / 2.0)};
 }
 
 Extent2D<F32> Implementation::framebufferSize() const {
@@ -39,8 +39,18 @@ Extent2D<F32> Implementation::framebufferSize() const {
             static_cast<F32>(swapchain->drawableSize().y)};
 }
 
-void* Implementation::nextDrawable() {
-    return static_cast<void*>(swapchain->nextDrawable());
+MTL::Texture* Implementation::nextDrawable(CA::MetalDrawable*& drawable) {
+    drawable = swapchain->nextDrawable();
+    return drawable ? drawable->texture() : nullptr;
+}
+
+Extent2D<U64> Implementation::getSwapchainExtent() const {
+    return {static_cast<U64>(swapchain->drawableSize().width),
+            static_cast<U64>(swapchain->drawableSize().height)};
+}
+
+void Implementation::setCaptureEnabled(bool enabled) {
+    swapchain->setFramebufferOnly(!enabled);
 }
 
 Result Implementation::waitEvents() {

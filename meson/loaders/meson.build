@@ -26,6 +26,8 @@ subdir('libmodes')
 subdir('tree_sitter')
 subdir('onnxruntime')
 subdir('velopack')
+subdir('zeromq')
+subdir('ghostty_vt')
 # [NEW DEPENDENCY HOOK]
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)

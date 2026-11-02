@@ -8,7 +8,6 @@ namespace Jetstream::FlowgraphKeyValueDetail {
 
 using Value::AnyToString;
 using Value::KeyMatches;
-using Text::ToLower;
 
 inline Sakura::Table::Node AnyToNode(const std::string& id,
                                     const std::string& label,

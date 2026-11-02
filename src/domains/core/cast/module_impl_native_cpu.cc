@@ -1,4 +1,7 @@
+#include <algorithm>
+#include <cmath>
 #include <limits>
+#include <type_traits>
 
 #include <jetstream/memory/macros.hh>
 #include <jetstream/tools/automatic_iterator.hh>
@@ -11,6 +14,49 @@
 
 namespace Jetstream::Modules {
 
+namespace {
+
+template<typename T>
+struct TypeTag {
+    using type = T;
+};
+
+template<typename Function>
+Result VisitDataType(const DataType& dtype, Function&& function) {
+    switch (dtype) {
+        case DataType::F32: return function(TypeTag<F32>{});
+        case DataType::F64: return function(TypeTag<F64>{});
+        case DataType::I8: return function(TypeTag<I8>{});
+        case DataType::I16: return function(TypeTag<I16>{});
+        case DataType::I32: return function(TypeTag<I32>{});
+        case DataType::I64: return function(TypeTag<I64>{});
+        case DataType::U8: return function(TypeTag<U8>{});
+        case DataType::U16: return function(TypeTag<U16>{});
+        case DataType::U32: return function(TypeTag<U32>{});
+        case DataType::U64: return function(TypeTag<U64>{});
+        case DataType::CF32: return function(TypeTag<CF32>{});
+        case DataType::CF64: return function(TypeTag<CF64>{});
+        case DataType::CI8: return function(TypeTag<CI8>{});
+        case DataType::CI16: return function(TypeTag<CI16>{});
+        case DataType::CI32: return function(TypeTag<CI32>{});
+        case DataType::CI64: return function(TypeTag<CI64>{});
+        case DataType::CU8: return function(TypeTag<CU8>{});
+        case DataType::CU16: return function(TypeTag<CU16>{});
+        case DataType::CU32: return function(TypeTag<CU32>{});
+        case DataType::CU64: return function(TypeTag<CU64>{});
+        default: return Result::ERROR;
+    }
+}
+
+template<typename T>
+constexpr bool IsComplex = !std::is_same_v<T, typename NumericTypeInfo<T>::subtype>;
+
+template<typename T>
+constexpr bool NeedsDoubleWork = std::is_same_v<T, F64> ||
+                                 (std::is_integral_v<T> && sizeof(T) > 2);
+
+}  // namespace
+
 struct CastImplNativeCpu : public CastImpl,
                            public NativeCpuRuntimeContext,
                            public Scheduler::Context {
@@ -21,24 +67,8 @@ struct CastImplNativeCpu : public CastImpl,
     Result computeSubmit() override;
 
  private:
-    // Real -> F32 kernels.
-    Result kernelI8ToF32();
-    Result kernelU8ToF32();
-    Result kernelI16ToF32();
-    Result kernelU16ToF32();
-    Result kernelI32ToF32();
-    Result kernelU32ToF32();
-
-    // Real floating-point -> complex floating-point kernel.
-    Result kernelF32ToCf32();
-
-    // Complex integer -> CF32 kernels.
-    Result kernelCi8ToCf32();
-    Result kernelCi16ToCf32();
-    Result kernelCi32ToCf32();
-    Result kernelCu8ToCf32();
-    Result kernelCu16ToCf32();
-    Result kernelCu32ToCf32();
+    template<typename In, typename Out>
+    Result kernelConvert();
 
     std::function<Result()> kernel;
 };
@@ -59,23 +89,6 @@ Result CastImplNativeCpu::validate() {
         return Result::SUCCESS;
     }
 
-    const DataType inputDtype = candidateInput.dtype();
-    const bool supportedPair =
-        (validatedOutputDtype == DataType::F32 &&
-         (inputDtype == DataType::I8 || inputDtype == DataType::U8 ||
-          inputDtype == DataType::I16 || inputDtype == DataType::U16 ||
-          inputDtype == DataType::I32 || inputDtype == DataType::U32)) ||
-        (validatedOutputDtype == DataType::CF32 &&
-         (inputDtype == DataType::F32 ||
-          inputDtype == DataType::CI8 || inputDtype == DataType::CU8 ||
-          inputDtype == DataType::CI16 || inputDtype == DataType::CU16 ||
-          inputDtype == DataType::CI32 || inputDtype == DataType::CU32));
-    if (!supportedPair) {
-        JST_ERROR("[MODULE_CAST_NATIVE_CPU] Unsupported conversion '{}' -> '{}'.",
-                  inputDtype, validatedOutputDtype);
-        return Result::ERROR;
-    }
-
     U64 alignedOutputSize = 0;
     if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes,
                                         alignedOutputSize) ||
@@ -94,51 +107,21 @@ Result CastImplNativeCpu::create() {
         return Result::SUCCESS;
     }
 
-    switch (input.dtype()) {
-        case DataType::I8:
-            kernel = [this]() { return kernelI8ToF32(); };
-            break;
-        case DataType::U8:
-            kernel = [this]() { return kernelU8ToF32(); };
-            break;
-        case DataType::I16:
-            kernel = [this]() { return kernelI16ToF32(); };
-            break;
-        case DataType::U16:
-            kernel = [this]() { return kernelU16ToF32(); };
-            break;
-        case DataType::I32:
-            kernel = [this]() { return kernelI32ToF32(); };
-            break;
-        case DataType::U32:
-            kernel = [this]() { return kernelU32ToF32(); };
-            break;
-        case DataType::F32:
-            kernel = [this]() { return kernelF32ToCf32(); };
-            break;
-        case DataType::CI8:
-            kernel = [this]() { return kernelCi8ToCf32(); };
-            break;
-        case DataType::CI16:
-            kernel = [this]() { return kernelCi16ToCf32(); };
-            break;
-        case DataType::CI32:
-            kernel = [this]() { return kernelCi32ToCf32(); };
-            break;
-        case DataType::CU8:
-            kernel = [this]() { return kernelCu8ToCf32(); };
-            break;
-        case DataType::CU16:
-            kernel = [this]() { return kernelCu16ToCf32(); };
-            break;
-        case DataType::CU32:
-            kernel = [this]() { return kernelCu32ToCf32(); };
-            break;
-        default:
-            break;
-    }
+    return VisitDataType(input.dtype(), [&](auto inputTag) {
+        return VisitDataType(outputDtype, [&](auto outputTag) {
+            using In = typename decltype(inputTag)::type;
+            using Out = typename decltype(outputTag)::type;
 
-    return Result::SUCCESS;
+            if constexpr (IsComplex<In> && !IsComplex<Out>) {
+                JST_ERROR("[MODULE_CAST_NATIVE_CPU] Cannot cast complex '{}' to real '{}'.",
+                          input.dtype(), outputDtype);
+                return Result::ERROR;
+            } else {
+                kernel = [this]() { return kernelConvert<In, Out>(); };
+                return Result::SUCCESS;
+            }
+        });
+    });
 }
 
 Result CastImplNativeCpu::computeSubmit() {
@@ -149,138 +132,94 @@ Result CastImplNativeCpu::computeSubmit() {
     return kernel();
 }
 
-Result CastImplNativeCpu::kernelI8ToF32() {
-    const F32 s = scaler;
+template<typename In, typename Out>
+Result CastImplNativeCpu::kernelConvert() {
+    using InScalar = typename NumericTypeInfo<In>::subtype;
+    using OutScalar = typename NumericTypeInfo<Out>::subtype;
+    using Work = std::conditional_t<NeedsDoubleWork<InScalar> ||
+                                    NeedsDoubleWork<OutScalar>, F64, F32>;
 
-    return AutomaticIterator<const I8, F32>(
-        [s](const auto& in, auto& out) {
-            out = static_cast<F32>(in) / s;
-        },
-    input, output);
-}
+    const U64 inputHalf = inputScale.integer ? U64{1} << (inputScale.bits - 1) : 0;
+    const U64 outputHalf = outputScale.integer ? U64{1} << (outputScale.bits - 1) : 0;
+    const I64 outputMax = outputScale.integer ?
+        std::numeric_limits<I64>::max() >> (64 - outputScale.bits) : 0;
+    const I64 shift = static_cast<I64>(outputScale.bits) - static_cast<I64>(inputScale.bits);
+    const OutScalar inputGain = static_cast<OutScalar>(1.0 / inputScale.fullScale);
+    const Work outputGain = static_cast<Work>(outputScale.fullScale);
 
-Result CastImplNativeCpu::kernelU8ToF32() {
-    const F32 s = scaler;
+    const auto decode = [=](const InScalar value) -> I64 {
+        if constexpr (std::is_unsigned_v<InScalar>) {
+            return static_cast<I64>(static_cast<U64>(value) - inputHalf);
+        } else {
+            return static_cast<I64>(value);
+        }
+    };
 
-    return AutomaticIterator<const U8, F32>(
-        [s](const auto& in, auto& out) {
-            out = static_cast<F32>(in) / s;
-        },
-    input, output);
-}
+    const auto encode = [=](const I64 value) -> OutScalar {
+        if constexpr (std::is_unsigned_v<OutScalar>) {
+            return static_cast<OutScalar>(static_cast<U64>(value) + outputHalf);
+        } else {
+            return static_cast<OutScalar>(value);
+        }
+    };
 
-Result CastImplNativeCpu::kernelI16ToF32() {
-    const F32 s = scaler;
+    const auto convert = [=](const InScalar value) -> OutScalar {
+        if constexpr (std::is_floating_point_v<InScalar> &&
+                      std::is_floating_point_v<OutScalar>) {
+            return static_cast<OutScalar>(value);
+        } else if constexpr (std::is_floating_point_v<OutScalar>) {
+            return static_cast<OutScalar>(decode(value)) * inputGain;
+        } else if constexpr (std::is_floating_point_v<InScalar>) {
+            Work level = static_cast<Work>(value);
+            if (level != level) {
+                level = 0;
+            }
+            const Work scaled = std::nearbyint(level * outputGain);
+            if (scaled >= outputGain) {
+                return encode(outputMax);
+            }
+            if (scaled < -outputGain) {
+                return encode(-outputMax - 1);
+            }
+            return encode(static_cast<I64>(scaled));
+        } else {
+            const I64 level = decode(value);
+            if (shift >= 0) {
+                return encode(level * (I64{1} << shift));
+            }
+            const I64 step = I64{1} << -shift;
+            I64 quotient = level >> -shift;
+            const I64 remainder = level - quotient * step;
+            if (remainder > step / 2 || (remainder == step / 2 && (quotient & 1))) {
+                quotient += 1;
+            }
+            return encode(std::min(quotient, outputMax));
+        }
+    };
 
-    return AutomaticIterator<const I16, F32>(
-        [s](const auto& in, auto& out) {
-            out = static_cast<F32>(in) / s;
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelU16ToF32() {
-    const F32 s = scaler;
-
-    return AutomaticIterator<const U16, F32>(
-        [s](const auto& in, auto& out) {
-            out = static_cast<F32>(in) / s;
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelI32ToF32() {
-    const F32 s = scaler;
-
-    return AutomaticIterator<const I32, F32>(
-        [s](const auto& in, auto& out) {
-            out = static_cast<F32>(in) / s;
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelU32ToF32() {
-    const F32 s = scaler;
-
-    return AutomaticIterator<const U32, F32>(
-        [s](const auto& in, auto& out) {
-            out = static_cast<F32>(in) / s;
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelF32ToCf32() {
-    return AutomaticIterator<const F32, CF32>(
-        [](const auto& in, auto& out) {
-            out = CF32(in, 0.0f);
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelCi8ToCf32() {
-    const F32 s = scaler;
-
-    return AutomaticIterator<const CI8, CF32>(
-        [s](const auto& in, auto& out) {
-            out = CF32(static_cast<F32>(in.real()) / s,
-                       static_cast<F32>(in.imag()) / s);
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelCi16ToCf32() {
-    const F32 s = scaler;
-
-    return AutomaticIterator<const CI16, CF32>(
-        [s](const auto& in, auto& out) {
-            out = CF32(static_cast<F32>(in.real()) / s,
-                       static_cast<F32>(in.imag()) / s);
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelCi32ToCf32() {
-    const F32 s = scaler;
-
-    return AutomaticIterator<const CI32, CF32>(
-        [s](const auto& in, auto& out) {
-            out = CF32(static_cast<F32>(in.real()) / s,
-                       static_cast<F32>(in.imag()) / s);
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelCu8ToCf32() {
-    const F32 s = scaler;
-
-    return AutomaticIterator<const CU8, CF32>(
-        [s](const auto& in, auto& out) {
-            out = CF32(static_cast<F32>(in.real()) / s,
-                       static_cast<F32>(in.imag()) / s);
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelCu16ToCf32() {
-    const F32 s = scaler;
-
-    return AutomaticIterator<const CU16, CF32>(
-        [s](const auto& in, auto& out) {
-            out = CF32(static_cast<F32>(in.real()) / s,
-                       static_cast<F32>(in.imag()) / s);
-        },
-    input, output);
-}
-
-Result CastImplNativeCpu::kernelCu32ToCf32() {
-    const F32 s = scaler;
-
-    return AutomaticIterator<const CU32, CF32>(
-        [s](const auto& in, auto& out) {
-            out = CF32(static_cast<F32>(in.real()) / s,
-                       static_cast<F32>(in.imag()) / s);
-        },
-    input, output);
+    if constexpr (IsComplex<In>) {
+        return AutomaticIterator<const In, Out>(
+            [=](const auto& in, auto& out) {
+                out = Out(convert(in.real()), convert(in.imag()));
+            },
+        input, output);
+    } else if constexpr (IsComplex<Out>) {
+        OutScalar zero = 0;
+        if constexpr (std::is_integral_v<OutScalar>) {
+            zero = encode(0);
+        }
+        return AutomaticIterator<const In, Out>(
+            [=](const auto& in, auto& out) {
+                out = Out(convert(in), zero);
+            },
+        input, output);
+    } else {
+        return AutomaticIterator<const In, Out>(
+            [=](const auto& in, auto& out) {
+                out = convert(in);
+            },
+        input, output);
+    }
 }
 
 JST_REGISTER_MODULE(CastImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");

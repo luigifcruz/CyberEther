@@ -165,10 +165,10 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "FileWriter block current bandwidth metric updates after a write",
+                 "FileWriter block throughput metric updates after a write",
                  "[modules][io][file_writer][block][metrics]") {
-    const auto inputPath = OutputPath("bandwidth_input");
-    const auto outputPath = OutputPath("bandwidth_output");
+    const auto inputPath = OutputPath("throughput_input");
+    const auto outputPath = OutputPath("throughput_output");
     Cleanup(inputPath);
     Cleanup(outputPath);
 
@@ -197,15 +197,15 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("writer", "file_writer", writerConfig,
                                    inputs) == Result::SUCCESS);
 
-    REQUIRE(MetricString(*flowgraph, "writer", "currentBandwidth") == "0.0 MB/s");
+    REQUIRE(MetricString(*flowgraph, "writer", "throughput") == "0.0 MB/s");
 
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
     REQUIRE(std::filesystem::file_size(outputPath) == data.size());
 
-    const auto metric = MetricString(*flowgraph, "writer", "currentBandwidth");
-    INFO("currentBandwidth=" << metric);
+    const auto metric = MetricString(*flowgraph, "writer", "throughput");
+    INFO("throughput=" << metric);
     REQUIRE(metric != "N/A");
     REQUIRE(metric != "0.0 MB/s");
 
