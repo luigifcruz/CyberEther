@@ -34,6 +34,7 @@ struct Script {
     F64 frequencyStep = 0.0;
     std::vector<SoapyAbi::Range> sampleRateRanges{{1.0e6, 10.0e6, 0.0}};
     std::vector<SoapyAbi::Range> frequencyRanges{{10.0e6, 2000.0e6, 0.0}};
+    SoapyAbi::Range gainRange{0.0, 60.0, 0.0};
     bool automaticGainSupported = true;
     bool biasTeeSupported = false;
     bool biasTeeEnabled = false;
@@ -60,6 +61,7 @@ struct Script {
         frequencyStep = 0.0;
         sampleRateRanges = {{1.0e6, 10.0e6, 0.0}};
         frequencyRanges = {{10.0e6, 2000.0e6, 0.0}};
+        gainRange = {0.0, 60.0, 0.0};
         automaticGainSupported = true;
         biasTeeSupported = false;
         biasTeeEnabled = false;
@@ -198,7 +200,7 @@ inline SoapyApi Api() {
     };
     api.getGainRange = [](const SoapyAbi::Device*, int, std::size_t) {
         State().query("gainRange");
-        return SoapyAbi::Range{0.0, 60.0, 0.0};
+        return State().gainRange;
     };
     api.getFrequency = [](const SoapyAbi::Device*, int, std::size_t) {
         return State().get("getFrequency", &Settings::frequency);

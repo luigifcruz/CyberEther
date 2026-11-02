@@ -39,9 +39,17 @@ std::shared_ptr<Module> BuildSoapyModule() {
     return module;
 }
 
-struct ModuleCleanup {
-    std::shared_ptr<Module> module;
-    ~ModuleCleanup() { static_cast<void>(module->destroy()); }
+struct SoapyModuleFixture : TestSoapy::Runtime {
+    Modules::Soapy config;
+    const std::shared_ptr<Module> module = BuildSoapyModule();
+
+    SoapyModuleFixture() {
+        config.deviceString = "driver=scripted";
+        config.numberOfBatches = 1;
+        config.numberOfTimeSamples = 8;
+    }
+
+    ~SoapyModuleFixture() { static_cast<void>(module->destroy()); }
 };
 
 template<typename Predicate>
@@ -90,7 +98,7 @@ TEST_CASE("Soapy validates configuration before accessing the runtime",
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy preserves samples and shape in every supported format",
                  "[modules][soapy][formats]") {
     const auto format = GENERATE(0, 1, 2, 3, 4);
@@ -103,14 +111,11 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         script.samples[i] = static_cast<I8>(i % 128);
     }
     script.reads = {3, Modules::SoapyAbi::Timeout, 5};
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
     config.dataType = std::string(DataTypeToName(selected.dtype));
     config.numberOfBatches = 2;
     config.numberOfTimeSamples = 4;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    const auto queries = script.queries.load();
     REQUIRE(script.streamFormat == selected.name);
     REQUIRE(WaitFor([&] {
         return module->context()->scheduler()->hasPendingCompute() == Result::SUCCESS;
@@ -131,6 +136,9 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         return module->getImpl<Modules::SoapyImpl>()->getThroughput().second ==
                config.sampleRate * sampleBytes / 1e6f;
     }));
+    REQUIRE(module->getImpl<Modules::SoapyImpl>()->getDeviceInfo().connected);
+    REQUIRE(script.queries == queries);
+    REQUIRE(script.concurrentChanges == 0);
 }
 
 TEST_CASE_METHOD(TestSoapy::Runtime,
@@ -185,16 +193,11 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     REQUIRE(receiver.sampleScale() == expected);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy defaults to CF32 and recreates its stream for format changes",
                  "[modules][soapy][formats][reconfigure]") {
-    Modules::Soapy config;
     REQUIRE(config.deserialize({{"deviceString", std::string("driver=scripted")}}) ==
             Result::SUCCESS);
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
     REQUIRE(TestSoapy::State().streamFormat == "CF32");
     for (const auto& selected : Modules::SoapySampleFormats) {
@@ -214,7 +217,7 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     REQUIRE(TestSoapy::State().concurrentChanges == 0);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy discards partial integer frames on overflow",
                  "[modules][soapy][formats][overflow]") {
     auto& script = TestSoapy::State();
@@ -223,13 +226,8 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     script.samples.resize(samples.size() * sizeof(CI16));
     std::memcpy(script.samples.data(), samples.data(), script.samples.size());
     script.reads = {2, Modules::SoapyAbi::Overflow, 4};
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
     config.dataType = "CI16";
-    config.numberOfBatches = 1;
     config.numberOfTimeSamples = 4;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
     const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
         module->context()->runtime());
@@ -338,7 +336,7 @@ TEST_CASE("Soapy can load an installed system runtime without opening a radio",
     REQUIRE_FALSE(library->path().empty());
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy gain control respects device capabilities during startup and reconfiguration",
                  "[modules][soapy][devices][agc]") {
     const bool supported = GENERATE(true, false);
@@ -346,17 +344,8 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     CAPTURE(supported, enabled);
     TestSoapy::State().automaticGainSupported = supported;
 
-    const auto module = BuildSoapyModule();
-    struct Cleanup {
-        std::shared_ptr<Module> module;
-        ~Cleanup() { static_cast<void>(module->destroy()); }
-    } cleanup{module};
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
     config.automaticGain = enabled;
     config.manualGain = 30.0f;
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
     const auto outputId = module->outputs().at("signal").tensor.id();
     U64 expectedWrites = supported ? 1 : 0;
@@ -377,37 +366,22 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     REQUIRE(TestSoapy::State().concurrentChanges == 0);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy reports gain control failures on devices advertising AGC",
                  "[modules][soapy][devices][agc]") {
     TestSoapy::State().fail("automaticGain");
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-
-    const auto module = BuildSoapyModule();
     REQUIRE(module->create("test", config, {}) == Result::ERROR);
     REQUIRE(TestSoapy::State().gainModeWrites == 1);
     REQUIRE(module->state() == Module::State::DESTROYED);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy live edits finish synchronously and failed transactions remain retryable",
-                 "[modules][soapy][reconfigure][control]") {
-    const auto module = BuildSoapyModule();
-    struct Cleanup {
-        std::shared_ptr<Module> module;
-        ~Cleanup() { static_cast<void>(module->destroy()); }
-    } cleanup{module};
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
+                 "[modules][soapy][reconfigure][control][readback]") {
     config.frequency = 100.0e6f;
     config.sampleRate = 2.0e6f;
     config.automaticGain = false;
     config.manualGain = 30.0f;
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
 
     Parser::Map edit;
@@ -420,6 +394,10 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         edit = {{"sampleRate", 4.0e6f}};
         failure = "sampleRate";
     }
+    SECTION("sample rate readback") {
+        edit = {{"sampleRate", 4.0e6f}};
+        failure = "getSampleRate";
+    }
     SECTION("automatic gain") {
         edit = {{"automaticGain", true}};
         failure = "automaticGain";
@@ -430,16 +408,17 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     }
     const auto checkApplied = [&] {
         const auto applied = TestSoapy::State().settings();
+        const auto info = module->getImpl<Modules::SoapyImpl>()->getDeviceInfo();
         REQUIRE(applied.frequency == config.frequency);
         REQUIRE(applied.sampleRate == config.sampleRate);
         REQUIRE(applied.automaticGain == config.automaticGain);
         REQUIRE(applied.gain == config.manualGain);
+        REQUIRE(info.state.frequency.value == applied.frequency);
+        REQUIRE(info.state.sampleRate.value == applied.sampleRate);
+        REQUIRE(info.state.automaticGain.value == applied.automaticGain);
+        REQUIRE(info.state.gain.value == applied.gain);
     };
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (TestSoapy::State().activeReads == 0 && std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::yield();
-    }
-    REQUIRE(TestSoapy::State().activeReads > 0);
+    REQUIRE(WaitFor([] { return TestSoapy::State().activeReads > 0; }));
     TestSoapy::State().fail(failure);
     REQUIRE(module->reconfigure(edit) == Result::ERROR);
     checkApplied();
@@ -455,22 +434,16 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     REQUIRE(TestSoapy::State().concurrentChanges == 0);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy publishes actual tuning while preserving requested settings",
                  "[modules][soapy][readback]") {
     auto& script = TestSoapy::State();
     script.sampleRateStep = 1.0e6;
     script.frequencyStep = 1000.0;
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
     config.sampleRate = 2.4e6f;
     config.frequency = 100000320.0f;
     config.automaticGain = false;
     config.manualGain = 80.0f;
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
     const auto info = module->getImpl<Modules::SoapyImpl>()->getDeviceInfo();
     REQUIRE(info.connected);
@@ -486,29 +459,7 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     REQUIRE(saved.manualGain == config.manualGain);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
-                 "Soapy restores actual state after a failed tuning readback",
-                 "[modules][soapy][readback][reconfigure]") {
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
-    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
-    const auto impl = module->getImpl<Modules::SoapyImpl>();
-    TestSoapy::State().fail("getSampleRate");
-    REQUIRE(module->reconfigure({{"sampleRate", 4.0e6f}}) == Result::ERROR);
-    REQUIRE(TestSoapy::State().settings().sampleRate == config.sampleRate);
-    REQUIRE(impl->getDeviceInfo().state.sampleRate.value == config.sampleRate);
-    REQUIRE(static_cast<const Modules::Soapy&>(module->config()).sampleRate ==
-            config.sampleRate);
-    REQUIRE(module->reconfigure({{"sampleRate", 4.0e6f}}) == Result::SUCCESS);
-    REQUIRE(impl->getDeviceInfo().state.sampleRate.value == 4.0e6);
-    REQUIRE(TestSoapy::State().concurrentChanges == 0);
-}
-
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy refuses unverified or invalid signal metadata",
                  "[modules][soapy][readback][validation]") {
     auto api = TestSoapy::Api();
@@ -531,46 +482,46 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         };
     }
     Modules::SoapyRuntime::Override(api);
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-    const auto module = BuildSoapyModule();
     REQUIRE(module->create("test", config, {}) == Result::ERROR);
     REQUIRE(module->state() == Module::State::DESTROYED);
     REQUIRE_FALSE(module->getImpl<Modules::SoapyImpl>()->getDeviceInfo().connected);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
-                 "Soapy distinguishes unavailable optional capabilities from unsupported ones",
-                 "[modules][soapy][capabilities]") {
+TEST_CASE_METHOD(SoapyModuleFixture,
+                 "Soapy isolates missing, failed, and invalid optional queries",
+                 "[modules][soapy][capabilities][validation]") {
     auto api = TestSoapy::Api();
-    api.getGainRange = [](const Modules::SoapyAbi::Device*, int, std::size_t) {
-        TestSoapy::State().queryStatus = -1;
-        return Modules::SoapyAbi::Range{};
-    };
-    api.getGain = nullptr;
-    api.getAntenna = nullptr;
+    SECTION("gain range query fails") {
+        api.getGainRange = [](const Modules::SoapyAbi::Device*, int, std::size_t) {
+            TestSoapy::State().query("gainRange");
+            TestSoapy::State().queryStatus = -1;
+            return Modules::SoapyAbi::Range{};
+        };
+        api.getGain = nullptr;
+        api.getAntenna = nullptr;
+    }
+    SECTION("gain range is invalid") {
+        TestSoapy::State().gainRange = GENERATE(
+            Modules::SoapyAbi::Range{60.0, 0.0, 0.0},
+            Modules::SoapyAbi::Range{0.0, 60.0, -1.0},
+            Modules::SoapyAbi::Range{0.0, std::numeric_limits<F64>::quiet_NaN(), 0.0},
+            Modules::SoapyAbi::Range{0.0, std::numeric_limits<F64>::max(), 0.0});
+    }
+    const bool readbackAvailable = api.getGain != nullptr;
     Modules::SoapyRuntime::Override(api);
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
     const auto info = module->getImpl<Modules::SoapyImpl>()->getDeviceInfo();
     REQUIRE_FALSE(info.capabilities.gain.value);
     REQUIRE_FALSE(info.capabilities.gain.error.empty());
     REQUIRE(info.capabilities.biasTee.value == false);
     REQUIRE(info.capabilities.biasTee.error.empty());
-    REQUIRE_FALSE(info.state.gain.value);
-    REQUIRE_FALSE(info.state.gain.error.empty());
-    REQUIRE_FALSE(info.state.antenna.value);
+    REQUIRE(info.state.gain.value.has_value() == readbackAvailable);
+    REQUIRE(info.state.gain.error.empty() == readbackAvailable);
+    REQUIRE(info.state.antenna.value.has_value() == readbackAvailable);
     REQUIRE(info.state.sampleRate.value == config.sampleRate);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy lets the driver update rates beyond its initial advertised range",
                  "[modules][soapy][capabilities][readback]") {
     auto api = TestSoapy::Api();
@@ -583,13 +534,7 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         return script.sampleRateRanges.data();
     };
     Modules::SoapyRuntime::Override(api);
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
     config.sampleRate = 20.0e6f;
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
     const auto info = module->getImpl<Modules::SoapyImpl>()->getDeviceInfo();
     REQUIRE(info.state.sampleRate.value == 20.0e6);
@@ -597,33 +542,7 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     REQUIRE(info.capabilities.sampleRates.value->front().maximum == 40.0e6);
 }
 
-TEST_CASE_METHOD(TestSoapy::Runtime,
-                 "Soapy reception and UI snapshots never query driver controls",
-                 "[modules][soapy][capabilities][stream]") {
-    auto& script = TestSoapy::State();
-    script.samples.resize(8 * sizeof(CF32));
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
-    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
-    const auto count = script.queries.load();
-    REQUIRE(WaitFor([&] {
-        return module->context()->scheduler()->hasPendingCompute() == Result::SUCCESS;
-    }));
-    const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
-        module->context()->runtime());
-    REQUIRE(runtime->computeSubmit() == Result::SUCCESS);
-    for (int i = 0; i < 10; ++i) {
-        REQUIRE(module->getImpl<Modules::SoapyImpl>()->getDeviceInfo().connected);
-    }
-    REQUIRE(script.queries == count);
-    REQUIRE(script.concurrentChanges == 0);
-}
-
-TEST_CASE_METHOD(TestSoapy::Runtime,
+TEST_CASE_METHOD(SoapyModuleFixture,
                  "Soapy refreshes gain limits without losing the requested gain",
                  "[modules][soapy][capabilities][reconfigure]") {
     auto api = TestSoapy::Api();
@@ -634,15 +553,9 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         return Modules::SoapyAbi::Range{0.0, maximum, 0.0};
     };
     Modules::SoapyRuntime::Override(api);
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
     config.frequency = 100.0e6f;
     config.automaticGain = false;
     config.manualGain = 50.0f;
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
     REQUIRE(module->reconfigure({{"frequency", 300.0e6f}}) == Result::SUCCESS);
     auto info = module->getImpl<Modules::SoapyImpl>()->getDeviceInfo();
@@ -670,33 +583,4 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     REQUIRE_FALSE(receiver.info().capabilities.biasTee.error.empty());
     receiver.reset();
     REQUIRE_FALSE(script.biasTeeEnabled);
-}
-
-TEST_CASE_METHOD(TestSoapy::Runtime,
-                 "Soapy treats invalid optional gain ranges as query failures",
-                 "[modules][soapy][capabilities][validation]") {
-    static const std::array<Modules::SoapyAbi::Range, 4> ranges{{
-        {60.0, 0.0, 0.0},
-        {0.0, 60.0, -1.0},
-        {0.0, std::numeric_limits<F64>::quiet_NaN(), 0.0},
-        {0.0, std::numeric_limits<F64>::max(), 0.0},
-    }};
-    static std::size_t selected;
-    selected = GENERATE(0, 1, 2, 3);
-    auto api = TestSoapy::Api();
-    api.getGainRange = [](const Modules::SoapyAbi::Device*, int, std::size_t) {
-        TestSoapy::State().query("gainRange");
-        return ranges[selected];
-    };
-    Modules::SoapyRuntime::Override(api);
-    Modules::Soapy config;
-    config.deviceString = "driver=scripted";
-    config.numberOfBatches = 1;
-    config.numberOfTimeSamples = 8;
-    const auto module = BuildSoapyModule();
-    const ModuleCleanup cleanup{module};
-    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
-    const auto info = module->getImpl<Modules::SoapyImpl>()->getDeviceInfo();
-    REQUIRE_FALSE(info.capabilities.gain.value);
-    REQUIRE_FALSE(info.capabilities.gain.error.empty());
 }
