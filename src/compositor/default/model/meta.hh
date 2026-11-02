@@ -60,13 +60,13 @@ struct SurfaceMeta {
 
 struct TileMeta {
     std::optional<std::string> split;
-    std::optional<F32> weight;
+    std::optional<F32> size;
     std::optional<std::string> pane;
     std::optional<std::vector<TileMeta>> children;
     std::optional<bool> minimized;
     std::optional<bool> maximized;
 
-    JST_SERDES(split, weight, pane, children, minimized, maximized);
+    JST_SERDES(split, size, pane, children, minimized, maximized);
 };
 
 }  // namespace Jetstream

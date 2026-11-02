@@ -4,6 +4,7 @@
 #include "meta.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <optional>
 #include <string>
@@ -99,13 +100,13 @@ inline std::optional<TileMeta> MapTiles(const TileMeta& tiles,
         if (!pane.has_value() || pane->empty()) {
             return std::nullopt;
         }
-        return TileMeta{.weight = tiles.weight, .pane = std::move(*pane),
+        return TileMeta{.size = tiles.size, .pane = std::move(*pane),
                         .minimized = tiles.minimized, .maximized = tiles.maximized};
     }
     std::vector<TileMeta> children;
     for (const auto& child : *tiles.children) {
         if (auto mapped = MapTiles(child, map)) {
-            mapped->weight = child.weight.value_or(1.0f);
+            mapped->size = child.size;
             children.push_back(std::move(*mapped));
         }
     }
@@ -114,14 +115,32 @@ inline std::optional<TileMeta> MapTiles(const TileMeta& tiles,
     }
     if (children.size() == 1) {
         auto single = std::move(children.front());
-        single.weight = tiles.weight;
+        single.size = tiles.size;
         return single;
     }
     return TileMeta{
         .split = tiles.split == "column" ? "column" : "row",
-        .weight = tiles.weight,
+        .size = tiles.size,
         .children = std::move(children),
     };
+}
+
+inline bool IsTileLayout(const TileMeta& tiles) {
+    if (tiles.split.has_value() && *tiles.split != "row" && *tiles.split != "column") {
+        return false;
+    }
+    if (tiles.size.has_value() && (!std::isfinite(*tiles.size) || *tiles.size < 0.0f)) {
+        return false;
+    }
+    if (IsTileLeaf(tiles)) {
+        return tiles.pane.has_value() && !tiles.pane->empty();
+    }
+    if (!tiles.split.has_value()) {
+        return false;
+    }
+    return std::all_of(tiles.children->begin(), tiles.children->end(), [](const TileMeta& child) {
+        return child.size.has_value() && IsTileLayout(child);
+    });
 }
 
 inline std::optional<TileMeta> FilterTiles(const TileMeta& tiles, const std::function<bool(const std::string&)>& keep) {
@@ -164,7 +183,7 @@ inline TileMeta ReplaceTilePane(const TileMeta& tiles, const std::string& pane, 
             return tiles;
         }
         TileMeta replaced = replacement;
-        replaced.weight = tiles.weight;
+        replaced.size = tiles.size;
         return replaced;
     }
     TileMeta copy = tiles;
@@ -172,52 +191,6 @@ inline TileMeta ReplaceTilePane(const TileMeta& tiles, const std::string& pane, 
         child = ReplaceTilePane(child, pane, replacement);
     }
     return copy;
-}
-
-inline TileMeta SplitTilePane(const TileMeta& tiles, const std::string& target, const std::string& pane, bool stacked) {
-    return ReplaceTilePane(tiles, target, TileMeta{
-        .split = stacked ? "column" : "row",
-        .children = std::vector<TileMeta>{TileMeta{.pane = target}, TileMeta{.pane = pane}},
-    });
-}
-
-inline TileMeta SplitColumnPane(const TileMeta& tiles, const std::string& target, const std::string& pane,
-                                bool stacked) {
-    if (stacked || !ContainsTilePane(tiles, target)) {
-        return SplitTilePane(tiles, target, pane, true);
-    }
-    if (IsTileLeaf(tiles) || tiles.split == "column") {
-        TileMeta first = tiles;
-        first.weight.reset();
-        return TileMeta{
-            .split = "row",
-            .weight = tiles.weight,
-            .children = std::vector<TileMeta>{std::move(first), TileMeta{.pane = pane}},
-        };
-    }
-    TileMeta row = tiles;
-    for (auto child = row.children->begin(); child != row.children->end(); ++child) {
-        if (ContainsTilePane(*child, target)) {
-            row.children->insert(child + 1, TileMeta{.pane = pane});
-            break;
-        }
-    }
-    return row;
-}
-
-inline TileMeta AppendColumn(const TileMeta& layout, const std::string& pane) {
-    TileMeta leaf{.pane = pane};
-    if (!IsTileLeaf(layout) && layout.split != "column") {
-        TileMeta row = layout;
-        row.children->push_back(std::move(leaf));
-        return row;
-    }
-    TileMeta first = layout;
-    first.weight.reset();
-    return TileMeta{
-        .split = "row",
-        .children = std::vector<TileMeta>{std::move(first), std::move(leaf)},
-    };
 }
 
 }  // namespace Jetstream

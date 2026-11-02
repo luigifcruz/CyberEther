@@ -79,12 +79,12 @@ Extent2D<F32> CloseOf(const Jetstream::Rect& card) {
     return {card.right() - 15.0f, card.y + 15.0f};
 }
 
-TileMeta LayoutLeaf(const std::string& pane, std::optional<F32> weight = std::nullopt) {
-    return TileMeta{.weight = weight, .pane = pane};
+TileMeta LayoutLeaf(const std::string& pane, std::optional<F32> size = 0.0f) {
+    return TileMeta{.size = size, .pane = pane};
 }
 
-TileMeta LayoutSplit(const std::string& split, std::vector<TileMeta> children, std::optional<F32> weight = std::nullopt) {
-    return TileMeta{.split = split, .weight = weight, .children = std::move(children)};
+TileMeta LayoutSplit(const std::string& split, std::vector<TileMeta> children, std::optional<F32> size = 0.0f) {
+    return TileMeta{.split = split, .size = size, .children = std::move(children)};
 }
 
 std::vector<std::string> LayoutPanes(const TileMeta& tiles) {
@@ -517,8 +517,8 @@ TEST_CASE("A detached view joins as a column beside the editor and the layout is
     REQUIRE(layout->tiles.has_value());
     CHECK(layout->tiles->split == std::optional<std::string>("row"));
     CHECK(LayoutPanes(*layout->tiles) == std::vector<std::string>{"flowgraph", "config:a"});
-    CHECK_FALSE(layout->tiles->children->at(0).weight.has_value());
-    CHECK_FALSE(layout->tiles->children->at(1).weight.has_value());
+    CHECK(layout->tiles->children->at(0).size == std::optional<F32>(0.0f));
+    CHECK(layout->tiles->children->at(1).size == std::optional<F32>(0.0f));
 
     rig.deliver();
     for (int frame = 0; frame < 3; ++frame) {
@@ -548,7 +548,7 @@ TEST_CASE("Saved layouts are adopted through the presenter with their column wid
     const auto config = rig.build();
     REQUIRE(config.layout.has_value());
     CHECK(config.layout->children == std::vector<DockTiles>{Leaf("editor:graph"), Leaf("config:a")});
-    CHECK(config.layout->weights == std::vector<F32>{700.0f, 300.0f});
+    CHECK(config.layout->sizes == std::vector<F32>{700.0f, 300.0f});
 
     rig.frame();
     rig.frame();
@@ -693,7 +693,7 @@ TEST_CASE("Dragging a view onto the bottom of another stacks them in one column 
     CHECK(layout->tiles->children->at(0).pane == std::optional<std::string>("flowgraph"));
     const auto& column = layout->tiles->children->at(1);
     CHECK(column.split == std::optional<std::string>("column"));
-    CHECK(column.weight == std::optional<F32>(300.0f));
+    CHECK(column.size == std::optional<F32>(300.0f));
     CHECK(LayoutPanes(column) == std::vector<std::string>{"config:a", "config:b"});
 
     rig.deliver();
@@ -852,9 +852,10 @@ TEST_CASE("Documentation from a node opens one tile beside the editor with that 
     CHECK(rig.documentation().empty());
 
     rig.openDocumentation("a");
-    CHECK(rig.count<MailSetFlowgraphLayout>() == 0);
+    CHECK(rig.count<MailSetFlowgraphLayout>() == 1);
     REQUIRE(rig.state.flowgraph.documentation.contains(kGraph));
     CHECK(rig.state.flowgraph.documentation.at(kGraph).block == "a");
+    rig.deliver();
     CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph", "documentation"});
 
     const auto docs = rig.documentation();
@@ -956,9 +957,9 @@ TEST_CASE("Rename completion and late dock reports preserve detached pane order 
     REQUIRE(rig.graph().blockCreate("old", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
     REQUIRE(rig.graph().metadata().set("config", ConfigMeta{.detached = configDetached}, "old") == Result::SUCCESS);
     REQUIRE(rig.graph().metadata().set("surface_default", SurfaceMeta{.detached = surfaceDetached}, "old") == Result::SUCCESS);
-    TileMeta initial{.split = "row", .children = std::vector<TileMeta>{{.weight = 600, .pane = "flowgraph"}}};
-    if (configDetached) initial.children->push_back({.weight = 210, .pane = "config:old"});
-    if (surfaceDetached) initial.children->push_back({.weight = 310, .pane = "surface:old:default"});
+    TileMeta initial{.split = "row", .children = std::vector<TileMeta>{{.size = 600, .pane = "flowgraph"}}};
+    if (configDetached) initial.children->push_back({.size = 210, .pane = "config:old"});
+    if (surfaceDetached) initial.children->push_back({.size = 310, .pane = "surface:old:default"});
     rig.state.flowgraph.layouts[kGraph] = initial;
     rig.state.flowgraph.restoredLayouts.insert(kGraph);
     REQUIRE(rig.graph().metadata().set("layout", initial) == Result::SUCCESS);
@@ -1066,6 +1067,8 @@ TEST_CASE("The environment button opens a closable Environment tile that is save
     CHECK(rig.last<MailSetFlowgraphEnvironmentVisible>()->value);
     rig.deliver();
     rig.frame();
+    REQUIRE(rig.count<MailSetFlowgraphLayout>() == 1);
+    rig.deliver();
 
     CHECK(rig.state.flowgraph.environment.contains(kGraph));
     CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph", "environment"});
@@ -1414,7 +1417,7 @@ TEST_CASE("File descriptions retain placement and expansion but saved closes res
         REQUIRE_FALSE(layout->children.empty());
         CHECK(layout->children.front().pane == "description");
         CHECK(layout->children.front().minimized);
-        CHECK(layout->weights.front() == FlowgraphPane::DescriptionWidth);
+        CHECK(layout->sizes.front() == FlowgraphPane::DescriptionWidth);
         CHECK(layout->children.back().maximized == expectedMaximized);
         CHECK(loaded.configFrames() == expectedFrames);
     }
@@ -1427,8 +1430,11 @@ TEST_CASE("Environment visibility restores while excluded panes stay out of save
     LayoutActions actions(original.state.flowgraph);
     REQUIRE(actions.handle(MailSetFlowgraphEnvironmentVisible{kGraph, true}) == Result::SUCCESS);
     REQUIRE(actions.handle(MailOpenDocumentation{kGraph, "a"}) == Result::SUCCESS);
+    original.frame();
+    original.deliver();
     auto tiles = original.state.flowgraph.layouts.at(kGraph);
-    tiles = AppendColumn(tiles, "terminal:1");
+    REQUIRE(tiles.split == "row");
+    tiles.children->push_back(TileMeta{.size = 420.0f, .pane = "terminal:1"});
     REQUIRE(actions.handle(MailSetFlowgraphLayout{kGraph, tiles}) == Result::SUCCESS);
     SavedPaneFile file;
     file.save(original);

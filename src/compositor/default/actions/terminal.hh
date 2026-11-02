@@ -71,24 +71,25 @@ struct TerminalActions {
         if (msg.split.has_value()) {
             const auto source = terminals.items.find(*msg.split);
             if (source != terminals.items.end()) {
-                const std::string target = MakeTerminalPaneKey(*msg.split);
                 item.directory = source->second.directory;
+                const Terminal::Placement beside{.anchor = MakeTerminalPaneKey(*msg.split), .stacked = msg.stacked};
                 if (source->second.flowgraph.has_value()) {
-                    LayoutActions::SplitPane(state.flowgraph, *source->second.flowgraph, target, key, msg.stacked);
+                    state.flowgraph.restoredLayouts.insert(*source->second.flowgraph);
                     item.flowgraph = source->second.flowgraph;
+                    item.placement = beside;
                     return Result::SUCCESS;
                 }
                 if (source->second.tab.has_value() && terminals.tabs.contains(*source->second.tab)) {
-                    auto& layout = terminals.tabs.at(*source->second.tab);
-                    layout = SplitTilePane(layout, target, key, msg.stacked);
                     item.tab = source->second.tab;
+                    item.placement = beside;
                     return Result::SUCCESS;
                 }
             }
         }
         if (msg.tile && state.flowgraph.items.contains(msg.flowgraph)) {
-            LayoutActions::AppendPane(state.flowgraph, msg.flowgraph, key);
+            state.flowgraph.restoredLayouts.insert(msg.flowgraph);
             item.flowgraph = msg.flowgraph;
+            item.placement = Terminal::Placement{};
             return Result::SUCCESS;
         }
         item.tab = open(key);
@@ -310,12 +311,22 @@ struct TerminalActions {
             }
             auto& items = state.terminal.items;
             const auto terminal = items.find(*id);
-            if (terminal == items.end() || terminal->second.flowgraph.has_value() ||
-                terminal->second.tab.has_value()) {
+            if (terminal == items.end()) {
                 return false;
             }
-            terminal->second.flowgraph = flowgraph;
-            terminal->second.tab = tab;
+            auto& item = terminal->second;
+            if (item.placement.has_value()) {
+                if (item.flowgraph != flowgraph || item.tab != tab) {
+                    return false;
+                }
+                item.placement.reset();
+                return true;
+            }
+            if (item.flowgraph.has_value() || item.tab.has_value()) {
+                return false;
+            }
+            item.flowgraph = flowgraph;
+            item.tab = tab;
             return true;
         };
     }
@@ -323,6 +334,12 @@ struct TerminalActions {
     void settle() {
         auto& terminals = state.terminal;
         for (auto& [_, terminal] : terminals.items) {
+            const bool owned = (terminal.flowgraph.has_value() && state.flowgraph.items.contains(*terminal.flowgraph)) ||
+                               (terminal.tab.has_value() && terminals.tabs.contains(*terminal.tab));
+            if (terminal.placement.has_value() && owned) {
+                continue;
+            }
+            terminal.placement.reset();
             terminal.flowgraph.reset();
             terminal.tab.reset();
         }
@@ -370,6 +387,10 @@ struct TerminalActions {
             return false;
         });
         for (auto& [id, terminal] : terminals.items) {
+            if (terminal.tab.has_value() && !terminals.tabs.contains(*terminal.tab)) {
+                terminal.placement.reset();
+                terminal.tab.reset();
+            }
             if (!terminal.flowgraph.has_value() && !terminal.tab.has_value()) {
                 terminal.tab = open(MakeTerminalPaneKey(id));
             }

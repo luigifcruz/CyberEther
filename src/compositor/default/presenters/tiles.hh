@@ -16,13 +16,16 @@ namespace Jetstream {
 using TilePaneMap = std::function<std::optional<std::string>(const std::string&)>;
 
 inline std::optional<Sakura::DockTiles> ToDockTiles(const TileMeta& meta, const TilePaneMap& map = nullptr) {
+    if (!IsTileLayout(meta)) {
+        return std::nullopt;
+    }
     Sakura::DockTiles tiles;
     if (!IsTileLeaf(meta)) {
         tiles.vertical = meta.split == "column";
         for (const auto& child : *meta.children) {
             if (auto converted = ToDockTiles(child, map)) {
                 tiles.children.push_back(std::move(*converted));
-                tiles.weights.push_back(child.weight.value_or(1.0f));
+                tiles.sizes.push_back(*child.size);
             }
         }
         if (tiles.children.empty()) {
@@ -53,8 +56,7 @@ inline std::optional<TileMeta> ToTileMeta(const Sakura::DockTiles& tiles, const 
         std::vector<TileMeta> children;
         for (U64 index = 0; index < tiles.children.size(); ++index) {
             if (auto child = ToTileMeta(tiles.children[index], map)) {
-                const F32 weight = index < tiles.weights.size() ? tiles.weights[index] : 1.0f;
-                child->weight = weight > 0.0f ? std::optional<F32>(weight) : std::nullopt;
+                child->size = index < tiles.sizes.size() ? tiles.sizes[index] : 0.0f;
                 children.push_back(std::move(*child));
             }
         }
@@ -63,7 +65,7 @@ inline std::optional<TileMeta> ToTileMeta(const Sakura::DockTiles& tiles, const 
         }
         if (children.size() == 1) {
             auto single = std::move(children.front());
-            single.weight.reset();
+            single.size.reset();
             return single;
         }
         meta.children = std::move(children);

@@ -9,6 +9,7 @@
 
 #include "compositor/default/actions/gallery.hh"
 #include "compositor/default/actions/settings.hh"
+#include "compositor/default/actions/terminal.hh"
 #include "compositor/default/actions/workbench.hh"
 #include "compositor/default/presenters/agent/chat.hh"
 #include "compositor/default/presenters/file_picker.hh"
@@ -4569,7 +4570,8 @@ TEST_CASE("Terminal presenter builds one config per terminal and per tab and rou
     terminals.items[4] = {.title = "vim", .tab = 1};
     terminals.tabs[1] = TileMeta{
         .split = "column",
-        .children = std::vector<TileMeta>{{.pane = "terminal:9"}, {.pane = "terminal:4"}, {.pane = "terminal:1"}},
+        .children = std::vector<TileMeta>{{.size = 200.0f, .pane = "terminal:9"}, {.size = 200.0f, .pane = "terminal:4"},
+                                          {.size = 200.0f, .pane = "terminal:1"}},
     };
     terminals.tabs[2] = TileMeta{.pane = "terminal:9"};
     const auto context = mailbox.context();
@@ -4634,7 +4636,7 @@ TEST_CASE("Terminal presenter builds one config per terminal and per tab and rou
     CHECK(tabs[1].id == "terminals:2");
     CHECK(tabs[1].title == "Terminal");
 
-    tabs[0].onTiles(Row({0.5f, 0.5f}, {Leaf("terminal:1"), Leaf("terminal:4")}));
+    tabs[0].onTiles(Row({500.0f, 500.0f}, {Leaf("terminal:1"), Leaf("terminal:4")}));
     tabs[0].onTiles(std::nullopt);
     tabs[0].onClose();
     tabs[1].onFocus();
@@ -4650,6 +4652,70 @@ TEST_CASE("Terminal presenter builds one config per terminal and per tab and rou
     CHECK_FALSE(cleared.tiles.has_value());
     CHECK(std::get<MailCloseTerminalTab>(mailbox.mails[2]).tab == 1);
     CHECK(std::get<MailFocusTerminalTab>(mailbox.mails[3]).tab == 2);
+}
+
+TEST_CASE("Splitting a terminal asks its tab dock to place the new terminal in the terminal's own slot like a drag",
+          "[core][sakura][views][terminal][placement]") {
+    const bool stacked = GENERATE(false, true);
+    CAPTURE(stacked);
+    Mailbox mailbox;
+    TerminalActions actions(mailbox.state, mailbox.callbacks);
+    REQUIRE(actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailOpenTerminal{.split = 1, .stacked = stacked}) == Result::SUCCESS);
+    auto& terminals = mailbox.state.terminal;
+    REQUIRE(terminals.tabs.size() == 1);
+    REQUIRE(terminals.items.at(2).placement.has_value());
+
+    const auto context = mailbox.context();
+    const TerminalPresenter presenter(context);
+    std::unordered_map<std::string, std::unique_ptr<TerminalView>> views;
+    TerminalTabView tab;
+    const auto update = [&] {
+        std::vector<Sakura::Dock::Pane> panes;
+        for (auto& config : presenter.build()) {
+            auto& view = views[config.id];
+            if (!view) {
+                view = std::make_unique<TerminalView>();
+            }
+            view->update(std::move(config));
+            panes.push_back(view->pane());
+        }
+        auto configs = presenter.tabs();
+        REQUIRE(configs.size() == 1);
+        tab.update(std::move(configs.front()), std::move(panes));
+    };
+    update();
+    auto* dock = tab.pane().content;
+    REQUIRE(dock != nullptr);
+    Host host(*dock);
+    host.place(MakeContext(), kScreen);
+
+    const auto layouts = [&] {
+        std::vector<MailSetTerminalTabLayout> found;
+        for (const auto& mail : mailbox.mails) {
+            if (const auto* layout = std::get_if<MailSetTerminalTabLayout>(&mail)) {
+                found.push_back(*layout);
+            }
+        }
+        return found;
+    };
+    REQUIRE(layouts().size() == 1);
+    REQUIRE(actions.handle(layouts().front()) == Result::SUCCESS);
+    const auto& tiles = terminals.tabs.at(1);
+    REQUIRE(tiles.children.has_value());
+    CHECK(tiles.split == std::optional<std::string>(stacked ? "column" : "row"));
+    std::vector<std::string> panes;
+    CollectTilePanes(tiles, panes);
+    CHECK(panes == std::vector<std::string>{"terminal:1", "terminal:2"});
+    const F32 half = ((stacked ? 588.0f : 788.0f) - Sakura::Dock::ContentPadding) * 0.5f;
+    REQUIRE(tiles.children->size() == 2);
+    CHECK(*tiles.children->at(0).size == half);
+    CHECK(*tiles.children->at(1).size == half);
+
+    mailbox.mails.clear();
+    update();
+    host.place(MakeContext(), kScreen);
+    CHECK(layouts().empty());
 }
 
 TEST_CASE("A terminal tab is a main dock tab whose inner dock titles its terminal tiles even when alone",
@@ -4746,7 +4812,7 @@ TEST_CASE("A terminal tab is a main dock tab whose inner dock titles its termina
     CHECK(events == std::vector<std::string>{"split:1:beside", "split:1:below"});
 
     split = true;
-    tiles = Row({0.5f, 0.5f}, {Leaf("terminal:1"), Leaf("terminal:2")});
+    tiles = Row({500.0f, 500.0f}, {Leaf("terminal:1"), Leaf("terminal:2")});
     events.clear();
     update(std::nullopt);
     REQUIRE(Find<Sakura::Terminal>(*pane.content).size() == 2);
@@ -4799,7 +4865,7 @@ TEST_CASE("Workbench shows a terminal tab as a main tab and a tiled terminal ins
             .title = "Graph",
             .layoutGroup = "layout:graph",
             .editorPane = "editor:graph",
-            .layout = Row({0.5f, 0.5f}, {Leaf("editor:graph"), Leaf("terminal:2")}),
+            .layout = Row({500.0f, 500.0f}, {Leaf("editor:graph"), Leaf("terminal:2")}),
         });
         config.terminals = presenter.build();
         config.terminalTabs = presenter.tabs();

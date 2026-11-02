@@ -39,20 +39,6 @@ struct LayoutActions {
 
     explicit LayoutActions(FlowgraphState& state) : state(state) {}
 
-    static void AppendPane(FlowgraphState& state, const std::string& flowgraphId, const std::string& pane) {
-        state.restoredLayouts.insert(flowgraphId);
-        const auto layout = state.layouts.find(flowgraphId);
-        const TileMeta base = layout != state.layouts.end() ? layout->second : TileMeta{.pane = kLayoutEditorPane};
-        state.layouts[flowgraphId] = AppendColumn(base, pane);
-    }
-
-    static void SplitPane(FlowgraphState& state, const std::string& flowgraphId, const std::string& target,
-                          const std::string& pane, bool stacked) {
-        if (const auto layout = state.layouts.find(flowgraphId); layout != state.layouts.end()) {
-            layout->second = SplitColumnPane(layout->second, target, pane, stacked);
-        }
-    }
-
     static void ReplacePane(FlowgraphState& state, const std::string& flowgraphId, const std::string& pane,
                             const TileMeta& replacement) {
         if (const auto layout = state.layouts.find(flowgraphId); layout != state.layouts.end()) {
@@ -92,20 +78,15 @@ struct LayoutActions {
 
             auto& metadata = flowgraph->metadata();
             const bool hasLayout = metadata.has("layout");
-            const bool hasStacks = metadata.has("stacks");
             const bool hasDescription = !Text::IsBlank(flowgraph->description());
-            if (!hasLayout && !hasStacks && !hasDescription) {
+            if (!hasLayout && !hasDescription) {
                 continue;
             }
 
             state.restoredLayouts.insert(flowgraphId);
-            if (hasStacks && metadata.clear("stacks") != Result::SUCCESS) {
-                JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to clear stack metadata for flowgraph '{}'.", flowgraphId);
-            }
-
             if (hasLayout) {
                 TileMeta layout;
-                if (metadata.get("layout", layout) == Result::SUCCESS) {
+                if (metadata.get("layout", layout) == Result::SUCCESS && IsTileLayout(layout)) {
                     if (auto known = FilterTiles(layout, [&](const std::string& pane) {
                         return IsLayoutPane(pane) && (pane != kLayoutDescriptionPane || hasDescription);
                     })) {
@@ -122,7 +103,6 @@ struct LayoutActions {
                 ContainsTilePane(layout->second, kLayoutEnvironmentPane)) {
                 state.environment.try_emplace(flowgraphId);
             }
-            placeOrphans(flowgraphId);
             if (persistLayout(flowgraphId) != Result::SUCCESS) {
                 JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to save layout metadata for flowgraph '{}'.", flowgraphId);
             }
@@ -178,7 +158,7 @@ struct LayoutActions {
 
         const std::string key = MakeSurfaceTileKey(msg.block, msg.surface);
         if (msg.detached) {
-            JST_CHECK(place(msg.flowgraph, key));
+            JST_CHECK(trackLayout(msg.flowgraph));
         } else {
             JST_CHECK(editLayout(msg.flowgraph, [&key](const TileMeta& tiles) {
                 return FilterTiles(tiles, [&](const std::string& pane) {
@@ -222,7 +202,7 @@ struct LayoutActions {
 
         const std::string key = MakeConfigTileKey(msg.block);
         if (msg.detached) {
-            JST_CHECK(place(msg.flowgraph, key));
+            JST_CHECK(trackLayout(msg.flowgraph));
         } else {
             JST_CHECK(editLayout(msg.flowgraph, [&key](const TileMeta& tiles) {
                 return FilterTiles(tiles, [&](const std::string& pane) {
@@ -283,7 +263,7 @@ struct LayoutActions {
             .title = std::move(block.title),
             .markdown = std::move(block.description),
         };
-        return place(msg.flowgraph, kLayoutDocumentationPane);
+        return trackLayout(msg.flowgraph);
     }
 
     Result handle(const MailCloseDocumentation& msg) {
@@ -299,7 +279,7 @@ struct LayoutActions {
         }
         if (msg.value) {
             state.environment.try_emplace(msg.flowgraph);
-            return place(msg.flowgraph, kLayoutEnvironmentPane);
+            return trackLayout(msg.flowgraph);
         }
         state.environment.erase(msg.flowgraph);
         return editLayout(msg.flowgraph, [](const TileMeta& tiles) {
@@ -359,34 +339,9 @@ struct LayoutActions {
         return metadata.set("layout", *saved);
     }
 
-    Result place(const std::string& flowgraphId, const std::string& pane) {
+    Result trackLayout(const std::string& flowgraphId) {
         state.restoredLayouts.insert(flowgraphId);
-        const auto layout = state.layouts.find(flowgraphId);
-        if (layout != state.layouts.end() && ContainsTilePane(layout->second, pane)) {
-            return Result::SUCCESS;
-        }
-        const TileMeta base = layout != state.layouts.end() ? layout->second : TileMeta{.pane = kLayoutEditorPane};
-        state.layouts[flowgraphId] = AppendColumn(base, pane);
-        return persistLayout(flowgraphId);
-    }
-
-    void placeOrphans(const std::string& flowgraphId) {
-        auto flowgraph = state.items.at(flowgraphId);
-        forEachBlock(*flowgraph, [&](const std::string& block) {
-            ConfigMeta config;
-            if (flowgraph->metadata().get("config", config, block) == Result::SUCCESS && config.detached) {
-                (void)place(flowgraphId, MakeConfigTileKey(block));
-            }
-            std::vector<std::string> keys;
-            flowgraph->metadata().keys(keys, block);
-            for (const auto& key : keys) {
-                SurfaceMeta surface;
-                if (key.starts_with("surface_") &&
-                    flowgraph->metadata().get(key, surface, block) == Result::SUCCESS && surface.detached) {
-                    (void)place(flowgraphId, MakeSurfaceTileKey(block, key.substr(std::string("surface_").size())));
-                }
-            }
-        });
+        return Result::SUCCESS;
     }
 
     Result setSurfaceDetachedMeta(Flowgraph& flowgraph, const std::string& block, const std::string& surface,
@@ -417,14 +372,6 @@ struct LayoutActions {
 
         meta.detached = detached;
         return flowgraph.metadata().set("config", meta, block);
-    }
-
-    static void forEachBlock(Flowgraph& flowgraph, const std::function<void(const std::string&)>& visit) {
-        std::vector<std::string> blocks;
-        flowgraph.view().keys(blocks);
-        for (const auto& block : blocks) {
-            visit(block);
-        }
     }
 
     Result editLayout(const std::string& flowgraphId,

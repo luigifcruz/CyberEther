@@ -24,8 +24,8 @@ struct DispatchFixture : FlowgraphFixture {
     const TileMeta initialLayout{
         .split = "row",
         .children = std::vector<TileMeta>{
-            {.weight = 600.0f, .pane = "flowgraph"},
-            {.weight = 300.0f, .pane = "description"},
+            {.size = 600.0f, .pane = "flowgraph"},
+            {.size = 300.0f, .pane = "description"},
         },
     };
     U64 saves = 0;
@@ -56,7 +56,7 @@ struct DispatchFixture : FlowgraphFixture {
 TEST_CASE_METHOD(DispatchFixture, "Save dispatch captures trailing reports without crossing user actions",
                  "[core][compositor][dispatch][recovery]") {
     auto layout = initialLayout;
-    layout.children->back().weight = 520.0f;
+    layout.children->back().size = 520.0f;
     layout.children->back().minimized = true;
     const NodeMeta node{132.5f, -54.25f, 320.0f, 440.0f};
     const EditorMeta editor{-145.5f, 78.25f, 1.75f};

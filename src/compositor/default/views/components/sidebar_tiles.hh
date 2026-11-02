@@ -38,7 +38,7 @@ struct SidebarTiles : public Sakura::Dock {
                 },
             },
             .tiles = Sakura::DockTiles{
-                .weights = {SidebarWidth, 0.0f},
+                .sizes = {SidebarWidth, 0.0f},
                 .children = {{.pane = SidebarTileId}, {.pane = PageTileId}},
             },
             .columns = true,

@@ -278,10 +278,16 @@ struct DefaultCompositorState {
 
     struct TerminalState {
         struct Item {
+            struct Placement {
+                std::string anchor;
+                bool stacked = false;
+            };
+
             std::string title;
             std::string directory;
             std::optional<std::string> flowgraph;
             std::optional<U64> tab;
+            std::optional<Placement> placement;
             Sakura::Terminal::Screen screen;
             U64 revision = 0;
             U64 focusRequests = 0;

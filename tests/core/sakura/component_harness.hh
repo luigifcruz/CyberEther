@@ -427,20 +427,20 @@ inline Jetstream::Sakura::DockTiles Leaf(const std::string& pane) {
     return Jetstream::Sakura::DockTiles{.pane = pane};
 }
 
-inline Jetstream::Sakura::DockTiles Row(std::vector<F32> weights,
+inline Jetstream::Sakura::DockTiles Row(std::vector<F32> sizes,
                                                   std::vector<Jetstream::Sakura::DockTiles> children) {
     return Jetstream::Sakura::DockTiles{
         .vertical = false,
-        .weights = std::move(weights),
+        .sizes = std::move(sizes),
         .children = std::move(children),
     };
 }
 
-inline Jetstream::Sakura::DockTiles Column(std::vector<F32> weights,
+inline Jetstream::Sakura::DockTiles Column(std::vector<F32> sizes,
                                                      std::vector<Jetstream::Sakura::DockTiles> children) {
     return Jetstream::Sakura::DockTiles{
         .vertical = true,
-        .weights = std::move(weights),
+        .sizes = std::move(sizes),
         .children = std::move(children),
     };
 }

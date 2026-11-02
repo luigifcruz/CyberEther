@@ -563,7 +563,7 @@ TEST_CASE("Opening a terminal gives it a new focused tab that starts in the flow
     std::filesystem::remove_all(root, error);
 }
 
-TEST_CASE("Splitting a terminal in a tab places the new one beside or below it in the same folder",
+TEST_CASE("Splitting a terminal in a tab asks the tab's dock to place the new one beside or below it",
           "[core][compositor][terminal][layout]") {
     TerminalRig rig;
     auto& terminals = rig.state.terminal;
@@ -574,15 +574,33 @@ TEST_CASE("Splitting a terminal in a tab places the new one beside or below it i
     REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 1}) == Result::SUCCESS);
     REQUIRE(terminals.items.contains(2));
     CHECK(terminals.items.at(2).directory == "/tmp");
+    CHECK(terminals.items.at(2).tab == std::optional<U64>(1));
+    REQUIRE(terminals.items.at(2).placement.has_value());
+    CHECK(terminals.items.at(2).placement->anchor == "terminal:1");
+    CHECK_FALSE(terminals.items.at(2).placement->stacked);
     REQUIRE(terminals.tabs.size() == 1);
-    CHECK(TileShape(terminals.tabs.at(1)) == "row(terminal:1,terminal:2)");
+    CHECK(TileShape(terminals.tabs.at(1)) == "terminal:1");
     CHECK(terminals.requests == 1);
     CHECK(terminals.focused == std::optional<U64>(1));
 
     rig.settle();
+    CHECK(terminals.items.at(2).tab == std::optional<U64>(1));
+    CHECK(terminals.items.at(2).placement.has_value());
+    REQUIRE(terminals.tabs.size() == 1);
+    REQUIRE(rig.actions.handle(MailSetTerminalTabLayout{
+        .tab = 1,
+        .tiles = Split("row", {"terminal:1", "terminal:2"}),
+    }) == Result::SUCCESS);
+    rig.settle();
+    CHECK_FALSE(terminals.items.at(2).placement.has_value());
+    CHECK(terminals.items.at(2).tab == std::optional<U64>(1));
+
     REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 2, .stacked = true}) == Result::SUCCESS);
     CHECK(terminals.items.at(3).directory == "/tmp");
-    CHECK(TileShape(terminals.tabs.at(1)) == "row(terminal:1,column(terminal:2,terminal:3))");
+    REQUIRE(terminals.items.at(3).placement.has_value());
+    CHECK(terminals.items.at(3).placement->anchor == "terminal:2");
+    CHECK(terminals.items.at(3).placement->stacked);
+    CHECK(TileShape(terminals.tabs.at(1)) == "row(terminal:1,terminal:2)");
 
     rig.settle();
     REQUIRE(terminals.tabs.size() == 1);
@@ -621,12 +639,24 @@ TEST_CASE("Splitting a terminal tiled in a flowgraph splits it inside that layou
     CHECK(TileShape(rig.state.flowgraph.layouts.at("graph")) == "row(flowgraph,terminal:1)");
 
     REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 1}) == Result::SUCCESS);
-    CHECK(TileShape(rig.state.flowgraph.layouts.at("graph")) == "row(flowgraph,terminal:1,terminal:2)");
+    CHECK(TileShape(rig.state.flowgraph.layouts.at("graph")) == "row(flowgraph,terminal:1)");
     CHECK(terminals.items.at(2).directory == "/tmp");
+    CHECK(terminals.items.at(2).flowgraph == std::optional<std::string>("graph"));
+    REQUIRE(terminals.items.at(2).placement.has_value());
+    CHECK(terminals.items.at(2).placement->anchor == "terminal:1");
     rig.settle();
+    CHECK(terminals.items.at(2).flowgraph == std::optional<std::string>("graph"));
+    CHECK(terminals.tabs.empty());
+    rig.place("graph", Split("row", {"flowgraph", "terminal:1", "terminal:2"}));
+    rig.settle();
+    CHECK_FALSE(terminals.items.at(2).placement.has_value());
     REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 2, .stacked = true}) == Result::SUCCESS);
-    CHECK(TileShape(rig.state.flowgraph.layouts.at("graph")) ==
-          "row(flowgraph,terminal:1,column(terminal:2,terminal:3))");
+    CHECK(terminals.items.at(3).placement->stacked);
+    rig.place("graph", TileMeta{
+        .split = "row",
+        .children = std::vector<TileMeta>{TileMeta{.pane = "flowgraph"}, TileMeta{.pane = "terminal:1"},
+                                          Split("column", {"terminal:2", "terminal:3"})},
+    });
     CHECK(terminals.tabs.empty());
     CHECK(terminals.requests == 1);
 
@@ -737,6 +767,10 @@ TEST_CASE("Settling splices a terminal tab dropped into a flowgraph or another t
     }
     rig.settle();
     REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 2}) == Result::SUCCESS);
+    REQUIRE(rig.actions.handle(MailSetTerminalTabLayout{
+        .tab = 2,
+        .tiles = Split("row", {"terminal:2", "terminal:4"}),
+    }) == Result::SUCCESS);
     rig.settle();
     REQUIRE(TileShape(terminals.tabs.at(2)) == "row(terminal:2,terminal:4)");
 
@@ -836,6 +870,10 @@ TEST_CASE("Closing a terminal removes its key and closing a tab closes its termi
     REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
     rig.settle();
     REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 1}) == Result::SUCCESS);
+    REQUIRE(rig.actions.handle(MailSetTerminalTabLayout{
+        .tab = 1,
+        .tiles = Split("row", {"terminal:1", "terminal:2"}),
+    }) == Result::SUCCESS);
     REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
     REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
     rig.place("graph", Split("row", {"flowgraph", "terminal:4"}));
@@ -878,6 +916,10 @@ TEST_CASE("Closing a terminal tab keeps a terminal that was dragged out of it in
 
     REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
     REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 1}) == Result::SUCCESS);
+    REQUIRE(rig.actions.handle(MailSetTerminalTabLayout{
+        .tab = 1,
+        .tiles = Split("row", {"terminal:1", "terminal:2"}),
+    }) == Result::SUCCESS);
     rig.settle();
     REQUIRE(TileShape(terminals.tabs.at(1)) == "row(terminal:1,terminal:2)");
 
@@ -894,35 +936,43 @@ TEST_CASE("Closing a terminal tab keeps a terminal that was dragged out of it in
     CHECK(terminals.focused == std::optional<U64>(tab));
 }
 
-TEST_CASE("Splitting a terminal side by side in a flowgraph column adds a column after it",
+TEST_CASE("A terminal waiting for its dock stays with its owner and falls back to a tab once the owner is gone",
           "[core][compositor][terminal][layout]") {
     TerminalRig rig;
     rig.flowgraph("graph");
-    auto& layouts = rig.state.flowgraph.layouts;
+    auto& terminals = rig.state.terminal;
 
     REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
-    REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
-    rig.place("graph", TileMeta{
-        .split = "row",
-        .children = std::vector<TileMeta>{TileMeta{.pane = "flowgraph"},
-                                          Split("column", {"terminal:1", "terminal:2"})},
-    });
+    rig.place("graph", Split("row", {"flowgraph", "terminal:1"}));
     rig.settle();
-    REQUIRE(TileShape(layouts.at("graph")) == "row(flowgraph,column(terminal:1,terminal:2))");
+    REQUIRE(terminals.items.at(1).flowgraph == std::optional<std::string>("graph"));
 
-    REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 2}) == Result::SUCCESS);
-    CHECK(TileShape(layouts.at("graph")) == "row(flowgraph,column(terminal:1,terminal:2),terminal:3)");
     REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 1, .stacked = true}) == Result::SUCCESS);
-    CHECK(TileShape(layouts.at("graph")) ==
-          "row(flowgraph,column(column(terminal:1,terminal:4),terminal:2),terminal:3)");
-    rig.settle();
-    CHECK(rig.state.terminal.tabs.empty());
-    CHECK(rig.state.terminal.items.at(3).flowgraph == std::optional<std::string>("graph"));
-    CHECK(rig.state.terminal.items.at(4).flowgraph == std::optional<std::string>("graph"));
+    for (U64 frame = 0; frame < 3; ++frame) {
+        rig.settle();
+        CHECK(terminals.items.at(2).flowgraph == std::optional<std::string>("graph"));
+        CHECK(terminals.items.at(2).placement.has_value());
+        CHECK(terminals.tabs.empty());
+    }
 
-    CHECK(TileShape(SplitColumnPane(TileMeta{.pane = "a"}, "a", "b", false)) == "row(a,b)");
-    CHECK(TileShape(SplitColumnPane(Split("column", {"a", "c"}), "c", "b", false)) == "row(column(a,c),b)");
-    CHECK(TileShape(SplitColumnPane(Split("row", {"a", "c"}), "x", "b", false)) == "row(a,c)");
+    rig.state.flowgraph.items.erase("graph");
+    rig.settle();
+    CHECK_FALSE(terminals.items.at(2).flowgraph.has_value());
+    CHECK_FALSE(terminals.items.at(2).placement.has_value());
+    REQUIRE(terminals.items.at(2).tab.has_value());
+    CHECK(ContainsTilePane(terminals.tabs.at(*terminals.items.at(2).tab), "terminal:2"));
+
+    REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
+    rig.settle();
+    const U64 tab = *terminals.items.at(3).tab;
+    REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 3}) == Result::SUCCESS);
+    CHECK(terminals.items.at(4).tab == std::optional<U64>(tab));
+    REQUIRE(rig.actions.handle(MailCloseTerminal{.terminal = 3}) == Result::SUCCESS);
+    CHECK_FALSE(terminals.tabs.contains(tab));
+    REQUIRE(terminals.items.at(4).tab.has_value());
+    CHECK(*terminals.items.at(4).tab != tab);
+    CHECK_FALSE(terminals.items.at(4).placement.has_value());
+    CHECK(TileShape(terminals.tabs.at(*terminals.items.at(4).tab)) == "terminal:4");
 }
 
 TEST_CASE("Activating a terminal tab asks its last focused terminal for keyboard focus",
@@ -963,7 +1013,7 @@ TEST_CASE("Activating a terminal tab asks its last focused terminal for keyboard
     CHECK(terminals.focused == std::optional<U64>(1));
 }
 
-TEST_CASE("Opening a terminal as a flowgraph tile appends it beside the editor without a tab",
+TEST_CASE("Opening a terminal as a flowgraph tile leaves the append to the flowgraph dock without a tab",
           "[core][compositor][terminal][layout]") {
     TerminalRig rig;
     auto graph = rig.flowgraph("graph");
@@ -971,16 +1021,27 @@ TEST_CASE("Opening a terminal as a flowgraph tile appends it beside the editor w
     auto& layouts = rig.state.flowgraph.layouts;
 
     REQUIRE(rig.actions.handle(MailOpenTerminal{.flowgraph = "graph", .tile = true}) == Result::SUCCESS);
-    CHECK(TileShape(layouts.at("graph")) == "row(flowgraph,terminal:1)");
+    CHECK_FALSE(layouts.contains("graph"));
+    CHECK(terminals.items.at(1).flowgraph == std::optional<std::string>("graph"));
+    REQUIRE(terminals.items.at(1).placement.has_value());
+    CHECK(terminals.items.at(1).placement->anchor.empty());
     CHECK(terminals.tabs.empty());
     CHECK(terminals.requests == 0);
     REQUIRE(rig.actions.handle(MailOpenTerminal{.flowgraph = "graph", .tile = true}) == Result::SUCCESS);
-    CHECK(TileShape(layouts.at("graph")) == "row(flowgraph,terminal:1,terminal:2)");
     rig.settle();
     CHECK(terminals.items.at(1).flowgraph == std::optional<std::string>("graph"));
     CHECK(terminals.items.at(2).flowgraph == std::optional<std::string>("graph"));
     CHECK(terminals.tabs.empty());
-    CHECK_FALSE(graph->metadata().has("layout"));
+    rig.place("graph", Split("row", {"flowgraph", "terminal:1", "terminal:2"}));
+    rig.settle();
+    CHECK_FALSE(terminals.items.at(1).placement.has_value());
+    CHECK_FALSE(terminals.items.at(2).placement.has_value());
+    CHECK(TileShape(layouts.at("graph")) == "row(flowgraph,terminal:1,terminal:2)");
+    CHECK(TileShape(*[&] {
+        TileMeta saved;
+        REQUIRE(graph->metadata().get("layout", saved) == Result::SUCCESS);
+        return std::optional<TileMeta>(saved);
+    }()) == "flowgraph");
 
     REQUIRE(rig.actions.handle(MailOpenTerminal{.flowgraph = "missing", .tile = true}) == Result::SUCCESS);
     CHECK(terminals.tabs.size() == 1);

@@ -7,6 +7,7 @@
 #include "compositor/default/presenters/flowgraph/layout.hh"
 
 #include <any>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -17,12 +18,12 @@ using namespace Jetstream;
 
 namespace {
 
-TileMeta Leaf(const std::string& pane, std::optional<F32> weight = std::nullopt) {
-    return TileMeta{.weight = weight, .pane = pane};
+TileMeta Leaf(const std::string& pane, std::optional<F32> size = std::nullopt) {
+    return TileMeta{.size = size, .pane = pane};
 }
 
-TileMeta Split(const std::string& split, std::vector<TileMeta> children, std::optional<F32> weight = std::nullopt) {
-    return TileMeta{.split = split, .weight = weight, .children = std::move(children)};
+TileMeta Split(const std::string& split, std::vector<TileMeta> children, std::optional<F32> size = std::nullopt) {
+    return TileMeta{.split = split, .size = size, .children = std::move(children)};
 }
 
 std::vector<std::string> Panes(const TileMeta& tiles) {
@@ -91,25 +92,26 @@ TEST_CASE("Tiles without children are leaves", "[core][compositor][tiles]") {
     REQUIRE_FALSE(IsTileLeaf(Split("row", {Leaf("a")})));
 }
 
-TEST_CASE("Mapping tiles renames leaves and keeps their weights", "[core][compositor][tiles]") {
-    const auto mapped = MapTiles(Leaf("a", 0.5f), [](const std::string& pane) -> std::optional<std::string> {
+TEST_CASE("Mapping tiles renames leaves and keeps their sizes", "[core][compositor][tiles]") {
+    const auto mapped = MapTiles(Leaf("a", 500.0f), [](const std::string& pane) -> std::optional<std::string> {
         return pane + "!";
     });
     REQUIRE(mapped.has_value());
     REQUIRE(IsTileLeaf(*mapped));
     REQUIRE(mapped->pane == "a!");
-    REQUIRE(mapped->weight == 0.5f);
+    REQUIRE(mapped->size == 500.0f);
 
-    const auto tree = Split("column", {Leaf("a", 0.25f), Split("row", {Leaf("b"), Leaf("c")}, 0.75f)}, 2.0f);
+    const auto tree = Split("column", {Leaf("a", 250.0f), Split("row", {Leaf("b", 1.0f), Leaf("c", 1.0f)}, 750.0f)},
+                            2000.0f);
     const auto renamed = MapTiles(tree, [](const std::string& pane) -> std::optional<std::string> {
         return "x" + pane;
     });
     REQUIRE(renamed.has_value());
     REQUIRE(renamed->split == "column");
-    REQUIRE(renamed->weight == 2.0f);
+    REQUIRE(renamed->size == 2000.0f);
     REQUIRE(Panes(*renamed) == std::vector<std::string>{"xa", "xb", "xc"});
-    REQUIRE(renamed->children->at(0).weight == 0.25f);
-    REQUIRE(renamed->children->at(1).weight == 0.75f);
+    REQUIRE(renamed->children->at(0).size == 250.0f);
+    REQUIRE(renamed->children->at(1).size == 750.0f);
     REQUIRE(renamed->children->at(1).split == "row");
 }
 
@@ -155,28 +157,28 @@ TEST_CASE("Mapping tiles drops empty and rejected leaves", "[core][compositor][t
     });
     REQUIRE(mapped.has_value());
     REQUIRE(Panes(*mapped) == std::vector<std::string>{"a", "b"});
-    REQUIRE(mapped->children->at(0).weight == 1.0f);
-    REQUIRE(mapped->children->at(1).weight == 3.0f);
+    REQUIRE(mapped->children->at(0).size == 1.0f);
+    REQUIRE(mapped->children->at(1).size == 3.0f);
 }
 
-TEST_CASE("Mapping tiles collapses single children into the parent weight", "[core][compositor][tiles]") {
+TEST_CASE("Mapping tiles collapses single children into the parent size", "[core][compositor][tiles]") {
     const auto keepA = [](const std::string& pane) -> std::optional<std::string> {
         return pane == "a" ? std::optional<std::string>(pane) : std::nullopt;
     };
 
-    const auto collapsed = MapTiles(Split("row", {Leaf("a", 0.3f), Leaf("b", 0.7f)}, 0.4f), keepA);
+    const auto collapsed = MapTiles(Split("row", {Leaf("a", 300.0f), Leaf("b", 700.0f)}, 400.0f), keepA);
     REQUIRE(collapsed.has_value());
     REQUIRE(IsTileLeaf(*collapsed));
     REQUIRE(collapsed->pane == "a");
-    REQUIRE(collapsed->weight == 0.4f);
+    REQUIRE(collapsed->size == 400.0f);
 
-    const auto unweighted = MapTiles(Split("row", {Leaf("a", 0.3f), Leaf("b", 0.7f)}), keepA);
-    REQUIRE(unweighted.has_value());
-    REQUIRE_FALSE(unweighted->weight.has_value());
+    const auto unsized = MapTiles(Split("row", {Leaf("a", 300.0f), Leaf("b", 700.0f)}), keepA);
+    REQUIRE(unsized.has_value());
+    REQUIRE_FALSE(unsized->size.has_value());
 
     const auto nested = Split("row", {
-        Split("column", {Leaf("a", 0.2f), Leaf("b", 0.8f)}, 0.6f),
-        Leaf("c", 0.4f),
+        Split("column", {Leaf("a", 200.0f), Leaf("b", 800.0f)}, 600.0f),
+        Leaf("c", 400.0f),
     });
     const auto mapped = MapTiles(nested, [](const std::string& pane) -> std::optional<std::string> {
         return pane == "b" ? std::nullopt : std::optional<std::string>(pane);
@@ -186,20 +188,20 @@ TEST_CASE("Mapping tiles collapses single children into the parent weight", "[co
     REQUIRE(mapped->children->size() == 2);
     REQUIRE(IsTileLeaf(mapped->children->at(0)));
     REQUIRE(mapped->children->at(0).pane == "a");
-    REQUIRE(mapped->children->at(0).weight == 0.6f);
-    REQUIRE(mapped->children->at(1).weight == 0.4f);
+    REQUIRE(mapped->children->at(0).size == 600.0f);
+    REQUIRE(mapped->children->at(1).size == 400.0f);
 }
 
-TEST_CASE("Mapping tiles defaults child weights and normalizes splits", "[core][compositor][tiles]") {
+TEST_CASE("Mapping tiles keeps child sizes as given and normalizes splits", "[core][compositor][tiles]") {
     const auto identity = [](const std::string& pane) -> std::optional<std::string> {
         return pane;
     };
 
-    const auto weighted = MapTiles(Split("column", {Leaf("a"), Leaf("b", 2.0f)}), identity);
-    REQUIRE(weighted.has_value());
-    REQUIRE(weighted->split == "column");
-    REQUIRE(weighted->children->at(0).weight == 1.0f);
-    REQUIRE(weighted->children->at(1).weight == 2.0f);
+    const auto sized = MapTiles(Split("column", {Leaf("a"), Leaf("b", 200.0f)}), identity);
+    REQUIRE(sized.has_value());
+    REQUIRE(sized->split == "column");
+    REQUIRE_FALSE(sized->children->at(0).size.has_value());
+    REQUIRE(sized->children->at(1).size == 200.0f);
 
     for (const auto& split : {std::string("row"), std::string("diagonal"), std::string()}) {
         const auto mapped = MapTiles(Split(split, {Leaf("a"), Leaf("b")}), identity);
@@ -222,18 +224,18 @@ TEST_CASE("Mapping tiles with no surviving leaves yields nothing", "[core][compo
 }
 
 TEST_CASE("Filtering tiles keeps only accepted panes", "[core][compositor][tiles]") {
-    const auto tree = Split("row", {Leaf("a", 0.5f), Split("column", {Leaf("b"), Leaf("c")}, 0.5f)});
+    const auto tree = Split("row", {Leaf("a", 500.0f), Split("column", {Leaf("b", 300.0f), Leaf("c", 200.0f)}, 400.0f)});
 
     const auto all = FilterTiles(tree, [](const std::string&) { return true; });
     REQUIRE(all.has_value());
     REQUIRE(Panes(*all) == std::vector<std::string>{"a", "b", "c"});
-    REQUIRE(all->children->at(1).children->at(0).weight == 1.0f);
+    REQUIRE(all->children->at(1).children->at(0).size == 300.0f);
 
     const auto filtered = FilterTiles(tree, [](const std::string& pane) { return pane != "c"; });
     REQUIRE(filtered.has_value());
     REQUIRE(Panes(*filtered) == std::vector<std::string>{"a", "b"});
     REQUIRE(IsTileLeaf(filtered->children->at(1)));
-    REQUIRE(filtered->children->at(1).weight == 0.5f);
+    REQUIRE(filtered->children->at(1).size == 400.0f);
 }
 
 TEST_CASE("Collected tile panes follow depth first order", "[core][compositor][tiles]") {
@@ -251,41 +253,6 @@ TEST_CASE("Collected tile panes follow depth first order", "[core][compositor][t
     REQUIRE_FALSE(ContainsTilePane(tree, ""));
 }
 
-TEST_CASE("Appending a column to a leaf creates a row whose columns use default widths", "[core][compositor][tiles]") {
-    const auto tiles = AppendColumn(Leaf("a", 0.3f), "b");
-    REQUIRE(tiles.split == "row");
-    REQUIRE_FALSE(tiles.weight.has_value());
-    REQUIRE(tiles.children->size() == 2);
-    REQUIRE(tiles.children->at(0).pane == "a");
-    REQUIRE_FALSE(tiles.children->at(0).weight.has_value());
-    REQUIRE(tiles.children->at(1).pane == "b");
-    REQUIRE_FALSE(tiles.children->at(1).weight.has_value());
-}
-
-TEST_CASE("Appending a column to a row keeps existing widths and adds a default width column",
-          "[core][compositor][tiles]") {
-    const auto tiles = AppendColumn(Split("row", {Leaf("a", 600.0f), Leaf("b", 400.0f)}, 0.5f), "c");
-    REQUIRE(tiles.split == "row");
-    REQUIRE(tiles.weight == 0.5f);
-    REQUIRE(Panes(tiles) == std::vector<std::string>{"a", "b", "c"});
-    REQUIRE(tiles.children->at(0).weight == 600.0f);
-    REQUIRE(tiles.children->at(1).weight == 400.0f);
-    REQUIRE_FALSE(tiles.children->at(2).weight.has_value());
-}
-
-TEST_CASE("Appending a column to a column keeps it as the first column", "[core][compositor][tiles]") {
-    const auto column = Split("column", {Leaf("a", 0.25f), Leaf("b", 0.75f)}, 0.6f);
-    const auto tiles = AppendColumn(column, "c");
-    REQUIRE(tiles.split == "row");
-    REQUIRE(tiles.children->size() == 2);
-    const auto& wrapped = tiles.children->at(0);
-    REQUIRE(wrapped.split == "column");
-    REQUIRE_FALSE(wrapped.weight.has_value());
-    REQUIRE(Panes(wrapped) == std::vector<std::string>{"a", "b"});
-    REQUIRE(wrapped.children->at(0).weight == 0.25f);
-    REQUIRE(tiles.children->at(1).pane == "c");
-}
-
 TEST_CASE("Layout panes are the editor and block tiles only", "[core][compositor][tiles]") {
     REQUIRE(IsLayoutPane("flowgraph"));
     REQUIRE(IsLayoutPane("config:fft"));
@@ -297,8 +264,8 @@ TEST_CASE("Layout panes are the editor and block tiles only", "[core][compositor
 
 TEST_CASE("Tile metadata round trips nested trees through YAML", "[core][compositor][tiles][metadata]") {
     const auto tiles = Split("row", {
-        Leaf("flowgraph", 0.6f),
-        Split("column", {Leaf("stack_0", 0.25f), Leaf("stack_1", 0.75f)}, 0.4f),
+        Leaf("flowgraph", 640.5f),
+        Split("column", {Leaf("config:a", 250.0f), Leaf("config:b", 750.25f)}, 420.0f),
     });
 
     Parser::Map encoded;
@@ -312,20 +279,21 @@ TEST_CASE("Tile metadata round trips nested trees through YAML", "[core][composi
     REQUIRE(restored.deserialize(decoded) == Result::SUCCESS);
 
     REQUIRE(restored.split == "row");
-    REQUIRE_FALSE(restored.weight.has_value());
+    REQUIRE_FALSE(restored.size.has_value());
     REQUIRE_FALSE(restored.pane.has_value());
     REQUIRE(restored.children.has_value());
     REQUIRE(restored.children->size() == 2);
     REQUIRE(restored.children->at(0).pane == "flowgraph");
-    REQUIRE(*restored.children->at(0).weight == Catch::Approx(0.6f));
+    REQUIRE(*restored.children->at(0).size == Catch::Approx(640.5f));
     REQUIRE_FALSE(restored.children->at(0).children.has_value());
 
     const auto& column = restored.children->at(1);
     REQUIRE(column.split == "column");
-    REQUIRE(*column.weight == Catch::Approx(0.4f));
-    REQUIRE(Panes(column) == std::vector<std::string>{"stack_0", "stack_1"});
-    REQUIRE(*column.children->at(1).weight == Catch::Approx(0.75f));
+    REQUIRE(*column.size == Catch::Approx(420.0f));
+    REQUIRE(Panes(column) == std::vector<std::string>{"config:a", "config:b"});
+    REQUIRE(*column.children->at(1).size == Catch::Approx(750.25f));
     REQUIRE(Panes(restored) == Panes(tiles));
+    REQUIRE(IsTileLayout(restored));
 }
 
 TEST_CASE("Tile metadata decodes hand written YAML", "[core][compositor][tiles][metadata]") {
@@ -334,45 +302,89 @@ TEST_CASE("Tile metadata decodes hand written YAML", "[core][compositor][tiles][
 split: column
 children:
   - pane: config:fft
+    size: 320
   - split: row
-    weight: 2
+    size: 280
     children:
       - pane: surface:fft:default
-        weight: 0.5
+        size: 500
       - pane: surface:fft:waterfall
+        size: 300
 )", decoded) == Result::SUCCESS);
 
     TileMeta tiles;
     REQUIRE(tiles.deserialize(decoded) == Result::SUCCESS);
     REQUIRE(tiles.split == "column");
     REQUIRE(Panes(tiles) == std::vector<std::string>{"config:fft", "surface:fft:default", "surface:fft:waterfall"});
-    REQUIRE_FALSE(tiles.children->at(0).weight.has_value());
-    REQUIRE(*tiles.children->at(1).weight == Catch::Approx(2.0f));
-    REQUIRE(*tiles.children->at(1).children->at(0).weight == Catch::Approx(0.5f));
+    REQUIRE(*tiles.children->at(0).size == Catch::Approx(320.0f));
+    REQUIRE(*tiles.children->at(1).size == Catch::Approx(280.0f));
+    REQUIRE(*tiles.children->at(1).children->at(0).size == Catch::Approx(500.0f));
+    REQUIRE(IsTileLayout(tiles));
 }
 
-TEST_CASE("Tile metadata converts to dock tiles with weights and orientation", "[core][compositor][dock][tiles]") {
+TEST_CASE("Layouts saved with weights instead of sizes are not valid layouts", "[core][compositor][tiles][metadata]") {
+    Parser::Map decoded;
+    REQUIRE(Parser::YamlDecode(R"(
+split: row
+children:
+  - pane: flowgraph
+    weight: 640
+  - split: column
+    weight: 420
+    children:
+      - pane: config:fft
+        weight: 0.5
+      - pane: surface:fft:default
+        weight: 0.5
+)", decoded) == Result::SUCCESS);
+
+    TileMeta tiles;
+    REQUIRE(tiles.deserialize(decoded) == Result::SUCCESS);
+    CHECK_FALSE(IsTileLayout(tiles));
+    CHECK_FALSE(ToDockTiles(tiles).has_value());
+}
+
+TEST_CASE("Tile layouts need a known split and a finite size on every child", "[core][compositor][tiles]") {
+    CHECK(IsTileLayout(Leaf("a")));
+    CHECK(IsTileLayout(Split("row", {Leaf("a", 300.0f), Leaf("b", 0.0f)})));
+    CHECK_FALSE(IsTileLayout(Leaf("")));
+    CHECK_FALSE(IsTileLayout(TileMeta{}));
+    CHECK_FALSE(IsTileLayout(Split("row", {Leaf("a", 300.0f), Leaf("b")})));
+    CHECK_FALSE(IsTileLayout(Split("row", {Leaf("a", 300.0f), Leaf("b", -1.0f)})));
+    CHECK_FALSE(IsTileLayout(Split("row", {Leaf("a", 300.0f), Leaf("b", std::numeric_limits<F32>::infinity())})));
+    auto diagonal = Leaf("a");
+    diagonal.split = "diagonal";
+    CHECK_FALSE(IsTileLayout(diagonal));
+    CHECK_FALSE(IsTileLayout(Split("row", {Leaf("a", 300.0f), diagonal})));
+    CHECK_FALSE(IsTileLayout(Leaf("a", -1.0f)));
+    CHECK_FALSE(IsTileLayout(Split("row", {Leaf("a", 300.0f)}, std::numeric_limits<F32>::quiet_NaN())));
+    CHECK_FALSE(IsTileLayout(Split("diagonal", {Leaf("a", 300.0f), Leaf("b", 300.0f)})));
+    CHECK_FALSE(IsTileLayout(Split("row", {Leaf("a", 300.0f), Split("column", {Leaf("b", 1.0f), Leaf("c")}, 200.0f)})));
+}
+
+TEST_CASE("Tile metadata converts to dock tiles with sizes and orientation", "[core][compositor][dock][tiles]") {
     const auto meta = Split("row", {
-        Leaf("a", 0.6f),
-        Split("column", {Leaf("b"), Leaf("c", 3.0f)}, 0.4f),
+        Leaf("a", 600.0f),
+        Split("column", {Leaf("b", 100.0f), Leaf("c", 300.0f)}, 400.0f),
     });
 
     const auto dock = ToDockTiles(meta);
     REQUIRE(dock.has_value());
     REQUIRE_FALSE(dock->vertical);
     REQUIRE(dock->pane.empty());
-    REQUIRE(dock->weights == std::vector<F32>{0.6f, 0.4f});
+    REQUIRE(dock->sizes == std::vector<F32>{600.0f, 400.0f});
     REQUIRE(dock->children.size() == 2);
     REQUIRE(dock->children[0] == DockLeaf("a"));
 
     const auto& column = dock->children[1];
     REQUIRE(column.vertical);
-    REQUIRE(column.weights == std::vector<F32>{1.0f, 3.0f});
+    REQUIRE(column.sizes == std::vector<F32>{100.0f, 300.0f});
     REQUIRE(column.children == std::vector<Sakura::DockTiles>{DockLeaf("b"), DockLeaf("c")});
 
     REQUIRE(ToDockTiles(Leaf("a")) == DockLeaf("a"));
     REQUIRE_FALSE(ToDockTiles(TileMeta{}).has_value());
     REQUIRE_FALSE(ToDockTiles(Leaf("")).has_value());
+    REQUIRE_FALSE(ToDockTiles(Split("row", {Leaf("a", 600.0f), Leaf("b")})).has_value());
 }
 
 TEST_CASE("Tile metadata conversion drops unknown panes and collapses single children",
@@ -385,27 +397,27 @@ TEST_CASE("Tile metadata conversion drops unknown panes and collapses single chi
     };
 
     const auto meta = Split("row", {
-        Leaf("a", 0.2f),
-        Leaf("unknown", 0.3f),
-        Split("column", {Leaf("unknown"), Leaf("b")}, 0.5f),
+        Leaf("a", 200.0f),
+        Leaf("unknown", 300.0f),
+        Split("column", {Leaf("unknown", 100.0f), Leaf("b", 100.0f)}, 500.0f),
     });
     const auto dock = ToDockTiles(meta, map);
     REQUIRE(dock.has_value());
-    REQUIRE(dock->weights == std::vector<F32>{0.2f, 0.5f});
+    REQUIRE(dock->sizes == std::vector<F32>{200.0f, 500.0f});
     REQUIRE(dock->children == std::vector<Sakura::DockTiles>{DockLeaf("pane:a"), DockLeaf("pane:b")});
 
-    REQUIRE(ToDockTiles(Split("row", {Leaf("unknown"), Leaf("a")}), map) == DockLeaf("pane:a"));
-    REQUIRE_FALSE(ToDockTiles(Split("row", {Leaf("unknown"), Leaf("unknown")}), map).has_value());
+    REQUIRE(ToDockTiles(Split("row", {Leaf("unknown", 1.0f), Leaf("a", 1.0f)}), map) == DockLeaf("pane:a"));
+    REQUIRE_FALSE(ToDockTiles(Split("row", {Leaf("unknown", 1.0f), Leaf("unknown", 1.0f)}), map).has_value());
 }
 
-TEST_CASE("Dock tiles convert to tile metadata with weights and orientation", "[core][compositor][dock][tiles]") {
+TEST_CASE("Dock tiles convert to tile metadata with sizes and orientation", "[core][compositor][dock][tiles]") {
     Sakura::DockTiles dock{
-        .weights = {0.7f},
+        .sizes = {700.0f},
         .children = {
             DockLeaf("a"),
             Sakura::DockTiles{
                 .vertical = true,
-                .weights = {0.25f, 0.75f},
+                .sizes = {250.0f, 750.0f},
                 .children = {DockLeaf("b"), DockLeaf("c")},
             },
         },
@@ -414,16 +426,16 @@ TEST_CASE("Dock tiles convert to tile metadata with weights and orientation", "[
     const auto meta = ToTileMeta(dock);
     REQUIRE(meta.has_value());
     REQUIRE(meta->split == "row");
-    REQUIRE_FALSE(meta->weight.has_value());
+    REQUIRE_FALSE(meta->size.has_value());
     REQUIRE(meta->children->size() == 2);
     REQUIRE(meta->children->at(0).pane == "a");
-    REQUIRE(meta->children->at(0).weight == 0.7f);
-    REQUIRE(meta->children->at(1).weight == 1.0f);
+    REQUIRE(meta->children->at(0).size == 700.0f);
+    REQUIRE(meta->children->at(1).size == 0.0f);
 
     const auto& column = meta->children->at(1);
     REQUIRE(column.split == "column");
-    REQUIRE(column.children->at(0).weight == 0.25f);
-    REQUIRE(column.children->at(1).weight == 0.75f);
+    REQUIRE(column.children->at(0).size == 250.0f);
+    REQUIRE(column.children->at(1).size == 750.0f);
     REQUIRE(Panes(*meta) == std::vector<std::string>{"a", "b", "c"});
 
     const auto leaf = ToTileMeta(DockLeaf("a"));
@@ -445,14 +457,14 @@ TEST_CASE("Dock tile conversion drops unmapped panes", "[core][compositor][dock]
     };
 
     Sakura::DockTiles dock{
-        .weights = {0.2f, 0.3f, 0.5f},
+        .sizes = {200.0f, 300.0f, 500.0f},
         .children = {DockLeaf("a"), DockLeaf("unknown"), DockLeaf("b")},
     };
     const auto meta = ToTileMeta(dock, map);
     REQUIRE(meta.has_value());
     REQUIRE(Panes(*meta) == std::vector<std::string>{"a", "b"});
-    REQUIRE(meta->children->at(0).weight == 0.2f);
-    REQUIRE(meta->children->at(1).weight == 0.5f);
+    REQUIRE(meta->children->at(0).size == 200.0f);
+    REQUIRE(meta->children->at(1).size == 500.0f);
 
     REQUIRE_FALSE(ToTileMeta(DockLeaf("blank"), map).has_value());
     REQUIRE_FALSE(ToTileMeta(Sakura::DockTiles{
@@ -462,8 +474,8 @@ TEST_CASE("Dock tile conversion drops unmapped panes", "[core][compositor][dock]
 
 TEST_CASE("Tile metadata survives a round trip through dock tiles", "[core][compositor][dock][tiles]") {
     const auto meta = Split("row", {
-        Leaf("a", 0.25f),
-        Split("column", {Leaf("b", 1.5f), Leaf("c", 0.5f)}, 0.75f),
+        Leaf("a", 250.0f),
+        Split("column", {Leaf("b", 150.5f), Leaf("c", 50.0f)}, 750.0f),
     });
 
     const auto dock = ToDockTiles(meta);
@@ -509,13 +521,13 @@ TEST_CASE("Flowgraph layouts drop unknown panes on their way to the dock and kee
           "[core][compositor][dock][tiles]") {
     const auto layout = Split("row", {
         Leaf("flowgraph", 640.0f),
-        Split("column", {Leaf("config:fft", 0.5f), Leaf("stack_0", 0.5f)}, 420.0f),
+        Split("column", {Leaf("config:fft", 300.0f), Leaf("stack_0", 300.0f)}, 420.0f),
         Leaf("surface:fft:default", 300.0f),
     });
 
     const auto dock = ToDockTiles(layout, LayoutToDockPanes("graph"));
     REQUIRE(dock.has_value());
-    REQUIRE(dock->weights == std::vector<F32>{640.0f, 420.0f, 300.0f});
+    REQUIRE(dock->sizes == std::vector<F32>{640.0f, 420.0f, 300.0f});
     REQUIRE(dock->children == std::vector<Sakura::DockTiles>{
         DockLeaf("editor:graph"),
         DockLeaf("config:fft"),
@@ -525,7 +537,7 @@ TEST_CASE("Flowgraph layouts drop unknown panes on their way to the dock and kee
     const auto restored = ToTileMeta(*dock, DockToLayoutPanes("graph"));
     REQUIRE(restored.has_value());
     REQUIRE(Panes(*restored) == std::vector<std::string>{"flowgraph", "config:fft", "surface:fft:default"});
-    REQUIRE(restored->children->at(1).weight == 420.0f);
+    REQUIRE(restored->children->at(1).size == 420.0f);
 }
 
 TEST_CASE("Tiles describe configs and surfaces by block", "[core][compositor][tiles]") {

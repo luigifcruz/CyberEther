@@ -24,6 +24,16 @@ struct TerminalPresenter {
         return title.empty() ? std::string("Terminal") : jst::fmt::format("Terminal ({})", title);
     }
 
+    static std::optional<Sakura::Dock::Placement> Placement(const DefaultCompositorState::TerminalState::Item& item) {
+        if (!item.placement.has_value() || item.placement->anchor.empty()) {
+            return std::nullopt;
+        }
+        return Sakura::Dock::Placement{
+            .anchor = item.placement->anchor,
+            .side = item.placement->stacked ? Sakura::Dock::Side::Bottom : Sakura::Dock::Side::Right,
+        };
+    }
+
     std::vector<TerminalView::Config> build() const {
         std::vector<TerminalView::Config> configs;
         const auto enqueue = context.callbacks.enqueueMail;
@@ -37,6 +47,7 @@ struct TerminalPresenter {
                 .flowgraph = terminal.flowgraph,
                 .tab = terminal.tab.has_value() ? std::optional<std::string>(MakeTerminalTabKey(*terminal.tab))
                                                 : std::nullopt,
+                .placement = Placement(terminal),
                 .terminal = {
                     .id = MakeTerminalPaneKey(id),
                     .screen = &terminal.screen,

@@ -19,6 +19,7 @@ struct TerminalView {
         std::string title;
         std::optional<std::string> flowgraph;
         std::optional<std::string> tab;
+        std::optional<Sakura::Dock::Placement> placement;
         Sakura::Terminal::Config terminal;
         Sakura::Callback<void()> onClose;
         Sakura::Callback<void(bool stacked)> onSplit;
@@ -62,6 +63,7 @@ struct TerminalView {
             .group = Group,
             .icon = ICON_LC_SQUARE_TERMINAL,
             .content = &terminal,
+            .placement = config.placement,
             .fill = tint,
             .onClose = config.onClose,
             .actions = {

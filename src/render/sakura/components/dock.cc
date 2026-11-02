@@ -18,14 +18,18 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <set>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 namespace Jetstream::Sakura {
 
 namespace {
+
+using Side = Dock::Side;
 
 constexpr F32 kDragThreshold = 6.0f;
 constexpr F32 kPlaceholderSpinner = 18.0f;
@@ -33,7 +37,11 @@ constexpr F32 kCardGap = Dock::ContentPadding;
 constexpr F32 kColumnWidth = 420.0f;
 constexpr F32 kFlexColumnWidth = 480.0f;
 constexpr F32 kMinColumnWidth = 240.0f;
-constexpr F32 kStoredWidthFloor = 64.0f;
+constexpr F32 kSizeFloor = 64.0f;
+constexpr F32 kSplitMinimum = 48.0f;
+constexpr F32 kSplitShare = 0.45f;
+constexpr F32 kSizeEpsilon = 1.0e-3f;
+constexpr F32 kPlanTolerance = 0.5f;
 constexpr F32 kSplitterSlack = 3.0f;
 constexpr F32 kHeaderTitleTop = 6.0f;
 constexpr F32 kHeaderPadX = 12.0f;
@@ -41,6 +49,7 @@ constexpr F32 kHeaderButton = 20.0f;
 constexpr F32 kCloseGlyph = 13.0f;
 constexpr F32 kHeaderGlyph = 12.0f;
 constexpr F32 kStripWidth = 32.0f;
+constexpr F32 kGutterBand = 12.0f;
 constexpr F32 kStripPad = 12.0f;
 constexpr F32 kStripRotation = -90.0f;
 constexpr F32 kStripTitleSize = 17.0f;
@@ -71,13 +80,6 @@ constexpr F32 kSplitterLine = 2.0f;
 constexpr U64 kBoxCapacity = 128;
 constexpr F64 kHideDuration = 0.25;
 
-enum class Side {
-    Left,
-    Right,
-    Top,
-    Bottom,
-};
-
 void CollectLeaves(const DockTiles& tiles, std::vector<std::string>& leaves) {
     if (tiles.children.empty()) {
         if (!tiles.pane.empty()) {
@@ -105,48 +107,72 @@ bool Contains(const DockTiles& tiles, const std::string& pane) {
     });
 }
 
-std::vector<F32> Weights(const DockTiles& tiles) {
-    std::vector<F32> weights = tiles.weights;
-    if (weights.size() != tiles.children.size()) {
-        weights.assign(tiles.children.size(), 1.0f);
+bool Valid(const DockTiles& tiles) {
+    if (tiles.children.empty()) {
+        return !tiles.pane.empty() && tiles.sizes.empty();
     }
+    if (tiles.sizes.size() != tiles.children.size()) {
+        return false;
+    }
+    for (const F32 size : tiles.sizes) {
+        if (!std::isfinite(size) || size < 0.0f) {
+            return false;
+        }
+    }
+    return std::all_of(tiles.children.begin(), tiles.children.end(), Valid);
+}
+
+DockTiles Leaf(const std::string& pane) {
+    return DockTiles{.pane = pane};
+}
+
+DockTiles Bare(DockTiles tiles) {
+    tiles.minimized = false;
+    tiles.maximized = false;
+    for (auto& child : tiles.children) {
+        child = Bare(std::move(child));
+    }
+    return tiles;
+}
+
+std::vector<F32> Scaled(std::vector<F32> sizes, F32 room) {
     F32 sum = 0.0f;
-    for (auto& weight : weights) {
-        weight = std::max(weight, 1.0e-3f);
-        sum += weight;
+    for (const F32 size : sizes) {
+        sum += size;
     }
-    for (auto& weight : weights) {
-        weight /= std::max(sum, 1.0e-6f);
+    for (auto& size : sizes) {
+        size = sum > 0.0f && room > 0.0f ? size * room / sum : 0.0f;
     }
-    return weights;
+    return sizes;
 }
 
 DockTiles Normalize(DockTiles tiles) {
     if (tiles.children.empty()) {
-        tiles.weights.clear();
+        tiles.sizes.clear();
         return tiles;
     }
-    const auto weights = Weights(tiles);
+    tiles.sizes.resize(tiles.children.size(), 0.0f);
     std::vector<DockTiles> children;
-    std::vector<F32> merged;
+    std::vector<F32> sizes;
     for (U64 index = 0; index < tiles.children.size(); ++index) {
         auto child = Normalize(std::move(tiles.children[index]));
         if (child.children.size() >= 2 && child.vertical == tiles.vertical) {
-            const auto childWeights = Weights(child);
-            for (U64 inner = 0; inner < child.children.size(); ++inner) {
-                children.push_back(std::move(child.children[inner]));
-                merged.push_back(weights[index] * childWeights[inner]);
+            const F32 gaps = kCardGap * static_cast<F32>(child.children.size() - 1);
+            const auto inner = Scaled(std::move(child.sizes), tiles.sizes[index] - gaps);
+            for (U64 slot = 0; slot < child.children.size(); ++slot) {
+                children.push_back(std::move(child.children[slot]));
+                sizes.push_back(inner[slot]);
             }
             continue;
         }
         children.push_back(std::move(child));
-        merged.push_back(weights[index]);
+        sizes.push_back(tiles.sizes[index]);
     }
     if (children.size() == 1) {
         return std::move(children.front());
     }
     tiles.children = std::move(children);
-    tiles.weights = std::move(merged);
+    tiles.sizes = std::move(sizes);
     tiles.pane.clear();
     return tiles;
 }
@@ -158,100 +184,26 @@ std::optional<DockTiles> FilterNode(const DockTiles& tiles, const std::function<
         }
         return tiles;
     }
-    const auto weights = Weights(tiles);
-    DockTiles result;
-    result.vertical = tiles.vertical;
+    DockTiles result{.vertical = tiles.vertical};
     for (U64 index = 0; index < tiles.children.size(); ++index) {
         if (auto filtered = FilterNode(tiles.children[index], keep)) {
             result.children.push_back(std::move(*filtered));
-            result.weights.push_back(weights[index]);
+            result.sizes.push_back(index < tiles.sizes.size() ? tiles.sizes[index] : 0.0f);
         }
     }
     if (result.children.empty()) {
         return std::nullopt;
     }
-    if (result.children.size() == 1) {
-        return std::move(result.children.front());
-    }
     return result;
 }
 
-std::optional<DockTiles> Filter(const DockTiles& tiles, const std::function<bool(const std::string&)>& keep) {
-    auto filtered = FilterNode(tiles, keep);
-    if (!filtered.has_value()) {
+std::optional<DockTiles> Remove(const std::optional<DockTiles>& tiles, const std::string& pane) {
+    if (!tiles.has_value()) {
         return std::nullopt;
     }
-    return Normalize(std::move(*filtered));
-}
-
-std::optional<DockTiles> Remove(const DockTiles& tiles, const std::string& pane) {
-    return Filter(tiles, [&](const std::string& id) {
+    return FilterNode(*tiles, [&](const std::string& id) {
         return id != pane;
     });
-}
-
-DockTiles Leaf(const std::string& pane) {
-    return DockTiles{.pane = pane};
-}
-
-DockTiles SplitNode(DockTiles tiles, const std::string& target, const std::string& pane, Side side) {
-    const bool vertical = side == Side::Top || side == Side::Bottom;
-    const bool before = side == Side::Left || side == Side::Top;
-    if (tiles.children.empty()) {
-        if (tiles.pane != target) {
-            return tiles;
-        }
-        DockTiles result;
-        result.vertical = vertical;
-        result.weights = {0.5f, 0.5f};
-        result.children = before ? std::vector<DockTiles>{Leaf(pane), tiles} : std::vector<DockTiles>{tiles, Leaf(pane)};
-        return result;
-    }
-    auto weights = Weights(tiles);
-    for (U64 index = 0; index < tiles.children.size(); ++index) {
-        const auto& child = tiles.children[index];
-        if (child.children.empty() && child.pane == target && tiles.vertical == vertical) {
-            const F32 half = weights[index] * 0.5f;
-            weights[index] = half;
-            const U64 at = before ? index : index + 1;
-            tiles.children.insert(tiles.children.begin() + static_cast<I64>(at), Leaf(pane));
-            weights.insert(weights.begin() + static_cast<I64>(at), half);
-            tiles.weights = std::move(weights);
-            return tiles;
-        }
-    }
-    for (auto& child : tiles.children) {
-        child = SplitNode(std::move(child), target, pane, side);
-    }
-    tiles.weights = std::move(weights);
-    return tiles;
-}
-
-DockTiles Split(const DockTiles& tiles, const std::string& target, const std::string& pane, Side side) {
-    return Normalize(SplitNode(tiles, target, pane, side));
-}
-
-DockTiles Append(const std::optional<DockTiles>& tiles, const std::string& pane) {
-    if (!tiles.has_value()) {
-        return Leaf(pane);
-    }
-    if (tiles->children.size() >= 2 && !tiles->vertical) {
-        DockTiles result = *tiles;
-        auto weights = Weights(result);
-        const F32 count = static_cast<F32>(weights.size());
-        for (auto& weight : weights) {
-            weight *= count / (count + 1.0f);
-        }
-        weights.push_back(1.0f / (count + 1.0f));
-        result.children.push_back(Leaf(pane));
-        result.weights = std::move(weights);
-        return result;
-    }
-    DockTiles result;
-    result.vertical = false;
-    result.weights = {0.5f, 0.5f};
-    result.children = {*tiles, Leaf(pane)};
-    return result;
 }
 
 DockTiles* At(DockTiles& tiles, const std::vector<U8>& path) {
@@ -265,100 +217,33 @@ DockTiles* At(DockTiles& tiles, const std::vector<U8>& path) {
     return node;
 }
 
-struct ColumnModel {
-    std::vector<std::string> panes;
-    std::vector<F32> weights;
-    F32 width = 0.0f;
-
-    bool operator==(const ColumnModel&) const = default;
-};
-
-ColumnModel ColumnOf(const DockTiles& node, F32 width) {
-    ColumnModel column{.width = width >= kStoredWidthFloor ? width : 0.0f};
-    if (node.children.empty()) {
-        column.panes = {node.pane};
-        column.weights = {1.0f};
-        return column;
-    }
-    const auto weights = Weights(node);
-    for (U64 index = 0; index < node.children.size(); ++index) {
-        const auto leaves = Leaves(node.children[index]);
-        for (const auto& leaf : leaves) {
-            column.panes.push_back(leaf);
-            column.weights.push_back(weights[index] / static_cast<F32>(leaves.size()));
-        }
-    }
-    return column;
-}
-
-void AppendColumns(const DockTiles& tiles, bool root, std::vector<ColumnModel>& columns) {
-    if (tiles.children.empty() || tiles.vertical) {
-        columns.push_back(ColumnOf(tiles, 0.0f));
-        return;
+std::optional<std::vector<U8>> PathOf(const DockTiles& tiles, const std::string& pane) {
+    if (tiles.children.empty()) {
+        return tiles.pane == pane ? std::optional<std::vector<U8>>(std::vector<U8>{}) : std::nullopt;
     }
     for (U64 index = 0; index < tiles.children.size(); ++index) {
-        const auto& child = tiles.children[index];
-        if (!child.children.empty() && !child.vertical) {
-            AppendColumns(child, false, columns);
-            continue;
+        if (auto inner = PathOf(tiles.children[index], pane)) {
+            inner->insert(inner->begin(), static_cast<U8>(index));
+            return inner;
         }
-        const F32 width = root && index < tiles.weights.size() ? tiles.weights[index] : 0.0f;
-        columns.push_back(ColumnOf(child, width));
     }
+    return std::nullopt;
 }
 
-std::vector<ColumnModel> ToColumns(const std::optional<DockTiles>& tiles) {
-    std::vector<ColumnModel> columns;
-    if (tiles.has_value()) {
-        AppendColumns(*tiles, true, columns);
-    }
-    std::erase_if(columns, [](const ColumnModel& column) {
-        return column.panes.empty();
-    });
-    return columns;
-}
-
-std::optional<DockTiles> FromColumns(const std::vector<ColumnModel>& columns) {
-    DockTiles row;
-    for (const auto& column : columns) {
-        if (column.panes.empty()) {
-            continue;
-        }
-        DockTiles node;
-        if (column.panes.size() == 1) {
-            node = Leaf(column.panes.front());
-        } else {
-            node.vertical = true;
-            node.weights = column.weights;
-            for (const auto& pane : column.panes) {
-                node.children.push_back(Leaf(pane));
-            }
-        }
-        row.children.push_back(std::move(node));
-        row.weights.push_back(column.width);
-    }
-    if (row.children.empty()) {
-        return std::nullopt;
-    }
-    if (row.children.size() == 1) {
-        return std::move(row.children.front());
-    }
-    return row;
-}
-
-std::vector<F32> FitColumns(std::vector<F32> widths, F32 room, std::optional<U64> flex, F32 minimum) {
+std::vector<F32> FitSizes(std::vector<F32> sizes, F32 room, std::optional<U64> flex, F32 minimum) {
     F32 sum = 0.0f;
-    for (const F32 width : widths) {
-        sum += width;
+    for (const F32 size : sizes) {
+        sum += size;
     }
-    if (widths.empty() || sum <= 0.0f || sum == room) {
-        return widths;
+    room = std::max(0.0f, room);
+    if (sizes.empty() || sum <= 0.0f || std::abs(sum - room) <= kSizeEpsilon) {
+        return sizes;
     }
-    if (sum < room && flex.has_value() && *flex < widths.size()) {
-        widths[*flex] += room - sum;
-        return widths;
+    if (sum < room && flex.has_value() && *flex < sizes.size()) {
+        sizes[*flex] += room - sum;
+        return sizes;
     }
-    const U64 count = widths.size();
+    const U64 count = sizes.size();
     std::vector<bool> pinned(count, false);
     F32 free = room;
     F32 flexible = sum;
@@ -369,16 +254,16 @@ std::vector<F32> FitColumns(std::vector<F32> widths, F32 room, std::optional<U64
             flexible = 0.0f;
             for (U64 index = 0; index < count; ++index) {
                 if (pinned[index]) {
-                    free -= std::min(widths[index], minimum);
+                    free -= std::min(sizes[index], minimum);
                 } else {
-                    flexible += widths[index];
+                    flexible += sizes[index];
                 }
             }
             if (free <= 0.0f || flexible <= 0.0f) {
                 break;
             }
             for (U64 index = 0; index < count; ++index) {
-                if (!pinned[index] && widths[index] * free / flexible < std::min(widths[index], minimum)) {
+                if (!pinned[index] && sizes[index] * free / flexible < std::min(sizes[index], minimum)) {
                     pinned[index] = true;
                     changed = true;
                 }
@@ -390,31 +275,42 @@ std::vector<F32> FitColumns(std::vector<F32> widths, F32 room, std::optional<U64
             flexible = sum;
         }
     }
-    std::vector<F32> fitted(count);
-    F32 used = 0.0f;
-    for (U64 index = 0; index + 1 < count; ++index) {
-        fitted[index] = pinned[index] ? std::min(widths[index], minimum)
-                                     : std::round(widths[index] * free / flexible);
-        used += fitted[index];
+    for (U64 index = 0; index < count; ++index) {
+        sizes[index] = pinned[index] ? std::min(sizes[index], minimum) : sizes[index] * free / flexible;
     }
-    fitted[count - 1] = std::max(0.0f, room - used);
-    return fitted;
+    return sizes;
 }
 
-Rect Half(const Rect& rect, Side side, F32 gap = 0.0f) {
-    const F32 width = std::max(0.0f, rect.width - gap) * 0.5f;
-    const F32 height = std::max(0.0f, rect.height - gap) * 0.5f;
+F32 Along(const Rect& rect, bool vertical) {
+    return vertical ? rect.height : rect.width;
+}
+
+F32 StartOf(const Rect& rect, bool vertical) {
+    return vertical ? rect.y : rect.x;
+}
+
+bool Vertical(Side side) {
+    return side == Side::Top || side == Side::Bottom;
+}
+
+Rect Slice(const Rect& rect, Side side, F32 thickness) {
+    const F32 size = std::min(thickness, Along(rect, Vertical(side)));
     switch (side) {
         case Side::Left:
-            return {rect.x, rect.y, width, rect.height};
+            return {rect.x, rect.y, size, rect.height};
         case Side::Right:
-            return {rect.right() - width, rect.y, width, rect.height};
+            return {rect.right() - size, rect.y, size, rect.height};
         case Side::Top:
-            return {rect.x, rect.y, rect.width, height};
+            return {rect.x, rect.y, rect.width, size};
         case Side::Bottom:
-            return {rect.x, rect.bottom() - height, rect.width, height};
+            return {rect.x, rect.bottom() - size, rect.width, size};
     }
     return rect;
+}
+
+bool Near(const Rect& a, const Rect& b, F32 tolerance) {
+    return std::abs(a.x - b.x) <= tolerance && std::abs(a.y - b.y) <= tolerance &&
+           std::abs(a.right() - b.right()) <= tolerance && std::abs(a.bottom() - b.bottom()) <= tolerance;
 }
 
 std::optional<Side> EdgeAt(const Rect& rect, const Extent2D<F32>& point) {
@@ -466,6 +362,7 @@ struct Dock::Impl {
 
     struct LeafLayout {
         std::string pane;
+        Rect area;
         Rect tile;
         Rect header;
         Rect close;
@@ -481,14 +378,22 @@ struct Dock::Impl {
 
     struct SplitterLayout {
         std::vector<U8> path;
-        U64 index = 0;
-        bool vertical = false;
-        Rect rect;
-        F32 spanStart = 0.0f;
-        F32 spanEnd = 0.0f;
-        bool column = false;
         U64 left = 0;
         U64 right = 0;
+        bool vertical = false;
+        Rect rect;
+    };
+
+    struct SplitLayout {
+        std::vector<U8> path;
+        bool vertical = false;
+        Rect area;
+        std::vector<F32> sizes;
+        std::vector<Rect> rects;
+        std::vector<Rect> tiles;
+        std::vector<F32> shown;
+        std::vector<bool> open;
+        std::optional<U64> flex;
     };
 
     enum class Press {
@@ -504,40 +409,126 @@ struct Dock::Impl {
         Handled,
     };
 
-    Config config;
-    std::vector<std::string> order;
-    U64 active = 0;
-    std::optional<DockTiles> tree;
-    std::optional<DockTiles> synced;
-    std::string focusedPane;
-    std::string pendingFocus;
-    std::string maximized;
-    std::set<std::string> minimized;
-    std::set<std::string> introduced;
-    std::vector<ColumnModel> columns;
+    enum class Collapse : U8 {
+        Open,
+        Strip,
+        Header,
+    };
+
+    struct Model {
+        std::optional<DockTiles> tree;
+        std::set<std::string> minimized;
+        std::string maximized;
+
+        bool operator==(const Model&) const = default;
+    };
+
+    struct Arrangement {
+        std::vector<LeafLayout> leaves;
+        std::vector<SplitterLayout> splitters;
+        std::vector<SplitLayout> splits;
+
+        const LeafLayout* leaf(const std::string& pane) const {
+            for (const auto& leaf : leaves) {
+                if (leaf.pane == pane) {
+                    return &leaf;
+                }
+            }
+            return nullptr;
+        }
+
+        const SplitLayout* split(const std::vector<U8>& path) const {
+            for (const auto& split : splits) {
+                if (split.path == path) {
+                    return &split;
+                }
+            }
+            return nullptr;
+        }
+    };
+
+    struct Origin {
+        F32 width = 0.0f;
+        F32 height = 0.0f;
+        F32 column = 0.0f;
+        bool minimized = false;
+    };
+
+    struct TileSplit {
+        std::string pane;
+        Side side = Side::Left;
+    };
+
+    struct ColumnInsert {
+        std::string before;
+        std::string after;
+    };
+
+    using Target = std::variant<TileSplit, ColumnInsert>;
+
+    struct Gap {
+        std::optional<Target> target;
+        F32 distance = 0.0f;
+    };
+
+    struct Removal {
+        Model shape;
+        Arrangement base;
+        std::optional<Origin> from;
+    };
+
+    struct Plan {
+        Model model;
+        Rect rect;
+    };
+
+    struct Level {
+        std::vector<U8> path;
+        bool vertical = false;
+        bool row = false;
+        Rect span;
+        std::vector<F32> sizes;
+        std::vector<bool> present;
+        std::vector<bool> open;
+        std::optional<U64> flex;
+        U64 at = 0;
+        std::vector<U64> payers;
+        std::vector<std::string> paying;
+    };
+
+    struct Column {
+        const DockTiles* node = nullptr;
+        Rect tile;
+    };
 
     struct State {
         std::vector<std::string> order;
         U64 active = 0;
-        std::optional<DockTiles> tree;
         std::string focusedPane;
-        std::string maximized;
-        std::set<std::string> minimized;
-        std::vector<ColumnModel> columns;
+        Model model;
+        std::vector<std::string> pending;
 
         bool operator==(const State&) const = default;
     };
 
+    Config config;
+    std::vector<std::string> order;
+    U64 active = 0;
+    std::optional<DockTiles> synced;
+    std::string focusedPane;
+    std::string pendingFocus;
+    Model model;
+    std::vector<std::string> pending;
+    std::set<std::string> introduced;
+
     State state() const {
-        return {.order = order, .active = active, .tree = tree, .focusedPane = focusedPane,
-                .maximized = maximized, .minimized = minimized, .columns = columns};
+        return {.order = order, .active = active, .focusedPane = focusedPane, .model = model, .pending = pending};
     }
+
     Rect viewport;
-    std::vector<Rect> columnRects;
-    std::vector<F32> columnWidths;
-    std::vector<F32> columnBases;
-    std::vector<F32> pressWidths;
-    std::vector<F32> pressBases;
+    std::vector<SplitLayout> splits;
+    SplitLayout pressSplit;
+    std::vector<F32> pressStored;
 
     Box backgrounds;
     Box separators;
@@ -694,10 +685,10 @@ struct Dock::Impl {
         if (config.tabs) {
             return active < order.size() && order[active] == id;
         }
-        if (!maximized.empty()) {
-            return maximized == id;
+        if (!model.maximized.empty()) {
+            return model.maximized == id;
         }
-        if (minimized.contains(id)) {
+        if (model.minimized.contains(id)) {
             return false;
         }
         const auto tiles = placed();
@@ -712,15 +703,8 @@ struct Dock::Impl {
         return !config.tabs && config.columns;
     }
 
-    std::optional<std::pair<U64, U64>> locate(const std::string& id) const {
-        for (U64 column = 0; column < columns.size(); ++column) {
-            const auto& panes = columns[column].panes;
-            const auto it = std::find(panes.begin(), panes.end(), id);
-            if (it != panes.end()) {
-                return std::make_pair(column, static_cast<U64>(it - panes.begin()));
-            }
-        }
-        return std::nullopt;
+    bool columnRow(const std::vector<U8>& path, bool vertical) const {
+        return columnMode() && path.empty() && !vertical;
     }
 
     std::unordered_map<std::string, F32> shownProgress;
@@ -766,59 +750,117 @@ struct Dock::Impl {
         return it == shownProgress.end() ? 1.0f : Smoothstep(it->second);
     }
 
-    F32 shownFactor(const ColumnModel& column) const {
+    F32 shownFactor(const DockTiles& node) const {
         F32 factor = 0.0f;
-        for (const auto& id : column.panes) {
+        for (const auto& id : Leaves(node)) {
             factor = std::max(factor, shownFactor(id));
         }
         return factor;
     }
 
-    std::optional<U64> flexColumn() const {
-        if (config.flexPane.empty()) {
-            return std::nullopt;
-        }
-        if (const auto found = locate(config.flexPane);
-            found && !collapsed(columns[found->first]) && shownFactor(columns[found->first]) >= 1.0f) {
-            return found->first;
-        }
-        return std::nullopt;
+    bool hiddenPane(const std::string& id) const {
+        const auto* item = pane(id);
+        return item && item->hidden;
     }
 
-    bool collapsed(const ColumnModel& column) const {
-        const auto minimizedPane = [this](const std::string& id) {
-            return minimized.contains(id);
+    bool collapsed(const Model& shape, const DockTiles& node) const {
+        const auto panes = Leaves(node);
+        const auto minimizedPane = [&shape](const std::string& id) {
+            return shape.minimized.contains(id);
         };
-        return std::any_of(column.panes.begin(), column.panes.end(), minimizedPane) &&
-               std::all_of(column.panes.begin(), column.panes.end(), [&](const std::string& id) {
+        return std::any_of(panes.begin(), panes.end(), minimizedPane) &&
+               std::all_of(panes.begin(), panes.end(), [&](const std::string& id) {
                    return minimizedPane(id) || hiddenPane(id);
                });
     }
 
+    std::optional<U64> flexIndex(const Model& shape, const DockTiles& node) const {
+        if (config.flexPane.empty()) {
+            return std::nullopt;
+        }
+        for (U64 index = 0; index < node.children.size(); ++index) {
+            const auto& child = node.children[index];
+            if (Contains(child, config.flexPane) && !collapsed(shape, child) && shownFactor(child) >= 1.0f) {
+                return index;
+            }
+        }
+        return std::nullopt;
+    }
+
+    F32 defaultSize(const DockTiles& node, bool row, U64 index) const {
+        if (row) {
+            return !config.flexPane.empty() && Contains(node.children[index], config.flexPane) ? kFlexColumnWidth
+                                                                                                 : kColumnWidth;
+        }
+        F32 sum = 0.0f;
+        U64 sized = 0;
+        for (const F32 size : node.sizes) {
+            if (size > 0.0f) {
+                sum += size;
+                ++sized;
+            }
+        }
+        return sized > 0 ? sum / static_cast<F32>(sized) : kColumnWidth;
+    }
+
+    std::vector<F32> resolved(const DockTiles& node, bool row) const {
+        std::vector<F32> sizes(node.children.size(), 0.0f);
+        for (U64 index = 0; index < sizes.size(); ++index) {
+            const F32 size = index < node.sizes.size() ? node.sizes[index] : 0.0f;
+            sizes[index] = size <= 0.0f ? defaultSize(node, row, index) : row ? std::max(size, kSizeFloor) : size;
+        }
+        return sizes;
+    }
+
+    void fillNested(DockTiles& node, bool root) const {
+        if (node.children.empty()) {
+            return;
+        }
+        node.sizes.resize(node.children.size(), 0.0f);
+        const auto sizes = resolved(node, columnMode() && root && !node.vertical);
+        for (U64 index = 0; index < node.children.size(); ++index) {
+            auto& child = node.children[index];
+            auto* inner = &child;
+            while (inner->children.size() == 1) {
+                inner = &inner->children.front();
+            }
+            if (inner->children.size() >= 2 && inner->vertical == node.vertical) {
+                node.sizes[index] = sizes[index];
+                inner->sizes = resolved(*inner, false);
+            }
+            fillNested(child, false);
+        }
+    }
+
+    void settle(Model& shape) const {
+        if (shape.tree.has_value()) {
+            fillNested(*shape.tree, true);
+            shape.tree = Normalize(std::move(*shape.tree));
+        }
+    }
+
     bool canMinimize(const std::string& id) const {
-        if (!columnMode() || !maximized.empty()) {
+        if (!columnMode() || !model.maximized.empty()) {
             return false;
         }
-        if (minimized.contains(id)) {
+        if (model.minimized.contains(id)) {
             return true;
         }
         U64 open = 0;
-        for (const auto& column : columns) {
-            for (const auto& pane : column.panes) {
-                open += minimized.contains(pane) || hiddenPane(pane) ? 0 : 1;
-            }
+        for (const auto& pane : placed()) {
+            open += model.minimized.contains(pane) || hiddenPane(pane) ? 0 : 1;
         }
         return open > 1;
     }
 
     void toggleMinimized(const std::string& id) {
-        if (minimized.erase(id) > 0) {
+        if (model.minimized.erase(id) > 0) {
             focus(id);
             commitView();
             return;
         }
         if (canMinimize(id)) {
-            minimized.insert(id);
+            model.minimized.insert(id);
             commitView();
         }
     }
@@ -826,10 +868,10 @@ struct Dock::Impl {
     void readView(const DockTiles& tiles) {
         if (tiles.children.empty()) {
             if (tiles.minimized) {
-                minimized.insert(tiles.pane);
+                model.minimized.insert(tiles.pane);
             }
-            if (tiles.maximized && maximized.empty()) {
-                maximized = tiles.pane;
+            if (tiles.maximized && model.maximized.empty()) {
+                model.maximized = tiles.pane;
             }
         }
         for (const auto& child : tiles.children) {
@@ -837,21 +879,10 @@ struct Dock::Impl {
         }
     }
 
-    void restoreView() {
-        if (!config.persistView) {
-            return;
-        }
-        minimized.clear();
-        maximized.clear();
-        if (config.tiles) {
-            readView(*config.tiles);
-        }
-    }
-
     void writeView(DockTiles& tiles) const {
         if (tiles.children.empty()) {
-            tiles.minimized = minimized.contains(tiles.pane);
-            tiles.maximized = maximized == tiles.pane;
+            tiles.minimized = model.minimized.contains(tiles.pane);
+            tiles.maximized = model.maximized == tiles.pane;
         }
         for (auto& child : tiles.children) {
             writeView(child);
@@ -866,536 +897,65 @@ struct Dock::Impl {
 
     void settleMinimized() {
         if (!columnMode() || !config.headers) {
-            minimized.clear();
+            model.minimized.clear();
             return;
         }
-        std::erase_if(minimized, [this](const std::string& id) {
-            return !locate(id).has_value();
+        const auto panes = placed();
+        std::erase_if(model.minimized, [&panes](const std::string& id) {
+            return std::find(panes.begin(), panes.end(), id) == panes.end();
         });
-        const bool covered = std::all_of(columns.begin(), columns.end(), [this](const ColumnModel& column) {
-            return std::all_of(column.panes.begin(), column.panes.end(), [this](const std::string& id) {
-                return minimized.contains(id) || hiddenPane(id);
-            });
+        const bool covered = std::all_of(panes.begin(), panes.end(), [this](const std::string& id) {
+            return model.minimized.contains(id) || hiddenPane(id);
         });
         if (covered) {
-            minimized.clear();
+            model.minimized.clear();
         }
     }
 
-    void rebuild() {
-        tree = FromColumns(columns);
-        if (config.persistView && tree) {
-            writeView(*tree);
-        }
-    }
-
-    F32 takeColumn(const std::string& id) {
-        const auto found = locate(id);
-        if (!found) {
-            return 0.0f;
-        }
-        auto& column = columns[found->first];
-        if (column.panes.size() == 1) {
-            const F32 width = column.width;
-            columns.erase(columns.begin() + static_cast<I64>(found->first));
-            return width;
-        }
-        column.panes.erase(column.panes.begin() + static_cast<I64>(found->second));
-        if (found->second < column.weights.size()) {
-            column.weights.erase(column.weights.begin() + static_cast<I64>(found->second));
-        }
-        return 0.0f;
-    }
-
-    void syncColumns() {
-        if (config.tiles != synced) {
-            synced = config.tiles;
-            columns = ToColumns(config.tiles);
-            restoreView();
-        }
-        std::erase_if(introduced, [this](const std::string& id) {
-            return !known(id);
-        });
-        bool added = false;
-        bool addedVisible = false;
-        for (const auto& item : config.panes) {
-            if (!locate(item.id)) {
-                ColumnModel column{.panes = {item.id}, .weights = {1.0f}, .width = item.width};
-                if (item.leftmost) {
-                    columns.insert(columns.begin(), std::move(column));
-                } else {
-                    columns.push_back(std::move(column));
-                }
-                added = true;
-                addedVisible = addedVisible || !item.startMinimized;
-            }
-            if (introduced.insert(item.id).second) {
-                const bool saved = config.persistView && config.tiles && Contains(*config.tiles, item.id);
-                addedVisible = addedVisible || (!saved && !item.startMinimized);
-                if (item.startMinimized && !saved) {
-                    minimized.insert(item.id);
-                }
-            }
-        }
-        if (addedVisible && !maximized.empty()) {
-            maximized.clear();
-            added = true;
-        }
-        rebuild();
-        if (added) {
-            commit();
-        }
-    }
-
-    void dropColumn(const std::string& id, const std::string& target, Side side) {
-        const auto before = locate(target);
-        if (!before) {
-            appendColumn(id);
+    void settleMaximized() {
+        if (model.maximized.empty()) {
             return;
         }
-        U64 column = before->first;
-        U64 row = before->second;
-        const bool across = side == Side::Left || side == Side::Right;
-        F32 width = 0.0f;
-        if (across && column < columnRects.size()) {
-            width = (columnRects[column].width / pixelRatio - kCardGap) * 0.5f;
-            pressColumns();
-            bakeColumns();
+        const auto panes = placed();
+        if (config.tabs || !config.headers || std::find(panes.begin(), panes.end(), model.maximized) == panes.end() ||
+            panes.size() < 2 || (columnMode() && hiddenPane(model.maximized))) {
+            model.maximized.clear();
         }
-        takeColumn(id);
-        if (target != id) {
-            const auto after = locate(target);
-            if (!after) {
-                appendColumn(id);
-                return;
-            }
-            column = after->first;
-            row = after->second;
-        }
-        if (across) {
-            if (column < columns.size()) {
-                columns[column].width = width;
-            }
-            const U64 at = std::min<U64>(side == Side::Left ? column : column + 1, columns.size());
-            columns.insert(columns.begin() + static_cast<I64>(at),
-                           ColumnModel{.panes = {id}, .weights = {1.0f}, .width = width});
-        } else if (column < columns.size()) {
-            auto& into = columns[column];
-            into.weights.resize(into.panes.size(), 1.0f);
-            const F32 half = into.weights[row] * 0.5f;
-            into.weights[row] = half;
-            const U64 at = side == Side::Top ? row : row + 1;
-            into.panes.insert(into.panes.begin() + static_cast<I64>(at), id);
-            into.weights.insert(into.weights.begin() + static_cast<I64>(at), half);
-        }
-        maximized.clear();
-        minimized.erase(id);
-        rebuild();
-        focus(id);
-        commit();
-    }
-
-    void appendColumn(const std::string& id) {
-        const F32 width = takeColumn(id);
-        columns.push_back({.panes = {id}, .weights = {1.0f}, .width = width});
-        maximized.clear();
-        minimized.erase(id);
-        rebuild();
-        focus(id);
-        commit();
-    }
-
-    static bool sameSplitter(const SplitterLayout& a, const SplitterLayout& b) {
-        return a.column == b.column && a.vertical == b.vertical && a.index == b.index && a.path == b.path;
-    }
-
-    void pressColumns() {
-        pressWidths = columnWidths;
-        pressBases = columnBases;
-    }
-
-    bool canBakeColumns() const {
-        if (columnWidths.size() != columns.size()) {
-            return false;
-        }
-        for (U64 index = 0; index < columns.size(); ++index) {
-            if (!collapsed(columns[index]) && shownFactor(columns[index]) >= 1.0f &&
-                columnWidths[index] < kStoredWidthFloor * pixelRatio) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    void bakeColumns() {
-        const auto flex = flexColumn();
-        for (U64 index = 0; index < columns.size() && index < pressWidths.size(); ++index) {
-            if (!collapsed(columns[index]) && shownFactor(columns[index]) >= 1.0f) {
-                const F32 width = flex == index && index < pressBases.size()
-                                      ? std::min(pressBases[index], pressWidths[index])
-                                      : pressWidths[index];
-                columns[index].width = std::max(kStoredWidthFloor, width / pixelRatio);
-            }
-        }
-    }
-
-    bool resizeColumns(const SplitterLayout& splitter, const Extent2D<F32>& point) {
-        const auto before = columns;
-        if (splitter.column) {
-            const U64 left = splitter.left;
-            const U64 right = splitter.right;
-            if (left >= right || right >= columns.size() || right >= pressWidths.size() || right >= pressBases.size()) {
-                return false;
-            }
-            const F32 minimum = (std::min(pressWidths[left], pressWidths[right]) < kMinColumnWidth * pixelRatio
-                                     ? kStoredWidthFloor : kMinColumnWidth) * pixelRatio;
-            const F32 delta = point.x - pressPoint.x;
-            const auto flex = flexColumn();
-            if (flex == left || flex == right) {
-                const U64 other = flex == left ? right : left;
-                const F32 sign = other == left ? 1.0f : -1.0f;
-                const F32 shrink = std::max(0.0f, pressWidths[other] - minimum);
-                const F32 room = std::max(0.0f, pressWidths[*flex] - minimum);
-                const F32 grow = std::clamp(sign * delta, -shrink, room);
-                columns[other].width = std::max(kStoredWidthFloor, (pressWidths[other] + grow) / pixelRatio);
-                if (pressWidths[*flex] - grow < pressBases[*flex]) {
-                    columns[*flex].width = std::max(kStoredWidthFloor, (pressWidths[*flex] - grow) / pixelRatio);
-                }
-            } else {
-                if (!flex.has_value()) {
-                    bakeColumns();
-                }
-                const F32 leftRoom = std::max(0.0f, pressWidths[left] - minimum);
-                const F32 rightRoom = std::max(0.0f, pressWidths[right] - minimum);
-                const F32 shift = std::clamp(delta, -leftRoom, rightRoom);
-                columns[left].width = std::max(kStoredWidthFloor, (pressWidths[left] + shift) / pixelRatio);
-                columns[right].width = std::max(kStoredWidthFloor, (pressWidths[right] - shift) / pixelRatio);
-            }
-        } else {
-            if (splitter.path.empty() || splitter.path.front() >= columns.size()) {
-                return false;
-            }
-            auto& column = columns[splitter.path.front()];
-            if (splitter.left >= splitter.right || splitter.right >= column.panes.size()) {
-                return false;
-            }
-            column.weights.resize(column.panes.size(), 1.0f);
-            const F32 pair = column.weights[splitter.left] + column.weights[splitter.right];
-            const F32 span = std::max(1.0f, splitter.spanEnd - splitter.spanStart);
-            const F32 minimum = std::min(0.45f, (48.0f * pixelRatio) / span);
-            const F32 t = std::clamp((point.y - splitter.spanStart) / span, minimum, 1.0f - minimum);
-            column.weights[splitter.left] = pair * t;
-            column.weights[splitter.right] = pair * (1.0f - t);
-        }
-        rebuild();
-        return columns != before;
-    }
-
-    static void evenPair(std::vector<F32>& weights, U64 first, U64 second) {
-        if (first >= weights.size() || second >= weights.size()) {
-            return;
-        }
-        const F32 half = (weights[first] + weights[second]) * 0.5f;
-        weights[first] = half;
-        weights[second] = half;
-    }
-
-    void equalize(const SplitterLayout& splitter) {
-        if (columnMode()) {
-            if (splitter.column) {
-                const U64 left = splitter.left;
-                const U64 right = splitter.right;
-                if (left >= right || right >= columns.size() || right >= columnWidths.size()) {
-                    return;
-                }
-                pressColumns();
-                const F32 average = std::max(kStoredWidthFloor,
-                                            (columnWidths[left] + columnWidths[right]) * 0.5f / pixelRatio);
-                const auto flex = flexColumn();
-                if (flex == left) {
-                    columns[right].width = average;
-                } else if (flex == right) {
-                    columns[left].width = average;
-                } else {
-                    if (!flex.has_value()) {
-                        bakeColumns();
-                    }
-                    columns[left].width = average;
-                    columns[right].width = average;
-                }
-            } else if (!splitter.path.empty() && splitter.path.front() < columns.size()) {
-                auto& column = columns[splitter.path.front()];
-                column.weights.resize(column.panes.size(), 1.0f);
-                evenPair(column.weights, splitter.left, splitter.right);
-            }
-            rebuild();
-        } else if (tree.has_value()) {
-            auto* node = At(*tree, splitter.path);
-            if (!node || splitter.index + 1 >= node->children.size()) {
-                return;
-            }
-            auto weights = Weights(*node);
-            evenPair(weights, splitter.index, splitter.index + 1);
-            node->weights = std::move(weights);
-        }
-        commit();
-    }
-
-    void arrangeColumns(const Rect& area, F32 gap) {
-        viewport = area;
-        columnRects.clear();
-        columnWidths.clear();
-        columnBases.clear();
-        if (!maximized.empty() && locate(maximized) && !hiddenPane(maximized)) {
-            leaves.push_back({.pane = maximized, .tile = area});
-            return;
-        }
-        const U64 count = columns.size();
-        if (count == 0) {
-            return;
-        }
-        const auto flex = flexColumn();
-        const F32 strip = std::round(kStripWidth * pixelRatio);
-        std::vector<F32> factors(count, 1.0f);
-        std::vector<F32> leads(count, 0.0f);
-        std::vector<F32> widths(count, strip);
-        std::vector<F32> fulls(count, strip);
-        F32 earlier = 0.0f;
-        F32 room = area.width;
-        for (U64 index = 0; index < count; ++index) {
-            factors[index] = shownFactor(columns[index]);
-            if (index > 0) {
-                leads[index] = std::round(gap * std::min(factors[index], earlier));
-                room -= leads[index];
-            }
-            earlier = std::max(earlier, factors[index]);
-        }
-        const auto fit = [&](F32 space, const std::function<bool(U64)>& include) {
-            std::vector<F32> open;
-            std::optional<U64> openFlex;
-            for (U64 index = 0; index < count; ++index) {
-                if (!collapsed(columns[index]) && include(index)) {
-                    if (flex == index) {
-                        openFlex = open.size();
-                    }
-                    open.push_back(fulls[index]);
-                }
-            }
-            open = FitColumns(std::move(open), std::max(0.0f, space), openFlex, kMinColumnWidth * pixelRatio);
-            std::vector<F32> fitted(count, 0.0f);
-            for (U64 index = 0, slot = 0; index < count; ++index) {
-                if (!collapsed(columns[index]) && include(index)) {
-                    fitted[index] = open[slot++];
-                }
-            }
-            return fitted;
-        };
-        F32 fullRoom = room;
-        for (U64 index = 0; index < count; ++index) {
-            if (collapsed(columns[index])) {
-                widths[index] = std::round(strip * factors[index]);
-                room -= widths[index];
-                fullRoom -= widths[index];
-                continue;
-            }
-            const F32 fallback = flex == index ? kFlexColumnWidth : kColumnWidth;
-            const F32 stored = columns[index].width >= kStoredWidthFloor ? columns[index].width : fallback;
-            fulls[index] = std::round(stored * pixelRatio);
-            if (factors[index] > 0.0f && factors[index] < 1.0f) {
-                fullRoom += gap - leads[index];
-            }
-        }
-        columnBases = fulls;
-        const auto natural = fit(fullRoom, [&](U64 index) {
-            return factors[index] > 0.0f;
-        });
-        for (U64 index = 0; index < count; ++index) {
-            if (!collapsed(columns[index]) && factors[index] > 0.0f && factors[index] < 1.0f) {
-                fulls[index] = natural[index];
-                widths[index] = std::round(fulls[index] * factors[index]);
-                room -= widths[index];
-            } else if (!collapsed(columns[index]) && factors[index] <= 0.0f) {
-                widths[index] = 0.0f;
-            }
-        }
-        const auto shown = fit(room, [&](U64 index) {
-            return factors[index] >= 1.0f;
-        });
-        for (U64 index = 0; index < count; ++index) {
-            if (!collapsed(columns[index]) && factors[index] >= 1.0f) {
-                widths[index] = shown[index];
-            }
-        }
-        const auto visibleBefore = [&](U64 index) -> std::optional<U64> {
-            for (U64 scan = index; scan-- > 0;) {
-                if (factors[scan] > 0.0f && !collapsed(columns[scan])) {
-                    return scan;
-                }
-            }
-            return std::nullopt;
-        };
-        F32 x = area.x;
-        for (U64 index = 0; index < count; ++index) {
-            x += leads[index];
-            const Rect rect = {x, area.y, widths[index], area.height};
-            x += widths[index];
-            columnRects.push_back(rect);
-            if (factors[index] <= 0.0f) {
-                continue;
-            }
-            const auto& column = columns[index];
-            const bool strips = collapsed(column);
-            const F32 slide = factors[index] < 1.0f
-                                  ? (flex.has_value() && index > *flex ? -1.0f : 1.0f) * (fulls[index] - widths[index])
-                                  : 0.0f;
-            const auto before = visibleBefore(index);
-            if (before.has_value() && factors[index] >= 1.0f && factors[*before] >= 1.0f) {
-                std::optional<U64> after;
-                for (U64 scan = index; scan < count; ++scan) {
-                    if (factors[scan] > 0.0f && !collapsed(columns[scan])) {
-                        after = scan;
-                        break;
-                    }
-                }
-                if (after.has_value()) {
-                    splitters.push_back({.index = index - 1, .rect = {rect.x - gap, area.y, gap, area.height},
-                                         .column = true, .left = *before, .right = *after});
-                }
-            }
-            const U64 rows = column.panes.size();
-            std::vector<bool> shaded(rows, false);
-            std::vector<F32> shown(rows, 1.0f);
-            std::vector<F32> weights = column.weights;
-            weights.resize(rows, 1.0f);
-            F32 total = 0.0f;
-            F32 fixed = 0.0f;
-            U64 present = 0;
-            bool settled = true;
-            for (U64 row = 0; row < rows; ++row) {
-                shown[row] = shownFactor(column.panes[row]);
-                settled = settled && (shown[row] <= 0.0f || shown[row] >= 1.0f);
-                if (shown[row] <= 0.0f) {
-                    weights[row] = 0.0f;
-                    continue;
-                }
-                ++present;
-                shaded[row] = !strips && minimized.contains(column.panes[row]);
-                if (shaded[row]) {
-                    fixed += strip;
-                    continue;
-                }
-                weights[row] = std::max(weights[row], 1.0e-3f) * shown[row];
-                total += weights[row];
-            }
-            const F32 usable = std::max(0.0f, rect.height - gap * static_cast<F32>(present - 1) - fixed);
-            std::vector<F32> heights(rows);
-            F32 used = 0.0f;
-            std::optional<U64> last;
-            for (U64 row = 0; row < rows; ++row) {
-                heights[row] = shown[row] <= 0.0f ? 0.0f
-                               : shaded[row]      ? strip
-                                                  : std::round(usable * weights[row] / std::max(total, 1.0e-3f));
-                used += heights[row];
-                if (!shaded[row] && shown[row] > 0.0f) {
-                    last = row;
-                }
-            }
-            if (last.has_value()) {
-                heights[*last] = std::max(0.0f, heights[*last] + usable + fixed - used);
-            }
-            std::vector<F32> tops(rows);
-            F32 y = rect.y;
-            for (U64 row = 0; row < rows; ++row) {
-                tops[row] = y;
-                if (shown[row] <= 0.0f) {
-                    continue;
-                }
-                leaves.push_back({.pane = column.panes[row], .tile = {rect.x, y, rect.width, heights[row]},
-                                  .slide = slide, .minimized = minimized.contains(column.panes[row]),
-                                  .strip = strips});
-                y += heights[row] + gap;
-            }
-            for (U64 boundary = 1; settled && boundary < rows; ++boundary) {
-                if (shown[boundary] <= 0.0f) {
-                    continue;
-                }
-                std::optional<U64> upper;
-                for (U64 scan = boundary; scan-- > 0;) {
-                    if (!shaded[scan] && shown[scan] > 0.0f) {
-                        upper = scan;
-                        break;
-                    }
-                }
-                std::optional<U64> lower;
-                for (U64 scan = boundary; scan < rows; ++scan) {
-                    if (!shaded[scan] && shown[scan] > 0.0f) {
-                        lower = scan;
-                        break;
-                    }
-                }
-                if (!upper.has_value() || !lower.has_value()) {
-                    continue;
-                }
-                const F32 above = tops[boundary] - gap - (tops[*upper] + heights[*upper]);
-                const F32 below = tops[*lower] - tops[boundary];
-                splitters.push_back({
-                    .path = {static_cast<U8>(index)},
-                    .index = boundary - 1,
-                    .vertical = true,
-                    .rect = {rect.x, tops[boundary] - gap, rect.width, gap},
-                    .spanStart = tops[*upper] + above,
-                    .spanEnd = tops[*lower] + heights[*lower] - below,
-                    .left = *upper,
-                    .right = *lower,
-                });
-            }
-        }
-        columnWidths = std::move(widths);
     }
 
     std::vector<std::string> placed() const {
         if (config.tabs) {
             return order;
         }
-        return tree.has_value() ? Leaves(*tree) : std::vector<std::string>{};
+        return model.tree.has_value() ? Leaves(*model.tree) : std::vector<std::string>{};
     }
 
-    void settleMaximized() {
-        if (maximized.empty()) {
+    void append(Model& shape, const Pane& item) const {
+        if (!shape.tree.has_value()) {
+            shape.tree = Leaf(item.id);
             return;
         }
-        if (config.tabs || !config.headers || !tree.has_value() || !Contains(*tree, maximized) ||
-            Leaves(*tree).size() < 2 || (columnMode() && hiddenPane(maximized))) {
-            maximized.clear();
+        auto& root = *shape.tree;
+        if (root.children.empty() || root.vertical) {
+            DockTiles row{.sizes = {0.0f}};
+            row.children.push_back(std::move(root));
+            root = std::move(row);
         }
-    }
-
-    bool hiddenPane(const std::string& id) const {
-        const auto* item = pane(id);
-        return item && item->hidden;
-    }
-
-    std::optional<DockTiles> visible() const {
-        if (!config.tabs) {
-            if (!maximized.empty() && tree.has_value() && Contains(*tree, maximized)) {
-                return Leaf(maximized);
-            }
-            return tree;
-        }
-        if (active < order.size()) {
-            return Leaf(order[active]);
-        }
-        return std::nullopt;
+        const auto at = item.leftmost ? 0 : static_cast<I64>(root.children.size());
+        root.children.insert(root.children.begin() + at, Leaf(item.id));
+        root.sizes.insert(root.sizes.begin() + at, std::max(0.0f, item.width));
+        settle(shape);
     }
 
     void commit() {
         if (config.tabs) {
             return;
         }
-        if (config.persistView && tree) {
-            writeView(*tree);
+        auto tiles = model.tree;
+        if (config.persistView && tiles) {
+            writeView(*tiles);
         }
-        synced = tree;
+        synced = tiles;
         if (config.onTiles) {
             config.onTiles(synced);
         }
@@ -1404,29 +964,52 @@ struct Dock::Impl {
     void syncTiles() {
         if (config.tiles != synced) {
             synced = config.tiles;
-            tree.reset();
-            restoreView();
-            if (config.tiles.has_value()) {
-                tree = Normalize(*config.tiles);
+            model.tree.reset();
+            if (config.persistView) {
+                model.minimized.clear();
+                model.maximized.clear();
+            }
+            if (config.tiles.has_value() && Valid(*config.tiles)) {
+                if (config.persistView) {
+                    readView(*config.tiles);
+                }
+                model.tree = Bare(*config.tiles);
+                settle(model);
             }
         }
         std::erase_if(introduced, [this](const std::string& id) {
             return !known(id);
         });
+        std::erase_if(pending, [this](const std::string& id) {
+            const auto* item = pane(id);
+            return !item || !item->placement.has_value() || (model.tree && Contains(*model.tree, id));
+        });
         bool added = false;
+        bool addedVisible = false;
         for (const auto& item : config.panes) {
-            if (introduced.insert(item.id).second &&
-                (!config.persistView || !config.tiles || !Contains(*config.tiles, item.id))) {
-                maximized.clear();
+            const bool present = model.tree && Contains(*model.tree, item.id);
+            if (!present && std::find(pending.begin(), pending.end(), item.id) == pending.end()) {
+                if (item.placement.has_value()) {
+                    pending.push_back(item.id);
+                } else {
+                    append(model, item);
+                    added = true;
+                }
+                addedVisible = addedVisible || !item.startMinimized;
             }
-            if (!tree.has_value() || !Contains(*tree, item.id)) {
-                tree = Append(tree, item.id);
-                added = true;
+            if (introduced.insert(item.id).second) {
+                const bool saved = config.persistView && config.tiles && Contains(*config.tiles, item.id);
+                addedVisible = addedVisible || (!saved && !item.startMinimized);
+                if (item.startMinimized && !saved) {
+                    model.minimized.insert(item.id);
+                }
             }
         }
+        if (addedVisible && !model.maximized.empty()) {
+            model.maximized.clear();
+            added = true;
+        }
         if (added) {
-            maximized.clear();
-            tree = Normalize(*tree);
             commit();
         }
     }
@@ -1478,6 +1061,774 @@ struct Dock::Impl {
         }
     }
 
+    Rect device(const Rect& area) const {
+        const F32 x0 = std::round(viewport.x + area.x * pixelRatio);
+        const F32 y0 = std::round(viewport.y + area.y * pixelRatio);
+        const F32 x1 = std::round(viewport.x + area.right() * pixelRatio);
+        const F32 y1 = std::round(viewport.y + area.bottom() * pixelRatio);
+        return {x0, y0, x1 - x0, y1 - y0};
+    }
+
+    Rect logicalArea() const {
+        return {0.0f, 0.0f, std::max(0.0f, viewport.width / pixelRatio), std::max(0.0f, viewport.height / pixelRatio)};
+    }
+
+    Arrangement arrange(const Model& shape) const {
+        Arrangement out;
+        if (!shape.tree.has_value()) {
+            return out;
+        }
+        const Rect area = logicalArea();
+        if (!shape.maximized.empty() && Contains(*shape.tree, shape.maximized) && !hiddenPane(shape.maximized)) {
+            out.leaves.push_back({.pane = shape.maximized, .area = area, .tile = viewport});
+            return out;
+        }
+        std::vector<U8> path;
+        arrangeNode(shape, out, *shape.tree, area, viewport, path, 0.0f, Collapse::Open);
+        return out;
+    }
+
+    void arrangeNode(const Model& shape, Arrangement& out, const DockTiles& node, const Rect& area, const Rect& tile,
+                     std::vector<U8>& path, F32 slide, Collapse style) const {
+        if (node.children.empty()) {
+            if (shownFactor(node.pane) <= 0.0f) {
+                return;
+            }
+            out.leaves.push_back({.pane = node.pane, .area = area, .tile = tile, .slide = slide,
+                                  .minimized = style != Collapse::Open || shape.minimized.contains(node.pane),
+                                  .strip = style == Collapse::Strip});
+            return;
+        }
+        const bool open = style == Collapse::Open;
+        const bool vertical = open ? node.vertical : style == Collapse::Strip;
+        const bool row = open && columnRow(path, vertical);
+        const U64 count = node.children.size();
+        SplitLayout split{.path = path,
+                          .vertical = vertical,
+                          .area = area,
+                          .sizes = std::vector<F32>(count, 0.0f),
+                          .rects = std::vector<Rect>(count),
+                          .tiles = std::vector<Rect>(count),
+                          .shown = std::vector<F32>(count, 0.0f),
+                          .open = std::vector<bool>(count, false),
+                          .flex = row ? flexIndex(shape, node) : std::nullopt};
+        const std::vector<F32> stored = resolved(node, row);
+        std::vector<F32> leads(count, 0.0f);
+        std::vector<F32> fulls(count, 0.0f);
+        std::vector<bool> folded(count, false);
+        bool settled = true;
+        F32 earlier = 0.0f;
+        F32 room = Along(area, vertical);
+        for (U64 index = 0; index < count; ++index) {
+            const F32 shown = shownFactor(node.children[index]);
+            split.shown[index] = shown;
+            settled = settled && (shown <= 0.0f || shown >= 1.0f);
+            if (index > 0) {
+                leads[index] = kCardGap * std::min(shown, earlier);
+                room -= leads[index];
+            }
+            earlier = std::max(earlier, shown);
+            folded[index] = open && shown > 0.0f && collapsed(shape, node.children[index]);
+        }
+        if (open) {
+            const F32 minimum = row ? kMinColumnWidth : 0.0f;
+            const auto fit = [&](F32 space, const std::function<bool(U64)>& include) {
+                std::vector<F32> picked;
+                std::optional<U64> flex;
+                for (U64 index = 0; index < count; ++index) {
+                    if (include(index)) {
+                        if (split.flex == index) {
+                            flex = picked.size();
+                        }
+                        picked.push_back(stored[index]);
+                    }
+                }
+                picked = FitSizes(std::move(picked), space, flex, minimum);
+                std::vector<F32> fitted(count, 0.0f);
+                for (U64 index = 0, slot = 0; index < count; ++index) {
+                    if (include(index)) {
+                        fitted[index] = picked[slot++];
+                    }
+                }
+                return fitted;
+            };
+            F32 fullRoom = room;
+            for (U64 index = 0; index < count; ++index) {
+                const F32 shown = split.shown[index];
+                if (folded[index]) {
+                    fulls[index] = kStripWidth;
+                    split.sizes[index] = kStripWidth * shown;
+                    room -= split.sizes[index];
+                    fullRoom -= split.sizes[index];
+                } else if (shown > 0.0f && shown < 1.0f) {
+                    fullRoom += kCardGap - leads[index];
+                }
+            }
+            const auto natural = fit(fullRoom, [&](U64 index) {
+                return !folded[index] && split.shown[index] > 0.0f;
+            });
+            for (U64 index = 0; index < count; ++index) {
+                const F32 shown = split.shown[index];
+                if (!folded[index] && shown > 0.0f && shown < 1.0f) {
+                    fulls[index] = natural[index];
+                    split.sizes[index] = natural[index] * shown;
+                    room -= split.sizes[index];
+                }
+            }
+            const auto fitted = fit(room, [&](U64 index) {
+                return !folded[index] && split.shown[index] >= 1.0f;
+            });
+            for (U64 index = 0; index < count; ++index) {
+                if (!folded[index] && split.shown[index] >= 1.0f) {
+                    split.sizes[index] = fitted[index];
+                    fulls[index] = fitted[index];
+                    split.open[index] = true;
+                }
+            }
+        } else {
+            F32 total = 0.0f;
+            for (U64 index = 0; index < count; ++index) {
+                total += stored[index] * split.shown[index];
+            }
+            for (U64 index = 0; index < count; ++index) {
+                split.sizes[index] = total > 0.0f ? std::max(0.0f, room) * stored[index] * split.shown[index] / total
+                                                  : 0.0f;
+                fulls[index] = split.sizes[index];
+            }
+        }
+        F32 cursor = StartOf(area, vertical);
+        for (U64 index = 0; index < count; ++index) {
+            cursor += leads[index];
+            const F32 size = split.sizes[index];
+            split.rects[index] = vertical ? Rect{area.x, cursor, area.width, size} : Rect{cursor, area.y, size, area.height};
+            const Rect snapped = device(split.rects[index]);
+            split.tiles[index] = vertical ? Rect{tile.x, snapped.y, tile.width, snapped.height}
+                                          : Rect{snapped.x, tile.y, snapped.width, tile.height};
+            cursor += size;
+        }
+        if (open && settled) {
+            for (U64 boundary = 1; boundary < count; ++boundary) {
+                if (split.shown[boundary] <= 0.0f) {
+                    continue;
+                }
+                std::optional<U64> upper;
+                for (U64 scan = boundary; scan-- > 0;) {
+                    if (!folded[scan] && split.shown[scan] > 0.0f) {
+                        upper = scan;
+                        break;
+                    }
+                }
+                std::optional<U64> lower;
+                for (U64 scan = boundary; scan < count; ++scan) {
+                    if (!folded[scan] && split.shown[scan] > 0.0f) {
+                        lower = scan;
+                        break;
+                    }
+                }
+                if (!upper.has_value() || !lower.has_value()) {
+                    continue;
+                }
+                std::optional<U64> previous;
+                for (U64 scan = boundary; scan-- > 0;) {
+                    if (split.shown[scan] > 0.0f) {
+                        previous = scan;
+                        break;
+                    }
+                }
+                if (!previous.has_value()) {
+                    continue;
+                }
+                const Rect& at = split.tiles[boundary];
+                const Rect& prior = split.tiles[*previous];
+                const Rect gap = vertical ? Rect{tile.x, prior.bottom(), tile.width, at.y - prior.bottom()}
+                                          : Rect{prior.right(), tile.y, at.x - prior.right(), tile.height};
+                out.splitters.push_back(
+                    {.path = path, .left = *upper, .right = *lower, .vertical = vertical, .rect = gap});
+            }
+        }
+        for (U64 index = 0; index < count; ++index) {
+            const F32 shown = split.shown[index];
+            if (shown <= 0.0f) {
+                continue;
+            }
+            const Collapse next = !open        ? style
+                                  : folded[index] ? (vertical ? Collapse::Header : Collapse::Strip)
+                                                  : Collapse::Open;
+            const F32 direction = split.flex.has_value() && index > *split.flex ? -1.0f : 1.0f;
+            const F32 own = !vertical && shown < 1.0f ? direction * (fulls[index] - split.sizes[index]) * pixelRatio
+                                                      : slide;
+            path.push_back(static_cast<U8>(index));
+            arrangeNode(shape, out, node.children[index], split.rects[index], split.tiles[index], path, own, next);
+            path.pop_back();
+        }
+        out.splits.push_back(std::move(split));
+    }
+
+    void apply(Arrangement arranged) {
+        leaves = std::move(arranged.leaves);
+        splitters = std::move(arranged.splitters);
+        splits = std::move(arranged.splits);
+    }
+
+    const SplitLayout* splitAt(const std::vector<U8>& path) const {
+        for (const auto& split : splits) {
+            if (split.path == path) {
+                return &split;
+            }
+        }
+        return nullptr;
+    }
+
+    std::vector<Column> columns() const {
+        std::vector<Column> result;
+        if (!model.tree.has_value()) {
+            return result;
+        }
+        const auto& root = *model.tree;
+        if (!root.children.empty() && !root.vertical) {
+            const auto* split = splitAt({});
+            if (!split) {
+                return result;
+            }
+            for (U64 index = 0; index < root.children.size() && index < split->rects.size(); ++index) {
+                if (split->shown[index] > 0.0f) {
+                    result.push_back({.node = &root.children[index], .tile = split->tiles[index]});
+                }
+            }
+        } else if (shownFactor(root) > 0.0f) {
+            result.push_back({.node = &root, .tile = viewport});
+        }
+        return result;
+    }
+
+    static const DockTiles* columnOf(const Model& shape, const std::string& pane) {
+        if (pane.empty() || !shape.tree.has_value() || !Contains(*shape.tree, pane)) {
+            return nullptr;
+        }
+        const auto& root = *shape.tree;
+        if (root.children.empty() || root.vertical) {
+            return &root;
+        }
+        for (const auto& child : root.children) {
+            if (Contains(child, pane)) {
+                return &child;
+            }
+        }
+        return nullptr;
+    }
+
+    std::optional<Origin> origin(const std::string& id) const {
+        if (!model.tree.has_value() || !Contains(*model.tree, id)) {
+            return std::nullopt;
+        }
+        Origin result{.minimized = model.minimized.contains(id)};
+        for (const auto& leaf : leaves) {
+            if (leaf.pane == id && !leaf.minimized) {
+                result.width = leaf.area.width;
+                result.height = leaf.area.height;
+            }
+        }
+        const auto& root = *model.tree;
+        if (root.children.empty()) {
+            result.column = result.width;
+        } else if (!root.vertical) {
+            for (U64 index = 0; index < root.children.size(); ++index) {
+                if (root.children[index].children.empty() && root.children[index].pane == id) {
+                    result.column = index < root.sizes.size() ? root.sizes[index] : 0.0f;
+                }
+            }
+        }
+        return result;
+    }
+
+    Removal removal(const std::string& id, std::optional<Origin> from) const {
+        Removal result{.shape = model, .from = from};
+        result.shape.tree = Remove(model.tree, id);
+        settle(result.shape);
+        result.shape.maximized.clear();
+        if (!from || !from->minimized) {
+            result.shape.minimized.erase(id);
+        }
+        result.base = arrange(result.shape);
+        return result;
+    }
+
+    Removal removal(const std::string& id) const {
+        return removal(id, origin(id));
+    }
+
+    std::string representative(const DockTiles& node, const std::string& dragged, bool last) const {
+        auto panes = Leaves(node);
+        if (last) {
+            std::reverse(panes.begin(), panes.end());
+        }
+        for (const auto& pane : panes) {
+            if (pane != dragged && shownFactor(pane) > 0.0f) {
+                return pane;
+            }
+        }
+        return {};
+    }
+
+    std::optional<Gap> gapAt(const Extent2D<F32>& point, const std::string& dragged, const Model& shape) const {
+        const auto shown = columns();
+        if (shown.empty() || !Inflate(viewport, kCardGap * pixelRatio).contains(point.x, point.y)) {
+            return std::nullopt;
+        }
+        const F32 band = kGutterBand * pixelRatio;
+        std::optional<Gap> best;
+        const U64 count = shown.size();
+        for (U64 index = 0; index <= count; ++index) {
+            const F32 left = index == 0 ? viewport.x : shown[index - 1].tile.right();
+            const F32 right = index == count ? viewport.right() : shown[index].tile.x;
+            const F32 center = index == 0 ? viewport.x : index == count ? viewport.right() : (left + right) * 0.5f;
+            const F32 distance = std::abs(point.x - center);
+            if (point.x < left - band || point.x > right + band || (best && best->distance <= distance)) {
+                continue;
+            }
+            const std::string before = index == 0 ? std::string() : representative(*shown[index - 1].node, dragged, true);
+            const std::string after = index == count ? std::string() : representative(*shown[index].node, dragged, false);
+            const auto* lead = columnOf(shape, before);
+            const auto* trail = columnOf(shape, after);
+            const bool leadOpen = lead && !collapsed(shape, *lead);
+            const bool trailOpen = trail && !collapsed(shape, *trail);
+            const auto whole = [](const DockTiles* column, bool open) {
+                return column && open && column->children.empty() ? column->pane : std::string();
+            };
+            const std::string leadWhole = whole(lead, leadOpen);
+            const std::string trailWhole = whole(trail, trailOpen);
+            const bool blocked = (index > 0 && before.empty()) || (index < count && after.empty()) ||
+                                 (!leadOpen && !trailOpen);
+            best = Gap{.distance = distance};
+            if (blocked) {
+                continue;
+            }
+            if (!leadWhole.empty() || !trailWhole.empty()) {
+                const bool useTrail = !trailWhole.empty() && (leadWhole.empty() || point.x >= center);
+                best->target = TileSplit{.pane = useTrail ? trailWhole : leadWhole,
+                                         .side = useTrail ? Side::Left : Side::Right};
+                continue;
+            }
+            best->target = ColumnInsert{.before = before, .after = after};
+        }
+        return best;
+    }
+
+    std::optional<Target> aim(const Extent2D<F32>& point, const std::string& dragged, const Removal& removed) const {
+        if (!model.tree.has_value() || leaves.empty()) {
+            return ColumnInsert{};
+        }
+        if (!model.maximized.empty()) {
+            return std::nullopt;
+        }
+        if (const auto gap = gapAt(point, dragged, removed.shape)) {
+            return gap->target;
+        }
+        const auto* leaf = targetAt(point, kCardGap * pixelRatio * 0.5f + 1.0f);
+        if (!leaf || leaf->pane == dragged || model.minimized.contains(leaf->pane) || !removed.shape.tree ||
+            !Contains(*removed.shape.tree, leaf->pane)) {
+            return std::nullopt;
+        }
+        if (const auto side = EdgeAt(leaf->tile, point)) {
+            return TileSplit{.pane = leaf->pane, .side = *side};
+        }
+        return std::nullopt;
+    }
+
+    Level levelOf(const SplitLayout& split) const {
+        Level level{.path = split.path,
+                    .vertical = split.vertical,
+                    .row = split.path.empty() && !split.vertical,
+                    .span = split.area,
+                    .sizes = split.sizes,
+                    .flex = split.flex};
+        for (U64 index = 0; index < split.sizes.size(); ++index) {
+            level.present.push_back(split.shown[index] > 0.0f);
+            level.open.push_back(split.open[index]);
+        }
+        return level;
+    }
+
+    std::optional<Level> splitLevel(Model& shape, const Arrangement& base, const TileSplit& target) const {
+        if (!shape.tree.has_value()) {
+            return std::nullopt;
+        }
+        const auto path = PathOf(*shape.tree, target.pane);
+        const auto* leaf = base.leaf(target.pane);
+        if (!path || !leaf) {
+            return std::nullopt;
+        }
+        const bool vertical = Vertical(target.side);
+        const U64 after = target.side == Side::Right || target.side == Side::Bottom ? 1 : 0;
+        if (!path->empty()) {
+            const std::vector<U8> parentPath(path->begin(), path->end() - 1);
+            const auto* parent = At(*shape.tree, parentPath);
+            const auto* split = base.split(parentPath);
+            if (parent && split && parent->vertical == vertical) {
+                auto level = levelOf(*split);
+                level.at = path->back() + after;
+                level.payers = {path->back()};
+                return level;
+            }
+        }
+        auto* node = At(*shape.tree, *path);
+        const F32 size = Along(leaf->area, vertical);
+        DockTiles wrapper{.vertical = vertical, .sizes = {size}};
+        wrapper.children.push_back(std::move(*node));
+        *node = std::move(wrapper);
+        return Level{.path = *path,
+                     .vertical = vertical,
+                     .row = path->empty() && !vertical,
+                     .span = leaf->area,
+                     .sizes = {size},
+                     .present = {true},
+                     .open = {!leaf->minimized},
+                     .at = after,
+                     .payers = {0}};
+    }
+
+    std::optional<Level> insertLevel(Model& shape, const Arrangement& base, const ColumnInsert& target) const {
+        if (!shape.tree.has_value()) {
+            return std::nullopt;
+        }
+        auto& root = *shape.tree;
+        std::optional<Level> level;
+        if (!root.children.empty() && !root.vertical) {
+            if (const auto* split = base.split({})) {
+                level = levelOf(*split);
+            }
+        } else {
+            const Rect area = logicalArea();
+            const F32 shown = shownFactor(root);
+            level = Level{.row = true,
+                          .span = area,
+                          .sizes = {area.width},
+                          .present = {shown > 0.0f},
+                          .open = {shown >= 1.0f && !collapsed(shape, root)}};
+            DockTiles row{.sizes = {area.width}};
+            row.children.push_back(std::move(root));
+            root = std::move(row);
+        }
+        if (!level.has_value()) {
+            return std::nullopt;
+        }
+        const auto indexOf = [&root](const std::string& pane) -> std::optional<U64> {
+            for (U64 index = 0; index < root.children.size(); ++index) {
+                if (Contains(root.children[index], pane)) {
+                    return index;
+                }
+            }
+            return std::nullopt;
+        };
+        const auto lead = target.before.empty() ? std::nullopt : indexOf(target.before);
+        const auto trail = target.after.empty() ? std::nullopt : indexOf(target.after);
+        if ((!target.before.empty() && !lead) || (!target.after.empty() && !trail)) {
+            return std::nullopt;
+        }
+        level->at = trail ? *trail : lead ? *lead + 1 : root.children.size();
+        for (const auto& spot : {lead, trail}) {
+            if (spot && level->open[*spot]) {
+                level->payers.push_back(*spot);
+            }
+        }
+        return level;
+    }
+
+    std::optional<Rect> place(Level& level, Model& shape, const std::string& id, const std::optional<Origin>& from) const {
+        auto* node = At(*shape.tree, level.path);
+        if (!node) {
+            return std::nullopt;
+        }
+        F32 room = 0.0f;
+        for (const U64 payer : level.payers) {
+            if (!level.open[payer]) {
+                return std::nullopt;
+            }
+            room += level.sizes[payer];
+            for (auto& pane : Leaves(node->children[payer])) {
+                level.paying.push_back(std::move(pane));
+            }
+        }
+        if (room <= 0.0f) {
+            return std::nullopt;
+        }
+        const auto bases = resolved(*node, columnRow(level.path, level.vertical));
+        node->sizes.resize(node->children.size(), 0.0f);
+        for (U64 index = 0; index < level.sizes.size(); ++index) {
+            if (!level.open[index]) {
+                continue;
+            }
+            if (level.flex == index) {
+                node->sizes[index] = Capped(node->sizes[index], bases[index], level.sizes[index]);
+            } else if (!level.flex.has_value() || std::abs(level.sizes[index] - bases[index]) > 1e-3f) {
+                node->sizes[index] = level.sizes[index];
+            }
+        }
+        const bool shaded = from && from->minimized;
+        const F32 own = !from ? 0.0f : level.vertical ? from->height : from->width;
+        const F32 half = std::max(0.0f, room - kCardGap) * 0.5f;
+        const F32 floor = level.row ? kSizeFloor : 0.0f;
+        const F32 size = std::max(floor, own > 0.0f ? std::min(own, half) : half);
+        const F32 occupied = shaded ? kStripWidth : size;
+        const F32 restore = shaded ? half : size;
+        for (const U64 payer : level.payers) {
+            const F32 paid = level.sizes[payer] - (occupied + kCardGap) * level.sizes[payer] / room;
+            level.sizes[payer] = paid;
+            node->sizes[payer] = level.flex == payer ? Capped(node->sizes[payer], bases[payer], paid) : paid;
+        }
+        const auto at = static_cast<I64>(level.at);
+        node->children.insert(node->children.begin() + at, Leaf(id));
+        node->sizes.insert(node->sizes.begin() + at, restore);
+        level.sizes.insert(level.sizes.begin() + at, occupied);
+        level.present.insert(level.present.begin() + at, true);
+        level.open.insert(level.open.begin() + at, !shaded);
+        F32 cursor = StartOf(level.span, level.vertical);
+        F32 start = cursor;
+        bool first = true;
+        for (U64 index = 0; index < level.sizes.size(); ++index) {
+            if (!level.present[index]) {
+                continue;
+            }
+            cursor += first ? 0.0f : kCardGap;
+            first = false;
+            start = index == level.at ? cursor : start;
+            cursor += level.sizes[index];
+        }
+        return level.vertical ? Rect{level.span.x, start, level.span.width, occupied}
+                              : Rect{start, level.span.y, occupied, level.span.height};
+    }
+
+    bool fits(const Model& shape, const Arrangement& base, const Level& level, const std::string& id,
+              const Rect& rect, Rect& landed) const {
+        const auto laid = arrange(shape);
+        const F32 floor = kSizeFloor - kSizeEpsilon;
+        if (const auto* row = laid.split({}); row && !row->vertical) {
+            for (U64 index = 0; index < row->sizes.size(); ++index) {
+                if (row->open[index] && row->sizes[index] < floor) {
+                    return false;
+                }
+            }
+        }
+        for (const auto& leaf : laid.leaves) {
+            const auto* before = base.leaf(leaf.pane);
+            const bool moved = leaf.pane == id;
+            const bool paying = std::find(level.paying.begin(), level.paying.end(), leaf.pane) != level.paying.end();
+            if (moved ? !Near(leaf.area, rect, kPlanTolerance)
+                      : !before || (!paying && !Near(leaf.area, before->area, kPlanTolerance))) {
+                return false;
+            }
+            if ((moved || paying) && !leaf.minimized && (leaf.area.width < floor || leaf.area.height <= 0.0f)) {
+                return false;
+            }
+        }
+        const auto* moved = laid.leaf(id);
+        if (!moved) {
+            return false;
+        }
+        landed = moved->tile;
+        return true;
+    }
+
+    std::optional<Plan> plan(const std::string& id, const Target& target, const Removal& removed) const {
+        Plan result{.model = removed.shape};
+        auto& shape = result.model;
+        const auto* insert = std::get_if<ColumnInsert>(&target);
+        if (!shape.tree.has_value() || (insert && insert->before.empty() && insert->after.empty())) {
+            Pane item{.id = id, .width = removed.from ? removed.from->column : 0.0f};
+            append(shape, item);
+            const auto laid = arrange(shape);
+            const auto* leaf = laid.leaf(id);
+            result.rect = leaf ? leaf->tile : viewport;
+            return result;
+        }
+        auto& root = *shape.tree;
+        if (const auto* row = removed.base.split({}); row && !root.children.empty() && !root.vertical) {
+            root.sizes = baked(*row, root);
+        }
+        auto level = insert ? insertLevel(shape, removed.base, *insert)
+                            : splitLevel(shape, removed.base, std::get<TileSplit>(target));
+        if (!level || level->payers.empty()) {
+            return std::nullopt;
+        }
+        const auto rect = place(*level, shape, id, removed.from);
+        if (!rect) {
+            return std::nullopt;
+        }
+        settle(shape);
+        if (!fits(shape, removed.base, *level, id, *rect, result.rect)) {
+            return std::nullopt;
+        }
+        return result;
+    }
+
+    Rect preview(const Target& target, const Plan& planned) const {
+        if (const auto* split = std::get_if<TileSplit>(&target)) {
+            for (const auto& leaf : leaves) {
+                if (leaf.pane == split->pane) {
+                    return Slice(leaf.tile, split->side, Along(planned.rect, Vertical(split->side)));
+                }
+            }
+        }
+        return planned.rect;
+    }
+
+    void drop(const std::string& id, const Target& target) {
+        const auto removed = removal(id);
+        auto planned = plan(id, target, removed);
+        if (!planned) {
+            planned = plan(id, ColumnInsert{}, removed);
+        }
+        model = std::move(planned->model);
+        focus(id);
+        commit();
+    }
+
+    bool placePending() {
+        if (pending.empty() || config.tabs) {
+            return false;
+        }
+        const auto queued = std::exchange(pending, {});
+        bool placed = false;
+        for (const auto& id : queued) {
+            const auto* item = pane(id);
+            if (!item || (model.tree && Contains(*model.tree, id))) {
+                continue;
+            }
+            std::optional<Plan> planned;
+            if (item->placement.has_value()) {
+                const auto& request = *item->placement;
+                const Origin from{.minimized = model.minimized.contains(id)};
+                const auto removed = removal(id, from);
+                const auto* anchor = removed.base.leaf(request.anchor);
+                if (anchor && !anchor->minimized) {
+                    planned = plan(id, TileSplit{.pane = request.anchor, .side = request.side}, removed);
+                }
+            }
+            if (planned) {
+                model = std::move(planned->model);
+            } else {
+                append(model, *item);
+            }
+            placed = true;
+        }
+        if (placed) {
+            settleMaximized();
+            settleMinimized();
+            commit();
+        }
+        return placed;
+    }
+
+    static bool sameSplitter(const SplitterLayout& a, const SplitterLayout& b) {
+        return a.vertical == b.vertical && a.left == b.left && a.right == b.right && a.path == b.path;
+    }
+
+    DockTiles* splitNode(const SplitterLayout& splitter) {
+        if (!model.tree.has_value()) {
+            return nullptr;
+        }
+        auto* node = At(*model.tree, splitter.path);
+        if (!node || node->children.empty() || splitter.left >= splitter.right ||
+            splitter.right >= node->children.size()) {
+            return nullptr;
+        }
+        return node;
+    }
+
+    F32 splitterMinimum(const SplitLayout& split, F32 left, F32 right) const {
+        if (columnRow(split.path, split.vertical)) {
+            return std::min(left, right) < kMinColumnWidth ? kSizeFloor : kMinColumnWidth;
+        }
+        return std::min(kSplitMinimum, kSplitShare * (left + right));
+    }
+
+    static F32 Capped(F32 stored, F32 base, F32 value) {
+        return value < base ? value : stored;
+    }
+
+    std::vector<F32> baked(const SplitLayout& split, const DockTiles& node) const {
+        auto stored = node.sizes;
+        stored.resize(node.children.size(), 0.0f);
+        const auto bases = resolved(node, columnRow(split.path, split.vertical));
+        for (U64 index = 0; index < split.sizes.size() && index < stored.size(); ++index) {
+            if (!split.open[index]) {
+                continue;
+            }
+            if (split.flex == index) {
+                stored[index] = Capped(stored[index], bases[index], split.sizes[index]);
+            } else if (!split.flex.has_value() || std::abs(split.sizes[index] - bases[index]) > 1e-3f) {
+                stored[index] = split.sizes[index];
+            }
+        }
+        return stored;
+    }
+
+    bool beginResize(const SplitterLayout& splitter) {
+        const auto* split = splitAt(splitter.path);
+        auto* node = splitNode(splitter);
+        if (!split || !node || split->sizes.size() != node->children.size()) {
+            return false;
+        }
+        pressSplit = *split;
+        pressStored = node->sizes;
+        pressStored.resize(node->children.size(), 0.0f);
+        return true;
+    }
+
+    bool resize(const SplitterLayout& splitter, const Extent2D<F32>& point) {
+        auto* node = splitNode(splitter);
+        const auto& split = pressSplit;
+        if (!node || split.path != splitter.path || split.sizes.size() != node->children.size()) {
+            return false;
+        }
+        const U64 left = splitter.left;
+        const U64 right = splitter.right;
+        const F32 delta = (splitter.vertical ? point.y - pressPoint.y : point.x - pressPoint.x) / pixelRatio;
+        DockTiles pressed = *node;
+        pressed.sizes = pressStored;
+        auto sizes = baked(split, pressed);
+        const auto bases = resolved(pressed, columnRow(split.path, split.vertical));
+        const F32 minimum = splitterMinimum(split, split.sizes[left], split.sizes[right]);
+        if (split.flex == left || split.flex == right) {
+            const U64 flex = *split.flex;
+            const U64 other = flex == left ? right : left;
+            const F32 sign = other == left ? 1.0f : -1.0f;
+            const F32 shrink = std::max(0.0f, split.sizes[other] - minimum);
+            const F32 room = std::max(0.0f, split.sizes[flex] - minimum);
+            const F32 grow = std::clamp(sign * delta, -shrink, room);
+            sizes[other] = split.sizes[other] + grow;
+            sizes[flex] = Capped(pressStored[flex], bases[flex], split.sizes[flex] - grow);
+        } else {
+            const F32 shift = std::clamp(delta, -std::max(0.0f, split.sizes[left] - minimum),
+                                         std::max(0.0f, split.sizes[right] - minimum));
+            sizes[left] = split.sizes[left] + shift;
+            sizes[right] = split.sizes[right] - shift;
+        }
+        if (sizes == node->sizes) {
+            return false;
+        }
+        node->sizes = std::move(sizes);
+        return true;
+    }
+
+    void equalize(const SplitterLayout& splitter) {
+        const auto* split = splitAt(splitter.path);
+        auto* node = splitNode(splitter);
+        if (!split || !node || split->sizes.size() != node->children.size()) {
+            return;
+        }
+        const U64 left = splitter.left;
+        const U64 right = splitter.right;
+        const auto bases = resolved(*node, columnRow(split->path, split->vertical));
+        auto sizes = baked(*split, *node);
+        const F32 average = (split->sizes[left] + split->sizes[right]) * 0.5f;
+        for (const U64 index : {left, right}) {
+            sizes[index] = split->flex == index ? Capped(sizes[index], bases[index], average) : average;
+        }
+        node->sizes = std::move(sizes);
+        commit();
+    }
+
     void focus(const std::string& id) {
         if (id.empty()) {
             return;
@@ -1524,17 +1875,6 @@ struct Dock::Impl {
         focus(id);
     }
 
-    void splitTile(const std::string& id, const std::string& target, Side side) {
-        std::optional<DockTiles> base;
-        if (tree.has_value()) {
-            base = Remove(*tree, id);
-        }
-        tree = base.has_value() ? Split(*base, target, id, side) : Leaf(id);
-        maximized.clear();
-        focus(id);
-        commit();
-    }
-
     void removeOwn(const std::string& id) {
         if (focusedPane == id) {
             focusedPane.clear();
@@ -1556,12 +1896,8 @@ struct Dock::Impl {
             }
             return;
         }
-        if (columnMode()) {
-            takeColumn(id);
-            rebuild();
-        } else if (tree.has_value()) {
-            tree = Remove(*tree, id);
-        }
+        model.tree = Remove(model.tree, id);
+        settle(model);
         settleMaximized();
         commit();
     }
@@ -1610,67 +1946,8 @@ struct Dock::Impl {
         }
         return std::nullopt;
     }
-
-    void arrange(const DockTiles& node, const Rect& area, std::vector<U8>& path, F32 gap) {
-        if (node.children.size() < 2) {
-            if (node.children.size() == 1) {
-                path.push_back(0);
-                arrange(node.children.front(), area, path, gap);
-                path.pop_back();
-                return;
-            }
-            leaves.push_back({.pane = node.pane, .tile = area});
-            return;
-        }
-        const auto weights = Weights(node);
-        const U64 count = node.children.size();
-        const F32 start = node.vertical ? area.y : area.x;
-        const F32 extent = node.vertical ? area.height : area.width;
-        const F32 usable = std::max(0.0f, extent - gap * static_cast<F32>(count - 1));
-        F32 cursor = start;
-        Rect previous;
-        for (U64 index = 0; index < count; ++index) {
-            const F32 end = index + 1 == count ? start + extent : std::round(cursor + usable * weights[index]);
-            const F32 size = std::max(0.0f, end - cursor);
-            const Rect rect = node.vertical ? Rect{area.x, cursor, area.width, size}
-                                            : Rect{cursor, area.y, size, area.height};
-            if (index > 0) {
-                const F32 previousStart = node.vertical ? previous.y : previous.x;
-                const Rect splitter = node.vertical ? Rect{area.x, cursor - gap, area.width, gap}
-                                                    : Rect{cursor - gap, area.y, gap, area.height};
-                splitters.push_back({
-                    .path = path,
-                    .index = index - 1,
-                    .vertical = node.vertical,
-                    .rect = splitter,
-                    .spanStart = previousStart,
-                    .spanEnd = end,
-                });
-            }
-            path.push_back(static_cast<U8>(index));
-            arrange(node.children[index], rect, path, gap);
-            path.pop_back();
-            previous = rect;
-            cursor = end + gap;
-        }
-    }
-
-    void resize(DockTiles& tree, const SplitterLayout& splitter, const Extent2D<F32>& point) {
-        auto* node = At(tree, splitter.path);
-        if (!node || splitter.index + 1 >= node->children.size()) {
-            return;
-        }
-        auto weights = Weights(*node);
-        const F32 pair = weights[splitter.index] + weights[splitter.index + 1];
-        const F32 span = std::max(1.0f, splitter.spanEnd - splitter.spanStart);
-        const F32 position = splitter.vertical ? point.y : point.x;
-        const F32 minimum = std::min(0.45f, (48.0f * pixelRatio) / span);
-        const F32 t = std::clamp((position - splitter.spanStart) / span, minimum, 1.0f - minimum);
-        weights[splitter.index] = pair * t;
-        weights[splitter.index + 1] = pair * (1.0f - t);
-        node->weights = std::move(weights);
-    }
 };
+
 
 Dock::Dock() {
     impl = std::make_unique<Impl>();
@@ -1708,8 +1985,6 @@ void Dock::update(Config config) {
     impl->forgetRemovedFocus();
     if (impl->config.tabs) {
         impl->syncTabs();
-    } else if (impl->columnMode()) {
-        impl->syncColumns();
     } else {
         impl->syncTiles();
     }
@@ -2081,14 +2356,20 @@ void Dock::layout(const Context& ctx) {
         s.contentArea = s.bounds;
     }
 
-    const auto tileTree = s.visible();
-    const U64 total = tabs ? (tileTree.has_value() ? 1 : 0) : s.placed().size();
-    if (s.columnMode()) {
-        s.arrangeColumns(Inset(s.contentArea, gap), gap);
-    } else if (tileTree) {
-        std::vector<U8> path;
-        s.arrange(*tileTree, tabs ? s.contentArea : Inset(s.contentArea, gap), path, gap);
+    if (tabs) {
+        if (s.active < s.order.size()) {
+            s.leaves.push_back({.pane = s.order[s.active], .tile = s.contentArea});
+        }
+    } else {
+        const Rect inset = Inset(s.contentArea, gap);
+        const F32 left = std::round(inset.x);
+        const F32 top = std::round(inset.y);
+        s.viewport = {left, top, std::max(0.0f, std::round(inset.right()) - left),
+                      std::max(0.0f, std::round(inset.bottom()) - top)};
+        s.placePending();
+        s.apply(s.arrange(s.model));
     }
+    const U64 total = tabs ? (s.active < s.order.size() ? 1 : 0) : s.placed().size();
     if (!s.config.resizable) {
         s.splitters.clear();
         s.hoveredSplitter.reset();
@@ -2116,8 +2397,8 @@ void Dock::layout(const Context& ctx) {
             placeholder = &it->second->stack;
         }
         const bool closable = item ? item->closable : true;
-        const bool bare = !s.config.loneHeader && s.maximized.empty() && expanded == 1 && !leaf.minimized && item &&
-                          !closable;
+        const bool bare = !s.config.loneHeader && s.model.maximized.empty() && expanded == 1 && !leaf.minimized &&
+                          item && !closable;
         Rect content = leaf.tile;
         if (!tabs && item && !item->card) {
             content = Intersect(Inflate(leaf.tile, gap), s.contentArea);
@@ -2135,7 +2416,7 @@ void Dock::layout(const Context& ctx) {
         const auto fullscreenButton = [&](Impl::Caption* caption, const Rect& rect) {
             leaf.maximize = rect;
             if (caption) {
-                const bool fullscreen = s.maximized == leaf.pane;
+                const bool fullscreen = s.model.maximized == leaf.pane;
                 glyphButton(*caption->maximize, rect, fullscreen ? ICON_LC_MINIMIZE_2 : ICON_LC_MAXIMIZE_2,
                             s.hoveredHeaderMaximize == leaf.pane ? "tile_button_hover"
                             : fullscreen                         ? "cyber_blue"
@@ -2383,7 +2664,7 @@ void Dock::layout(const Context& ctx) {
     std::vector<Box::Instance> buttonInstances;
     F32 buttonRadius = hoveredButton.width * 0.5f;
     for (const auto& leaf : s.leaves) {
-        if (s.maximized == leaf.pane && !leaf.maximize.empty()) {
+        if (s.model.maximized == leaf.pane && !leaf.maximize.empty()) {
             buttonInstances.push_back({.rect = leaf.maximize, .backgroundColor = ctx.color("tile_button_active_bg")});
             buttonRadius = leaf.maximize.width * 0.5f;
         }
@@ -2481,68 +2762,13 @@ void Dock::layout(const Context& ctx) {
         return;
     }
 
-    if (s.columnMode()) {
-        if (s.columns.empty() || s.leaves.empty()) {
-            offer(s.viewport, [state](const std::string& pane) {
-                state->appendColumn(pane);
-            });
-            return;
-        }
-        const auto* leaf = s.targetAt(point, gap * 0.5f + 1.0f);
-        if (!leaf) {
-            if (!s.columnRects.empty() && point.x >= s.columnRects.back().right()) {
-                const F32 x = s.columnRects.back().right() + gap;
-                offer({x, s.viewport.y, std::max(0.0f, s.viewport.right() - x), s.viewport.height},
-                      [state](const std::string& pane) {
-                          state->appendColumn(pane);
-                      });
-            }
-            return;
-        }
-        const auto side = EdgeAt(leaf->tile, point);
-        const auto column = s.locate(leaf->pane);
-        if (!side.has_value() || !column || column->first >= s.columnRects.size()) {
-            return;
-        }
-        const bool across = *side == Side::Left || *side == Side::Right;
-        if (across && (s.columnRects[column->first].width / s.pixelRatio < 2.0f * kStoredWidthFloor + kCardGap ||
-                       !s.canBakeColumns())) {
-            return;
-        }
-        if (leaf->pane == dragged && (!across || s.columns[column->first].panes.size() < 2)) {
-            return;
-        }
-        const std::string target = leaf->pane;
-        const Side edge = *side;
-        offer(across ? Half(s.columnRects[column->first], edge, gap) : Half(leaf->tile, edge, gap),
-              [state, target, edge](const std::string& pane) {
-                  state->dropColumn(pane, target, edge);
-              });
-        return;
-    }
-
-    if (s.leaves.empty()) {
-        offer(Inset(s.contentArea, gap), [state](const std::string& pane) {
-            state->tree = Leaf(pane);
-            state->focus(pane);
-            state->commit();
+    const auto removed = s.removal(dragged);
+    const auto target = s.aim(point, dragged, removed);
+    if (const auto planned = target ? s.plan(dragged, *target, removed) : std::nullopt) {
+        offer(s.preview(*target, *planned), [state, target = *target](const std::string& pane) {
+            state->drop(pane, target);
         });
-        return;
     }
-
-    const auto* leaf = s.targetAt(point, gap * 0.5f + 1.0f);
-    if (!leaf || leaf->pane == dragged) {
-        return;
-    }
-    const auto side = EdgeAt(leaf->tile, point);
-    if (!side.has_value()) {
-        return;
-    }
-    const std::string target = leaf->pane;
-    const Side edge = *side;
-    offer(Half(leaf->tile, edge), [state, target, edge](const std::string& pane) {
-        state->splitTile(pane, target, edge);
-    });
 }
 
 bool Dock::mouseEvent(const MouseEvent& event) {
@@ -2557,19 +2783,9 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                 }
                 return true;
             }
-            if (s.press == Impl::Press::Splitter && s.columnMode()) {
-                if (s.resizeColumns(s.pressLayout, point)) {
-                    invalidate(Dirty::Layout);
-                }
-                return true;
-            }
             if (s.press == Impl::Press::Splitter) {
-                if (s.tree.has_value()) {
-                    const DockTiles before = *s.tree;
-                    s.resize(*s.tree, s.pressLayout, point);
-                    if (*s.tree != before) {
-                        invalidate(Dirty::Layout);
-                    }
+                if (s.resize(s.pressLayout, point)) {
+                    invalidate(Dirty::Layout);
                 }
                 return true;
             }
@@ -2699,7 +2915,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                         if (event.clicks >= 2 && !leaf.minimized && s.restored != leaf.pane && item &&
                             item->maximizable && s.placed().size() > 1) {
                             s.press = Impl::Press::Handled;
-                            s.maximized = s.maximized == leaf.pane ? std::string() : leaf.pane;
+                            s.model.maximized = s.model.maximized == leaf.pane ? std::string() : leaf.pane;
                             s.focus(leaf.pane);
                             s.commitView();
                             invalidate(Dirty::Layout);
@@ -2721,12 +2937,12 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                         invalidate(Dirty::Layout);
                         return true;
                     }
+                    if (!s.beginResize(layout)) {
+                        return true;
+                    }
                     s.press = Impl::Press::Splitter;
                     s.pressLayout = layout;
                     s.pressPoint = point;
-                    if (s.columnMode()) {
-                        s.pressColumns();
-                    }
                     invalidate(Dirty::Layout);
                     return true;
                 }
@@ -2776,7 +2992,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
             if (press == Impl::Press::HeaderMaximize) {
                 for (const auto& leaf : s.leaves) {
                     if (leaf.pane == s.pressPane && leaf.maximize.contains(point.x, point.y)) {
-                        s.maximized = s.maximized == leaf.pane ? std::string() : leaf.pane;
+                        s.model.maximized = s.model.maximized == leaf.pane ? std::string() : leaf.pane;
                         s.focus(leaf.pane);
                         s.commitView();
                         invalidate(Dirty::Layout);

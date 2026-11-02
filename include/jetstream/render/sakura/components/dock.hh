@@ -16,7 +16,7 @@ namespace Jetstream::Sakura {
 struct DockTiles {
     std::string pane;
     bool vertical = false;
-    std::vector<F32> weights;
+    std::vector<F32> sizes;
     std::vector<DockTiles> children;
     bool minimized = false;
     bool maximized = false;
@@ -28,6 +28,20 @@ struct Dock : public Component {
     static constexpr F32 ContentPadding = 6.0f;
     static constexpr F32 HeaderHeight = 20.0f;
     static constexpr F32 TileRounding = Rounding::Card;
+
+    enum class Side : U8 {
+        Left,
+        Right,
+        Top,
+        Bottom,
+    };
+
+    struct Placement {
+        std::string anchor;
+        Side side = Side::Right;
+
+        bool operator==(const Placement&) const = default;
+    };
 
     struct Action {
         std::string icon;
@@ -51,6 +65,7 @@ struct Dock : public Component {
         bool startMinimized = false;
         bool hidden = false;
         F32 width = 0.0f;
+        std::optional<Placement> placement;
         F32 padding = 0.0f;
         ColorRGBA<F32> fill = {0.0f, 0.0f, 0.0f, 0.0f};
         Callback<void()> onClose;
