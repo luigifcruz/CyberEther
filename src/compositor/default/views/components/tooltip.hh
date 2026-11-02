@@ -41,7 +41,7 @@ struct Tooltip {
     }
 
  private:
-    static constexpr F32 WindowPadding = 12.0f;
+    static constexpr F32 WindowPadding = Sakura::Spacing::Medium;
 
     bool pending = false;
     bool ready = false;

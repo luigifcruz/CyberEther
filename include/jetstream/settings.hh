@@ -72,10 +72,21 @@ struct JETSTREAM_API Settings {
     };
 
     struct Interface {
+        struct FlowgraphEntry {
+            std::string path;
+            std::string title;
+            U64 accessed = 0;
+
+            JST_SERDES(path, title, accessed);
+        };
+
         std::string themeKey = "Dark";
         bool backgroundParticles = true;
+        bool showTips = true;
+        std::vector<FlowgraphEntry> recentFlowgraphs;
+        std::vector<FlowgraphEntry> favoriteFlowgraphs;
 
-        JST_SERDES(themeKey, backgroundParticles);
+        JST_SERDES(themeKey, backgroundParticles, showTips, recentFlowgraphs, favoriteFlowgraphs);
     };
 
     struct Intelligence {
@@ -86,9 +97,10 @@ struct JETSTREAM_API Settings {
             std::string chatPath;
             std::string modelsPath;
             std::string apiKeyId;
+            std::string apiKeyEnv;
             bool requestReasoning = false;
 
-            JST_SERDES(name, host, api, chatPath, modelsPath, apiKeyId, requestReasoning);
+            JST_SERDES(name, host, api, chatPath, modelsPath, apiKeyId, apiKeyEnv, requestReasoning);
         };
 
         struct Model {
@@ -101,9 +113,12 @@ struct JETSTREAM_API Settings {
             std::string reasoningContext;
             U64 outputLength = 0;
             std::vector<std::string> reasoningEfforts;
+            bool priced = false;
+            F64 inputCost = 0.0;
+            F64 outputCost = 0.0;
 
             JST_SERDES(provider, id, name, contextLength, maxOutputTokens, reasoningEffort, reasoningContext, outputLength,
-                       reasoningEfforts);
+                       reasoningEfforts, priced, inputCost, outputCost);
         };
 
         struct Voice {
@@ -114,14 +129,23 @@ struct JETSTREAM_API Settings {
             JST_SERDES(model, voice, backend);
         };
 
+        struct Mcp {
+            bool enabled = false;
+            std::string address = "127.0.0.1";
+            U64 port = 7373;
+
+            JST_SERDES(enabled, address, port);
+        };
+
         bool enabled = false;
         std::string provider;
         std::string model;
         std::vector<Model> models;
         std::vector<Provider> customProviders;
         Voice voice;
+        Mcp mcp;
 
-        JST_SERDES(enabled, provider, model, models, customProviders, voice);
+        JST_SERDES(enabled, provider, model, models, customProviders, voice, mcp);
     };
 
     struct Developer {

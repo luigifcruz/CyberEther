@@ -5,6 +5,7 @@
 #include <new>
 
 #include <jetstream/memory/axis.hh>
+#include <jetstream/scheduler_context.hh>
 
 namespace Jetstream::Modules {
 
@@ -35,7 +36,7 @@ void SdrSweepImpl::MetricState::advance(const Clock::time_point now, const bool 
     const std::chrono::duration<F64> elapsed = now - occupancyUpdated;
     if (elapsed.count() > 0.0) {
         const F64 weight = -std::expm1(-elapsed.count() / MetricSmoothing);
-        health += ((occupied ? 1.0 : 0.0) - health) * weight;
+        fill += ((occupied ? 1.0 : 0.0) - fill) * weight;
         occupancyUpdated = now;
     }
     if (now - reported >= MetricInterval) {
@@ -44,7 +45,7 @@ void SdrSweepImpl::MetricState::advance(const Clock::time_point now, const bool 
         const F64 displayed = speed * std::exp(-overdue / MetricSmoothing);
         reported = now;
         snapshot = {
-            .bufferHealth = static_cast<F32>(health),
+            .bufferFill = static_cast<F32>(fill),
             .bufferLoss = producedFrames > 0
                 ? static_cast<F64>(droppedFrames) / static_cast<F64>(producedFrames) : 0.0,
             .sweepSpeed = static_cast<F32>(displayed),
@@ -355,6 +356,7 @@ Result SdrSweepImpl::startWorker() {
                 errored = true;
             }
             slotReady.notify_all();
+            Scheduler::Context::NotifyPendingCompute();
         });
     } catch (const std::exception& e) {
         running = false;
@@ -440,6 +442,7 @@ bool SdrSweepImpl::publishFrame(const Clock::time_point now) {
         slotFresh = true;
     }
     slotReady.notify_all();
+    Scheduler::Context::NotifyPendingCompute();
     sweeps.publish(sweepCounter);
     sweepDuration.publish(std::chrono::duration<F64>(now - sweepStarted).count());
     return running;

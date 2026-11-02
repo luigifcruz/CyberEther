@@ -44,6 +44,7 @@ class AgentProviders {
     static bool Valid(const Provider& provider);
     static Provider Preset(Agent::Provider::Kind kind);
     static Provider Normalize(Provider provider);
+    static bool External(const Provider& provider);
     static bool Ready(const Provider& provider, Agent::Provider::Scope scope);
     static bool Transferable(const Provider& stored, const Provider& target);
     static std::string Effort(const Model& model);
@@ -60,7 +61,7 @@ class AgentProviders {
                                              Agent::Cancellation cancelled);
 
  private:
-    static std::string Key(const Provider& provider);
+    static std::string Key(const Provider& provider, std::string* error = nullptr);
     static Agent::Provider::Config Configure(const Provider& provider);
 
     const DefaultCompositorState::AgentState& agent;

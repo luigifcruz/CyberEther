@@ -8,6 +8,7 @@
 #include "../detail/drawable.hh"
 #include "../detail/helpers.hh"
 
+#include <cmath>
 #include <utility>
 
 namespace Jetstream::Sakura {
@@ -45,15 +46,15 @@ struct Image::Impl : public Drawable {
         if (!punching() || !active || !clip) {
             return std::nullopt;
         }
-        return MakeUnderlay(config.texture, translation, config.rect, *clip, uploadedFrame);
+        return MakeUnderlay(config.texture, translation, placed(), *clip, uploadedFrame);
     }
 
     std::optional<Rect> liveRegion() const override {
         if (!config.live || !active || !component || !clip || !context || !context->underlays) {
             return std::nullopt;
         }
-        const Rect rect = {translation.x + config.rect.x, translation.y + config.rect.y, config.rect.width,
-                           config.rect.height};
+        const Rect origin = placed();
+        const Rect rect = {translation.x + origin.x, translation.y + origin.y, origin.width, origin.height};
         const Rect bounds = {static_cast<F32>(clip->x), static_cast<F32>(clip->y), static_cast<F32>(clip->width),
                              static_cast<F32>(clip->height)};
         return Intersect(rect, bounds);
@@ -64,16 +65,21 @@ struct Image::Impl : public Drawable {
             return;
         }
         underlayAllowed = allowed;
-        if (punch && component) {
-            image()->enabled(active && punching());
-        }
         if (owner) {
             owner->invalidate(Dirty::Resource);
         }
     }
 
     bool punching() const {
-        return punch && underlayAllowed && component;
+        return punch && component;
+    }
+
+    Rect placed() const {
+        if (!config.live) {
+            return config.rect;
+        }
+        return {std::round(translation.x + config.rect.x) - translation.x,
+                std::round(translation.y + config.rect.y) - translation.y, config.rect.width, config.rect.height};
     }
 
     Result upload() override {
@@ -83,7 +89,7 @@ struct Image::Impl : public Drawable {
         auto* image = this->image();
 
         active = config.visible && !config.rect.empty();
-        image->enabled(active && (!punch || punching()));
+        image->enabled(active);
         if (!active) {
             return Result::SUCCESS;
         }
@@ -92,7 +98,7 @@ struct Image::Impl : public Drawable {
             static_cast<F32>(context->framebufferSize.x),
             static_cast<F32>(context->framebufferSize.y),
         };
-        JST_CHECK(image->update(framebufferSize, translation, config.rect, config.cornerRadius, config.opacity));
+        JST_CHECK(image->update(framebufferSize, translation, placed(), config.cornerRadius, config.opacity));
         uploadedFrame = context->framebufferSize;
         clip = scissor(config.clip).value_or(Render::ScissorRect{
             0, 0, static_cast<U32>(context->framebufferSize.x), static_cast<U32>(context->framebufferSize.y)});

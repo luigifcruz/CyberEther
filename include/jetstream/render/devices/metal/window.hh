@@ -67,7 +67,7 @@ class JETSTREAM_API WindowImp<DeviceType::Metal> : public Window {
     std::shared_ptr<Viewport::Adapter<DeviceType::Metal>> viewport;
 
     Result createPresenter();
-    void encodePresent();
+    void encodePresent(MTL::Texture* target);
 };
 
 }  // namespace Jetstream::Render

@@ -58,6 +58,9 @@ struct FlowgraphDetachedConfigPresenter {
             configs.push_back({
                 .id = key,
                 .title = MakeConfigTileTitle(blockName, blockData.title),
+                .metrics = pending
+                    ? std::vector<FlowgraphMetricConfig>{}
+                    : BuildFlowgraphMetrics(key, blockData),
                 .configFields = pending
                     ? std::vector<FlowgraphConfigFieldConfig>{}
                     : BuildFlowgraphDetachedConfigFields(enqueue,
@@ -66,11 +69,19 @@ struct FlowgraphDetachedConfigPresenter {
                                                          blockName,
                                                          key,
                                                          blockData),
+                .metricsOpen = !configMeta.tileMetricsCollapsed,
                 .onClose = [enqueue, flowgraphId, blockName]() {
                     enqueue(MailSetConfigDetached{
                         .flowgraph = flowgraphId,
                         .block = blockName,
                         .detached = false,
+                    });
+                },
+                .onToggleMetricsOpen = [enqueue, flowgraphId, blockName](const bool open) {
+                    enqueue(MailSetMetricsCollapsed{
+                        .flowgraph = flowgraphId,
+                        .block = blockName,
+                        .collapsed = !open,
                     });
                 },
             });

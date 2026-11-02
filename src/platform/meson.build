@@ -6,6 +6,7 @@ src_lst += files([
     'http.cc',
     'paths.cc',
     'process.cc',
+    'pseudo_terminal.cc',
     'secret.cc',
     'storage.cc',
     'terminal.cc',
@@ -49,6 +50,7 @@ if jst_is_windows
     dep_lst += [
         compiler.find_library('advapi32', required: true),
         compiler.find_library('comdlg32', required: true),
+        compiler.find_library('iphlpapi', required: true),
         compiler.find_library('kernel32', required: true),
         compiler.find_library('shell32', required: true),
         compiler.find_library('ws2_32', required: true),

@@ -3,7 +3,7 @@
 #include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -93,7 +93,7 @@ struct FloatingLayer::Impl {
 
     Text::Config closeConfig(const std::string& id) const {
         return {
-            .str = ICON_FA_XMARK,
+            .str = ICON_LC_X,
             .colorKey = closeHovered == id ? "tile_button_hover" : "tile_header_text",
             .scale = kFloatingCloseGlyph / Typography::FontSize,
         };

@@ -26,7 +26,7 @@ namespace {
 constexpr F32 kHoverDelay = 0.15f;
 constexpr U64 kDefaultFramebufferWidth = 512;
 constexpr U64 kDefaultFramebufferHeight = 512;
-constexpr const char* kRequiredFontName = "default_mono";
+constexpr const char* kRequiredFontName = Typography::MonoFont;
 constexpr U64 kCompactionMinimumPrograms = 64;
 constexpr U64 kMaximumDeferredBuilds = 2;
 
@@ -76,7 +76,6 @@ struct Canvas::Impl {
     bool middleHeld = false;
     U64 dispatchDepth = 0;
     InputRouter router;
-    bool inputDispatched = false;
     bool inputDirtied = false;
     U64 deferredBuilds = 0;
     std::string surfaceId;
@@ -419,7 +418,6 @@ struct Canvas::Impl {
             return;
         }
 
-        inputDispatched = true;
         Access::mouseEvent(*root, event);
         if (root && treeDirtied()) {
             inputDirtied = true;
@@ -568,7 +566,6 @@ void Canvas::update(Config config) {
 void Canvas::render(const Sakura::Context& ctx, const Rect& region) {
     impl->renderWindow = ctx.render;
     impl->cursor = SurfaceCursor::Default;
-    impl->inputDispatched = false;
     impl->inputDirtied = false;
 
     const Extent2D<F32> surfaceSize = DisplayMetrics::LogicalSize(Metrics(ctx), {region.width, region.height});

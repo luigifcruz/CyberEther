@@ -17,13 +17,12 @@ struct Card::Impl {
     Box shadow;
     Box fill;
     Box border;
-    Box highlight;
     Box rim;
 };
 
 Card::Card() {
     impl = std::make_unique<Impl>();
-    mountChildren({&impl->shadow, &impl->fill, &impl->border, &impl->highlight, &impl->rim});
+    mountChildren({&impl->shadow, &impl->fill, &impl->border, &impl->rim});
 }
 
 Card::~Card() = default;
@@ -47,7 +46,6 @@ void Card::layout(const Context& ctx) {
     std::vector<Box::Instance> shadows;
     std::vector<Box::Instance> fills;
     std::vector<Box::Instance> outlines;
-    std::vector<Box::Instance> rims;
     for (const auto& rect : config.rects) {
         shadows.push_back({
             .rect = Inflate({rect.x, rect.y + config.drop, rect.width, rect.height}, config.softness),
@@ -56,16 +54,14 @@ void Card::layout(const Context& ctx) {
         });
         fills.push_back({.rect = rect, .visible = visible, .backgroundColor = color(config.fillKey)});
         outlines.push_back({.rect = rect, .visible = visible, .backgroundColor = clear});
-        rims.push_back({.rect = Inset(rect, config.lineWidth), .visible = visible, .backgroundColor = clear});
     }
 
     const bool full = config.layer == Layer::Full;
     const bool base = config.layer != Layer::Frame;
     const bool edge = config.layer != Layer::Base;
-    impl->shadow.setVisible(base);
+    impl->shadow.setVisible(base && (config.softness > 0.0f || config.drop > 0.0f));
     impl->fill.setVisible(base);
     impl->border.setVisible(!full && edge);
-    impl->highlight.setVisible(edge);
     impl->rim.setVisible(edge);
 
     if (base) {
@@ -98,30 +94,19 @@ void Card::layout(const Context& ctx) {
                 .capacity = config.capacity,
             });
         }
-        impl->highlight.update({
+        impl->rim.update({
             .instances = std::move(outlines),
             .clip = config.clip,
             .cornerRadius = config.cornerRadius,
             .borderWidth = config.lineWidth,
-            .borderColor = color("tile_highlight"),
-            .strokeFringe = true,
-            .topLit = true,
-            .capacity = config.capacity,
-        });
-        impl->rim.update({
-            .instances = std::move(rims),
-            .clip = config.clip,
-            .cornerRadius = std::max(0.0f, config.cornerRadius - config.lineWidth),
-            .borderWidth = config.lineWidth,
-            .borderColor = color("tile_rim"),
+            .borderColor = WithAlpha(RimColor(ctx.color(config.fillKey)), config.opacity),
             .strokeFringe = true,
             .topLit = true,
             .capacity = config.capacity,
         });
     }
 
-    for (auto* part : std::initializer_list<Component*>{&impl->shadow, &impl->fill, &impl->border, &impl->highlight,
-                                                         &impl->rim}) {
+    for (auto* part : std::initializer_list<Component*>{&impl->shadow, &impl->fill, &impl->border, &impl->rim}) {
         if (part->visible()) {
             layoutChild(ctx, *part, bounds);
         }

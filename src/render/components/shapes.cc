@@ -7,7 +7,6 @@
 #include <glm/mat4x4.hpp>
 
 #include "jetstream/render/base.hh"
-#include "jetstream/render/utils.hh"
 #include "jetstream/render/components/shapes.hh"
 
 #include "jetstream/types.hh"
@@ -124,11 +123,6 @@ struct Shapes::Impl {
     TypedTensor<Extent2D<F32>> instanceSizes;
     TypedTensor<Rect> instanceHoles;
 
-    Tensor optimalInstanceColors;
-    Tensor optimalInstanceRotations;
-    Tensor optimalInstancePositions;
-    Tensor optimalInstanceSizes;
-
     std::shared_ptr<Render::Buffer> uniformBuffer;
     std::shared_ptr<Render::Buffer> verticesBuffer;
     std::shared_ptr<Render::Buffer> instanceBuffer;
@@ -244,57 +238,37 @@ Result Shapes::create(Window* window) {
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window,
-                                          pimpl->instanceColors,
-                                          pimpl->optimalInstanceColors));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = pimpl->optimalInstanceColors.data();
+        cfg.buffer = pimpl->instanceColors.data();
         cfg.elementByteSize = sizeof(glm::vec4);
         cfg.size = pimpl->instanceColors.size();
-        cfg.enableZeroCopy = pimpl->optimalInstanceColors.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->colorsBuffer, cfg));
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window,
-                                          pimpl->instanceRotations,
-                                          pimpl->optimalInstanceRotations));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = pimpl->optimalInstanceRotations.data();
+        cfg.buffer = pimpl->instanceRotations.data();
         cfg.elementByteSize = sizeof(F32);
         cfg.size = pimpl->instanceRotations.size();
-        cfg.enableZeroCopy = pimpl->optimalInstanceRotations.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->rotationsBuffer, cfg));
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window,
-                                          pimpl->instanceSizes,
-                                          pimpl->optimalInstanceSizes));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = pimpl->optimalInstanceSizes.data();
+        cfg.buffer = pimpl->instanceSizes.data();
         cfg.elementByteSize = sizeof(glm::vec2);
         cfg.size = pimpl->instanceSizes.size();
-        cfg.enableZeroCopy = pimpl->optimalInstanceSizes.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->sizesBuffer, cfg));
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window,
-                                          pimpl->instancePositions,
-                                          pimpl->optimalInstancePositions));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = pimpl->optimalInstancePositions.data();
+        cfg.buffer = pimpl->instancePositions.data();
         cfg.elementByteSize = sizeof(glm::vec2);
         cfg.size = pimpl->instancePositions.size();
-        cfg.enableZeroCopy = pimpl->optimalInstancePositions.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->positionsBuffer, cfg));
     }

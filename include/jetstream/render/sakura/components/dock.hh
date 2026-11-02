@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_DOCK_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/style.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -17,6 +18,8 @@ struct DockTiles {
     bool vertical = false;
     std::vector<F32> weights;
     std::vector<DockTiles> children;
+    bool minimized = false;
+    bool maximized = false;
 
     bool operator==(const DockTiles&) const = default;
 };
@@ -24,6 +27,7 @@ struct DockTiles {
 struct Dock : public Component {
     static constexpr F32 ContentPadding = 6.0f;
     static constexpr F32 HeaderHeight = 20.0f;
+    static constexpr F32 TileRounding = Rounding::Card;
 
     struct Action {
         std::string icon;
@@ -40,8 +44,15 @@ struct Dock : public Component {
         std::string icon;
         Component* content = nullptr;
         bool closable = true;
+        bool closeOnlyMinimized = false;
         bool maximizable = true;
+        bool card = true;
+        bool leftmost = false;
+        bool startMinimized = false;
+        bool hidden = false;
+        F32 width = 0.0f;
         F32 padding = 0.0f;
+        ColorRGBA<F32> fill = {0.0f, 0.0f, 0.0f, 0.0f};
         Callback<void()> onClose;
         Callback<void()> onFocus;
         std::vector<Action> actions;
@@ -51,7 +62,9 @@ struct Dock : public Component {
 
     struct Config {
         bool tabs = false;
+        bool hideTabs = false;
         std::string accepts;
+        std::vector<std::string> adopts;
         std::vector<Pane> panes;
         std::optional<DockTiles> tiles;
         std::optional<std::string> activate;
@@ -60,13 +73,20 @@ struct Dock : public Component {
         Component* leading = nullptr;
         Component* trailing = nullptr;
         Component* end = nullptr;
+        Component* aside = nullptr;
+        F32 asideWidth = 0.0f;
         F32 tabBarHeight = 0.0f;
         F32 leadingInset = 0.0f;
+        F32 trailingInset = 0.0f;
+        F32 leadingReach = 0.0f;
         Callback<void(const std::string&, Extent2D<F32>)> onTabMenu;
         Callback<void(U8)> onBarPress;
         bool columns = false;
         std::string flexPane;
         bool loneHeader = false;
+        bool headers = true;
+        bool resizable = true;
+        bool persistView = false;
 
         bool operator==(const Config&) const = default;
     };
@@ -77,6 +97,7 @@ struct Dock : public Component {
     void update(Config config);
     bool resizing() const;
     std::string paneAt(const Extent2D<F32>& point) const;
+    std::optional<Rect> tabRect(const std::string& pane) const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

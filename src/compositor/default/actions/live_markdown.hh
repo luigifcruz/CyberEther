@@ -54,7 +54,7 @@ struct LiveMarkdownActions {
                         continue;
                     }
 
-                    const auto key = FlowgraphState::LiveMarkdownKey(flowgraphId, block.name, entry.name);
+                    const auto key = FlowgraphState::FieldKey(flowgraphId, block.name, entry.name);
                     auto& cached = entries[key];
                     seen.insert(key);
                     const bool edited = cached.compiled.source() != source;

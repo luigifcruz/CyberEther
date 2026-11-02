@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/base.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "component_harness.hh"
 #include "fonts.hh"
@@ -77,28 +78,32 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
                                                                 .items = {{.child = probe()}, {.child = probe()}}}));
     subjects.push_back(Make<Sakura::Div>("div", {.content = probe(), .padding = 4.0f}));
     subjects.push_back(Make<Sakura::ScrollArea>("scroll area", {.content = probe(), .height = 0.0f}));
-    subjects.push_back(Make<Sakura::SplitView>("split view", {.left = probe(), .right = probe()}));
     subjects.push_back(Make<Sakura::Grid>("grid", {.items = {probe(), probe(), probe()}}));
-    subjects.push_back(Make<Sakura::TabBar>("tab bar", {.labels = {"One", "Two"}, .pages = {probe(), probe()}}));
+    subjects.push_back(Make<Sakura::Reveal>("reveal", {.child = probe(), .shown = true, .gap = 8.0f}));
     subjects.push_back(Make<Sakura::Spacer>("spacer", {.lines = 3}));
     subjects.push_back(Make<Sakura::Divider>("divider", {}));
     subjects.push_back(Make<Sakura::Button>("button", {.str = "Run"}));
     subjects.push_back(Make<Sakura::Button>("filling button", {.str = "Run", .size = {Sakura::Fill, Sakura::Fill}}));
     subjects.push_back(Make<Sakura::TextInput>("text input", {.value = "alpha"}));
-    subjects.push_back(Make<Sakura::Checkbox>("checkbox", {.label = "Automatic gain"}));
     subjects.push_back(Make<Sakura::ProgressBar>("progress bar", {.value = 0.5f}));
     subjects.push_back(Make<Sakura::Combo>("combo", {.options = {"Alpha", "Beta"}, .value = "Alpha"}));
     subjects.push_back(Make<Sakura::Text>("text", {.str = "alpha beta gamma"}));
     subjects.push_back(Make<Sakura::Text>("wrapped text", {.str = "alpha beta gamma", .wrapped = true}));
     subjects.push_back(Make<Sakura::Markdown>("markdown", {.value = "# Title\n\nBody text."}));
     subjects.push_back(Make<Sakura::LogView>("log view", {.value = "first\nsecond", .height = 0.0f}));
+    subjects.push_back(Make<Sakura::HighlightText>("highlight text", {.str = "alpha beta gamma",
+                                                                      .marks = {{.begin = 6, .end = 10}}}));
     subjects.push_back(Make<Sakura::Console>("console", {.output = {"first", "second"}, .height = 0.0f}));
     subjects.push_back(Make<Sakura::CodeEditor>("code editor", {.value = "x = 1\ny = 2\n", .height = 0.0f}));
+    subjects.push_back(Make<Sakura::Terminal>("terminal", {}));
+    subjects.push_back(Make<Sakura::Terminal>("natural terminal", {.size = {0.0f, 0.0f}}));
     subjects.push_back(Make<Sakura::MarkdownEditor>("markdown editor", {.value = "Notes"}));
     subjects.push_back(Make<Sakura::PillField>("pill field", {.placeholder = "Search blocks"}));
     subjects.push_back(Make<Sakura::PillStepper>("pill stepper", {.label = "100%"}));
+    subjects.push_back(Make<Sakura::PillIconButton>("pill icon button", {.icon = ICON_LC_INFO}));
     subjects.push_back(Make<Sakura::PillButton>("pill button", {.label = "Open"}));
     subjects.push_back(Make<Sakura::QrCode>("qr code", {.data = std::vector<U8>(21 * 21, 1), .width = 21}));
+    subjects.push_back(Make<Sakura::TipBanner>("tip banner", {.str = "Drag blocks to move them.", .icon = ICON_LC_LIGHTBULB}));
     subjects.push_back(Make<Sakura::Table>("table", {.columns = {"Key", "Value"}, .rows = {{"Gain", "1.0"}}}));
     subjects.push_back(Make<Sakura::ChromeButton>("chrome button", {.label = "File"}));
     subjects.push_back(Make<Sakura::ChromeButton>("glyph chrome button", {.glyph = Sakura::ChromeButton::Glyph::Plus}));
@@ -110,10 +115,40 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     }));
     subjects.push_back(Make<Sakura::SearchCatalog>("empty search catalog", {.query = "nothing"}));
     subjects.push_back(Make<Sakura::NavigationItem>("navigation item", {.label = "General"}));
+    subjects.push_back(Make<Sakura::SidebarItem>("sidebar item", {.icon = ICON_LC_SETTINGS, .label = "General"}));
+    subjects.push_back(Make<Sakura::Toggle>("toggle", {.value = true}));
+    subjects.push_back(Make<Sakura::Badge>("badge", {.label = "Valid"}));
+    subjects.push_back(Make<Sakura::FlowgraphCard>("flowgraph card", {
+        .diagram = "tone[Tone] --> add[Add] --> spectrum[Spectrum]\nnoise[Noise] --> add",
+        .category = "Basics",
+        .title = "First Steps",
+        .description = "Build a spectrum analyzer.",
+    }));
+    subjects.push_back(Make<Sakura::PillTabs>("pill tabs", {
+        .items = {{.icon = ICON_LC_LAYOUT_GRID, .label = "All"}, {.label = "Plugins"}},
+    }));
+    subjects.push_back(Make<Sakura::PillTabs>("compact pill tabs", {
+        .items = {{.label = "All"}, {.label = "Basics"}, {.label = "Receivers"}},
+        .selected = 1,
+        .compact = true,
+    }));
+    subjects.push_back(Make<Sakura::WaveLine>("wave line", {.span = 0.6f}));
+    subjects.push_back(Make<Sakura::FeatureCard>("feature card", {
+        .title = "Update available",
+        .description = "Restart to apply it.",
+        .content = probe(),
+    }));
+    subjects.push_back(Make<Sakura::SettingCard>("setting card", {
+        .rows = {
+            {.label = "Automatic gain", .description = "Adjusts the gain to keep the signal level steady.",
+             .control = Own<Sakura::Toggle>(owned, {.value = true})},
+            {.label = "Sample rate", .control = Own<Sakura::Combo>(owned, {.options = {"1 MHz"}, .value = "1 MHz"})},
+        },
+    }));
     subjects.push_back(Make<Sakura::SettingField>("setting field", {
         .label = "Automatic gain",
         .description = "Adjusts the gain to keep the signal level steady.",
-        .control = Own<Sakura::Checkbox>(owned, {.label = "Enabled"}),
+        .control = Own<Sakura::Toggle>(owned, {.value = true}),
     }));
     subjects.push_back(Make<Sakura::NodeLabel>("node label", {.str = "Gain"}));
     subjects.push_back(Make<Sakura::NodeLabel>("boxed node label", {.str = "Gain", .boxed = true}));
@@ -174,6 +209,8 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
         subjects.push_back(Make<Sakura::Chat>("chat", {.id = "chat", .snapshot = std::move(snapshot)}));
     }
     subjects.push_back(Make<Sakura::Voice>("voice", {}));
+    subjects.push_back(Make<Sakura::Spinner>("spinner", {}));
+    subjects.push_back(Make<Sakura::Spinner>("filling spinner", {.diameter = Sakura::Fill}));
 
     const std::vector<Extent2D<F32>> spaces = {
         {kInfinite, kInfinite}, {300.0f, kInfinite}, {kInfinite, 200.0f}, {300.0f, 200.0f}, {40.0f, 10.0f},
@@ -188,6 +225,47 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
             CHECK(measured.y <= available.y);
         }
     }
+}
+
+TEST_CASE("Expanded reveals measure within the available space and rewrap text at capped widths",
+          "[core][sakura][sizing]") {
+    Scene scene;
+    Probe probe({120.0f, 45.0f});
+    probe.prepare();
+    Sakura::Text text;
+    text.update({.str = "alpha beta gamma delta epsilon zeta eta theta iota kappa", .wrapped = true});
+    Sakura::Reveal probed;
+    probed.update({.child = &probe, .shown = true, .gap = 8.0f});
+    Sakura::Reveal wrapped;
+    wrapped.update({.child = &text, .shown = true, .gap = 8.0f});
+    Host probedHost(probed);
+    Host wrappedHost(wrapped);
+    auto ctx = scene.ctx;
+    for (auto* host : {&probedHost, &wrappedHost}) {
+        ctx.time = 1.0;
+        host->place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+        ctx.time = 2.0;
+        host->place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+    }
+    CHECK(probedHost.measureOf(ctx, {300.0f, kInfinite}).y == 53.0f);
+
+    const std::vector<Extent2D<F32>> spaces = {
+        {kInfinite, kInfinite}, {300.0f, kInfinite}, {kInfinite, 200.0f}, {300.0f, 200.0f}, {40.0f, 10.0f},
+    };
+    for (auto* host : {&probedHost, &wrappedHost}) {
+        for (const auto& available : spaces) {
+            CAPTURE(host == &probedHost, available.x, available.y);
+            const auto measured = host->measureOf(ctx, available);
+            CHECK(Finite(measured));
+            CHECK(measured.x <= available.x);
+            CHECK(measured.y <= available.y);
+        }
+    }
+
+    const F32 wide = wrappedHost.measureOf(ctx, {600.0f, kInfinite}).y;
+    const F32 narrow = wrappedHost.measureOf(ctx, {80.0f, kInfinite}).y;
+    CHECK(wide > 8.0f);
+    CHECK(narrow > wide);
 }
 
 TEST_CASE("Sizes resolve to natural, fixed, or filling lengths", "[core][sakura][sizing]") {
@@ -347,26 +425,6 @@ TEST_CASE("Filling scroll areas take the available height and claim none when un
     area.update({.content = &content, .height = Sakura::Fill});
     Host host(area);
 
-    CHECK(host.measureOf(scene.ctx, {300.0f, 200.0f}) == Extent2D<F32>{300.0f, 200.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 0.0f});
-}
-
-TEST_CASE("Split views size their height naturally, fixed, or filling", "[core][sakura][sizing]") {
-    Scene scene;
-    Probe left({120.0f, 45.0f});
-    Probe right({80.0f, 60.0f});
-    Sakura::SplitView split;
-    Host host(split);
-
-    split.update({.left = &left, .right = &right, .height = 0.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 64.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, 50.0f}) == Extent2D<F32>{300.0f, 50.0f});
-
-    split.update({.left = &left, .right = &right, .height = 100.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 100.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, 80.0f}) == Extent2D<F32>{300.0f, 80.0f});
-
-    split.update({.left = &left, .right = &right, .height = Sakura::Fill});
     CHECK(host.measureOf(scene.ctx, {300.0f, 200.0f}) == Extent2D<F32>{300.0f, 200.0f});
     CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 0.0f});
 }
@@ -610,24 +668,6 @@ TEST_CASE("Container paddings and widths scale with the pixel ratio", "[core][sa
     CHECK(panelHost.measureOf(doubled, {300.0f, kInfinite}) == Extent2D<F32>{200.0f, 45.0f});
 }
 
-TEST_CASE("Split views scale their left width and gutters with the pixel ratio", "[core][sakura][sizing]") {
-    Scene scene;
-    Probe left({120.0f, 45.0f});
-    Probe right({80.0f, 45.0f});
-    Sakura::SplitView split;
-    split.update({.left = &left, .right = &right});
-    Host host(split);
-    const Rect bounds = {0.0f, 0.0f, 600.0f, 100.0f};
-
-    host.place(scene.ctx, bounds);
-    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 220.0f, 96.0f});
-    CHECK(right.laidFrame == Rect{233.0f, 4.0f, 367.0f, 96.0f});
-
-    host.place(Doubled(scene.ctx), bounds);
-    CHECK(left.laidFrame == Rect{0.0f, 8.0f, 440.0f, 92.0f});
-    CHECK(right.laidFrame == Rect{466.0f, 8.0f, 134.0f, 92.0f});
-}
-
 TEST_CASE("Controls scale their frames and paddings with the pixel ratio", "[core][sakura][sizing]") {
     Scene scene;
     const auto doubled = Doubled(scene.ctx);
@@ -641,16 +681,6 @@ TEST_CASE("Controls scale their frames and paddings with the pixel ratio", "[cor
     input.update({.value = "alpha", .padding = {12.0f, 8.0f}});
     CHECK(inputHost.measureOf(scene.ctx, unbounded).y == 31.0f);
     CHECK(inputHost.measureOf(doubled, unbounded).y == 62.0f);
-
-    Sakura::Checkbox checkbox;
-    Host checkboxHost(checkbox);
-    checkbox.update({});
-    CHECK(checkboxHost.measureOf(scene.ctx, unbounded) == Extent2D<F32>{25.0f, 25.0f});
-    CHECK(checkboxHost.measureOf(doubled, unbounded) == Extent2D<F32>{50.0f, 50.0f});
-    checkbox.update({.label = "Automatic gain"});
-    const auto labeled = checkboxHost.measureOf(scene.ctx, unbounded);
-    REQUIRE(labeled.x > 33.0f);
-    CHECK(checkboxHost.measureOf(doubled, unbounded) == Extent2D<F32>{2.0f * labeled.x, 2.0f * labeled.y});
 
     Sakura::ProgressBar bar;
     Host barHost(bar);
@@ -690,7 +720,10 @@ TEST_CASE("Pill controls scale their paddings and heights with the pixel ratio",
     Sakura::PillStepper stepper;
     Host stepperHost(stepper);
     stepper.update({.label = "100%"});
-    const Sakura::Text::Config value = {.str = "100%", .colorKey = "text_primary", .scale = 13.0f / 15.0f};
+    const Sakura::Text::Config value = {.str = "100%",
+                                        .font = Sakura::Text::Font::Display,
+                                        .colorKey = "text_primary",
+                                        .scale = 14.0f / Sakura::Typography::FontSize};
     CHECK(stepperHost.measureOf(scene.ctx, unbounded) ==
           Extent2D<F32>{std::ceil(70.0f + TextWidth(scene.ctx, value)), 34.0f});
     CHECK(stepperHost.measureOf(doubled, unbounded) ==

@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_CALLOUT_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <string>
 #include <utility>
@@ -25,20 +25,20 @@ struct Callout : public Sakura::Div {
 
     void update(Config config) {
         this->config = std::move(config);
-        const std::string key = "banner_" + toneKey();
+        const std::string key = toneKey();
         text.update({
             .str = jst::fmt::format("{} {}", this->config.icon.empty() ? toneIcon() : this->config.icon,
                                     this->config.str),
-            .colorKey = key + "_text",
+            .colorKey = jst::fmt::format("banner_{}_text", key),
             .wrapped = true,
         });
         Div::update({
             .content = &text,
-            .padding = 8.0f,
-            .rounding = 8.0f,
+            .padding = Sakura::Spacing::Small,
+            .rounding = Sakura::Rounding::Control,
             .border = true,
-            .colorKey = key + "_bg",
-            .borderColorKey = key + "_border",
+            .colorKey = jst::fmt::format("banner_{}_bg", key),
+            .borderColorKey = jst::fmt::format("banner_{}_border", key),
         });
     }
 
@@ -60,15 +60,15 @@ struct Callout : public Sakura::Div {
     std::string toneIcon() const {
         switch (config.tone) {
             case Tone::Success:
-                return ICON_FA_CIRCLE_CHECK;
+                return ICON_LC_CIRCLE_CHECK;
             case Tone::Warning:
-                return ICON_FA_TRIANGLE_EXCLAMATION;
+                return ICON_LC_TRIANGLE_ALERT;
             case Tone::Error:
-                return ICON_FA_CIRCLE_XMARK;
+                return ICON_LC_CIRCLE_X;
             case Tone::Info:
                 break;
         }
-        return ICON_FA_CIRCLE_INFO;
+        return ICON_LC_INFO;
     }
 
     Config config;

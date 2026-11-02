@@ -19,11 +19,20 @@ struct NodeMeta {
     JST_SERDES(x, y, width, height);
 };
 
+struct EditorMeta {
+    F32 x = 0.0f;
+    F32 y = 0.0f;
+    F32 zoom = 1.0f;
+
+    JST_SERDES(x, y, zoom);
+};
+
 struct ConfigMeta {
     bool collapsed = false;
     bool detached = false;
+    bool tileMetricsCollapsed = false;
 
-    JST_SERDES(collapsed, detached);
+    JST_SERDES(collapsed, detached, tileMetricsCollapsed);
 };
 
 constexpr F32 DefaultNodeWidth(Block::NodeSize size) {
@@ -54,8 +63,10 @@ struct TileMeta {
     std::optional<F32> weight;
     std::optional<std::string> pane;
     std::optional<std::vector<TileMeta>> children;
+    std::optional<bool> minimized;
+    std::optional<bool> maximized;
 
-    JST_SERDES(split, weight, pane, children);
+    JST_SERDES(split, weight, pane, children, minimized, maximized);
 };
 
 }  // namespace Jetstream

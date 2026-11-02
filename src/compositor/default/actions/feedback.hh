@@ -4,6 +4,7 @@
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
+#include "../support/feedback.hh"
 
 #include "jetstream/logger.hh"
 

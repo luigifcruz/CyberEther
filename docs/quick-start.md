@@ -15,12 +15,12 @@ After [installing CyberEther](/docs/installation), launch it from a terminal:
 cyberether
 ```
 
-This opens the main window with an empty workspace. From there you can build a flowgraph visually or load an existing one.
+This opens the main window on the Start tab. From there you can create a new flowgraph, open a saved or recent one, or pick an example from the gallery.
 
 To load a flowgraph directly at startup, pass its path as the single positional argument:
 
 ```bash
-cyberether examples/flowgraphs/signal-generator.yml
+cyberether examples/flowgraphs/spectrum-analyzer.yml
 ```
 
 ## Key ideas
@@ -35,14 +35,16 @@ Before building your first flowgraph, it helps to know a few terms that appear t
 
 ## Creating a simple flowgraph
 
-The CyberEther editor is a node-based flowgraph editor. You build a pipeline by adding blocks, wiring their ports together, and tuning each block's parameters. The flowgraph is always running as you edit it. There is no start or stop button. As soon as a block has everything it needs, it begins processing live data.
+The CyberEther editor is a node-based flowgraph editor. You build a pipeline by adding blocks, wiring their ports together, and tuning each block's parameters. The flowgraph runs while you edit it. As soon as a block has everything it needs, it begins processing live data. The play and pause button, the first one in the editor toolbar, freezes processing while the views keep their last data.
 
 ### 1. Add a source block
 
 Open the block browser in one of two ways:
 
-- Click the **Search blocks** pill at the top right of the flowgraph editor.
-- Double-click anywhere on the empty canvas. The browser opens where you clicked, and the new block lands there.
+- Click the **Add block** button (the box with a plus) in the toolbar at the bottom right of the flowgraph editor. The new block lands at the center of the view.
+- Double-click anywhere on the empty canvas. The new block lands where you clicked.
+
+Either way, the browser opens in the center of the flowgraph editor.
 
 Find and add a **Signal Generator** block. This block produces a synthetic signal so you do not need any hardware to get started. If you have an RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, or PlutoSDR, use an **SDR** block instead to work with a real radio signal.
 
@@ -61,9 +63,9 @@ After each block appears on the canvas, drag it into a left-to-right chain: **Si
 
 Hover over the output port of the **Signal Generator** block, then drag a wire to the input port of the **FFT** block. Do the same between:
 
-- **FFT** output → **Amplitude** input
-- **Amplitude** output → **Range** input
-- **Range** output → **Line Plot** input
+- **FFT** output to **Amplitude** input
+- **Amplitude** output to **Range** input
+- **Range** output to **Line Plot** input
 
 The wires show how data flows through the pipeline. Hover over a wire or an output label to see the tensor shape and data type carried by that link.
 
@@ -91,13 +93,15 @@ Because the flowgraph is always running, the **Line Plot** block starts showing 
 
 Click a block to select it. Shift-click adds blocks to the selection, and Shift-drag on empty canvas selects a group. Clicking or panning empty canvas clears the selection. Use **Cmd/Ctrl + Plus**, **Minus**, or **0** to zoom in, zoom out, or reset the editor zoom. Zoom lasts for the current session and is not saved.
 
+Plots inside a block take the same mouse controls as detached plots, so you can zoom, pan, and place markers in place. Dragging over a plot interacts with it, so move the block by its header instead. Click the detach icon in the block header, or choose Detach Plot from the block menu, to move its plots into their own tiles.
+
 Detached plots and configuration panes use dock tiles. Layouts saved by older versions discard their old stack arrangement when opened; detached panes are placed using their per-block metadata. Saving writes the new tile layout, not the old stacks.
 
 The latency overlay setting and graphics framerate control are no longer available. The interface redraws only when something changes.
 
 ## Ready-to-go example flowgraphs
 
-Open the built-in examples from **Flowgraph** → **Open Examples**. Each opens in a fresh tab and starts processing once its inputs and devices are ready.
+Open the examples from the gallery on the Start tab. The gallery downloads the published flowgraphs the first time it is online and keeps a copy for offline use. Each opens in a fresh tab and starts processing once its inputs and devices are ready.
 
 | Flowgraph | What it demonstrates |
 |-----------|----------------------|

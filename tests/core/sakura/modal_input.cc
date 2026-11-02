@@ -47,6 +47,9 @@ struct FrameProbe : Sakura::Component {
     static Rect of(const Sakura::Component& component) {
         return (component.*(&FrameProbe::frame))();
     }
+    static std::optional<Rect> inherited(const Sakura::Component& component) {
+        return (component.*(&FrameProbe::inheritedClip))();
+    }
     static U64 shownFrames(const Sakura::Component& component) {
         U64 count = 0;
         for (auto* child : (component.*(&FrameProbe::children))()) {
@@ -314,6 +317,201 @@ TEST_CASE("Modal activation blocks real background edits and shortcuts and resto
     CHECK(background.focused());
     fixture.text(U'z');
     CHECK(backgroundEdited.find('z') != std::string::npos);
+}
+
+TEST_CASE("A chromeless modal with a fixed width leaves room outside its content for a shadow",
+          "[core][sakura][modal-scope][modal-anchor]") {
+    ModalFixture fixture;
+    PointerProbe background;
+    PointerProbe content;
+    Sakura::Layer base;
+    base.update({.content = &background});
+    Sakura::ModalLayer layer;
+    fixture.root.setLayers({&base, &layer});
+    layer.update({.content = &content, .size = {200, 0}, .closeButton = false, .chrome = false,
+                  .anchor = Rect{100, 40, 80, 24}});
+    fixture.place();
+
+    const auto frame = FrameProbe::of(content);
+    const auto clip = FrameProbe::inherited(content);
+    CHECK(frame.x == 100);
+    CHECK(frame.width == 200);
+    CHECK((!clip.has_value() || (clip->x < frame.x && clip->right() > frame.right())));
+}
+
+TEST_CASE("A modal that dismisses outside closes on outside clicks only", "[core][sakura][modal-scope]") {
+    ModalFixture fixture;
+    PointerProbe background;
+    PointerProbe content;
+    Sakura::Layer base;
+    base.update({.content = &background});
+    Sakura::ModalLayer layer;
+    fixture.root.setLayers({&base, &layer});
+    U64 closes = 0;
+    const auto open = [&](bool dismissOutside) {
+        layer.update({.content = &content, .size = {150, 60}, .closeButton = false, .chrome = false,
+                      .dismissOutside = dismissOutside, .anchor = Rect{100, 40, 80, 24},
+                      .onClose = [&] { ++closes; }});
+        fixture.place();
+    };
+
+    open(true);
+    fixture.mouse(MouseEventType::Click, 120, 80);
+    fixture.mouse(MouseEventType::Release, 120, 80);
+    CHECK(closes == 0);
+    CHECK_FALSE(content.pointerEvents.empty());
+
+    fixture.mouse(MouseEventType::Release, 20, 20);
+    CHECK(closes == 0);
+    fixture.mouse(MouseEventType::Click, 20, 20);
+    fixture.mouse(MouseEventType::Release, 20, 20);
+    CHECK(closes == 1);
+    CHECK(background.pointerEvents.empty());
+
+    open(false);
+    fixture.mouse(MouseEventType::Click, 20, 20);
+    fixture.mouse(MouseEventType::Release, 20, 20);
+    CHECK(closes == 1);
+    CHECK(background.pointerEvents.empty());
+}
+
+TEST_CASE("An anchored modal sits below its anchor without dim or window chrome and stays on screen",
+          "[core][sakura][modal-scope][modal-anchor]") {
+    const F32 ratio = GENERATE(1.0f, 2.0f);
+    ModalFixture fixture;
+    fixture.ctx.pixelRatio = ratio;
+    PointerProbe background;
+    PointerProbe content;
+    Sakura::Layer base;
+    base.update({.content = &background});
+    Sakura::ModalLayer layer;
+    fixture.root.setLayers({&base, &layer});
+    const auto open = [&](Rect anchor) {
+        layer.update({.content = &content, .size = {150, 60}, .closeButton = false, .chrome = false, .anchor = anchor});
+        fixture.place();
+    };
+
+    open({100, 40, 80, 24});
+    const auto placed = [&] {
+        const auto frame = FrameProbe::of(content);
+        return Extent2D<F32>{frame.x, frame.y};
+    };
+    CHECK(placed() == Extent2D<F32>{100 * ratio, 64 * ratio});
+    CHECK(FrameProbe::of(content).width == 150 * ratio);
+    CHECK(FrameProbe::shownFrames(layer) == 0);
+    CHECK(fixture.root.activeModal() == &layer);
+
+    open({780, 590, 20, 10});
+    CHECK(placed() == Extent2D<F32>{800 - 150 * ratio, 600 - 60 * ratio});
+
+    fixture.mouse(MouseEventType::Click, 20, 20);
+    fixture.mouse(MouseEventType::Release, 20, 20);
+    CHECK(background.pointerEvents.empty());
+    CHECK_FALSE(background.focus());
+
+    layer.update({.content = &content, .size = {150, 60}});
+    fixture.place();
+    CHECK(FrameProbe::shownFrames(layer) == 2);
+}
+
+TEST_CASE("An anchored modal takes keys from a focused editor below and gives focus back when it closes",
+          "[core][sakura][modal-scope][modal-anchor]") {
+    ModalFixture fixture;
+    std::string edited;
+    Sakura::TextInput editor;
+    editor.update({.value = "draft", .submit = Sakura::TextInput::Submit::OnEdit, .focus = true, .multiline = true,
+                   .onChange = [&](const std::string& value) { edited = value; }});
+    Sakura::Layer base;
+    base.update({.content = &editor});
+    U64 saved = 0;
+    U64 cancelled = 0;
+    PointerProbe body;
+    Sakura::Shortcuts prompt;
+    prompt.update({.bindings = {{.key = KeyCode::Enter, .onPressed = [&] { ++saved; }}}, .content = &body});
+    Sakura::ModalLayer layer;
+    fixture.root.setLayers({&base, &layer});
+    fixture.place();
+    fixture.place();
+    REQUIRE(editor.focused());
+
+    layer.update({.content = &prompt, .size = {200, 0}, .closeButton = false, .chrome = false,
+                  .anchor = Rect{100, 40, 80, 24}, .onClose = [&] { ++cancelled; }});
+    fixture.place();
+    CHECK_FALSE(editor.focused());
+    CHECK(fixture.key(KeyCode::Enter));
+    CHECK(saved == 1);
+    CHECK(fixture.key(KeyCode::Escape));
+    CHECK(cancelled == 1);
+    fixture.text(U'x');
+    CHECK(edited.empty());
+
+    layer.update({});
+    fixture.place();
+    fixture.place();
+    CHECK(editor.focused());
+    fixture.text(U'z');
+    CHECK(edited.find('z') != std::string::npos);
+}
+
+TEST_CASE("A modal can conceal background popups whose cancel callback destroys popup content",
+          "[core][sakura][modal-scope][modal-anchor]") {
+    struct Doomed : PointerProbe {
+        std::function<void()> onCancel;
+        bool mouseEvent(const MouseEvent& event) override {
+            if (event.type == MouseEventType::Cancel && onCancel) {
+                const auto callback = std::move(onCancel);
+                onCancel = {};
+                callback();
+                return false;
+            }
+            return PointerProbe::mouseEvent(event);
+        }
+    };
+    const bool sibling = GENERATE(false, true);
+    ModalFixture fixture;
+    PointerProbe background;
+    PointerProbe dialog;
+    auto first = std::make_unique<Doomed>();
+    auto second = std::make_unique<Doomed>();
+    PointerBody inner(background);
+    PointerBody host(static_cast<Sakura::Component&>(inner));
+    inner.anchor = {300, 200};
+    Sakura::Layer base;
+    base.update({.content = &host});
+    Sakura::ModalLayer modal;
+    fixture.root.setLayers({&base, &modal});
+    fixture.place();
+    host.popup.update({.content = first.get(), .open = true, .size = {150, 90}});
+    inner.popup.update({.content = second.get(), .open = true, .size = {150, 90}});
+    fixture.place();
+    fixture.place();
+    REQUIRE(first->visible());
+    REQUIRE(second->visible());
+
+    U64 cancels = 0;
+    const auto dropFirst = [&] { first.reset(); host.popup.update({}); };
+    const auto dropSecond = [&] { second.reset(); inner.popup.update({}); };
+    if (sibling) {
+        first->onCancel = [&] { ++cancels; dropSecond(); };
+        second->onCancel = [&] { ++cancels; dropFirst(); };
+    } else {
+        first->onCancel = [&] { ++cancels; dropFirst(); };
+    }
+    modal.update({.content = &dialog, .size = {200, 100}});
+    fixture.place();
+    fixture.place();
+    CHECK(cancels == 1);
+    CHECK((first == nullptr) != (second == nullptr));
+    CHECK(dialog.visible());
+    CHECK_FALSE(Sakura::Access::layoutDirty(fixture.root));
+    auto* survivor = first ? first.get() : second.get();
+    REQUIRE(survivor != nullptr);
+    CHECK_FALSE(survivor->visible());
+
+    modal.update({});
+    fixture.place();
+    fixture.place();
+    CHECK(survivor->visible());
 }
 
 TEST_CASE("Only the top modal and its recursively owned popups receive keyboard input",

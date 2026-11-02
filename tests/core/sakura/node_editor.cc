@@ -13,6 +13,7 @@
 #include "component_harness.hh"
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -48,6 +49,8 @@ struct Block {
     std::vector<NodeEditor::Geometry> reports;
     U64 menus = 0;
     U64 toggles = 0;
+    bool detachable = false;
+    U64 detaches = 0;
 
     const NodeEditor::Geometry& last() const {
         return reports.back();
@@ -66,9 +69,14 @@ struct Graph {
     std::vector<Extent2D<F32>> menus;
     std::vector<Extent2D<F32>> doubleClicks;
     std::vector<std::vector<std::string>> copies;
+    std::vector<std::vector<std::string>> selections;
     std::optional<Rect> viewport;
     std::optional<Extent2D<F32>> center;
     U64 centerReports = 0;
+    bool frameOnOpen = false;
+    std::optional<NodeEditor::View> savedView;
+    std::vector<NodeEditor::View> viewReports;
+    F32 scale = 1.0f;
 
     explicit Graph(F32 pixelRatio = 1.0f) {
         frames.ctx.render = &window;
@@ -117,6 +125,11 @@ struct Graph {
                     ++block.toggles;
                 };
             }
+            if (block.detachable) {
+                node.onDetach = [&block] {
+                    ++block.detaches;
+                };
+            }
             node.onGeometryChange = [&block](const NodeEditor::Geometry& next) {
                 block.reports.push_back(next);
                 block.spec.gridPosition = next.gridPosition;
@@ -129,6 +142,8 @@ struct Graph {
         }
         editor.update({
             .id = "editor",
+            .frameOnOpen = frameOnOpen,
+            .scale = scale,
             .nodes = std::move(nodes),
             .links = links,
             .onEditorContextMenu = [this](Extent2D<F32> point) {
@@ -146,11 +161,16 @@ struct Graph {
             .onCopyShortcut = [this](const std::vector<std::string>& ids) {
                 copies.push_back(ids);
             },
+            .onSelectionChange = [this](const std::vector<std::string>& ids) {
+                selections.push_back(ids);
+            },
             .onViewportGridChange = [this](Rect next) {
                 viewport = next;
                 center = Extent2D<F32>{next.x + next.width * 0.5f, next.y + next.height * 0.5f};
                 ++centerReports;
             },
+            .view = savedView,
+            .onViewChange = [this](NodeEditor::View view) { viewReports.push_back(view); },
         });
     }
 
@@ -263,6 +283,30 @@ U64 Dirty(Graph& graph) {
 
 }  // namespace
 
+TEST_CASE("Saved editor navigation survives delayed nodes and rejects nonfinite input",
+          "[core][sakura][node-editor][recovery]") {
+    Graph graph;
+    graph.frameOnOpen = true;
+    const NodeEditor::View saved{.pan = {-145.5f, 78.25f}, .zoom = 1.75f};
+    graph.savedView = saved;
+    graph.step();
+    REQUIRE(graph.viewReports.size() == 1);
+    CHECK(graph.viewReports.back() == saved);
+    const auto viewport = graph.viewport;
+    graph.add("late", {1500.0f, 800.0f});
+    graph.step();
+    CHECK(graph.viewport == viewport);
+    CHECK(graph.editor.zoom() == saved.zoom);
+    CHECK(graph.viewReports.size() == 1);
+
+    SECTION("invalid pan") { graph.savedView->pan.x = std::numeric_limits<F32>::infinity(); }
+    SECTION("invalid zoom") { graph.savedView->zoom = std::numeric_limits<F32>::quiet_NaN(); }
+    SECTION("nonpositive zoom") { graph.savedView->zoom = 0.0f; }
+    graph.step();
+    CHECK(graph.viewport == viewport);
+    CHECK(graph.editor.zoom() == saved.zoom);
+}
+
 TEST_CASE("An idle editor reports the visible viewport in grid coordinates",
           "[core][sakura][node-editor]") {
     SECTION("At a pixel ratio of one") {
@@ -282,6 +326,135 @@ TEST_CASE("An idle editor reports the visible viewport in grid coordinates",
         REQUIRE(graph.viewport.has_value());
         CheckPoint({graph.viewport->width, graph.viewport->height}, 400.0f, 300.0f);
     }
+}
+
+TEST_CASE("Opening a graph centers content that fits and pins wider content to the margin",
+          "[core][sakura][node-editor]") {
+    SECTION("A small graph far from the origin is centered") {
+        Graph graph;
+        graph.frameOnOpen = true;
+        graph.add("a", {500.0f, 400.0f});
+        graph.step();
+        REQUIRE(graph.center.has_value());
+        CHECK(graph.center->x > 560.0f);
+        CHECK(graph.center->x < 640.0f);
+        CHECK(graph.center->y > 400.0f);
+        CHECK(graph.viewport->x < 500.0f);
+        CHECK(graph.viewport->y < 400.0f);
+    }
+    SECTION("A graph wider than the view starts at the margin") {
+        Graph graph;
+        graph.frameOnOpen = true;
+        graph.add("a", {100.0f, 50.0f});
+        graph.add("b", {1200.0f, 50.0f});
+        graph.step();
+        REQUIRE(graph.viewport.has_value());
+        CHECK(graph.viewport->x == Catch::Approx(100.0f - 24.0f));
+    }
+    SECTION("Without the option the view stays at the grid origin") {
+        Graph graph;
+        graph.add("a", {500.0f, 400.0f});
+        graph.step();
+        REQUIRE(graph.viewport.has_value());
+        CheckPoint({graph.viewport->x, graph.viewport->y}, 0.0f, 0.0f);
+    }
+}
+
+TEST_CASE("Opening a graph follows nodes as they load until the first click", "[core][sakura][node-editor]") {
+    Graph graph;
+    graph.frameOnOpen = true;
+    graph.add("a", {100.0f, 100.0f});
+    graph.step();
+    const Extent2D<F32> first = *graph.center;
+
+    graph.add("b", {400.0f, 100.0f});
+    graph.step();
+    CHECK(graph.center->x > first.x);
+
+    graph.click(780.0f, 580.0f);
+    const Extent2D<F32> settled = *graph.center;
+    graph.add("c", {900.0f, 500.0f});
+    graph.step();
+    CheckPoint(*graph.center, settled.x, settled.y);
+}
+
+TEST_CASE("Opening a graph stops following nodes after a scroll, a zoom or an explicit stop",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    graph.frameOnOpen = true;
+    graph.add("a", {100.0f, 100.0f});
+    graph.step();
+
+    SECTION("A scroll over the canvas") {
+        graph.host.send(Wheel(780.0f, 580.0f, -1.0f));
+        graph.step();
+    }
+    SECTION("A zoom step") {
+        graph.editor.zoomStep(1);
+        graph.step();
+    }
+    SECTION("An explicit stop") {
+        graph.editor.stopFraming();
+        graph.step();
+    }
+
+    const Extent2D<F32> settled = *graph.center;
+    graph.add("b", {900.0f, 500.0f});
+    graph.step();
+    CheckPoint(*graph.center, settled.x, settled.y);
+}
+
+TEST_CASE("Opening a graph frames again when the view resizes before the first click",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    graph.frameOnOpen = true;
+    graph.add("a", {500.0f, 400.0f});
+    graph.step();
+    REQUIRE(graph.viewport.has_value());
+    const Rect first = *graph.viewport;
+
+    graph.frames.bounds = {0.0f, 0.0f, 600.0f, 600.0f};
+    graph.step();
+    CHECK(graph.viewport->x == Catch::Approx(first.x + 100.0f).margin(1.0f));
+    CHECK(graph.viewport->y == Catch::Approx(first.y).margin(1.0f));
+
+    graph.click(10.0f, 10.0f);
+    const Rect clicked = *graph.viewport;
+    graph.frames.bounds = kScreen;
+    graph.step();
+    CHECK(graph.viewport->x == Catch::Approx(clicked.x));
+    CHECK(graph.viewport->y == Catch::Approx(clicked.y));
+}
+
+TEST_CASE("Opening a graph frames again when the editor scale changes before the first click",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    graph.frameOnOpen = true;
+    Block& a = graph.add("a", {500.0f, 400.0f});
+    a.withContent = false;
+    graph.step();
+    REQUIRE(graph.center.has_value());
+    const Extent2D<F32> first = *graph.center;
+
+    graph.scale = 0.5f;
+    graph.step();
+    CheckNear(*graph.center, first.x, first.y, 1.0f);
+}
+
+TEST_CASE("The editor scale multiplies the zoom ratio and keeps the zoom anchor",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    graph.scale = 0.5f;
+    graph.step();
+    REQUIRE(graph.viewport.has_value());
+    CheckPoint({graph.viewport->width, graph.viewport->height}, 1600.0f, 1200.0f);
+    CheckPoint(*graph.center, 800.0f, 600.0f);
+    CHECK(graph.editor.zoom() == 1.0f);
+
+    graph.editor.zoomStep(1);
+    graph.step();
+    CHECK(graph.viewport->width == Catch::Approx(800.0f / 0.525f).margin(0.5f));
+    CheckNear(*graph.center, 800.0f, 600.0f, 1.0f);
 }
 
 TEST_CASE("The viewport center is reported only when it moves", "[core][sakura][node-editor]") {
@@ -926,6 +1099,12 @@ TEST_CASE("Right clicking a node opens its menu and right clicking the canvas re
 
     graph.press(100.0f, 100.0f, MouseButton::Right);
     graph.release(100.0f, 100.0f, MouseButton::Right);
+    CHECK(a.menus == 0);
+    CHECK(a.content.count(MouseEventType::Click) == 1);
+    a.content.consume = false;
+
+    graph.press(100.0f, 100.0f, MouseButton::Right);
+    graph.release(100.0f, 100.0f, MouseButton::Right);
     CHECK(a.menus == 1);
     CHECK(graph.menus.empty());
 
@@ -937,6 +1116,60 @@ TEST_CASE("Right clicking a node opens its menu and right clicking the canvas re
     CheckPoint(graph.menus[0], 550.0f, 480.0f);
     CHECK(a.menus == 1);
     CheckPoint(*graph.center, 350.0f, 280.0f);
+}
+
+TEST_CASE("Content that takes a right press keeps the drag and its release outside the node",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    Block& b = graph.add("b", {400.0f, 40.0f});
+    graph.step();
+
+    graph.press(100.0f, 100.0f, MouseButton::Right);
+    REQUIRE(a.content.count(MouseEventType::Click) == 1);
+    const U64 moves = a.content.count(MouseEventType::Move);
+    graph.move(460.0f, 100.0f);
+    graph.move(700.0f, 500.0f);
+    CHECK(a.content.count(MouseEventType::Move) == moves + 2);
+    CHECK(a.content.count(MouseEventType::Leave) == 0);
+    CHECK(b.content.count(MouseEventType::Move) == 0);
+
+    graph.release(700.0f, 500.0f, MouseButton::Right);
+    CHECK(a.content.count(MouseEventType::Release) == 1);
+    CHECK(b.content.count(MouseEventType::Release) == 0);
+    CHECK(a.menus == 0);
+    CHECK(graph.menus.empty());
+
+    graph.move(460.0f, 100.0f);
+    CHECK(b.content.count(MouseEventType::Move) == 1);
+}
+
+TEST_CASE("Content keeps its capture until every button it captured is released",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    Block& b = graph.add("b", {400.0f, 40.0f});
+    graph.step();
+
+    graph.press(100.0f, 100.0f);
+    graph.press(100.0f, 100.0f, MouseButton::Right);
+    CHECK(a.content.count(MouseEventType::Click) == 2);
+    graph.release(100.0f, 100.0f);
+    CHECK(a.content.count(MouseEventType::Release) == 1);
+
+    const U64 moves = a.content.count(MouseEventType::Move);
+    graph.move(460.0f, 100.0f);
+    CHECK(a.content.count(MouseEventType::Move) == moves + 1);
+    CHECK(b.content.count(MouseEventType::Move) == 0);
+
+    graph.release(460.0f, 100.0f, MouseButton::Right);
+    CHECK(a.content.count(MouseEventType::Release) == 2);
+    CHECK(b.content.count(MouseEventType::Release) == 0);
+    CHECK(a.menus == 0);
+    CHECK(graph.menus.empty());
+
+    graph.move(461.0f, 100.0f);
+    CHECK(b.content.count(MouseEventType::Move) == 1);
 }
 
 TEST_CASE("Double clicking the canvas or a wire requests the block picker but a node does not",
@@ -992,6 +1225,80 @@ TEST_CASE("Clicking the collapse chevron toggles the node but dragging from it d
     graph.drag(160.0f, 56.0f, 170.0f, 66.0f);
     CHECK(a.toggles == 1);
     CheckPoint(a.last().gridPosition, 50.0f, 50.0f);
+}
+
+TEST_CASE("Header buttons keep an inset from the right edge of the node", "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    a.spec.header = true;
+    a.spec.collapsible = true;
+    a.content.consume = false;
+    graph.step();
+
+    graph.click(166.5f, 56.0f);
+    CHECK(a.toggles == 0);
+
+    graph.click(163.0f, 56.0f);
+    CHECK(a.toggles == 1);
+}
+
+TEST_CASE("The header detach button sits left of the chevron and fires only on a click",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    a.spec.header = true;
+    a.spec.collapsible = true;
+    a.detachable = true;
+    a.content.consume = false;
+    graph.step();
+
+    graph.click(160.0f, 56.0f);
+    CHECK(a.toggles == 1);
+    CHECK(a.detaches == 0);
+
+    graph.click(137.0f, 56.0f);
+    CHECK(a.detaches == 1);
+    CHECK(a.toggles == 1);
+    CheckPoint(a.last().gridPosition, 40.0f, 40.0f);
+
+    graph.drag(137.0f, 56.0f, 147.0f, 66.0f);
+    CHECK(a.detaches == 1);
+    CheckPoint(a.last().gridPosition, 50.0f, 50.0f);
+
+    a.detachable = false;
+    graph.step();
+    graph.click(147.0f, 66.0f);
+    CHECK(a.detaches == 1);
+}
+
+TEST_CASE("A header button press that drags away and returns before the release does not fire",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    a.spec.header = true;
+    a.spec.collapsible = true;
+    a.detachable = true;
+    a.content.consume = false;
+    graph.step();
+
+    graph.press(137.0f, 56.0f);
+    graph.move(187.0f, 106.0f);
+    graph.move(137.0f, 56.0f);
+    graph.release(137.0f, 56.0f);
+    CHECK(a.detaches == 0);
+    CheckPoint(a.last().gridPosition, 40.0f, 40.0f);
+
+    graph.press(137.0f, 56.0f);
+    graph.move(138.0f, 57.0f);
+    graph.release(138.0f, 57.0f);
+    CHECK(a.detaches == 1);
+
+    graph.press(137.0f, 56.0f);
+    graph.send(MouseEventType::Leave, 137.0f, 56.0f);
+    graph.step();
+    graph.move(137.0f, 56.0f);
+    graph.release(137.0f, 56.0f);
+    CHECK(a.detaches == 1);
 }
 
 TEST_CASE("Dragging a node past the viewport edge auto pans by the frame delta time",
@@ -1505,20 +1812,22 @@ TEST_CASE("Zooming keeps the grid point under the viewport center fixed and scal
     CheckPoint(*graph.center, 350.0f, 280.0f);
     CheckNear(CanvasPoint(graph, 400.0f, 300.0f), 350.0f, 280.0f, 0.5f);
 
-    graph.editor.zoomStep(1);
-    graph.step();
-    REQUIRE(graph.editor.zoom() == 1.1f);
+    for (int step = 0; step < 2; ++step) {
+        graph.editor.zoomStep(1);
+        graph.step();
+    }
+    REQUIRE(graph.editor.zoom() == Catch::Approx(1.1f));
     CheckNear(*graph.center, 350.0f, 280.0f, 0.5f);
     CheckNear(CanvasPoint(graph, 400.0f, 300.0f), 350.0f, 280.0f, 0.5f);
     CheckNear(CanvasPoint(graph, 510.0f, 300.0f), 450.0f, 280.0f, 0.5f);
     CheckNear(CanvasPoint(graph, 400.0f, 410.0f), 350.0f, 380.0f, 0.5f);
     CHECK(a.content.laidFrame.width == Catch::Approx(132.0f));
 
-    graph.editor.zoomStep(-1);
-    graph.step();
-    graph.editor.zoomStep(-1);
-    graph.step();
-    REQUIRE(graph.editor.zoom() == 0.9f);
+    for (int step = 0; step < 4; ++step) {
+        graph.editor.zoomStep(-1);
+        graph.step();
+    }
+    REQUIRE(graph.editor.zoom() == Catch::Approx(0.9f));
     CheckNear(*graph.center, 350.0f, 280.0f, 0.5f);
     CheckNear(CanvasPoint(graph, 400.0f, 300.0f), 350.0f, 280.0f, 0.5f);
     CheckNear(CanvasPoint(graph, 490.0f, 300.0f), 450.0f, 280.0f, 0.5f);
@@ -1530,7 +1839,7 @@ TEST_CASE("Zooming keeps the grid point under the viewport center fixed and scal
     CheckNear(CanvasPoint(graph, 500.0f, 300.0f), 450.0f, 280.0f, 0.5f);
 }
 
-TEST_CASE("Zoom steps walk the fixed ladder and stop at the smallest and largest zoom",
+TEST_CASE("Zoom steps move in even five percent increments and stop at the smallest and largest zoom",
           "[core][sakura][node-editor]") {
     Graph graph;
     graph.step();
@@ -1543,7 +1852,10 @@ TEST_CASE("Zoom steps walk the fixed ladder and stop at the smallest and largest
         graph.editor.zoomStep(1);
         zooms.push_back(graph.editor.zoom());
     }
-    CHECK(zooms == std::vector<F32>{1.1f, 1.25f, 1.5f, 1.75f, 2.0f});
+    REQUIRE(zooms.size() == 20);
+    for (U64 index = 0; index < zooms.size(); ++index) {
+        CHECK(zooms[index] == Catch::Approx(1.0f + 0.05f * static_cast<F32>(index + 1)));
+    }
     graph.editor.zoomStep(1);
     CHECK(graph.editor.zoom() == 2.0f);
     CHECK(graph.editor.canZoom(-1));
@@ -1555,7 +1867,10 @@ TEST_CASE("Zoom steps walk the fixed ladder and stop at the smallest and largest
         graph.editor.zoomStep(-1);
         zooms.push_back(graph.editor.zoom());
     }
-    CHECK(zooms == std::vector<F32>{0.9f, 0.8f, 0.67f, 0.5f});
+    REQUIRE(zooms.size() == 10);
+    for (U64 index = 0; index < zooms.size(); ++index) {
+        CHECK(zooms[index] == Catch::Approx(1.0f - 0.05f * static_cast<F32>(index + 1)));
+    }
     graph.editor.zoomStep(-1);
     CHECK(graph.editor.zoom() == 0.5f);
     CHECK_FALSE(graph.editor.canZoom(-1));
@@ -1569,18 +1884,18 @@ TEST_CASE("Control or Command with Plus, Minus and Zero zoom the focused editor"
     REQUIRE(FocusOwner(graph.host) == &graph.editor);
 
     CHECK(Tap(graph.host, KeyCode::Equal, {.control = true}));
-    CHECK(graph.editor.zoom() == 1.1f);
+    CHECK(graph.editor.zoom() == Catch::Approx(1.05f));
     CHECK(Tap(graph.host, KeyCode::KeypadAdd, {.super = true}));
-    CHECK(graph.editor.zoom() == 1.25f);
+    CHECK(graph.editor.zoom() == Catch::Approx(1.1f));
     CHECK(Sakura::Access::key(graph.host, {KeyEventType::Press, KeyCode::Equal, {.control = true}, true}));
-    CHECK(graph.editor.zoom() == 1.5f);
+    CHECK(graph.editor.zoom() == Catch::Approx(1.15f));
     CHECK(Tap(graph.host, KeyCode::Minus, {.control = true}));
-    CHECK(graph.editor.zoom() == 1.25f);
+    CHECK(graph.editor.zoom() == Catch::Approx(1.1f));
     CHECK(Tap(graph.host, KeyCode::KeypadSubtract, {.super = true}));
-    CHECK(graph.editor.zoom() == 1.1f);
+    CHECK(graph.editor.zoom() == Catch::Approx(1.05f));
 
     CHECK_FALSE(Sakura::Access::key(graph.host, {KeyEventType::Press, KeyCode::Digit0, {.control = true}, true}));
-    CHECK(graph.editor.zoom() == 1.1f);
+    CHECK(graph.editor.zoom() == Catch::Approx(1.05f));
     CHECK(Tap(graph.host, KeyCode::Digit0, {.control = true}));
     CHECK(graph.editor.zoom() == 1.0f);
     CHECK(Tap(graph.host, KeyCode::Keypad0, {.super = true}));
@@ -1658,7 +1973,7 @@ TEST_CASE("Two zoom shortcuts in one frame keep the grid point under the viewpor
     CHECK(Tap(graph.host, KeyCode::Equal, {.control = true}));
     CHECK(Tap(graph.host, KeyCode::Equal, {.control = true}));
     graph.step();
-    REQUIRE(graph.editor.zoom() == 1.25f);
+    REQUIRE(graph.editor.zoom() == Catch::Approx(1.1f));
     CheckNear(CanvasPoint(graph, 400.0f, 300.0f), 350.0f, 280.0f, 0.5f);
 }
 
@@ -1717,4 +2032,53 @@ TEST_CASE("The editor only consumes a middle release after its own middle press"
     CHECK(graph.send(MouseEventType::Click, 300.0f, 300.0f, MouseButton::Middle));
     CHECK(graph.send(MouseEventType::Release, 300.0f, 300.0f, MouseButton::Middle));
     CHECK_FALSE(graph.send(MouseEventType::Release, 300.0f, 300.0f, MouseButton::Middle));
+}
+
+TEST_CASE("Selection changes are reported once per change and follow removed nodes",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    Block& b = graph.add("b", {300.0f, 40.0f});
+    a.content.consume = false;
+    b.content.consume = false;
+    graph.step();
+    REQUIRE(graph.selections.size() == 1);
+    CHECK(graph.selections.back().empty());
+
+    graph.click(100.0f, 100.0f);
+    REQUIRE(graph.selections.size() == 2);
+    CHECK(graph.selections.back() == std::vector<std::string>{"a"});
+
+    graph.click(100.0f, 100.0f);
+    CHECK(graph.selections.size() == 2);
+
+    graph.press(360.0f, 100.0f, MouseButton::Left, 1, {.shift = true});
+    graph.release(360.0f, 100.0f);
+    REQUIRE(graph.selections.size() == 3);
+    CHECK(graph.selections.back() == std::vector<std::string>{"a", "b"});
+
+    a.present = false;
+    graph.step();
+    REQUIRE(graph.selections.size() == 4);
+    CHECK(graph.selections.back() == std::vector<std::string>{"b"});
+
+    graph.click(700.0f, 500.0f);
+    REQUIRE(graph.selections.size() == 5);
+    CHECK(graph.selections.back().empty());
+}
+
+TEST_CASE("Box selection reports nodes as the marquee covers them", "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    a.content.consume = false;
+    graph.step();
+    graph.selections.clear();
+
+    graph.press(20.0f, 20.0f, MouseButton::Left, 1, {.shift = true});
+    graph.move(200.0f, 200.0f);
+    REQUIRE_FALSE(graph.selections.empty());
+    CHECK(graph.selections.back() == std::vector<std::string>{"a"});
+
+    graph.release(200.0f, 200.0f);
+    CHECK(graph.selections.back() == std::vector<std::string>{"a"});
 }

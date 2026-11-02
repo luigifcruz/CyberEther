@@ -32,6 +32,9 @@ class JETSTREAM_API InputQueue {
     struct Wheel {
         Extent2D<F32> delta = {0.0f, 0.0f};
         bool remote = false;
+        ScrollPhase phase = ScrollPhase::None;
+        bool precise = false;
+        bool smooth = false;
     };
 
     struct Key {
@@ -96,7 +99,7 @@ class JETSTREAM_API InputState {
     F32 deltaTime() const { return delta; }
     bool windowFocused() const { return focused && !focusLost; }
     const KeyModifiers& modifiers() const { return currentModifiers; }
-    const std::optional<Extent2D<F32>>& pointer() const { return focused ? pointerPosition : kNoPointer; }
+    const std::optional<Extent2D<F32>>& pointer() const { return pointerPosition; }
     const std::array<bool, 3>& buttons() const { return buttonDown; }
     bool keyDown(KeyCode key) const;
     bool hasPending() const { return !pendingEvents.empty(); }
@@ -104,7 +107,6 @@ class JETSTREAM_API InputState {
 
  private:
     static constexpr U64 kKeyCount = static_cast<U64>(KeyCode::Oem102) + 1;
-    static inline const std::optional<Extent2D<F32>> kNoPointer;
 
     Config config;
 
@@ -143,7 +145,6 @@ class JETSTREAM_API InputState {
     };
 
     bool process(const InputQueue::Event& event, Trickle& trickle);
-    void track(const InputQueue::Event& event);
     bool movePointer(const std::optional<Extent2D<F32>>& next, Trickle& trickle);
     bool button(MouseButton button, bool down, Trickle& trickle);
     bool potentiallyChar(KeyCode key) const;

@@ -6,6 +6,7 @@
 #include "library/soapysdr.hh"
 
 #include <cmath>
+#include <limits>
 
 namespace Jetstream::Blocks {
 
@@ -141,23 +142,24 @@ Result SoapyImpl::define() {
                                     "Internal buffer size multiplier.",
                                     {{"type", "uint"}, {"unit", "x"}}));
 
-    JST_CHECK(defineInterfaceMetric("bufferHealth",
-                                    "Buffer Health",
-                                    "Current buffer occupancy level.",
-                                    {{"type", "progressbar"}},
+    JST_CHECK(defineInterfaceMetric("bufferFill",
+                                    "Buffer Fill",
+                                    "How full the internal buffer is. Near 100% means the chain is falling behind.",
+                                    {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
             }
-            const F32 bufferHealth = moduleImpl->getBufferHealth();
-            return std::pair<std::string, F32>{jst::fmt::format("{:.0f}%", bufferHealth * 100.0f),
-                                               bufferHealth};
+            const F32 bufferFill = moduleImpl->getBufferFill();
+            return std::pair<std::string, F32>{jst::fmt::format("{:.0f}%", bufferFill * 100.0f),
+                                               bufferFill};
         }));
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",
                                     "Buffer Loss",
-                                    "Buffer loss percentage and reported device overflows (OVF) since stream start.",
-                                    {{"type", "progressbar"}},
+                                    "Share of samples overwritten before the chain read them since the stream started. "
+                                    "Overflows the radio reported (OVF) show next to it.",
+                                    {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}},
         [this]() -> std::any {
             const F64 loss = moduleImpl ? moduleImpl->getBufferLoss() : 0.0;
             const U64 deviceOverflows = moduleImpl ? moduleImpl->getDeviceOverflows() : 0;
@@ -171,14 +173,15 @@ Result SoapyImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
-                                    "Current data throughput.",
-                                    {{"type", "label"}},
+                                    "Rate the chain reads next to the rate the radio sends.",
+                                    {{"type", "progressbar"}, {"warning_below", 0.95f}, {"error_below", 0.8f}},
         [this]() -> std::any {
-            if (!moduleImpl) {
-                return std::string("N/A");
-            }
-            const auto [actual, expected] = moduleImpl->getThroughput();
-            return jst::fmt::format("{:.1f} / {:.1f} MB/s", actual, expected);
+            const auto [actual, expected] = moduleImpl ? moduleImpl->getThroughput()
+                                                       : std::pair<F32, F32>{0.0f, 0.0f};
+            const F32 fraction = actual > 0.0f && expected > 0.0f ? actual / expected
+                                                                  : std::numeric_limits<F32>::quiet_NaN();
+            return std::pair<std::string, F32>{
+                jst::fmt::format("{:.1f} / {:.1f} MB/s", actual, expected), fraction};
         }));
 
     return Result::SUCCESS;

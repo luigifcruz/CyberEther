@@ -11,26 +11,14 @@ namespace Jetstream {
 
 class JETSTREAM_API Plugin {
  public:
-    struct TargetInfo {
-        std::string path;
-        std::string system;
-        std::string device;
-        std::string arch;
-        bool compatible = false;
-        bool loaded = false;
-    };
-
     struct Info {
         std::string path;
         std::string name;
         std::string version;
         std::string minimumJetstreamVersion;
         std::string status;
-        std::vector<TargetInfo> targets;
-        U64 registeredModules = 0;
-        U64 registeredBlocks = 0;
-        U64 registeredExamples = 0;
-        U64 registeredBenchmarks = 0;
+        std::vector<std::string> blocks;
+        std::vector<std::string> examples;
     };
 
     static Result Load(const std::string& path);
@@ -47,7 +35,7 @@ class JETSTREAM_API Plugin {
 
 #define JETSTREAM_PLUGIN_ABI_SYMBOL "jetstream_plugin_abi"
 #define JETSTREAM_PLUGIN_ABI_MAGIC UINT32_C(0x4a535450)
-#define JETSTREAM_PLUGIN_ABI_VERSION UINT32_C(9)
+#define JETSTREAM_PLUGIN_ABI_VERSION UINT32_C(12)
 
 #ifdef __cplusplus
 extern "C" {

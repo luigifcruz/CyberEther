@@ -29,6 +29,18 @@ struct TextMetrics {
 
     Render::Components::Text* label(const std::string& fontName);
 
+    bool loaded(const std::string& fontName) const {
+        return window && window->hasFont(fontName);
+    }
+
+    bool covers(const std::string& fontName, U32 codepoint) const {
+        if (!loaded(fontName)) {
+            return false;
+        }
+        const auto& font = window->font(fontName);
+        return font && font->hasGlyph(static_cast<I32>(codepoint));
+    }
+
     F32 measure(const std::string& fontName, const std::string& value, F32 fontSize);
 
     std::vector<F32> advances(const std::string& fontName, const std::string& value, F32 fontSize) {
@@ -37,6 +49,11 @@ struct TextMetrics {
             return std::vector<F32>(value.size(), 0.0f);
         }
         return text->advances(value, scale(*text, fontSize));
+    }
+
+    F32 inkOffset(const std::string& fontName, const std::string& value, F32 fontSize) {
+        auto* text = label(fontName);
+        return text ? text->inkOffset(value, scale(*text, fontSize)) : 0.0f;
     }
 
     std::string ellipsize(const std::string& fontName, const std::string& text, F32 fontSize, F32 width);

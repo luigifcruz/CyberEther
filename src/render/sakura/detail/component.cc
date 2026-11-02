@@ -31,6 +31,8 @@ struct RequestedFrame {
 
 std::vector<RequestedFrame> requestedFrames;
 
+using Chain = std::vector<std::pair<Component*, std::weak_ptr<bool>>>;
+
 }  // namespace
 
 U64 Component::Impl::layoutRuns = 0;
@@ -399,7 +401,12 @@ void Component::addChild(Component& child) {
         return;
     }
     if (child.impl->parent) {
+        const std::weak_ptr<bool> token = impl->alive;
+        const std::weak_ptr<bool> alive = child.impl->alive;
         child.impl->parent->removeChild(child);
+        if (token.expired() || alive.expired() || child.impl->parent) {
+            return;
+        }
     }
     child.impl->parent = this;
     child.impl->attachTo(impl->canvas);
@@ -417,8 +424,17 @@ void Component::removeChild(Component& child) {
     if (it == children.end()) {
         return;
     }
+    const std::weak_ptr<bool> token = impl->alive;
+    const std::weak_ptr<bool> alive = child.impl->alive;
     cancelMouse(child);
-    children.erase(it);
+    if (token.expired() || alive.expired()) {
+        return;
+    }
+    const auto current = std::find(children.begin(), children.end(), &child);
+    if (current == children.end()) {
+        return;
+    }
+    children.erase(current);
     ++impl->childGeneration;
     child.impl->concealTree();
     child.impl->parent = nullptr;
@@ -445,11 +461,23 @@ void Component::clearChildren() {
     if (impl->children.empty()) {
         return;
     }
-    const std::vector<Component*> detached = impl->children;
-    for (auto* child : detached) {
+    const std::weak_ptr<bool> token = impl->alive;
+    Chain detached;
+    for (auto* child : impl->children) {
         if (child) {
+            detached.push_back({child, child->impl->alive});
+        }
+    }
+    for (const auto& [child, alive] : detached) {
+        if (token.expired()) {
+            return;
+        }
+        if (!alive.expired()) {
             cancelMouse(*child);
         }
+    }
+    if (token.expired()) {
+        return;
     }
     for (auto* child : impl->children) {
         if (child) {
@@ -476,17 +504,43 @@ void Component::setChildren(const std::vector<Component*>& order) {
         impl->relayout();
         return;
     }
+    const std::weak_ptr<bool> token = impl->alive;
+    Chain wanted;
+    wanted.reserve(order.size());
+    for (auto* child : order) {
+        wanted.push_back({child, child ? child->impl->alive : std::weak_ptr<bool>{}});
+    }
     const std::vector<Component*> current = children;
     for (auto* child : current) {
         if (child && std::find(order.begin(), order.end(), child) == order.end()) {
             removeChild(*child);
+            if (token.expired()) {
+                return;
+            }
+        }
+    }
+    std::vector<Component*> adopted;
+    adopted.reserve(wanted.size());
+    for (const auto& [child, alive] : wanted) {
+        if (alive.expired() || std::find(adopted.begin(), adopted.end(), child) != adopted.end()) {
+            continue;
+        }
+        adopted.push_back(child);
+        addChild(*child);
+        if (token.expired()) {
+            return;
         }
     }
     std::vector<Component*> next;
-    next.reserve(order.size());
-    for (auto* child : order) {
+    next.reserve(children.size());
+    for (const auto& [child, alive] : wanted) {
+        if (!alive.expired() && child->impl->parent == this &&
+            std::find(next.begin(), next.end(), child) == next.end()) {
+            next.push_back(child);
+        }
+    }
+    for (auto* child : children) {
         if (std::find(next.begin(), next.end(), child) == next.end()) {
-            addChild(*child);
             next.push_back(child);
         }
     }
@@ -531,13 +585,33 @@ void Component::mountChildren(const std::vector<Component*>& active) {
             }
         }
     }
+    const std::weak_ptr<bool> token = impl->alive;
     setChildren(next);
+    if (token.expired()) {
+        return;
+    }
+    Chain mounted;
+    mounted.reserve(impl->children.size());
     for (auto* child : impl->children) {
-        if (!listed(child) && child->impl->visible) {
-            cancelMouse(*child);
-            releaseFocusWithin(*child);
+        mounted.push_back({child, child->impl->alive});
+    }
+    const auto present = [&](Component* child, const std::weak_ptr<bool>& alive) {
+        return !token.expired() && !alive.expired() && child->impl->parent == this;
+    };
+    for (const auto& [child, alive] : mounted) {
+        if (!present(child, alive)) {
+            continue;
         }
-        child->setVisible(listed(child));
+        const bool shown = listed(child);
+        if (!shown && child->impl->visible) {
+            cancelMouse(*child);
+            if (present(child, alive)) {
+                releaseFocusWithin(*child);
+            }
+        }
+        if (present(child, alive)) {
+            child->setVisible(shown);
+        }
     }
 }
 
@@ -900,12 +974,6 @@ Component* Component::Impl::focusTarget() const {
     return owner;
 }
 
-namespace {
-
-using Chain = std::vector<std::pair<Component*, std::weak_ptr<bool>>>;
-
-}  // namespace
-
 template<typename Handler>
 bool Component::Impl::bubble(Handler&& handler) {
     const auto* inputRoot = root().self;
@@ -1193,9 +1261,18 @@ void Component::layoutChildren(const Context& ctx) {
 
 bool Component::mouseEventChildren(const MouseEvent& event) {
     if (event.type == MouseEventType::Cancel) {
-        const std::vector<Component*> snapshot = impl->children;
-        for (auto* child : snapshot) {
-            if (child && hasChild(*child)) {
+        const std::weak_ptr<bool> token = impl->alive;
+        Chain snapshot;
+        for (auto* child : impl->children) {
+            if (child) {
+                snapshot.push_back({child, child->impl->alive});
+            }
+        }
+        for (const auto& [child, alive] : snapshot) {
+            if (token.expired()) {
+                return false;
+            }
+            if (!alive.expired() && child->impl->parent == this) {
                 child->mouseEvent(event);
             }
         }

@@ -14,6 +14,7 @@ struct Titlebar {
         F32 leadingInset = 0.0f;
         F32 height = 0.0f;
         F32 controlsCenter = 0.0f;
+        F32 trailingInset = 0.0f;
 
         bool operator==(const Chrome&) const = default;
     };
@@ -23,7 +24,8 @@ struct Titlebar {
         if (!chrome.integrated) {
             return {};
         }
-        return {.leadingInset = chrome.leadingInset, .height = chrome.height, .controlsCenter = chrome.controlsCenter};
+        return {.leadingInset = chrome.leadingInset, .height = chrome.height,
+                .controlsCenter = chrome.controlsCenter, .trailingInset = chrome.trailingInset};
     }
 
     static void Press(Render::Window* render, U8 clicks) {

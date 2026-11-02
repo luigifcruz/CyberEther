@@ -42,6 +42,9 @@ class JETSTREAM_API Flowgraph {
                   const std::shared_ptr<Compositor>& compositor);
     Result start();
     Result stop();
+    Result pause();
+    Result resume();
+    bool paused() const;
     Result destroy();
 
     std::string title() const;
@@ -109,6 +112,8 @@ class JETSTREAM_API Flowgraph {
 
     View& view();
     const View& view() const;
+
+    static Result ReadTitle(const std::string& path, std::string& title);
 
  private:
     Result blockSetErroredFromModules(const std::unordered_set<std::string>& moduleNames);

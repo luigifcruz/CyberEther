@@ -1,15 +1,20 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "fonts.hh"
 #include "component_harness.hh"
 
+#include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
-#include <jetstream/render/sakura/components/checkbox.hh>
 #include <jetstream/render/sakura/components/combo.hh>
 #include <jetstream/render/sakura/components/progress_bar.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/pill_button.hh>
 #include <jetstream/render/sakura/components/qr_code.hh>
+#include <jetstream/render/sakura/components/spinner.hh>
+#include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/status_bar.hh>
+#include <jetstream/render/sakura/components/table.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
@@ -18,7 +23,10 @@
 #include "scene.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -284,41 +292,6 @@ TEST_CASE("Navigation items select on a single click and route double clicks to 
     CHECK(opened == 1);
 }
 
-TEST_CASE("Checkboxes request the toggled value on click", "[core][sakura][controls]") {
-    const Scene scene;
-    std::vector<bool> changes;
-    Sakura::Checkbox checkbox;
-    checkbox.update({.label = "Enabled", .value = false, .onChange = [&](bool value) { changes.push_back(value); }});
-    Host host(checkbox);
-    host.place(scene.ctx, {0.0f, 0.0f, 200.0f, 25.0f});
-
-    CHECK(host.click(10.0f, 10.0f));
-    CHECK(changes == std::vector<bool>{true});
-
-    checkbox.update({.label = "Enabled", .value = true, .onChange = [&](bool value) { changes.push_back(value); }});
-    CHECK(host.click(150.0f, 10.0f));
-    CHECK(changes == std::vector<bool>{true, false});
-
-    host.send(Mouse(MouseEventType::Click, 10.0f, 10.0f));
-    host.send(Mouse(MouseEventType::Release, 300.0f, 10.0f));
-    CHECK(changes.size() == 2);
-}
-
-TEST_CASE("Checkbox measure is a square plus the spaced label", "[core][sakura][controls]") {
-    const Scene scene;
-    Sakura::Checkbox bare;
-    bare.update({});
-    Host bareHost(bare);
-    CHECK(bareHost.measureOf(scene.ctx, {500.0f, 500.0f}) == Extent2D<F32>{25.0f, 25.0f});
-
-    Sakura::Checkbox labeled;
-    labeled.update({.label = "Enabled"});
-    Host labeledHost(labeled);
-    const F32 label = TextWidth(scene.ctx, "Enabled");
-    REQUIRE(label > 0.0f);
-    CHECK(labeledHost.measureOf(scene.ctx, {500.0f, 500.0f}) == Extent2D<F32>{25.0f + 8.0f + label, 25.0f});
-}
-
 TEST_CASE("Combo opens a dropdown below itself and reports the chosen option", "[core][sakura][controls]") {
     const Scene scene;
     std::vector<std::string> events;
@@ -425,26 +398,43 @@ TEST_CASE("Combo measure uses its configured width or the available width", "[co
     CHECK(host.measureOf(scene.ctx, {320.0f, 500.0f}) == Extent2D<F32>{150.0f, 25.0f});
 }
 
-TEST_CASE("QR codes click only inside the centered code", "[core][sakura][controls]") {
+TEST_CASE("QR codes size from the viewport height ratio and center the code", "[core][sakura][controls]") {
     const Scene scene;
-    U64 clicked = 0;
     Sakura::QrCode code;
-    code.update({.data = {1, 0, 0, 1}, .width = 2, .onClick = [&] { ++clicked; }});
+    code.update({.data = {1, 0, 0, 1}, .width = 2, .heightRatio = 0.1f});
     Host host(code);
 
-    CHECK(host.measureOf(scene.ctx, {100.0f, 500.0f}) == Extent2D<F32>{100.0f, 24.0f});
-    CHECK(host.measureOf(scene.ctx, {kInfinite, 500.0f}) == Extent2D<F32>{24.0f, 24.0f});
+    CHECK(host.measureOf(scene.ctx, {100.0f, 500.0f}) == Extent2D<F32>{100.0f, 60.0f});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, 500.0f}) == Extent2D<F32>{60.0f, 60.0f});
+    CHECK(host.measureOf(scene.ctx, {40.0f, 30.0f}) == Extent2D<F32>{40.0f, 30.0f});
 
-    host.place(scene.ctx, {0.0f, 0.0f, 100.0f, 24.0f});
-    CHECK(host.send(Mouse(MouseEventType::Click, 38.0f, 10.0f)));
-    CHECK(clicked == 1);
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 37.0f, 10.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 62.0f, 10.0f)));
-    CHECK(clicked == 1);
+    auto tall = scene.ctx;
+    tall.framebufferSize.y = 1200;
+    CHECK(host.measureOf(tall, {kInfinite, kInfinite}) == Extent2D<F32>{120.0f, 120.0f});
 
-    code.update({.data = {1, 0, 0, 1}, .width = 2, .onClick = [&] { clicked += 10; }});
-    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 10.0f)));
-    CHECK(clicked == 11);
+    auto dense = scene.ctx;
+    dense.pixelRatio = 2.0f;
+    CHECK(host.measureOf(dense, {kInfinite, kInfinite}) == Extent2D<F32>{120.0f, 120.0f});
+
+    host.place(scene.ctx, {0.0f, 0.0f, 100.0f, 60.0f});
+    const auto boxes = Find<Sakura::Box>(code);
+    REQUIRE(boxes.size() == 1);
+    const auto& instances = boxes.front()->config().instances;
+    REQUIRE(instances.size() == 3);
+    CHECK(instances[0].rect == Rect{20.0f, 0.0f, 60.0f, 60.0f});
+    CHECK(instances[1].rect == Rect{40.0f, 20.0f, 10.0f, 10.0f});
+    CHECK(instances[2].rect == Rect{50.0f, 30.0f, 10.0f, 10.0f});
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 50.0f, 30.0f)));
+    CHECK_FALSE(Peek::CursorAt(code, {50.0f, 30.0f}).has_value());
+
+    host.place(scene.ctx, {0.0f, 0.0f, 32.0f, 60.0f});
+    const auto& fitted = Find<Sakura::Box>(code).front()->config().instances;
+    REQUIRE(fitted.size() == 3);
+    CHECK(fitted[0].rect == Rect{1.0f, 0.0f, 30.0f, 30.0f});
+    CHECK(fitted[2].rect.right() <= 31.0f);
+
+    code.update({.data = {1, 0, 0, 1}, .width = 2, .heightRatio = 0.0f});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, 500.0f}) == Extent2D<F32>{0.0f, 0.0f});
 }
 
 TEST_CASE("Progress bars fill the available width by default", "[core][sakura][controls]") {
@@ -593,4 +583,330 @@ TEST_CASE("Disabled text inputs ignore clicks, show no cursor, and give up focus
     input.update({.value = "alpha", .focus = true, .disabled = true});
     host.place(scene.ctx, bounds);
     CHECK_FALSE(input.focused());
+}
+
+TEST_CASE("Spinners measure their size and turn their arc as time passes", "[core][sakura][controls]") {
+    auto ctx = MakeContext();
+    Sakura::Spinner spinner;
+    Host host(spinner);
+    spinner.update({.diameter = 20.0f, .thickness = 2.0f, .period = 0.8f});
+    CHECK(host.measureOf(ctx, {100.0f, 100.0f}) == Extent2D<F32>{20.0f, 20.0f});
+
+    const auto head = [&](F64 time) {
+        ctx.time = time;
+        host.place(ctx, {10.0f, 10.0f, 20.0f, 20.0f});
+        const auto lines = Direct<Sakura::Polyline>(spinner);
+        REQUIRE(lines.size() == 1);
+        const auto& instances = lines.front()->config().instances;
+        REQUIRE(instances.size() == 2);
+        CHECK(instances[0].closed);
+        return instances[1].points.front();
+    };
+    const auto start = head(0.0);
+    CHECK(start.x == Catch::Approx(29.0f).margin(0.01f));
+    CHECK(start.y == Catch::Approx(20.0f).margin(0.01f));
+    const auto quarter = head(0.2);
+    CHECK(quarter.x == Catch::Approx(20.0f).margin(0.01f));
+    CHECK(quarter.y == Catch::Approx(29.0f).margin(0.01f));
+    const auto turned = head(0.8);
+    CHECK(turned.x == Catch::Approx(start.x).margin(0.01f));
+    CHECK(turned.y == Catch::Approx(start.y).margin(0.01f));
+}
+
+TEST_CASE("Spinners resolve their diameter and scale with the pixel ratio", "[core][sakura][controls]") {
+    auto ctx = MakeContext();
+    Sakura::Spinner spinner;
+    Host host(spinner);
+    spinner.update({});
+    CHECK(host.measureOf(ctx, {kInfinite, kInfinite}) == Extent2D<F32>{16.0f, 16.0f});
+    CHECK(host.measureOf(ctx, {10.0f, 100.0f}) == Extent2D<F32>{10.0f, 10.0f});
+
+    spinner.update({.diameter = 24.0f});
+    CHECK(host.measureOf(ctx, {kInfinite, kInfinite}) == Extent2D<F32>{24.0f, 24.0f});
+    CHECK(host.measureOf(ctx, {100.0f, 12.0f}) == Extent2D<F32>{12.0f, 12.0f});
+
+    spinner.update({.diameter = Sakura::Fill});
+    CHECK(host.measureOf(ctx, {80.0f, 50.0f}) == Extent2D<F32>{50.0f, 50.0f});
+    CHECK(host.measureOf(ctx, {kInfinite, kInfinite}) == Extent2D<F32>{16.0f, 16.0f});
+
+    auto dense = ctx;
+    dense.pixelRatio = 2.0f;
+    spinner.update({.diameter = 20.0f, .thickness = 2.0f, .period = 0.8f});
+    CHECK(host.measureOf(dense, {kInfinite, kInfinite}) == Extent2D<F32>{40.0f, 40.0f});
+    host.place(dense, {0.0f, 0.0f, 40.0f, 40.0f});
+    const auto lines = Direct<Sakura::Polyline>(spinner);
+    REQUIRE(lines.size() == 1);
+    const auto& instances = lines.front()->config().instances;
+    REQUIRE(instances.size() == 2);
+    CHECK(instances[0].thickness == 4.0f);
+    CHECK(instances[1].points.front().x == Catch::Approx(38.0f).margin(0.01f));
+}
+
+TEST_CASE("Spinner tracks are closed rings without a duplicated seam point at the track alpha",
+          "[core][sakura][controls]") {
+    auto ctx = MakeContext();
+    Sakura::Spinner spinner;
+    Host host(spinner);
+    spinner.update({.diameter = 20.0f});
+    host.place(ctx, {10.0f, 10.0f, 20.0f, 20.0f});
+    const auto lines = Direct<Sakura::Polyline>(spinner);
+    REQUIRE(lines.size() == 1);
+    const auto& instances = lines.front()->config().instances;
+    REQUIRE(instances.size() == 2);
+    const auto& track = instances[0];
+    REQUIRE(track.points.size() > 2);
+    CHECK(track.closed);
+    const auto first = track.points.front();
+    const auto last = track.points.back();
+    CHECK(std::hypot(last.x - first.x, last.y - first.y) > 0.5f);
+    CHECK(track.color.a == Catch::Approx(instances[1].color.a * 0.2f));
+}
+
+TEST_CASE("Spinners repaint only while the clock ticks and settle when frozen or static",
+          "[core][sakura][controls][retention]") {
+    Scene scene;
+    Sakura::Spinner spinner;
+    Place place(spinner, {10.0f, 10.0f, 20.0f, 20.0f});
+    Frames frames(place, kScreen, scene.context());
+    F32 period = 0.9f;
+    const auto update = [&] {
+        spinner.update({.period = period});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    frames.timeStep = 0.05;
+    for (U64 frame = 0; frame < 4; ++frame) {
+        CAPTURE(frame);
+        CHECK(RepaintOnly(frames.run(update)));
+    }
+
+    frames.timeStep = 0.0;
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    period = 0.0f;
+    frames.timeStep = 0.05;
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Disabled pill buttons ignore clicks, drop hover and the hand cursor, and fade",
+          "[core][sakura][controls]") {
+    const Scene scene;
+    auto ctx = scene.context();
+    ctx.palette = DistinctPalette();
+    U64 clicked = 0;
+    Sakura::PillButton button;
+    const auto configure = [&](bool disabled) {
+        button.update({.icon = "+", .label = "Send", .disabled = disabled, .onClick = [&] { ++clicked; }});
+    };
+    const auto fill = [&] {
+        return Find<Sakura::Box>(button).at(1)->config().instances.at(0).backgroundColor;
+    };
+    Host host(button);
+    configure(false);
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 28.0f});
+    const auto enabled = fill();
+    CHECK(Peek::CursorAt(button, {50.0f, 24.0f}) == SurfaceCursor::Hand);
+    CHECK(host.click(50.0f, 24.0f));
+    CHECK(clicked == 1);
+    host.send(Mouse(MouseEventType::Move, 50.0f, 24.0f));
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 28.0f});
+    CHECK(fill().r == ctx.color("pill_hover_bg").r);
+
+    configure(true);
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 28.0f});
+    CHECK(fill().r == ctx.color("pill_bg").r);
+    CHECK(fill().a == Catch::Approx(enabled.a * 0.6f));
+    for (const auto* text : Find<Sakura::Text>(button)) {
+        CHECK(text->config().opacity == 0.6f);
+    }
+    CHECK_FALSE(Peek::CursorAt(button, {50.0f, 24.0f}).has_value());
+    CHECK_FALSE(host.click(50.0f, 24.0f));
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Move, 50.0f, 24.0f)));
+    CHECK(clicked == 1);
+
+    configure(false);
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 28.0f});
+    CHECK(fill() == enabled);
+    CHECK(host.click(50.0f, 24.0f));
+    CHECK(clicked == 2);
+}
+
+TEST_CASE("Pill buttons repaint without rebuilding when they toggle disabled", "[core][sakura][controls]") {
+    Scene scene;
+    auto ctx = scene.context();
+    ctx.palette = DistinctPalette();
+    Sakura::PillButton button;
+    Place place(button, {10.0f, 10.0f, 120.0f, 28.0f});
+    Frames frames(place, kScreen, ctx);
+    bool disabled = false;
+    const auto update = [&] {
+        button.update({.label = "Send", .disabled = disabled, .onClick = [] {}});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    disabled = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(QuietMoves(frames, update, {{50.0f, 24.0f}, {60.0f, 24.0f}}, [&](const MouseEvent& event) {
+        return place.send(event);
+    }));
+
+    disabled = false;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Tables shift their rows with the elastic overscroll and spring back", "[core][sakura][controls]") {
+    std::vector<std::unique_ptr<Probe>> probes;
+    Sakura::Table::Config config{.columns = {"Name", "Value"}};
+    for (U64 row = 0; row < 10; ++row) {
+        auto& name = *probes.emplace_back(std::make_unique<Probe>(Extent2D<F32>{38.0f, 10.0f}));
+        auto& value = *probes.emplace_back(std::make_unique<Probe>(Extent2D<F32>{138.0f, 10.0f}));
+        name.consume = false;
+        value.consume = false;
+        config.cellRows.push_back({&name, &value});
+    }
+    Sakura::Table table;
+    table.update(config);
+    Host host(table);
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    const Rect bounds = {0.0f, 0.0f, 400.0f, 100.0f};
+    host.place(ctx, bounds);
+    const F32 rest = probes[0]->laidFrame.y;
+    const auto trackpad = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(50.0f, 50.0f, 0.0f, dy);
+        event.phase = phase;
+        host.send(event);
+        host.place(ctx, bounds);
+    };
+
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    const F32 stretched = probes[0]->laidFrame.y;
+    CHECK(stretched > rest);
+    CHECK(probes[2]->laidFrame.y - probes[0]->laidFrame.y > 0.0f);
+
+    trackpad(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 120; ++frame) {
+        ctx.time += 1.0 / 60.0;
+        host.place(ctx, bounds);
+    }
+    CHECK(probes[0]->laidFrame.y == rest);
+}
+
+TEST_CASE("Combo dropdown rows follow the elastic overscroll for drawing and picking", "[core][sakura][controls]") {
+    const Scene scene;
+    std::vector<std::string> options;
+    for (U64 index = 0; index < 20; ++index) {
+        options.push_back("option " + std::to_string(index));
+    }
+    std::optional<U64> selected;
+    Sakura::Combo combo;
+    combo.update({
+        .id = "elastic",
+        .options = options,
+        .value = options[0],
+        .onSelect = [&](U64 index) { selected = index; },
+    });
+    LayerSlot mount;
+    mount.hold(combo, {100.0f, 100.0f, 200.0f, 25.0f});
+    LayerHost host({&mount});
+    auto ctx = scene.ctx;
+    ctx.time = 1.0;
+    host.place(ctx, kScreen);
+    host.click(150.0f, 112.0f);
+    host.place(ctx, kScreen);
+
+    const auto row = [&](const std::string& str) -> std::optional<Rect> {
+        for (auto* label : Find<Sakura::Label>(host.popups)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.str == str && instance.visible) {
+                    return instance.rect;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    const auto rest = row("option 2");
+    REQUIRE(rest.has_value());
+
+    const F32 x = rest->x + 20.0f;
+    const F32 y = rest->y + rest->height * 0.5f;
+    auto began = Wheel(x, y, 0.0f, 0.0f);
+    began.phase = ScrollPhase::Began;
+    host.send(began);
+    host.place(ctx, kScreen);
+    auto changed = Wheel(x, y, 0.0f, 3.0f);
+    changed.phase = ScrollPhase::Changed;
+    host.send(changed);
+    host.place(ctx, kScreen);
+
+    const auto stretched = row("option 2");
+    REQUIRE(stretched.has_value());
+    REQUIRE(stretched->y > rest->y);
+    host.click(x, stretched->y + stretched->height * 0.5f);
+    REQUIRE(selected.has_value());
+    CHECK(*selected == 2);
+}
+
+TEST_CASE("Reopening a combo dropdown drops the previous opening stretch", "[core][sakura][controls]") {
+    const Scene scene;
+    std::vector<std::string> options;
+    for (U64 index = 0; index < 30; ++index) {
+        options.push_back("option " + std::to_string(index));
+    }
+    Sakura::Combo combo;
+    combo.update({.id = "reopen", .options = options, .value = options[0]});
+    LayerSlot mount;
+    mount.hold(combo, {100.0f, 100.0f, 200.0f, 25.0f});
+    LayerHost host({&mount});
+    auto ctx = scene.ctx;
+    ctx.time = 1.0;
+    host.place(ctx, kScreen);
+    const auto row = [&]() -> std::optional<Rect> {
+        for (auto* label : Find<Sakura::Label>(host.popups)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.str == "option 0" && instance.visible) {
+                    return instance.rect;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    host.click(150.0f, 112.0f);
+    host.place(ctx, kScreen);
+    const auto rest = row();
+    REQUIRE(rest.has_value());
+
+    auto stretch = Wheel(rest->x + 20.0f, rest->y + rest->height * 0.5f, 0.0f, 4.0f);
+    stretch.phase = ScrollPhase::Changed;
+    host.send(stretch);
+    host.place(ctx, kScreen);
+    REQUIRE(row().has_value());
+    REQUIRE(row()->y > rest->y + 1.0f);
+
+    host.click(150.0f, 112.0f);
+    host.place(ctx, kScreen);
+    REQUIRE_FALSE(row().has_value());
+    host.click(150.0f, 112.0f);
+    host.place(ctx, kScreen);
+    REQUIRE(row().has_value());
+    CHECK(row()->y == Catch::Approx(rest->y));
+}
+
+TEST_CASE("Pill buttons let wheel events pass to the views around them", "[core][sakura][controls]") {
+    const auto ctx = MakeContext();
+    Sakura::PillButton button;
+    Host host(button);
+    button.update({.icon = "!", .label = "Report", .onClick = [] {}});
+    host.place(ctx, {0.0f, 0.0f, 120.0f, 28.0f});
+    CHECK_FALSE(host.send(Wheel(60.0f, 14.0f, -1.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Click, 60.0f, 14.0f)));
 }

@@ -4,9 +4,7 @@
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
-#include <optional>
 #include <vector>
 
 namespace Jetstream::Sakura {
@@ -15,8 +13,7 @@ struct QrCode : public Component {
     struct Config {
         std::vector<U8> data;
         int width = 0;
-        F32 moduleSize = 4.0f;
-        Callback<void()> onClick;
+        F32 heightRatio = 1.0f / 3.0f;
 
         bool operator==(const Config&) const = default;
     };
@@ -29,8 +26,6 @@ struct QrCode : public Component {
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
     void layout(const Context& ctx) override;
-    bool mouseEvent(const MouseEvent& event) override;
-    std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
 
  private:
     struct Impl;

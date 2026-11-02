@@ -3,9 +3,8 @@
 
 #include "node.hh"
 
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -104,12 +103,12 @@ struct FlowgraphLink {
         const bool hasAttributes = !attributeRows.empty();
 
         tooltipTitle.update({
-            .str = ICON_FA_MEMORY " Tensor Metadata",
+            .str = ICON_LC_MEMORY_STICK " Tensor Metadata",
             .wrapped = true,
         });
         tooltipHeaderDivider.update({.spacing = 0.0f});
         tooltipHelp.update({
-            .str = ICON_FA_CIRCLE_INFO " Click on the end of the link to detach it.",
+            .str = ICON_LC_INFO " Click on the end of the link to detach it.",
             .tone = Text::Tone::Secondary,
             .wrapped = true,
         });

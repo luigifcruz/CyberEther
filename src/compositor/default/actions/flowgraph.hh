@@ -1,9 +1,12 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_FLOWGRAPH_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_FLOWGRAPH_HH
 
+#include "persist.hh"
+#include "workbench.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
+#include "layout.hh"
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
@@ -11,10 +14,12 @@
 #include "jetstream/flowgraph_view.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/platform.hh"
+#include "jetstream/registry.hh"
 #include "tools/naming.hh"
 #include "tools/text.hh"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -22,8 +27,11 @@
 #include <optional>
 #include <regex>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace Jetstream {
 
@@ -31,11 +39,16 @@ struct FlowgraphActions {
     using Filter = std::tuple<MailNewFlowgraph,
                               MailOpenFlowgraph,
                               MailOpenFlowgraphPath,
+                              MailToggleFavoriteFlowgraph,
+                              MailRememberFlowgraph,
                               MailDropFlowgraphPath,
                               MailOpenFlowgraphBlob,
+                              MailOpenFlowgraphExample,
                               MailFocusFlowgraph,
+                              MailSetFlowgraphPaused,
                               MailSaveFlowgraph,
                               MailCloseFlowgraph,
+                              MailCancelCloseFlowgraph,
                               MailSaveFlowgraphPath,
                               MailSetFlowgraphInfo,
                               MailCreateBlock,
@@ -50,7 +63,9 @@ struct FlowgraphActions {
                               MailCopyBlock,
                               MailPasteBlock,
                               MailSetNodeMeta,
+                              MailSetEditorMeta,
                               MailSetConfigCollapsed,
+                              MailSetMetricsCollapsed,
                               MailSurfaceInput,
                               MailResizeSurface>;
 
@@ -105,13 +120,20 @@ struct FlowgraphActions {
         auto inst = state.system.instance;
         auto name = GenerateRandomFlowgraphName();
         auto path = msg.path;
+        auto title = std::make_shared<std::string>();
+        auto enqueueMail = callbacks.enqueueMail;
 
-        callbacks.enqueueCommand([inst, name, path]() -> Result {
+        callbacks.enqueueCommandWithCompletion([inst, name, path, title]() -> Result {
             std::shared_ptr<Flowgraph> flowgraph;
             JST_CHECK(inst->flowgraphCreate(name, {}, flowgraph));
             JST_CHECK(flowgraph->importFromFile(path));
+            *title = flowgraph->title();
             return Result::SUCCESS;
-        }, false);
+        }, false, [enqueueMail, path, title](Result result) {
+            if (result == Result::SUCCESS) {
+                enqueueMail(MailRememberFlowgraph{.path = path, .title = *title});
+            }
+        });
 
         state.interface.pendingFocusedFlowgraph = name;
         return Result::SUCCESS;
@@ -131,30 +153,53 @@ struct FlowgraphActions {
     }
 
     Result handle(const MailOpenFlowgraphBlob& msg) {
-        if (msg.blob.empty()) {
+        return openBlob(msg.blob).has_value() ? Result::SUCCESS : Result::ERROR;
+    }
+
+    std::optional<std::string> openBlob(std::vector<char> blob) {
+        if (blob.empty()) {
             JST_ERROR("Failed to open flowgraph from blob due to invalid blob data.");
-            return Result::ERROR;
+            return std::nullopt;
         }
 
         auto inst = state.system.instance;
         auto name = GenerateRandomFlowgraphName();
-        auto blob = msg.blob;
 
-        callbacks.enqueueCommand([inst, name, blob]() -> Result {
+        callbacks.enqueueCommandWithCompletion([inst, name, blob = std::move(blob)]() -> Result {
             std::shared_ptr<Flowgraph> flowgraph;
             JST_CHECK(inst->flowgraphCreate(name, {}, flowgraph));
             JST_CHECK(flowgraph->importFromBlob(blob));
             return Result::SUCCESS;
-        }, false);
+        }, false, [this, name](Result result) {
+            if (result != Result::SUCCESS) {
+                WorkbenchActions::Forget(state, name);
+            }
+        });
 
         state.interface.pendingFocusedFlowgraph = name;
+        return name;
+    }
+
+    Result handle(const MailOpenFlowgraphExample& msg) {
+        const auto& flowgraphs = state.registry.flowgraphs;
+        const auto example = std::find_if(flowgraphs.begin(), flowgraphs.end(), [&](const auto& entry) {
+            return entry.key == msg.key;
+        });
+        if (example == flowgraphs.end()) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "The selected example is no longer available.");
+            return Result::SUCCESS;
+        }
+        const auto name = openBlob({example->content.begin(), example->content.end()});
+        if (!name.has_value()) {
+            return Result::ERROR;
+        }
         return Result::SUCCESS;
     }
 
     Result handle(const MailFocusFlowgraph& msg) {
         if (state.flowgraph.items.contains(msg.flowgraph)) {
             state.interface.focusedFlowgraph = msg.flowgraph;
-            state.interface.startTabFocused = false;
+            WorkbenchActions::Focus(state, std::nullopt);
         }
 
         return Result::SUCCESS;
@@ -186,12 +231,75 @@ struct FlowgraphActions {
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
 
-        callbacks.enqueueCommand([flowgraph, path]() -> Result {
+        JST_CHECK(LayoutActions(state.flowgraph).prepareSave(msg.flowgraph));
+        callbacks.enqueueCommandWithMail([flowgraph, path]() -> Result {
             JST_CHECK(flowgraph->exportToFile(path));
             return Result::SUCCESS;
-        }, false);
+        }, false, MailRememberFlowgraph{.path = path, .title = flowgraph->title()});
 
         return Result::SUCCESS;
+    }
+
+    static std::string TitleFromFile(const std::string& path) {
+        std::string title;
+        if (Flowgraph::ReadTitle(path, title) != Result::SUCCESS) {
+            return "";
+        }
+        return title;
+    }
+
+    static void Remember(DefaultCompositorState::InterfaceState& ui, const std::string& path, std::string title,
+                         U64 accessed) {
+        auto& recent = ui.recentFlowgraphs;
+        std::erase_if(recent, [&](const auto& entry) {
+            return entry.path == path;
+        });
+        recent.insert(recent.begin(), {.path = path, .title = std::move(title), .accessed = accessed});
+        if (recent.size() > DefaultCompositorState::InterfaceState::MaxRecentFlowgraphs) {
+            recent.resize(DefaultCompositorState::InterfaceState::MaxRecentFlowgraphs);
+        }
+        for (auto& favorite : ui.favoriteFlowgraphs) {
+            if (favorite.path == path) {
+                favorite = recent.front();
+            }
+        }
+    }
+
+    static void ToggleFavorite(DefaultCompositorState::InterfaceState& ui, const std::string& path) {
+        auto& favorites = ui.favoriteFlowgraphs;
+        if (std::erase_if(favorites, [&](const auto& entry) { return entry.path == path; }) > 0) {
+            return;
+        }
+        const auto& recent = ui.recentFlowgraphs;
+        const auto entry = std::find_if(recent.begin(), recent.end(), [&](const auto& item) {
+            return item.path == path;
+        });
+        favorites.push_back(entry != recent.end() ? *entry
+                                                  : Settings::Interface::FlowgraphEntry{
+                                                        .path = path,
+                                                        .title = TitleFromFile(path),
+                                                    });
+    }
+
+    Result handle(const MailRememberFlowgraph& msg) {
+        const auto now = std::chrono::system_clock::now().time_since_epoch();
+        Remember(state.interface, msg.path, msg.title,
+                 static_cast<U64>(std::chrono::duration_cast<std::chrono::seconds>(now).count()));
+        const auto result = PersistSettings([&](Settings& settings) {
+            settings.interface.recentFlowgraphs = state.interface.recentFlowgraphs;
+            settings.interface.favoriteFlowgraphs = state.interface.favoriteFlowgraphs;
+        });
+        if (result != Result::SUCCESS) {
+            JST_WARN("[COMPOSITOR] Failed to save the recent flowgraph list.");
+        }
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailToggleFavoriteFlowgraph& msg) {
+        ToggleFavorite(state.interface, msg.path);
+        return PersistSettings([&](Settings& settings) {
+            settings.interface.favoriteFlowgraphs = state.interface.favoriteFlowgraphs;
+        });
     }
 
     Result handle(const MailCloseFlowgraph& msg) {
@@ -204,10 +312,10 @@ struct FlowgraphActions {
 
         const auto& flowgraph = state.flowgraph.items.at(msg.flowgraph);
         if (!msg.force && !flowgraph->view().empty()) {
-            state.modal.flowgraph = msg.flowgraph;
-            state.modal.content = ModalContent::FlowgraphClose;
+            state.interface.closingFlowgraph = msg.flowgraph;
             return Result::SUCCESS;
         }
+        state.interface.closingFlowgraph.reset();
 
         auto inst = state.system.instance;
         auto name = msg.flowgraph;
@@ -217,6 +325,11 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }, false);
 
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailCancelCloseFlowgraph&) {
+        state.interface.closingFlowgraph.reset();
         return Result::SUCCESS;
     }
 
@@ -244,6 +357,21 @@ struct FlowgraphActions {
         return Result::SUCCESS;
     }
 
+    Result handle(const MailSetFlowgraphPaused& msg) {
+        const auto entry = state.flowgraph.items.find(msg.flowgraph);
+        if (entry == state.flowgraph.items.end()) {
+            return Result::SUCCESS;
+        }
+
+        const auto& flowgraph = entry->second;
+        const Result result = msg.paused ? flowgraph->pause() : flowgraph->resume();
+        if (result != Result::SUCCESS) {
+            callbacks.notifyResult(result, msg.paused ? "Cannot pause the flowgraph." : "Cannot resume the flowgraph.");
+        }
+
+        return Result::SUCCESS;
+    }
+
     Result handle(const MailSetFlowgraphInfo& msg) {
         if (!state.flowgraph.items.contains(msg.flowgraph)) {
             JST_ERROR("Failed to update flowgraph info because flowgraph was not found.");
@@ -265,6 +393,9 @@ struct FlowgraphActions {
         }
         if (msg.description.has_value()) {
             JST_CHECK(flowgraph->setDescription(*msg.description));
+            if (const auto layout = state.flowgraph.layouts.find(msg.flowgraph); layout != state.flowgraph.layouts.end()) {
+                JST_CHECK(LayoutActions(state.flowgraph).handle(MailSetFlowgraphLayout{msg.flowgraph, layout->second}));
+            }
         }
 
         return Result::SUCCESS;
@@ -592,6 +723,13 @@ struct FlowgraphActions {
         return Result::SUCCESS;
     }
 
+    Result handle(const MailSetEditorMeta& msg) {
+        if (const auto graph = state.flowgraph.items.find(msg.flowgraph); graph != state.flowgraph.items.end()) {
+            return graph->second->metadata().set("editor", msg.meta);
+        }
+        return Result::SUCCESS;
+    }
+
     Result handle(const MailSetConfigCollapsed& msg) {
         if (!state.flowgraph.items.contains(msg.flowgraph)) {
             return Result::SUCCESS;
@@ -601,6 +739,19 @@ struct FlowgraphActions {
         ConfigMeta existing;
         flowgraph->metadata().get("config", existing, msg.block);
         existing.collapsed = msg.collapsed;
+        flowgraph->metadata().set("config", existing, msg.block);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetMetricsCollapsed& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            return Result::SUCCESS;
+        }
+
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        ConfigMeta existing;
+        flowgraph->metadata().get("config", existing, msg.block);
+        existing.tileMetricsCollapsed = msg.collapsed;
         flowgraph->metadata().set("config", existing, msg.block);
         return Result::SUCCESS;
     }

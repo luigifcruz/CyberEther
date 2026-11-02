@@ -12,10 +12,9 @@ namespace Jetstream {
 struct AboutView {
     struct Config {};
 
-    void update(Config config) {
+    void update(Config) {
         using Text = Sakura::Text;
 
-        this->config = std::move(config);
         topSpacing.update({.lines = 2});
         middleSpacing.update({.lines = 2});
         title.update({
@@ -28,7 +27,7 @@ struct AboutView {
             .str = "The final frontier!",
             .tone = Text::Tone::Secondary,
             .align = Text::Align::Center,
-            .scale = 1.15f,
+            .scale = Sakura::Typography::Scale::Large,
         });
         details.update({
             .str = jst::fmt::format("MIT Licensed\nCopyright (c) 2021-2026 Luigi F. Cruz\nv{}-{}",
@@ -57,7 +56,6 @@ struct AboutView {
     }
 
  private:
-    Config config;
     Sakura::Spacer topSpacing;
     Sakura::Spacer middleSpacing;
     Sakura::Text title;

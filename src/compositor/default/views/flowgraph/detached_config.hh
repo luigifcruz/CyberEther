@@ -2,11 +2,12 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_DETACHED_CONFIG_HH
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include "editor/config/stack.hh"
+#include "editor/metrics/base.hh"
 
 #include <algorithm>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -19,16 +20,42 @@ struct FlowgraphDetachedConfig {
     struct Config {
         std::string id;
         std::string title;
+        std::vector<FlowgraphMetricConfig> metrics;
         std::vector<FlowgraphConfigFieldConfig> configFields;
-        std::function<void()> onClose;
+        bool metricsOpen = true;
+        Sakura::Callback<void()> onClose;
+        Sakura::Callback<void(bool)> onToggleMetricsOpen;
     };
 
     void update(Config config) {
         using Stack = Sakura::NodeContentStack;
 
+        if (config.id != this->config.id || !initialized) {
+            metricsVisible = config.metricsOpen;
+            initialized = true;
+        }
         this->config = std::move(config);
+
+        while (metrics.size() > this->config.metrics.size()) {
+            metrics.pop_back();
+        }
+        while (metrics.size() < this->config.metrics.size()) {
+            metrics.push_back(std::make_unique<FlowgraphMetricInstance>());
+        }
+        for (U64 i = 0; i < metrics.size(); ++i) {
+            metrics[i]->update(std::move(this->config.metrics[i]));
+        }
+
         fields.update(std::move(this->config.configFields));
         std::vector<Stack::Item> items;
+        if (metricsVisible) {
+            for (const auto& metric : metrics) {
+                items.push_back({.child = &metric->component()});
+            }
+            if (!metrics.empty()) {
+                items.back().trailingGap = Stack::Spacing;
+            }
+        }
         fields.appendItems(items);
 
         content.update({
@@ -42,6 +69,22 @@ struct FlowgraphDetachedConfig {
         });
     }
 
+    std::vector<Sakura::Dock::Action> actions() {
+        if (metrics.empty()) {
+            return {};
+        }
+        return {{
+            .icon = ICON_LC_GAUGE,
+            .active = metricsVisible,
+            .onClick = [this]() {
+                metricsVisible = !metricsVisible;
+                if (config.onToggleMetricsOpen) {
+                    config.onToggleMetricsOpen(metricsVisible);
+                }
+            },
+        }};
+    }
+
     Sakura::Component& component() {
         return panel;
     }
@@ -50,14 +93,17 @@ struct FlowgraphDetachedConfig {
         return config.title;
     }
 
-    std::function<void()> closeCallback() const {
+    Sakura::Callback<void()> closeCallback() const {
         return config.onClose;
     }
 
  private:
     Config config;
+    bool metricsVisible = true;
+    bool initialized = false;
     Sakura::NodeContentStack content;
     Sakura::NodeFieldPanel panel;
+    std::vector<std::unique_ptr<FlowgraphMetricInstance>> metrics;
     FlowgraphConfigFieldStack fields;
 };
 

@@ -4,7 +4,7 @@
 #include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -196,22 +196,22 @@ void ToastLayer::layout(const Context& ctx) {
         const F32 eased = 1.0f - (1.0f - opacity) * (1.0f - opacity);
         const F32 slide = std::round((1.0f - eased) * Px(ctx, kToastSlide));
 
-        const char* iconStr = ICON_FA_CIRCLE_INFO;
+        const char* iconStr = ICON_LC_INFO;
         const char* fallback = "Info";
         const char* colorKey = "info_blue";
         switch (item.type) {
             case ToastType::Success:
-                iconStr = ICON_FA_CIRCLE_CHECK;
+                iconStr = ICON_LC_CIRCLE_CHECK;
                 fallback = "Success";
                 colorKey = "success_green";
                 break;
             case ToastType::Warning:
-                iconStr = ICON_FA_TRIANGLE_EXCLAMATION;
+                iconStr = ICON_LC_TRIANGLE_ALERT;
                 fallback = "Warning";
                 colorKey = "warning_yellow";
                 break;
             case ToastType::Error:
-                iconStr = ICON_FA_CIRCLE_EXCLAMATION;
+                iconStr = ICON_LC_CIRCLE_ALERT;
                 fallback = "Error";
                 colorKey = "error_red";
                 break;
@@ -287,7 +287,7 @@ void ToastLayer::layout(const Context& ctx) {
             .strokeFringe = true,
         });
         layoutChild(ctx, item.closeBadge, bounds);
-        item.closeGlyph.update({.str = ICON_FA_XMARK,
+        item.closeGlyph.update({.str = ICON_LC_X,
                                 .colorKey = item.closeHovered ? "tile_button_hover" : "tile_header_text",
                                 .scale = kToastCloseGlyph / Typography::FontSize,
                                 .opacity = closeOpacity});

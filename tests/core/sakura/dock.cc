@@ -5,17 +5,20 @@
 #include <jetstream/render/base/texture.hh>
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/image.hh>
+#include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/surface_image.hh>
 #include <jetstream/render/sakura/components/text.hh>
 
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "harness.hh"
 #include "fonts.hh"
 #include "component_harness.hh"
 #include "scene.hh"
+#include "render/sakura/metrics.hh"
+#include "render/sakura/themes.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -49,6 +52,10 @@ Extent2D<F32> CloseOf(const Rect& card) {
 
 Extent2D<F32> MaximizeOf(const Rect& card) {
     return {card.right() - 37.0f, card.y + 15.0f};
+}
+
+Extent2D<F32> MinimizeOf(const Rect& card) {
+    return {card.right() - 59.0f, card.y + 15.0f};
 }
 
 struct Emissions {
@@ -130,8 +137,8 @@ class SurfaceTexture final : public Render::Texture {
 
 bool ButtonGlyph(const Sakura::Text& text) {
     const auto& str = text.config().str;
-    return str == ICON_FA_XMARK || str == ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER ||
-           str == ICON_FA_DOWN_LEFT_AND_UP_RIGHT_TO_CENTER;
+    return str == ICON_LC_X || str == ICON_LC_MAXIMIZE_2 ||
+           str == ICON_LC_MINIMIZE_2;
 }
 
 const Sakura::Text* GlyphIn(Sakura::Component& dock, const Rect& card, const std::string& icon) {
@@ -184,6 +191,320 @@ TEST_CASE("Tab mode lays out only the active pane below the tab bar", "[core][sa
     REQUIRE(b.layouts == 1);
     CHECK(b.laidFrame == Rect{0.0f, kBar, 800.0f, 600.0f - kBar});
     CHECK(b.laidClip == Rect{0.0f, kBar, 800.0f, 600.0f - kBar});
+}
+
+TEST_CASE("Tab mode can hide its tabs while keeping the bar and the active pane", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Dock dock;
+    Host host(dock);
+    dock.update({.tabs = true, .panes = {MakePane("a", &a), MakePane("b", &b)}});
+    host.place(ctx, kScreen);
+    const auto shown = TextFrames(dock).size();
+    REQUIRE(shown >= 2);
+    const Rect first = TextFrames(dock).front();
+    const Rect body = b.laidFrame;
+    CHECK(BoxWith(dock, body) != nullptr);
+
+    dock.update({.tabs = true, .hideTabs = true, .panes = {MakePane("a", &a), MakePane("b", &b)}});
+    host.place(ctx, kScreen);
+    CHECK(TextFrames(dock).size() < shown);
+    CHECK(b.laidFrame == Rect{0.0f, kBar, 800.0f, 600.0f - kBar});
+    CHECK(BoxWith(dock, body) == nullptr);
+    host.click(first.x + 2.0f, first.y + first.height * 0.5f);
+    host.place(ctx, kScreen);
+    CHECK(a.layouts == 0);
+}
+
+TEST_CASE("Tab mode places an aside on the right that shares one gutter with the content and draws above it",
+          "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    const F32 gap = Dock::ContentPadding;
+    Probe b;
+    Probe aside({150.0f, 10.0f});
+    Dock dock;
+    Host host(dock);
+    const auto update = [&](Sakura::Component* slot, F32 width, bool hideTabs) {
+        dock.update({.tabs = true, .hideTabs = hideTabs, .panes = {MakePane("b", &b)}, .aside = slot, .asideWidth = width});
+        host.place(ctx, kScreen);
+    };
+
+    update(&aside, 200.0f, false);
+    const Rect area = {800.0f - 200.0f - gap, kBar, 200.0f + gap, 600.0f - kBar};
+    CHECK(aside.laidFrame == area);
+    CHECK(aside.laidClip == area);
+    CHECK(b.laidFrame == Rect{0.0f, kBar, 600.0f, 600.0f - kBar});
+    CHECK(BoxWith(dock, area) != nullptr);
+    host.click(area.x + gap * 0.5f, 300.0f);
+    CHECK(aside.count(MouseEventType::Click) == 1);
+    CHECK(b.count(MouseEventType::Click) == 0);
+
+    update(&aside, 200.0f, true);
+    CHECK(aside.laidFrame == area);
+    CHECK(BoxWith(dock, area) == nullptr);
+
+    update(&aside, 0.0f, false);
+    CHECK(aside.laidFrame == Rect{800.0f - 150.0f - gap, kBar, 150.0f + gap, 600.0f - kBar});
+    CHECK(b.laidFrame.width == 650.0f);
+
+    update(&aside, 1000.0f, false);
+    CHECK(aside.laidFrame == Rect{400.0f, kBar, 400.0f, 600.0f - kBar});
+    CHECK(b.laidFrame.width == 400.0f + gap);
+    update(&aside, Sakura::Fill, false);
+    CHECK(aside.laidFrame == Rect{400.0f, kBar, 400.0f, 600.0f - kBar});
+
+    update(nullptr, 200.0f, false);
+    CHECK(b.laidFrame == Rect{0.0f, kBar, 800.0f, 600.0f - kBar});
+    const U64 clicks = aside.count(MouseEventType::Click);
+    host.click(700.0f, 300.0f);
+    CHECK(aside.count(MouseEventType::Click) == clicks);
+    CHECK(b.count(MouseEventType::Click) == 1);
+}
+
+TEST_CASE("An aside settles after it is mounted and keeps its structure when its width changes",
+          "[core][sakura][dock][retention]") {
+    auto ctx = MakeContext();
+    ctx.palette = DistinctPalette();
+    Probe b;
+    Probe aside({150.0f, 10.0f});
+    Dock dock;
+    Host host(dock);
+    Frames frames(host, kScreen, ctx);
+    F32 width = 200.0f;
+    const auto update = [&] {
+        dock.update({.tabs = true, .panes = {MakePane("b", &b)}, .aside = &aside, .asideWidth = width});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    const U64 restructures = frames.restructures;
+    width = 240.0f;
+    REQUIRE(frames.settle(update));
+    CHECK(aside.laidFrame.width == 240.0f + Dock::ContentPadding);
+    CHECK(frames.restructures == restructures);
+    CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Toggling an aside parks it without rebuilding or restructuring", "[core][sakura][dock][retention]") {
+    auto ctx = MakeContext();
+    ctx.palette = DistinctPalette();
+    Probe b;
+    Probe aside({150.0f, 10.0f});
+    Dock dock;
+    Host host(dock);
+    Frames frames(host, kScreen, ctx);
+    bool shown = true;
+    const auto update = [&] {
+        dock.update({.tabs = true, .panes = {MakePane("b", &b)}, .aside = shown ? &aside : nullptr, .asideWidth = 200.0f});
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(aside.visible());
+    const U64 restructures = frames.restructures;
+    const U64 rebuilds = frames.rebuilds;
+
+    for (int toggle = 0; toggle < 4; ++toggle) {
+        shown = !shown;
+        const auto stats = frames.run(update);
+        CHECK(Kept(stats));
+        REQUIRE(frames.settle(update));
+        CHECK(Retains(frames, update));
+        CHECK(aside.visible() == shown);
+        const auto mounted = Peek::Children(dock);
+        CHECK(std::find(mounted.begin(), mounted.end(), &aside) != mounted.end());
+        CHECK(b.laidFrame.width == (shown ? 600.0f : 800.0f));
+    }
+    CHECK(frames.restructures == restructures);
+    CHECK(frames.rebuilds == rebuilds);
+
+    shown = false;
+    REQUIRE(frames.settle(update));
+    const U64 clicks = aside.count(MouseEventType::Click);
+    host.click(700.0f, 300.0f);
+    CHECK(aside.count(MouseEventType::Click) == clicks);
+}
+
+TEST_CASE("Docks can drop tile headers and give the whole tile to the content", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Dock dock;
+    Host host(dock);
+    dock.update({.panes = {MakePane("a", &a), MakePane("b", &b)}, .columns = true, .flexPane = "b"});
+    host.place(ctx, kScreen);
+    const auto titled = a.laidFrame;
+    const auto labels = TextFrames(dock).size();
+    REQUIRE(labels > 0);
+
+    dock.update({.panes = {MakePane("a", &a), MakePane("b", &b)}, .columns = true, .flexPane = "b", .headers = false});
+    host.place(ctx, kScreen);
+    CHECK(a.laidFrame.y < titled.y);
+    CHECK(a.laidFrame.height > titled.height);
+    CHECK(TextFrames(dock).size() < labels);
+}
+
+TEST_CASE("Docks without headers keep a pane that starts minimized open because nothing could restore it",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe notes;
+    Dock dock;
+    Host host(dock);
+    const auto update = [&](bool headers) {
+        auto pane = MakePane("notes", &notes);
+        pane.leftmost = true;
+        pane.startMinimized = true;
+        dock.update({.panes = {MakePane("a", &a), pane}, .columns = true, .flexPane = "a", .headers = headers});
+        host.place(ctx, kScreen);
+    };
+
+    update(false);
+    CHECK(notes.visible());
+    CHECK(notes.laidFrame.width > 32.0f);
+    CHECK(notes.laidFrame.x < a.laidFrame.x);
+    const Extent2D<F32> center = {notes.laidFrame.x + notes.laidFrame.width * 0.5f,
+                                  notes.laidFrame.y + notes.laidFrame.height * 0.5f};
+    CHECK_FALSE(Peek::CursorAt(dock, center) == SurfaceCursor::Hand);
+
+    update(true);
+    CHECK(notes.visible());
+}
+
+TEST_CASE("Dock panes without a card keep their slot and bleed through the gaps around it", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Dock dock;
+    Host host(dock);
+    auto bare = MakePane("b", &b);
+    dock.update({.panes = {MakePane("a", &a), bare}, .columns = true, .flexPane = "b", .headers = false});
+    host.place(ctx, kScreen);
+    const auto carded = b.laidFrame;
+
+    bare.card = false;
+    dock.update({.panes = {MakePane("a", &a), bare}, .columns = true, .flexPane = "b", .headers = false});
+    host.place(ctx, kScreen);
+    const F32 gap = Dock::ContentPadding;
+    CHECK(b.laidFrame.x == carded.x - gap);
+    CHECK(b.laidFrame.y == carded.y - gap);
+    CHECK(b.laidFrame.right() == carded.right() + gap);
+    CHECK(b.laidFrame.bottom() == carded.bottom() + gap);
+    CHECK(b.laidFrame.right() == kScreen.right());
+    CHECK(b.laidFrame.bottom() == kScreen.bottom());
+    CHECK(a.laidFrame.x > kScreen.x);
+    CHECK(b.laidFrame.x == a.laidFrame.right());
+}
+
+TEST_CASE("Dock panes see the tile backdrop only when they draw a card", "[core][sakura][dock]") {
+    auto ctx = MakeContext();
+    ctx.backdropColorKey = "background";
+    BackdropProbe a;
+    BackdropProbe b;
+    Dock dock;
+    Host host(dock);
+    auto bare = MakePane("b", &b);
+    bare.card = false;
+    dock.update({.panes = {MakePane("a", &a), bare}, .columns = true, .flexPane = "b", .headers = false});
+    host.place(ctx, kScreen);
+    CHECK(a.backdrop == "tile_bg");
+    CHECK(b.backdrop == "background");
+}
+
+TEST_CASE("Dock panes with a fill tint their whole tile under the header and the frame",
+          "[core][sakura][dock]") {
+    constexpr ColorRGBA<F32> kTint = {0.1f, 0.2f, 0.9f, 1.0f};
+    Probe a({0.0f, 0.0f});
+    Probe b({0.0f, 0.0f});
+    Dock dock;
+    Host host(dock);
+    auto tinted = MakePane("b", &b);
+    tinted.fill = kTint;
+    const auto tinting = [&](const Dock::Pane& second) {
+        dock.update({.panes = {MakePane("a", &a), second}, .columns = true});
+        host.place(MakeContext(), kScreen);
+        std::vector<Sakura::Box::Instance> found;
+        for (const auto* box : Find<Sakura::Box>(dock)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.backgroundColor == kTint) {
+                    found.push_back(instance);
+                }
+            }
+        }
+        return found;
+    };
+
+    CHECK(tinting(MakePane("b", &b)).empty());
+    const auto found = tinting(tinted);
+    REQUIRE(found.size() == 1);
+    CHECK(found[0].rect.y < Peek::Frame(b).y);
+    CHECK(found[0].rect.x <= Peek::Frame(b).x);
+    CHECK(found[0].rect.right() >= Peek::Frame(b).right());
+    CHECK(found[0].rect.bottom() >= Peek::Frame(b).bottom());
+    CHECK(found[0].rect.x > Peek::Frame(a).right());
+}
+
+TEST_CASE("Turning dock headers off restores a maximized tile", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Probe c;
+    Dock dock;
+    Host host(dock);
+    const auto tiles = Row({1.0f, 1.0f, 1.0f}, {Leaf("a"), Leaf("b"), Leaf("c")});
+    const auto update = [&](bool headers) {
+        dock.update({.panes = {MakePane("a", &a), MakePane("b", &b), MakePane("c", &c)}, .tiles = tiles,
+                     .headers = headers});
+        host.place(ctx, kScreen);
+    };
+    update(true);
+    const Rect cardB = {271.0f, 6.0f, 259.0f, 588.0f};
+    REQUIRE(b.laidFrame == Body(cardB));
+    const auto maximize = MaximizeOf(cardB);
+    host.click(maximize.x, maximize.y);
+    update(true);
+    REQUIRE_FALSE(a.visible());
+
+    update(false);
+    CHECK(a.visible());
+    CHECK(b.visible());
+    CHECK(c.visible());
+    CHECK(a.laidFrame.right() < b.laidFrame.x);
+    CHECK(b.laidFrame.right() < c.laidFrame.x);
+
+    update(true);
+    CHECK(a.visible());
+    CHECK(b.laidFrame == Body(cardB));
+}
+
+TEST_CASE("Turning resizing off during a splitter drag ends the drag once", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Emissions emissions;
+    CursorDock dock;
+    Host host(dock);
+    const auto update = [&](bool resizable) {
+        dock.update({.panes = {MakePane("a"), MakePane("b"), MakePane("c")},
+                     .tiles = Row({0.5f, 0.25f, 0.25f}, {Leaf("a"), Leaf("b"), Leaf("c")}),
+                     .onTiles = emissions.sink(),
+                     .resizable = resizable});
+        host.place(ctx, kScreen);
+    };
+    update(true);
+    CHECK(host.send(Mouse(MouseEventType::Click, 597.0f, 300.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Move, 498.5f, 300.0f)));
+    REQUIRE(dock.resizing());
+
+    update(false);
+    CHECK_FALSE(dock.resizing());
+    CHECK_FALSE(dock.cursorAt({498.5f, 300.0f}) == SurfaceCursor::ResizeEW);
+    REQUIRE(emissions.trees.size() == 1);
+    REQUIRE(emissions.last().has_value());
+    CheckApprox(*emissions.last(), Row({0.5f, 0.125f, 0.375f}, {Leaf("a"), Leaf("b"), Leaf("c")}));
+
+    host.send(Mouse(MouseEventType::Move, 300.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Release, 300.0f, 300.0f));
+    update(false);
+    CHECK_FALSE(dock.resizing());
+    CHECK(emissions.trees.size() == 1);
 }
 
 TEST_CASE("Tab mode presents only the active pane's surface and swaps hints when the tab changes",
@@ -1116,6 +1437,40 @@ TEST_CASE("Splitter cursors follow the split axis", "[core][sakura][dock]") {
     CHECK_FALSE(dock.cursorAt({200.0f, 300.0f}).has_value());
 }
 
+TEST_CASE("Docks that are not resizable have no splitter to hit or drag", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Emissions emissions;
+    CursorDock dock;
+    Host host(dock);
+    const auto update = [&](bool resizable) {
+        dock.update({.panes = {MakePane("a", &a), MakePane("b", &b)},
+                     .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")}),
+                     .onTiles = emissions.sink(),
+                     .resizable = resizable});
+        host.place(ctx, kScreen);
+    };
+    update(false);
+    const auto left = a.laidFrame;
+    const auto right = b.laidFrame;
+    CHECK_FALSE(dock.cursorAt({400.0f, 300.0f}).has_value());
+    host.send(Mouse(MouseEventType::Click, 400.0f, 300.0f));
+    CHECK_FALSE(dock.resizing());
+    host.send(Mouse(MouseEventType::Move, 200.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Release, 200.0f, 300.0f));
+    host.place(ctx, kScreen);
+    CHECK_FALSE(dock.resizing());
+    CHECK(emissions.trees.empty());
+    CHECK(a.laidFrame == left);
+    CHECK(b.laidFrame == right);
+
+    update(true);
+    CHECK(dock.cursorAt({400.0f, 300.0f}) == SurfaceCursor::ResizeEW);
+    CHECK(a.laidFrame == left);
+    CHECK(b.laidFrame == right);
+}
+
 TEST_CASE("Clicking a header or body focuses its pane once per change", "[core][sakura][dock]") {
     const auto ctx = MakeContext();
     Probe a;
@@ -1407,6 +1762,95 @@ TEST_CASE("Dragging a tile into a dock of another group is refused", "[core][sak
     CHECK(target.trees.empty());
 }
 
+TEST_CASE("A dock adopts drags whose group it lists in adopts and still refuses other groups",
+          "[core][sakura][dock]") {
+    Emissions source;
+    Emissions target;
+    Dock left;
+    Dock right;
+    Columns columns(left, right);
+    Layer layer;
+    layer.update({.content = &columns});
+    LayerHost host({&layer});
+    auto paneA = MakePane("a");
+    paneA.group = "terminal";
+    left.update({.accepts = "panel",
+                 .panes = {paneA, MakePane("b")},
+                 .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")}),
+                 .onTiles = source.sink()});
+    right.update({.accepts = "scope", .adopts = {"terminal"}, .onTiles = target.sink()});
+    host.place(MakeContext(), kScreen);
+
+    host.send(Mouse(MouseEventType::Click, 300.0f, 12.0f));
+    host.send(Mouse(MouseEventType::Move, 600.0f, 300.0f));
+    REQUIRE(host.drag.active);
+    CHECK(host.drag.pane == "b");
+    CHECK(host.drag.group == "panel");
+    host.place(MouseAt(600.0f, 300.0f), kScreen);
+    CHECK_FALSE(host.drag.target.has_value());
+    host.send(Mouse(MouseEventType::Release, 600.0f, 300.0f));
+    CHECK(source.trees.empty());
+    CHECK(target.trees.empty());
+
+    host.place(MakeContext(), kScreen);
+    host.send(Mouse(MouseEventType::Click, 100.0f, 12.0f));
+    host.send(Mouse(MouseEventType::Move, 600.0f, 300.0f));
+    REQUIRE(host.drag.active);
+    CHECK(host.drag.pane == "a");
+    CHECK(host.drag.group == "terminal");
+    host.place(MouseAt(600.0f, 300.0f), kScreen);
+    REQUIRE(host.drag.target.has_value());
+    CHECK(host.drag.target->owner == static_cast<const void*>(&right));
+    CHECK(host.drag.target->preview == Rect{406.0f, 6.0f, 388.0f, 588.0f});
+
+    host.send(Mouse(MouseEventType::Release, 600.0f, 300.0f));
+    REQUIRE(source.trees.size() == 1);
+    CHECK(source.last() == Leaf("b"));
+    REQUIRE(target.trees.size() == 1);
+    CHECK(target.last() == Leaf("a"));
+    CHECK_FALSE(host.drag.active);
+}
+
+TEST_CASE("A tab bar adopts a tile of a listed group and shows it as a new tab", "[core][sakura][dock]") {
+    Probe a;
+    Probe b;
+    Probe c;
+    Emissions source;
+    Dock left;
+    Dock right;
+    Columns columns(left, right);
+    Layer layer;
+    layer.update({.content = &columns});
+    LayerHost host({&layer});
+    c.consume = false;
+    auto paneA = MakePane("a", &a);
+    paneA.group = "terminal";
+    left.update({.accepts = "panel",
+                 .panes = {paneA, MakePane("b", &b)},
+                 .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")}),
+                 .onTiles = source.sink()});
+    right.update({.tabs = true, .accepts = "main", .adopts = {"terminal"}, .panes = {MakePane("c", &c)}});
+    host.place(MakeContext(), kScreen);
+
+    host.send(Mouse(MouseEventType::Click, 100.0f, 12.0f));
+    host.send(Mouse(MouseEventType::Move, 700.0f, 12.0f));
+    REQUIRE(host.drag.active);
+    host.place(MouseAt(700.0f, 12.0f), kScreen);
+    REQUIRE(host.drag.target.has_value());
+    CHECK(host.drag.target->owner == static_cast<const void*>(&right));
+
+    host.send(Mouse(MouseEventType::Release, 700.0f, 12.0f));
+    REQUIRE(source.trees.size() == 1);
+    CHECK(source.last() == Leaf("b"));
+
+    auto moved = MakePane("a", &a);
+    moved.group = "terminal";
+    left.update({.accepts = "panel", .panes = {MakePane("b", &b)}, .tiles = Leaf("b"), .onTiles = source.sink()});
+    right.update({.tabs = true, .accepts = "main", .adopts = {"terminal"}, .panes = {MakePane("c", &c), moved}});
+    host.place(MakeContext(), kScreen);
+    CHECK(a.laidFrame == Rect{400.0f, kBar, 400.0f, 600.0f - kBar});
+}
+
 TEST_CASE("Dropping a tab into another tab bar inserts it at the hovered slot and focuses the source's next tab",
           "[core][sakura][dock]") {
     Probe a;
@@ -1576,7 +2020,7 @@ TEST_CASE("Strip tabs place their close buttons inside the tab and close only th
     CHECK(closed.size() == 2);
 }
 
-TEST_CASE("Strip tab icons sit centered in a badge before the title", "[core][sakura][dock]") {
+TEST_CASE("Strip tab icons sit right before the title without a badge", "[core][sakura][dock]") {
     const auto ctx = MakeContext();
     Probe a;
     Probe b;
@@ -1584,16 +2028,16 @@ TEST_CASE("Strip tab icons sit centered in a badge before the title", "[core][sa
     Dock dock;
     Host host(dock);
     auto paneA = MakePane("a", &a);
-    paneA.icon = ICON_FA_TERMINAL;
+    paneA.icon = ICON_LC_TERMINAL;
     dock.update({.tabs = true, .panes = {paneA, MakePane("b", &b)}, .activate = "a",
                  .onBarPress = [&](U8 clicks) { presses.push_back(clicks); }});
     host.place(ctx, kScreen);
 
     const auto texts = TextFrames(dock);
     REQUIRE(texts.size() == 3);
-    CHECK(texts[0].x == 21.0f);
+    CHECK(texts[0].x == 18.0f);
     CHECK(texts[0].width == 15.0f);
-    CHECK(texts[1].x == 50.0f);
+    CHECK(texts[1].x == 39.0f);
     CHECK(texts[2].x == 262.0f);
 
     host.click(600.0f, 19.0f);
@@ -1604,13 +2048,13 @@ TEST_CASE("Strip tab icons sit centered in a badge before the title", "[core][sa
     CHECK(b.layouts == 1);
 }
 
-TEST_CASE("Strip tabs share one track with a bordered active capsule, dividers and icon badges",
+TEST_CASE("Strip tabs share one track with a bordered active capsule, a tonal rim, dividers and bare icons",
           "[core][sakura][dock]") {
     const auto ctx = MakeContext();
     Dock dock;
     Host host(dock);
     auto paneB = MakePane("b");
-    paneB.icon = ICON_FA_TERMINAL;
+    paneB.icon = ICON_LC_TERMINAL;
     dock.update({.tabs = true, .panes = {MakePane("a"), paneB, MakePane("c"), MakePane("d")}, .activate = "a"});
     host.place(ctx, kScreen);
 
@@ -1633,30 +2077,26 @@ TEST_CASE("Strip tabs share one track with a bordered active capsule, dividers a
         const auto& config = box->config();
         if (config.topLit && !config.instances.empty()) {
             REQUIRE(config.instances.size() == 1);
-            const bool edge = config.instances[0].rect == Rect{8.0f, 6.0f, 193.0f, 28.0f} && config.cornerRadius == 14.0f;
-            const bool rim = config.instances[0].rect == Rect{9.0f, 7.0f, 191.0f, 26.0f} && config.cornerRadius == 13.0f;
-            CHECK((edge || rim));
+            CHECK(config.instances[0].rect == Rect{8.0f, 6.0f, 193.0f, 28.0f});
+            CHECK(config.cornerRadius == 14.0f);
+            CHECK(config.borderColor == Sakura::RimColor(ctx.color("pill_active_bg")));
             ++litEdges;
         }
     }
-    CHECK(litEdges == 2);
+    CHECK(litEdges == 1);
 
     const auto* dividers = BoxWith(dock, {597.0f, 12.0f, 1.0f, 15.0f});
     REQUIRE(dividers);
     REQUIRE(dividers->instances.size() == 2);
     CHECK(dividers->instances[0].rect == Rect{400.0f, 12.0f, 1.0f, 15.0f});
 
-    const auto* badges = BoxWith(dock, {215.0f, 9.0f, 22.0f, 22.0f});
-    REQUIRE(badges);
-    CHECK(badges->instances.size() == 1);
-    CHECK(badges->cornerRadius == 6.0f);
-    CHECK(badges->borderWidth == 1.0f);
+    CHECK(BoxWith(dock, {215.0f, 9.0f, 22.0f, 22.0f}) == nullptr);
 
     const auto texts = TextFrames(dock);
     REQUIRE(texts.size() == 5);
     CHECK(texts[0].x == 18.0f);
-    CHECK(texts[1].x == 218.0f);
-    CHECK(texts[2].x == 247.0f);
+    CHECK(texts[1].x == 215.0f);
+    CHECK(texts[2].x == 236.0f);
     CHECK(texts[3].x == 412.0f);
 
     dock.update({.tabs = true, .panes = {MakePane("a"), paneB, MakePane("c"), MakePane("d")}, .activate = "c"});
@@ -1830,7 +2270,7 @@ TEST_CASE("Tile cards keep a gap at the edges and between cards with the splitte
     CHECK(a.count(MouseEventType::Click) == 0);
 }
 
-TEST_CASE("Tile cards cast a soft dropped shadow and carry a top lit edge and rim without painting corner masks",
+TEST_CASE("Tile cards cast a soft dropped shadow and carry a top lit tonal rim without painting corner masks",
           "[core][sakura][dock]") {
     const auto ctx = MakeContext();
     Dock dock;
@@ -1855,18 +2295,13 @@ TEST_CASE("Tile cards cast a soft dropped shadow and carry a top lit edge and ri
             lit.push_back(&box->config());
         }
     }
-    REQUIRE(lit.size() == 2);
-    std::sort(lit.begin(), lit.end(), [](const auto* a, const auto* b) { return a->cornerRadius > b->cornerRadius; });
+    REQUIRE(lit.size() == 1);
     CHECK(lit[0]->cornerRadius == 12.0f);
     CHECK(lit[0]->borderWidth == 1.0f);
+    CHECK(lit[0]->borderColor == Sakura::RimColor(ctx.color("tile_bg")));
     REQUIRE(lit[0]->instances.size() == 2);
     CHECK(lit[0]->instances[0].rect == cardA);
     CHECK(lit[0]->instances[1].rect == cardB);
-    CHECK(lit[1]->cornerRadius == 11.0f);
-    CHECK(lit[1]->borderWidth == 1.0f);
-    REQUIRE(lit[1]->instances.size() == 2);
-    CHECK(lit[1]->instances[0].rect == Rect{7.0f, 7.0f, 389.0f, 586.0f});
-    CHECK(lit[1]->instances[1].rect == Rect{404.0f, 7.0f, 389.0f, 586.0f});
 
     for (auto* polyline : Direct<Sakura::Polyline>(dock)) {
         for (const auto& instance : polyline->config().instances) {
@@ -1884,7 +2319,7 @@ TEST_CASE("Tile headers show only the title, aligned to the content edge, with b
     Dock dock;
     Host host(dock);
     auto paneA = MakePane("a", &a);
-    paneA.icon = ICON_FA_CHART_LINE;
+    paneA.icon = ICON_LC_CHART_LINE;
     paneA.onClose = [&] { ++closedA; };
     auto paneB = MakePane("b", &b);
     paneB.padding = 12.0f;
@@ -1907,12 +2342,12 @@ TEST_CASE("Tile headers show only the title, aligned to the content edge, with b
     }
 
     const Rect card = {6.0f, 6.0f, 391.0f, 588.0f};
-    const auto* cross = GlyphIn(dock, card, ICON_FA_XMARK);
+    const auto* cross = GlyphIn(dock, card, ICON_LC_X);
     REQUIRE(cross);
     const Rect glyph = Peek::Frame(*cross);
     CHECK(glyph.right() == Catch::Approx(card.right() - (texts[0].x - card.x)));
     CHECK(glyph.y + glyph.height * 0.5f == Catch::Approx(texts[0].y + texts[0].height * 0.5f));
-    const auto* crossB = GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_FA_XMARK);
+    const auto* crossB = GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_LC_X);
     REQUIRE(crossB);
     CHECK(Peek::Frame(*crossB).right() == Catch::Approx(794.0f - 12.0f));
 
@@ -1937,9 +2372,11 @@ TEST_CASE("Tile headers show only the title, aligned to the content edge, with b
     CHECK(a.count(MouseEventType::Click) == clicks);
 }
 
-TEST_CASE("Header buttons are centered icon glyphs that recolor on hover and flip when maximized",
+TEST_CASE("Header buttons are same size icon glyphs that recolor on hover and flip and turn blue when maximized",
           "[core][sakura][dock]") {
-    const auto ctx = MakeContext();
+    const Sakura::Palette palette = Sakura::Themes.at(Sakura::ResolveThemeKey(""));
+    auto ctx = MakeContext();
+    ctx.palette = palette;
     Dock dock;
     Host host(dock);
     auto paneA = MakePane("a");
@@ -1953,13 +2390,13 @@ TEST_CASE("Header buttons are centered icon glyphs that recolor on hover and fli
         return text->config();
     };
     const Rect card = {6.0f, 6.0f, 391.0f, 588.0f};
-    const auto expand = std::string(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER);
-    const auto compress = std::string(ICON_FA_DOWN_LEFT_AND_UP_RIGHT_TO_CENTER);
-    CHECK(glyph(card, ICON_FA_XMARK).colorKey == "tile_header_text");
+    const auto expand = std::string(ICON_LC_MAXIMIZE_2);
+    const auto compress = std::string(ICON_LC_MINIMIZE_2);
+    CHECK(glyph(card, ICON_LC_X).colorKey == "tile_header_text");
     CHECK(glyph(card, expand).colorKey == "tile_header_text");
-    CHECK(glyph(card, expand).scale < glyph(card, ICON_FA_XMARK).scale);
+    CHECK(glyph(card, expand).scale == glyph(card, ICON_LC_X).scale);
     const Rect expandFrame = Peek::Frame(*GlyphIn(dock, card, expand));
-    const Rect crossFrame = Peek::Frame(*GlyphIn(dock, card, ICON_FA_XMARK));
+    const Rect crossFrame = Peek::Frame(*GlyphIn(dock, card, ICON_LC_X));
     CHECK(expandFrame.y + expandFrame.height * 0.5f == Catch::Approx(crossFrame.y + crossFrame.height * 0.5f));
     CHECK(expandFrame.right() < crossFrame.x);
 
@@ -1967,25 +2404,63 @@ TEST_CASE("Header buttons are centered icon glyphs that recolor on hover and fli
     host.send(Mouse(MouseEventType::Move, point.x, point.y));
     host.place(ctx, kScreen);
     CHECK(glyph(card, expand).colorKey == "tile_button_hover");
-    CHECK(glyph(card, ICON_FA_XMARK).colorKey == "tile_header_text");
-    CHECK(Direct<Sakura::Box>(dock).size() > 0);
-    for (auto* box : Direct<Sakura::Box>(dock)) {
-        for (const auto& instance : box->config().instances) {
-            CHECK_FALSE((instance.rect.width == 20.0f && instance.rect.height == 20.0f));
+    CHECK(glyph(card, ICON_LC_X).colorKey == "tile_header_text");
+    const auto circles = [&] {
+        U64 count = 0;
+        for (auto* box : Direct<Sakura::Box>(dock)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.rect.width == 20.0f && instance.rect.height == 20.0f &&
+                    box->config().cornerRadius == 10.0f &&
+                    instance.rect.contains(point.x, point.y)) {
+                    ++count;
+                }
+            }
         }
-    }
+        return count;
+    };
+    CHECK(circles() == 1);
+    host.send(Mouse(MouseEventType::Move, card.x + 40.0f, card.y + 200.0f));
+    host.place(ctx, kScreen);
+    CHECK(circles() == 0);
+    host.send(Mouse(MouseEventType::Move, point.x, point.y));
+    host.place(ctx, kScreen);
 
     host.click(point.x, point.y);
     host.place(ctx, kScreen);
     const Rect full = {6.0f, 6.0f, 788.0f, 588.0f};
     CHECK(glyph(full, compress).str == compress);
+    CHECK(glyph(full, compress).colorKey == "tile_button_hover");
     CHECK_FALSE(GlyphIn(dock, full, expand));
 
     const auto closePoint = CloseOf(full);
     host.send(Mouse(MouseEventType::Move, closePoint.x, closePoint.y));
     host.place(ctx, kScreen);
-    CHECK(glyph(full, compress).colorKey == "tile_header_text");
-    CHECK(glyph(full, ICON_FA_XMARK).colorKey == "tile_button_hover");
+    CHECK(glyph(full, compress).colorKey == "cyber_blue");
+    CHECK(glyph(full, ICON_LC_X).colorKey == "tile_button_hover");
+
+    const auto tinted = [&](const Extent2D<F32>& at, const char* key) {
+        U64 count = 0;
+        for (auto* box : Direct<Sakura::Box>(dock)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.rect.contains(at.x, at.y) && instance.rect.width == 20.0f &&
+                    instance.backgroundColor == ctx.color(key)) {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    };
+    const auto compressPoint = MaximizeOf(full);
+    CHECK(tinted(compressPoint, "tile_button_active_bg") == 1);
+    CHECK(tinted(closePoint, "chrome_button_hover") == 1);
+    host.send(Mouse(MouseEventType::Move, compressPoint.x, compressPoint.y));
+    host.place(ctx, kScreen);
+    CHECK(tinted(compressPoint, "tile_button_active_bg") == 1);
+    CHECK(tinted(compressPoint, "chrome_button_hover") == 0);
+
+    host.click(compressPoint.x, compressPoint.y);
+    host.place(ctx, kScreen);
+    CHECK(tinted(MaximizeOf(card), "tile_button_active_bg") == 0);
 }
 
 TEST_CASE("Header buttons are not drag handles while the rest of the header is", "[core][sakura][dock]") {
@@ -2083,6 +2558,210 @@ TEST_CASE("A maximized tile is restored when it goes away or when a pane is adde
     CHECK(b.visible());
     CHECK(c.visible());
     CHECK(b.laidFrame == Body({6.0f, 6.0f, 391.0f, 588.0f}));
+}
+
+TEST_CASE("A maximized tile is restored when a new pane arrives already placed in the tiles",
+          "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Probe c;
+    Dock dock;
+    Host host(dock);
+    dock.update({.panes = {MakePane("a", &a), MakePane("b", &b)}, .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")})});
+    host.place(ctx, kScreen);
+    const auto maximizeB = MaximizeOf({403.0f, 6.0f, 391.0f, 588.0f});
+    host.click(maximizeB.x, maximizeB.y);
+    host.place(ctx, kScreen);
+    REQUIRE_FALSE(a.visible());
+
+    dock.update({.panes = {MakePane("a", &a), MakePane("b", &b), MakePane("c", &c)},
+                 .tiles = Row({1.0f, 1.0f}, {Leaf("a"), Column({1.0f, 1.0f}, {Leaf("b"), Leaf("c")})})});
+    host.place(ctx, kScreen);
+    CHECK(a.visible());
+    CHECK(b.visible());
+    CHECK(c.visible());
+    CHECK(c.laidFrame.width > 0.0f);
+    CHECK(b.laidFrame.width < 700.0f);
+}
+
+TEST_CASE("Tiles with different fills draw outlines derived from their own fill", "[core][sakura][dock]") {
+    constexpr ColorRGBA<F32> kRed = {0.3f, 0.0f, 0.0f, 1.0f};
+    constexpr ColorRGBA<F32> kBlue = {0.0f, 0.0f, 0.3f, 1.0f};
+    Probe a;
+    Probe b;
+    Dock dock;
+    Host host(dock);
+    auto red = MakePane("a", &a);
+    red.fill = kRed;
+    auto blue = MakePane("b", &b);
+    blue.fill = kBlue;
+    dock.update({.panes = {red, blue}, .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")})});
+    host.place(MakeContext(), kScreen);
+
+    U64 reds = 0;
+    U64 blues = 0;
+    for (auto* box : Direct<Sakura::Box>(dock)) {
+        const auto& config = box->config();
+        if (config.borderWidth <= 0.0f || config.instances.size() != 1) {
+            continue;
+        }
+        const auto& color = config.borderColor;
+        const Rect& rect = config.instances.front().rect;
+        if (color.r > color.b && color.r > kRed.r) {
+            CHECK(rect.contains(Peek::Frame(a).x + 1.0f, Peek::Frame(a).y + 1.0f));
+            ++reds;
+        } else if (color.b > color.r && color.b > kBlue.b) {
+            CHECK(rect.contains(Peek::Frame(b).x + 1.0f, Peek::Frame(b).y + 1.0f));
+            ++blues;
+        }
+    }
+    CHECK(reds == 2);
+    CHECK(blues == 2);
+}
+
+TEST_CASE("The header button hover circle draws above tile contents and below the header glyphs",
+          "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Dock dock;
+    Host host(dock);
+    dock.update({.panes = {MakePane("a", &a), MakePane("b", &b)}, .tiles = Row({0.5f, 0.5f}, {Leaf("a"), Leaf("b")})});
+    host.place(ctx, kScreen);
+    const auto close = CloseOf({403.0f, 6.0f, 391.0f, 588.0f});
+    host.send(Mouse(MouseEventType::Move, close.x, close.y));
+    host.place(ctx, kScreen);
+
+    const auto children = Peek::Children(dock);
+    const auto index = [&](const Sakura::Component* child) {
+        return static_cast<U64>(std::find(children.begin(), children.end(), child) - children.begin());
+    };
+    std::optional<U64> hover;
+    for (auto* box : Direct<Sakura::Box>(dock)) {
+        for (const auto& instance : box->config().instances) {
+            if (instance.visible && instance.rect.contains(close.x, close.y) &&
+                instance.backgroundColor == ctx.color("chrome_button_hover")) {
+                hover = index(box);
+            }
+        }
+    }
+    REQUIRE(hover.has_value());
+    CHECK(*hover > index(&a));
+    CHECK(*hover > index(&b));
+    const auto glyph = GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_LC_X);
+    REQUIRE(glyph != nullptr);
+    CHECK(*hover < index(glyph));
+}
+
+TEST_CASE("A tab dragged over its own content dock is not offered as a drop there", "[core][sakura][dock]") {
+    Probe x;
+    Dock inner;
+    Dock outer;
+    Layer layer;
+    layer.update({.content = &outer});
+    LayerHost host({&layer});
+    inner.update({.accepts = "terminal", .panes = {MakePane("x", &x)}});
+    auto tab = MakePane("t", &inner);
+    tab.group = "terminal";
+    outer.update({.tabs = true, .accepts = "main", .adopts = {"terminal"}, .panes = {tab}});
+    host.place(MakeContext(), kScreen);
+    const auto rect = outer.tabRect("t");
+    REQUIRE(rect.has_value());
+
+    host.send(Mouse(MouseEventType::Click, rect->x + rect->width * 0.5f, rect->y + rect->height * 0.5f));
+    host.send(Mouse(MouseEventType::Move, 400.0f, 300.0f));
+    REQUIRE(host.drag.active);
+    CHECK(host.drag.pane == "t");
+    CHECK(host.drag.content == static_cast<const void*>(&inner));
+    host.place(MouseAt(400.0f, 300.0f), kScreen);
+    CHECK_FALSE(host.drag.target.has_value());
+    host.send(Mouse(MouseEventType::Release, 400.0f, 300.0f));
+    host.place(MakeContext(), kScreen);
+    CHECK(x.visible());
+    CHECK(outer.tabRect("t").has_value());
+}
+
+TEST_CASE("A tab dragged over a dock nested deeper inside its content is not offered as a drop there",
+          "[core][sakura][dock]") {
+    Probe x;
+    Dock inner;
+    Dock middle;
+    Dock outer;
+    Layer layer;
+    layer.update({.content = &outer});
+    LayerHost host({&layer});
+    inner.update({.accepts = "terminal", .panes = {MakePane("x", &x)}});
+    middle.update({.accepts = "other", .panes = {MakePane("i", &inner)}});
+    auto tab = MakePane("t", &middle);
+    tab.group = "terminal";
+    outer.update({.tabs = true, .accepts = "main", .adopts = {"terminal"}, .panes = {tab}});
+    host.place(MakeContext(), kScreen);
+    const auto rect = outer.tabRect("t");
+    REQUIRE(rect.has_value());
+
+    host.send(Mouse(MouseEventType::Click, rect->x + rect->width * 0.5f, rect->y + rect->height * 0.5f));
+    host.send(Mouse(MouseEventType::Move, 400.0f, 300.0f));
+    REQUIRE(host.drag.active);
+    REQUIRE(x.laidFrame.contains(400.0f, 300.0f));
+    host.place(MouseAt(400.0f, 300.0f), kScreen);
+    CHECK_FALSE(host.drag.target.has_value());
+    host.send(Mouse(MouseEventType::Release, 400.0f, 300.0f));
+    host.place(MakeContext(), kScreen);
+    CHECK(x.visible());
+    CHECK(outer.tabRect("t").has_value());
+}
+
+namespace {
+
+struct BackdropColorProbe : Probe {
+    ColorRGBA<F32> color = {0.0f, 0.0f, 0.0f, 0.0f};
+
+ protected:
+    void layout(const Jetstream::Sakura::Context& ctx) override {
+        Probe::layout(ctx);
+        color = ctx.color(ctx.backdropColorKey);
+    }
+};
+
+}  // namespace
+
+TEST_CASE("Content of a tinted tile sees the tint as its backdrop and follows tint changes", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    BackdropColorProbe a;
+    BackdropColorProbe b;
+    Dock dock;
+    Host host(dock);
+    const auto configure = [&](ColorRGBA<F32> tint) {
+        auto tinted = MakePane("b", &b);
+        tinted.fill = tint;
+        dock.update({.panes = {MakePane("a", &a), tinted}});
+    };
+
+    const auto same = [](ColorRGBA<F32> actual, ColorRGBA<F32> expected) {
+        return actual.r == Catch::Approx(expected.r) && actual.g == Catch::Approx(expected.g) &&
+               actual.b == Catch::Approx(expected.b) && actual.a == Catch::Approx(expected.a);
+    };
+
+    configure({0.3f, 0.0f, 0.0f, 1.0f});
+    host.place(ctx, kScreen);
+    CHECK(a.color == ctx.color("tile_bg"));
+    CHECK(same(b.color, {0.3f, 0.0f, 0.0f, ctx.color("tile_bg").a}));
+
+    configure({0.0f, 0.4f, 0.0f, 1.0f});
+    host.place(ctx, kScreen);
+    CHECK(same(b.color, {0.0f, 0.4f, 0.0f, ctx.color("tile_bg").a}));
+
+    const auto base = ctx.color("tile_bg");
+    configure({1.0f, 0.0f, 0.0f, 0.5f});
+    host.place(ctx, kScreen);
+    CHECK(b.color.r == Catch::Approx(base.r + (1.0f - base.r) * 0.5f));
+    CHECK(b.color.g == Catch::Approx(base.g * 0.5f));
+    CHECK(b.color.a == Catch::Approx(base.a));
+
+    configure({0.0f, 0.0f, 0.0f, 0.0f});
+    host.place(ctx, kScreen);
+    CHECK(b.color == base);
 }
 
 TEST_CASE("Maximize buttons appear only for maximizable panes with company", "[core][sakura][dock]") {
@@ -2209,8 +2888,11 @@ struct ColumnRig {
     std::optional<DockTiles> tiles;
     std::vector<std::optional<DockTiles>> emitted;
     std::vector<std::string> closed;
+    std::string closeOnlyMinimized;
+    ColorRGBA<F32> fillC = {0.0f, 0.0f, 0.0f, 0.0f};
     bool withA = true;
     bool withC = true;
+    bool persistView = false;
     Dock dock;
 
     void update() {
@@ -2224,6 +2906,10 @@ struct ColumnRig {
         }
         for (auto& pane : panes) {
             pane.onClose = [this, id = pane.id] { closed.push_back(id); };
+            pane.closeOnlyMinimized = pane.id == closeOnlyMinimized;
+            if (pane.id == "c") {
+                pane.fill = fillC;
+            }
         }
         dock.update({
             .accepts = "panel",
@@ -2235,6 +2921,7 @@ struct ColumnRig {
             },
             .columns = true,
             .flexPane = flex,
+            .persistView = persistView,
         });
     }
 };
@@ -2449,7 +3136,7 @@ TEST_CASE("Dropping on a tile's top or bottom stacks it in that column and on it
     CHECK(host.drag.pane == "c");
     host.place(WideAt(958.0f, 500.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{748.0f, 300.0f, 420.0f, 294.0f});
+    CHECK(host.drag.target->preview == Rect{748.0f, 303.0f, 420.0f, 291.0f});
     host.send(Mouse(MouseEventType::Release, 958.0f, 500.0f));
     REQUIRE(rig.emitted.size() == 1);
     REQUIRE(rig.emitted[0]->children.size() == 2);
@@ -2466,15 +3153,323 @@ TEST_CASE("Dropping on a tile's top or bottom stacks it in that column and on it
     host.send(Mouse(MouseEventType::Move, 1580.0f, 150.0f));
     host.place(WideAt(1580.0f, 150.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{1384.0f, 6.0f, 210.0f, 588.0f});
+    CHECK(host.drag.target->preview == Rect{1387.0f, 6.0f, 207.0f, 588.0f});
     host.send(Mouse(MouseEventType::Release, 1580.0f, 150.0f));
     REQUIRE(rig.emitted.size() == 2);
     CHECK(rig.emitted[1]->children.size() == 3);
 
     rig.update();
     host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
-    CHECK(rig.b.laidFrame == Rect{748.0f, 26.0f, 420.0f, 568.0f});
-    CHECK(rig.c.laidFrame == Rect{1174.0f, 26.0f, 420.0f, 568.0f});
+    CHECK(rig.b.laidFrame == Rect{1174.0f, 26.0f, 207.0f, 568.0f});
+    CHECK(rig.c.laidFrame == Rect{1387.0f, 26.0f, 207.0f, 568.0f});
+}
+
+TEST_CASE("A tab dropped into columns takes half of the target shown by the preview",
+          "[core][sakura][dock][columns][drop-sizing]") {
+    const U64 side = GENERATE(0, 1, 2, 3);
+    const F32 width = GENERATE(800.0f, 1600.0f);
+    const F32 scale = GENERATE(1.0f, 1.1f, 1.3f, 2.0f, 2.3f);
+    const bool extra = GENERATE(false, true);
+    CAPTURE(side, width, scale, extra);
+    auto ctx = MakeContext({width * scale, 600.0f * scale});
+    ctx.pixelRatio = scale;
+    const Rect bounds = {0.0f, 0.0f, width * scale, 600.0f * scale};
+    Probe editor;
+    Probe other;
+    Probe terminal;
+    editor.consume = false;
+    other.consume = false;
+    terminal.consume = false;
+    Dock source;
+    Dock target;
+    Emissions emissions;
+    auto tab = MakePane("terminal", &terminal);
+    tab.group = "terminal";
+    source.update({.tabs = true, .accepts = "main", .panes = {tab}});
+    Dock::Config config = {
+        .accepts = "flowgraph",
+        .adopts = {"terminal"},
+        .panes = {MakePane("editor", &editor)},
+        .tiles = Leaf("editor"),
+        .onTiles = emissions.sink(),
+        .columns = true,
+        .flexPane = "editor",
+    };
+    if (extra) {
+        config.panes.push_back(MakePane("other", &other));
+        config.tiles = ColumnRow({Leaf("editor"), Leaf("other")});
+    }
+    target.update(config);
+    Columns columns(source, target);
+    Layer layer;
+    layer.update({.content = &columns});
+    LayerHost host({&layer});
+    host.place(ctx, bounds);
+    const Rect original = extra ? other.laidFrame : editor.laidFrame;
+    const Rect tile = {original.x, original.y - kHeader * scale,
+                       original.width, original.height + kHeader * scale};
+    const Extent2D<F32> point = {
+        side == 0 ? tile.x + scale : side == 1 ? tile.right() - scale : tile.x + tile.width * 0.5f,
+        side == 2 ? tile.y + scale : side == 3 ? tile.bottom() - scale : tile.y + tile.height * 0.5f,
+    };
+    const auto tabRect = source.tabRect("terminal");
+    REQUIRE(tabRect.has_value());
+    host.send(Mouse(MouseEventType::Click, (tabRect->x + 5.0f) * scale, (tabRect->y + 12.0f) * scale));
+    host.send(Mouse(MouseEventType::Move, (tabRect->x + 15.0f) * scale, (tabRect->y + 12.0f) * scale));
+    host.send(Mouse(MouseEventType::Move, point.x, point.y));
+    REQUIRE(host.drag.active);
+    ctx.mouse = point;
+    host.place(ctx, bounds);
+    REQUIRE(host.drag.target.has_value());
+    const Rect preview = host.drag.target->preview;
+    host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    REQUIRE(emissions.trees.size() == 1);
+    config.tiles = emissions.last();
+    config.panes.push_back(tab);
+    source.update({.tabs = true, .accepts = "main"});
+    target.update(config);
+    host.place(ctx, bounds);
+
+    const Rect kept = extra ? other.laidFrame : editor.laidFrame;
+    const F32 gap = Dock::ContentPadding * scale;
+    if (side < 2) {
+        CHECK(terminal.laidFrame.width == Catch::Approx((tile.width - gap) * 0.5f).margin(1.0f));
+        CHECK(kept.width == Catch::Approx(terminal.laidFrame.width).margin(1.0f));
+    } else {
+        CHECK(terminal.laidFrame.height + kHeader * scale ==
+              Catch::Approx((tile.height - gap) * 0.5f).margin(1.0f));
+        CHECK(kept.height == Catch::Approx(terminal.laidFrame.height).margin(1.0f));
+    }
+    CHECK(terminal.laidFrame.x == Catch::Approx(preview.x).margin(1.0f));
+    CHECK(terminal.laidFrame.y - kHeader * scale == Catch::Approx(preview.y).margin(1.0f));
+    CHECK(terminal.laidFrame.width == Catch::Approx(preview.width).margin(1.0f));
+    CHECK(terminal.laidFrame.height + kHeader * scale == Catch::Approx(preview.height).margin(1.0f));
+
+    if (side < 2) {
+        auto& left = side == 0 ? terminal : extra ? other : editor;
+        auto& right = side == 1 ? terminal : extra ? other : editor;
+        const F32 leftWidth = left.laidFrame.width;
+        const F32 rightWidth = right.laidFrame.width;
+        const auto resize = [&](F32 delta) {
+            const F32 divider = left.laidFrame.right() + gap * 0.5f;
+            host.send(Mouse(MouseEventType::Click, divider, 300.0f * scale));
+            host.send(Mouse(MouseEventType::Move, divider + delta, 300.0f * scale));
+            host.send(Mouse(MouseEventType::Release, divider + delta, 300.0f * scale));
+            config.tiles = emissions.last();
+            target.update(config);
+            host.place(ctx, bounds);
+        };
+        resize(20.0f * scale);
+        CHECK(left.laidFrame.width == Catch::Approx(leftWidth + 20.0f * scale).margin(1.0f));
+        CHECK(right.laidFrame.width == Catch::Approx(rightWidth - 20.0f * scale).margin(1.0f));
+        if (std::min(leftWidth, rightWidth) < 240.0f * scale) {
+            for (const bool shrinkRight : {true, false}) {
+                for (const F32 delta : {bounds.width, 20.0f * scale}) {
+                    CAPTURE(shrinkRight, delta);
+                    resize(shrinkRight ? delta : -delta);
+                    CHECK((shrinkRight ? right : left).laidFrame.width ==
+                          Catch::Approx(64.0f * scale).margin(1.0f));
+                    REQUIRE(config.tiles.has_value());
+                    for (const F32 stored : config.tiles->weights) {
+                        CHECK(stored >= 64.0f);
+                    }
+                }
+            }
+        }
+    }
+
+    const Rect restored = terminal.laidFrame;
+    Dock reopened;
+    Layer reopenedLayer;
+    reopenedLayer.update({.content = &reopened});
+    LayerHost reopenedHost({&reopenedLayer});
+    reopened.update(config);
+    reopenedHost.place(ctx, {bounds.width * 0.5f, 0.0f, bounds.width * 0.5f, bounds.height});
+    CHECK(terminal.laidFrame == restored);
+    reopenedHost.place(ctx, {bounds.width * 0.5f, 0.0f, bounds.width * 0.4f, bounds.height});
+    CHECK(terminal.laidFrame.width <= restored.width + 1.0f);
+}
+
+TEST_CASE("Column divider actions preserve floor widths at fractional scales without a flex pane",
+          "[core][sakura][dock][columns][drop-sizing]") {
+    const F32 scale = GENERATE(1.0f, 1.1f, 1.3f, 2.3f);
+    CAPTURE(scale);
+    auto ctx = MakeContext({572.0f * scale, 600.0f * scale});
+    ctx.pixelRatio = scale;
+    const Rect bounds = {0.0f, 0.0f, 572.0f * scale, 600.0f * scale};
+    ColumnRig rig;
+    rig.flex.clear();
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {420.0f, 64.0f, 64.0f});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, bounds);
+    REQUIRE(rig.b.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+    REQUIRE(rig.c.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+
+    SECTION("Dragging also preserves the untouched floor-width column") {
+        for (U64 attempt = 0; attempt < 2; ++attempt) {
+            const F32 seam = (rig.a.laidFrame.right() + rig.b.laidFrame.x) * 0.5f;
+            host.send(Mouse(MouseEventType::Click, seam, 300.0f * scale));
+            host.send(Mouse(MouseEventType::Move, seam + 20.0f * scale, 300.0f * scale));
+            host.send(Mouse(MouseEventType::Release, seam + 20.0f * scale, 300.0f * scale));
+            rig.update();
+            host.place(ctx, bounds);
+            CHECK(rig.b.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+            CHECK(rig.c.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+        }
+    }
+    SECTION("Equalizing two floor-width columns keeps their saved widths valid") {
+        const F32 seam = (rig.b.laidFrame.right() + rig.c.laidFrame.x) * 0.5f;
+        host.send(Mouse(MouseEventType::Click, seam, 300.0f * scale, MouseButton::Left, 2));
+        host.send(Mouse(MouseEventType::Release, seam, 300.0f * scale));
+        rig.update();
+        host.place(ctx, bounds);
+    }
+
+    REQUIRE(rig.tiles.has_value());
+    for (const F32 stored : rig.tiles->weights) {
+        CHECK(stored >= 64.0f);
+    }
+    ColumnRig restored;
+    restored.flex.clear();
+    restored.tiles = rig.tiles;
+    restored.update();
+    Host restoredHost(restored.dock);
+    restoredHost.place(ctx, bounds);
+    CHECK(restored.b.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+    CHECK(restored.c.laidFrame.width == Catch::Approx(64.0f * scale).margin(1.0f));
+}
+
+TEST_CASE("Side drops wait until every visible column has a storable width",
+          "[core][sakura][dock][columns][drop-sizing]") {
+    const bool before = GENERATE(false, true);
+    const F32 scale = GENERATE(1.0f, 1.25f, 2.0f);
+    CAPTURE(before, scale);
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {3000.0f, 480.0f, 420.0f});
+    const auto original = rig.tiles;
+    Layer layer;
+    layer.update({.content = &rig.dock});
+    LayerHost host({&layer});
+    auto ctx = MakeContext({600.0f * scale, 600.0f * scale});
+    ctx.pixelRatio = scale;
+    Rect bounds = {0.0f, 0.0f, 600.0f * scale, 600.0f * scale};
+    rig.update();
+    host.place(ctx, bounds);
+    REQUIRE(rig.a.laidFrame.width > 134.0f * scale);
+    REQUIRE(rig.c.laidFrame.width < 64.0f * scale);
+    const Rect narrow = rig.c.laidFrame;
+    const auto offer = [&] {
+        host.drag.active = true;
+        host.drag.pane = "terminal";
+        host.drag.group = "panel";
+        ctx.mouse = Extent2D<F32>{before ? rig.a.laidFrame.x + scale : rig.a.laidFrame.right() - scale,
+                                 300.0f * scale};
+        Sakura::Access::invalidateLayout(rig.dock);
+        host.place(ctx, bounds);
+    };
+    offer();
+    CHECK_FALSE(host.drag.target.has_value());
+    CHECK(rig.emitted.empty());
+    CHECK(rig.tiles == original);
+    host.drag.reset();
+
+    ColumnRig restored;
+    restored.tiles = rig.tiles;
+    restored.update();
+    Host restoredHost(restored.dock);
+    restoredHost.place(ctx, bounds);
+    CHECK(restored.c.laidFrame == narrow);
+
+    bounds.width = 800.0f * scale;
+    ctx.framebufferSize.x = static_cast<U64>(bounds.width);
+    host.place(ctx, bounds);
+    REQUIRE(rig.c.laidFrame.width >= 64.0f * scale);
+    offer();
+    REQUIRE(host.drag.target.has_value());
+    const Rect preview = host.drag.target->preview;
+    const auto accept = host.drag.target->accept;
+    host.drag.reset();
+    accept("terminal");
+    REQUIRE(rig.emitted.size() == 1);
+
+    Probe terminal;
+    Dock reopened;
+    reopened.update({
+        .panes = {MakePane("a", &rig.a), MakePane("b", &rig.b), MakePane("c", &rig.c),
+                  MakePane("terminal", &terminal)},
+        .tiles = rig.tiles,
+        .columns = true,
+        .flexPane = "a",
+    });
+    Host reopenedHost(reopened);
+    reopenedHost.place(ctx, bounds);
+    CHECK(terminal.laidFrame.width == Catch::Approx(preview.width).margin(1.0f));
+    CHECK(terminal.laidFrame.x == Catch::Approx(preview.x).margin(1.0f));
+    CHECK(rig.c.laidFrame.width >= 64.0f * scale);
+}
+
+TEST_CASE("Side drops leave spare editor width available when the window narrows",
+          "[core][sakura][dock][columns][drop-sizing]") {
+    const bool before = GENERATE(false, true);
+    CAPTURE(before);
+    auto ctx = MakeContext({2560.0f, 600.0f});
+    const Rect bounds = {0.0f, 0.0f, 2560.0f, 600.0f};
+    Probe editor;
+    Probe description;
+    Probe other;
+    Probe terminal;
+    Emissions emissions;
+    Dock dock;
+    Dock::Config config = {
+        .accepts = "panel",
+        .panes = {MakePane("editor", &editor), MakePane("description", &description), MakePane("other", &other)},
+        .tiles = ColumnRow({Leaf("editor"), Leaf("description"), Leaf("other")}, {0.0f, 420.0f, 600.0f}),
+        .onTiles = emissions.sink(),
+        .columns = true,
+        .flexPane = "editor",
+    };
+    dock.update(config);
+    Layer layer;
+    layer.update({.content = &dock});
+    LayerHost host({&layer});
+    host.place(ctx, bounds);
+    REQUIRE(editor.laidFrame.width == 1516.0f);
+    REQUIRE(other.laidFrame.width == 600.0f);
+
+    host.drag.active = true;
+    host.drag.pane = "terminal";
+    host.drag.group = "panel";
+    ctx.mouse = Extent2D<F32>{before ? other.laidFrame.x + 1.0f : other.laidFrame.right() - 1.0f, 300.0f};
+    Sakura::Access::invalidateLayout(dock);
+    host.place(ctx, bounds);
+    REQUIRE(host.drag.target.has_value());
+    const auto accept = host.drag.target->accept;
+    host.drag.reset();
+    accept("terminal");
+    REQUIRE(emissions.trees.size() == 1);
+    config.tiles = emissions.last();
+    config.panes.push_back(MakePane("terminal", &terminal));
+    dock.update(config);
+    host.place(ctx, bounds);
+    CHECK(description.laidFrame.width == 420.0f);
+    CHECK(other.laidFrame.width == 297.0f);
+    CHECK(terminal.laidFrame.width == 297.0f);
+
+    const auto checkNarrow = [&] {
+        CHECK(editor.laidFrame.width == 556.0f);
+        CHECK(description.laidFrame.width == 420.0f);
+        CHECK(other.laidFrame.width == 297.0f);
+        CHECK(terminal.laidFrame.width == 297.0f);
+    };
+    host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    checkNarrow();
+
+    Dock reopened;
+    Host reopenedHost(reopened);
+    reopened.update(config);
+    reopenedHost.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    checkNarrow();
 }
 
 TEST_CASE("Closing a pane removes its column and the flex column takes the space back",
@@ -2534,15 +3529,15 @@ TEST_CASE("Pane header actions sit left of maximize, show their state and hover,
     const auto update = [&] {
         auto paneA = MakePane("a");
         paneA.onClose = [] {};
-        paneA.actions = {{.icon = ICON_FA_SLIDERS, .active = active, .onClick = [&] { ++clicks; }}};
+        paneA.actions = {{.icon = ICON_LC_SLIDERS_HORIZONTAL, .active = active, .onClick = [&] { ++clicks; }}};
         dock.update({.panes = {paneA, MakePane("b")}});
         host.place(ctx, kScreen);
     };
     update();
 
     const Rect card = {6.0f, 6.0f, 391.0f, 588.0f};
-    const auto* action = GlyphIn(dock, card, ICON_FA_SLIDERS);
-    const auto* expand = GlyphIn(dock, card, ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER);
+    const auto* action = GlyphIn(dock, card, ICON_LC_SLIDERS_HORIZONTAL);
+    const auto* expand = GlyphIn(dock, card, ICON_LC_MAXIMIZE_2);
     REQUIRE(action);
     REQUIRE(expand);
     const Rect actionFrame = Peek::Frame(*action);
@@ -2550,16 +3545,16 @@ TEST_CASE("Pane header actions sit left of maximize, show their state and hover,
     CHECK(actionFrame.right() < expandFrame.x);
     CHECK(actionFrame.y + actionFrame.height * 0.5f == Catch::Approx(expandFrame.y + expandFrame.height * 0.5f));
     CHECK(action->config().colorKey == "tile_header_text");
-    CHECK_FALSE(GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_FA_SLIDERS));
+    CHECK_FALSE(GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_LC_SLIDERS_HORIZONTAL));
 
     active = true;
     update();
-    CHECK(GlyphIn(dock, card, ICON_FA_SLIDERS)->config().colorKey == "cyber_blue");
+    CHECK(GlyphIn(dock, card, ICON_LC_SLIDERS_HORIZONTAL)->config().colorKey == "cyber_blue");
 
     const Extent2D<F32> center = {actionFrame.x + actionFrame.width * 0.5f, actionFrame.y + actionFrame.height * 0.5f};
     host.send(Mouse(MouseEventType::Move, center.x, center.y));
     update();
-    CHECK(GlyphIn(dock, card, ICON_FA_SLIDERS)->config().colorKey == "tile_button_hover");
+    CHECK(GlyphIn(dock, card, ICON_LC_SLIDERS_HORIZONTAL)->config().colorKey == "tile_button_hover");
     CHECK(Peek::CursorAt(dock, center) == SurfaceCursor::Hand);
 
     host.send(Mouse(MouseEventType::Click, center.x, center.y));
@@ -2586,7 +3581,7 @@ TEST_CASE("Strip tab close button shows on the active or hovered tab, faint unti
     const auto opacities = [&] {
         std::vector<F32> values;
         for (auto* text : Direct<Sakura::Text>(dock)) {
-            if (text->config().str == ICON_FA_XMARK && text->config().opacity > 0.0f) {
+            if (text->config().str == ICON_LC_X && text->config().opacity > 0.0f) {
                 values.push_back(text->config().opacity);
             }
         }
@@ -2594,7 +3589,7 @@ TEST_CASE("Strip tab close button shows on the active or hovered tab, faint unti
     };
     CHECK(opacities() == std::vector<F32>{0.35f});
     for (auto* text : Direct<Sakura::Text>(dock)) {
-        if (text->config().str == ICON_FA_XMARK && text->config().opacity > 0.0f) {
+        if (text->config().str == ICON_LC_X && text->config().opacity > 0.0f) {
             const Rect frame = Peek::Frame(*text);
             CHECK(frame.x + frame.width * 0.5f == Catch::Approx(492.0f - 7.0f - 8.0f));
         }
@@ -2609,7 +3604,7 @@ TEST_CASE("Strip tab close button shows on the active or hovered tab, faint unti
     CHECK(opacities() == std::vector<F32>{1.0f, 0.35f});
     std::vector<F32> centers;
     for (auto* text : Direct<Sakura::Text>(dock)) {
-        if (text->config().str == ICON_FA_XMARK && text->config().opacity > 0.0f) {
+        if (text->config().str == ICON_LC_X && text->config().opacity > 0.0f) {
             const Rect frame = Peek::Frame(*text);
             centers.push_back(frame.x + frame.width * 0.5f);
         }
@@ -2677,7 +3672,7 @@ TEST_CASE("Column dividers at a pixel ratio of two emit logical widths that lay 
     CHECK(rig.c.laidFrame == Rect{2098.0f, 52.0f, 1090.0f, 1136.0f});
 }
 
-TEST_CASE("Moving a single pane column beside another column or past the last one keeps its stored width",
+TEST_CASE("Moving a column onto another halves the target width while appending keeps its stored width",
           "[core][sakura][dock][columns]") {
     ColumnRig rig;
     rig.flex = "b";
@@ -2695,24 +3690,24 @@ TEST_CASE("Moving a single pane column beside another column or past the last on
     host.send(Mouse(MouseEventType::Move, 1580.0f, 300.0f));
     host.place(WideAt(1580.0f, 300.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{1384.0f, 6.0f, 210.0f, 588.0f});
+    CHECK(host.drag.target->preview == Rect{1387.0f, 6.0f, 207.0f, 588.0f});
     host.send(Mouse(MouseEventType::Release, 1580.0f, 300.0f));
     REQUIRE(rig.emitted.size() == 1);
-    CHECK(rig.emitted[0] == ColumnRow({Leaf("b"), Leaf("c"), Leaf("a")}, {0.0f, 0.0f, 500.0f}));
+    CHECK(rig.emitted[0] == ColumnRow({Leaf("b"), Leaf("c"), Leaf("a")}, {480.0f, 207.0f, 207.0f}));
 
     rig.update();
     host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
-    CHECK(rig.a.laidFrame == Rect{1094.0f, 26.0f, 500.0f, 568.0f});
+    CHECK(rig.a.laidFrame == Rect{1387.0f, 26.0f, 207.0f, 568.0f});
 
-    host.send(Mouse(MouseEventType::Click, 1300.0f, 16.0f));
-    host.send(Mouse(MouseEventType::Move, 1310.0f, 16.0f));
+    host.send(Mouse(MouseEventType::Click, 1450.0f, 16.0f));
+    host.send(Mouse(MouseEventType::Move, 1460.0f, 16.0f));
     host.send(Mouse(MouseEventType::Move, 20.0f, 300.0f));
     host.place(WideAt(20.0f, 300.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{6.0f, 6.0f, 328.0f, 588.0f});
+    CHECK(host.drag.target->preview == Rect{6.0f, 6.0f, 578.0f, 588.0f});
     host.send(Mouse(MouseEventType::Release, 20.0f, 300.0f));
     REQUIRE(rig.emitted.size() == 2);
-    CHECK(rig.emitted[1] == ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {500.0f, 0.0f, 0.0f}));
+    CHECK(rig.emitted[1] == ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {578.0f, 578.0f, 207.0f}));
 
     rig.update();
     host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
@@ -2724,7 +3719,7 @@ TEST_CASE("Moving a single pane column beside another column or past the last on
     CHECK(host.drag.target->preview.x >= 1594.0f);
     host.send(Mouse(MouseEventType::Release, 1599.0f, 300.0f));
     REQUIRE(rig.emitted.size() == 3);
-    CHECK(rig.emitted[2] == ColumnRow({Leaf("a"), Leaf("c"), Leaf("b")}, {500.0f, 0.0f, 0.0f}));
+    CHECK(rig.emitted[2] == ColumnRow({Leaf("a"), Leaf("c"), Leaf("b")}, {578.0f, 207.0f, 578.0f}));
 }
 
 TEST_CASE("Dropping on a tile's top stacks above it, and a stacked pane dropped on its own side gets its own column",
@@ -2742,7 +3737,7 @@ TEST_CASE("Dropping on a tile's top stacks above it, and a stacked pane dropped 
     host.send(Mouse(MouseEventType::Move, 958.0f, 20.0f));
     host.place(WideAt(958.0f, 20.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{748.0f, 6.0f, 420.0f, 294.0f});
+    CHECK(host.drag.target->preview == Rect{748.0f, 6.0f, 420.0f, 291.0f});
     host.send(Mouse(MouseEventType::Release, 958.0f, 20.0f));
     REQUIRE(rig.emitted.size() == 1);
     CHECK(rig.emitted[0] == ColumnRow({Leaf("a"), Column({0.5f, 0.5f}, {Leaf("c"), Leaf("b")})}));
@@ -2760,10 +3755,10 @@ TEST_CASE("Dropping on a tile's top stacks above it, and a stacked pane dropped 
     host.send(Mouse(MouseEventType::Move, 1580.0f, 150.0f));
     host.place(WideAt(1580.0f, 150.0f), kWideDock);
     REQUIRE(host.drag.target.has_value());
-    CHECK(host.drag.target->preview == Rect{1384.0f, 6.0f, 210.0f, 588.0f});
+    CHECK(host.drag.target->preview == Rect{1387.0f, 6.0f, 207.0f, 588.0f});
     host.send(Mouse(MouseEventType::Release, 1580.0f, 150.0f));
     REQUIRE(rig.emitted.size() == 2);
-    CHECK(rig.emitted[1] == ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}));
+    CHECK(rig.emitted[1] == ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")}, {480.0f, 207.0f, 207.0f}));
 }
 
 TEST_CASE("Dragging a pane into an empty column dock offers its whole viewport and moves the pane over",
@@ -3108,6 +4103,36 @@ TEST_CASE("Unknown leaves in column mode hold a centered loading placeholder unt
     CHECK_FALSE(loading().has_value());
     CHECK(rig.c.laidFrame == Rect{748.0f, 26.0f, 420.0f, 568.0f});
     CHECK(rig.emitted.empty());
+}
+
+TEST_CASE("Saved view flags and widths survive late arriving dock content and smaller windows",
+          "[core][sakura][dock][columns][recovery]") {
+    ColumnRig rig;
+    rig.persistView = true;
+    rig.withC = false;
+    auto late = Leaf("c");
+    SECTION("minimized") { late.minimized = true; }
+    SECTION("maximized") { late.maximized = true; }
+    const auto saved = ColumnRow({Leaf("a"), late, Leaf("b")}, {0.0f, 510.0f, 350.0f});
+    rig.tiles = saved;
+    Host host(rig.dock);
+    rig.update();
+    host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    CHECK(rig.emitted.empty());
+
+    rig.withC = true;
+    rig.update();
+    host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    CHECK(rig.c.visible() == !late.minimized);
+    CHECK(rig.a.visible() == !late.maximized);
+    if (late.maximized) {
+        CHECK(rig.c.laidFrame == Body({6.0f, 6.0f, 1588.0f, 588.0f}));
+    }
+    host.place(MakeContext({600.0f, 400.0f}), {0.0f, 0.0f, 600.0f, 400.0f});
+    CHECK(rig.tiles == saved);
+    CHECK(rig.emitted.empty());
+    host.place(MakeContext({1600.0f, 600.0f}), kWideDock);
+    CHECK(rig.tiles == saved);
 }
 
 TEST_CASE("A pane added while a column is maximized restores the columns and shows the new one",
@@ -3510,4 +4535,1208 @@ TEST_CASE("Releasing another button keeps a splitter drag going", "[core][sakura
     CHECK(emissions.trees.empty());
     CHECK(host.send(Mouse(MouseEventType::Release, splitter, 300.0f)));
     CHECK_FALSE(dock.resizing());
+}
+
+namespace {
+
+std::optional<Sakura::Label::Instance> Spine(Sakura::Component& dock, const std::string& title) {
+    for (auto* label : Find<Sakura::Label>(dock)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.rotation != 0.0f && instance.str == title) {
+                return instance;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+TEST_CASE("Minimizing a lone column collapses it to a strip with a vertical title and a click on the title restores it",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+    const Rect cardC = {1174.0f, 6.0f, 420.0f, 588.0f};
+    REQUIRE(GlyphIn(rig.dock, cardC, ICON_LC_MINUS));
+
+    const auto minimize = MinimizeOf(cardC);
+    host.click(minimize.x, minimize.y);
+    host.place(ctx, kWideDock);
+    CHECK_FALSE(rig.c.visible());
+    CHECK(rig.a.laidFrame == Body({6.0f, 6.0f, 1124.0f, 588.0f}));
+    CHECK(rig.b.laidFrame == Body({1136.0f, 6.0f, 420.0f, 588.0f}));
+    const auto spine = Spine(rig.dock, "c");
+    REQUIRE(spine.has_value());
+    CHECK(spine->rotation == -90.0f);
+    CHECK(spine->rect.y == 6.0f);
+    CHECK(spine->rect.height == 588.0f);
+    CHECK(spine->rect.x + spine->rect.width * 0.5f == Catch::Approx(1578.0f).margin(1.5f));
+    CHECK_FALSE(GlyphIn(rig.dock, {1562.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_MINUS));
+    const auto* cross = GlyphIn(rig.dock, {1562.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_X);
+    REQUIRE(cross != nullptr);
+    const Rect crossFrame = Peek::Frame(*cross);
+    CHECK(crossFrame.y < spine->rect.y + 40.0f);
+    CHECK(Peek::CursorAt(rig.dock, {1578.0f, 300.0f}) == SurfaceCursor::Hand);
+    CHECK(rig.emitted.empty());
+
+    host.click(1578.0f, 300.0f);
+    host.place(ctx, kWideDock);
+    CHECK(rig.c.visible());
+    CHECK(rig.c.laidFrame == Body(cardC));
+    CHECK_FALSE(Spine(rig.dock, "c").has_value());
+    CHECK(rig.emitted.empty());
+
+    host.click(minimize.x, minimize.y);
+    host.place(ctx, kWideDock);
+    REQUIRE(Spine(rig.dock, "c").has_value());
+    const auto* strip = GlyphIn(rig.dock, {1562.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_X);
+    REQUIRE(strip != nullptr);
+    const Rect close = Peek::Frame(*strip);
+    host.click(close.x + close.width * 0.5f, close.y + close.height * 0.5f);
+    host.place(ctx, kWideDock);
+    CHECK(rig.closed == std::vector<std::string>{"c"});
+    CHECK_FALSE(Spine(rig.dock, "c").has_value());
+    CHECK_FALSE(rig.c.visible());
+}
+
+TEST_CASE("A pane that closes only when minimized hides its header close until it collapses to a strip",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")});
+    rig.closeOnlyMinimized = "c";
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+    const Rect cardC = {1174.0f, 6.0f, 420.0f, 588.0f};
+    const auto* minus = GlyphIn(rig.dock, cardC, ICON_LC_MINUS);
+    REQUIRE(minus != nullptr);
+    CHECK_FALSE(GlyphIn(rig.dock, cardC, ICON_LC_X));
+    CHECK(GlyphIn(rig.dock, {1136.0f, 6.0f, 420.0f, 588.0f}, ICON_LC_X));
+
+    const Rect minimize = Peek::Frame(*minus);
+    host.click(minimize.x + minimize.width * 0.5f, minimize.y + minimize.height * 0.5f);
+    host.place(ctx, kWideDock);
+    REQUIRE(Spine(rig.dock, "c").has_value());
+    const auto* strip = GlyphIn(rig.dock, {1562.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_X);
+    REQUIRE(strip != nullptr);
+    const Rect close = Peek::Frame(*strip);
+    host.click(close.x + close.width * 0.5f, close.y + close.height * 0.5f);
+    host.place(ctx, kWideDock);
+    CHECK(rig.closed == std::vector<std::string>{"c"});
+}
+
+TEST_CASE("The first minimize draws the vertical title in the same frame without a resource rebuild",
+          "[core][sakura][dock][columns][retention]") {
+    auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")});
+    Host host(rig.dock);
+    Frames frames(host, kWideDock, ctx);
+    const auto update = [&] {
+        rig.update();
+    };
+    REQUIRE(frames.settle(update));
+
+    const auto minimize = MinimizeOf({1174.0f, 6.0f, 420.0f, 588.0f});
+    host.click(minimize.x, minimize.y);
+    const auto first = frames.run(update);
+    CHECK_FALSE(first.rebuilt);
+    CHECK(first.repainted);
+    CHECK(Spine(rig.dock, "c").has_value());
+    CHECK_FALSE(Sakura::Access::resourceDirty(host));
+    CHECK_FALSE(frames.run(update).rebuilt);
+}
+
+TEST_CASE("A pane that starts minimized on the left shows a bare leftmost strip once and restores on click",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    Probe a;
+    Probe notes;
+    Dock dock;
+    std::optional<DockTiles> tiles;
+    const auto update = [&](bool withNotes) {
+        std::vector<Dock::Pane> panes = {MakePane("a", &a)};
+        if (withNotes) {
+            auto pane = MakePane("notes", &notes);
+            pane.closable = false;
+            pane.maximizable = false;
+            pane.leftmost = true;
+            pane.startMinimized = true;
+            pane.width = 520.0f;
+            panes.push_back(std::move(pane));
+        }
+        dock.update({
+            .accepts = "panel",
+            .panes = std::move(panes),
+            .tiles = tiles,
+            .onTiles = [&](std::optional<DockTiles> next) { tiles = std::move(next); },
+            .columns = true,
+            .flexPane = "a",
+        });
+    };
+    Host host(dock);
+    update(true);
+    host.place(ctx, kWideDock);
+
+    CHECK_FALSE(notes.visible());
+    const auto spine = Spine(dock, "notes");
+    REQUIRE(spine.has_value());
+    const F32 center = spine->rect.x + spine->rect.width * 0.5f;
+    CHECK(center == Catch::Approx(22.0f).margin(1.5f));
+    CHECK(spine->rect.y + spine->rect.height * 0.5f == Catch::Approx(300.0f).margin(1.5f));
+    CHECK(a.laidFrame.x > 38.0f);
+    CHECK_FALSE(GlyphIn(dock, {6.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_MAXIMIZE_2));
+    CHECK_FALSE(GlyphIn(dock, {6.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_X));
+
+    host.click(center, 300.0f);
+    host.place(ctx, kWideDock);
+    CHECK(notes.visible());
+    CHECK(notes.laidFrame.x < a.laidFrame.x);
+    CHECK(notes.laidFrame.width == Catch::Approx(520.0f).margin(1.0f));
+
+    update(true);
+    host.place(ctx, kWideDock);
+    CHECK(notes.visible());
+
+    update(false);
+    host.place(ctx, kWideDock);
+    update(true);
+    host.place(ctx, kWideDock);
+    CHECK_FALSE(notes.visible());
+    CHECK(Spine(dock, "notes").has_value());
+}
+
+TEST_CASE("Minimizing and restoring a column settles and its minimize button repaints once and only acts on a release",
+          "[core][sakura][dock][columns][retention]") {
+    auto ctx = MakeContext({1600.0f, 600.0f});
+    ctx.palette = DistinctPalette();
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")});
+    Host host(rig.dock);
+    Frames frames(host, kWideDock, ctx);
+    const auto update = [&] {
+        rig.update();
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    const Rect cardC = {1174.0f, 6.0f, 420.0f, 588.0f};
+    const auto minimize = MinimizeOf(cardC);
+    const Extent2D<F32> body = {1300.0f, 400.0f};
+    CheckHoverRepaintsOnce(frames, host, update, minimize, body);
+    CheckLeaveRepaintsOnce(frames, host, update, minimize);
+
+    host.send(Mouse(MouseEventType::Click, minimize.x, minimize.y));
+    host.send(Mouse(MouseEventType::Cancel, minimize.x, minimize.y));
+    host.send(Mouse(MouseEventType::Release, minimize.x, minimize.y));
+    REQUIRE(frames.settle(update));
+    CHECK(rig.c.visible());
+    host.send(Mouse(MouseEventType::Click, minimize.x, minimize.y));
+    host.send(Mouse(MouseEventType::Release, body.x, body.y));
+    REQUIRE(frames.settle(update));
+    CHECK(rig.c.visible());
+
+    host.click(minimize.x, minimize.y);
+    REQUIRE(frames.settle(update));
+    CHECK_FALSE(rig.c.visible());
+    REQUIRE(Spine(rig.dock, "c").has_value());
+    CHECK(DirtyFrames(frames, update, 10) == 0);
+
+    host.click(1578.0f, 300.0f);
+    REQUIRE(frames.settle(update));
+    CHECK(rig.c.visible());
+    CHECK(Retains(frames, update));
+
+    const U64 restructures = frames.restructures;
+    const U64 rebuilds = frames.rebuilds;
+    host.click(minimize.x, minimize.y);
+    CHECK(RepaintOnly(frames.run(update)));
+    REQUIRE(frames.settle(update));
+    CHECK_FALSE(rig.c.visible());
+    host.click(1578.0f, 300.0f);
+    CHECK(RepaintOnly(frames.run(update)));
+    REQUIRE(frames.settle(update));
+    CHECK(rig.c.visible());
+    CHECK(frames.restructures == restructures);
+    CHECK(frames.rebuilds == rebuilds);
+    CHECK(rig.emitted.empty());
+}
+
+TEST_CASE("Collapsed strips scale their width and title size with the pixel ratio", "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext({3200.0f, 1200.0f});
+    ctx.pixelRatio = 2.0f;
+    const Rect bounds = {0.0f, 0.0f, 3200.0f, 1200.0f};
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, bounds);
+    const Rect body = rig.c.laidFrame;
+    const Rect card = {body.x, body.y - 2.0f * kHeader, body.width, body.height + 2.0f * kHeader};
+    const auto* glyph = GlyphIn(rig.dock, card, ICON_LC_MINUS);
+    REQUIRE(glyph != nullptr);
+    const Rect button = Peek::Frame(*glyph);
+    host.click(button.x + button.width * 0.5f, button.y + button.height * 0.5f);
+    host.place(ctx, bounds);
+    CHECK_FALSE(rig.c.visible());
+    const auto spine = Spine(rig.dock, "c");
+    REQUIRE(spine.has_value());
+    CHECK(spine->fontSize == 34.0f);
+    CHECK(spine->rect.width == 64.0f);
+    CHECK(spine->rect.y == card.y);
+    CHECK(spine->rect.height == card.height);
+    CHECK(spine->rect.x + spine->rect.width * 0.5f == Catch::Approx(bounds.right() - 12.0f - 32.0f).margin(3.0f));
+}
+
+TEST_CASE("Minimizing a stacked pane shrinks it to a header the width of a strip and its neighbour takes the height",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Column({0.5f, 0.5f}, {Leaf("b"), Leaf("c")})});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+
+    const auto minimize = MinimizeOf({1174.0f, 303.0f, 420.0f, 291.0f});
+    host.click(minimize.x, minimize.y);
+    host.place(ctx, kWideDock);
+    CHECK_FALSE(rig.c.visible());
+    CHECK(rig.b.laidFrame == Body({1174.0f, 6.0f, 420.0f, 550.0f}));
+    const Rect shade = {1174.0f, 562.0f, 420.0f, 32.0f};
+    CHECK(BoxWith(rig.dock, shade) != nullptr);
+    CHECK(GlyphIn(rig.dock, shade, ICON_LC_X));
+    CHECK(GlyphIn(rig.dock, shade, ICON_LC_MAXIMIZE_2));
+    CHECK_FALSE(GlyphIn(rig.dock, shade, ICON_LC_MINUS));
+    CHECK(Peek::CursorAt(rig.dock, {1300.0f, 559.0f}) != SurfaceCursor::ResizeNS);
+
+    host.click(1300.0f, 578.0f);
+    host.place(ctx, kWideDock);
+    CHECK(rig.c.visible());
+    CHECK(rig.c.laidFrame == Body({1174.0f, 303.0f, 420.0f, 291.0f}));
+    CHECK(rig.emitted.empty());
+}
+
+TEST_CASE("A minimized tinted pane falls back to the default tile fill and outline", "[core][sakura][dock][columns]") {
+    constexpr ColorRGBA<F32> kTint = {0.3f, 0.0f, 0.0f, 1.0f};
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.fillC = kTint;
+    rig.tiles = ColumnRow({Leaf("a"), Column({0.5f, 0.5f}, {Leaf("b"), Leaf("c")})});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+    const auto tinted = [&] {
+        U64 count = 0;
+        for (auto* box : Direct<Sakura::Box>(rig.dock)) {
+            const auto& config = box->config();
+            for (const auto& instance : config.instances) {
+                if (instance.visible && (instance.backgroundColor == kTint ||
+                                         (config.borderWidth > 0.0f && config.borderColor.r > config.borderColor.g &&
+                                          config.borderColor.r > kTint.r))) {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    };
+    CHECK(tinted() == 3);
+
+    const auto minimize = MinimizeOf({1174.0f, 303.0f, 420.0f, 291.0f});
+    host.click(minimize.x, minimize.y);
+    host.place(ctx, kWideDock);
+    REQUIRE_FALSE(rig.c.visible());
+    CHECK(tinted() == 0);
+    CHECK(BoxWith(rig.dock, {1174.0f, 562.0f, 420.0f, 32.0f}) != nullptr);
+}
+
+TEST_CASE("Minimizing a pane cancels a press held in its content and releases focus inside it",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Column({0.5f, 0.5f}, {Leaf("b"), Leaf("c")})});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+
+    const auto content = rig.c.laidFrame;
+    host.send(Mouse(MouseEventType::Click, content.x + 10.0f, content.y + 10.0f));
+    REQUIRE(rig.c.count(MouseEventType::Click) == 1);
+    REQUIRE(Sakura::Access::focus(rig.c));
+    REQUIRE(FocusOwner(host) == &rig.c);
+    REQUIRE(rig.c.count(MouseEventType::Cancel) == 0);
+
+    const auto minimize = MinimizeOf({1174.0f, 303.0f, 420.0f, 291.0f});
+    host.click(minimize.x, minimize.y);
+    host.place(ctx, kWideDock);
+    CHECK_FALSE(rig.c.visible());
+    CHECK(rig.c.count(MouseEventType::Cancel) == 1);
+    CHECK(FocusOwner(host) == nullptr);
+
+    host.place(ctx, kWideDock);
+    CHECK(rig.c.count(MouseEventType::Cancel) == 1);
+}
+
+TEST_CASE("Dividers beside a collapsed strip resize the open columns on either side of it",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+    const auto minimize = MinimizeOf({748.0f, 6.0f, 420.0f, 588.0f});
+    host.click(minimize.x, minimize.y);
+    host.place(ctx, kWideDock);
+    REQUIRE_FALSE(rig.b.visible());
+    CHECK(rig.a.laidFrame.width == 1124.0f);
+    CHECK(rig.c.laidFrame.x == 1174.0f);
+
+    for (const F32 gap : {1133.0f, 1171.0f}) {
+        CAPTURE(gap);
+        CHECK(Peek::CursorAt(rig.dock, {gap, 300.0f}) == SurfaceCursor::ResizeEW);
+    }
+    host.send(Mouse(MouseEventType::Click, 1171.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Move, 1071.0f, 300.0f));
+    host.place(ctx, kWideDock);
+    CHECK(rig.c.laidFrame.width == 520.0f);
+    CHECK(rig.a.laidFrame.width == 1024.0f);
+    host.send(Mouse(MouseEventType::Release, 1071.0f, 300.0f));
+    REQUIRE(rig.emitted.size() == 1);
+    CHECK(rig.emitted[0]->weights[1] == 0.0f);
+    CHECK(rig.emitted[0]->weights[2] == 520.0f);
+}
+
+TEST_CASE("Fullscreen from a collapsed strip returns to the strip and the last open pane cannot be minimized",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+    for (const Rect card : {Rect{1174.0f, 6.0f, 420.0f, 588.0f}, Rect{1136.0f, 6.0f, 420.0f, 588.0f}}) {
+        const auto minimize = MinimizeOf(card);
+        host.click(minimize.x, minimize.y);
+        host.place(ctx, kWideDock);
+    }
+    REQUIRE_FALSE(rig.b.visible());
+    REQUIRE_FALSE(rig.c.visible());
+    const Rect cardA = {6.0f, 6.0f, 1512.0f, 588.0f};
+    CHECK(rig.a.laidFrame == Body(cardA));
+    CHECK_FALSE(GlyphIn(rig.dock, cardA, ICON_LC_MINUS));
+    CHECK(GlyphIn(rig.dock, cardA, ICON_LC_MAXIMIZE_2));
+
+    const Rect strip = {1562.0f, 6.0f, 32.0f, 588.0f};
+    const auto* fullscreen = GlyphIn(rig.dock, strip, ICON_LC_MAXIMIZE_2);
+    REQUIRE(fullscreen);
+    const Rect button = Peek::Frame(*fullscreen);
+    CHECK(button.bottom() > strip.bottom() - 26.0f);
+    host.click(button.x + button.width * 0.5f, button.y + button.height * 0.5f);
+    host.place(ctx, kWideDock);
+    CHECK(rig.c.visible());
+    CHECK_FALSE(rig.a.visible());
+    const Rect full = {6.0f, 6.0f, 1588.0f, 588.0f};
+    CHECK(rig.c.laidFrame == Body(full));
+    CHECK_FALSE(GlyphIn(rig.dock, full, ICON_LC_MINUS));
+
+    const auto exit = MaximizeOf(full);
+    host.click(exit.x, exit.y);
+    host.place(ctx, kWideDock);
+    CHECK_FALSE(rig.c.visible());
+    CHECK(rig.a.laidFrame == Body(cardA));
+    CHECK(Spine(rig.dock, "c").has_value());
+    CHECK(rig.emitted.empty());
+}
+
+TEST_CASE("Dividers beside a minimized row resize the open rows above and below it", "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.tiles = Column({1.0f, 1.0f, 1.0f}, {Leaf("a"), Leaf("b"), Leaf("c")});
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+    REQUIRE(rig.b.laidFrame == Body({6.0f, 204.0f, 1588.0f, 192.0f}));
+
+    const auto minimize = MinimizeOf({6.0f, 204.0f, 1588.0f, 192.0f});
+    host.click(minimize.x, minimize.y);
+    host.place(ctx, kWideDock);
+    REQUIRE_FALSE(rig.b.visible());
+    CHECK(rig.a.laidFrame == Body({6.0f, 6.0f, 1588.0f, 272.0f}));
+    CHECK(rig.c.laidFrame == Body({6.0f, 322.0f, 1588.0f, 272.0f}));
+
+    for (const F32 gap : {281.0f, 319.0f}) {
+        CAPTURE(gap);
+        CHECK(Peek::CursorAt(rig.dock, {800.0f, gap}) == SurfaceCursor::ResizeNS);
+    }
+    host.send(Mouse(MouseEventType::Click, 800.0f, 281.0f));
+    host.send(Mouse(MouseEventType::Move, 800.0f, 181.0f));
+    host.place(ctx, kWideDock);
+    CHECK(rig.a.laidFrame.bottom() == Catch::Approx(178.0f).margin(2.0f));
+    CHECK(rig.c.laidFrame.bottom() == 594.0f);
+    host.send(Mouse(MouseEventType::Release, 800.0f, 181.0f));
+    REQUIRE(rig.emitted.size() == 1);
+}
+
+namespace {
+
+struct CancelDeletingProbe : Probe {
+    std::function<void()> onCancel;
+
+    bool mouseEvent(const MouseEvent& event) override {
+        if (event.type == MouseEventType::Cancel && onCancel) {
+            auto callback = std::move(onCancel);
+            onCancel = {};
+            callback();
+            return false;
+        }
+        return Probe::mouseEvent(event);
+    }
+};
+
+struct BlurDeletingProbe : Probe {
+    std::function<void()> onBlur;
+
+    void focusChanged(bool focused) override {
+        if (!focused && onBlur) {
+            auto callback = std::move(onBlur);
+            onBlur = {};
+            callback();
+        }
+    }
+};
+
+}  // namespace
+
+TEST_CASE("Hiding an aside survives the aside destroying itself when its mouse is cancelled",
+          "[core][sakura][dock][retention]") {
+    const auto ctx = MakeContext();
+    Probe content;
+    auto aside = std::make_unique<CancelDeletingProbe>();
+    Dock dock;
+    Host host(dock);
+    dock.update({.tabs = true, .panes = {MakePane("a", &content)}, .aside = aside.get(), .asideWidth = 200.0f});
+    host.place(ctx, kScreen);
+    REQUIRE(aside->visible());
+    aside->onCancel = [&] {
+        aside.reset();
+    };
+    dock.update({.tabs = true, .panes = {MakePane("a", &content)}});
+    host.place(ctx, kScreen);
+    CHECK(aside == nullptr);
+    CHECK(content.visible());
+    host.place(ctx, kScreen);
+    CHECK(content.visible());
+}
+
+TEST_CASE("Hiding an aside survives the aside destroying itself when it loses focus",
+          "[core][sakura][dock][retention]") {
+    const auto ctx = MakeContext();
+    Probe content;
+    auto aside = std::make_unique<BlurDeletingProbe>();
+    Dock dock;
+    Host host(dock);
+    dock.update({.tabs = true, .panes = {MakePane("a", &content)}, .aside = aside.get(), .asideWidth = 200.0f});
+    host.place(ctx, kScreen);
+    REQUIRE(Sakura::Access::focus(*aside));
+    aside->onBlur = [&] {
+        aside.reset();
+    };
+    dock.update({.tabs = true, .panes = {MakePane("a", &content)}});
+    host.place(ctx, kScreen);
+    CHECK(aside == nullptr);
+    CHECK(content.visible());
+    host.place(ctx, kScreen);
+    CHECK(content.visible());
+}
+
+TEST_CASE("Hiding an aside leaves it alone when it moves to another parent while its mouse is cancelled",
+          "[core][sakura][dock][retention]") {
+    const auto ctx = MakeContext();
+    Probe content;
+    Probe destination;
+    CancelDeletingProbe aside;
+    Dock dock;
+    Host host(dock);
+    dock.update({.tabs = true, .panes = {MakePane("a", &content)}, .aside = &aside, .asideWidth = 200.0f});
+    host.place(ctx, kScreen);
+    REQUIRE(aside.visible());
+    aside.onCancel = [&] {
+        destination.adopt(aside);
+    };
+    dock.update({.tabs = true, .panes = {MakePane("a", &content)}});
+    host.place(ctx, kScreen);
+    const auto adopted = Peek::Children(destination);
+    REQUIRE(std::find(adopted.begin(), adopted.end(), &aside) != adopted.end());
+    CHECK(aside.visible());
+}
+
+TEST_CASE("Dock columns ease a hidden pane out and back while its content keeps its width",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe side;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("side", &side);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {300.0f, 0.0f}, .children = {{.pane = "side"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+            .resizable = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE(side.visible());
+    const Rect open = side.laidFrame;
+    const Rect wide = page.laidFrame;
+    CHECK(open.width == 300.0f);
+
+    hidden = true;
+    place(1.0);
+    place(1.125);
+    CHECK(side.visible());
+    CHECK(side.laidFrame.width == open.width);
+    CHECK(side.laidFrame.x < open.x);
+    CHECK(page.laidFrame.x < wide.x);
+    CHECK(page.laidFrame.width > wide.width);
+
+    place(1.5);
+    CHECK_FALSE(side.visible());
+    CHECK(page.laidFrame.x < open.x + open.width);
+    CHECK(page.laidFrame.width == Catch::Approx(wide.right() - page.laidFrame.x));
+
+    hidden = false;
+    place(2.0);
+    place(2.5);
+    CHECK(side.visible());
+    CHECK(side.laidFrame == open);
+    CHECK(page.laidFrame == wide);
+}
+
+TEST_CASE("Dock leading reach stretches the leading slot to an edge and eases it back",
+          "[core][sakura][dock]") {
+    auto ctx = MakeContext();
+    Probe a;
+    Probe leading({40.0f, 20.0f});
+    Dock dock;
+    Host host(dock);
+    F32 reach = 0.0f;
+    const auto place = [&](F64 time) {
+        dock.update({.tabs = true, .hideTabs = true, .panes = {MakePane("a", &a)}, .leading = &leading,
+                     .leadingInset = 70.0f, .leadingReach = reach});
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    CHECK(leading.laidFrame.width == 40.0f);
+
+    reach = 336.0f;
+    place(1.0);
+    place(1.125);
+    CHECK(leading.laidFrame.width > 40.0f);
+    CHECK(leading.laidFrame.right() < 336.0f);
+    place(1.5);
+    CHECK(leading.laidFrame.right() == 336.0f);
+
+    reach = 0.0f;
+    place(2.0);
+    place(2.5);
+    CHECK(leading.laidFrame.width == 40.0f);
+}
+
+TEST_CASE("Dock hidden panes settle once their slide ends", "[core][sakura][dock][retention]") {
+    Probe side;
+    Probe page;
+    Dock dock;
+    Place place(dock, kScreen);
+    Frames frames(place, kScreen, MakeContext());
+    bool hidden = false;
+    const auto update = [&] {
+        auto pane = MakePane("side", &side);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {300.0f, 0.0f}, .children = {{.pane = "side"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+            .resizable = false,
+        });
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    hidden = true;
+    for (U64 frame = 0; frame < 30; ++frame) {
+        frames.ctx.time += 1.0 / 60.0;
+        frames.run(update);
+    }
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK_FALSE(side.visible());
+}
+
+TEST_CASE("Dock bar presses reach the window through the unused part of the leading slot",
+          "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe leading({40.0f, 20.0f});
+    Dock dock;
+    Host host(dock);
+    std::vector<U8> presses;
+    dock.update({.tabs = true, .hideTabs = true, .panes = {MakePane("a", &a)}, .leading = &leading,
+                 .leadingInset = 70.0f, .leadingReach = 336.0f,
+                 .onBarPress = [&](U8 clicks) { presses.push_back(clicks); }});
+    host.place(ctx, kScreen);
+    REQUIRE(leading.laidFrame.right() == 336.0f);
+    const F32 y = leading.laidFrame.y + leading.laidFrame.height * 0.5f;
+
+    host.click(leading.laidFrame.x + 10.0f, y);
+    CHECK(presses.empty());
+
+    leading.consume = false;
+    host.click(leading.laidFrame.x + 10.0f, y);
+    CHECK(presses == std::vector<U8>{1});
+}
+
+TEST_CASE("Dock leading reach snaps without easing when tabs appear or disappear", "[core][sakura][dock]") {
+    auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Probe leading({40.0f, 20.0f});
+    Dock dock;
+    Host host(dock);
+    bool hideTabs = true;
+    const auto place = [&](F64 time) {
+        dock.update({.tabs = true, .hideTabs = hideTabs, .panes = {MakePane("a", &a), MakePane("b", &b)},
+                     .leading = &leading, .leadingInset = 70.0f, .leadingReach = 336.0f});
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE(leading.laidFrame.right() == 336.0f);
+
+    hideTabs = false;
+    place(1.0);
+    CHECK(leading.laidFrame.width == 40.0f);
+
+    hideTabs = true;
+    place(2.0);
+    CHECK(leading.laidFrame.right() == 336.0f);
+}
+
+TEST_CASE("Dock leading reach stops short of the right side controls in narrow bars", "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe leading({40.0f, 20.0f});
+    Probe end({60.0f, 20.0f});
+    Dock dock;
+    Host host(dock);
+    dock.update({.tabs = true, .hideTabs = true, .panes = {MakePane("a", &a)}, .leading = &leading, .end = &end,
+                 .leadingInset = 70.0f, .leadingReach = 336.0f});
+    host.place(ctx, {0.0f, 0.0f, 348.0f, 300.0f});
+
+    CHECK(leading.laidFrame.width >= 40.0f);
+    CHECK(leading.laidFrame.right() < end.laidFrame.x);
+}
+
+TEST_CASE("Dock hides a pane inside a stacked column and gives its height to the rest",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe top;
+    Probe bottom;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("bottom", &bottom);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("top", &top), pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {300.0f, 0.0f},
+                               .children = {{.vertical = true, .children = {{.pane = "top"}, {.pane = "bottom"}}},
+                                            {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+            .resizable = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE(bottom.visible());
+    const F32 split = top.laidFrame.height;
+    const F32 column = bottom.laidFrame.bottom() - top.laidFrame.y;
+
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    CHECK_FALSE(bottom.visible());
+    CHECK(top.visible());
+    CHECK(top.laidFrame.height > split);
+    CHECK(top.laidFrame.height == Catch::Approx(column));
+    CHECK(page.visible());
+}
+
+TEST_CASE("Dock hidden columns hand their space to visible columns and keep one divider between them",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe page;
+    CursorDock dock;
+    Host host(dock);
+    std::string hiddenPane;
+    const auto place = [&](F64 time) {
+        std::vector<Dock::Pane> panes = {MakePane("left", &left), MakePane("middle", &middle),
+                                         MakePane("page", &page)};
+        for (auto& pane : panes) {
+            pane.hidden = pane.id == hiddenPane;
+        }
+        dock.update({
+            .panes = std::move(panes),
+            .tiles = DockTiles{.weights = {250.0f, 250.0f, 0.0f},
+                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    const F32 gap = middle.laidFrame.x - left.laidFrame.right();
+    REQUIRE(gap > 0.0f);
+
+    hiddenPane = "middle";
+    place(1.0);
+    place(1.5);
+    CHECK_FALSE(middle.visible());
+    CHECK(page.laidFrame.x - left.laidFrame.right() == gap);
+    CHECK(dock.cursorAt({left.laidFrame.right() + gap * 0.5f, 300.0f}) == SurfaceCursor::ResizeEW);
+
+    hiddenPane = "page";
+    place(2.0);
+    place(2.5);
+    CHECK_FALSE(page.visible());
+    CHECK(middle.visible());
+    CHECK(middle.laidFrame.right() == Catch::Approx(kScreen.right() - gap));
+}
+
+TEST_CASE("Dock stacked columns keep a divider between the rows around a hidden row",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe top;
+    Probe middle;
+    Probe bottom;
+    Probe page;
+    CursorDock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("top", &top), pane, MakePane("bottom", &bottom), MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {300.0f, 0.0f},
+                               .children = {{.vertical = true,
+                                             .children = {{.pane = "top"}, {.pane = "middle"}, {.pane = "bottom"}}},
+                                            {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(middle.visible());
+    const F32 seam = (top.laidFrame.bottom() + bottom.laidFrame.y) * 0.5f;
+    CHECK(dock.cursorAt({top.laidFrame.x + top.laidFrame.width * 0.5f, seam}) == SurfaceCursor::ResizeNS);
+}
+
+TEST_CASE("Dock column resizes keep the stored width of hidden columns",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe right;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    std::optional<DockTiles> tiles = DockTiles{.weights = {250.0f, 250.0f, 250.0f},
+                                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "right"}}};
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("right", &right)},
+            .tiles = tiles,
+            .onTiles = [&](std::optional<DockTiles> next) { tiles = std::move(next); },
+            .columns = true,
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    const Rect open = middle.laidFrame;
+    const F32 leftWidth = left.laidFrame.width;
+
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(middle.visible());
+    const F32 seam = (left.laidFrame.right() + right.laidFrame.x) * 0.5f;
+    host.send(Mouse(MouseEventType::Click, seam, 300.0f));
+    host.send(Mouse(MouseEventType::Move, seam + 8.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Release, seam + 8.0f, 300.0f));
+    place(1.6);
+    CHECK(left.laidFrame.width > leftWidth);
+
+    hidden = false;
+    place(2.0);
+    place(2.5);
+    CHECK(middle.visible());
+    CHECK(middle.laidFrame.width <= open.width);
+}
+
+TEST_CASE("Dock hidden flex columns give their space to open columns, not to minimized strips",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe page;
+    Probe notes;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto flex = MakePane("page", &page);
+        flex.hidden = hidden;
+        auto strip = MakePane("notes", &notes);
+        strip.startMinimized = true;
+        dock.update({
+            .panes = {MakePane("left", &left), flex, strip},
+            .tiles = DockTiles{.weights = {250.0f, 0.0f, 250.0f},
+                               .children = {{.pane = "left"}, {.pane = "page"}, {.pane = "notes"}}},
+            .columns = true,
+            .flexPane = "page",
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE_FALSE(notes.visible());
+    const auto strip = Spine(dock, "notes");
+    REQUIRE(strip.has_value());
+    const F32 stripWidth = strip->rect.width;
+
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(page.visible());
+    const auto after = Spine(dock, "notes");
+    REQUIRE(after.has_value());
+    CHECK(after->rect.width == Catch::Approx(stripWidth).margin(1.0f));
+    CHECK(left.laidFrame.width > 250.0f);
+}
+
+TEST_CASE("Dock column layouts leave a maximized pane once it is hidden", "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {250.0f, 250.0f, 0.0f},
+                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+    place(0.0);
+    const Rect body = middle.laidFrame;
+    const auto maximize = MaximizeOf({body.x, body.y - kHeader, body.width, body.height + kHeader});
+    host.click(maximize.x, maximize.y);
+    place(0.1);
+    REQUIRE_FALSE(left.visible());
+    REQUIRE(middle.visible());
+
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    CHECK_FALSE(middle.visible());
+    CHECK(left.visible());
+    CHECK(page.visible());
+
+    const Rect card = {left.laidFrame.x, left.laidFrame.y - kHeader, left.laidFrame.width,
+                       left.laidFrame.height + kHeader};
+    const auto minimize = MinimizeOf(card);
+    host.click(minimize.x, minimize.y);
+    place(1.6);
+    CHECK_FALSE(left.visible());
+}
+
+TEST_CASE("Dock dividers next to a column that took hidden space use its visible width for drag limits",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    std::optional<DockTiles> tiles = DockTiles{.weights = {250.0f, 250.0f, 0.0f},
+                                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "page"}}};
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("page", &page)},
+            .tiles = tiles,
+            .onTiles = [&](std::optional<DockTiles> next) { tiles = std::move(next); },
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(middle.visible());
+    const F32 before = left.laidFrame.width;
+    const F32 seam = (left.laidFrame.right() + page.laidFrame.x) * 0.5f;
+    host.send(Mouse(MouseEventType::Click, seam, 300.0f));
+    host.send(Mouse(MouseEventType::Move, seam + 100.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Release, seam + 100.0f, 300.0f));
+    place(1.6);
+    CHECK(left.laidFrame.width == Catch::Approx(before + 100.0f).margin(1.0f));
+}
+
+TEST_CASE("Dock equalizing columns around a hidden column keeps them equal once it returns",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe right;
+    Dock dock;
+    Host host(dock);
+    std::optional<DockTiles> tiles = DockTiles{.weights = {300.0f, 250.0f, 250.0f},
+                                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "right"}}};
+    bool hidden = false;
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("right", &right)},
+            .tiles = tiles,
+            .onTiles = [&](std::optional<DockTiles> next) { tiles = std::move(next); },
+            .columns = true,
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+
+    place(0.0);
+    REQUIRE(left.laidFrame.width > right.laidFrame.width + 20.0f);
+    hidden = true;
+    place(1.0);
+    place(1.5);
+    REQUIRE_FALSE(middle.visible());
+    const F32 seam = (left.laidFrame.right() + right.laidFrame.x) * 0.5f;
+    host.send(Mouse(MouseEventType::Click, seam, 300.0f, MouseButton::Left, 2));
+    host.send(Mouse(MouseEventType::Release, seam, 300.0f));
+    place(1.6);
+
+    hidden = false;
+    place(2.0);
+    place(2.5);
+    REQUIRE(middle.visible());
+    CHECK(left.laidFrame.width == Catch::Approx(right.laidFrame.width).margin(1.0f));
+}
+
+TEST_CASE("Dock columns animate out from their fitted width in narrow docks", "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe side;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    bool hidden = false;
+    const Rect narrow = {0.0f, 0.0f, 600.0f, 400.0f};
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("side", &side);
+        pane.hidden = hidden;
+        dock.update({
+            .panes = {pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {330.0f, 0.0f}, .children = {{.pane = "side"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+            .resizable = false,
+        });
+        ctx.time = time;
+        host.place(ctx, narrow);
+    };
+
+    place(0.0);
+    const F32 fitted = side.laidFrame.width;
+    const F32 pageWidth = page.laidFrame.width;
+    REQUIRE(fitted < 330.0f);
+
+    hidden = true;
+    place(1.0);
+    place(1.02);
+    CHECK(side.laidFrame.width == Catch::Approx(fitted).margin(1.0f));
+    CHECK(page.laidFrame.width >= pageWidth);
+}
+
+TEST_CASE("Dock keeps one visible pane open when the others are minimized or hidden",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe left;
+    Probe middle;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    const auto place = [&](F64 time) {
+        auto pane = MakePane("middle", &middle);
+        pane.hidden = true;
+        dock.update({
+            .panes = {MakePane("left", &left), pane, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {250.0f, 250.0f, 0.0f},
+                               .children = {{.pane = "left"}, {.pane = "middle"}, {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+    place(0.0);
+    REQUIRE_FALSE(middle.visible());
+
+    const auto card = [](const Rect& body) {
+        return Rect{body.x, body.y - kHeader, body.width, body.height + kHeader};
+    };
+    const auto minimizeLeft = MinimizeOf(card(left.laidFrame));
+    host.click(minimizeLeft.x, minimizeLeft.y);
+    place(0.1);
+    REQUIRE_FALSE(left.visible());
+    REQUIRE(page.visible());
+
+    const auto minimizePage = MinimizeOf(card(page.laidFrame));
+    host.click(minimizePage.x, minimizePage.y);
+    place(0.2);
+    CHECK(page.visible());
+}
+
+TEST_CASE("Dock collapses a column to a strip when its other panes are hidden", "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe notes;
+    Probe extra;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    const auto place = [&](F64 time) {
+        auto strip = MakePane("notes", &notes);
+        strip.startMinimized = true;
+        auto gone = MakePane("extra", &extra);
+        gone.hidden = true;
+        dock.update({
+            .panes = {strip, gone, MakePane("page", &page)},
+            .tiles = DockTiles{.weights = {250.0f, 0.0f},
+                               .children = {{.vertical = true, .children = {{.pane = "notes"}, {.pane = "extra"}}},
+                                            {.pane = "page"}}},
+            .columns = true,
+            .flexPane = "page",
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+    place(0.0);
+
+    CHECK_FALSE(notes.visible());
+    CHECK_FALSE(extra.visible());
+    const auto spine = Spine(dock, "notes");
+    REQUIRE(spine.has_value());
+    CHECK(spine->rect.width < 40.0f);
+    CHECK(page.laidFrame.x < 60.0f);
+}
+
+TEST_CASE("Dock dividers resize only their neighbors while the flex column is hidden",
+          "[core][sakura][dock][columns]") {
+    auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    Probe c;
+    Probe page;
+    Dock dock;
+    Host host(dock);
+    std::optional<DockTiles> tiles = DockTiles{
+        .weights = {250.0f, 250.0f, 250.0f, 0.0f},
+        .children = {{.pane = "a"}, {.pane = "b"}, {.pane = "c"}, {.pane = "page"}},
+    };
+    const auto place = [&](F64 time) {
+        auto flex = MakePane("page", &page);
+        flex.hidden = true;
+        dock.update({
+            .panes = {MakePane("a", &a), MakePane("b", &b), MakePane("c", &c), flex},
+            .tiles = tiles,
+            .onTiles = [&](std::optional<DockTiles> next) { tiles = std::move(next); },
+            .columns = true,
+            .flexPane = "page",
+            .headers = false,
+        });
+        ctx.time = time;
+        host.place(ctx, kScreen);
+    };
+    place(0.0);
+    REQUIRE_FALSE(page.visible());
+    const F32 cWidth = c.laidFrame.width;
+    const F32 aWidth = a.laidFrame.width;
+
+    const F32 seam = (a.laidFrame.right() + b.laidFrame.x) * 0.5f;
+    host.send(Mouse(MouseEventType::Click, seam, 300.0f));
+    host.send(Mouse(MouseEventType::Move, seam + 10.0f, 300.0f));
+    host.send(Mouse(MouseEventType::Release, seam + 10.0f, 300.0f));
+    place(0.1);
+    CHECK(a.laidFrame.width > aWidth);
+    CHECK(c.laidFrame.width == Catch::Approx(cWidth).margin(1.0f));
 }

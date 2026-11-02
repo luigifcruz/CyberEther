@@ -110,6 +110,9 @@ struct MarkdownEditor::Impl {
                 .cursorColorKey = "editor_cursor",
                 .scrollbarTrackColorKey = "editor_scrollbar_track",
                 .scrollbarThumbColorKey = "editor_scrollbar_thumb",
+                .onLink = [this](const std::string& url) {
+                    return config.onLink && config.onLink(url);
+                },
             });
         }
     }

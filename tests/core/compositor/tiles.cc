@@ -113,6 +113,29 @@ TEST_CASE("Mapping tiles renames leaves and keeps their weights", "[core][compos
     REQUIRE(renamed->children->at(1).split == "row");
 }
 
+TEST_CASE("Tile view flags survive serialization, filtering, and dock conversion",
+          "[core][compositor][tiles][recovery]") {
+    auto collapsed = Leaf("description", 520.0f);
+    collapsed.minimized = true;
+    auto fullscreen = Leaf("config:a", 310.0f);
+    fullscreen.maximized = true;
+    const auto original = Split("row", {collapsed, fullscreen, Leaf("terminal:1")});
+    Parser::Map encoded;
+    REQUIRE(original.serialize(encoded) == Result::SUCCESS);
+    TileMeta decoded;
+    REQUIRE(decoded.deserialize(encoded) == Result::SUCCESS);
+    const auto filtered = FilterTiles(decoded, IsLayoutPane);
+    REQUIRE(filtered.has_value());
+    const auto dock = ToDockTiles(*filtered, LayoutToDockPanes("graph"));
+    REQUIRE(dock.has_value());
+    REQUIRE(dock->children.size() == 2);
+    CHECK(dock->children[0].minimized);
+    CHECK(dock->children[1].maximized);
+    const auto restored = ToTileMeta(*dock, DockToLayoutPanes("graph"));
+    REQUIRE(restored.has_value());
+    CHECK(Parser::Hash(*restored) == Parser::Hash(*filtered));
+}
+
 TEST_CASE("Mapping tiles drops empty and rejected leaves", "[core][compositor][tiles]") {
     const auto identity = [](const std::string& pane) -> std::optional<std::string> {
         return pane;
@@ -459,6 +482,8 @@ TEST_CASE("Flowgraph layouts map between layout panes and dock panes", "[core][c
     REQUIRE(toDock("config:fft") == std::optional<std::string>("config:fft"));
     REQUIRE(toDock("surface:fft:default") == std::optional<std::string>("surface:fft:default"));
     REQUIRE(toDock(kLayoutDocumentationPane) == std::optional<std::string>("documentation"));
+    REQUIRE(toDock(kLayoutDescriptionPane) == std::optional<std::string>("description"));
+    REQUIRE(toDock(kLayoutEnvironmentPane) == std::optional<std::string>("environment"));
     REQUIRE_FALSE(toDock("stack_0").has_value());
     REQUIRE_FALSE(toDock("").has_value());
 
@@ -466,8 +491,18 @@ TEST_CASE("Flowgraph layouts map between layout panes and dock panes", "[core][c
     REQUIRE(toLayout(MakeEditorPaneId("graph")) == std::optional<std::string>("flowgraph"));
     REQUIRE(toLayout("config:fft") == std::optional<std::string>("config:fft"));
     REQUIRE(toLayout("documentation") == std::optional<std::string>(kLayoutDocumentationPane));
+    REQUIRE(toLayout("description") == std::optional<std::string>(kLayoutDescriptionPane));
+    REQUIRE(toLayout("environment") == std::optional<std::string>(kLayoutEnvironmentPane));
     REQUIRE_FALSE(toLayout(MakeEditorPaneId("other")).has_value());
     REQUIRE_FALSE(toLayout("stack:graph:stack_0").has_value());
+
+    CHECK(IsTransientPane(kLayoutDocumentationPane));
+    CHECK_FALSE(IsTransientPane(kLayoutEnvironmentPane));
+    CHECK_FALSE(IsTransientPane(kLayoutDescriptionPane));
+    CHECK(IsLayoutPane(kLayoutEnvironmentPane));
+    CHECK(IsLayoutPane(kLayoutDescriptionPane));
+    CHECK_FALSE(IsTransientPane(kLayoutEditorPane));
+    CHECK_FALSE(IsTransientPane("config:fft"));
 }
 
 TEST_CASE("Flowgraph layouts drop unknown panes on their way to the dock and keep column widths",
@@ -494,7 +529,7 @@ TEST_CASE("Flowgraph layouts drop unknown panes on their way to the dock and kee
 }
 
 TEST_CASE("Tiles describe configs and surfaces by block", "[core][compositor][tiles]") {
-    REQUIRE(DescribeTile("config:fft") == "fft Config");
+    REQUIRE(DescribeTile("config:fft") == "fft Controls");
     REQUIRE(DescribeTile("surface:fft:default") == "fft (default)");
     REQUIRE(DescribeTile("flowgraph") == "flowgraph");
     REQUIRE(DescribeTile("documentation") == "Documentation");
@@ -507,8 +542,8 @@ TEST_CASE("Flowgraph labels fall back to identifiers", "[core][compositor][tiles
 
     REQUIRE(MakeSurfaceTileTitle("fft", "Spectrum") == "Spectrum (fft)");
     REQUIRE(MakeSurfaceTileTitle("fft", "") == "fft (fft)");
-    REQUIRE(MakeConfigTileTitle("fft", "Spectrum") == "Spectrum Config (fft)");
-    REQUIRE(MakeConfigTileTitle("fft", "") == "fft Config (fft)");
+    REQUIRE(MakeConfigTileTitle("fft", "Spectrum") == "Spectrum Controls (fft)");
+    REQUIRE(MakeConfigTileTitle("fft", "") == "fft Controls (fft)");
 
     REQUIRE(MakeEditorPaneId("graph") == "editor:graph");
     REQUIRE(MakeFlowgraphLayoutGroup("graph") == "layout:graph");

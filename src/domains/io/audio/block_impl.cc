@@ -3,7 +3,7 @@
 
 #include <jetstream/domains/io/audio/module.hh>
 
-#include "tools/miniaudio/miniaudio.h"
+#include <miniaudio.h>
 
 namespace Jetstream::Blocks {
 

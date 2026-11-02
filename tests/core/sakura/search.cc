@@ -9,18 +9,23 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/highlight_text.hh>
+#include <jetstream/render/sakura/components/overlay.hh>
 #include <jetstream/render/sakura/components/pill_button.hh>
 #include <jetstream/render/sakura/components/pill_field.hh>
+#include <jetstream/render/sakura/components/pill_icon_button.hh>
 #include <jetstream/render/sakura/components/pill_stepper.hh>
 #include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/search_catalog.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/components/label.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/sakura/components/markdown.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <optional>
 #include <string>
@@ -121,11 +126,11 @@ TEST_CASE("Search catalog lists results in rank order and pairs the list with a 
     CHECK(rig.bounds.height == 360.0f);
     const auto scrolls = rig.all<Sakura::ScrollArea>();
     REQUIRE(scrolls.size() == 1);
-    CHECK(Peek::Frame(*scrolls[0]).x == 308.0f + 14.0f);
+    CHECK(Peek::Frame(*scrolls[0]).x == 308.0f + 10.0f);
 
     rig.config.docsSide = Sakura::SearchCatalog::DocsSide::Left;
     rig.place();
-    CHECK(Peek::Frame(*rig.all<Sakura::ScrollArea>()[0]).x == 14.0f);
+    CHECK(Peek::Frame(*rig.all<Sakura::ScrollArea>()[0]).x == 10.0f);
 
     rig.config.query = "zzz";
     rig.place();
@@ -182,13 +187,38 @@ TEST_CASE("Search catalog scrolls with the wheel and reveals the selected result
     CHECK(rig.selections.back() == 19);
 }
 
-TEST_CASE("Search catalog stacks an optional field above the list", "[core][sakura][search]") {
+TEST_CASE("Search catalog follows trackpad scrolling point for point", "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.config.items.clear();
+    for (U64 index = 0; index < 20; ++index) {
+        rig.config.items.push_back({.id = "item" + std::to_string(index), .title = "Item", .group = "DSP"});
+    }
+    rig.config.maxHeight = 300.0f;
+    rig.place();
+    const auto trackpad = [&](F32 dy) {
+        auto event = Wheel(100.0f, 200.0f, 0.0f, dy);
+        event.phase = ScrollPhase::Changed;
+        rig.host.send(event);
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    };
+
+    rig.click(100.0f, 250.0f);
+    CHECK(rig.selections.back() == 3);
+    trackpad(-0.5f);
+    rig.click(100.0f, 250.0f);
+    CHECK(rig.selections.back() == 3);
+    trackpad(-4.3f);
+    rig.click(100.0f, 250.0f);
+    CHECK(rig.selections.back() == 4);
+}
+
+TEST_CASE("Search catalog stacks an optional field above both cards", "[core][sakura][search]") {
     CatalogRig rig;
     Sakura::PillField field;
     field.update({.placeholder = "Search", .editing = true, .size = {0.0f, 34.0f}});
     rig.config.field = &field;
     rig.place();
-    CHECK(Peek::Frame(field) == Jetstream::Rect{0.0f, 0.0f, 300.0f, 34.0f});
+    CHECK(Peek::Frame(field) == Jetstream::Rect{0.0f, 0.0f, 300.0f + 8.0f + 440.0f, 34.0f});
     CHECK(rig.bounds.height == 34.0f + 8.0f + 360.0f);
 }
 
@@ -299,7 +329,7 @@ TEST_CASE("Search catalog centers its empty label in the list", "[core][sakura][
     CHECK(rig.bounds.height == 36.0f + 48.0f + 12.0f);
 }
 
-TEST_CASE("Search catalog list card shrinks to its rows while the docs card keeps its height",
+TEST_CASE("Search catalog list card matches the docs card height beside it",
           "[core][sakura][search]") {
     CatalogRig rig;
     rig.config.query = "fil";
@@ -309,7 +339,7 @@ TEST_CASE("Search catalog list card shrinks to its rows while the docs card keep
     std::vector<Jetstream::Rect> cards;
     for (auto* box : rig.all<Sakura::Box>()) {
         if (box->config().borderWidth > 0.0f && !box->config().topLit && box->config().softness == 0.0f &&
-            box->config().cornerRadius == 12.0f) {
+            box->config().cornerRadius == 18.0f) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     cards.push_back(instance.rect);
@@ -318,7 +348,7 @@ TEST_CASE("Search catalog list card shrinks to its rows while the docs card keep
         }
     }
     REQUIRE(cards.size() == 2);
-    CHECK(cards[0] == Jetstream::Rect{0.0f, 0.0f, 300.0f, 36.0f + 2.0f * 48.0f + 12.0f});
+    CHECK(cards[0] == Jetstream::Rect{0.0f, 0.0f, 300.0f, 360.0f});
     CHECK(cards[1].height == 360.0f);
 }
 
@@ -398,6 +428,104 @@ TEST_CASE("Search catalog gives unnamed groups no chip and lists them last under
             }
         }
     }
+}
+
+TEST_CASE("Pill fields scale their icon and text with the scale field", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    Sakura::PillField pill;
+    Host host(pill);
+    Sakura::PillField::Config config{.icon = "Q", .placeholder = "Search blocks"};
+    const auto texts = [&] {
+        std::vector<Sakura::Text::Config> found;
+        for (auto* text : Find<Sakura::Text>(pill)) {
+            found.push_back(text->config());
+        }
+        return found;
+    };
+    const auto scaleOf = [&](const std::string& str) {
+        for (const auto& text : texts()) {
+            if (text.str == str) {
+                return text.scale;
+            }
+        }
+        return 0.0f;
+    };
+
+    pill.update(config);
+    const F32 base = host.measureOf(scene.ctx, {kInfinite, kInfinite}).x;
+    const F32 icon = scaleOf("Q");
+    CHECK(scaleOf("Search blocks") == 1.0f);
+
+    config.scale = 1.25f;
+    pill.update(config);
+    CHECK(scaleOf("Search blocks") == 1.25f);
+    CHECK(scaleOf("Q") == Catch::Approx(icon * 1.25f));
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).x > base);
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).y == 34.0f);
+}
+
+TEST_CASE("Pill field trailing labels sit in a keycap inset evenly inside the pill", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    Sakura::PillField pill;
+    Host host(pill);
+    Sakura::PillField::Config config{.icon = "Q", .placeholder = "Search docs"};
+    pill.update(config);
+    const F32 bare = host.measureOf(scene.ctx, {kInfinite, kInfinite}).x;
+
+    config.trailing = "Ctrl K";
+    pill.update(config);
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).x > bare);
+
+    const auto keycap = [&](const Sakura::Context& ctx) -> std::optional<std::pair<Jetstream::Rect, F32>> {
+        for (auto* box : Find<Sakura::Box>(pill)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.backgroundColor == ctx.color("chrome_button_hover")) {
+                    return std::make_pair(instance.rect, box->config().cornerRadius);
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    for (const F32 ratio : {1.0f, 2.0f}) {
+        auto ctx = scene.context();
+        ctx.pixelRatio = ratio;
+        config.size = {240.0f * ratio, 34.0f * ratio};
+        pill.update(config);
+        host.place(ctx, {0.0f, 0.0f, 240.0f * ratio, 34.0f * ratio});
+        const auto found = keycap(ctx);
+        REQUIRE(found.has_value());
+        const auto& [rect, radius] = *found;
+        CHECK(rect.height == 22.0f * ratio);
+        CHECK(rect.y == 6.0f * ratio);
+        CHECK(rect.right() == Catch::Approx(234.0f * ratio));
+        CHECK(radius == rect.height * 0.5f);
+        bool labelled = false;
+        for (auto* text : Find<Sakura::Text>(pill)) {
+            if (text->config().str == "Ctrl K") {
+                const auto frame = Peek::Frame(*text);
+                labelled = frame.x >= rect.x && frame.right() <= rect.right();
+            }
+        }
+        CHECK(labelled);
+    }
+}
+
+TEST_CASE("Pill field trailing labels settle and repaint when they change", "[core][sakura][search][retention]") {
+    Scene scene;
+    Sakura::PillField pill;
+    Place place(pill, {10.0f, 10.0f, 240.0f, 34.0f});
+    Frames frames(place, kScreen, scene.context());
+    std::string trailing = "Ctrl K";
+    const auto update = [&] {
+        pill.update({.icon = "Q", .placeholder = "Search docs", .trailing = trailing, .size = {240.0f, 34.0f}});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    trailing = "Ctrl P";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
 }
 
 TEST_CASE("Pill field placeholder keeps its position when the field starts editing",
@@ -583,7 +711,7 @@ TEST_CASE("Search catalog cards fill with the pill field color", "[core][sakura]
     rig.place();
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 300.0f) {
                     CHECK(instance.backgroundColor == fill);
@@ -601,7 +729,7 @@ TEST_CASE("Pill button is a capsule with an icon and label that highlights and c
     Sakura::PillButton button;
     Host host(button);
     U64 clicks = 0;
-    button.update({.icon = ICON_FA_CIRCLE_ARROW_UP, .label = "Update Available", .colorKey = "warning_yellow",
+    button.update({.icon = ICON_LC_CIRCLE_ARROW_UP, .label = "Update Available", .colorKey = "warning_yellow",
                    .onClick = [&]() {
                        ++clicks;
                    }});
@@ -627,7 +755,7 @@ TEST_CASE("Pill button is a capsule with an icon and label that highlights and c
     REQUIRE(texts.size() == 2);
     CHECK(fill->config().cornerRadius == 14.0f);
     CHECK(fill->config().instances.front().backgroundColor == scene.ctx.color("pill_bg"));
-    CHECK(texts[0]->config().str == ICON_FA_CIRCLE_ARROW_UP);
+    CHECK(texts[0]->config().str == ICON_LC_CIRCLE_ARROW_UP);
     CHECK(texts[1]->config().str == "Update Available");
     for (auto* text : texts) {
         CHECK(text->config().colorKey == "warning_yellow");
@@ -676,7 +804,7 @@ const Sakura::Palette& Tones() {
     static const Sakura::Palette palette = [] {
         const std::vector<std::string> keys = {
             "pill_bg", "pill_hover_bg", "pill_active_bg", "pill_field_bg", "text_primary", "text_secondary",
-            "text_disabled", "chrome_button_hover", "tile_border", "tile_shadow", "tile_highlight", "tile_rim",
+            "text_disabled", "chrome_button_hover", "tile_border", "tile_shadow",
         };
         Sakura::Palette result;
         for (U64 index = 0; index < keys.size(); ++index) {
@@ -934,6 +1062,71 @@ TEST_CASE("Search catalog scrolls back up to reveal the first result after a whe
     CHECK(RowTiles(rig, "pill_active_bg") == std::vector<Jetstream::Rect>{{10.0f, 43.0f, 280.0f, 46.0f}});
 }
 
+TEST_CASE("Search catalog lists stretch past their ends and spring back", "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.scene.ctx.palette = Tones();
+    rig.config.items.clear();
+    for (U64 index = 0; index < 20; ++index) {
+        rig.config.items.push_back({.id = "item" + std::to_string(index), .title = "Item", .group = "DSP"});
+    }
+    rig.config.maxHeight = 300.0f;
+    rig.place();
+    const auto rest = RowTiles(rig, "pill_active_bg");
+    REQUIRE(rest.size() == 1);
+    const auto trackpad = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(100.0f, 200.0f, 0.0f, dy);
+        event.phase = phase;
+        rig.host.send(event);
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    };
+
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    const auto stretched = RowTiles(rig, "pill_active_bg");
+    REQUIRE(stretched.size() == 1);
+    CHECK(stretched.front().y > rest.front().y);
+
+    trackpad(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 120; ++frame) {
+        rig.scene.ctx.time += 1.0 / 60.0;
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    }
+    CHECK(RowTiles(rig, "pill_active_bg") == rest);
+
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    REQUIRE(RowTiles(rig, "pill_active_bg").front().y > rest.front().y);
+    rig.config.items.pop_back();
+    rig.place();
+    CHECK(RowTiles(rig, "pill_active_bg") == rest);
+}
+
+TEST_CASE("Search catalog cards take the configured rounding and rows stay concentric inside them",
+          "[core][sakura][search]") {
+    const F32 ratio = GENERATE(1.0f, 2.0f);
+    CatalogRig rig;
+    rig.scene.ctx.palette = Tones();
+    rig.scene.ctx.pixelRatio = ratio;
+    rig.config.rounding = 22.0f;
+    rig.place();
+    U64 cards = 0;
+    bool row = false;
+    for (auto* box : rig.all<Sakura::Box>()) {
+        const auto& config = box->config();
+        if (config.borderWidth == ratio && !config.topLit && config.cornerRadius == 22.0f * ratio) {
+            cards += config.instances.size();
+        }
+        for (const auto& instance : config.instances) {
+            if (instance.backgroundColor == rig.scene.ctx.color("pill_active_bg") && config.borderWidth == 0.0f) {
+                row = true;
+                CHECK(config.cornerRadius == 12.0f * ratio);
+            }
+        }
+    }
+    CHECK(cards == 2);
+    CHECK(row);
+}
+
 TEST_CASE("Search catalog leaves the wheel unconsumed when the list does not overflow",
           "[core][sakura][search]") {
     CatalogRig fits;
@@ -978,17 +1171,17 @@ TEST_CASE("Search catalog chip and row hovers repaint once and clear on leave",
     CHECK(fill(2) == rig.scene.ctx.color("pill_bg"));
     CHECK(DirtyFrames(frames, update) == 0);
 
-    CHECK(RowTiles(rig, "pill_hover_bg").empty());
+    CHECK(RowTiles(rig, "chrome_button_hover").empty());
     rig.host.send(Mouse(MouseEventType::Move, 100.0f, 130.0f));
     CHECK(RepaintOnly(frames.run(update)));
-    CHECK(RowTiles(rig, "pill_hover_bg") == std::vector<Jetstream::Rect>{{10.0f, 115.0f, 280.0f, 46.0f}});
+    CHECK(RowTiles(rig, "chrome_button_hover") == std::vector<Jetstream::Rect>{{10.0f, 115.0f, 280.0f, 46.0f}});
     CHECK(DirtyFrames(frames, update) == 0);
     rig.host.send(Mouse(MouseEventType::Move, 120.0f, 140.0f));
     CHECK(frames.run(update).clean());
 
     rig.host.send(Mouse(MouseEventType::Leave, -10.0f, -10.0f));
     CHECK(RepaintOnly(frames.run(update)));
-    CHECK(RowTiles(rig, "pill_hover_bg").empty());
+    CHECK(RowTiles(rig, "chrome_button_hover").empty());
     CHECK(DirtyFrames(frames, update) == 0);
 
     rig.host.send(Mouse(MouseEventType::Move, 500.0f, 100.0f));
@@ -1057,6 +1250,8 @@ TEST_CASE("Pill fields ignore presses released elsewhere and right clicks",
     CHECK(opens == 0);
     pillHost.click(100.0f, 17.0f);
     CHECK(opens == 1);
+    CHECK_FALSE(pillHost.send(Wheel(100.0f, 17.0f, -1.0f)));
+    CHECK_FALSE(pillHost.send(Mouse(MouseEventType::Move, 100.0f, 17.0f)));
 }
 
 TEST_CASE("Pill steppers ignore presses released on another part and right clicks",
@@ -1115,7 +1310,7 @@ TEST_CASE("Icon only pill button is a square with the icon centered", "[core][sa
     Sakura::PillButton button;
     Host host(button);
     U64 clicks = 0;
-    button.update({.icon = ICON_FA_CIRCLE_ARROW_UP, .onClick = [&] { ++clicks; }});
+    button.update({.icon = ICON_LC_CIRCLE_ARROW_UP, .onClick = [&] { ++clicks; }});
     CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{28.0f, 28.0f});
     host.place(scene.ctx, {100.0f, 10.0f, 28.0f, 28.0f});
 
@@ -1132,8 +1327,47 @@ TEST_CASE("Icon only pill button is a square with the icon centered", "[core][sa
     CHECK(icon.x + icon.width * 0.5f == Catch::Approx(114.0f).margin(1.0f));
     CHECK(icon.y + icon.height * 0.5f == Catch::Approx(24.0f).margin(1.0f));
 
-    button.update({.icon = ICON_FA_CIRCLE_ARROW_UP, .height = 34.0f});
+    button.update({.icon = ICON_LC_CIRCLE_ARROW_UP, .height = 34.0f});
     CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{34.0f, 34.0f});
+}
+
+TEST_CASE("Search catalog docs scroll back to the top when the selected block changes", "[core][sakura][search]") {
+    CatalogRig rig;
+    std::string longDocs = "# Block";
+    for (U64 line = 0; line < 80; ++line) {
+        longDocs += jst::fmt::format("\n\nParagraph {} explains a detail of the block.", line);
+    }
+    rig.config.items[0].documentation = longDocs;
+    rig.config.items[1].documentation = longDocs;
+    rig.place();
+
+    const auto scrolls = rig.all<Sakura::ScrollArea>();
+    REQUIRE(scrolls.size() == 1);
+    const auto markdowns = Find<Sakura::Markdown>(*scrolls.front());
+    REQUIRE(markdowns.size() == 1);
+    const F32 top = Peek::Frame(*markdowns.front()).y;
+    const auto area = Peek::Frame(*scrolls.front());
+    const auto scrollDown = [&] {
+        for (U64 step = 0; step < 5; ++step) {
+            rig.host.send(Wheel(area.x + area.width * 0.5f, area.y + area.height * 0.5f, -3.0f));
+        }
+        rig.place();
+    };
+
+    scrollDown();
+    REQUIRE(Peek::Frame(*markdowns.front()).y < top);
+    rig.place();
+    CHECK(Peek::Frame(*markdowns.front()).y < top);
+
+    rig.config.selected = 1;
+    rig.place();
+    CHECK(Peek::Frame(*markdowns.front()).y == top);
+
+    scrollDown();
+    REQUIRE(Peek::Frame(*markdowns.front()).y < top);
+    rig.config.selected = 0;
+    rig.place();
+    CHECK(Peek::Frame(*markdowns.front()).y == top);
 }
 
 TEST_CASE("Search catalog bounds follow custom card widths and clamp the docs height to the max height",
@@ -1146,15 +1380,15 @@ TEST_CASE("Search catalog bounds follow custom card widths and clamp the docs he
     CHECK(rig.bounds.height == 360.0f);
     const auto scrolls = rig.all<Sakura::ScrollArea>();
     REQUIRE(scrolls.size() == 1);
-    CHECK(Peek::Frame(*scrolls[0]).x == 208.0f + 14.0f);
-    CHECK(Peek::Frame(*scrolls[0]).width == 500.0f - 28.0f);
+    CHECK(Peek::Frame(*scrolls[0]).x == 208.0f + 10.0f);
+    CHECK(Peek::Frame(*scrolls[0]).width == 500.0f - 20.0f);
 
     rig.config.maxHeight = 200.0f;
     rig.place();
     CHECK(rig.bounds.height == 200.0f);
     U64 cards = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 if (instance.rect.width >= 200.0f) {
                     CHECK(instance.rect.height == 200.0f);
@@ -1164,6 +1398,135 @@ TEST_CASE("Search catalog bounds follow custom card widths and clamp the docs he
         }
     }
     CHECK(cards == 2);
+}
+
+TEST_CASE("Search catalog heights are natural, fixed, or filling and keep the docs card unless natural",
+          "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.config.query = "zzz";
+    rig.catalog.update(rig.config);
+    const auto natural = rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite});
+    CHECK(natural.x == 300.0f);
+    CHECK(natural.y < 300.0f);
+
+    rig.config.height = 400.0f;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{748.0f, 400.0f});
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, 300.0f}).y == 300.0f);
+    auto doubled = rig.scene.ctx;
+    doubled.pixelRatio = 2.0f;
+    CHECK(rig.host.measureOf(doubled, {kInfinite, kInfinite}) == Extent2D<F32>{1496.0f, 800.0f});
+    rig.host.place(rig.scene.ctx, {0.0f, 0.0f, 748.0f, 400.0f});
+    U64 cards = 0;
+    for (auto* box : rig.all<Sakura::Box>()) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.rect.width >= 300.0f) {
+                    CHECK(instance.rect.height == 400.0f);
+                    ++cards;
+                }
+            }
+        }
+    }
+    CHECK(cards == 2);
+
+    rig.config.height = Sakura::Fill;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {1000.0f, 500.0f}) == Extent2D<F32>{748.0f, 500.0f});
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{748.0f, natural.y});
+
+    rig.config.query.clear();
+    rig.config.height = 0.0f;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}).y == 360.0f);
+    rig.config.height = 120.0f;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}).y == 120.0f);
+    rig.config.height = Sakura::Fill;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}).y == 360.0f);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, 500.0f}).y == 500.0f);
+}
+
+TEST_CASE("Search catalog fixed heights size the whole component with the field above the cards",
+          "[core][sakura][search]") {
+    CatalogRig rig;
+    Sakura::PillField field;
+    field.update({.placeholder = "Search", .editing = true, .size = {0.0f, 34.0f}});
+    rig.config.field = &field;
+    rig.config.height = 400.0f;
+    rig.place();
+    CHECK(rig.bounds.height == 400.0f);
+    CHECK(Peek::Frame(field) == Jetstream::Rect{0.0f, 0.0f, 748.0f, 34.0f});
+    U64 cards = 0;
+    for (auto* box : rig.all<Sakura::Box>()) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.rect.width >= 300.0f) {
+                    CHECK(instance.rect.y == 42.0f);
+                    CHECK(instance.rect.bottom() == 400.0f);
+                    ++cards;
+                }
+            }
+        }
+    }
+    CHECK(cards == 2);
+
+    auto doubled = rig.scene.ctx;
+    doubled.pixelRatio = 2.0f;
+    CHECK(rig.host.measureOf(doubled, {kInfinite, kInfinite}).y == 800.0f);
+    rig.config.height = Sakura::Fill;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, 500.0f}).y == 500.0f);
+}
+
+TEST_CASE("Search catalog treats a zero max height as no cap on its natural height", "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.config.items.clear();
+    for (U64 index = 0; index < 20; ++index) {
+        rig.config.items.push_back({.id = "item" + std::to_string(index), .title = "Item", .group = "DSP"});
+    }
+    rig.config.maxHeight = 300.0f;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}).y == 300.0f);
+
+    rig.config.maxHeight = 0.0f;
+    rig.place();
+    CHECK(rig.bounds.height == 12.0f + 36.0f + 24.0f + 20.0f * 48.0f);
+    CHECK_FALSE(rig.host.send(Wheel(100.0f, 200.0f, 0.0f, -1.0f)));
+}
+
+TEST_CASE("Search catalog measures wrapped chips at the capped width it lays them out at",
+          "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.config.items.clear();
+    rig.config.groups.clear();
+    for (U64 index = 0; index < 12; ++index) {
+        const std::string group = "Group " + std::to_string(index);
+        rig.config.items.push_back({.id = group, .title = group, .group = group});
+        rig.config.groups.push_back(group);
+    }
+    rig.config.maxHeight = 0.0f;
+    const auto rows = [&] {
+        std::vector<F32> found;
+        for (const auto& chip : ChipLabels(rig)) {
+            found.push_back(chip.rect.y);
+        }
+        std::sort(found.begin(), found.end());
+        found.erase(std::unique(found.begin(), found.end()), found.end());
+        return static_cast<F32>(found.size());
+    };
+
+    rig.place();
+    const F32 wide = rig.bounds.height;
+    const F32 wideRows = rows();
+
+    const auto narrow = rig.host.measureOf(rig.scene.ctx, {200.0f, kInfinite});
+    CHECK(narrow.x == 200.0f);
+    rig.host.place(rig.scene.ctx, {0.0f, 0.0f, narrow.x, narrow.y});
+    REQUIRE(rows() > wideRows);
+    CHECK(narrow.y - wide == (rows() - wideRows) * 30.0f);
+    CHECK_FALSE(rig.host.send(Wheel(100.0f, narrow.y - 20.0f, 0.0f, -1.0f)));
 }
 
 TEST_CASE("Search catalog drops the docs card when both cards do not fit and restores it when they do",
@@ -1178,7 +1541,7 @@ TEST_CASE("Search catalog drops the docs card when both cards do not fit and res
 
     U64 wide = 0;
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 CHECK(instance.rect.right() <= 500.0f);
                 wide += instance.rect.width >= 300.0f ? 1 : 0;
@@ -1191,7 +1554,7 @@ TEST_CASE("Search catalog drops the docs card when both cards do not fit and res
     rig.host.place(rig.scene.ctx, {0.0f, 0.0f, cramped, narrow.y});
     CHECK(rig.all<Sakura::ScrollArea>().empty());
     for (auto* box : rig.all<Sakura::Box>()) {
-        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+        if (box->config().cornerRadius == 18.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
             for (const auto& instance : box->config().instances) {
                 CHECK(instance.rect.right() <= cramped);
             }
@@ -1243,4 +1606,307 @@ TEST_CASE("Pills keep a left press across releases of other buttons", "[core][sa
     }
     CHECK(steps == 1);
     CHECK(opens == 1);
+}
+
+namespace {
+
+constexpr const char* kIconButtonTags = "[core][sakura][pill-icon-button]";
+
+const Sakura::Box& IconButtonHalo(const Sakura::PillIconButton& button) {
+    return *dynamic_cast<const Sakura::Box*>(Peek::Children(button).at(1));
+}
+
+const Sakura::Text& IconButtonGlyph(const Sakura::PillIconButton& button) {
+    return *dynamic_cast<const Sakura::Text*>(Peek::Children(button).at(2));
+}
+
+}  // namespace
+
+TEST_CASE("Pill icon buttons measure square pills and honor fixed and filling sizes", kIconButtonTags) {
+    const Scene scene;
+    Sakura::PillIconButton button;
+    Host host(button);
+
+    button.update({.icon = ICON_LC_INFO, .size = {0.0f, 0.0f}});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{34.0f, 34.0f});
+    CHECK(host.measureOf(scene.ctx, {20.0f, 10.0f}) == Extent2D<F32>{20.0f, 10.0f});
+
+    button.update({.icon = ICON_LC_INFO});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{34.0f, 34.0f});
+
+    button.update({.icon = ICON_LC_INFO, .size = {40.0f, 30.0f}});
+    CHECK(host.measureOf(scene.ctx, {300.0f, 300.0f}) == Extent2D<F32>{40.0f, 30.0f});
+
+    button.update({.icon = ICON_LC_INFO, .size = {Sakura::Fill, Sakura::Fill}});
+    CHECK(host.measureOf(scene.ctx, {120.0f, 50.0f}) == Extent2D<F32>{120.0f, 50.0f});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{34.0f, 34.0f});
+
+    auto dense = scene.ctx;
+    dense.pixelRatio = 2.0f;
+    button.update({.icon = ICON_LC_INFO});
+    CHECK(host.measureOf(dense, {kInfinite, kInfinite}) == Extent2D<F32>{68.0f, 68.0f});
+}
+
+TEST_CASE("Pill icon buttons act on a left release over the button they were pressed on", kIconButtonTags) {
+    const Scene scene;
+    U64 clicks = 0;
+    Sakura::PillIconButton button;
+    Host host(button);
+    button.update({.icon = ICON_LC_PAUSE, .onClick = [&] { ++clicks; }});
+    host.place(scene.ctx, {0.0f, 0.0f, 34.0f, 34.0f});
+
+    CHECK(Peek::CursorAt(button, {17.0f, 17.0f}) == SurfaceCursor::Hand);
+    CHECK_FALSE(Peek::CursorAt(button, {60.0f, 17.0f}).has_value());
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f)));
+    CHECK(clicks == 0);
+    CHECK(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f)));
+    CHECK(clicks == 1);
+
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f)));
+    CHECK(clicks == 1);
+
+    host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f));
+    host.send(Mouse(MouseEventType::Release, 80.0f, 17.0f));
+    CHECK(clicks == 1);
+
+    host.click(17.0f, 17.0f, MouseButton::Right);
+    CHECK(clicks == 1);
+
+    host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f));
+    host.send(Mouse(MouseEventType::Cancel, 17.0f, 17.0f));
+    host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f));
+    CHECK(clicks == 1);
+
+    host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f));
+    host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f, MouseButton::Right));
+    host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f));
+    CHECK(clicks == 2);
+
+    CHECK_FALSE(host.send(Wheel(17.0f, 17.0f, -1.0f)));
+}
+
+TEST_CASE("Pill icon buttons leave whole secondary gestures to the component beneath", kIconButtonTags) {
+    const Scene scene;
+    U64 clicks = 0;
+    Probe behind({100.0f, 100.0f});
+    behind.prepare();
+    Sakura::PillIconButton button;
+    button.update({.icon = ICON_LC_PAUSE, .onClick = [&] { ++clicks; }});
+    Sakura::Overlay overlay;
+    overlay.update({.items = {{.child = &behind}, {.child = &button, .anchor = Sakura::Anchor::TopLeft}}});
+    Host host(overlay);
+    host.place(scene.ctx, {0.0f, 0.0f, 100.0f, 100.0f});
+    REQUIRE(Peek::Frame(button) == Rect{0.0f, 0.0f, 34.0f, 34.0f});
+    const auto received = [&](MouseEventType type, MouseButton pressed) {
+        return std::count_if(behind.events.begin(), behind.events.end(), [&](const MouseEvent& event) {
+            return event.type == type && event.button == pressed;
+        });
+    };
+
+    for (const auto secondary : {MouseButton::Right, MouseButton::Middle}) {
+        CHECK(host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f, secondary)));
+        CHECK(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f, secondary)));
+        CHECK(received(MouseEventType::Click, secondary) == 1);
+        CHECK(received(MouseEventType::Release, secondary) == 1);
+    }
+    CHECK(clicks == 0);
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f, MouseButton::Right)));
+    CHECK(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f, MouseButton::Right)));
+    CHECK(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f)));
+    CHECK(clicks == 1);
+    CHECK(received(MouseEventType::Click, MouseButton::Right) == 2);
+    CHECK(received(MouseEventType::Release, MouseButton::Right) == 2);
+    CHECK(received(MouseEventType::Click, MouseButton::Left) == 0);
+    CHECK(received(MouseEventType::Release, MouseButton::Left) == 0);
+}
+
+TEST_CASE("Pill icon buttons settle and repaint only for hover and icon changes", kIconButtonTags) {
+    Scene scene;
+    Sakura::PillIconButton button;
+    Place place(button, {10.0f, 10.0f, 34.0f, 34.0f});
+    Frames frames(place, kScreen, scene.context());
+    Sakura::PillIconButton::Config config{.icon = ICON_LC_PAUSE, .iconColorKey = "run_state_running", .tinted = true};
+    const auto update = [&] {
+        button.update(config);
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK_FALSE(IconButtonHalo(button).config().instances.front().visible);
+    CHECK(IconButtonGlyph(button).config().colorKey == "run_state_running");
+
+    CheckHoverRepaintsOnce(frames, place, update, {27.0f, 27.0f}, {200.0f, 200.0f});
+    CheckLeaveRepaintsOnce(frames, place, update, {27.0f, 27.0f});
+
+    place.send(Mouse(MouseEventType::Move, 27.0f, 27.0f));
+    CHECK(RepaintOnly(frames.run(update)));
+    const auto& halo = IconButtonHalo(button).config();
+    REQUIRE(halo.instances.size() == 1);
+    CHECK(halo.instances.front().visible);
+    CHECK(halo.instances.front().rect == Rect{10.0f, 10.0f, 34.0f, 34.0f});
+    CHECK(halo.cornerRadius == 17.0f);
+    CHECK(halo.instances.front().backgroundColor == DistinctPalette().at("chrome_button_hover"));
+    place.send(Mouse(MouseEventType::Leave, 27.0f, 27.0f));
+    REQUIRE(frames.settle(update));
+
+    config.icon = ICON_LC_PLAY;
+    config.iconColorKey = "run_state_paused";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(IconButtonGlyph(button).config().colorKey == "run_state_paused");
+    CHECK(frames.rebuilds == 1);
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Pill icon buttons scale their halo with the pixel ratio", kIconButtonTags) {
+    Scene scene;
+    Sakura::PillIconButton button;
+    Host host(button);
+    button.update({.icon = ICON_LC_INFO});
+    auto ctx = scene.context();
+    ctx.pixelRatio = 2.0f;
+    host.place(ctx, {0.0f, 0.0f, 68.0f, 68.0f});
+    host.send(Mouse(MouseEventType::Move, 34.0f, 34.0f));
+    host.place(ctx, {0.0f, 0.0f, 68.0f, 68.0f});
+    const auto& halo = IconButtonHalo(button).config();
+    REQUIRE(halo.instances.size() == 1);
+    CHECK(halo.instances.front().visible);
+    CHECK(halo.instances.front().rect == Rect{3.0f, 3.0f, 62.0f, 62.0f});
+    CHECK(halo.cornerRadius == 31.0f);
+    const Rect glyph = Peek::Frame(IconButtonGlyph(button));
+    CHECK(glyph.x == std::round(glyph.x));
+    CHECK(glyph.y == std::round(glyph.y));
+}
+
+TEST_CASE("Pill icon buttons draw a colored ring only when tinted", kIconButtonTags) {
+    Scene scene;
+    Sakura::PillIconButton button;
+    Host host(button);
+    const auto ctx = scene.context();
+    const auto hovered = [&](bool tinted) {
+        button.update({.icon = ICON_LC_PAUSE, .iconColorKey = "run_state_running", .tinted = tinted});
+        host.place(ctx, {0.0f, 0.0f, 34.0f, 34.0f});
+        host.send(Mouse(MouseEventType::Move, 17.0f, 17.0f));
+        host.place(ctx, {0.0f, 0.0f, 34.0f, 34.0f});
+        return IconButtonHalo(button).config();
+    };
+
+    const auto plain = hovered(false);
+    REQUIRE(plain.instances.size() == 1);
+    CHECK(plain.instances.front().rect == Rect{1.5f, 1.5f, 31.0f, 31.0f});
+    CHECK(plain.borderWidth == 0.0f);
+
+    const auto tinted = hovered(true);
+    REQUIRE(tinted.instances.size() == 1);
+    CHECK(tinted.instances.front().rect == Rect{0.0f, 0.0f, 34.0f, 34.0f});
+    CHECK(tinted.borderWidth == 1.5f);
+    CHECK(tinted.borderColor.r == ctx.color("run_state_running").r);
+    CHECK(tinted.borderColor.a == Catch::Approx(ctx.color("run_state_running").a * 0.7f));
+}
+
+TEST_CASE("Pill icon buttons show their tooltip below after the hover delay and drop it on leave", kIconButtonTags) {
+    Scene scene;
+    Sakura::PillIconButton button;
+    LayerSlot slot;
+    LayerHost host({&slot});
+    slot.hold(button, {700.0f, 12.0f, 34.0f, 34.0f});
+    Frames frames(host, kScreen, scene.context());
+    frames.timeStep = 0.1;
+    frames.ctx.hoverDelay = 0.25f;
+    const auto update = [&] {
+        button.update({.icon = ICON_LC_SAVE, .tooltip = "Save flowgraph"});
+    };
+    const auto tooltip = [&]() -> std::optional<Jetstream::Rect> {
+        for (auto* text : Find<Sakura::Text>(host.popups)) {
+            if (text->config().str == "Save flowgraph") {
+                return Peek::Frame(*text);
+            }
+        }
+        return std::nullopt;
+    };
+    REQUIRE(frames.settle(update));
+    CHECK_FALSE(tooltip().has_value());
+
+    Hover(host, frames, 717.0f, 29.0f);
+    frames.run(update);
+    CHECK_FALSE(tooltip().has_value());
+    for (U64 frame = 0; frame < 6; ++frame) {
+        frames.run(update);
+    }
+    REQUIRE(tooltip().has_value());
+    CHECK(tooltip()->y > 46.0f);
+    CHECK(tooltip()->right() <= 734.0f);
+    CHECK(Retains(frames, update));
+
+    Hover(host, frames, 300.0f, 300.0f);
+    frames.run(update);
+    CHECK_FALSE(tooltip().has_value());
+    CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Highlight text scales with the pixel ratio and reports clicks", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    U64 clicks = 0;
+    Sakura::HighlightText text;
+    Host host(text);
+    text.update({
+        .str = "Use the blueprint bundler.",
+        .marks = {{.begin = 8, .end = 17}},
+        .onClick = [&] { ++clicks; },
+    });
+
+    const auto base = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    auto doubled = scene.ctx;
+    doubled.pixelRatio = 2.0f;
+    const auto scaled = host.measureOf(doubled, {kInfinite, kInfinite});
+    CHECK(base.y > 0.0f);
+    CHECK(scaled.y == Catch::Approx(2.0f * base.y));
+
+    host.place(scene.ctx, {0.0f, 0.0f, base.x, base.y});
+    host.click(base.x * 0.5f, base.y * 0.5f);
+    CHECK(clicks == 1);
+}
+
+TEST_CASE("Highlight text marks ranges on every line", "[core][sakura][search]") {
+    Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
+    Sakura::HighlightText text;
+    Host host(text);
+    text.update({
+        .str = "foo\nbar",
+        .marks = {{.begin = 4, .end = 7}},
+    });
+
+    const auto size = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    host.place(scene.ctx, {0.0f, 0.0f, size.x, size.y});
+    const auto mark = scene.ctx.color("editor_selection_match");
+    std::vector<Jetstream::Rect> marked;
+    for (auto* box : Find<Sakura::Box>(text)) {
+        for (const auto& instance : box->config().instances) {
+            if (instance.visible && instance.backgroundColor == mark) {
+                marked.push_back(instance.rect);
+            }
+        }
+    }
+    REQUIRE(marked.size() == 1);
+    CHECK(marked.front().y > size.y * 0.5f - marked.front().height);
+}
+
+TEST_CASE("Highlight text settles and repaints when its marks change", "[core][sakura][search][retention]") {
+    Scene scene;
+    Sakura::HighlightText text;
+    Place place(text, {10.0f, 10.0f, 300.0f, 60.0f});
+    Frames frames(place, kScreen, scene.context());
+    std::vector<Sakura::HighlightText::Mark> marks = {{.begin = 0, .end = 5}};
+    const auto update = [&] {
+        text.update({.id = "snippet", .str = "alpha beta gamma", .marks = marks});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    marks = {{.begin = 6, .end = 10}};
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
 }

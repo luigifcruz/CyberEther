@@ -67,15 +67,8 @@ void Geometry::Viewport(Json& body, const Layout& layout) {
         return;
     }
 
-    const auto& [visible, toolbar] = *layout.viewport;
-    const F32 top = toolbar.bottom() + (toolbar.y - visible.y);
-    const F32 height = std::max(0.0f, visible.bottom() - top);
-    const Rect open = {visible.x, top, visible.width, height};
-
     body["viewport"] = {
-        {"visible", Geometry::Bounds(visible)},
-        {"toolbar", Geometry::Bounds(toolbar)},
-        {"open_area", Geometry::Bounds(open)},
+        {"visible", Geometry::Bounds(layout.viewport->visible)},
     };
 }
 

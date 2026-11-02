@@ -75,9 +75,13 @@ bool TextInput::focused() const {
     return impl->grid.focused();
 }
 
+void TextInput::focus(bool selectAll) {
+    impl->grid.focus(selectAll);
+}
+
 Extent2D<F32> TextInput::measure(const Context& ctx, Extent2D<F32> available) {
     return {FillLength(available.x, Px(ctx, kNaturalControlWidth)),
-            ResolveLength(ctx, impl->config.height, FontPx(ctx) + 2.0f * Px(ctx, impl->config.padding.y), available.y)};
+            ResolveLength(ctx, impl->config.height, Px(ctx, impl->config.fontSize) + 2.0f * Px(ctx, impl->config.padding.y), available.y)};
 }
 
 void TextInput::layout(const Context& ctx) {
@@ -86,7 +90,7 @@ void TextInput::layout(const Context& ctx) {
     const bool focused = impl->grid.focused();
     const F32 alpha = config.disabled ? kDisabledAlpha : 1.0f;
 
-    const F32 fontSize = FontPx(ctx);
+    const F32 fontSize = Px(ctx, impl->config.fontSize);
     const F32 padX = Px(ctx, config.padding.x);
     const F32 padY = config.multiline ? Px(ctx, config.padding.y) : std::max(0.0f, (bounds.height - fontSize) * 0.5f);
     impl->frame.update({
@@ -94,7 +98,10 @@ void TextInput::layout(const Context& ctx) {
                        .visible = !bounds.empty(),
                        .backgroundColor = WithAlpha(ctx.color(config.backgroundColorKey), alpha)}},
         .clip = bounds,
-        .cornerRadius = Px(ctx, kFrameRounding),
+        .cornerRadius = Px(ctx, config.rounding),
+        .borderWidth = config.borderColorKey.empty() ? 0.0f : Px(ctx, 1.0f),
+        .borderColor = WithAlpha(ctx.color(config.borderColorKey), alpha),
+        .strokeFringe = !config.borderColorKey.empty(),
     });
 
     impl->grid.update({
@@ -103,8 +110,8 @@ void TextInput::layout(const Context& ctx) {
         .editable = !config.disabled,
         .fontSize = fontSize,
         .lineHeight = 1.0f,
-        .fontName = Typography::MonoFont,
-        .monospace = true,
+        .fontName = config.fontName,
+        .monospace = IsMonospaceFont(config.fontName),
         .lineNumbers = false,
         .showActiveLine = false,
         .scrollbar = config.multiline,
@@ -136,7 +143,9 @@ void TextInput::layout(const Context& ctx) {
             if (impl->config.onSubmit) {
                 impl->config.onSubmit(impl->buffer);
             }
-            impl->grid.blur();
+            if (!impl->config.keepFocusOnSubmit) {
+                impl->grid.blur();
+            }
         },
         .onCancel = [this]() {
             impl->cancelled = true;
@@ -159,7 +168,7 @@ void TextInput::layout(const Context& ctx) {
             .alignment = {0, 1},
         }},
         .clip = bounds,
-        .fontName = Typography::MonoFont,
+        .fontName = config.fontName,
         .maxCharacters = 128,
     });
 

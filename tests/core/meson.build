@@ -6,8 +6,12 @@ core_test_domains = {
     'application': ['application/instance_backend.cc'],
     'compositor': [
         'compositor/compositor.cc',
+        'compositor/docs.cc',
+        'compositor/file_picker.cc',
+        'compositor/gallery.cc',
         'compositor/layout.cc',
         'compositor/metrics.cc',
+        'compositor/settings_tab.cc',
         'compositor/start_tab.cc',
         'compositor/tiles.cc',
     ],
@@ -32,6 +36,7 @@ core_test_domains = {
     ],
     'platform': [
         'platform/paths.cc',
+        'platform/pseudo_terminal.cc',
         'platform/secrets.cc',
         'platform/storage.cc',
         'platform/thread.cc',
@@ -40,6 +45,7 @@ core_test_domains = {
     'render': [
         'render/colormap.cc',
         'render/components.cc',
+        'render/browser_wheel.cc',
         'render/input_state.cc',
         'render/present_list.cc',
         'render/transfers.cc',
@@ -51,17 +57,19 @@ core_test_domains = {
     'sakura': [
         'sakura/chat.cc',
         'sakura/chat_composer.cc',
-        'sakura/chat_dock.cc',
         'sakura/interface_controls.cc',
         'sakura/scissor.cc',
         'sakura/key_value.cc',
         'sakura/flowgraph_editor_views.cc',
         'sakura/flowgraph_node_view.cc',
         'sakura/flowgraph_pane.cc',
+        'sakura/metric_progress_bar.cc',
         'sakura/node_metadata.cc',
         'sakura/component.cc',
         'sakura/card.cc',
         'sakura/controls.cc',
+        'sakura/tip_banner.cc',
+        'sakura/voice.cc',
         'sakura/dock.cc',
         'sakura/geometry.cc',
         'sakura/idle_input.cc',
@@ -76,9 +84,14 @@ core_test_domains = {
         'sakura/retention.cc',
         'sakura/retention_shell.cc',
         'sakura/search.cc',
+        'sakura/settings_components.cc',
+        'sakura/flowgraph_card.cc',
+        'sakura/pill_tabs.cc',
         'sakura/shell.cc',
         'sakura/table.cc',
+        'sakura/terminal.cc',
         'sakura/views.cc',
+        'sakura/view_components.cc',
         'sakura/sizing.cc',
         'sakura/surface_view.cc',
         'sakura/input_bridge.cc',
@@ -87,6 +100,7 @@ core_test_domains = {
         'sakura/text_grid.cc',
         'sakura/text_markdown.cc',
         'sakura/text_metrics.cc',
+        'sakura/wheel_motion.cc',
         'sakura/window_metrics.cc',
     ],
     'runtime': [
@@ -112,14 +126,37 @@ if not jst_is_windows
     core_test_domains += {
         'compositor': core_test_domains['compositor'] + [
             'compositor/config_edits.cc',
+            'compositor/dispatch.cc',
             'compositor/live_markdown.cc',
+            'compositor/terminal.cc',
             'compositor/agent_bridge.cc',
+            'compositor/agent_providers.cc',
             'compositor/agent_responsiveness.cc',
         ],
     }
 endif
 
 core_test_targets = []
+if jst_is_windows and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
+    windows_titlebar_tests = executable(
+        'jetstream-core-windows-titlebar-tests',
+        ['render/windows_titlebar.cc', '../../src/viewport/glfw/tools/windows_titlebar.cc'],
+        dependencies: dep_lst + [catch2_dep],
+        include_directories: inc_lst,
+    )
+    core_test_targets += [windows_titlebar_tests]
+    test('core-windows-titlebar', windows_titlebar_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+    windows_pointer_tests = executable(
+        'jetstream-core-windows-pointer-tests',
+        ['render/windows_pointer.cc', '../../src/viewport/glfw/tools/windows_titlebar.cc'],
+        dependencies: dep_lst + [catch2_dep],
+        include_directories: inc_lst,
+    )
+    core_test_targets += [windows_pointer_tests]
+    test('core-windows-pointer', windows_pointer_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+endif
 if jst_is_macos and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     cocoa_titlebar_tests = executable(
         'jetstream-core-cocoa-titlebar-tests',
@@ -130,6 +167,16 @@ if jst_is_macos and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     core_test_targets += [cocoa_titlebar_tests]
     test('core-cocoa-titlebar', cocoa_titlebar_tests,
          suite: 'core', is_parallel: false, timeout: 60)
+    cocoa_pointer_tests = executable(
+        'jetstream-core-cocoa-pointer-tests',
+        'render/cocoa_pointer.mm',
+        dependencies: dep_lst + [catch2_dep],
+        link_with: libjetstream,
+        include_directories: inc_lst + [core_test_includes],
+    )
+    core_test_targets += [cocoa_pointer_tests]
+    test('core-cocoa-pointer', cocoa_pointer_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
 endif
 if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
     metal_program_cache_sources = ['render/metal_program_cache.cc']
@@ -138,6 +185,16 @@ if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
     endif
     core_test_domains += {
         'metal-program-cache': metal_program_cache_sources,
+    }
+endif
+if not jst_is_browser
+    core_test_domains += {
+        'platform': core_test_domains['platform'] + ['platform/socket.cc'],
+    }
+endif
+if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
+    core_test_domains += {
+        'render': core_test_domains['render'] + ['render/metal_capture.cc'],
     }
 endif
 if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_windows
@@ -166,15 +223,28 @@ foreach domain, sources : core_test_domains
         ] : [],
     )
     core_test_targets += [domain_tests]
-    if jst_is_browser
-        test('core-' + domain, node,
-             args: [files('../browser/run.cjs'), domain_tests.full_path()],
-             depends: domain_tests,
-             suite: ['core', 'wasm'], is_parallel: false, timeout: 180)
-    else
-        test('core-' + domain, domain_tests,
-             suite: 'core', is_parallel: false, timeout: 180)
-    endif
+    # Sakura's 1,500+ cases exceed a single test's watchdog on slower runners.
+    # Catch2 partitions the same executable so every case still runs exactly
+    # once, with stable ordering and the same watchdog for each group.
+    shard_count = domain == 'sakura' ? 8 : 1
+    foreach shard : range(shard_count)
+        test_name = 'core-' + domain
+        test_args = []
+        if shard_count > 1
+            test_name += '-' + shard.to_string()
+            test_args = ['--order', 'lex', '--shard-count', shard_count.to_string(),
+                         '--shard-index', shard.to_string()]
+        endif
+        if jst_is_browser
+            test(test_name, node,
+                 args: [files('../browser/run.cjs'), domain_tests.full_path(), '--'] + test_args,
+                 depends: domain_tests,
+                 suite: ['core', 'wasm'], is_parallel: false, timeout: 180)
+        else
+            test(test_name, domain_tests, args: test_args,
+                 suite: 'core', is_parallel: false, timeout: 180)
+        endif
+    endforeach
 endforeach
 
 # TODO: Re-enable after CLI output capture supports separate Windows static CRTs.

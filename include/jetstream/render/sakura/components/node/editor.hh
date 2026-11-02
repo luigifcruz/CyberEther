@@ -68,6 +68,7 @@ struct NodeEditor : public Component {
         bool collapsible = false;
         bool collapsed = false;
         Callback<void()> onToggleCollapse;
+        Callback<void()> onDetach;
         std::vector<Pin> pins;
         NodeContentStack* content = nullptr;
         ResizeAxes resize = ResizeAxes::X;
@@ -91,9 +92,18 @@ struct NodeEditor : public Component {
         bool operator==(const Link&) const = default;
     };
 
+    struct View {
+        Extent2D<F32> pan = {0.0f, 0.0f};
+        F32 zoom = 1.0f;
+
+        bool operator==(const View&) const = default;
+    };
+
     struct Config {
         std::string id;
         bool pasteEnabled = false;
+        bool frameOnOpen = false;
+        F32 scale = 1.0f;
         std::vector<Node> nodes;
         std::vector<Link> links;
         Callback<void(Extent2D<F32>)> onEditorContextMenu;
@@ -101,8 +111,11 @@ struct NodeEditor : public Component {
         Callback<void(PinRef, PinRef)> onLinkCreated;
         Callback<void(const std::string&)> onLinkDestroyed;
         Callback<void(const std::vector<std::string>&)> onCopyShortcut;
+        Callback<void(const std::vector<std::string>&)> onSelectionChange;
         Callback<void(Extent2D<F32>)> onPasteShortcut;
         Callback<void(Rect)> onViewportGridChange;
+        std::optional<View> view;
+        Callback<void(View)> onViewChange;
 
         bool operator==(const Config&) const = default;
     };
@@ -115,6 +128,7 @@ struct NodeEditor : public Component {
     bool canZoom(int direction) const;
     void zoomStep(int direction);
     void zoomReset();
+    void stopFraming();
     bool shown() const;
 
  protected:

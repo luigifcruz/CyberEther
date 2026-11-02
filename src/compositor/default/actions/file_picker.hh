@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
-#include <functional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -39,9 +38,9 @@ struct FilePickerActions {
         if (!shouldUseServerPicker()) {
             std::string path = request.initialPath;
             if (request.mode == FilePickerMode::Save) {
-                return Platform::SaveFile(path, request.extensions, std::move(request.callback));
+                return Platform::SaveFile(path, request.extensions, std::move(request.callback).release());
             }
-            return Platform::PickFile(path, request.extensions, std::move(request.callback));
+            return Platform::PickFile(path, request.extensions, std::move(request.callback).release());
         }
 
         if (state.filePicker.active) {
@@ -222,7 +221,7 @@ struct FilePickerActions {
     }
 
  private:
-    std::function<void(std::string)> completion;
+    Sakura::Callback<void(std::string)> completion;
 
     bool shouldUseServerPicker() const {
         return state.remote.started && state.remote.clientCount > 0;

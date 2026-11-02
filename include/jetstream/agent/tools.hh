@@ -31,23 +31,38 @@ class JETSTREAM_API Tools {
 
         struct Viewport {
             Rect visible;
-            Rect toolbar;
         };
 
         std::unordered_map<std::string, Node> nodes;
         std::optional<Viewport> viewport;
+        std::vector<std::string> selected;
     };
 
-    class Host {
+    class JETSTREAM_API Host {
      public:
+        struct DocPage {
+            std::string slug;
+            std::string title;
+            std::string description;
+            std::string body;
+        };
+
+        struct DocMatch {
+            std::string slug;
+            std::string title;
+            std::string heading;
+            std::string anchor;
+            std::string snippet;
+        };
+
         virtual ~Host() = default;
 
         virtual bool has(const std::string& name) = 0;
         virtual Result create(const std::string& name, std::shared_ptr<Flowgraph>& created) = 0;
 
-        virtual std::optional<F32> width(Block::NodeSize) {
-            return std::nullopt;
-        }
+        virtual std::optional<F32> width(Block::NodeSize size);
+        virtual std::optional<std::vector<DocMatch>> searchDocs(const std::string& query, U64 limit);
+        virtual std::optional<DocPage> readDocs(const std::string& slug);
     };
 
     struct Output {

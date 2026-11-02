@@ -19,6 +19,7 @@ subprojects/*
 !subprojects/catch2.wrap
 !subprojects/cpp-httplib.wrap
 !subprojects/fmt.wrap
+!subprojects/ghostty-vt.wrap
 !subprojects/glfw.wrap
 !subprojects/glm.wrap
 !subprojects/libffi.wrap
@@ -38,6 +39,8 @@ subprojects/*
 !subprojects/libxml2.wrap
 !subprojects/limesuite.wrap
 !subprojects/libsrtp2.wrap
+!subprojects/libzmq.wrap
+!subprojects/miniaudio.wrap
 !subprojects/naga.wrap
 !subprojects/nanobench.wrap
 !subprojects/nanobind.wrap

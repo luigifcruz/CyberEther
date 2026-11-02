@@ -7,5 +7,7 @@ src_lst += files([
     'text.cc',
     'environment.cc',
     'capture.cc',
+    'docs.cc',
+    'log.cc',
 ])
 subdir('support')

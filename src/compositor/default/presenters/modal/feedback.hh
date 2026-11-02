@@ -42,6 +42,9 @@ struct FeedbackModalPresenter {
             .onSubmit = [enqueue]() {
                 enqueue(MailSubmitFeedback{});
             },
+            .onClose = [enqueue]() {
+                enqueue(MailCloseModal{});
+            },
         };
     }
 };

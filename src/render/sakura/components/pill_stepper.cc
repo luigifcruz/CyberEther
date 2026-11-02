@@ -18,7 +18,8 @@ namespace Jetstream::Sakura {
 
 namespace {
 
-constexpr F32 kStepperMark = 10.0f;
+constexpr F32 kStepperMark = 12.0f;
+constexpr F32 kStepperText = 14.0f;
 constexpr F32 kStepperStroke = 1.5f;
 constexpr F32 kStepperButton = 28.0f;
 constexpr F32 kStepperInset = 3.0f;
@@ -79,7 +80,8 @@ void PillStepper::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
-    impl->value.update({.str = impl->config.label, .colorKey = "text_primary", .scale = 13.0f / Typography::FontSize});
+    impl->value.update({.str = impl->config.label, .font = Text::Font::Display, .colorKey = "text_primary",
+                        .scale = kStepperText / Typography::FontSize});
     markConfigured();
 }
 
@@ -134,14 +136,14 @@ void PillStepper::layout(const Context& ctx) {
                     halo, halo};
     };
     if (s.hovered == Impl::Part::Decrement) {
-        hoverInstances.push_back({.rect = circle(s.decrementRect), .backgroundColor = ctx.color("chrome_button_hover")});
+        hoverInstances.push_back({.rect = circle(s.decrementRect), .backgroundColor = ctx.color(kPillHover)});
     } else if (s.hovered == Impl::Part::Increment) {
-        hoverInstances.push_back({.rect = circle(s.incrementRect), .backgroundColor = ctx.color("chrome_button_hover")});
+        hoverInstances.push_back({.rect = circle(s.incrementRect), .backgroundColor = ctx.color(kPillHover)});
     } else if (s.hovered == Impl::Part::Value) {
         hoverInstances.push_back({
             .rect = {s.valueRect.x, std::round(s.valueRect.y + (s.valueRect.height - halo) * 0.5f), s.valueRect.width,
                      halo},
-            .backgroundColor = ctx.color("chrome_button_hover"),
+            .backgroundColor = ctx.color(kPillHover),
         });
     }
     s.hover.update({.instances = std::move(hoverInstances), .cornerRadius = halo * 0.5f,

@@ -15,7 +15,7 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
     if (!std::isfinite(screen.x) || !std::isfinite(screen.y) ||
         !std::isfinite(screen.width) || !std::isfinite(screen.height) ||
         !std::isfinite(screen.x + screen.width) || !std::isfinite(screen.y + screen.height) ||
-        screen.width <= 0.0f || screen.height <= 0.0f || !input.windowFocused) {
+        screen.width <= 0.0f || screen.height <= 0.0f) {
         cancel(output);
         routed = input.serial;
         sampled = true;
@@ -26,6 +26,9 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
     }
     routed = input.serial;
     sampled = true;
+    if (!input.windowFocused && (captured() || !keys.empty())) {
+        cancel(output);
+    }
 
     const auto locate = [&](const Extent2D<F32>& point) {
         pointer = point;
@@ -34,23 +37,26 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
     };
     bool focused = true;
     bool pointerCancelled = false;
+    const auto passive = [](const MouseEvent& mouse) {
+        return mouse.type == MouseEventType::Move || mouse.type == MouseEventType::Scroll;
+    };
     for (const auto& event : input.events) {
         if (const auto* focus = std::get_if<FocusEvent>(&event)) {
             focused = focus->focused;
             if (!focused) cancel(output);
             continue;
         }
-        if (!focused) continue;
+        const bool engaged = focused && input.windowFocused;
         if (const auto* key = std::get_if<KeyEvent>(&event)) {
-            if (track(*key)) output.events.push_back(*key);
+            if (engaged && track(*key)) output.events.push_back(*key);
             continue;
         }
         if (const auto* text = std::get_if<TextEvent>(&event)) {
-            output.events.push_back(*text);
+            if (engaged) output.events.push_back(*text);
             continue;
         }
         const auto* mouse = std::get_if<MouseEvent>(&event);
-        if (!mouse) continue;
+        if (!mouse || (!engaged && !passive(*mouse))) continue;
         if (mouse->type == MouseEventType::Cancel ||
             (mouse->type == MouseEventType::Release && mouse->cancel)) {
             cancel(output, true);
@@ -117,10 +123,13 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
         if (captured()) cancel(output);
         hovered = false;
         pointer.reset();
-    } else if (focused && !pointerCancelled) {
+    } else if (!pointerCancelled) {
+        const auto& held = input.modifiers;
+        const bool shifted = held.control != modifiers.control || held.shift != modifiers.shift ||
+                             held.alt != modifiers.alt || held.super != modifiers.super;
         const bool moved = !pointer || *pointer != *input.pointer;
         locate(*input.pointer);
-        if (moved && (hovered || captured())) {
+        if ((moved || shifted) && (hovered || captured())) {
             output.events.push_back(MouseEvent{
                 .type = MouseEventType::Move,
                 .position = position,
@@ -130,6 +139,7 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
     } else {
         hovered = false;
     }
+    modifiers = input.modifiers;
     return state(output);
 }
 

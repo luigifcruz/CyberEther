@@ -19,6 +19,7 @@ namespace {
 constexpr U8 kStrokeFringe = 16;
 constexpr U8 kSoft = 32;
 constexpr U8 kTopLit = 64;
+constexpr F32 kCoverFringe = 1.0f;
 
 constexpr const char* kRectElementId = "rect";
 
@@ -112,10 +113,13 @@ struct Box::Impl : public Drawable {
         }
         const auto clip = screenClip();
         const auto instances = rendered();
+        const F32 ring = (config.borderColor.a < 1.0f ? std::max(0.0f, config.borderWidth) : 0.0f) + kCoverFringe;
+        const F32 radius = std::max(0.0f, config.cornerRadius - ring);
         return std::any_of(instances.begin(), instances.end(), [&](const auto& instance) {
-            const Rect shape = {instance.rect.x + translation.x, instance.rect.y + translation.y, instance.rect.width,
-                                instance.rect.height};
-            return instance.visible && OpaqueCovers(shape, config.cornerRadius, instance.backgroundColor, clip, target);
+            const Rect shape = Inset({instance.rect.x + translation.x, instance.rect.y + translation.y,
+                                      instance.rect.width, instance.rect.height},
+                                     ring);
+            return instance.visible && OpaqueCovers(shape, radius, instance.backgroundColor, clip, target);
         });
     }
 

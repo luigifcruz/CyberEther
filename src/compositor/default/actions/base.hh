@@ -2,20 +2,24 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_BASE_HH
 
 #include "benchmark.hh"
+#include "config_drafts.hh"
 #include "dependencies.hh"
 #include "feedback.hh"
 #include "file_picker.hh"
 #include "flowgraph.hh"
+#include "gallery.hh"
 #include "layout.hh"
 #include "live_markdown.hh"
 #include "metrics.hh"
 #include "remote.hh"
 #include "settings.hh"
+#include "terminal.hh"
 #include "workbench.hh"
 #include "agent.hh"
 
 #include "jetstream/logger.hh"
 
+#include <deque>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -36,9 +40,35 @@ class DefaultActions {
         dependencies = std::make_shared<DependencyActions>(callbacks);
         layouts = std::make_shared<LayoutActions>(state.flowgraph);
         liveMarkdown = std::make_shared<LiveMarkdownActions>(state.flowgraph);
+        configDrafts = std::make_shared<ConfigDraftActions>(state.flowgraph);
         metrics = std::make_shared<MetricActions>(state.flowgraph);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
         agent = std::make_shared<AgentActions>(state, callbacks, runtime);
+        gallery = std::make_shared<GalleryActions>(state);
+        terminals = std::make_shared<TerminalActions>(state, callbacks);
+    }
+
+    Result dispatch(const std::deque<Mail>& pending) {
+        for (U64 index = 0; index < pending.size(); ++index) {
+            const auto& mail = pending[index];
+            if (std::holds_alternative<MailSaveFlowgraph>(mail)) {
+                // Apply trailing presentation reports before queuing the save,
+                // without moving them across intervening user actions.
+                while (index + 1 < pending.size()) {
+                    const auto& report = pending[index + 1];
+                    if (!std::holds_alternative<MailSetFlowgraphLayout>(report) &&
+                        !std::holds_alternative<MailSetNodeMeta>(report) &&
+                        !std::holds_alternative<MailSetEditorMeta>(report) &&
+                        !std::holds_alternative<MailResizeSurface>(report)) {
+                        break;
+                    }
+                    JST_CHECK(handle(report));
+                    ++index;
+                }
+            }
+            JST_CHECK(handle(mail));
+        }
+        return Result::SUCCESS;
     }
 
     Result handle(const Mail& mail) {
@@ -67,10 +97,16 @@ class DefaultActions {
         if (Handle(*layouts, mail, result)) {
             return result;
         }
+        if (Handle(*configDrafts, mail, result)) {
+            return result;
+        }
         if (Handle(*feedback, mail, result)) {
             return result;
         }
         if (Handle(*agent, mail, result)) {
+            return result;
+        }
+        if (Handle(*terminals, mail, result)) {
             return result;
         }
 
@@ -90,12 +126,32 @@ class DefaultActions {
         workbench->settleStartTab();
     }
 
+    void refreshRegistry() {
+        gallery->refreshRegistry();
+    }
+
+    void settlePendingFocus() {
+        workbench->settlePendingFocus();
+    }
+
+    void reconcileFlowgraphs() {
+        workbench->reconcileFlowgraphs();
+    }
+
+    void reconcileModal() {
+        workbench->reconcileModal();
+    }
+
     void restoreLayouts() {
         layouts->restoreFromMetadata();
     }
 
     void refreshLiveMarkdown() {
         liveMarkdown->refresh();
+    }
+
+    void refreshConfigDrafts() {
+        configDrafts->refresh();
     }
 
     void refreshMetrics() {
@@ -112,6 +168,22 @@ class DefaultActions {
 
     void shutdownAgent() {
         agent->shutdown();
+    }
+
+    void reconcileGallery() {
+        gallery->reconcile();
+    }
+
+    void shutdownGallery() {
+        gallery->shutdown();
+    }
+
+    void reconcileTerminals() {
+        terminals->reconcile();
+    }
+
+    void shutdownTerminals() {
+        terminals->shutdown();
     }
 
  private:
@@ -137,6 +209,7 @@ class DefaultActions {
     std::shared_ptr<FilePickerActions> filePicker;
     std::shared_ptr<FlowgraphActions> flowgraph;
     std::shared_ptr<LiveMarkdownActions> liveMarkdown;
+    std::shared_ptr<ConfigDraftActions> configDrafts;
     std::shared_ptr<MetricActions> metrics;
     std::shared_ptr<RemoteActions> remote;
     std::shared_ptr<SettingsActions> settings;
@@ -144,6 +217,8 @@ class DefaultActions {
     std::shared_ptr<WorkbenchActions> workbench;
     std::shared_ptr<FeedbackActions> feedback;
     std::shared_ptr<AgentActions> agent;
+    std::shared_ptr<GalleryActions> gallery;
+    std::shared_ptr<TerminalActions> terminals;
 };
 
 }  // namespace Jetstream

@@ -172,7 +172,7 @@ struct CocoaTitlebar::State {
             const NSSize size = [buttons[i] frame].size;
             const CGFloat margin = std::round((TitlebarHeight - size.height) / 2.0);
             const CGFloat drop = [[buttons[i] superview] isFlipped] ? RowDrop : -RowDrop;
-            const NSPoint origin = NSMakePoint(margin + static_cast<CGFloat>(i) * spacing, margin + drop);
+            const NSPoint origin = NSMakePoint(margin + RowDrop + static_cast<CGFloat>(i) * spacing, margin + drop);
             if (!NSEqualPoints([buttons[i] frame].origin, origin)) {
                 [buttons[i] setFrameOrigin:origin];
             }
@@ -351,6 +351,23 @@ void CocoaTitlebar::poll() {
         state->layout();
         state->measure();
     }
+}
+
+bool CocoaTitlebar::SetAppearance(GLFWwindow* handle, bool dark) {
+    NSWindow* window = handle ? [glfwGetCocoaWindow(handle) retain] : nil;
+    if (!window) {
+        return false;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            NSString* name = dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua;
+            if (![[[window appearance] name] isEqualToString:name]) {
+                [window setAppearance:[NSAppearance appearanceNamed:name]];
+            }
+            [window release];
+        }
+    });
+    return true;
 }
 
 Render::TitlebarChrome CocoaTitlebar::chrome() const {

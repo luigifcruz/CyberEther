@@ -4,7 +4,7 @@
 #include <jetstream/render/sakura/typography.hh>
 
 #include <jetstream/render/components/text.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -23,21 +23,31 @@ namespace {
 
 constexpr F32 kSharpness = 0.45f;
 constexpr F32 kDisplaySharpness = 0.3f;
+constexpr F32 kEmbossLightWeight = 0.25f;
 
 using Unicode = Jetstream::Render::Components::Text::Unicode;
 
 constexpr const char* kIconFont = Typography::IconFont;
+
+F32 BackdropLuma(const Context& ctx) {
+    const auto color = ctx.color(ctx.backdropColorKey.empty() ? "background" : ctx.backdropColorKey);
+    return 0.299f * color.r + 0.587f * color.g + 0.114f * color.b;
+}
 
 const char* FontName(Text::Font font) {
     switch (font) {
         case Text::Font::H1:
         case Text::Font::H2:
         case Text::Font::Bold:
-            return "default_mono_bold";
+            return Typography::MonoBoldFont;
         case Text::Font::Display:
-            return "default_display";
+            return Typography::DisplayFont;
         case Text::Font::DisplaySemiBold:
-            return "default_display_semibold";
+            return Typography::DisplaySemiboldFont;
+        case Text::Font::Sans:
+            return Typography::BodyFont;
+        case Text::Font::SansBold:
+            return Typography::BodyBoldFont;
         case Text::Font::Body:
             break;
     }
@@ -84,13 +94,28 @@ struct Text::Impl {
     F32 linesWidth = -1.0f;
     F32 linesFontSize = -1.0f;
     U64 linesFonts = 0;
+    F32 fit = 1.0f;
 
-    F32 fontSize(const Context& ctx) const {
+    static constexpr U64 kFitPasses = 3;
+
+    F32 baseSize(const Context& ctx) const {
         return Typography::FontSize * config.scale * ctx.pixelRatio;
     }
 
+    F32 fontSize(const Context& ctx) const {
+        return baseSize(ctx) * fit;
+    }
+
     F32 iconSize(const Context& ctx) const {
-        return Typography::FontSize * config.scale * ctx.pixelRatio;
+        return fontSize(ctx);
+    }
+
+    F32 widest() const {
+        F32 width = 0.0f;
+        for (const auto& line : lines) {
+            width = std::max(width, line.width);
+        }
+        return width;
     }
 
     Line shape(const std::string& str, const Context& ctx) {
@@ -101,7 +126,7 @@ struct Text::Impl {
         while (pos < str.size()) {
             U32 codepoint = 0;
             const U64 next = pos + std::max<U64>(1, Unicode::Decode(str, pos, codepoint));
-            const bool icon = codepoint >= ICON_MIN_FA && codepoint <= ICON_MAX_FA;
+            const bool icon = codepoint >= ICON_MIN_LC && codepoint <= ICON_MAX_LC;
             if (line.runs.empty() || line.runs.back().icon != icon || icon) {
                 line.runs.push_back({.icon = icon});
             }
@@ -117,7 +142,7 @@ struct Text::Impl {
     }
 
     void wrap(const Context& ctx, F32 width) {
-        const F32 size = fontSize(ctx);
+        const F32 size = baseSize(ctx);
         const U64 fonts = ctx.render ? ctx.render->fontRevision() : 0;
         if (width == linesWidth && size == linesFontSize && fonts == linesFonts) {
             return;
@@ -125,8 +150,20 @@ struct Text::Impl {
         linesWidth = width;
         linesFontSize = size;
         linesFonts = fonts;
-        lines.clear();
         metrics.setWindow(ctx.render);
+        fit = 1.0f;
+        build(ctx, width);
+        if (!config.shrinkToFit || config.wrapped || !std::isfinite(width) || width <= 0.0f) {
+            return;
+        }
+        for (U64 pass = 0; pass < kFitPasses && widest() > width; ++pass) {
+            fit *= width / widest();
+            build(ctx, width);
+        }
+    }
+
+    void build(const Context& ctx, F32 width) {
+        lines.clear();
         const auto trimmed = [](std::string value) {
             while (!value.empty() && value.back() == ' ') {
                 value.pop_back();
@@ -201,7 +238,8 @@ void Text::update(Config config) {
     }
     invalidate(Dirty::Layout);
     if (config.str != impl->config.str || config.wrapped != impl->config.wrapped ||
-        config.font != impl->config.font || config.scale != impl->config.scale) {
+        config.font != impl->config.font || config.scale != impl->config.scale ||
+        config.shrinkToFit != impl->config.shrinkToFit) {
         impl->linesWidth = -1.0f;
     }
     impl->config = std::move(config);
@@ -209,14 +247,11 @@ void Text::update(Config config) {
 
 Extent2D<F32> Text::measure(const Context& ctx, Extent2D<F32> available) {
     impl->wrap(ctx, available.x);
-    F32 width = 0.0f;
-    for (const auto& line : impl->lines) {
-        width = std::max(width, line.width);
-    }
+    F32 width = impl->widest();
     if (std::isfinite(available.x) && (impl->config.wrapped || impl->config.align != Align::Left)) {
         width = std::max(width, available.x);
     }
-    return FitExtent({width, impl->fontSize(ctx) * static_cast<F32>(impl->lines.size()) +
+    return FitExtent({width, std::round(impl->fontSize(ctx) * impl->config.lineHeight) * static_cast<F32>(impl->lines.size()) +
                                  impl->config.verticalOffset * ctx.pixelRatio},
                      available);
 }
@@ -234,7 +269,9 @@ void Text::layout(const Context& ctx) {
     std::vector<Label::Instance> glyphs;
     for (U64 i = 0; i < impl->lines.size(); ++i) {
         const auto& line = impl->lines[i];
-        const F32 y = bounds.y + impl->config.verticalOffset * ctx.pixelRatio + size * static_cast<F32>(i);
+        const F32 pitch = std::round(size * impl->config.lineHeight);
+        const F32 y = bounds.y + impl->config.verticalOffset * ctx.pixelRatio + pitch * static_cast<F32>(i) +
+                      std::round((pitch - size) * 0.5f);
         F32 x = bounds.x;
         if (impl->config.align == Align::Center) {
             x += std::floor((bounds.width - line.width) * 0.5f);
@@ -264,11 +301,16 @@ void Text::layout(const Context& ctx) {
             x += run.width;
         }
     }
+    const F32 backdrop = impl->config.emboss > 0.0f ? BackdropLuma(ctx) : 0.0f;
+    const F32 weight = impl->config.weight + (backdrop > 0.5f ? kEmbossLightWeight : 0.0f);
     impl->label.update({
         .instances = std::move(texts),
         .clip = bounds,
         .fontName = FontName(impl->config.font),
         .sharpness = impl->config.font == Font::Display ? kDisplaySharpness : kSharpness,
+        .weight = weight * Fringe(ctx),
+        .emboss = impl->config.emboss,
+        .embossBackdrop = backdrop,
         .maxCharacters = impl->config.maxCharacters,
     });
     impl->icons.update({

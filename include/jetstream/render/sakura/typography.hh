@@ -11,14 +11,31 @@ struct Typography {
     static constexpr F32 ConsoleScale = 0.92f;
     static constexpr const char* MonoFont = "default_mono";
     static constexpr const char* MonoBoldFont = "default_mono_bold";
+    static constexpr const char* DisplayFont = "default_display";
     static constexpr const char* DisplaySemiboldFont = "default_display_semibold";
+    static constexpr const char* DisplayRegularFont = "default_display_regular";
     static constexpr const char* BodyFont = "default_body";
+    static constexpr const char* BodyItalicFont = "default_body_italic";
+    static constexpr const char* BodyBoldFont = "default_body_bold";
+    static constexpr const char* BodyBoldItalicFont = "default_body_bold_italic";
     static constexpr const char* IconFont = "default_icons";
+    static constexpr const char* NodeIconFont = "default_node_icons";
     static constexpr F32 CodeLineHeight = 1.15f;
     static constexpr F32 BodyLineHeight = 1.25f;
     static constexpr F32 HeadingScale[3] = {1.5f, 1.3f, 1.15f};
     static constexpr F32 StyleBackgroundPadRatio = 0.2f;
     static constexpr F32 TextPaddingRatio = 6.0f / 15.0f;
+
+    struct Scale {
+        static constexpr F32 Small = 13.0f / FontSize;
+        static constexpr F32 Caption = 14.0f / FontSize;
+        static constexpr F32 Body = 1.0f;
+        static constexpr F32 Lead = 16.0f / FontSize;
+        static constexpr F32 Large = 17.0f / FontSize;
+        static constexpr F32 Title = 18.0f / FontSize;
+        static constexpr F32 Heading = 20.0f / FontSize;
+        static constexpr F32 Headline = 24.0f / FontSize;
+    };
 };
 
 }  // namespace Jetstream::Sakura

@@ -8,10 +8,13 @@
 #include "compositor/default/actions/flowgraph.hh"
 #include "compositor/default/presenters/flowgraph/pane.hh"
 #include "compositor/default/views/flowgraph/pane.hh"
+#include "compositor/default/views/terminal.hh"
 #include "flowgraph_fixture.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
+#include <chrono>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -52,8 +55,7 @@ std::vector<Jetstream::Rect> HeaderLabels(Sakura::Component& dock) {
     std::vector<Jetstream::Rect> labels;
     for (auto* text : Direct<Sakura::Text>(dock)) {
         const auto& str = text->config().str;
-        if (str != ICON_FA_XMARK && str != ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER &&
-            str != ICON_FA_DOWN_LEFT_AND_UP_RIGHT_TO_CENTER) {
+        if (str != ICON_LC_X && str != ICON_LC_MAXIMIZE_2 && str != ICON_LC_MINIMIZE_2 && str != ICON_LC_MINUS) {
             labels.push_back(Peek::Frame(*text));
         }
     }
@@ -107,6 +109,11 @@ struct PaneRig : FlowgraphFixture {
     Sakura::FloatingLayer floating;
     LayerHost host;
     Jetstream::Rect screen = kScreen;
+    TerminalView terminalView;
+    std::optional<TerminalView::Config> terminal;
+    Sakura::Terminal::Screen terminalScreen;
+    U64 terminalCloses = 0;
+    std::vector<bool> terminalSplits;
 
     PaneRig() {
         ctx.render = &window;
@@ -127,7 +134,13 @@ struct PaneRig : FlowgraphFixture {
     }
 
     void update() {
-        pane.update(build());
+        auto config = build();
+        if (terminal.has_value()) {
+            terminalView.update(*terminal);
+            config.terminals.push_back(terminalView.pane());
+            config.adopts = {TerminalView::Group};
+        }
+        pane.update(std::move(config));
         panes.clear();
         pane.appendPanes(panes);
         std::vector<Sakura::FloatingLayer::Window> windows;
@@ -143,6 +156,7 @@ struct PaneRig : FlowgraphFixture {
     }
 
     void frame() {
+        LayoutActions(state.flowgraph).restoreFromMetadata();
         update();
         place();
     }
@@ -159,6 +173,15 @@ struct PaneRig : FlowgraphFixture {
             }
             if (const auto* close = std::get_if<MailCloseDocumentation>(&mail)) {
                 CHECK(actions.handle(*close) == Result::SUCCESS);
+            }
+            if (const auto* environment = std::get_if<MailSetFlowgraphEnvironmentVisible>(&mail)) {
+                CHECK(actions.handle(*environment) == Result::SUCCESS);
+            }
+            if (const auto* close = std::get_if<MailCloseFlowgraphDescription>(&mail)) {
+                CHECK(actions.handle(*close) == Result::SUCCESS);
+            }
+            if (const auto* editor = std::get_if<MailSetEditorMeta>(&mail)) {
+                CHECK(FlowgraphActions(state, callbacks).handle(*editor) == Result::SUCCESS);
             }
         }
         mails.clear();
@@ -186,6 +209,34 @@ struct PaneRig : FlowgraphFixture {
         CHECK(last<MailOpenDocumentation>()->block == block);
         deliver();
         frame();
+    }
+
+    void showTerminal(std::string title) {
+        terminal = TerminalView::Config{
+            .id = MakeTerminalPaneKey(1),
+            .title = std::move(title),
+            .flowgraph = std::string(kGraph),
+            .terminal = {.id = MakeTerminalPaneKey(1), .screen = &terminalScreen, .revision = 1},
+            .onClose = [this] {
+                ++terminalCloses;
+            },
+            .onSplit = [this](bool stacked) {
+                terminalSplits.push_back(stacked);
+            },
+        };
+    }
+
+    Sakura::Text* headerGlyph(const std::string& glyph) {
+        for (auto* text : Direct<Sakura::Text>(layoutDock())) {
+            if (text->config().str == glyph && text->visible()) {
+                return text;
+            }
+        }
+        return nullptr;
+    }
+
+    std::vector<Sakura::Terminal*> terminals() {
+        return Find<Sakura::Terminal>(layoutDock());
     }
 
     std::vector<Sakura::Markdown*> documentation() {
@@ -308,7 +359,7 @@ TEST_CASE("Each flowgraph contributes one main tab whose content is its layout d
     CHECK(config.editorPane == "editor:graph");
     CHECK_FALSE(config.layout.has_value());
     REQUIRE(config.describe);
-    CHECK(config.describe("config:fft") == "fft Config");
+    CHECK(config.describe("config:fft") == "fft Controls");
 
     rig.frame();
     REQUIRE(rig.panes.size() == 1);
@@ -316,7 +367,7 @@ TEST_CASE("Each flowgraph contributes one main tab whose content is its layout d
     CHECK(main.id == kGraph);
     CHECK(main.title == "graph");
     CHECK(main.group == "main");
-    CHECK(main.icon.empty());
+    CHECK(main.icon == ICON_LC_WORKFLOW);
     CHECK(main.closable);
     REQUIRE(main.content != nullptr);
     CHECK(dynamic_cast<Sakura::Dock*>(main.content) != nullptr);
@@ -359,6 +410,92 @@ TEST_CASE("A flowgraph without detached views fills its tab with the editor and 
     REQUIRE(layout->tiles.has_value());
     CHECK(layout->tiles->pane == std::optional<std::string>("flowgraph"));
     CHECK_FALSE(layout->tiles->children.has_value());
+}
+
+TEST_CASE("File descriptions appear as a collapsed leftmost tile",
+          "[core][sakura][flowgraph][pane]") {
+    PaneRig rig;
+    rig.screen = kWideScreen;
+    CHECK_FALSE(rig.build().description.has_value());
+
+    REQUIRE(rig.graph().setDescription("## Overview\n\nRead [Simple FM](/gallery/flowgraphs/simple-fm) next.") == Result::SUCCESS);
+    const auto config = rig.build();
+    REQUIRE(config.description.has_value());
+    CHECK(config.description->id == kLayoutDescriptionPane);
+    CHECK(config.description->markdown == rig.graph().description());
+    rig.frame();
+
+    CHECK(rig.documentation().empty());
+    std::optional<Sakura::Label::Instance> spine;
+    for (auto* label : Find<Sakura::Label>(rig.layoutDock())) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.rotation != 0.0f && instance.str == "Description") {
+                spine = instance;
+            }
+        }
+    }
+    REQUIRE(spine.has_value());
+    CHECK(spine->rect.x + spine->rect.width * 0.5f < 40.0f);
+    const auto tiles = rig.tiles();
+    REQUIRE_FALSE(tiles.empty());
+    CHECK(Peek::Frame(*tiles.front()).x > spine->rect.x + spine->rect.width);
+
+    const F32 x = spine->rect.x + spine->rect.width * 0.5f;
+    const F32 y = spine->rect.y + spine->rect.height * 0.5f;
+    rig.host.send(Mouse(MouseEventType::Click, x, y));
+    rig.host.send(Mouse(MouseEventType::Release, x, y));
+    rig.frame();
+    REQUIRE(rig.documentation().size() == 1);
+    CHECK(rig.documentationText().find("Overview") != std::string::npos);
+
+    REQUIRE(rig.graph().setDescription("") == Result::SUCCESS);
+    CHECK_FALSE(rig.build().description.has_value());
+}
+
+TEST_CASE("The collapsed file description closes from its strip", "[core][sakura][flowgraph][pane]") {
+    PaneRig rig;
+    rig.screen = kWideScreen;
+    REQUIRE(rig.graph().setDescription("## Overview") == Result::SUCCESS);
+    rig.frame();
+
+    std::optional<Rect> strip;
+    for (auto* label : Find<Sakura::Label>(rig.layoutDock())) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.rotation != 0.0f && instance.str == "Description") {
+                strip = instance.rect;
+            }
+        }
+    }
+    REQUIRE(strip.has_value());
+    const Sakura::Text* close = nullptr;
+    for (auto* text : Find<Sakura::Text>(rig.layoutDock())) {
+        const auto frame = Peek::Frame(*text);
+        if (text->config().str == ICON_LC_X && text->visible() && frame.x >= strip->x &&
+            frame.right() <= strip->right()) {
+            close = text;
+        }
+    }
+    REQUIRE(close != nullptr);
+    const auto frame = Peek::Frame(*close);
+    rig.mails.clear();
+    rig.host.send(Mouse(MouseEventType::Click, frame.x + frame.width * 0.5f, frame.y + frame.height * 0.5f));
+    rig.host.send(Mouse(MouseEventType::Release, frame.x + frame.width * 0.5f, frame.y + frame.height * 0.5f));
+    rig.frame();
+    const auto closed = std::find_if(rig.mails.begin(), rig.mails.end(), [](const Mail& mail) {
+        const auto* close = std::get_if<MailCloseFlowgraphDescription>(&mail);
+        return close && close->flowgraph == kGraph;
+    });
+    CHECK(closed != rig.mails.end());
+}
+
+TEST_CASE("The description tile follows edits to the file description", "[core][sakura][flowgraph][pane]") {
+    PaneRig rig;
+    REQUIRE(rig.graph().setDescription("First") == Result::SUCCESS);
+    REQUIRE(rig.build().description.has_value());
+    CHECK(rig.build().description->markdown == "First");
+    FlowgraphActions actions(rig.state, rig.callbacks);
+    REQUIRE(actions.handle(MailSetFlowgraphInfo{.flowgraph = kGraph, .description = "Updated"}) == Result::SUCCESS);
+    CHECK(rig.build().description->markdown == "Updated");
 }
 
 TEST_CASE("A detached view joins as a column beside the editor and the layout is reported once",
@@ -441,13 +578,16 @@ TEST_CASE("The editor tile only maximizes while detached view headers close thei
 
     const auto editorButton = CloseOf({6.0f, 38.0f, 762.0f, 556.0f});
     rig.host.click(editorButton.x, editorButton.y);
+    REQUIRE(rig.count<MailSetFlowgraphLayout>() == 1);
+    rig.deliver();
     rig.frame();
     CHECK(rig.configFrames().empty());
     const auto restore = CloseOf({6.0f, 38.0f, 1188.0f, 556.0f});
     rig.host.click(restore.x, restore.y);
+    REQUIRE(rig.count<MailSetFlowgraphLayout>() == 1);
+    rig.deliver();
     rig.frame();
     CHECK(rig.configFrames().size() == 1);
-    CHECK(rig.count<MailSetFlowgraphLayout>() == 0);
     CHECK(closed.empty());
 
     rig.mails.clear();
@@ -513,7 +653,7 @@ TEST_CASE("Detached surfaces become columns with their image and close callback"
     CHECK(Peek::Frame(*surfaces[0]) == Padded(Body({774.0f, 38.0f, 420.0f, 556.0f}), Sakura::Dock::ContentPadding));
     CHECK(Find<Sakura::SurfaceImage>(rig.layoutDock()).size() == 1);
     for (auto* text : Direct<Sakura::Text>(rig.layoutDock())) {
-        CHECK(text->config().str != ICON_FA_CHART_AREA);
+        CHECK(text->config().str != ICON_LC_CHART_AREA);
     }
 
     const auto close = CloseOf({774.0f, 38.0f, 420.0f, 556.0f});
@@ -543,7 +683,7 @@ TEST_CASE("Dragging a view onto the bottom of another stacks them in one column 
     CHECK(rig.host.drag.group == "layout:graph");
     REQUIRE(rig.host.drag.target.has_value());
     CHECK(rig.host.drag.target->owner == static_cast<const void*>(&rig.layoutDock()));
-    CHECK(rig.host.drag.target->preview == Jetstream::Rect{588.0f, 316.0f, 300.0f, 278.0f});
+    CHECK(rig.host.drag.target->preview == Jetstream::Rect{588.0f, 319.0f, 300.0f, 275.0f});
 
     rig.host.send(Mouse(MouseEventType::Release, 738.0f, 500.0f));
     REQUIRE(rig.count<MailSetFlowgraphLayout>() == 1);
@@ -632,7 +772,7 @@ TEST_CASE("Clicks and drags inside a detached surface column reach the surface a
     CHECK(focusLost == 1);
 }
 
-TEST_CASE("The editor's top right holds the search pill, the zoom pill to its left, and a dependency pill when review is needed",
+TEST_CASE("The editor's bottom right holds the toolbar row and a dependency pill sits top right when review is needed",
           "[core][sakura][flowgraph][pane]") {
     PaneRig rig;
     rig.screen = kWideScreen;
@@ -647,19 +787,33 @@ TEST_CASE("The editor's top right holds the search pill, the zoom pill to its le
         };
     };
     rig.frame();
-    auto pills = Find<Sakura::PillField>(rig.layoutDock());
-    REQUIRE(pills.size() == 1);
-    const auto search = Peek::Frame(*pills[0]);
-    CHECK(search.width == FlowgraphBlockPicker::PillWidth);
-    CHECK(search.right() == 1188.0f - FlowgraphBlockPicker::PillMargin);
-    CHECK(search.y == 38.0f + Sakura::Dock::ContentPadding + FlowgraphBlockPicker::PillMargin);
+    CHECK(Find<Sakura::PillField>(rig.layoutDock()).empty());
+    std::vector<Jetstream::Rect> buttons;
+    for (auto* button : Find<Sakura::PillIconButton>(rig.layoutDock())) {
+        buttons.push_back(Peek::Frame(*button));
+    }
+    std::sort(buttons.begin(), buttons.end(), [](const auto& a, const auto& b) {
+        return a.x < b.x;
+    });
+    REQUIRE(buttons.size() == (TerminalSession::Supported() ? 5u : 4u));
+    const F32 top = 38.0f + Sakura::Dock::ContentPadding + FlowgraphEditor::PillMargin;
+    const F32 row = 38.0f + 556.0f - Sakura::Dock::ContentPadding - FlowgraphEditor::PillMargin - FlowgraphEditor::PillHeight;
+    for (const auto& button : buttons) {
+        CHECK(button.width == FlowgraphEditor::PillHeight);
+        CHECK(button.height == FlowgraphEditor::PillHeight);
+        CHECK(button.y == row);
+    }
+    for (U64 index = 1; index < buttons.size(); ++index) {
+        CHECK(buttons[index].x == buttons[index - 1].right() + FlowgraphEditor::PillGap);
+    }
 
     const auto steppers = Find<Sakura::PillStepper>(rig.layoutDock());
     REQUIRE(steppers.size() == 1);
     const auto zoom = Peek::Frame(*steppers[0]);
     CHECK(zoom.width == FlowgraphEditor::ZoomPillWidth);
-    CHECK(zoom.right() == search.x - FlowgraphEditor::PillGap);
-    CHECK(zoom.y == search.y);
+    CHECK(zoom.right() == 1188.0f - FlowgraphEditor::PillMargin);
+    CHECK(zoom.x == buttons.back().right() + FlowgraphEditor::PillGap);
+    CHECK(zoom.y == row);
     const auto label = [&] {
         for (auto* text : Find<Sakura::Text>(*steppers[0])) {
             if (text->config().str.ends_with("%")) {
@@ -671,19 +825,18 @@ TEST_CASE("The editor's top right holds the search pill, the zoom pill to its le
     CHECK(label() == "100%");
     rig.host.click(zoom.right() - 10.0f, zoom.y + 17.0f);
     rig.frame();
-    CHECK(label() == "110%");
+    CHECK(label() == "105%");
     rig.host.click(zoom.x + zoom.width * 0.5f, zoom.y + 17.0f);
     rig.frame();
     CHECK(label() == "100%");
 
     review = true;
     rig.frame();
-    pills = Find<Sakura::PillField>(rig.layoutDock());
-    REQUIRE(pills.size() == 2);
-    const auto dependency = Peek::Frame(*pills[0]).x < Peek::Frame(*pills[1]).x ? Peek::Frame(*pills[0])
-                                                                                : Peek::Frame(*pills[1]);
-    CHECK(dependency.right() == zoom.x - FlowgraphEditor::PillGap);
-    CHECK(dependency.y == search.y);
+    const auto pills = Find<Sakura::PillField>(rig.layoutDock());
+    REQUIRE(pills.size() == 1);
+    const auto dependency = Peek::Frame(*pills[0]);
+    CHECK(dependency.right() == 1188.0f - FlowgraphEditor::PillMargin);
+    CHECK(dependency.y == top);
     rig.host.click(dependency.x + 20.0f, dependency.y + 10.0f);
     CHECK(reviews == 1);
 }
@@ -895,4 +1048,396 @@ TEST_CASE("Rename completion and late dock reports preserve detached pane order 
     CHECK(std::count(panes.begin(), panes.end(), "config:new") == (configDetached ? 1 : 0));
     CHECK(std::count(panes.begin(), panes.end(), "surface:new:default") == (surfaceDetached ? 1 : 0));
     CHECK(std::none_of(panes.begin(), panes.end(), [](const auto& pane) { return pane.find(":old") != std::string::npos; }));
+}
+
+TEST_CASE("The environment button opens a closable Environment tile that is saved in the layout",
+          "[core][sakura][flowgraph][pane][environment]") {
+    PaneRig rig;
+    rig.screen = kWideScreen;
+    rig.frame();
+    rig.deliver();
+    CHECK_FALSE(rig.build().environment.has_value());
+
+    const auto config = rig.build();
+    REQUIRE(config.editor.onToggleEnvironment);
+    config.editor.onToggleEnvironment();
+    REQUIRE(rig.count<MailSetFlowgraphEnvironmentVisible>() == 1);
+    CHECK(rig.last<MailSetFlowgraphEnvironmentVisible>()->flowgraph == kGraph);
+    CHECK(rig.last<MailSetFlowgraphEnvironmentVisible>()->value);
+    rig.deliver();
+    rig.frame();
+
+    CHECK(rig.state.flowgraph.environment.contains(kGraph));
+    CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph", "environment"});
+    CHECK(rig.header("Environment"));
+    TileMeta saved;
+    REQUIRE(rig.graph().metadata().get("layout", saved) == Result::SUCCESS);
+    CHECK(LayoutPanes(saved) == std::vector<std::string>{"flowgraph", "environment"});
+
+    const auto open = rig.build();
+    REQUIRE(open.environment.has_value());
+    CHECK(open.environment->title == "Environment");
+    REQUIRE(open.environment->onClose);
+    open.environment->onClose();
+    rig.deliver();
+    rig.frame();
+    CHECK_FALSE(rig.state.flowgraph.environment.contains(kGraph));
+    CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph"});
+    CHECK_FALSE(rig.header("Environment"));
+
+    LayoutActions actions(rig.state.flowgraph);
+    CHECK(actions.handle(MailSetFlowgraphLayout{
+              .flowgraph = kGraph,
+              .tiles = TileMeta{.split = "row",
+                                .children = std::vector<TileMeta>{{.pane = "flowgraph"}, {.pane = "environment"}}},
+          }) == Result::SUCCESS);
+    CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph"});
+}
+
+TEST_CASE("A terminal pane handed to the flowgraph joins its layout dock as a titled tile beside the editor",
+          "[core][sakura][flowgraph][pane][terminal]") {
+    PaneRig rig;
+    rig.screen = kWideScreen;
+    rig.frame();
+    rig.deliver();
+    CHECK(rig.terminals().empty());
+
+    rig.showTerminal("Terminal (zsh)");
+    rig.frame();
+    CHECK(rig.terminalView.flowgraph() == std::optional<std::string>(kGraph));
+    const auto pane = rig.terminalView.pane();
+    CHECK(pane.id == "terminal:1");
+    CHECK(pane.group == TerminalView::Group);
+    CHECK(pane.icon == ICON_LC_SQUARE_TERMINAL);
+    REQUIRE(pane.actions.size() == 2);
+    CHECK(pane.actions[0].icon == ICON_LC_COLUMNS_2);
+    CHECK(pane.actions[1].icon == ICON_LC_ROWS_2);
+
+    const auto terminals = rig.terminals();
+    REQUIRE(terminals.size() == 1);
+    CHECK(pane.content == terminals.front());
+    CHECK(rig.header("Terminal (zsh)"));
+    REQUIRE(rig.tiles().size() == 1);
+    const auto editor = Peek::Frame(*rig.tiles()[0]);
+    const auto terminal = Peek::Frame(*terminals[0]);
+    CHECK(terminal.x > editor.right());
+    CHECK(terminal.y == editor.y - Sakura::Dock::ContentPadding);
+    CHECK(terminal.height == editor.height + 2.0f * Sakura::Dock::ContentPadding);
+
+    rig.deliver();
+    CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph", "terminal:1"});
+
+    auto* beside = rig.headerGlyph(ICON_LC_COLUMNS_2);
+    auto* below = rig.headerGlyph(ICON_LC_ROWS_2);
+    REQUIRE(beside != nullptr);
+    REQUIRE(below != nullptr);
+    const auto besideFrame = Peek::Frame(*beside);
+    const auto belowFrame = Peek::Frame(*below);
+    CHECK(besideFrame.x > terminal.x);
+    CHECK(besideFrame.y == belowFrame.y);
+    CHECK(besideFrame.x != belowFrame.x);
+    CHECK(besideFrame.y < terminal.y);
+    rig.host.click(besideFrame.x + besideFrame.width * 0.5f, besideFrame.y + besideFrame.height * 0.5f);
+    rig.frame();
+    rig.host.click(belowFrame.x + belowFrame.width * 0.5f, belowFrame.y + belowFrame.height * 0.5f);
+    CHECK(rig.terminalSplits == std::vector<bool>{false, true});
+    CHECK(rig.terminalCloses == 0);
+
+    rig.terminal->title = "Terminal (vim)";
+    rig.frame();
+    CHECK(rig.header("Terminal (vim)"));
+    CHECK_FALSE(rig.header("Terminal (zsh)"));
+    CHECK(rig.terminals().size() == 1);
+
+    const auto close = CloseOf({terminal.x, terminal.y - kHeader, terminal.width, terminal.height + kHeader});
+    rig.host.click(close.x, close.y);
+    CHECK(rig.terminalCloses == 1);
+
+    rig.terminal.reset();
+    rig.frame();
+    CHECK(rig.terminals().empty());
+    CHECK_FALSE(rig.header("Terminal (vim)"));
+}
+
+TEST_CASE("A terminal tile settles under identical updates and new screens only repaint",
+          "[core][sakura][flowgraph][pane][terminal][retention]") {
+    PaneRig rig;
+    Frames frames(rig.host, kScreen, rig.ctx);
+    const auto update = [&] {
+        rig.update();
+        rig.deliver();
+    };
+    REQUIRE(Settles(frames, update));
+    rig.showTerminal("Terminal");
+    REQUIRE(Settles(frames, update));
+
+    rig.terminalScreen.columns = 20;
+    rig.terminalScreen.rows = 4;
+    rig.terminalScreen.lines.resize(4);
+    rig.terminalScreen.lines[0].spans = {{.column = 0, .width = 5, .text = "hello"}};
+    rig.terminal->terminal.revision += 1;
+    const U64 restructures = frames.restructures;
+    CHECK(Kept(frames.run(update)));
+    REQUIRE(Settles(frames, update));
+    CHECK(frames.restructures == restructures);
+}
+
+TEST_CASE("A terminal whose screen has a predominant background tints its whole tile",
+          "[core][sakura][flowgraph][pane][terminal]") {
+    constexpr ColorRGBA<F32> kTint = {0.05f, 0.1f, 0.4f, 1.0f};
+    PaneRig rig;
+    rig.screen = kWideScreen;
+    rig.frame();
+    rig.deliver();
+    rig.showTerminal("Terminal");
+    rig.frame();
+    const auto tints = [&] {
+        U64 count = 0;
+        for (const auto* box : Find<Sakura::Box>(rig.layoutDock())) {
+            for (const auto& instance : box->config().instances) {
+                count += instance.visible && instance.backgroundColor == kTint ? 1 : 0;
+            }
+        }
+        return count;
+    };
+    CHECK(tints() == 0);
+
+    rig.terminalScreen.base = {0.0f, 0.0f, 0.0f, 1.0f};
+    rig.terminalScreen.background = rig.terminalScreen.base;
+    rig.terminalScreen.fill = kTint;
+    rig.terminal->terminal.revision += 1;
+    rig.frame();
+    CHECK(tints() == 2);
+
+    rig.terminalScreen.fill = rig.terminalScreen.background;
+    rig.terminal->terminal.revision += 1;
+    rig.frame();
+    CHECK(tints() == 0);
+}
+
+namespace {
+
+struct SavedPaneFile {
+    std::filesystem::path path = std::filesystem::temp_directory_path() /
+        ("cyberether-pane-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".yaml");
+
+    ~SavedPaneFile() {
+        std::error_code error;
+        std::filesystem::remove(path, error);
+    }
+
+    void save(PaneRig& rig) const {
+        rig.callbacks.enqueueCommandWithMail = [](Sakura::Callback<Result()> command, bool, Mail) {
+            REQUIRE(command() == Result::SUCCESS);
+        };
+        REQUIRE(FlowgraphActions(rig.state, rig.callbacks).handle(
+            MailSaveFlowgraph{.flowgraph = kGraph, .path = Platform::PathToUtf8(path)}) == Result::SUCCESS);
+    }
+
+    void load(PaneRig& rig) const {
+        REQUIRE(rig.graph().importFromFile(Platform::PathToUtf8(path)) == Result::SUCCESS);
+    }
+};
+
+void RefreshSavedPane(PaneRig& rig) {
+    rig.screen = kWideScreen;
+    auto& blocks = rig.state.flowgraph.blocks[kGraph];
+    blocks.clear();
+    std::vector<std::string> names;
+    REQUIRE(rig.graph().view().keys(names) == Result::SUCCESS);
+    for (const auto& name : names) {
+        blocks.push_back({.name = name, .data = ViewBlock(rig.graph(), name)});
+    }
+    for (int frame = 0; frame < 3; ++frame) {
+        rig.frame();
+        rig.deliver();
+    }
+}
+
+void CreateSavedPane(PaneRig& rig) {
+    REQUIRE(rig.graph().blockCreate("a", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    REQUIRE(rig.graph().metadata().set("node", NodeMeta{132.5f, -54.25f, 320.0f, 440.0f}, "a") == Result::SUCCESS);
+    REQUIRE(rig.graph().metadata().set("config", ConfigMeta{.collapsed = true, .detached = true}, "a") == Result::SUCCESS);
+    REQUIRE(rig.graph().metadata().set("layout", LayoutSplit("row", {
+        LayoutLeaf("flowgraph", 600.0f), LayoutLeaf("config:a", 310.0f),
+    })) == Result::SUCCESS);
+    RefreshSavedPane(rig);
+}
+
+}  // namespace
+
+TEST_CASE("Fresh UI instances restore saved tile navigation and editor view from a file",
+          "[core][sakura][flowgraph][pane][recovery]") {
+    PaneRig original;
+    CreateSavedPane(original);
+    const auto normal = original.configFrames();
+    REQUIRE(normal.size() == 1);
+    const auto frame = normal.front();
+    const Rect card{frame.x - Sakura::Dock::ContentPadding, frame.y - Sakura::Dock::ContentPadding - kHeader,
+                    frame.width + 2 * Sakura::Dock::ContentPadding,
+                    frame.height + 2 * Sakura::Dock::ContentPadding + kHeader};
+
+    SECTION("normal") {}
+    SECTION("minimized") {
+        original.host.click(card.right() - 59, card.y + 15);
+        original.deliver(); original.frame(); original.deliver();
+        REQUIRE(original.configFrames().empty());
+    }
+    SECTION("maximized") {
+        original.host.click(card.right() - 37, card.y + 15);
+        original.deliver(); original.frame(); original.deliver();
+        REQUIRE(original.configFrames().front().width > normal.front().width);
+    }
+    SECTION("panned and zoomed") {
+        REQUIRE(FlowgraphActions(original.state, original.callbacks).handle(
+            MailSetEditorMeta{kGraph, EditorMeta{-145.5f, 78.25f, 1.75f}}) == Result::SUCCESS);
+        original.frame(); original.deliver();
+        const auto editors = Find<Sakura::NodeEditor>(original.layoutDock());
+        REQUIRE(editors.size() == 1);
+        REQUIRE(editors.front()->zoom() == 1.75f);
+        editors.front()->zoomStep(1);
+        original.frame(); original.deliver();
+    }
+    SECTION("paused processing") {
+        REQUIRE(original.graph().pause() == Result::SUCCESS);
+        REQUIRE(original.graph().paused());
+    }
+
+    const auto expectedLayout = original.build().layout;
+    const auto expectedFrames = original.configFrames();
+    const auto expectedView = original.build().editor.view;
+    SavedPaneFile file;
+    file.save(original);
+    PaneRig loaded;
+    file.load(loaded);
+    RefreshSavedPane(loaded);
+    CHECK(loaded.build().layout == expectedLayout);
+    CHECK(loaded.configFrames() == expectedFrames);
+    CHECK(loaded.build().editor.view == expectedView);
+    CHECK_FALSE(loaded.graph().paused());
+    NodeMeta node;
+    REQUIRE(loaded.graph().metadata().get("node", node, "a") == Result::SUCCESS);
+    CHECK(node.x == 132.5f);
+    CHECK(node.y == -54.25f);
+    CHECK(node.width == 320.0f);
+    CHECK(node.height == 440.0f);
+    ConfigMeta config;
+    REQUIRE(loaded.graph().metadata().get("config", config, "a") == Result::SUCCESS);
+    CHECK(config.collapsed);
+    CHECK(config.detached);
+}
+
+TEST_CASE("Explicit saves capture layouts from older files without layout metadata",
+          "[core][sakura][flowgraph][pane][recovery]") {
+    PaneRig original;
+    REQUIRE(original.graph().blockCreate("a", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    REQUIRE(original.graph().metadata().set("config", ConfigMeta{.detached = true}, "a") == Result::SUCCESS);
+    RefreshSavedPane(original);
+    REQUIRE_FALSE(original.graph().metadata().has("layout"));
+    auto layout = original.state.flowgraph.layouts.at(kGraph);
+    REQUIRE(layout.children.has_value());
+    layout.children->back().minimized = true;
+    REQUIRE(LayoutActions(original.state.flowgraph).handle(MailSetFlowgraphLayout{kGraph, layout}) == Result::SUCCESS);
+    original.frame(); original.deliver();
+    REQUIRE(original.configFrames().empty());
+    REQUIRE_FALSE(original.graph().metadata().has("layout"));
+    SavedPaneFile file;
+    file.save(original);
+    REQUIRE(original.graph().metadata().has("layout"));
+    PaneRig loaded;
+    file.load(loaded);
+    RefreshSavedPane(loaded);
+    CHECK(loaded.build().layout == original.build().layout);
+    CHECK(loaded.configFrames().empty());
+}
+
+TEST_CASE("File descriptions retain placement and expansion but saved closes reset them on the next load",
+          "[core][sakura][flowgraph][pane][recovery][description]") {
+    PaneRig original;
+    CreateSavedPane(original);
+    REQUIRE(original.graph().setDescription("# File description\n\nSaved markdown.") == Result::SUCCESS);
+    const auto moved = LayoutSplit("row", {
+        LayoutLeaf("flowgraph", 500.0f),
+        LayoutSplit("column", {LayoutLeaf("config:a", 0.35f), LayoutLeaf("description", 0.65f)}, 370.0f),
+    });
+    REQUIRE(LayoutActions(original.state.flowgraph).handle(MailSetFlowgraphLayout{kGraph, moved}) == Result::SUCCESS);
+    RefreshSavedPane(original);
+    REQUIRE(original.documentation().size() == 1);
+    const auto expectedLayout = original.build().layout;
+    const auto expectedFrame = Peek::Frame(*original.documentation().front());
+    SavedPaneFile file;
+    file.save(original);
+
+    SECTION("open tiles retain their geometry and expansion") {
+        PaneRig loaded;
+        file.load(loaded);
+        RefreshSavedPane(loaded);
+        CHECK(loaded.build().layout == expectedLayout);
+        REQUIRE(loaded.documentation().size() == 1);
+        CHECK(Peek::Frame(*loaded.documentation().front()) == expectedFrame);
+        CHECK(loaded.documentationText().find("Saved markdown.") != std::string::npos);
+    }
+    SECTION("an unsaved close leaves the file alone") {
+        REQUIRE(LayoutActions(original.state.flowgraph).handle(MailCloseFlowgraphDescription{kGraph}) == Result::SUCCESS);
+        original.frame(); original.deliver();
+        REQUIRE_FALSE(original.build().description.has_value());
+        PaneRig loaded;
+        file.load(loaded);
+        RefreshSavedPane(loaded);
+        CHECK(loaded.build().layout == expectedLayout);
+        REQUIRE(loaded.documentation().size() == 1);
+    }
+    SECTION("a saved close returns leftmost and minimized without losing text") {
+        REQUIRE(LayoutActions(original.state.flowgraph).handle(MailCloseFlowgraphDescription{kGraph}) == Result::SUCCESS);
+        original.frame(); original.deliver();
+        REQUIRE_FALSE(original.build().description.has_value());
+        SECTION("normal layout") {}
+        SECTION("another pane is maximized") {
+            auto tiles = original.state.flowgraph.layouts.at(kGraph);
+            REQUIRE(tiles.children.has_value());
+            REQUIRE(tiles.children->back().pane == "config:a");
+            tiles.children->back().maximized = true;
+            REQUIRE(LayoutActions(original.state.flowgraph).handle(MailSetFlowgraphLayout{kGraph, tiles}) == Result::SUCCESS);
+            original.frame(); original.deliver();
+        }
+        const auto expectedFrames = original.configFrames();
+        const auto expectedMaximized = original.build().layout->children.back().maximized;
+        file.save(original);
+        PaneRig loaded;
+        file.load(loaded);
+        RefreshSavedPane(loaded);
+        REQUIRE(loaded.build().description.has_value());
+        CHECK(loaded.graph().description() == original.graph().description());
+        CHECK(loaded.documentation().empty());
+        const auto layout = loaded.build().layout;
+        REQUIRE(layout.has_value());
+        REQUIRE_FALSE(layout->children.empty());
+        CHECK(layout->children.front().pane == "description");
+        CHECK(layout->children.front().minimized);
+        CHECK(layout->weights.front() == FlowgraphPane::DescriptionWidth);
+        CHECK(layout->children.back().maximized == expectedMaximized);
+        CHECK(loaded.configFrames() == expectedFrames);
+    }
+}
+
+TEST_CASE("Environment visibility restores while excluded panes stay out of saved layouts",
+          "[core][sakura][flowgraph][pane][recovery]") {
+    PaneRig original;
+    CreateSavedPane(original);
+    LayoutActions actions(original.state.flowgraph);
+    REQUIRE(actions.handle(MailSetFlowgraphEnvironmentVisible{kGraph, true}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailOpenDocumentation{kGraph, "a"}) == Result::SUCCESS);
+    auto tiles = original.state.flowgraph.layouts.at(kGraph);
+    tiles = AppendColumn(tiles, "terminal:1");
+    REQUIRE(actions.handle(MailSetFlowgraphLayout{kGraph, tiles}) == Result::SUCCESS);
+    SavedPaneFile file;
+    file.save(original);
+    PaneRig loaded;
+    file.load(loaded);
+    RefreshSavedPane(loaded);
+    CHECK(loaded.build().environment.has_value());
+    const auto panes = LayoutPanes(loaded.state.flowgraph.layouts.at(kGraph));
+    CHECK(std::find(panes.begin(), panes.end(), "environment") != panes.end());
+    CHECK(std::find(panes.begin(), panes.end(), "documentation") == panes.end());
+    CHECK(std::find(panes.begin(), panes.end(), "terminal:1") == panes.end());
 }

@@ -19,10 +19,8 @@ struct FlowgraphConfigPythonField {
         this->config = std::move(config);
         std::string nextValue;
         JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, nextValue));
-        if (nextValue != parsedEncoded) {
-            buffer = nextValue;
-            parsedEncoded = nextValue;
-        }
+        parsedEncoded = std::move(nextValue);
+        const std::string& shown = this->config.draft.value_or(parsedEncoded);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
@@ -30,10 +28,10 @@ struct FlowgraphConfigPythonField {
             .background = false,
             .content = &editor,
         });
-        const bool dirty = buffer != parsedEncoded;
+        const bool dirty = shown != parsedEncoded;
         editor.update({
             .id = this->config.id + "Editor",
-            .value = buffer,
+            .value = shown,
             .consoleOutput = this->config.consoleOutput,
             .status = dirty ? "Edited. Press Ctrl+Enter to run." : this->config.status,
             .height = 0.0f,
@@ -45,12 +43,16 @@ struct FlowgraphConfigPythonField {
             .lineWrapping = false,
             .fontSize = 15.0f,
             .onChange = [this](std::string nextValue) {
-                buffer = std::move(nextValue);
+                if (this->config.onDraft) {
+                    this->config.onDraft(std::move(nextValue), parsedEncoded);
+                }
             },
             .onSubmit = [this](std::string nextValue) {
-                buffer = std::move(nextValue);
+                if (this->config.onDraft) {
+                    this->config.onDraft(nextValue, parsedEncoded);
+                }
                 Parser::Map patch;
-                patch[this->config.name] = buffer;
+                patch[this->config.name] = std::move(nextValue);
                 if (this->config.onApply) {
                     this->config.onApply(std::move(patch), false, {});
                 }
@@ -67,7 +69,6 @@ struct FlowgraphConfigPythonField {
  private:
     Config config;
     std::string parsedEncoded;
-    std::string buffer;
     Sakura::NodeField frame;
     Sakura::CodeEditor editor;
 };

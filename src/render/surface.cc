@@ -65,6 +65,7 @@ void VisitDependencies(const std::vector<std::shared_ptr<Program>>& programs,
 Surface::Surface(const Config& config) : config(config) {
     if (config.framebuffer) {
         dependencyTextures.insert(config.framebuffer);
+        requestedSize = config.framebuffer->size();
     }
     track(config.programs, config.kernels);
 }
@@ -321,6 +322,44 @@ const Extent2D<U64>& Surface::size() const {
     return NullSize2D;
 }
 
+const Extent2D<U64>& Surface::size(const Extent2D<U64>& size) {
+    if (!config.framebuffer) {
+        return NullSize2D;
+    }
+
+    requestedSize = size;
+    invalidate();
+    if (created() && config.framebuffer->size() != size) {
+        const bool resized = framebufferResized;
+        if (prepare() != Result::SUCCESS) {
+            JST_ERROR("[SURFACE] Failed to resize surface framebuffer.");
+        }
+        framebufferResized = framebufferResized || resized;
+    }
+
+    return config.framebuffer->size();
+}
+
+Result Surface::prepare() {
+    if (!config.framebuffer) {
+        return Result::SUCCESS;
+    }
+    framebufferResized = config.framebuffer->size(requestedSize) || resizeResult != Result::SUCCESS;
+    if (framebufferResized) {
+        resetFramebuffer();
+        resizeResult = rebuildFramebuffer();
+    }
+    return resizeResult;
+}
+
+bool Surface::created() const {
+    return false;
+}
+
+Result Surface::rebuildFramebuffer() {
+    return Result::SUCCESS;
+}
+
 Result Surface::refreshBorrowedTextures() {
     std::vector<std::tuple<const Texture*, U64, U64>> revisions;
     for (const auto& program : config.programs) {
@@ -342,7 +381,7 @@ Result Surface::refreshBorrowedTextures() {
 }
 
 Result Surface::drawResult() const {
-    return textureBindingsResult;
+    return resizeResult != Result::SUCCESS ? resizeResult : textureBindingsResult;
 }
 
 bool Surface::shouldDraw(bool framebufferChanged) {

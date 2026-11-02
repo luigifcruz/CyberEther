@@ -48,6 +48,8 @@ constexpr auto kCloseGrace = std::chrono::milliseconds(750);
 constexpr auto kSocketCloseGrace = std::chrono::milliseconds(1000);
 constexpr U64 kPingIntervalSeconds = 20;
 constexpr auto kIdleWait = std::chrono::milliseconds(10);
+constexpr const char* kGreeting = "Greet the user now with one short sentence and ask what they want "
+                                  "to work on, then pause and listen.";
 
 std::string EventError(const nlohmann::json& event) {
     auto message = Detail::Wire::Error(event);
@@ -101,7 +103,7 @@ struct Live::Impl {
     std::atomic<bool> orphaned{false};
     std::atomic<std::thread::id> ioId{};
     std::atomic<std::thread::id> readerId{};
-    std::unique_ptr<Platform::WebSocket> socket;
+    std::unique_ptr<Platform::WebSocket::Client> socket;
     std::mutex outboundMutex;
     std::vector<std::string> queuedOutbound;
 
@@ -193,6 +195,25 @@ struct Live::Impl {
 
         sentEvents.fetch_add(1);
         return true;
+    }
+
+    bool appendCommentary(const std::string& content) {
+        return sendEvent({
+            {"type", "session.commentary.append"},
+            {"delegation_id", nullptr},
+            {"content", content},
+        });
+    }
+
+    bool appendUserMessage(const std::string& text, const std::vector<std::string>& images = {}) {
+        return sendEvent({
+            {"type", "response.item.create"},
+            {"item", {
+                {"type", "message"},
+                {"role", "user"},
+                {"content", Detail::Responses::InputContent(text, images)},
+            }},
+        });
     }
 
     std::string describeTransportFailure() const {
@@ -367,6 +388,7 @@ struct Live::Impl {
             JST_INFO("[LIVE] Voice session started with '{}' delegating to '{}'.",
                      config.model, config.backendModel);
             setState(State::Listening);
+            appendCommentary(kGreeting);
             return;
         }
 
@@ -512,7 +534,7 @@ struct Live::Impl {
     }
 
     bool openSocket() {
-        Platform::WebSocket::Config socketConfig;
+        Platform::WebSocket::Client::Config socketConfig;
         socketConfig.url = SocketUrl(host(), path());
 #if defined(JST_OS_BROWSER)
         socketConfig.protocols = {"realtime", "openai-insecure-api-key." + key};
@@ -524,7 +546,7 @@ struct Live::Impl {
         socketConfig.pingIntervalSeconds = kPingIntervalSeconds;
         socketConfig.bufferBytes = 1 << 20;
 
-        socket = std::make_unique<Platform::WebSocket>(std::move(socketConfig));
+        socket = std::make_unique<Platform::WebSocket::Client>(std::move(socketConfig));
         if (!socket->valid()) {
             socket.reset();
             reportError(jst::fmt::format("Invalid voice session URL '{}{}'.", host(), path()));
@@ -677,38 +699,21 @@ void Live::send(const std::vector<I16>& samples) {
     impl->queue(impl->audioAppendEvent(samples));
 }
 
-void Live::reply(const ToolOutputs& outputs, bool disableTools) {
-    nlohmann::json imageMessages = nlohmann::json::array();
+void Live::reply(const ToolOutputs& outputs) {
     for (const auto& [call, result] : outputs) {
         impl->sendEvent({
             {"type", "response.item.create"},
             {"item", Detail::Responses::FunctionOutput(call.id, result.content)},
         });
+    }
 
+    for (const auto& [call, result] : outputs) {
         if (!result.images.empty()) {
-            imageMessages.push_back({
-                {"type", "message"},
-                {"role", "user"},
-                {"content", Detail::Responses::InputContent(call.caption(), result.images)},
-            });
+            impl->appendUserMessage(call.caption(), result.images);
         }
     }
 
-    for (auto& message : imageMessages) {
-        impl->sendEvent({
-            {"type", "response.item.create"},
-            {"item", std::move(message)},
-        });
-    }
-
-    if (disableTools) {
-        impl->sendEvent({
-            {"type", "response.create"},
-            {"response", {{"tool_choice", "none"}}},
-        });
-    } else {
-        impl->sendEvent({{"type", "response.create"}});
-    }
+    impl->sendEvent({{"type", "response.create"}});
 }
 
 }  // namespace Jetstream::Agent

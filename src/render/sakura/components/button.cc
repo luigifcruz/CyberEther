@@ -1,6 +1,7 @@
 #include <jetstream/render/sakura/components/button.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/text.hh>
 
 #include "../context.hh"
@@ -48,6 +49,7 @@ std::string Pick(const std::string& custom, const char* fallback) {
 struct Button::Impl {
     Config config;
     Box frame;
+    Card card;
     Box underline;
     Text label;
     bool hovered = false;
@@ -57,7 +59,20 @@ struct Button::Impl {
         return config.variant == Variant::Text;
     }
 
+    void pushLabel() {
+        label.update({
+            .str = config.str,
+            .font = config.font,
+            .colorKey = textKey(),
+            .scale = config.textScale,
+            .opacity = config.disabled && !textual() ? kDisabledAlpha : 1.0f,
+        });
+    }
+
     std::string textKey() const {
+        if (hovered && !config.disabled && !config.hoveredTextColorKey.empty()) {
+            return config.hoveredTextColorKey;
+        }
         return textual() ? Pick(config.textColorKey, config.disabled ? "text_disabled" : "text_primary")
                          : Pick(config.textColorKey, VariantKeys(config.variant).text);
     }
@@ -73,6 +88,7 @@ struct Button::Impl {
 Button::Button() {
     impl = std::make_unique<Impl>();
     addChild(impl->frame);
+    addChild(impl->card);
     addChild(impl->underline);
     addChild(impl->label);
 }
@@ -84,16 +100,11 @@ void Button::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
-    impl->label.update({
-        .str = impl->config.str,
-        .colorKey = impl->textKey(),
-        .scale = impl->config.textScale,
-        .opacity = impl->config.disabled && !impl->textual() ? kDisabledAlpha : 1.0f,
-    });
     if (impl->config.disabled) {
         impl->hovered = false;
         impl->pressed = false;
     }
+    impl->pushLabel();
 }
 
 Extent2D<F32> Button::measure(const Context& ctx, Extent2D<F32> available) {
@@ -115,6 +126,8 @@ void Button::layout(const Context& ctx) {
                                                                    : Pick(config.colorKey, keys.color);
     const auto textColor = WithAlpha(ctx.color(impl->textKey()), alpha);
 
+    const bool chrome = config.chrome && !impl->textual();
+    impl->frame.setVisible(!chrome);
     impl->frame.update({
         .instances = {{.rect = bounds, .visible = !impl->textual() && !bounds.empty(),
                        .backgroundColor = WithAlpha(ctx.color(background), alpha)}},
@@ -124,6 +137,17 @@ void Button::layout(const Context& ctx) {
         .borderColor = WithAlpha(ctx.color(Pick(config.borderColorKey, keys.border)), alpha),
         .strokeFringe = true,
     });
+    impl->card.setVisible(chrome);
+    impl->card.update({
+        .rects = {bounds},
+        .clip = clip(),
+        .cornerRadius = Px(ctx, config.rounding),
+        .borderWidth = Px(ctx, 1.0f),
+        .lineWidth = Px(ctx, 1.0f),
+        .fillKey = background,
+        .opacity = alpha,
+        .capacity = 1,
+    });
 
     const auto text = measureChild(impl->label, ctx, {std::numeric_limits<F32>::infinity(), bounds.height});
     const Rect textRect = impl->textual()
@@ -132,6 +156,7 @@ void Button::layout(const Context& ctx) {
                    std::floor(std::max(0.0f, bounds.width - 2.0f * impl->padding(ctx).x - text.x) * config.textAlign),
                bounds.y + std::floor((bounds.height - text.y) * 0.5f), text.x, text.y};
     layoutChild(ctx, impl->frame, bounds);
+    layoutChild(ctx, impl->card, bounds);
     layoutChild(ctx, impl->label, textRect, bounds);
 
     const F32 line = Hairline(ctx);
@@ -153,6 +178,7 @@ bool Button::mouseEvent(const MouseEvent& event) {
         case MouseEventType::Move:
             if (inside != impl->hovered) {
                 impl->hovered = inside;
+                impl->pushLabel();
                 invalidate(Dirty::Layout);
             }
             return false;
@@ -161,6 +187,7 @@ bool Button::mouseEvent(const MouseEvent& event) {
             if (impl->hovered || impl->pressed) {
                 impl->hovered = false;
                 impl->pressed = false;
+                impl->pushLabel();
                 invalidate(Dirty::Layout);
             }
             return false;

@@ -17,6 +17,7 @@ struct RemoteActions {
     using Filter = std::tuple<MailStartRemote,
                               MailStopRemote,
                               MailApproveRemoteClient,
+                              MailRemoveRemoteClient,
                               MailSetRemoteBroker,
                               MailSetRemoteCodec,
                               MailSetRemoteFramerate,
@@ -54,10 +55,20 @@ struct RemoteActions {
     }
 
     Result handle(const MailApproveRemoteClient& msg) {
-        if (state.system.instance->remote()->approveClient(msg.code) == Result::SUCCESS) {
+        if (state.system.instance->remote()->approveClient(msg.sessionId) == Result::SUCCESS) {
             callbacks.notify(Sakura::ToastType::Success, 3000, "Client approved.");
         } else {
             callbacks.notify(Sakura::ToastType::Error, 3000, "Failed to approve client.");
+        }
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailRemoveRemoteClient& msg) {
+        if (state.system.instance->remote()->removeClient(msg.sessionId) == Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Success, 3000, "Client removed.");
+        } else {
+            callbacks.notify(Sakura::ToastType::Error, 3000, "Failed to remove client.");
         }
 
         return Result::SUCCESS;

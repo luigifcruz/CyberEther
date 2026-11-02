@@ -18,6 +18,7 @@ struct PillField : public Component {
         std::string query;
         std::string trailing;
         bool editing = false;
+        F32 scale = 1.0f;
         Extent2D<F32> size = {0.0f, 34.0f};
         Callback<void()> onOpen;
         Callback<void(const std::string&)> onChange;

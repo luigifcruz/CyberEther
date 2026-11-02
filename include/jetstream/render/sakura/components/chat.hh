@@ -98,10 +98,12 @@ struct Chat : public Component {
         std::string backgroundColorKey = "background";
         std::string surfaceColorKey = "background";
         ComposerStyle composer{.minLines = 2.0f};
+        Component* placeholder = nullptr;
         Callback<void(const std::string&)> onSubmit;
         Callback<void()> onCancel;
         Callback<void()> onClear;
         Callback<void()> onVoice;
+        std::string voiceHint;
         Callback<void(bool)> onFocusChange;
         U64 focusRequest = 0;
         U64 clearRequest = 0;
