@@ -8,7 +8,6 @@
 
 #include "../../../model/messages.hh"
 #include "../../../model/meta.hh"
-#include "../../../support/terminal.hh"
 #include "../../../views/flowgraph/editor/base.hh"
 
 #include "jetstream/block.hh"
@@ -158,11 +157,6 @@ struct FlowgraphEditorPresenter {
                                       open = context.state.flowgraph.environment.contains(flowgraphId)]() {
             enqueue(MailSetFlowgraphEnvironmentVisible{.flowgraph = flowgraphId, .value = !open});
         };
-        if (TerminalSession::Supported()) {
-            config.onOpenTerminal = [enqueue, flowgraphId]() {
-                enqueue(MailOpenTerminal{.flowgraph = flowgraphId, .tile = true});
-            };
-        }
 
         const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
         if (blocks == context.state.flowgraph.blocks.end()) {

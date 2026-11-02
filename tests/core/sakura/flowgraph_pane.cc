@@ -795,7 +795,7 @@ TEST_CASE("The editor's bottom right holds the toolbar row and a dependency pill
     std::sort(buttons.begin(), buttons.end(), [](const auto& a, const auto& b) {
         return a.x < b.x;
     });
-    REQUIRE(buttons.size() == (TerminalSession::Supported() ? 5u : 4u));
+    REQUIRE(buttons.size() == 4u);
     const F32 top = 38.0f + Sakura::Dock::ContentPadding + FlowgraphEditor::PillMargin;
     const F32 row = 38.0f + 556.0f - Sakura::Dock::ContentPadding - FlowgraphEditor::PillMargin - FlowgraphEditor::PillHeight;
     for (const auto& button : buttons) {

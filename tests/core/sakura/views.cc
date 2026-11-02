@@ -1211,6 +1211,7 @@ TEST_CASE("Titlebar presenter open terminal action opens a terminal in the activ
     }
     REQUIRE(mailbox.count<MailOpenTerminal>() == 1);
     CHECK(mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+    CHECK_FALSE(mailbox.last<MailOpenTerminal>()->tile);
 
     mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
     mailbox.state.interface.focusedFlowgraph = "a";
@@ -1218,6 +1219,7 @@ TEST_CASE("Titlebar presenter open terminal action opens a terminal in the activ
     config.onAction(Action::OpenTerminal);
     REQUIRE(mailbox.count<MailOpenTerminal>() == 2);
     CHECK(mailbox.last<MailOpenTerminal>()->flowgraph == "a");
+    CHECK(mailbox.last<MailOpenTerminal>()->tile);
 
     mailbox.state.terminal.items[1] = {.tab = 1};
     mailbox.state.terminal.tabs[1] = TileMeta{.pane = "terminal:1"};
@@ -1226,7 +1228,33 @@ TEST_CASE("Titlebar presenter open terminal action opens a terminal in the activ
     config.onAction(Action::OpenTerminal);
     REQUIRE(mailbox.count<MailOpenTerminal>() == 3);
     CHECK(mailbox.last<MailOpenTerminal>()->flowgraph.empty());
+    CHECK_FALSE(mailbox.last<MailOpenTerminal>()->tile);
     CHECK(mailbox.mails.size() == 3);
+}
+
+TEST_CASE("Titlebar terminal button sits between the assistant and help buttons and opens a terminal",
+          "[core][sakura][views][terminal]") {
+    using Action = TitlebarView::Action;
+    Mailbox mailbox;
+    CHECK(TitlebarPresenter(mailbox.context()).build().terminalEnabled == TerminalSession::Supported());
+
+    TitleRig rig;
+    CHECK(Indicator(rig.shell.bar(), ICON_LC_SQUARE_TERMINAL) == nullptr);
+
+    rig.config.intelligenceEnabled = true;
+    rig.config.terminalEnabled = true;
+    rig.update();
+    rig.place();
+    auto* assistant = Indicator(rig.shell.bar(), ICON_LC_WAND_SPARKLES);
+    auto* terminal = Indicator(rig.shell.bar(), ICON_LC_SQUARE_TERMINAL);
+    REQUIRE(assistant != nullptr);
+    REQUIRE(terminal != nullptr);
+    const auto help = Peek::Frame(Help(rig.shell.bar()));
+    CHECK(Peek::Frame(*assistant).right() <= Peek::Frame(*terminal).x);
+    CHECK(Peek::Frame(*terminal).right() <= help.x);
+
+    CHECK(Press(rig.host, *terminal));
+    CHECK(rig.actions == std::vector<Action>{Action::OpenTerminal});
 }
 
 TEST_CASE("Terminal tabs in the title row open no tab menu while flowgraph tabs still do",
