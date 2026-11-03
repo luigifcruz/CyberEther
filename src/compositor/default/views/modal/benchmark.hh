@@ -38,7 +38,7 @@ struct BenchmarkView {
         });
         moduleLabel.update({
             .str = "Module",
-            .font = Text::Font::Bold,
+            .font = Text::Font::SansBold,
         });
         moduleCombo.update({
             .id = "benchmark:module",
@@ -78,6 +78,7 @@ struct BenchmarkView {
         });
         emptyText.update({
             .str = "No results yet. Click 'Run Benchmarks' to start.",
+            .font = Text::Font::Sans,
             .tone = Text::Tone::Disabled,
             .align = Text::Align::Center,
         });
@@ -93,7 +94,7 @@ struct BenchmarkView {
             auto& block = *results[i++];
             block.title.update({
                 .str = module,
-                .font = Text::Font::H2,
+                .font = Text::Font::DisplaySemiBold,
                 .scale = Sakura::Typography::Scale::Lead,
             });
             std::vector<std::vector<std::string>> rows;

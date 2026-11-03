@@ -53,7 +53,7 @@ void PillIconButton::update(Config config) {
         .colorKey = impl->config.iconColorKey,
         .scale = kIconGlyph / Typography::FontSize,
     });
-    impl->tooltip.update({.str = impl->config.tooltip, .scale = Typography::ChromeScale});
+    impl->tooltip.update({.str = impl->config.tooltip, .font = Text::Font::Sans, .scale = Typography::ChromeScale});
     markConfigured();
 }
 

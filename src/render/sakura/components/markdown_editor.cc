@@ -208,6 +208,7 @@ void MarkdownEditor::layout(const Context& ctx) {
                 impl->config.onEdit();
             }
         },
+        .font = Text::Font::Body,
     });
     layoutChild(ctx, impl->button, buttonRect);
 

@@ -151,7 +151,7 @@ struct WorkbenchView {
         });
 
         if (this->config.filePending) {
-            filePendingText.update({.str = "Select a file from the browser dialog."});
+            filePendingText.update({.str = "Select a file from the browser dialog.", .font = Sakura::Text::Font::Sans});
             filePendingPanel.update({
                 .id = "file-pending",
                 .content = &filePendingText,

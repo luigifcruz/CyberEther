@@ -727,7 +727,7 @@ void SearchCatalog::update(Config config) {
         s.docsButtonRow.update({.axis = Stack::Axis::Horizontal, .spacing = 10.0f, .items = std::move(buttons)});
         s.docsMarkdown.update({.value = item.documentation});
         s.docsScroll.update({.id = item.id, .content = &s.docsMarkdown, .alwaysScrollbar = false, .border = false});
-        s.docsFooterLabel.update({.str = kActionLabel, .tone = Text::Tone::Secondary});
+        s.docsFooterLabel.update({.str = kActionLabel, .font = Text::Font::Sans, .tone = Text::Tone::Secondary});
     }
 
     mountParts();

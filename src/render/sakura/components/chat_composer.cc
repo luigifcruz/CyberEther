@@ -767,7 +767,7 @@ void ChatComposer::layout(const Context& ctx) {
     });
     layoutChild(ctx, state.send, rects.send);
     state.sendRect = rects.send;
-    state.hint.update({.str = config.voiceHint, .scale = Typography::ChromeScale});
+    state.hint.update({.str = config.voiceHint, .font = Text::Font::Sans, .scale = Typography::ChromeScale});
     if (visible && state.hintReady() && state.sendHovered) {
         RequestPopup(ctx, {
             .content = &state.hint,

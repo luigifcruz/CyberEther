@@ -79,6 +79,7 @@ struct FilePickerView {
             .str = this->config.extensions.empty() || save
                 ? "This folder is empty."
                 : "This folder has no matching files.",
+            .font = Text::Font::Sans,
             .tone = Text::Tone::Disabled,
             .align = Text::Align::Center,
         });
@@ -138,11 +139,13 @@ struct FilePickerView {
         listDivider.update({});
         errorText.update({
             .str = this->config.error,
+            .font = Text::Font::Sans,
             .colorKey = "error_red",
             .wrapped = true,
         });
         overwriteText.update({
             .str = "A file with this name already exists. Click Overwrite to replace it.",
+            .font = Text::Font::Sans,
             .tone = Text::Tone::Warning,
             .wrapped = true,
         });
@@ -324,7 +327,7 @@ struct FilePickerView {
             } else {
                 crumbTexts[i]->update({
                     .str = crumb.label,
-                    .font = Sakura::Text::Font::Bold,
+                    .font = Sakura::Text::Font::SansBold,
                 });
                 crumbItems.push_back({.child = crumbTexts[i].get()});
             }

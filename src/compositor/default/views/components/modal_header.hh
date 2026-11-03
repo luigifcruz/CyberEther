@@ -19,9 +19,14 @@ struct ModalHeader : public Sakura::Stack {
     void update(Config config) {
         using Text = Sakura::Text;
 
-        title.update({.str = config.title});
+        title.update({
+            .str = config.title,
+            .font = Text::Font::Display,
+            .scale = Sakura::Typography::Scale::Heading,
+        });
         description.update({
             .str = config.description,
+            .font = Text::Font::Sans,
             .tone = Text::Tone::Secondary,
             .wrapped = true,
         });

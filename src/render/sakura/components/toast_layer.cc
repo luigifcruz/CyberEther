@@ -226,7 +226,7 @@ void ToastLayer::layout(const Context& ctx) {
                              .scale = kToastTitle / Typography::FontSize,
                              .opacity = opacity});
         if (!item.message.empty()) {
-            item.content.update({.str = item.message, .tone = Text::Tone::Secondary, .wrapped = true,
+            item.content.update({.str = item.message, .font = Text::Font::Sans, .tone = Text::Tone::Secondary, .wrapped = true,
                                  .maxCharacters = 4096, .opacity = opacity});
         }
 

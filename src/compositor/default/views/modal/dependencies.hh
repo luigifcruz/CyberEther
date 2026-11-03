@@ -55,6 +55,7 @@ struct DependencyReviewView {
                                      "CyberEther, separate from your system Python. Blocks that depend on them "
                                      "stay paused until installation completes, then reload automatically.",
                                      packageNoun()),
+            .font = Text::Font::Sans,
             .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
@@ -77,6 +78,7 @@ struct DependencyReviewView {
             const bool attributed = !entry.requestedBy.empty();
             cells.requestedBy.update({
                 .str = attributed ? entry.requestedBy : "Unknown",
+                .font = Text::Font::Sans,
                 .tone = attributed ? Text::Tone::Secondary : Text::Tone::Disabled,
             });
             cellRows.push_back({&cells.requirement, &cells.requestedBy});
@@ -91,6 +93,7 @@ struct DependencyReviewView {
         emptySpacingBottom.update({.lines = 2});
         emptyText.update({
             .str = "No dependencies are pending approval.",
+            .font = Text::Font::Sans,
             .tone = Text::Tone::Disabled,
             .align = Text::Align::Center,
         });

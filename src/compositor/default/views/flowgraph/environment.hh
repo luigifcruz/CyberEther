@@ -31,6 +31,7 @@ struct FlowgraphEnvironment {
         });
         countText.update({
             .str = this->config.entryCount,
+            .font = Sakura::Text::Font::Sans,
             .tone = Sakura::Text::Tone::Secondary,
         });
         table.update({

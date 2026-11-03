@@ -31,9 +31,10 @@ void SettingField::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
-    impl->label.update({.str = impl->config.label});
+    impl->label.update({.str = impl->config.label, .font = Text::Font::Sans});
     impl->description.update({
         .str = impl->config.description,
+        .font = Text::Font::Sans,
         .tone = Text::Tone::Disabled,
         .wrapped = true,
     });

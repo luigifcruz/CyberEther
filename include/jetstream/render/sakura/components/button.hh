@@ -38,7 +38,7 @@ struct Button : public Component {
         F32 textAlign = 0.5f;
         Callback<void()> onClick;
         Callback<void()> onDoubleClick;
-        Text::Font font = Text::Font::Body;
+        Text::Font font = Text::Font::Sans;
 
         bool operator==(const Config&) const = default;
     };

@@ -21,7 +21,7 @@ struct Callout : public Sakura::Div {
         std::string str;
         std::string icon;
         Tone tone = Tone::Info;
-        Sakura::Text::Font font = Sakura::Text::Font::Body;
+        Sakura::Text::Font font = Sakura::Text::Font::Sans;
         F32 rounding = Sakura::Rounding::Control;
     };
 
