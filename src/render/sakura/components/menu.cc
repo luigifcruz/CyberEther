@@ -1,10 +1,13 @@
 #include <jetstream/render/sakura/components/menu.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/popup.hh>
 #include <jetstream/render/sakura/typography.hh>
+#include <jetstream/render/components/text.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -20,6 +23,30 @@
 namespace Jetstream::Sakura {
 
 namespace {
+
+using Unicode = Jetstream::Render::Components::Text::Unicode;
+
+constexpr F32 kIconGap = 8.0f;
+constexpr F32 kMenuInset = 5.0f;
+constexpr F32 kRowPadX = 10.0f;
+constexpr F32 kRowPadY = 6.0f;
+constexpr F32 kMenuRounding = 14.0f;
+constexpr F32 kTrailingGap = 24.0f;
+constexpr F32 kMenuShadowSoftness = 8.0f;
+constexpr F32 kMenuShadowDrop = 3.0f;
+
+std::pair<std::string, std::string> SplitIcon(const std::string& label) {
+    U32 codepoint = 0;
+    const U64 length = label.empty() ? 0 : Unicode::Decode(label, 0, codepoint);
+    if (length == 0 || codepoint < ICON_MIN_LC || codepoint > ICON_MAX_LC) {
+        return {std::string(), label};
+    }
+    U64 rest = length;
+    while (rest < label.size() && label[rest] == ' ') {
+        ++rest;
+    }
+    return {label.substr(0, length), label.substr(rest)};
+}
 
 bool SameEntries(const std::vector<MenuEntry>& a, const std::vector<MenuEntry>& b) {
     if (a.size() != b.size()) {
@@ -66,11 +93,12 @@ struct MenuShared {
 
 struct MenuBody : public Component {
     struct Row {
+        Text icon;
         Text label;
         Text shortcut;
     };
 
-    Box panel;
+    Card panel;
     Box highlights;
     Box separators;
     Polyline marks;
@@ -87,9 +115,7 @@ struct MenuBody : public Component {
     U64 depth = 0;
     std::function<MenuBody*(U64)> level;
 
-    MenuBody() {
-        setClipsChildren(true);
-    }
+    MenuBody() = default;
 
     void clear() {
         openSubmenu.reset();
@@ -114,16 +140,28 @@ struct MenuBody : public Component {
             }
             auto& row = *rows[index];
             const F32 opacity = entry.enabled ? 1.0f : kDisabledAlpha;
-            row.label.update({
-                .str = entry.label,
+            auto [glyph, text] = SplitIcon(entry.label);
+            row.icon.update({
+                .str = glyph,
                 .colorKey = entry.colorKey.empty() ? "text_primary" : entry.colorKey,
+                .opacity = opacity,
+            });
+            row.label.update({
+                .str = text,
+                .font = Text::Font::Sans,
+                .colorKey = entry.colorKey.empty() ? "text_primary" : entry.colorKey,
+                .ellipsis = true,
                 .opacity = opacity,
             });
             row.shortcut.update({
                 .str = entry.shortcut,
+                .align = Text::Align::Right,
                 .colorKey = "text_secondary",
                 .opacity = opacity,
             });
+            if (!glyph.empty()) {
+                children.push_back(&row.icon);
+            }
             children.push_back(&row.label);
             if (!entry.shortcut.empty()) {
                 children.push_back(&row.shortcut);
@@ -151,10 +189,16 @@ struct MenuBody : public Component {
     }
 
     struct Columns {
+        F32 icon = 0.0f;
         F32 label = 0.0f;
         F32 shortcut = 0.0f;
         F32 mark = 0.0f;
+        F32 trailing = 0.0f;
     };
+
+    static bool marked(const MenuEntry& entry) {
+        return !entry.children.empty() || entry.selected;
+    }
 
     Columns columns(const Context& ctx) {
         const F32 infinite = std::numeric_limits<F32>::infinity();
@@ -163,6 +207,9 @@ struct MenuBody : public Component {
             if (entries[index].separator) {
                 continue;
             }
+            if (!rows[index]->icon.config().str.empty()) {
+                result.icon = std::max(result.icon, measureChild(rows[index]->icon, ctx, {infinite, infinite}).x);
+            }
             result.label = std::max(result.label, measureChild(rows[index]->label, ctx, {infinite, infinite}).x);
             if (!entries[index].shortcut.empty()) {
                 result.shortcut = std::max(result.shortcut,
@@ -170,62 +217,76 @@ struct MenuBody : public Component {
             }
         }
         result.mark = std::floor(Px(ctx, Typography::FontSize) * 1.20f);
+        result.trailing = result.mark;
+        for (U64 index = 0; index < entries.size(); ++index) {
+            const auto& entry = entries[index];
+            if (entry.separator || entry.shortcut.empty()) {
+                continue;
+            }
+            const F32 shortcut = measureChild(rows[index]->shortcut, ctx, {infinite, infinite}).x;
+            result.trailing = std::max(result.trailing,
+                                       shortcut + (marked(entry) ? Px(ctx, kIconGap) + result.mark : 0.0f));
+        }
+        if (result.icon > 0.0f) {
+            result.icon += Px(ctx, kIconGap);
+        }
         return result;
     }
 
     F32 contentWidth(const Context& ctx, const Columns& cols) const {
-        const F32 spacing = Px(ctx, kItemSpacing);
-        F32 width = cols.label;
-        if (cols.shortcut > 0.0f) {
-            width += spacing + cols.shortcut;
-        }
-        return width + spacing + cols.mark;
+        return cols.icon + cols.label + Px(ctx, kTrailingGap) + cols.trailing;
     }
 
-    F32 rowHeight(const Context& ctx, U64 index) {
-        if (entries[index].separator) {
-            return Hairline(ctx);
-        }
+    F32 textHeight(const Context& ctx, U64 index) {
         const F32 infinite = std::numeric_limits<F32>::infinity();
         return measureChild(rows[index]->label, ctx, {infinite, infinite}).y;
     }
 
+    static F32 separatorMargin(const Context& ctx) {
+        return std::max(0.0f, Px(ctx, kMenuInset) - Px(ctx, 1.0f));
+    }
+
+    F32 rowHeight(const Context& ctx, U64 index) {
+        if (entries[index].separator) {
+            return Hairline(ctx) + 2.0f * separatorMargin(ctx);
+        }
+        return textHeight(ctx, index) + 2.0f * Px(ctx, kRowPadY);
+    }
+
     F32 contentHeight(const Context& ctx) {
-        const F32 spacing = Px(ctx, kItemSpacing);
         F32 height = 0.0f;
         for (U64 index = 0; index < entries.size(); ++index) {
             height += rowHeight(ctx, index);
-            if (index + 1 < entries.size()) {
-                height += spacing;
-            }
         }
         return height;
     }
 
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override {
-        const F32 padding = Px(ctx, kWindowPadding);
+        const F32 inset = Px(ctx, kMenuInset);
         const auto cols = columns(ctx);
-        return FitExtent({std::ceil(contentWidth(ctx, cols) + 2.0f * padding),
-                          std::ceil(contentHeight(ctx) + 2.0f * padding)}, available);
+        return FitExtent({std::ceil(contentWidth(ctx, cols) + 2.0f * (inset + Px(ctx, kRowPadX))),
+                          std::ceil(contentHeight(ctx) + 2.0f * inset)}, available);
     }
 
     void layout(const Context& ctx) override {
         const Rect bounds = frame();
-        const F32 padding = Px(ctx, kWindowPadding);
-        const F32 spacing = Px(ctx, kItemSpacing);
-        const F32 half = std::floor(spacing * 0.5f);
         const F32 font = Px(ctx, Typography::FontSize);
         const F32 line = Hairline(ctx);
         const auto cols = columns(ctx);
-        const F32 markOffset = cols.label + spacing + (cols.shortcut > 0.0f ? cols.shortcut + spacing : 0.0f);
-        const F32 shortcutOffset = cols.label + spacing;
+        const F32 inset = Px(ctx, kMenuInset);
+        const F32 padX = Px(ctx, kRowPadX);
+        const F32 padY = Px(ctx, kRowPadY);
 
         panel.update({
-            .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color("popup_bg")}},
-            .cornerRadius = Px(ctx, kPopupRounding),
+            .rects = bounds.empty() ? std::vector<Rect>{} : std::vector<Rect>{bounds},
+            .clip = clip(),
+            .cornerRadius = Px(ctx, kMenuRounding),
+            .softness = Px(ctx, kMenuShadowSoftness),
+            .drop = Px(ctx, kMenuShadowDrop),
             .borderWidth = Px(ctx, 1.0f),
-            .borderColor = ctx.color("border"),
-            .strokeFringe = true,
+            .lineWidth = Px(ctx, 1.0f),
+            .fillKey = kPillFill,
+            .capacity = 1,
         });
         layoutChild(ctx, panel, bounds);
 
@@ -233,22 +294,24 @@ struct MenuBody : public Component {
         std::vector<Box::Instance> separatorInstances;
         std::vector<Polyline::Instance> markInstances;
         rowRects.assign(entries.size(), Rect{});
-        F32 y = bounds.y + padding;
-        const F32 x = bounds.x + padding;
+        F32 y = bounds.y + inset;
+        const F32 x = bounds.x + inset + padX;
+        const F32 rowWidth = std::max(0.0f, bounds.width - 2.0f * inset);
+        const F32 right = bounds.right() - inset - padX;
         childIndex = openSubmenu.has_value() && submenu(*openSubmenu) ? openSubmenu : std::nullopt;
         for (U64 index = 0; index < entries.size(); ++index) {
             const auto& entry = entries[index];
             if (entry.separator) {
                 separatorInstances.push_back({
-                    .rect = {bounds.x + line, std::floor(y), std::max(0.0f, bounds.width - 2.0f * line), line},
+                    .rect = {x, std::round(y + separatorMargin(ctx)), std::max(0.0f, rowWidth - 2.0f * padX), line},
                     .backgroundColor = ctx.color("separator"),
                 });
-                y += line + spacing;
+                y += rowHeight(ctx, index);
                 continue;
             }
-            const F32 height = rowHeight(ctx, index);
-            const Rect highlight = {x - half, y - half, std::max(0.0f, bounds.width - 2.0f * padding) + spacing,
-                                    height + spacing};
+            const Rect highlight = {bounds.x + inset, y, rowWidth, rowHeight(ctx, index)};
+            const F32 height = textHeight(ctx, index);
+            const F32 top = y + padY;
             rowRects[index] = highlight;
             const bool open = childIndex == index;
             const bool isHovered = hovered == index && entry.enabled;
@@ -257,31 +320,39 @@ struct MenuBody : public Component {
                 highlightInstances.push_back({.rect = highlight, .backgroundColor = ctx.color(key)});
             }
             auto& row = *rows[index];
-            layoutChild(ctx, row.label, {x, y, cols.label, height});
+            if (!row.icon.config().str.empty()) {
+                const F32 infinite = std::numeric_limits<F32>::infinity();
+                const F32 glyph = measureChild(row.icon, ctx, {infinite, infinite}).x;
+                layoutChild(ctx, row.icon, {x, top, glyph, height}, bounds);
+            }
+            const F32 labelX = x + cols.icon;
+            const F32 labelWidth = std::clamp(right - cols.trailing - Px(ctx, kTrailingGap) - labelX, 0.0f, cols.label);
+            layoutChild(ctx, row.label, {labelX, top, labelWidth, height}, bounds);
             if (!entry.shortcut.empty()) {
-                layoutChild(ctx, row.shortcut, {x + shortcutOffset, y, cols.shortcut, height});
+                const F32 shortcutRight = right - (marked(entry) ? cols.mark + Px(ctx, kIconGap) : 0.0f);
+                layoutChild(ctx, row.shortcut, {shortcutRight - cols.shortcut, top, cols.shortcut, height}, bounds);
             }
             auto color = ctx.color(entry.colorKey.empty() ? "text_primary" : entry.colorKey);
             color = WithAlpha(color, entry.enabled ? 1.0f : kDisabledAlpha);
             if (!entry.children.empty()) {
                 markInstances.push_back({
-                    .points = RightArrow({x + markOffset + font * 0.30f, y}, font),
+                    .points = RightArrow({right - font * 0.80f, top}, font),
                     .color = color,
                     .closed = true,
                     .filled = true,
                 });
             } else if (entry.selected) {
                 F32 thickness = 1.0f;
-                auto points = CheckMark({x + markOffset + font * 0.40f, y + font * 0.134f * 0.5f}, font * 0.866f,
+                auto points = CheckMark({right - font * 0.866f, top + font * 0.134f * 0.5f}, font * 0.866f,
                                         thickness);
                 markInstances.push_back({.points = std::move(points), .color = color, .thickness = thickness});
             }
-            y += height + spacing;
+            y += highlight.height;
         }
         highlights.update({
             .instances = std::move(highlightInstances),
             .clip = bounds,
-            .cornerRadius = Px(ctx, kFrameRounding),
+            .cornerRadius = std::max(0.0f, Px(ctx, kMenuRounding) - inset),
         });
         separators.update({.instances = std::move(separatorInstances), .clip = bounds});
         marks.update({.instances = std::move(markInstances), .clip = bounds, .fringe = Fringe(ctx), .capacity = 256});
