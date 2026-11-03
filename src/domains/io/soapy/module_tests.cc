@@ -219,3 +219,23 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     checkApplied();
     REQUIRE(TestSoapy::State().concurrentChanges == 0);
 }
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy forwards sample rates outside the reported ranges to the driver",
+                 "[modules][soapy][reconfigure][rate]") {
+    const auto module = BuildSoapyModule();
+    struct Cleanup {
+        std::shared_ptr<Module> module;
+        ~Cleanup() { static_cast<void>(module->destroy()); }
+    } cleanup{module};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.sampleRate = 20.0e6f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    REQUIRE(TestSoapy::State().settings().sampleRate == 20.0e6);
+
+    REQUIRE(module->reconfigure({{"sampleRate", 61.44e6f}}) == Result::SUCCESS);
+    REQUIRE(TestSoapy::State().settings().sampleRate == static_cast<F64>(61.44e6f));
+}

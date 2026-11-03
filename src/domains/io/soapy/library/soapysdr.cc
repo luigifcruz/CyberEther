@@ -317,7 +317,10 @@ void SoapyReceiver::queryGainRange() {
 }
 
 Result SoapyReceiver::validateSettings(const F32 sampleRate, const F32 frequency) const {
-    if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
+    // The reported sample rate ranges are only checked when the rate is applied. Some
+    // drivers (e.g. UHD) report the rates reachable with the current master clock but
+    // reconfigure the clock on demand, so rates outside the ranges are still valid.
+    if (!std::isfinite(sampleRate) || sampleRate <= 0.0f) {
         JST_ERROR("[MODULE_SOAPY] Sample rate ({:.3f} MHz) not supported.", sampleRate / 1e6);
         return Result::ERROR;
     }
@@ -406,9 +409,14 @@ Result SoapyReceiver::setSampleRate(const F32 sampleRate) {
         return Result::ERROR;
     }
 
-    if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
+    if (!std::isfinite(sampleRate) || sampleRate <= 0.0f) {
         JST_WARN("[MODULE_SOAPY] Sample rate ({:.3f} MHz) not supported.", sampleRate / 1e6);
         return Result::WARNING;
+    }
+
+    if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
+        JST_WARN("[MODULE_SOAPY] Sample rate ({:.3f} MHz) is outside the ranges reported "
+                 "by the device. Requesting it anyway.", sampleRate / 1e6);
     }
 
     if (library->api().setSampleRate(device, SoapyAbi::RX, 0, sampleRate) != 0) {
