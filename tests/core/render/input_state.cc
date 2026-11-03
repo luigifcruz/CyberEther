@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <limits>
+#include <thread>
 #include <vector>
 
 using namespace Jetstream;
@@ -742,4 +744,82 @@ TEST_CASE("Wheel events and pointer moves share a frame in order while buttons s
     const auto later = Only<MouseEvent>(feed.state.events());
     REQUIRE(later.size() == 1);
     CHECK(later[0].type == MouseEventType::Scroll);
+}
+
+TEST_CASE("Input queue deadline waits preserve notifications and timeouts",
+          "[core][render][input][deadline]") {
+    using Clock = std::chrono::steady_clock;
+    Render::InputQueue queue;
+
+    SECTION("timeout does not return early") {
+        const auto start = Clock::now();
+        queue.wait(0.005, false);
+        REQUIRE(Clock::now() - start >= std::chrono::milliseconds(5));
+    }
+
+    SECTION("wake before wait is retained and consumed") {
+        queue.wake();
+        const auto start = Clock::now();
+        queue.wait(5.0, false);
+        REQUIRE(Clock::now() - start < std::chrono::seconds(2));
+        const auto next = Clock::now();
+        queue.wait(0.005, false);
+        REQUIRE(Clock::now() - next >= std::chrono::milliseconds(5));
+    }
+
+    SECTION("input and explicit wake interrupt a pending wait") {
+        for (int iteration = 0; iteration < 30; ++iteration) {
+            std::promise<void> starting;
+            auto started = starting.get_future();
+            auto waiter = std::async(std::launch::async, [&] {
+                starting.set_value();
+                queue.wait(5.0, false);
+            });
+            started.wait();
+            if (iteration % 2) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            if (iteration % 3) {
+                queue.wake();
+            } else {
+                queue.pushText("wake");
+            }
+            const bool woke = waiter.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+            waiter.get();
+            REQUIRE(woke);
+            queue.drain();
+        }
+    }
+
+    SECTION("surface wakes interrupt only waits that accept them") {
+        queue.wakeSurface();
+        const auto ignored = Clock::now();
+        REQUIRE_FALSE(queue.wait(0.005, false));
+        REQUIRE(Clock::now() - ignored >= std::chrono::milliseconds(5));
+
+        queue.wakeSurface();
+        const auto accepted = Clock::now();
+        REQUIRE(queue.wait(5.0, true));
+        REQUIRE(Clock::now() - accepted < std::chrono::seconds(2));
+
+        const auto consumed = Clock::now();
+        REQUIRE_FALSE(queue.wait(0.005, true));
+        REQUIRE(Clock::now() - consumed >= std::chrono::milliseconds(5));
+    }
+
+    SECTION("surface wakes interrupt a pending wait") {
+        std::promise<void> starting;
+        auto started = starting.get_future();
+        auto waiter = std::async(std::launch::async, [&] {
+            starting.set_value();
+            return queue.wait(5.0, true);
+        });
+        started.wait();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        queue.wakeSurface();
+        const bool woke = waiter.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+        const bool surface = waiter.get();
+        REQUIRE(woke);
+        REQUIRE(surface);
+    }
 }

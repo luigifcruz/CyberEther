@@ -120,8 +120,8 @@ void Generic::refreshSnapshot() {
     snapshot = next;
 }
 
-void Generic::waitIdle(F64 seconds) {
-    inputQueue.wait(seconds);
+bool Generic::waitIdle(F64 seconds, bool surfaces) {
+    return inputQueue.wait(seconds, surfaces);
 }
 
 void Generic::requestRedraw() {

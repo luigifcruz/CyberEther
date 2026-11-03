@@ -6,6 +6,7 @@
 #include "jetstream/render/base/window.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/viewport/adapters/generic.hh"
+#include "transfer_impl.hh"
 
 #include <algorithm>
 #include <utility>
@@ -87,6 +88,8 @@ struct Window::PresentState {
     ColorRGBA<F32> clearColor = {0.0f, 0.0f, 0.0f, 0.0f};
     bool valid = false;
     bool idlePending = false;
+    bool surfaceWake = true;
+    bool surfaceFrame = false;
 
     bool changed(const WindowMetrics& next, const ColorRGBA<F32>& color) const {
         if (!valid || !(next == metrics) || !(color == clearColor) || entries.size() != list.quads.size()) {
@@ -115,7 +118,133 @@ struct Window::PresentState {
     }
 };
 
-Window::Window(const Config& config) : config(config), presentState(std::make_unique<PresentState>()) {}
+struct Window::TransferState {
+    std::shared_ptr<TransferRegistry> registry = std::make_shared<TransferRegistry>();
+    std::shared_ptr<const TransferResourceSet> resources;
+    std::vector<std::shared_ptr<WindowAttachment>> attachments;
+    std::vector<const Buffer*> indirect;
+    std::vector<const Buffer*> nextIndirect;
+    bool stale = true;
+
+    void invalidate() {
+        stale = true;
+    }
+
+    bool changed(const std::vector<std::shared_ptr<WindowAttachment>>& current) {
+        nextIndirect.clear();
+        for (const auto& attachment : current) {
+            if (attachment->type() != WindowAttachment::Type::Surface) {
+                continue;
+            }
+            const auto surface = std::static_pointer_cast<Surface>(attachment);
+            surface->prepareFrame();
+            for (const auto& draw : surface->dependencyDraws) {
+                for (const auto& buffer : draw->transferBuffers) {
+                    nextIndirect.push_back(buffer.get());
+                }
+            }
+        }
+        return stale || !resources || attachments != current || indirect != nextIndirect;
+    }
+
+    void rebuild(const std::vector<std::shared_ptr<WindowAttachment>>& current) {
+        auto next = std::make_shared<TransferResourceSet>();
+        auto nextAttachments = current;
+        auto savedIndirect = nextIndirect;
+
+        const auto add = [&](const auto& attachment, const std::shared_ptr<Surface>& surface = {},
+                             const std::shared_ptr<Program>& program = {}) {
+            if (!attachment) {
+                return;
+            }
+            auto [it, inserted] = next->bindings.try_emplace(attachment.get());
+            auto& binding = it->second;
+            if (inserted) {
+                binding.attachment = attachment;
+                if (resources) {
+                    const auto previous = resources->bindings.find(attachment.get());
+                    if (previous != resources->bindings.end()) {
+                        binding.resource = previous->second.resource;
+                    }
+                }
+                if (!binding.resource) {
+                    binding.resource = std::make_shared<TransferResource>();
+                    binding.resource->attachment = attachment;
+                    binding.resource->registry = registry;
+                    watch(binding);
+                }
+            }
+            if (surface) {
+                binding.consumers.push_back({surface, program, program != nullptr});
+            }
+        };
+
+        for (const auto& attachment : current) {
+            if (attachment->type() == WindowAttachment::Type::Buffer ||
+                attachment->type() == WindowAttachment::Type::Texture) {
+                add(attachment);
+                continue;
+            }
+            if (attachment->type() != WindowAttachment::Type::Surface) {
+                continue;
+            }
+            const auto surface = std::static_pointer_cast<Surface>(attachment);
+            for (const auto& buffer : surface->dependencyBuffers) {
+                add(buffer, surface);
+            }
+            for (const auto& draw : surface->dependencyDraws) {
+                for (const auto& buffer : draw->transferBuffers) {
+                    add(buffer, surface);
+                }
+            }
+            for (const auto& texture : surface->dependencyTextures) {
+                add(texture, surface);
+            }
+            for (const auto& texture : surface->borrowedTextures) {
+                add(texture);
+            }
+            for (const auto& program : surface->config.programs) {
+                if (program && program->getConfig().borrowedTextures) {
+                    for (const auto& texture : program->getConfig().textures) {
+                        add(texture, surface, program);
+                    }
+                }
+            }
+        }
+
+        if (resources) {
+            for (const auto& [attachment, binding] : resources->bindings) {
+                if (!next->bindings.contains(attachment)) {
+                    binding.resource->active.store(false, std::memory_order_release);
+                }
+            }
+        }
+        resources = std::move(next);
+        attachments.swap(nextAttachments);
+        indirect.swap(savedIndirect);
+        stale = false;
+    }
+
+    static void watch(const TransferResourceSet::Binding& binding) {
+        auto listener = [resource = std::weak_ptr(binding.resource)] {
+            if (const auto watched = resource.lock()) {
+                if (const auto registry = watched->registry.lock()) {
+                    registry->notify(watched);
+                }
+            }
+        };
+        if (binding.attachment->type() == WindowAttachment::Type::Buffer) {
+            std::static_pointer_cast<Buffer>(binding.attachment)->pendingUploads.watch(std::move(listener));
+        } else {
+            std::static_pointer_cast<Texture>(binding.attachment)->pendingUploads.watch(std::move(listener));
+        }
+    }
+};
+
+Window::Window(const Config& config)
+    : config(config),
+      presentState(std::make_unique<PresentState>()),
+      transferState(std::make_unique<TransferState>()) {}
 
 Window::~Window() = default;
 
@@ -124,6 +253,7 @@ Result Window::create() {
 
     // Set variables.
 
+    transferState = std::make_unique<TransferState>();
     _metrics = {};
     _input = InputState{};
     _requestedCursor = SurfaceCursor::Default;
@@ -278,6 +408,7 @@ Result Window::destroyInternal() {
         created = false;
         std::lock_guard<std::mutex> lock(attachmentStateMutex);
         expiredComponents.swap(retiredComponents);
+        transferState = std::make_unique<TransferState>();
     }
     frameLock.unlock();
     return res;
@@ -293,10 +424,10 @@ Result Window::begin() {
         graphicalLoopThreadId = std::this_thread::get_id();
     }
 
-    if (std::exchange(presentState->idlePending, false)) {
-        if (auto* viewport = underlyingViewport()) {
-            viewport->waitIdle(kIdleInterval);
-        }
+    const bool idle = std::exchange(presentState->idlePending, false);
+    if (auto* viewport = underlyingViewport()) {
+        presentState->surfaceFrame = viewport->waitIdle(idle ? kIdleInterval : 0.0,
+                                                        idle && presentState->surfaceWake);
     }
 
     // Process attachment queues.
@@ -378,10 +509,14 @@ Result Window::finishPresent(const PresentPass& pass) {
     }
     if (pass.presenting) {
         presentState->presented(_metrics, frameBackground);
+        presentState->surfaceWake = true;
         ++frameStats.presentedFrames;
     } else if (!pass.required) {
         ++frameStats.skippedPresents;
         presentState->idlePending = !_input.hasPending();
+        if (presentState->surfaceFrame) {
+            presentState->surfaceWake = false;
+        }
     }
     return Result::SUCCESS;
 }
@@ -806,6 +941,7 @@ Result Window::extend(const std::shared_ptr<Surface>& surface,
     surface->dependencyDraws.swap(nextDraws);
     surface->dependencyTextures.swap(nextTextures);
     surface->borrowedTextures.swap(nextBorrowed);
+    transferState->invalidate();
     surface->invalidate();
 
     return Result::SUCCESS;
@@ -1250,37 +1386,79 @@ Result Window::collectTransfers(Transfer::Batch& batch) const {
         snapshot = attachments;
     }
 
-    for (const auto& attachment : snapshot) {
-        if (attachment->type() == WindowAttachment::Type::Surface) {
-            std::static_pointer_cast<Surface>(attachment)->prepareFrame();
-        }
+    auto& state = *transferState;
+    if (state.changed(snapshot)) {
+        state.rebuild(snapshot);
     }
 
-    for (const auto& attachment : snapshot) {
-        switch (attachment->type()) {
-            case WindowAttachment::Type::Buffer:
-                batch.collect(std::static_pointer_cast<Buffer>(attachment));
-                break;
-            case WindowAttachment::Type::Texture:
-                batch.collect(std::static_pointer_cast<Texture>(attachment));
-                break;
-            case WindowAttachment::Type::Surface:
-                std::static_pointer_cast<Surface>(attachment)->collectTransfers(batch);
-                break;
-            default:
-                break;
+    const auto& resources = state.resources;
+    auto pending = state.registry->take();
+    const bool rescan = state.registry->rescan.exchange(false, std::memory_order_acq_rel);
+
+    const auto collect = [&](const TransferResourceSet::Binding& binding) {
+        if (binding.attachment->type() == WindowAttachment::Type::Buffer) {
+            const auto buffer = std::static_pointer_cast<Buffer>(binding.attachment);
+            batch.collect(buffer);
+            if (!buffer->pendingUploads.empty()) {
+                state.registry->notify(binding.resource);
+            }
+        } else {
+            const auto texture = std::static_pointer_cast<Texture>(binding.attachment);
+            batch.collect(texture);
+            if (!texture->pendingUploads.empty()) {
+                state.registry->notify(binding.resource);
+            }
         }
+    };
+
+    try {
+        if (rescan || pending.size() * 2 > resources->bindings.size()) {
+            for (const auto& [_, binding] : resources->bindings) {
+                collect(binding);
+            }
+        } else {
+            for (const auto& resource : pending) {
+                const auto attachment = resource->attachment.lock();
+                if (!attachment) {
+                    continue;
+                }
+                const auto found = resources->bindings.find(attachment.get());
+                if (found != resources->bindings.end() && found->second.resource == resource) {
+                    collect(found->second);
+                }
+            }
+        }
+        if (!resources->bindings.empty()) {
+            batch.state->remember(resources);
+        }
+    } catch (...) {
+        state.registry->rescan.store(true, std::memory_order_release);
+        throw;
     }
 
-    for (const auto& attachment : snapshot) {
-        if (attachment->type() != WindowAttachment::Type::Surface) {
-            continue;
+    const auto invalidate = [&](const auto& attachment) {
+        const auto found = resources->bindings.find(attachment.get());
+        if (found == resources->bindings.end()) {
+            return;
         }
+        for (const auto& consumer : found->second.consumers) {
+            if (consumer.borrowed) {
+                const auto program = consumer.program.lock();
+                if (!program || !program->enabled()) {
+                    continue;
+                }
+            }
+            if (const auto surface = consumer.surface.lock(); surface && surface->retained()) {
+                surface->invalidate();
+            }
+        }
+    };
 
-        const auto& surface = std::static_pointer_cast<Surface>(attachment);
-        if (surface->retained() && surface->affectedBy(batch)) {
-            surface->invalidate();
-        }
+    for (const auto& transfer : batch.buffers()) {
+        invalidate(transfer.destination);
+    }
+    for (const auto& transfer : batch.textures()) {
+        invalidate(transfer.destination);
     }
 
     return Result::SUCCESS;

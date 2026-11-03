@@ -37,6 +37,22 @@ U64 ButtonIndex(MouseButton button) {
     return static_cast<U64>(button);
 }
 
+Platform::DeadlineWaiter::Clock::time_point WaitDeadline(F64 seconds) {
+    using Clock = Platform::DeadlineWaiter::Clock;
+
+    const auto now = Clock::now();
+    if (!(seconds > 0.0)) {
+        return now;
+    }
+
+    const auto available = std::chrono::duration<F64>(Clock::time_point::max() - now).count();
+    if (seconds >= available) {
+        return Clock::time_point::max();
+    }
+
+    return now + std::chrono::ceil<Clock::duration>(std::chrono::duration<F64>(seconds));
+}
+
 }  // namespace
 
 void InputQueue::push(Event event) {
@@ -44,7 +60,7 @@ void InputQueue::push(Event event) {
         std::lock_guard lock(mutex);
         events.push_back(std::move(event));
     }
-    signal.notify_all();
+    signal.notify();
 }
 
 void InputQueue::pushText(const std::string& utf8) {
@@ -55,7 +71,7 @@ void InputQueue::pushText(const std::string& utf8) {
             events.push_back(Text{codepoint});
         }
     }
-    signal.notify_all();
+    signal.notify();
 }
 
 std::vector<InputQueue::Event> InputQueue::drain() {
@@ -63,12 +79,25 @@ std::vector<InputQueue::Event> InputQueue::drain() {
     return std::exchange(events, {});
 }
 
-void InputQueue::wait(F64 seconds) {
+bool InputQueue::wait(F64 seconds, bool surfaces) {
+    const auto deadline = WaitDeadline(seconds);
+    const auto ready = [&] {
+        return woken || !events.empty() || (surfaces && surfaceWoken);
+    };
+
     std::unique_lock lock(mutex);
-    signal.wait_for(lock, std::chrono::duration<F64>(seconds), [&] {
-        return woken || !events.empty();
-    });
+    while (!ready() && Platform::DeadlineWaiter::Clock::now() < deadline) {
+        const auto generation = signal.generation();
+        lock.unlock();
+        signal.waitUntil(deadline, generation);
+        lock.lock();
+    }
+
+    const bool surfaceWake = surfaces && surfaceWoken;
     woken = false;
+    surfaceWoken = false;
+
+    return surfaceWake;
 }
 
 void InputQueue::wake() {
@@ -76,7 +105,17 @@ void InputQueue::wake() {
         std::lock_guard lock(mutex);
         woken = true;
     }
-    signal.notify_all();
+    signal.notify();
+}
+
+void InputQueue::wakeSurface() {
+    {
+        std::lock_guard lock(mutex);
+        if (std::exchange(surfaceWoken, true)) {
+            return;
+        }
+    }
+    signal.notify();
 }
 
 std::vector<char32_t> InputQueue::DecodeUtf8(const std::string& utf8) {

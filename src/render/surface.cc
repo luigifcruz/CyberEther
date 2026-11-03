@@ -251,56 +251,6 @@ void Surface::prepareFrame() {
     }
 }
 
-void Surface::collectTransfers(Transfer::Batch& batch) const {
-    for (const auto& buffer : dependencyBuffers) {
-        batch.collect(buffer);
-    }
-    for (const auto& draw : dependencyDraws) {
-        for (const auto& buffer : draw->transferBuffers) {
-            batch.collect(buffer);
-        }
-    }
-    for (const auto& texture : dependencyTextures) {
-        batch.collect(texture);
-    }
-    for (const auto& texture : borrowedTextures) {
-        batch.collect(texture);
-    }
-}
-
-bool Surface::affectedBy(const Transfer::Batch& batch) const {
-    for (const auto& buffer : dependencyBuffers) {
-        if (batch.contains(buffer)) {
-            return true;
-        }
-    }
-
-    for (const auto& draw : dependencyDraws) {
-        for (const auto& buffer : draw->transferBuffers) {
-            if (batch.contains(buffer)) {
-                return true;
-            }
-        }
-    }
-
-    for (const auto& texture : dependencyTextures) {
-        if (batch.contains(texture)) {
-            return true;
-        }
-    }
-    for (const auto& program : config.programs) {
-        if (program && program->enabled() && program->getConfig().borrowedTextures) {
-            for (const auto& texture : program->getConfig().textures) {
-                if (batch.contains(texture)) {
-                    return true;
-                }
-            }
-        }
-    }
-
-    return false;
-}
-
 void Surface::commitDraw() {
     if (textureBindingsResult != Result::SUCCESS) {
         return;

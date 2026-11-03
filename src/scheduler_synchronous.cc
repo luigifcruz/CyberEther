@@ -98,6 +98,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     void notifyCompute();
     void notifyPresent();
     void wakePresent();
+    void wakeSurface();
     Result lockState(const std::function<Result()>& func);
 
     std::atomic_flag computeHalt = ATOMIC_FLAG_INIT;
@@ -134,6 +135,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
         bool throttled = false;
         bool retrying = false;
         bool empty = true;
+        bool surface = false;
         U64 sequence = 0;
         U64 frame = 0;
         Stamp stamp;
@@ -769,6 +771,7 @@ Result SynchronousScheduler::rebuildOrder() {
         }
 
         node.throttled = (mod->taint() & Module::Taint::THROTTLED) != Module::Taint::CLEAN;
+        node.surface = (mod->taint() & Module::Taint::SURFACE) != Module::Taint::CLEAN;
         node.settled = settledModules.contains(node.name);
 
         if (node.throttled && deadlines.contains(node.name)) {
@@ -1181,6 +1184,7 @@ bool SynchronousScheduler::advance(const RuntimeSegment& segment,
                                    const std::unordered_set<std::string>& stalledModules,
                                    const Clock::time_point& now) {
     bool progressed = false;
+    bool freshSurface = false;
     const auto submitted = Clock::now();
 
     for (const auto index : segment.nodes) {
@@ -1241,10 +1245,15 @@ bool SynchronousScheduler::advance(const RuntimeSegment& segment,
         node.sequence += 1;
         node.retrying = false;
         node.empty = skippedModules.contains(node.name);
+        freshSurface |= node.surface && !node.empty;
 
         if (!node.empty && node.fixed) {
             settle(node);
         }
+    }
+
+    if (freshSurface) {
+        wakeSurface();
     }
 
     return progressed;
@@ -1412,6 +1421,12 @@ void SynchronousScheduler::notifyPresent() {
 void SynchronousScheduler::wakePresent() {
     if (const auto target = viewport.lock()) {
         target->input().wake();
+    }
+}
+
+void SynchronousScheduler::wakeSurface() {
+    if (const auto target = viewport.lock()) {
+        target->input().wakeSurface();
     }
 }
 

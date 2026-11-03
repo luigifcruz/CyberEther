@@ -117,9 +117,10 @@ class MetalViewport final : public Viewport::Adapter<DeviceType::Metal> {
     Extent2D<F32> framebufferSize() const override { return kDisplay; }
     bool macOSBehaviors() const override { return true; }
 
-    void waitIdle(F64 seconds) override {
-        ++idleWaits;
+    bool waitIdle(F64 seconds, bool) override {
+        idleWaits += seconds > 0.0 ? 1 : 0;
         platform->clock += seconds;
+        return false;
     }
 
     MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable) override {

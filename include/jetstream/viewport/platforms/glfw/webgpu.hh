@@ -31,7 +31,7 @@ class GLFW<DeviceType::WebGPU> : public Adapter<DeviceType::WebGPU> {
 
     Extent2D<F32> displaySize() const;
     Extent2D<F32> framebufferSize() const;
-    void waitIdle(F64 seconds);
+    bool waitIdle(F64 seconds, bool surfaces);
     bool macOSBehaviors() const;
 
     Result createSwapchain();

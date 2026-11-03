@@ -145,7 +145,9 @@ Extent2D<F32> Implementation::framebufferSize() const {
     return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
-void Implementation::waitIdle(F64) {}
+bool Implementation::waitIdle(F64, bool) {
+    return false;
+}
 
 bool Implementation::macOSBehaviors() const {
 #if defined(EMSCRIPTEN_USE_PORT_CONTRIB_GLFW3) && EMSCRIPTEN_USE_PORT_CONTRIB_GLFW3 >= 34020240817

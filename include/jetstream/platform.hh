@@ -365,6 +365,29 @@ class JETSTREAM_API WebSocket {
 };
 
 //
+// Deadline Waiter
+//
+
+class JETSTREAM_API DeadlineWaiter {
+ public:
+    using Clock = std::chrono::steady_clock;
+
+    DeadlineWaiter();
+    ~DeadlineWaiter();
+
+    DeadlineWaiter(const DeadlineWaiter&) = delete;
+    DeadlineWaiter& operator=(const DeadlineWaiter&) = delete;
+
+    U64 generation() const;
+    void notify();
+    bool waitUntil(Clock::time_point deadline, U64 observedGeneration);
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
+//
 // Worker Thread
 //
 

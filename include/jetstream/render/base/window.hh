@@ -219,6 +219,7 @@ class JETSTREAM_API Window {
 
  private:
     struct PresentState;
+    struct TransferState;
 
     ColorRGBA<F32> frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
     Stats frameStats;
@@ -228,6 +229,7 @@ class JETSTREAM_API Window {
     SurfaceCursor _requestedCursor = SurfaceCursor::Default;
     std::optional<bool> _darkAppearance;
     std::unique_ptr<PresentState> presentState;
+    std::unique_ptr<TransferState> transferState;
     bool shouldDeferAttachmentQueueProcessing();
     bool attachmentQueueEmpty() const;
     Result destroyInternal();
