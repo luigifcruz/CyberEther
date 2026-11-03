@@ -17,6 +17,7 @@ struct PillIconButton : public Component {
         bool tinted = false;
         std::string tooltip;
         Extent2D<F32> size = {34.0f, 34.0f};
+        bool floating = false;
         Callback<void()> onClick;
 
         bool operator==(const Config&) const = default;

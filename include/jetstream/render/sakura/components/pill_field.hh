@@ -20,6 +20,7 @@ struct PillField : public Component {
         bool editing = false;
         F32 scale = 1.0f;
         Extent2D<F32> size = {0.0f, 34.0f};
+        bool floating = false;
         Callback<void()> onOpen;
         Callback<void(const std::string&)> onChange;
         Callback<void(const std::string&)> onSubmit;

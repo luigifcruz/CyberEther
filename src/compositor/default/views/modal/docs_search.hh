@@ -102,6 +102,7 @@ struct DocsSearchView {
             .editing = true,
             .scale = Sakura::Typography::Scale::Large,
             .size = {0.0f, FieldHeight},
+            .floating = true,
             .onChange = [this](const std::string& value) {
                 if (config.onQueryChange) {
                     config.onQueryChange(value);
@@ -115,6 +116,7 @@ struct DocsSearchView {
             .icon = ICON_LC_X,
             .iconColorKey = "text_secondary",
             .size = {FieldHeight, FieldHeight},
+            .floating = true,
             .onClick = [this]() {
                 close();
             },

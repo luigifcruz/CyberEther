@@ -83,6 +83,7 @@ struct FlowgraphBlockPicker {
             .editing = opened,
             .scale = Sakura::Typography::Scale::Large,
             .size = {0.0f, FieldHeight},
+            .floating = true,
             .onChange = [this](const std::string& value) {
                 query = value;
                 selected = 0;

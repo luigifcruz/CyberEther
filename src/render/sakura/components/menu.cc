@@ -32,8 +32,6 @@ constexpr F32 kRowPadX = 10.0f;
 constexpr F32 kRowPadY = 6.0f;
 constexpr F32 kMenuRounding = 14.0f;
 constexpr F32 kTrailingGap = 24.0f;
-constexpr F32 kMenuShadowSoftness = 8.0f;
-constexpr F32 kMenuShadowDrop = 3.0f;
 
 std::pair<std::string, std::string> SplitIcon(const std::string& label) {
     U32 codepoint = 0;
@@ -281,8 +279,8 @@ struct MenuBody : public Component {
             .rects = bounds.empty() ? std::vector<Rect>{} : std::vector<Rect>{bounds},
             .clip = clip(),
             .cornerRadius = Px(ctx, kMenuRounding),
-            .softness = Px(ctx, kMenuShadowSoftness),
-            .drop = Px(ctx, kMenuShadowDrop),
+            .softness = Px(ctx, kFloatingShadowSoftness),
+            .drop = Px(ctx, kFloatingShadowDrop),
             .borderWidth = Px(ctx, 1.0f),
             .lineWidth = Px(ctx, 1.0f),
             .fillKey = kPillFill,
