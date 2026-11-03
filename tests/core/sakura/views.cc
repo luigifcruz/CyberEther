@@ -1977,7 +1977,6 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
     REQUIRE(config.recent.size() == 2);
     CHECK(config.recent[0].title == "Radio");
     CHECK(config.recent[1].title == "sweep");
-    CHECK(config.recent[1].accessed == "Opened recently");
 
     std::vector<std::string> featured;
     for (const auto& example : config.featured) {
@@ -2001,12 +2000,6 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
         }
     }
     CHECK(examples > 0);
-
-    CHECK(WelcomePresenter::Accessed(1000, 1030) == "Opened just now");
-    CHECK(WelcomePresenter::Accessed(1000, 1000 + 120) == "Opened 2 minutes ago");
-    CHECK(WelcomePresenter::Accessed(1000, 1000 + 3600) == "Opened 1 hour ago");
-    CHECK(WelcomePresenter::Accessed(1000, 1000 + 90000) == "Opened yesterday");
-    CHECK(WelcomePresenter::Accessed(1000, 1000 + 3 * 86400) == "Opened 3 days ago");
 
     config.onOpenRecent(config.recent[1].path);
     REQUIRE(mailbox.last<MailOpenFlowgraphPath>() != nullptr);

@@ -253,6 +253,10 @@ bool Div::mouseEvent(const MouseEvent& event) {
             }
             return false;
         case MouseEventType::Click:
+            if (inside && event.button == MouseButton::Right && impl->config.onContextMenu) {
+                impl->config.onContextMenu();
+                return true;
+            }
             if (!inside || event.button != MouseButton::Left || !impl->interactive()) {
                 return false;
             }

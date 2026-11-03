@@ -14,8 +14,10 @@
 #include "jetstream/platform.hh"
 
 #include <algorithm>
+#include <filesystem>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <tuple>
 #include <unordered_set>
 
@@ -29,6 +31,7 @@ struct WorkbenchActions {
                               MailNotifyResult,
                               MailOpenUrl,
                               MailCopyText,
+                              MailRevealPath,
                               MailQuit,
                               MailOpenStartTab,
                               MailCloseStartTab,
@@ -367,6 +370,16 @@ struct WorkbenchActions {
     Result handle(const MailCopyText& msg) {
         callbacks.setClipboardText(msg.value);
         callbacks.notify(Sakura::ToastType::Info, 3000, jst::fmt::format("{} copied to clipboard.", msg.label));
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailRevealPath& msg) {
+        std::error_code ec;
+        const auto file = std::filesystem::absolute(Platform::PathFromUtf8(msg.path), ec);
+        const auto folder = ec ? std::filesystem::path() : file.parent_path();
+        if (folder.empty() || Platform::OpenFolder(Platform::PathToUtf8(folder)) != Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to open the folder.");
+        }
         return Result::SUCCESS;
     }
 

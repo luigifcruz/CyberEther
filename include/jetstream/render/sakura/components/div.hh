@@ -31,6 +31,7 @@ struct Div : public Component {
         F64 colorTransition = 0.0;
         Callback<void()> onClick;
         Callback<void()> onDoubleClick;
+        Callback<void()> onContextMenu;
 
         bool operator==(const Config&) const = default;
     };

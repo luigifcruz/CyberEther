@@ -14,7 +14,6 @@
 #include "tools/text.hh"
 
 #include <algorithm>
-#include <chrono>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -90,6 +89,15 @@ struct WelcomePresenter {
             .onToggleFavorite = [enqueue](const std::string& path) {
                 enqueue(MailToggleFavoriteFlowgraph{.path = path});
             },
+            .onForgetRecent = [enqueue](const std::string& path) {
+                enqueue(MailForgetRecentFlowgraph{.path = path});
+            },
+            .onRevealRecent = [enqueue](const std::string& path) {
+                enqueue(MailRevealPath{.path = path});
+            },
+            .onCopyRecentPath = [enqueue](const std::string& path) {
+                enqueue(MailCopyText{.label = "Path", .value = path});
+            },
             .onOpenExample = [enqueue](const std::string& key) {
                 enqueue(MailOpenFlowgraphExample{.key = key});
             },
@@ -116,35 +124,6 @@ struct WelcomePresenter {
             return "Using bundled flowgraphs";
         }
         return gallery.cached ? "Gallery updated successfully!" : "Gallery loaded.";
-    }
-
-    static std::string Accessed(U64 accessed, U64 now) {
-        if (accessed == 0 || accessed > now) {
-            return "Opened recently";
-        }
-        const U64 seconds = now - accessed;
-        const auto ago = [](U64 count, const char* unit) {
-            return jst::fmt::format("Opened {} {}{} ago", count, unit, count == 1 ? "" : "s");
-        };
-        if (seconds < 60) {
-            return "Opened just now";
-        }
-        if (seconds < 3600) {
-            return ago(seconds / 60, "minute");
-        }
-        if (seconds < 86400) {
-            return ago(seconds / 3600, "hour");
-        }
-        if (seconds < 172800) {
-            return "Opened yesterday";
-        }
-        if (seconds < 2592000) {
-            return ago(seconds / 86400, "day");
-        }
-        if (seconds < 31536000) {
-            return ago(seconds / 2592000, "month");
-        }
-        return ago(seconds / 31536000, "year");
     }
 
  private:
@@ -181,15 +160,12 @@ struct WelcomePresenter {
     }
 
     std::vector<WelcomeView::Recent> entries(const std::vector<Settings::Interface::FlowgraphEntry>& items) const {
-        const auto now = static_cast<U64>(std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
         const auto& favorites = context.state.interface.favoriteFlowgraphs;
         std::vector<WelcomeView::Recent> result;
         for (const auto& item : items) {
             const auto file = Platform::PathFromUtf8(item.path);
             result.push_back({
                 .title = item.title.empty() ? Platform::PathToUtf8(file.stem()) : item.title,
-                .accessed = Accessed(item.accessed, now),
                 .path = item.path,
                 .favorite = std::any_of(favorites.begin(), favorites.end(), [&](const auto& favorite) {
                     return favorite.path == item.path;

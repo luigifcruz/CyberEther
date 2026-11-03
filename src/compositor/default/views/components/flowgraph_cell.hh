@@ -11,17 +11,15 @@
 namespace Jetstream {
 
 struct FlowgraphCell : public Sakura::Div {
-    static constexpr F32 StarSize = 30.0f;
-    static constexpr F32 CompactStarSize = 22.0f;
+    static constexpr F32 StarSize = 22.0f;
 
     struct Config {
         std::string title;
-        std::string accessed;
         bool favorite = false;
-        bool compact = false;
         std::string empty;
         Sakura::Callback<void()> onOpen;
         Sakura::Callback<void()> onToggleFavorite;
+        Sakura::Callback<void()> onContextMenu;
     };
 
     void update(Config config) {
@@ -34,8 +32,9 @@ struct FlowgraphCell : public Sakura::Div {
             .font = Text::Font::Sans,
             .tone = empty ? Text::Tone::Secondary : Text::Tone::Primary,
             .align = empty ? Text::Align::Center : Text::Align::Left,
-            .wrapped = true,
-            .scale = Sakura::Typography::Scale::Lead,
+            .wrapped = empty,
+            .ellipsis = !empty,
+            .scale = Sakura::Typography::Scale::Body,
             .weight = empty ? 0.0f : 0.15f,
         });
         icon.update({
@@ -43,15 +42,9 @@ struct FlowgraphCell : public Sakura::Div {
             .tone = Text::Tone::Secondary,
             .scale = Sakura::Typography::Scale::Title,
         });
-        accessed.update({
-            .str = this->config.accessed,
-            .font = Text::Font::Sans,
-            .tone = Text::Tone::Secondary,
-            .scale = Sakura::Typography::Scale::Body,
-        });
         star.update({
             .str = ICON_LC_STAR,
-            .size = {this->config.compact ? CompactStarSize : StarSize, this->config.compact ? CompactStarSize : StarSize},
+            .size = {StarSize, StarSize},
             .colorKey = "transparent",
             .hoveredColorKey = "transparent",
             .activeColorKey = "transparent",
@@ -65,20 +58,11 @@ struct FlowgraphCell : public Sakura::Div {
                 }
             },
         });
-        std::vector<Sakura::Stack::Item> lines = {{.child = &title}};
-        if (!empty && !this->config.accessed.empty()) {
-            lines.push_back({.child = &accessed});
-        }
-        texts.update({
-            .spacing = Sakura::Spacing::XSmall,
-            .centerCross = false,
-            .items = std::move(lines),
-        });
         std::vector<Sakura::Stack::Item> items;
         if (!empty) {
             items.push_back({.child = &icon});
         }
-        items.push_back({.child = &texts, .grow = 1.0f, .shrink = 1.0f});
+        items.push_back({.child = &title, .grow = 1.0f, .shrink = 1.0f});
         if (!empty) {
             items.push_back({.child = &star});
         }
@@ -100,6 +84,11 @@ struct FlowgraphCell : public Sakura::Div {
                     this->config.onOpen();
                 }
             },
+            .onContextMenu = empty ? Sakura::Callback<void()>() : [this]() {
+                if (this->config.onContextMenu) {
+                    this->config.onContextMenu();
+                }
+            },
         });
     }
 
@@ -107,9 +96,7 @@ struct FlowgraphCell : public Sakura::Div {
     Config config;
     Sakura::Text icon;
     Sakura::Text title;
-    Sakura::Text accessed;
     Sakura::Button star;
-    Sakura::Stack texts;
     Sakura::Stack row;
 };
 

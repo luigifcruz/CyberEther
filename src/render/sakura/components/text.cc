@@ -162,6 +162,13 @@ struct Text::Impl {
         }
     }
 
+    Line elide(const std::string& str, const Context& ctx, F32 width) {
+        if (!config.ellipsis || config.wrapped || !std::isfinite(width)) {
+            return shape(str, ctx);
+        }
+        return shape(metrics.ellipsize(FontName(config.font), str, fontSize(ctx), width), ctx);
+    }
+
     void build(const Context& ctx, F32 width) {
         lines.clear();
         const auto trimmed = [](std::string value) {
@@ -176,7 +183,7 @@ struct Text::Impl {
             const U64 end = std::min<U64>(str.find('\n', start), str.size());
             const std::string paragraph = str.substr(start, end - start);
             if (!config.wrapped || !std::isfinite(width)) {
-                lines.push_back(shape(paragraph, ctx));
+                lines.push_back(elide(paragraph, ctx, width));
             } else {
                 const auto fits = [&](const std::string& value) {
                     return shape(trimmed(value), ctx).width <= width;
@@ -239,7 +246,7 @@ void Text::update(Config config) {
     invalidate(Dirty::Layout);
     if (config.str != impl->config.str || config.wrapped != impl->config.wrapped ||
         config.font != impl->config.font || config.scale != impl->config.scale ||
-        config.shrinkToFit != impl->config.shrinkToFit) {
+        config.shrinkToFit != impl->config.shrinkToFit || config.ellipsis != impl->config.ellipsis) {
         impl->linesWidth = -1.0f;
     }
     impl->config = std::move(config);

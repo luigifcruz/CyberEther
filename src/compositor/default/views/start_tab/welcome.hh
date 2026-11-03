@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -68,7 +69,6 @@ struct WelcomeView {
 
     struct Recent {
         std::string title;
-        std::string accessed;
         std::string path;
         bool favorite = false;
     };
@@ -121,6 +121,9 @@ struct WelcomeView {
         Sakura::Callback<void(WelcomeSection)> onSelectSection;
         Sakura::Callback<void(const std::string&)> onOpenRecent;
         Sakura::Callback<void(const std::string&)> onToggleFavorite;
+        Sakura::Callback<void(const std::string&)> onForgetRecent;
+        Sakura::Callback<void(const std::string&)> onRevealRecent;
+        Sakura::Callback<void(const std::string&)> onCopyRecentPath;
         Sakura::Callback<void(const std::string&)> onOpenExample;
         std::optional<RemoteSectionView::Config> remote;
         U64 visit = 0;
@@ -144,6 +147,7 @@ struct WelcomeView {
         leftItems.push_back({.child = &favoritesGroup});
         leftItems.push_back({.child = &favoritesSpacing, .size = SectionGap});
         leftItems.push_back({.child = &recentGroup});
+        leftItems.push_back({.child = &rowMenu});
         left.update({
             .spacing = 0.0f,
             .items = std::move(leftItems),
@@ -374,7 +378,7 @@ struct WelcomeView {
         Sakura::Stack stack;
     };
 
-    void updateCells(CellList& list, const std::vector<Recent>& entries, const std::string& empty, bool accessed) {
+    void updateCells(CellList& list, const std::vector<Recent>& entries, const std::string& empty, bool recent) {
         while (list.cells.size() < entries.size()) {
             list.cells.push_back(std::make_unique<FlowgraphCell>());
         }
@@ -383,9 +387,7 @@ struct WelcomeView {
             const auto& entry = entries[index];
             list.cells[index]->update({
                 .title = entry.title,
-                .accessed = accessed ? entry.accessed : std::string(),
                 .favorite = entry.favorite,
-                .compact = !accessed,
                 .onOpen = [this, path = entry.path]() {
                     if (config.onOpenRecent) {
                         config.onOpenRecent(path);
@@ -395,6 +397,13 @@ struct WelcomeView {
                     if (config.onToggleFavorite) {
                         config.onToggleFavorite(path);
                     }
+                },
+                .onContextMenu = [this, path = entry.path, favorite = entry.favorite, recent]() {
+                    rowMenuPath = path;
+                    rowMenuFavorite = favorite;
+                    rowMenuRecent = recent;
+                    rowMenuOpen = true;
+                    updateRowMenu();
                 },
             });
             items.push_back({.child = list.cells[index].get()});
@@ -409,7 +418,48 @@ struct WelcomeView {
         });
     }
 
+    void updateRowMenu() {
+        const auto state = std::make_tuple(rowMenuPath, rowMenuFavorite, rowMenuRecent, rowMenuOpen);
+        if (rowMenuSynced == state) {
+            return;
+        }
+        rowMenuSynced = state;
+        const auto run = [this](const Sakura::Callback<void(const std::string&)>& callback) {
+            return [this, &callback]() {
+                if (callback && !rowMenuPath.empty()) {
+                    callback(rowMenuPath);
+                }
+            };
+        };
+        std::vector<Sakura::MenuEntry> entries = {
+            {.label = ICON_LC_EXTERNAL_LINK " Open", .onClick = run(config.onOpenRecent)},
+            {.label = ICON_LC_FOLDER_OPEN " Show in Folder", .onClick = run(config.onRevealRecent)},
+            {.label = ICON_LC_COPY " Copy Path", .onClick = run(config.onCopyRecentPath)},
+            {.separator = true},
+            {
+                .label = rowMenuFavorite ? ICON_LC_STAR_OFF " Remove from Favorites" : ICON_LC_STAR " Add to Favorites",
+                .onClick = run(config.onToggleFavorite),
+            },
+        };
+        if (rowMenuRecent) {
+            entries.push_back({.separator = true});
+            entries.push_back({
+                .label = ICON_LC_X " Remove from Recents",
+                .colorKey = "error_red",
+                .onClick = run(config.onForgetRecent),
+            });
+        }
+        rowMenu.update({
+            .entries = std::move(entries),
+            .open = rowMenuOpen,
+            .onClose = [this]() {
+                rowMenuOpen = false;
+            },
+        });
+    }
+
     void updateRecent() {
+        updateRowMenu();
         updateCells(favoriteCells, config.favorites, "Star a recent flowgraph to keep it here.", false);
         favoritesGroup.update({
             .title = "Favorites",
@@ -1088,6 +1138,12 @@ struct WelcomeView {
     CellList favoriteCells;
     CellList recentCells;
     SectionGroup favoritesGroup;
+    Sakura::Menu rowMenu;
+    std::string rowMenuPath;
+    bool rowMenuFavorite = false;
+    bool rowMenuOpen = false;
+    bool rowMenuRecent = false;
+    std::optional<std::tuple<std::string, bool, bool, bool>> rowMenuSynced;
     Sakura::Spacer remoteSpacing;
     RemoteSectionView remote;
     Sakura::Spacer favoritesSpacing;

@@ -283,7 +283,7 @@ TEST_CASE("Flowgraph cells measure before placement, scale, repaint on favorite 
     Scene scene;
     {
         FlowgraphCell cell;
-        cell.update({.title = "First Steps", .accessed = "Today"});
+        cell.update({.title = "First Steps"});
         CheckFirstMeasure(cell, scene.ctx, {320.0f, kInfinite}, {0.0f, 0.0f, 320.0f, 80.0f});
     }
 
@@ -297,7 +297,6 @@ TEST_CASE("Flowgraph cells measure before placement, scale, repaint on favorite 
     const auto update = [&] {
         cell.update({
             .title = "First Steps",
-            .accessed = "Today",
             .favorite = favorite,
             .onOpen = [&calls, tag] { calls.push_back(tag + "open"); },
             .onToggleFavorite = [&calls, tag] { calls.push_back(tag + "star"); },

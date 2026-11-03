@@ -44,6 +44,7 @@ struct Text : public Component {
         std::string colorKey;
         bool wrapped = false;
         bool shrinkToFit = false;
+        bool ellipsis = false;
         F32 scale = 1.0f;
         F32 lineHeight = 1.0f;
         F32 weight = 0.0f;

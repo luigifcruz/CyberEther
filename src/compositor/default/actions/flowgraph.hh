@@ -40,6 +40,7 @@ struct FlowgraphActions {
                               MailOpenFlowgraph,
                               MailOpenFlowgraphPath,
                               MailToggleFavoriteFlowgraph,
+                              MailForgetRecentFlowgraph,
                               MailRememberFlowgraph,
                               MailDropFlowgraphPath,
                               MailOpenFlowgraphBlob,
@@ -299,6 +300,15 @@ struct FlowgraphActions {
         ToggleFavorite(state.interface, msg.path);
         return PersistSettings([&](Settings& settings) {
             settings.interface.favoriteFlowgraphs = state.interface.favoriteFlowgraphs;
+        });
+    }
+
+    Result handle(const MailForgetRecentFlowgraph& msg) {
+        std::erase_if(state.interface.recentFlowgraphs, [&](const auto& entry) {
+            return entry.path == msg.path;
+        });
+        return PersistSettings([&](Settings& settings) {
+            settings.interface.recentFlowgraphs = state.interface.recentFlowgraphs;
         });
     }
 

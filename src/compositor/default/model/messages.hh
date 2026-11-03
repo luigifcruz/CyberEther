@@ -181,6 +181,10 @@ struct MailToggleFavoriteFlowgraph {
     std::string path;
 };
 
+struct MailForgetRecentFlowgraph {
+    std::string path;
+};
+
 struct MailRememberFlowgraph {
     std::string path;
     std::string title;
@@ -259,6 +263,10 @@ struct MailNotifyResult {
 struct MailOpenUrl {
     std::string url;
     bool notifyResult = false;
+};
+
+struct MailRevealPath {
+    std::string path;
 };
 
 struct MailCopyText {
@@ -718,6 +726,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSaveFlowgraph,
                           MailOpenFlowgraphPath,
                           MailToggleFavoriteFlowgraph,
+                          MailForgetRecentFlowgraph,
                           MailRememberFlowgraph,
                           MailDropFlowgraphPath,
                           MailOpenFlowgraphBlob,
@@ -738,6 +747,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailNotifyResult,
                           MailOpenUrl,
                           MailCopyText,
+                          MailRevealPath,
                           MailQuit,
                           MailSetBackgroundParticles,
                           MailSetShowTips,
