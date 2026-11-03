@@ -9,6 +9,8 @@
 #include <nlohmann/json.hpp>
 
 #include "jetstream/agent/tools.hh"
+#include "jetstream/detail/block_impl.hh"
+#include "jetstream/domains/core/python/block.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/domains/core/slice/block.hh"
 #include "jetstream/registry.hh"
@@ -47,6 +49,29 @@ struct DocsHost : GraphHost {
             return std::nullopt;
         }
         return DocPage{"remote", "Remote", "Share a session.", "# Remote"};
+    }
+};
+
+struct ConfigMappingConfig : Blocks::Python {
+    std::string type() const override {
+        return "__ce_agent_config_mapping";
+    }
+};
+
+struct ConfigMappingImpl : Block::Impl {
+    Result define() override {
+        JST_CHECK(defineInterfaceConfig("outputTensor0", "Output 0", "",
+                                       {{"type", "tensor-config"}, {"source", "outputTensorSpecs"}}));
+        return defineInterfaceConfig("code", "Code", "",
+                                     {{"type", "text"}, {"source", "file"}, {"index", U64{7}}});
+    }
+};
+
+struct BlockRegistrationGuard {
+    std::string type;
+
+    ~BlockRegistrationGuard() {
+        (void)Registry::UnregisterBlock(type);
     }
 };
 
@@ -172,6 +197,110 @@ TEST_CASE("Every optional patch field is validated before any graph mutation", "
     }
 
     REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Block docs expose ports and config keys before an instance exists", "[agent][tools][catalog]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+    const auto generator = nlohmann::json::parse(
+        ExecuteTool(nullptr, "get_block_docs", R"({"type":"signal_generator"})").content);
+    REQUIRE_FALSE(generator.contains("error"));
+    REQUIRE(generator["interface_scope"] == "default_config");
+    REQUIRE(generator["observed_interfaces"].empty());
+    REQUIRE(generator["input_ports"].empty());
+    REQUIRE(generator["output_ports"][0]["name"] == "signal");
+    REQUIRE(generator["output_ports"][0]["label"] == "Output");
+
+    const auto analyzer = nlohmann::json::parse(
+        ExecuteTool(nullptr, "get_block_docs", R"({"type":"spectrum_analyzer"})").content);
+    REQUIRE_FALSE(analyzer.contains("error"));
+    REQUIRE(analyzer["input_ports"][0]["name"] == "buffer");
+    const auto& configKeys = analyzer["config_keys"];
+    REQUIRE(std::find(configKeys.begin(), configKeys.end(), "lineplotAveraging") != configKeys.end());
+    REQUIRE(std::find(configKeys.begin(), configKeys.end(), "spectrumAveraging") == configKeys.end());
+    const auto averaging = std::find_if(analyzer["config_fields"].begin(), analyzer["config_fields"].end(),
+                                      [](const auto& field) { return field["name"] == "lineplotAveraging"; });
+    REQUIRE(averaging != analyzer["config_fields"].end());
+    REQUIRE((*averaging)["config_key"] == "lineplotAveraging");
+
+    const auto python = nlohmann::json::parse(
+        ExecuteTool(nullptr, "get_block_docs", R"({"type":"python"})").content);
+    REQUIRE_FALSE(python.contains("error"));
+    REQUIRE(python["input_ports"][0]["name"] == "input0");
+    REQUIRE(python["output_ports"][0]["name"] == "output0");
+    const auto output = std::find_if(python["config_fields"].begin(), python["config_fields"].end(),
+                                   [](const auto& field) { return field["name"] == "outputTensor0"; });
+    REQUIRE(output != python["config_fields"].end());
+    REQUIRE((*output)["config_key"] == "outputTensorSpecs");
+    REQUIRE((*output)["config_index"] == 0);
+}
+
+TEST_CASE("Describing a prototype does not create modules or tensors", "[agent][tools][catalog]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+    for (const auto& type : {"signal_generator", "spectrum_analyzer", "python"}) {
+        CAPTURE(type);
+        std::shared_ptr<Block> block;
+        REQUIRE(Registry::BuildBlock(type, block) == Result::SUCCESS);
+        REQUIRE(block->describe() == Result::SUCCESS);
+        REQUIRE(block->describe() == Result::SUCCESS);
+        REQUIRE(block->state() == Block::State::None);
+        REQUIRE(block->inputs().empty());
+        REQUIRE(block->outputs().empty());
+        REQUIRE(block->modules().empty());
+        REQUIRE(block->surfaces().empty());
+    }
+}
+
+TEST_CASE("Block docs retain observed interfaces for configured instances", "[agent][tools][catalog]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    const Parser::Map config = {{"inputCount", U64{2}}, {"source", std::string("file")}};
+    REQUIRE(graph->blockCreate("python", "python", config, {}) == Result::SUCCESS);
+    const auto docs = nlohmann::json::parse(
+        ExecuteTool(graph, "get_block_docs", R"({"type":"python"})").content);
+    REQUIRE_FALSE(docs.contains("error"));
+    REQUIRE(docs["interface_scope"] == "observed");
+    REQUIRE(docs["interface_block"] == "python");
+    REQUIRE(docs["input_ports"].size() == 2);
+    REQUIRE(docs["input_ports"][1]["name"] == "input1");
+    REQUIRE(docs["observed_interfaces"][0]["input_ports"] == nlohmann::json::array({"input0", "input1"}));
+    const auto console = std::find_if(docs["config_fields"].begin(), docs["config_fields"].end(),
+                                    [](const auto& field) { return field["name"] == "console"; });
+    REQUIRE(console != docs["config_fields"].end());
+    REQUIRE_FALSE(console->contains("config_key"));
+    for (const auto& field : docs["config_fields"]) {
+        if (field.contains("config_key")) {
+            REQUIRE(docs["default_config"].contains(field["config_key"].get<std::string>()));
+        }
+    }
+    const auto inspected = nlohmann::json::parse(
+        ExecuteTool(graph, "inspect_block", R"({"name":"python"})").content);
+    const auto output = std::find_if(inspected["config_fields"].begin(), inspected["config_fields"].end(),
+                                   [](const auto& field) { return field["name"] == "outputTensor0"; });
+    REQUIRE(output != inspected["config_fields"].end());
+    REQUIRE((*output)["config_key"] == "outputTensorSpecs");
+    REQUIRE((*output)["config_index"] == 0);
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Config discovery follows widget source and index contracts", "[agent][tools][catalog]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+    const ConfigMappingConfig config;
+    REQUIRE(Registry::RegisterBlock(config.type(), config.domain(), config.title(), config.summary(),
+                                    config.description(), []() {
+        return std::make_shared<Block>(std::make_shared<ConfigMappingImpl>(),
+                                       std::make_shared<ConfigMappingConfig>(),
+                                       std::make_shared<ConfigMappingConfig>());
+    }) == Result::SUCCESS);
+    const BlockRegistrationGuard cleanup{config.type()};
+    const auto args = nlohmann::json({{"type", config.type()}}).dump();
+    const auto docs = nlohmann::json::parse(ExecuteTool(nullptr, "get_block_docs", args).content);
+    REQUIRE_FALSE(docs.contains("error"));
+    REQUIRE(docs["config_fields"].size() == 2);
+    REQUIRE(docs["config_fields"][0]["config_key"] == "outputTensorSpecs");
+    REQUIRE(docs["config_fields"][0]["config_index"] == 0);
+    REQUIRE(docs["config_fields"][1]["config_key"] == "code");
+    REQUIRE_FALSE(docs["config_fields"][1].contains("config_index"));
 }
 
 TEST_CASE("Composite blocks are discoverable and creatable", "[agent][tools][flowgraph]") {

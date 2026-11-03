@@ -133,6 +133,8 @@ class Serialize {
     static Json Map(const Parser::Map& map);
     static Json CompactMap(const Parser::Map& map);
     static Json Interface(const std::vector<Flowgraph::View::InterfaceEntry>& entries, bool help = true);
+    static Json ConfigFields(const std::vector<Flowgraph::View::InterfaceEntry>& entries,
+                             const Parser::Map& config, bool help = true);
     static Json ConfigOptions(const std::vector<Flowgraph::View::InterfaceEntry>& entries);
 
     static Json Node(const Graph& flowgraph, const std::string& name);
