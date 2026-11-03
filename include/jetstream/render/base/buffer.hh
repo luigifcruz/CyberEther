@@ -75,6 +75,7 @@ class JETSTREAM_API Buffer : public WindowAttachment {
     Transfer::PendingUploadQueue pendingUploads;
 
     friend class Transfer::Batch;
+    friend class Window;
 };
 
 static constexpr Buffer::Target operator&(Buffer::Target lhs, Buffer::Target rhs) {

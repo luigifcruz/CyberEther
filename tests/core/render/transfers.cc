@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <future>
 #include <limits>
@@ -3770,4 +3771,279 @@ TEST_CASE("Surface resizes apply at once after creation and failed rebuilds retr
     surface.rebuildResult = Result::SUCCESS;
     CHECK(surface.frame() == Result::SUCCESS);
     CHECK(surface.rebuilds == 8);
+}
+
+TEST_CASE("Empty resource visits remain fixed until a transfer batch commits",
+          "[core][render][transfer]") {
+    std::array<U32, 2> source = {1, 2};
+    auto buffer = MakeBuffer(source);
+    std::array<U8, 16> pixels{};
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{
+        .size = {2, 2}, .buffer = pixels.data(),
+    });
+    Render::Transfer::Batch first;
+    first.collect(buffer);
+    first.collect(texture);
+    REQUIRE(first.empty());
+    REQUIRE_FALSE(first.contains(buffer));
+    REQUIRE_FALSE(first.contains(texture));
+
+    REQUIRE(buffer->update() == Result::SUCCESS);
+    REQUIRE(texture->fill() == Result::SUCCESS);
+    Render::Transfer::Batch other;
+    other.collect(buffer);
+    other.collect(texture);
+    REQUIRE(other.buffers().size() == 1);
+    REQUIRE(other.textures().size() == 1);
+
+    source = {3, 4};
+    pixels.fill(42);
+    REQUIRE(buffer->update() == Result::SUCCESS);
+    REQUIRE(texture->fill() == Result::SUCCESS);
+    first.collect(buffer);
+    first.collect(texture);
+    other.collect(buffer);
+    other.collect(texture);
+    REQUIRE(first.empty());
+    REQUIRE(other.buffers().size() == 1);
+    REQUIRE(other.textures().size() == 1);
+    other.commit();
+    REQUIRE_FALSE(other.contains(buffer));
+    REQUIRE_FALSE(other.contains(texture));
+
+    first.commit();
+    first.collect(buffer);
+    first.collect(texture);
+    REQUIRE(first.buffers().size() == 1);
+    REQUIRE(first.textures().size() == 1);
+    REQUIRE(first.contains(buffer));
+    REQUIRE(first.contains(texture));
+    const auto* bytes = reinterpret_cast<const U8*>(source.data());
+    REQUIRE(first.buffers()[0].upload.data == std::vector<U8>(bytes, bytes + sizeof(source)));
+    REQUIRE(first.textures()[0].upload.data == std::vector<U8>(pixels.begin(), pixels.end()));
+    first.commit();
+    first.collect(buffer);
+    first.collect(texture);
+    REQUIRE(first.empty());
+}
+
+TEST_CASE("Pending upload queues publish concurrent updates and restored work",
+          "[core][render][transfer]") {
+    Render::Transfer::PendingUploadQueue queue;
+    constexpr U32 updates = 4096;
+    std::atomic_bool done = false;
+    std::atomic_bool producerSucceeded = true;
+    std::thread producer([&] {
+        for (U32 value = 1; value <= updates; ++value) {
+            if (queue.queue(0, 1, 1, sizeof(value), reinterpret_cast<const U8*>(&value)) != Result::SUCCESS) {
+                producerSucceeded.store(false, std::memory_order_release);
+                break;
+            }
+        }
+        done.store(true, std::memory_order_release);
+    });
+    bool valid = true;
+    U32 latest = 0;
+    U64 restores = 0;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!(done.load(std::memory_order_acquire) && queue.empty()) &&
+           std::chrono::steady_clock::now() < deadline) {
+        auto uploads = queue.take();
+        if (uploads.empty()) {
+            std::this_thread::yield();
+            continue;
+        }
+        if (restores++ < 32) {
+            valid &= queue.restore(std::move(uploads)) == Result::SUCCESS;
+            continue;
+        }
+        for (const auto& upload : uploads) {
+            if (upload.data.size() != sizeof(U32)) {
+                valid = false;
+                continue;
+            }
+            U32 value = 0;
+            std::memcpy(&value, upload.data.data(), sizeof(value));
+            valid &= value > 0 && value <= updates;
+            latest = std::max(latest, value);
+        }
+    }
+    producer.join();
+    REQUIRE(producerSucceeded.load(std::memory_order_acquire));
+    REQUIRE(valid);
+    REQUIRE(queue.empty());
+    REQUIRE(latest == updates);
+}
+
+TEST_CASE("Window transfer snapshots preserve empty visits across dependency changes",
+          "[core][render][transfer]") {
+    TestWindow window;
+    std::array<U32, 2> source = {10, 20};
+    auto firstBuffer = MakeBuffer(source);
+    auto addedBuffer = MakeBuffer(source);
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto surface = MakeRetainedSurface(firstBuffer, texture);
+    surface->acceptsAppends = true;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    Render::Transfer::Batch first;
+    REQUIRE(window.collectFrameTransfers(first) == Result::SUCCESS);
+    REQUIRE(first.empty());
+    REQUIRE(firstBuffer->update() == Result::SUCCESS);
+    first.collect(firstBuffer);
+    REQUIRE(first.empty());
+    REQUIRE(window.collectFrameTransfers(first) == Result::SUCCESS);
+    REQUIRE(first.empty());
+
+    auto program = std::make_shared<Render::Program>(Render::Program::Config{
+        .buffers = {{addedBuffer, Render::Program::Target::VERTEX}},
+    });
+    REQUIRE(addedBuffer->update() == Result::SUCCESS);
+    REQUIRE(window.extend(surface, {program}, {}) == Result::SUCCESS);
+    REQUIRE(window.collectFrameTransfers(first) == Result::SUCCESS);
+    REQUIRE(first.buffers().size() == 1);
+    REQUIRE(first.buffers()[0].destination == addedBuffer);
+    REQUIRE_FALSE(first.contains(firstBuffer));
+    first.commit();
+
+    {
+        Render::Transfer::Batch aborted;
+        REQUIRE(window.collectFrameTransfers(aborted) == Result::SUCCESS);
+        REQUIRE(aborted.buffers().size() == 1);
+        REQUIRE(aborted.buffers()[0].destination == firstBuffer);
+    }
+    source = {30, 40};
+    REQUIRE(firstBuffer->update() == Result::SUCCESS);
+    Render::Transfer::Batch retry;
+    REQUIRE(window.collectFrameTransfers(retry) == Result::SUCCESS);
+    REQUIRE(retry.buffers().size() == 1);
+    const auto* bytes = reinterpret_cast<const U8*>(source.data());
+    REQUIRE(retry.buffers()[0].upload.data == std::vector<U8>(bytes, bytes + sizeof(source)));
+    retry.commit();
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Transfer notifications follow currently bound surface consumers",
+          "[core][render][transfer]") {
+    TestWindow window;
+    std::array<U32, 2> source = {10, 20};
+    auto buffer = MakeBuffer(source);
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto first = MakeRetainedSurface(buffer, texture);
+    auto second = MakeRetainedSurface(buffer, texture);
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(first) == Result::SUCCESS);
+    REQUIRE(window.bind(second) == Result::SUCCESS);
+    first->wantsDraw();
+    first->commitDraw();
+    second->wantsDraw();
+    second->commitDraw();
+    Render::Transfer::Batch initial;
+    REQUIRE(window.collectFrameTransfers(initial) == Result::SUCCESS);
+    initial.commit();
+    REQUIRE(buffer->update() == Result::SUCCESS);
+    Render::Transfer::Batch both;
+    REQUIRE(window.collectFrameTransfers(both) == Result::SUCCESS);
+    REQUIRE(both.buffers().size() == 1);
+    REQUIRE(first->wantsDraw());
+    REQUIRE(second->wantsDraw());
+    first->commitDraw();
+    second->commitDraw();
+    both.commit();
+
+    REQUIRE(window.unbind(first) == Result::SUCCESS);
+    REQUIRE(buffer->update() == Result::SUCCESS);
+    Render::Transfer::Batch remaining;
+    REQUIRE(window.collectFrameTransfers(remaining) == Result::SUCCESS);
+    REQUIRE(remaining.buffers().size() == 1);
+    REQUIRE_FALSE(first->wantsDraw());
+    REQUIRE(second->wantsDraw());
+    remaining.commit();
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Transfer collection discovers indirect buffers replaced after surface binding",
+          "[core][render][transfer]") {
+    TestWindow window;
+    auto vertex = std::make_shared<Render::Vertex>(Render::Vertex::Config{});
+    auto draw = std::make_shared<TestDraw>(Render::Draw::Config{.buffer = vertex});
+    auto program = std::make_shared<Render::Program>(Render::Program::Config{.draws = {draw}});
+    auto surface = std::make_shared<TestSurface>(Render::Surface::Config{.programs = {program}, .retained = true});
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    Render::Transfer::Batch initial;
+    REQUIRE(window.collectFrameTransfers(initial) == Result::SUCCESS);
+    initial.commit();
+    std::array<U32, 2> source = {1, 2};
+    auto indirect = MakeBuffer(source);
+    draw->addTransferBuffer(indirect);
+    REQUIRE(indirect->update() == Result::SUCCESS);
+    Render::Transfer::Batch changed;
+    REQUIRE(window.collectFrameTransfers(changed) == Result::SUCCESS);
+    REQUIRE(changed.buffers().size() == 1);
+    REQUIRE(changed.buffers()[0].destination == indirect);
+    changed.commit();
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Window transfer notifications preserve concurrent updates and aborted collections",
+          "[core][render][transfer]") {
+    TestWindow window;
+    std::array<U32, 1> source{};
+    auto buffer = std::make_shared<TestBuffer>(Render::Buffer::Config{
+        .size = source.size(), .target = Render::Buffer::Target::STORAGE,
+        .elementByteSize = sizeof(U32), .buffer = source.data(),
+    });
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(buffer) == Result::SUCCESS);
+    Render::Transfer::Batch initial;
+    REQUIRE(window.collectFrameTransfers(initial) == Result::SUCCESS);
+    initial.commit();
+
+    constexpr U32 updates = 4096;
+    std::atomic_bool done = false;
+    std::atomic_bool producerSucceeded = true;
+    std::thread producer([&] {
+        for (U32 value = 1; value <= updates; ++value) {
+            source[0] = value;
+            if (buffer->update() != Result::SUCCESS) {
+                producerSucceeded.store(false, std::memory_order_release);
+                break;
+            }
+        }
+        done.store(true, std::memory_order_release);
+    });
+    U32 committed = 0;
+    U64 aborts = 0;
+    bool valid = true;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!(done.load(std::memory_order_acquire) && committed == updates) &&
+           std::chrono::steady_clock::now() < deadline) {
+        Render::Transfer::Batch batch;
+        valid &= window.collectFrameTransfers(batch) == Result::SUCCESS;
+        if (batch.empty()) {
+            std::this_thread::yield();
+            continue;
+        }
+        U32 latest = 0;
+        for (const auto& transfer : batch.buffers()) {
+            if (transfer.upload.data.size() != sizeof(U32)) {
+                valid = false;
+                continue;
+            }
+            U32 value = 0;
+            std::memcpy(&value, transfer.upload.data.data(), sizeof(value));
+            valid &= value > 0 && value <= updates;
+            latest = std::max(latest, value);
+        }
+        if (aborts++ >= 32) {
+            batch.commit();
+            committed = std::max(committed, latest);
+        }
+    }
+    producer.join();
+    REQUIRE(producerSucceeded.load(std::memory_order_acquire));
+    REQUIRE(valid);
+    REQUIRE(committed == updates);
+    REQUIRE(window.destroy() == Result::SUCCESS);
 }

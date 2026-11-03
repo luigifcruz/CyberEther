@@ -59,6 +59,7 @@ class JETSTREAM_API Draw {
     std::atomic_bool surfaceOwned = false;
 
     friend class Surface;
+    friend class Window;
 };
 
 }  // namespace Jetstream::Render

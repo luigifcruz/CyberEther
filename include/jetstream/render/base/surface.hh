@@ -223,8 +223,6 @@ class JETSTREAM_API Surface : public WindowAttachment {
     std::vector<std::atomic_bool*> objectClaims;
 
     void prepareFrame();
-    void collectTransfers(Transfer::Batch& batch) const;
-    bool affectedBy(const Transfer::Batch& batch) const;
     std::vector<std::shared_ptr<WindowAttachment>> untracked(const std::vector<std::shared_ptr<Program>>& programs,
                                                              const std::vector<std::shared_ptr<Kernel>>& kernels) const;
     void track(const std::vector<std::shared_ptr<Program>>& programs,
