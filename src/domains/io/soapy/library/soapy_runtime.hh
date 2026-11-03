@@ -14,10 +14,12 @@ namespace Jetstream::Modules::SoapyAbi {
 constexpr const char* Version = "0.8";
 
 constexpr int RX = 1;
+constexpr int EndBurst = 1 << 1;
 constexpr int HasTime = 1 << 2;
 constexpr int Timeout = -1;
 constexpr int StreamError = -2;
 constexpr int Overflow = -4;
+constexpr int NotSupported = -5;
 constexpr const char* FormatCF32 = "CF32";
 
 struct Range {
@@ -81,6 +83,8 @@ struct SoapyApi {
     int (*setFrequency)(SoapyAbi::Device*, int, std::size_t, double,
                         const SoapyAbi::Kwargs*) = nullptr;
     int (*setSampleRate)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
+    double (*getSampleRate)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
+    double (*getFrequency)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     bool (*hasGainMode)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setGainMode)(SoapyAbi::Device*, int, std::size_t, bool) = nullptr;
     SoapyAbi::Range (*getGainRange)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
