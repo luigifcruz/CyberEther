@@ -30,6 +30,7 @@ struct ChatComposer : public Component {
         F32 padding = 7.0f;
         Padding margin;
         bool clearButton = true;
+        bool acceptPlaceholder = false;
 
         bool operator==(const Style&) const = default;
     };

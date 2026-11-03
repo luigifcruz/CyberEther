@@ -2219,6 +2219,12 @@ struct TextGrid::Impl {
         if (!mods.none()) {
             return false;
         }
+        if (key == KeyCode::Tab && !mods.shift && config.onTab) {
+            if (auto completion = config.onTab()) {
+                insertText(*completion);
+                return true;
+            }
+        }
         const bool enter = key == KeyCode::Enter || key == KeyCode::KeypadEnter;
         if (config.singleLine) {
             if (enter && !repeat && !mods.shift && config.submitOnEnter && config.onSubmit) {

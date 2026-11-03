@@ -577,7 +577,8 @@ struct WelcomeView {
                 .backgroundColorKey = "card_surface",
                 .compact = true,
                 .chrome = true,
-            }),
+                .acceptPlaceholder = true,
+            }, assistantPrompt),
             .onSubmit = config.onAssistantSubmit,
             .onVoice = config.onAssistantVoice,
             .voiceHint = AssistantComposer::VoiceHint,
@@ -1138,6 +1139,7 @@ struct WelcomeView {
     CellList favoriteCells;
     CellList recentCells;
     SectionGroup favoritesGroup;
+    const char* assistantPrompt = AssistantComposer::RandomPrompt();
     Sakura::Menu rowMenu;
     std::string rowMenuPath;
     bool rowMenuFavorite = false;

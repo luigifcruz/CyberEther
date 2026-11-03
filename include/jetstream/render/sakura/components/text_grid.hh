@@ -133,6 +133,7 @@ struct TextGrid : public Component {
         Callback<void(std::string)> onChange;
         Callback<void(std::string)> onSubmit;
         Callback<void()> onCancel;
+        Callback<std::optional<std::string>()> onTab;
         Callback<void(bool)> onFocusChange;
         Callback<void(Position start, Position end)> onSelect;
         Callback<bool(Position)> onPositionClick;

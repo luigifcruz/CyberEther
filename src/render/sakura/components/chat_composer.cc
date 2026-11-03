@@ -49,6 +49,13 @@ constexpr F32 kControlPadding = 14.0f;
 constexpr F32 kButtonPaddingY = 4.0f;
 constexpr F32 kIconWidth = 1.8f;
 constexpr F32 kIconScale = 1.1f;
+constexpr F32 kKeycapText = 0.8f;
+constexpr F32 kKeycapGlyph = 0.85f;
+constexpr F32 kKeycapPadX = 0.6f;
+constexpr F32 kKeycapGap = 0.3f;
+constexpr F32 kKeycapWordWidth = 1.75f;
+constexpr F32 kKeycapFill = 0.06f;
+constexpr F32 kKeycapEdge = 0.14f;
 constexpr F32 kAttachScale = 0.9f;
 constexpr F32 kPickerRounding = 15.0f;
 constexpr U64 kMaxCharacters = 128;
@@ -281,6 +288,9 @@ struct ChatComposer::Impl {
     Box background;
     Card chrome;
     Label placeholder;
+    Box keycap;
+    Label keycapLabel;
+    Label keycapGlyph;
     Label icon;
     TextGrid input;
     RoundButton send;
@@ -414,6 +424,10 @@ struct ChatComposer::Impl {
         self.invalidate(Dirty::Layout);
     }
 
+    bool suggesting() const {
+        return config.style.acceptPlaceholder && !config.style.placeholder.empty() && text.empty();
+    }
+
     void submit() {
         if (config.busy || Jetstream::Text::IsBlank(text)) {
             return;
@@ -473,7 +487,16 @@ struct ChatComposer::Impl {
                 edit(self, std::move(value));
                 submit();
             },
-            .onFocusChange = [this](bool focused) {
+            .onTab = [this]() -> std::optional<std::string> {
+                if (!suggesting()) {
+                    return std::nullopt;
+                }
+                return config.style.placeholder;
+            },
+            .onFocusChange = [this, &self](bool focused) {
+                if (config.style.acceptPlaceholder) {
+                    self.invalidate(Dirty::Layout);
+                }
                 if (config.onFocusChange) {
                     config.onFocusChange(focused);
                 }
@@ -483,7 +506,8 @@ struct ChatComposer::Impl {
 
     void mount(ChatComposer& self) {
         std::vector<Component*> list = {config.style.chrome ? static_cast<Component*>(&chrome) : &background,
-                                        &placeholder, &icon, &input, &send, &voiceBars, &stopMark};
+                                        &placeholder, &keycap, &keycapLabel, &keycapGlyph, &icon, &input, &send, &voiceBars,
+                                        &stopMark};
         if (showsControls()) {
             list.push_back(&attach);
         }
@@ -717,17 +741,70 @@ void ChatComposer::layout(const Context& ctx) {
                                       {state.inputWidth(m, bounds.width), std::numeric_limits<F32>::infinity()}).y;
     const auto rects = state.rects(m, bounds, measured + 2.0f * m.textPad);
 
+    const bool suggesting = visible && state.suggesting() && state.input.focused();
+    const F32 keyText = std::round(m.font * kKeycapText);
+    const F32 keyGlyph = std::round(m.font * kKeycapGlyph);
+    const F32 keyPad = std::round(m.font * kKeycapPadX);
+    const F32 keyGap = std::round(m.font * kKeycapGap);
+    const F32 keycapWidth = std::round(2.0f * keyPad + keyText * kKeycapWordWidth + keyGap + keyGlyph);
+    const F32 keycapHeight = rects.send.height;
+    const F32 keycapCenter = style.compact ? rects.send.y + rects.send.height * 0.5f : rects.input.y + m.lineHeight * 0.5f;
+    const F32 keycapRight = style.compact ? rects.send.x - m.pad : rects.input.right();
+    const Rect keycapRect = {keycapRight - keycapWidth, std::round(keycapCenter - keycapHeight * 0.5f), keycapWidth,
+                             keycapHeight};
+    const F32 placeholderWidth = (suggesting ? keycapRect.x - m.textPad : rects.input.right() - m.textPad) -
+                                 (rects.input.x + m.textPad);
+    const ColorRGBA<F32> keyInk = ctx.color("text_primary");
+    state.keycap.update({
+        .instances = {{.rect = keycapRect, .visible = suggesting, .backgroundColor = WithAlpha(keyInk, kKeycapFill)}},
+        .clip = bounds,
+        .cornerRadius = keycapHeight * 0.5f,
+        .borderWidth = Px(ctx, 1.0f),
+        .borderColor = WithAlpha(keyInk, kKeycapEdge),
+        .strokeFringe = true,
+        .topLit = true,
+        .capacity = 1,
+    });
+    layoutChild(ctx, state.keycap, bounds);
+    state.keycapLabel.update({
+        .instances = {{
+            .rect = {keycapRect.x + keyPad, keycapRect.y, keyText * kKeycapWordWidth, keycapRect.height},
+            .str = "Tab",
+            .visible = suggesting,
+            .color = ctx.color("text_secondary"),
+            .fontSize = keyText,
+            .alignment = {0, 1},
+        }},
+        .clip = bounds,
+        .fontName = Typography::BodyFont,
+        .maxCharacters = 4,
+    });
+    layoutChild(ctx, state.keycapLabel, bounds);
+    state.keycapGlyph.update({
+        .instances = {{
+            .rect = {keycapRect.right() - keyPad - keyGlyph, keycapRect.y, keyGlyph, keycapRect.height},
+            .str = ICON_LC_ARROW_RIGHT_TO_LINE,
+            .visible = suggesting,
+            .color = ctx.color("text_secondary"),
+            .fontSize = keyGlyph,
+            .alignment = {1, 1},
+        }},
+        .clip = bounds,
+        .fontName = Typography::IconFont,
+        .maxCharacters = 4,
+    });
+    layoutChild(ctx, state.keycapGlyph, bounds);
+
     state.placeholder.update({
         .instances = {{
-            .rect = {rects.input.x + m.textPad, rects.input.y, std::max(0.0f, rects.input.width - 2.0f * m.textPad),
-                     m.lineHeight},
+            .rect = {rects.input.x + m.textPad, rects.input.y, std::max(0.0f, placeholderWidth), m.lineHeight},
             .str = style.placeholder,
             .visible = visible && !style.placeholder.empty() && state.text.empty(),
             .color = ctx.color("text_disabled"),
             .fontSize = m.font,
             .alignment = {0, 1},
         }},
-        .clip = rects.input,
+        .clip = Rect{rects.input.x, rects.input.y, std::max(0.0f, m.textPad + placeholderWidth), rects.input.height},
         .fontName = Typography::BodyFont,
         .maxCharacters = kMaxCharacters,
     });
