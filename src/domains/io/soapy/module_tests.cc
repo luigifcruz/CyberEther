@@ -1,12 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <any>
+#include <chrono>
 #include <limits>
+#include <thread>
 
 #include "environment.hh"
 #include "jetstream/domains/io/soapy/module.hh"
+#include "jetstream/module_context.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/runtime_context_native_cpu.hh"
 #include "library/soapysdr.hh"
 #include "scripted_soapy.hh"
 
@@ -43,7 +48,10 @@ TEST_CASE("Soapy validates configuration before accessing the runtime",
     Modules::Soapy config;
     config.deviceString = "driver=saved,serial=123";
     SECTION("invalid sample rate") {
-        config.sampleRate = 0.0f;
+        config.sampleRate = GENERATE(0.0f, -1.0f,
+                                    std::numeric_limits<F32>::quiet_NaN(),
+                                    std::numeric_limits<F32>::infinity(),
+                                    -std::numeric_limits<F32>::infinity());
     }
     SECTION("non-finite frequency") {
         config.frequency = std::numeric_limits<F32>::quiet_NaN();
@@ -55,6 +63,7 @@ TEST_CASE("Soapy validates configuration before accessing the runtime",
         config.numberOfBatches = std::numeric_limits<U64>::max();
     }
 
+    CAPTURE(config.sampleRate);
     const auto module = BuildSoapyModule();
     REQUIRE(module->create("test", config, {}) == Result::ERROR);
     REQUIRE(module->state() == Module::State::ERRORED);
@@ -182,8 +191,12 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         failure = "frequency";
     }
     SECTION("sample rate") {
-        edit = {{"sampleRate", 4.0e6f}};
+        edit = {{"sampleRate", 61.44e6f}};
         failure = "sampleRate";
+    }
+    SECTION("sample rate readback") {
+        edit = {{"sampleRate", 61.44e6f}};
+        failure = "sampleRateReadback";
     }
     SECTION("automatic gain") {
         edit = {{"automaticGain", true}};
@@ -221,7 +234,7 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
 }
 
 TEST_CASE_METHOD(TestSoapy::Runtime,
-                 "Soapy forwards sample rates outside the reported ranges to the driver",
+                 "Soapy module forwards positive sample rates to the driver",
                  "[modules][soapy][reconfigure][rate]") {
     const auto module = BuildSoapyModule();
     struct Cleanup {
@@ -235,7 +248,129 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     config.numberOfTimeSamples = 8;
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
     REQUIRE(TestSoapy::State().settings().sampleRate == 20.0e6);
+    REQUIRE(module->state() == Module::State::CREATED);
+    REQUIRE(std::any_cast<F32>(module->outputs().at("signal").tensor.attribute("sampleRate")) ==
+            config.sampleRate);
 
     REQUIRE(module->reconfigure({{"sampleRate", 61.44e6f}}) == Result::SUCCESS);
     REQUIRE(TestSoapy::State().settings().sampleRate == static_cast<F64>(61.44e6f));
+    REQUIRE(module->state() == Module::State::CREATED);
+    REQUIRE(static_cast<const Modules::Soapy&>(module->config()).sampleRate == 61.44e6f);
+    REQUIRE(TestSoapy::State().concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy module publishes the applied sample rate and retains the request",
+                 "[modules][soapy][reconfigure][metadata]") {
+    TestSoapy::State().sampleRateOffset = 125.0;
+    TestSoapy::State().emitSamples = true;
+    const auto module = BuildSoapyModule();
+    struct Cleanup {
+        std::shared_ptr<Module> module;
+        ~Cleanup() { static_cast<void>(module->destroy()); }
+    } cleanup{module};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.sampleRate = 20.0e6f;
+    config.automaticGain = false;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    const auto& output = module->outputs().at("signal").tensor;
+    const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
+        module->context()->runtime());
+    REQUIRE(runtime != nullptr);
+    const auto checkApplied = [&] {
+        REQUIRE(module->state() == Module::State::CREATED);
+        REQUIRE(static_cast<const Modules::Soapy&>(module->config()).sampleRate ==
+                config.sampleRate);
+        const F64 applied = config.sampleRate + TestSoapy::State().sampleRateOffset;
+        REQUIRE(TestSoapy::State().settings().sampleRate == applied);
+        REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) ==
+                static_cast<F32>(applied));
+    };
+    const auto frame = [&] {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        Result result;
+        do {
+            result = runtime->computeSubmit();
+            if (result != Result::YIELD) {
+                break;
+            }
+            std::this_thread::yield();
+        } while (std::chrono::steady_clock::now() < deadline);
+        REQUIRE(result == Result::SUCCESS);
+    };
+    checkApplied();
+
+    REQUIRE(module->reconfigure({{"sampleRate", 61.44e6f}}) == Result::SUCCESS);
+    config.sampleRate = 61.44e6f;
+    frame();
+    checkApplied();
+    REQUIRE(TestSoapy::State().sampleRateWrites == 2);
+
+    REQUIRE(module->reconfigure({{"frequency", 300.0e6f}}) == Result::SUCCESS);
+    frame();
+    checkApplied();
+    REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == 300.0e6f);
+    REQUIRE(TestSoapy::State().sampleRateWrites == 2);
+
+    TestSoapy::State().fail("manualGain");
+    const Parser::Map edit{{"sampleRate", 30.72e6f}, {"manualGain", 40.0f}};
+    REQUIRE(module->reconfigure(edit) == Result::ERROR);
+    frame();
+    checkApplied();
+
+    REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+    config.sampleRate = 30.72e6f;
+    frame();
+    checkApplied();
+    REQUIRE(TestSoapy::State().concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy module rejects invalid sample rate readback without losing settings",
+                 "[modules][soapy][validation][reconfigure]") {
+    const F64 invalid = GENERATE(0.0, -1.0,
+                                 std::numeric_limits<F64>::quiet_NaN(),
+                                 std::numeric_limits<F64>::infinity(),
+                                 -std::numeric_limits<F64>::infinity(),
+                                 std::numeric_limits<F64>::max(),
+                                 std::numeric_limits<F64>::min());
+    CAPTURE(invalid);
+    const auto module = BuildSoapyModule();
+    struct Cleanup {
+        std::shared_ptr<Module> module;
+
+        ~Cleanup() {
+            if (module->state() == Module::State::CREATED) {
+                static_cast<void>(module->destroy());
+            }
+        }
+    } cleanup{module};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+
+    SECTION("creation") {
+        TestSoapy::State().nextSampleRateReadback = invalid;
+        REQUIRE(module->create("test", config, {}) == Result::ERROR);
+        REQUIRE(module->state() == Module::State::DESTROYED);
+    }
+    SECTION("reconfiguration") {
+        REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        TestSoapy::State().nextSampleRateReadback = invalid;
+        const Parser::Map edit{{"sampleRate", 61.44e6f}};
+        REQUIRE(module->reconfigure(edit) == Result::ERROR);
+        REQUIRE(module->state() == Module::State::CREATED);
+        REQUIRE(TestSoapy::State().settings().sampleRate == config.sampleRate);
+        REQUIRE(static_cast<const Modules::Soapy&>(module->config()).sampleRate ==
+                config.sampleRate);
+
+        REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+        REQUIRE(TestSoapy::State().settings().sampleRate == static_cast<F64>(61.44e6f));
+        REQUIRE(static_cast<const Modules::Soapy&>(module->config()).sampleRate == 61.44e6f);
+    }
+    REQUIRE(TestSoapy::State().concurrentChanges == 0);
 }
