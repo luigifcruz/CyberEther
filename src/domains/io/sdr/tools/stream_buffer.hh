@@ -29,12 +29,12 @@ class JETSTREAM_API StreamBuffer {
         U64 discardedSamples = 0;
     };
 
-    Result resize(U64 capacity);
+    Result resize(U64 capacity, U64 sampleBytes = sizeof(CF32));
     void reset(const Metadata& metadata);
-    bool push(U64 generation, const CF32* data, U64 count,
+    bool push(U64 generation, const void* data, U64 count,
               std::optional<U64> timestamp = std::nullopt, U64 epoch = 0);
     void split(U64 generation);
-    Result pop(CF32* data, U64 count, Metadata& metadata);
+    Result pop(void* data, U64 count, Metadata& metadata);
 
     Metadata metadata() const;
     U64 size() const;
@@ -47,7 +47,8 @@ class JETSTREAM_API StreamBuffer {
     void prune();
 
     mutable std::mutex mutex;
-    Tools::CircularBuffer<CF32> samples;
+    Tools::CircularBuffer<U8> samples;
+    U64 sampleBytes = sizeof(CF32);
     Metadata current;
     Statistics accumulated;
     U64 written = 0;

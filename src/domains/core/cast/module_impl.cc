@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 
+#include <jetstream/memory/attributes.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -56,6 +57,7 @@ CastImpl::Scale CastImpl::ScaleOf(const DataType& dtype) {
 
 Result CastImpl::validate() {
     const auto& config = *candidate();
+    validatedSampleScale.reset();
 
     const DataType candidateOutputDtype = NameToDataType(config.outputType);
     if (candidateOutputDtype == DataType::None) {
@@ -70,6 +72,12 @@ Result CastImpl::validate() {
     if (inputs().contains("buffer")) {
         const Tensor& candidateInput = inputs().at("buffer").tensor;
         candidateBypass = candidateInput.dtype() == candidateOutputDtype;
+        JST_CHECK(ReadAttribute(candidateInput, "sampleScale", validatedSampleScale));
+        if (validatedSampleScale &&
+            (!std::isfinite(*validatedSampleScale) || *validatedSampleScale <= 0.0f)) {
+            JST_ERROR("[MODULE_CAST] Sample scale must be finite and positive.");
+            return Result::ERROR;
+        }
 
         if (candidateInput.validShape() && candidateInput.size() != 0 &&
             !candidateBypass) {
@@ -138,6 +146,22 @@ Result CastImpl::create() {
 
     JST_CHECK(output.create(input.device(), outputDtype, input.shape()));
     JST_CHECK(output.propagateAttributes(input));
+
+    if (validatedSampleScale) {
+        F32 scale = 1.0f;
+        if (outputScale.integer) {
+            const F64 fullScale = inputScale.integer ?
+                *validatedSampleScale * inputScale.fullScale : 1.0;
+            scale = static_cast<F32>(fullScale / outputScale.fullScale);
+        } else if (inputScale.integer) {
+            inputScale.fullScale = 1.0 / *validatedSampleScale;
+        }
+        if (!std::isfinite(scale) || scale <= 0.0f) {
+            JST_ERROR("[MODULE_CAST] Output sample scale is out of range.");
+            return Result::ERROR;
+        }
+        JST_CHECK(output.setAttribute("sampleScale", scale));
+    }
 
     outputs()["buffer"].produced(name(), "buffer", output);
 

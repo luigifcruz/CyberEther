@@ -9,12 +9,19 @@ struct Soapy : public Block::Config {
     std::string modulePath = "";
     std::string deviceString = "";
     std::string streamString = "";
+    std::string dataType = "CF32";
     std::string antenna = "";
     F32 frequency = 96.9e6;
     F32 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
     F32 manualGain = 0.0f;
+    std::string gainMode = "total";
+    Parser::Map gains;
+    F64 bandwidth = 0.0;
+    bool advanced = false;
+    Parser::Map settings;
+    Parser::Map streamArgs;
     bool biasTee = false;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
@@ -23,9 +30,10 @@ struct Soapy : public Block::Config {
     JST_BLOCK_TYPE(soapy);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
-    JST_BLOCK_PARAMS(modulePath, deviceString, streamString,
+    JST_BLOCK_PARAMS(modulePath, deviceString, streamString, dataType,
                      antenna, frequency, frequencyStep, sampleRate,
-                     automaticGain, manualGain, biasTee, numberOfBatches,
+                     automaticGain, manualGain, gainMode, gains, bandwidth,
+                     advanced, settings, streamArgs, biasTee, numberOfBatches,
                      numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "SoapySDR",
@@ -40,18 +48,33 @@ struct Soapy : public Block::Config {
         "the first time it is used.\n"
         "- **Changes drop older samples.** Retuning drops buffered samples, but the "
         "driver can still deliver a few older ones.\n"
+        "- **Data Type selects the output.** CF32 keeps existing flowgraphs working. "
+        "Changing it restarts the receiver; integer outputs may need a Cast before "
+        "floating-point processing.\n"
         "- **A slow chain loses samples.** When the chain falls behind, the oldest "
         "samples are overwritten and Buffer Loss rises.\n"
-        "- **Automatic Gain off uses Manual Gain.** The saved gain is reapplied after "
-        "tuning and clamped to the radio's gain range.\n"
+        "- **Manual Gain applies when AGC is off or unavailable.** The requested gain "
+        "is reapplied after tuning and clamped to the radio's gain range.\n"
+        "- **Manual Gain Mode selects total or stage gains.** Stage names, ranges "
+        "and steps come from the driver. Only explicitly configured stages are set.\n"
+        "- **Bandwidth controls the hardware receive filter.** Zero leaves it to "
+        "the driver; returning to zero reopens the receiver.\n"
+        "- **Advanced Parameters exposes driver controls.** Device arguments, stream "
+        "arguments and driver settings are applied when the receiver opens. Changing "
+        "them restarts reception. Stream overrides take precedence over raw arguments.\n"
+        "- **Device status appears below each control.** Readbacks use small grey "
+        "text, amber when they differ from the request and red when a query fails. "
+        "These values refresh after control changes. Saved requests stay unchanged; "
+        "output metadata uses actual tuning.\n"
         "\n"
         "## Ports\n"
         "\n"
         "| Port | Type | Shape |\n"
         "|---|---|---|\n"
-        "| **Output** (out) | CF32 | Batches x Samples, on a `batchAxis` then a "
+        "| **Output** (out) | Data Type | Batches x Samples, on a `batchAxis` then a "
         "`sampleAxis`. Sets `frequency` and `sampleRate` to the values applied to these"
-        " samples. |\n"
+        " samples. Integer values are unscaled; `sampleScale` describes their "
+        "conversion to normalized floating point. |\n"
         "\n"
         "## Settings\n"
         "\n"
@@ -62,13 +85,28 @@ struct Soapy : public Block::Config {
         "|\n"
         "| **Antenna** | Default | Default and the radio's receive ports | Receive "
         "port. Default keeps the driver's choice. |\n"
+        "| **Data Type** | CF32 | CF32, CF64, CI16, CI8, CU8, as supported by the "
+        "radio | Type delivered by SoapySDR and passed downstream. CI16 and CI8 "
+        "request CS16 and CS8. This does not select the radio's wire format. |\n"
         "| **Frequency** | 96.9 MHz | Within the radio's range | Center frequency of "
         "the output. |\n"
         "| **Sample Rate** | 2 MHz | Within the radio's range | Complex samples per "
         "second, which is also the bandwidth captured. |\n"
-        "| **Automatic Gain** | On | On, Off | Lets the radio set its own gain. |\n"
+        "| **Automatic Gain** | On | On, Off | Lets the radio set its own gain. "
+        "Hidden when the radio does not report support. |\n"
         "| **Manual Gain** | 0 dB | Within the radio's gain range | Requested receive "
-        "gain, shown when Automatic Gain is off. Limits follow the tuned frequency. |\n"
+        "gain, shown when AGC is off or unsupported and gain is adjustable. "
+        "Limits follow the tuned frequency. |\n"
+        "| **Manual Gain Mode** | Total | Total, Stages | Selects which manual gain "
+        "controls apply. Available when the driver reports gain stages and AGC is off. |\n"
+        "| **Stage Gain** | Driver choice | Driver's range and step | Sets an individual "
+        "gain stage. Total gain is not written in this mode. |\n"
+        "| **Bandwidth** | 0 | Driver supported | Hardware filter width in MHz; "
+        "independent of the sample rate. Zero preserves the driver's choice. |\n"
+        "| **Advanced Parameters** | Off | On, Off | Keeps the device selector and "
+        "shows raw device and stream "
+        "arguments plus typed stream overrides and settings reported by the driver. "
+        "Defaults shown in these controls are only saved after editing. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable, on "
         "radios that support it. Hidden once the radio is open and lacks it. |\n"
         "| **Batches** | 8 batches | 1 or more | Batches per output buffer. |\n"
@@ -81,13 +119,16 @@ struct Soapy : public Block::Config {
         "\n"
         "| Readout | Shows |\n"
         "|---|---|\n"
+        "| **Device status** | Frequency, sample rate, bandwidth, gains, driver "
+        "settings and antenna read after the last control change, below their "
+        "controls. AGC can change gain between readbacks. |\n"
         "| **Buffer Fill** | How full the internal buffer is, smoothed, from 0 to "
         "100%. Near 100% means the chain is falling behind. |\n"
         "| **Buffer Loss** | Share of samples overwritten before the chain read them "
         "since the stream started. Overflows the radio reported show next to it as OVF."
         " |\n"
         "| **Throughput** | Rate the chain reads in MB/s, next to the rate the radio "
-        "sends at 8 bytes per sample. |\n"
+        "sends using the selected type's bytes per complex sample. |\n"
         "\n"
         "## Recipes\n"
         "\n"
@@ -118,6 +159,8 @@ struct Soapy : public Block::Config {
         "| The block reports that no SoapySDR devices were found | The radio is "
         "unplugged, or no installed module supports it | Plug it in and install the "
         "SoapySDR module for the radio. |\n"
+        "| A driver needs a custom library path | The library is outside the system "
+        "search path | Open Inspect from the node menu and set `modulePath`. |\n"
         "| The block reports that it failed to open the device | Another program holds "
         "the radio, or its driver failed | Close the other program and pick the radio "
         "again. |\n"
@@ -140,7 +183,9 @@ struct Soapy : public Block::Config {
         "A receive thread reads the radio into a ring buffer, and each cycle copies out"
         " one full buffer once enough samples have arrived. Frequency, Sample Rate, and"
         " gain changes are applied to the running stream, and Frequency and Sample Rate"
-        " changes empty the ring buffer. The Bias-T is switched off again when the "
+        " changes empty the ring buffer. Tuning ranges are refreshed after changes; "
+        "the driver decides which requested rates it can apply. Reception requires "
+        "valid frequency and sample rate readbacks. The Bias-T is switched off again when the "
         "block closes the radio.\n"
         "\n"
         "## See Also\n"

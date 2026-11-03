@@ -42,6 +42,11 @@ struct FlowgraphConfigRangeField {
             .integer = unsignedInteger,
             .unit = unit,
             .onChange = [this](F32 nextValue) {
+                const F32 step = Parser::Get<F32>(this->config.format, "step", 0.0f);
+                if (step > 0.0f && std::isfinite(nextValue)) {
+                    nextValue = std::clamp(minValue +
+                        std::round((nextValue - minValue) / step) * step, minValue, maxValue);
+                }
                 const F32 unsignedLimit = std::ldexp(1.0f, std::numeric_limits<U64>::digits);
                 if (!std::isfinite(nextValue) ||
                     (unsignedInteger &&

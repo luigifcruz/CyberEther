@@ -10,20 +10,27 @@ struct Soapy : public Module::Config {
     std::string modulePath = "";
     std::string deviceString = "";
     std::string streamString = "";
+    std::string dataType = "CF32";
     std::string antenna = "";
     F32 frequency = 96.9e6;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
     F32 manualGain = 0.0f;
+    std::string gainMode = "total";
+    Parser::Map gains;
+    F64 bandwidth = 0.0;
+    Parser::Map settings;
+    Parser::Map streamArgs;
     bool biasTee = false;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
     U64 bufferMultiplier = 4;
 
     JST_MODULE_TYPE(soapy);
-    JST_MODULE_PARAMS(modulePath, deviceString, streamString,
+    JST_MODULE_PARAMS(modulePath, deviceString, streamString, dataType,
                       antenna, frequency, sampleRate,
-                      automaticGain, manualGain, biasTee, numberOfBatches,
+                      automaticGain, manualGain, gainMode, gains, bandwidth,
+                      settings, streamArgs, biasTee, numberOfBatches,
                       numberOfTimeSamples, bufferMultiplier);
 };
 

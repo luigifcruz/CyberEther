@@ -184,12 +184,15 @@ TEST_CASE("Numeric fields apply explicit scale independently of their unit label
     SakuraTest::HeadlessUi ui;
     FlowgraphConfigFloatField field;
     std::vector<Parser::Map> edits;
+    U64 errors = 0;
     field.update({
         .id = "scaled",
         .name = "value",
-        .format = {{"type", "float"}, {"unit", "MHz"}, {"scale", 10.0f}, {"precision", 3}},
+        .format = {{"type", "float"}, {"unit", "MHz"}, {"scale", 10.0f},
+                   {"precision", 3}, {"min", 0.0f}, {"max", 40.0f}},
         .values = {{"value", 20.0f}},
         .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+        .onError = [&](Result, std::string) { ++errors; },
     });
     ImRect rect;
     const auto frame = [&] {
@@ -217,6 +220,24 @@ TEST_CASE("Numeric fields apply explicit scale independently of their unit label
     frame();
     REQUIRE(edits.size() == 1);
     REQUIRE(std::any_cast<F32>(edits.front().at("value")) == 32.5f);
+    for (const auto* invalid : {"-1", "4.25"}) {
+        CAPTURE(invalid);
+        ui.setMouse(rect.GetCenter(), true);
+        frame();
+        ui.setMouse(rect.GetCenter(), false);
+        frame();
+        input = ImGui::GetInputTextState(ImGui::GetActiveID());
+        REQUIRE(input != nullptr);
+        input->SelectAll();
+        ImGui::GetIO().AddInputCharactersUTF8(invalid);
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
+        frame();
+    }
+    REQUIRE(errors == 2);
+    REQUIRE(edits.size() == 1);
 }
 
 TEST_CASE("Vector controls recover their cached values after a decoding error",
@@ -272,5 +293,67 @@ TEST_CASE("Table metrics accept structured cells containing tabs and newlines",
             REQUIRE(text.find("Tab\tinside") != std::string::npos);
             REQUIRE(text.find("Invalid") == std::string::npos);
         });
+    }
+}
+
+TEST_CASE("Map controls preserve stored siblings and only save edited defaults",
+          "[core][sakura][interface]") {
+    Parser::Map edit;
+    FlowgraphConfigFieldConfig config{
+        .id = "settings:mode",
+        .name = "settings:mode",
+        .format = {{"type", "text"}, {"map", "settings"}, {"key", "mode"},
+                   {"default", "fast"}},
+        .values = {{"settings", Parser::Map{{"label", "a,b=quoted: value"}}}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)> complete) {
+            edit = std::move(patch);
+            if (complete) {
+                complete(Result::SUCCESS);
+            }
+        },
+    };
+    REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::SUCCESS);
+    auto field = BindFlowgraphConfigField(config);
+    REQUIRE(field.name == "mode");
+    REQUIRE(Parser::Get<std::string>(field.values, "mode") == "fast");
+    REQUIRE(edit.empty());
+    bool complete = false;
+    field.onApply({{"mode", "quiet"}}, false, [&](Result result) {
+        REQUIRE(result == Result::SUCCESS);
+        complete = true;
+    });
+    REQUIRE(complete);
+    const auto saved = Parser::Get<Parser::Map>(edit, "settings");
+    REQUIRE(saved == Parser::Map{{"label", "a,b=quoted: value"}, {"mode", "quiet"}});
+    REQUIRE_FALSE(Parser::Get<Parser::Map>(config.values, "settings").contains("mode"));
+
+    config.format = {{"type", "text"}, {"config", "deviceString"}};
+    config.values = {{"deviceString", "driver=scripted"}};
+    field = BindFlowgraphConfigField(config);
+    REQUIRE(field.name == "deviceString");
+    REQUIRE(Parser::Get<std::string>(field.values, field.name) == "driver=scripted");
+    field.onApply({{field.name, "driver=scripted,serial=1"}}, false, {});
+    REQUIRE(edit == Parser::Map{{"deviceString", "driver=scripted,serial=1"}});
+
+    SakuraTest::HeadlessUi ui(1.0f, {800.0f, 600.0f});
+    FlowgraphConfigFieldInstance presenter;
+    presenter.update(config);
+    F32 plainHeight = 0.0f;
+    F32 hintHeight = 0.0f;
+    const auto render = [&](F32& height) {
+        ui.frame([&] {
+            const auto top = ImGui::GetCursorPosY();
+            presenter.render(ui.sakura());
+            height = ImGui::GetCursorPosY() - top;
+        });
+    };
+    render(plainHeight);
+    config.format["hint"] = std::string("Device: 2 MHz");
+    for (const auto* tone : {"secondary", "warning", "error"}) {
+        config.format["hint_tone"] = std::string(tone);
+        REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::SUCCESS);
+        presenter.update(config);
+        render(hintHeight);
+        REQUIRE(hintHeight > plainHeight);
     }
 }
