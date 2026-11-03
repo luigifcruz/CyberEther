@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_REMOTE_QR_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_REMOTE_QR_HH
 
-#include "../components/modal_header.hh"
+#include "../components/card_button.hh"
 
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
@@ -16,24 +16,88 @@ namespace Jetstream {
 
 struct RemoteQrView {
     static constexpr F32 HeightRatio = 1.0f / 3.0f;
+    static constexpr F32 ButtonHeight = 36.0f;
+    static constexpr F32 TileRounding = 16.0f;
 
     struct Config {
         std::string inviteUrl;
+        Sakura::Callback<void()> onCopyLink;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {
-        encode(config.inviteUrl);
-        header.update({
-            .title = ICON_LC_QR_CODE " Scan to Connect",
-            .description = "Scan with another device to watch this session.",
+        this->config = std::move(config);
+        encode(this->config.inviteUrl);
+
+        using Text = Sakura::Text;
+
+        icon.update({
+            .str = ICON_LC_QR_CODE,
+            .colorKey = "text_primary",
+            .scale = Sakura::Typography::Scale::Heading,
         });
-        code.update({.data = data, .width = width, .heightRatio = HeightRatio});
-        spacing.update({});
+        title.update({
+            .str = "Scan to Connect",
+            .font = Text::Font::Display,
+            .scale = Sakura::Typography::Scale::Headline,
+        });
+        titleRow.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = Sakura::Spacing::Small,
+            .items = {
+                {.child = &icon},
+                {.child = &title},
+            },
+        });
+        description.update({
+            .str = "Point another device's camera at the code to watch this session.",
+            .font = Text::Font::Sans,
+            .tone = Text::Tone::Secondary,
+            .wrapped = true,
+            .scale = Sakura::Typography::Scale::Lead,
+        });
+        header.update({
+            .spacing = Sakura::Spacing::XSmall,
+            .items = {
+                {.child = &titleRow},
+                {.child = &description},
+            },
+        });
+
+        code.update({.data = data, .width = width, .heightRatio = HeightRatio, .rounding = TileRounding});
+
+        close.update({
+            .str = "Close",
+            .height = ButtonHeight,
+            .onClick = [this]() {
+                if (this->config.onClose) {
+                    this->config.onClose();
+                }
+            },
+        });
+        copy.update({
+            .str = ICON_LC_COPY "  Copy Link",
+            .tone = CardButton::Tone::Action,
+            .height = ButtonHeight,
+            .onClick = [this]() {
+                if (this->config.onCopyLink) {
+                    this->config.onCopyLink();
+                }
+            },
+        });
+        footer.update({
+            .columns = 2,
+            .cellPadding = {3.0f, 0.0f},
+            .outerPadding = false,
+            .items = {&close, &copy},
+        });
+
         stack.update({
+            .spacing = Sakura::Spacing::Large,
             .items = {
                 {.child = &header},
                 {.child = &code},
-                {.child = &spacing},
+                {.child = &footer},
             },
         });
         panel.update({
@@ -70,9 +134,16 @@ struct RemoteQrView {
         QRcode_free(qr);
     }
 
-    ModalHeader header;
+    Config config;
+    Sakura::Text icon;
+    Sakura::Text title;
+    Sakura::Stack titleRow;
+    Sakura::Text description;
+    Sakura::Stack header;
     Sakura::QrCode code;
-    Sakura::Spacer spacing;
+    CardButton close;
+    CardButton copy;
+    Sakura::Grid footer;
     Sakura::Stack stack;
     Sakura::Panel panel;
     std::string url;

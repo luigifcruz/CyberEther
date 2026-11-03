@@ -14,6 +14,7 @@ namespace Jetstream::Sakura {
 
 struct QrCode::Impl {
     Config config;
+    Box tile;
     Box modules;
 
     static constexpr int kBorder = 2;
@@ -30,6 +31,7 @@ struct QrCode::Impl {
 
 QrCode::QrCode() {
     impl = std::make_unique<Impl>();
+    addChild(impl->tile);
     addChild(impl->modules);
 }
 
@@ -55,9 +57,16 @@ void QrCode::layout(const Context& ctx) {
     const F32 x0 = std::floor(bounds.x + std::max(0.0f, (bounds.width - side) * 0.5f));
     const F32 y0 = std::floor(bounds.y);
 
+    impl->tile.update({
+        .instances = {{.rect = {x0, y0, side, side}, .visible = side > 0.0f, .backgroundColor = {1.0f, 1.0f, 1.0f, 1.0f}}},
+        .clip = bounds,
+        .cornerRadius = Px(ctx, config.rounding),
+        .capacity = 1,
+    });
+    layoutChild(ctx, impl->tile, bounds);
+
     std::vector<Box::Instance> instances;
     if (side > 0.0f) {
-        instances.push_back({.rect = {x0, y0, side, side}, .backgroundColor = {1.0f, 1.0f, 1.0f, 1.0f}});
         for (int y = 0; y < config.width; ++y) {
             int x = 0;
             while (x < config.width) {

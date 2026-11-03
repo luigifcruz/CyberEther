@@ -14,6 +14,7 @@ struct QrCode : public Component {
         std::vector<U8> data;
         int width = 0;
         F32 heightRatio = 1.0f / 3.0f;
+        F32 rounding = 0.0f;
 
         bool operator==(const Config&) const = default;
     };

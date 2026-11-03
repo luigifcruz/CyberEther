@@ -46,7 +46,7 @@ struct SettingsView {
     void update(Config config) {
         this->config = std::move(config);
         navItem(SettingsSection::General, ICON_LC_MONITOR, "General");
-        navItem(SettingsSection::Remote, ICON_LC_RADIO_TOWER, "Remote");
+        navItem(SettingsSection::Remote, ICON_LC_SCREEN_SHARE, "Remote");
         navItem(SettingsSection::Maps, ICON_LC_MAP, "Maps");
         navItem(SettingsSection::Runtime, ICON_LC_CPU, "Runtime");
         navItem(SettingsSection::Registry, ICON_LC_DATABASE, "Registry");

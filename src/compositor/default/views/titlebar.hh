@@ -151,7 +151,7 @@ struct TitlebarView {
 
         const bool updatePending = this->config.updateReady || this->config.updateAvailable;
         remoteButton.update({
-            .icon = ICON_LC_RADIO_TOWER,
+            .icon = ICON_LC_SCREEN_SHARE,
             .label = "Remote Sharing",
             .colorKey = "action_btn_text",
             .backgroundColorKey = "remote_btn",

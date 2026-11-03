@@ -24,6 +24,7 @@ struct CardButton : public Sakura::Button {
         F32 height = 40.0f;
         F32 textScale = 1.0f;
         std::string hoverTint;
+        bool tintText = false;
         Sakura::Callback<void()> onClick;
     };
 
@@ -60,6 +61,9 @@ struct CardButton : public Sakura::Button {
                     button.hoveredColorKey = jst::fmt::format("tint_{}_hover", config.hoverTint);
                     button.activeColorKey = button.hoveredColorKey;
                     button.hoveredTextColorKey = jst::fmt::format("tint_{}_text", config.hoverTint);
+                    if (config.tintText) {
+                        button.textColorKey = button.hoveredTextColorKey;
+                    }
                 }
                 break;
         }

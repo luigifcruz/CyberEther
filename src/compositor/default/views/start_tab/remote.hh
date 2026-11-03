@@ -17,7 +17,7 @@ namespace Jetstream {
 
 struct RemoteSectionView {
     static constexpr F32 ButtonHeight = 36.0f;
-    static constexpr F32 RowButtonSize = 28.0f;
+    static constexpr F32 RowButtonSize = 32.0f;
 
     struct Viewer {
         std::string id;
@@ -41,12 +41,12 @@ struct RemoteSectionView {
         this->config = std::move(config);
 
         startButton.update({
-            .str = ICON_LC_RADIO_TOWER "  Start Streaming",
+            .str = ICON_LC_SCREEN_SHARE "  Start Streaming",
             .height = ButtonHeight,
             .hoverTint = "green",
             .onClick = this->config.onStart,
         });
-        tinted(stopButton, ICON_LC_SQUARE "  Stop Streaming", "red", this->config.onStop);
+        tinted(stopButton, ICON_LC_SCREEN_SHARE_OFF "  Stop Streaming", "red", this->config.onStop);
         copyButton.update({
             .str = ICON_LC_COPY "  Copy Link",
             .height = ButtonHeight,
@@ -115,8 +115,9 @@ struct RemoteSectionView {
         Sakura::Text code;
         Sakura::Text status;
         Sakura::Stack texts;
-        Sakura::Button approve;
-        Sakura::Button remove;
+        CardButton approve;
+        CardButton remove;
+        Sakura::Stack actions;
         Sakura::Stack row;
         Sakura::Div card;
     };
@@ -134,21 +135,6 @@ struct RemoteSectionView {
             .rounding = ButtonHeight * 0.5f,
             .onClick = std::move(onClick),
             .font = Sakura::Text::Font::Display,
-        });
-    }
-
-    static void glyph(Sakura::Button& button, const char* icon, const char* hoverKey, Sakura::Callback<void()> onClick) {
-        button.update({
-            .str = icon,
-            .size = {RowButtonSize, RowButtonSize},
-            .colorKey = "transparent",
-            .hoveredColorKey = "transparent",
-            .activeColorKey = "transparent",
-            .borderColorKey = "transparent",
-            .textColorKey = "text_secondary",
-            .hoveredTextColorKey = hoverKey,
-            .padding = {0.0f, 0.0f},
-            .onClick = std::move(onClick),
         });
     }
 
@@ -182,18 +168,19 @@ struct RemoteSectionView {
             cards.push_back(&row.card);
             row.icon.update({
                 .str = ICON_LC_MONITOR,
-                .tone = Text::Tone::Secondary,
+                .colorKey = viewer.waiting ? "warning_yellow" : "success_green",
                 .scale = Sakura::Typography::Scale::Title,
             });
             row.code.update({
                 .str = viewer.code,
-                .font = Text::Font::Body,
+                .font = Text::Font::Sans,
                 .scale = Sakura::Typography::Scale::Body,
+                .weight = 0.15f,
             });
             row.status.update({
                 .str = viewer.waiting ? "Waiting for approval" : "Connected",
                 .font = Text::Font::Sans,
-                .colorKey = viewer.waiting ? "warning_yellow" : "success_green",
+                .tone = Text::Tone::Secondary,
                 .scale = Sakura::Typography::Scale::Caption,
             });
             row.texts.update({
@@ -201,27 +188,48 @@ struct RemoteSectionView {
                 .centerCross = false,
                 .items = {{.child = &row.code}, {.child = &row.status}},
             });
-            glyph(row.approve, ICON_LC_CHECK, "success_green", [this, id = viewer.id]() {
-                if (config.onApprove) {
-                    config.onApprove(id);
-                }
+            row.approve.update({
+                .str = ICON_LC_CHECK,
+                .width = RowButtonSize,
+                .height = RowButtonSize,
+                .hoverTint = "green",
+                .tintText = true,
+                .onClick = [this, id = viewer.id]() {
+                    if (config.onApprove) {
+                        config.onApprove(id);
+                    }
+                },
             });
-            glyph(row.remove, ICON_LC_X, "error_red", [this, id = viewer.id]() {
-                if (config.onRemove) {
-                    config.onRemove(id);
-                }
+            row.remove.update({
+                .str = ICON_LC_X,
+                .width = RowButtonSize,
+                .height = RowButtonSize,
+                .hoverTint = "red",
+                .tintText = true,
+                .onClick = [this, id = viewer.id]() {
+                    if (config.onRemove) {
+                        config.onRemove(id);
+                    }
+                },
+            });
+            std::vector<Sakura::Stack::Item> actions;
+            if (viewer.waiting) {
+                actions.push_back({.child = &row.approve});
+            }
+            actions.push_back({.child = &row.remove});
+            row.actions.update({
+                .axis = Sakura::Stack::Axis::Horizontal,
+                .spacing = Sakura::Spacing::XSmall,
+                .items = std::move(actions),
             });
             std::vector<Sakura::Stack::Item> items = {
                 {.child = &row.icon},
                 {.child = &row.texts, .grow = 1.0f, .shrink = 1.0f},
+                {.child = &row.actions},
             };
-            if (viewer.waiting) {
-                items.push_back({.child = &row.approve});
-            }
-            items.push_back({.child = &row.remove});
             row.row.update({
                 .axis = Sakura::Stack::Axis::Horizontal,
-                .spacing = Sakura::Spacing::Small,
+                .spacing = Sakura::Spacing::Medium,
                 .items = std::move(items),
             });
             row.card.update({

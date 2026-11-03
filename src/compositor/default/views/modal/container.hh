@@ -97,7 +97,7 @@ struct ModalView {
         return {
             .content = content(),
             .size = modalSize(),
-            .closeButton = config.content != ModalContent::Feedback,
+            .closeButton = config.content != ModalContent::Feedback && config.content != ModalContent::RemoteQr,
             .onClose = [this]() {
                 if (config.onClose) {
                     config.onClose();
@@ -135,6 +135,9 @@ struct ModalView {
     Extent2D<F32> modalSize() const {
         if (config.content == ModalContent::Feedback) {
             return Extent2D<F32>{520.0f, 0.0f};
+        }
+        if (config.content == ModalContent::RemoteQr) {
+            return Extent2D<F32>{460.0f, 0.0f};
         }
         if (config.content == ModalContent::Dependencies) {
             return Extent2D<F32>{760.0f, 0.0f};
