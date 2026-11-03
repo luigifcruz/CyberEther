@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -826,6 +827,61 @@ TEST_CASE("Text grid caret moves by line with Command and by word with Control o
     CHECK_FALSE(Sakura::Access::text(host, {U'?', {.control = true}}));
     CHECK_FALSE(Sakura::Access::text(host, {U'?', {.super = true}}));
     CHECK(grid.cursor().column == 17);
+}
+
+TEST_CASE("Text grid Tab inserts the onTab completion as one undoable edit and falls back when it declines",
+          "[core][sakura][input][text-grid]") {
+    std::vector<std::string> changes;
+    std::optional<std::string> completion = "hello world";
+    U64 asked = 0;
+    Sakura::TextGrid grid;
+    Host host(grid);
+    Sakura::TextGrid::Config config{
+        .id = "tab",
+        .value = "",
+        .editable = true,
+        .fontSize = 15.0f,
+        .onChange = [&](const std::string& next) { changes.push_back(next); },
+        .onTab = [&]() -> std::optional<std::string> {
+            ++asked;
+            return completion;
+        },
+    };
+    grid.update(config);
+    host.place(MakeContext({300.0f, 60.0f}), {0.0f, 0.0f, 300.0f, 60.0f});
+    grid.focus();
+    REQUIRE(FocusOwner(host) == &grid);
+
+    CHECK(Tap(host, KeyCode::Tab));
+    CHECK(asked == 1);
+    CHECK(changes == std::vector<std::string>{"hello world"});
+    CHECK(grid.cursor() == Sakura::TextGrid::Position{0, 11});
+
+    CHECK(Tap(host, KeyCode::Z, {.super = true}));
+    CHECK(changes.back().empty());
+    CHECK(grid.cursor() == Sakura::TextGrid::Position{0, 0});
+
+    CHECK(Tap(host, KeyCode::Tab, {.shift = true}));
+    CHECK(asked == 1);
+    CHECK(changes.back().empty());
+
+    completion.reset();
+    CHECK(Tap(host, KeyCode::Tab));
+    CHECK(asked == 2);
+    CHECK(changes.back() == "    ");
+    CHECK(grid.cursor() == Sakura::TextGrid::Position{0, 4});
+
+    changes.clear();
+    config.singleLine = true;
+    grid.update(config);
+    CHECK_FALSE(Tap(host, KeyCode::Tab));
+    CHECK(asked == 3);
+    CHECK(changes.empty());
+
+    completion = "!";
+    CHECK(Tap(host, KeyCode::Tab));
+    CHECK(asked == 4);
+    CHECK(changes == std::vector<std::string>{"    !"});
 }
 
 TEST_CASE("Pasting follows the same single line and character rules as typing",

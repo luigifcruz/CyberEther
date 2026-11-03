@@ -48,6 +48,7 @@ constexpr F32 kPillShadowSoftness = 4.0f;
 constexpr F32 kPillShadowDrop = 1.0f;
 constexpr F32 kFloatingShadowSoftness = 8.0f;
 constexpr F32 kFloatingShadowDrop = 3.0f;
+constexpr const char* kFloatingShadow = "floating_shadow";
 constexpr F32 kPillBorder = 1.5f;
 constexpr const char* kPillFill = "pill_field_bg";
 constexpr const char* kPillHover = "chrome_button_hover";

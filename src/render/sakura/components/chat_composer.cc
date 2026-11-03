@@ -57,6 +57,7 @@ constexpr F32 kKeycapWordWidth = 1.75f;
 constexpr F32 kKeycapFill = 0.06f;
 constexpr F32 kKeycapEdge = 0.14f;
 constexpr F32 kAttachScale = 0.9f;
+constexpr F32 kInlinePickerShare = 0.45f;
 constexpr F32 kPickerRounding = 15.0f;
 constexpr U64 kMaxCharacters = 128;
 
@@ -347,7 +348,22 @@ struct ChatComposer::Impl {
     }
 
     bool showsPicker() const {
-        return showsControls() && config.selector.has_value();
+        return config.selector.has_value() && (showsControls() || !text.empty());
+    }
+
+    bool inlinePicker() const {
+        return config.style.compact && showsPicker();
+    }
+
+    F32 inlinePickerWidth(ChatComposer& self, const Context& ctx, const Metrics& m, F32 boxWidth) {
+        if (!inlinePicker()) {
+            return 0.0f;
+        }
+        if (!config.style.pickerIcon.empty()) {
+            return m.control;
+        }
+        const F32 limit = std::max(0.0f, (boxWidth - 2.0f * m.pad - m.iconWidth - m.control) * kInlinePickerShare);
+        return std::min(limit, self.measureChild(picker, ctx, {limit, m.control}).x);
     }
 
     bool showsUsage() const {
@@ -385,15 +401,15 @@ struct ChatComposer::Impl {
                 std::max(0.0f, outer.height - top - Px(ctx, margin.bottom))};
     }
 
-    F32 inputWidth(const Metrics& m, F32 boxWidth) const {
+    F32 inputWidth(const Metrics& m, F32 boxWidth, F32 pickerWidth) const {
         F32 width = std::max(0.0f, boxWidth - 2.0f * m.pad - m.iconWidth);
         if (config.style.compact) {
-            width = std::max(0.0f, width - m.control - m.textPad);
+            width = std::max(0.0f, width - m.control - m.textPad - (pickerWidth > 0.0f ? pickerWidth + m.pad : 0.0f));
         }
         return width;
     }
 
-    Rects rects(const Metrics& m, const Rect& bounds, F32 textHeight) const {
+    Rects rects(const Metrics& m, const Rect& bounds, F32 textHeight, F32 pickerWidth) const {
         const F32 offset = config.style.compact ? std::max(0.0f, (bounds.height - 2.0f * m.pad - textHeight) * 0.5f)
                                                 : 0.0f;
         const F32 x = bounds.x + m.pad + m.iconWidth;
@@ -401,8 +417,9 @@ struct ChatComposer::Impl {
         if (config.style.compact) {
             const Rect sendRect = {bounds.right() - m.pad - m.control, bounds.bottom() - m.pad - m.control, m.control,
                                    m.control};
+            const F32 inputRight = sendRect.x - (pickerWidth > 0.0f ? pickerWidth + m.pad : 0.0f);
             return {
-                .input = {x, y, std::max(0.0f, sendRect.x - m.textPad - x),
+                .input = {x, y, std::max(0.0f, inputRight - m.textPad - x),
                           std::max(0.0f, bounds.bottom() - m.pad - offset - m.textPad - y)},
                 .send = sendRect,
             };
@@ -421,6 +438,7 @@ struct ChatComposer::Impl {
         }
         text = std::move(value);
         stale = true;
+        mount(self);
         self.invalidate(Dirty::Layout);
     }
 
@@ -550,6 +568,7 @@ struct ChatComposer::Impl {
             },
         });
         const Selector selector = config.selector.value_or(Selector{});
+        const bool inlineIcon = config.style.compact && !config.style.pickerIcon.empty();
         picker.update({
             .models = selector.options,
             .value = selector.value,
@@ -557,9 +576,13 @@ struct ChatComposer::Impl {
             .efforts = selector.efforts,
             .effort = selector.effort,
             .disabled = selector.disabled,
+            .icon = config.style.compact ? config.style.pickerIcon : std::string(),
             .fontSize = config.style.fontSize,
             .rounding = controlRounding(),
             .popupRounding = kPickerRounding * scale(),
+            .hoveredColorKey = inlineIcon ? "chrome_button_hover" : "button_hovered",
+            .activeColorKey = inlineIcon ? "chrome_button_hover" : "button_active",
+            .iconColorKey = inlineIcon ? "text_secondary" : "text_primary",
             .accentColorKey = "agent_activity",
             .popupColorKey = config.style.backgroundColorKey,
             .onSelect = [this](const std::string& value) {
@@ -696,7 +719,8 @@ Extent2D<F32> ChatComposer::measure(const Context& ctx, Extent2D<F32> available)
     const F32 width = FillLength(available.x, Px(ctx, kNaturalControlWidth));
     const F32 boxWidth = std::max(0.0f, width - Px(ctx, style.margin.left + style.margin.right));
     const F32 textHeight = measureChild(state.input, ctx,
-                                        {state.inputWidth(m, boxWidth), std::numeric_limits<F32>::infinity()}).y +
+                                        {state.inputWidth(m, boxWidth, state.inlinePickerWidth(*this, ctx, m, boxWidth)),
+                                         std::numeric_limits<F32>::infinity()}).y +
                            2.0f * m.textPad;
     const F32 boxHeight = style.compact ? std::max(textHeight, m.control) + 2.0f * m.pad
                                         : textHeight + m.control + 2.0f * m.pad;
@@ -737,9 +761,15 @@ void ChatComposer::layout(const Context& ctx) {
         layoutChild(ctx, state.background, bounds);
     }
 
+    const F32 pickerWidth = state.inlinePickerWidth(*this, ctx, m, bounds.width);
     const F32 measured = measureChild(state.input, ctx,
-                                      {state.inputWidth(m, bounds.width), std::numeric_limits<F32>::infinity()}).y;
-    const auto rects = state.rects(m, bounds, measured + 2.0f * m.textPad);
+                                      {state.inputWidth(m, bounds.width, pickerWidth),
+                                       std::numeric_limits<F32>::infinity()}).y;
+    const auto rects = state.rects(m, bounds, measured + 2.0f * m.textPad, pickerWidth);
+    const Rect pickerRect = {rects.send.x - m.pad - pickerWidth, rects.send.y, pickerWidth, m.control};
+    if (pickerWidth > 0.0f) {
+        layoutChild(ctx, state.picker, pickerRect);
+    }
 
     const bool suggesting = visible && state.suggesting() && state.input.focused();
     const F32 keyText = std::round(m.font * kKeycapText);
@@ -755,10 +785,12 @@ void ChatComposer::layout(const Context& ctx) {
     const F32 placeholderWidth = (suggesting ? keycapRect.x - m.textPad : rects.input.right() - m.textPad) -
                                  (rects.input.x + m.textPad);
     const ColorRGBA<F32> keyInk = ctx.color("text_primary");
+    const bool chip = suggesting || pickerWidth > 0.0f;
+    const Rect chipRect = suggesting ? keycapRect : pickerRect;
     state.keycap.update({
-        .instances = {{.rect = keycapRect, .visible = suggesting, .backgroundColor = WithAlpha(keyInk, kKeycapFill)}},
+        .instances = {{.rect = chipRect, .visible = visible && chip, .backgroundColor = WithAlpha(keyInk, kKeycapFill)}},
         .clip = bounds,
-        .cornerRadius = keycapHeight * 0.5f,
+        .cornerRadius = chipRect.height * 0.5f,
         .borderWidth = Px(ctx, 1.0f),
         .borderColor = WithAlpha(keyInk, kKeycapEdge),
         .strokeFringe = true,

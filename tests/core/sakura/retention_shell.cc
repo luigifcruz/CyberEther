@@ -953,15 +953,15 @@ TEST_CASE("An open submenu settles, repaints once per submenu row hover, and clo
     CHECK_FALSE(opened.rebuilt);
     REQUIRE(frames.settle(update));
     CHECK(DirtyFrames(frames, update) == 0);
-    REQUIRE(host.popups.interactiveAt({160.0f, 119.0f}));
+    REQUIRE(host.popups.interactiveAt({200.0f, 119.0f}));
 
-    Hover(host, frames, 160.0f, 119.0f);
+    Hover(host, frames, 200.0f, 119.0f);
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(DirtyFrames(frames, update) == 0);
-    Hover(host, frames, 161.0f, 120.0f);
+    Hover(host, frames, 201.0f, 120.0f);
     CHECK(frames.run(update).clean());
 
-    Hover(host, frames, 160.0f, 142.0f);
+    Hover(host, frames, 200.0f, 142.0f);
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(DirtyFrames(frames, update) == 0);
 
@@ -970,14 +970,14 @@ TEST_CASE("An open submenu settles, repaints once per submenu row hover, and clo
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(DirtyFrames(frames, update) == 0);
     CHECK(frames.restructures == restructures);
-    CHECK_FALSE(host.popups.interactiveAt({160.0f, 119.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({200.0f, 119.0f}));
 
     Hover(host, frames, 120.0f, 119.0f);
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(DirtyFrames(frames, update) == 0);
-    REQUIRE(host.popups.interactiveAt({160.0f, 119.0f}));
+    REQUIRE(host.popups.interactiveAt({200.0f, 119.0f}));
 
-    host.click(160.0f, 119.0f);
+    host.click(200.0f, 119.0f);
     CHECK(recent == 1);
     CHECK_FALSE(open);
     CHECK(RepaintOnly(frames.run(update)));

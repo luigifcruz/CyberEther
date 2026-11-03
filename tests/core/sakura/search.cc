@@ -222,6 +222,58 @@ TEST_CASE("Search catalog stacks an optional field above both cards", "[core][sa
     CHECK(rig.bounds.height == 34.0f + 8.0f + 360.0f);
 }
 
+TEST_CASE("Floating pill fields and pill icon buttons cast the larger floating shadow", "[core][sakura][search]") {
+    const Scene scene;
+    const auto palette = scene.context();
+    REQUIRE(palette.color("tile_shadow") != palette.color("floating_shadow"));
+    const auto shadowOf = [](Sakura::Component& root) {
+        std::optional<Sakura::Box::Config> found;
+        for (auto* box : Find<Sakura::Box>(root)) {
+            if (box->config().softness > 0.0f) {
+                found = box->config();
+            }
+        }
+        REQUIRE(found.has_value());
+        REQUIRE(found->instances.size() == 1);
+        return *found;
+    };
+    const Rect bounds = {10.0f, 10.0f, 200.0f, 34.0f};
+    const Rect square = {10.0f, 10.0f, 34.0f, 34.0f};
+    for (const F32 ratio : {1.0f, 2.0f}) {
+        CAPTURE(ratio);
+        auto ctx = palette;
+        ctx.pixelRatio = ratio;
+        for (const bool floating : {false, true}) {
+            CAPTURE(floating);
+            const F32 softness = (floating ? 8.0f : 4.0f) * ratio;
+            const F32 drop = (floating ? 3.0f : 1.0f) * ratio;
+
+            Sakura::PillField field;
+            field.update({.icon = "Q", .placeholder = "Search", .floating = floating});
+            Host fieldHost(field);
+            fieldHost.place(ctx, bounds);
+            const auto fieldShadow = shadowOf(field);
+            const auto shadowColor = ctx.color(floating ? "floating_shadow" : "tile_shadow");
+            CHECK(fieldShadow.softness == softness);
+            CHECK(fieldShadow.instances.front().backgroundColor == shadowColor);
+            CHECK(fieldShadow.instances.front().rect ==
+                  Rect{bounds.x - softness, bounds.y + drop - softness, bounds.width + 2.0f * softness,
+                       bounds.height + 2.0f * softness});
+
+            Sakura::PillIconButton button;
+            button.update({.icon = ICON_LC_X, .floating = floating});
+            Host buttonHost(button);
+            buttonHost.place(ctx, square);
+            const auto buttonShadow = shadowOf(button);
+            CHECK(buttonShadow.softness == softness);
+            CHECK(buttonShadow.instances.front().backgroundColor == shadowColor);
+            CHECK(buttonShadow.instances.front().rect ==
+                  Rect{square.x - softness, square.y + drop - softness, square.width + 2.0f * softness,
+                       square.height + 2.0f * softness});
+        }
+    }
+}
+
 TEST_CASE("Pill fields open on click while idle and host a text input while editing",
           "[core][sakura][search]") {
     Scene scene{Extent2D<F32>{1200.0f, 900.0f}};

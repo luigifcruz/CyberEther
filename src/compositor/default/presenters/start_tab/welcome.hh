@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_START_TAB_WELCOME_HH
 
 #include "remote.hh"
+#include "../agent/chat.hh"
 #include "../context.hh"
 
 #include "../../model/messages.hh"
@@ -37,6 +38,7 @@ struct WelcomePresenter {
             .assistantEnabled = context.state.agent.settings.enabled,
             .pageCard = !context.state.tabsHidden(),
             .assistantClearRequest = context.state.agent.chat.welcomeAccepted,
+            .assistantSelector = AgentChatPresenter::ModelSelector(context),
             .onAssistantSubmit = [enqueue](const std::string& text) {
                 enqueue(MailSubmitAgentChat{.composer = AgentComposer::Welcome, .text = text, .reveal = true});
             },

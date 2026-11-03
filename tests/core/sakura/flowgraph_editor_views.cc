@@ -55,7 +55,7 @@ class SurfaceTexture final : public Render::Texture {
 };
 
 F32 RowY(U64 entries, U64 separators) {
-    return 119.5f + 23.0f * static_cast<F32>(entries) + 9.0f * static_cast<F32>(separators);
+    return 118.5f + 27.0f * static_cast<F32>(entries) + 9.0f * static_cast<F32>(separators);
 }
 
 constexpr F32 kMenuX = 120.0f;
@@ -405,7 +405,7 @@ TEST_CASE("Node menu paste, detach, and device entries follow their enabled flag
     rig.host.place(MakeContext(), kScreen);
     CHECK(rig.calls.empty());
     CHECK(rig.openAt(kCopyY));
-    CHECK_FALSE(rig.host.popups.interactiveAt({170.0f, kDeviceY}));
+    CHECK_FALSE(rig.host.popups.interactiveAt({230.0f, kDeviceY}));
 
     rig.configDetached = true;
     rig.configDetachEnabled = true;
@@ -425,15 +425,15 @@ TEST_CASE("Node menu device submenu reports the index of the chosen device",
           "[core][sakura][flowgraph][editor-views]") {
     MenuRig rig;
     rig.show();
-    CHECK_FALSE(rig.host.popups.interactiveAt({170.0f, kDeviceY}));
+    CHECK_FALSE(rig.host.popups.interactiveAt({230.0f, kDeviceY}));
 
     rig.host.click(kMenuX, kDeviceY);
     CHECK(rig.calls.empty());
     rig.host.place(MakeContext(), kScreen);
-    REQUIRE(rig.host.popups.interactiveAt({170.0f, kDeviceY}));
-    REQUIRE(rig.host.popups.interactiveAt({170.0f, kDeviceY + 23.0f}));
+    REQUIRE(rig.host.popups.interactiveAt({230.0f, kDeviceY}));
+    REQUIRE(rig.host.popups.interactiveAt({230.0f, kDeviceY + 27.0f}));
 
-    rig.host.click(170.0f, kDeviceY + 23.0f);
+    rig.host.click(230.0f, kDeviceY + 27.0f);
     CHECK(rig.calls == std::vector<std::string>{"close", "device:1"});
 }
 

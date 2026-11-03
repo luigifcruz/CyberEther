@@ -825,6 +825,7 @@ void SearchCatalog::layout(const Context& ctx) {
         .borderWidth = Px(ctx, 1.0f),
         .lineWidth = Px(ctx, 1.0f),
         .fillKey = kPillFill,
+        .shadowKey = kFloatingShadow,
     });
     layoutChild(ctx, s.cards, bounds);
     Rect listArea = {s.listCard.x + padding, s.listCard.y + padding, std::max(0.0f, s.listCard.width - 2.0f * padding),

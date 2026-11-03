@@ -102,6 +102,12 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     subjects.push_back(Make<Sakura::PillStepper>("pill stepper", {.label = "100%"}));
     subjects.push_back(Make<Sakura::PillIconButton>("pill icon button", {.icon = ICON_LC_INFO}));
     subjects.push_back(Make<Sakura::PillButton>("pill button", {.label = "Open"}));
+    subjects.push_back(Make<Sakura::AssistantPill>("working assistant pill", {.state = Sakura::AssistantPill::State::Working,
+                                                                              .icon = ICON_LC_WAND_SPARKLES,
+                                                                              .label = "Working"}));
+    subjects.push_back(Make<Sakura::AssistantPill>("unread assistant pill", {.state = Sakura::AssistantPill::State::Unread,
+                                                                             .icon = ICON_LC_WAND_SPARKLES,
+                                                                             .label = "New reply"}));
     subjects.push_back(Make<Sakura::QrCode>("qr code", {.data = std::vector<U8>(21 * 21, 1), .width = 21}));
     subjects.push_back(Make<Sakura::TipBanner>("tip banner", {.str = "Drag blocks to move them.", .icon = ICON_LC_LIGHTBULB}));
     subjects.push_back(Make<Sakura::Table>("table", {.columns = {"Key", "Value"}, .rows = {{"Gain", "1.0"}}}));

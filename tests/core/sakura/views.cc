@@ -1151,30 +1151,107 @@ TEST_CASE("Titlebar presenter save and info shortcuts skip the flowgraph hidden 
     CHECK(mailbox.last<MailOpenModal>()->flowgraph == std::optional<std::string>("a"));
 }
 
-TEST_CASE("Titlebar presenter tints the assistant button from the unread state", "[core][sakura][views]") {
+TEST_CASE("Titlebar presenter reports the assistant working only while its chat is hidden",
+          "[core][sakura][views]") {
     Mailbox mailbox;
     mailbox.state.agent.settings.enabled = true;
-    CHECK_FALSE(TitlebarPresenter(mailbox.context()).build().agentUnread);
+    auto config = TitlebarPresenter(mailbox.context()).build();
+    CHECK_FALSE(config.agentUnread);
+    CHECK_FALSE(config.agentWorking);
+
     mailbox.state.agent.ui.unread = true;
     CHECK(TitlebarPresenter(mailbox.context()).build().agentUnread);
+    mailbox.state.agent.ui.unread = false;
 
+    mailbox.state.agent.chat.conversation.streaming = true;
+    mailbox.state.agent.ui.visible = false;
+    CHECK(TitlebarPresenter(mailbox.context()).build().agentWorking);
+    mailbox.state.agent.ui.visible = true;
+    CHECK_FALSE(TitlebarPresenter(mailbox.context()).build().agentWorking);
+    mailbox.state.agent.chat.conversation.streaming = false;
+    mailbox.state.agent.ui.visible = false;
+    CHECK_FALSE(TitlebarPresenter(mailbox.context()).build().agentWorking);
+}
+
+TEST_CASE("Titlebar swaps the assistant button for a pill while working or unread",
+          "[core][sakura][views]") {
+    using Action = TitlebarView::Action;
     TitleRig rig;
-    const auto tint = [&]() {
+    const auto refresh = [&] {
         rig.update();
         rig.place();
-        auto* assistant = Indicator(rig.shell.bar(), ICON_LC_WAND_SPARKLES);
-        REQUIRE(assistant != nullptr);
-        for (auto* text : Find<Sakura::Text>(*assistant)) {
-            if (text->config().str == ICON_LC_WAND_SPARKLES) {
-                return text->config().colorKey;
+    };
+    const auto wand = [&]() -> Sakura::PillButton* {
+        for (auto* button : Find<Sakura::PillButton>(rig.shell.bar().end())) {
+            for (auto* text : Find<Sakura::Text>(*button)) {
+                if (text->config().str == ICON_LC_WAND_SPARKLES) {
+                    return button;
+                }
             }
         }
-        return std::string();
+        return nullptr;
     };
+    const auto pill = [&]() -> Sakura::AssistantPill* {
+        const auto pills = Find<Sakura::AssistantPill>(rig.shell.bar().end());
+        return pills.size() == 1 ? pills.front() : nullptr;
+    };
+    const auto labeled = [&](Sakura::Component& root, const std::string& str) {
+        for (auto* text : Find<Sakura::Text>(root)) {
+            if (text->config().str == str) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     rig.config.intelligenceEnabled = true;
-    CHECK(tint() == "text_secondary");
+    refresh();
+    REQUIRE(wand() != nullptr);
+    CHECK(pill() == nullptr);
+    CHECK(labeled(*wand(), ICON_LC_WAND_SPARKLES));
+    for (auto* text : Find<Sakura::Text>(*wand())) {
+        CHECK(text->config().colorKey == "text_secondary");
+    }
+
     rig.config.agentUnread = true;
-    CHECK(tint() == "cyber_blue");
+    refresh();
+    CHECK(wand() == nullptr);
+    REQUIRE(pill() != nullptr);
+    CHECK(labeled(*pill(), "New reply"));
+    CHECK(labeled(*pill(), ICON_LC_WAND_SPARKLES));
+    const auto help = Peek::Frame(Help(rig.shell.bar()));
+    CHECK(std::abs(Peek::Frame(*pill()).right() + TitlebarView::IndicatorGap - help.x) <= 0.5f);
+    CHECK(Press(rig.host, *pill()));
+    CHECK(rig.actions == std::vector<Action>{Action::ToggleAgent});
+
+    rig.config.agentWorking = true;
+    refresh();
+    REQUIRE(pill() != nullptr);
+    CHECK(labeled(*pill(), "Working"));
+    CHECK_FALSE(labeled(*pill(), "New reply"));
+
+    rig.config.agentUnread = false;
+    refresh();
+    REQUIRE(pill() != nullptr);
+    CHECK(labeled(*pill(), "Working"));
+
+    rig.config.voice = TitlebarView::VoiceIndicator{.phase = TitlebarView::VoiceIndicator::Phase::Listening};
+    refresh();
+    CHECK(pill() == nullptr);
+    CHECK(wand() == nullptr);
+    CHECK(Find<Sakura::Voice>(rig.shell.bar().end()).size() == 1);
+
+    rig.config.voice.reset();
+    rig.config.agentWorking = false;
+    refresh();
+    CHECK(pill() == nullptr);
+    CHECK(wand() != nullptr);
+
+    rig.config.intelligenceEnabled = false;
+    rig.config.agentUnread = true;
+    refresh();
+    CHECK(pill() == nullptr);
+    CHECK(wand() == nullptr);
 }
 
 TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph",
@@ -2079,6 +2156,121 @@ TEST_CASE("Welcome screen lists favorites above recent and stars toggle without 
     CHECK(mailbox.last<MailOpenFlowgraphPath>()->path == "/flows/radio.yml");
 }
 
+TEST_CASE("Welcome flowgraph rows are single lines that open a context menu on a right click",
+          "[core][sakura][views]") {
+    WelcomeRig rig;
+    auto& mailbox = rig.mailbox;
+    mailbox.state.interface.recentFlowgraphs = {
+        {.path = "/flows/radio.yml", .title = "Radio", .accessed = 1},
+        {.path = "/flows/sweep.yml", .title = "A sweep flowgraph with a title far too long for one sidebar row",
+         .accessed = 1},
+    };
+    mailbox.state.interface.favoriteFlowgraphs = {{.path = "/flows/sweep.yml", .title = "Sweep", .accessed = 1}};
+    rig.show();
+
+    const auto cells = Find<FlowgraphCell>(rig.root());
+    REQUIRE(cells.size() == 3);
+    CHECK(Peek::Frame(*cells[1]).height == Peek::Frame(*cells[0]).height);
+    CHECK(Peek::Frame(*cells[2]).height == Peek::Frame(*cells[0]).height);
+    for (auto* cell : cells) {
+        for (auto* text : Find<Sakura::Text>(*cell)) {
+            CHECK_FALSE(text->config().wrapped);
+        }
+    }
+
+    const auto entry = [&](const std::string& str) -> Sakura::Text* {
+        for (auto* text : Find<Sakura::Text>(rig.host.popups)) {
+            if (text->config().str == str) {
+                return text;
+            }
+        }
+        return nullptr;
+    };
+    const auto open = [&](FlowgraphCell& cell) {
+        rig.show();
+        const auto frame = Peek::Frame(cell);
+        CHECK(rig.host.send(Mouse(MouseEventType::Click, frame.x + 40.0f, frame.y + frame.height * 0.5f,
+                                  MouseButton::Right)));
+        rig.host.send(Mouse(MouseEventType::Release, frame.x + 40.0f, frame.y + frame.height * 0.5f,
+                            MouseButton::Right));
+        rig.show();
+    };
+    const auto choose = [&](const std::string& str) {
+        auto* text = entry(str);
+        REQUIRE(text != nullptr);
+        const auto point = Center(*text);
+        CHECK(rig.host.click(point.x, point.y));
+        rig.show();
+        CHECK(entry(str) == nullptr);
+    };
+    CHECK(entry("Open") == nullptr);
+    CHECK(mailbox.mails.empty());
+
+    open(*cells[1]);
+    for (const char* str : {"Open", "Show in Folder", "Copy Path", "Add to Favorites", "Remove from Recents"}) {
+        CAPTURE(str);
+        CHECK(entry(str) != nullptr);
+    }
+    CHECK(entry("Remove from Favorites") == nullptr);
+    CHECK(entry("Remove from Recents")->config().colorKey == "error_red");
+    CHECK(mailbox.mails.empty());
+
+    choose("Open");
+    REQUIRE(mailbox.last<MailOpenFlowgraphPath>() != nullptr);
+    CHECK(mailbox.last<MailOpenFlowgraphPath>()->path == "/flows/radio.yml");
+
+    open(*cells[1]);
+    choose("Show in Folder");
+    REQUIRE(mailbox.last<MailRevealPath>() != nullptr);
+    CHECK(mailbox.last<MailRevealPath>()->path == "/flows/radio.yml");
+
+    open(*cells[1]);
+    choose("Copy Path");
+    REQUIRE(mailbox.last<MailCopyText>() != nullptr);
+    CHECK(mailbox.last<MailCopyText>()->value == "/flows/radio.yml");
+
+    open(*cells[1]);
+    choose("Add to Favorites");
+    REQUIRE(mailbox.last<MailToggleFavoriteFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailToggleFavoriteFlowgraph>()->path == "/flows/radio.yml");
+
+    open(*cells[2]);
+    CHECK(entry("Remove from Favorites") != nullptr);
+    choose("Remove from Recents");
+    REQUIRE(mailbox.last<MailForgetRecentFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailForgetRecentFlowgraph>()->path == "/flows/sweep.yml");
+    CHECK(mailbox.mails.size() == 5);
+
+    open(*cells[0]);
+    CHECK(entry("Open") != nullptr);
+    CHECK(entry("Remove from Favorites") != nullptr);
+    CHECK(entry("Add to Favorites") == nullptr);
+    CHECK(entry("Remove from Recents") == nullptr);
+    choose("Copy Path");
+    CHECK(mailbox.last<MailCopyText>()->value == "/flows/sweep.yml");
+    CHECK(mailbox.count<MailOpenFlowgraphPath>() == 1);
+}
+
+TEST_CASE("Welcome presenter routes row menu actions to their mails", "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto config = WelcomePresenter(mailbox.context()).build();
+    REQUIRE(config.onForgetRecent);
+    REQUIRE(config.onRevealRecent);
+    REQUIRE(config.onCopyRecentPath);
+
+    config.onForgetRecent("/flows/radio.yml");
+    REQUIRE(mailbox.last<MailForgetRecentFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailForgetRecentFlowgraph>()->path == "/flows/radio.yml");
+    config.onRevealRecent("/flows/sweep.yml");
+    REQUIRE(mailbox.last<MailRevealPath>() != nullptr);
+    CHECK(mailbox.last<MailRevealPath>()->path == "/flows/sweep.yml");
+    config.onCopyRecentPath("/flows/fm.yml");
+    REQUIRE(mailbox.last<MailCopyText>() != nullptr);
+    CHECK(mailbox.last<MailCopyText>()->label == "Path");
+    CHECK(mailbox.last<MailCopyText>()->value == "/flows/fm.yml");
+    CHECK(mailbox.mails.size() == 3);
+}
+
 TEST_CASE("Welcome screen switches between all and flowgraphs with the section tabs",
           "[core][sakura][views]") {
     WelcomeRig rig;
@@ -2728,11 +2920,11 @@ TEST_CASE("Remote sharing shows as a raised pill in the top right of the title r
     CHECK(built.remoteStarted);
 
     TitleRig rig;
-    CHECK(Indicator(rig.shell.bar(), ICON_LC_RADIO_TOWER) == nullptr);
+    CHECK(Indicator(rig.shell.bar(), ICON_LC_SCREEN_SHARE) == nullptr);
     rig.config.remoteStarted = true;
     rig.update();
     rig.place();
-    auto* indicator = Indicator(rig.shell.bar(), ICON_LC_RADIO_TOWER);
+    auto* indicator = Indicator(rig.shell.bar(), ICON_LC_SCREEN_SHARE);
     REQUIRE(indicator != nullptr);
     auto& remote = *indicator;
     const auto frame = Peek::Frame(remote);
@@ -5110,6 +5302,64 @@ struct AgentChatRig {
 
 }  // namespace
 
+TEST_CASE("The agent dock and the welcome composer share one model selector", "[core][sakura][views][agent]") {
+    Mailbox mailbox;
+    auto& settings = mailbox.state.agent.settings;
+    settings.enabled = true;
+    const auto selectors = [&] {
+        const auto context = mailbox.context();
+        auto dock = AgentChatPresenter(context).build().chat.selector;
+        auto welcome = WelcomePresenter(context).build().assistantSelector;
+        REQUIRE(dock.has_value());
+        REQUIRE(welcome.has_value());
+        const auto shared = AgentChatPresenter::ModelSelector(context);
+        for (const auto* selector : {&*dock, &*welcome}) {
+            CHECK(selector->options == shared.options);
+            CHECK(selector->value == shared.value);
+            CHECK(selector->placeholder == shared.placeholder);
+            CHECK(selector->disabled == shared.disabled);
+            CHECK(selector->efforts == shared.efforts);
+            CHECK(selector->effort == shared.effort);
+        }
+        return std::make_pair(std::move(*dock), std::move(*welcome));
+    };
+
+    auto [emptyDock, emptyWelcome] = selectors();
+    CHECK(emptyWelcome.options.empty());
+    CHECK(emptyWelcome.disabled);
+    CHECK(emptyWelcome.placeholder == "No models");
+
+    settings.models = {
+        {.provider = "local", .id = "alpha", .reasoningEffort = "low", .reasoningEfforts = {"low", "high"}},
+        {.provider = "cloud", .id = "beta"},
+    };
+    settings.provider = "local";
+    settings.model = "alpha";
+    auto [dock, welcome] = selectors();
+    REQUIRE(welcome.options.size() == 2);
+    CHECK_FALSE(welcome.disabled);
+    CHECK(welcome.value == welcome.options[0].id);
+    REQUIRE(welcome.efforts.size() == 2);
+    CHECK(welcome.efforts[0].id == "low");
+    CHECK(welcome.efforts[1].id == "high");
+
+    for (auto* selector : {&dock, &welcome}) {
+        mailbox.mails.clear();
+        REQUIRE(selector->onSelect);
+        REQUIRE(selector->onEffort);
+        selector->onSelect(selector->options[1].id);
+        REQUIRE(mailbox.last<MailSelectAgentModel>() != nullptr);
+        CHECK(mailbox.last<MailSelectAgentModel>()->provider == "cloud");
+        CHECK(mailbox.last<MailSelectAgentModel>()->model == "beta");
+        selector->onEffort("high");
+        REQUIRE(mailbox.last<MailSetAgentReasoningEffort>() != nullptr);
+        CHECK(mailbox.last<MailSetAgentReasoningEffort>()->provider == "local");
+        CHECK(mailbox.last<MailSetAgentReasoningEffort>()->model == "alpha");
+        CHECK(mailbox.last<MailSetAgentReasoningEffort>()->value == "high");
+        CHECK(mailbox.mails.size() == 2);
+    }
+}
+
 TEST_CASE("The assistant placeholder asks for a model before offering suggestions", "[core][sakura][views][agent]") {
     AgentChatRig rig;
     rig.show();
@@ -5392,7 +5642,9 @@ TEST_CASE("Remote QR modal encodes the invite while streaming and closes once st
         REQUIRE(codes.size() == 1);
         U64 count = 0;
         for (auto* box : Find<Sakura::Box>(*codes.front())) {
-            count += box->config().instances.size();
+            for (const auto& instance : box->config().instances) {
+                count += instance.visible ? 1 : 0;
+            }
         }
         return count;
     };
@@ -5405,6 +5657,47 @@ TEST_CASE("Remote QR modal encodes the invite while streaming and closes once st
     mailbox.state.remote.started = false;
     actions.reconcileModal();
     CHECK_FALSE(mailbox.state.modal.content.has_value());
+}
+
+TEST_CASE("Remote QR modal copies the invite link and closes from its own footer buttons",
+          "[core][sakura][views]") {
+    ModalRig rig;
+    Mailbox mailbox;
+    mailbox.state.modal.content = ModalContent::RemoteQr;
+    mailbox.state.remote.started = true;
+    mailbox.state.remote.inviteUrl = "https://cyberether.org/remote/abc";
+    ModalView view;
+    view.update(ModalPresenter(mailbox.context()).build());
+    const auto layer = view.layer();
+    CHECK_FALSE(layer.closeButton);
+    CHECK(layer.size.x == 460.0f);
+    rig.show(layer);
+
+    CHECK(ShownText(rig.modal, "Scan to Connect") != nullptr);
+    const auto codes = Find<Sakura::QrCode>(rig.modal);
+    REQUIRE(codes.size() == 1);
+    const auto tiles = Find<Sakura::Box>(*codes.front());
+    REQUIRE(tiles.size() == 2);
+    CHECK(tiles.front()->config().cornerRadius == RemoteQrView::TileRounding);
+    CHECK(tiles.front()->config().instances.front().visible);
+
+    auto* close = LabeledButton(rig.modal, "Close");
+    auto* copy = LabeledButton(rig.modal, ICON_LC_COPY "  Copy Link");
+    REQUIRE(close != nullptr);
+    REQUIRE(copy != nullptr);
+    CHECK(Peek::Frame(*close).y == Peek::Frame(*copy).y);
+    CHECK(Peek::Frame(*close).right() < Peek::Frame(*copy).x);
+    CHECK(Peek::Frame(*close).height == RemoteQrView::ButtonHeight);
+    CHECK(Peek::Frame(*close).width == Peek::Frame(*copy).width);
+    CHECK(Find<Sakura::Button>(rig.modal).size() == 2);
+
+    CHECK(Press(rig.host, *copy));
+    REQUIRE(mailbox.last<MailCopyText>() != nullptr);
+    CHECK(mailbox.last<MailCopyText>()->value == "https://cyberether.org/remote/abc");
+    CHECK(mailbox.count<MailCloseModal>() == 0);
+    CHECK(Press(rig.host, *close));
+    CHECK(mailbox.count<MailCloseModal>() == 1);
+    CHECK(mailbox.mails.size() == 2);
 }
 
 TEST_CASE("Settings presenter builds only the active section", "[core][sakura][views]") {

@@ -4,6 +4,7 @@
 #include "fonts.hh"
 #include "component_harness.hh"
 
+#include <jetstream/render/sakura/components/assistant_pill.hh>
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/combo.hh>
@@ -30,6 +31,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -420,23 +422,55 @@ TEST_CASE("QR codes size from the viewport height ratio and center the code", "[
 
     host.place(scene.ctx, {0.0f, 0.0f, 100.0f, 60.0f});
     const auto boxes = Find<Sakura::Box>(code);
-    REQUIRE(boxes.size() == 1);
-    const auto& instances = boxes.front()->config().instances;
-    REQUIRE(instances.size() == 3);
-    CHECK(instances[0].rect == Rect{20.0f, 0.0f, 60.0f, 60.0f});
-    CHECK(instances[1].rect == Rect{40.0f, 20.0f, 10.0f, 10.0f});
-    CHECK(instances[2].rect == Rect{50.0f, 30.0f, 10.0f, 10.0f});
+    REQUIRE(boxes.size() == 2);
+    const auto& tile = boxes[0]->config().instances;
+    const auto& instances = boxes[1]->config().instances;
+    REQUIRE(tile.size() == 1);
+    REQUIRE(instances.size() == 2);
+    CHECK(tile[0].rect == Rect{20.0f, 0.0f, 60.0f, 60.0f});
+    CHECK(instances[0].rect == Rect{40.0f, 20.0f, 10.0f, 10.0f});
+    CHECK(instances[1].rect == Rect{50.0f, 30.0f, 10.0f, 10.0f});
     CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 50.0f, 30.0f)));
     CHECK_FALSE(Peek::CursorAt(code, {50.0f, 30.0f}).has_value());
 
     host.place(scene.ctx, {0.0f, 0.0f, 32.0f, 60.0f});
-    const auto& fitted = Find<Sakura::Box>(code).front()->config().instances;
-    REQUIRE(fitted.size() == 3);
-    CHECK(fitted[0].rect == Rect{1.0f, 0.0f, 30.0f, 30.0f});
-    CHECK(fitted[2].rect.right() <= 31.0f);
+    const auto fittedBoxes = Find<Sakura::Box>(code);
+    REQUIRE(fittedBoxes.size() == 2);
+    const auto& fittedTile = fittedBoxes[0]->config().instances;
+    const auto& fitted = fittedBoxes[1]->config().instances;
+    REQUIRE(fittedTile.size() == 1);
+    REQUIRE(fitted.size() == 2);
+    CHECK(fittedTile[0].rect == Rect{1.0f, 0.0f, 30.0f, 30.0f});
+    CHECK(fitted[1].rect.right() <= 31.0f);
 
     code.update({.data = {1, 0, 0, 1}, .width = 2, .heightRatio = 0.0f});
     CHECK(host.measureOf(scene.ctx, {kInfinite, 500.0f}) == Extent2D<F32>{0.0f, 0.0f});
+}
+
+TEST_CASE("QR codes draw their white tile with the configured rounding", "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::QrCode code;
+    code.update({.data = {1, 0, 0, 1}, .width = 2, .heightRatio = 0.1f});
+    Host host(code);
+    host.place(scene.ctx, {0.0f, 0.0f, 100.0f, 60.0f});
+    auto boxes = Find<Sakura::Box>(code);
+    REQUIRE(boxes.size() == 2);
+    CHECK(boxes[0]->config().cornerRadius == 0.0f);
+    CHECK(boxes[0]->config().instances[0].backgroundColor == ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 1.0f});
+    CHECK(boxes[1]->config().cornerRadius == 0.0f);
+
+    code.update({.data = {1, 0, 0, 1}, .width = 2, .heightRatio = 0.1f, .rounding = 6.0f});
+    host.place(scene.ctx, {0.0f, 0.0f, 100.0f, 60.0f});
+    boxes = Find<Sakura::Box>(code);
+    REQUIRE(boxes.size() == 2);
+    CHECK(boxes[0]->config().cornerRadius == 6.0f);
+    CHECK(boxes[0]->config().instances[0].rect == Rect{20.0f, 0.0f, 60.0f, 60.0f});
+    CHECK(boxes[1]->config().cornerRadius == 0.0f);
+
+    auto dense = scene.ctx;
+    dense.pixelRatio = 2.0f;
+    host.place(dense, {0.0f, 0.0f, 200.0f, 120.0f});
+    CHECK(Find<Sakura::Box>(code)[0]->config().cornerRadius == 12.0f);
 }
 
 TEST_CASE("Progress bars fill the available width by default", "[core][sakura][controls]") {
@@ -477,6 +511,53 @@ TEST_CASE("Text measures to the available width and never past it", "[core][saku
     CHECK(TextSize(scene.ctx, {.str = "alpha beta gamma", .wrapped = true}, {width, kInfinite}) ==
           Extent2D<F32>{width, 30.0f});
     CHECK(TextSize(scene.ctx, {.str = "alpha beta gamma"}, {width, kInfinite}) == Extent2D<F32>{width, 15.0f});
+}
+
+TEST_CASE("Text with ellipsis elides a line that does not fit and keeps it on one line",
+          "[core][sakura][controls]") {
+    const Scene scene;
+    const std::string str = "alpha beta gamma delta";
+    const F32 natural = TextWidth(scene.ctx, str);
+    REQUIRE(natural > 0.0f);
+    const F32 width = std::floor(natural * 0.5f);
+    const auto drawn = [&](Sakura::Text::Config config) {
+        Sakura::Text text;
+        text.update(std::move(config));
+        Host host(text);
+        const auto size = host.measureOf(scene.ctx, {width, kInfinite});
+        host.place(scene.ctx, {0.0f, 0.0f, size.x, size.y});
+        std::vector<std::string> strs;
+        for (auto* label : Find<Sakura::Label>(text)) {
+            for (const auto& instance : label->config().instances) {
+                strs.push_back(instance.str);
+            }
+        }
+        return std::make_pair(size, strs);
+    };
+
+    const auto [elided, elidedStrs] = drawn({.str = str, .ellipsis = true});
+    CHECK(elided.y == 15.0f);
+    CHECK(elided.x <= width);
+    REQUIRE(elidedStrs.size() == 1);
+    const std::string& line = elidedStrs.front();
+    REQUIRE(line.size() > 3);
+    CHECK(line.substr(line.size() - 3) == "...");
+    CHECK(str.starts_with(line.substr(0, line.size() - 3)));
+    CHECK(TextWidth(scene.ctx, line) <= width);
+
+    const auto [plain, plainStrs] = drawn({.str = str});
+    CHECK(plain == Extent2D<F32>{width, 15.0f});
+    CHECK(plainStrs == std::vector<std::string>{str});
+
+    const auto [fits, fitsStrs] = drawn({.str = "ab", .ellipsis = true});
+    CHECK(fits == Extent2D<F32>{TextWidth(scene.ctx, "ab"), 15.0f});
+    CHECK(fitsStrs == std::vector<std::string>{"ab"});
+
+    const auto [wrapped, wrappedStrs] = drawn({.str = str, .wrapped = true, .ellipsis = true});
+    CHECK(wrapped.y > 15.0f);
+    for (const auto& part : wrappedStrs) {
+        CHECK(part.find("...") == std::string::npos);
+    }
 }
 
 TEST_CASE("Text inputs take focus when clicked or configured to focus", "[core][sakura][controls]") {
@@ -760,6 +841,122 @@ TEST_CASE("Pill buttons repaint without rebuilding when they toggle disabled", "
 
     disabled = false;
     CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Assistant pills add the unread dot to their measure and draw it only while unread",
+          "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::AssistantPill pill;
+    Host host(pill);
+    pill.update({.state = Sakura::AssistantPill::State::Working, .icon = ICON_LC_WAND_SPARKLES, .label = "Reply"});
+    const auto working = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    pill.update({.state = Sakura::AssistantPill::State::Unread, .icon = ICON_LC_WAND_SPARKLES, .label = "Reply"});
+    const auto unread = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    CHECK(working.y == 28.0f);
+    CHECK(unread.y == 28.0f);
+    const F32 glyph = TextSize(scene.ctx, {.str = ICON_LC_WAND_SPARKLES, .scale = 13.0f / 15.0f}).x;
+    const F32 text = TextSize(scene.ctx, {.str = "Reply", .font = Sakura::Text::Font::Display, .scale = 14.0f / 15.0f}).x;
+    REQUIRE(glyph > 0.0f);
+    REQUIRE(text > 0.0f);
+    CHECK(working.x == std::ceil(10.0f + 12.0f + glyph + 6.0f + text));
+    CHECK(unread.x == working.x + 8.0f + 6.0f);
+    CHECK(host.measureOf(scene.ctx, {40.0f, 20.0f}) == Extent2D<F32>{40.0f, 20.0f});
+
+    auto dense = scene.ctx;
+    dense.pixelRatio = 2.0f;
+    const auto doubled = host.measureOf(dense, {kInfinite, kInfinite});
+    const F32 denseGlyph = TextSize(dense, {.str = ICON_LC_WAND_SPARKLES, .scale = 13.0f / 15.0f}).x;
+    const F32 denseText = TextSize(dense, {.str = "Reply", .font = Sakura::Text::Font::Display, .scale = 14.0f / 15.0f}).x;
+    CHECK(doubled.y == 56.0f);
+    CHECK(doubled.x == std::ceil(2.0f * (10.0f + 12.0f + 6.0f + 8.0f + 6.0f) + denseGlyph + denseText));
+
+    const auto dot = [&]() -> const Sakura::Box::Instance& {
+        return Direct<Sakura::Box>(pill).back()->config().instances.front();
+    };
+    host.place(scene.ctx, {10.0f, 10.0f, unread.x, unread.y});
+    auto* label = ShownText(pill, "Reply");
+    auto* icon = ShownText(pill, ICON_LC_WAND_SPARKLES);
+    REQUIRE(label != nullptr);
+    REQUIRE(icon != nullptr);
+    CHECK(Peek::Frame(*icon).x == 20.0f);
+    CHECK(Peek::Frame(*label).x == Peek::Frame(*icon).right() + 6.0f);
+    CHECK(dot().visible);
+    CHECK(dot().rect == Rect{std::round(Peek::Frame(*label).right() + 8.0f), 21.0f, 6.0f, 6.0f});
+    CHECK(dot().rect.right() <= 10.0f + unread.x - 12.0f + 1.0f);
+
+    pill.update({.state = Sakura::AssistantPill::State::Working, .icon = ICON_LC_WAND_SPARKLES, .label = "Reply"});
+    host.place(scene.ctx, {10.0f, 10.0f, working.x, working.y});
+    CHECK_FALSE(dot().visible);
+}
+
+TEST_CASE("Assistant pills click on release inside and show the hand cursor", "[core][sakura][controls]") {
+    const Scene scene;
+    U64 clicked = 0;
+    Sakura::AssistantPill pill;
+    pill.update({.state = Sakura::AssistantPill::State::Unread, .icon = ICON_LC_WAND_SPARKLES, .label = "New reply",
+                 .onClick = [&] { ++clicked; }});
+    Host host(pill);
+    host.place(scene.ctx, {10.0f, 10.0f, 120.0f, 28.0f});
+
+    CHECK(Peek::CursorAt(pill, {50.0f, 24.0f}) == SurfaceCursor::Hand);
+    CHECK_FALSE(Peek::CursorAt(pill, {200.0f, 24.0f}).has_value());
+    CHECK(host.click(50.0f, 24.0f));
+    CHECK(clicked == 1);
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 24.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Release, 400.0f, 400.0f)));
+    CHECK(clicked == 1);
+
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 50.0f, 24.0f, MouseButton::Right)));
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 50.0f, 24.0f)));
+    CHECK(clicked == 1);
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 24.0f)));
+    host.send(Mouse(MouseEventType::Cancel, 50.0f, 24.0f));
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 50.0f, 24.0f)));
+    CHECK(clicked == 1);
+}
+
+TEST_CASE("Assistant pills animate only while working and shown and settle otherwise",
+          "[core][sakura][controls][retention]") {
+    Scene scene;
+    Sakura::AssistantPill pill;
+    Place place(pill, {10.0f, 10.0f, 120.0f, 28.0f});
+    Frames frames(place, kScreen, scene.context());
+    auto state = Sakura::AssistantPill::State::Unread;
+    const auto update = [&] {
+        pill.update({.state = state, .icon = ICON_LC_WAND_SPARKLES, .label = "Working"});
+    };
+    frames.timeStep = 0.05;
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    state = Sakura::AssistantPill::State::Working;
+    for (U64 frame = 0; frame < 4; ++frame) {
+        CAPTURE(frame);
+        CHECK(RepaintOnly(frames.run(update)));
+    }
+
+    frames.timeStep = 0.0;
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    frames.timeStep = 0.05;
+    const bool verify = frames.verify;
+    frames.verify = false;
+    place.move({10.0f, 10.0f, 0.0f, 0.0f});
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    frames.verify = verify;
+
+    place.move({10.0f, 10.0f, 120.0f, 28.0f});
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(RepaintOnly(frames.run(update)));
+
+    state = Sakura::AssistantPill::State::Unread;
+    REQUIRE(frames.settle(update));
     CHECK(Retains(frames, update));
     CHECK(frames.restructures == 0);
 }

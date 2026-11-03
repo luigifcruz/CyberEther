@@ -159,7 +159,8 @@ void AssistantPill::layout(const Context& ctx) {
     strips.reserve(kShimmerSteps);
     const F32 step = zone.width / static_cast<F32>(kShimmerSteps);
     const F32 band = std::max(1.0f, zone.width * kShimmerBandRatio);
-    const F32 phase = static_cast<F32>(std::fmod(std::max(0.0, ctx.time), kShimmerPeriod) / kShimmerPeriod);
+    const F64 clock = working ? std::max(0.0, ctx.time) : 0.0;
+    const F32 phase = static_cast<F32>(std::fmod(clock, kShimmerPeriod) / kShimmerPeriod);
     const F32 center = zone.x - band + phase * (zone.width + 2.0f * band);
     for (U64 k = 0; k < kShimmerSteps; ++k) {
         const F32 position = zone.x + (static_cast<F32>(k) + 0.5f) * step;

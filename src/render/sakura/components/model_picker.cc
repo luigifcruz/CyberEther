@@ -1,6 +1,7 @@
 #include <jetstream/render/sakura/components/model_picker.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/popup.hh>
@@ -9,6 +10,7 @@
 
 #include "../context.hh"
 #include "../metrics.hh"
+#include "../detail/helpers.hh"
 #include "../detail/popup_layer.hh"
 #include "../detail/text_metrics.hh"
 
@@ -35,11 +37,15 @@ constexpr F32 kCaretLength = 8.5f;
 constexpr F32 kCaretDepth = 5.0f;
 constexpr F32 kCaretDrop = 1.5f;
 constexpr F32 kGap = 6.0f;
-constexpr F32 kPanelWidth = 220.0f;
+constexpr F32 kPanelWidth = 280.0f;
 constexpr F32 kEffortPadding = 10.0f;
 constexpr F32 kTitleHeight = 1.3f;
 constexpr F32 kTitleScale = 1.12f;
-constexpr F32 kModelRowHeight = 1.8f;
+constexpr F32 kTitleWeight = 0.35f;
+constexpr F32 kBackScale = 1.6f;
+constexpr F32 kHeaderGap = 4.0f;
+constexpr const char* kBackLabel = "Effort";
+constexpr F32 kModelRowHeight = 1.3f;
 constexpr F32 kChevronScale = 0.6f;
 constexpr F32 kThumbSize = 26.0f;
 constexpr F32 kTrackHeight = 20.0f;
@@ -51,6 +57,9 @@ constexpr F32 kRowPadding = 10.0f;
 constexpr F32 kCheckScale = 0.8f;
 constexpr F32 kCheckSpace = 1.5f;
 constexpr F32 kMarkSpace = 2.0f;
+constexpr F32 kBlockPadX = 10.0f;
+constexpr F32 kBlockPadY = 5.0f;
+constexpr F32 kBlockRounding = 8.0f;
 
 enum class Mode {
     Effort,
@@ -61,6 +70,7 @@ struct Target {
     enum class Kind {
         None,
         ModelRow,
+        Back,
         Row,
     };
 
@@ -221,14 +231,19 @@ struct PickerState {
 struct PickerBody : public Component {
     PickerState& picker;
     Scroller scroller;
-    Box background;
+    Card background;
     Box highlight;
     Box rail;
     Box dots;
+    Box knobShadow;
     Box knob;
     Label texts;
+    Label heading;
+    Label headerIcon;
+    Rect header;
     Label icons;
     Rect modelRow;
+    Rect modelBlock;
     std::vector<F32> stops;
     Rect list;
     F32 rowHeight = 0.0f;
@@ -236,14 +251,16 @@ struct PickerBody : public Component {
     std::optional<Extent2D<F32>> pointer;
 
     explicit PickerBody(PickerState& picker) : picker(picker) {
-        setClipsChildren(true);
         addChild(scroller);
         addChild(background);
         addChild(highlight);
         addChild(rail);
         addChild(dots);
+        addChild(knobShadow);
         addChild(knob);
         addChild(texts);
+        addChild(heading);
+        addChild(headerIcon);
         addChild(icons);
     }
 
@@ -265,8 +282,16 @@ struct PickerBody : public Component {
                          std::max<U64>(1, picker.rowLimit)});
     }
 
+    bool backable() const {
+        return !picker.config.efforts.empty();
+    }
+
+    F32 headerHeight(const PickerMetrics& m) const {
+        return backable() ? RowHeight(m) + m.unit + 2.0f * kHeaderGap * m.unit : 0.0f;
+    }
+
     F32 effortHeight(const PickerMetrics& m) const {
-        return 2.0f * kEffortPadding * m.unit + m.font * (kTitleHeight + kModelRowHeight) + m.gap +
+        return 3.0f * kEffortPadding * m.unit + 2.0f * kBlockPadY * m.unit + m.font * (kTitleHeight + kModelRowHeight) +
                kThumbSize * m.unit;
     }
 
@@ -288,15 +313,18 @@ struct PickerBody : public Component {
 
     bool onTrack(const Extent2D<F32>& point) const {
         return picker.activeMode() == Mode::Effort && !stops.empty() && frame().contains(point.x, point.y) &&
-               point.y >= modelRow.bottom();
+               point.y >= modelBlock.bottom();
     }
 
     Target targetAt(const Extent2D<F32>& point) const {
         if (picker.activeMode() == Mode::Effort) {
-            if (modelRow.contains(point.x, point.y) && frame().contains(point.x, point.y)) {
+            if (modelBlock.contains(point.x, point.y) && frame().contains(point.x, point.y)) {
                 return {.kind = Target::Kind::ModelRow};
             }
             return {};
+        }
+        if (header.contains(point.x, point.y)) {
+            return {.kind = Target::Kind::Back};
         }
         if (const auto row = rowAt(point)) {
             return {.kind = Target::Kind::Row, .row = *row};
@@ -338,7 +366,8 @@ struct PickerBody : public Component {
         }
         const F32 width = std::max({picker.anchorWidth, kPanelWidth * m.unit,
                                     widest + 2.0f * kListInset * m.unit + kMarkSpace * m.font});
-        const F32 height = static_cast<F32>(rowsShown(ctx, m)) * RowHeight(m) + 2.0f * kListPadding * m.unit;
+        const F32 height = static_cast<F32>(rowsShown(ctx, m)) * RowHeight(m) + 2.0f * kListPadding * m.unit +
+                           headerHeight(m);
         return FitExtent({std::ceil(width), std::ceil(height)}, available);
     }
 
@@ -348,10 +377,10 @@ struct PickerBody : public Component {
         const F32 pad = kEffortPadding * m.unit;
         const F32 thumbSize = kThumbSize * m.unit;
         const F32 trackHeight = kTrackHeight * m.unit;
-        const Rect title = {bounds.x, bounds.y + pad, bounds.width, m.font * kTitleHeight};
+        const Rect title = {bounds.x, bounds.y + pad + kBlockPadY * m.unit, bounds.width, m.font * kTitleHeight};
         modelRow = {bounds.x + pad, title.bottom(), std::max(0.0f, bounds.width - 2.0f * pad),
                     m.font * kModelRowHeight};
-        const F32 trackCenter = modelRow.bottom() + m.gap + thumbSize * 0.5f;
+        const F32 trackCenter = modelRow.bottom() + kBlockPadY * m.unit + pad + thumbSize * 0.5f;
         const Rect track = {bounds.x + pad, trackCenter - trackHeight * 0.5f,
                             std::max(0.0f, bounds.width - 2.0f * pad), trackHeight};
         const F32 inset = trackHeight * 0.5f;
@@ -364,6 +393,13 @@ struct PickerBody : public Component {
         list = {};
         rowHeight = 0.0f;
         offset = 0.0f;
+        header = {};
+        headerIcon.update({
+            .clip = bounds,
+            .fontName = Typography::IconFont,
+            .maxCharacters = 4,
+            .capacity = 1,
+        });
 
         const I64 index = state.effortIndex();
         if (index < 0) {
@@ -392,12 +428,20 @@ struct PickerBody : public Component {
         const F32 chevron = kChevronScale * m.font;
         const F32 chevronGap = 0.5f * m.gap;
         const F32 modelX = std::round(modelRow.x + (modelRow.width - modelWidth - chevronGap - chevron) * 0.5f);
+        const std::string& headingText = effort.empty() ? config.effortPlaceholder : effort;
+        const F32 content = std::max(state.measureText(headingText, m.font * kTitleScale),
+                                     modelWidth + chevronGap + chevron);
+        const F32 blockPadX = kBlockPadX * m.unit;
+        const F32 blockPadY = kBlockPadY * m.unit;
+        const F32 blockWidth = std::min(modelRow.width, content + 2.0f * blockPadX);
+        modelBlock = {std::round(modelRow.x + (modelRow.width - blockWidth) * 0.5f), title.y - blockPadY, blockWidth,
+                      modelRow.bottom() - title.y + 2.0f * blockPadY};
 
         highlight.update({
-            .instances = {{.rect = modelRow, .visible = hovered && !modelRow.empty(),
+            .instances = {{.rect = modelBlock, .visible = hovered && !modelBlock.empty(),
                            .backgroundColor = state.color(ctx, config.rowHoveredColorKey)}},
             .clip = bounds,
-            .cornerRadius = modelRow.height * 0.5f,
+            .cornerRadius = kBlockRounding * m.unit,
         });
         rail.update({
             .instances = {
@@ -417,18 +461,35 @@ struct PickerBody : public Component {
                              .backgroundColor = dotColor});
         }
         dots.update({.instances = std::move(marks), .clip = bounds, .cornerRadius = dot * 0.5f, .capacity = kMaxStops});
+        const F32 knobSoft = Px(ctx, kPillShadowSoftness);
+        const F32 knobDrop = Px(ctx, kPillShadowDrop);
+        knobShadow.update({
+            .instances = {{.rect = Inflate({thumbX - thumbSize * 0.5f, trackCenter - thumbSize * 0.5f + knobDrop, thumbSize,
+                                            thumbSize},
+                                           knobSoft),
+                           .visible = hasThumb, .backgroundColor = ctx.color("knob_shadow")}},
+            .clip = bounds,
+            .cornerRadius = thumbSize * 0.5f + knobSoft,
+            .softness = knobSoft,
+        });
         knob.update({
             .instances = {{.rect = {thumbX - thumbSize * 0.5f, trackCenter - thumbSize * 0.5f, thumbSize, thumbSize},
                            .visible = hasThumb, .backgroundColor = state.color(ctx, config.thumbColorKey)}},
             .clip = bounds,
             .cornerRadius = thumbSize * 0.5f,
         });
+        heading.update({
+            .instances = {{.rect = title, .str = headingText, .visible = !title.empty(),
+                           .color = state.color(ctx, effort.empty() ? config.detailColorKey : config.accentColorKey),
+                           .fontSize = m.font * kTitleScale, .alignment = {1, 1}}},
+            .clip = bounds,
+            .fontName = Typography::BodyFont,
+            .weight = kTitleWeight * Fringe(ctx),
+            .maxCharacters = kMaxCharacters,
+            .capacity = 1,
+        });
         texts.update({
             .instances = {
-                {.rect = title, .str = effort.empty() ? config.effortPlaceholder : effort,
-                 .visible = !title.empty(),
-                 .color = state.color(ctx, effort.empty() ? config.detailColorKey : config.accentColorKey),
-                 .fontSize = m.font * kTitleScale, .alignment = {1, 1}},
                 {.rect = {modelX, modelRow.y, modelWidth, modelRow.height}, .str = model,
                  .visible = !modelRow.empty(), .color = rowColor, .fontSize = m.font, .alignment = {0, 1}},
             },
@@ -456,7 +517,10 @@ struct PickerBody : public Component {
         const U64 rows = config.models.size();
         rowHeight = RowHeight(m);
         const F32 content = static_cast<F32>(rows) * rowHeight;
-        list = {bounds.x, bounds.y + pad, bounds.width, static_cast<F32>(rowsShown(ctx, m)) * rowHeight};
+        header = backable() ? Rect{bounds.x + pad, bounds.y + pad, std::max(0.0f, bounds.width - 2.0f * pad), rowHeight}
+                            : Rect{};
+        list = {bounds.x, bounds.y + pad + headerHeight(m), bounds.width,
+                static_cast<F32>(rowsShown(ctx, m)) * rowHeight};
         state.scroll = std::clamp(state.scroll, 0.0f, std::max(0.0f, content - list.height));
         scroller.update({
             .contentHeight = content,
@@ -475,6 +539,7 @@ struct PickerBody : public Component {
             state.hover = targetAt(*pointer);
         }
         modelRow = {};
+        modelBlock = {};
         stops.clear();
 
         const auto textColor = state.color(ctx, config.textColorKey);
@@ -500,16 +565,23 @@ struct PickerBody : public Component {
                          .color = textColor, .fontSize = m.font * kCheckScale, .alignment = {1, 1}};
             }
         }
+        const bool backHovered = state.hover.kind == Target::Kind::Back && !header.empty();
         const bool hovered = state.hover.kind == Target::Kind::Row && state.hover.row >= first && state.hover.row < last;
         const F32 hoverTop = list.y + static_cast<F32>(hovered ? state.hover.row : 0) * rowHeight - offset;
+        const Rect rowHighlight = {bounds.x + pad, hoverTop, std::max(0.0f, bounds.width - 2.0f * pad), rowHeight};
         highlight.update({
-            .instances = {{.rect = {bounds.x + pad, hoverTop, std::max(0.0f, bounds.width - 2.0f * pad), rowHeight},
-                           .visible = hovered, .backgroundColor = state.color(ctx, config.rowHoveredColorKey)}},
-            .clip = list,
+            .instances = {{.rect = backHovered ? header : rowHighlight, .visible = hovered || backHovered,
+                           .backgroundColor = state.color(ctx, config.rowHoveredColorKey)}},
+            .clip = backHovered ? bounds : list,
             .cornerRadius = std::max(0.0f, Px(ctx, config.popupRounding) - pad),
         });
-        rail.update({.clip = bounds, .cornerRadius = kTrackHeight * m.unit * 0.5f});
+        rail.update({
+            .instances = {{.rect = {header.x, header.bottom() + kHeaderGap * m.unit, header.width, m.unit},
+                           .visible = !header.empty(), .backgroundColor = state.color(ctx, "separator")}},
+            .clip = bounds,
+        });
         dots.update({.clip = bounds, .cornerRadius = kStopSize * m.unit * 0.5f, .capacity = kMaxStops});
+        knobShadow.update({.clip = bounds});
         knob.update({.clip = bounds, .cornerRadius = kThumbSize * m.unit * 0.5f});
         texts.update({
             .instances = std::move(labels),
@@ -517,6 +589,28 @@ struct PickerBody : public Component {
             .fontName = Typography::BodyFont,
             .maxCharacters = kMaxCharacters,
             .capacity = capacity,
+        });
+        const F32 back = kChevronScale * m.font * kBackScale;
+        const auto backColor = state.hover.kind == Target::Kind::Back ? textColor : detailColor;
+        const F32 headerX = header.x + inset - pad;
+        headerIcon.update({
+            .instances = {{.rect = {headerX, header.y, back, header.height}, .str = ICON_LC_CHEVRON_LEFT,
+                           .visible = !header.empty(), .color = backColor, .fontSize = back, .alignment = {0, 1}}},
+            .clip = bounds,
+            .fontName = Typography::IconFont,
+            .maxCharacters = 4,
+            .capacity = 1,
+        });
+        heading.update({
+            .instances = {{.rect = {headerX + back + m.gap, header.y,
+                                    std::max(0.0f, header.right() - headerX - back - m.gap), header.height},
+                           .str = kBackLabel, .visible = !header.empty(), .color = backColor, .fontSize = m.font,
+                           .alignment = {0, 1}}},
+            .clip = bounds,
+            .fontName = Typography::BodyFont,
+            .weight = 0.0f,
+            .maxCharacters = kMaxCharacters,
+            .capacity = 1,
         });
         icons.update({
             .instances = {std::move(check)},
@@ -533,13 +627,16 @@ struct PickerBody : public Component {
         const auto m = picker.metrics(ctx);
         const Rect bounds = frame();
         background.update({
-            .instances = {{.rect = bounds, .visible = !bounds.empty(),
-                           .backgroundColor = picker.color(ctx, config.popupColorKey)}},
-            .clip = bounds,
+            .rects = bounds.empty() ? std::vector<Rect>{} : std::vector<Rect>{bounds},
+            .clip = clip(),
             .cornerRadius = Px(ctx, config.popupRounding),
+            .softness = Px(ctx, kFloatingShadowSoftness),
+            .drop = Px(ctx, kFloatingShadowDrop),
             .borderWidth = Px(ctx, 1.0f),
-            .borderColor = picker.color(ctx, config.popupBorderColorKey),
-            .strokeFringe = true,
+            .lineWidth = Px(ctx, 1.0f),
+            .fillKey = config.popupColorKey,
+            .shadowKey = kFloatingShadow,
+            .capacity = 1,
         });
         const U64 capacity = 2 * (PoolRows(ctx, m) + 1);
         if (picker.scrollReset) {
@@ -557,8 +654,11 @@ struct PickerBody : public Component {
         layoutChild(ctx, highlight, bounds);
         layoutChild(ctx, rail, bounds);
         layoutChild(ctx, dots, bounds);
+        layoutChild(ctx, knobShadow, bounds);
         layoutChild(ctx, knob, bounds);
         layoutChild(ctx, texts, bounds);
+        layoutChild(ctx, heading, bounds);
+        layoutChild(ctx, headerIcon, bounds);
         layoutChild(ctx, icons, bounds);
     }
 
@@ -642,6 +742,10 @@ struct PickerBody : public Component {
                     state.resetScroll();
                     state.hover = {};
                     state.changed();
+                } else if (target.kind == Target::Kind::Back) {
+                    state.mode = Mode::Effort;
+                    state.hover = {};
+                    state.changed();
                 } else {
                     state.select(target.row);
                 }
@@ -669,6 +773,7 @@ struct ModelPicker::Impl {
     PickerState state;
     Box field;
     Label fieldLabels;
+    Label fieldIcon;
     Polyline caret;
     PickerBody body{state};
 };
@@ -683,6 +788,7 @@ ModelPicker::ModelPicker() {
     };
     addChild(impl->field);
     addChild(impl->fieldLabels);
+    addChild(impl->fieldIcon);
     addChild(impl->caret);
 }
 
@@ -725,12 +831,16 @@ Extent2D<F32> ModelPicker::measure(const Context& ctx, Extent2D<F32> available) 
     auto& state = impl->state;
     state.textMetrics.setWindow(ctx.render);
     const auto m = state.metrics(ctx);
+    const F32 height = m.font + 2.0f * kFieldPaddingY * m.unit;
+    if (!state.config.icon.empty()) {
+        return FitExtent({height, height}, available);
+    }
     F32 width = state.measureText(state.modelLabel(), m.font);
     if (!state.effortLabel().empty()) {
         width += m.gap + state.measureText(state.effortLabel(), m.font);
     }
     width += 2.0f * kFieldPaddingX * m.unit + 0.5f * m.gap + kCaretWidth * m.unit;
-    return FitExtent({std::ceil(width), m.font + 2.0f * kFieldPaddingY * m.unit}, available);
+    return FitExtent({std::ceil(width), height}, available);
 }
 
 void ModelPicker::layout(const Context& ctx) {
@@ -740,6 +850,7 @@ void ModelPicker::layout(const Context& ctx) {
     const auto m = state.metrics(ctx);
     const Rect bounds = frame();
     const bool visible = !bounds.empty();
+    const bool iconic = !config.icon.empty();
     const F32 padX = kFieldPaddingX * m.unit;
     const F32 caretWidth = kCaretWidth * m.unit;
     const std::string& model = state.modelLabel();
@@ -759,10 +870,10 @@ void ModelPicker::layout(const Context& ctx) {
     });
     impl->fieldLabels.update({
         .instances = {
-            {.rect = textRect, .str = model, .visible = visible, .color = state.color(ctx, config.textColorKey),
+            {.rect = textRect, .str = model, .visible = visible && !iconic, .color = state.color(ctx, config.textColorKey),
              .fontSize = m.font, .alignment = {0, 1}},
             {.rect = {effortX, bounds.y, std::max(0.0f, textRect.right() - effortX), bounds.height}, .str = effort,
-             .visible = visible && !effort.empty(), .color = state.color(ctx, config.detailColorKey),
+             .visible = visible && !iconic && !effort.empty(), .color = state.color(ctx, config.detailColorKey),
              .fontSize = m.font, .alignment = {0, 1}},
         },
         .clip = textRect,
@@ -783,13 +894,27 @@ void ModelPicker::layout(const Context& ctx) {
             },
             .color = state.color(ctx, config.detailColorKey),
             .filled = true,
-            .visible = visible,
+            .visible = visible && !iconic,
         }},
         .clip = bounds,
         .fringe = Fringe(ctx),
     });
+    impl->fieldIcon.update({
+        .instances = {{
+            .rect = bounds,
+            .str = config.icon,
+            .visible = visible && iconic,
+            .color = state.color(ctx, config.iconColorKey),
+            .fontSize = m.font,
+            .alignment = {1, 1},
+        }},
+        .clip = bounds,
+        .fontName = Typography::IconFont,
+        .maxCharacters = 4,
+    });
     layoutChild(ctx, impl->field, bounds);
     layoutChild(ctx, impl->fieldLabels, bounds);
+    layoutChild(ctx, impl->fieldIcon, bounds);
     layoutChild(ctx, impl->caret, bounds);
 
     if (!state.open || config.disabled || !visible) {
@@ -797,7 +922,8 @@ void ModelPicker::layout(const Context& ctx) {
     }
     const F32 above = bounds.y + ctx.translation.y;
     const F32 below = static_cast<F32>(ctx.framebufferSize.y) - (bounds.bottom() + ctx.translation.y);
-    const F32 space = std::max(above, below) - Px(ctx, kItemSpacing) - 2.0f * kListPadding * m.unit;
+    const F32 space = std::max(above, below) - Px(ctx, kItemSpacing) - 2.0f * kListPadding * m.unit -
+                      impl->body.headerHeight(m);
     const U64 rowLimit = static_cast<U64>(std::max(0.0f, space) / PickerBody::RowHeight(m));
     if (rowLimit != state.rowLimit || bounds.width != state.anchorWidth) {
         state.rowLimit = rowLimit;

@@ -30,6 +30,7 @@ struct ModelPicker : public Component {
         std::string effort;
         std::string effortPlaceholder = "Select effort";
         bool disabled = false;
+        std::string icon;
         F32 fontSize = Typography::FontSize;
         F32 rounding = 0.0f;
         F32 popupRounding = Rounding::Popup;
@@ -37,13 +38,13 @@ struct ModelPicker : public Component {
         std::string hoveredColorKey = "button_hovered";
         std::string activeColorKey = "button_active";
         std::string textColorKey = "text_primary";
+        std::string iconColorKey = "text_primary";
         std::string detailColorKey = "text_secondary";
         std::string accentColorKey = "accent_color";
         std::string popupColorKey = "agent_composer";
-        std::string popupBorderColorKey = "agent_outline";
         std::string rowHoveredColorKey = "button_hovered";
-        std::string trackColorKey = "agent_outline";
-        std::string thumbColorKey = "text_primary";
+        std::string trackColorKey = "picker_track";
+        std::string thumbColorKey = "picker_thumb";
         Callback<void(const std::string&)> onSelect;
         Callback<void(const std::string&)> onEffort;
 

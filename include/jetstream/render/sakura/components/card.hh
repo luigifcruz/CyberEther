@@ -27,6 +27,7 @@ struct Card : public Component {
         F32 borderWidth = 1.0f;
         F32 lineWidth = 1.0f;
         std::string fillKey = "tile_bg";
+        std::string shadowKey = "tile_shadow";
         F32 opacity = 1.0f;
         Layer layer = Layer::Full;
         U64 capacity = 4;

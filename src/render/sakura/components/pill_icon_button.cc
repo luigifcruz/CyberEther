@@ -76,6 +76,7 @@ void PillIconButton::layout(const Context& ctx) {
         .borderWidth = Px(ctx, kPillBorder),
         .lineWidth = Px(ctx, 1.0f),
         .fillKey = kPillFill,
+        .shadowKey = s.config.floating ? kFloatingShadow : "tile_shadow",
     });
     layoutChild(ctx, s.card, bounds);
 

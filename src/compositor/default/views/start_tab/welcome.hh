@@ -93,6 +93,7 @@ struct WelcomeView {
         bool assistantEnabled = true;
         bool pageCard = false;
         U64 assistantClearRequest = 0;
+        std::optional<Sakura::ChatComposer::Selector> assistantSelector;
         Sakura::Callback<void(const std::string&)> onAssistantSubmit;
         Sakura::Callback<void()> onAssistantVoice;
         Sakura::Callback<void()> onNewFlowgraph;
@@ -578,7 +579,9 @@ struct WelcomeView {
                 .compact = true,
                 .chrome = true,
                 .acceptPlaceholder = true,
+                .pickerIcon = ICON_LC_SLIDERS_HORIZONTAL,
             }, assistantPrompt),
+            .selector = config.assistantSelector,
             .onSubmit = config.onAssistantSubmit,
             .onVoice = config.onAssistantVoice,
             .voiceHint = AssistantComposer::VoiceHint,

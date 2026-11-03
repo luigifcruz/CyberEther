@@ -284,6 +284,7 @@ struct MenuBody : public Component {
             .borderWidth = Px(ctx, 1.0f),
             .lineWidth = Px(ctx, 1.0f),
             .fillKey = kPillFill,
+            .shadowKey = kFloatingShadow,
             .capacity = 1,
         });
         layoutChild(ctx, panel, bounds);

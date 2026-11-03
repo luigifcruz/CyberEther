@@ -3,6 +3,7 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/pill_button.hh>
 #include <jetstream/render/sakura/components/pill_input.hh>
 #include <jetstream/render/sakura/components/text.hh>
@@ -27,6 +28,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace Jetstream;
@@ -202,6 +204,31 @@ TEST_CASE("Card buttons repaint on tone changes and fire the newest callback", "
     CHECK(calls == std::vector<std::string>{"b"});
 }
 
+TEST_CASE("Card buttons keep their hover tint text color at rest only when asked to", "[core][sakura][view-components]") {
+    Scene scene;
+    CardButton button;
+    Place place(button, kSlot);
+    const auto text = [&](bool tintText) {
+        button.update({.str = "Approve", .hoverTint = "red", .tintText = tintText});
+        place.place(scene.ctx, kScreen);
+        const auto texts = Find<Sakura::Text>(button);
+        REQUIRE(texts.size() == 1);
+        return texts.front()->config().colorKey;
+    };
+    CHECK(text(false) == "text_primary");
+    CHECK(text(true) == "tint_red_text");
+
+    place.send(Mouse(MouseEventType::Move, Middle(button).x, Middle(button).y));
+    CHECK(text(false) == "tint_red_text");
+    CHECK(text(true) == "tint_red_text");
+
+    button.update({.str = "Approve", .tone = CardButton::Tone::Action, .tintText = true});
+    place.send(Mouse(MouseEventType::Move, 600.0f, 500.0f));
+    place.place(scene.ctx, kScreen);
+    REQUIRE(Find<Sakura::Text>(button).size() == 1);
+    CHECK(Find<Sakura::Text>(button).front()->config().colorKey == "action_btn_text");
+}
+
 TEST_CASE("Pagination measures before placement, scales exactly, repaints on page changes and fires the newest callback",
           "[core][sakura][view-components]") {
     Scene scene;
@@ -314,6 +341,73 @@ TEST_CASE("Flowgraph cells measure before placement, scale, repaint on favorite 
     CHECK(ClickAt(place, Middle(*buttons.front())));
     CHECK(ClickAt(place, {60.0f, 60.0f}));
     CHECK(calls == std::vector<std::string>{"bstar", "bopen"});
+}
+
+TEST_CASE("Flowgraph cells keep long titles on one elided line", "[core][sakura][view-components]") {
+    Scene scene;
+    const auto layout = [&](const std::string& title) {
+        FlowgraphCell cell;
+        cell.update({.title = title});
+        Host host(cell);
+        const auto size = host.measureOf(scene.ctx, {240.0f, kInfinite});
+        host.place(scene.ctx, {0.0f, 0.0f, size.x, size.y});
+        std::vector<std::string> strs;
+        for (auto* text : Find<Sakura::Text>(cell)) {
+            if (text->config().str != title) {
+                continue;
+            }
+            CHECK_FALSE(text->config().wrapped);
+            CHECK(text->config().ellipsis);
+            for (auto* label : Find<Sakura::Label>(*text)) {
+                for (const auto& instance : label->config().instances) {
+                    strs.push_back(instance.str);
+                }
+            }
+        }
+        return std::make_pair(size, strs);
+    };
+    const auto [short_, shortStrs] = layout("Radio");
+    const std::string longTitle = "A flowgraph title that is far too long to fit in a single sidebar row";
+    const auto [long_, longStrs] = layout(longTitle);
+    CHECK(shortStrs == std::vector<std::string>{"Radio"});
+    REQUIRE(longStrs.size() == 1);
+    const std::string& line = longStrs.front();
+    REQUIRE(line.size() > 3);
+    CHECK(line.substr(line.size() - 3) == "...");
+    CHECK(longTitle.starts_with(line.substr(0, line.size() - 3)));
+    CHECK(long_ == short_);
+    CHECK(long_.x == 240.0f);
+}
+
+TEST_CASE("Flowgraph cells open their context menu on a right click and stay inert while empty",
+          "[core][sakura][view-components]") {
+    Scene scene;
+    FlowgraphCell cell;
+    Place place(cell, {20.0f, 20.0f, 320.0f, 60.0f});
+    std::vector<std::string> calls;
+    const auto configure = [&](const std::string& empty) {
+        cell.update({
+            .title = "First Steps",
+            .empty = empty,
+            .onOpen = [&calls] { calls.push_back("open"); },
+            .onContextMenu = [&calls] { calls.push_back("menu"); },
+        });
+        place.place(scene.ctx, kScreen);
+    };
+    configure("");
+
+    CHECK(place.send(Mouse(MouseEventType::Click, 60.0f, 50.0f, MouseButton::Right)));
+    place.send(Mouse(MouseEventType::Release, 60.0f, 50.0f, MouseButton::Right));
+    CHECK(calls == std::vector<std::string>{"menu"});
+    CHECK(ClickAt(place, {60.0f, 50.0f}));
+    CHECK(calls == std::vector<std::string>{"menu", "open"});
+    CHECK_FALSE(place.send(Mouse(MouseEventType::Click, 600.0f, 500.0f, MouseButton::Right)));
+    CHECK(calls.size() == 2);
+
+    configure("Nothing here yet.");
+    CHECK_FALSE(place.send(Mouse(MouseEventType::Click, 60.0f, 50.0f, MouseButton::Right)));
+    CHECK_FALSE(ClickAt(place, {60.0f, 50.0f}));
+    CHECK(calls.size() == 2);
 }
 
 TEST_CASE("Option steppers step within their options, reset to the fallback and disable the ends",

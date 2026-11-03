@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "harness.hh"
@@ -12,6 +13,7 @@
 #include <jetstream/render/sakura/components/dropdown.hh>
 #include <jetstream/render/sakura/components/floating_layer.hh>
 #include <jetstream/render/sakura/components/hud_layer.hh>
+#include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/menu.hh>
 #include <jetstream/render/sakura/components/modal_layer.hh>
@@ -1037,9 +1039,9 @@ TEST_CASE("Open menus request a popup at their anchor and close on outside click
     menu.update(config);
     host.place(MakeContext(), kScreen);
     CHECK(host.popups.interactiveAt({100.0f, 100.0f}));
-    CHECK(host.popups.interactiveAt({149.0f, 184.0f}));
-    CHECK_FALSE(host.popups.interactiveAt({150.0f, 184.0f}));
-    CHECK_FALSE(host.popups.interactiveAt({149.0f, 185.0f}));
+    CHECK(host.popups.interactiveAt({171.0f, 190.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({172.0f, 190.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({171.0f, 191.0f}));
 
     CHECK(host.click(600.0f, 500.0f));
     CHECK(closed == 1);
@@ -1117,8 +1119,8 @@ TEST_CASE("Disabled menu entries and separators ignore clicks", "[core][sakura][
     LayerHost host({&slot});
     host.place(MakeContext(), kScreen);
 
-    CHECK(host.popups.interactiveAt({149.0f, 170.0f}));
-    CHECK_FALSE(host.popups.interactiveAt({149.0f, 171.0f}));
+    CHECK(host.popups.interactiveAt({171.0f, 172.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({171.0f, 173.0f}));
 
     host.click(120.0f, 119.0f);
     CHECK(clicked == 0);
@@ -1151,17 +1153,18 @@ TEST_CASE("Menu submenus open to the side and their entries close the whole menu
     slot.hold(menu, {100.0f, 100.0f, 1.0f, 1.0f});
     LayerHost host({&slot});
     host.place(MakeContext(), kScreen);
-    CHECK_FALSE(host.popups.interactiveAt({160.0f, 119.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({200.0f, 119.0f}));
 
     host.click(120.0f, 119.0f);
     CHECK(closed == 0);
     host.place(MakeContext(), kScreen);
 
-    CHECK(host.popups.interactiveAt({151.0f, 100.0f}));
-    CHECK(host.popups.interactiveAt({191.0f, 138.0f}));
-    CHECK_FALSE(host.popups.interactiveAt({192.0f, 119.0f}));
+    CHECK(host.popups.interactiveAt({167.0f, 97.0f}));
+    CHECK(host.popups.interactiveAt({238.0f, 133.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({239.0f, 119.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({200.0f, 134.0f}));
 
-    CHECK(host.click(160.0f, 119.0f));
+    CHECK(host.click(200.0f, 119.0f));
     CHECK(recent == 1);
     CHECK(closed == 1);
 }
@@ -1181,15 +1184,15 @@ TEST_CASE("Hovering a menu entry with children opens its submenu until a plain e
 
     host.send(Mouse(MouseEventType::Move, 120.0f, 142.0f));
     host.place(MakeContext(), kScreen);
-    CHECK(host.popups.interactiveAt({160.0f, 140.0f}));
+    CHECK(host.popups.interactiveAt({200.0f, 140.0f}));
 
     host.send(Mouse(MouseEventType::Move, 400.0f, 400.0f));
     host.place(MakeContext(), kScreen);
-    CHECK(host.popups.interactiveAt({160.0f, 140.0f}));
+    CHECK(host.popups.interactiveAt({200.0f, 140.0f}));
 
     host.send(Mouse(MouseEventType::Move, 120.0f, 119.0f));
     host.place(MakeContext(), kScreen);
-    CHECK_FALSE(host.popups.interactiveAt({160.0f, 140.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({200.0f, 140.0f}));
 }
 
 TEST_CASE("Dropdown requests a popup only while open and selects the clicked row",
@@ -1536,11 +1539,16 @@ TEST_CASE("Menu entries draw a checkmark when selected, a shortcut column, and t
     CHECK(openKeys->config().colorKey == "text_secondary");
     CHECK(saveKeys->config().colorKey == "text_secondary");
 
+    const auto panels = Find<Sakura::Card>(host);
+    REQUIRE(panels.size() == 1);
+    const Rect body = Peek::Frame(*panels.front());
     const Rect label = Peek::Frame(*open);
     const Rect keys = Peek::Frame(*openKeys);
     const Rect saveRow = Peek::Frame(*save);
     CHECK(label.width > 0.0f);
-    CHECK(keys.x == label.x + label.width + 8.0f);
+    CHECK(label.x == body.x + 15.0f);
+    CHECK(keys.right() == body.right() - 15.0f - 18.0f - 8.0f);
+    CHECK(keys.x >= label.right() + 24.0f);
     CHECK(Peek::Frame(*saveKeys).x == keys.x);
     CHECK(keys.y == label.y);
     CHECK(Peek::Frame(*saveKeys).y == saveRow.y);
@@ -1572,6 +1580,133 @@ TEST_CASE("Menu entries draw a checkmark when selected, a shortcut column, and t
     CHECK(within(marks[2], Peek::Frame(*recent)));
 }
 
+TEST_CASE("Menu labels share one column after the icons and shortcuts align to the content edge",
+          "[core][sakura][shell]") {
+    MonoFontWindow window;
+    const auto ctx = WindowContext(window);
+    Sakura::Menu menu;
+    menu.update({
+        .entries = {
+            {.label = ICON_LC_COPY " Copy", .shortcut = "Ctrl+C"},
+            {.label = "Paste", .shortcut = "Ctrl+Shift+V"},
+            {.separator = true},
+            {.label = ICON_LC_X " Delete", .shortcut = "Del", .selected = true},
+            {.label = "Device", .shortcut = "Ctrl+D", .children = {{.label = "CPU"}}},
+        },
+        .open = true,
+        .atCursor = false,
+    });
+    LayerSlot slot;
+    slot.hold(menu, {100.0f, 100.0f, 1.0f, 1.0f});
+    LayerHost host({&slot});
+    host.place(ctx, kScreen);
+
+    const auto panels = Find<Sakura::Card>(host);
+    REQUIRE(panels.size() == 1);
+    const Rect body = Peek::Frame(*panels.front());
+    const F32 left = body.x + 15.0f;
+    const F32 right = body.right() - 15.0f;
+
+    auto* copyIcon = Named(host, ICON_LC_COPY);
+    auto* deleteIcon = Named(host, ICON_LC_X);
+    REQUIRE(copyIcon);
+    REQUIRE(deleteIcon);
+    CHECK(Peek::Frame(*copyIcon).x == left);
+    CHECK(Peek::Frame(*deleteIcon).x == left);
+    const F32 column = std::max(Peek::Frame(*copyIcon).right(), Peek::Frame(*deleteIcon).right()) + 8.0f;
+
+    const std::vector<std::string> labels = {"Copy", "Paste", "Delete", "Device"};
+    for (const auto& name : labels) {
+        CAPTURE(name);
+        auto* label = Named(host, name);
+        REQUIRE(label);
+        CHECK(Peek::Frame(*label).x == column);
+        CHECK(label->config().font == Sakura::Text::Font::Sans);
+        CHECK(label->config().ellipsis);
+    }
+    CHECK_FALSE(Named(host, ICON_LC_COPY " Copy"));
+
+    const auto drawnRight = [&](const std::string& str) {
+        auto* text = Named(host, str);
+        REQUIRE(text);
+        F32 edge = 0.0f;
+        for (auto* label : Find<Sakura::Label>(*text)) {
+            for (const auto& instance : label->config().instances) {
+                edge = std::max(edge, instance.rect.right());
+            }
+        }
+        return std::make_pair(Peek::Frame(*text), edge);
+    };
+    const auto [copyKeys, copyEdge] = drawnRight("Ctrl+C");
+    const auto [pasteKeys, pasteEdge] = drawnRight("Ctrl+Shift+V");
+    const auto [deleteKeys, deleteEdge] = drawnRight("Del");
+    const auto [deviceKeys, deviceEdge] = drawnRight("Ctrl+D");
+    CHECK(copyKeys.right() == right);
+    CHECK(pasteKeys.right() == right);
+    CHECK(copyEdge == Catch::Approx(right));
+    CHECK(pasteEdge == Catch::Approx(right));
+    CHECK(deleteKeys.right() == right - 18.0f - 8.0f);
+    CHECK(deviceKeys.right() == right - 18.0f - 8.0f);
+    CHECK(deleteEdge == Catch::Approx(deleteKeys.right()));
+    CHECK(deviceEdge == Catch::Approx(deviceKeys.right()));
+    CHECK(Peek::Frame(*Named(host, "Paste")).right() + 24.0f <= pasteKeys.x);
+
+    const auto lines = Find<Sakura::Polyline>(host);
+    REQUIRE(lines.size() == 1);
+    const auto& marks = lines.front()->config().instances;
+    REQUIRE(marks.size() == 2);
+    for (const auto& mark : marks) {
+        for (const auto& point : mark.points) {
+            CHECK(point.x > deleteKeys.right());
+            CHECK(point.x <= right + 0.5f);
+        }
+    }
+}
+
+TEST_CASE("Menu labels elide when the menu is narrower than its widest label", "[core][sakura][shell]") {
+    MonoFontWindow window;
+    const auto ctx = WindowContext(window);
+    const std::string longLabel = "Remove this flowgraph from the recent list forever";
+    Sakura::Menu menu;
+    menu.update({
+        .entries = {{.label = "Open"}, {.label = ICON_LC_X " " + longLabel}},
+        .open = true,
+        .atCursor = false,
+    });
+    LayerSlot slot;
+    slot.hold(menu, {0.0f, 10.0f, 1.0f, 1.0f});
+    LayerHost host({&slot});
+    const Rect narrow = {0.0f, 0.0f, 160.0f, 400.0f};
+    host.place(ctx, narrow);
+
+    const auto panels = Find<Sakura::Card>(host);
+    REQUIRE(panels.size() == 1);
+    const Rect body = Peek::Frame(*panels.front());
+    CHECK(body.width == 160.0f);
+    auto* label = Named(host, longLabel);
+    REQUIRE(label);
+    const Rect frame = Peek::Frame(*label);
+    CHECK(frame.right() <= body.right() - 15.0f - 18.0f - 24.0f);
+    std::vector<std::string> drawn;
+    for (auto* part : Find<Sakura::Label>(*label)) {
+        for (const auto& instance : part->config().instances) {
+            if (instance.visible) {
+                drawn.push_back(instance.str);
+                CHECK(instance.rect.right() <= frame.right() + 0.5f);
+            }
+        }
+    }
+    REQUIRE(drawn.size() == 1);
+    REQUIRE(drawn.front().size() > 3);
+    CHECK(drawn.front().substr(drawn.front().size() - 3) == "...");
+    CHECK(longLabel.starts_with(drawn.front().substr(0, drawn.front().size() - 3)));
+
+    auto* open = Named(host, "Open");
+    REQUIRE(open);
+    CHECK(Peek::Frame(*open).x == frame.x);
+    CHECK(Peek::Frame(*open).height == frame.height);
+}
+
 TEST_CASE("Updating an open menu resyncs its open submenu and closes it when its entry goes away",
           "[core][sakura][shell]") {
     Sakura::Menu menu;
@@ -1594,7 +1729,7 @@ TEST_CASE("Updating an open menu resyncs its open submenu and closes it when its
 
     host.click(120.0f, 119.0f);
     REQUIRE(frames.settle(update));
-    CHECK(host.popups.interactiveAt({160.0f, 150.0f}));
+    CHECK(host.popups.interactiveAt({200.0f, 150.0f}));
     CHECK(Named(host, "Recent"));
     CHECK(Named(host, "Pinned"));
 
@@ -1604,8 +1739,8 @@ TEST_CASE("Updating an open menu resyncs its open submenu and closes it when its
     CHECK(resync.repainted);
     REQUIRE(frames.settle(update));
     CHECK(DirtyFrames(frames, update) == 0);
-    CHECK(host.popups.interactiveAt({160.0f, 119.0f}));
-    CHECK_FALSE(host.popups.interactiveAt({160.0f, 150.0f}));
+    CHECK(host.popups.interactiveAt({200.0f, 119.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({200.0f, 150.0f}));
     CHECK(Named(host, "Starred"));
     CHECK_FALSE(Named(host, "Recent"));
     CHECK_FALSE(Named(host, "Pinned"));
@@ -1613,7 +1748,7 @@ TEST_CASE("Updating an open menu resyncs its open submenu and closes it when its
     config.entries = {{.label = "Quit"}};
     REQUIRE(frames.settle(update));
     CHECK(DirtyFrames(frames, update) == 0);
-    CHECK_FALSE(host.popups.interactiveAt({160.0f, 119.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({200.0f, 119.0f}));
     CHECK_FALSE(Named(host, "Starred"));
     CHECK(Named(host, "Quit"));
 }
@@ -2332,21 +2467,22 @@ TEST_CASE("Menus scale their rows, padding and separator hairline at a pixel rat
     slot.hold(menu, {100.0f, 100.0f, 1.0f, 1.0f});
     LayerHost host({&slot});
     auto ctx = MakeContext();
+    ctx.palette = DistinctPalette();
     ctx.pixelRatio = 2.0f;
     host.place(ctx, kScreen);
 
-    CHECK(host.popups.interactiveAt({199.0f, 241.0f}));
-    CHECK_FALSE(host.popups.interactiveAt({200.0f, 241.0f}));
-    CHECK_FALSE(host.popups.interactiveAt({199.0f, 242.0f}));
+    CHECK(host.popups.interactiveAt({243.0f, 245.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({244.0f, 245.0f}));
+    CHECK_FALSE(host.popups.interactiveAt({243.0f, 246.0f}));
 
     auto* open = Named(host, "Open");
     auto* save = Named(host, "Save");
     REQUIRE(open);
     REQUIRE(save);
-    CHECK(Peek::Frame(*open).x == 124.0f);
-    CHECK(Peek::Frame(*open).y == 124.0f);
+    CHECK(Peek::Frame(*open).x == 130.0f);
+    CHECK(Peek::Frame(*open).y == 122.0f);
     CHECK(Peek::Frame(*open).height == 30.0f);
-    CHECK(Peek::Frame(*save).y == 188.0f);
+    CHECK(Peek::Frame(*save).y == 194.0f);
     CHECK(Peek::Frame(*save).height == 30.0f);
 
     std::optional<Rect> separator;
@@ -2357,7 +2493,22 @@ TEST_CASE("Menus scale their rows, padding and separator hairline at a pixel rat
         }
     }
     REQUIRE(separator.has_value());
-    CHECK(*separator == Rect{102.0f, 170.0f, 96.0f, 2.0f});
+    CHECK(*separator == Rect{130.0f, 172.0f, 84.0f, 2.0f});
+
+    const auto panels = Find<Sakura::Card>(host);
+    REQUIRE(panels.size() == 1);
+    std::optional<Sakura::Box::Config> shadow;
+    for (auto* box : Find<Sakura::Box>(*panels.front())) {
+        if (box->config().softness > 0.0f) {
+            shadow = box->config();
+        }
+    }
+    REQUIRE(shadow.has_value());
+    CHECK(shadow->softness == 16.0f);
+    CHECK(shadow->instances.front().backgroundColor == ctx.color("floating_shadow"));
+    CHECK(shadow->cornerRadius == 28.0f);
+    REQUIRE(shadow->instances.size() == 1);
+    CHECK(shadow->instances.front().rect == Rect{84.0f, 90.0f, 176.0f, 178.0f});
 }
 
 TEST_CASE("Chrome buttons measure a natural, fixed or filling height", "[core][sakura][shell][sizing]") {

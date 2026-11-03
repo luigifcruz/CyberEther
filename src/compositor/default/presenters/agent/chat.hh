@@ -35,30 +35,18 @@ struct AgentChatPresenter {
 
     explicit AgentChatPresenter(const PresenterContext& context) : context(context) {}
 
-    AgentChatView::Config build() const {
-        const auto& agent = context.state.agent;
-        const auto& settings = agent.settings;
-        const auto& conversation = agent.chat.conversation;
+    static Sakura::ChatComposer::Selector ModelSelector(const PresenterContext& context) {
+        const auto& settings = context.state.agent.settings;
         const auto enqueue = context.callbacks.enqueueMail;
-        AgentChatView::Config config;
-        auto& chat = config.chat;
-        chat.snapshot = formatter.format(conversation);
-        chat.clearRequest = agent.chat.dockAccepted;
-        config.open = agent.ui.visible;
-        config.focusRequest = agent.ui.chatFocusRequests;
-        config.hidden = !settings.enabled;
-
         const auto modelKey = [](const auto& model) {
             return jst::fmt::format("{}:{}{}", model.provider.size(), model.provider, model.id);
         };
         Sakura::ChatComposer::Selector selector{.placeholder = "No models"};
-        U64 contextWindow = 0;
         for (const auto& model : settings.models) {
             const auto key = modelKey(model);
             selector.options.push_back({key, AgentLabels::Model(model), model.id.empty() ? "" : model.provider});
             if (AgentProviders::Same(model, settings.provider, settings.model)) {
                 selector.value = key;
-                contextWindow = model.contextLength;
                 selector.effort = AgentProviders::Effort(model);
                 for (const auto& effort : model.reasoningEfforts) {
                     selector.efforts.push_back({effort, AgentLabels::Effort(effort), ""});
@@ -77,7 +65,29 @@ struct AgentChatPresenter {
                 }
             }
         };
-        chat.selector = std::move(selector);
+        return selector;
+    }
+
+    AgentChatView::Config build() const {
+        const auto& agent = context.state.agent;
+        const auto& settings = agent.settings;
+        const auto& conversation = agent.chat.conversation;
+        const auto enqueue = context.callbacks.enqueueMail;
+        AgentChatView::Config config;
+        auto& chat = config.chat;
+        chat.snapshot = formatter.format(conversation);
+        chat.clearRequest = agent.chat.dockAccepted;
+        config.open = agent.ui.visible;
+        config.focusRequest = agent.ui.chatFocusRequests;
+        config.hidden = !settings.enabled;
+
+        U64 contextWindow = 0;
+        for (const auto& model : settings.models) {
+            if (AgentProviders::Same(model, settings.provider, settings.model)) {
+                contextWindow = model.contextLength;
+            }
+        }
+        chat.selector = ModelSelector(context);
         chat.usage = AgentChatUsage(conversation.contextTokens, contextWindow);
         config.onClose = [enqueue]() {
             enqueue(MailSetAgentChatVisible{.value = false});

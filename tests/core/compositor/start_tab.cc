@@ -200,6 +200,39 @@ TEST_CASE("Favorite flowgraphs toggle from recent and outlive the recent list", 
     CHECK(ui.favoriteFlowgraphs.empty());
 }
 
+TEST_CASE("Forgetting a recent flowgraph drops only that entry, keeps favorites, and persists the list",
+          "[core][compositor][start-tab]") {
+    TestSupport::SettingsSandbox sandbox("compositor-forget-recent");
+    sandbox.require();
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    auto& ui = state.interface;
+    FlowgraphActions::Remember(ui, "/flows/radio.yml", "Radio", 10);
+    FlowgraphActions::Remember(ui, "/flows/sweep.yml", "Sweep", 20);
+    FlowgraphActions::Remember(ui, "/flows/fm.yml", "FM", 30);
+    FlowgraphActions::ToggleFavorite(ui, "/flows/sweep.yml");
+    REQUIRE(ui.recentFlowgraphs.size() == 3);
+    REQUIRE(ui.favoriteFlowgraphs.size() == 1);
+    FlowgraphActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailForgetRecentFlowgraph{.path = "/flows/sweep.yml"}) == Result::SUCCESS);
+    REQUIRE(ui.recentFlowgraphs.size() == 2);
+    CHECK(ui.recentFlowgraphs[0].path == "/flows/fm.yml");
+    CHECK(ui.recentFlowgraphs[1].path == "/flows/radio.yml");
+    REQUIRE(ui.favoriteFlowgraphs.size() == 1);
+    CHECK(ui.favoriteFlowgraphs[0].path == "/flows/sweep.yml");
+
+    REQUIRE(actions.handle(MailForgetRecentFlowgraph{.path = "/flows/missing.yml"}) == Result::SUCCESS);
+    CHECK(ui.recentFlowgraphs.size() == 2);
+
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    REQUIRE(settings.interface.recentFlowgraphs.size() == 2);
+    CHECK(settings.interface.recentFlowgraphs[0].path == "/flows/fm.yml");
+    CHECK(settings.interface.recentFlowgraphs[1].path == "/flows/radio.yml");
+}
+
 TEST_CASE("Welcome section mail selects the explore page", "[core][compositor][start-tab]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;

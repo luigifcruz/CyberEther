@@ -11,6 +11,7 @@
 #include <jetstream/render/sakura/components/chat_composer.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/model_picker.hh>
+#include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
@@ -42,17 +43,21 @@ constexpr const char* kComposerRetentionTags = "[core][sakura][chat-composer][re
 constexpr Rect kField = {100.0f, 300.0f, 160.0f, 23.0f};
 constexpr Extent2D<F32> kFieldCenter = {180.0f, 311.0f};
 constexpr Extent2D<F32> kModelRow = {150.0f, 372.0f};
-constexpr Extent2D<F32> kSecondRow = {150.0f, 372.0f};
-constexpr Extent2D<F32> kFirstRow = {150.0f, 347.0f};
-constexpr Extent2D<F32> kPanelTitle = {150.0f, 345.0f};
+constexpr Extent2D<F32> kSecondRow = {150.0f, 406.0f};
+constexpr Extent2D<F32> kFirstRow = {150.0f, 381.0f};
+constexpr Extent2D<F32> kBareSecondRow = {150.0f, 372.0f};
+constexpr Extent2D<F32> kBackRow = {150.0f, 347.0f};
+constexpr Extent2D<F32> kPanelTitle = {150.0f, 353.0f};
+constexpr Extent2D<F32> kPanelMargin = {5.0f, 353.0f};
 constexpr Extent2D<F32> kEffortBottom = {45.0f, 425.0f};
-constexpr F32 kTrackY = 404.0f;
-constexpr F32 kTitleY = 339.0f;
-constexpr F32 kListTop = 335.0f;
+constexpr F32 kTrackY = 411.0f;
+constexpr F32 kTitleY = 344.0f;
+constexpr F32 kListTop = 369.0f;
+constexpr F32 kBareListTop = 335.0f;
 constexpr F32 kRowHeight = 25.0f;
 constexpr F32 kKnobSize = 26.0f;
-constexpr F32 kMediumKnob = 137.0f;
-constexpr F32 kHighKnob = 227.0f;
+constexpr F32 kMediumKnob = 127.0f;
+constexpr F32 kHighKnob = 247.0f;
 
 constexpr F32 kPad = 7.0f;
 constexpr F32 kTextPad = 6.0f;
@@ -317,6 +322,30 @@ TEST_CASE("Model pickers scale their field and panel with the pixel ratio", kPic
     REQUIRE(rig.host.popups.interactiveAt({100.0f, 300.0f}));
 
     CHECK(Squares(rig.host, 52.0f).size() == 1);
+    const auto cards = Find<Sakura::Card>(rig.host);
+    REQUIRE(cards.size() == 1);
+    CHECK(Peek::Frame(*cards.front()) == Rect{0.0f, 258.0f, 560.0f, 210.0f});
+    F32 softness = 0.0f;
+    for (auto* box : Find<Sakura::Box>(*cards.front())) {
+        softness = std::max(softness, box->config().softness);
+    }
+    CHECK(softness == 16.0f);
+    bool floating = false;
+    for (auto* box : Find<Sakura::Box>(*cards.front())) {
+        for (const auto& instance : box->config().instances) {
+            floating = floating || (box->config().softness == 16.0f &&
+                                    instance.backgroundColor == rig.frames.ctx.color("floating_shadow"));
+        }
+    }
+    CHECK(floating);
+    bool knobShadow = false;
+    for (auto* box : Find<Sakura::Box>(rig.host)) {
+        for (const auto& instance : box->config().instances) {
+            knobShadow = knobShadow || (instance.visible && box->config().softness == 8.0f &&
+                                        instance.backgroundColor == rig.frames.ctx.color("knob_shadow"));
+        }
+    }
+    CHECK(knobShadow);
     bool panel = false;
     bool field = false;
     for (auto* box : Find<Sakura::Box>(rig.host)) {
@@ -325,7 +354,7 @@ TEST_CASE("Model pickers scale their field and panel with the pixel ratio", kPic
             continue;
         }
         const Rect rect = config.instances.front().rect;
-        if (rect.width == 440.0f && rect.height == 197.0f) {
+        if (rect == Rect{0.0f, 258.0f, 560.0f, 210.0f}) {
             panel = panel || (config.cornerRadius == 2.0f * Sakura::Rounding::Popup && config.borderWidth == 2.0f);
         }
         if (rect == Rect{200.0f, 200.0f, 320.0f, 46.0f}) {
@@ -381,6 +410,229 @@ TEST_CASE("Model pickers open an effort panel and select models by identity", kP
     CHECK_FALSE(rig.open());
 }
 
+TEST_CASE("Icon model pickers measure a square field and show only their icon", kPickerTags) {
+    Scene scene;
+    Sakura::ModelPicker picker;
+    Sakura::ModelPicker::Config config{
+        .models = {{.id = "a", .label = "Alpha"}},
+        .value = "a",
+        .efforts = Efforts(),
+        .effort = "medium",
+    };
+    picker.update(config);
+    Host host(picker);
+    const auto labeled = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    config.icon = ICON_LC_SLIDERS_HORIZONTAL;
+    picker.update(config);
+    const auto iconic = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    CHECK(iconic == Extent2D<F32>{labeled.y, labeled.y});
+    CHECK(iconic.x < labeled.x);
+    CHECK(host.measureOf(Doubled(scene.ctx), {kInfinite, kInfinite}) == Extent2D<F32>{2.0f * labeled.y, 2.0f * labeled.y});
+
+    host.place(scene.ctx, {100.0f, 300.0f, iconic.x, iconic.y});
+    const auto icons = Texts(host, ICON_LC_SLIDERS_HORIZONTAL);
+    REQUIRE(icons.size() == 1);
+    CHECK(icons.front().rect == Rect{100.0f, 300.0f, iconic.x, iconic.y});
+    CHECK_FALSE(Shows(host, "Alpha"));
+    CHECK_FALSE(Shows(host, "Medium"));
+    const auto carets = Find<Sakura::Polyline>(picker);
+    REQUIRE(carets.size() == 1);
+    for (const auto& instance : carets.front()->config().instances) {
+        CHECK_FALSE(instance.visible);
+    }
+
+    config.icon.clear();
+    picker.update(config);
+    host.place(scene.ctx, {100.0f, 300.0f, labeled.x, labeled.y});
+    CHECK_FALSE(Shows(host, ICON_LC_SLIDERS_HORIZONTAL));
+    CHECK(Shows(host, "Alpha"));
+    CHECK(Shows(host, "Medium"));
+}
+
+TEST_CASE("Model picker effort blocks cover the title and model line and highlight only while hovered", kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    REQUIRE(rig.settle());
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    REQUIRE(rig.open());
+    CHECK(ShowsAt(rig.host, "Medium", kTitleY));
+
+    const auto block = [&]() -> std::optional<Rect> {
+        const auto cards = Find<Sakura::Card>(rig.host);
+        REQUIRE(cards.size() == 1);
+        const auto panel = Find<Sakura::Box>(*cards.front());
+        for (auto* box : Find<Sakura::Box>(rig.host)) {
+            if (std::find(panel.begin(), panel.end(), box) != panel.end() || box->config().cornerRadius != 8.0f) {
+                continue;
+            }
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible) {
+                    return instance.rect;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    CHECK_FALSE(block().has_value());
+    CHECK(Sakura::Access::cursor(rig.host, kPanelTitle) == SurfaceCursor::Hand);
+    CHECK(Sakura::Access::cursor(rig.host, kModelRow) == SurfaceCursor::Hand);
+    CHECK(Sakura::Access::cursor(rig.host, kPanelMargin) == SurfaceCursor::Default);
+
+    Hover(rig.host, rig.frames, kPanelTitle.x, kPanelTitle.y);
+    REQUIRE(rig.settle());
+    const auto hovered = block();
+    REQUIRE(hovered.has_value());
+    CHECK(hovered->y == kTitleY - 5.0f);
+    CHECK(hovered->bottom() == kTitleY + 15.0f * 1.3f * 2.0f + 5.0f);
+    CHECK(hovered->contains(kPanelTitle.x, kPanelTitle.y));
+    CHECK(hovered->contains(kModelRow.x, kModelRow.y));
+    CHECK_FALSE(hovered->contains(kPanelMargin.x, kPanelMargin.y));
+    CHECK(hovered->bottom() < kTrackY - 13.0f);
+    CHECK(std::abs((hovered->x + hovered->width * 0.5f) - 140.0f) <= 1.0f);
+
+    Hover(rig.host, rig.frames, kPanelMargin.x, kPanelMargin.y);
+    REQUIRE(rig.settle());
+    CHECK_FALSE(block().has_value());
+
+    rig.click(kPanelMargin);
+    REQUIRE(rig.settle());
+    CHECK(rig.host.popups.interactiveAt(kEffortBottom));
+    CHECK(ShowsAt(rig.host, "Medium", kTitleY));
+
+    rig.click(kPanelTitle);
+    REQUIRE(rig.settle());
+    CHECK(rig.open());
+    CHECK_FALSE(rig.host.popups.interactiveAt(kEffortBottom));
+    CHECK(ShowsAt(rig.host, "Same label", kListTop));
+    CHECK(rig.selected.empty());
+    CHECK(rig.efforts.empty());
+}
+
+TEST_CASE("Model picker lists with efforts show a back header that returns to the effort view", kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    REQUIRE(rig.settle());
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    rig.click(kModelRow);
+    REQUIRE(rig.settle());
+    REQUIRE(rig.open());
+    const auto& ctx = rig.frames.ctx;
+    const Rect header = {6.0f, 335.0f, 268.0f, 25.0f};
+
+    const auto efforts = Texts(rig.host, "Effort");
+    REQUIRE(efforts.size() == 1);
+    CHECK(efforts.front().rect.y == header.y);
+    CHECK(efforts.front().rect.height == header.height);
+    CHECK(efforts.front().color == ctx.color(rig.config.detailColorKey));
+    const auto chevrons = Texts(rig.host, ICON_LC_CHEVRON_LEFT);
+    REQUIRE(chevrons.size() == 1);
+    CHECK(chevrons.front().rect.x < efforts.front().rect.x);
+    CHECK(chevrons.front().color == ctx.color(rig.config.detailColorKey));
+    CHECK(ShowsAt(rig.host, "Same label", kListTop));
+
+    const auto visibleRect = [&](const Rect& rect) -> const Sakura::Box::Config* {
+        for (auto* box : Find<Sakura::Box>(rig.host)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.rect == rect) {
+                    return &box->config();
+                }
+            }
+        }
+        return nullptr;
+    };
+    const Rect separator = {header.x, header.bottom() + 4.0f, header.width, 1.0f};
+    const auto* line = visibleRect(separator);
+    REQUIRE(line != nullptr);
+    CHECK(line->instances.front().backgroundColor == ctx.color("separator"));
+    CHECK(kListTop == separator.bottom() + 4.0f);
+    CHECK(visibleRect(header) == nullptr);
+    CHECK(Sakura::Access::cursor(rig.host, kBackRow) == SurfaceCursor::Hand);
+
+    Hover(rig.host, rig.frames, kBackRow.x, kBackRow.y);
+    REQUIRE(rig.settle());
+    const auto* highlight = visibleRect(header);
+    REQUIRE(highlight != nullptr);
+    CHECK(highlight->instances.front().backgroundColor == ctx.color(rig.config.rowHoveredColorKey));
+    CHECK(Texts(rig.host, "Effort").front().color == ctx.color(rig.config.textColorKey));
+    CHECK(Texts(rig.host, ICON_LC_CHEVRON_LEFT).front().color == ctx.color(rig.config.textColorKey));
+
+    Hover(rig.host, rig.frames, kSecondRow.x, kSecondRow.y);
+    REQUIRE(rig.settle());
+    CHECK(visibleRect(header) == nullptr);
+    CHECK(Texts(rig.host, "Effort").front().color == ctx.color(rig.config.detailColorKey));
+
+    rig.click(kBackRow);
+    REQUIRE(rig.settle());
+    CHECK(rig.open());
+    CHECK(rig.host.popups.interactiveAt(kEffortBottom));
+    CHECK(ShowsAt(rig.host, "Medium", kTitleY));
+    CHECK_FALSE(Shows(rig.host, "Effort"));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_CHEVRON_LEFT));
+    CHECK(visibleRect(separator) == nullptr);
+    CHECK(rig.selected.empty());
+    CHECK(rig.efforts.empty());
+}
+
+TEST_CASE("Model picker lists without efforts start right below the panel padding with no back header",
+          kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    rig.config.efforts.clear();
+    rig.config.effort.clear();
+    REQUIRE(rig.settle());
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    REQUIRE(rig.open());
+    CHECK(ShowsAt(rig.host, "Same label", kBareListTop));
+    CHECK_FALSE(Shows(rig.host, "Effort"));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_CHEVRON_LEFT));
+    const auto cards = Find<Sakura::Card>(rig.host);
+    REQUIRE(cards.size() == 1);
+    CHECK(Peek::Frame(*cards.front()).height == 2.0f * kRowHeight + 12.0f);
+    CHECK(Sakura::Access::cursor(rig.host, kBackRow) == SurfaceCursor::Hand);
+    rig.click(kBackRow);
+    REQUIRE(rig.settle());
+    CHECK(rig.selected.empty());
+    CHECK_FALSE(rig.open());
+}
+
+TEST_CASE("Icon model pickers color the field icon with iconColorKey and keep list names on textColorKey",
+          kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    rig.config.icon = ICON_LC_SLIDERS_HORIZONTAL;
+    rig.config.iconColorKey = "accent_color";
+    rig.config.textColorKey = "text_primary";
+    REQUIRE(rig.settle());
+    const auto& ctx = rig.frames.ctx;
+    REQUIRE(ctx.color("accent_color") != ctx.color("text_primary"));
+    const auto icons = Texts(rig.host, ICON_LC_SLIDERS_HORIZONTAL);
+    REQUIRE(icons.size() == 1);
+    CHECK(icons.front().color == ctx.color("accent_color"));
+
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    rig.click(kModelRow);
+    REQUIRE(rig.settle());
+    const auto names = Texts(rig.host, "Same label");
+    REQUIRE(names.size() == 2);
+    for (const auto& name : names) {
+        CHECK(name.color == ctx.color("text_primary"));
+    }
+    REQUIRE(Texts(rig.host, ICON_LC_CHECK).size() == 1);
+    CHECK(Texts(rig.host, ICON_LC_CHECK).front().color == ctx.color("text_primary"));
+    CHECK(Texts(rig.host, ICON_LC_SLIDERS_HORIZONTAL).front().color == ctx.color("accent_color"));
+
+    rig.config.iconColorKey = "text_secondary";
+    REQUIRE(rig.settle());
+    CHECK(Texts(rig.host, ICON_LC_SLIDERS_HORIZONTAL).front().color == ctx.color("text_secondary"));
+    for (const auto& name : Texts(rig.host, "Same label")) {
+        CHECK(name.color == ctx.color("text_primary"));
+    }
+}
+
 TEST_CASE("Model pickers without efforts list models and close once the selection arrives", kPickerTags) {
     PickerRig rig;
     rig.frames.verify = false;
@@ -391,10 +643,10 @@ TEST_CASE("Model pickers without efforts list models and close once the selectio
     rig.click(kFieldCenter);
     REQUIRE(rig.settle());
     REQUIRE(rig.open());
-    CHECK(ShowsAt(rig.host, "Same label", kListTop + kRowHeight));
+    CHECK(ShowsAt(rig.host, "Same label", kBareListTop + kRowHeight));
     CHECK(Squares(rig.host, kKnobSize).empty());
 
-    rig.click(kSecondRow);
+    rig.click(kBareSecondRow);
     REQUIRE(rig.settle());
     CHECK(rig.selected == std::vector<std::string>{"provider/model-b"});
     CHECK(rig.open());
@@ -405,7 +657,7 @@ TEST_CASE("Model pickers without efforts list models and close once the selectio
 
     rig.click(kFieldCenter);
     REQUIRE(rig.settle());
-    rig.click(kSecondRow);
+    rig.click(kBareSecondRow);
     REQUIRE(rig.settle());
     CHECK_FALSE(rig.open());
     CHECK(rig.selected.size() == 1);
@@ -466,7 +718,8 @@ TEST_CASE("Model picker sliders pick the nearest stop and keep the committed eff
     REQUIRE(rig.open());
     CHECK(Sakura::Access::cursor(rig.host, {150.0f, kTrackY}) == SurfaceCursor::Hand);
     CHECK(Sakura::Access::cursor(rig.host, kModelRow) == SurfaceCursor::Hand);
-    CHECK(Sakura::Access::cursor(rig.host, kPanelTitle) == SurfaceCursor::Default);
+    CHECK(Sakura::Access::cursor(rig.host, kPanelTitle) == SurfaceCursor::Hand);
+    CHECK(Sakura::Access::cursor(rig.host, kPanelMargin) == SurfaceCursor::Default);
 
     Press(rig.host, rig.frames, 238.0f, kTrackY);
     REQUIRE(rig.settle());
@@ -764,13 +1017,14 @@ TEST_CASE("Model picker panels restructure once when first opened and reopen wit
     REQUIRE(rig.open());
     CHECK(rig.frames.restructures == restructures + 1);
     CHECK(Retains(rig.frames, update));
-    CheckHoverRepaintsOnce(rig.frames, rig.host, update, kModelRow, kPanelTitle);
+    CheckHoverRepaintsOnce(rig.frames, rig.host, update, kModelRow, kPanelMargin);
 
     rig.click(kModelRow);
     CHECK(RepaintOnly(rig.step()));
     REQUIRE(rig.settle());
     CHECK(Retains(rig.frames, update));
-    CheckHoverRepaintsOnce(rig.frames, rig.host, update, kSecondRow, {150.0f, 388.0f});
+    CheckHoverRepaintsOnce(rig.frames, rig.host, update, kSecondRow, {150.0f, 363.0f});
+    CheckHoverRepaintsOnce(rig.frames, rig.host, update, kBackRow, {150.0f, 363.0f});
 
     rig.click(kFieldCenter);
     CHECK(RepaintOnly(rig.step()));
@@ -810,7 +1064,7 @@ TEST_CASE("Model picker list scrolling repaints without changing capacity", kPic
     CHECK(Capacities(rig.host) == capacities);
     const U64 restructures = rig.frames.restructures;
 
-    rig.host.send(Wheel(150.0f, 100.0f, -1.0f));
+    rig.host.send(Wheel(150.0f, 450.0f, -1.0f));
     CHECK(RepaintOnly(rig.step()));
     CHECK(Retains(rig.frames, update));
     CHECK(Capacities(rig.host) == capacities);
@@ -1081,6 +1335,166 @@ TEST_CASE("Chat composers submit on Enter and keep their draft until cleared", k
     rig.config.clearRequest = 2;
     rig.place();
     CHECK(Shows(rig.host, "Ask"));
+}
+
+TEST_CASE("Chat composers accept their placeholder with Tab and show the keycap only while it applies",
+          kComposerTags) {
+    const std::string prompt = "Build me an FM receiver";
+    ComposerRig rig;
+    rig.config.style.placeholder = prompt;
+    rig.config.style.acceptPlaceholder = true;
+    rig.place();
+    CHECK(Shows(rig.host, prompt));
+    CHECK_FALSE(Shows(rig.host, "Tab"));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_ARROW_RIGHT_TO_LINE));
+
+    rig.config.focusRequest = 1;
+    rig.place();
+    rig.place();
+    REQUIRE(FocusOwner(rig.host) == rig.grid());
+    CHECK(Shows(rig.host, "Tab"));
+    CHECK(Shows(rig.host, ICON_LC_ARROW_RIGHT_TO_LINE));
+    const auto keycap = Texts(rig.host, "Tab");
+    REQUIRE(keycap.size() == 1);
+    const auto placeholder = Texts(rig.host, prompt);
+    REQUIRE(placeholder.size() == 1);
+    CHECK(placeholder.front().rect.right() <= keycap.front().rect.x);
+    const Sakura::Label* placeholderLabel = nullptr;
+    for (auto* label : Find<Sakura::Label>(rig.host)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.str == prompt) {
+                placeholderLabel = label;
+            }
+        }
+    }
+    REQUIRE(placeholderLabel != nullptr);
+    const auto placeholderShown = [&] {
+        for (const auto& instance : placeholderLabel->config().instances) {
+            if (instance.visible && instance.str == prompt) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    CHECK(Tap(rig.host, KeyCode::Tab));
+    rig.place();
+    CHECK(rig.grid()->cursor() == Sakura::TextGrid::Position{0, prompt.size()});
+    CHECK_FALSE(placeholderShown());
+    CHECK_FALSE(Shows(rig.host, "Tab"));
+    Tap(rig.host, KeyCode::Enter);
+    rig.place();
+    CHECK(rig.submits == std::vector<std::string>{prompt});
+
+    rig.config.clearRequest = 1;
+    rig.place();
+    CHECK(placeholderShown());
+    CHECK(Shows(rig.host, "Tab"));
+
+    ClickFocus(rig.host, std::nullopt);
+    rig.place();
+    CHECK(FocusOwner(rig.host) == nullptr);
+    CHECK(Shows(rig.host, prompt));
+    CHECK_FALSE(Shows(rig.host, "Tab"));
+}
+
+TEST_CASE("Chat composers without placeholder acceptance indent on Tab and never show the keycap",
+          kComposerTags) {
+    ComposerRig rig;
+    rig.config.style.placeholder = "Ask";
+    rig.config.focusRequest = 1;
+    rig.place();
+    rig.place();
+    REQUIRE(FocusOwner(rig.host) == rig.grid());
+    CHECK(Shows(rig.host, "Ask"));
+    CHECK_FALSE(Shows(rig.host, "Tab"));
+
+    CHECK(Tap(rig.host, KeyCode::Tab));
+    rig.place();
+    CHECK(rig.grid()->cursor() == Sakura::TextGrid::Position{0, 4});
+    CHECK_FALSE(Shows(rig.host, "Ask"));
+    CHECK_FALSE(Shows(rig.host, "Tab"));
+    Tap(rig.host, KeyCode::Enter);
+    rig.place();
+    CHECK(rig.submits.empty());
+}
+
+TEST_CASE("Compact chat composers show their inline picker only after typing and narrow the input",
+          kComposerTags) {
+    ComposerRig rig;
+    rig.config.style.compact = true;
+    rig.config.style.pickerIcon = ICON_LC_SLIDERS_HORIZONTAL;
+    rig.config.selector = Sakura::ChatComposer::Selector{.options = {{"a", "Alpha", ""}}, .value = "a"};
+    rig.config.focusRequest = 1;
+    rig.place();
+    rig.place();
+    REQUIRE(FocusOwner(rig.host) == rig.grid());
+    CHECK(Find<Sakura::ModelPicker>(rig.host).empty());
+    const F32 wide = kComposerWidth - 2.0f * kPad - kControl - kTextPad;
+    CHECK(rig.points().grid.width == wide);
+
+    Type(rig.host, "hi");
+    rig.place();
+    const auto pickers = Find<Sakura::ModelPicker>(rig.host);
+    REQUIRE(pickers.size() == 1);
+    const Rect send = {kComposerWidth - kPad - kControl, rig.bounds.bottom() - kPad - kControl, kControl, kControl};
+    const Rect picker = {send.x - kPad - kControl, send.y, kControl, kControl};
+    CHECK(Peek::Frame(*pickers.front()) == picker);
+    CHECK(rig.points().grid.width == wide - kControl - kPad);
+    CHECK(Shows(rig.host, ICON_LC_SLIDERS_HORIZONTAL));
+    CHECK(Texts(rig.host, ICON_LC_SLIDERS_HORIZONTAL).front().color == rig.scene.context().color("text_secondary"));
+    CHECK_FALSE(Shows(rig.host, "Alpha"));
+    bool chip = false;
+    for (auto* box : Find<Sakura::Box>(rig.host)) {
+        for (const auto& instance : box->config().instances) {
+            chip = chip || (instance.visible && instance.rect == picker && box->config().cornerRadius == kControl * 0.5f);
+        }
+    }
+    CHECK(chip);
+
+    Tap(rig.host, KeyCode::Backspace);
+    Tap(rig.host, KeyCode::Backspace);
+    rig.place();
+    CHECK(Find<Sakura::ModelPicker>(rig.host).empty());
+    CHECK(rig.points().grid.width == wide);
+
+    rig.config.style.pickerIcon.clear();
+    Type(rig.host, "hi");
+    rig.place();
+    const auto labeled = Find<Sakura::ModelPicker>(rig.host);
+    REQUIRE(labeled.size() == 1);
+    CHECK(Peek::Frame(*labeled.front()).width > kControl);
+    CHECK(Peek::Frame(*labeled.front()).right() == send.x - kPad);
+    CHECK(Shows(rig.host, "Alpha"));
+    CHECK(rig.points().grid.width == wide - Peek::Frame(*labeled.front()).width - kPad);
+}
+
+TEST_CASE("Compact chat composers never show the Tab keycap and the inline picker together", kComposerTags) {
+    const std::string prompt = "Plot an FM station";
+    ComposerRig rig;
+    rig.config.style.compact = true;
+    rig.config.style.placeholder = prompt;
+    rig.config.style.acceptPlaceholder = true;
+    rig.config.style.pickerIcon = ICON_LC_SLIDERS_HORIZONTAL;
+    rig.config.selector = Sakura::ChatComposer::Selector{.options = {{"a", "Alpha", ""}}, .value = "a"};
+    rig.config.focusRequest = 1;
+    rig.place();
+    rig.place();
+    REQUIRE(FocusOwner(rig.host) == rig.grid());
+    CHECK(Shows(rig.host, "Tab"));
+    CHECK(Find<Sakura::ModelPicker>(rig.host).empty());
+
+    CHECK(Tap(rig.host, KeyCode::Tab));
+    rig.place();
+    CHECK_FALSE(Shows(rig.host, "Tab"));
+    REQUIRE(Find<Sakura::ModelPicker>(rig.host).size() == 1);
+    CHECK(Shows(rig.host, ICON_LC_SLIDERS_HORIZONTAL));
+
+    CHECK(Tap(rig.host, KeyCode::Z, {.super = true}));
+    rig.place();
+    CHECK(Shows(rig.host, "Tab"));
+    CHECK(Find<Sakura::ModelPicker>(rig.host).empty());
+    CHECK_FALSE(Shows(rig.host, ICON_LC_SLIDERS_HORIZONTAL));
 }
 
 TEST_CASE("Chat composer focus requests focus the input each time the counter changes", kComposerTags) {

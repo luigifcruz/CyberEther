@@ -1639,6 +1639,40 @@ TEST_CASE("Divs ease between color keys, snap on first show, and round only the 
     CHECK(fill().backgroundColor == ctx.color("status_warning"));
 }
 
+TEST_CASE("Divs run their context menu callback on a right click inside and keep left clicks for onClick",
+          "[core][sakura][layout]") {
+    Sakura::Div div;
+    U64 clicks = 0;
+    U64 menus = 0;
+    Host host(div);
+    div.update({.size = {100.0f, 30.0f}, .onContextMenu = [&] { ++menus; }});
+    host.place(MakeContext(), {10.0f, 10.0f, 100.0f, 30.0f});
+    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 20.0f, MouseButton::Right)));
+    CHECK(menus == 1);
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 50.0f, 20.0f)));
+    CHECK(Peek::CursorAt(div, {50.0f, 20.0f}) == SurfaceCursor::Default);
+
+    div.update({.size = {100.0f, 30.0f}, .onClick = [&] { ++clicks; }, .onContextMenu = [&] { ++menus; }});
+    host.place(MakeContext(), {10.0f, 10.0f, 100.0f, 30.0f});
+    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 20.0f)));
+    CHECK(clicks == 1);
+    CHECK(menus == 1);
+    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 20.0f, MouseButton::Right)));
+    CHECK(clicks == 1);
+    CHECK(menus == 2);
+
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 200.0f, 20.0f, MouseButton::Right)));
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 200.0f, 20.0f)));
+    CHECK(clicks == 1);
+    CHECK(menus == 2);
+
+    div.update({.size = {100.0f, 30.0f}, .onClick = [&] { ++clicks; }});
+    host.place(MakeContext(), {10.0f, 10.0f, 100.0f, 30.0f});
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 50.0f, 20.0f, MouseButton::Right)));
+    CHECK(menus == 2);
+    CHECK(clicks == 1);
+}
+
 TEST_CASE("Scroll areas drop a glide on any wheel event, even one that cannot move", "[core][sakura][layout]") {
     Probe above({100.0f, 400.0f});
     Probe target({100.0f, 600.0f});

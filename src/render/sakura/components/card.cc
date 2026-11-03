@@ -50,7 +50,7 @@ void Card::layout(const Context& ctx) {
         shadows.push_back({
             .rect = Inflate({rect.x, rect.y + config.drop, rect.width, rect.height}, config.softness),
             .visible = visible,
-            .backgroundColor = color("tile_shadow"),
+            .backgroundColor = color(config.shadowKey),
         });
         fills.push_back({.rect = rect, .visible = visible, .backgroundColor = color(config.fillKey)});
         outlines.push_back({.rect = rect, .visible = visible, .backgroundColor = clear});

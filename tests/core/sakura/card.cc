@@ -8,6 +8,7 @@
 #include "scene.hh"
 #include "render/sakura/metrics.hh"
 
+#include <string>
 #include <vector>
 
 using namespace Jetstream;
@@ -67,6 +68,38 @@ TEST_CASE("Full cards draw a dropped shadow, a bordered fill and a tonal rim on 
     CHECK(rim.instances[0].rect == kCard);
     CHECK(rim.cornerRadius == 12.0f);
     CHECK(rim.borderColor == Sakura::RimColor(ctx.color("tile_bg")));
+}
+
+TEST_CASE("Cards tint their shadow from the shadow key and repaint when it changes", "[core][sakura][card]") {
+    Scene scene;
+    const auto ctx = scene.context();
+    REQUIRE(ctx.color("tile_shadow") != ctx.color("floating_shadow"));
+    Sakura::Card card;
+    Place place(card, kCard);
+    Frames frames(place, kScreen, ctx);
+    std::string key;
+    const auto update = [&] {
+        auto config = TileCard();
+        if (!key.empty()) {
+            config.shadowKey = key;
+        }
+        card.update(config);
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(Boxes(card).size() == 3);
+    CHECK(Boxes(card)[0]->instances[0].backgroundColor == ctx.color("tile_shadow"));
+    CHECK(Sakura::Card::Config{}.shadowKey == "tile_shadow");
+
+    key = "floating_shadow";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(Boxes(card)[0]->instances[0].backgroundColor == ctx.color("floating_shadow"));
+    CHECK(Boxes(card)[1]->instances[0].backgroundColor == ctx.color("tile_bg"));
+
+    key = "tile_shadow";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Boxes(card)[0]->instances[0].backgroundColor == ctx.color("tile_shadow"));
+    CHECK(frames.restructures == 0);
 }
 
 TEST_CASE("Base and frame cards split the tile into the parts below and above content",

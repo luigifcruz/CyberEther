@@ -31,6 +31,7 @@ struct ChatComposer : public Component {
         Padding margin;
         bool clearButton = true;
         bool acceptPlaceholder = false;
+        std::string pickerIcon;
 
         bool operator==(const Style&) const = default;
     };

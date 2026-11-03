@@ -125,6 +125,7 @@ void PillField::layout(const Context& ctx) {
         .borderWidth = Px(ctx, kPillBorder),
         .lineWidth = Px(ctx, 1.0f),
         .fillKey = kPillFill,
+        .shadowKey = impl->config.floating ? kFloatingShadow : "tile_shadow",
     });
     layoutChild(ctx, impl->card, bounds);
 
