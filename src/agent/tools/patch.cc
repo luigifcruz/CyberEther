@@ -161,6 +161,32 @@ bool SelectImplementation(const std::string& type, const Json& operation, Implem
     return false;
 }
 
+bool ValidateConfigKeys(const Parser::Map& config, const Parser::Map& available, Json& result) {
+    Json unknownKeys = Json::array();
+    for (const auto& field : config) {
+        if (!available.contains(field.key)) {
+            unknownKeys.push_back(field.key);
+        }
+    }
+    if (unknownKeys.empty()) {
+        return true;
+    }
+
+    std::vector<std::string> availableKeys;
+    for (const auto& field : available) {
+        availableKeys.push_back(field.key);
+    }
+
+    const auto key = unknownKeys.front().get<std::string>();
+    result.update({
+        {"error", jst::fmt::format("Unknown config key '{}'.{}", key,
+                                   Lookup::Similar(key, availableKeys, "config keys"))},
+        {"unknown_config_keys", std::move(unknownKeys)},
+        {"available_config_keys", std::move(availableKeys)},
+    });
+    return false;
+}
+
 void PlaceNode(const Graph& flowgraph, const Json& operation, const std::string& name, Json& result) {
     if (!operation.contains("x") && !operation.contains("y")) {
         return;
@@ -230,6 +256,18 @@ void CreateBlock(Patch& patch, const Json& operation, Json& result) {
         result["error"] = jst::fmt::format("Could not decode 'config' for block type '{}'.", type);
         return;
     }
+    if (!config.empty()) {
+        std::shared_ptr<Block> prototype;
+        Parser::Map available;
+        if (Registry::BuildBlock(type, prototype) != Result::SUCCESS ||
+            prototype->config().serialize(available) != Result::SUCCESS) {
+            result["error"] = jst::fmt::format("Could not inspect config keys for block type '{}'.", type);
+            return;
+        }
+        if (!ValidateConfigKeys(config, available, result)) {
+            return;
+        }
+    }
 
     const Result created = flowgraph->blockCreate(name, type, config, {},
                                                   selected.device, selected.runtime, selected.provider);
@@ -258,6 +296,9 @@ void ReconfigureBlock(Patch& patch, const Json& operation, Json& result) {
     Parser::Map config;
     if (Value::FromJson(operation["config"], config) != Result::SUCCESS) {
         result["error"] = jst::fmt::format("Could not decode 'config' for block '{}'.", name);
+        return;
+    }
+    if (!ValidateConfigKeys(config, current.config, result)) {
         return;
     }
 

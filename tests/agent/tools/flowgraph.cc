@@ -331,7 +331,7 @@ TEST_CASE("Composite blocks are discoverable and creatable", "[agent][tools][flo
                  "config":{"sampleRate":2000000.0,"bandwidth":1000000.0,"center":[0.0],"taps":101}},
                 {"op":"connect","source":"$source","output":"signal","block":"channel_filter","input":"signal"},
                 {"op":"create_block","type":"decimator","name":"audio_decimator",
-                 "config":{"axis":0,"ratio":4}},
+                 "config":{"ratio":4}},
                 {"op":"connect","source":"$source","output":"signal","block":"audio_decimator","input":"buffer"}
             ]
         })").content);
@@ -457,6 +457,141 @@ TEST_CASE("Flowgraph patches create blocks from structured JSON", "[agent][tools
     REQUIRE(flowgraph->blockDestroy("second_selector", false) == Result::SUCCESS);
     REQUIRE(flowgraph->blockDestroy("source", false) == Result::SUCCESS);
     REQUIRE(flowgraph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Flowgraph patches reject unknown config keys before creating blocks", "[agent][tools][validation]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    const auto docs = nlohmann::json::parse(
+        ExecuteTool(nullptr, "get_block_docs", R"({"type":"spectrum_analyzer"})").content);
+    const std::vector<nlohmann::json> configs = {
+        {{"spectrumAveraging", 8}},
+        {{"lineplotAveragin", 8}, {"rangeMin", -80.0}},
+        {{"spectrumAveraging", 8}, {"notASetting", true}},
+        {{"spectrumAveraging", nullptr}},
+        {{"LineplotAveraging", 8}},
+        {{"", true}},
+    };
+
+    for (const auto& config : configs) {
+        CAPTURE(config);
+
+        const auto args = nlohmann::json({{"operations", {
+            {{"op", "create_block"}, {"type", "spectrum_analyzer"}, {"name", "rejected"}, {"config", config}},
+        }}}).dump();
+        const auto result = ExecuteTool(graph, "apply_flowgraph_patch", args);
+        const auto body = nlohmann::json::parse(result.content);
+
+        CHECK(result.error);
+        REQUIRE(body["status"] == "partial");
+        REQUIRE(body["results"].size() == 1);
+        const auto& failure = body["results"][0];
+        REQUIRE(failure.contains("unknown_config_keys"));
+        CHECK_FALSE(failure["unknown_config_keys"].empty());
+        CHECK(failure["available_config_keys"] == docs["config_keys"]);
+        CHECK_FALSE(failure.contains("may_have_applied"));
+        for (const auto& [key, value] : config.items()) {
+            if (!docs["default_config"].contains(key)) {
+                CHECK(std::find(failure["unknown_config_keys"].begin(), failure["unknown_config_keys"].end(), key) !=
+                      failure["unknown_config_keys"].end());
+            }
+        }
+        if (config.contains("lineplotAveragin")) {
+            CHECK(failure["error"].get<std::string>().find("lineplotAveraging") != std::string::npos);
+        }
+        CHECK(body["block_count"] == 0);
+        CHECK_FALSE(graph->view().has("rejected"));
+    }
+
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Flowgraph patches reject unknown config keys without reconfiguring blocks", "[agent][tools][validation]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    const auto created = nlohmann::json::parse(ExecuteTool(graph, "apply_flowgraph_patch", R"({
+        "operations": [{"op":"create_block","type":"spectrum_analyzer","name":"analyzer",
+                        "config":{"lineplotAveraging":4,"rangeMin":-90.0}}]
+    })").content);
+    REQUIRE(created["status"] == "success");
+    const auto before = nlohmann::json::parse(
+        ExecuteTool(graph, "inspect_block", R"({"name":"analyzer"})").content);
+
+    const auto result = ExecuteTool(graph, "apply_flowgraph_patch", R"({
+        "operations": [
+            {"op":"reconfigure_block","name":"analyzer",
+             "config":{"spectrumAveraging":8,"lineplotAveraging":16,"rangeMin":-40.0}},
+            {"op":"create_block","type":"note","name":"must_not_run"}
+        ]
+    })");
+    const auto body = nlohmann::json::parse(result.content);
+
+    CHECK(result.error);
+    REQUIRE(body["status"] == "partial");
+    REQUIRE(body["results"].size() == 1);
+    CHECK(body["results"][0]["unknown_config_keys"] == nlohmann::json::array({"spectrumAveraging"}));
+    CHECK_FALSE(body["results"][0].contains("may_have_applied"));
+    CHECK_FALSE(graph->view().has("must_not_run"));
+
+    const auto after = nlohmann::json::parse(
+        ExecuteTool(graph, "inspect_block", R"({"name":"analyzer"})").content);
+    CHECK(after["config"] == before["config"]);
+    CHECK(after["state"] == before["state"]);
+
+    const auto changed = nlohmann::json::parse(ExecuteTool(graph, "apply_flowgraph_patch", R"({
+        "operations": [{"op":"reconfigure_block","name":"analyzer","config":{"lineplotAveraging":8}}]
+    })").content);
+    REQUIRE(changed["status"] == "success");
+    CHECK(changed["results"][0]["config"]["lineplotAveraging"] == 8);
+
+    REQUIRE(graph->blockDestroy("analyzer", false) == Result::SUCCESS);
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Config key validation preserves sequential edits and structured values", "[agent][tools][validation]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    const auto rejected = ExecuteTool(graph, "apply_flowgraph_patch", R"({
+        "operations": [
+            {"op":"create_block","type":"note","name":"retained","config":{}},
+            {"op":"create_block","type":"python","name":"rejected",
+             "config":{"outputTensor0":{"shape":"[2, 4]"}}}
+        ]
+    })");
+    const auto body = nlohmann::json::parse(rejected.content);
+    REQUIRE(rejected.error);
+    REQUIRE(body["status"] == "partial");
+    REQUIRE(body["results"].size() == 2);
+    CHECK(body["results"][0]["status"] == "success");
+    CHECK(body["results"][1]["unknown_config_keys"] == nlohmann::json::array({"outputTensor0"}));
+    CHECK(graph->view().has("retained"));
+    CHECK_FALSE(graph->view().has("rejected"));
+
+    const auto accepted = nlohmann::json::parse(ExecuteTool(graph, "apply_flowgraph_patch", R"({
+        "operations": [
+            {"op":"create_block","type":"python","name":"python",
+             "config":{"source":"file","outputTensorSpecs":[
+                 {"shape":"[2, 4]","dtype":"CF32","device":"cpu","axes":"[C, S]"}
+             ]}},
+            {"op":"reconfigure_block","name":"python","config":{}}
+        ]
+    })").content);
+    REQUIRE(accepted["status"] == "success");
+    CHECK(accepted["results"][0]["config"]["outputTensorSpecs"][0]["dtype"] == "CF32");
+    CHECK(accepted["results"][1]["config"].empty());
+
+    REQUIRE(graph->blockDestroy("python", false) == Result::SUCCESS);
+    REQUIRE(graph->blockDestroy("retained", false) == Result::SUCCESS);
+    REQUIRE(graph->destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Agent tools read and write node position and size", "[agent][tools][flowgraph]") {
