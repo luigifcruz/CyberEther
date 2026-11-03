@@ -8,6 +8,7 @@
 #include <jetstream/render/sakura/surface.hh>
 #include <jetstream/render/sakura/toast.hh>
 
+#include <jetstream/render/sakura/components/assistant_pill.hh>
 #include <jetstream/render/sakura/components/background_layer.hh>
 #include <jetstream/render/sakura/components/badge.hh>
 #include <jetstream/render/sakura/components/box.hh>

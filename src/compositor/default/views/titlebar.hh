@@ -82,6 +82,7 @@ struct TitlebarView {
         bool updateAvailable = false;
         bool updateReady = false;
         bool intelligenceEnabled = false;
+        bool agentWorking = false;
         bool agentUnread = false;
         bool terminalEnabled = false;
         std::optional<VoiceIndicator> voice;
@@ -176,9 +177,16 @@ struct TitlebarView {
         });
         assistantButton.update({
             .icon = ICON_LC_WAND_SPARKLES,
-            .colorKey = this->config.agentUnread ? "cyber_blue" : "text_secondary",
+            .colorKey = "text_secondary",
             .backgroundColorKey = "transparent",
             .hoverColorKey = "chrome_button_hover",
+            .onClick = action(Action::ToggleAgent),
+        });
+        assistantPill.update({
+            .state = this->config.agentWorking ? Sakura::AssistantPill::State::Working
+                                               : Sakura::AssistantPill::State::Unread,
+            .icon = ICON_LC_WAND_SPARKLES,
+            .label = this->config.agentWorking ? "Working" : "New reply",
             .onClick = action(Action::ToggleAgent),
         });
         terminalButton.update({
@@ -208,7 +216,11 @@ struct TitlebarView {
             });
             indicators.push_back({.child = &voicePill});
         } else if (this->config.intelligenceEnabled) {
-            indicators.push_back({.child = &assistantButton});
+            if (this->config.agentWorking || this->config.agentUnread) {
+                indicators.push_back({.child = &assistantPill});
+            } else {
+                indicators.push_back({.child = &assistantButton});
+            }
         }
 #endif
         if (this->config.terminalEnabled) {
@@ -424,6 +436,7 @@ struct TitlebarView {
     Sakura::PillButton remoteButton;
     Sakura::PillButton updateButton;
     Sakura::PillButton assistantButton;
+    Sakura::AssistantPill assistantPill;
     Sakura::Voice voicePill;
     Sakura::PillButton terminalButton;
     Sakura::PillButton helpButton;

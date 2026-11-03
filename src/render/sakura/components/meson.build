@@ -2,6 +2,7 @@ src_lst += files([
     'canvas.cc',
     'box.cc',
     'card.cc',
+    'assistant_pill.cc',
     'chat.cc',
     'chat_composer.cc',
     'polyline.cc',

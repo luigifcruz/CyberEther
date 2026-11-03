@@ -53,6 +53,7 @@ struct TitlebarPresenter {
             .updateAvailable = context.state.update.available,
             .updateReady = context.state.update.ready,
             .intelligenceEnabled = context.state.agent.settings.enabled,
+            .agentWorking = context.state.agent.chat.conversation.streaming && !context.state.agent.ui.visible,
             .agentUnread = context.state.agent.ui.unread,
             .terminalEnabled = TerminalSession::Supported(),
             .voice = voice.build(),
