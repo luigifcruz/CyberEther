@@ -504,6 +504,10 @@ struct MailSetFeedbackText {
 
 struct MailSubmitFeedback {};
 
+struct MailOpenOnboarding {};
+
+struct MailDismissOnboarding {};
+
 struct MailSetFlowgraphInfo {
     std::string flowgraph;
     std::optional<std::string> title;
@@ -814,6 +818,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetBenchmarkModule,
                           MailSetFeedbackText,
                           MailSubmitFeedback,
+                          MailOpenOnboarding,
+                          MailDismissOnboarding,
                           MailSetFlowgraphInfo,
                           MailOpenRenameBlock,
                           MailRenameBlock,

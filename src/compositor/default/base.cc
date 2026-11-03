@@ -9,6 +9,7 @@
 #include "presenters/base.hh"
 #include "render/sakura/themes.hh"
 
+#include "jetstream/config.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/instance_remote.hh"
@@ -117,6 +118,13 @@ Result DefaultCompositor::create() {
     state.interface.showTips = settings.interface.showTips;
     state.interface.recentFlowgraphs = settings.interface.recentFlowgraphs;
     state.interface.favoriteFlowgraphs = settings.interface.favoriteFlowgraphs;
+    if (!viewport || viewport->id() != "headless") {
+        if (auto onboarding = OnboardingActions::Detect(settings.interface, JETSTREAM_VERSION_STR)) {
+            enqueue(std::move(*onboarding));
+        } else if (settings.interface.welcomeVersion != JETSTREAM_VERSION_STR) {
+            enqueue(MailDismissOnboarding{});
+        }
+    }
 
     // Restore map preferences.
 

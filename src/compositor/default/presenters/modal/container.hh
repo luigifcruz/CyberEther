@@ -5,6 +5,7 @@
 #include "dependencies.hh"
 #include "docs_search.hh"
 #include "feedback.hh"
+#include "onboarding.hh"
 #include "remote_qr.hh"
 
 #include "../context.hh"
@@ -23,6 +24,7 @@ struct ModalPresenter {
     BenchmarkModalPresenter benchmark;
     DependencyReviewModalPresenter dependencies;
     FeedbackModalPresenter feedback;
+    OnboardingModalPresenter onboarding;
     RemoteQrModalPresenter remoteQr;
     DocsSearchModalPresenter docsSearch;
 
@@ -32,6 +34,7 @@ struct ModalPresenter {
                                                                benchmark(context),
                                                                dependencies(context),
                                                                feedback(context),
+                                                               onboarding(context),
                                                                remoteQr(context),
                                                                docsSearch(context) {}
 
@@ -40,8 +43,12 @@ struct ModalPresenter {
 
         ModalView::Config config;
         config.content = context.state.modal.content;
-        config.onClose = [enqueue]() {
-            enqueue(MailCloseModal{});
+        config.onClose = [enqueue, onboarding = config.content == ModalContent::Onboarding]() {
+            if (onboarding) {
+                enqueue(MailDismissOnboarding{});
+            } else {
+                enqueue(MailCloseModal{});
+            }
         };
 
         if (!config.content.has_value()) {
@@ -71,6 +78,9 @@ struct ModalPresenter {
                 break;
             case ModalContent::DocsSearch:
                 config.docsSearch = docsSearch.build();
+                break;
+            case ModalContent::Onboarding:
+                config.onboarding = onboarding.build();
                 break;
         }
 

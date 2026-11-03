@@ -8,6 +8,7 @@
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "feedback.hh"
+#include "onboarding.hh"
 #include "remote_qr.hh"
 #include "../../model/ui.hh"
 
@@ -28,6 +29,7 @@ struct ModalView {
         FeedbackView::Config feedback;
         RemoteQrView::Config remoteQr;
         DocsSearchView::Config docsSearch;
+        OnboardingView::Config onboarding;
         Sakura::Callback<void()> onClose;
     };
 
@@ -85,6 +87,11 @@ struct ModalView {
                 docsSearchView.update(std::move(viewConfig));
                 break;
             }
+            case ModalContent::Onboarding: {
+                auto viewConfig = this->config.onboarding;
+                onboardingView.update(std::move(viewConfig));
+                break;
+            }
         }
 
         previousContent = this->config.content;
@@ -97,7 +104,8 @@ struct ModalView {
         return {
             .content = content(),
             .size = modalSize(),
-            .closeButton = config.content != ModalContent::Feedback && config.content != ModalContent::RemoteQr,
+            .closeButton = config.content != ModalContent::Feedback && config.content != ModalContent::RemoteQr &&
+                           config.content != ModalContent::Onboarding,
             .onClose = [this]() {
                 if (config.onClose) {
                     config.onClose();
@@ -128,6 +136,8 @@ struct ModalView {
                 return &remoteQrView.component();
             case ModalContent::DocsSearch:
                 return nullptr;
+            case ModalContent::Onboarding:
+                return &onboardingView.component();
         }
         return nullptr;
     }
@@ -142,6 +152,9 @@ struct ModalView {
         if (config.content == ModalContent::Dependencies) {
             return Extent2D<F32>{760.0f, 0.0f};
         }
+        if (config.content == ModalContent::Onboarding) {
+            return OnboardingView::Size();
+        }
         return Sakura::ModalLayer::Config{}.size;
     }
 
@@ -155,6 +168,7 @@ struct ModalView {
     FeedbackView feedbackView;
     RemoteQrView remoteQrView;
     DocsSearchView docsSearchView;
+    OnboardingView onboardingView;
 };
 
 }  // namespace Jetstream

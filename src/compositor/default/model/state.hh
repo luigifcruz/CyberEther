@@ -413,6 +413,7 @@ struct DefaultCompositorState {
         std::string text;
     };
 
+
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;

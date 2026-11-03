@@ -23,6 +23,7 @@ struct TitlebarView {
 
     enum class Action {
         About,
+        WhatsNew,
         Settings,
         CheckForUpdates,
         OpenUpdateModal,
@@ -115,6 +116,7 @@ struct TitlebarView {
         }
         std::vector<Entry> appEntries = {
             {.label = "About CyberEther", .onClick = action(Action::About)},
+            {.label = "What's New", .onClick = action(Action::WhatsNew)},
             std::move(updateEntry),
             separator,
             {.label = "Settings", .shortcut = "CTRL+,", .onClick = action(Action::Settings)},

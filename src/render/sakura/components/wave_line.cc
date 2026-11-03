@@ -19,7 +19,6 @@ namespace {
 constexpr U64 kWaveCapacity = 16384;
 constexpr F32 kWaveAmplitude = 5.0f;
 constexpr F32 kWaveThickness = 1.6f;
-constexpr const char* kWaveColor = "text_disabled";
 
 }  // namespace
 
@@ -59,7 +58,7 @@ void WaveLine::layout(const Context& ctx) {
     const U64 capacity = std::max(kWaveCapacity, std::bit_ceil(WaveRowCapacity(ctx, period)));
     Polyline::Instance wave{
         .points = WavePoints(left, center, width, period, amplitude, visible.x, visible.right()),
-        .color = ctx.color(kWaveColor),
+        .color = WithAlpha(ctx.color(config.colorKey), config.opacity),
         .thickness = Px(ctx, kWaveThickness),
     };
     wave.points.resize(std::min<U64>(wave.points.size(), capacity / kWavePointVertices));

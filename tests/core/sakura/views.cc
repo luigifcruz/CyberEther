@@ -809,12 +809,13 @@ TEST_CASE("Wordmark menu entries emit their actions and the update entry follows
     TitleRig rig;
     auto& wordmark = rig.shell.bar().leading();
 
-    for (const char* label : {"About CyberEther", "Check for Updates", "Settings", "Send Feedback", "Quit CyberEther"}) {
+    for (const char* label :
+         {"About CyberEther", "What's New", "Check for Updates", "Settings", "Send Feedback", "Quit CyberEther"}) {
         CAPTURE(label);
         rig.choose(wordmark, label);
     }
-    CHECK(rig.actions == std::vector<Action>{Action::About, Action::CheckForUpdates, Action::Settings,
-                                             Action::SendFeedback, Action::Quit});
+    CHECK(rig.actions == std::vector<Action>{Action::About, Action::WhatsNew, Action::CheckForUpdates,
+                                             Action::Settings, Action::SendFeedback, Action::Quit});
 
     rig.actions.clear();
     rig.config.updateAvailable = true;
@@ -1020,6 +1021,8 @@ TEST_CASE("Titlebar presenter actions enqueue the matching mail", "[core][sakura
     config.onAction(Action::About);
     REQUIRE(mailbox.last<MailOpenModal>() != nullptr);
     CHECK(mailbox.last<MailOpenModal>()->content == ModalContent::About);
+    config.onAction(Action::WhatsNew);
+    REQUIRE(mailbox.last<MailOpenOnboarding>() != nullptr);
     config.onAction(Action::Settings);
     REQUIRE(mailbox.last<MailOpenSettings>() != nullptr);
     CHECK(mailbox.last<MailOpenSettings>()->section == SettingsSection::General);

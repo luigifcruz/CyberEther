@@ -5,6 +5,7 @@
 #include <jetstream/types.hh>
 
 #include <memory>
+#include <string>
 
 namespace Jetstream::Sakura {
 
@@ -12,6 +13,8 @@ struct WaveLine : public Component {
     struct Config {
         F32 period = 18.0f;
         F32 span = 1.0f;
+        std::string colorKey = "text_disabled";
+        F32 opacity = 1.0f;
 
         bool operator==(const Config&) const = default;
     };

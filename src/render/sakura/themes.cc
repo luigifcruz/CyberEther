@@ -10,6 +10,7 @@ const std::unordered_map<std::string, Palette> Themes = {
         "Dark", {
             // Core Brand Colors
             {"cyber_blue", {0.30f, 0.75f, 0.95f, 1.0f}},
+            {"cyber_blue_surface", {0.04f, 0.13f, 0.20f, 1.0f}},
             {"accent_color", {0.90f, 0.65f, 0.50f, 1.00f}},
 
             // Welcome Card Colors
@@ -253,6 +254,7 @@ const std::unordered_map<std::string, Palette> Themes = {
         "Light", {
             // Core Brand Colors
             {"cyber_blue", {0.15f, 0.55f, 0.85f, 1.0f}},
+            {"cyber_blue_surface", {0.85f, 0.93f, 0.99f, 1.0f}},
             {"accent_color", {0.80f, 0.45f, 0.25f, 1.00f}},
 
             // Welcome Card Colors

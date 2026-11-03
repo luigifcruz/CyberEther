@@ -49,6 +49,8 @@ struct Markdown::Impl {
             .scrollbar = config.scrollbar,
             .scrollbarInset = {config.scrollbarInset.x * ctx.pixelRatio, config.scrollbarInset.y * ctx.pixelRatio},
             .padding = padding,
+            .textColorKey = config.textColorKey,
+            .styleColorKeys = {config.boldColorKey, "", config.boldColorKey, "", "", ""},
             .onLink = std::move(onLink),
             .hero = config.hero,
             .softBreaks = config.softBreaks,
@@ -88,7 +90,8 @@ void Markdown::scrollToLine(U64 line) {
 
 Extent2D<F32> Markdown::measure(const Context& ctx, Extent2D<F32> available) {
     impl->sync(ctx, std::isfinite(available.x) ? available.x : -1.0f);
-    return {FillLength(available.x), FitLength(measureChild(impl->markdown, ctx, available).y, available.y)};
+    const auto content = measureChild(impl->markdown, ctx, available);
+    return {FillLength(available.x, content.x), FitLength(content.y, available.y)};
 }
 
 void Markdown::layout(const Context& ctx) {

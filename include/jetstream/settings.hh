@@ -86,8 +86,9 @@ struct JETSTREAM_API Settings {
         bool showTips = true;
         std::vector<FlowgraphEntry> recentFlowgraphs;
         std::vector<FlowgraphEntry> favoriteFlowgraphs;
+        std::string welcomeVersion;
 
-        JST_SERDES(themeKey, backgroundParticles, showTips, recentFlowgraphs, favoriteFlowgraphs);
+        JST_SERDES(themeKey, backgroundParticles, showTips, recentFlowgraphs, favoriteFlowgraphs, welcomeVersion);
     };
 
     struct Maps {

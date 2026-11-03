@@ -13,7 +13,9 @@ enum class ModalContent : I32 {
     Feedback,
     RemoteQr,
     DocsSearch,
+    Onboarding,
 };
+
 
 enum class RegistryPage : I32 {
     Overview = 0,

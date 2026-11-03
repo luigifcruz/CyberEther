@@ -12,6 +12,7 @@
 #include "live_markdown.hh"
 #include "maps.hh"
 #include "metrics.hh"
+#include "onboarding.hh"
 #include "remote.hh"
 #include "settings.hh"
 #include "terminal.hh"
@@ -45,6 +46,7 @@ class DefaultActions {
         configDrafts = std::make_shared<ConfigDraftActions>(state.flowgraph);
         metrics = std::make_shared<MetricActions>(state.flowgraph);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
+        onboarding = std::make_shared<OnboardingActions>(state);
         agent = std::make_shared<AgentActions>(state, callbacks, runtime);
         gallery = std::make_shared<GalleryActions>(state);
         terminals = std::make_shared<TerminalActions>(state, callbacks);
@@ -106,6 +108,9 @@ class DefaultActions {
             return result;
         }
         if (Handle(*feedback, mail, result)) {
+            return result;
+        }
+        if (Handle(*onboarding, mail, result)) {
             return result;
         }
         if (Handle(*agent, mail, result)) {
@@ -230,6 +235,7 @@ class DefaultActions {
     std::shared_ptr<LayoutActions> layouts;
     std::shared_ptr<WorkbenchActions> workbench;
     std::shared_ptr<FeedbackActions> feedback;
+    std::shared_ptr<OnboardingActions> onboarding;
     std::shared_ptr<AgentActions> agent;
     std::shared_ptr<GalleryActions> gallery;
     std::shared_ptr<TerminalActions> terminals;

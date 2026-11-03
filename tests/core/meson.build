@@ -11,6 +11,7 @@ core_test_domains = {
         'compositor/gallery.cc',
         'compositor/layout.cc',
         'compositor/metrics.cc',
+        'compositor/onboarding.cc',
         'compositor/settings_tab.cc',
         'compositor/start_tab.cc',
         'compositor/tiles.cc',

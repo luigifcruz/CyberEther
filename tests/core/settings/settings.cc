@@ -174,6 +174,7 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE(settings.remote.video.framerate == 30);
     REQUIRE(settings.interface.themeKey == "Dark");
     REQUIRE(settings.interface.backgroundParticles);
+    REQUIRE(settings.interface.welcomeVersion.empty());
     REQUIRE(settings.intelligence.provider.empty());
     REQUIRE(settings.intelligence.model.empty());
     REQUIRE(settings.intelligence.models.empty());
@@ -227,6 +228,7 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.graphics.framerate = 75;
     settings.interface.themeKey = "Light";
     settings.interface.backgroundParticles = false;
+    settings.interface.welcomeVersion = "2.0.0";
     settings.remote.broker.publicUrl = "https://example.com";
     settings.remote.video.codec = "av1";
     settings.remote.video.encoder = "software";
@@ -272,6 +274,7 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.graphics.framerate == 75);
     REQUIRE(restored.interface.themeKey == "Light");
     REQUIRE_FALSE(restored.interface.backgroundParticles);
+    REQUIRE(restored.interface.welcomeVersion == "2.0.0");
     REQUIRE(restored.remote.broker.publicUrl == "https://example.com");
     REQUIRE(restored.remote.video.codec == "av1");
     REQUIRE(restored.remote.video.encoder == "software");

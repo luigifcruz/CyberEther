@@ -22,6 +22,8 @@ struct Markdown : public Component {
         std::optional<Padding> padding;
         bool scrollbar = false;
         Extent2D<F32> scrollbarInset = {0.0f, 0.0f};
+        std::string textColorKey = "text_primary";
+        std::string boldColorKey;
         Callback<bool(const std::string&)> onLink;
         std::optional<TextMarkdown::Hero> hero;
         bool softBreaks = false;

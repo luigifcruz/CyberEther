@@ -75,6 +75,9 @@ struct TitlebarPresenter {
                     case Action::About:
                         enqueue(MailOpenModal{.content = ModalContent::About});
                         break;
+                    case Action::WhatsNew:
+                        enqueue(MailOpenOnboarding{});
+                        break;
                     case Action::Settings:
                         enqueue(MailOpenSettings{.section = SettingsSection::General});
                         break;
