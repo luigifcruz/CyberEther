@@ -287,6 +287,11 @@ Result SoapyImpl::emitFrame() {
         JST_CHECK(buffer.setAttribute("clippedSamples", clipped));
         publishedClippedSamples = clipped;
     }
+    const U64 received = receivedSamples.get();
+    if (publishedReceivedSamples != received) {
+        JST_CHECK(buffer.setAttribute("receivedSamples", received));
+        publishedReceivedSamples = received;
+    }
     const U64 flags = overloadFlags.get();
     if (publishedOverloadFlags != flags) {
         JST_CHECK(buffer.setAttribute("overloadFlags", flags));
@@ -306,6 +311,7 @@ Result SoapyImpl::soapyThreadLoop() {
     // 1/32768, so full scale reads 32767/32768 or -1.
     constexpr F32 kClipLevel = 0.9999f;
     U64 clippedTotal = 0;
+    U64 receivedTotal = 0;
     // The radio reports its overload signals set until the gain first
     // changes after start-up; trust them only once they have read clear.
     constexpr auto kOverloadPollPeriod = std::chrono::milliseconds(50);
@@ -343,6 +349,8 @@ Result SoapyImpl::soapyThreadLoop() {
                 clippedTotal += clipped;
                 clippedSamples.publish(clippedTotal);
             }
+            receivedTotal += received.sampleCount;
+            receivedSamples.publish(receivedTotal);
             stream.push(readGeneration, tmp.data(), received.sampleCount);
             Scheduler::Context::NotifyPendingCompute();
             const U64 capacity = stream.capacity();

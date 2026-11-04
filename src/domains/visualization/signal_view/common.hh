@@ -265,10 +265,12 @@ struct SignalViewFrequency {
 };
 
 // Overload state published by a radio source: samples clipped at full scale
-// since start, and the receiver's overload signals (bit 4 large LMT, 3 small
-// LMT, 2 large ADC, 1 small ADC, 0 digital saturation).
+// and samples received since start, and the receiver's overload signals
+// (bit 4 large LMT, 3 small LMT, 2 large ADC, 1 small ADC, 0 digital
+// saturation), which the AD9361 keeps set until the gain changes.
 struct SignalViewOverload {
     std::optional<U64> clippedSamples;
+    std::optional<U64> receivedSamples;
     std::optional<U64> flags;
 
     Result read(const Tensor& input);
@@ -289,7 +291,8 @@ struct OverloadBadge {
     bool severe = false;
 };
 
-OverloadBadge FormatOverloadBadge(bool clipped, bool rf, bool high, U64 clippedSamples);
+// clipRatio is the share of samples clipped over the last second, 0 to 1.
+OverloadBadge FormatOverloadBadge(bool clipped, bool rf, bool high, F64 clipRatio);
 
 }  // namespace detail
 
@@ -355,6 +358,16 @@ struct SignalViewCanvas {
     bool displayHeld = false;
 
     struct OverloadState {
+        struct Count {
+            std::chrono::steady_clock::time_point time;
+            U64 clipped = 0;
+            U64 received = 0;
+        };
+        std::optional<Count> older;
+        std::optional<Count> newer;
+        F64 clipRatio = 0.0;
+        // Last non-zero share, kept while CLIP is held on screen.
+        F64 heldClipRatio = 0.0;
         std::optional<U64> lastClipped;
         std::chrono::steady_clock::time_point clipUntil;
         std::chrono::steady_clock::time_point rfUntil;

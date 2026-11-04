@@ -54,8 +54,10 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     // Samples at full scale since the stream started, and the latest RX
     // overload signals reported by the radio (0 when it reports none).
     Tools::Snapshot<U64> clippedSamples{0};
+    Tools::Snapshot<U64> receivedSamples{0};
     Tools::Snapshot<U64> overloadFlags{0};
     std::optional<U64> publishedClippedSamples;
+    std::optional<U64> publishedReceivedSamples;
     std::optional<U64> publishedOverloadFlags;
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<std::optional<SoapyAbi::Range>> gainRange;
