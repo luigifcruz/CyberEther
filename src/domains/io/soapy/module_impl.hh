@@ -68,11 +68,12 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     SoapyReceiver receiverDevice;
     Radio::StreamAccess access;
     Tuning tuned;
+    F64 appliedSampleRate = 0.0;
 
     Result allocateBuffers();
     Result configureDevice();
     Result applyTuning(const Tuning& desired, bool force = false);
-    void resetStream(F32 appliedFrequency, F32 appliedSampleRate);
+    void resetStream(F32 appliedFrequency, F64 appliedRate);
     Result publishMetadata(const Radio::StreamBuffer::Metadata& metadata);
     Result startReceiver();
     void stopReceiver();

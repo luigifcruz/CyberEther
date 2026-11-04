@@ -52,8 +52,8 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.enumerate, "SoapySDRDevice_enumerate", missing) &&
            Resolve(handle, api.make, "SoapySDRDevice_make", missing) &&
            Resolve(handle, api.unmake, "SoapySDRDevice_unmake", missing) &&
-           Resolve(handle, api.getSampleRateRange, "SoapySDRDevice_getSampleRateRange", missing) &&
            Resolve(handle, api.getFrequencyRange, "SoapySDRDevice_getFrequencyRange", missing) &&
+           Resolve(handle, api.getSampleRateRange, "SoapySDRDevice_getSampleRateRange", missing) &&
            Resolve(handle, api.listAntennas, "SoapySDRDevice_listAntennas", missing) &&
            Resolve(handle, api.setAntenna, "SoapySDRDevice_setAntenna", missing) &&
            Resolve(handle, api.setFrequency, "SoapySDRDevice_setFrequency", missing) &&
