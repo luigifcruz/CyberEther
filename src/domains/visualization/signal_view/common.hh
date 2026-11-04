@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -263,6 +264,35 @@ struct SignalViewFrequency {
     bool operator==(const SignalViewFrequency&) const = default;
 };
 
+// Overload state published by a radio source: samples clipped at full scale
+// since start, and the receiver's overload signals (bit 4 large LMT, 3 small
+// LMT, 2 large ADC, 1 small ADC, 0 digital saturation).
+struct SignalViewOverload {
+    std::optional<U64> clippedSamples;
+    std::optional<U64> flags;
+
+    Result read(const Tensor& input);
+};
+
+namespace detail {
+
+constexpr U64 kOverloadLargeLmt = 1 << 4;
+constexpr U64 kOverloadSmallLmt = 1 << 3;
+constexpr U64 kOverloadLargeAdc = 1 << 2;
+constexpr U64 kOverloadSmallAdc = 1 << 1;
+constexpr U64 kOverloadSaturation = 1 << 0;
+
+// Warning shown in the view, held a moment after each event so short bursts
+// stay readable. Empty when nothing happened.
+struct OverloadBadge {
+    std::string text;
+    bool severe = false;
+};
+
+OverloadBadge FormatOverloadBadge(bool clipped, bool rf, bool high, U64 clippedSamples);
+
+}  // namespace detail
+
 struct SignalViewLineplot;
 struct SignalViewWaterfall;
 struct SignalViewDensity;
@@ -275,6 +305,7 @@ struct SignalViewCanvas {
         SignalViewLineplot* lineplot = nullptr;
         SignalViewWaterfall* waterfall = nullptr;
         SignalViewDensity* density = nullptr;
+        SignalViewOverload overload = {};
     };
 
     struct Edits {
@@ -322,6 +353,15 @@ struct SignalViewCanvas {
     detail::SignalViewSplitInteraction splitter;
     CursorState cursor;
     bool displayHeld = false;
+
+    struct OverloadState {
+        std::optional<U64> lastClipped;
+        std::chrono::steady_clock::time_point clipUntil;
+        std::chrono::steady_clock::time_point rfUntil;
+        std::chrono::steady_clock::time_point highUntil;
+    };
+    OverloadState overload;
+    void updateOverload(const Context& context);
     Extent2D<F32> pixelSize;
 
     std::vector<F32> markerPositions;

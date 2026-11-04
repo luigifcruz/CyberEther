@@ -74,7 +74,8 @@ struct SignalViewImpl : public Module::Impl,
     Result destroyPresent();
     Result present();
 
-    SignalViewCanvas::Context canvasContext(const SignalViewFrequency& frequency);
+    SignalViewCanvas::Context canvasContext(const SignalViewFrequency& frequency,
+                                            const SignalViewOverload& overload = {});
     WaterfallFrame waterfallFrame() const;
     WaterfallFrame densityFrame() const;
     SignalViewWaterfall3DLabels waterfall3dLabels(const SignalViewFrequency& frequency) const;
