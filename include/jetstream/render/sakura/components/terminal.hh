@@ -144,6 +144,7 @@ struct Terminal : public Component {
         Callback<void(const KeyEvent&)> onKey;
         Callback<void(std::string text, KeyModifiers modifiers)> onText;
         Callback<void(std::string)> onPaste;
+        Callback<void(const std::vector<std::string>&)> onFileDrop;
         Callback<void(I32 rows, Extent2D<F32> position, KeyModifiers modifiers)> onScroll;
         Callback<void(U64 row)> onScrollTo;
         Callback<void(Selection)> onSelect;
@@ -168,6 +169,7 @@ struct Terminal : public Component {
     bool mouseEvent(const MouseEvent& event) override;
     bool keyEvent(const KeyEvent& event) override;
     bool textEvent(const TextEvent& event) override;
+    bool fileDrop(const std::vector<std::string>& paths) override;
     void focusChanged(bool focused) override;
     bool editsText() const override;
     bool focusesOnClick() const override;

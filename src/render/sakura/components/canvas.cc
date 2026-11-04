@@ -685,6 +685,16 @@ void Canvas::render(const Sakura::Context& ctx, const Rect& region) {
     }
 }
 
+bool Canvas::dropFiles(const std::vector<std::string>& paths) {
+    if (!impl->root || !impl->mouse.has_value()) {
+        return false;
+    }
+    ++impl->dispatchDepth;
+    const bool claimed = impl->root->impl->dropFiles(*impl->mouse, paths);
+    --impl->dispatchDepth;
+    return claimed;
+}
+
 void Canvas::requestCursor(SurfaceCursor cursor) {
     impl->cursor = cursor;
 }

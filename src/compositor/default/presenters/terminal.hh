@@ -68,6 +68,9 @@ struct TerminalPresenter {
                     .onPaste = [send](std::string text) {
                         send(MailTerminalInput::Paste{std::move(text)});
                     },
+                    .onFileDrop = [send](const std::vector<std::string>& paths) {
+                        send(MailTerminalInput::DropFiles{paths});
+                    },
                     .onScroll = [send](I32 rows, Extent2D<F32> position, KeyModifiers modifiers) {
                         send(MailTerminalInput::Scroll{.rows = rows, .position = position, .modifiers = modifiers});
                     },

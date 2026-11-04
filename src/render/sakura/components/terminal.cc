@@ -896,6 +896,14 @@ void Terminal::layout(const Context& ctx) {
     }
 }
 
+bool Terminal::fileDrop(const std::vector<std::string>& paths) {
+    if (!impl->config.screen || !impl->config.onFileDrop) {
+        return false;
+    }
+    impl->config.onFileDrop(paths);
+    return true;
+}
+
 bool Terminal::mouseEvent(const MouseEvent& event) {
     if (event.type == MouseEventType::Click) {
         impl->findPress = impl->findBounds.contains(event.position.x, event.position.y);

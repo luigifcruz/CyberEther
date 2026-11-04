@@ -36,4 +36,8 @@ void Root::render(const Sakura::Context& ctx) {
     impl->canvas.render(ctx, DisplayMetrics::RootRegion(Metrics(ctx), impl->config.topOffset));
 }
 
+bool Root::dropFiles(const std::vector<std::string>& paths) {
+    return impl->canvas.dropFiles(paths);
+}
+
 }  // namespace Jetstream::Sakura

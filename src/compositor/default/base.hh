@@ -16,6 +16,7 @@
 #include <deque>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Jetstream {
 
@@ -41,6 +42,7 @@ class DefaultCompositor : public Compositor::Impl {
 
     std::deque<Mail> pendingMail;
     WorkbenchView workbench;
+    std::vector<std::string> droppedFiles;
     std::optional<bool> previousIntegratedTitlebar;
 
     void enqueue(Mail&& mail);

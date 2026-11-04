@@ -6,7 +6,9 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/chrome_button.hh>
+#include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/overlay.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/terminal.hh>
 #include <jetstream/render/sakura/components/text.hh>
@@ -45,6 +47,7 @@ struct Recorder {
     std::vector<KeyEvent> releases;
     std::vector<std::string> texts;
     std::vector<std::string> pastes;
+    std::vector<std::vector<std::string>> drops;
     std::vector<I32> scrolls;
     std::vector<U64> rows;
     std::vector<Terminal::Selection> selections;
@@ -214,6 +217,62 @@ TEST_CASE("Terminals measure natural, fixed, and filling sizes before their firs
 
     terminal.update({.size = {Sakura::Fill, 0.0f}});
     CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, natural.y});
+}
+
+TEST_CASE("Terminals claim files dropped on them", kTags) {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    Terminal terminal;
+    Place place(terminal, kBounds);
+    Frames frames(place, kScreen, scene.context());
+    const auto update = [&] {
+        auto config = recorder.wire(&screen, 1);
+        config.onFileDrop = [&](const std::vector<std::string>& paths) {
+            recorder.drops.push_back(paths);
+        };
+        terminal.update(std::move(config));
+    };
+    REQUIRE(frames.settle(update));
+
+    const Extent2D<F32> inside = {kBounds.x + kBounds.width * 0.5f, kBounds.y + kBounds.height * 0.5f};
+    const std::vector<std::string> paths = {"/tmp/a", "/tmp/b"};
+    CHECK(Sakura::Access::dropFiles(place, inside, paths));
+    REQUIRE(recorder.drops.size() == 1);
+    CHECK(recorder.drops.front() == paths);
+
+    CHECK_FALSE(Sakura::Access::dropFiles(place, {kBounds.right() + 50.0f, inside.y}, paths));
+    CHECK(recorder.drops.size() == 1);
+    CHECK(Retains(frames, update));
+
+    const auto unwired = [&] {
+        terminal.update(recorder.wire(&screen, 1));
+    };
+    frames.run(unwired);
+    CHECK_FALSE(Sakura::Access::dropFiles(place, inside, paths));
+    CHECK(recorder.drops.size() == 1);
+}
+
+TEST_CASE("Components on top of a terminal keep dropped files from reaching it", kTags) {
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    Terminal terminal;
+    auto config = recorder.wire(&screen, 1);
+    config.onFileDrop = [&](const std::vector<std::string>& paths) {
+        recorder.drops.push_back(paths);
+    };
+    terminal.update(std::move(config));
+    Sakura::Button cover;
+    cover.update({.str = "Cover", .size = {Sakura::Fill, Sakura::Fill}});
+    Sakura::Overlay overlay;
+    overlay.update({.items = {{.child = &terminal}, {.child = &cover}}});
+    Place place(overlay, kBounds);
+    place.place(scene.ctx, kScreen);
+
+    const Extent2D<F32> inside = {kBounds.x + kBounds.width * 0.5f, kBounds.y + kBounds.height * 0.5f};
+    CHECK_FALSE(Sakura::Access::dropFiles(place, inside, {"/tmp/a"}));
+    CHECK(recorder.drops.empty());
 }
 
 TEST_CASE("Terminals report their grid once for each size", kTags) {

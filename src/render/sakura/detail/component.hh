@@ -110,6 +110,7 @@ struct Component::Impl {
     };
 
     std::optional<Hit> hit(Extent2D<F32> point) const;
+    bool dropFiles(Extent2D<F32> point, const std::vector<std::string>& paths) const;
     Impl& root();
     const Impl& root() const;
     std::shared_ptr<FocusScope> scope();

@@ -254,14 +254,6 @@ Result DefaultCompositor::destroy() {
 }
 
 Result DefaultCompositor::poll() {
-    // Route files dropped onto the window into the mail queue.
-
-    if (state.system.viewport) {
-        for (auto& path : state.system.viewport->takeDroppedFiles()) {
-            enqueue(MailDropFlowgraphPath{std::move(path)});
-        }
-    }
-
     std::deque<Mail> pending;
     pending.swap(pendingMail);
 
@@ -337,6 +329,18 @@ Result DefaultCompositor::present() {
 
     const auto& ctx = state.sakura.runtime.context();
     workbench.render(ctx);
+
+    // Offer dropped files to the component under the pointer, one frame after their pointer event.
+
+    if (!droppedFiles.empty() && !workbench.dropFiles(droppedFiles)) {
+        for (auto& path : droppedFiles) {
+            enqueue(MailDropFlowgraphPath{std::move(path)});
+        }
+    }
+    droppedFiles.clear();
+    if (state.system.viewport) {
+        droppedFiles = state.system.viewport->takeDroppedFiles();
+    }
 
     return Result::SUCCESS;
 }

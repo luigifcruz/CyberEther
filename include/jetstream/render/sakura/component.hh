@@ -8,6 +8,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace Jetstream::Sakura {
@@ -89,6 +90,7 @@ struct Component {
     virtual bool keyEvent(const KeyEvent& event);
     virtual bool textEvent(const TextEvent& event);
     virtual bool shortcutEvent(const KeyEvent& event);
+    virtual bool fileDrop(const std::vector<std::string>& paths);
     virtual void focusChanged(bool focused);
     virtual bool editsText() const;
     virtual bool focusesOnClick() const;

@@ -161,6 +161,9 @@ struct TerminalActions {
                 target.text(input.value, input.modifiers);
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::Paste>) {
                 target.paste(input.value);
+            } else if constexpr (std::is_same_v<Input, MailTerminalInput::DropFiles>) {
+                target.paste(TerminalSession::EscapePaths(input.paths));
+                ++terminal->second.focusRequests;
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::Scroll>) {
                 target.scroll(input.rows, input.position, input.modifiers);
             } else if constexpr (std::is_same_v<Input, MailTerminalInput::ScrollTo>) {

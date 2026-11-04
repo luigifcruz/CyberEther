@@ -442,6 +442,11 @@ struct GlfwInput::Impl {
                 files.emplace_back(paths[i]);
             }
         }
+        double x = 0.0;
+        double y = 0.0;
+        glfwGetCursorPos(window, &x, &y);
+        OnEnter(window, GLFW_TRUE);
+        OnCursor(window, x, y);
         (void)impl.viewport.addFileDropEvent(std::move(files));
     }
 };

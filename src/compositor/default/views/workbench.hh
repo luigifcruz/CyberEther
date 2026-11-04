@@ -306,6 +306,10 @@ struct WorkbenchView {
         root.render(ctx);
     }
 
+    bool dropFiles(const std::vector<std::string>& paths) {
+        return root.dropFiles(paths);
+    }
+
  private:
     Config config;
     Sakura::Root root;

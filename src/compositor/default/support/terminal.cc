@@ -1722,4 +1722,26 @@ void TerminalSession::focus(bool) {}
 
 #endif
 
+std::string TerminalSession::EscapePaths(const std::vector<std::string>& paths) {
+    static constexpr std::string_view kSafe = "/._-+,:@";
+    std::string escaped;
+    for (const auto& path : paths) {
+        for (const char character : path) {
+            if (character == '\n') {
+                escaped += "'\n'";
+                continue;
+            }
+            const bool plain = std::isalnum(static_cast<unsigned char>(character)) ||
+                               static_cast<unsigned char>(character) >= 0x80 ||
+                               kSafe.find(character) != std::string_view::npos;
+            if (!plain) {
+                escaped += '\\';
+            }
+            escaped += character;
+        }
+        escaped += ' ';
+    }
+    return escaped;
+}
+
 }  // namespace Jetstream

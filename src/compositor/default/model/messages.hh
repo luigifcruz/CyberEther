@@ -338,6 +338,10 @@ struct MailTerminalInput {
         std::string value;
     };
 
+    struct DropFiles {
+        std::vector<std::string> paths;
+    };
+
     struct Scroll {
         I32 rows = 0;
         Extent2D<F32> position = {0.0f, 0.0f};
@@ -372,6 +376,7 @@ struct MailTerminalInput {
                                KeyEvent,
                                Text,
                                Paste,
+                               DropFiles,
                                Scroll,
                                ScrollTo,
                                Sakura::Terminal::Selection,

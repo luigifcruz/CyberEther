@@ -27,6 +27,7 @@ struct Root {
 
     void update(Config config);
     void render(const Sakura::Context& ctx);
+    bool dropFiles(const std::vector<std::string>& paths);
 
  private:
     struct Impl;

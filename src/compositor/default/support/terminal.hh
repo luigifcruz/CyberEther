@@ -56,6 +56,7 @@ class TerminalSession {
     void key(const KeyEvent& event);
     void text(const std::string& text, std::optional<KeyModifiers> modifiers = std::nullopt);
     void paste(const std::string& text);
+    static std::string EscapePaths(const std::vector<std::string>& paths);
     void scroll(I32 rows, Extent2D<F32> position, KeyModifiers modifiers = {});
     void scrollTo(U64 row);
     void select(const Sakura::Terminal::Selection& selection);

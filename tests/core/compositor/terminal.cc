@@ -975,6 +975,25 @@ TEST_CASE("A terminal waiting for its dock stays with its owner and falls back t
     CHECK(TileShape(terminals.tabs.at(*terminals.items.at(4).tab)) == "terminal:4");
 }
 
+TEST_CASE("Dropping files on a terminal asks it for keyboard focus", "[core][compositor][terminal][focus]") {
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalRig rig;
+    auto& terminals = rig.state.terminal;
+    REQUIRE(rig.actions.handle(MailOpenTerminal{}) == Result::SUCCESS);
+    REQUIRE(rig.actions.handle(MailOpenTerminal{.split = 1}) == Result::SUCCESS);
+    rig.settle();
+    const U64 first = terminals.items.at(1).focusRequests;
+    const U64 second = terminals.items.at(2).focusRequests;
+
+    REQUIRE(rig.actions.handle(MailTerminalInput{.terminal = 1,
+                                                 .input = MailTerminalInput::DropFiles{{"/tmp/a b"}}}) ==
+            Result::SUCCESS);
+    CHECK(terminals.items.at(1).focusRequests == first + 1);
+    CHECK(terminals.items.at(2).focusRequests == second);
+}
+
 TEST_CASE("Activating a terminal tab asks its last focused terminal for keyboard focus",
           "[core][compositor][terminal][focus]") {
     if (!TerminalSession::Supported()) {
@@ -1255,6 +1274,35 @@ TEST_CASE("Terminal sessions publish hyperlinks and plain URLs per row", kTags) 
     CHECK(links()[1].uri == "https://cyberether.org/docs");
     CHECK(links()[1].column == 11);
     CHECK(links()[1].width == 27);
+}
+
+TEST_CASE("Terminal sessions escape dropped paths for the shell", kTags) {
+    CHECK(TerminalSession::EscapePaths({}).empty());
+    CHECK(TerminalSession::EscapePaths({"/tmp/plain-file_1.txt"}) == "/tmp/plain-file_1.txt ");
+    CHECK(TerminalSession::EscapePaths({"/tmp/a b", "/tmp/it's"}) == "/tmp/a\\ b /tmp/it\\'s ");
+    CHECK(TerminalSession::EscapePaths({"/tmp/\xc3\xa9"}) == "/tmp/\xc3\xa9 ");
+    CHECK(TerminalSession::EscapePaths({"/tmp/report^2~=%.txt"}) == "/tmp/report\\^2\\~\\=\\%.txt ");
+
+    if (!TerminalSession::Supported()) {
+        SKIP("The integrated terminal is not available in this build.");
+    }
+    TerminalSession session;
+    REQUIRE(StartShell(session));
+    session.text("clear; printf '<%s>' ");
+    session.paste(TerminalSession::EscapePaths({"/tmp/a b;$HOME&(x)'q\"#*.txt", "/tmp/second"}));
+    session.text("; printf 'do''ne'; IFS= read -r step\r");
+    REQUIRE(Shows(session, "done"));
+    const auto shown = ScreenText(session);
+    const auto flat = [&] {
+        std::string text;
+        for (const char character : shown) {
+            if (character != '\n') {
+                text += character;
+            }
+        }
+        return text;
+    }();
+    CHECK(flat.find("</tmp/a b;$HOME&(x)'q\"#*.txt></tmp/second>done") != std::string::npos);
 }
 
 TEST_CASE("Terminal sessions link a URL that wraps across rows to its whole destination", kTags) {

@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
@@ -30,6 +31,7 @@ struct Canvas {
     void update(Config config);
     void render(const Sakura::Context& ctx, const Rect& region);
     void requestCursor(SurfaceCursor cursor);
+    bool dropFiles(const std::vector<std::string>& paths);
     bool dispatching() const;
 
  private:

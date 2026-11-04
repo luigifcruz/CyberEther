@@ -750,6 +750,10 @@ std::optional<SurfaceCursor> Component::cursorOverChildren(const Extent2D<F32>&)
     return std::nullopt;
 }
 
+bool Component::fileDrop(const std::vector<std::string>&) {
+    return false;
+}
+
 std::optional<SurfaceCursor> Component::cursorAt(const Extent2D<F32>&) const {
     return std::nullopt;
 }
@@ -892,6 +896,19 @@ std::optional<Component::Impl::Hit> Component::Impl::hit(Extent2D<F32> point) co
         }
     }
     return std::nullopt;
+}
+
+bool Component::Impl::dropFiles(Extent2D<F32> point, const std::vector<std::string>& paths) const {
+    const auto found = hit(point);
+    if (!found.has_value()) {
+        return false;
+    }
+    for (const Impl* node = found->target->impl.get(); node; node = node->parent ? node->parent->impl.get() : nullptr) {
+        if (node->self->fileDrop(paths)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool Component::deliver(Component& target, const MouseEvent& event) {

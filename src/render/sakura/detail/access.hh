@@ -138,6 +138,10 @@ struct Access {
         return found->cursor;
     }
 
+    static bool dropFiles(const Component& root, Extent2D<F32> point, const std::vector<std::string>& paths) {
+        return root.impl->dropFiles(point, paths);
+    }
+
     static const Component* pointerTarget(const Component& root, Extent2D<F32> point) {
         const auto found = root.impl->hit(point);
         return found ? found->target : nullptr;
