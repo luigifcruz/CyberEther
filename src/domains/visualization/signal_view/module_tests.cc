@@ -466,6 +466,19 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
     }
 }
 
+TEST_CASE("Amplitude division steps like an analyzer knob",
+          "[modules][signal_view][axis][ticks]") {
+    using Modules::detail::NextAmplitudeDivision;
+    REQUIRE(NextAmplitudeDivision(10.0, true) == 5.0);
+    REQUIRE(NextAmplitudeDivision(5.0, true) == 2.0);
+    REQUIRE(NextAmplitudeDivision(1.0, true) == 1.0);
+    REQUIRE(NextAmplitudeDivision(10.0, false) == 20.0);
+    REQUIRE(NextAmplitudeDivision(20.0, false) == 20.0);
+    // Off-knob ranges snap to the neighbouring setting.
+    REQUIRE(NextAmplitudeDivision(12.0, true) == 10.0);
+    REQUIRE(NextAmplitudeDivision(12.0, false) == 20.0);
+}
+
 TEST_CASE("Axis ticks land on round values",
           "[modules][signal_view][axis][ticks]") {
     using Axis = Render::Components::Axis;

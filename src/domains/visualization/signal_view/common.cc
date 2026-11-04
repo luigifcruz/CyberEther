@@ -544,10 +544,39 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
     syncMarkers(context, edits);
 
     std::vector<InputEvent> plotEvents;
+    bool keyPanned = false;
     for (const auto& input : events) {
         if (const auto* key = std::get_if<KeyEvent>(&input)) {
             if (key->type == KeyEventType::Press && key->key == KeyCode::Space && !key->repeat) {
                 displayHeld = !displayHeld;
+            }
+            if (key->type == KeyEventType::Press &&
+                (key->key == KeyCode::LeftArrow || key->key == KeyCode::RightArrow)) {
+                // Step a tenth of the visible span, like a frequency knob.
+                const F32 step = 0.1f / interaction.zoom;
+                const F32 limit = std::max(0.0f, 0.5f * (1.0f - (1.0f / interaction.zoom)));
+                const F32 offset = std::clamp(
+                    interaction.offset + (key->key == KeyCode::RightArrow ? step : -step),
+                    -limit, limit);
+                keyPanned |= offset != interaction.offset;
+                interaction.offset = offset;
+            }
+            if (key->type == KeyEventType::Press && context.lineplot &&
+                (key->key == KeyCode::UpArrow || key->key == KeyCode::DownArrow) &&
+                context.config.rangeMin < context.config.rangeMax &&
+                edits.enabled("rangeMin")) {
+                // Change dB/div over ten divisions, keeping the top as the
+                // reference level.
+                const F64 top = context.config.rangeMax;
+                const F64 division = detail::NextAmplitudeDivision(
+                    (top - context.config.rangeMin) / 10.0,
+                    key->key == KeyCode::UpArrow);
+                const F64 bottom = top - 10.0 * division;
+                if (bottom >= -300.0 && bottom != context.config.rangeMin) {
+                    Parser::Map edit;
+                    edit["rangeMin"] = static_cast<F32>(bottom);
+                    edits.request(edit);
+                }
             }
             if (key->type == KeyEventType::Press && key->key == KeyCode::Escape &&
                 std::any_of(pinned.begin(), pinned.end(), [](const bool flag) { return flag; })) {
@@ -639,7 +668,8 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
             plotEvents.push_back(event);
         }
     }
-    const bool viewChanged = interaction.viewChanged || previousRatio != splitter.ratio;
+    const bool viewChanged = interaction.viewChanged || keyPanned ||
+                             previousRatio != splitter.ratio;
     interaction = ProcessSurfaceInteraction(interaction, {}, std::move(plotEvents));
     interaction.viewChanged |= viewChanged;
 
@@ -896,6 +926,10 @@ void SignalViewCanvas::updateLabels(const Context& context) {
                 header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
                                                (viewLeft + viewRight) / 2.0,
                                                viewRight - viewLeft);
+                if (config.amplitudeScale == "log") {
+                    header.fill += jst::fmt::format("   {:g} dB/div",
+                        std::abs(config.rangeMax - config.rangeMin) / 10.0f);
+                }
             } else {
                 header.fill = "CENTER 0.000   SPAN 1.000";
             }
