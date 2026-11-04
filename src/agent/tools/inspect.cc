@@ -239,13 +239,19 @@ Json InspectBlock(const Graph& flowgraph, const Json& args) {
         return Response::Error("No flowgraph is currently selected.");
     }
 
+    if (args.contains("include_config") && !args["include_config"].is_boolean()) {
+        return Response::Error("'include_config' must be a boolean.");
+    }
+    const bool includeConfig = args.value("include_config", true);
+
     const std::string name = args.value("name", std::string{});
     Flowgraph::View::BlockData data;
     if (name.empty() || flowgraph->view().block(name, data) != Result::SUCCESS) {
         return Response::Error(Lookup::Missing(flowgraph, name));
     }
 
-    Json result = Serialize::BlockDetail(flowgraph, data, true);
+    const auto mode = includeConfig ? Serialize::BlockDetailMode::Full : Serialize::BlockDetailMode::Health;
+    Json result = Serialize::BlockDetail(flowgraph, data, mode);
 
     Json metrics = Json::array();
     for (const auto& metric : data.metrics) {
@@ -308,8 +314,11 @@ std::vector<Entry> Toolbox::Inspect() {
             "when layout_status is 'measured', or null while 'pending'. "
             "Use bounds for positioning without overlap. Text and code nodes "
             "report content_size, the inner width and height that show all of "
-            "their content, and clipped=true when the node is smaller.",
-            R"({"type":"object","required":["name"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."}},"additionalProperties":false})",
+            "their content, and clipped=true when the node is smaller. With "
+            "include_config false the config field is omitted and every other "
+            "field stays the same, which suits health checks on blocks with long "
+            "code or text.",
+            R"({"type":"object","required":["name"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."},"include_config":{"type":"boolean","description":"Include the effective config field, default true. False omits it entirely."}},"additionalProperties":false})",
             {.needsGraph = true, .reportsLayout = true},
         }, InspectBlock),
     };

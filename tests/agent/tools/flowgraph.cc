@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <any>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -15,6 +16,7 @@
 #include "jetstream/domains/core/slice/block.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/flowgraph_view.hh"
+#include "jetstream/runtime_context.hh"
 
 using namespace Jetstream;
 
@@ -74,6 +76,40 @@ struct BlockRegistrationGuard {
         (void)Registry::UnregisterBlock(type);
     }
 };
+
+struct HealthFixtureConfig : Block::Config {
+    std::string code;
+
+    JST_BLOCK_TYPE(agent_health_fixture);
+    JST_BLOCK_DOMAIN("Test");
+    JST_BLOCK_PARAMS(code);
+    JST_BLOCK_DESCRIPTION("Health Fixture", "Reports a diagnostic.", "A test-only block with a long code field.");
+};
+
+struct HealthFixtureBlock : Block::Impl, DynamicConfig<HealthFixtureConfig> {
+    Result define() override {
+        JST_CHECK(defineInterfaceInput("in", "Input", "Input tensor."));
+        JST_CHECK(defineInterfaceConfig("code", "Code", "Long code field.", {{"type", "text"}}));
+        const Parser::Map format = {{"type", "python-diagnostic"}, {"visibility", "internal"}};
+        return defineInterfaceMetric("health", "Health", "Console output.", format, []() -> std::any {
+            return Runtime::Context::Diagnostic{false, "stalled", {"first line", "last line"}};
+        });
+    }
+};
+
+JST_REGISTER_BLOCK_NO_MODULES(HealthFixtureBlock);
+
+std::string LongCode(const std::string& marker) {
+    std::string code = "def compute(ctx):\n    ctx.outputs[0][...] = ctx.inputs[0]\n";
+    while (code.size() < 8192) {
+        code += "# " + marker + "\n";
+    }
+    return code;
+}
+
+nlohmann::json InspectBlockArgs(const std::string& name, const nlohmann::json& includeConfig) {
+    return {{"name", name}, {"include_config", includeConfig}};
+}
 
 Agent::Tools::Output ExecuteTool(const std::shared_ptr<Flowgraph>& flowgraph, const std::string& name,
                                  const std::string& args) {
@@ -932,4 +968,242 @@ TEST_CASE("Flowgraph inspection reports the editor selection", "[agent][tools][l
     Agent::Tools::Annotate(call, output, layout);
     const auto body = nlohmann::json::parse(output.content);
     CHECK(body["selected"] == nlohmann::json::array({"filter", "source"}));
+}
+
+TEST_CASE("Block inspection defines an optional config toggle", "[agent][tools][inspect]") {
+    const auto& tools = Agent::Tools::Definitions();
+    const auto tool = std::find_if(tools.begin(), tools.end(), [](const auto& definition) {
+        return definition.function.name == "inspect_block";
+    });
+    REQUIRE(tool != tools.end());
+
+    const auto schema = nlohmann::json::parse(tool->function.parametersJson);
+    CHECK(schema["required"] == nlohmann::json::array({"name"}));
+    CHECK(schema["properties"]["include_config"]["type"] == "boolean");
+    CHECK(schema["additionalProperties"] == false);
+}
+
+TEST_CASE("Block inspection can omit only the config", "[agent][tools][inspect]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("source", "signal_generator", {}, {}) == Result::SUCCESS);
+
+    const std::string marker = "lightweight inspection marker";
+    const auto code = LongCode(marker);
+    REQUIRE(code.size() > 7000);
+
+    TensorMap healthInputs;
+    healthInputs["in"].requested("source", "signal");
+    REQUIRE(graph->blockCreate("health", "agent_health_fixture", {{"code", code}}, healthInputs) == Result::SUCCESS);
+
+    TensorMap pythonInputs;
+    pythonInputs["input0"].requested("source", "signal");
+    const Parser::Map pythonConfig = {{"code", code}};
+    REQUIRE(graph->blockCreate("python", "python", pythonConfig, pythonInputs, DeviceType::CPU, RuntimeType::PYTHON) !=
+            Result::FATAL);
+
+    const Parser::Map brokenConfig = {{"source", std::string("invalid")}, {"code", code}};
+    REQUIRE(graph->blockCreate("broken", "python", brokenConfig, {}, DeviceType::CPU, RuntimeType::PYTHON) !=
+            Result::FATAL);
+
+    const auto graphBefore = ExecuteTool(graph, "inspect_flowgraph", R"({"detail":"full"})").content;
+
+    for (const auto* name : {"source", "health", "python", "broken"}) {
+        CAPTURE(name);
+        const auto baseline = ExecuteTool(graph, "inspect_block", nlohmann::json({{"name", name}}).dump());
+        REQUIRE_FALSE(baseline.error);
+
+        const auto explicitTrue = ExecuteTool(graph, "inspect_block", InspectBlockArgs(name, true).dump());
+        CHECK_FALSE(explicitTrue.error);
+        CHECK(explicitTrue.content == baseline.content);
+
+        const auto omitted = ExecuteTool(graph, "inspect_block", InspectBlockArgs(name, false).dump());
+        REQUIRE_FALSE(omitted.error);
+        CHECK(omitted.content.find(R"("config":)") == std::string::npos);
+
+        auto expected = nlohmann::json::parse(baseline.content);
+        REQUIRE(expected.contains("config"));
+        expected.erase("config");
+        CHECK(nlohmann::json::parse(omitted.content) == expected);
+    }
+
+    SECTION("long code stays out of the response") {
+        const auto args = InspectBlockArgs("python", false).dump();
+        const auto full = ExecuteTool(graph, "inspect_block", R"({"name":"python"})");
+        const auto omitted = ExecuteTool(graph, "inspect_block", args);
+
+        CHECK(nlohmann::json::parse(full.content)["config"]["code"] == code);
+        CHECK(omitted.content.find(marker) == std::string::npos);
+        CHECK(omitted.content.size() + code.size() <= full.content.size());
+    }
+
+    SECTION("health fields survive without the config") {
+        const auto health = nlohmann::json::parse(
+            ExecuteTool(graph, "inspect_block", InspectBlockArgs("health", false).dump()).content);
+
+        CHECK(health["inputs"]["in"] == nlohmann::json({{"block", "source"}, {"port", "signal"}}));
+        CHECK(health["input_ports"][0]["name"] == "in");
+        CHECK(health["config_fields"][0]["config_key"] == "code");
+        CHECK(health["surfaces"] == nlohmann::json::array());
+        CHECK(health["node"].contains("x"));
+        CHECK(health["layout_status"] == "pending");
+        CHECK(health["bounds"].is_null());
+
+        REQUIRE(health["metrics"].size() == 1);
+        CHECK(health["metrics"][0]["name"] == "health");
+        CHECK(health["metrics"][0]["value"]["healthy"] == false);
+        CHECK(health["metrics"][0]["value"]["status"] == "stalled");
+        CHECK(health["metrics"][0]["value"]["console"] == nlohmann::json::array({"first line", "last line"}));
+
+        const auto python = nlohmann::json::parse(
+            ExecuteTool(graph, "inspect_block", InspectBlockArgs("python", false).dump()).content);
+        CHECK(python["metrics"][0]["name"] == "pythonDiagnostic");
+        CHECK(python["metrics"][0]["value"].contains("console"));
+
+        const auto broken = nlohmann::json::parse(
+            ExecuteTool(graph, "inspect_block", InspectBlockArgs("broken", false).dump()).content);
+        CHECK(broken["state"] == "errored");
+        CHECK_FALSE(broken["diagnostic"].get<std::string>().empty());
+    }
+
+    SECTION("measured layout is annotated without the config") {
+        const auto args = InspectBlockArgs("python", false).dump();
+        GraphHost host(graph);
+        Agent::Tools tools(host);
+        auto call = tools.prepare(graph, "inspect_block", args);
+        REQUIRE(call.definition);
+
+        auto output = tools.run(call);
+        REQUIRE_FALSE(output.error);
+
+        Agent::Tools::Layout layout;
+        layout.nodes["python"] = {
+            .bounds = {20.0f, 30.0f, 236.0f, 186.0f},
+            .size = {220.0f, 170.0f},
+            .content = Extent2D<F32>{300.0f, 100.0f},
+        };
+        Agent::Tools::Annotate(call, output, layout);
+
+        const auto body = nlohmann::json::parse(output.content);
+        CHECK_FALSE(body.contains("config"));
+        CHECK(body["layout_status"] == "measured");
+        CHECK(body["bounds"].is_object());
+        CHECK(body["clipped"] == true);
+    }
+
+    CHECK(ExecuteTool(graph, "inspect_flowgraph", R"({"detail":"full"})").content == graphBefore);
+    CHECK(nlohmann::json::parse(ExecuteTool(graph, "inspect_block", R"({"name":"health"})").content)["config"]["code"] == code);
+
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Block detail profiles shape the tool responses", "[agent][tools][inspect]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("source", "signal_generator", {}, {}) == Result::SUCCESS);
+
+    const auto code = LongCode("detail profile marker");
+    TensorMap inputs;
+    inputs["in"].requested("source", "signal");
+    REQUIRE(graph->blockCreate("health", "agent_health_fixture", {{"code", code}}, inputs) == Result::SUCCESS);
+
+    const auto listed = [&](const std::string& detail) {
+        const auto args = nlohmann::json({{"detail", detail}}).dump();
+        const auto body = nlohmann::json::parse(ExecuteTool(graph, "inspect_flowgraph", args).content);
+        const auto block = std::find_if(body["blocks"].begin(), body["blocks"].end(), [](const auto& entry) {
+            return entry["name"] == "health";
+        });
+        REQUIRE(block != body["blocks"].end());
+        return nlohmann::json(*block);
+    };
+
+    const auto summary = listed("summary");
+    for (const auto* key : {"device", "runtime", "provider", "summary", "config_fields"}) {
+        CAPTURE(key);
+        CHECK_FALSE(summary.contains(key));
+    }
+    CHECK(summary["input_ports"] == nlohmann::json::array({"in"}));
+    const auto compact = summary["config"]["code"].get<std::string>();
+    CHECK(compact.starts_with(code.substr(0, 256)));
+    CHECK(compact.size() < code.size());
+    CHECK(compact.find("inspect_block shows all") != std::string::npos);
+
+    const auto full = listed("full");
+    for (const auto* key : {"device", "runtime", "provider", "summary"}) {
+        CAPTURE(key);
+        CHECK(full.contains(key));
+    }
+    CHECK(full["config"]["code"] == code);
+    CHECK(full["config_fields"][0]["config_key"] == "code");
+    CHECK(full["input_ports"][0]["name"] == "in");
+
+    const auto health = nlohmann::json::parse(
+        ExecuteTool(graph, "inspect_block", InspectBlockArgs("health", false).dump()).content);
+    CHECK_FALSE(health.contains("config"));
+    for (const auto& [key, value] : full.items()) {
+        CAPTURE(key);
+        if (key != "config") {
+            CHECK(health[key] == value);
+        }
+    }
+
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Block inspection rejects a malformed config toggle", "[agent][tools][inspect]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("source", "signal_generator", {}, {}) == Result::SUCCESS);
+
+    const std::vector<nlohmann::json> malformed = {
+        nullptr, "false", "true", 0, 1, 0.5, nlohmann::json::array(), nlohmann::json::array({false}),
+        nlohmann::json::object(), nlohmann::json({{"value", false}}),
+    };
+    for (const auto& value : malformed) {
+        CAPTURE(value.dump());
+        const auto output = ExecuteTool(graph, "inspect_block", InspectBlockArgs("source", value).dump());
+        CHECK(output.error);
+        CHECK(nlohmann::json::parse(output.content) ==
+              nlohmann::json({{"error", "'include_config' must be a boolean."}}));
+    }
+
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Block inspection keeps lookup errors with the config toggle", "[agent][tools][inspect]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    const auto sameFailure = [](const std::shared_ptr<Flowgraph>& graph, const nlohmann::json& args) {
+        const auto baseline = ExecuteTool(graph, "inspect_block", args.dump());
+        REQUIRE(baseline.error);
+
+        auto withFlag = args;
+        withFlag["include_config"] = false;
+        const auto omitted = ExecuteTool(graph, "inspect_block", withFlag.dump());
+        CHECK(omitted.error);
+        CHECK(omitted.content == baseline.content);
+    };
+
+    sameFailure(nullptr, {{"name", "source"}});
+
+    const auto noGraph = ExecuteTool(nullptr, "inspect_block", InspectBlockArgs("source", "false").dump());
+    CHECK(noGraph.error);
+    CHECK(noGraph.content.find("No flowgraph") != std::string::npos);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("source", "signal_generator", {}, {}) == Result::SUCCESS);
+
+    sameFailure(graph, nlohmann::json::object());
+    sameFailure(graph, {{"name", ""}});
+    sameFailure(graph, {{"name", "absent"}});
+    sameFailure(graph, {{"name", 7}});
+
+    REQUIRE(graph->destroy() == Result::SUCCESS);
 }

@@ -121,6 +121,12 @@ class Validation {
 
 class Serialize {
  public:
+    enum class BlockDetailMode {
+        Summary,
+        Full,
+        Health,
+    };
+
     static Result Collect(const Graph& flowgraph, std::vector<Flowgraph::View::BlockData>& blocks);
     static bool HasPort(const std::vector<Flowgraph::View::InterfaceEntry>& entries, const std::string& port);
 
@@ -141,7 +147,7 @@ class Serialize {
     static Json Node(const Graph& flowgraph, const std::string& name);
     static Json NodeLayout(const Graph& flowgraph, const std::string& name);
 
-    static Json BlockDetail(const Graph& flowgraph, const Flowgraph::View::BlockData& data, bool full);
+    static Json BlockDetail(const Graph& flowgraph, const Flowgraph::View::BlockData& data, BlockDetailMode mode);
     static Json FlowgraphDetail(const Graph& flowgraph, bool full = false);
     static Json Implementations(const std::string& type);
 };

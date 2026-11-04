@@ -251,7 +251,9 @@ nlohmann::json Serialize::NodeLayout(const std::shared_ptr<Flowgraph>& flowgraph
 
 nlohmann::json Serialize::BlockDetail(const std::shared_ptr<Flowgraph>& flowgraph,
                                       const Flowgraph::View::BlockData& data,
-                                      bool full) {
+                                      BlockDetailMode mode) {
+    const bool full = mode != BlockDetailMode::Summary;
+
     nlohmann::json entry = {
         {"name", data.name},
         {"type", data.type},
@@ -276,7 +278,9 @@ nlohmann::json Serialize::BlockDetail(const std::shared_ptr<Flowgraph>& flowgrap
         entry["diagnostic"] = data.diagnostic;
     }
 
-    entry["config"] = full ? Serialize::Map(data.config) : Serialize::CompactMap(data.config);
+    if (mode != BlockDetailMode::Health) {
+        entry["config"] = full ? Serialize::Map(data.config) : Serialize::CompactMap(data.config);
+    }
     entry["inputs"] = Serialize::Inputs(data);
 
     if (full) {
@@ -304,8 +308,9 @@ nlohmann::json Serialize::FlowgraphDetail(const std::shared_ptr<Flowgraph>& flow
     });
 
     nlohmann::json blocks = nlohmann::json::array();
+    const auto mode = full ? BlockDetailMode::Full : BlockDetailMode::Summary;
     for (const auto& data : entries) {
-        blocks.push_back(Serialize::BlockDetail(flowgraph, data, full));
+        blocks.push_back(Serialize::BlockDetail(flowgraph, data, mode));
     }
 
     return {
