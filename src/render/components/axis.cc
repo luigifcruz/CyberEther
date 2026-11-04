@@ -101,6 +101,14 @@ struct Axis::Impl {
     std::vector<F32> xTickPositions;
     std::vector<F32> xMinorPositions;
 
+    bool yRangeEnabled = false;
+    F64 yRangeBottom = -1.0;
+    F64 yRangeTop = 1.0;
+    PositionMap yRangeMap;
+    TickScale yTicks;
+    std::vector<F32> yTickPositions;
+    std::vector<F32> yMinorPositions;
+
     void generateGridPoints();
     void computePaddingScale();
     static void computeTickCount(U64 numCols, U64 numRows,
@@ -121,6 +129,11 @@ struct Axis::Impl {
                             U64 maximum) const;
     F32 xLinePosition(U64 i, U64 numCols) const;
     F32 xRangePosition(F64 value) const;
+    F32 yLinePosition(U64 i, U64 numRows) const;
+    F32 yRangePosition(F64 value) const;
+    void computeYRangeTicks(F32 availableHeightPx,
+                            F32 minimumSpacingPx,
+                            F32 collisionPadding);
     void computeXRangeTicks(F32 availableWidthPx,
                             F32 minimumSpacingPx,
                             F32 collisionPadding);
@@ -562,8 +575,43 @@ Result Axis::clearXRange() {
     return pimpl->syncResponsiveGrid();
 }
 
+Result Axis::updateYRange(F64 bottom, F64 top, PositionMap toPosition) {
+    if (!std::isfinite(bottom) || !std::isfinite(top) || !(top > bottom)) {
+        return Result::ERROR;
+    }
+    pimpl->yRangeEnabled = true;
+    pimpl->yRangeBottom = bottom;
+    pimpl->yRangeTop = top;
+    pimpl->yRangeMap = std::move(toPosition);
+    if (!pimpl->text) {
+        return Result::SUCCESS;
+    }
+    return pimpl->syncResponsiveGrid();
+}
+
+Result Axis::clearYRange() {
+    if (!pimpl->yRangeEnabled) {
+        return Result::SUCCESS;
+    }
+    pimpl->yRangeEnabled = false;
+    pimpl->yRangeMap = {};
+    pimpl->yTicks = {};
+    pimpl->yTickPositions.clear();
+    pimpl->yMinorPositions.clear();
+    if (!pimpl->text) {
+        return Result::SUCCESS;
+    }
+    // Force the evenly divided grid to be regenerated.
+    pimpl->currentHorizontalLines = 0;
+    return pimpl->syncResponsiveGrid();
+}
+
 const Extent2D<F32>& Axis::paddingScale() const {
     return pimpl->padScale;
+}
+
+const Axis::TickScale& Axis::currentYTicks() const {
+    return pimpl->yTicks;
 }
 
 const Axis::TickScale& Axis::currentXTicks() const {
@@ -702,7 +750,7 @@ void Axis::Impl::generateGridPoints() {
     U64 idx = 0;
 
     for (U64 row = 1; row <= interiorH; row++) {
-        const F32 y = bandLocalY(row, numRows);
+        const F32 y = yLinePosition(row, numRows);
         gridPoints[(idx * stride) + 0] = xStart;
         gridPoints[(idx * stride) + 1] = y;
         gridPoints[(idx * stride) + 2] = xEnd;
@@ -731,7 +779,7 @@ void Axis::Impl::generateGridPoints() {
         if (numRows >= 3) {
             majY.reserve(numRows);
             for (U64 row = 1; row <= numRows - 2; row++) {
-                majY.push_back(bandLocalY(row, numRows));
+                majY.push_back(yLinePosition(row, numRows));
             }
         }
 
@@ -797,6 +845,28 @@ void Axis::Impl::generateGridPoints() {
             }
         }
 
+        auto emitMinorY = [&](F32 y) {
+            gridPoints[(idx * stride) + 0] = xStart;
+            gridPoints[(idx * stride) + 1] = y;
+            gridPoints[(idx * stride) + 2] = xStart + tickMinY;
+            gridPoints[(idx * stride) + 3] = y;
+            idx++;
+            gridPoints[(idx * stride) + 0] = xEnd;
+            gridPoints[(idx * stride) + 1] = y;
+            gridPoints[(idx * stride) + 2] = xEnd - tickMinY;
+            gridPoints[(idx * stride) + 3] = y;
+            idx++;
+        };
+
+        if (yRangeEnabled) {
+            const U64 reserved = kMinorTicksPerInterval * (numRows - 1);
+            const U64 used = std::min<U64>(yMinorPositions.size(), reserved);
+            for (U64 i = 0; i < used; i++) {
+                emitMinorY(yMinorPositions[i]);
+            }
+            idx += (reserved - used) * 2;
+        }
+
         std::vector<F32> minorYBounds;
         minorYBounds.reserve(numRows + dividerLines);
         minorYBounds.push_back(yStart);
@@ -808,24 +878,14 @@ void Axis::Impl::generateGridPoints() {
         }
         minorYBounds.push_back(yEnd);
 
-        for (size_t i = 0; i + 1 < minorYBounds.size(); i++) {
+        for (size_t i = 0; !yRangeEnabled && i + 1 < minorYBounds.size(); i++) {
             if (dividerLines > 0 && i == 0) {
                 continue;
             }
             const F32 a = minorYBounds[i];
             const F32 b = minorYBounds[i + 1];
-            for (U64 s = 1; s <= 4; s++) {
-                const F32 y = a + (b - a) * (static_cast<F32>(s) / 5.0f);
-                gridPoints[(idx * stride) + 0] = xStart;
-                gridPoints[(idx * stride) + 1] = y;
-                gridPoints[(idx * stride) + 2] = xStart + tickMinY;
-                gridPoints[(idx * stride) + 3] = y;
-                idx++;
-                gridPoints[(idx * stride) + 0] = xEnd;
-                gridPoints[(idx * stride) + 1] = y;
-                gridPoints[(idx * stride) + 2] = xEnd - tickMinY;
-                gridPoints[(idx * stride) + 3] = y;
-                idx++;
+            for (U64 s = 1; s <= kMinorTicksPerInterval; s++) {
+                emitMinorY(a + (b - a) * (static_cast<F32>(s) / 5.0f));
             }
         }
     }
@@ -911,7 +971,7 @@ Result Axis::Impl::repositionLabels() {
     for (U64 i = 1; i < numRows - 1; i++) {
         const auto id = jst::fmt::format("y{:02d}", i);
         auto element = text->get(id);
-        const F32 localY = bandLocalY(i, numRows);
+        const F32 localY = yLinePosition(i, numRows);
         const F32 y = mapGridY(localY);
         if (config.yLabelOnRight && config.yLabelOutside) {
             element.position = {padScale.x + ps.x * 4.0f, y};
@@ -960,6 +1020,107 @@ F32 Axis::Impl::xLinePosition(const U64 i, const U64 numCols) const {
 F32 Axis::Impl::xRangePosition(const F64 value) const {
     return static_cast<F32>(-1.0 + 2.0 * (value - xRangeLeft) /
                                    (xRangeRight - xRangeLeft));
+}
+
+F32 Axis::Impl::yLinePosition(const U64 i, const U64 numRows) const {
+    if (yRangeEnabled && i >= 1 && i <= yTickPositions.size()) {
+        return yTickPositions[i - 1];
+    }
+    return bandLocalY(i, numRows);
+}
+
+F32 Axis::Impl::yRangePosition(const F64 value) const {
+    F32 position = yRangeMap
+        ? yRangeMap(value)
+        : static_cast<F32>(-1.0 + 2.0 * (value - yRangeBottom) /
+                                  (yRangeTop - yRangeBottom));
+    if (!std::isfinite(position)) {
+        position = value > yRangeBottom ? 1.0f : -1.0f;
+    }
+    // From the plot band's -1..1 to the grid's local coordinates.
+    const F32 bottom = bandLocalY(0, 2);
+    const F32 top = bandLocalY(1, 2);
+    return bottom + (top - bottom) * (std::clamp(position, -1.0f, 1.0f) + 1.0f) * 0.5f;
+}
+
+void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
+                                    const F32 minimumSpacingPx,
+                                    const F32 collisionPadding) {
+    const F64 heightPx = std::max<F64>(availableHeightPx, 1.0);
+    const F64 span = yRangeTop - yRangeBottom;
+    const F64 labelPx = static_cast<F64>(config.font->lineHeight()) * kTickLabelScale;
+    const F64 neededPx = std::max<F64>(std::max<F64>(minimumSpacingPx, 1.0),
+                                       2.0 * labelPx + collisionPadding);
+    const U64 maxTicks = maxHorizontalLines - 2;
+    const F32 bandBottom = bandLocalY(0, 2);
+    const F32 bandTop = bandLocalY(1, 2);
+    const auto toPx = [&](const F64 value) {
+        return static_cast<F64>(yRangePosition(value) - bandBottom) /
+               std::max<F64>(bandTop - bandBottom, 1e-6) * heightPx;
+    };
+
+    // Pick the step where the mapping is most stretched, then drop labels
+    // that would collide where it is compressed.
+    F64 pxPerUnit = 0.0;
+    constexpr U64 kSamples = 64;
+    for (U64 i = 0; i < kSamples; i++) {
+        const F64 a = yRangeBottom + span * static_cast<F64>(i) / kSamples;
+        const F64 b = yRangeBottom + span * static_cast<F64>(i + 1) / kSamples;
+        pxPerUnit = std::max(pxPerUnit, std::abs(toPx(b) - toPx(a)) / (b - a));
+    }
+    pxPerUnit = std::max(pxPerUnit, 1e-12);
+
+    F64 minimumStep = neededPx / pxPerUnit;
+    std::vector<F64> kept;
+    TickScale ticks;
+    for (U64 attempt = 0; attempt < 8; attempt++) {
+        ticks = ComputeTicks(yRangeBottom, yRangeTop, minimumStep);
+        kept.clear();
+        F64 lastPx = -std::numeric_limits<F64>::infinity();
+        for (const F64 value : ticks.values) {
+            const F64 px = toPx(value);
+            if (px < labelPx * 0.5 || px > heightPx - labelPx * 0.5) {
+                continue;
+            }
+            if (px - lastPx >= neededPx * (1.0 - 1e-6)) {
+                kept.push_back(value);
+                lastPx = px;
+            }
+        }
+        if (kept.size() <= maxTicks) {
+            break;
+        }
+        minimumStep = ticks.step * 1.01;
+    }
+    if (kept.size() > maxTicks) {
+        kept.resize(maxTicks);
+    }
+
+    yTicks = ticks;
+    yTicks.values = kept;
+    yTickPositions.clear();
+    for (const F64 value : kept) {
+        yTickPositions.push_back(yRangePosition(value));
+    }
+
+    // Minor ticks on round sub-steps, wherever they stay a few pixels apart.
+    yMinorPositions.clear();
+    if (yTicks.step > 0.0) {
+        const F64 minor = yTicks.step / static_cast<F64>(yTicks.minorDivisions);
+        const F64 first = std::ceil((yRangeBottom + span * 1e-6) / minor);
+        const F64 last = std::floor((yRangeTop - span * 1e-6) / minor);
+        const U64 reserved = kMinorTicksPerInterval * (kept.size() + 1);
+        for (F64 k = first; k <= last && yMinorPositions.size() < reserved; k += 1.0) {
+            if (std::llround(k) % static_cast<I64>(yTicks.minorDivisions) == 0) {
+                continue;
+            }
+            const F64 value = k * minor;
+            if (std::abs(toPx(value + minor) - toPx(value)) < 4.0) {
+                continue;
+            }
+            yMinorPositions.push_back(yRangePosition(value));
+        }
+    }
 }
 
 void Axis::Impl::computeXRangeTicks(const F32 availableWidthPx,
@@ -1080,12 +1241,26 @@ Result Axis::Impl::syncResponsiveGrid() {
         verticalLines = responsiveLineCount(
             availableWidthPx, xRequiredSpacing, maxVerticalLines);
     }
-    const U64 horizontalLines = responsiveLineCount(
-        availableHeightPx, yRequiredSpacing, maxHorizontalLines);
+    U64 horizontalLines = 0;
+    bool yTicksMoved = false;
+    if (yRangeEnabled) {
+        const auto previousPositions = yTickPositions;
+        const auto previousMinors = yMinorPositions;
+        // Aim for about ten divisions, like a bench analyzer's graticule.
+        computeYRangeTicks(availableHeightPx,
+                           std::min(responsiveYSpacing, availableHeightPx / 10.0f),
+                           collisionPadding);
+        horizontalLines = yTickPositions.size() + 2;
+        yTicksMoved = previousPositions != yTickPositions ||
+                      previousMinors != yMinorPositions;
+    } else {
+        horizontalLines = responsiveLineCount(
+            availableHeightPx, yRequiredSpacing, maxHorizontalLines);
+    }
 
     if (verticalLines != currentVerticalLines ||
         horizontalLines != currentHorizontalLines ||
-        xTicksMoved) {
+        xTicksMoved || yTicksMoved) {
         currentVerticalLines = verticalLines;
         currentHorizontalLines = horizontalLines;
         const U64 interiorLines = config.showInteriorGrid
@@ -1135,7 +1310,9 @@ Result Axis::Impl::syncTickLabels() {
     for (U64 i = 0; i < maxHorizontalLines - 2; ++i) {
         const auto id = jst::fmt::format("y{:02d}", i + 1);
         auto element = text->get(id);
-        if (i < yCount && yTickFormatter) {
+        if (i < yCount && yRangeEnabled) {
+            element.fill = FormatTickValue(yTicks.values[i], yTicks);
+        } else if (i < yCount && yTickFormatter) {
             const F32 position =
                 (2.0f * static_cast<F32>(i + 1) /
                  static_cast<F32>(currentHorizontalLines - 1)) - 1.0f;

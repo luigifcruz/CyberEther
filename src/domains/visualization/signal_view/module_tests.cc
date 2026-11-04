@@ -565,6 +565,36 @@ TEST_CASE("Axis X range places grid lines on round values",
         }
     }
 
+    // Amplitudes: linear, and compressed like the default trace.
+    const auto compressed = [](const F64 value) {
+        return static_cast<F32>(std::tanh(2.0 * (2.0 * (value + 100.0) / 100.0 - 1.0)));
+    };
+    for (const bool linear : {true, false}) {
+        REQUIRE(axis.updateYRange(-100.0, 0.0, linear
+            ? Render::Components::Axis::PositionMap{}
+            : Render::Components::Axis::PositionMap{compressed}) == Result::SUCCESS);
+        CHECK(JST_LOG_LAST_ERROR() == "");
+        const auto& ticks = axis.currentYTicks();
+        REQUIRE(ticks.step > 0.0);
+        REQUIRE(ticks.values.size() >= 2);
+        REQUIRE(ticks.values.size() <= 15);
+        REQUIRE(axis.currentHorizontalLineCount() == ticks.values.size() + 2);
+        for (U64 i = 0; i < ticks.values.size(); i++) {
+            const F64 k = ticks.values[i] / ticks.step;
+            REQUIRE(std::abs(k - std::round(k)) < 1e-6);
+            if (i > 0) {
+                REQUIRE(ticks.values[i] > ticks.values[i - 1]);
+            }
+        }
+        if (linear) {
+            // Evenly spaced: every multiple of the step inside the range.
+            REQUIRE(ticks.values.size() ==
+                    static_cast<U64>(std::round(100.0 / ticks.step)) - 1);
+        }
+    }
+    REQUIRE(axis.clearYRange() == Result::SUCCESS);
+    REQUIRE(axis.currentYTicks().values.empty());
+
     REQUIRE(axis.updateXRange(1.0, 1.0) == Result::ERROR);
     REQUIRE(axis.clearXRange() == Result::SUCCESS);
     REQUIRE(axis.currentXTicks().values.empty());

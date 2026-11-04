@@ -19,6 +19,7 @@ struct SignalView : public Module::Config {
     F32 rangeMax = 0.0f;
     U64 waterfallHeight = 1024;
     bool density = false;
+    std::string amplitudeScale = "compressed";
     U64 persistence = 256;
     std::string colormap = "turbo";
     F32 splitRatio = 0.5f;
@@ -31,7 +32,7 @@ struct SignalView : public Module::Config {
     JST_MODULE_TYPE(signal_view);
     JST_MODULE_PARAMS(mode, lineplotAveraging, waterfallAveraging,
                       maxHold, fill, rangeMin, rangeMax, waterfallHeight,
-                      density, persistence,
+                      density, amplitudeScale, persistence,
                       colormap, splitRatio,
                       markers, pins, xLabel, amplitudeLabel, waterfallLabel);
 };

@@ -19,6 +19,7 @@ struct SpectrumAnalyzer : public Block::Config {
     U64 waterfallHeight = 1024;
     std::string colormap = "turbo";
     bool density = false;
+    std::string amplitudeScale = "compressed";
     U64 persistence = 256;
     F32 splitRatio = 0.5f;
     std::vector<F32> markers;
@@ -32,7 +33,7 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(mode, lineplotAveraging, waterfallAveraging, maxHold,
                      fill, rangeMin, rangeMax, waterfallHeight, colormap,
-                     density, persistence,
+                     density, amplitudeScale, persistence,
                      splitRatio, markers, pins, xLabel, amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Analyzer",
@@ -82,6 +83,11 @@ struct SpectrumAnalyzer : public Block::Config {
         "| **Spectral Density** | Off | On, Off | Draws how often each level occurs "
         "behind the trace, with a linear amplitude axis. Hidden for Waterfall and 3D "
         "Waterfall. |\n"
+        "| **Amplitude Scale** | Compressed | Compressed, Log (dB/div) | Compressed "
+        "squeezes the levels near Range Min and Range Max to show more detail in "
+        "between. Log spaces the axis evenly in dB, like the Log scale of a bench "
+        "analyzer, so every grid division is the same number of dB. Spectral "
+        "Density always uses Log. Hidden for Waterfall and 3D Waterfall. |\n"
         "| **Persistence** | 256 spectra | 1 or more, slider up to 4,096 | Spectra it "
         "takes for the density to fade to half. Hidden while Spectral Density is off, "
         "and for Waterfall and 3D Waterfall. |\n"

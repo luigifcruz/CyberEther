@@ -138,7 +138,7 @@ Result SignalViewImplNativeCpu::computeSubmit() {
             }
 
             F32 displayed;
-            if (densityEnabled) {
+            if (densityEnabled || amplitudeScale == "log") {
                 displayed = std::clamp(average, -1.0f, 1.0f);
             } else {
                 const F32 x = 2.0f * average;
