@@ -4,10 +4,13 @@
 #include <any>
 #include <chrono>
 #include <limits>
+#include <optional>
+#include <string>
 #include <thread>
 
 #include "environment.hh"
 #include "jetstream/domains/io/soapy/module.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
@@ -373,4 +376,57 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         REQUIRE(static_cast<const Modules::Soapy&>(module->config()).sampleRate == 61.44e6f);
     }
     REQUIRE(TestSoapy::State().concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy module publishes clipped samples and overload signals",
+                 "[modules][soapy][overload]") {
+    // The scripted device streams 1+0j, which is full scale.
+    TestSoapy::State().emitSamples = true;
+    // Overload signals read set at start-up must be ignored until clear.
+    TestSoapy::State().overloadBits = 0x7;
+    const auto module = BuildSoapyModule();
+    struct Cleanup {
+        std::shared_ptr<Module> module;
+        ~Cleanup() { static_cast<void>(module->destroy()); }
+    } cleanup{module};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.sampleRate = 20.0e6f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    const auto& output = module->outputs().at("signal").tensor;
+    const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
+        module->context()->runtime());
+    REQUIRE(runtime != nullptr);
+
+    const auto read = [&](const std::string& key) {
+        std::optional<U64> value;
+        REQUIRE(ReadAttribute(output, key, value) == Result::SUCCESS);
+        return value;
+    };
+    // Run frames until the attribute matches, or give up after two seconds.
+    const auto waitFor = [&](const std::string& key, const auto& accept) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline) {
+            const auto result = runtime->computeSubmit();
+            REQUIRE((result == Result::SUCCESS || result == Result::YIELD));
+            if (const auto value = read(key); value && accept(*value)) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return false;
+    };
+
+    REQUIRE(waitFor("clippedSamples", [](const U64 value) { return value > 0; }));
+    // Stale start-up signals stay hidden.
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    REQUIRE(waitFor("overloadFlags", [](const U64 value) { return value == 0; }));
+
+    TestSoapy::State().overloadBits = 0;
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    TestSoapy::State().overloadBits = 0x4;
+    REQUIRE(waitFor("overloadFlags", [](const U64 value) { return value == 0x4; }));
 }

@@ -144,10 +144,103 @@ Result SignalViewFrequency::read(const Tensor& input) {
     return Result::SUCCESS;
 }
 
+Result SignalViewOverload::read(const Tensor& input) {
+    *this = {};
+    JST_CHECK(ReadAttribute(input, "clippedSamples", clippedSamples));
+    JST_CHECK(ReadAttribute(input, "overloadFlags", flags));
+    return Result::SUCCESS;
+}
+
+namespace detail {
+
+namespace {
+
+std::string FormatCount(const U64 count) {
+    if (count >= 1000000) {
+        return jst::fmt::format("{:.1f}M", static_cast<F64>(count) / 1e6);
+    }
+    if (count >= 1000) {
+        return jst::fmt::format("{:.1f}k", static_cast<F64>(count) / 1e3);
+    }
+    return jst::fmt::format("{}", count);
+}
+
+}  // namespace
+
+OverloadBadge FormatOverloadBadge(const bool clipped,
+                                  const bool rf,
+                                  const bool high,
+                                  const U64 clippedSamples) {
+    std::vector<std::string> parts;
+    if (clipped) {
+        parts.push_back(clippedSamples > 0
+            ? jst::fmt::format("CLIP {}", FormatCount(clippedSamples))
+            : "CLIP");
+    } else if (high) {
+        parts.push_back("ADC HIGH");
+    }
+    if (rf) {
+        parts.push_back("RF OVLD");
+    }
+    OverloadBadge badge;
+    for (const auto& part : parts) {
+        badge.text += (badge.text.empty() ? "" : "  ") + part;
+    }
+    badge.severe = clipped;
+    return badge;
+}
+
+}  // namespace detail
+
+void SignalViewCanvas::updateOverload(const Context& context) {
+    using Clock = std::chrono::steady_clock;
+    constexpr auto kHold = std::chrono::seconds(2);
+    const auto now = Clock::now();
+    const auto& source = context.overload;
+    const U64 flags = source.flags.value_or(0);
+
+    if (source.clippedSamples) {
+        if (overload.lastClipped && *source.clippedSamples > *overload.lastClipped) {
+            overload.clipUntil = now + kHold;
+        }
+        overload.lastClipped = source.clippedSamples;
+    }
+    if (flags & (detail::kOverloadLargeAdc | detail::kOverloadSaturation)) {
+        overload.clipUntil = now + kHold;
+    }
+    if (flags & (detail::kOverloadLargeLmt | detail::kOverloadSmallLmt)) {
+        overload.rfUntil = now + kHold;
+    }
+    if (flags & detail::kOverloadSmallAdc) {
+        overload.highUntil = now + kHold;
+    }
+
+    if (!text || !text->getConfig().elements.contains("overload")) {
+        return;
+    }
+    const auto badge = detail::FormatOverloadBadge(now < overload.clipUntil,
+                                                   now < overload.rfUntil,
+                                                   now < overload.highUntil,
+                                                   source.clippedSamples.value_or(0));
+    auto element = text->get("overload");
+    element.position = {
+        axis->paddingScale().x - pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
+        axis->paddingScale().y - pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f +
+            (text->getConfig().font
+                ? static_cast<F32>(text->getConfig().font->lineHeight()) * element.scale
+                : 0.0f)),
+    };
+    element.fill = badge.text.empty() ? " " : badge.text;
+    element.color = badge.severe ? ColorRGBA<F32>{1.0f, 0.25f, 0.2f, 1.0f}
+                                 : ColorRGBA<F32>{1.0f, 0.65f, 0.1f, 1.0f};
+    text->update("overload", element);
+}
+
 void SignalViewCanvas::reset(const SignalView& config) {
     splitter = {};
     splitter.ratio = config.splitRatio;
     displayHeld = false;
+    overload = {};
     cursor = {};
     markerPositions = config.markers;
     updateMarkersFlag = false;
@@ -203,6 +296,10 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
               .position = {-1.0f, 1.0f},
               .alignment = {0, 0},
               .color = kAccentColor}},
+            {"overload",
+             {.scale = kLabelScale,
+              .position = {1.0f, 1.0f},
+              .alignment = {2, 0}}},
             {"amplitude-title",
              {.scale = kLabelScale,
               .position = {-1.0f, 0.5f},
@@ -743,6 +840,7 @@ void SignalViewCanvas::updateState(const Context& context) {
 
 Result SignalViewCanvas::present(const Context& context) {
     updateLabels(context);
+    updateOverload(context);
     JST_CHECK(updateMarkers(context));
     JST_CHECK(updateCursor(context));
 
