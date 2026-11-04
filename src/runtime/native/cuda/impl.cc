@@ -269,10 +269,7 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't get elapsed time for '{}': {}", name, err);
         });
 
-        auto timing = modulesMap.at(name)->timing();
-        timing.cycles += 1;
-        timing.computeTime += elapsedMs;
-        modulesMap.at(name)->timing(timing);
+        modulesMap.at(name)->recordCycle(elapsedMs, skippedModules.contains(name));
     }
 
     return Result::SUCCESS;

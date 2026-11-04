@@ -1027,6 +1027,55 @@ TEST_CASE("Tensor inspection does not dereference device memory", "[agent][tools
     CHECK(Json::parse(metadata.content)["tensor"]["dtype"] == "F32");
 }
 
+TEST_CASE("Block inspection reports real module timing", "[agent][tools][inspect]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+    LiveFrames() = 0;
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("live", "agent_live_tensor", {}, {}) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("taps", "filter_taps", {}, {}) == Result::SUCCESS);
+
+    const auto timingOf = [&](const std::string& name) {
+        const auto body = Json::parse(
+            Execute(graph, "inspect_block", {{"name", name}, {"include_config", false}}).content);
+        for (const auto& metric : body["metrics"]) {
+            if (metric["name"].get<std::string>().starts_with("runtime:")) {
+                return metric["value"];
+            }
+        }
+        return Json{};
+    };
+
+    const auto idle = timingOf("live");
+    CHECK(idle["cycles"] == 0);
+    CHECK_FALSE(idle["runtime"].get<std::string>().empty());
+    CHECK_FALSE(idle.contains("last_compute_ms"));
+    CHECK_FALSE(idle.contains("cycles_per_second"));
+
+    REQUIRE(graph->start() == Result::SUCCESS);
+    for (U64 cycle = 0; cycle < 5; ++cycle) {
+        REQUIRE(graph->compute() == Result::SUCCESS);
+    }
+
+    const auto live = timingOf("live");
+    CHECK(live["cycles"].get<U64>() >= 2);
+    CHECK(live["last_compute_ms"].get<F64>() >= 0.0);
+    CHECK(live["average_compute_ms"].get<F64>() >= 0.0);
+    CHECK(live["cycles_per_second"].get<F64>() > 0.0);
+    CHECK(live["last_cycle_age_ms"].get<F64>() >= 0.0);
+    CHECK_FALSE(live.contains("settled"));
+
+    const auto taps = timingOf("taps");
+    CHECK(taps["cycles"] == 1);
+    CHECK(taps["settled"] == true);
+    CHECK(taps.contains("last_compute_ms"));
+    CHECK_FALSE(taps.contains("average_compute_ms"));
+    CHECK_FALSE(taps.contains("cycles_per_second"));
+
+    REQUIRE(graph->stop() == Result::SUCCESS);
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Tensor inspection snapshots do not tear against running compute", "[agent][tools][tensor]") {
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
     LiveFrames() = 0;

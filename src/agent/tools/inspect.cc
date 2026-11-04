@@ -1,7 +1,10 @@
 #include "support/base.hh"
+#include "jetstream/module.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/runtime_context.hh"
 
+#include <chrono>
+#include <cmath>
 #include <set>
 #include <unordered_map>
 
@@ -211,10 +214,46 @@ Json DiagnosticJson(const Runtime::Context::Diagnostic& diagnostic) {
     return value;
 }
 
+Json TimingJson(const Module::Timing& timing) {
+    const auto rounded = [](const F64 number) {
+        return std::round(number * 1000.0) / 1000.0;
+    };
+
+    Json value = {
+        {"runtime", timing.backend},
+        {"device", timing.device},
+        {"cycles", timing.cycles},
+    };
+    if (timing.skippedCycles > 0) {
+        value["skipped_cycles"] = timing.skippedCycles;
+    }
+    if (timing.cycles == 0) {
+        return value;
+    }
+
+    const auto age = std::chrono::steady_clock::now() - timing.lastCycle;
+    value["last_compute_ms"] = rounded(timing.lastComputeTime);
+    value["last_cycle_age_ms"] = rounded(std::chrono::duration<F64, std::milli>(age).count());
+
+    if (timing.settled) {
+        value["settled"] = true;
+        return value;
+    }
+
+    value["average_compute_ms"] = rounded(timing.computeTime / static_cast<F64>(timing.cycles));
+    if (timing.cyclesPerSecond > 0.0) {
+        value["cycles_per_second"] = rounded(timing.cyclesPerSecond);
+    }
+
+    return value;
+}
+
 Json MetricJson(const Flowgraph::View::MetricEntry& metric) {
     Json value;
     if (const auto* diagnostic = std::any_cast<Runtime::Context::Diagnostic>(&metric.value)) {
         value = DiagnosticJson(*diagnostic);
+    } else if (const auto* timing = std::any_cast<Module::Timing>(&metric.value)) {
+        value = TimingJson(*timing);
     } else if (!Value::TryToJson(metric.value, value)) {
         value = Value::AnyToString(metric.value);
     }
@@ -317,7 +356,15 @@ std::vector<Entry> Toolbox::Inspect() {
             "their content, and clipped=true when the node is smaller. With "
             "include_config false the config field is omitted and every other "
             "field stays the same, which suits health checks on blocks with long "
-            "code or text.",
+            "code or text. Metrics named runtime:<module> report the runtime, device, "
+            "and cycles that produced output. Once it has produced output they also report "
+            "last_compute_ms, average_compute_ms, cycles_per_second, and "
+            "last_cycle_age_ms, all measured over those cycles only. The rate covers "
+            "about the last second of them and goes stale when output stops, which a "
+            "growing last_cycle_age_ms reveals. Cycles that produced no output, such as a "
+            "failed Python block or a closed squelch, appear as skipped_cycles. A module "
+            "with settled true has a static output and no longer runs, so it omits the "
+            "average and the rate.",
             R"({"type":"object","required":["name"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."},"include_config":{"type":"boolean","description":"Include the effective config field, default true. False omits it entirely."}},"additionalProperties":false})",
             {.needsGraph = true, .reportsLayout = true},
         }, InspectBlock),

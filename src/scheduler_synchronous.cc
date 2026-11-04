@@ -1306,7 +1306,8 @@ void SynchronousScheduler::settle(Node& node) {
     const auto& mod = modules.at(node.name);
     auto timing = mod->timing();
     settledTimings[node.name] = timing;
-    timing.computeTime = 0.0f;
+    timing.computeTime = 0.0;
+    timing.settled = true;
     mod->timing(timing);
 }
 
