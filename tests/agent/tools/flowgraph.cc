@@ -269,6 +269,12 @@ TEST_CASE("Block docs expose ports and config keys before an instance exists", "
     REQUIRE(output != python["config_fields"].end());
     REQUIRE((*output)["config_key"] == "outputTensorSpecs");
     REQUIRE((*output)["config_index"] == 0);
+    REQUIRE(python["default_config"]["outputTensorSpecs"].size() == 1);
+    const auto& spec = python["default_config"]["outputTensorSpecs"][0];
+    CHECK(spec["shape"] == "[1]");
+    CHECK(spec["dtype"] == "F32");
+    CHECK(spec["device"] == "cpu");
+    CHECK(spec["axes"] == "");
 }
 
 TEST_CASE("Describing a prototype does not create modules or tensors", "[agent][tools][catalog]") {
