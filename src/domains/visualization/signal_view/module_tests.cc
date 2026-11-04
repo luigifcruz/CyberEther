@@ -466,6 +466,113 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
     }
 }
 
+TEST_CASE("Axis ticks land on round values",
+          "[modules][signal_view][axis][ticks]") {
+    using Axis = Render::Components::Axis;
+
+    const auto isMultiple = [](const F64 value, const F64 step) {
+        const F64 k = value / step;
+        return std::abs(k - std::round(k)) < 1e-6;
+    };
+
+    SECTION("61.44 MS/s around 100 MHz") {
+        const auto ticks = Axis::ComputeTicks(69.28, 130.72, 6.0);
+        REQUIRE(ticks.step == Catch::Approx(10.0));
+        REQUIRE(ticks.decimals == 0);
+        REQUIRE(ticks.minorDivisions == 5);
+        REQUIRE(ticks.values.size() == 7);
+        REQUIRE(ticks.values.front() == Catch::Approx(70.0));
+        REQUIRE(ticks.values.back() == Catch::Approx(130.0));
+    }
+
+    SECTION("Two steps use quarter minor ticks") {
+        const auto ticks = Axis::ComputeTicks(97.5, 102.5, 1.5);
+        REQUIRE(ticks.step == Catch::Approx(2.0));
+        REQUIRE(ticks.minorDivisions == 4);
+        REQUIRE(ticks.values.size() == 3);
+        REQUIRE(ticks.values[1] == Catch::Approx(100.0));
+    }
+
+    SECTION("Sub-unit steps get decimals") {
+        const auto ticks = Axis::ComputeTicks(99.0, 101.0, 0.3);
+        REQUIRE(ticks.step == Catch::Approx(0.5));
+        REQUIRE(ticks.decimals == 1);
+        REQUIRE(ticks.values.size() == 3);
+
+        const auto fine = Axis::ComputeTicks(100.0012, 100.0019, 0.0001);
+        REQUIRE(fine.step == Catch::Approx(0.0001));
+        REQUIRE(fine.decimals == 4);
+        for (const F64 value : fine.values) {
+            REQUIRE(isMultiple(value, fine.step));
+        }
+    }
+
+    SECTION("Ticks never sit on the frame edges") {
+        const auto ticks = Axis::ComputeTicks(0.0, 10.0, 2.0);
+        REQUIRE(ticks.values.size() == 4);
+        REQUIRE(ticks.values.front() == Catch::Approx(2.0));
+        REQUIRE(ticks.values.back() == Catch::Approx(8.0));
+    }
+
+    SECTION("Negative ranges and gigahertz values") {
+        const auto normalized = Axis::ComputeTicks(-1.0, 1.0, 0.4);
+        REQUIRE(normalized.step == Catch::Approx(0.5));
+        REQUIRE(normalized.values.size() == 3);
+        REQUIRE(normalized.values[1] == Catch::Approx(0.0));
+
+        const auto wifi = Axis::ComputeTicks(2419.28, 2480.72, 7.0);
+        REQUIRE(wifi.step == Catch::Approx(10.0));
+        REQUIRE(wifi.values.front() == Catch::Approx(2420.0));
+        REQUIRE(wifi.values.back() == Catch::Approx(2480.0));
+    }
+
+    SECTION("Invalid ranges produce no ticks") {
+        REQUIRE(Axis::ComputeTicks(1.0, 1.0, 0.1).values.empty());
+        REQUIRE(Axis::ComputeTicks(2.0, 1.0, 0.1).values.empty());
+        REQUIRE(Axis::ComputeTicks(0.0, std::numeric_limits<F64>::infinity(), 0.1).values.empty());
+        const auto fallback = Axis::ComputeTicks(0.0, 10.0, 0.0);
+        REQUIRE(fallback.step == Catch::Approx(1.0));
+    }
+}
+
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Axis X range places grid lines on round values",
+          "[modules][signal_view][axis][ticks]") {
+    LabelTestWindow window;
+    Render::Components::Axis::Config config;
+    config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    LabelTestAxis axis(config);
+    REQUIRE(axis.create(&window) == Result::SUCCESS);
+    REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / 800.0f}) == Result::SUCCESS);
+    REQUIRE(axis.setShowFrameTicks(true) == Result::SUCCESS);
+    JST_LOG_LAST_ERROR().clear();
+
+    for (const auto& [left, right] : std::vector<std::pair<F64, F64>>{
+             {69.28, 130.72}, {84.64, 115.36}, {99.0, 101.0},
+             {99.9, 100.1}, {2419.28, 2480.72}, {-1.0, 1.0}}) {
+        REQUIRE(axis.updateXRange(left, right) == Result::SUCCESS);
+        CHECK(JST_LOG_LAST_ERROR() == "");
+        const auto& ticks = axis.currentXTicks();
+        REQUIRE(ticks.step > 0.0);
+        REQUIRE_FALSE(ticks.values.empty());
+        REQUIRE(ticks.values.size() <= 63);
+        REQUIRE(axis.currentVerticalLineCount() == ticks.values.size() + 2);
+        for (const F64 value : ticks.values) {
+            REQUIRE(value > left);
+            REQUIRE(value < right);
+            const F64 k = value / ticks.step;
+            REQUIRE(std::abs(k - std::round(k)) < 1e-6);
+        }
+    }
+
+    REQUIRE(axis.updateXRange(1.0, 1.0) == Result::ERROR);
+    REQUIRE(axis.clearXRange() == Result::SUCCESS);
+    REQUIRE(axis.currentXTicks().values.empty());
+    REQUIRE(axis.currentVerticalLineCount() % 2 == 1);
+    REQUIRE(axis.destroy(&window) == Result::SUCCESS);
+}
+#endif
+
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
 TEST_CASE("Axis vertical scale can move the divider without recreating resources",
           "[modules][signal_view][split][axis][regression]") {

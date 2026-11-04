@@ -1,6 +1,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <new>
@@ -20,6 +21,15 @@ namespace {
 constexpr F32 kTickLabelScale = 0.85f;
 constexpr U64 kMaxVerticalLines = 65;
 constexpr U64 kMaxHorizontalLines = 17;
+constexpr U64 kMinorTicksPerInterval = 4;
+
+std::string FormatTickValue(F64 value, const Axis::TickScale& scale) {
+    // Avoid "-0" for a tick that lands on zero.
+    if (std::abs(value) < scale.step * 1e-9) {
+        value = 0.0;
+    }
+    return jst::fmt::format("{:.{}f}", value, scale.decimals);
+}
 
 }  // namespace
 
@@ -84,6 +94,13 @@ struct Axis::Impl {
     TickFormatter xTickFormatter;
     TickFormatter yTickFormatter;
 
+    bool xRangeEnabled = false;
+    F64 xRangeLeft = -1.0;
+    F64 xRangeRight = 1.0;
+    TickScale xTicks;
+    std::vector<F32> xTickPositions;
+    std::vector<F32> xMinorPositions;
+
     void generateGridPoints();
     void computePaddingScale();
     static void computeTickCount(U64 numCols, U64 numRows,
@@ -102,6 +119,11 @@ struct Axis::Impl {
     U64 responsiveLineCount(F32 availablePx,
                             F32 requiredSpacingPx,
                             U64 maximum) const;
+    F32 xLinePosition(U64 i, U64 numCols) const;
+    F32 xRangePosition(F64 value) const;
+    void computeXRangeTicks(F32 availableWidthPx,
+                            F32 minimumSpacingPx,
+                            F32 collisionPadding);
 
     Impl(const Config& config) : config(config) {}
 };
@@ -511,8 +533,79 @@ Result Axis::updateTitles(const std::string& xTitle,
     return Result::SUCCESS;
 }
 
+Result Axis::updateXRange(F64 left, F64 right) {
+    if (!std::isfinite(left) || !std::isfinite(right) || !(right > left)) {
+        return Result::ERROR;
+    }
+    pimpl->xRangeEnabled = true;
+    pimpl->xRangeLeft = left;
+    pimpl->xRangeRight = right;
+    if (!pimpl->text) {
+        return Result::SUCCESS;
+    }
+    return pimpl->syncResponsiveGrid();
+}
+
+Result Axis::clearXRange() {
+    if (!pimpl->xRangeEnabled) {
+        return Result::SUCCESS;
+    }
+    pimpl->xRangeEnabled = false;
+    pimpl->xTicks = {};
+    pimpl->xTickPositions.clear();
+    pimpl->xMinorPositions.clear();
+    if (!pimpl->text) {
+        return Result::SUCCESS;
+    }
+    // Force the evenly divided grid to be regenerated.
+    pimpl->currentVerticalLines = 0;
+    return pimpl->syncResponsiveGrid();
+}
+
 const Extent2D<F32>& Axis::paddingScale() const {
     return pimpl->padScale;
+}
+
+const Axis::TickScale& Axis::currentXTicks() const {
+    return pimpl->xTicks;
+}
+
+Axis::TickScale Axis::ComputeTicks(const F64 left,
+                                   const F64 right,
+                                   const F64 minimumStep) {
+    TickScale scale;
+    const F64 span = right - left;
+    if (!std::isfinite(left) || !std::isfinite(right) || !(span > 0.0) ||
+        !std::isfinite(span)) {
+        return scale;
+    }
+
+    const F64 minimum = (std::isfinite(minimumStep) && minimumStep > 0.0)
+        ? minimumStep
+        : span / 10.0;
+    const F64 base = std::pow(10.0, std::floor(std::log10(minimum)));
+    U64 mantissa = 10;
+    for (const U64 candidate : {1, 2, 5}) {
+        if (static_cast<F64>(candidate) * base >= minimum * (1.0 - 1e-9)) {
+            mantissa = candidate;
+            break;
+        }
+    }
+    scale.step = static_cast<F64>(mantissa) * base;
+    scale.minorDivisions = (mantissa == 2) ? 4 : 5;
+    scale.decimals = static_cast<U64>(std::max(
+        0.0, -std::floor(std::log10(scale.step) + 1e-9)));
+
+    // Skip ticks that would sit on the frame itself.
+    const F64 margin = span * 1e-6;
+    const F64 first = std::ceil((left + margin) / scale.step);
+    const F64 last = std::floor((right - margin) / scale.step);
+    constexpr U64 kMaxValues = 1024;
+    for (F64 k = first; k <= last && scale.values.size() < kMaxValues; k += 1.0) {
+        scale.values.push_back(k * scale.step);
+    }
+
+    return scale;
 }
 
 U64 Axis::currentVerticalLineCount() const {
@@ -618,7 +711,7 @@ void Axis::Impl::generateGridPoints() {
     }
 
     for (U64 col = 1; col <= interiorV; col++) {
-        const F32 x = xStart + col * xStep;
+        const F32 x = xLinePosition(col, numCols);
         gridPoints[(idx * stride) + 0] = x;
         gridPoints[(idx * stride) + 1] = bandBottom;
         gridPoints[(idx * stride) + 2] = x;
@@ -632,7 +725,7 @@ void Axis::Impl::generateGridPoints() {
         if (numCols >= 3) {
             majX.reserve(numCols);
             for (U64 col = 1; col <= numCols - 2; col++) {
-                majX.push_back(xStart + col * xStep);
+                majX.push_back(xLinePosition(col, numCols));
             }
         }
         if (numRows >= 3) {
@@ -684,12 +777,23 @@ void Axis::Impl::generateGridPoints() {
             }
         };
 
-        for (U64 col = 0; col + 1 < numCols; col++) {
-            const F32 a = xStart + col * xStep;
-            const F32 b = a + xStep;
-            for (U64 s = 1; s <= 4; s++) {
-                emitMinorX(a + (b - a) *
-                    (static_cast<F32>(s) / 5.0f));
+        if (xRangeEnabled) {
+            // Minor ticks on round values too. Unused reserved slots stay
+            // zero-length lines so the tick counts seen by the shader hold.
+            const U64 reserved = kMinorTicksPerInterval * (numCols - 1);
+            const U64 used = std::min<U64>(xMinorPositions.size(), reserved);
+            for (U64 i = 0; i < used; i++) {
+                emitMinorX(xMinorPositions[i]);
+            }
+            idx += (reserved - used) * (dividerLines == 0 ? 2 : 1);
+        } else {
+            for (U64 col = 0; col + 1 < numCols; col++) {
+                const F32 a = xStart + col * xStep;
+                const F32 b = a + xStep;
+                for (U64 s = 1; s <= kMinorTicksPerInterval; s++) {
+                    emitMinorX(a + (b - a) *
+                        (static_cast<F32>(s) / 5.0f));
+                }
             }
         }
 
@@ -796,8 +900,7 @@ Result Axis::Impl::repositionLabels() {
     for (U64 i = 1; i < numCols - 1; i++) {
         const auto id = jst::fmt::format("x{:02d}", i);
         auto element = text->get(id);
-        const F32 x = (2.0f * padScale.x / (numCols - 1)) * i -
-                      padScale.x;
+        const F32 x = xLinePosition(i, numCols) * padScale.x;
         element.position = {x, 1.0f - ps.y * 5.0f};
         JST_CHECK(text->update(id, element));
     }
@@ -835,7 +938,7 @@ Result Axis::Impl::repositionXLabels() {
         auto element = text->get(id);
 
         // Base NDC position of the interior grid line (before zoom/pan).
-        const F32 baseX = (2.0f / (numCols - 1)) * i - 1.0f;
+        const F32 baseX = xLinePosition(i, numCols);
 
         // Apply the same pan/zoom that interior grid lines get.
         const F32 x = (baseX * zoom + translation * zoom) * padScale.x;
@@ -845,6 +948,73 @@ Result Axis::Impl::repositionXLabels() {
     }
 
     return Result::SUCCESS;
+}
+
+F32 Axis::Impl::xLinePosition(const U64 i, const U64 numCols) const {
+    if (xRangeEnabled && i >= 1 && i <= xTickPositions.size()) {
+        return xTickPositions[i - 1];
+    }
+    return (2.0f / static_cast<F32>(numCols - 1)) * static_cast<F32>(i) - 1.0f;
+}
+
+F32 Axis::Impl::xRangePosition(const F64 value) const {
+    return static_cast<F32>(-1.0 + 2.0 * (value - xRangeLeft) /
+                                   (xRangeRight - xRangeLeft));
+}
+
+void Axis::Impl::computeXRangeTicks(const F32 availableWidthPx,
+                                    const F32 minimumSpacingPx,
+                                    const F32 collisionPadding) {
+    const F64 span = xRangeRight - xRangeLeft;
+    const F64 widthPx = std::max<F64>(availableWidthPx, 1.0);
+    const F64 unitsPerPx = span / widthPx;
+    const U64 maxTicks = maxVerticalLines - 2;
+
+    // Widen the step until the labels fit; the label width depends on the
+    // number of decimals, which depends on the step.
+    F64 spacingPx = std::max<F64>(minimumSpacingPx, 1.0);
+    TickScale ticks;
+    for (U64 attempt = 0; attempt < 4; attempt++) {
+        ticks = ComputeTicks(xRangeLeft, xRangeRight, spacingPx * unitsPerPx);
+        F32 labelWidth = 0.0f;
+        for (const F64 value : {xRangeLeft, xRangeRight}) {
+            labelWidth = std::max(labelWidth,
+                text->advance(FormatTickValue(value, ticks), kTickLabelScale));
+        }
+        const F64 stepPx = ticks.step / unitsPerPx;
+        F64 neededPx = std::max<F64>(spacingPx, labelWidth + collisionPadding);
+        if (ticks.values.size() > maxTicks) {
+            neededPx = std::max(neededPx, widthPx / static_cast<F64>(maxTicks));
+        }
+        if (stepPx >= neededPx * (1.0 - 1e-9) && ticks.values.size() <= maxTicks) {
+            break;
+        }
+        spacingPx = std::max(neededPx, stepPx * 1.01);
+    }
+    if (ticks.values.size() > maxTicks) {
+        ticks.values.resize(maxTicks);
+    }
+
+    xTicks = ticks;
+    xTickPositions.clear();
+    for (const F64 value : xTicks.values) {
+        xTickPositions.push_back(xRangePosition(value));
+    }
+
+    xMinorPositions.clear();
+    if (xTicks.step > 0.0) {
+        const F64 minor = xTicks.step / static_cast<F64>(xTicks.minorDivisions);
+        const F64 margin = span * 1e-6;
+        const F64 first = std::ceil((xRangeLeft + margin) / minor);
+        const F64 last = std::floor((xRangeRight - margin) / minor);
+        const U64 reserved = kMinorTicksPerInterval * (xTicks.values.size() + 1);
+        for (F64 k = first; k <= last && xMinorPositions.size() < reserved; k += 1.0) {
+            if (std::llround(k) % static_cast<I64>(xTicks.minorDivisions) == 0) {
+                continue;
+            }
+            xMinorPositions.push_back(xRangePosition(k * minor));
+        }
+    }
 }
 
 U64 Axis::Impl::responsiveLineCount(const F32 availablePx,
@@ -896,13 +1066,26 @@ Result Axis::Impl::syncResponsiveGrid() {
         static_cast<F32>(config.font->lineHeight()) * kTickLabelScale +
             collisionPadding);
 
-    const U64 verticalLines = responsiveLineCount(
-        availableWidthPx, xRequiredSpacing, maxVerticalLines);
+    U64 verticalLines = 0;
+    bool xTicksMoved = false;
+    if (xRangeEnabled) {
+        const auto previousPositions = xTickPositions;
+        const auto previousMinors = xMinorPositions;
+        computeXRangeTicks(availableWidthPx, responsiveXSpacing,
+                           collisionPadding);
+        verticalLines = xTickPositions.size() + 2;
+        xTicksMoved = previousPositions != xTickPositions ||
+                      previousMinors != xMinorPositions;
+    } else {
+        verticalLines = responsiveLineCount(
+            availableWidthPx, xRequiredSpacing, maxVerticalLines);
+    }
     const U64 horizontalLines = responsiveLineCount(
         availableHeightPx, yRequiredSpacing, maxHorizontalLines);
 
     if (verticalLines != currentVerticalLines ||
-        horizontalLines != currentHorizontalLines) {
+        horizontalLines != currentHorizontalLines ||
+        xTicksMoved) {
         currentVerticalLines = verticalLines;
         currentHorizontalLines = horizontalLines;
         const U64 interiorLines = config.showInteriorGrid
@@ -936,7 +1119,9 @@ Result Axis::Impl::syncTickLabels() {
     for (U64 i = 0; i < maxVerticalLines - 2; ++i) {
         const auto id = jst::fmt::format("x{:02d}", i + 1);
         auto element = text->get(id);
-        if (i < xCount && xTickFormatter) {
+        if (i < xCount && xRangeEnabled) {
+            element.fill = FormatTickValue(xTicks.values[i], xTicks);
+        } else if (i < xCount && xTickFormatter) {
             const F32 position =
                 (2.0f * static_cast<F32>(i + 1) /
                  static_cast<F32>(currentVerticalLines - 1)) - 1.0f;

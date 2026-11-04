@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
@@ -17,6 +18,18 @@ namespace Jetstream::Render::Components {
 class JETSTREAM_API Axis : public Generic {
  public:
     using TickFormatter = std::function<std::string(F32)>;
+
+    // Round tick values (1, 2 or 5 times a power of ten) inside a data range.
+    struct TickScale {
+        F64 step = 0.0;
+        U64 minorDivisions = 5;
+        U64 decimals = 0;
+        std::vector<F64> values;
+    };
+
+    // Ticks strictly inside (left, right) with the smallest round step that
+    // is at least minimumStep.
+    static TickScale ComputeTicks(F64 left, F64 right, F64 minimumStep);
 
     struct Config {
         F32 thickness = 1.0f;
@@ -63,7 +76,14 @@ class JETSTREAM_API Axis : public Generic {
     Result updateTitles(const std::string& xTitle,
                         const std::string& yTitle);
 
+    // Place the vertical grid lines and X labels on round values of the data
+    // range shown between the left and right frame edges. This replaces the
+    // evenly divided grid and the X tick formatter until cleared.
+    Result updateXRange(F64 left, F64 right);
+    Result clearXRange();
+
     const Extent2D<F32>& paddingScale() const;
+    const TickScale& currentXTicks() const;
     U64 currentVerticalLineCount() const;
     U64 currentHorizontalLineCount() const;
 
