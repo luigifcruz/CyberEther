@@ -367,6 +367,8 @@ struct SignalViewCanvas {
     F32 pointAtX(F32 x) const;
     F32 snapToPeak(const Context& context, F32 x) const;
     void toggleMarker(const Context& context, const Edits& edits);
+    void eraseMarker(U64 index);
+    void deleteMarker(const Context& context, const Edits& edits);
     void clearMarkers(const Context& context, const Edits& edits);
     void commitMarkers(const Context& context, const Edits& edits);
 };

@@ -595,6 +595,10 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
                     edits.request(edit);
                 }
             }
+            if (key->type == KeyEventType::Press && !key->repeat &&
+                (key->key == KeyCode::Delete || key->key == KeyCode::Backspace)) {
+                deleteMarker(context, edits);
+            }
             if (key->type == KeyEventType::Press && key->key == KeyCode::Escape &&
                 std::any_of(pinned.begin(), pinned.end(), [](const bool flag) { return flag; })) {
                 pinned.fill(false);
@@ -1159,15 +1163,28 @@ void SignalViewCanvas::toggleMarker(const Context& context, const Edits& edits) 
     }
 
     if (const auto nearest = markerAt(context, cursor.position)) {
-        const U64 removed = *nearest;
-        markerPositions.erase(markerPositions.begin() + removed);
-        std::copy(pinned.begin() + removed + 1, pinned.end(), pinned.begin() + removed);
-        pinned.back() = false;
+        eraseMarker(*nearest);
     } else if (markerPositions.size() < detail::MaxMarkers) {
         markerPositions.push_back(*point);
     } else {
         return;
     }
+    commitMarkers(context, edits);
+}
+
+void SignalViewCanvas::eraseMarker(const U64 index) {
+    markerPositions.erase(markerPositions.begin() + index);
+    std::copy(pinned.begin() + index + 1, pinned.end(), pinned.begin() + index);
+    pinned.back() = false;
+}
+
+void SignalViewCanvas::deleteMarker(const Context& context, const Edits& edits) {
+    if (markerPositions.empty()) {
+        return;
+    }
+    // The marker under the mouse, otherwise the one placed last.
+    const auto hovered = cursor.inside ? markerAt(context, cursor.position) : std::nullopt;
+    eraseMarker(hovered.value_or(markerPositions.size() - 1));
     commitMarkers(context, edits);
 }
 
