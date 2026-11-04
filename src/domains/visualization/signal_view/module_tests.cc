@@ -466,6 +466,31 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
     }
 }
 
+TEST_CASE("Lineplot peak search finds the nearby local peak",
+          "[modules][signal_view][cursor][peak]") {
+    Modules::SignalViewLineplot lineplot;
+    lineplot.config.numberOfElements = 9;
+    // Bins at x = -1, -0.75, ..., 1. A narrow peak at bin 3 (-0.25), a
+    // taller one at bin 6 (0.5), and a slope rising to the right edge.
+    const std::array<F32, 9> levels = {0.0f, 0.1f, 0.2f, 0.9f, 0.2f, 0.3f, 1.0f, 0.5f, 0.8f};
+    lineplot.displayedPoints.resize(levels.size() * 2);
+    for (U64 i = 0; i < levels.size(); i++) {
+        lineplot.displayedPoints[(i * 2) + 0] = static_cast<F32>(i) * 0.25f - 1.0f;
+        lineplot.displayedPoints[(i * 2) + 1] = levels[i];
+    }
+
+    // Only the peak inside the window counts, not the taller one elsewhere.
+    REQUIRE(lineplot.peak(-0.4f, -0.1f) == Catch::Approx(-0.25f));
+    REQUIRE(lineplot.peak(0.3f, 0.6f) == Catch::Approx(0.5f));
+    // Both peaks in the window: the higher wins.
+    REQUIRE(lineplot.peak(-0.4f, 0.6f) == Catch::Approx(0.5f));
+    // The end of a slope is not a peak.
+    REQUIRE_FALSE(lineplot.peak(0.9f, 1.0f).has_value());
+    REQUIRE_FALSE(lineplot.peak(-1.0f, -0.6f).has_value());
+    // A window narrower than one bin holds no bin at all.
+    REQUIRE_FALSE(lineplot.peak(-0.24f, -0.01f).has_value());
+}
+
 TEST_CASE("Amplitude division steps like an analyzer knob",
           "[modules][signal_view][axis][ticks]") {
     using Modules::detail::NextAmplitudeDivision;

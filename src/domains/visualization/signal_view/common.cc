@@ -607,6 +607,7 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
         if (event.type == MouseEventType::Move) {
             cursor.inside = true;
             cursor.position = event.position;
+            cursor.free = event.modifiers.alt;
         } else if (event.type == MouseEventType::Leave) {
             cursor.inside = false;
         }
@@ -633,7 +634,9 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
                                    static_cast<F32>(interaction.viewSize.x);
                 if (markerDrag.moved || travel > 3.0f * interaction.scale) {
                     markerDrag.moved = true;
-                    markerPositions[*markerDrag.index] = pointAtX(event.position.x);
+                    markerPositions[*markerDrag.index] = event.modifiers.alt
+                        ? pointAtX(event.position.x)
+                        : snapToPeak(context, event.position.x);
                 }
                 if (!released) {
                     continue;
@@ -1000,7 +1003,26 @@ std::optional<F32> SignalViewCanvas::cursorPoint(const Context& context) const {
     if (!visible) {
         return std::nullopt;
     }
-    return pointAtX(cursor.position.x);
+    return cursor.free ? pointAtX(cursor.position.x) : snapToPeak(context, cursor.position.x);
+}
+
+F32 SignalViewCanvas::snapToPeak(const Context& context, const F32 x) const {
+    // Narrow peaks are a pixel or two wide: lock onto the highest bin a few
+    // pixels around the mouse, like a marker peak search.
+    constexpr F32 kSnapPx = 6.0f;
+    const F32 point = pointAtX(x);
+    if (!context.lineplot || interaction.viewSize.x == 0) {
+        return point;
+    }
+    const F32 reach = kSnapPx * interaction.scale / static_cast<F32>(interaction.viewSize.x);
+    const auto peak = context.lineplot->peak(pointAtX(x - reach), pointAtX(x + reach));
+    const auto here = context.lineplot->sample(point);
+    const auto there = peak ? context.lineplot->sample(*peak) : std::nullopt;
+    // Stay under the mouse unless a bin nearby is actually higher.
+    if (!peak || !here || !there || *there <= *here) {
+        return point;
+    }
+    return *peak;
 }
 
 F32 SignalViewCanvas::projectPointX(const F32 xPoint) const {
