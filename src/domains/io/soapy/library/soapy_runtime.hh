@@ -72,8 +72,6 @@ struct SoapyApi {
     SoapyAbi::Kwargs* (*enumerate)(const SoapyAbi::Kwargs*, std::size_t*) = nullptr;
     SoapyAbi::Device* (*make)(const SoapyAbi::Kwargs*) = nullptr;
     int (*unmake)(SoapyAbi::Device*) = nullptr;
-    SoapyAbi::Range* (*getSampleRateRange)(const SoapyAbi::Device*, int, std::size_t,
-                                           std::size_t*) = nullptr;
     SoapyAbi::Range* (*getFrequencyRange)(const SoapyAbi::Device*, int, std::size_t,
                                           std::size_t*) = nullptr;
     char** (*listAntennas)(const SoapyAbi::Device*, int, std::size_t, std::size_t*) = nullptr;
@@ -81,6 +79,7 @@ struct SoapyApi {
     int (*setFrequency)(SoapyAbi::Device*, int, std::size_t, double,
                         const SoapyAbi::Kwargs*) = nullptr;
     int (*setSampleRate)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
+    double (*getSampleRate)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     bool (*hasGainMode)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setGainMode)(SoapyAbi::Device*, int, std::size_t, bool) = nullptr;
     SoapyAbi::Range (*getGainRange)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
