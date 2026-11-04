@@ -257,6 +257,11 @@ struct TextGrid::Impl {
     std::vector<std::string> lines = {""};
     F32 currentScrollX = 0.0f;
     F32 currentScrollY = 0.0f;
+    bool gliding = false;
+    bool glideStarted = false;
+    F64 glideStart = 0.0;
+    F32 glideFrom = 0.0f;
+    F32 glideTo = 0.0f;
     Extent2D<F32> elastic = {0.0f, 0.0f};
     F32 pixelRatio = 1.0f;
     bool stickToBottomPending = false;
@@ -990,6 +995,8 @@ struct TextGrid::Impl {
         out.scrollY = currentScrollY;
         out.overscroll = elastic;
         out.scrollbarGutter = scrollbarGutterPixels();
+        out.viewportTop = rect.y;
+        out.viewportHeight = rect.height;
         out.padding = paddingPixels();
         out.sourceLines.resize(lines.size());
         for (U64 line = 0; line < lines.size(); ++line) {
@@ -1482,6 +1489,7 @@ struct TextGrid::Impl {
         currentScrollX = 0.0f;
         std::fill(regionScroll.begin(), regionScroll.end(), 0.0f);
         currentScrollY = 0.0f;
+        gliding = false;
         stickToBottomPending = false;
     }
 
@@ -1608,6 +1616,30 @@ struct TextGrid::Impl {
         clampPosition(position);
         const F32 top = rowTopContent(visualRowForPosition(position)) - lineHeightPixels();
         currentScrollY = std::clamp(top, 0.0f, maxScrollYPixels());
+        gliding = false;
+    }
+
+    void glideToLine(U64 line, U64 column) {
+        const F32 from = currentScrollY;
+        scrollToLine(line, column);
+        glideFrom = from;
+        glideTo = currentScrollY;
+        currentScrollY = from;
+        gliding = true;
+        glideStarted = false;
+    }
+
+    void advanceGlide(F64 time) {
+        if (!gliding) {
+            return;
+        }
+        if (!glideStarted) {
+            glideStarted = true;
+            glideStart = time;
+        }
+        const F32 t = static_cast<F32>(std::clamp((time - glideStart) / kScrollGlideDuration, 0.0, 1.0));
+        gliding = t < 1.0f;
+        currentScrollY = gliding ? glideFrom + (glideTo - glideFrom) * Smoothstep(t) : glideTo;
     }
 
     Snapshot snapshot() const { return {lines, cursor, selectionAnchor, selectionActive}; }
@@ -1981,6 +2013,7 @@ struct TextGrid::Impl {
         const F32 previous = currentScrollY;
         if (std::abs(delta) > 1e-3f) {
             currentScrollY = std::clamp(currentScrollY + delta, 0.0f, maxScrollYPixels());
+            gliding = false;
         }
         return currentScrollY != previous;
     }
@@ -2439,6 +2472,7 @@ struct TextGrid::Impl {
             .thumbColorKey = config.scrollbarThumbColorKey,
             .onScrollY = [this](F32 scrollY) {
                 currentScrollY = scrollY;
+                gliding = false;
                 owner->invalidate(Dirty::Layout);
             },
             .onScrollX = [this](F32 scrollX) {
@@ -3013,6 +3047,16 @@ void TextGrid::scrollToLine(U64 line, U64 column) {
     invalidate(Dirty::Layout);
 }
 
+F32 TextGrid::glideToLine(U64 line, U64 column) {
+    impl->glideToLine(line, column);
+    invalidate(Dirty::Layout);
+    return impl->glideTo;
+}
+
+bool TextGrid::gliding() const {
+    return impl->gliding;
+}
+
 F32 TextGrid::positionTop(Position position) const {
     return impl->positionTop(position);
 }
@@ -3092,6 +3136,7 @@ void TextGrid::layout(const Context& ctx) {
         impl->currentScrollY = impl->maxScrollYPixels();
         impl->stickToBottomPending = false;
     }
+    impl->advanceGlide(ctx.time);
     impl->clampScroll();
     impl->configureScroller();
     layoutChild(ctx, impl->scroll, frame());
@@ -3102,6 +3147,9 @@ void TextGrid::layout(const Context& ctx) {
     impl->notifyLayout();
     if (impl->caretActive()) {
         requestFrame(impl->nextBlink());
+    }
+    if (impl->gliding) {
+        requestFrame();
     }
     impl->layingOut = false;
 }
@@ -3150,6 +3198,9 @@ bool TextGrid::mouseEvent(const MouseEvent& event) {
     if (event.type == MouseEventType::Scroll) {
         MouseEvent rest = event;
         if (!impl->scrollRegion(rest)) {
+            if (event.scroll.y != 0.0f) {
+                impl->gliding = false;
+            }
             return mouseEventChildren(event);
         }
         if (rest.scroll.x != 0.0f) {

@@ -2733,6 +2733,14 @@ const std::vector<TextMarkdown::Heading>& TextMarkdown::headings() const {
     return impl->document.headings;
 }
 
+F32 TextMarkdown::glideToLine(U64 line) {
+    return impl->grid.glideToLine(line);
+}
+
+bool TextMarkdown::gliding() const {
+    return impl->grid.gliding();
+}
+
 void TextMarkdown::scrollToLine(U64 line) {
     impl->grid.scrollToLine(line);
 }

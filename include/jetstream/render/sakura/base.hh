@@ -9,6 +9,7 @@
 #include <jetstream/render/sakura/toast.hh>
 
 #include <jetstream/render/sakura/components/assistant_pill.hh>
+#include <jetstream/render/sakura/components/aside.hh>
 #include <jetstream/render/sakura/components/background_layer.hh>
 #include <jetstream/render/sakura/components/badge.hh>
 #include <jetstream/render/sakura/components/box.hh>
@@ -41,6 +42,7 @@
 #include <jetstream/render/sakura/components/menu.hh>
 #include <jetstream/render/sakura/components/modal_layer.hh>
 #include <jetstream/render/sakura/components/model_picker.hh>
+#include <jetstream/render/sakura/components/outline.hh>
 #include <jetstream/render/sakura/components/overlay.hh>
 #include <jetstream/render/sakura/components/panel.hh>
 #include <jetstream/render/sakura/components/pill_button.hh>

@@ -39,6 +39,8 @@ struct Markdown : public Component {
     const std::vector<TextMarkdown::Heading>& headings() const;
     const TextGrid::Metrics& metrics() const;
     void scrollToLine(U64 line);
+    std::optional<U64> activeHeading(U64 minimumLevel, U64 maximumLevel);
+    void revealHeading(U64 index);
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

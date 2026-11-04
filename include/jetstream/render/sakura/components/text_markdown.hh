@@ -116,6 +116,8 @@ struct TextMarkdown : public Component {
     const TextGrid::Metrics& metrics() const;
     const std::vector<Heading>& headings() const;
     void scrollToLine(U64 line);
+    F32 glideToLine(U64 line);
+    bool gliding() const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

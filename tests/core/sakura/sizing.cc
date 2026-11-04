@@ -139,6 +139,11 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
         .compact = true,
     }));
     subjects.push_back(Make<Sakura::WaveLine>("wave line", {.span = 0.6f}));
+    subjects.push_back(Make<Sakura::Outline>("outline", {
+        .entries = {{.label = "Heading"}, {.label = "A nested heading that wraps", .level = 1}},
+        .active = 1,
+    }));
+    subjects.push_back(Make<Sakura::Aside>("aside", {.content = probe(), .rail = probe()}));
     subjects.push_back(Make<Sakura::FeatureCard>("feature card", {
         .title = "Update available",
         .description = "Restart to apply it.",

@@ -57,6 +57,7 @@ constexpr F32 kNodeFont = Typography::FontSize * Typography::ChromeScale;
 constexpr F32 kNodeFramePadX = 6.0f;
 constexpr F32 kNodeFramePadY = 3.0f;
 constexpr F32 kNodeUnitInset = 3.0f;
+constexpr F64 kScrollGlideDuration = 0.35;
 constexpr U64 kWaveSteps = 12;
 constexpr U64 kWavePointVertices = 4;
 constexpr U64 kWaveMaxPoints = 262144;

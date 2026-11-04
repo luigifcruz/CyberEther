@@ -5861,6 +5861,97 @@ TEST_CASE("Docs tab keeps a pending anchor when the previous page shares its hea
     CHECK(markdown.front()->metrics().scrollY > 0.0f);
 }
 
+TEST_CASE("Docs tab scrolls to an anchor after the outline has reflowed the article", "[core][sakura][views]") {
+    std::string body;
+    for (U64 index = 0; index < 60; ++index) {
+        body += "A paragraph long enough to wrap onto one more line once the outline narrows the article column "
+                "because the rail takes space on the right side of the tile, number " + std::to_string(index) +
+                ".\n\n";
+    }
+    body += "## Destination\n\nThe end.\n\n";
+    for (U64 index = 0; index < 20; ++index) {
+        body += "Trailing paragraph " + std::to_string(index) + ".\n\n";
+    }
+    const Docs docs = Docs::Parse({
+        {"plain", "---\ntitle: Plain\norder: 1\ncategory: Getting Started\n---\n\nNo headings here."},
+        {"long", "---\ntitle: Long\norder: 2\ncategory: Getting Started\n---\n\n" + body},
+    });
+    ModalRig rig;
+    DocsView view;
+    DocsView::Config config{.docs = &docs, .page = "plain", .navigation = 1};
+    view.update(config);
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{1300.0f, 700.0f}});
+    for (U64 frame = 0; frame < 3; ++frame) {
+        view.update(config);
+        rig.place();
+    }
+
+    config = {.docs = &docs, .page = "long", .anchor = "destination", .navigation = 2};
+    for (U64 frame = 0; frame < 6; ++frame) {
+        view.update(config);
+        rig.place();
+    }
+    const auto markdown = Find<Sakura::TextMarkdown>(view.component());
+    REQUIRE(markdown.size() == 1);
+    const auto& metrics = markdown.front()->metrics();
+    REQUIRE(markdown.front()->headings().size() == 1);
+    const auto& row = metrics.sourceLines.at(markdown.front()->headings().front().line);
+    CHECK(row.top >= metrics.viewportTop);
+    CHECK(row.top < metrics.viewportTop + metrics.viewportHeight * 0.5f);
+}
+
+TEST_CASE("Docs tab lists the page headings in an outline that scrolls the article", "[core][sakura][views]") {
+    std::string body = "Intro.\n\n## Alpha\n\n### Nested\n\n#### Too Deep\n\n";
+    for (U64 index = 0; index < 60; ++index) {
+        body += "Paragraph " + std::to_string(index) + ".\n\n";
+    }
+    body += "## Omega\n\n";
+    for (U64 index = 0; index < 60; ++index) {
+        body += "Paragraph " + std::to_string(index) + ".\n\n";
+    }
+    const Docs docs = Docs::Parse({
+        {"long", "---\ntitle: Long\norder: 1\ncategory: Getting Started\n---\n\n" + body},
+        {"plain", "---\ntitle: Plain\norder: 2\ncategory: Getting Started\n---\n\nNo headings here."},
+    });
+    ModalRig rig;
+    DocsView view;
+    DocsView::Config config{.docs = &docs, .page = "long", .navigation = 1};
+    const auto refresh = [&] {
+        for (U64 frame = 0; frame < 3; ++frame) {
+            view.update(config);
+            rig.place();
+        }
+    };
+    view.update(config);
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{1300.0f, 700.0f}});
+    refresh();
+
+    auto outlines = Find<Sakura::Outline>(view.component());
+    REQUIRE(outlines.size() == 1);
+    std::vector<std::string> labels;
+    for (auto* text : Find<Sakura::Text>(*outlines.front())) {
+        labels.push_back(text->config().str);
+    }
+    CHECK(labels == std::vector<std::string>{"Alpha", "Nested", "Omega"});
+
+    const auto article = Find<Sakura::TextMarkdown>(view.component());
+    REQUIRE(article.size() == 1);
+    const F32 before = article.front()->metrics().padding.right;
+    CHECK(before > DocsView::ArticlePadding + DocsView::RailWidth * 0.5f);
+
+    CHECK(article.front()->metrics().scrollY == 0.0f);
+    const auto* omega = outlines.front()->row(2);
+    REQUIRE(omega != nullptr);
+    CHECK(Press(rig.host, *omega));
+    refresh();
+    CHECK(article.front()->gliding());
+
+    config.page = "plain";
+    config.navigation = 2;
+    refresh();
+    CHECK(Find<Sakura::Outline>(view.component()).empty());
+}
+
 TEST_CASE("Docs tab follows bundled links in the app and opens other docs links on the website",
           "[core][sakura][views]") {
     const Docs docs = Docs::Parse({

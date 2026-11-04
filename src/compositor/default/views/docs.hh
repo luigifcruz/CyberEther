@@ -33,6 +33,10 @@ struct DocsView {
 #endif
     static constexpr F32 FooterPadding = Sakura::Spacing::Large;
     static constexpr F32 FooterCardPadding = Sakura::Spacing::Medium;
+    static constexpr F32 RailWidth = 260.0f;
+    static constexpr F32 RailInset = Sakura::Spacing::Large;
+    static constexpr U64 OutlineTopLevel = 2;
+    static constexpr U64 OutlineBottomLevel = 3;
 
     struct Config {
         const Docs* docs = nullptr;
@@ -58,11 +62,12 @@ struct DocsView {
 
         updateNavigation(docs);
         updateFooter();
+        updateOutline();
         updateArticle(docs);
 
         tile.update({
             .sidebar = &sidebar,
-            .page = &markdown,
+            .page = &aside,
         });
         keys.update({
             .bindings = {
@@ -202,11 +207,13 @@ struct DocsView {
                 };
             }
         }
+        const bool railShown = !outlineHeadings.empty() && outlineRail.visible();
+        const F32 rightPadding = railShown ? RailWidth + RailInset : ArticlePadding;
         markdown.update({
             .id = "docs-article",
             .value = source,
             .fontSize = ArticleFont,
-            .padding = Sakura::Padding{ArticlePadding, ArticlePadding, ArticlePadding, ArticlePadding},
+            .padding = Sakura::Padding{ArticlePadding, ArticlePadding, rightPadding, ArticlePadding},
             .scrollbar = true,
             .scrollbarInset = {0.0f, Sakura::Dock::TileRounding},
             .onLink = [this](const std::string& url) {
@@ -226,6 +233,79 @@ struct DocsView {
         if (!pendingAnchor.empty() && scrollToAnchor(pendingAnchor)) {
             pendingAnchor.clear();
         }
+    }
+
+    void updateOutline() {
+        using Text = Sakura::Text;
+
+        const auto& headings = markdown.headings();
+        outlineHeadings.clear();
+        std::vector<Sakura::Outline::Entry> entries;
+        for (U64 index = 0; index < headings.size(); ++index) {
+            if (headings[index].level >= OutlineTopLevel && headings[index].level <= OutlineBottomLevel) {
+                entries.push_back({.label = headings[index].text, .level = headings[index].level - OutlineTopLevel});
+                outlineHeadings.push_back(index);
+            }
+        }
+
+        std::optional<U64> active;
+        if (const auto heading = markdown.activeHeading(OutlineTopLevel, OutlineBottomLevel)) {
+            const auto entry = std::find(outlineHeadings.begin(), outlineHeadings.end(), *heading);
+            if (entry != outlineHeadings.end()) {
+                active = static_cast<U64>(entry - outlineHeadings.begin());
+            }
+        }
+        if (active != outlineActive) {
+            outlineActive = active;
+            ++outlineScrollRequest;
+        }
+
+        outline.update({
+            .entries = std::move(entries),
+            .active = outlineActive,
+            .onSelect = [this](U64 index) {
+                if (index < outlineHeadings.size()) {
+                    markdown.revealHeading(outlineHeadings[index]);
+                }
+            },
+        });
+        outlineScroll.update({
+            .id = "docs-outline",
+            .content = &outline,
+            .height = 0.0f,
+            .alwaysScrollbar = false,
+            .border = false,
+            .overlay = true,
+            .scrollTarget = outlineActive.has_value() ? outline.row(*outlineActive) : nullptr,
+            .scrollRequest = outlineScrollRequest,
+        });
+        outlineTitle.update({
+            .str = "ON THIS PAGE",
+            .font = Text::Font::Display,
+            .tone = Text::Tone::Secondary,
+            .scale = Sakura::Typography::Scale::Title,
+        });
+        outlineStack.update({
+            .spacing = Sakura::Spacing::Medium,
+            .centerCross = false,
+            .items = {
+                {.child = &outlineTitle},
+                {.child = &outlineScroll, .grow = 1.0f, .shrink = 1.0f},
+            },
+        });
+        outlineRail.update({
+            .content = &outlineStack,
+            .size = {Sakura::Fill, Sakura::Fill},
+            .padding = ArticlePadding,
+            .border = false,
+            .colorKey = "transparent",
+        });
+        aside.update({
+            .content = &markdown,
+            .rail = outlineHeadings.empty() ? nullptr : &outlineRail,
+            .railWidth = RailWidth,
+            .railInset = RailInset,
+        });
     }
 
     bool follow(const std::string& url) {
@@ -297,6 +377,15 @@ struct DocsView {
     Sakura::Stack sidebar;
 
     Sakura::Markdown markdown;
+    Sakura::Outline outline;
+    Sakura::ScrollArea outlineScroll;
+    Sakura::Text outlineTitle;
+    Sakura::Stack outlineStack;
+    Sakura::Div outlineRail;
+    Sakura::Aside aside;
+    std::vector<U64> outlineHeadings;
+    std::optional<U64> outlineActive;
+    U64 outlineScrollRequest = 0;
 
     Sakura::Shortcuts keys;
     SidebarTiles tile;

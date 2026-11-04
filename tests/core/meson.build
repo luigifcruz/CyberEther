@@ -67,6 +67,7 @@ core_test_domains = {
         'sakura/flowgraph_pane.cc',
         'sakura/metric_progress_bar.cc',
         'sakura/node_metadata.cc',
+        'sakura/outline.cc',
         'sakura/component.cc',
         'sakura/card.cc',
         'sakura/controls.cc',

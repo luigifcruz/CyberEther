@@ -16,12 +16,6 @@
 
 namespace Jetstream::Sakura {
 
-namespace {
-
-constexpr F64 kScrollToDuration = 0.35;
-
-}  // namespace
-
 struct ScrollArea::Impl {
     Config config;
     Box border;
@@ -104,7 +98,7 @@ void ScrollArea::layout(const Context& ctx) {
         impl->contentHeight = measureChild(*impl->config.content, ctx, {innerWidth, infinite}).y + 2.0f * padding;
     }
     if (impl->glideStart.has_value()) {
-        const F32 t = static_cast<F32>(std::clamp((ctx.time - *impl->glideStart) / kScrollToDuration, 0.0, 1.0));
+        const F32 t = static_cast<F32>(std::clamp((ctx.time - *impl->glideStart) / kScrollGlideDuration, 0.0, 1.0));
         impl->scrollY = impl->glideFrom + (impl->glideTo - impl->glideFrom) * Smoothstep(t);
         if (t >= 1.0f) {
             impl->glideStart.reset();

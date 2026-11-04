@@ -47,6 +47,8 @@ struct TextGrid : public Component {
         F32 scrollY = 0.0f;
         Extent2D<F32> overscroll = {0.0f, 0.0f};
         F32 scrollbarGutter = 0.0f;
+        F32 viewportTop = 0.0f;
+        F32 viewportHeight = 0.0f;
         Padding padding;
         std::vector<LineMetrics> sourceLines;
         std::vector<RegionMetrics> regions;
@@ -163,6 +165,8 @@ struct TextGrid : public Component {
     void revert();
     void moveCursorRows(I64 delta, bool extendSelection = false);
     void scrollToLine(U64 line, U64 column = 0);
+    F32 glideToLine(U64 line, U64 column = 0);
+    bool gliding() const;
     F32 positionTop(Position position) const;
 
  protected:

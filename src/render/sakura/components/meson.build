@@ -51,6 +51,8 @@ src_lst += files([
     'markdown.cc',
     'model_picker.cc',
     'modal_layer.cc',
+    'aside.cc',
+    'outline.cc',
     'overlay.cc',
     'panel.cc',
     'pill_button.cc',
