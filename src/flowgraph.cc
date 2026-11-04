@@ -953,7 +953,14 @@ Result Flowgraph::blockDisconnect(const std::string blockName,
 }
 
 Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& config) {
+    bool recreated = false;
+    return blockReconfigure(name, config, recreated);
+}
+
+Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& config, bool& recreated) {
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+
+    recreated = false;
 
     Result result = Result::SUCCESS;
     bool recoverPrevious = false;
@@ -1005,7 +1012,9 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
         JST_INFO("[FLOWGRAPH] Block '{}' requested recreation.", name);
         auto nextStates = previousStates;
         nextStates.front().config = std::move(mergedConfig);
-        return ReconstructBlocks(*this, impl, previousStates, nextStates);
+        const auto reconstructed = ReconstructBlocks(*this, impl, previousStates, nextStates);
+        recreated = ReconstructionStepSucceeded(reconstructed);
+        return reconstructed;
     }
 
     if (recoverPrevious) {

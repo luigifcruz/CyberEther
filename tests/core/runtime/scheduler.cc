@@ -1498,6 +1498,11 @@ TEST_CASE("Scheduler settles fully static branches without stopping mixed inputs
     REQUIRE(staticLeft->timing().computeTime == 0.0f);
     REQUIRE(staticTransform->timing().computeTime == 0.0f);
     REQUIRE(staticMerge->timing().computeTime == 0.0f);
+    REQUIRE(staticLeft->timing().settled);
+    REQUIRE(staticTransform->timing().settled);
+    REQUIRE(staticMerge->timing().settled);
+    REQUIRE(staticLeft->timing().lastCycle != std::chrono::steady_clock::time_point{});
+    REQUIRE_FALSE(liveSource->timing().settled);
 
     REQUIRE(fixture.shutdown() == Result::SUCCESS);
 }

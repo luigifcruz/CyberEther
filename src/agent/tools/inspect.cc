@@ -1,7 +1,10 @@
 #include "support/base.hh"
+#include "jetstream/module.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/runtime_context.hh"
 
+#include <chrono>
+#include <cmath>
 #include <set>
 #include <unordered_map>
 
@@ -211,10 +214,46 @@ Json DiagnosticJson(const Runtime::Context::Diagnostic& diagnostic) {
     return value;
 }
 
+Json TimingJson(const Module::Timing& timing) {
+    const auto rounded = [](const F64 number) {
+        return std::round(number * 1000.0) / 1000.0;
+    };
+
+    Json value = {
+        {"runtime", timing.backend},
+        {"device", timing.device},
+        {"cycles", timing.cycles},
+    };
+    if (timing.skippedCycles > 0) {
+        value["skipped_cycles"] = timing.skippedCycles;
+    }
+    if (timing.cycles == 0) {
+        return value;
+    }
+
+    const auto age = std::chrono::steady_clock::now() - timing.lastCycle;
+    value["last_compute_ms"] = rounded(timing.lastComputeTime);
+    value["last_cycle_age_ms"] = rounded(std::chrono::duration<F64, std::milli>(age).count());
+
+    if (timing.settled) {
+        value["settled"] = true;
+        return value;
+    }
+
+    value["average_compute_ms"] = rounded(timing.computeTime / static_cast<F64>(timing.cycles));
+    if (timing.cyclesPerSecond > 0.0) {
+        value["cycles_per_second"] = rounded(timing.cyclesPerSecond);
+    }
+
+    return value;
+}
+
 Json MetricJson(const Flowgraph::View::MetricEntry& metric) {
     Json value;
     if (const auto* diagnostic = std::any_cast<Runtime::Context::Diagnostic>(&metric.value)) {
         value = DiagnosticJson(*diagnostic);
+    } else if (const auto* timing = std::any_cast<Module::Timing>(&metric.value)) {
+        value = TimingJson(*timing);
     } else if (!Value::TryToJson(metric.value, value)) {
         value = Value::AnyToString(metric.value);
     }
@@ -239,13 +278,19 @@ Json InspectBlock(const Graph& flowgraph, const Json& args) {
         return Response::Error("No flowgraph is currently selected.");
     }
 
+    if (args.contains("include_config") && !args["include_config"].is_boolean()) {
+        return Response::Error("'include_config' must be a boolean.");
+    }
+    const bool includeConfig = args.value("include_config", true);
+
     const std::string name = args.value("name", std::string{});
     Flowgraph::View::BlockData data;
     if (name.empty() || flowgraph->view().block(name, data) != Result::SUCCESS) {
         return Response::Error(Lookup::Missing(flowgraph, name));
     }
 
-    Json result = Serialize::BlockDetail(flowgraph, data, true);
+    const auto mode = includeConfig ? Serialize::BlockDetailMode::Full : Serialize::BlockDetailMode::Health;
+    Json result = Serialize::BlockDetail(flowgraph, data, mode);
 
     Json metrics = Json::array();
     for (const auto& metric : data.metrics) {
@@ -301,13 +346,26 @@ std::vector<Entry> Toolbox::Inspect() {
             "Inspect one existing block: status, complete effective JSON "
             "configuration, interfaces, connections, metrics, node metadata, and "
             "rendered surfaces. Interfaces omit help text, which get_block_docs "
-            "provides. node omits width and height while the node uses automatic "
+            "provides. config_fields maps controls to writable config_key and, for "
+            "tensor controls, config_index; UI-only fields omit these keys. "
+            "node omits width and height while the node uses automatic "
             "sizing. bounds gives the measured outer rectangle in graph coordinates "
             "when layout_status is 'measured', or null while 'pending'. "
             "Use bounds for positioning without overlap. Text and code nodes "
             "report content_size, the inner width and height that show all of "
-            "their content, and clipped=true when the node is smaller.",
-            R"({"type":"object","required":["name"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."}},"additionalProperties":false})",
+            "their content, and clipped=true when the node is smaller. With "
+            "include_config false the config field is omitted and every other "
+            "field stays the same, which suits health checks on blocks with long "
+            "code or text. Metrics named runtime:<module> report the runtime, device, "
+            "and cycles that produced output. Once it has produced output they also report "
+            "last_compute_ms, average_compute_ms, cycles_per_second, and "
+            "last_cycle_age_ms, all measured over those cycles only. The rate covers "
+            "about the last second of them and goes stale when output stops, which a "
+            "growing last_cycle_age_ms reveals. Cycles that produced no output, such as a "
+            "failed Python block or a closed squelch, appear as skipped_cycles. A module "
+            "with settled true has a static output and no longer runs, so it omits the "
+            "average and the rate.",
+            R"({"type":"object","required":["name"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."},"include_config":{"type":"boolean","description":"Include the effective config field, default true. False omits it entirely."}},"additionalProperties":false})",
             {.needsGraph = true, .reportsLayout = true},
         }, InspectBlock),
     };

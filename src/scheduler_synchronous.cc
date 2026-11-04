@@ -48,6 +48,7 @@ namespace {
 
 constexpr auto kPresentWait = std::chrono::milliseconds(2);
 constexpr auto kPresentPoll = std::chrono::microseconds(250);
+constexpr auto kReadWait = std::chrono::milliseconds(500);
 
 }  // namespace
 
@@ -65,6 +66,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     Result remove(const std::shared_ptr<Module>& module) override;
     Result reload(const std::shared_ptr<Module>& module) override;
     Result synchronize(const std::function<Result()>& fn) override;
+    Result read(const std::function<Result()>& fn) override;
 
     Result present(std::unordered_set<std::string>& failedModules) override;
     Result compute(std::unordered_set<std::string>& failedModules) override;
@@ -82,6 +84,9 @@ struct SynchronousScheduler : public Scheduler::Impl {
     void requestPresentEntry();
     void clearPresentRequest();
     bool isPresentRequested() const;
+    void requestRead();
+    void clearReadRequest();
+    bool isReadRequested() const;
     bool isStopping() const;
     void setComputeActive();
     void clearComputeActive();
@@ -94,7 +99,8 @@ struct SynchronousScheduler : public Scheduler::Impl {
     std::unique_lock<std::mutex> tryExclusiveSharedLock();
     void waitForPresentToFinish(std::unique_lock<std::mutex>& lock);
     bool waitForPresentTurn(std::chrono::steady_clock::time_point deadline);
-    void yieldToPresent(bool started);
+    bool waitForReadTurn(std::chrono::steady_clock::time_point deadline);
+    void yieldToWaiters(bool started);
     void notifyCompute();
     void notifyPresent();
     void wakePresent();
@@ -111,6 +117,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     bool presentSync = false;
     bool computeSync = false;
     std::atomic<bool> presentWantsIn{false};
+    std::atomic<U64> readRequests{0};
     std::atomic<bool> presentable{false};
     std::mutex handoffMutex;
     std::condition_variable handoffCond;
@@ -358,6 +365,35 @@ Result SynchronousScheduler::synchronize(const std::function<Result()>& fn) {
     return lockState(fn);
 }
 
+Result SynchronousScheduler::read(const std::function<Result()>& fn) {
+    if (!fn) {
+        return Result::SUCCESS;
+    }
+
+    struct ReadRequest {
+        SynchronousScheduler& scheduler;
+        explicit ReadRequest(SynchronousScheduler& scheduler) : scheduler(scheduler) { scheduler.requestRead(); }
+        ~ReadRequest() { scheduler.clearReadRequest(); }
+    } request(*this);
+
+    const auto deadline = Clock::now() + kReadWait;
+
+    while (true) {
+        {
+            auto dataLock = trySharedDataLock();
+            auto lock = dataLock.owns_lock() ? tryExclusiveSharedLock() : std::unique_lock<std::mutex>();
+
+            if (lock.owns_lock()) {
+                return fn();
+            }
+        }
+
+        if (!waitForReadTurn(deadline)) {
+            return Result::TIMEOUT;
+        }
+    }
+}
+
 Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModules) {
     failedModules.clear();
 
@@ -544,10 +580,10 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
     for (U64 i = 0; i < localRuntimeCount; i++) {
         std::vector<std::string> pendingModules;
 
-        // Priority Yield: Check if present wants in before each segment.
+        // Priority Yield: Check if present or a reader wants in before each segment.
 
-        if (isPresentRequested()) {
-            yieldToPresent(started);
+        if (isPresentRequested() || isReadRequested()) {
+            yieldToWaiters(started);
 
             if (isStopping()) {
                 return Result::SUCCESS;
@@ -1270,7 +1306,8 @@ void SynchronousScheduler::settle(Node& node) {
     const auto& mod = modules.at(node.name);
     auto timing = mod->timing();
     settledTimings[node.name] = timing;
-    timing.computeTime = 0.0f;
+    timing.computeTime = 0.0;
+    timing.settled = true;
     mod->timing(timing);
 }
 
@@ -1338,6 +1375,23 @@ void SynchronousScheduler::clearPresentRequest() {
     handoffCond.notify_all();
 }
 
+void SynchronousScheduler::requestRead() {
+    std::lock_guard lock(handoffMutex);
+    readRequests.fetch_add(1, std::memory_order_release);
+}
+
+void SynchronousScheduler::clearReadRequest() {
+    {
+        std::lock_guard lock(handoffMutex);
+        readRequests.fetch_sub(1, std::memory_order_release);
+    }
+    handoffCond.notify_all();
+}
+
+bool SynchronousScheduler::isReadRequested() const {
+    return readRequests.load(std::memory_order_acquire) != 0;
+}
+
 bool SynchronousScheduler::isPresentRequested() const {
     return presentWantsIn.load(std::memory_order_acquire);
 }
@@ -1400,10 +1454,21 @@ bool SynchronousScheduler::waitForPresentTurn(const Clock::time_point deadline) 
     return !isStopping() && !isPresentHalted();
 }
 
-void SynchronousScheduler::yieldToPresent(const bool started) {
+bool SynchronousScheduler::waitForReadTurn(const Clock::time_point deadline) {
+    if (Clock::now() >= deadline) {
+        return false;
+    }
+
+    std::unique_lock lock(handoffMutex);
+    presentCond.wait_until(lock, std::min(deadline, Clock::now() + kPresentPoll));
+    return true;
+}
+
+void SynchronousScheduler::yieldToWaiters(const bool started) {
     std::unique_lock lock(handoffMutex);
     handoffCond.wait(lock, [&] {
-        return !isPresentRequested() || isStopping() || isComputeHalted() || (!started && paused());
+        return (!isPresentRequested() && !isReadRequested()) ||
+               isStopping() || isComputeHalted() || (!started && paused());
     });
 }
 

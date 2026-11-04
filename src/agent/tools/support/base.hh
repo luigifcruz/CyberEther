@@ -54,6 +54,7 @@ class Toolbox {
 
     static std::vector<Entry> Catalog();
     static std::vector<Entry> Inspect();
+    static std::vector<Entry> Tensors();
     static std::vector<Entry> Patch();
     static std::vector<Entry> Connections();
     static std::vector<Entry> Environment();
@@ -120,6 +121,12 @@ class Validation {
 
 class Serialize {
  public:
+    enum class BlockDetailMode {
+        Summary,
+        Full,
+        Health,
+    };
+
     static Result Collect(const Graph& flowgraph, std::vector<Flowgraph::View::BlockData>& blocks);
     static bool HasPort(const std::vector<Flowgraph::View::InterfaceEntry>& entries, const std::string& port);
 
@@ -133,12 +140,14 @@ class Serialize {
     static Json Map(const Parser::Map& map);
     static Json CompactMap(const Parser::Map& map);
     static Json Interface(const std::vector<Flowgraph::View::InterfaceEntry>& entries, bool help = true);
+    static Json ConfigFields(const std::vector<Flowgraph::View::InterfaceEntry>& entries,
+                             const Parser::Map& config, bool help = true);
     static Json ConfigOptions(const std::vector<Flowgraph::View::InterfaceEntry>& entries);
 
     static Json Node(const Graph& flowgraph, const std::string& name);
     static Json NodeLayout(const Graph& flowgraph, const std::string& name);
 
-    static Json BlockDetail(const Graph& flowgraph, const Flowgraph::View::BlockData& data, bool full);
+    static Json BlockDetail(const Graph& flowgraph, const Flowgraph::View::BlockData& data, BlockDetailMode mode);
     static Json FlowgraphDetail(const Graph& flowgraph, bool full = false);
     static Json Implementations(const std::string& type);
 };
