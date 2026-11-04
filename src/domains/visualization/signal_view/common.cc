@@ -147,6 +147,7 @@ Result SignalViewFrequency::read(const Tensor& input) {
 Result SignalViewOverload::read(const Tensor& input) {
     *this = {};
     JST_CHECK(ReadAttribute(input, "clippedSamples", clippedSamples));
+    JST_CHECK(ReadAttribute(input, "receivedSamples", receivedSamples));
     JST_CHECK(ReadAttribute(input, "overloadFlags", flags));
     return Result::SUCCESS;
 }
@@ -155,14 +156,18 @@ namespace detail {
 
 namespace {
 
-std::string FormatCount(const U64 count) {
-    if (count >= 1000000) {
-        return jst::fmt::format("{:.1f}M", static_cast<F64>(count) / 1e6);
+std::string FormatPercent(const F64 ratio) {
+    const F64 percent = ratio * 100.0;
+    if (percent >= 10.0) {
+        return jst::fmt::format("{:.0f}%", percent);
     }
-    if (count >= 1000) {
-        return jst::fmt::format("{:.1f}k", static_cast<F64>(count) / 1e3);
+    if (percent >= 1.0) {
+        return jst::fmt::format("{:.1f}%", percent);
     }
-    return jst::fmt::format("{}", count);
+    if (percent >= 0.01) {
+        return jst::fmt::format("{:.2f}%", percent);
+    }
+    return "<0.01%";
 }
 
 }  // namespace
@@ -170,11 +175,11 @@ std::string FormatCount(const U64 count) {
 OverloadBadge FormatOverloadBadge(const bool clipped,
                                   const bool rf,
                                   const bool high,
-                                  const U64 clippedSamples) {
+                                  const F64 clipRatio) {
     std::vector<std::string> parts;
     if (clipped) {
-        parts.push_back(clippedSamples > 0
-            ? jst::fmt::format("CLIP {}", FormatCount(clippedSamples))
+        parts.push_back(clipRatio > 0.0
+            ? jst::fmt::format("CLIP {}", FormatPercent(clipRatio))
             : "CLIP");
     } else if (high) {
         parts.push_back("ADC HIGH");
@@ -205,6 +210,30 @@ void SignalViewCanvas::updateOverload(const Context& context) {
         }
         overload.lastClipped = source.clippedSamples;
     }
+
+    // Share of samples clipped over the last 0.5 to 1 s, from two counts
+    // taken half a second apart.
+    if (source.clippedSamples && source.receivedSamples) {
+        constexpr auto kStep = std::chrono::milliseconds(500);
+        const OverloadState::Count count{now, *source.clippedSamples, *source.receivedSamples};
+        if (!overload.newer || count.received < overload.newer->received) {
+            overload.older = count;
+            overload.newer = count;
+        } else if (now - overload.newer->time >= kStep) {
+            overload.older = overload.newer;
+            overload.newer = count;
+        }
+        const U64 received = count.received - overload.older->received;
+        overload.clipRatio = received > 0
+            ? static_cast<F64>(count.clipped - overload.older->clipped) /
+                  static_cast<F64>(received)
+            : overload.clipRatio;
+    }
+    if (overload.clipRatio > 0.0) {
+        overload.heldClipRatio = overload.clipRatio;
+    } else if (now >= overload.clipUntil) {
+        overload.heldClipRatio = 0.0;
+    }
     if (flags & (detail::kOverloadLargeAdc | detail::kOverloadSaturation)) {
         overload.clipUntil = now + kHold;
     }
@@ -221,7 +250,7 @@ void SignalViewCanvas::updateOverload(const Context& context) {
     const auto badge = detail::FormatOverloadBadge(now < overload.clipUntil,
                                                    now < overload.rfUntil,
                                                    now < overload.highUntil,
-                                                   source.clippedSamples.value_or(0));
+                                                   overload.heldClipRatio);
     auto element = text->get("overload");
     element.position = {
         axis->paddingScale().x - pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
