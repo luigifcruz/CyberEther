@@ -1,9 +1,11 @@
 #ifndef JETSTREAM_TESTS_SUPPORT_SCRIPTED_SOAPY_HH
 #define JETSTREAM_TESTS_SUPPORT_SCRIPTED_SOAPY_HH
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 #include "domains/io/soapy/library/soapysdr.hh"
@@ -25,7 +27,12 @@ struct Script {
     Settings applied;
     std::string failure;
     bool automaticGainSupported = true;
+    F64 sampleRateOffset = 0.0;
+    std::optional<F64> nextSampleRateReadback;
+    std::atomic<int> status{0};
+    std::atomic<U64> sampleRateWrites{0};
     std::atomic<U64> gainModeWrites{0};
+    std::atomic<bool> emitSamples{false};
     std::atomic<unsigned> activeReads{0};
     std::atomic<U64> concurrentChanges{0};
 
@@ -34,7 +41,12 @@ struct Script {
         applied = {};
         failure.clear();
         automaticGainSupported = true;
+        sampleRateOffset = 0.0;
+        nextSampleRateReadback.reset();
+        status = 0;
+        sampleRateWrites = 0;
         gainModeWrites = 0;
+        emitSamples = false;
         activeReads = 0;
         concurrentChanges = 0;
     }
@@ -47,6 +59,21 @@ struct Script {
     void fail(const std::string& call) {
         std::lock_guard lock(mutex);
         failure = call;
+    }
+
+    F64 readSampleRate() {
+        std::lock_guard lock(mutex);
+        if (activeReads > 0) {
+            ++concurrentChanges;
+        }
+        status = 0;
+        if (failure == "sampleRateReadback") {
+            failure.clear();
+            status = -1;
+        }
+        const F64 value = nextSampleRateReadback.value_or(applied.sampleRate);
+        nextSampleRateReadback.reset();
+        return value;
     }
 
     template<typename T>
@@ -72,7 +99,7 @@ inline Script& State() {
 inline SoapyApi Api() {
     SoapyApi api;
     api.lastError = [] { return "injected failure"; };
-    api.lastStatus = [] { return 0; };
+    api.lastStatus = [] { return State().status.load(); };
     api.free = [](void*) {};
     api.stringsClear = [](char***, std::size_t) {};
     api.kwargsFromString = [](const char*) { return SoapyAbi::Kwargs{}; };
@@ -88,11 +115,6 @@ inline SoapyApi Api() {
         return reinterpret_cast<SoapyAbi::Device*>(&State());
     };
     api.unmake = [](SoapyAbi::Device*) { return 0; };
-    api.getSampleRateRange = [](const SoapyAbi::Device*, int, std::size_t, std::size_t* count) {
-        static SoapyAbi::Range range{1.0e6, 10.0e6, 0.0};
-        *count = 1;
-        return &range;
-    };
     api.getFrequencyRange = [](const SoapyAbi::Device*, int, std::size_t, std::size_t* count) {
         static SoapyAbi::Range range{10.0e6, 2000.0e6, 0.0};
         *count = 1;
@@ -113,7 +135,11 @@ inline SoapyApi Api() {
         return State().set("frequency", &Settings::frequency, value);
     };
     api.setSampleRate = [](SoapyAbi::Device*, int, std::size_t, double value) {
-        return State().set("sampleRate", &Settings::sampleRate, value);
+        ++State().sampleRateWrites;
+        return State().set("sampleRate", &Settings::sampleRate, value + State().sampleRateOffset);
+    };
+    api.getSampleRate = [](const SoapyAbi::Device*, int, std::size_t) {
+        return State().readSampleRate();
     };
     api.hasGainMode = [](const SoapyAbi::Device*, int, std::size_t) {
         return State().automaticGainSupported;
@@ -137,12 +163,17 @@ inline SoapyApi Api() {
     };
     api.deactivateStream = [](SoapyAbi::Device*, SoapyAbi::Stream*, int, long long) { return 0; };
     api.closeStream = [](SoapyAbi::Device*, SoapyAbi::Stream*) { return 0; };
-    api.readStream = [](SoapyAbi::Device*, SoapyAbi::Stream*, void* const*, std::size_t, int*,
-                         long long*, long) {
+    api.readStream = [](SoapyAbi::Device*, SoapyAbi::Stream*, void* const* buffers,
+                         std::size_t count, int*, long long*, long) {
         ++State().activeReads;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        int result = SoapyAbi::Timeout;
+        if (State().emitSamples) {
+            std::fill_n(static_cast<CF32*>(buffers[0]), count, CF32{1.0f, 0.0f});
+            result = static_cast<int>(count);
+        }
         --State().activeReads;
-        return SoapyAbi::Timeout;
+        return result;
     };
     return api;
 }
