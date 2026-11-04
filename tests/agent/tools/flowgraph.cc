@@ -95,6 +95,7 @@ TEST_CASE("Agent exposes the consolidated tool surface", "[agent][tools]") {
         "get_block_docs",
         "inspect_flowgraph",
         "inspect_block",
+        "inspect_tensor",
         "apply_flowgraph_patch",
         "read_block_text",
         "find_connection_options",

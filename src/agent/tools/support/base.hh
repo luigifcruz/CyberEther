@@ -54,6 +54,7 @@ class Toolbox {
 
     static std::vector<Entry> Catalog();
     static std::vector<Entry> Inspect();
+    static std::vector<Entry> Tensors();
     static std::vector<Entry> Patch();
     static std::vector<Entry> Connections();
     static std::vector<Entry> Environment();

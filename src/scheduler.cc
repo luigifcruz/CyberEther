@@ -66,6 +66,10 @@ Result Scheduler::synchronize(const std::function<Result()>& fn) {
     return impl->synchronize(fn);
 }
 
+Result Scheduler::read(const std::function<Result()>& fn) {
+    return impl->read(fn);
+}
+
 Result Scheduler::present(std::unordered_set<std::string>& failedModules) {
     return impl->present(failedModules);
 }

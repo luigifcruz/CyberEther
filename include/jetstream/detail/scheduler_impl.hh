@@ -25,6 +25,7 @@ struct JETSTREAM_API Scheduler::Impl {
     virtual Result remove(const std::shared_ptr<Module>& module) = 0;
     virtual Result reload(const std::shared_ptr<Module>& module) = 0;
     virtual Result synchronize(const std::function<Result()>& fn) = 0;
+    virtual Result read(const std::function<Result()>& fn) = 0;
 
     virtual Result present(std::unordered_set<std::string>& failedModules) = 0;
     virtual Result compute(std::unordered_set<std::string>& failedModules) = 0;

@@ -54,6 +54,7 @@ const std::vector<Entry>& Toolbox::All() {
         const auto factories = {
             Catalog,
             Inspect,
+            Tensors,
             Patch,
             Text,
             Connections,
