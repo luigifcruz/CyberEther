@@ -6,6 +6,15 @@
 namespace Jetstream::Agent::Detail {
 namespace {
 
+std::vector<Flowgraph::View::InterfaceEntry> InterfaceEntries(const Block::Interface::EntryList& source) {
+    std::vector<Flowgraph::View::InterfaceEntry> result;
+    result.reserve(source.size());
+    for (const auto& [name, entry] : source) {
+        result.push_back({name, entry.label, entry.format, entry.help});
+    }
+    return result;
+}
+
 std::optional<Registry::FlowgraphRegistration> FindExample(const std::string& key, std::string& error) {
     if (!key.empty()) {
         const auto examples = Registry::ListAvailableFlowgraphs(key);
@@ -166,6 +175,16 @@ Json GetBlockDocs(const Invocation& call) {
     const auto prototype = AddDefaultWidth(call.host, type, j);
     if (prototype && prototype->config().serialize(defaultConfig) == Result::SUCCESS) {
         j["default_config"] = Serialize::CompactMap(defaultConfig);
+        j["config_keys"] = Json::array();
+        for (const auto& field : defaultConfig) {
+            j["config_keys"].push_back(field.key);
+        }
+    }
+    if (prototype && prototype->describe() == Result::SUCCESS) {
+        j["config_fields"] = Serialize::ConfigFields(InterfaceEntries(prototype->interface()->configs()), defaultConfig);
+        j["input_ports"] = Serialize::Interface(InterfaceEntries(prototype->interface()->inputs()));
+        j["output_ports"] = Serialize::Interface(InterfaceEntries(prototype->interface()->outputs()));
+        j["interface_scope"] = "default_config";
     }
     j["implementations"] = Serialize::Implementations(block.type);
 
@@ -178,7 +197,11 @@ Json GetBlockDocs(const Invocation& call) {
             }
 
             if (observed.empty()) {
-                j["config_fields"] = Serialize::Interface(data.interfaceConfigs);
+                j["config_fields"] = Serialize::ConfigFields(data.interfaceConfigs, data.config);
+                j["input_ports"] = Serialize::Interface(data.interfaceInputs);
+                j["output_ports"] = Serialize::Interface(data.interfaceOutputs);
+                j["interface_scope"] = "observed";
+                j["interface_block"] = data.name;
             }
 
             observed.push_back({
@@ -340,7 +363,17 @@ std::vector<Entry> Toolbox::Catalog() {
         }, SearchBlocks),
         Entry::FromJson({
             "get_block_docs",
-            "Inspect one registered block type. Returns documentation, supported implementations, default_width, and default_config in the base values expected by apply_flowgraph_patch, with long strings and arrays shortened. Consult the documentation for units. observed_interfaces lists existing instances of the type with their compact config and port names, and config_fields gives the first instance's config fields with help and options. Interfaces are runtime-defined, so when no instance exists, create or inspect one to see its active config fields and ports.",
+            "Inspect a registered block type without creating an instance. Returns "
+            "documentation, implementations, default_width, compact default_config and "
+            "serialized config_keys. Config values use apply_flowgraph_patch base units. Consult "
+            "the block documentation for units. input_ports, output_ports and config_fields "
+            "describe defaults (interface_scope='default_config'), or the first existing "
+            "instance (interface_scope='observed', identified by interface_block). "
+            "Conditional interfaces may change with config. observed_interfaces lists "
+            "all instances with compact configs and port names. config_fields includes "
+            "help/options; config_key names the writable serialized key, with config_index "
+            "for tensor controls. Fields without config_key are UI-only. Discovery may "
+            "enumerate devices.",
             R"({"type":"object","required":["type"],"properties":{"type":{"type":"string","description":"Exact block type from search_blocks, inspect_flowgraph, or inspect_block."}},"additionalProperties":false})",
             {.needsGraph = true},
         }, GetBlockDocs),

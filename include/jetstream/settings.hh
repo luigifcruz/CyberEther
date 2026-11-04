@@ -73,11 +73,22 @@ struct JETSTREAM_API Settings {
     };
 
     struct Interface {
-        std::string themeKey = "Dark";
-        bool infoPanelEnabled = true;
-        bool backgroundParticles = true;
+        struct FlowgraphEntry {
+            std::string path;
+            std::string title;
+            U64 accessed = 0;
 
-        JST_SERDES(themeKey, infoPanelEnabled, backgroundParticles);
+            JST_SERDES(path, title, accessed);
+        };
+
+        std::string themeKey = "Dark";
+        bool backgroundParticles = true;
+        bool showTips = true;
+        std::vector<FlowgraphEntry> recentFlowgraphs;
+        std::vector<FlowgraphEntry> favoriteFlowgraphs;
+        std::string welcomeVersion;
+
+        JST_SERDES(themeKey, backgroundParticles, showTips, recentFlowgraphs, favoriteFlowgraphs, welcomeVersion);
     };
 
     struct Maps {
@@ -111,9 +122,12 @@ struct JETSTREAM_API Settings {
             std::string reasoningContext;
             U64 outputLength = 0;
             std::vector<std::string> reasoningEfforts;
+            bool priced = false;
+            F64 inputCost = 0.0;
+            F64 outputCost = 0.0;
 
             JST_SERDES(provider, id, name, contextLength, maxOutputTokens, reasoningEffort, reasoningContext, outputLength,
-                       reasoningEfforts);
+                       reasoningEfforts, priced, inputCost, outputCost);
         };
 
         struct Voice {
@@ -145,10 +159,9 @@ struct JETSTREAM_API Settings {
 
     struct Developer {
         I32 logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
-        bool latencyEnabled = false;
         bool timingEnabled = false;
 
-        JST_SERDES(logLevel, latencyEnabled, timingEnabled);
+        JST_SERDES(logLevel, timingEnabled);
     };
 
     struct Benchmark {

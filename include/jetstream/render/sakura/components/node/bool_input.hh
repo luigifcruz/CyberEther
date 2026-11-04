@@ -2,31 +2,33 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_BOOL_INPUT_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace Jetstream::Sakura {
 
-struct NodeBoolInput {
+struct NodeBoolInput : public Component {
     struct Config {
         std::string id;
         bool value = false;
-        std::function<void(bool)> onChange;
+        Callback<void(bool)> onChange;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeBoolInput();
     ~NodeBoolInput();
 
-    NodeBoolInput(NodeBoolInput&&) noexcept;
-    NodeBoolInput& operator=(NodeBoolInput&&) noexcept;
+    void update(Config config);
 
-    NodeBoolInput(const NodeBoolInput&) = delete;
-    NodeBoolInput& operator=(const NodeBoolInput&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
+    std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
 
  private:
     struct Impl;

@@ -84,6 +84,8 @@ class JETSTREAM_API Provider {
         U64 contextLength = 0;
         U64 outputLength = 0;
         std::vector<std::string> reasoningEfforts;
+        std::optional<F64> inputCost;
+        std::optional<F64> outputCost;
     };
 
     struct Function {

@@ -4,41 +4,29 @@
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
-#include <memory>
-#include <string>
-
 namespace Jetstream::Sakura {
 
-struct Layer {
-    using Child = std::function<void(const Context&)>;
-
-    using Anchor = Sakura::Anchor;
-
+struct Layer : public Component {
     struct Config {
-        std::string id;
-        Anchor anchor = Anchor::BottomRight;
-        Extent2D<F32> size = {0.0f, 0.0f};
-        F32 topOffset = 0.0f;
-        U64 focusRequest = 0;
-        U64 blurRequest = 0;
+        Component* content = nullptr;
+
+        bool operator==(const Config&) const = default;
     };
 
     Layer();
     ~Layer();
 
-    Layer(Layer&&) noexcept;
-    Layer& operator=(Layer&&) noexcept;
+    void update(Config config);
+    virtual bool covers(const Extent2D<F32>& point) const;
+    virtual bool modal() const;
+    bool occludes(const Extent2D<F32>& point) const override;
 
-    Layer(const Layer&) = delete;
-    Layer& operator=(const Layer&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx, Child child);
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
-    struct Impl;
-    std::unique_ptr<Impl> impl;
+    Component* content = nullptr;
 };
 
 }  // namespace Jetstream::Sakura

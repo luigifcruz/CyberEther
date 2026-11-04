@@ -1,170 +1,243 @@
 #include <jetstream/render/sakura/components/node/float_input.hh>
 
-#include "base.hh"
+#include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/node/text_input.hh>
+
+#include "../../detail/helpers.hh"
+#include "../../metrics.hh"
+#include "parse.hh"
+#include "pointer.hh"
+
+#include <algorithm>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
+namespace {
+
+std::string FormatFloat(F32 value, I32 precision) {
+    return jst::fmt::format("{:.{}f}", value, std::clamp(precision, 0, 12));
+}
+
+}  // namespace
+
 struct NodeFloatInput::Impl {
     Config config;
+    Box background;
+    NodeTextInput input;
+    NodeTextInput stepInput;
+    Label labels;
+    Rect minusRect;
+    Rect toggleRect;
+    Rect plusRect;
+    Pressable minus;
+    Pressable toggle;
+    Pressable plus;
+    Pointer pointer;
+    bool stepEditing = false;
+
+    bool stepped() const {
+        return config.step.has_value();
+    }
 };
 
 NodeFloatInput::NodeFloatInput() {
     this->impl = std::make_unique<Impl>();
+    addChild(impl->input);
+    impl->stepInput.setVisible(false);
 }
 
 NodeFloatInput::~NodeFloatInput() = default;
-NodeFloatInput::NodeFloatInput(NodeFloatInput&&) noexcept = default;
-NodeFloatInput& NodeFloatInput::operator=(NodeFloatInput&&) noexcept = default;
 
-bool NodeFloatInput::update(Config config) {
-    this->impl->config = std::move(config);
-    return true;
+void NodeFloatInput::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
+    impl->config = std::move(config);
+    const auto& current = impl->config;
+    impl->input.update({
+        .id = current.id + ":value",
+        .value = FormatFloat(current.value, current.precision),
+        .unit = current.unit,
+        .submit = NodeTextInput::Submit::OnEnter,
+        .selectAllOnFocus = true,
+        .characterFilter = ScientificCharacter,
+        .onChange = [this](const std::string& text) {
+            const auto parsed = ParseFloat(text);
+            if (!parsed.has_value()) {
+                return;
+            }
+            const F32 next = static_cast<F32>(*parsed);
+            if (next != impl->config.value && impl->config.onChange) {
+                impl->config.onChange(next);
+            }
+        },
+    });
+    if (impl->stepped()) {
+        impl->stepInput.update({
+            .id = current.id + ":step",
+            .value = FormatFloat(current.step.value_or(0.0f), current.precision),
+            .submit = NodeTextInput::Submit::OnEnter,
+            .selectAllOnFocus = true,
+            .characterFilter = ScientificCharacter,
+            .textColorKey = "text_secondary",
+            .onChange = [this](const std::string& text) {
+                const auto parsed = ParseFloat(text);
+                if (parsed.has_value() && impl->config.onStepChange) {
+                    impl->config.onStepChange(static_cast<F32>(*parsed));
+                }
+            },
+            .onDeactivate = [this]() {
+                impl->stepEditing = false;
+                impl->stepInput.setVisible(false);
+            },
+        });
+        setChildren({&impl->background, &impl->input, &impl->stepInput, &impl->labels});
+    } else {
+        setChildren({&impl->input});
+    }
+    const bool showStepInput = impl->stepped() && impl->stepEditing;
+    if (impl->stepInput.visible() != showStepInput) {
+        impl->stepInput.setVisible(showStepInput);
+    }
 }
 
-void NodeFloatInput::render(const Context& ctx) const {
-    const auto& config = this->impl->config;
+Extent2D<F32> NodeFloatInput::measure(const Context& ctx, Extent2D<F32> available) {
+    const F32 height = impl->stepped() ? NodeFrameHeight(ctx) + NodeFontOf(ctx) + 4.0f : NodeFrameHeight(ctx);
+    return {FillLength(available.x), FitLength(Px(ctx, height), available.y)};
+}
 
-    F32 value = config.value;
-    F32 step = config.step.value_or(0.0f);
+void NodeFloatInput::layout(const Context& ctx) {
+    const Rect bounds = frame();
+    const Rect clipRect = Intersect(bounds, clip());
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
 
-    char fmt[16];
-    snprintf(fmt, sizeof(fmt), "%%.%df", config.precision);
-
-    ImGui::PushID(config.id.c_str());
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
-    if (!config.step.has_value()) {
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::InputFloat("##float", &value, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
-            if (config.onChange) {
-                config.onChange(value);
-            }
-        }
-        if (!config.unit.empty()) {
-            const ImVec2 inputPos = ImGui::GetItemRectMin();
-            const ImVec2 inputSize = ImGui::GetItemRectSize();
-            const ImVec2 textSize = ImGui::CalcTextSize(config.unit.c_str());
-            const ImVec2 textPos(inputPos.x + inputSize.x - textSize.x - Scale(ctx, 3.0f),
-                                 inputPos.y + (inputSize.y - textSize.y) * 0.5f);
-            ImGui::GetWindowDrawList()->AddText(textPos,
-                                                ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "text_secondary")),
-                                                config.unit.c_str());
-        }
-        ImGui::PopStyleVar();
-        ImGui::PopID();
+    if (!impl->stepped()) {
+        layoutChild(ctx, impl->input, bounds);
         return;
     }
 
-    const F32 availWidth = ImGui::GetContentRegionAvail().x;
-    const F32 btnHeight = ImGui::GetTextLineHeight() + Scale(ctx, 4.0f);
-    const ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "card"));
-    const ImU32 btnColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "text_secondary"));
-    const ImU32 btnActiveColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "text_primary"));
-    const F32 rounding = ImGui::GetStyle().FrameRounding;
-    const F32 btnWidth = availWidth * 0.2f;
-    const F32 stepInputWidth = availWidth - btnWidth * 2.0f;
+    const F32 inputHeight = Px(ctx, NodeFrameHeight(ctx));
+    const F32 buttonHeight = Px(ctx, NodeFontOf(ctx) + 4.0f);
+    const F32 buttonWidth = bounds.width * 0.2f;
+    const F32 toggleWidth = bounds.width - buttonWidth * 2.0f;
+    const F32 rowY = bounds.y + inputHeight;
+    impl->minusRect = {bounds.x, rowY, buttonWidth, buttonHeight};
+    impl->toggleRect = {bounds.x + buttonWidth, rowY, toggleWidth, buttonHeight};
+    impl->plusRect = {bounds.x + buttonWidth + toggleWidth, rowY, buttonWidth, buttonHeight};
 
-    const auto drawCenteredLabel = [&](const char* label,
-                                       const ImVec2& min,
-                                       const ImVec2& max,
-                                       const bool hovered) {
-        const ImVec2 textSize = ImGui::CalcTextSize(label);
-        ImGui::GetWindowDrawList()->AddText(ImVec2((min.x + max.x) * 0.5f - textSize.x * 0.5f,
-                                                   (min.y + max.y) * 0.5f - textSize.y * 0.5f),
-                                            hovered ? btnActiveColor : btnColor,
-                                            label);
+    impl->background.update({
+        .instances = {{
+            .rect = Snap({bounds.x, bounds.y, bounds.width, inputHeight + buttonHeight}),
+            .visible = !bounds.empty(),
+            .backgroundColor = ctx.color("card"),
+        }},
+        .clip = bounds,
+        .cornerRadius = Px(ctx, kFrameRounding),
+    });
+
+    const auto hoveredRect = [&](const Rect& rect) {
+        return impl->pointer.inside(Intersect(rect, clipRect));
     };
-    const auto renderStepButton = [&](const char* id, const char* label, const F32 delta) {
-        ImGui::InvisibleButton(id, ImVec2(btnWidth, btnHeight));
-        const bool hovered = ImGui::IsItemHovered();
-        if (hovered) {
-            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        }
-        if (ImGui::IsItemDeactivated()) {
-            value += delta;
-            if (config.onChange) {
-                config.onChange(value);
-            }
-        }
-        drawCenteredLabel(label, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
+    const bool minusHovered = hoveredRect(impl->minusRect);
+    const bool toggleHovered = !impl->stepEditing && hoveredRect(impl->toggleRect);
+    const bool plusHovered = hoveredRect(impl->plusRect);
+
+    const auto labelColor = [&](bool hovered) {
+        return ctx.color(hovered ? "text_primary" : "text_secondary");
     };
+    impl->labels.update({
+        .instances = {
+            {.rect = impl->minusRect, .str = "-", .visible = true, .color = labelColor(minusHovered),
+             .fontSize = fontSize, .alignment = {1, 1}},
+            {.rect = impl->toggleRect, .str = "Step Size", .visible = !impl->stepEditing,
+             .color = labelColor(toggleHovered), .fontSize = fontSize, .alignment = {1, 1}},
+            {.rect = impl->plusRect, .str = "+", .visible = true, .color = labelColor(plusHovered),
+             .fontSize = fontSize, .alignment = {1, 1}},
+        },
+        .clip = bounds,
+        .fontName = Typography::MonoFont,
+        .maxCharacters = 32,
+        .capacity = 3,
+    });
 
-    const ImVec2 cellPos = ImGui::GetCursorScreenPos();
-    const F32 inputHeight = ImGui::GetFrameHeight();
-    const F32 totalHeight = inputHeight + btnHeight;
-    ImGui::GetWindowDrawList()->AddRectFilled(cellPos,
-                                              ImVec2(cellPos.x + availWidth, cellPos.y + totalHeight),
-                                              bgColor,
-                                              rounding);
-
-    ImGui::SetNextItemWidth(availWidth);
-    if (ImGui::InputFloat("##float", &value, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
-        if (config.onChange) {
-            config.onChange(value);
-        }
+    layoutChild(ctx, impl->background, bounds);
+    layoutChild(ctx, impl->input, {bounds.x, bounds.y, bounds.width, inputHeight});
+    if (impl->stepInput.visible()) {
+        layoutChild(ctx, impl->stepInput, impl->toggleRect);
     }
-    if (!config.unit.empty()) {
-        const ImVec2 inputPos = ImGui::GetItemRectMin();
-        const ImVec2 inputSize = ImGui::GetItemRectSize();
-        const ImVec2 textSize = ImGui::CalcTextSize(config.unit.c_str());
-        const ImVec2 textPos(inputPos.x + inputSize.x - textSize.x - Scale(ctx, 3.0f),
-                             inputPos.y + (inputSize.y - textSize.y) * 0.5f);
-        ImGui::GetWindowDrawList()->AddText(textPos,
-                                            ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "text_secondary")),
-                                            config.unit.c_str());
+    layoutChild(ctx, impl->labels, bounds);
+}
+
+std::optional<SurfaceCursor> NodeFloatInput::cursorAt(const Extent2D<F32>& point) const {
+    if (!impl->stepped()) {
+        return std::nullopt;
+    }
+    const auto over = [&](const Rect& rect) {
+        return Intersect(Intersect(rect, frame()), clip()).contains(point.x, point.y);
+    };
+    if (over(impl->minusRect) || (!impl->stepEditing && over(impl->toggleRect)) || over(impl->plusRect)) {
+        return SurfaceCursor::Hand;
+    }
+    return std::nullopt;
+}
+
+bool NodeFloatInput::mouseEvent(const MouseEvent& event) {
+    const Rect area = Intersect(frame(), clip());
+    const bool stepped = impl->stepped();
+    const bool moved = impl->pointer.track(event, area, {impl->minusRect, impl->toggleRect, impl->plusRect});
+    if (moved && stepped) {
+        invalidate(Dirty::Layout);
+    }
+    if (mouseEventChildren(event)) {
+        return true;
+    }
+    if (!impl->stepped()) {
+        return false;
     }
 
-    const ImVec2 inputMax = ImGui::GetItemRectMax();
-    const ImVec2 btnRowPos(cellPos.x, inputMax.y);
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-    ImGui::SetCursorScreenPos(btnRowPos);
-    renderStepButton("-##float_step_minus", "-", -step);
-
-    ImGui::SameLine(0.0f, 0.0f);
-    const ImGuiID stepEditId = ImGui::GetID("##step_editing");
-    const ImGuiID stepFocusId = ImGui::GetID("##step_focus");
-    ImGuiStorage* storage = ImGui::GetStateStorage();
-    if (!storage->GetBool(stepEditId, false)) {
-        ImGui::InvisibleButton("##step_toggle", ImVec2(stepInputWidth, btnHeight));
-        const bool hovered = ImGui::IsItemHovered();
-        if (hovered) {
-            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        }
-        if (ImGui::IsItemDeactivated()) {
-            storage->SetBool(stepEditId, true);
-            storage->SetBool(stepFocusId, true);
-        }
-        drawCenteredLabel("Step Size", ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
-    } else {
-        ImGui::SetNextItemWidth(stepInputWidth);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                            ImVec2(ImGui::GetStyle().FramePadding.x,
-                                   (btnHeight - ImGui::GetTextLineHeight()) * 0.5f));
-        ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, "text_secondary"));
-        if (storage->GetBool(stepFocusId, false)) {
-            ImGui::SetKeyboardFocusHere();
-            storage->SetBool(stepFocusId, false);
-        }
-        if (ImGui::InputFloat("##float_step", &step, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
-            if (config.onStepChange) {
-                config.onStepChange(step);
+    auto& config = impl->config;
+    switch (event.type) {
+        case MouseEventType::Click:
+            if (impl->minus.click(event, impl->minusRect) || impl->plus.click(event, impl->plusRect)) {
+                return true;
             }
+            if (!impl->stepEditing && impl->toggle.click(event, impl->toggleRect)) {
+                return true;
+            }
+            return false;
+        case MouseEventType::Leave:
+        case MouseEventType::Cancel:
+            impl->minus.release(event, impl->minusRect);
+            impl->plus.release(event, impl->plusRect);
+            impl->toggle.release(event, impl->toggleRect);
+            return false;
+        case MouseEventType::Release: {
+            const F32 step = config.step.value_or(0.0f);
+            if (impl->minus.release(event, impl->minusRect, false)) {
+                if (config.onChange) {
+                    config.onChange(config.value - step);
+                }
+                return true;
+            }
+            if (impl->plus.release(event, impl->plusRect, false)) {
+                if (config.onChange) {
+                    config.onChange(config.value + step);
+                }
+                return true;
+            }
+            if (impl->toggle.release(event, impl->toggleRect, false)) {
+                impl->stepEditing = true;
+                impl->stepInput.setVisible(true);
+                impl->stepInput.focusWhenPlaced(false);
+                return true;
+            }
+            return false;
         }
-        if (ImGui::IsItemDeactivated()) {
-            storage->SetBool(stepEditId, false);
-            storage->SetBool(stepFocusId, false);
-        }
-        ImGui::PopStyleColor();
-        ImGui::PopStyleVar();
+        default:
+            return false;
     }
-
-    ImGui::SameLine(0.0f, 0.0f);
-    renderStepButton("+##float_step_plus", "+", step);
-    ImGui::PopStyleVar();
-
-    ImGui::SetCursorScreenPos(ImVec2(cellPos.x, cellPos.y + totalHeight));
-    ImGui::Dummy(ImVec2(0.0f, 0.0f));
-    ImGui::PopStyleVar();
-    ImGui::PopID();
 }
 
 }  // namespace Jetstream::Sakura

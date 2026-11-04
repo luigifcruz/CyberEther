@@ -12,7 +12,6 @@
 #include "jetstream/types.hh"
 
 #include <deque>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -113,12 +112,61 @@ struct MailSetAgentMcp {
 
 struct MailNewFlowgraph {};
 
+struct MailOpenStartTab {};
+
+struct MailCloseStartTab {};
+
+struct MailFocusStartTab {};
+
+struct MailSetWelcomeSection {
+    WelcomeSection section = WelcomeSection::All;
+};
+
+struct MailSetWelcomeSidebar {
+    bool open = true;
+};
+
+struct MailSetWelcomeQuery {
+    std::string query;
+};
+
+struct MailSetWelcomeCategory {
+    std::string category;
+};
+
+struct MailSetWelcomePage {
+    U64 page = 0;
+};
+
+struct MailOpenSettings {
+    SettingsSection section = SettingsSection::General;
+};
+
+struct MailCloseSettings {};
+
+struct MailFocusSettings {};
+
+struct MailOpenDocs {
+    std::string page;
+    std::string anchor;
+};
+
+struct MailCloseDocs {};
+
+struct MailSetDocsQuery {
+    std::string query;
+};
+
+struct MailFocusDocs {};
+
 struct MailOpenFlowgraph {};
 
 struct MailCloseFlowgraph {
     std::string flowgraph;
     bool force = false;
 };
+
+struct MailCancelCloseFlowgraph {};
 
 struct MailSaveFlowgraph {
     std::string flowgraph;
@@ -129,6 +177,19 @@ struct MailOpenFlowgraphPath {
     std::string path;
 };
 
+struct MailToggleFavoriteFlowgraph {
+    std::string path;
+};
+
+struct MailForgetRecentFlowgraph {
+    std::string path;
+};
+
+struct MailRememberFlowgraph {
+    std::string path;
+    std::string title;
+};
+
 struct MailDropFlowgraphPath {
     std::string path;
 };
@@ -137,8 +198,17 @@ struct MailOpenFlowgraphBlob {
     std::vector<char> blob;
 };
 
+struct MailOpenFlowgraphExample {
+    std::string key;
+};
+
 struct MailFocusFlowgraph {
     std::string flowgraph;
+};
+
+struct MailSetFlowgraphPaused {
+    std::string flowgraph;
+    bool paused = false;
 };
 
 struct MailApplyTheme {
@@ -147,12 +217,20 @@ struct MailApplyTheme {
 
 struct MailOpenModal {
     ModalContent content;
-    std::optional<SettingsSection> settings;
     std::optional<std::string> flowgraph;
 };
 
 struct MailSetSettingsSection {
     SettingsSection section = SettingsSection::General;
+};
+
+struct MailSetIntelligencePage {
+    IntelligencePage page = IntelligencePage::Overview;
+};
+
+struct MailSetRegistryPage {
+    RegistryPage page = RegistryPage::Overview;
+    std::string plugin;
 };
 
 struct MailAddPluginPath {
@@ -187,16 +265,16 @@ struct MailOpenUrl {
     bool notifyResult = false;
 };
 
+struct MailRevealPath {
+    std::string path;
+};
+
 struct MailCopyText {
     std::string label;
     std::string value;
 };
 
 struct MailQuit {};
-
-struct MailSetInfoPanelEnabled {
-    bool value = false;
-};
 
 struct MailSetBackgroundParticles {
     bool value = false;
@@ -212,20 +290,105 @@ struct MailSetMapsRendering {
     Render::Components::MapRenderingOptions value;
 };
 
-struct MailSetFlowgraphMetadataVisible {
+struct MailSetShowTips {
     bool value = false;
 };
 
-struct MailSetFlowgraphMetadataSearch {
-    std::string value;
-};
-
 struct MailSetFlowgraphEnvironmentVisible {
+    std::string flowgraph;
     bool value = false;
 };
 
 struct MailSetFlowgraphEnvironmentSearch {
+    std::string flowgraph;
     std::string value;
+};
+
+struct MailOpenTerminal {
+    std::string flowgraph;
+    std::optional<U64> split;
+    bool stacked = false;
+    bool tile = false;
+};
+
+struct MailCloseTerminal {
+    U64 terminal = 0;
+};
+
+struct MailCloseTerminalTab {
+    U64 tab = 0;
+};
+
+struct MailFocusTerminalTab {
+    U64 tab = 0;
+};
+
+struct MailSetTerminalTabLayout {
+    U64 tab = 0;
+    std::optional<TileMeta> tiles;
+};
+
+struct MailTerminalInput {
+    struct Text {
+        std::string value;
+        std::optional<KeyModifiers> modifiers;
+    };
+
+    struct Paste {
+        std::string value;
+    };
+
+    struct DropFiles {
+        std::vector<std::string> paths;
+    };
+
+    struct Scroll {
+        I32 rows = 0;
+        Extent2D<F32> position = {0.0f, 0.0f};
+        KeyModifiers modifiers;
+    };
+
+    struct ScrollTo {
+        U64 row = 0;
+    };
+
+    struct Focus {
+        bool value = false;
+    };
+
+    struct Zoom {
+        I32 step = 0;
+    };
+
+    struct OpenLink {
+        std::string uri;
+    };
+
+    struct Search {
+        std::optional<std::string> query;
+    };
+
+    struct SearchStep {
+        bool older = true;
+    };
+
+    using Input = std::variant<Sakura::Terminal::Grid,
+                               KeyEvent,
+                               Text,
+                               Paste,
+                               DropFiles,
+                               Scroll,
+                               ScrollTo,
+                               Sakura::Terminal::Selection,
+                               MouseEvent,
+                               Focus,
+                               Zoom,
+                               OpenLink,
+                               Search,
+                               SearchStep>;
+
+    U64 terminal = 0;
+    Input input;
 };
 
 struct MailSetGraphicsScale {
@@ -234,14 +397,6 @@ struct MailSetGraphicsScale {
 
 struct MailSetGraphicsDevice {
     DeviceType value = DeviceType::None;
-};
-
-struct MailSetGraphicsFramerate {
-    U64 value = 60;
-};
-
-struct MailSetDebugLatencyEnabled {
-    bool value = false;
 };
 
 struct MailSetDebugTimingEnabled {
@@ -257,8 +412,6 @@ struct MailCheckForUpdates {};
 struct MailDownloadUpdate {};
 
 struct MailApplyUpdate {};
-
-struct MailDismissUpdate {};
 
 struct MailSetRemoteBroker {
     Instance::Remote::Config::Broker value;
@@ -316,7 +469,7 @@ struct MailBrowseConfigPath {
     std::string path;
     bool save = false;
     std::vector<std::string> extensions;
-    std::function<void(std::string)> onSelect;
+    Sakura::Callback<void(std::string)> onSelect;
 };
 
 struct MailFilePickerNavigate {
@@ -355,6 +508,10 @@ struct MailSetFeedbackText {
 };
 
 struct MailSubmitFeedback {};
+
+struct MailOpenOnboarding {};
+
+struct MailDismissOnboarding {};
 
 struct MailSetFlowgraphInfo {
     std::string flowgraph;
@@ -422,7 +579,15 @@ struct MailReconfigureBlock {
     std::string blockId;
     Parser::Map config;
     bool silent = false;
-    std::function<void(Result)> onComplete;
+    Sakura::Callback<void(Result)> onComplete;
+};
+
+struct MailSetConfigDraft {
+    std::string flowgraph;
+    std::string block;
+    std::string field;
+    std::string base;
+    std::optional<std::string> text;
 };
 
 struct MailCopyBlock {
@@ -442,7 +607,18 @@ struct MailSetNodeMeta {
     std::optional<NodeMeta> base;
 };
 
+struct MailSetEditorMeta {
+    std::string flowgraph;
+    EditorMeta meta;
+};
+
 struct MailSetConfigCollapsed {
+    std::string flowgraph;
+    std::string block;
+    bool collapsed = false;
+};
+
+struct MailSetMetricsCollapsed {
     std::string flowgraph;
     std::string block;
     bool collapsed = false;
@@ -454,39 +630,33 @@ struct MailSetConfigDetached {
     bool detached = false;
 };
 
-struct MailCreateStack {
+struct MailSetFlowgraphLayout {
     std::string flowgraph;
+    std::optional<TileMeta> tiles;
 };
 
-struct MailDeleteStack {
-    std::string flowgraph;
-    std::string stackId;
-};
-
-struct MailSetStackGeometry {
-    std::string flowgraph;
-    std::string stackId;
-    F32 x = 0.0f;
-    F32 y = 0.0f;
-    F32 width = 0.0f;
-    F32 height = 0.0f;
-};
-
-struct MailSetStackLayout {
-    std::string flowgraph;
-    std::string stackId;
-    std::optional<StackDockLayoutMeta> layout;
-};
-
-struct MailRemoveStackBlock {
+struct MailRemoveLayoutBlock {
     std::string flowgraph;
     std::string block;
 };
 
-struct MailRenameStackBlock {
+struct MailRenameLayoutBlock {
     std::string flowgraph;
     std::string oldId;
     std::string newId;
+};
+
+struct MailOpenDocumentation {
+    std::string flowgraph;
+    std::string block;
+};
+
+struct MailCloseDocumentation {
+    std::string flowgraph;
+};
+
+struct MailCloseFlowgraphDescription {
+    std::string flowgraph;
 };
 
 struct MailSetSurfaceDetached {
@@ -510,7 +680,11 @@ struct MailStartRemote {
 struct MailStopRemote {};
 
 struct MailApproveRemoteClient {
-    std::string code;
+    std::string sessionId;
+};
+
+struct MailRemoveRemoteClient {
+    std::string sessionId;
 };
 
 struct MailSurfaceInput {
@@ -539,17 +713,40 @@ struct MailResizeSurface {
 };
 
 using Mail = std::variant<MailNewFlowgraph,
+                          MailOpenStartTab,
+                          MailCloseStartTab,
+                          MailFocusStartTab,
+                          MailSetWelcomeSection,
+                          MailSetWelcomeSidebar,
+                          MailSetWelcomeQuery,
+                          MailSetWelcomeCategory,
+                          MailSetWelcomePage,
+                          MailOpenSettings,
+                          MailCloseSettings,
+                          MailFocusSettings,
+                          MailOpenDocs,
+                          MailCloseDocs,
+                          MailSetDocsQuery,
+                          MailFocusDocs,
                           MailOpenFlowgraph,
                           MailCreateBlock,
                           MailCloseFlowgraph,
+                          MailCancelCloseFlowgraph,
                           MailSaveFlowgraph,
                           MailOpenFlowgraphPath,
+                          MailToggleFavoriteFlowgraph,
+                          MailForgetRecentFlowgraph,
+                          MailRememberFlowgraph,
                           MailDropFlowgraphPath,
                           MailOpenFlowgraphBlob,
+                          MailOpenFlowgraphExample,
                           MailFocusFlowgraph,
+                          MailSetFlowgraphPaused,
                           MailApplyTheme,
                           MailOpenModal,
                           MailSetSettingsSection,
+                          MailSetRegistryPage,
+                          MailSetIntelligencePage,
                           MailAddPluginPath,
                           MailRemovePluginPath,
                           MailReloadPlugin,
@@ -559,19 +756,23 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailNotifyResult,
                           MailOpenUrl,
                           MailCopyText,
+                          MailRevealPath,
                           MailQuit,
-                          MailSetInfoPanelEnabled,
                           MailSetBackgroundParticles,
+                          MailSetShowTips,
                           MailSetMapsHighResolution,
                           MailSetMapsRendering,
                           MailClearMapsCache,
-                          MailSetFlowgraphMetadataVisible,
-                          MailSetFlowgraphMetadataSearch,
                           MailSetFlowgraphEnvironmentVisible,
                           MailSetFlowgraphEnvironmentSearch,
+                          MailOpenTerminal,
+                          MailCloseTerminal,
+                          MailCloseTerminalTab,
+                          MailFocusTerminalTab,
+                          MailSetTerminalTabLayout,
+                          MailTerminalInput,
                           MailSetGraphicsScale,
                           MailSetGraphicsDevice,
-                          MailSetGraphicsFramerate,
                           MailSetAgentEnabled,
                           MailSetAgentChatVisible,
                           MailSetAgentVoiceVisible,
@@ -593,13 +794,11 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetAgentVoiceModel,
                           MailSetAgentVoiceName,
                           MailSetAgentMcp,
-                          MailSetDebugLatencyEnabled,
                           MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,
                           MailCheckForUpdates,
                           MailDownloadUpdate,
                           MailApplyUpdate,
-                          MailDismissUpdate,
                           MailSetRemoteBroker,
                           MailSetRemoteCodec,
                           MailSetRemoteFramerate,
@@ -624,6 +823,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetBenchmarkModule,
                           MailSetFeedbackText,
                           MailSubmitFeedback,
+                          MailOpenOnboarding,
+                          MailDismissOnboarding,
                           MailSetFlowgraphInfo,
                           MailOpenRenameBlock,
                           MailRenameBlock,
@@ -633,22 +834,26 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailConnectBlock,
                           MailDisconnectBlock,
                           MailReconfigureBlock,
+                          MailSetConfigDraft,
                           MailCopyBlock,
                           MailPasteBlock,
                           MailSetNodeMeta,
+                          MailSetEditorMeta,
                           MailSetConfigCollapsed,
+                          MailSetMetricsCollapsed,
                           MailSetConfigDetached,
-                          MailCreateStack,
-                          MailDeleteStack,
-                          MailSetStackGeometry,
-                          MailSetStackLayout,
-                          MailRemoveStackBlock,
-                          MailRenameStackBlock,
+                          MailSetFlowgraphLayout,
+                          MailRemoveLayoutBlock,
+                          MailRenameLayoutBlock,
+                          MailOpenDocumentation,
+                          MailCloseDocumentation,
+                          MailCloseFlowgraphDescription,
                           MailSetSurfaceDetached,
                           MailSetSurfaceConfigCollapsed,
                           MailStartRemote,
                           MailStopRemote,
                           MailApproveRemoteClient,
+                          MailRemoveRemoteClient,
                           MailSurfaceInput,
                           MailResizeSurface>;
 

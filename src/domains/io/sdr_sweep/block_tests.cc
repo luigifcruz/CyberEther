@@ -40,7 +40,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(metrics.size() == 3);
     const std::vector<std::string> names{"bufferFill", "bufferLoss", "sweepSpeed"};
     const std::vector<std::string> labels{"Buffer Fill", "Buffer Loss", "Sweep Speed"};
-    const std::vector<std::string> expectedValues{"0.0%", "0.00%", "0.00 GHz/s (0.0 Hz)"};
+    const std::vector<std::string> expectedValues{"0%", "0.0%", "0.00 GHz/s (0.0 Hz)"};
     const std::vector<Parser::Map> formats{
         {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
         {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}},

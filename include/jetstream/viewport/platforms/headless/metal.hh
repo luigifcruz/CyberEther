@@ -29,9 +29,7 @@ class Headless<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Result create();
     Result destroy();
 
-    Result createImgui();
-    Result destroyImgui();
-    F32 scale(const F32& scale) const;
+    Extent2D<F32> framebufferSize() const;
 
     MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable);
     Extent2D<U64> getSwapchainExtent() const;

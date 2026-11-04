@@ -3,6 +3,8 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 #include <cctype>
 
 namespace Jetstream {
@@ -21,16 +23,18 @@ struct FlowgraphConfigVectorInlineField {
             JST_CHECK(formatCurrentValue());
             parsedValue = nextValue;
         }
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
+            .content = &input,
         });
         input.update({
             .id = this->config.id + "Input",
             .value = buffer,
             .unit = unit,
-            .submit = Sakura::TextInput::Submit::OnCommit,
+            .submit = Sakura::NodeTextInput::Submit::OnCommit,
             .onChange = [this](const std::string& value) {
                 applyBuffer(value);
             },
@@ -38,10 +42,8 @@ struct FlowgraphConfigVectorInlineField {
         return Result::SUCCESS;
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            input.render(ctx);
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -184,6 +186,7 @@ struct FlowgraphConfigVectorInlineField {
     std::string unit;
     int precision = 2;
     std::string buffer = "[]";
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     Sakura::NodeTextInput input;
 };

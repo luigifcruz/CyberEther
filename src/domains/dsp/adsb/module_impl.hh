@@ -81,6 +81,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
 
     Result createPresent();
     Result destroyPresent();
+    Result capture();
     Result present();
 
 };

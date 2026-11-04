@@ -62,6 +62,9 @@ class JETSTREAM_API Shapes : public Generic {
     Result getSizes(const std::string& elementId, std::span<Extent2D<F32>>& sizes) const;
     Result updateSizes(const std::string& elementId = {});
 
+    Result getHoles(const std::string& elementId, std::span<Rect>& holes) const;
+    Result updateHoles(const std::string& elementId = {});
+
     // Updates an element's shared border/corner properties after build (they are
     // otherwise fixed at create). Applies to every instance of the element.
     Result updateProperties(const std::string& elementId,
@@ -69,7 +72,10 @@ class JETSTREAM_API Shapes : public Generic {
                             F32 borderWidth,
                             const ColorRGBA<F32>& borderColor);
 
+    Result updateCorners(const std::string& elementId, std::span<const U8> corners);
+
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
+    Result updateTranslation(const Extent2D<F32>& translation);
     Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
     void enabled(bool value);
 

@@ -3,6 +3,8 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphConfigPathField {
@@ -20,14 +22,18 @@ struct FlowgraphConfigPathField {
         }
         value.clear();
         JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
+            .content = &input,
         });
+        pathTooltip.update(this->config.id + "Path", value);
         input.update({
             .id = this->config.id + "Path",
             .value = value,
+            .tooltip = pathTooltip.overlay(),
             .onChange = [this](const std::string& nextValue) {
                 Parser::Map patch;
                 patch[this->config.name] = nextValue;
@@ -42,10 +48,8 @@ struct FlowgraphConfigPathField {
         return Result::SUCCESS;
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            input.render(ctx);
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -76,6 +80,8 @@ struct FlowgraphConfigPathField {
     std::vector<std::string> extensions;
     std::string value;
     Mode mode = Mode::Open;
+    FlowgraphFieldTooltip help;
+    FlowgraphFieldTooltip pathTooltip;
     Sakura::NodeField frame;
     Sakura::NodePathInput input;
 };

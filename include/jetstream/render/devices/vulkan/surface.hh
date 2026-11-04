@@ -14,20 +14,23 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
     Result create() override;
     Result destroy() override;
 
-    const Extent2D<U64>& size(const Extent2D<U64>& size) override;
-
  protected:
-    Result prepare();
+    Result reorderPrograms(const std::vector<std::shared_ptr<Program>>& ordered) override;
+    bool appendable() const override;
+    Result validateAppend(const std::vector<std::shared_ptr<Program>>& programs,
+                          const std::vector<std::shared_ptr<Kernel>>& kernels) const override;
+    Result createAppended(const std::vector<std::shared_ptr<Program>>& programs,
+                          const std::vector<std::shared_ptr<Kernel>>& kernels) override;
+    bool created() const override;
+    Result rebuildFramebuffer() override;
     Result encode(VkCommandBuffer& commandBuffer, bool visible = true);
     void commit();
 
  private:
     std::shared_ptr<TextureImp<DeviceType::Vulkan>> framebufferResolve;
     std::shared_ptr<TextureImp<DeviceType::Vulkan>> framebuffer;
-    VkFramebuffer framebufferObject;
-    VkRenderPass renderPass;
-    Extent2D<U64> requestedSize;
-    bool framebufferChanged = false;
+    VkFramebuffer framebufferObject = VK_NULL_HANDLE;
+    VkRenderPass renderPass = VK_NULL_HANDLE;
 
     std::vector<std::shared_ptr<ProgramImp<DeviceType::Vulkan>>> programs;
     std::vector<std::shared_ptr<KernelImp<DeviceType::Vulkan>>> kernels;

@@ -26,6 +26,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 #include <gst/app/gstappsrc.h>
 #include <gst/sdp/sdp.h>
@@ -73,8 +74,8 @@ bool Instance::Remote::started() const {
     return impl->started_;
 }
 
-Result Instance::Remote::captureFrame() {
-    return impl->captureFrame();
+Result Instance::Remote::captureFrame(bool presented) {
+    return impl->captureFrame(presented);
 }
 
 const std::string& Instance::Remote::roomId() const {
@@ -99,8 +100,12 @@ std::vector<std::string> Instance::Remote::waitlist() const {
     return impl->waitlist_;
 }
 
-Result Instance::Remote::approveClient(const std::string& code) {
-    return impl->approveClient(code);
+Result Instance::Remote::approveClient(const std::string& sessionId) {
+    return impl->approveClient(sessionId);
+}
+
+Result Instance::Remote::removeClient(const std::string& sessionId) {
+    return impl->removeClient(sessionId);
 }
 
 bool Instance::Remote::Impl::supported() const {
@@ -276,22 +281,48 @@ Result Instance::Remote::Impl::rollbackCreate() {
     return result;
 }
 
-Result Instance::Remote::Impl::captureFrame(std::chrono::steady_clock::time_point now) {
+Result Instance::Remote::Impl::captureFrame(bool presented, std::chrono::steady_clock::time_point now) {
     if (this->started_ && !this->signallerRunning) {
         JST_WARN("[REMOTE] Stopping remote streaming after the signaller disconnected.");
         return this->destroy();
     }
 
     JST_CHECK(processInput());
-    if (this->frameCapture && now >= this->nextCaptureTime) {
-        const auto interval = std::chrono::nanoseconds(GST_SECOND / config.video.framerate);
-        if (now - this->nextCaptureTime >= interval) {
-            this->nextCaptureTime = now;
-        }
-        this->nextCaptureTime += interval;
-        this->frameCapture->captureFrame();
+    if (!this->frameCapture) {
+        return Result::SUCCESS;
     }
+    if (this->captureRequested.exchange(false)) {
+        this->capturePending = true;
+    }
+    if (now < this->nextCaptureTime) {
+        this->capturePending = this->capturePending || presented;
+        return Result::SUCCESS;
+    }
+    if (!presented) {
+        if (this->capturePending && viewport) {
+            viewport->requestRedraw();
+        }
+        return Result::SUCCESS;
+    }
+    if (this->frameCapture->captureFrame() == Result::SKIP) {
+        this->capturePending = true;
+        return Result::SUCCESS;
+    }
+    const auto interval = std::chrono::nanoseconds(GST_SECOND / config.video.framerate);
+    if (now - this->nextCaptureTime >= interval) {
+        this->nextCaptureTime = now;
+    }
+    this->nextCaptureTime += interval;
+    this->capturePending = false;
     return Result::SUCCESS;
+}
+
+void Instance::Remote::Impl::requestKeyframe() {
+    forceKeyframe.store(true);
+    captureRequested.store(true);
+    if (viewport) {
+        viewport->requestRedraw();
+    }
 }
 
 Result Instance::Remote::Impl::processInput() {
@@ -316,41 +347,58 @@ Result Instance::Remote::Impl::processInput() {
     return Result::SUCCESS;
 }
 
-Result Instance::Remote::Impl::approveClient(const std::string& code) {
+Result Instance::Remote::Impl::approveClient(const std::string& sessionId) {
     if (!this->started_) {
         JST_ERROR("[REMOTE] Can't approve client when session is not started.");
         return Result::ERROR;
     }
 
-    auto to_lower = [](std::string_view s) {
-        std::string out(s);
-        std::transform(out.begin(), out.end(), out.begin(),
-                       [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
-        return out;
-    };
-
-    std::vector<std::string> waitlist;
+    bool waiting = false;
     {
         std::lock_guard<std::mutex> lock(remoteStateMutex);
-        waitlist = waitlist_;
+        waiting = !sessionId.empty() && std::ranges::find(waitlist_, sessionId) != waitlist_.end();
     }
-    for (const auto& sessionId : waitlist) {
-        JST_DEBUG("[REMOTE] Candidate session: {}", sessionId);
-
-        if (sessionId.ends_with(to_lower(code))) {
-            JST_INFO("[REMOTE] Client authorization code '{}' approved.", code);
-
-            if (!sendSignallerMessage({{"type", "approveSession"}, {"sessionId", sessionId}})) {
-                JST_ERROR("[REMOTE] Failed to send client approval.");
-                return Result::ERROR;
-            }
-
-            return Result::SUCCESS;
-        }
+    if (!waiting) {
+        JST_ERROR("[REMOTE] Client session '{}' not found.", sessionId);
+        return Result::ERROR;
     }
 
-    JST_ERROR("[REMOTE] Client authorization code '{}' not found.", code);
-    return Result::ERROR;
+    if (!sendSignallerMessage({{"type", "approveSession"}, {"sessionId", sessionId}})) {
+        JST_ERROR("[REMOTE] Failed to send client approval.");
+        return Result::ERROR;
+    }
+
+    JST_INFO("[REMOTE] Client session '{}' approved.", sessionId);
+    return Result::SUCCESS;
+}
+
+Result Instance::Remote::Impl::removeClient(const std::string& sessionId) {
+    if (!this->started_) {
+        JST_ERROR("[REMOTE] Can't remove client when session is not started.");
+        return Result::ERROR;
+    }
+
+    bool known = false;
+    {
+        std::lock_guard<std::mutex> lock(remoteStateMutex);
+        known = !sessionId.empty() &&
+                (std::ranges::find(waitlist_, sessionId) != waitlist_.end() ||
+                 std::ranges::any_of(clients_, [&](const auto& client) {
+                     return client.sessionId == sessionId;
+                 }));
+    }
+    if (!known) {
+        JST_ERROR("[REMOTE] Client session '{}' not found.", sessionId);
+        return Result::ERROR;
+    }
+
+    if (!sendSignallerMessage({{"type", "endSession"}, {"sessionId", sessionId}})) {
+        JST_ERROR("[REMOTE] Failed to remove client.");
+        return Result::ERROR;
+    }
+
+    JST_INFO("[REMOTE] Client session '{}' removed.", sessionId);
+    return Result::SUCCESS;
 }
 
 //
@@ -626,56 +674,56 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         return static_cast<float>(std::round(n));
     };
 
-    auto mapKey = [](const std::string& code, const std::string& key) -> ImGuiKey {
+    auto mapKey = [](const std::string& code, const std::string& key) -> KeyCode {
         if (code.size() == 4 && code.rfind("Key", 0) == 0) {
             char c = static_cast<char>(std::toupper(static_cast<unsigned char>(code[3])));
-            if (c >= 'A' && c <= 'Z') return static_cast<ImGuiKey>(ImGuiKey_A + (c - 'A'));
+            if (c >= 'A' && c <= 'Z') return static_cast<KeyCode>(static_cast<U16>(KeyCode::A) + (c - 'A'));
         }
         if (code.rfind("Digit", 0) == 0 && code.size() == 6 && std::isdigit(static_cast<unsigned char>(code[5]))) {
             char d = code[5];
-            return static_cast<ImGuiKey>(ImGuiKey_0 + (d - '0'));
+            return static_cast<KeyCode>(static_cast<U16>(KeyCode::Digit0) + (d - '0'));
         }
         if (!code.empty() && code[0] == 'F' && code.size() <= 3 && std::isdigit(static_cast<unsigned char>(code[1]))) {
             int f = std::clamp(std::stoi(code.substr(1)), 1, 24);
-            return static_cast<ImGuiKey>(ImGuiKey_F1 + (f - 1));
+            return static_cast<KeyCode>(static_cast<U16>(KeyCode::F1) + (f - 1));
         }
-        if (code == "ArrowLeft")                       return ImGuiKey_LeftArrow;
-        if (code == "ArrowRight")                      return ImGuiKey_RightArrow;
-        if (code == "ArrowUp")                         return ImGuiKey_UpArrow;
-        if (code == "ArrowDown")                       return ImGuiKey_DownArrow;
-        if (code == "AltLeft")                         return ImGuiKey_LeftAlt;
-        if (code == "AltRight")                        return ImGuiKey_RightAlt;
-        if (code == "ControlLeft")                     return ImGuiKey_LeftCtrl;
-        if (code == "ControlRight")                    return ImGuiKey_RightCtrl;
-        if (code == "ShiftLeft")                       return ImGuiKey_LeftShift;
-        if (code == "ShiftRight")                      return ImGuiKey_RightShift;
-        if (code == "MetaLeft")                        return ImGuiKey_LeftSuper;
-        if (code == "MetaRight")                       return ImGuiKey_RightSuper;
-        if (code == "Enter" || key == "Enter")         return ImGuiKey_Enter;
-        if (code == "Escape" || key == "Escape")       return ImGuiKey_Escape;
-        if (code == "Backspace" || key == "Backspace") return ImGuiKey_Backspace;
-        if (code == "Tab" || key == "Tab")             return ImGuiKey_Tab;
-        if (code == "Space" || key == " ")             return ImGuiKey_Space;
-        if (code == "Delete")                          return ImGuiKey_Delete;
-        if (code == "Insert")                          return ImGuiKey_Insert;
-        if (code == "Home")                            return ImGuiKey_Home;
-        if (code == "End")                             return ImGuiKey_End;
-        if (code == "PageUp")                          return ImGuiKey_PageUp;
-        if (code == "PageDown")                        return ImGuiKey_PageDown;
-        if (code == "Minus")                           return ImGuiKey_Minus;
-        if (code == "Equal")                           return ImGuiKey_Equal;
-        if (code == "BracketLeft")                     return ImGuiKey_LeftBracket;
-        if (code == "BracketRight")                    return ImGuiKey_RightBracket;
-        if (code == "Backslash")                       return ImGuiKey_Backslash;
-        if (code == "Semicolon")                       return ImGuiKey_Semicolon;
-        if (code == "Quote")                           return ImGuiKey_Apostrophe;
-        if (code == "Comma")                           return ImGuiKey_Comma;
-        if (code == "Period")                          return ImGuiKey_Period;
-        if (code == "Slash")                           return ImGuiKey_Slash;
+        if (code == "ArrowLeft")                       return KeyCode::LeftArrow;
+        if (code == "ArrowRight")                      return KeyCode::RightArrow;
+        if (code == "ArrowUp")                         return KeyCode::UpArrow;
+        if (code == "ArrowDown")                       return KeyCode::DownArrow;
+        if (code == "AltLeft")                         return KeyCode::LeftAlt;
+        if (code == "AltRight")                        return KeyCode::RightAlt;
+        if (code == "ControlLeft")                     return KeyCode::LeftCtrl;
+        if (code == "ControlRight")                    return KeyCode::RightCtrl;
+        if (code == "ShiftLeft")                       return KeyCode::LeftShift;
+        if (code == "ShiftRight")                      return KeyCode::RightShift;
+        if (code == "MetaLeft")                        return KeyCode::LeftSuper;
+        if (code == "MetaRight")                       return KeyCode::RightSuper;
+        if (code == "Enter" || key == "Enter")         return KeyCode::Enter;
+        if (code == "Escape" || key == "Escape")       return KeyCode::Escape;
+        if (code == "Backspace" || key == "Backspace") return KeyCode::Backspace;
+        if (code == "Tab" || key == "Tab")             return KeyCode::Tab;
+        if (code == "Space" || key == " ")             return KeyCode::Space;
+        if (code == "Delete")                          return KeyCode::Delete;
+        if (code == "Insert")                          return KeyCode::Insert;
+        if (code == "Home")                            return KeyCode::Home;
+        if (code == "End")                             return KeyCode::End;
+        if (code == "PageUp")                          return KeyCode::PageUp;
+        if (code == "PageDown")                        return KeyCode::PageDown;
+        if (code == "Minus")                           return KeyCode::Minus;
+        if (code == "Equal")                           return KeyCode::Equal;
+        if (code == "BracketLeft")                     return KeyCode::LeftBracket;
+        if (code == "BracketRight")                    return KeyCode::RightBracket;
+        if (code == "Backslash")                       return KeyCode::Backslash;
+        if (code == "Semicolon")                       return KeyCode::Semicolon;
+        if (code == "Quote")                           return KeyCode::Apostrophe;
+        if (code == "Comma")                           return KeyCode::Comma;
+        if (code == "Period")                          return KeyCode::Period;
+        if (code == "Slash")                           return KeyCode::Slash;
         if (code == "Backquote" ||
             code == "Backtick"  ||
-            code == "QuoteLeft")                       return ImGuiKey_GraveAccent;
-        return ImGuiKey_None;
+            code == "QuoteLeft")                       return KeyCode::GraveAccent;
+        return KeyCode::Unknown;
     };
 
     if (kind == "mouse") {
@@ -686,39 +734,40 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         const int w = size.x;
         const int h = size.y;
 
-        ImGuiIO& io = ImGui::GetIO();
-        const float px = denorm(nx, w) / io.DisplayFramebufferScale.x;
-        const float py = denorm(ny, h) / io.DisplayFramebufferScale.y;
+        const auto scale = framebufferScale();
+        const float px = denorm(nx, w) / scale.x;
+        const float py = denorm(ny, h) / scale.y;
 
         if (act == "move") {
             JST_TRACE("[REMOTE] Mouse: move (x='{}', y='{}', nx='{}', ny='{}')", px, py, nx, ny);
-            io.AddMousePosEvent(px, py);
+            pushInput(Render::InputQueue::Pointer{Extent2D<F32>{px, py}});
             return;
         }
 
         if (act == "down" || act == "up" || act == "click" || act == "dblclick") {
             const int domButton = j.value("button", 0);
-            const int b = mapMouseButton(domButton);
-            if (b < 0 || b >= ImGuiMouseButton_COUNT) {
+            const auto pressed = Render::InputQueue::ButtonFromIndex(mapMouseButton(domButton));
+            if (!pressed) {
                 return;
             }
+            const MouseButton b = *pressed;
 
-            io.AddMousePosEvent(px, py);
+            pushInput(Render::InputQueue::Pointer{Extent2D<F32>{px, py}});
 
             if (act == "down") {
-                JST_TRACE("[REMOTE] Mouse: down (b='{}', x='{}', y='{}')", b, px, py);
+                JST_TRACE("[REMOTE] Mouse: down (b='{}', x='{}', y='{}')", static_cast<int>(b), px, py);
                 remoteInputStates[sessionId].mouseButtons.insert(b);
-                io.AddMouseButtonEvent(b, true);
+                pushInput(Render::InputQueue::Button{b, true});
                 return;
             }
             if (act == "up") {
-                JST_TRACE("[REMOTE] Mouse: up b={}, x={}, y={}", b, px, py);
+                JST_TRACE("[REMOTE] Mouse: up b={}, x={}, y={}", static_cast<int>(b), px, py);
                 remoteInputStates[sessionId].mouseButtons.erase(b);
-                io.AddMouseButtonEvent(b, false);
+                pushInput(Render::InputQueue::Button{b, false});
                 return;
             }
             if (act == "click" || act == "dblclick") {
-                JST_TRACE("[REMOTE] Mouse: ignore (b='{}', x='{}', y='{}')", b, px, py);
+                JST_TRACE("[REMOTE] Mouse: ignore (b='{}', x='{}', y='{}')", static_cast<int>(b), px, py);
                 return;
             }
         }
@@ -738,8 +787,7 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         dx = -dx;
         dy = -dy;
 
-        ImGuiIO& io = ImGui::GetIO();
-        io.AddMouseWheelEvent(static_cast<float>(dx), static_cast<float>(dy));
+        pushInput(Render::InputQueue::Wheel{{static_cast<F32>(dx), static_cast<F32>(dy)}});
         JST_TRACE("[REMOTE] Wheel: (dx='{}', dy='{}', mode='{}')", dx, dy, deltaMode);
         return;
     }
@@ -754,7 +802,9 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
             JST_WARN("[REMOTE] Rejected invalid text input size.");
             return;
         }
-        ImGui::GetIO().AddInputCharactersUTF8(text.c_str());
+        for (const char32_t codepoint : Render::InputQueue::DecodeUtf8(text)) {
+            pushInput(Render::InputQueue::Text{codepoint});
+        }
         return;
     }
 
@@ -779,8 +829,8 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         state.shift = shift;
         state.meta = meta;
 
-        const ImGuiKey k = mapKey(code, key);
-        if (k != ImGuiKey_None) {
+        const KeyCode k = mapKey(code, key);
+        if (k != KeyCode::Unknown) {
             if (pressed) state.keys.insert(k);
             else state.keys.erase(k);
         }
@@ -790,6 +840,22 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
     }
 
     JST_TRACE("[REMOTE] Unknown control (kind='{}').", kind);
+}
+
+void Instance::Remote::Impl::pushInput(Render::InputQueue::Event event) {
+    if (!viewport) {
+        return;
+    }
+    std::visit([](auto& typed) {
+        if constexpr (requires { typed.remote; }) {
+            typed.remote = true;
+        }
+    }, event);
+    viewport->input().push(std::move(event));
+}
+
+Extent2D<F32> Instance::Remote::Impl::framebufferScale() const {
+    return viewport ? viewport->metrics(1.0f).framebufferScale : Extent2D<F32>{1.0f, 1.0f};
 }
 
 void Instance::Remote::Impl::enqueueInput(std::string sessionId, nlohmann::json payload) {
@@ -810,15 +876,15 @@ void Instance::Remote::Impl::resetInput(const std::string& sessionId) {
     if (it == remoteInputStates.end()) {
         return;
     }
-    for (const int button : it->second.mouseButtons) {
-        ImGui::GetIO().AddMouseButtonEvent(button, false);
+    for (const MouseButton button : it->second.mouseButtons) {
+        pushInput(Render::InputQueue::Button{button, false});
     }
     remoteInputStates.erase(it);
     synchronizeKeyboardState();
 }
 
 void Instance::Remote::Impl::synchronizeKeyboardState() {
-    std::unordered_set<ImGuiKey> keys;
+    std::unordered_set<KeyCode> keys;
     bool alt = false;
     bool ctrl = false;
     bool shift = false;
@@ -832,17 +898,18 @@ void Instance::Remote::Impl::synchronizeKeyboardState() {
         meta |= state.meta;
     }
 
-    ImGuiIO& io = ImGui::GetIO();
-    io.AddKeyEvent(ImGuiMod_Alt, alt);
-    io.AddKeyEvent(ImGuiMod_Ctrl, ctrl);
-    io.AddKeyEvent(ImGuiMod_Shift, shift);
-    io.AddKeyEvent(ImGuiMod_Super, meta);
+    pushInput(Render::InputQueue::Modifiers{KeyModifiers{
+        .control = ctrl,
+        .shift = shift,
+        .alt = alt,
+        .super = meta,
+    }});
 
-    for (const ImGuiKey key : appliedRemoteKeys) {
-        if (!keys.contains(key)) io.AddKeyEvent(key, false);
+    for (const KeyCode key : appliedRemoteKeys) {
+        if (!keys.contains(key)) pushInput(Render::InputQueue::Key{key, false});
     }
-    for (const ImGuiKey key : keys) {
-        if (!appliedRemoteKeys.contains(key)) io.AddKeyEvent(key, true);
+    for (const KeyCode key : keys) {
+        if (!appliedRemoteKeys.contains(key)) pushInput(Render::InputQueue::Key{key, true});
     }
     appliedRemoteKeys = std::move(keys);
 }
@@ -1275,6 +1342,16 @@ Result Instance::Remote::Impl::startStream() {
         }
     }
 
+    GstPad* encoderSrcPad = gst_element_get_static_pad(newEncoder, "src");
+    gst_pad_add_probe(encoderSrcPad, GST_PAD_PROBE_TYPE_EVENT_UPSTREAM,
+        +[](GstPad*, GstPadProbeInfo* info, gpointer data) {
+            if (gst_video_event_is_force_key_unit(GST_PAD_PROBE_INFO_EVENT(info))) {
+                reinterpret_cast<Impl*>(data)->requestKeyframe();
+            }
+            return GST_PAD_PROBE_OK;
+        }, this, nullptr);
+    gst_object_unref(encoderSrcPad);
+
     if (config.video.codec == Instance::Remote::CodecType::H264) {
         if (!makeElement("encodedcaps", "capsfilter")) {
             return fail();
@@ -1354,7 +1431,7 @@ Result Instance::Remote::Impl::startStream() {
 
     initialFrameTime = std::chrono::steady_clock::now();
     lastKeyframeTime = initialFrameTime;
-    forceKeyframe.store(true);
+    requestKeyframe();
 
     {
         std::lock_guard<std::mutex> lock(streamMutex);
@@ -1701,6 +1778,16 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
                                                         },
                                                         GConnectFlags(0));
 
+    auto* connectionContext = new WebRtcSignalContext{this, sessionId};
+    session->connectionHandler = g_signal_connect_data(G_OBJECT(session->webrtc),
+                                                        "notify::connection-state",
+                                                        G_CALLBACK(onConnectionStateCallback),
+                                                        connectionContext,
+                                                        [](gpointer data, GClosure*) {
+                                                            delete reinterpret_cast<WebRtcSignalContext*>(data);
+                                                        },
+                                                        GConnectFlags(0));
+
     if (!gst_element_sync_state_with_parent(session->payloader) ||
         !gst_element_sync_state_with_parent(session->rtpCaps) ||
         !gst_element_sync_state_with_parent(session->webrtc) ||
@@ -1729,7 +1816,7 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
         std::lock_guard<std::mutex> inputLock(inputMutex);
         inputSessionOrder.push_back(sessionId);
     }
-    forceKeyframe.store(true);
+    requestKeyframe();
 
     return Result::SUCCESS;
 }
@@ -1767,6 +1854,10 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
         if (session->negotiationHandler) {
             g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->negotiationHandler);
             session->negotiationHandler = 0;
+        }
+        if (session->connectionHandler) {
+            g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->connectionHandler);
+            session->connectionHandler = 0;
         }
     }
 
@@ -2284,6 +2375,16 @@ void Instance::Remote::Impl::onNegotiationNeededCallback(GstElement* self, gpoin
         it->second->negotiationReady = true;
     }
     context->impl->createOfferIfReady(context->sessionId);
+}
+
+void Instance::Remote::Impl::onConnectionStateCallback(GstElement* self, GParamSpec* pspec, gpointer user_data) {
+    (void)pspec;
+    auto* context = reinterpret_cast<WebRtcSignalContext*>(user_data);
+    GstWebRTCPeerConnectionState state;
+    g_object_get(self, "connection-state", &state, nullptr);
+    if (state == GST_WEBRTC_PEER_CONNECTION_STATE_CONNECTED) {
+        context->impl->requestKeyframe();
+    }
 }
 
 void Instance::Remote::Impl::onOfferCreatedCallback(GstPromise* promise, gpointer user_data) {

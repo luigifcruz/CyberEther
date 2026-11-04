@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_RENDER_BASE_VERTEX_HH
 #define JETSTREAM_RENDER_BASE_VERTEX_HH
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -34,6 +35,11 @@ class JETSTREAM_API Vertex {
 
  protected:
     Config config;
+
+ private:
+    std::atomic_bool surfaceOwned = false;
+
+    friend class Surface;
 };
 
 }  // namespace Jetstream::Render

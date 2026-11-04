@@ -9,27 +9,25 @@
 
 namespace Jetstream::Sakura {
 
-struct ProgressBar {
+struct ProgressBar : public Component {
     struct Config {
-        std::string id;
         F32 value = 0.0f;
         std::string overlay;
-        Extent2D<F32> size = {-1.0f, 20.0f};
+        Extent2D<F32> size = {Fill, 20.0f};
         std::string colorKey = "action_btn";
         std::string backgroundColorKey;
+
+        bool operator==(const Config&) const = default;
     };
 
     ProgressBar();
     ~ProgressBar();
 
-    ProgressBar(ProgressBar&&) noexcept;
-    ProgressBar& operator=(ProgressBar&&) noexcept;
+    void update(Config config);
 
-    ProgressBar(const ProgressBar&) = delete;
-    ProgressBar& operator=(const ProgressBar&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

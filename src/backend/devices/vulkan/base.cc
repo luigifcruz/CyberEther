@@ -500,7 +500,6 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     {
         VkDescriptorPoolSize poolSizes[] = {
             { VK_DESCRIPTOR_TYPE_SAMPLER, 8192 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8192 },
             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 8192 },
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8192 },
             { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 8192 },
@@ -521,6 +520,17 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
         JST_VK_CHECK_THROW(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool), [&]{
             JST_FATAL("[VULKAN] Can't create descriptor pool.")
+        });
+    }
+
+    // Create pipeline cache.
+
+    {
+        VkPipelineCacheCreateInfo pipelineCacheInfo{};
+        pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+
+        JST_VK_CHECK_THROW(vkCreatePipelineCache(device, &pipelineCacheInfo, nullptr, &pipelineCache), [&]{
+            JST_FATAL("[VULKAN] Can't create pipeline cache.")
         });
     }
 
@@ -593,6 +603,9 @@ Vulkan::~Vulkan() {
     vkFreeCommandBuffers(device, defaultCommandPool, 1, &defaultCommandBuffer);
     vkDestroyCommandPool(device, defaultCommandPool, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+    if (pipelineCache != VK_NULL_HANDLE) {
+        vkDestroyPipelineCache(device, pipelineCache, nullptr);
+    }
 
     if (debugReportCallback != VK_NULL_HANDLE) {
         PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =

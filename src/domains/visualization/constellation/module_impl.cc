@@ -67,6 +67,9 @@ Result ConstellationImpl::create() {
     // Calculate number of points.
 
     numberOfPoints = input.size();
+    samples.assign(numberOfPoints, {});
+    displayedSamples.assign(numberOfPoints, {});
+    updateSamplesFlag = false;
 
     return Result::SUCCESS;
 }
@@ -84,6 +87,8 @@ Result ConstellationImpl::createPresent() {
                   "skipping present creation.");
         return Result::SUCCESS;
     }
+
+    appliedTheme.reset();
 
     JST_DEBUG("[MODULE_CONSTELLATION] Creating present resources...");
 
@@ -136,7 +141,8 @@ Result ConstellationImpl::createPresent() {
     {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
-        cfg.clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        cfg.retained = true;
+        cfg.clearColor = interaction.theme.background;
         JST_CHECK(axis->surfaceUnderlay(cfg));
         JST_CHECK(shapes->surface(cfg));
         JST_CHECK(axis->surfaceOverlay(cfg));
@@ -145,7 +151,7 @@ Result ConstellationImpl::createPresent() {
     }
 
     JST_CHECK(updateAxisState());
-    JST_CHECK(updatePointPositions());
+    updatePositionsFlag = true;
 
     // Register surface manifest.
 
@@ -172,6 +178,37 @@ Result ConstellationImpl::destroyPresent() {
     return Result::SUCCESS;
 }
 
+Result ConstellationImpl::applyTheme() {
+    const auto& theme = interaction.theme;
+    if (appliedTheme == theme) {
+        return Result::SUCCESS;
+    }
+    if (renderSurface) {
+        renderSurface->clearColor(theme.background);
+    }
+    if (axis) {
+        JST_CHECK(axis->updateColors(theme.grid, theme.majorGrid, theme.foreground));
+    }
+    std::span<ColorRGBA<F32>> colors;
+    JST_CHECK(shapes->getColors("constellation_points", colors));
+    std::fill(colors.begin(), colors.end(), theme.foreground);
+    JST_CHECK(shapes->updateColors("constellation_points"));
+    appliedTheme = theme;
+    return Result::SUCCESS;
+}
+
+Result ConstellationImpl::capture() {
+    if (!updateSamplesFlag) {
+        return Result::SUCCESS;
+    }
+
+    std::copy(samples.begin(), samples.end(), displayedSamples.begin());
+    updateSamplesFlag = false;
+    updatePositionsFlag = true;
+
+    return Result::SUCCESS;
+}
+
 Result ConstellationImpl::present() {
     if (!shapes) {
         return Result::SUCCESS;
@@ -181,6 +218,7 @@ Result ConstellationImpl::present() {
 
     auto surfaceEvents = surfaceConsumeSurfaceEvents();
     auto inputEvents = surfaceConsumeInputEvents();
+    bool redraw = !surfaceEvents.empty() || !inputEvents.empty();
 
     interaction = ProcessSurfaceInteraction(interaction,
                                             std::move(surfaceEvents),
@@ -210,22 +248,30 @@ Result ConstellationImpl::present() {
         }
     }
 
+    JST_CHECK(applyTheme());
+
     if (interaction.viewChanged) {
         renderSurface->size(interaction.viewSize);
         surfaceUpdateManifestSize("default", interaction.viewSize);
         JST_CHECK(updateAxisState());
-        JST_CHECK(updatePointPositions());
+        updatePositionsFlag = true;
     }
 
     // Process update flags.
 
     if (updatePositionsFlag) {
+        JST_CHECK(updatePointPositions());
         JST_CHECK(shapes->updatePositions());
         updatePositionsFlag = false;
+        redraw = true;
     }
 
     JST_CHECK(shapes->present());
     JST_CHECK(axis->present());
+
+    if (redraw) {
+        renderSurface->invalidate();
+    }
 
     return Result::SUCCESS;
 }
@@ -247,8 +293,9 @@ Result ConstellationImpl::updateAxisState() {
         return jst::fmt::format("{:.2f}", position / zoom);
     };
 
-    axis->setShowFrameTicks(interaction.placement != SurfacePlacementType::Attached);
-
+    JST_CHECK(axis->setMinorTicks(interaction.placement == SurfacePlacementType::Attached
+        ? Render::Components::Axis::AttachedMinorTicks
+        : Render::Components::Axis::DetachedMinorTicks));
     JST_CHECK(axis->updateTickFormatters(formatter, formatter));
 
     const auto& vs = interaction.viewSize;

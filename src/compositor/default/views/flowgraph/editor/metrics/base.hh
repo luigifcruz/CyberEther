@@ -7,6 +7,8 @@
 #include "table.hh"
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 #include "jetstream/parser.hh"
 
 #include <string>
@@ -25,10 +27,12 @@ struct FlowgraphMetricInstance {
         } else if (kind == "table") {
             table.update(std::move(config));
         } else {
+            unknownHelp.update(config.id, config.help);
             unknownFrame.update({
                 .id = config.id,
                 .label = config.label,
-                .help = config.help,
+                .tooltip = unknownHelp.overlay(),
+                .content = &unknownText.component(),
             });
             unknownText.update({
                 .id = config.id + "Unsupported",
@@ -37,18 +41,15 @@ struct FlowgraphMetricInstance {
         }
     }
 
-    void render(const Sakura::Context& ctx) const {
+    Sakura::Component& component() {
         if (kind == "progressbar") {
-            progress.render(ctx);
+            return progress.component();
         } else if (kind == "label") {
-            label.render(ctx);
+            return label.component();
         } else if (kind == "table") {
-            table.render(ctx);
-        } else {
-            unknownFrame.render(ctx, [this](const Sakura::Context& ctx) {
-                unknownText.render(ctx);
-            });
+            return table.component();
         }
+        return unknownFrame;
     }
 
  private:
@@ -56,6 +57,7 @@ struct FlowgraphMetricInstance {
     FlowgraphMetricProgressBar progress;
     FlowgraphMetricLabel label;
     FlowgraphMetricTable table;
+    FlowgraphFieldTooltip unknownHelp;
     Sakura::NodeField unknownFrame;
     FlowgraphMetricError unknownText;
 };

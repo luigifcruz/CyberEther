@@ -5,6 +5,7 @@
 
 #include "../../model/messages.hh"
 #include "../../views/modal/feedback.hh"
+#include "../../support/feedback.hh"
 
 #include <string>
 
@@ -40,6 +41,9 @@ struct FeedbackModalPresenter {
             },
             .onSubmit = [enqueue]() {
                 enqueue(MailSubmitFeedback{});
+            },
+            .onClose = [enqueue]() {
+                enqueue(MailCloseModal{});
             },
         };
     }

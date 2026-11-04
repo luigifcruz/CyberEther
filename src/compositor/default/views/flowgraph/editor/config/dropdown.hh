@@ -3,6 +3,8 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphConfigDropdownField {
@@ -24,10 +26,12 @@ struct FlowgraphConfigDropdownField {
                 break;
             }
         }
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
+            .content = &combo,
         });
         combo.update({
             .id = this->config.id + "Combo",
@@ -45,10 +49,8 @@ struct FlowgraphConfigDropdownField {
         return Result::SUCCESS;
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            combo.render(ctx);
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -74,6 +76,7 @@ struct FlowgraphConfigDropdownField {
     std::vector<std::string> values;
     std::vector<std::string> labels;
     int currentIndex = -1;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     Sakura::NodeCombo combo;
 };

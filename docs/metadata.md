@@ -15,7 +15,7 @@ Tensors move the bulk data through a flowgraph, but most blocks also need to sha
 | Direction | Any block or host code, read and write | Producer writes, downstream reads | Owner publishes, anyone reads |
 | Lifetime | Persists with the flowgraph | Lives with the tensor | Computed on demand |
 | Typical use | Shared state, server-provided values, calibration | Signal description such as `sampleRate` and `frequency` | Progress, throughput, diagnostics |
-| UI surface | Environment window | Pin tooltips | Node body |
+| UI surface | Environment tile | Pin tooltips | Node body |
 
 A useful rule of thumb follows the data. If the value describes a specific stream, attach it to the tensor as an attribute so it travels with the connection. If it describes the state of one block and is only interesting to observers, publish it as a metric. If it is genuinely global, or must exist before blocks can start, put it in the environment.
 
@@ -63,7 +63,7 @@ Points worth knowing:
 
 - **Values are timestamped.** The full signature is `set(key, value, start, end)`, and `get(key, value, timestamp)` returns the newest entry whose range covers the timestamp. The defaults cover all time, which is the right choice unless you are recording values that change over a run.
 - **The epoch tracks changes.** Every write increments `environment()->epoch()`. Poll it to refresh cached reads cheaply instead of deserializing keys every cycle. The Python bridge uses the same mechanism internally.
-- **Keys persist and are visible.** Environment values are saved with the flowgraph and shown in the Environment window, so treat key names as a small public schema rather than scratch space.
+- **Keys persist and are visible.** Environment values are saved with the flowgraph and shown in the Environment tile, so treat key names as a small public schema rather than scratch space.
 - **Writers define the schema.** Python writes coerce to the type already stored, so a key seeded with exact widths, for example `F32` gain or a `vector<CF32>` of taps, keeps those widths across Python edits. Native `set()` calls replace the stored value verbatim, so C++ writers are responsible for publishing consistent types themselves.
 
 The Python view of the environment, including the write tracking and rollback semantics, is covered in [Flowgraph Environment](/docs/python-block#flowgraph-environment).

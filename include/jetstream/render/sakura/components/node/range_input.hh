@@ -4,13 +4,13 @@
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace Jetstream::Sakura {
 
-struct NodeRangeInput {
+struct NodeRangeInput : public Component {
     struct Config {
         std::string id;
         F32 min = 0.0f;
@@ -18,20 +18,22 @@ struct NodeRangeInput {
         F32 value = 0.0f;
         bool integer = false;
         std::string unit;
-        std::function<void(F32)> onChange;
+        I32 precision = 0;
+        Callback<void(F32)> onChange;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeRangeInput();
     ~NodeRangeInput();
 
-    NodeRangeInput(NodeRangeInput&&) noexcept;
-    NodeRangeInput& operator=(NodeRangeInput&&) noexcept;
+    void update(Config config);
 
-    NodeRangeInput(const NodeRangeInput&) = delete;
-    NodeRangeInput& operator=(const NodeRangeInput&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
+    std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
 
  private:
     struct Impl;

@@ -57,6 +57,8 @@ Result Implementation::create() {
     samplerBindingLayout.type = supportsFiltering ? WGPUSamplerBindingType_Filtering
                                                   : WGPUSamplerBindingType_NonFiltering;
 
+    markAllocated();
+
     if (config.buffer) {
         JST_CHECK(fill());
     }
@@ -66,6 +68,8 @@ Result Implementation::create() {
 
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying texture.");
+
+    markDeallocated();
 
     if (sampler) {
         wgpuSamplerRelease(sampler);

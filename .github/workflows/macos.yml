@@ -61,6 +61,11 @@ jobs:
           set -euo pipefail
           python3 -m pip install --break-system-packages meson ninja numpy mapbox_earcut
 
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.17.0'
+
       - name: Build binary
         run: |
           set -euo pipefail
@@ -70,6 +75,7 @@ jobs:
             -Dbuildtype=release \
             -Dexamples=false \
             -Dremote=enabled \
+            -Dterminal=enabled \
             -Dgstreamer-full:build-tools-source=system
           meson compile -C build cyberether jetstream-core-tests jetstream-modules-tests
 

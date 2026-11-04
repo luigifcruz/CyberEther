@@ -2,46 +2,50 @@
 #define JETSTREAM_RENDER_SAKURA_DIV_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace Jetstream::Sakura {
 
-struct Div {
-    using Child = std::function<void(const Context&)>;
-
+struct Div : public Component {
     struct Config {
-        std::string id;
-        Extent2D<F32> size = {0.0f, 0.0f};
+        Component* content = nullptr;
+        Extent2D<F32> size = {Fill, 0.0f};
         F32 padding = 0.0f;
         F32 rounding = 0.0f;
+        U8 corners = Box::AllCorners;
         bool border = true;
+        F32 borderWidth = 1.0f;
+        bool chrome = false;
+        bool shadow = false;
+        bool waves = false;
         bool selected = false;
-        bool scrollbar = true;
-        bool mouseScroll = true;
-        bool inputs = true;
         std::string colorKey = "card";
         std::string hoveredColorKey = "header_hovered";
         std::string selectedColorKey = "header_hovered";
         std::string borderColorKey = "border";
-        std::function<void()> onClick;
-        std::function<void()> onDoubleClick;
+        F64 colorTransition = 0.0;
+        Callback<void()> onClick;
+        Callback<void()> onDoubleClick;
+        Callback<void()> onContextMenu;
+
+        bool operator==(const Config&) const = default;
     };
 
     Div();
     ~Div();
 
-    Div(Div&&) noexcept;
-    Div& operator=(Div&&) noexcept;
+    void update(Config config);
 
-    Div(const Div&) = delete;
-    Div& operator=(const Div&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx, Child child) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
+    std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
 
  private:
     struct Impl;

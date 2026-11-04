@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -664,6 +665,10 @@ TEST_CASE("Native runtime propagates SKIP across compute barriers", "[core][runt
     REQUIRE(skippedModules == std::unordered_set<std::string>{"barrier_source"});
     REQUIRE(stalledModules == std::unordered_set<std::string>{"barrier_sink"});
     REQUIRE(failedModules.empty());
+    REQUIRE(source->timing().cycles == 0);
+    REQUIRE(source->timing().skippedCycles == 1);
+    REQUIRE(source->timing().computeTime == 0.0);
+    REQUIRE(source->timing().lastCycle == std::chrono::steady_clock::time_point{});
 
     REQUIRE(downstream.destroy() == Result::SUCCESS);
     REQUIRE(upstream.destroy() == Result::SUCCESS);

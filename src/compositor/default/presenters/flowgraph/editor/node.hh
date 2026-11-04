@@ -78,24 +78,6 @@ struct FlowgraphNodePresenter {
         }
     }
 
-    void buildBlockMetrics(FlowgraphNode::BlockData& block,
-                           const std::string& nodeViewId,
-                           const Flowgraph::View::BlockData& blockData) const {
-        for (const auto& metric : blockData.metrics) {
-            if (Parser::Get<std::string>(metric.format, "visibility") == "internal") {
-                continue;
-            }
-
-            block.metrics.push_back({
-                .id = nodeViewId + ":metric:" + metric.name,
-                .label = metric.label,
-                .help = metric.help,
-                .format = metric.format,
-                .value = metric.value,
-            });
-        }
-    }
-
     void buildConfigFields(FlowgraphNode::BlockData& block,
                            const std::string& flowgraphId,
                            const std::string& blockName,
@@ -104,6 +86,7 @@ struct FlowgraphNodePresenter {
         block.config = blockData.config;
         block.configFields = BuildFlowgraphConfigFields(nodeViewId, blockData);
         ApplyLiveMarkdown(block.configFields, context.state.flowgraph, flowgraphId, blockName);
+        ApplyConfigDrafts(block.configFields, context.callbacks.enqueueMail, context.state.flowgraph, flowgraphId, blockName);
     }
 
     void buildTiming(FlowgraphNode::BlockData& block,
@@ -129,7 +112,7 @@ struct FlowgraphNodePresenter {
                 : timing.computeTime / static_cast<F32>(timing.cycles);
             const auto& label = metric.label.empty() ? metric.name : metric.label;
 
-            block.timing.push_back(jst::fmt::format("{} ({}/{}/{}): {:.3f} ms",
+            block.timing.push_back(jst::fmt::format("{} ({}/{}/{}): {:.2f} ms",
                                                     label,
                                                     timing.backend,
                                                     timing.device,
@@ -146,14 +129,14 @@ struct FlowgraphNodePresenter {
         const std::string cyclesStr = (maxCycles > 1000)
             ? jst::fmt::format("{:.1f}k", maxCycles / 1000.0f)
             : jst::fmt::format("{}", maxCycles);
-        block.timing.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
+        block.timing.push_back(jst::fmt::format("= {:.2f} ms ({})", totalTime, cyclesStr));
     }
 
     FlowgraphNode::BlockData build(const std::string& flowgraphId,
                                    const std::shared_ptr<Flowgraph>& flowgraph,
                                    const std::string& blockName,
                                    const Flowgraph::View::BlockData& blockData) const {
-        const std::string nodeViewId = flowgraphId + ":" + blockName;
+        const std::string nodeViewId = jst::fmt::format("{}:{}", flowgraphId, blockName);
         const Block::State blockState = blockData.state;
         const bool hasDiagnostic = (blockState == Block::State::Errored ||
                                      blockState == Block::State::Incomplete) &&
@@ -162,18 +145,14 @@ struct FlowgraphNodePresenter {
             .name = blockName,
             .module = blockData.type,
             .title = blockData.title,
-            .documentation = blockData.description,
-            .device = blockData.device,
-            .runtime = blockData.runtime,
-            .provider = blockData.provider,
             .state = blockState,
             .nodeSize = blockData.nodeSize,
             .diagnostic = hasDiagnostic ? Sakura::CleanUserMessage(blockData.diagnostic) : "",
         };
         block.deviceOptions = catalog.buildDeviceOptions(block.module,
-                                                         block.device,
-                                                         block.runtime,
-                                                         block.provider);
+                                                         blockData.device,
+                                                         blockData.runtime,
+                                                         blockData.provider);
 
         NodeMeta nodeMeta;
         flowgraph->metadata().get("node", nodeMeta, blockName);
@@ -193,9 +172,11 @@ struct FlowgraphNodePresenter {
         buildOutputs(block, blockData);
 
         if (blockState != Block::State::Creating) {
-            buildBlockMetrics(block, nodeViewId, blockData);
+            block.metrics = BuildFlowgraphMetrics(nodeViewId, blockData);
             buildConfigFields(block, flowgraphId, blockName, nodeViewId, blockData);
-            buildTiming(block, blockData);
+            if (context.state.debug.timingEnabled) {
+                buildTiming(block, blockData);
+            }
             surfaces.buildSurfaces(block, flowgraph, flowgraphId, blockName, nodeViewId, blockData);
         }
 

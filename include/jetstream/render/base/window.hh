@@ -1,18 +1,23 @@
 #ifndef JETSTREAM_RENDER_BASE_WINDOW_HH
 #define JETSTREAM_RENDER_BASE_WINDOW_HH
 
+#include <deque>
 #include <queue>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "jetstream/render/base/input.hh"
 #include "jetstream/render/base/window_attachment.hh"
+#include "jetstream/render/base/window_metrics.hh"
 #include "jetstream/render/base/transfer.hh"
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
@@ -20,9 +25,7 @@
 #include "jetstream/render/components/generic.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
-#include "jetstream/render/tools/imgui.h"
-#include "jetstream/render/tools/imgui_stdlib.h"
-#include "jetstream/render/tools/imgui_fmtlib.h"
+#include "jetstream/render/base/present.hh"
 
 namespace Jetstream::Render::Components { class Font; }
 namespace Jetstream::Viewport { class Generic; }
@@ -36,12 +39,14 @@ class JETSTREAM_API Window {
     };
 
     struct Stats {
-        U64 droppedFrames;
-        U64 recreatedFrames;
+        U64 droppedFrames = 0;
+        U64 recreatedFrames = 0;
+        U64 presentedFrames = 0;
+        U64 skippedPresents = 0;
     };
 
-    explicit Window(const Config& config) : config(config) {}
-    virtual ~Window() = default;
+    explicit Window(const Config& config);
+    virtual ~Window();
 
     const Config& getConfig() const {
         return config;
@@ -61,27 +66,44 @@ class JETSTREAM_API Window {
 
     Result synchronize();
 
-    void frameClearColor(const ColorRGBA<F32>& color, ImDrawList* background = nullptr) {
-        frameBackground = color;
-        frameBackgroundDrawList = background;
-    }
+    void frameClearColor(const ColorRGBA<F32>& color) { frameBackground = color; }
     const ColorRGBA<F32>& frameClearColor() const { return frameBackground; }
+
+    const Stats& stats() const {
+        return frameStats;
+    }
 
     Result capture(const std::shared_ptr<const Texture>& texture,
                    Extent2D<U64>& size, std::vector<U8>& pixels);
 
     virtual bool supportsCapture() const { return false; }
-
-    virtual const Stats& stats() const = 0;
     virtual std::string info() const = 0;
 
     virtual constexpr DeviceType device() const = 0;
+    virtual bool supportsEraseBlending() const { return false; }
+
+    U64 frameIndex() const {
+        return _frameIndex;
+    }
+
+    void present(PresentList list);
+
+    std::string clipboardText() const;
+    void setClipboardText(const std::string& text);
+
+    TitlebarChrome titlebarChrome() const;
+    void beginWindowDrag();
+    void zoomWindow();
+    void setDarkAppearance(bool dark);
 
     Result bind(const std::shared_ptr<Components::Generic>& component);
     Result unbind(const std::shared_ptr<Components::Generic>& component);
 
     Result bind(const std::shared_ptr<WindowAttachment>& attachment);
     Result unbind(const std::shared_ptr<WindowAttachment>& attachment);
+    Result extend(const std::shared_ptr<Surface>& surface,
+                  const std::vector<std::shared_ptr<Program>>& programs,
+                  const std::vector<std::shared_ptr<Kernel>>& kernels);
 
     template<class T>
     inline Result JETSTREAM_API build(std::shared_ptr<T>& member,
@@ -120,14 +142,30 @@ class JETSTREAM_API Window {
         return Result::SUCCESS;
     }
 
-    constexpr const F32& scalingFactor() const {
-        return _scalingFactor;
+    const WindowMetrics& metrics() const {
+        return _metrics;
     }
 
-    Extent2D<F32> framebufferScale() const;
-    Extent2D<U64> framebufferSize(const Extent2D<F32>& displaySize) const;
+    const F32& scalingFactor() const {
+        return _metrics.scalingFactor;
+    }
+
+    const Extent2D<F32>& framebufferScale() const {
+        return _metrics.framebufferScale;
+    }
+
+    const InputState& input() const {
+        return _input;
+    }
+
+    void requestCursor(SurfaceCursor cursor) {
+        _requestedCursor = cursor;
+    }
 
     bool hasFont(const std::string& name) const;
+    U64 fontRevision() const {
+        return _fontRevision;
+    }
     Result addFont(const std::string& name, const std::shared_ptr<Components::Font>& font);
     Result removeFont(const std::string& name);
     const std::shared_ptr<Components::Font>& font(const std::string& name) const;
@@ -147,40 +185,61 @@ class JETSTREAM_API Window {
 
     virtual Result underlyingSynchronize() = 0;
 
+    virtual Viewport::Generic* underlyingViewport() const { return nullptr; }
+
+    virtual Result underlyingRecreate() { return Result::SUCCESS; }
+
     Result collectTransfers(Transfer::Batch& batch) const;
-    void abortImguiFrame();
-    void prepareImgui();
     bool textureVisibleForPresentation(const Texture& texture) const;
+    const PresentList& framePresentList() const;
+
+    enum class Acquire : U8 {
+        Ready,
+        Dropped,
+        Recreate,
+    };
+
+    struct PresentPass {
+        bool required = false;
+        bool presenting = false;
+        bool recreate = false;
+    };
+
+    PresentPass beginPresent(const Transfer::Batch& batch);
+    void acquired(PresentPass& pass, Acquire result);
+    Result finishPresent(const PresentPass& pass);
+
+    void updateMetrics(const Viewport::Generic& viewport);
+    void updateInput(Viewport::Generic& viewport);
 
     // Font.
 
     std::unordered_map<std::string, std::shared_ptr<Components::Font>> fonts;
-
-    // Scaling.
-
-    F32 _scalingFactor;
-    F32 _previousScalingFactor;
-
-    void updateScalingFactor(const Viewport::Generic& viewport);
+    U64 _fontRevision = 0;
 
  private:
+    struct PresentState;
+    struct TransferState;
+
     ColorRGBA<F32> frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
-    ImDrawList* frameBackgroundDrawList = nullptr;
-    std::unordered_set<ImTextureID> frameSampledTextures;
-    bool frameCustomDraws = true;
+    Stats frameStats;
+    U64 _frameIndex = 0;
+    WindowMetrics _metrics;
+    InputState _input;
+    SurfaceCursor _requestedCursor = SurfaceCursor::Default;
+    std::optional<bool> _darkAppearance;
+    std::unique_ptr<PresentState> presentState;
+    std::unique_ptr<TransferState> transferState;
     bool shouldDeferAttachmentQueueProcessing();
     bool attachmentQueueEmpty() const;
     Result destroyInternal();
 
     std::vector<std::shared_ptr<Components::Generic>> components;
 
-    std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;
-    std::vector<std::function<void(const F32& scalingFactor)>> styleScaleCallbacks;
-
-    uint32_t frameCount;
+    uint32_t frameCount = 0;
     bool created = false;
-    bool graphicalLoopThreadStarted;
-    bool frameActive = false;
+    bool graphicalLoopThreadStarted = false;
+    std::atomic_bool frameActive = false;
     std::thread::id graphicalLoopThreadId;
     std::mutex newFrameQueueMutex;
 
@@ -189,27 +248,37 @@ class JETSTREAM_API Window {
     struct PendingDestruction {
         uint32_t expiration;
         std::shared_ptr<WindowAttachment> attachment;
+        bool unbindBeforeDestroy = false;
+        bool destroyBackend = true;
+        bool releaseResources = true;
     };
 
     struct ResourceLease {
         size_t surfaceReferences = 0;
+        size_t borrowedReferences = 0;
         bool root = false;
         uint32_t rootReleaseExpiration = 0;
         const Surface* framebufferOwner = nullptr;
     };
 
     Result processAttachmentQueues();
+    Result destroyAttachment(PendingDestruction& pending);
     std::vector<std::shared_ptr<WindowAttachment>> surfaceResourceList(const std::shared_ptr<Surface>& surface) const;
     Result acquireSurfaceResources(const std::shared_ptr<Surface>& surface);
+    Result acquireSurfaceResources(const std::shared_ptr<Surface>& surface,
+                                   const std::vector<std::shared_ptr<WindowAttachment>>& resources);
     Result releaseSurfaceResources(const std::shared_ptr<Surface>& surface);
-    Result releaseSurfaceResource(const std::shared_ptr<WindowAttachment>& resource);
-    Result finalizeAttachmentDestruction(const std::shared_ptr<WindowAttachment>& attachment);
+    Result releaseSurfaceResource(const std::shared_ptr<WindowAttachment>& resource,
+                                  bool borrowed = false);
+    Result finalizeAttachmentDestruction(const std::shared_ptr<WindowAttachment>& attachment,
+                                         bool releaseResources = true);
 
     mutable std::mutex attachmentStateMutex;
     bool destructionInProgress = false;
     std::queue<std::shared_ptr<WindowAttachment>> bindQueue;
     std::queue<std::shared_ptr<WindowAttachment>> unbindQueue;
     std::queue<PendingDestruction> destroyQueue;
+    std::deque<std::pair<uint32_t, std::shared_ptr<Components::Generic>>> retiredComponents;
 
     std::vector<std::shared_ptr<WindowAttachment>> attachments;
     std::unordered_set<const WindowAttachment*> destroyingAttachments;

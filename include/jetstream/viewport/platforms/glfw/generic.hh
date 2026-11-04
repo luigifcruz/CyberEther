@@ -6,6 +6,9 @@
 
 namespace Jetstream::Viewport {
 
+class CocoaTitlebar;
+class WindowsTitlebar;
+
 template<DeviceType DeviceId>
 class GLFW : Adapter<DeviceId> {};
 

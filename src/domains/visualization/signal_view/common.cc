@@ -17,11 +17,10 @@ namespace Jetstream::Modules {
 
 namespace {
 
-constexpr ColorRGBA<F32> kAccentColor = {1.0f, 0.85f, 0.0f, 1.0f};
-constexpr ColorRGBA<F32> kCursorLineColor = {1.0f, 1.0f, 1.0f, 0.35f};
-constexpr ColorRGBA<F32> kCursorHaloColor = {0.0f, 0.0f, 0.0f, 0.65f};
-constexpr ColorRGBA<F32> kCursorPillColor = {0.07f, 0.07f, 0.07f, 0.9f};
-constexpr ColorRGBA<F32> kCursorPillEdgeColor = {1.0f, 1.0f, 1.0f, 0.22f};
+constexpr F32 kCursorLineAlpha = 0.35f;
+constexpr F32 kCursorPillEdgeAlpha = 0.22f;
+constexpr F32 kMarkerSpanAlpha = 0.6f;
+constexpr F32 kDensityGridAlpha = 0.06f;
 constexpr std::array<ColorRGBA<F32>, detail::MaxMarkers> kMarkerPalette = {{
     {0.31f, 0.76f, 0.97f, 1.0f},
     {1.00f, 0.44f, 0.26f, 1.0f},
@@ -53,7 +52,6 @@ constexpr ColorRGBA<F32> MarkerTagTextColor(const U64 index) {
     return luminance > 0.5f ? ColorRGBA<F32>{0.05f, 0.05f, 0.05f, 1.0f}
                             : ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 1.0f};
 }
-constexpr ColorRGBA<F32> kMarkerSpanColor = {1.0f, 1.0f, 1.0f, 0.6f};
 constexpr F32 kLabelScale = 0.85f;
 constexpr F32 kMarkerPickRadiusPx = 8.0f;
 constexpr F32 kMarkerSpanThicknessPx = 3.0f;
@@ -119,6 +117,10 @@ std::string SpanElement(const U64 index, const char* suffix) {
     return jst::fmt::format("span-{}-{}", index, suffix);
 }
 
+ColorRGBA<F32> GridColor(const SurfaceTheme& theme, bool density) {
+    return density ? SurfaceAlpha(theme.foreground, kDensityGridAlpha) : theme.grid;
+}
+
 F32 PanTranslation(const SurfaceInteractionState& interaction) {
     const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
     return std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
@@ -175,9 +177,9 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
             ? config.amplitudeLabel
             : config.waterfallLabel);
         cfg.yLabelOnRight = lineplot;
-        cfg.gridColor = context.density ? ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 0.06f}
-                                        : ColorRGBA<F32>{0.12f, 0.12f, 0.12f, 1.0f};
-        cfg.majorGridColor = {0.5f, 0.5f, 0.5f, 1.0f};
+        cfg.gridColor = GridColor(interaction.theme, context.density != nullptr);
+        cfg.majorGridColor = interaction.theme.majorGrid;
+        cfg.labelColor = interaction.theme.foreground;
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
     }
@@ -201,8 +203,7 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
             {"hold",
              {.scale = kLabelScale,
               .position = {-1.0f, 1.0f},
-              .alignment = {0, 0},
-              .color = kAccentColor}},
+              .alignment = {0, 0}}},
             {"amplitude-title",
              {.scale = kLabelScale,
               .position = {-1.0f, 0.5f},
@@ -235,15 +236,6 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
         };
         JST_CHECK(window->build(cursorShapes, cfg));
         JST_CHECK(window->bind(cursorShapes));
-
-        std::span<ColorRGBA<F32>> colors;
-        JST_CHECK(cursorShapes->getColors("cursor", colors));
-        colors[kCursorLine] = kCursorLineColor;
-        colors[kCursorHalo] = kCursorHaloColor;
-        colors[kCursorMarker] = kAccentColor;
-        colors[kCursorPillEdge] = kCursorPillEdgeColor;
-        colors[kCursorPill] = kCursorPillColor;
-        JST_CHECK(cursorShapes->updateColors("cursor"));
     }
 
     {
@@ -259,8 +251,7 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
             {"cursor-y",
              {.scale = kLabelScale,
               .position = {-2.0f, -2.0f},
-              .alignment = {0, 1},
-              .color = kAccentColor}},
+              .alignment = {0, 1}}},
         };
         JST_CHECK(window->build(cursorText, cfg));
         JST_CHECK(window->bind(cursorText));
@@ -288,10 +279,8 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
         JST_CHECK(markerShapes->getColors("markers", colors));
         for (U64 i = 0; i < detail::MaxMarkers; ++i) {
             colors[MarkerInstance(kMarkerLine, i)] = MarkerLineColor(i);
-            colors[MarkerInstance(kMarkerHalo, i)] = kCursorHaloColor;
             colors[MarkerInstance(kMarkerDot, i)] = kMarkerPalette[i];
         }
-        JST_CHECK(markerShapes->updateColors("markers"));
     }
 
     {
@@ -327,7 +316,6 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
         cfg.elements["spans"] = {
             .type = Render::Components::Shapes::Type::RECT,
             .numberOfInstances = kSpanSegments * detail::MarkerSpans,
-            .color = kMarkerSpanColor,
             .position = {-2.0f, -2.0f},
             .size = {0.0f, 0.0f},
             .cornerRadius = kMarkerSpanThicknessPx * 0.5f,
@@ -335,7 +323,6 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
         cfg.elements["arrows"] = {
             .type = Render::Components::Shapes::Type::RECT,
             .numberOfInstances = kSpanArrows * detail::MarkerSpans,
-            .color = kMarkerSpanColor,
             .position = {-2.0f, -2.0f},
             .size = {0.0f, 0.0f},
             .cornerRadius = kMarkerSpanThicknessPx * 0.5f,
@@ -359,14 +346,6 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
         };
         JST_CHECK(window->build(markerTableShapes, cfg));
         JST_CHECK(window->bind(markerTableShapes));
-
-        std::span<ColorRGBA<F32>> colors;
-        JST_CHECK(markerTableShapes->getColors("table", colors));
-        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
-            colors[MarkerInstance(kMarkerPillEdge, i)] = kCursorPillEdgeColor;
-            colors[MarkerInstance(kMarkerPill, i)] = kCursorPillColor;
-        }
-        JST_CHECK(markerTableShapes->updateColors("table"));
     }
 
     {
@@ -391,7 +370,6 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
                 .scale = kLabelScale,
                 .position = {-2.0f, -2.0f},
                 .alignment = {1, 1},
-                .color = kMarkerSpanColor,
             };
         }
         JST_CHECK(window->build(markerText, cfg));
@@ -449,8 +427,9 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
     {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
-        cfg.multisampled = lineplot;
-        cfg.clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        cfg.multisampled = false;
+        cfg.retained = true;
+        cfg.clearColor = interaction.theme.background;
         if (waterfall) {
             context.waterfall->attach(cfg);
         }
@@ -476,8 +455,95 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
         JST_CHECK(window->bind(renderSurface));
     }
 
+    appliedTheme.reset();
+    JST_CHECK(applyTheme(context));
     updateState(context);
 
+    return Result::SUCCESS;
+}
+
+Result SignalViewCanvas::applyTheme(const Context& context) {
+    const auto& theme = interaction.theme;
+    if (appliedTheme == theme) {
+        return Result::SUCCESS;
+    }
+    const auto spanColor = SurfaceAlpha(theme.foreground, kMarkerSpanAlpha);
+    const auto pillEdge = SurfaceAlpha(theme.foreground, kCursorPillEdgeAlpha);
+
+    if (renderSurface) {
+        renderSurface->clearColor(theme.background);
+    }
+    if (axis) {
+        JST_CHECK(axis->updateColors(GridColor(theme, context.density != nullptr), theme.majorGrid, theme.foreground));
+    }
+
+    if (text) {
+        JST_CHECK(text->updateColor(theme.foreground));
+        auto hold = text->get("hold");
+        hold.color = theme.accent;
+        JST_CHECK(text->update("hold", hold));
+    }
+
+    if (cursorShapes) {
+        std::span<ColorRGBA<F32>> colors;
+        JST_CHECK(cursorShapes->getColors("cursor", colors));
+        colors[kCursorLine] = SurfaceAlpha(theme.foreground, kCursorLineAlpha);
+        colors[kCursorHalo] = theme.halo;
+        colors[kCursorMarker] = theme.accent;
+        colors[kCursorPillEdge] = pillEdge;
+        colors[kCursorPill] = theme.pill;
+        JST_CHECK(cursorShapes->updateColors("cursor"));
+    }
+
+    if (cursorText) {
+        JST_CHECK(cursorText->updateColor(theme.foreground));
+        auto cursorY = cursorText->get("cursor-y");
+        cursorY.color = theme.accent;
+        JST_CHECK(cursorText->update("cursor-y", cursorY));
+    }
+
+    if (markerShapes) {
+        std::span<ColorRGBA<F32>> colors;
+        JST_CHECK(markerShapes->getColors("markers", colors));
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            colors[MarkerInstance(kMarkerHalo, i)] = theme.halo;
+        }
+        JST_CHECK(markerShapes->updateColors("markers"));
+    }
+
+    if (markerSpanShapes) {
+        for (const char* element : {"spans", "arrows"}) {
+            std::span<ColorRGBA<F32>> colors;
+            JST_CHECK(markerSpanShapes->getColors(element, colors));
+            std::fill(colors.begin(), colors.end(), spanColor);
+            JST_CHECK(markerSpanShapes->updateColors(element));
+        }
+    }
+
+    if (markerTableShapes) {
+        std::span<ColorRGBA<F32>> colors;
+        JST_CHECK(markerTableShapes->getColors("table", colors));
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            colors[MarkerInstance(kMarkerPillEdge, i)] = pillEdge;
+            colors[MarkerInstance(kMarkerPill, i)] = theme.pill;
+        }
+        JST_CHECK(markerTableShapes->updateColors("table"));
+    }
+
+    if (markerText) {
+        JST_CHECK(markerText->updateColor(theme.foreground));
+        for (U64 i = 0; i < detail::MarkerSpans; ++i) {
+            auto label = markerText->get(SpanElement(i, "label"));
+            label.color = spanColor;
+            JST_CHECK(markerText->update(SpanElement(i, "label"), label));
+        }
+    }
+
+    if (context.lineplot) {
+        context.lineplot->applyTheme(theme);
+    }
+
+    appliedTheme = theme;
     return Result::SUCCESS;
 }
 
@@ -558,6 +624,18 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
         const auto mouse = SurfaceMouseEvent(input);
         if (!mouse) continue;
         const auto& event = *mouse;
+        if (event.type == MouseEventType::Cancel) {
+            cursor.inside = false;
+            if (markerDrag.index && *markerDrag.index < context.config.markers.size() &&
+                *markerDrag.index < markerPositions.size()) {
+                markerPositions[*markerDrag.index] = context.config.markers[*markerDrag.index];
+            }
+            markerDrag = {};
+            splitter.dragging = false;
+            splitter.ratio = splitRatio;
+            plotEvents.push_back(event);
+            continue;
+        }
         if (event.type == MouseEventType::Move) {
             cursor.inside = true;
             cursor.position = event.position;
@@ -666,7 +744,6 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
 
 void SignalViewCanvas::resize() {
     renderSurface->size(interaction.viewSize);
-    renderSurface->clearColor(interaction.backgroundColor);
 }
 
 void SignalViewCanvas::updateState(const Context& context) {
@@ -738,11 +815,14 @@ void SignalViewCanvas::updateState(const Context& context) {
                              static_cast<U32>(vs.x),
                              static_cast<U32>(vs.y)});
 
-    updateLabels(context);
+    if (updateLabels(context) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Failed to update plot labels.");
+    }
 }
 
 Result SignalViewCanvas::present(const Context& context) {
-    updateLabels(context);
+    JST_CHECK(applyTheme(context));
+    JST_CHECK(updateLabels(context));
     JST_CHECK(updateMarkers(context));
     JST_CHECK(updateCursor(context));
 
@@ -781,7 +861,7 @@ Result SignalViewCanvas::present(const Context& context) {
     return Result::SUCCESS;
 }
 
-void SignalViewCanvas::updateLabels(const Context& context) {
+Result SignalViewCanvas::updateLabels(const Context& context) {
     const auto& config = context.config;
     const auto& paddingScale = axis->paddingScale();
     const bool lineplot = context.lineplot != nullptr;
@@ -798,9 +878,10 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         axis->updateTitles(resolvedXLabel, combined ? "" : (lineplot
             ? config.amplitudeLabel
             : config.waterfallLabel));
-        const bool ticksVisible = lineplot &&
-            interaction.placement != SurfacePlacementType::Attached;
-        axis->setShowFrameTicks(ticksVisible);
+        JST_CHECK(axis->setShowFrameTicks(lineplot));
+        JST_CHECK(axis->setMinorTicks(interaction.placement == SurfacePlacementType::Attached
+            ? Render::Components::Axis::AttachedMinorTicks
+            : Render::Components::Axis::DetachedMinorTicks));
 
         auto xFormatter = [frequency, lineplot,
                            zoom = interaction.zoom, translation](const F32 position) {
@@ -857,38 +938,42 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         text->update("hold", holdLabel);
 
         auto header = text->get("header");
-        if (interaction.placement == SurfacePlacementType::Attached) {
-            header.fill = " ";
-        } else {
-            header.position = {-paddingScale.x + pixelSize.x * tickOffset,
-                               paddingScale.y - pixelSize.y * tickOffset};
-            if (frequency.valid) {
-                header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
-                                               frequency.center / 1e6f,
-                                               frequency.sampleRate / 1e6f);
-            } else {
-                header.fill = "CENTER 0.000   SPAN 1.000";
-            }
-        }
-        text->update("header", header);
+        header.position = {-paddingScale.x + pixelSize.x * tickOffset,
+                           paddingScale.y - pixelSize.y * tickOffset};
+        const std::string center = frequency.valid
+            ? jst::fmt::format("CENTER {:.3f} MHz", frequency.center / 1e6f)
+            : std::string("CENTER 0.000");
+        const std::string span = frequency.valid
+            ? jst::fmt::format("SPAN {:.3f} MHz", frequency.sampleRate / 1e6f)
+            : std::string("SPAN 1.000");
+        const std::string full = center + "   " + span;
 
         auto zoomLabel = text->get("zoom");
         zoomLabel.position = {
-            paddingScale.x -
-                pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
-            paddingScale.y -
-                pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f),
+            paddingScale.x - pixelSize.x * tickOffset,
+            paddingScale.y - pixelSize.y * tickOffset,
         };
         zoomLabel.alignment = {2, 0};
         if (splitter.dragging) {
             zoomLabel.fill = jst::fmt::format("SPLIT {:.0f}%", splitter.ratio * 100.0f);
-        } else if (interaction.placement == SurfacePlacementType::Attached) {
-            zoomLabel.fill = " ";
         } else if (std::abs(interaction.zoom - 1.0f) > 0.01f) {
             zoomLabel.fill = jst::fmt::format("ZOOM {:.1f}x", interaction.zoom);
         } else {
             zoomLabel.fill = " ";
         }
+
+        const F32 room = pixelSize.x > 0.0f ? 2.0f * paddingScale.x / pixelSize.x - 2.0f * tickOffset : 0.0f;
+        const F32 zoomWidth = zoomLabel.fill == " " ? 0.0f : text->advance(zoomLabel.fill, zoomLabel.scale);
+        const auto fit = detail::FitSignalViewHeader(room,
+                                                     text->advance(full, header.scale),
+                                                     text->advance(center, header.scale),
+                                                     zoomWidth,
+                                                     tickOffset);
+        header.fill = fit.span ? full : center;
+        if (!fit.zoom) {
+            zoomLabel.fill = " ";
+        }
+        text->update("header", header);
         text->update("zoom", zoomLabel);
 
         auto amplitudeTitle = text->get("amplitude-title");
@@ -904,6 +989,8 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         waterfallTitle.fill = combined ? config.waterfallLabel : " ";
         text->update("waterfall-title", waterfallTitle);
     }
+
+    return Result::SUCCESS;
 }
 
 F32 SignalViewCanvas::viewTranslation() const {
@@ -913,7 +1000,6 @@ F32 SignalViewCanvas::viewTranslation() const {
 std::optional<F32> SignalViewCanvas::cursorPoint(const Context& context) const {
     const bool visible = cursor.inside &&
                          !splitter.dragging &&
-                         interaction.placement != SurfacePlacementType::Attached &&
                          insidePlot(cursor.position) &&
                          context.numberOfElements >= 2;
     if (!visible) {
@@ -1017,8 +1103,7 @@ F32 SignalViewCanvas::pointAtX(const F32 x) const {
 
 std::optional<U64> SignalViewCanvas::markerAt(const Context& context,
                                               const Extent2D<F32>& position) const {
-    if (interaction.placement == SurfacePlacementType::Attached ||
-        context.numberOfElements < 2 || !insidePlot(position)) {
+    if (context.numberOfElements < 2 || !insidePlot(position)) {
         return std::nullopt;
     }
     const F32 pointerNdc = position.x * 2.0f - 1.0f;
@@ -1267,7 +1352,7 @@ Result SignalViewCanvas::updateMarkers(const Context& context) {
     const F32 lineHeight = markerText ? markerText->lineHeight(kLabelScale) : 0.0f;
     const F32 tagLineHeight = tagText ? tagText->lineHeight(kLabelScale) : 0.0f;
     const F32 headerOffset = axis->getConfig().majorTickLengthPx + 4.0f;
-    const F32 headerHeight = table ? tagLineHeight + 8.0f : 0.0f;
+    const F32 headerHeight = tagLineHeight + 8.0f;
     const F32 tagPadX = 6.0f;
     const F32 tagPadY = 2.0f;
     const F32 tagHeight = (tagPadY * 2.0f + tagLineHeight) * pixelSize.y;

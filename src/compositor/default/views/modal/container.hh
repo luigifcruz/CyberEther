@@ -4,21 +4,16 @@
 #include "about.hh"
 #include "benchmark.hh"
 #include "dependencies.hh"
-#include "../flowgraph/modals/close.hh"
-#include "../flowgraph/modals/examples.hh"
+#include "docs_search.hh"
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "feedback.hh"
-#include "intelligence_model.hh"
-#include "intelligence_provider.hh"
-#include "settings/base.hh"
-#include "plugin.hh"
+#include "onboarding.hh"
+#include "remote_qr.hh"
 #include "../../model/ui.hh"
-#include "remote.hh"
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <optional>
 #include <utility>
 
@@ -27,32 +22,19 @@ namespace Jetstream {
 struct ModalView {
     struct Config {
         std::optional<ModalContent> content;
-        FlowgraphExamplesView::Config flowgraphExamples;
         std::optional<FlowgraphInfoView::Config> flowgraphInfo;
-        SettingsView::Config appSettings;
-        std::optional<FlowgraphCloseView::Config> flowgraphClose;
         std::optional<RenameBlockView::Config> renameBlock;
         BenchmarkView::Config benchmark;
-        RemoteView::Config remoteStreaming;
-        PluginView::Config plugin;
-        IntelligenceProviderView::Config intelligenceProvider;
-        IntelligenceModelView::Config intelligenceModel;
         DependencyReviewView::Config dependencies;
         FeedbackView::Config feedback;
-        std::function<void()> onClose;
+        RemoteQrView::Config remoteQr;
+        DocsSearchView::Config docsSearch;
+        OnboardingView::Config onboarding;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {
         this->config = std::move(config);
-        modal.update({
-            .id = "GlobalModal",
-            .size = modalSize(),
-            .onClose = [this]() {
-                if (this->config.onClose) {
-                    this->config.onClose();
-                }
-            },
-        });
 
         if (previousContent == ModalContent::RenameBlock &&
             this->config.content != ModalContent::RenameBlock) {
@@ -68,26 +50,10 @@ struct ModalView {
             case ModalContent::About:
                 aboutView.update({});
                 break;
-            case ModalContent::FlowgraphExamples: {
-                auto viewConfig = this->config.flowgraphExamples;
-                flowgraphExamplesView.update(std::move(viewConfig));
-                break;
-            }
             case ModalContent::FlowgraphInfo:
                 if (this->config.flowgraphInfo.has_value()) {
                     auto viewConfig = this->config.flowgraphInfo.value();
                     flowgraphInfoView.update(std::move(viewConfig));
-                }
-                break;
-            case ModalContent::Settings: {
-                auto viewConfig = this->config.appSettings;
-                appSettingsView.update(std::move(viewConfig));
-                break;
-            }
-            case ModalContent::FlowgraphClose:
-                if (this->config.flowgraphClose.has_value()) {
-                    auto viewConfig = this->config.flowgraphClose.value();
-                    flowgraphCloseView.update(std::move(viewConfig));
                 }
                 break;
             case ModalContent::RenameBlock:
@@ -101,26 +67,6 @@ struct ModalView {
                 benchmarkView.update(std::move(viewConfig));
                 break;
             }
-            case ModalContent::RemoteStreaming: {
-                auto viewConfig = this->config.remoteStreaming;
-                remoteView.update(std::move(viewConfig));
-                break;
-            }
-            case ModalContent::Plugin: {
-                auto viewConfig = this->config.plugin;
-                pluginView.update(std::move(viewConfig));
-                break;
-            }
-            case ModalContent::IntelligenceProvider: {
-                auto viewConfig = this->config.intelligenceProvider;
-                intelligenceProviderView.update(std::move(viewConfig));
-                break;
-            }
-            case ModalContent::IntelligenceModel: {
-                auto viewConfig = this->config.intelligenceModel;
-                intelligenceModelView.update(std::move(viewConfig));
-                break;
-            }
             case ModalContent::Dependencies: {
                 auto viewConfig = this->config.dependencies;
                 dependencyReviewView.update(std::move(viewConfig));
@@ -131,106 +77,98 @@ struct ModalView {
                 feedbackView.update(std::move(viewConfig));
                 break;
             }
+            case ModalContent::RemoteQr: {
+                auto viewConfig = this->config.remoteQr;
+                remoteQrView.update(std::move(viewConfig));
+                break;
+            }
+            case ModalContent::DocsSearch: {
+                auto viewConfig = this->config.docsSearch;
+                docsSearchView.update(std::move(viewConfig));
+                break;
+            }
+            case ModalContent::Onboarding: {
+                auto viewConfig = this->config.onboarding;
+                onboardingView.update(std::move(viewConfig));
+                break;
+            }
         }
 
         previousContent = this->config.content;
     }
 
-    void render(const Sakura::Context& ctx) {
-        if (!config.content.has_value()) {
-            return;
+    Sakura::ModalLayer::Config layer() {
+        if (config.content == ModalContent::DocsSearch) {
+            return docsSearchView.layer();
         }
-
-        modal.render(ctx, [this](const Sakura::Context& ctx) {
-            switch (config.content.value()) {
-                case ModalContent::About:
-                    aboutView.render(ctx);
-                    break;
-                case ModalContent::FlowgraphExamples:
-                    flowgraphExamplesView.render(ctx);
-                    break;
-                case ModalContent::FlowgraphInfo:
-                    if (config.flowgraphInfo.has_value()) {
-                        flowgraphInfoView.render(ctx);
-                    }
-                    break;
-                case ModalContent::Settings:
-                    appSettingsView.render(ctx);
-                    break;
-                case ModalContent::FlowgraphClose:
-                    if (config.flowgraphClose.has_value()) {
-                        flowgraphCloseView.render(ctx);
-                    }
-                    break;
-                case ModalContent::RenameBlock:
-                    if (config.renameBlock.has_value()) {
-                        renameBlockView.render(ctx);
-                    }
-                    break;
-                case ModalContent::Benchmark:
-                    benchmarkView.render(ctx);
-                    break;
-                case ModalContent::RemoteStreaming:
-                    remoteView.render(ctx);
-                    break;
-                case ModalContent::Plugin:
-                    pluginView.render(ctx);
-                    break;
-                case ModalContent::IntelligenceProvider:
-                    intelligenceProviderView.render(ctx);
-                    break;
-                case ModalContent::IntelligenceModel:
-                    intelligenceModelView.render(ctx);
-                    break;
-                case ModalContent::Dependencies:
-                    dependencyReviewView.render(ctx);
-                    break;
-                case ModalContent::Feedback:
-                    feedbackView.render(ctx);
-                    break;
-            }
-        });
+        return {
+            .content = content(),
+            .size = modalSize(),
+            .closeButton = config.content != ModalContent::Feedback && config.content != ModalContent::RemoteQr &&
+                           config.content != ModalContent::Onboarding,
+            .onClose = [this]() {
+                if (config.onClose) {
+                    config.onClose();
+                }
+            },
+        };
     }
 
  private:
-    std::optional<Extent2D<F32>> modalSize() const {
-        if (config.content == ModalContent::Settings) {
-            return Extent2D<F32>{880.0f, 700.0f};
+    Sakura::Component* content() {
+        if (!config.content.has_value()) {
+            return nullptr;
         }
-        if (config.content == ModalContent::Plugin) {
-            return Extent2D<F32>{620.0f, 0.0f};
+        switch (config.content.value()) {
+            case ModalContent::About:
+                return &aboutView.component();
+            case ModalContent::FlowgraphInfo:
+                return config.flowgraphInfo.has_value() ? &flowgraphInfoView.component() : nullptr;
+            case ModalContent::RenameBlock:
+                return config.renameBlock.has_value() ? &renameBlockView.component() : nullptr;
+            case ModalContent::Benchmark:
+                return &benchmarkView.component();
+            case ModalContent::Dependencies:
+                return &dependencyReviewView.component();
+            case ModalContent::Feedback:
+                return &feedbackView.component();
+            case ModalContent::RemoteQr:
+                return &remoteQrView.component();
+            case ModalContent::DocsSearch:
+                return nullptr;
+            case ModalContent::Onboarding:
+                return &onboardingView.component();
         }
-        if (config.content == ModalContent::IntelligenceProvider) {
-            return Extent2D<F32>{620.0f, 0.0f};
-        }
-        if (config.content == ModalContent::IntelligenceModel) {
-            return Extent2D<F32>{680.0f, 0.0f};
-        }
+        return nullptr;
+    }
+
+    Extent2D<F32> modalSize() const {
         if (config.content == ModalContent::Feedback) {
             return Extent2D<F32>{520.0f, 0.0f};
+        }
+        if (config.content == ModalContent::RemoteQr) {
+            return Extent2D<F32>{460.0f, 0.0f};
         }
         if (config.content == ModalContent::Dependencies) {
             return Extent2D<F32>{760.0f, 0.0f};
         }
-        return std::nullopt;
+        if (config.content == ModalContent::Onboarding) {
+            return OnboardingView::Size();
+        }
+        return Sakura::ModalLayer::Config{}.size;
     }
 
     Config config;
     std::optional<ModalContent> previousContent;
-    Sakura::Modal modal;
     AboutView aboutView;
-    FlowgraphExamplesView flowgraphExamplesView;
     FlowgraphInfoView flowgraphInfoView;
-    SettingsView appSettingsView;
-    FlowgraphCloseView flowgraphCloseView;
     RenameBlockView renameBlockView;
     BenchmarkView benchmarkView;
-    RemoteView remoteView;
-    PluginView pluginView;
-    IntelligenceProviderView intelligenceProviderView;
-    IntelligenceModelView intelligenceModelView;
     DependencyReviewView dependencyReviewView;
     FeedbackView feedbackView;
+    RemoteQrView remoteQrView;
+    DocsSearchView docsSearchView;
+    OnboardingView onboardingView;
 };
 
 }  // namespace Jetstream

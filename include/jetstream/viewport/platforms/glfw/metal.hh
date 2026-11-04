@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_VIEWPORT_PLATFORM_GLFW_METAL_HH
 #define JETSTREAM_VIEWPORT_PLATFORM_GLFW_METAL_HH
 
+#include <memory>
+
 #include "jetstream/viewport/adapters/metal.hh"
 #include "jetstream/viewport/platforms/glfw/generic.hh"
 
@@ -29,10 +31,8 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Result create();
     Result destroy();
 
-    Result createImgui();
-    Result destroyImgui();
     Extent2D<F32> displaySize() const;
-    F32 scale(const F32& scale) const;
+    Extent2D<F32> framebufferSize() const;
 
     MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable);
     Extent2D<U64> getSwapchainExtent() const;
@@ -40,11 +40,19 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
+    bool retainedPresent() const;
+
+    Render::TitlebarChrome titlebarChrome() const;
+    void setIntegratedTitlebar(bool enabled);
+    void beginWindowDrag();
+    void zoomWindow();
+    bool setDarkAppearance(bool dark);
 
  private:
     void setCaptureEnabled(bool enabled);
 
     GLFWwindow* window = nullptr;
+    std::shared_ptr<CocoaTitlebar> titlebar;
     CA::MetalLayer* swapchain;
 };
 

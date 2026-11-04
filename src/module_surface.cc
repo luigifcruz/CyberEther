@@ -39,7 +39,7 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
             if (scaleChanged) {
                 state.scale = event.scale;
             }
-            state.backgroundColor = event.backgroundColor;
+            state.theme = event.theme;
             state.placement = event.placement;
 
             if (sizeChanged || scaleChanged || placementChanged) {
@@ -114,7 +114,8 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
             case MouseEventType::Enter: {
                 break;
             }
-            case MouseEventType::Leave: {
+            case MouseEventType::Leave:
+            case MouseEventType::Cancel: {
                 state.dragging = false;
                 break;
             }

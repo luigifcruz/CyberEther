@@ -7,13 +7,9 @@
 
 #include "actions/base.hh"
 #include "presenters/base.hh"
-#include "support/themes.hh"
+#include "render/sakura/themes.hh"
 
-#include "resources/fonts/compressed_jbmm.hh"
-#include "resources/fonts/compressed_jbmb.hh"
-#include "resources/fonts/compressed_fa.hh"
-#include "resources/fonts/compressed_sg.hh"
-
+#include "jetstream/config.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/instance_remote.hh"
@@ -36,19 +32,20 @@ DefaultCompositor::DefaultCompositor() :
         .enqueueMail = [this](Mail&& mail) {
             enqueue(std::move(mail));
         },
-        .enqueueCommand = [this](std::function<Result()> fn, bool silent) {
-            Compositor::Impl::enqueue(std::move(fn), silent);
+        .enqueueCommand = [this](Sakura::Callback<Result()> fn, bool silent) {
+            Compositor::Impl::enqueue(std::move(fn).release(), silent);
         },
-        .enqueueCommandWithCompletion = [this](std::function<Result()> fn, bool silent,
-                                               std::function<void(Result)> onComplete) {
-            Compositor::Impl::enqueue(std::move(fn), silent, std::move(onComplete));
+        .enqueueCommandWithCompletion = [this](Sakura::Callback<Result()> fn, bool silent,
+                                               Sakura::Callback<void(Result)> onComplete) {
+            Compositor::Impl::enqueue(std::move(fn).release(), silent, std::move(onComplete).release());
         },
-        .enqueueCommandWithMail = [this](std::function<Result()> fn, bool silent, Mail mail) {
-            Compositor::Impl::enqueue(std::move(fn), silent, [this, mail = std::move(mail)](const Result result) {
-                if (result == Result::SUCCESS) {
-                    enqueue(Mail(mail));
-                }
-            });
+        .enqueueCommandWithMail = [this](Sakura::Callback<Result()> fn, bool silent, Mail mail) {
+            Compositor::Impl::enqueue(std::move(fn).release(), silent,
+                                      [this, mail = std::move(mail)](const Result result) {
+                                          if (result == Result::SUCCESS) {
+                                              enqueue(Mail(mail));
+                                          }
+                                      });
         },
         .notify = [](Sakura::ToastType type, I32 durationMs, const std::string& message) {
             Sakura::PushToast(type, durationMs, message);
@@ -56,8 +53,8 @@ DefaultCompositor::DefaultCompositor() :
         .notifyResult = [](Result result, const std::string& message) {
             Sakura::PushToastResult(result, message);
         },
-        .setClipboardText = [](const std::string& value) {
-            Sakura::SetClipboardText(value);
+        .setClipboardText = [this](const std::string& value) {
+            Sakura::SetClipboardText(state.system.render.get(), value);
         },
         .requestFile = [this](FilePickerRequest request) {
             return actions.requestFile(std::move(request));
@@ -74,9 +71,6 @@ DefaultCompositor::DefaultCompositor() :
         .applyUpdate = [this]() {
             return updater.apply();
         },
-        .dismissUpdate = [this]() {
-            updater.dismiss();
-        },
         .submitFeedback = [this](const std::string& text) {
             feedback.submit(text);
         },
@@ -84,6 +78,12 @@ DefaultCompositor::DefaultCompositor() :
     agent(state, callbacks),
     actions(state, callbacks, agent),
     presenters(state, callbacks) {}
+
+DefaultCompositor::~DefaultCompositor() {
+    if (viewport && previousIntegratedTitlebar.has_value()) {
+        viewport->setIntegratedTitlebar(*previousIntegratedTitlebar);
+    }
+}
 
 Result DefaultCompositor::create() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Creating compositor.");
@@ -101,19 +101,30 @@ Result DefaultCompositor::create() {
 
     // Restore Sakura theme state.
 
-    state.sakura.themeKey = ResolveThemeKey(settings.interface.themeKey);
-    state.sakura.colorMap = themes.at(state.sakura.themeKey);
+    state.sakura.themeKey = Sakura::ResolveThemeKey(settings.interface.themeKey);
+    state.sakura.colorMap = Sakura::Themes.at(state.sakura.themeKey);
+    if (render) {
+        render->setDarkAppearance(state.sakura.dark());
+    }
 
     // Restore graphics preferences.
 
     state.graphics.device = settings.graphics.device;
     state.graphics.scale = settings.graphics.scale;
-    state.graphics.framerate = settings.graphics.framerate;
 
     // Restore interface preferences.
 
-    state.interface.infoPanelEnabled = settings.interface.infoPanelEnabled;
     state.interface.backgroundParticles = settings.interface.backgroundParticles;
+    state.interface.showTips = settings.interface.showTips;
+    state.interface.recentFlowgraphs = settings.interface.recentFlowgraphs;
+    state.interface.favoriteFlowgraphs = settings.interface.favoriteFlowgraphs;
+    if (!viewport || viewport->id() != "headless") {
+        if (auto onboarding = OnboardingActions::Detect(settings.interface, JETSTREAM_VERSION_STR)) {
+            enqueue(std::move(*onboarding));
+        } else if (settings.interface.welcomeVersion != JETSTREAM_VERSION_STR) {
+            enqueue(MailDismissOnboarding{});
+        }
+    }
 
     // Restore map preferences.
 
@@ -134,7 +145,6 @@ Result DefaultCompositor::create() {
     // Restore debug preferences.
 
     state.debug.logLevel = settings.developer.logLevel;
-    state.debug.latencyEnabled = settings.developer.latencyEnabled;
     state.debug.timingEnabled = settings.developer.timingEnabled;
     JST_LOG_SET_DEBUG_LEVEL(state.debug.logLevel);
 
@@ -205,31 +215,13 @@ Result DefaultCompositor::create() {
         .palette = &state.sakura.colorMap,
         .render = state.system.render.get(),
     });
-    state.sakura.runtime.create({
-        .body = {
-            .data = jbmm_compressed_data,
-            .size = jbmm_compressed_size,
-        },
-        .bold = {
-            .data = jbmb_compressed_data,
-            .size = jbmb_compressed_size,
-        },
-        .iconRegular = {
-            .data = far_compressed_data,
-            .size = far_compressed_size,
-        },
-        .iconSolid = {
-            .data = fas_compressed_data,
-            .size = fas_compressed_size,
-        },
-        .display = {
-            .data = sg_compressed_data,
-            .size = sg_compressed_size,
-        },
-    });
 
     // Prime the initial workbench view state.
 
+    if (viewport && !previousIntegratedTitlebar.has_value()) {
+        previousIntegratedTitlebar = viewport->integratedTitlebar();
+        viewport->setIntegratedTitlebar(true);
+    }
     workbench.update(presenters.build());
 
     updater.start();
@@ -244,6 +236,8 @@ Result DefaultCompositor::destroy() {
     actions.cancelFilePicker();
     agent.shutdown();
     actions.shutdownAgent();
+    actions.shutdownGallery();
+    actions.shutdownTerminals();
     actions.shutdownMaps();
     updater.shutdown();
     feedback.shutdown();
@@ -251,18 +245,15 @@ Result DefaultCompositor::destroy() {
         JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Failed to save settings during shutdown. Continuing cleanup.");
     }
 
+    if (viewport && previousIntegratedTitlebar.has_value()) {
+        viewport->setIntegratedTitlebar(*previousIntegratedTitlebar);
+        previousIntegratedTitlebar.reset();
+    }
+
     return Result::SUCCESS;
 }
 
 Result DefaultCompositor::poll() {
-    // Route files dropped onto the window into the mail queue.
-
-    if (state.system.viewport) {
-        for (auto& path : state.system.viewport->takeDroppedFiles()) {
-            enqueue(MailDropFlowgraphPath{std::move(path)});
-        }
-    }
-
     std::deque<Mail> pending;
     pending.swap(pendingMail);
 
@@ -272,12 +263,8 @@ Result DefaultCompositor::poll() {
 
     // Dispatch the mail tree after snapshots are refreshed.
 
-    for (const auto& mail : pending) {
-        if (!state.system.instance) {
-            continue;
-        }
-
-        JST_CHECK(actions.handle(mail));
+    if (state.system.instance) {
+        JST_CHECK(actions.dispatch(pending));
     }
 
     agent.poll();
@@ -298,6 +285,12 @@ Result DefaultCompositor::poll() {
         callbacks.notifyResult(completed.result, completed.message);
     }
 
+    pending.clear();
+    pending.swap(pendingMail);
+    if (state.system.instance) {
+        JST_CHECK(actions.dispatch(pending));
+    }
+
     // Update the state snapshots used by presenters.
 
     updateWorkbenchState();
@@ -308,9 +301,15 @@ Result DefaultCompositor::poll() {
     updateRemoteState();
     updateUpdaterState();
     actions.reconcileFilePicker();
-    actions.restoreStacks();
+    actions.restoreLayouts();
+    actions.settleStartTab();
+    actions.reconcileGallery();
+    actions.refreshRegistry();
     actions.refreshLiveMarkdown();
+    actions.refreshConfigDrafts();
+    actions.refreshMetrics();
     actions.reconcileAgent();
+    actions.reconcileTerminals();
     actions.reconcileMaps();
     updateFeedbackState();
 
@@ -331,67 +330,25 @@ Result DefaultCompositor::present() {
     const auto& ctx = state.sakura.runtime.context();
     workbench.render(ctx);
 
+    // Offer dropped files to the component under the pointer, one frame after their pointer event.
+
+    if (!droppedFiles.empty() && !workbench.dropFiles(droppedFiles)) {
+        for (auto& path : droppedFiles) {
+            enqueue(MailDropFlowgraphPath{std::move(path)});
+        }
+    }
+    droppedFiles.clear();
+    if (state.system.viewport) {
+        droppedFiles = state.system.viewport->takeDroppedFiles();
+    }
+
     return Result::SUCCESS;
 }
 
 void DefaultCompositor::updateWorkbenchState() {
-    if (state.interface.pendingFocusedFlowgraph.has_value() &&
-        state.flowgraph.items.contains(*state.interface.pendingFocusedFlowgraph)) {
-        state.interface.focusedFlowgraph = state.interface.pendingFocusedFlowgraph;
-        state.interface.pendingFocusedFlowgraph.reset();
-    }
-
-    if (state.flowgraph.items.empty()) {
-        state.interface.focusedFlowgraph.reset();
-        state.interface.flowgraphMetadataVisible = false;
-        state.interface.flowgraphMetadataSearch.clear();
-        state.interface.flowgraphEnvironmentVisible = false;
-        state.interface.flowgraphEnvironmentSearch.clear();
-    } else if (state.interface.focusedFlowgraph.has_value() &&
-               !state.flowgraph.items.contains(state.interface.focusedFlowgraph.value())) {
-        state.interface.focusedFlowgraph.reset();
-        state.interface.flowgraphMetadataVisible = false;
-        state.interface.flowgraphMetadataSearch.clear();
-        state.interface.flowgraphEnvironmentVisible = false;
-        state.interface.flowgraphEnvironmentSearch.clear();
-    }
-
-    if (!state.interface.focusedFlowgraph.has_value() &&
-        !state.interface.pendingFocusedFlowgraph.has_value() &&
-        state.flowgraph.items.size() == 1) {
-        state.interface.focusedFlowgraph = state.flowgraph.items.begin()->first;
-    }
-
-    if (!state.modal.content.has_value()) {
-        state.modal.flowgraph.reset();
-        return;
-    }
-
-    if (state.modal.content == ModalContent::FlowgraphInfo ||
-        state.modal.content == ModalContent::FlowgraphClose) {
-        const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
-            ? state.modal.flowgraph
-            : state.interface.focusedFlowgraph;
-        if (!targetFlowgraph.has_value() || !state.flowgraph.items.contains(targetFlowgraph.value())) {
-            state.modal.content.reset();
-            state.modal.flowgraph.reset();
-        }
-        return;
-    }
-
-    if (state.modal.content == ModalContent::RenameBlock) {
-        const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
-            ? state.modal.flowgraph
-            : state.interface.focusedFlowgraph;
-        if (!targetFlowgraph.has_value() ||
-            !state.flowgraph.items.contains(targetFlowgraph.value()) ||
-            !state.modal.renameBlockOldName.has_value() ||
-            !state.flowgraph.items.at(targetFlowgraph.value())->view().has(state.modal.renameBlockOldName.value())) {
-            state.modal.content.reset();
-            state.modal.flowgraph.reset();
-            state.modal.renameBlockOldName.reset();
-        }
-    }
+    actions.settlePendingFocus();
+    actions.reconcileFlowgraphs();
+    actions.reconcileModal();
 }
 
 void DefaultCompositor::updateFlowgraphBlockState() {
@@ -453,8 +410,6 @@ void DefaultCompositor::updateRemoteState() {
     state.remote.started = remoteStarted;
     state.remote.clientCount = remoteStarted ? remote->clients().size() : 0;
     state.remote.inviteUrl = remoteStarted ? remote->inviteUrl() : "";
-    state.remote.roomId = remoteStarted ? remote->roomId() : "";
-    state.remote.accessToken = remoteStarted ? remote->accessToken() : "";
     state.remote.clients = remoteStarted ? remote->clients() : std::vector<Instance::Remote::ClientInfo>{};
     state.remote.waitlist = remoteStarted ? remote->waitlist() : std::vector<std::string>{};
 }

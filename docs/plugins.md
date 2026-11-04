@@ -271,5 +271,5 @@ CyberEther loads plugins through its plugin loader. At load time, CyberEther:
 
 After the plugin is loaded, its registered blocks can be built like other
 CyberEther blocks. The user-facing side of this flow, including registration
-through the preferences window, is covered in
+through Settings, is covered in
 [Installing Plugins](/docs/installing-plugins).

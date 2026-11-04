@@ -29,12 +29,16 @@ class JETSTREAM_API Scheduler {
     Result create(const std::shared_ptr<Instance>& instance);
     Result start();
     Result stop();
+    Result pause();
+    Result resume();
+    bool paused() const;
     Result destroy();
 
     Result add(const std::shared_ptr<Module>& module);
     Result remove(const std::shared_ptr<Module>& module);
     Result reload(const std::shared_ptr<Module>& module);
     Result synchronize(const std::function<Result()>& fn);
+    Result read(const std::function<Result()>& fn);
 
     Result present(std::unordered_set<std::string>& failedModules);
     Result compute(std::unordered_set<std::string>& failedModules);

@@ -4,45 +4,42 @@
 #include "jetstream/render/sakura/base.hh"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace Jetstream {
 
-struct ModalHeader {
+struct ModalHeader : public Sakura::Stack {
     struct Config {
-        std::string id;
         std::string title;
         std::string description;
         F32 dividerSpacing = 4.0f;
     };
 
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
+
         title.update({
-            .id = this->config.id + "Title",
-            .str = this->config.title,
+            .str = config.title,
+            .font = Text::Font::Display,
+            .scale = Sakura::Typography::Scale::Heading,
         });
         description.update({
-            .id = this->config.id + "Description",
-            .str = this->config.description,
-            .tone = Sakura::Text::Tone::Secondary,
+            .str = config.description,
+            .font = Text::Font::Sans,
+            .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
-        divider.update({
-            .id = this->config.id + "Divider",
-            .spacing = this->config.dividerSpacing,
-        });
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        title.render(ctx);
+        divider.update({.spacing = config.dividerSpacing});
+        std::vector<Item> items = {{.child = &title}};
         if (!config.description.empty()) {
-            description.render(ctx);
+            items.push_back({.child = &description});
         }
-        divider.render(ctx);
+        items.push_back({.child = &divider});
+        Stack::update({.items = std::move(items)});
     }
 
  private:
-    Config config;
     Sakura::Text title;
     Sakura::Text description;
     Sakura::Divider divider;

@@ -85,7 +85,7 @@ struct JETSTREAM_API Instance::Remote {
     Result destroy();
 
     bool started() const;
-    Result captureFrame();
+    Result captureFrame(bool presented);
 
     const std::string& roomId() const;
     const std::string& accessToken() const;
@@ -93,7 +93,8 @@ struct JETSTREAM_API Instance::Remote {
     std::vector<ClientInfo> clients() const;
     std::vector<std::string> waitlist() const;
 
-    Result approveClient(const std::string& code);
+    Result approveClient(const std::string& sessionId);
+    Result removeClient(const std::string& sessionId);
 
  private:
     std::shared_ptr<Impl> impl;

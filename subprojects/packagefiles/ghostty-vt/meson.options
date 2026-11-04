@@ -1,0 +1,1 @@
+option('native', type : 'boolean', value : false, yield : true, description: 'Target the build machine CPU instead of the baseline CPU.')

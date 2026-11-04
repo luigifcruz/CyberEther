@@ -4,7 +4,7 @@
 #include "../../model/state.hh"
 
 #include "jetstream/config.hh"
-#include "jetstream/render/sakura/components/retained/chat.hh"
+#include "jetstream/render/sakura/components/chat.hh"
 #include "tools/text.hh"
 
 #include <algorithm>
@@ -18,8 +18,7 @@ namespace Jetstream {
 
 class AgentTranscriptFormatter {
  public:
-    const Sakura::Retained::Chat::Snapshot& format(
-        const DefaultCompositorState::AgentState::Conversation& conversation) {
+    const Sakura::Chat::Snapshot& format(const DefaultCompositorState::AgentState::Conversation& conversation) {
         if (generation != conversation.generation) {
             entries.clear();
             snapshot.messages = {};
@@ -66,14 +65,14 @@ class AgentTranscriptFormatter {
     }
 
  private:
-    using Chat = Sakura::Retained::Chat;
+    using Chat = Sakura::Chat;
     using Segments = std::vector<Agent::Session::Segment>;
     using SegmentKind = Agent::Session::Segment::Kind;
 
     struct Entry {
         std::shared_ptr<const Agent::Session::Entry> source;
         bool busy = false;
-        std::shared_ptr<const Sakura::Retained::Chat::Message> display;
+        std::shared_ptr<const Sakura::Chat::Message> display;
     };
 
     static bool IsHeadline(const std::string& line) {
@@ -420,7 +419,7 @@ class AgentTranscriptFormatter {
 
     U64 generation = 0;
     std::vector<Entry> entries;
-    Sakura::Retained::Chat::Snapshot snapshot;
+    Sakura::Chat::Snapshot snapshot;
 };
 
 }  // namespace Jetstream

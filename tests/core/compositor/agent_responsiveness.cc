@@ -61,7 +61,7 @@ struct FakeConnection : Agent::Live {
 
     void send(const std::vector<I16>&) override {}
 
-    void reply(const Agent::Live::ToolOutputs&, bool) override {}
+    void reply(const Agent::Live::ToolOutputs&) override {}
 };
 
 struct SilentAudio final : Agent::Session::Audio {

@@ -31,8 +31,12 @@ bool Response::Failed(const Json& body) {
     });
 }
 
+std::string Response::Dump(const Json& body) {
+    return body.dump(-1, ' ', false, Json::error_handler_t::replace);
+}
+
 Tools::Output Response::Reply(const Json& body, std::vector<std::string> images) {
-    return {body.dump(), std::move(images), Failed(body)};
+    return {Dump(body), std::move(images), Failed(body)};
 }
 
 Tools::Output Response::Failure(const std::string& message) {

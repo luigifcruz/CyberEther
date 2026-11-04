@@ -3,6 +3,8 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphConfigFloatField {
@@ -19,10 +21,12 @@ struct FlowgraphConfigFloatField {
         hasStep = !stepConfig.empty() && stepConfig != this->config.name && this->config.values.contains(stepConfig) &&
                   Parser::Deserialize(this->config.values, stepConfig, step) == Result::SUCCESS &&
                   std::isfinite(step) && step > 0.0f;
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
+            .content = &input,
         });
         input.update({
             .id = this->config.id + "Input",
@@ -51,10 +55,8 @@ struct FlowgraphConfigFloatField {
         return Result::SUCCESS;
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            input.render(ctx);
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -75,6 +77,7 @@ struct FlowgraphConfigFloatField {
     F32 value = 0.0f;
     F32 step = 0.0f;
     bool hasStep = false;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     Sakura::NodeFloatInput input;
 };

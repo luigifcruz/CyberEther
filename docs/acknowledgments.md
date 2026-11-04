@@ -22,13 +22,11 @@ CyberEther uses the following open-source libraries.
 | Library | Purpose | License |
 |---------|---------|---------|
 | [Miniaudio](https://miniaud.io/) | Audio playback and capture. | MIT |
-| [Dear ImGui](https://github.com/ocornut/imgui) | Immediate mode graphical interface. | MIT |
-| [ImNodes](https://github.com/Nelarius/imnodes) | Node editor for flowgraphs. | MIT |
 | [PocketFFT](https://gitlab.mpcdf.mpg.de/mtr/pocketfft) | Fast Fourier Transform on CPU. | BSD-3-Clause |
 | [RapidYAML](https://github.com/biojppm/rapidyaml) | YAML file parser. | MIT |
 | [toml++](https://github.com/marzer/tomlplusplus) | TOML file parser. | MIT |
 | [vkFFT](https://github.com/DTolm/VkFFT) | Fast Fourier Transform on GPU. | MIT |
-| [stb](https://github.com/nothings/stb) | An image file loader. | MIT |
+| [stb](https://github.com/nothings/stb) | Image loading, font rasterization, and font decompression. | MIT |
 | [fmtlib](https://github.com/fmtlib/fmt) | Text formatting and logging. | MIT |
 | [librtlsdr](https://github.com/steve-m/librtlsdr) | Communication with RTL-SDR devices. | GPL-2.0-or-later |
 | [libairspy](https://github.com/airspy/airspyone_host) | Communication with Airspy devices. | BSD-3-Clause |
@@ -51,7 +49,6 @@ CyberEther uses the following open-source libraries.
 | [tree-sitter-json](https://github.com/tree-sitter/tree-sitter-json) | JSON grammar for tree-sitter. | MIT |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) | Machine learning inference runtime. | MIT |
 | [GLFW](https://www.glfw.org/) | Window and input handling. | zlib/libpng |
-| [imgui-notify](https://github.com/patrickcjk/imgui-notify) | Toast notification system. | MIT |
 | [spirv-cross](https://github.com/KhronosGroup/SPIRV-Cross) | Shader conversion to Metal. | Apache-2.0 |
 | [Apple metal-cpp](https://developer.apple.com/metal/cpp/) | C++ bindings for the Metal backend. | Apache-2.0 |
 | [Nanobench](https://nanobench.ankerl.com/) | Performance benchmarking tools. | MIT |
@@ -71,7 +68,8 @@ CyberEther uses the following open-source libraries.
 | [zlib](https://zlib.net/) | Gzip decompression for geodata. | zlib |
 | [OpenSSL](https://www.openssl.org/) | TLS and cryptography support. | Apache-2.0 |
 | [Catch2](https://github.com/catchorg/Catch2) | Unit testing framework. | Boost |
-| [Font Awesome](https://fontawesome.com/) | Icon font used in the GUI. | Font Awesome Free License |
+| [Lucide](https://lucide.dev/) | Icon font used in the GUI. | ISC |
+| [Font Awesome](https://fontawesome.com/) | Node icons used in the flowgraph editor. | Font Awesome Free License |
 | [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | Monospace font for the GUI. | OFL-1.1 |
 | [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | UI font for the GUI. | OFL-1.1 |
 | [Inter](https://github.com/rsms/inter) | Sans-serif UI font for the GUI. | OFL-1.1 |
@@ -107,56 +105,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-</details>
-
-### Dear ImGui
-Immediate mode GUI library by Omar Cornut. Used for the CyberEther GUI. Licensed under MIT. [GitHub](https://github.com/ocornut/imgui)
-
-<details>
-  <summary>View License</summary>
-
-```
-The MIT License (MIT)
-
-Copyright (c) 2014-2023 Omar Cornut
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-</details>
-
-### ImNodes
-Node editor for Dear ImGui. Used for the flowgraph editor. Licensed under MIT. [GitHub](https://github.com/Nelarius/imnodes)
-
-<details>
-  <summary>View License</summary>
-
-```
-MIT License
-
-Copyright (c) 2019 Johann Muszynski
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 </details>
 
@@ -290,7 +238,7 @@ SOFTWARE.
 </details>
 
 ### stb
-Single-file public domain libraries for C/C++. Used for image loading. Licensed under MIT. [GitHub](https://github.com/nothings/stb)
+Single-file public domain libraries for C/C++. Used for image loading, font rasterization, and font decompression. Licensed under MIT. [GitHub](https://github.com/nothings/stb)
 
 <details>
   <summary>View License</summary>
@@ -2961,38 +2909,6 @@ The origin of this software must not be misrepresented; you must not claim that 
 Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
 
 This notice may not be removed or altered from any source distribution.
-```
-</details>
-
-### imgui-notify
-Notification system for Dear ImGui. Used for notifications. Licensed under MIT. [GitHub](https://github.com/patrickcjk/imgui-notify)
-
-
-<details>
-  <summary>View License</summary>
-
-```
-MIT License
-
-Copyright (c) 2021 Patrick
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 ```
 </details>
 
@@ -7447,8 +7363,61 @@ DEALINGS IN THE SOFTWARE.
 ```
 </details>
 
+### Lucide
+Icon font used in the GUI. Licensed under the ISC License. [Website](https://lucide.dev/) [GitHub](https://github.com/lucide-icons/lucide)
+
+<details>
+  <summary>View License</summary>
+
+```
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+---
+
+The following Lucide icons are derived from the Feather project:
+
+airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
+
+The MIT License (MIT) (for the icons listed above)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+</details>
+
 ### Font Awesome
-Icon font used in the GUI. Licensed under the Font Awesome Free License. [Website](https://fontawesome.com/) [GitHub](https://github.com/FortAwesome/Font-Awesome)
+Node icons used in the flowgraph editor. Licensed under the Font Awesome Free License. [Website](https://fontawesome.com/) [GitHub](https://github.com/FortAwesome/Font-Awesome)
 
 <details>
   <summary>View License</summary>

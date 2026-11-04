@@ -538,6 +538,26 @@ Result Flowgraph::stop() {
     return Result::SUCCESS;
 }
 
+Result Flowgraph::pause() {
+    if (!impl->created.load() || !impl->scheduler) {
+        return Result::SUCCESS;
+    }
+
+    return impl->scheduler->pause();
+}
+
+Result Flowgraph::resume() {
+    if (!impl->created.load() || !impl->scheduler) {
+        return Result::SUCCESS;
+    }
+
+    return impl->scheduler->resume();
+}
+
+bool Flowgraph::paused() const {
+    return impl->created.load() && impl->scheduler && impl->scheduler->paused();
+}
+
 Result Flowgraph::blockCreate(const std::string name,
                               const Block::Config& config,
                               const TensorMap& inputs,
@@ -933,7 +953,14 @@ Result Flowgraph::blockDisconnect(const std::string blockName,
 }
 
 Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& config) {
+    bool recreated = false;
+    return blockReconfigure(name, config, recreated);
+}
+
+Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& config, bool& recreated) {
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+
+    recreated = false;
 
     Result result = Result::SUCCESS;
     bool recoverPrevious = false;
@@ -985,7 +1012,9 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
         JST_INFO("[FLOWGRAPH] Block '{}' requested recreation.", name);
         auto nextStates = previousStates;
         nextStates.front().config = std::move(mergedConfig);
-        return ReconstructBlocks(*this, impl, previousStates, nextStates);
+        const auto reconstructed = ReconstructBlocks(*this, impl, previousStates, nextStates);
+        recreated = ReconstructionStepSucceeded(reconstructed);
+        return reconstructed;
     }
 
     if (recoverPrevious) {
@@ -1287,6 +1316,21 @@ Result Flowgraph::importFromFile(const std::string& path) {
     file.close();
 
     return importFromBlob(blob);
+}
+
+Result Flowgraph::ReadTitle(const std::string& path, std::string& title) {
+    title.clear();
+
+    std::ifstream file(Platform::PathFromUtf8(path), std::ios::binary);
+    if (!file) {
+        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", path);
+        return Result::ERROR;
+    }
+
+    const std::string yamlText((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    Parser::Map root;
+    JST_CHECK(Parser::YamlDecode(yamlText, root));
+    return Parser::Deserialize(root, "title", title);
 }
 
 Result Flowgraph::importFromBlob(const std::vector<char>& blob) {

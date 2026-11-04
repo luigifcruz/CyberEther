@@ -1,9 +1,12 @@
+#include <algorithm>
+#include <cstring>
 #include <span>
+#include <utility>
+#include <vector>
 
 #include <glm/mat4x4.hpp>
 
 #include "jetstream/render/base.hh"
-#include "jetstream/render/utils.hh"
 #include "jetstream/render/components/shapes.hh"
 
 #include "jetstream/types.hh"
@@ -25,7 +28,7 @@ struct Shapes::Impl {
 
     struct UniformBuffer {
         glm::vec2 pixelSize;
-        glm::vec2 _padding;
+        glm::vec2 translation;
     };
 
     struct ShapeProperties {
@@ -37,10 +40,31 @@ struct Shapes::Impl {
         glm::mat4 transform;
         glm::vec4 fillColor;
         glm::vec4 borderColor;
-        glm::vec4 shapeParams; // x=type, y=borderWidth, z=cornerRadius, w=unused
+        glm::vec4 shapeParams; // x=type, y=borderWidth, z=cornerRadius, w=corner mask (0 = all)
+        glm::vec4 hole;        // xy=local origin, zw=local size (empty = no hole)
     };
 
     // Internal Types.
+
+    struct Snapshot {
+        std::vector<U8> bytes;
+
+        template<typename T>
+        bool changed(const TypedTensor<T>& data) {
+            const U64 size = data.size() * sizeof(T);
+            if (size == 0) {
+                const bool cleared = !bytes.empty();
+                bytes.clear();
+                return cleared;
+            }
+            const auto* begin = reinterpret_cast<const U8*>(data.data());
+            if (bytes.size() == size && std::memcmp(bytes.data(), begin, size) == 0) {
+                return false;
+            }
+            bytes.assign(begin, begin + size);
+            return true;
+        }
+    };
 
     struct Element {
         const ElementConfig& config;
@@ -48,12 +72,13 @@ struct Shapes::Impl {
         std::span<F32> instanceRotationsBuffer;
         std::span<Extent2D<F32>> instancePositionsBuffer;
         std::span<Extent2D<F32>> instanceSizesBuffer;
+        std::span<Rect> instanceHolesBuffer;
     };
 
     // Variables.
 
     const Config& config;
-    UniformBuffer uniforms;
+    UniformBuffer uniforms{};
     U64 totalNumberOfInstances = 0;
     U64 totalNumberOfVertices = 0;
     U64 totalNumberOfIndices = 0;
@@ -66,6 +91,8 @@ struct Shapes::Impl {
     bool visible = true;
 
     bool updateUniformBufferFlag = false;
+
+    bool updateTranslationBufferFlag = false;
     bool updateVerticesBufferFlag = false;
     bool updateIndicesBufferFlag = false;
 
@@ -74,8 +101,16 @@ struct Shapes::Impl {
     bool updateRotationBufferFlag = false;
     bool updateSizeBufferFlag = false;
     bool updatePositionBufferFlag = false;
+    bool updateHoleBufferFlag = false;
 
     bool computeInstanceBufferFlag = false;
+
+    Snapshot propertiesSnapshot;
+    Snapshot colorsSnapshot;
+    Snapshot rotationsSnapshot;
+    Snapshot positionsSnapshot;
+    Snapshot holesSnapshot;
+    Snapshot sizesSnapshot;
 
     TypedTensor<glm::vec2> vertices;
     TypedTensor<InstanceData> instances;
@@ -86,11 +121,7 @@ struct Shapes::Impl {
     TypedTensor<F32> instanceRotations;
     TypedTensor<Extent2D<F32>> instancePositions;
     TypedTensor<Extent2D<F32>> instanceSizes;
-
-    Tensor optimalInstanceColors;
-    Tensor optimalInstanceRotations;
-    Tensor optimalInstancePositions;
-    Tensor optimalInstanceSizes;
+    TypedTensor<Rect> instanceHoles;
 
     std::shared_ptr<Render::Buffer> uniformBuffer;
     std::shared_ptr<Render::Buffer> verticesBuffer;
@@ -103,8 +134,7 @@ struct Shapes::Impl {
     std::shared_ptr<Render::Buffer> rotationsBuffer;
     std::shared_ptr<Render::Buffer> sizesBuffer;
     std::shared_ptr<Render::Buffer> positionsBuffer;
-    std::shared_ptr<Render::Buffer> borderWidthsBuffer;
-    std::shared_ptr<Render::Buffer> borderColorsBuffer;
+    std::shared_ptr<Render::Buffer> holesBuffer;
 
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> draw;
@@ -128,10 +158,11 @@ struct Shapes::Impl {
 Result Shapes::create(Window* window) {
     JST_DEBUG("[SHAPES] Loading new shapes.");
 
+
     // Calculate geometry requirements.
 
-    pimpl->totalNumberOfVertices = 4;
-    pimpl->totalNumberOfIndices = 6;
+    pimpl->totalNumberOfVertices = 8;
+    pimpl->totalNumberOfIndices = 24;
 
     for (const auto& [_, elementConfig] : config.elements) {
         pimpl->totalNumberOfInstances += elementConfig.numberOfInstances;
@@ -148,6 +179,8 @@ Result Shapes::create(Window* window) {
     JST_CHECK(pimpl->instanceRotations.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
     JST_CHECK(pimpl->instancePositions.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
     JST_CHECK(pimpl->instanceSizes.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
+    JST_CHECK(pimpl->instanceHoles.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
+    std::fill_n(pimpl->instanceHoles.data(), pimpl->instanceHoles.size(), Rect{});
 
     // Debug information.
 
@@ -205,59 +238,48 @@ Result Shapes::create(Window* window) {
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window,
-                                          pimpl->instanceColors,
-                                          pimpl->optimalInstanceColors));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = pimpl->optimalInstanceColors.data();
+        cfg.buffer = pimpl->instanceColors.data();
         cfg.elementByteSize = sizeof(glm::vec4);
         cfg.size = pimpl->instanceColors.size();
-        cfg.enableZeroCopy = pimpl->optimalInstanceColors.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->colorsBuffer, cfg));
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window,
-                                          pimpl->instanceRotations,
-                                          pimpl->optimalInstanceRotations));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = pimpl->optimalInstanceRotations.data();
+        cfg.buffer = pimpl->instanceRotations.data();
         cfg.elementByteSize = sizeof(F32);
         cfg.size = pimpl->instanceRotations.size();
-        cfg.enableZeroCopy = pimpl->optimalInstanceRotations.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->rotationsBuffer, cfg));
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window,
-                                          pimpl->instanceSizes,
-                                          pimpl->optimalInstanceSizes));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = pimpl->optimalInstanceSizes.data();
+        cfg.buffer = pimpl->instanceSizes.data();
         cfg.elementByteSize = sizeof(glm::vec2);
         cfg.size = pimpl->instanceSizes.size();
-        cfg.enableZeroCopy = pimpl->optimalInstanceSizes.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->sizesBuffer, cfg));
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window,
-                                          pimpl->instancePositions,
-                                          pimpl->optimalInstancePositions));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = pimpl->optimalInstancePositions.data();
+        cfg.buffer = pimpl->instancePositions.data();
         cfg.elementByteSize = sizeof(glm::vec2);
         cfg.size = pimpl->instancePositions.size();
-        cfg.enableZeroCopy = pimpl->optimalInstancePositions.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->positionsBuffer, cfg));
+    }
+
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = pimpl->instanceHoles.data();
+        cfg.elementByteSize = sizeof(Rect);
+        cfg.size = pimpl->instanceHoles.size();
+        cfg.target = Render::Buffer::Target::STORAGE;
+        JST_CHECK(window->build(pimpl->holesBuffer, cfg));
     }
 
     {
@@ -294,6 +316,7 @@ Result Shapes::create(Window* window) {
             {pimpl->sizesBuffer, Render::Kernel::AccessMode::READ},
             {pimpl->positionsBuffer, Render::Kernel::AccessMode::READ},
             {pimpl->instanceBuffer, Render::Kernel::AccessMode::WRITE},
+            {pimpl->holesBuffer, Render::Kernel::AccessMode::READ},
         };
         JST_CHECK(window->build(pimpl->transformKernel, cfg));
     }
@@ -325,6 +348,7 @@ Result Shapes::create(Window* window) {
             .instanceRotationsBuffer = std::span<F32>(pimpl->instanceRotations.data(), static_cast<std::size_t>(pimpl->instanceRotations.size())).subspan(currentInstanceOffset, instanceCount),
             .instancePositionsBuffer = std::span<Extent2D<F32>>(pimpl->instancePositions.data(), static_cast<std::size_t>(pimpl->instancePositions.size())).subspan(currentInstanceOffset, instanceCount),
             .instanceSizesBuffer = std::span<Extent2D<F32>>(pimpl->instanceSizes.data(), static_cast<std::size_t>(pimpl->instanceSizes.size())).subspan(currentInstanceOffset, instanceCount),
+            .instanceHolesBuffer = std::span<Rect>(pimpl->instanceHoles.data(), static_cast<std::size_t>(pimpl->instanceHoles.size())).subspan(currentInstanceOffset, instanceCount),
         };
 
         for (U64 i = 0; i < instanceCount; ++i) {
@@ -346,6 +370,7 @@ Result Shapes::create(Window* window) {
             element.instanceSizesBuffer[i] = elementConfig.size;
         }
         pimpl->updateSizeBufferFlag = true;
+        pimpl->updateHoleBufferFlag = true;
 
         pimpl->elementIndex[id] = pimpl->elements.size();
         pimpl->elements.push_back(element);
@@ -416,13 +441,18 @@ Result Shapes::Impl::generateElementsVertices() {
     vertexData[1] = { 1.0f, -1.0f}; // Bottom right
     vertexData[2] = { 1.0f,  1.0f}; // Top right
     vertexData[3] = {-1.0f,  1.0f}; // Top left
+    vertexData[4] = {-2.0f, -2.0f}; // Hole bottom left
+    vertexData[5] = { 2.0f, -2.0f}; // Hole bottom right
+    vertexData[6] = { 2.0f,  2.0f}; // Hole top right
+    vertexData[7] = {-2.0f,  2.0f}; // Hole top left
 
-    indexData[0] = 0;
-    indexData[1] = 1;
-    indexData[2] = 2;
-    indexData[3] = 2;
-    indexData[4] = 3;
-    indexData[5] = 0;
+    constexpr U32 frame[24] = {
+        0, 1, 5, 0, 5, 4,
+        1, 2, 6, 1, 6, 5,
+        2, 3, 7, 2, 7, 6,
+        3, 0, 4, 3, 4, 7,
+    };
+    std::copy_n(frame, 24, indexData);
 
     // Set flags to update buffers.
     updateVerticesBufferFlag = true;
@@ -491,6 +521,20 @@ Result Shapes::updateSizes(const std::string&) {
     return Result::SUCCESS;
 }
 
+Result Shapes::getHoles(const std::string& elementId, std::span<Rect>& holes) const {
+    if (!pimpl->elementIndex.contains(elementId)) {
+        JST_ERROR("[SHAPES] Element not found (hole).");
+        return Result::ERROR;
+    }
+    holes = pimpl->elements.at(pimpl->elementIndex.at(elementId)).instanceHolesBuffer;
+    return Result::SUCCESS;
+}
+
+Result Shapes::updateHoles(const std::string&) {
+    pimpl->updateHoleBufferFlag = true;
+    return Result::SUCCESS;
+}
+
 Result Shapes::updateProperties(const std::string& elementId,
                                 F32 cornerRadius,
                                 F32 borderWidth,
@@ -511,10 +555,40 @@ Result Shapes::updateProperties(const std::string& elementId,
     for (U64 i = 0; i < element.config.numberOfInstances; ++i) {
         auto& prop = pimpl->properties.at(instanceOffset + i);
         prop.borderColor = glm::vec4(borderColor.r, borderColor.g, borderColor.b, borderColor.a);
-        prop.shapeParams = glm::vec4(element.config.type, borderWidth, cornerRadius, 0.0f);
+        prop.shapeParams = glm::vec4(element.config.type, borderWidth, cornerRadius, prop.shapeParams.w);
     }
 
     pimpl->updatePropertiesBufferFlag = true;
+    return Result::SUCCESS;
+}
+
+Result Shapes::updateCorners(const std::string& elementId, std::span<const U8> corners) {
+    const auto it = pimpl->elementIndex.find(elementId);
+    if (it == pimpl->elementIndex.end()) {
+        JST_ERROR("[SHAPES] Element not found (corners).");
+        return Result::ERROR;
+    }
+
+    U64 instanceOffset = 0;
+    for (U64 i = 0; i < it->second; ++i) {
+        instanceOffset += pimpl->elements[i].config.numberOfInstances;
+    }
+
+    const auto& element = pimpl->elements[it->second];
+    const U64 count = std::min<U64>(corners.size(), element.config.numberOfInstances);
+    bool changed = false;
+    for (U64 i = 0; i < count; ++i) {
+        auto& prop = pimpl->properties.at(instanceOffset + i);
+        const F32 mask = static_cast<F32>(corners[i]);
+        if (prop.shapeParams.w != mask) {
+            prop.shapeParams.w = mask;
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        pimpl->updatePropertiesBufferFlag = true;
+    }
     return Result::SUCCESS;
 }
 
@@ -557,6 +631,15 @@ Result Shapes::updatePixelSize(const Extent2D<F32>& pixelSize) {
     return Result::SUCCESS;
 }
 
+Result Shapes::updateTranslation(const Extent2D<F32>& translation) {
+    const glm::vec2 next(translation.x, translation.y);
+    if (pimpl->uniforms.translation != next) {
+        pimpl->uniforms.translation = next;
+        pimpl->updateTranslationBufferFlag = true;
+    }
+    return Result::SUCCESS;
+}
+
 Result Shapes::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
     pimpl->program->scissorRect(rect);
     return Result::SUCCESS;
@@ -583,36 +666,47 @@ Result Shapes::present() {
     if (pimpl->updateUniformBufferFlag) {
         pimpl->uniformBuffer->update();
         pimpl->updateUniformBufferFlag = false;
+        pimpl->updateTranslationBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
+    } else if (pimpl->updateTranslationBufferFlag) {
+        pimpl->uniformBuffer->update();
+        pimpl->updateTranslationBufferFlag = false;
     }
 
     // Update compute buffers.
 
-    if (pimpl->updatePropertiesBufferFlag) {
+    if (std::exchange(pimpl->updatePropertiesBufferFlag, false) &&
+        pimpl->propertiesSnapshot.changed(pimpl->properties)) {
         pimpl->propertiesBuffer->update();
-        pimpl->updatePropertiesBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 
-    if (pimpl->updateColorBufferFlag) {
+    if (std::exchange(pimpl->updateColorBufferFlag, false) &&
+        pimpl->colorsSnapshot.changed(pimpl->instanceColors)) {
         pimpl->colorsBuffer->update();
-        pimpl->updateColorBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 
-    if (pimpl->updateRotationBufferFlag) {
+    if (std::exchange(pimpl->updateRotationBufferFlag, false) &&
+        pimpl->rotationsSnapshot.changed(pimpl->instanceRotations)) {
         pimpl->rotationsBuffer->update();
-        pimpl->updateRotationBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 
-    if (pimpl->updatePositionBufferFlag) {
+    if (std::exchange(pimpl->updatePositionBufferFlag, false) &&
+        pimpl->positionsSnapshot.changed(pimpl->instancePositions)) {
         pimpl->positionsBuffer->update();
-        pimpl->updatePositionBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 
-    if (pimpl->updateSizeBufferFlag) {
+    if (std::exchange(pimpl->updateHoleBufferFlag, false) &&
+        pimpl->holesSnapshot.changed(pimpl->instanceHoles)) {
+        pimpl->holesBuffer->update();
+        pimpl->computeInstanceBufferFlag = true;
+    }
+
+    if (std::exchange(pimpl->updateSizeBufferFlag, false) &&
+        pimpl->sizesSnapshot.changed(pimpl->instanceSizes)) {
         pimpl->visible = false;
         for (const auto& element : pimpl->elements) {
             for (const auto& size : element.instanceSizesBuffer) {
@@ -621,7 +715,6 @@ Result Shapes::present() {
         }
         pimpl->program->setEnabled(pimpl->enabled && pimpl->visible);
         pimpl->sizesBuffer->update();
-        pimpl->updateSizeBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
     }
 

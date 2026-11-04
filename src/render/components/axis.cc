@@ -1,6 +1,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <new>
@@ -20,6 +21,7 @@ namespace {
 constexpr F32 kTickLabelScale = 0.85f;
 constexpr U64 kMaxVerticalLines = 65;
 constexpr U64 kMaxHorizontalLines = 17;
+constexpr U64 kMaxMinorSubdivisions = 4;
 
 }  // namespace
 
@@ -89,7 +91,8 @@ struct Axis::Impl {
     static void computeTickCount(U64 numCols, U64 numRows,
                                  U64& outMajX, U64& outMinX,
                                  U64& outMajY, U64& outMinY,
-                                 bool showFrameTicks, bool combined);
+                                 bool showFrameTicks, bool combined,
+                                 U64 minorTicks);
     void recomputeTickCount();
     Result syncTickGeometry();
     glm::mat4 gridTransform(F32 zoom, F32 translation) const;
@@ -114,6 +117,8 @@ Result Axis::create(Window* window) {
         return Result::ERROR;
     }
 
+    config.minorTicks = std::min(config.minorTicks, kMaxMinorSubdivisions);
+
     pimpl->currentVerticalLines = 3;
     pimpl->currentHorizontalLines = 3;
     pimpl->maxVerticalLines = kMaxVerticalLines;
@@ -128,7 +133,7 @@ Result Axis::create(Window* window) {
         pimpl->computeTickCount(pimpl->maxVerticalLines,
                                 pimpl->maxHorizontalLines,
                                 majX, minx, majY, miny,
-                                true, false);
+                                true, false, kMaxMinorSubdivisions);
         pimpl->maxMajorTicks = majX + majY;
         pimpl->maxMinorTicks = minx + miny;
     }
@@ -361,6 +366,23 @@ Result Axis::create(Window* window) {
     return Result::SUCCESS;
 }
 
+Result Axis::updateColors(const ColorRGBA<F32>& gridColor,
+                          const ColorRGBA<F32>& majorGridColor,
+                          const ColorRGBA<F32>& labelColor) {
+    if (config.gridColor != gridColor || config.majorGridColor != majorGridColor) {
+        config.gridColor = gridColor;
+        config.majorGridColor = majorGridColor;
+        pimpl->gridUniforms.gridColor = {gridColor.r, gridColor.g, gridColor.b, gridColor.a};
+        pimpl->gridUniforms.majorColor = {majorGridColor.r, majorGridColor.g, majorGridColor.b, majorGridColor.a};
+        pimpl->updateGridUniformsFlag = true;
+    }
+    config.labelColor = labelColor;
+    if (pimpl->text) {
+        JST_CHECK(pimpl->text->updateColor(labelColor));
+    }
+    return Result::SUCCESS;
+}
+
 Result Axis::destroy(Window* window) {
     JST_CHECK(window->unbind(pimpl->text));
     return Result::SUCCESS;
@@ -446,16 +468,6 @@ Result Axis::updatePixelSize(const Extent2D<F32>& pixelSize) {
     return Result::SUCCESS;
 }
 
-Result Axis::updateZoom(F32 zoom, F32 translation) {
-    pimpl->zoom = zoom;
-    pimpl->translation = translation;
-    pimpl->gridUniforms.transform = pimpl->gridTransform(zoom, translation);
-    pimpl->gridUniforms.zoom = zoom;
-    pimpl->updateGridUniformsFlag = true;
-
-    return Result::SUCCESS;
-}
-
 Result Axis::updateScissorRect(const Render::ScissorRect& rect) {
     pimpl->gridProgram->scissorRect(rect);
     return Result::SUCCESS;
@@ -481,6 +493,19 @@ Result Axis::setShowFrameTicks(bool visible) {
     }
 
     config.showFrameTicks = visible;
+
+    JST_CHECK(pimpl->syncTickGeometry());
+
+    return Result::SUCCESS;
+}
+
+Result Axis::setMinorTicks(U64 count) {
+    count = std::min(count, kMaxMinorSubdivisions);
+    if (count == config.minorTicks) {
+        return Result::SUCCESS;
+    }
+
+    config.minorTicks = count;
 
     JST_CHECK(pimpl->syncTickGeometry());
 
@@ -527,7 +552,8 @@ void Axis::Impl::computeTickCount(U64 numCols, U64 numRows,
                                   U64& outMajX, U64& outMinX,
                                   U64& outMajY, U64& outMinY,
                                   const bool showFrameTicks,
-                                  const bool combined) {
+                                  const bool combined,
+                                  const U64 minorTicks) {
     outMajX = outMinX = outMajY = outMinY = 0;
     if (!showFrameTicks) {
         return;
@@ -537,13 +563,13 @@ void Axis::Impl::computeTickCount(U64 numCols, U64 numRows,
         outMajX = xEdgeCount * (numCols - 2);
     }
     if (numCols >= 2) {
-        outMinX = xEdgeCount * 4 * (numCols - 1);
+        outMinX = xEdgeCount * minorTicks * (numCols - 1);
     }
     if (numRows >= 3) {
         outMajY = 2 * (numRows - 2);
     }
     if (numRows >= 2) {
-        outMinY = 2 * 4 * (numRows - 1);
+        outMinY = 2 * minorTicks * (numRows - 1);
     }
 }
 
@@ -551,7 +577,8 @@ void Axis::Impl::recomputeTickCount() {
     U64 majX = 0, minx = 0, majY = 0, miny = 0;
     computeTickCount(currentVerticalLines, currentHorizontalLines,
                      majX, minx, majY, miny,
-                     config.showFrameTicks, dividerLines > 0);
+                     config.showFrameTicks, dividerLines > 0,
+                     config.minorTicks);
     currentMajorTicks = majX + majY;
     currentMinorTicks = minx + miny;
 }
@@ -603,6 +630,8 @@ void Axis::Impl::generateGridPoints() {
     const F32 tickMinY = config.pixelSize.x * config.minorTickLengthPx;
 
     const U64 stride = 4;
+    const U64 minorTicks = config.minorTicks;
+    const F32 minorDivisions = static_cast<F32>(minorTicks + 1);
 
     std::fill(gridPoints.begin(), gridPoints.end(), 0.0f);
 
@@ -687,9 +716,9 @@ void Axis::Impl::generateGridPoints() {
         for (U64 col = 0; col + 1 < numCols; col++) {
             const F32 a = xStart + col * xStep;
             const F32 b = a + xStep;
-            for (U64 s = 1; s <= 4; s++) {
+            for (U64 s = 1; s <= minorTicks; s++) {
                 emitMinorX(a + (b - a) *
-                    (static_cast<F32>(s) / 5.0f));
+                    (static_cast<F32>(s) / minorDivisions));
             }
         }
 
@@ -710,8 +739,8 @@ void Axis::Impl::generateGridPoints() {
             }
             const F32 a = minorYBounds[i];
             const F32 b = minorYBounds[i + 1];
-            for (U64 s = 1; s <= 4; s++) {
-                const F32 y = a + (b - a) * (static_cast<F32>(s) / 5.0f);
+            for (U64 s = 1; s <= minorTicks; s++) {
+                const F32 y = a + (b - a) * (static_cast<F32>(s) / minorDivisions);
                 gridPoints[(idx * stride) + 0] = xStart;
                 gridPoints[(idx * stride) + 1] = y;
                 gridPoints[(idx * stride) + 2] = xStart + tickMinY;

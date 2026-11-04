@@ -1,8 +1,6 @@
 #include "jetstream/viewport/platforms/headless/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
-#include "imgui.h"
-
 namespace Jetstream::Viewport {
 
 using Implementation = Headless<DeviceType::Vulkan>;
@@ -120,16 +118,8 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::createImgui() {
-    return Result::SUCCESS;
-}
-
-F32 Implementation::scale(const F32& scale) const {
-    return scale;
-}
-
-Result Implementation::destroyImgui() {
-    return Result::SUCCESS;
+Extent2D<F32> Implementation::framebufferSize() const {
+    return {static_cast<F32>(extent.width), static_cast<F32>(extent.height)};
 }
 
 Result Implementation::nextDrawable(VkSemaphore& semaphore) {
@@ -152,18 +142,9 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
         }
 
         currentTime = std::chrono::steady_clock::now();
-        deltaTime = std::chrono::duration<F64>(currentTime - lastTime).count();
     }
 
     lastTime = currentTime;
-
-    // Set ImGui state for headless.
-
-    ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(static_cast<float>(config.size.x), static_cast<float>(config.size.y));
-    io.DisplayFramebufferScale = { static_cast<float>(extent.width) / io.DisplaySize.x,
-                                   static_cast<float>(extent.height) / io.DisplaySize.y };
-    io.DeltaTime = deltaTime;
 
     // Dummy signal semaphore.
 

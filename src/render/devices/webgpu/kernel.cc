@@ -97,6 +97,9 @@ Result Implementation::create() {
     computePipelineDescriptor.layout = pipelineLayout;
 
     pipeline = wgpuDeviceCreateComputePipeline(device, &computePipelineDescriptor);
+    if (!pipeline || !pipelineLayout || !bindGroup || !bindGroupLayout || !kernelModule) {
+        return Result::ERROR;
+    }
 
     // Clean up.
 
@@ -106,11 +109,26 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    wgpuBindGroupRelease(bindGroup);
-    wgpuBindGroupLayoutRelease(bindGroupLayout);
-    wgpuPipelineLayoutRelease(pipelineLayout);
-    wgpuComputePipelineRelease(pipeline);
-    wgpuShaderModuleRelease(kernelModule);
+    if (bindGroup) {
+        wgpuBindGroupRelease(bindGroup);
+        bindGroup = nullptr;
+    }
+    if (bindGroupLayout) {
+        wgpuBindGroupLayoutRelease(bindGroupLayout);
+        bindGroupLayout = nullptr;
+    }
+    if (pipelineLayout) {
+        wgpuPipelineLayoutRelease(pipelineLayout);
+        pipelineLayout = nullptr;
+    }
+    if (pipeline) {
+        wgpuComputePipelineRelease(pipeline);
+        pipeline = nullptr;
+    }
+    if (kernelModule) {
+        wgpuShaderModuleRelease(kernelModule);
+        kernelModule = nullptr;
+    }
 
     bindings.clear();
     bindGroupEntries.clear();

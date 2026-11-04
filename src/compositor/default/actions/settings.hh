@@ -15,25 +15,25 @@
 #include <algorithm>
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 
 namespace Jetstream {
 
 struct SettingsActions {
-    using Filter = std::tuple<MailSetInfoPanelEnabled,
-                              MailSetBackgroundParticles,
+    using Filter = std::tuple<MailSetBackgroundParticles,
+                              MailSetShowTips,
                               MailSetGraphicsScale,
                               MailSetGraphicsDevice,
-                              MailSetGraphicsFramerate,
                               MailSetSettingsSection,
-                              MailSetDebugLatencyEnabled,
+                              MailSetRegistryPage,
+                              MailSetIntelligencePage,
                               MailSetDebugTimingEnabled,
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
                               MailDownloadUpdate,
                               MailApplyUpdate,
-                              MailDismissUpdate,
                               MailSetPythonRuntimePath,
                               MailSetRuntimeDependencyPolicy,
                               MailOpenPythonEnvironmentCache,
@@ -50,14 +50,15 @@ struct SettingsActions {
         state(state),
         callbacks(callbacks) {}
 
-    Result handle(const MailSetInfoPanelEnabled& msg) {
-        state.interface.infoPanelEnabled = msg.value;
+    static void Select(DefaultCompositorState& state, SettingsSection section) {
+        state.settings.section = section;
+        ResetPages(state);
+    }
 
-        JST_CHECK(PersistSettings([&](Settings& settings) {
-            settings.interface.infoPanelEnabled = msg.value;
-        }));
-
-        return Result::SUCCESS;
+    static void ResetPages(DefaultCompositorState& state) {
+        state.settings.registryPage = RegistryPage::Overview;
+        state.settings.registryPlugin.clear();
+        state.settings.intelligencePage = IntelligencePage::Overview;
     }
 
     Result handle(const MailSetBackgroundParticles& msg) {
@@ -65,6 +66,16 @@ struct SettingsActions {
 
         JST_CHECK(PersistSettings([&](Settings& settings) {
             settings.interface.backgroundParticles = msg.value;
+        }));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetShowTips& msg) {
+        state.interface.showTips = msg.value;
+
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.interface.showTips = msg.value;
         }));
 
         return Result::SUCCESS;
@@ -93,28 +104,20 @@ struct SettingsActions {
         return Result::SUCCESS;
     }
 
-    Result handle(const MailSetGraphicsFramerate& msg) {
-        state.graphics.framerate = msg.value;
-
-        JST_CHECK(PersistSettings([&](Settings& settings) {
-            settings.graphics.framerate = msg.value;
-        }));
-
-        return Result::SUCCESS;
-    }
-
     Result handle(const MailSetSettingsSection& msg) {
         state.settings.section = msg.section;
+        ResetPages(state);
         return Result::SUCCESS;
     }
 
-    Result handle(const MailSetDebugLatencyEnabled& msg) {
-        state.debug.latencyEnabled = msg.value;
+    Result handle(const MailSetIntelligencePage& msg) {
+        state.settings.intelligencePage = msg.page;
+        return Result::SUCCESS;
+    }
 
-        JST_CHECK(PersistSettings([&](Settings& settings) {
-            settings.developer.latencyEnabled = msg.value;
-        }));
-
+    Result handle(const MailSetRegistryPage& msg) {
+        state.settings.registryPage = msg.page;
+        state.settings.registryPlugin = msg.plugin;
         return Result::SUCCESS;
     }
 
@@ -153,11 +156,6 @@ struct SettingsActions {
         if (callbacks.applyUpdate()) {
             return state.system.instance->requestStop();
         }
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailDismissUpdate&) {
-        callbacks.dismissUpdate();
         return Result::SUCCESS;
     }
 
@@ -251,9 +249,9 @@ struct SettingsActions {
 
         settings.registry.plugins.push_back(msg.path);
         JST_CHECK(Settings::SetAsync(settings));
+        state.registry.stale = true;
 
-        state.settings.section = SettingsSection::Registry;
-        state.modal.content = ModalContent::Settings;
+        Select(state, SettingsSection::Registry);
         callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin loaded.");
         return Result::SUCCESS;
     }
@@ -275,6 +273,11 @@ struct SettingsActions {
         }
 
         JST_CHECK(Settings::SetAsync(settings));
+        state.registry.stale = true;
+        if (state.settings.registryPlugin == msg.path) {
+            state.settings.registryPage = RegistryPage::Overview;
+            state.settings.registryPlugin.clear();
+        }
         callbacks.notify(Sakura::ToastType::Success, 5000, "Plugin removed. Restart CyberEther to unload registered blocks.");
         return Result::SUCCESS;
     }
@@ -302,6 +305,7 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
+        state.registry.stale = true;
         if (Plugin::Reload(msg.path) != Result::SUCCESS) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to reload plugin.");
             return Result::SUCCESS;
@@ -348,6 +352,7 @@ struct SettingsActions {
             }
         }
 
+        state.registry.stale = true;
         for (const auto& path : settings.registry.plugins) {
             if (Plugin::Reload(path) != Result::SUCCESS) {
                 callbacks.notify(Sakura::ToastType::Error,
@@ -360,7 +365,7 @@ struct SettingsActions {
         const auto count = settings.registry.plugins.size();
         callbacks.notify(Sakura::ToastType::Success,
                          3000,
-                         jst::fmt::format("Reloaded modules from {} plugin{}.", count, count == 1 ? "" : "s"));
+                         jst::fmt::format("Reloaded modules from {} {}.", count, count == 1 ? "plugin" : "plugins"));
         return Result::SUCCESS;
     }
 

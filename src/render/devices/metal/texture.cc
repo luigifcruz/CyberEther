@@ -43,6 +43,8 @@ Result Implementation::create() {
     samplerState = device->newSamplerState(samplerDesc);
     samplerDesc->release();
 
+    markAllocated();
+
     if (config.buffer) {
         JST_CHECK(fill());
     }
@@ -52,6 +54,8 @@ Result Implementation::create() {
 
 Result Implementation::destroy() {
     JST_DEBUG("[METAL] Destroying texture.");
+
+    markDeallocated();
 
     if (samplerState) {
         samplerState->release();

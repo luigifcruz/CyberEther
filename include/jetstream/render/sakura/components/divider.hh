@@ -2,31 +2,29 @@
 #define JETSTREAM_RENDER_SAKURA_DIVIDER_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/types.hh>
 
 #include <memory>
-#include <string>
 
 namespace Jetstream::Sakura {
 
-struct Divider {
+struct Divider : public Component {
     struct Config {
-        std::string id;
-        F32 spacing = -1.0f;
+        F32 spacing = Stack::Spacing;
         bool separator = true;
+
+        bool operator==(const Config&) const = default;
     };
 
     Divider();
     ~Divider();
 
-    Divider(Divider&&) noexcept;
-    Divider& operator=(Divider&&) noexcept;
+    void update(Config config);
 
-    Divider(const Divider&) = delete;
-    Divider& operator=(const Divider&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

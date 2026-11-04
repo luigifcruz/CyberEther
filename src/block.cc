@@ -224,6 +224,14 @@ Result Block::destroy() {
     return Result::SUCCESS;
 }
 
+Result Block::describe() {
+    JST_ASSERT(impl->_state == State::None,
+               "[BLOCK] Cannot describe block type '{}' in state '{}'.", config().type(), impl->_state);
+
+    impl->_interface = std::make_shared<Interface>();
+    return impl->define();
+}
+
 Result Block::reconfigure(const Parser::Map& config) {
     // Deserialize the candidate configuration.
 

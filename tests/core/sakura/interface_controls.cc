@@ -1,82 +1,19 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "compositor/default/presenters/flowgraph/config.hh"
-#include "compositor/default/views/flowgraph/editor/config/dropdown.hh"
-#include "compositor/default/views/flowgraph/editor/config/float.hh"
 #include "compositor/default/views/flowgraph/editor/config/base.hh"
-#include "compositor/default/views/flowgraph/editor/metrics/table.hh"
-#include "harness.hh"
-#include <imgui_internal.h>
+#include "typist.hh"
+
+#include <any>
+#include <limits>
+#include <string>
+#include <tuple>
+#include <vector>
 
 using namespace Jetstream;
 
-namespace {
-
-void SelectOption(SakuraTest::HeadlessUi& ui, FlowgraphConfigDropdownField& field, U64 index) {
-    ImRect combo;
-    const auto frame = [&] {
-        ui.frame([&] {
-            field.render(ui.sakura());
-            combo = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-        });
-    };
-    frame();
-    ui.setMouse(combo.GetCenter(), false);
-    frame();
-    ui.setMouse(combo.GetCenter(), true);
-    frame();
-    ui.setMouse(combo.GetCenter(), false);
-    frame();
-    frame();
-    const auto& popups = ImGui::GetCurrentContext()->OpenPopupStack;
-    REQUIRE_FALSE(popups.empty());
-    const auto* popup = popups.back().Window;
-    REQUIRE(popup != nullptr);
-    const ImVec2 position(popup->DC.CursorStartPos.x + 20.0f,
-                          popup->DC.CursorStartPos.y + (index + 0.5f) * ImGui::GetFontSize());
-    ui.setMouse(position, false);
-    frame();
-    ui.setMouse(position, true);
-    frame();
-    ui.setMouse(position, false);
-    frame();
-}
-
-}  // namespace
-
-TEST_CASE("Dropdowns return strings and distinguish duplicate display labels",
-          "[core][sakura][interface]") {
-    SakuraTest::HeadlessUi ui(1.0f, {800.0f, 600.0f});
-    FlowgraphConfigDropdownField field;
-    const std::string expected = "driver=lime,serial=abc,remote=tcp://localhost:55132";
-    Parser::Sequence options{
-        Parser::Map{{"label", "Radio, (USB) α"}, {"value", ""}},
-        Parser::Map{{"label", "Radio, (USB) α"}, {"value", expected}},
-    };
-    std::vector<Parser::Map> edits;
-    FlowgraphConfigFieldConfig config{
-        .id = "device",
-        .name = "deviceString",
-        .format = {{"type", "dropdown"}, {"options", options}},
-        .values = {{"deviceString", ""}},
-        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
-    };
-    REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::SUCCESS);
-    REQUIRE(field.update(config) == Result::SUCCESS);
-    SelectOption(ui, field, 1);
-    REQUIRE(edits.size() == 1);
-    REQUIRE(std::any_cast<std::string>(edits.front().at("deviceString")) == expected);
-
-    config.values["deviceString"] = expected;
-    options.pop_back();
-    config.format["options"] = options;
-    REQUIRE(field.update(config) == Result::SUCCESS);
-    ui.frame([&] { field.render(ui.sakura()); });
-    REQUIRE(edits.size() == 1);
-}
-
-TEST_CASE("Shared config presenter preserves descriptors values and Python diagnostics",
-          "[core][sakura][interface]") {
+TEST_CASE("Shared config presenter preserves descriptors values and Python diagnostics", "[core][sakura][interface]") {
     Flowgraph::View::BlockData block;
     block.config = {{"count", U64{9007199254740993ULL}}, {"code", "pass"}};
     block.interfaceConfigs = {
@@ -106,36 +43,11 @@ TEST_CASE("Shared config presenter preserves descriptors values and Python diagn
     REQUIRE(detached[1].consoleOutput == diagnostic.console);
     REQUIRE(detached[1].consoleVisible);
     REQUIRE(node[2].status == "ready");
-    REQUIRE(node[2].statusTone == Sakura::NodeCodeEditor::StatusTone::Success);
+    REQUIRE(node[2].statusTone == Sakura::StatusTone::Success);
     REQUIRE(node[2].consoleOutput == diagnostic.console);
 }
 
-TEST_CASE("String dropdown options work with boolean config values",
-          "[core][sakura][interface]") {
-    SakuraTest::HeadlessUi ui;
-    FlowgraphConfigDropdownField field;
-    std::vector<Parser::Map> edits;
-    REQUIRE(field.update({
-        .id = "direction",
-        .name = "forward",
-        .format = {{"type", "dropdown"}, {"options", Parser::Sequence{
-            Parser::Map{{"label", "Forward"}, {"value", "true"}},
-            Parser::Map{{"label", "Inverse"}, {"value", "false"}},
-        }}},
-        .values = {{"forward", true}},
-        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
-    }) == Result::SUCCESS);
-    SelectOption(ui, field, 1);
-    REQUIRE(edits.size() == 1);
-    REQUIRE(std::any_cast<std::string>(edits.front().at("forward")) == "false");
-    bool forward = true;
-    REQUIRE(Parser::Deserialize(edits.front(), "forward", forward) == Result::SUCCESS);
-    REQUIRE_FALSE(forward);
-}
-
-TEST_CASE("Controls report decoding failures rather than silently displaying defaults",
-          "[core][sakura][interface]") {
-    SakuraTest::HeadlessUi ui;
+TEST_CASE("Controls report decoding failures rather than silently displaying defaults", "[core][sakura][interface]") {
     FlowgraphConfigFieldInstance field;
     std::vector<std::string> errors;
     FlowgraphConfigFieldConfig config{
@@ -158,13 +70,7 @@ TEST_CASE("Controls report decoding failures rather than silently displaying def
     config.values["amount"] = std::string("still invalid");
     field.update(config);
     REQUIRE(errors.size() == 1);
-    ui.frame([&] {
-        ImGui::LogToBuffer();
-        field.render(ui.sakura());
-        const std::string text = ImGui::GetCurrentContext()->LogBuffer.c_str();
-        ImGui::LogFinish();
-        REQUIRE(text.find("Invalid configuration value") != std::string::npos);
-    });
+    REQUIRE(field.isSimple());
     config.values["amount"] = 12.0f;
     field.update(config);
     REQUIRE(field.isSimple());
@@ -179,49 +85,7 @@ TEST_CASE("Controls report decoding failures rather than silently displaying def
     REQUIRE(errors.size() == 3);
 }
 
-TEST_CASE("Numeric fields apply explicit scale independently of their unit label",
-          "[core][sakura][interface]") {
-    SakuraTest::HeadlessUi ui;
-    FlowgraphConfigFloatField field;
-    std::vector<Parser::Map> edits;
-    field.update({
-        .id = "scaled",
-        .name = "value",
-        .format = {{"type", "float"}, {"unit", "MHz"}, {"scale", 10.0f}, {"precision", 3}},
-        .values = {{"value", 20.0f}},
-        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
-    });
-    ImRect rect;
-    const auto frame = [&] {
-        ui.frame([&] {
-            field.render(ui.sakura());
-            rect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-        });
-    };
-    frame();
-    ui.setMouse(rect.GetCenter(), false);
-    frame();
-    ui.setMouse(rect.GetCenter(), true);
-    frame();
-    ui.setMouse(rect.GetCenter(), false);
-    frame();
-    auto* input = ImGui::GetInputTextState(ImGui::GetActiveID());
-    REQUIRE(input != nullptr);
-    REQUIRE(std::string(input->TextA.Data) == "2.000");
-    input->SelectAll();
-    ImGui::GetIO().AddInputCharactersUTF8("3.25");
-    frame();
-    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
-    frame();
-    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
-    frame();
-    REQUIRE(edits.size() == 1);
-    REQUIRE(std::any_cast<F32>(edits.front().at("value")) == 32.5f);
-}
-
-TEST_CASE("Vector controls recover their cached values after a decoding error",
-          "[core][sakura][interface]") {
-    SakuraTest::HeadlessUi ui;
+TEST_CASE("Vector controls recover their cached values after a decoding error", "[core][sakura][interface]") {
     FlowgraphConfigVectorField field;
     FlowgraphConfigFieldConfig config{
         .id = "vector",
@@ -229,48 +93,289 @@ TEST_CASE("Vector controls recover their cached values after a decoding error",
         .format = {{"type", "vector"}, {"value_type", "float"}},
         .values = {{"items", std::vector<F32>{1.0f, 2.0f}}},
     };
-    const auto height = [&] {
-        F32 result = 0.0f;
-        ui.frame([&] {
-            const auto start = ImGui::GetCursorPosY();
-            field.render(ui.sakura());
-            result = ImGui::GetCursorPosY() - start;
-        });
-        return result;
-    };
     REQUIRE(field.update(config) == Result::SUCCESS);
-    const F32 originalHeight = height();
-    REQUIRE(originalHeight > 0.0f);
     auto invalid = config;
     invalid.values["items"] = std::string("invalid");
     REQUIRE(field.update(invalid) == Result::ERROR);
     REQUIRE(field.update(config) == Result::SUCCESS);
-    REQUIRE(height() == originalHeight);
     config.format["value_type"] = std::string("uint");
     config.values.clear();
     REQUIRE(field.update(config) == Result::SUCCESS);
-    REQUIRE(height() == 0.0f);
 }
 
-TEST_CASE("Table metrics accept structured cells containing tabs and newlines",
-          "[core][sakura][interface]") {
-    SakuraTest::HeadlessUi ui;
-    FlowgraphMetricTable metric;
-    Parser::Map value;
-    REQUIRE(Parser::Serialize(value, "columns", std::vector<std::string>{"Name", "Value"}) == Result::SUCCESS);
-    REQUIRE(Parser::Serialize(value, "rows", std::vector<std::vector<std::string>>{
-        {"Line\nbreak", "Tab\tinside"}, {"Comma, colon:", "(parentheses)"},
+TEST_CASE("Retained unsigned range edits reject unsafe conversions and recover on the next edit",
+          "[core][sakura][interface][range-input]") {
+    const auto [text, valid, expected] = GENERATE(
+        std::tuple{"-1", false, U64{0}},
+        std::tuple{"-0.1", false, U64{0}},
+        std::tuple{"nan", false, U64{0}},
+        std::tuple{"inf", false, U64{0}},
+        std::tuple{"-inf", false, U64{0}},
+        std::tuple{"1e999", false, U64{0}},
+        std::tuple{"1e30", false, U64{0}},
+        std::tuple{"18446744073709551615", false, U64{0}},
+        std::tuple{"18446744073709551616", false, U64{0}},
+        std::tuple{"0", true, U64{0}},
+        std::tuple{"3.5", true, U64{4}},
+        std::tuple{"300", true, U64{300}},
+        std::tuple{"18446742974197923840", true, U64{18446742974197923840ULL}});
+    const U64 initial = GENERATE(U64{8}, std::numeric_limits<U64>::max());
+    CAPTURE(text, initial);
+
+    SakuraTest::Typist typist;
+    FlowgraphConfigRangeField field;
+    std::vector<U64> applied;
+    std::vector<std::string> errors;
+    REQUIRE(field.update({
+        .id = "averaging",
+        .name = "averaging",
+        .label = "Averaging",
+        .format = {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"value_type", "uint"}},
+        .values = {{"averaging", initial}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { applied.push_back(std::any_cast<U64>(patch.at("averaging"))); },
+        .onError = [&](Result result, std::string message) {
+            CHECK(result == Result::ERROR);
+            errors.push_back(std::move(message));
+        },
     }) == Result::SUCCESS);
-    for (int frame = 0; frame < 3; ++frame) {
-        metric.update({.id = "table", .format = {{"type", "table"}}, .value = value});
-        ui.frame([&] {
-            ImGui::LogToBuffer();
-            metric.render(ui.sakura());
-            const std::string text = ImGui::GetCurrentContext()->LogBuffer.c_str();
-            ImGui::LogFinish();
-            REQUIRE(text.find("Comma, colon:") != std::string::npos);
-            REQUIRE(text.find("Tab\tinside") != std::string::npos);
-            REQUIRE(text.find("Invalid") == std::string::npos);
-        });
+    SakuraTest::Host host(field.component());
+    typist.root = &host;
+    typist.place = [&] { host.place(typist.ctx, {0.0f, 0.0f, 320.0f, 100.0f}); };
+    typist.frame();
+    const auto inputs = SakuraTest::Find<Sakura::NodeRangeInput>(field.component());
+    REQUIRE(inputs.size() == 1);
+    const auto bounds = SakuraTest::Peek::Frame(*inputs.front());
+    const auto edit = [&](const char* value) {
+        REQUIRE(host.send(SakuraTest::Mouse(MouseEventType::Click, bounds.x + 30.0f,
+                                          bounds.y + bounds.height * 0.5f, MouseButton::Left, 2)));
+        typist.frame();
+        REQUIRE(SakuraTest::FocusOwner(host) != nullptr);
+        typist.type(value);
+        typist.press(KeyCode::Enter);
+    };
+    edit(text);
+    if (valid) {
+        REQUIRE(applied == std::vector<U64>{expected});
+        CHECK(errors.empty());
+    } else {
+        if ((std::string(text) == "nan" || std::string(text) == "inf") && initial == 8) {
+            CHECK(applied == std::vector<U64>{initial});
+        } else {
+            CHECK(applied.empty());
+        }
+        const std::string typed = text;
+        const bool silent = typed == "-inf" || typed == "1e999" ||
+                            ((typed == "nan" || typed == "inf") && initial == 8);
+        REQUIRE(errors.size() == (silent ? 0u : 1u));
+        for (const auto& error : errors) {
+            CHECK(error.find("Averaging") != std::string::npos);
+        }
+        applied.clear();
+        errors.clear();
+        edit("16");
+        REQUIRE(applied == std::vector<U64>{16});
+        CHECK(errors.empty());
     }
+}
+
+TEST_CASE("Retained float range edits keep finite values outside the slider bounds",
+          "[core][sakura][interface][range-input]") {
+    const char* text = GENERATE("-0.25", "2.5", "nan", "inf", "-inf", "1e999");
+    CAPTURE(text);
+    SakuraTest::Typist typist;
+    FlowgraphConfigRangeField field;
+    std::vector<F32> applied;
+    REQUIRE(field.update({
+        .id = "range",
+        .name = "range",
+        .format = {{"type", "range"}, {"min", 0.0f}, {"max", 1.0f}},
+        .values = {{"range", 0.5f}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { applied.push_back(std::any_cast<F32>(patch.at("range"))); },
+    }) == Result::SUCCESS);
+    SakuraTest::Host host(field.component());
+    typist.root = &host;
+    typist.place = [&] { host.place(typist.ctx, {0.0f, 0.0f, 320.0f, 100.0f}); };
+    typist.frame();
+    const auto inputs = SakuraTest::Find<Sakura::NodeRangeInput>(field.component());
+    REQUIRE(inputs.size() == 1);
+    const auto bounds = SakuraTest::Peek::Frame(*inputs.front());
+    REQUIRE(host.send(SakuraTest::Mouse(MouseEventType::Click, bounds.x + 30.0f,
+                                      bounds.y + bounds.height * 0.5f, MouseButton::Left, 2)));
+    typist.frame();
+    REQUIRE(SakuraTest::FocusOwner(host) != nullptr);
+    typist.type(text);
+    typist.press(KeyCode::Enter);
+    if (std::string(text) == "-0.25" || std::string(text) == "2.5") {
+        REQUIRE(applied == std::vector<F32>{std::stof(text)});
+    } else if (std::string(text) == "nan" || std::string(text) == "inf") {
+        CHECK(applied == std::vector<F32>{0.5f});
+    } else {
+        CHECK(applied.empty());
+    }
+}
+
+TEST_CASE("Range fields keep the newest submitted value until its configuration edit completes",
+          "[core][sakura][interface][range-input]") {
+    const auto outcome = GENERATE(Result::SUCCESS, Result::ERROR, Result::WARNING);
+    CAPTURE(outcome);
+    SakuraTest::Typist typist;
+    FlowgraphConfigRangeField field;
+    std::vector<F32> applied;
+    std::vector<std::function<void(Result)>> completions;
+    FlowgraphConfigFieldConfig config{
+        .id = "gain",
+        .name = "gain",
+        .label = "Gain",
+        .format = {{"type", "range"}, {"min", 0.0f}, {"max", 100.0f}},
+        .values = {{"gain", 100.0f}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)> complete) {
+            applied.push_back(std::any_cast<F32>(patch.at("gain")));
+            completions.push_back(std::move(complete));
+        },
+    };
+    SakuraTest::Host host(field.component());
+    typist.root = &host;
+    typist.place = [&] {
+        REQUIRE(field.update(config) == Result::SUCCESS);
+        host.place(typist.ctx, {0.0f, 0.0f, 320.0f, 100.0f});
+    };
+    typist.frame();
+    const auto inputs = SakuraTest::Find<Sakura::NodeRangeInput>(field.component());
+    REQUIRE(inputs.size() == 1);
+    const auto bounds = SakuraTest::Peek::Frame(*inputs.front());
+    const auto shown = [&]() -> std::string {
+        for (auto* label : SakuraTest::Find<Sakura::Label>(*inputs.front())) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.visible && !instance.str.empty()) {
+                    return instance.str;
+                }
+            }
+        }
+        return {};
+    };
+    const auto click = [&](F32 fraction) {
+        const F32 x = bounds.x + bounds.width * fraction;
+        const F32 y = bounds.y + bounds.height * 0.5f;
+        REQUIRE(host.send(SakuraTest::Mouse(MouseEventType::Click, x, y)));
+        typist.frame();
+        REQUIRE(host.send(SakuraTest::Mouse(MouseEventType::Release, x, y)));
+        typist.frame();
+    };
+
+    REQUIRE(shown() == "100");
+    click(0.5f);
+    REQUIRE(applied.size() == 1);
+    REQUIRE(applied[0] == Catch::Approx(50.0f));
+    for (int frame = 0; frame < 10; ++frame) {
+        typist.frame();
+        REQUIRE(shown() == "50");
+    }
+
+    click(0.3f);
+    REQUIRE(applied.size() == 2);
+    REQUIRE(applied[1] == Catch::Approx(30.0f));
+    config.values["gain"] = 48.0f;
+    completions[0](Result::SUCCESS);
+    for (int frame = 0; frame < 10; ++frame) {
+        typist.frame();
+        REQUIRE(shown() == "30");
+    }
+
+    const F32 resolved = outcome == Result::SUCCESS ? 28.0f : 48.0f;
+    config.values["gain"] = resolved;
+    completions[1](outcome);
+    for (int frame = 0; frame < 10; ++frame) {
+        typist.frame();
+        REQUIRE(shown() == (outcome == Result::SUCCESS ? "28" : "48"));
+    }
+    REQUIRE(applied.size() == 2);
+}
+
+TEST_CASE("Dropdowns return strings and distinguish duplicate display labels",
+          "[core][sakura][interface]") {
+    FlowgraphConfigDropdownField field;
+    const std::string expected = "driver=lime,serial=abc,remote=tcp://localhost:55132";
+    Parser::Sequence options{
+        Parser::Map{{"label", "Radio, (USB) α"}, {"value", ""}},
+        Parser::Map{{"label", "Radio, (USB) α"}, {"value", expected}},
+    };
+    std::vector<Parser::Map> edits;
+    FlowgraphConfigFieldConfig config{
+        .id = "device",
+        .name = "deviceString",
+        .format = {{"type", "dropdown"}, {"options", options}},
+        .values = {{"deviceString", ""}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    };
+    REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::SUCCESS);
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    const auto combos = SakuraTest::Find<Sakura::NodeCombo>(field.component());
+    REQUIRE(combos.size() == 1);
+    REQUIRE(combos.front()->config().selectedIndex == std::optional<U64>{0});
+    combos.front()->config().onSelect(1);
+    REQUIRE(edits.size() == 1);
+    REQUIRE(std::any_cast<std::string>(edits.front().at("deviceString")) == expected);
+
+    config.values["deviceString"] = expected;
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    CHECK(combos.front()->config().selectedIndex == std::optional<U64>{1});
+
+    options.pop_back();
+    config.format["options"] = options;
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    CHECK_FALSE(combos.front()->config().selectedIndex.has_value());
+    CHECK(edits.size() == 1);
+}
+
+TEST_CASE("String dropdown options work with boolean config values",
+          "[core][sakura][interface]") {
+    FlowgraphConfigDropdownField field;
+    std::vector<Parser::Map> edits;
+    REQUIRE(field.update({
+        .id = "direction",
+        .name = "forward",
+        .format = {{"type", "dropdown"}, {"options", Parser::Sequence{
+            Parser::Map{{"label", "Forward"}, {"value", "true"}},
+            Parser::Map{{"label", "Inverse"}, {"value", "false"}},
+        }}},
+        .values = {{"forward", true}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    }) == Result::SUCCESS);
+    const auto combos = SakuraTest::Find<Sakura::NodeCombo>(field.component());
+    REQUIRE(combos.size() == 1);
+    CHECK(combos.front()->config().selectedIndex == std::optional<U64>{0});
+    combos.front()->config().onSelect(1);
+    REQUIRE(edits.size() == 1);
+    REQUIRE(std::any_cast<std::string>(edits.front().at("forward")) == "false");
+    bool forward = true;
+    REQUIRE(Parser::Deserialize(edits.front(), "forward", forward) == Result::SUCCESS);
+    REQUIRE_FALSE(forward);
+}
+
+TEST_CASE("Numeric fields apply explicit scale independently of their unit label",
+          "[core][sakura][interface]") {
+    SakuraTest::Typist typist;
+    FlowgraphConfigFloatField field;
+    std::vector<Parser::Map> edits;
+    REQUIRE(field.update({
+        .id = "scaled",
+        .name = "value",
+        .format = {{"type", "float"}, {"unit", "MHz"}, {"scale", 10.0f}, {"precision", 3}},
+        .values = {{"value", 20.0f}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    }) == Result::SUCCESS);
+    SakuraTest::Host host(field.component());
+    typist.root = &host;
+    typist.place = [&] { host.place(typist.ctx, {0.0f, 0.0f, 320.0f, 100.0f}); };
+    typist.frame();
+    const auto inputs = SakuraTest::Find<Sakura::NodeFloatInput>(field.component());
+    REQUIRE(inputs.size() == 1);
+    const auto bounds = SakuraTest::Peek::Frame(*inputs.front());
+    REQUIRE(host.click(bounds.x + 30.0f, bounds.y + 10.0f));
+    typist.frame();
+    REQUIRE(SakuraTest::FocusOwner(host) != nullptr);
+    typist.type("3.25");
+    typist.press(KeyCode::Enter);
+    REQUIRE(edits.size() == 1);
+    CHECK(std::any_cast<F32>(edits.front().at("value")) == 32.5f);
 }

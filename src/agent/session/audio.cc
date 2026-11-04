@@ -10,7 +10,7 @@
 #include <mutex>
 
 #if defined(JETSTREAM_AGENT_LIVE_AVAILABLE)
-#include "tools/miniaudio/miniaudio.h"
+#include <miniaudio.h>
 #include "tools/base64.hh"
 #endif
 

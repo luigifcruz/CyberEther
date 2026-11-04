@@ -3,6 +3,8 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 #include <atomic>
 #include <cmath>
 #include <limits>
@@ -23,6 +25,7 @@ struct FlowgraphConfigRangeField {
         }
         value = minValue;
         JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
+        help.update(this->config.id, this->config.help);
         if (pending && pending->complete) {
             pending.reset();
         }
@@ -32,7 +35,8 @@ struct FlowgraphConfigRangeField {
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
+            .content = &input,
         });
         input.update({
             .id = this->config.id + "Input",
@@ -75,10 +79,8 @@ struct FlowgraphConfigRangeField {
         return Result::SUCCESS;
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            input.render(ctx);
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -103,6 +105,7 @@ struct FlowgraphConfigRangeField {
     F32 maxValue = 1.0f;
     F32 value = 0.0f;
     bool unsignedInteger = false;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     Sakura::NodeRangeInput input;
 };

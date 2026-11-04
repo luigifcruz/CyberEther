@@ -51,24 +51,18 @@ lm.box(
     "Controls",
     [[1, 0, 0], [1, 0, 0]],
     lambda: [
-        # Documentation example
-        lm.text(
-            "Key Features\n"
-            "- Signal Generation: Synthetic sine waves with noise.\n"
-            "- Interactive Controls: Real-time parameter adjustment.\n"
-            "- Visualization: Time to frequency domain transforms.\n"
+        # Markdown documentation example
+        lm.markdown(
+            "# Key Features\n"
+            "- **Signal Generation**: Synthetic sine waves with noise.\n"
+            "- **Interactive Controls**: Real-time parameter adjustment.\n"
+            "- **Visualization**: Time to frequency domain transforms.\n"
         ),
         # Interactive sliders for signal parameters
-        lm.text("Signal Parameters"),
+        lm.markdown("# Signal Parameters"),
         lm.slider("Frequency (Hz)", 100.0, 5000.0, state.frequency),
         lm.slider("Amplitude", 0.1, 2.0, state.amplitude),
         lm.slider("Noise Level", 0.0, 0.5, state.noise_level),
-        # Example image.
-        lm.text("Example Image"),
-        lm.text("Image rendering is temporarily unavailable in this build."),
-        lm.text(
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/a/aa/Fourier2.jpg/500px-Fourier2.jpg"
-        ),
     ],
 )
 
@@ -87,8 +81,7 @@ def realtime_callback():
     Jetstream Superluminal Interface Demo
 
     This example demonstrates the key capabilities of Superluminal:
-    - Text rendering
-    - Image display
+    - Text and Markdown rendering
     - Interactive controls (sliders, buttons)
     - Real-time signal plotting with domain transforms
     """

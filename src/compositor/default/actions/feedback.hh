@@ -4,6 +4,7 @@
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
+#include "../support/feedback.hh"
 
 #include "jetstream/logger.hh"
 
@@ -34,15 +35,13 @@ struct FeedbackActions {
 
         if (text.size() < Feedback::MIN_LENGTH) {
             callbacks.notify(Sakura::ToastType::Error, 5000,
-                "Feedback must be at least " +
-                std::to_string(Feedback::MIN_LENGTH) + " characters.");
+                jst::fmt::format("Feedback must be at least {} characters.", Feedback::MIN_LENGTH));
             return Result::SUCCESS;
         }
 
         if (text.size() > Feedback::MAX_LENGTH) {
             callbacks.notify(Sakura::ToastType::Error, 5000,
-                "Feedback exceeds the " +
-                std::to_string(Feedback::MAX_LENGTH) + " character limit.");
+                jst::fmt::format("Feedback exceeds the {} character limit.", Feedback::MAX_LENGTH));
             return Result::SUCCESS;
         }
 

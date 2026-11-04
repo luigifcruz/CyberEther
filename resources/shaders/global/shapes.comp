@@ -17,7 +17,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
 
 struct ShapeProperties {
     vec4 borderColor;
-    vec4 params; // x=type, y=borderWidth, z=cornerRadius, w=unused
+    vec4 params; // x=type, y=borderWidth, z=cornerRadius, w=corner mask (0 = all)
 };
 
 layout(std430, set = 0, binding = 1) readonly buffer PropertiesBuffer {
@@ -48,11 +48,16 @@ struct InstanceData {
     mat4 transform;
     vec4 fillColor;
     vec4 borderColor;
-    vec4 shapeParams; // x=type, y=borderWidth, z=cornerRadius, w=unused
+    vec4 shapeParams; // x=type, y=borderWidth, z=cornerRadius, w=corner mask (0 = all)
+    vec4 hole; // xy=local origin, zw=local size (empty = no hole)
 };
 
 layout(std430, set = 0, binding = 6) buffer InstanceDataBuffer {
     InstanceData instances[];
+};
+
+layout(std430, set = 0, binding = 7) readonly buffer HolesBuffer {
+    vec4 holes[];
 };
 
 //
@@ -126,4 +131,5 @@ void main() {
     instances[i].fillColor = fillColor;
     instances[i].borderColor = borderColor;
     instances[i].shapeParams = shapeParams;
+    instances[i].hole = holes[i];
 }

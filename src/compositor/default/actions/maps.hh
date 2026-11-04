@@ -88,8 +88,7 @@ struct MapsActions {
             return;
         }
 
-        const bool shown = state.modal.content == ModalContent::Settings &&
-                           state.settings.section == SettingsSection::Maps;
+        const bool shown = state.interface.settingsTab && state.settings.section == SettingsSection::Maps;
         if (!shown) {
             maps.measured = false;
             return;

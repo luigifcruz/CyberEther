@@ -1,4 +1,5 @@
 src_lst += files([
+    'deadline_waiter.cc',
     'dialogs.cc',
     'dynamic_library.cc',
     'file.cc',
@@ -6,6 +7,7 @@ src_lst += files([
     'http.cc',
     'paths.cc',
     'process.cc',
+    'pseudo_terminal.cc',
     'secret.cc',
     'storage.cc',
     'terminal.cc',
