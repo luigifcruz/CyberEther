@@ -287,6 +287,8 @@ struct SignalViewCanvas {
     struct CursorState {
         bool inside = false;
         Extent2D<F32> position = {0.0f, 0.0f};
+        // Alt held: follow the mouse exactly instead of snapping to a peak.
+        bool free = false;
         bool visible = false;
         bool marker = false;
         bool overMarker = false;
@@ -363,6 +365,7 @@ struct SignalViewCanvas {
     std::optional<U64> markerAt(const Context& context, const Extent2D<F32>& position) const;
     bool insidePlot(const Extent2D<F32>& position) const;
     F32 pointAtX(F32 x) const;
+    F32 snapToPeak(const Context& context, F32 x) const;
     void toggleMarker(const Context& context, const Edits& edits);
     void clearMarkers(const Context& context, const Edits& edits);
     void commitMarkers(const Context& context, const Edits& edits);
