@@ -600,6 +600,8 @@ TEST_CASE("Axis X range places grid lines on round values",
             }
         }
         if (linear) {
+            // Ten divisions over 100 dB, labelled or not.
+            REQUIRE(ticks.step == Catch::Approx(10.0));
             // Evenly spaced: every multiple of the step inside the range.
             REQUIRE(ticks.values.size() ==
                     static_cast<U64>(std::round(100.0 / ticks.step)) - 1);

@@ -107,6 +107,7 @@ struct Axis::Impl {
     PositionMap yRangeMap;
     TickScale yTicks;
     std::vector<F32> yTickPositions;
+    std::vector<bool> yLabelVisible;
     std::vector<F32> yMinorPositions;
 
     void generateGridPoints();
@@ -597,6 +598,7 @@ Result Axis::clearYRange() {
     pimpl->yRangeMap = {};
     pimpl->yTicks = {};
     pimpl->yTickPositions.clear();
+    pimpl->yLabelVisible.clear();
     pimpl->yMinorPositions.clear();
     if (!pimpl->text) {
         return Result::SUCCESS;
@@ -1049,8 +1051,11 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
     const F64 heightPx = std::max<F64>(availableHeightPx, 1.0);
     const F64 span = yRangeTop - yRangeBottom;
     const F64 labelPx = static_cast<F64>(config.font->lineHeight()) * kTickLabelScale;
-    const F64 neededPx = std::max<F64>(std::max<F64>(minimumSpacingPx, 1.0),
-                                       2.0 * labelPx + collisionPadding);
+    // Lines follow the requested spacing; labels only need to clear each
+    // other, so a dense grid can carry a label on every other line.
+    constexpr F64 kMinimumLinePx = 12.0;
+    const F64 neededPx = std::max<F64>(minimumSpacingPx, kMinimumLinePx);
+    const F64 labelSpacingPx = labelPx + collisionPadding;
     const U64 maxTicks = maxHorizontalLines - 2;
     const F32 bandBottom = bandLocalY(0, 2);
     const F32 bandTop = bandLocalY(1, 2);
@@ -1079,9 +1084,6 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
         F64 lastPx = -std::numeric_limits<F64>::infinity();
         for (const F64 value : ticks.values) {
             const F64 px = toPx(value);
-            if (px < labelPx * 0.5 || px > heightPx - labelPx * 0.5) {
-                continue;
-            }
             if (px - lastPx >= neededPx * (1.0 - 1e-6)) {
                 kept.push_back(value);
                 lastPx = px;
@@ -1099,8 +1101,17 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
     yTicks = ticks;
     yTicks.values = kept;
     yTickPositions.clear();
+    yLabelVisible.clear();
+    F64 lastLabelPx = -std::numeric_limits<F64>::infinity();
     for (const F64 value : kept) {
         yTickPositions.push_back(yRangePosition(value));
+        const F64 px = toPx(value);
+        const bool visible = px >= labelPx * 0.5 && px <= heightPx - labelPx * 0.5 &&
+                             px - lastLabelPx >= labelSpacingPx * (1.0 - 1e-6);
+        if (visible) {
+            lastLabelPx = px;
+        }
+        yLabelVisible.push_back(visible);
     }
 
     // Minor ticks on round sub-steps, wherever they stay a few pixels apart.
@@ -1311,7 +1322,9 @@ Result Axis::Impl::syncTickLabels() {
         const auto id = jst::fmt::format("y{:02d}", i + 1);
         auto element = text->get(id);
         if (i < yCount && yRangeEnabled) {
-            element.fill = FormatTickValue(yTicks.values[i], yTicks);
+            element.fill = yLabelVisible[i]
+                ? FormatTickValue(yTicks.values[i], yTicks)
+                : " ";
         } else if (i < yCount && yTickFormatter) {
             const F32 position =
                 (2.0f * static_cast<F32>(i + 1) /
