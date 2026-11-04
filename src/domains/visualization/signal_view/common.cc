@@ -176,7 +176,7 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
             : config.waterfallLabel);
         cfg.yLabelOnRight = lineplot;
         cfg.gridColor = context.density ? ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 0.06f}
-                                        : ColorRGBA<F32>{0.12f, 0.12f, 0.12f, 1.0f};
+                                        : ColorRGBA<F32>{0.26f, 0.26f, 0.26f, 1.0f};
         cfg.majorGridColor = {0.5f, 0.5f, 0.5f, 1.0f};
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
@@ -833,7 +833,7 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         if (lineplot) {
             yFormatter = [min = config.rangeMin,
                           max = config.rangeMax,
-                          linear = context.density != nullptr](const F32 position) {
+                          linear = context.density != nullptr || config.amplitudeScale == "log"](const F32 position) {
                 return detail::LineplotAmplitudeLabel(position, min, max, linear);
             };
         }
@@ -843,6 +843,18 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         // Vertical grid lines and X labels on round values of the view.
         if (axis->updateXRange(viewLeft, viewRight) != Result::SUCCESS) {
             axis->clearXRange();
+        }
+
+        // Horizontal lines on round amplitudes, through the same mapping as
+        // the trace (compressed with tanh unless the plot is linear).
+        const F64 lower = std::min(config.rangeMin, config.rangeMax);
+        const F64 upper = std::max(config.rangeMin, config.rangeMax);
+        if (!lineplot || axis->updateYRange(lower, upper,
+                [lower, upper, linear = context.density != nullptr || config.amplitudeScale == "log"](const F64 value) {
+                    const F64 position = 2.0 * (value - lower) / (upper - lower) - 1.0;
+                    return static_cast<F32>(linear ? position : std::tanh(2.0 * position));
+                }) != Result::SUCCESS) {
+            axis->clearYRange();
         }
     }
 
@@ -874,10 +886,9 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         holdLabel.fill = displayHeld ? "HOLD" : " ";
         text->update("hold", holdLabel);
 
+        // Shown in the node too: it is the only exact reading of the band.
         auto header = text->get("header");
-        if (interaction.placement == SurfacePlacementType::Attached) {
-            header.fill = " ";
-        } else {
+        {
             header.position = {-paddingScale.x + pixelSize.x * tickOffset,
                                paddingScale.y - pixelSize.y * tickOffset};
             if (frequency.valid) {
@@ -980,7 +991,8 @@ std::string SignalViewCanvas::formatSpanX(const Context& context, const F32 delt
 std::string SignalViewCanvas::formatAmplitude(const Context& context, const F32 yPoint) const {
     const auto& config = context.config;
     const auto value = detail::LineplotAmplitudeValue(yPoint, config.rangeMin, config.rangeMax,
-                                                      context.density != nullptr);
+                                                      context.density != nullptr ||
+                                                          config.amplitudeScale == "log");
     if (!value) {
         return {};
     }

@@ -82,8 +82,16 @@ class JETSTREAM_API Axis : public Generic {
     Result updateXRange(F64 left, F64 right);
     Result clearXRange();
 
+    // Same for the horizontal lines and Y labels. toPosition maps a data
+    // value to its position in the plot band, from -1 (bottom) to 1 (top),
+    // and may be non-linear; labels too close together are skipped.
+    using PositionMap = std::function<F32(F64)>;
+    Result updateYRange(F64 bottom, F64 top, PositionMap toPosition = {});
+    Result clearYRange();
+
     const Extent2D<F32>& paddingScale() const;
     const TickScale& currentXTicks() const;
+    const TickScale& currentYTicks() const;
     U64 currentVerticalLineCount() const;
     U64 currentHorizontalLineCount() const;
 
