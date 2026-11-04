@@ -144,6 +144,8 @@ struct SpectrumAnalyzer : public Block::Config {
         "Shift+Down |\n"
         "| Place a marker, or remove the one under the cursor | Shift+Click. The "
         "cursor locks onto a peak within a few pixels; hold Alt to place it exactly. |\n"
+        "| Remove the marker under the cursor, or the last one placed | Delete or "
+        "Backspace |\n"
         "| Clear every marker | Shift+Right Click |\n"
         "| Move a marker | Drag its line |\n"
         "| Show the distances to neighboring markers | Hover a marker tag, click it to "

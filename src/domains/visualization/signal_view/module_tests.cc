@@ -1930,6 +1930,18 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owni
     present();
     REQUIRE(spanLabel(0) == "0.7500");
 
+    // Delete with no marker under the mouse removes the one placed last.
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.25f},
+    });
+    original->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Delete, {}});
+    present();
+    REQUIRE(SignalViewImplAccess::canvasOf(*impl).markerPositions == std::vector<F32>{-0.5f});
+    REQUIRE(pending());
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(storedMarkers() == std::vector<F32>{-0.5f});
+
     original->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Click,
         .button = MouseButton::Right,
