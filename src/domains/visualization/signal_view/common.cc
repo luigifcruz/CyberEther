@@ -561,8 +561,25 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
                 keyPanned |= offset != interaction.offset;
                 interaction.offset = offset;
             }
-            if (key->type == KeyEventType::Press && context.lineplot &&
-                (key->key == KeyCode::UpArrow || key->key == KeyCode::DownArrow) &&
+            const bool verticalArrow = key->key == KeyCode::UpArrow ||
+                                       key->key == KeyCode::DownArrow;
+            if (key->type == KeyEventType::Press && context.lineplot && verticalArrow &&
+                key->modifiers.shift &&
+                context.config.rangeMin < context.config.rangeMax &&
+                edits.enabled("rangeMin") && edits.enabled("rangeMax")) {
+                // Move the reference level, and the whole scale with it, by
+                // one division.
+                const F64 division = (context.config.rangeMax - context.config.rangeMin) / 10.0;
+                const F64 shift = key->key == KeyCode::UpArrow ? division : -division;
+                const F64 top = context.config.rangeMax + shift;
+                const F64 bottom = context.config.rangeMin + shift;
+                if (top <= 0.0 && bottom >= -300.0) {
+                    Parser::Map edit;
+                    edit["rangeMin"] = static_cast<F32>(bottom);
+                    edit["rangeMax"] = static_cast<F32>(top);
+                    edits.request(edit);
+                }
+            } else if (key->type == KeyEventType::Press && context.lineplot && verticalArrow &&
                 context.config.rangeMin < context.config.rangeMax &&
                 edits.enabled("rangeMin")) {
                 // Change dB/div over ten divisions, keeping the top as the

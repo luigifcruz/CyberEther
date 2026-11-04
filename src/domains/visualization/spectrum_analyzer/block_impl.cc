@@ -281,6 +281,7 @@ Result SpectrumAnalyzerImpl::create() {
     JST_CHECK(moduleBindConfigEdit("signal_view", "markers", "markers"));
     JST_CHECK(moduleBindConfigEdit("signal_view", "pins", "pins"));
     JST_CHECK(moduleBindConfigEdit("signal_view", "rangeMin", "rangeMin"));
+    JST_CHECK(moduleBindConfigEdit("signal_view", "rangeMax", "rangeMax"));
 
     return Result::SUCCESS;
 }
