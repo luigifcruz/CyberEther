@@ -1286,7 +1286,7 @@ TEST_CASE("Terminal sessions skip a wrapped URL that continues below the visible
     REQUIRE(StartShell(session));
     session.resize({.columns = 20, .rows = 6, .cellWidth = 8.0f, .cellHeight = 16.0f});
     session.text("clear; i=0; while [ $i -lt 30 ]; do echo line$i; i=$((i+1)); done; "
-                 "printf 'https://example.org/a/long/path\\n'; printf 'tail'; IFS= read -r step\r");
+                 "printf 'https://example.org/a/long/path\\n'; printf 'ta''il'; IFS= read -r step\r");
     REQUIRE(Shows(session, "tail"));
     const auto bottomLink = [&] {
         for (const auto& row : session.screen().lines) {
@@ -1378,7 +1378,7 @@ TEST_CASE("Terminal sessions search the screen, step between matches, and clear 
     }
     TerminalSession session;
     REQUIRE(StartShell(session));
-    session.text("clear; printf 'alpha needle\\nbeta\\nNEEDLE gamma needle\\n'; IFS= read -r step\r");
+    session.text("clear; printf 'alpha needle\\nbeta\\nNEEDLE ga''mma needle\\n'; IFS= read -r step\r");
     REQUIRE(Shows(session, "gamma"));
     session.search("needle");
     const auto& screen = session.screen();

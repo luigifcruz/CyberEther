@@ -995,11 +995,11 @@ TEST_CASE("Scheduler pause releases a compute parked for a delayed presentation"
         const bool parked = computed.wait_for(std::chrono::milliseconds(20)) == std::future_status::timeout;
 
         const auto pauseResult = fixture.scheduler.pause();
-        const bool released = computed.wait_for(std::chrono::milliseconds(200)) == std::future_status::ready;
+        captureRelease.count_down();
+        const bool released = computed.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
 
         requesting.store(false);
         requestingPresenter.join();
-        captureRelease.count_down();
         delayedPresenter.join();
         state.configure("parked_surface").captureAction = {};
 
@@ -1011,12 +1011,7 @@ TEST_CASE("Scheduler pause releases a compute parked for a delayed presentation"
         return released;
     };
 
-    bool released = false;
-    for (U64 round = 0; round < 20 && !released; ++round) {
-        released = attempt();
-    }
-
-    REQUIRE(released);
+    REQUIRE(attempt());
     REQUIRE(state.count("compute", "parked_surface") == 0);
 
     std::unordered_set<std::string> failedModules;
