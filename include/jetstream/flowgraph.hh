@@ -85,6 +85,9 @@ class JETSTREAM_API Flowgraph {
                            const std::string inputPort);
     Result blockReconfigure(const std::string name,
                             const Parser::Map& config);
+    Result blockReconfigure(const std::string name,
+                            const Parser::Map& config,
+                            bool& recreated);
     Result blockRecreate(const std::string name,
                          const Parser::Map& config);
     Result blockRecreate(const std::string name,

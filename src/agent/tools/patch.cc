@@ -302,7 +302,8 @@ void ReconfigureBlock(Patch& patch, const Json& operation, Json& result) {
         return;
     }
 
-    const Result changed = flowgraph->blockReconfigure(name, config);
+    bool recreated = false;
+    const Result changed = flowgraph->blockReconfigure(name, config, recreated);
     if (!Applied(changed)) {
         result["error"] = jst::fmt::format("Could not reconfigure block '{}'.", name);
         return;
@@ -319,7 +320,7 @@ void ReconfigureBlock(Patch& patch, const Json& operation, Json& result) {
     }
 
     result.update({
-        {"status", ResultName(changed)},
+        {"status", ResultName(recreated ? Result::RECREATE : changed)},
         {"name", name},
         {"config", Serialize::CompactMap(applied)},
         {"state", GetBlockStateName(after.state)},
@@ -350,7 +351,8 @@ void PatchBlockText(Patch& patch, const Json& operation, Json& result) {
     Parser::Map config;
     config[field] = patched.text;
 
-    const Result changed = flowgraph->blockReconfigure(name, config);
+    bool recreated = false;
+    const Result changed = flowgraph->blockReconfigure(name, config, recreated);
     if (!Applied(changed)) {
         result["error"] = jst::fmt::format("Could not apply the patched '{}' to block '{}'.", field, name);
         return;
@@ -360,7 +362,7 @@ void PatchBlockText(Patch& patch, const Json& operation, Json& result) {
     flowgraph->view().block(name, after);
 
     result.update({
-        {"status", ResultName(changed)},
+        {"status", ResultName(recreated ? Result::RECREATE : changed)},
         {"name", name},
         {"field", field},
         {"line_count", patched.lineCount},
@@ -848,7 +850,11 @@ std::vector<Entry> Toolbox::Patch() {
         "create_block accepts optional x and y graph coordinates for initial "
         "placement with automatic sizing. Its result includes effective config "
         "with defaults and runtime-defined ports; wiring may require a later patch. "
-        "reconfigure_block results echo only the supplied config fields. Both "
+        "reconfigure_block results echo only the supplied config fields. A status "
+        "of recreated on reconfigure_block or patch_block_text means the block and "
+        "everything downstream was rebuilt, which clears their plot history. A status "
+        "of success means no rebuild, though a view can still clear its own history "
+        "when a setting changes how that history is scaled. Both "
         "config readbacks shorten long strings and arrays; inspect_block returns "
         "complete values. "
         "patch_block_text edits part of one text config field, such as python code; "

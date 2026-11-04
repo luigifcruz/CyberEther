@@ -597,6 +597,34 @@ TEST_CASE("Flowgraph patches reject unknown config keys without reconfiguring bl
     REQUIRE(graph->destroy() == Result::SUCCESS);
 }
 
+TEST_CASE("Flowgraph patches report when a reconfiguration recreated the block", "[agent][tools][flowgraph]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    const auto created = nlohmann::json::parse(ExecuteTool(graph, "apply_flowgraph_patch", R"({
+        "operations": [
+            {"op":"create_block","type":"signal_generator","name":"source","config":{"signalDataType":"CF32"}},
+            {"op":"create_block","type":"spectrum_analyzer","name":"analyzer"},
+            {"op":"connect","source":"source","output":"signal","block":"analyzer","input":"buffer"}
+        ]
+    })").content);
+    REQUIRE(created["status"] == "success");
+
+    const auto statusOf = [&](const std::string& config) {
+        const auto body = nlohmann::json::parse(ExecuteTool(graph, "apply_flowgraph_patch", jst::fmt::format(
+            R"({{"operations":[{{"op":"reconfigure_block","name":"analyzer","config":{}}}]}})", config)).content);
+        return body["results"][0]["status"].get<std::string>();
+    };
+
+    CHECK(statusOf(R"({"rangeMin":-80.0})") == "success");
+    CHECK(statusOf(R"({"waterfallHeight":128})") == "recreated");
+    CHECK(statusOf(R"({"rangeMax":-10.0})") == "success");
+
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Config key validation preserves sequential edits and structured values", "[agent][tools][validation]") {
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
 
