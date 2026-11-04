@@ -789,6 +789,19 @@ void SignalViewCanvas::updateLabels(const Context& context) {
     const auto& frequency = context.frequency;
     const F32 translation = PanTranslation(interaction);
 
+    // Data values at the left and right frame edges of the zoomed view.
+    const F64 leftPos = -1.0 / interaction.zoom - translation;
+    const F64 rightPos = 1.0 / interaction.zoom - translation;
+    const auto viewValue = [&](const F64 normalizedPos) {
+        if (frequency.valid) {
+            return (static_cast<F64>(frequency.center) +
+                    normalizedPos * static_cast<F64>(frequency.sampleRate) / 2.0) / 1e6;
+        }
+        return lineplot ? normalizedPos : (normalizedPos + 1.0) * 0.5;
+    };
+    const F64 viewLeft = viewValue(leftPos);
+    const F64 viewRight = viewValue(rightPos);
+
     // Update tick labels via axis component.
 
     if (axis) {
@@ -826,6 +839,11 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         }
 
         axis->updateTickFormatters(std::move(xFormatter), std::move(yFormatter));
+
+        // Vertical grid lines and X labels on round values of the view.
+        if (axis->updateXRange(viewLeft, viewRight) != Result::SUCCESS) {
+            axis->clearXRange();
+        }
     }
 
     if (text) {
@@ -863,9 +881,10 @@ void SignalViewCanvas::updateLabels(const Context& context) {
             header.position = {-paddingScale.x + pixelSize.x * tickOffset,
                                paddingScale.y - pixelSize.y * tickOffset};
             if (frequency.valid) {
+                // Center and span of what is on screen, so they follow zoom.
                 header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
-                                               frequency.center / 1e6f,
-                                               frequency.sampleRate / 1e6f);
+                                               (viewLeft + viewRight) / 2.0,
+                                               viewRight - viewLeft);
             } else {
                 header.fill = "CENTER 0.000   SPAN 1.000";
             }
