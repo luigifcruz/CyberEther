@@ -1,5 +1,6 @@
 src_lst += files([
     'tools/quick_tune_budget.cc',
+    'tools/ownership.cc',
 ])
 
 if cfg_lst.get('JETSTREAM_LOADER_BLADERF_AVAILABLE', false)
