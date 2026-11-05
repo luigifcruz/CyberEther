@@ -632,6 +632,24 @@ TEST_CASE("Axis X range places grid lines on round values",
                     static_cast<U64>(std::round(100.0 / ticks.step)) - 1);
         }
     }
+    // A requested step, such as 10 dB/div, sets every line whatever the height,
+    // even where labels must skip lines.
+    for (const F32 height : {800.0f, 693.0f, 345.0f}) {
+        CAPTURE(height);
+        REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / height}) == Result::SUCCESS);
+        for (const F64 step : {10.0, 5.0, 2.0}) {
+            REQUIRE(axis.updateYRange(-10.0 * step, 0.0, {}, step) == Result::SUCCESS);
+            const auto& ticks = axis.currentYTicks();
+            REQUIRE(ticks.step == Catch::Approx(step));
+            REQUIRE(ticks.values.size() == 9);
+        }
+    }
+    // Too short for ten divisions (80 px of plot): lines widen rather than merge.
+    REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / 160.0f}) == Result::SUCCESS);
+    REQUIRE(axis.updateYRange(-100.0, 0.0, {}, 10.0) == Result::SUCCESS);
+    REQUIRE(axis.currentYTicks().step == Catch::Approx(20.0));
+    REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / 800.0f}) == Result::SUCCESS);
+
     REQUIRE(axis.clearYRange() == Result::SUCCESS);
     REQUIRE(axis.currentYTicks().values.empty());
 

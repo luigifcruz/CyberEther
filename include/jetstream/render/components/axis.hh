@@ -84,9 +84,11 @@ class JETSTREAM_API Axis : public Generic {
 
     // Same for the horizontal lines and Y labels. toPosition maps a data
     // value to its position in the plot band, from -1 (bottom) to 1 (top),
-    // and may be non-linear; labels too close together are skipped.
+    // and may be non-linear; labels too close together are skipped. A
+    // positive step places the lines exactly that far apart, such as the
+    // dB/div of an analyzer, instead of picking one from the height.
     using PositionMap = std::function<F32(F64)>;
-    Result updateYRange(F64 bottom, F64 top, PositionMap toPosition = {});
+    Result updateYRange(F64 bottom, F64 top, PositionMap toPosition = {}, F64 step = 0.0);
     Result clearYRange();
 
     const Extent2D<F32>& paddingScale() const;
