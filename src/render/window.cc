@@ -159,6 +159,7 @@ Result Window::destroyInternal() {
     std::lock_guard<std::mutex> frameLock(newFrameQueueMutex);
 
     // Process pending attachment destruction.
+    JST_CHECK(underlyingSynchronize());
 
     while (true) {
         std::shared_ptr<WindowAttachment> attachment;
@@ -329,6 +330,15 @@ Result Window::end() {
         int count = destroyQueue.size();
         while (count > 0) {
             auto [expiration, attachment] = destroyQueue.front();
+
+            // ImGui may still sample retired textures. Wait once before freeing the batch.
+            if (expiration <= frameCount && expiredAttachments.empty()) {
+                const Result syncResult = underlyingSynchronize();
+                if (syncResult != Result::SUCCESS && syncResult != Result::RELOAD) {
+                    return (res == Result::SUCCESS || res == Result::RELOAD)
+                        ? syncResult : res;
+                }
+            }
             destroyQueue.pop();
 
             if (expiration <= frameCount) {
