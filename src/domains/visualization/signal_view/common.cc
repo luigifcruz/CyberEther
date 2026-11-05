@@ -903,11 +903,14 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         // the trace (compressed with tanh unless the plot is linear).
         const F64 lower = std::min(config.rangeMin, config.rangeMax);
         const F64 upper = std::max(config.rangeMin, config.rangeMax);
+        // In Log mode the header promises ten divisions of dB/div each, so
+        // draw exactly those lines.
+        const bool logScale = config.amplitudeScale == "log";
         if (!lineplot || axis->updateYRange(lower, upper,
-                [lower, upper, linear = context.density != nullptr || config.amplitudeScale == "log"](const F64 value) {
+                [lower, upper, linear = context.density != nullptr || logScale](const F64 value) {
                     const F64 position = 2.0 * (value - lower) / (upper - lower) - 1.0;
                     return static_cast<F32>(linear ? position : std::tanh(2.0 * position));
-                }) != Result::SUCCESS) {
+                }, logScale ? (upper - lower) / 10.0 : 0.0) != Result::SUCCESS) {
             axis->clearYRange();
         }
     }

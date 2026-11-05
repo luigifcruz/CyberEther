@@ -105,6 +105,7 @@ struct Axis::Impl {
     F64 yRangeBottom = -1.0;
     F64 yRangeTop = 1.0;
     PositionMap yRangeMap;
+    F64 yRangeStep = 0.0;
     TickScale yTicks;
     std::vector<F32> yTickPositions;
     std::vector<bool> yLabelVisible;
@@ -576,7 +577,7 @@ Result Axis::clearXRange() {
     return pimpl->syncResponsiveGrid();
 }
 
-Result Axis::updateYRange(F64 bottom, F64 top, PositionMap toPosition) {
+Result Axis::updateYRange(F64 bottom, F64 top, PositionMap toPosition, F64 step) {
     if (!std::isfinite(bottom) || !std::isfinite(top) || !(top > bottom)) {
         return Result::ERROR;
     }
@@ -584,6 +585,7 @@ Result Axis::updateYRange(F64 bottom, F64 top, PositionMap toPosition) {
     pimpl->yRangeBottom = bottom;
     pimpl->yRangeTop = top;
     pimpl->yRangeMap = std::move(toPosition);
+    pimpl->yRangeStep = (std::isfinite(step) && step > 0.0) ? step : 0.0;
     if (!pimpl->text) {
         return Result::SUCCESS;
     }
@@ -636,7 +638,9 @@ Axis::TickScale Axis::ComputeTicks(const F64 left,
     const F64 base = std::pow(10.0, std::floor(std::log10(minimum)));
     U64 mantissa = 10;
     for (const U64 candidate : {1, 2, 5}) {
-        if (static_cast<F64>(candidate) * base >= minimum * (1.0 - 1e-9)) {
+        // Loose enough to absorb single-precision pixel sizes, so a minimum
+        // of 10.000001 still picks 10.
+        if (static_cast<F64>(candidate) * base >= minimum * (1.0 - 1e-6)) {
             mantissa = candidate;
             break;
         }
@@ -1075,7 +1079,10 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
     }
     pxPerUnit = std::max(pxPerUnit, 1e-12);
 
-    F64 minimumStep = neededPx / pxPerUnit;
+    // A requested step wins; it only widens if its lines would merge.
+    F64 minimumStep = yRangeStep > 0.0
+        ? std::max(yRangeStep, kMinimumLinePx / pxPerUnit)
+        : neededPx / pxPerUnit;
     std::vector<F64> kept;
     TickScale ticks;
     for (U64 attempt = 0; attempt < 8; attempt++) {
@@ -1084,7 +1091,8 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
         F64 lastPx = -std::numeric_limits<F64>::infinity();
         for (const F64 value : ticks.values) {
             const F64 px = toPx(value);
-            if (px - lastPx >= neededPx * (1.0 - 1e-6)) {
+            const F64 lineSpacingPx = yRangeStep > 0.0 ? kMinimumLinePx : neededPx;
+            if (px - lastPx >= lineSpacingPx * (1.0 - 1e-6)) {
                 kept.push_back(value);
                 lastPx = px;
             }
