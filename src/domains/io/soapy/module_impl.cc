@@ -2,6 +2,7 @@
 #include "library/soapysdr.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <new>
 
@@ -272,12 +273,28 @@ Result SoapyImpl::publishMetadata(const Radio::StreamBuffer::Metadata& metadata)
 
 Result SoapyImpl::emitFrame() {
     Radio::StreamBuffer::Metadata metadata;
-    const auto result = stream.pop(buffer.data<CF32>(), buffer.size(), metadata);
+    U64 position = 0;
+    const auto result = stream.pop(buffer.data<CF32>(), buffer.size(), metadata, &position);
     if (result == Result::INCOMPLETE) {
         return Result::YIELD;
     }
     JST_CHECK(result);
-    return publishMetadata(metadata);
+    JST_CHECK(publishMetadata(metadata));
+
+    // Position of this frame in the received stream, so a recorder can tell
+    // whether frames are contiguous, and the samples the radio dropped.
+    JST_CHECK(buffer.setAttribute("streamPosition", position));
+    const U64 radioLost = radioLostSamples.get();
+    if (publishedRadioLostSamples != radioLost) {
+        JST_CHECK(buffer.setAttribute("radioLostSamples", radioLost));
+        publishedRadioLostSamples = radioLost;
+    }
+    const U64 overflows = deviceOverflows.get();
+    if (publishedDeviceOverflows != overflows) {
+        JST_CHECK(buffer.setAttribute("deviceOverflows", overflows));
+        publishedDeviceOverflows = overflows;
+    }
+    return Result::SUCCESS;
 }
 
 Result SoapyImpl::soapyThreadLoop() {
@@ -286,6 +303,12 @@ Result SoapyImpl::soapyThreadLoop() {
     const auto readSize = std::min<std::size_t>(temporaryBufferSize, stream.capacity());
     const auto readBuffer = std::span<CF32>{tmp.data(), readSize};
     SoapyReceiveStatus receiveStatus;
+
+    // Expected timestamp of the next read; a later one means the radio
+    // dropped samples in between.
+    std::optional<I64> expectedTimeNs;
+    U64 expectedGeneration = 0;
+    U64 radioLostTotal = 0;
 
     while (streaming) {
         const auto lock = access.lock();
@@ -309,6 +332,25 @@ Result SoapyImpl::soapyThreadLoop() {
             errored = true;
             break;
         } else if (action == SoapyReceiveStatus::Action::Samples) {
+            const F64 rate = stream.metadata().sampleRate;
+            if (readGeneration != expectedGeneration) {
+                expectedTimeNs.reset();
+                expectedGeneration = readGeneration;
+            }
+            if (received.timestampNs && rate > 0.0) {
+                if (expectedTimeNs && *received.timestampNs > *expectedTimeNs) {
+                    const F64 gapNs = static_cast<F64>(*received.timestampNs - *expectedTimeNs);
+                    const U64 gap = static_cast<U64>(std::llround(gapNs * rate / 1e9));
+                    if (gap > 0) {
+                        radioLostTotal += gap;
+                        radioLostSamples.publish(radioLostTotal);
+                    }
+                }
+                expectedTimeNs = *received.timestampNs + static_cast<I64>(std::llround(
+                    static_cast<F64>(received.sampleCount) * 1e9 / rate));
+            } else {
+                expectedTimeNs.reset();
+            }
             stream.push(readGeneration, tmp.data(), received.sampleCount);
             Scheduler::Context::NotifyPendingCompute();
             const U64 capacity = stream.capacity();
