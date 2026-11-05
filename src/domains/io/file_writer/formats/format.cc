@@ -79,6 +79,9 @@ std::optional<F64> FileWriterFormat::NumericAttribute(const Tensor& tensor, cons
     if (const auto* number = std::any_cast<F64>(&value)) {
         return *number;
     }
+    if (const auto* number = std::any_cast<U64>(&value)) {
+        return static_cast<F64>(*number);
+    }
     return std::nullopt;
 }
 

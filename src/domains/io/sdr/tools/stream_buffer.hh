@@ -34,7 +34,10 @@ class JETSTREAM_API StreamBuffer {
     bool push(U64 generation, const CF32* data, U64 count,
               std::optional<U64> timestamp = std::nullopt, U64 epoch = 0);
     void split(U64 generation);
-    Result pop(CF32* data, U64 count, Metadata& metadata);
+    // position, when given, receives the index of the first popped sample
+    // among those pushed since the last reset; a jump means overwritten
+    // or discarded samples.
+    Result pop(CF32* data, U64 count, Metadata& metadata, U64* position = nullptr);
 
     Metadata metadata() const;
     U64 size() const;

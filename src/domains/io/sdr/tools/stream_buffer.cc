@@ -56,7 +56,7 @@ void StreamBuffer::split(const U64 generation) {
     expected.reset();
 }
 
-Result StreamBuffer::pop(CF32* data, const U64 count, Metadata& metadata) {
+Result StreamBuffer::pop(CF32* data, const U64 count, Metadata& metadata, U64* position) {
     std::lock_guard lock(mutex);
     prune();
     while (!breaks.empty() && breaks.front() - (written - samples.size()) < count) {
@@ -67,6 +67,9 @@ Result StreamBuffer::pop(CF32* data, const U64 count, Metadata& metadata) {
     }
     if (samples.size() < count) {
         return Result::INCOMPLETE;
+    }
+    if (position) {
+        *position = written - samples.size();
     }
     JST_CHECK(samples.pop(data, count));
     metadata = current;

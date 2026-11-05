@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <jetstream/memory/tensor.hh>
@@ -59,12 +60,27 @@ class FileWriterFormat::Sigmf : public FileWriterFormat {
         std::string datetime;
     };
 
+    // Losses while recording, from the attributes a radio source publishes:
+    // the position of each frame in its received stream, and its running
+    // counts of samples the radio dropped and of overflows.
+    struct Losses {
+        bool tracked = false;
+        std::optional<U64> nextPosition;
+        U64 lostSamples = 0;
+        std::vector<std::pair<U64, U64>> gaps;
+        std::optional<U64> radioLostFirst;
+        std::optional<U64> radioLostLast;
+        std::optional<U64> overflowsFirst;
+        std::optional<U64> overflowsLast;
+    };
+
     Result write() const;
 
     std::filesystem::path metaPath;
     std::string datatype;
     std::optional<F64> sampleRate;
     std::vector<Capture> captures;
+    Losses losses;
 };
 
 class FileWriterFormat::Wav : public FileWriterFormat {

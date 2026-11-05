@@ -51,6 +51,11 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
 
     Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<U64> deviceOverflows{0};
+    // Samples the radio dropped before the host read them, from gaps in
+    // its timestamps.
+    Tools::Snapshot<U64> radioLostSamples{0};
+    std::optional<U64> publishedRadioLostSamples;
+    std::optional<U64> publishedDeviceOverflows;
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<std::optional<SoapyAbi::Range>> gainRange;
 
