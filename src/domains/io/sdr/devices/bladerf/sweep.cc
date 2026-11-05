@@ -1,4 +1,5 @@
 #include "base.hh"
+#include "tools/ownership.hh"
 #include "tools/quick_tune_budget.hh"
 
 #include "../sweep.hh"
@@ -100,6 +101,7 @@ class BladeRfSweep final : public Sweep::Retune {
     Result applyGainMode(bool requested, F64 gain);
     Result applyGain(F64 gain, bool force);
 
+    BladeRfOwnership ownership;
     bladerf* handle = nullptr;
     std::string board;
     bool biasTeeEnabled = false;
@@ -128,6 +130,7 @@ BladeRfSweep::~BladeRfSweep() {
 }
 
 Result BladeRfSweep::connect(const Device::Info& info) {
+    JST_CHECK(ownership.acquire(info.serial));
     bladerf_devinfo devinfo;
     bladerf_init_devinfo(&devinfo);
     std::strncpy(devinfo.serial, info.serial.c_str(), BLADERF_SERIAL_LENGTH - 1);

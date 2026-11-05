@@ -26,6 +26,14 @@ void ConvertI16(const I16* input, CF32* output, const U64 count, const F32 scale
     }
 }
 
+void ConvertI16Channels(const I16* input, CF32* first, CF32* second,
+                         const U64 count, const F32 scale) {
+    for (U64 i = 0; i < count; ++i) {
+        first[i] = {input[4 * i] / scale, input[4 * i + 1] / scale};
+        second[i] = {input[4 * i + 2] / scale, input[4 * i + 3] / scale};
+    }
+}
+
 U64 GuardSamples(const F64 seconds, const F64 sampleRate) {
     if (!std::isfinite(seconds) || !std::isfinite(sampleRate) ||
         seconds < 0.0 || sampleRate <= 0.0) {
