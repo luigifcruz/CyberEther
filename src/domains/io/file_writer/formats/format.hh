@@ -70,6 +70,7 @@ class FileWriterFormat::Sigmf : public FileWriterFormat {
         std::vector<std::pair<U64, U64>> gaps;
         std::optional<U64> radioLostFirst;
         std::optional<U64> radioLostLast;
+        std::vector<std::pair<U64, U64>> radioGaps;
         std::optional<U64> overflowsFirst;
         std::optional<U64> overflowsLast;
     };

@@ -1,5 +1,6 @@
 #include "format.hh"
 
+#include <algorithm>
 #include <any>
 #include <chrono>
 #include <unordered_map>
@@ -96,7 +97,8 @@ Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex
     // A frame that does not start where the previous one ended means samples
     // were lost in between. A smaller position means the stream restarted,
     // for example after a retune, which is not a loss.
-    if (const auto position = CountAttribute(input, "streamPosition")) {
+    const auto position = CountAttribute(input, "streamPosition");
+    if (position) {
         losses.tracked = true;
         if (losses.nextPosition && *position > *losses.nextPosition) {
             const U64 lost = *position - *losses.nextPosition;
@@ -106,7 +108,18 @@ Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex
         }
         losses.nextPosition = *position + input.size();
     }
+    // Samples the radio dropped inside this frame, placed on the first
+    // sample after the latest gap when the source gives its position.
     if (const auto radioLost = CountAttribute(input, "radioLostSamples")) {
+        if (losses.radioLostLast && *radioLost > *losses.radioLostLast) {
+            U64 offset = 0;
+            const auto gapPosition = CountAttribute(input, "radioGapPosition");
+            if (position && gapPosition && *gapPosition > *position) {
+                offset = std::min<U64>(*gapPosition - *position, input.size());
+            }
+            losses.radioGaps.emplace_back(sampleIndex + offset, *radioLost - *losses.radioLostLast);
+            changed = true;
+        }
         losses.radioLostFirst = losses.radioLostFirst.value_or(*radioLost);
         losses.radioLostLast = *radioLost;
     }
@@ -164,6 +177,13 @@ Result FileWriterFormat::Sigmf::write() const {
                 {"core:sample_start", sampleStart},
                 {"core:sample_count", 0},
                 {"core:comment", jst::fmt::format("{} samples lost before this sample", lost)},
+            });
+        }
+        for (const auto& [sampleStart, lost] : losses.radioGaps) {
+            annotations.push_back({
+                {"core:sample_start", sampleStart},
+                {"core:sample_count", 0},
+                {"core:comment", jst::fmt::format("{} samples lost by the radio before this sample", lost)},
             });
         }
     }
