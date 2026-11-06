@@ -2,6 +2,8 @@
 #define JETSTREAM_DOMAINS_IO_SOAPY_MODULE_IMPL_HH
 
 #include <atomic>
+#include <deque>
+#include <mutex>
 #include <thread>
 
 #include <jetstream/domains/io/soapy/module.hh>
@@ -51,6 +53,19 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
 
     Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<U64> deviceOverflows{0};
+    // Samples the radio dropped before the host read them, from gaps in
+    // its timestamps, kept with their place in the stream so each frame
+    // reports only the gaps that come before its end.
+    struct RadioGap {
+        U64 generation = 0;
+        U64 position = 0;
+        U64 lost = 0;
+    };
+    std::mutex radioGapsMutex;
+    std::deque<RadioGap> radioGaps;
+    U64 radioLostSamples = 0;
+    std::optional<U64> publishedRadioLostSamples;
+    std::optional<U64> publishedDeviceOverflows;
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<std::optional<SoapyAbi::Range>> gainRange;
 

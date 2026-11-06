@@ -8,6 +8,10 @@
 #include "jetstream/registry.hh"
 #include "jetstream/domains/io/file_writer/module.hh"
 
+#include <nlohmann/json.hpp>
+
+#include "formats/format.hh"
+
 using namespace Jetstream;
 
 namespace {
@@ -343,6 +347,126 @@ TEST_CASE("FileWriter Module - Multiple runs overwrite with latest buffer",
             REQUIRE(values[2] == 60);
             verify.close();
 
+            cleanupTestFile(testPath);
+        }
+    }
+}
+
+TEST_CASE("FileWriter SigMF - records samples lost between frames",
+          "[modules][file_writer][sigmf][losses]") {
+    const auto base = std::filesystem::temp_directory_path() /
+                      Platform::PathFromUtf8("jst_test_file_writer_losses");
+    auto format = Modules::FileWriterFormat::Create("sigmf");
+    REQUIRE(format);
+    const auto dataPath = format->resolve(base);
+    const auto metaPath = format->companions().front();
+
+    constexpr U64 kFrame = 8;
+    Tensor frame;
+    REQUIRE(frame.create(DeviceType::CPU, DataType::CI16, {kFrame}) == Result::SUCCESS);
+    REQUIRE(frame.setAttribute("sampleRate", 61.44e6f) == Result::SUCCESS);
+    REQUIRE(frame.setAttribute("frequency", 915.0e6f) == Result::SUCCESS);
+    // The radio gap of the frame at 140 ends 3 samples into it.
+    REQUIRE(frame.setAttribute("radioGapPosition", U64{143}) == Result::SUCCESS);
+    const auto tag = [&](const U64 position, const U64 radioLost, const U64 overflows) {
+        REQUIRE(frame.setAttribute("streamPosition", position) == Result::SUCCESS);
+        REQUIRE(frame.setAttribute("radioLostSamples", radioLost) == Result::SUCCESS);
+        REQUIRE(frame.setAttribute("deviceOverflows", overflows) == Result::SUCCESS);
+    };
+
+    std::ofstream file(dataPath, std::ios::binary);
+    tag(100, 7, 2);
+    REQUIRE(format->start(file, frame) == Result::SUCCESS);
+    // Contiguous, then 24 samples missing, then a restart from zero (retune).
+    U64 written = 0;
+    for (const auto& [position, radioLost, overflows] :
+         std::vector<std::tuple<U64, U64, U64>>{
+             {100, 7, 2}, {108, 7, 2}, {140, 19, 3}, {0, 19, 3}, {8, 19, 3}}) {
+        tag(position, radioLost, overflows);
+        REQUIRE(format->track(frame, written) == Result::SUCCESS);
+        written += kFrame;
+    }
+    REQUIRE(format->finish(file, written * 4) == Result::SUCCESS);
+    file.close();
+
+    std::ifstream metaFile(metaPath);
+    const auto meta = nlohmann::json::parse(metaFile);
+    REQUIRE(meta["global"]["core:datatype"] == "ci16_le");
+    REQUIRE(meta["global"]["cyberether:lost_samples"] == 24);
+    REQUIRE(meta["global"]["cyberether:radio_lost_samples"] == 12);
+    REQUIRE(meta["global"]["cyberether:overflows"] == 1);
+    REQUIRE(meta["annotations"].size() == 2);
+    REQUIRE(meta["annotations"][0]["core:sample_start"] == 16);
+    REQUIRE(meta["annotations"][1]["core:sample_start"] == 19);
+    REQUIRE(meta["annotations"][1]["core:comment"] ==
+            "12 samples lost by the radio before this sample");
+
+    cleanupTestFile(dataPath);
+    cleanupTestFile(metaPath);
+}
+
+TEST_CASE("FileWriter SigMF - no loss fields without a radio source",
+          "[modules][file_writer][sigmf][losses]") {
+    const auto base = std::filesystem::temp_directory_path() /
+                      Platform::PathFromUtf8("jst_test_file_writer_plain");
+    auto format = Modules::FileWriterFormat::Create("sigmf");
+    const auto dataPath = format->resolve(base);
+    const auto metaPath = format->companions().front();
+    Tensor frame;
+    REQUIRE(frame.create(DeviceType::CPU, DataType::CF32, {4}) == Result::SUCCESS);
+    std::ofstream file(dataPath, std::ios::binary);
+    REQUIRE(format->start(file, frame) == Result::SUCCESS);
+    REQUIRE(format->track(frame, 0) == Result::SUCCESS);
+    REQUIRE(format->finish(file, 32) == Result::SUCCESS);
+    file.close();
+    std::ifstream metaFile(metaPath);
+    const auto meta = nlohmann::json::parse(metaFile);
+    REQUIRE_FALSE(meta["global"].contains("cyberether:lost_samples"));
+    cleanupTestFile(dataPath);
+    cleanupTestFile(metaPath);
+}
+
+TEST_CASE("FileWriter Module - recording toggles without a rebuild",
+          "[modules][file_writer][reconfigure]") {
+    for (const auto& impl : Registry::ListAvailableModules("file_writer")) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            const auto testPath = getTestFilePath("toggle");
+            cleanupTestFile(testPath);
+
+            TestContext ctx("file_writer", impl.device, impl.runtime, impl.provider);
+            Modules::FileWriter config;
+            config.filepath = Platform::PathToUtf8(testPath);
+            config.overwrite = true;
+            config.recording = false;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({4});
+            for (U64 i = 0; i < 4; ++i) {
+                input.at(i) = static_cast<F32>(i);
+            }
+            ctx.setInput("buffer", input);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE_FALSE(std::filesystem::exists(testPath));
+
+            // Starting opens the file in place and the next frames land in it.
+            config.recording = true;
+            REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+
+            // Stopping closes it; later frames are not written.
+            config.recording = false;
+            REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
+            REQUIRE(std::filesystem::file_size(testPath) == 2 * 4 * sizeof(F32));
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(std::filesystem::file_size(testPath) == 2 * 4 * sizeof(F32));
+
+            // Another path still needs a rebuild.
+            config.filepath = Platform::PathToUtf8(getTestFilePath("toggle_other"));
+            REQUIRE(ctx.reconfigure(config) == Result::RECREATE);
+
+            REQUIRE(ctx.stop() == Result::SUCCESS);
             cleanupTestFile(testPath);
         }
     }

@@ -1,5 +1,7 @@
 #include "format.hh"
 
+#include <algorithm>
+#include <any>
 #include <chrono>
 #include <unordered_map>
 
@@ -29,6 +31,18 @@ const std::unordered_map<DataType, std::string> kSigmfDataTypes = {
 std::string CurrentDatetime() {
     const auto now = std::chrono::floor<std::chrono::milliseconds>(std::chrono::system_clock::now());
     return jst::fmt::format("{:%Y-%m-%dT%H:%M:%S}Z", now);
+}
+
+// Running counts published by sources as U64 attributes.
+std::optional<U64> CountAttribute(const Tensor& tensor, const std::string& key) {
+    if (!tensor.hasAttribute(key)) {
+        return std::nullopt;
+    }
+    const auto value = tensor.attribute(key);
+    if (const auto* count = std::any_cast<U64>(&value)) {
+        return *count;
+    }
+    return std::nullopt;
 }
 
 }  // namespace
@@ -61,6 +75,7 @@ Result FileWriterFormat::Sigmf::check(const Tensor& input) const {
 }
 
 Result FileWriterFormat::Sigmf::start(std::ofstream&, const Tensor& input) {
+    losses = {};
     datatype = kSigmfDataTypes.at(input.dtype());
     sampleRate = NumericAttribute(input, "sampleRate");
     captures.push_back({
@@ -78,6 +93,40 @@ Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex
     }
 
     bool changed = false;
+
+    // A frame that does not start where the previous one ended means samples
+    // were lost in between. A smaller position means the stream restarted,
+    // for example after a retune, which is not a loss.
+    const auto position = CountAttribute(input, "streamPosition");
+    if (position) {
+        losses.tracked = true;
+        if (losses.nextPosition && *position > *losses.nextPosition) {
+            const U64 lost = *position - *losses.nextPosition;
+            losses.lostSamples += lost;
+            losses.gaps.emplace_back(sampleIndex, lost);
+            changed = true;
+        }
+        losses.nextPosition = *position + input.size();
+    }
+    // Samples the radio dropped inside this frame, placed on the first
+    // sample after the latest gap when the source gives its position.
+    if (const auto radioLost = CountAttribute(input, "radioLostSamples")) {
+        if (losses.radioLostLast && *radioLost > *losses.radioLostLast) {
+            U64 offset = 0;
+            const auto gapPosition = CountAttribute(input, "radioGapPosition");
+            if (position && gapPosition && *gapPosition > *position) {
+                offset = std::min<U64>(*gapPosition - *position, input.size());
+            }
+            losses.radioGaps.emplace_back(sampleIndex + offset, *radioLost - *losses.radioLostLast);
+            changed = true;
+        }
+        losses.radioLostFirst = losses.radioLostFirst.value_or(*radioLost);
+        losses.radioLostLast = *radioLost;
+    }
+    if (const auto overflows = CountAttribute(input, "deviceOverflows")) {
+        losses.overflowsFirst = losses.overflowsFirst.value_or(*overflows);
+        losses.overflowsLast = *overflows;
+    }
     if (!sampleRate) {
         sampleRate = NumericAttribute(input, "sampleRate");
         changed = sampleRate.has_value();
@@ -114,6 +163,31 @@ Result FileWriterFormat::Sigmf::write() const {
         global["core:sample_rate"] = *sampleRate;
     }
 
+    nlohmann::json annotations = nlohmann::json::array();
+    if (losses.tracked) {
+        global["cyberether:lost_samples"] = losses.lostSamples;
+        if (losses.radioLostFirst && losses.radioLostLast) {
+            global["cyberether:radio_lost_samples"] = *losses.radioLostLast - *losses.radioLostFirst;
+        }
+        if (losses.overflowsFirst && losses.overflowsLast) {
+            global["cyberether:overflows"] = *losses.overflowsLast - *losses.overflowsFirst;
+        }
+        for (const auto& [sampleStart, lost] : losses.gaps) {
+            annotations.push_back({
+                {"core:sample_start", sampleStart},
+                {"core:sample_count", 0},
+                {"core:comment", jst::fmt::format("{} samples lost before this sample", lost)},
+            });
+        }
+        for (const auto& [sampleStart, lost] : losses.radioGaps) {
+            annotations.push_back({
+                {"core:sample_start", sampleStart},
+                {"core:sample_count", 0},
+                {"core:comment", jst::fmt::format("{} samples lost by the radio before this sample", lost)},
+            });
+        }
+    }
+
     nlohmann::json entries = nlohmann::json::array();
     for (const auto& capture : captures) {
         nlohmann::json entry = {
@@ -129,7 +203,7 @@ Result FileWriterFormat::Sigmf::write() const {
     const nlohmann::json json = {
         {"global", std::move(global)},
         {"captures", std::move(entries)},
-        {"annotations", nlohmann::json::array()},
+        {"annotations", std::move(annotations)},
     };
 
     const std::string meta = Platform::PathToUtf8(metaPath);
