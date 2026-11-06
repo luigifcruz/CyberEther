@@ -425,3 +425,49 @@ TEST_CASE("FileWriter SigMF - no loss fields without a radio source",
     cleanupTestFile(dataPath);
     cleanupTestFile(metaPath);
 }
+
+TEST_CASE("FileWriter Module - recording toggles without a rebuild",
+          "[modules][file_writer][reconfigure]") {
+    for (const auto& impl : Registry::ListAvailableModules("file_writer")) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            const auto testPath = getTestFilePath("toggle");
+            cleanupTestFile(testPath);
+
+            TestContext ctx("file_writer", impl.device, impl.runtime, impl.provider);
+            Modules::FileWriter config;
+            config.filepath = Platform::PathToUtf8(testPath);
+            config.overwrite = true;
+            config.recording = false;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({4});
+            for (U64 i = 0; i < 4; ++i) {
+                input.at(i) = static_cast<F32>(i);
+            }
+            ctx.setInput("buffer", input);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE_FALSE(std::filesystem::exists(testPath));
+
+            // Starting opens the file in place and the next frames land in it.
+            config.recording = true;
+            REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+
+            // Stopping closes it; later frames are not written.
+            config.recording = false;
+            REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
+            REQUIRE(std::filesystem::file_size(testPath) == 2 * 4 * sizeof(F32));
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(std::filesystem::file_size(testPath) == 2 * 4 * sizeof(F32));
+
+            // Another path still needs a rebuild.
+            config.filepath = Platform::PathToUtf8(getTestFilePath("toggle_other"));
+            REQUIRE(ctx.reconfigure(config) == Result::RECREATE);
+
+            REQUIRE(ctx.stop() == Result::SUCCESS);
+            cleanupTestFile(testPath);
+        }
+    }
+}
