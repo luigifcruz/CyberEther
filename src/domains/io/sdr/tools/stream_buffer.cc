@@ -76,6 +76,11 @@ Result StreamBuffer::pop(CF32* data, const U64 count, Metadata& metadata, U64* p
     return Result::SUCCESS;
 }
 
+U64 StreamBuffer::pushed() const {
+    std::lock_guard lock(mutex);
+    return written;
+}
+
 StreamBuffer::Metadata StreamBuffer::metadata() const {
     std::lock_guard lock(mutex);
     return current;

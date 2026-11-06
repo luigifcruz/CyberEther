@@ -366,6 +366,8 @@ TEST_CASE("FileWriter SigMF - records samples lost between frames",
     REQUIRE(frame.create(DeviceType::CPU, DataType::CI16, {kFrame}) == Result::SUCCESS);
     REQUIRE(frame.setAttribute("sampleRate", 61.44e6f) == Result::SUCCESS);
     REQUIRE(frame.setAttribute("frequency", 915.0e6f) == Result::SUCCESS);
+    // The radio gap of the frame at 140 ends 3 samples into it.
+    REQUIRE(frame.setAttribute("radioGapPosition", U64{143}) == Result::SUCCESS);
     const auto tag = [&](const U64 position, const U64 radioLost, const U64 overflows) {
         REQUIRE(frame.setAttribute("streamPosition", position) == Result::SUCCESS);
         REQUIRE(frame.setAttribute("radioLostSamples", radioLost) == Result::SUCCESS);
@@ -393,8 +395,11 @@ TEST_CASE("FileWriter SigMF - records samples lost between frames",
     REQUIRE(meta["global"]["cyberether:lost_samples"] == 24);
     REQUIRE(meta["global"]["cyberether:radio_lost_samples"] == 12);
     REQUIRE(meta["global"]["cyberether:overflows"] == 1);
-    REQUIRE(meta["annotations"].size() == 1);
+    REQUIRE(meta["annotations"].size() == 2);
     REQUIRE(meta["annotations"][0]["core:sample_start"] == 16);
+    REQUIRE(meta["annotations"][1]["core:sample_start"] == 19);
+    REQUIRE(meta["annotations"][1]["core:comment"] ==
+            "12 samples lost by the radio before this sample");
 
     cleanupTestFile(dataPath);
     cleanupTestFile(metaPath);
