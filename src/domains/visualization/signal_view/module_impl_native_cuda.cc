@@ -352,7 +352,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             maxHold && detail::LineplotMaxHoldReady(maxHoldWarmupBlocks, lineplotAveraging);
         U32 maxHoldEnabled = updateMaxHold ? 1 : 0;
         U32 averagingInitialized = lineplotAveragingInitialized ? 1 : 0;
-        U32 linearAmplitude = densityEnabled ? 1 : 0;
+        U32 linearAmplitude = (densityEnabled || amplitudeScale == "log") ? 1 : 0;
         void* arguments[] = {
             &inputArgument,
             &signalData,

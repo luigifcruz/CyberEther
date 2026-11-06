@@ -19,6 +19,7 @@ struct SpectrumAnalyzer : public Block::Config {
     U64 waterfallHeight = 1024;
     std::string colormap = "turbo";
     bool density = false;
+    std::string amplitudeScale = "compressed";
     U64 persistence = 256;
     F32 splitRatio = 0.5f;
     std::vector<F32> markers;
@@ -32,7 +33,7 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(mode, lineplotAveraging, waterfallAveraging, maxHold,
                      fill, rangeMin, rangeMax, waterfallHeight, colormap,
-                     density, persistence,
+                     density, amplitudeScale, persistence,
                      splitRatio, markers, pins, xLabel, amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Analyzer",
@@ -47,8 +48,9 @@ struct SpectrumAnalyzer : public Block::Config {
         "sample.\n"
         "- **Each batch is one spectrum.** The trace averages the batches, and the "
         "waterfall adds one row per batch.\n"
-        "- **Controls work in a detached window.** Click the expand icon on the view to"
-        " open it.\n"
+        "- **Controls work in a detached window.** Hover the view and click the expand "
+        "icon in its top-right corner to open it. Keys act once the view has been "
+        "clicked.\n"
         "\n"
         "## Ports\n"
         "\n"
@@ -82,6 +84,11 @@ struct SpectrumAnalyzer : public Block::Config {
         "| **Spectral Density** | Off | On, Off | Draws how often each level occurs "
         "behind the trace, with a linear amplitude axis. Hidden for Waterfall and 3D "
         "Waterfall. |\n"
+        "| **Amplitude Scale** | Compressed | Compressed, Log (dB/div) | Compressed "
+        "squeezes the levels near Range Min and Range Max to show more detail in "
+        "between. Log spaces the axis evenly in dB, like the Log scale of a bench "
+        "analyzer, so every grid division is the same number of dB. Spectral "
+        "Density always uses Log. Hidden for Waterfall and 3D Waterfall. |\n"
         "| **Persistence** | 256 spectra | 1 or more, slider up to 4,096 | Spectra it "
         "takes for the density to fade to half. Hidden while Spectral Density is off, "
         "and for Waterfall and 3D Waterfall. |\n"
@@ -130,7 +137,15 @@ struct SpectrumAnalyzer : public Block::Config {
         "| Pan while zoomed | Drag |\n"
         "| Reset zoom and pan | Right Click |\n"
         "| Freeze or resume the view | Space |\n"
-        "| Place a marker, or remove the one under the cursor | Shift+Click |\n"
+        "| Step the zoomed view by a tenth of its span | Left, Right |\n"
+        "| Change the amplitude scale (1, 2, 5, 10, 20 dB/div), keeping Range Max | "
+        "Up (finer), Down (coarser) |\n"
+        "| Move Range Min and Range Max together by one division | Shift+Up, "
+        "Shift+Down |\n"
+        "| Place a marker, or remove the one under the cursor | Shift+Click. The "
+        "cursor locks onto a peak within a few pixels; hold Alt to place it exactly. |\n"
+        "| Remove the marker under the cursor, or the last one placed | Delete or "
+        "Backspace |\n"
         "| Clear every marker | Shift+Right Click |\n"
         "| Move a marker | Drag its line |\n"
         "| Show the distances to neighboring markers | Hover a marker tag, click it to "
