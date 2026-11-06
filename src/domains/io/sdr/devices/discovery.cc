@@ -26,6 +26,7 @@
 #ifdef JETSTREAM_LOADER_BIRRIASDR_AVAILABLE
 #include "birriasdr/base.hh"
 #endif
+#include "soapy/base.hh"
 
 #include <algorithm>
 #include <chrono>
@@ -112,6 +113,9 @@ std::vector<Device::Driver> BuiltinDrivers() {
 #endif
 #ifdef JETSTREAM_LOADER_BIRRIASDR_AVAILABLE
     drivers.push_back({"birriasdr", &BirriaSdr::Enumerate, &BirriaSdr::Stream, &BirriaSdr::Sweep});
+#endif
+#if !defined(JST_OS_BROWSER) && !defined(JST_OS_IOS) && !defined(JST_OS_ANDROID)
+    drivers.push_back({"soapy", &SoapySdr::Enumerate, &SoapySdr::Stream, &SoapySdr::Sweep});
 #endif
     return drivers;
 }
