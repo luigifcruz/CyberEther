@@ -48,6 +48,10 @@ Result FileWriterImpl::create() {
         return Result::SUCCESS;
     }
 
+    return openRecording();
+}
+
+Result FileWriterImpl::openRecording() {
     if (filepath.empty()) {
         JST_WARN("[MODULE_FILE_WRITER] File path is empty.");
         return Result::INCOMPLETE;
@@ -88,6 +92,41 @@ Result FileWriterImpl::create() {
 }
 
 Result FileWriterImpl::destroy() {
+    closeRecording();
+
+    return Result::SUCCESS;
+}
+
+// Starting or stopping a recording only opens or closes the file, so the
+// stream keeps flowing while the toggle changes. Any other change rebuilds
+// the module.
+Result FileWriterImpl::reconfigure() {
+    const auto& config = *candidate();
+    if (config.filepath != filepath ||
+        config.fileFormat != fileFormat ||
+        config.overwrite != overwrite) {
+        return Result::RECREATE;
+    }
+
+    if (config.recording == recording) {
+        return Result::SUCCESS;
+    }
+    recording = config.recording;
+
+    if (!recording) {
+        closeRecording();
+        return Result::SUCCESS;
+    }
+
+    format = FileWriterFormat::Create(fileFormat);
+    filePath = format->resolve(Platform::PathFromUtf8(filepath));
+    bytesSinceLastMeasurement = 0;
+    lastMeasurementTime = std::chrono::steady_clock::now();
+    // Let a rebuild report a path that cannot be opened.
+    return openRecording() == Result::SUCCESS ? Result::SUCCESS : Result::RECREATE;
+}
+
+void FileWriterImpl::closeRecording() {
     if (dataFile.is_open()) {
         format->finish(dataFile, bytesWritten.get());
         dataFile.close();
@@ -97,8 +136,6 @@ Result FileWriterImpl::destroy() {
 
     throughputMBs.publish(0.0f);
     bytesSinceLastMeasurement = 0;
-
-    return Result::SUCCESS;
 }
 
 U64 FileWriterImpl::getBytesWritten() const {
