@@ -103,6 +103,9 @@ std::vector<Device::Driver> BuiltinDrivers() {
 #endif
 #ifdef JETSTREAM_LOADER_LIMESUITE_AVAILABLE
     drivers.push_back({"limesdr", &LimeSdr::Enumerate, &LimeSdr::Stream, &LimeSdr::Sweep});
+#if defined(JST_OS_LINUX)
+    drivers.push_back({"limesuiteng", &LimeSuiteNg::Enumerate, &LimeSuiteNg::Stream, &LimeSuiteNg::Sweep});
+#endif
 #endif
 #ifdef JETSTREAM_LOADER_BLADERF_AVAILABLE
     drivers.push_back({"bladerf", &BladeRf::Enumerate, &BladeRf::Stream, &BladeRf::Sweep});

@@ -128,6 +128,8 @@ struct Sdr : public Block::Config {
         "the radio. |\n"
         "| BirriaSDR | macOS and Linux only, on a USB 3 port. Unbind the Wi-Fi driver, "
         "then replug the dongle. |\n"
+        "| LimeSDR XTRX | Linux only. Install LimeSuiteNG with its limepcie kernel driver "
+        "and legacy C API library. |\n"
         "| Browser | The same radios except PlutoSDR and BirriaSDR over WebUSB, once "
         "the page has been given access to the radio. |\n"
         "| iOS, Android | Not available. |\n"

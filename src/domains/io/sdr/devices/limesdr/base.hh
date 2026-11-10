@@ -14,6 +14,13 @@ struct LimeSdr {
     static Result Sweep(const Device::Info& info, std::unique_ptr<Radio::Sweep>& sweep);
 };
 
+// LimeSDR XTRX and other PCIe boards through an installed LimeSuiteNG.
+struct LimeSuiteNg {
+    static std::vector<Device::Info> Enumerate();
+    static Result Stream(const Device::Info& info, std::unique_ptr<Radio::Stream>& stream);
+    static Result Sweep(const Device::Info& info, std::unique_ptr<Radio::Sweep>& sweep);
+};
+
 }  // namespace Jetstream::Radio
 
 #endif  // JETSTREAM_DOMAINS_IO_SDR_DEVICES_LIMESDR_BASE_HH
