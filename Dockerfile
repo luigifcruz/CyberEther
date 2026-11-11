@@ -15,7 +15,7 @@ RUN apt-get update --fix-missing && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --break-system-packages meson ninja numpy mapbox_earcut
+RUN python3 -m pip install --break-system-packages meson ninja numpy
 
 ARG ONNXRUNTIME_VERSION=1.27.0
 ARG ONNXRUNTIME_CUDA_MAJOR=13
