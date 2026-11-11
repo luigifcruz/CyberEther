@@ -116,6 +116,7 @@ struct NodeEditor : public Component {
         Callback<void(Rect)> onViewportGridChange;
         std::optional<View> view;
         Callback<void(View)> onViewChange;
+        Callback<void()> onNodesArranged;
 
         bool operator==(const Config&) const = default;
     };

@@ -7,6 +7,7 @@
 #include "jetstream/agent/tools.hh"
 #include "jetstream/instance.hh"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -298,9 +299,20 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
             state.interface.pendingFocusedFlowgraph = call.create;
         }
 
-        callbacks.enqueueCommand([shared = shared, request, call]() mutable -> Result {
+        auto command = [shared = shared, request, call]() mutable -> Result {
             return shared->run(request, call);
-        }, true);
+        };
+
+        const auto& graphs = state.flowgraph.items;
+        const auto graph = std::find_if(graphs.begin(), graphs.end(), [&](const auto& item) {
+            return call.flowgraph && item.second == call.flowgraph;
+        });
+        const bool edits = call.definition && call.definition->flags.editsGraph && call.create.empty();
+        if (edits && graph != graphs.end()) {
+            callbacks.enqueueFlowgraphEdit({.flowgraph = graph->first, .command = std::move(command), .silent = true});
+        } else {
+            callbacks.enqueueCommand(std::move(command), true);
+        }
     }
 };
 

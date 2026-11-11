@@ -251,6 +251,31 @@ struct RoutedTable : Sakura::Table {
 
 }  // namespace
 
+TEST_CASE("A shortcut that yields to text doesn't fire while an editor has focus, even for a key it ignores",
+          "[core][sakura][modal-scope]") {
+    ModalFixture fixture;
+    Sakura::TextInput field;
+    field.update({.value = "text", .submit = Sakura::TextInput::Submit::OnEdit, .focus = true});
+    U64 fired = 0;
+    Sakura::Shortcuts workspace;
+    workspace.update({
+        .bindings = {
+            {.key = KeyCode::Comma, .modifier = Sakura::Shortcuts::Modifier::Primary, .yieldsToText = true,
+             .onPressed = [&] { ++fired; }},
+        },
+        .content = &field,
+    });
+    Sakura::Layer base;
+    base.update({.content = &workspace});
+    fixture.root.setLayers({&base});
+    fixture.place();
+    fixture.place();
+    REQUIRE(field.focused());
+
+    CHECK_FALSE(fixture.key(KeyCode::Comma, {.control = true}));
+    CHECK(fired == 0);
+}
+
 TEST_CASE("Modal activation blocks real background edits and shortcuts and restores keyboard focus",
           "[core][sakura][modal-scope]") {
     ModalFixture fixture;

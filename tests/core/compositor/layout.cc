@@ -333,11 +333,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const auto layoutHash = Parser::Hash(state.flowgraph.layouts.at("graph"));
 
     std::function<Result()> command;
+    std::function<void(Result)> complete;
     std::optional<Mail> completion;
-    callbacks.enqueueMail = [](Mail&&) {};
-    callbacks.enqueueCommandWithMail = [&](std::function<Result()> fn, bool, Mail mail) {
-        command = std::move(fn);
+    callbacks.enqueueMail = [&](Mail&& mail) {
         completion = std::move(mail);
+    };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        command = std::move(edit.command);
+        complete = std::move(edit.onComplete);
     };
 
     std::string newName = "renamed";
@@ -345,17 +348,21 @@ TEST_CASE_METHOD(FlowgraphFixture,
     SECTION("failed rename") { newName = "invalid.name"; }
     SECTION("unchanged name") { newName = "source"; }
     REQUIRE(actions.handle(MailRenameBlock{"graph", "source", newName}) == Result::SUCCESS);
+    completion.reset();
     REQUIRE(command);
-    REQUIRE(completion.has_value());
+    REQUIRE(complete);
     REQUIRE(Parser::Hash(state.flowgraph.layouts.at("graph")) == layoutHash);
 
     const auto result = command();
+    complete(result);
     if (newName == "invalid.name") {
         REQUIRE(result == Result::ERROR);
+        REQUIRE_FALSE(completion.has_value());
         REQUIRE(Parser::Hash(state.flowgraph.layouts.at("graph")) == layoutHash);
         return;
     }
     REQUIRE(result == Result::SUCCESS);
+    REQUIRE(completion.has_value());
     REQUIRE(layouts.handle(std::get<MailRenameLayoutBlock>(*completion)) == Result::SUCCESS);
 
     ConfigMeta after;

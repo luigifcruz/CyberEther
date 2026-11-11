@@ -883,7 +883,7 @@ std::vector<Entry> Toolbox::Patch() {
         "set_node_layout size that did not take effect is listed in "
         "size_not_applied.",
         PatchSchema(),
-        {.needsGraph = true, .reportsLayout = true},
+        {.needsGraph = true, .editsGraph = true, .reportsLayout = true},
     }, ApplyPatch);
 
     entry.newGraph = PatchGraph;

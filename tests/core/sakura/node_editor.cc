@@ -76,6 +76,7 @@ struct Graph {
     bool frameOnOpen = false;
     std::optional<NodeEditor::View> savedView;
     std::vector<NodeEditor::View> viewReports;
+    std::vector<NodeEditor::Geometry> arranged;
     F32 scale = 1.0f;
 
     explicit Graph(F32 pixelRatio = 1.0f) {
@@ -171,6 +172,7 @@ struct Graph {
             },
             .view = savedView,
             .onViewChange = [this](NodeEditor::View view) { viewReports.push_back(view); },
+            .onNodesArranged = [this]() { arranged.push_back(blocks.front()->last()); },
         });
     }
 
@@ -731,6 +733,32 @@ TEST_CASE("Pressing a consuming content widget routes the whole gesture to it an
     CHECK(a.content.count(MouseEventType::Release) == 1);
     CheckPoint(a.last().gridPosition, 40.0f, 40.0f);
     CheckPoint(*graph.center, 400.0f, 300.0f);
+}
+
+TEST_CASE("Moving or resizing nodes reports one arrangement after their final geometry",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f}, {120.0f, 120.0f}, ResizeAxes::XY);
+    a.content.consume = false;
+    graph.step();
+    const auto initial = a.last();
+
+    graph.drag(600.0f, 500.0f, 640.0f, 520.0f);
+    graph.drag(640.0f, 520.0f, 600.0f, 500.0f);
+    graph.click(100.0f, 100.0f);
+    CHECK(graph.arranged.empty());
+
+    graph.drag(172.0f, 172.0f, 232.0f, 212.0f);
+    REQUIRE(graph.arranged.size() == 1);
+    CHECK(graph.arranged.back().dimensions.x > initial.dimensions.x);
+    CHECK(graph.arranged.back().dimensions.x == a.last().dimensions.x);
+
+    graph.press(100.0f, 100.0f);
+    graph.move(130.0f, 130.0f);
+    CHECK(graph.arranged.size() == 1);
+    graph.release(130.0f, 130.0f);
+    REQUIRE(graph.arranged.size() == 2);
+    CheckPoint(graph.arranged.back().gridPosition, 70.0f, 70.0f);
 }
 
 TEST_CASE("Resizing an X axis node changes only its width", "[core][sakura][node-editor]") {
@@ -1379,6 +1407,8 @@ TEST_CASE("A cancelled pointer ends a node drag where it stopped", "[core][sakur
     graph.release(200.0f, 200.0f);
 
     CheckPoint(a.last().gridPosition, 60.0f, 50.0f);
+    REQUIRE(graph.arranged.size() == 1);
+    CheckPoint(graph.arranged.back().gridPosition, 60.0f, 50.0f);
 }
 
 TEST_CASE("Removing a node during its drag ends the interaction safely", "[core][sakura][node-editor]") {

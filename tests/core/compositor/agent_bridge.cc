@@ -109,6 +109,9 @@ TEST_CASE("Cancelled compositor commands cannot apply queued graph mutations",
     callbacks.enqueueCommand = [&](std::function<Result()> command, bool) {
         commands.push_back(std::move(command));
     };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
+    };
 
     AgentExecutor bridge(state, callbacks);
     auto cancelled = std::make_shared<std::atomic<bool>>(false);
@@ -191,9 +194,14 @@ TEST_CASE("A tool executor retains its graph across focus changes and rejects cl
     state.flowgraph.items = {{"first", first}, {"second", second}};
     state.interface.focusedFlowgraph = "first";
 
+    std::vector<std::string> edited;
     DefaultCompositorCallbacks callbacks;
     callbacks.enqueueCommand = [](std::function<Result()> command, bool) {
         command();
+    };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        edited.push_back(edit.flowgraph);
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
     };
 
     AgentExecutor bridge(state, callbacks);
@@ -218,6 +226,7 @@ TEST_CASE("A tool executor retains its graph across focus changes and rejects cl
     };
 
     CHECK(invoke()["status"] == "success");
+    CHECK(edited == std::vector<std::string>{"first"});
 
     Flowgraph::Metadata::NodeLayout layout;
     REQUIRE(first->metadata().get("node", layout, "source") == Result::SUCCESS);
@@ -227,6 +236,7 @@ TEST_CASE("A tool executor retains its graph across focus changes and rejects cl
     state.flowgraph.items.erase("first");
     CHECK(invoke().contains("error"));
     CHECK_FALSE(second->metadata().has("node", "source"));
+    CHECK(edited == std::vector<std::string>{"first"});
 
     bridge.shutdown();
     for (const auto& graph : {first, second}) {
@@ -251,6 +261,9 @@ TEST_CASE("Tools bound while the Start, Settings or Docs tab is active never tou
     DefaultCompositorCallbacks callbacks;
     callbacks.enqueueCommand = [](std::function<Result()> command, bool) {
         command();
+    };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
     };
 
     AgentExecutor bridge(state, callbacks);
@@ -311,6 +324,9 @@ TEST_CASE("Malformed open_example arguments return errors from the UI poll",
     DefaultCompositorCallbacks callbacks;
     callbacks.enqueueCommand = [&](std::function<Result()>, bool) {
         ++queuedCommands;
+    };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
     };
 
     AgentExecutor bridge(state, callbacks);
@@ -373,6 +389,9 @@ TEST_CASE("Agent tools return fresh rendered bounds without changing automatic s
     DefaultCompositorCallbacks callbacks;
     callbacks.enqueueCommand = [&](std::function<Result()> command, bool) {
         commands.push_back(std::move(command));
+    };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
     };
 
     AgentExecutor bridge(state, callbacks);

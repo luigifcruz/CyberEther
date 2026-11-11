@@ -8,6 +8,7 @@
 #include "file_picker.hh"
 #include "flowgraph.hh"
 #include "gallery.hh"
+#include "history.hh"
 #include "layout.hh"
 #include "live_markdown.hh"
 #include "maps.hh"
@@ -41,6 +42,7 @@ class DefaultActions {
         filePicker = std::make_shared<FilePickerActions>(state, callbacks);
         flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
         dependencies = std::make_shared<DependencyActions>(callbacks);
+        history = std::make_shared<HistoryActions>(state, callbacks);
         layouts = std::make_shared<LayoutActions>(state.flowgraph);
         liveMarkdown = std::make_shared<LiveMarkdownActions>(state.flowgraph);
         configDrafts = std::make_shared<ConfigDraftActions>(state.flowgraph);
@@ -101,6 +103,9 @@ class DefaultActions {
         if (Handle(*dependencies, mail, result)) {
             return result;
         }
+        if (Handle(*history, mail, result)) {
+            return result;
+        }
         if (Handle(*layouts, mail, result)) {
             return result;
         }
@@ -154,6 +159,14 @@ class DefaultActions {
 
     void restoreLayouts() {
         layouts->restoreFromMetadata();
+    }
+
+    void reconcileHistory() {
+        history->reconcile();
+    }
+
+    void enqueueFlowgraphEdit(FlowgraphEdit edit) {
+        history->enqueueEdit(std::move(edit));
     }
 
     void refreshLiveMarkdown() {
@@ -226,6 +239,7 @@ class DefaultActions {
     std::shared_ptr<DependencyActions> dependencies;
     std::shared_ptr<FilePickerActions> filePicker;
     std::shared_ptr<FlowgraphActions> flowgraph;
+    std::shared_ptr<HistoryActions> history;
     std::shared_ptr<LiveMarkdownActions> liveMarkdown;
     std::shared_ptr<ConfigDraftActions> configDrafts;
     std::shared_ptr<MetricActions> metrics;

@@ -14,9 +14,11 @@ bool Matches(Shortcuts::Modifier modifier, const KeyModifiers& modifiers) {
         case Shortcuts::Modifier::Any:
             return true;
         case Shortcuts::Modifier::Primary:
-            return primary;
+            return primary && !modifiers.shift && !modifiers.alt;
         case Shortcuts::Modifier::PrimaryAlt:
-            return primary && modifiers.alt;
+            return primary && modifiers.alt && !modifiers.shift;
+        case Shortcuts::Modifier::PrimaryShift:
+            return primary && modifiers.shift && !modifiers.alt;
     }
     return false;
 }
@@ -60,7 +62,8 @@ bool Shortcuts::shortcutEvent(const KeyEvent& event) {
     }
     for (const auto& binding : impl->config.bindings) {
         if (binding.key == event.key && (binding.repeat || !event.repeat) &&
-            Matches(binding.modifier, event.modifiers) && binding.onPressed) {
+            Matches(binding.modifier, event.modifiers) && binding.onPressed &&
+            !(binding.yieldsToText && textEditorFocused())) {
             binding.onPressed();
             return true;
         }

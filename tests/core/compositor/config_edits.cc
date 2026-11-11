@@ -60,10 +60,9 @@ TEST_CASE("Config edit failures are acknowledged when command completion is disp
     DefaultCompositorCallbacks callbacks;
     std::function<Result()> command;
     std::function<void(Result)> dispatch;
-    callbacks.enqueueCommandWithCompletion = [&](std::function<Result()> next, bool,
-                                                 std::function<void(Result)> complete) {
-        command = std::move(next);
-        dispatch = std::move(complete);
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        command = std::move(edit.command);
+        dispatch = std::move(edit.onComplete);
     };
     FlowgraphActions actions(state, callbacks);
     bool completed = false;
