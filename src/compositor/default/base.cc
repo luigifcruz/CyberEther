@@ -47,6 +47,9 @@ DefaultCompositor::DefaultCompositor() :
                                           }
                                       });
         },
+        .enqueueFlowgraphEdit = [this](FlowgraphEdit edit) {
+            actions.enqueueFlowgraphEdit(std::move(edit));
+        },
         .notify = [](Sakura::ToastType type, I32 durationMs, const std::string& message) {
             Sakura::PushToast(type, durationMs, message);
         },
@@ -302,6 +305,7 @@ Result DefaultCompositor::poll() {
     updateUpdaterState();
     actions.reconcileFilePicker();
     actions.restoreLayouts();
+    actions.reconcileHistory();
     actions.settleStartTab();
     actions.reconcileGallery();
     actions.refreshRegistry();

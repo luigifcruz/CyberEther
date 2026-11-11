@@ -77,6 +77,10 @@ bool HasAxis(ResizeAxes axes, ResizeAxes axis) {
     return (static_cast<U8>(axes) & static_cast<U8>(axis)) != 0;
 }
 
+bool Moved(Extent2D<F32> from, Extent2D<F32> to) {
+    return std::abs(from.x - to.x) > 0.5f || std::abs(from.y - to.y) > 0.5f;
+}
+
 const char* StateColorKey(NodeState state) {
     switch (state) {
         case NodeState::Error:
@@ -974,6 +978,8 @@ struct GraphRoot : public Component {
     Extent2D<F32> boxStart = {0.0f, 0.0f};
     std::vector<std::string> boxBase;
     Extent2D<F32> resizeStartContent = {0.0f, 0.0f};
+    Extent2D<F32> resizeStartSize = {0.0f, 0.0f};
+    bool arranged = false;
     NodeEditor::PinRef linkStart;
     HeaderButton armedButton = HeaderButton::None;
     Extent2D<F32> buttonPressMouse = {0.0f, 0.0f};
@@ -1463,6 +1469,9 @@ struct GraphRoot : public Component {
         drawInteraction(ctx);
         requestEditorCursor();
         emitGeometry();
+        if (std::exchange(arranged, false) && config.onNodesArranged) {
+            config.onNodesArranged();
+        }
 
         requestTooltips(ctx);
     }
@@ -1656,6 +1665,20 @@ struct GraphRoot : public Component {
                 frame->spec.onGeometryChange(geometry);
             }
         }
+    }
+
+    bool interactionArranged() const {
+        if (interaction == Interaction::Node) {
+            return std::any_of(dragOrigins.begin(), dragOrigins.end(), [this](const auto& entry) {
+                const auto* frame = frameFor(entry.first);
+                return frame && Moved(entry.second, frame->origin);
+            });
+        }
+        if (interaction == Interaction::Resize) {
+            const auto* frame = frameFor(interactionNode);
+            return frame && Moved(resizeStartSize, frame->contentSize);
+        }
+        return false;
     }
 
     const NodeEditor::Link* linkSpec(const std::string& id) const {
@@ -1893,6 +1916,7 @@ struct GraphRoot : public Component {
             interactionNode = resizeHoverNode;
             dragStartMouse = mouse;
             resizeStartContent = {frame->rect.width - 2.0f * kPadding, frame->rect.height - 2.0f * kPadding};
+            resizeStartSize = frame->contentSize;
             return true;
         }
 
@@ -1970,6 +1994,7 @@ struct GraphRoot : public Component {
 
     void cancelInteraction() {
         middlePressed = false;
+        arranged = arranged || interactionArranged();
         if (interaction == Interaction::Content) {
             if (auto* frame = frameFor(interactionNode)) {
                 MouseEvent cancel{};
@@ -2033,6 +2058,7 @@ struct GraphRoot : public Component {
                 break;
         }
         armedButton = HeaderButton::None;
+        arranged = arranged || interactionArranged();
         for (const auto& id : depth) {
             frameFor(id)->dispatch(event);
         }

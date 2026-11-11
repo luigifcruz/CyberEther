@@ -607,6 +607,18 @@ struct MailSetNodeMeta {
     std::optional<NodeMeta> base;
 };
 
+struct MailUndoFlowgraph {
+    std::string flowgraph;
+};
+
+struct MailRedoFlowgraph {
+    std::string flowgraph;
+};
+
+struct MailRecordFlowgraphLayout {
+    std::string flowgraph;
+};
+
 struct MailSetEditorMeta {
     std::string flowgraph;
     EditorMeta meta;
@@ -838,6 +850,9 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCopyBlock,
                           MailPasteBlock,
                           MailSetNodeMeta,
+                          MailUndoFlowgraph,
+                          MailRedoFlowgraph,
+                          MailRecordFlowgraphLayout,
                           MailSetEditorMeta,
                           MailSetConfigCollapsed,
                           MailSetMetricsCollapsed,

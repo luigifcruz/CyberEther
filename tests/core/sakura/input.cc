@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include "harness.hh"
 #include "component_harness.hh"
@@ -736,6 +737,38 @@ TEST_CASE("Shortcuts match keys by modifier and repeat, pass layout through, and
     keys.update(config);
     CHECK_FALSE(Tap(host, KeyCode::A));
     CHECK(fired.size() == 4);
+}
+
+TEST_CASE("Primary modifiers match exactly, so binding order does not matter",
+          "[core][sakura][input][shortcuts]") {
+    const bool shiftFirst = GENERATE(false, true);
+    std::vector<std::string> fired;
+    Probe content({40.0f, 20.0f});
+    Sakura::Shortcuts keys;
+    const Sakura::Shortcuts::Binding undo{.key = KeyCode::Z, .modifier = Sakura::Shortcuts::Modifier::Primary,
+                                          .repeat = true, .yieldsToText = true,
+                                          .onPressed = [&] { fired.push_back("undo"); }};
+    const Sakura::Shortcuts::Binding redo{.key = KeyCode::Z, .modifier = Sakura::Shortcuts::Modifier::PrimaryShift,
+                                          .repeat = true, .yieldsToText = true,
+                                          .onPressed = [&] { fired.push_back("redo"); }};
+    const Sakura::Shortcuts::Binding alt{.key = KeyCode::Z, .modifier = Sakura::Shortcuts::Modifier::PrimaryAlt,
+                                         .onPressed = [&] { fired.push_back("alt"); }};
+    keys.update({
+        .bindings = shiftFirst ? std::vector{redo, alt, undo} : std::vector{undo, alt, redo},
+        .content = &content,
+    });
+    Host host(keys);
+
+    CHECK_FALSE(Tap(host, KeyCode::Z));
+    CHECK_FALSE(Tap(host, KeyCode::Z, {.shift = true}));
+    CHECK(Tap(host, KeyCode::Z, {.control = true}));
+    CHECK(Tap(host, KeyCode::Z, {.super = true}));
+    CHECK(Tap(host, KeyCode::Z, {.control = true, .shift = true}));
+    CHECK(Tap(host, KeyCode::Z, {.shift = true, .super = true}));
+    CHECK(Tap(host, KeyCode::Z, {.control = true, .alt = true}));
+    CHECK_FALSE(Tap(host, KeyCode::Z, {.control = true, .shift = true, .alt = true}));
+    CHECK(Sakura::Access::key(host, Press(KeyCode::Z, {.super = true}, true)));
+    CHECK(fired == std::vector<std::string>{"undo", "undo", "redo", "redo", "alt", "undo"});
 }
 
 TEST_CASE("Shortcuts settle with content and binding or enabled changes cause no work",

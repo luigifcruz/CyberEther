@@ -48,6 +48,8 @@ struct TitlebarView {
         NewTab,
         OpenTerminal,
         ToggleSidebar,
+        Undo,
+        Redo,
     };
 
     enum class TabAction {
@@ -282,6 +284,8 @@ struct TitlebarView {
 
     std::vector<Sakura::Shortcuts::Binding> shortcuts() {
         std::vector<Sakura::Shortcuts::Binding> bindings = {
+            bindEdit(Sakura::Shortcuts::Modifier::Primary, Action::Undo),
+            bindEdit(Sakura::Shortcuts::Modifier::PrimaryShift, Action::Redo),
             bind(KeyCode::T, Action::NewTab),
             bind(KeyCode::O, Action::OpenFlowgraph),
             bind(KeyCode::S, Action::SaveFlowgraph),
@@ -385,6 +389,16 @@ struct TitlebarView {
         return {
             .key = key,
             .modifier = Sakura::Shortcuts::Modifier::Primary,
+            .onPressed = [this, value]() { emit(value); },
+        };
+    }
+
+    Sakura::Shortcuts::Binding bindEdit(Sakura::Shortcuts::Modifier modifier, Action value) {
+        return {
+            .key = KeyCode::Z,
+            .modifier = modifier,
+            .repeat = true,
+            .yieldsToText = true,
             .onPressed = [this, value]() { emit(value); },
         };
     }

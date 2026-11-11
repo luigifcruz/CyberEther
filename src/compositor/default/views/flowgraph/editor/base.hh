@@ -41,6 +41,8 @@ struct FlowgraphEditor {
     struct Config {
         std::string id;
         bool clipboardHasData = false;
+        bool canUndo = false;
+        bool canRedo = false;
         bool debugTimingEnabled = false;
         bool measure = false;
         bool paused = false;
@@ -49,6 +51,9 @@ struct FlowgraphEditor {
         std::vector<FlowgraphNode::BlockData> graph;
         std::optional<Sakura::NodeEditor::View> view;
         Sakura::Callback<void(Sakura::NodeEditor::View)> onViewChange;
+        Sakura::Callback<void()> onNodesArranged;
+        Sakura::Callback<void()> onUndo;
+        Sakura::Callback<void()> onRedo;
 
         Sakura::Callback<void(const std::string&, std::optional<Extent2D<F32>>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
         Sakura::Callback<void(const std::string&)> onCopyBlock;
@@ -247,6 +252,11 @@ struct FlowgraphEditor {
             nodeViewIds.push_back(blockName);
         }
 
+        // Nodes persist their geometry in update, so the arrangement is recorded after them.
+        if (std::exchange(arrangePending, false) && this->config.onNodesArranged) {
+            this->config.onNodesArranged();
+        }
+
         std::erase_if(nodeViews, [this](const auto& entry) {
             return !liveBlocks.contains(entry.first);
         });
@@ -307,10 +317,26 @@ struct FlowgraphEditor {
             },
             .view = this->config.view,
             .onViewChange = this->config.onViewChange,
+            .onNodesArranged = [this]() {
+                arrangePending = true;
+            },
         });
 
         flowgraphContextMenu.update({
             .entries = {
+                {
+                    .label = ICON_LC_UNDO_2 " Undo",
+                    .shortcut = "CTRL+Z",
+                    .enabled = this->config.canUndo,
+                    .onClick = this->config.onUndo,
+                },
+                {
+                    .label = ICON_LC_REDO_2 " Redo",
+                    .shortcut = "CTRL+SHIFT+Z",
+                    .enabled = this->config.canRedo,
+                    .onClick = this->config.onRedo,
+                },
+                {.separator = true},
                 {
                     .label = ICON_LC_CLIPBOARD_PASTE " Paste Block",
                     .shortcut = "CTRL+V",
@@ -458,6 +484,7 @@ struct FlowgraphEditor {
     Sakura::PillIconButton environmentButton;
     Sakura::Menu flowgraphContextMenu;
     bool flowgraphContextMenuOpen = false;
+    bool arrangePending = false;
     Extent2D<F32> flowgraphContextMenuGridPos;
     Extent2D<F32> viewportGridCenter;
     Measured measured;

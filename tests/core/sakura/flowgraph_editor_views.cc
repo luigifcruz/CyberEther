@@ -1008,6 +1008,64 @@ TEST_CASE("Pin and wire tooltips refresh tensor attributes under a resting point
     CHECK_FALSE(labelRect("96 kHz").has_value());
 }
 
+TEST_CASE("Editor records an arrangement only after nodes persist the geometry it produced",
+          "[core][sakura][flowgraph][editor-views]") {
+    Scene scene;
+    FlowgraphEditor editor;
+    LayerSlot slot;
+    slot.hold(editor.component(), kScreen);
+    LayerHost host({&slot});
+    Frames frames(host, kScreen, scene.context());
+    frames.verify = false;
+    auto block = NodeConfig().block;
+    block.layout = FlowgraphNode::Layout{40.0f, 40.0f, 0.0f, 0.0f};
+    std::vector<std::string> events;
+    FlowgraphEditor::Measured measured;
+    const auto update = [&] {
+        editor.update({
+            .id = "graph",
+            .measure = true,
+            .graph = {block},
+            .onNodesArranged = [&] { events.push_back("arranged"); },
+            .onNodeLayout = [&](const std::string&, F32 x, F32 y, F32, F32, std::optional<FlowgraphNode::Layout>) {
+                events.push_back("layout " + std::to_string(static_cast<I64>(x)) + "," +
+                                 std::to_string(static_cast<I64>(y)));
+            },
+            .onLayout = [&](FlowgraphEditor::Measured next) { measured = next; },
+        });
+    };
+    const auto send = [&](MouseEventType type, F32 x, F32 y) {
+        frames.ctx.mouse = Extent2D<F32>{x, y};
+        host.send(Mouse(type, x, y));
+    };
+    REQUIRE(frames.settle(update));
+    events.clear();
+
+    const auto node = measured.nodes.at("fft").bounds;
+    const F32 scale = kScreen.width / measured.viewport.width;
+    const F32 x = kScreen.x + (node.x + 20.0f - measured.viewport.x) * scale;
+    const F32 y = kScreen.y + (node.y + 8.0f - measured.viewport.y) * scale;
+
+    const U64 generation = Sakura::Access::focusGeneration(host);
+    send(MouseEventType::Click, x, y);
+    Sakura::Access::clickFocus(host, Extent2D<F32>{x, y}, true, generation);
+    frames.run(update);
+    send(MouseEventType::Move, x + 80.0f, y + 40.0f);
+    frames.run(update);
+    frames.run(update);
+    REQUIRE(events.size() == 1);
+    REQUIRE(events.front() != "layout 40,40");
+    events.clear();
+
+    // The release lands in the same pass as a geometry change, which nodes persist on their next update.
+    send(MouseEventType::Release, x + 80.0f, y + 40.0f);
+    block.layout = FlowgraphNode::Layout{300.0f, 200.0f, 0.0f, 0.0f};
+    frames.run(update);
+    frames.run(update);
+    frames.run(update);
+    CHECK(events == std::vector<std::string>{"layout 300,200", "arranged"});
+}
+
 TEST_CASE("Editor toolbar pause, save, and environment buttons run their callbacks and follow the run state",
           "[core][sakura][flowgraph][editor-views]") {
     Scene scene;

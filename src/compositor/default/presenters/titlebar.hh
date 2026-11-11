@@ -156,6 +156,16 @@ struct TitlebarPresenter {
                             missing("No focused flowgraph to save.");
                         }
                         break;
+                    case Action::Undo:
+                        if (activeFlowgraph.has_value()) {
+                            enqueue(MailUndoFlowgraph{.flowgraph = activeFlowgraph.value()});
+                        }
+                        break;
+                    case Action::Redo:
+                        if (activeFlowgraph.has_value()) {
+                            enqueue(MailRedoFlowgraph{.flowgraph = activeFlowgraph.value()});
+                        }
+                        break;
                     case Action::ShowFlowgraphInfo:
                         if (activeFlowgraph.has_value()) {
                             enqueue(MailOpenModal{

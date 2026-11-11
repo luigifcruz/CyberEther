@@ -144,6 +144,20 @@ struct FlowgraphEditorPresenter {
         config.onViewChange = [enqueue, flowgraphId](Sakura::NodeEditor::View view) {
             enqueue(MailSetEditorMeta{.flowgraph = flowgraphId, .meta = {view.pan.x, view.pan.y, view.zoom}});
         };
+        config.onNodesArranged = [enqueue, flowgraphId]() {
+            enqueue(MailRecordFlowgraphLayout{.flowgraph = flowgraphId});
+        };
+        config.onUndo = [enqueue, flowgraphId]() {
+            enqueue(MailUndoFlowgraph{.flowgraph = flowgraphId});
+        };
+        config.onRedo = [enqueue, flowgraphId]() {
+            enqueue(MailRedoFlowgraph{.flowgraph = flowgraphId});
+        };
+        if (const auto history = context.state.flowgraph.history.find(flowgraphId);
+            history != context.state.flowgraph.history.end()) {
+            config.canUndo = history->second.canUndo();
+            config.canRedo = history->second.canRedo();
+        }
         config.measure = agent.chat.conversation.streaming || agent.voice.phase != Agent::Session::Phase::Idle ||
                          !agent.mcp.url.empty();
         config.paused = flowgraph->paused();

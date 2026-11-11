@@ -998,15 +998,16 @@ TEST_CASE("Rename completion and late dock reports preserve detached pane order 
     const auto images = Find<Sakura::SurfaceImage>(rig.layoutDock());
     const std::optional<Jetstream::Rect> surfaceFrame = images.empty() ? std::nullopt : std::optional(Peek::Frame(*images.front()));
     std::function<Result()> command;
-    std::optional<Mail> completion;
-    rig.callbacks.enqueueCommandWithMail = [&](std::function<Result()> fn, bool, Mail mail) {
-        command = std::move(fn);
-        completion = std::move(mail);
+    std::function<void(Result)> complete;
+    rig.callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        command = std::move(edit.command);
+        complete = std::move(edit.onComplete);
     };
     FlowgraphActions flowgraphs(rig.state, rig.callbacks);
     REQUIRE(flowgraphs.handle(MailRenameBlock{.flowgraph = kGraph, .oldId = "old", .newId = "new"}) == Result::SUCCESS);
     rig.mails.clear();
     REQUIRE(command);
+    REQUIRE(complete);
     REQUIRE(command() == Result::SUCCESS);
     if (late) {
         snapshot(rig);
@@ -1014,8 +1015,8 @@ TEST_CASE("Rename completion and late dock reports preserve detached pane order 
         REQUIRE(rig.count<MailSetFlowgraphLayout>() > 0);
         drain(rig);
     }
-    REQUIRE(completion.has_value());
-    rig.mails.push_back(std::move(*completion));
+    complete(Result::SUCCESS);
+    REQUIRE(rig.count<MailRenameLayoutBlock>() == 1);
     drain(rig);
     snapshot(rig);
     for (U64 frame = 0; frame < 3; ++frame) { rig.frame(); drain(rig); }

@@ -15,12 +15,14 @@ struct Shortcuts : public Component {
         Any,
         Primary,
         PrimaryAlt,
+        PrimaryShift,
     };
 
     struct Binding {
         KeyCode key = KeyCode::Unknown;
         Modifier modifier = Modifier::Any;
         bool repeat = false;
+        bool yieldsToText = false;
         Callback<void()> onPressed;
 
         bool operator==(const Binding&) const = default;

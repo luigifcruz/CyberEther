@@ -433,18 +433,21 @@ struct FlowgraphActions {
         const auto device = msg.device;
         const auto runtime = msg.runtime;
         const auto provider = msg.provider;
-        callbacks.enqueueCommand([flowgraph, blockName, moduleId, device, runtime, provider]() -> Result {
-            JST_CHECK_ALLOW(flowgraph->blockCreate(blockName,
-                                                  moduleId,
-                                                  {},
-                                                  {},
-                                                  device,
-                                                  runtime,
-                                                  provider),
-                            Result::INCOMPLETE);
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = msg.flowgraph,
+            .command = [flowgraph, blockName, moduleId, device, runtime, provider]() -> Result {
+                JST_CHECK_ALLOW(flowgraph->blockCreate(blockName,
+                                                      moduleId,
+                                                      {},
+                                                      {},
+                                                      device,
+                                                      runtime,
+                                                      provider),
+                                Result::INCOMPLETE);
 
-            return Result::SUCCESS;
-        }, false);
+                return Result::SUCCESS;
+            },
+        });
 
         return Result::SUCCESS;
     }
@@ -481,12 +484,16 @@ struct FlowgraphActions {
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
         const auto oldId = msg.oldId;
         const auto newId = msg.newId;
-        callbacks.enqueueCommandWithMail([flowgraph, oldId, newId]() -> Result {
-            return flowgraph->blockRename(oldId, newId);
-        }, false, MailRenameLayoutBlock{
+        callbacks.enqueueFlowgraphEdit({
             .flowgraph = msg.flowgraph,
-            .oldId = oldId,
-            .newId = newId,
+            .command = [flowgraph, oldId, newId]() -> Result {
+                return flowgraph->blockRename(oldId, newId);
+            },
+            .onComplete = mailOnSuccess(MailRenameLayoutBlock{
+                .flowgraph = msg.flowgraph,
+                .oldId = oldId,
+                .newId = newId,
+            }),
         });
         callbacks.enqueueMail(MailCloseModal{});
         return Result::SUCCESS;
@@ -506,11 +513,15 @@ struct FlowgraphActions {
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
         auto blockId = msg.blockId;
 
-        callbacks.enqueueCommandWithMail([flowgraph, blockId]() -> Result {
-            return flowgraph->blockDestroy(blockId);
-        }, false, MailRemoveLayoutBlock{
+        callbacks.enqueueFlowgraphEdit({
             .flowgraph = msg.flowgraph,
-            .block = blockId,
+            .command = [flowgraph, blockId]() -> Result {
+                return flowgraph->blockDestroy(blockId);
+            },
+            .onComplete = mailOnSuccess(MailRemoveLayoutBlock{
+                .flowgraph = msg.flowgraph,
+                .block = blockId,
+            }),
         });
 
         return Result::SUCCESS;
@@ -568,11 +579,14 @@ struct FlowgraphActions {
         auto runtime = msg.runtime;
         auto provider = msg.provider;
 
-        callbacks.enqueueCommand([flowgraph, blockId, device, runtime, provider]() -> Result {
-            Parser::Map config;
-            JST_CHECK(flowgraph->blockConfig(blockId, config));
-            return flowgraph->blockRecreate(blockId, config, device, runtime, provider);
-        }, false);
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = msg.flowgraph,
+            .command = [flowgraph, blockId, device, runtime, provider]() -> Result {
+                Parser::Map config;
+                JST_CHECK(flowgraph->blockConfig(blockId, config));
+                return flowgraph->blockRecreate(blockId, config, device, runtime, provider);
+            },
+        });
 
         return Result::SUCCESS;
     }
@@ -589,9 +603,12 @@ struct FlowgraphActions {
         auto sourceBlock = msg.sourceBlock;
         auto sourcePort = msg.sourcePort;
 
-        callbacks.enqueueCommand([flowgraph, blockName, inputPort, sourceBlock, sourcePort]() -> Result {
-            return flowgraph->blockConnect(blockName, inputPort, sourceBlock, sourcePort);
-        }, false);
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = msg.flowgraph,
+            .command = [flowgraph, blockName, inputPort, sourceBlock, sourcePort]() -> Result {
+                return flowgraph->blockConnect(blockName, inputPort, sourceBlock, sourcePort);
+            },
+        });
 
         return Result::SUCCESS;
     }
@@ -606,9 +623,12 @@ struct FlowgraphActions {
         auto blockName = msg.blockName;
         auto inputPort = msg.inputPort;
 
-        callbacks.enqueueCommand([flowgraph, blockName, inputPort]() -> Result {
-            return flowgraph->blockDisconnect(blockName, inputPort);
-        }, false);
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = msg.flowgraph,
+            .command = [flowgraph, blockName, inputPort]() -> Result {
+                return flowgraph->blockDisconnect(blockName, inputPort);
+            },
+        });
 
         return Result::SUCCESS;
     }
@@ -626,14 +646,15 @@ struct FlowgraphActions {
         auto blockId = msg.blockId;
         auto config = msg.config;
 
-        auto command = [flowgraph, blockId, config]() -> Result {
-            return flowgraph->blockReconfigure(blockId, config);
-        };
-        if (msg.onComplete) {
-            callbacks.enqueueCommandWithCompletion(std::move(command), msg.silent, msg.onComplete);
-        } else {
-            callbacks.enqueueCommand(std::move(command), msg.silent);
-        }
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = msg.flowgraph,
+            .mergeKey = ReconfigureMergeKey(blockId, config),
+            .command = [flowgraph, blockId, config]() -> Result {
+                return flowgraph->blockReconfigure(blockId, config);
+            },
+            .silent = msg.silent,
+            .onComplete = msg.onComplete,
+        });
 
         return Result::SUCCESS;
     }
@@ -697,18 +718,21 @@ struct FlowgraphActions {
         auto runtime = state.clipboard.runtime;
         auto provider = state.clipboard.provider;
 
-        callbacks.enqueueCommand([flowgraph, blockName, moduleType, config, device, runtime, provider]() -> Result {
-            JST_CHECK_ALLOW(flowgraph->blockCreate(blockName,
-                                                  moduleType,
-                                                  config,
-                                                  {},
-                                                  device,
-                                                  runtime,
-                                                  provider),
-                            Result::INCOMPLETE);
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = msg.flowgraph,
+            .command = [flowgraph, blockName, moduleType, config, device, runtime, provider]() -> Result {
+                JST_CHECK_ALLOW(flowgraph->blockCreate(blockName,
+                                                      moduleType,
+                                                      config,
+                                                      {},
+                                                      device,
+                                                      runtime,
+                                                      provider),
+                                Result::INCOMPLETE);
 
-            return Result::SUCCESS;
-        }, false);
+                return Result::SUCCESS;
+            },
+        });
 
         return Result::SUCCESS;
     }
@@ -730,6 +754,10 @@ struct FlowgraphActions {
             }
         }
         flowgraph->metadata().set("node", merged, msg.block);
+        if (const auto history = state.flowgraph.history.find(msg.flowgraph);
+            history != state.flowgraph.history.end()) {
+            history->second.place(msg.block, merged);
+        }
         return Result::SUCCESS;
     }
 
@@ -811,6 +839,28 @@ struct FlowgraphActions {
             result += chars[rand() % chars.length()];
         }
         return result;
+    }
+
+ private:
+    static std::string ReconfigureMergeKey(const std::string& block, const Parser::Map& config) {
+        std::vector<std::string> keys;
+        for (const auto& [key, _] : config) {
+            keys.push_back(key);
+        }
+        std::sort(keys.begin(), keys.end());
+        std::string mergeKey = block;
+        for (const auto& key : keys) {
+            mergeKey += "\n" + key;
+        }
+        return mergeKey;
+    }
+
+    Sakura::Callback<void(Result)> mailOnSuccess(Mail mail) const {
+        return [enqueueMail = callbacks.enqueueMail, mail = std::move(mail)](Result result) {
+            if (result == Result::SUCCESS) {
+                enqueueMail(Mail(mail));
+            }
+        };
     }
 };
 

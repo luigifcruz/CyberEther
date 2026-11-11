@@ -20,6 +20,7 @@
 
 #include "ui.hh"
 #include "meta.hh"
+#include "history.hh"
 #include "file_picker.hh"
 #include "surface_theme.hh"
 
@@ -266,6 +267,7 @@ struct DefaultCompositorState {
 
         std::unordered_map<std::string, std::shared_ptr<Flowgraph>> items;
         std::unordered_map<std::string, TileMeta> layouts;
+        std::unordered_map<std::string, FlowgraphHistory> history;
         std::unordered_set<std::string> restoredLayouts;
         std::unordered_map<std::string, std::vector<BlockSnapshot>> blocks;
         std::unordered_map<std::string, std::string> liveMarkdown;

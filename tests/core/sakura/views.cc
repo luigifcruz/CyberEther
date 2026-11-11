@@ -1466,6 +1466,14 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     CHECK(actions == std::vector<Action>{Action::NewTab, Action::Settings});
 
     actions.clear();
+    CHECK(Tap(host, KeyCode::Z, {.control = true}));
+    CHECK(Tap(host, KeyCode::Z, {.super = true}));
+    CHECK(Tap(host, KeyCode::Z, {.control = true, .shift = true}));
+    CHECK(Tap(host, KeyCode::Z, {.shift = true, .super = true}));
+    CHECK_FALSE(Tap(host, KeyCode::Z));
+    CHECK(actions == std::vector<Action>{Action::Undo, Action::Undo, Action::Redo, Action::Redo});
+
+    actions.clear();
     CHECK_FALSE(Tap(host, KeyCode::N, {.control = true}));
     CHECK_FALSE(Tap(host, KeyCode::T));
     CHECK_FALSE(Tap(host, KeyCode::S, {.alt = true}));
@@ -1488,6 +1496,29 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
 #else
     CHECK(std::string(AssistantComposer::VoiceHint) == "Start voice (Ctrl+J)");
 #endif
+}
+
+TEST_CASE("Undo and redo shortcuts go to the active flowgraph and do nothing without one", "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto press = [&](TitlebarView::Action action) {
+        TitlebarPresenter(mailbox.context()).build().onAction(action);
+    };
+
+    press(TitlebarView::Action::Undo);
+    press(TitlebarView::Action::Redo);
+    CHECK(mailbox.last<MailUndoFlowgraph>() == nullptr);
+    CHECK(mailbox.last<MailRedoFlowgraph>() == nullptr);
+
+    mailbox.state.flowgraph.items["graph"] = nullptr;
+    mailbox.state.interface.focusedFlowgraph = "graph";
+    press(TitlebarView::Action::Undo);
+    press(TitlebarView::Action::Redo);
+    const auto* undo = mailbox.last<MailUndoFlowgraph>();
+    const auto* redo = mailbox.last<MailRedoFlowgraph>();
+    REQUIRE(undo != nullptr);
+    REQUIRE(redo != nullptr);
+    CHECK(undo->flowgraph == "graph");
+    CHECK(redo->flowgraph == "graph");
 }
 
 TEST_CASE("The voice shortcut starts voice when it is off and ends it when it is on", "[core][sakura][views]") {
