@@ -1103,16 +1103,20 @@ TEST_CASE("SDR stream buffers never mix generations in a frame",
     buffer.reset({.frequency = 100.0e6, .sampleRate = 2.0e6, .generation = 1});
     const std::vector<CF32> samples(12, CF32{1.0f, 0.0f});
     REQUIRE(buffer.push(1, samples.data(), 12));
+    REQUIRE(buffer.pushed() == 12);
 
     std::vector<CF32> frame(8);
     Radio::StreamBuffer::Metadata metadata;
     REQUIRE(buffer.pop(frame.data(), 8, metadata) == Result::SUCCESS);
     REQUIRE(metadata.generation == 1);
+    REQUIRE(buffer.pushed() == 12);
 
     // Four samples of a half-filled frame remain when the settings change.
     buffer.reset({.frequency = 200.0e6, .sampleRate = 2.0e6, .generation = 2});
     REQUIRE(buffer.size() == 0);
+    REQUIRE(buffer.pushed() == 0);
     REQUIRE_FALSE(buffer.push(1, samples.data(), 4));
+    REQUIRE(buffer.pushed() == 0);
     REQUIRE(buffer.pop(frame.data(), 8, metadata) == Result::INCOMPLETE);
     REQUIRE(buffer.push(2, samples.data(), 8));
     REQUIRE(buffer.pop(frame.data(), 8, metadata) == Result::SUCCESS);

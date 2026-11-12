@@ -2,6 +2,7 @@
 #include "library/soapysdr.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <new>
 
@@ -272,12 +273,47 @@ Result SoapyImpl::publishMetadata(const Radio::StreamBuffer::Metadata& metadata)
 
 Result SoapyImpl::emitFrame() {
     Radio::StreamBuffer::Metadata metadata;
-    const auto result = stream.pop(buffer.data<CF32>(), buffer.size(), metadata);
+    U64 position = 0;
+    const auto result = stream.pop(buffer.data<CF32>(), buffer.size(), metadata, &position);
     if (result == Result::INCOMPLETE) {
         return Result::YIELD;
     }
     JST_CHECK(result);
-    return publishMetadata(metadata);
+    JST_CHECK(publishMetadata(metadata));
+
+    // Position of this frame in the received stream, so a recorder can tell
+    // whether frames are contiguous, and the samples the radio dropped.
+    JST_CHECK(buffer.setAttribute("streamPosition", position));
+    std::optional<U64> radioGapPosition;
+    {
+        std::lock_guard lock(radioGapsMutex);
+        while (!radioGaps.empty()) {
+            const auto& gap = radioGaps.front();
+            if (gap.generation > metadata.generation ||
+                (gap.generation == metadata.generation && gap.position >= position + buffer.size())) {
+                break;
+            }
+            if (gap.generation == metadata.generation) {
+                radioLostSamples += gap.lost;
+                radioGapPosition = gap.position;
+            }
+            radioGaps.pop_front();
+        }
+    }
+    if (publishedRadioLostSamples != radioLostSamples) {
+        JST_CHECK(buffer.setAttribute("radioLostSamples", radioLostSamples));
+        publishedRadioLostSamples = radioLostSamples;
+    }
+    if (radioGapPosition) {
+        // First sample after the latest gap, in streamPosition terms.
+        JST_CHECK(buffer.setAttribute("radioGapPosition", *radioGapPosition));
+    }
+    const U64 overflows = deviceOverflows.get();
+    if (publishedDeviceOverflows != overflows) {
+        JST_CHECK(buffer.setAttribute("deviceOverflows", overflows));
+        publishedDeviceOverflows = overflows;
+    }
+    return Result::SUCCESS;
 }
 
 Result SoapyImpl::soapyThreadLoop() {
@@ -286,6 +322,11 @@ Result SoapyImpl::soapyThreadLoop() {
     const auto readSize = std::min<std::size_t>(temporaryBufferSize, stream.capacity());
     const auto readBuffer = std::span<CF32>{tmp.data(), readSize};
     SoapyReceiveStatus receiveStatus;
+
+    // Expected timestamp of the next read; a later one means the radio
+    // dropped samples in between.
+    std::optional<I64> expectedTimeNs;
+    U64 expectedGeneration = 0;
 
     while (streaming) {
         const auto lock = access.lock();
@@ -309,6 +350,25 @@ Result SoapyImpl::soapyThreadLoop() {
             errored = true;
             break;
         } else if (action == SoapyReceiveStatus::Action::Samples) {
+            const F64 rate = stream.metadata().sampleRate;
+            if (readGeneration != expectedGeneration) {
+                expectedTimeNs.reset();
+                expectedGeneration = readGeneration;
+            }
+            if (received.timestampNs && rate > 0.0) {
+                if (expectedTimeNs && *received.timestampNs > *expectedTimeNs) {
+                    const F64 gapNs = static_cast<F64>(*received.timestampNs - *expectedTimeNs);
+                    const U64 gap = static_cast<U64>(std::llround(gapNs * rate / 1e9));
+                    if (gap > 0) {
+                        std::lock_guard lock(radioGapsMutex);
+                        radioGaps.push_back({readGeneration, stream.pushed(), gap});
+                    }
+                }
+                expectedTimeNs = *received.timestampNs + static_cast<I64>(std::llround(
+                    static_cast<F64>(received.sampleCount) * 1e9 / rate));
+            } else {
+                expectedTimeNs.reset();
+            }
             stream.push(readGeneration, tmp.data(), received.sampleCount);
             Scheduler::Context::NotifyPendingCompute();
             const U64 capacity = stream.capacity();
