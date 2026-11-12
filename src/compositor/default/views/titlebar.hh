@@ -39,6 +39,7 @@ struct TitlebarView {
         Quit,
         OpenFlowgraph,
         SaveFlowgraph,
+        SaveFlowgraphAs,
         ShowFlowgraphInfo,
         CloseFlowgraph,
         ToggleTiming,
@@ -55,6 +56,7 @@ struct TitlebarView {
 
     enum class TabAction {
         Save,
+        SaveAs,
         Rename,
         Info,
         ToggleEnvironment,
@@ -306,6 +308,7 @@ struct TitlebarView {
             bind(KeyCode::T, Action::NewTab),
             bind(KeyCode::O, Action::OpenFlowgraph),
             bind(KeyCode::S, Action::SaveFlowgraph),
+            bind(KeyCode::S, Action::SaveFlowgraphAs, Sakura::Shortcuts::Modifier::PrimaryShift),
             bind(KeyCode::W, Action::CloseFlowgraph),
             bind(KeyCode::I, Action::ShowFlowgraphInfo),
             bind(KeyCode::G, Action::SendFeedback),
@@ -402,10 +405,12 @@ struct TitlebarView {
         "Trace",
     };
 
-    Sakura::Shortcuts::Binding bind(KeyCode key, Action value) {
+    Sakura::Shortcuts::Binding bind(KeyCode key,
+                                    Action value,
+                                    Sakura::Shortcuts::Modifier modifier = Sakura::Shortcuts::Modifier::Primary) {
         return {
             .key = key,
-            .modifier = Sakura::Shortcuts::Modifier::Primary,
+            .modifier = modifier,
             .onPressed = [this, value]() { emit(value); },
         };
     }
@@ -436,6 +441,11 @@ struct TitlebarView {
                     .label = "Save",
                     .shortcut = Sakura::Shortcuts::Label(Modifier::Primary, "S"),
                     .onClick = tab(TabAction::Save),
+                },
+                {
+                    .label = "Save As",
+                    .shortcut = Sakura::Shortcuts::Label(Modifier::PrimaryShift, "S"),
+                    .onClick = tab(TabAction::SaveAs),
                 },
                 {.label = "Rename", .onClick = tab(TabAction::Rename)},
                 {

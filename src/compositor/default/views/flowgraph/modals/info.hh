@@ -31,7 +31,7 @@ struct FlowgraphInfoView {
     void update(Config config) {
         using TextInput = Sakura::TextInput;
 
-        if (this->config.flowgraphId != config.flowgraphId) {
+        if (this->config.flowgraphId != config.flowgraphId || this->config.path != config.path) {
             filename = config.path;
         }
         this->config = std::move(config);

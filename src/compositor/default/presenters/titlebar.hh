@@ -159,6 +159,13 @@ struct TitlebarPresenter {
                             missing("No focused flowgraph to save.");
                         }
                         break;
+                    case Action::SaveFlowgraphAs:
+                        if (activeFlowgraph.has_value()) {
+                            enqueue(MailSaveFlowgraph{.flowgraph = activeFlowgraph.value(), .pick = true});
+                        } else {
+                            missing("No focused flowgraph to save.");
+                        }
+                        break;
                     case Action::Undo:
                         if (activeFlowgraph.has_value()) {
                             enqueue(MailUndoFlowgraph{.flowgraph = activeFlowgraph.value()});
@@ -213,6 +220,9 @@ struct TitlebarPresenter {
                 switch (action) {
                     case TabAction::Save:
                         enqueue(MailSaveFlowgraph{.flowgraph = flowgraph});
+                        break;
+                    case TabAction::SaveAs:
+                        enqueue(MailSaveFlowgraph{.flowgraph = flowgraph, .pick = true});
                         break;
                     case TabAction::Rename:
                     case TabAction::Info:
