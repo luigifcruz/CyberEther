@@ -53,6 +53,7 @@ class JETSTREAM_API Flowgraph {
     std::string license() const;
     std::string description() const;
     std::string path() const;
+    U64 moduleConfigEdits() const;
 
     Result setTitle(const std::string& title);
     Result setSummary(const std::string& summary);

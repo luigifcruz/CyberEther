@@ -60,8 +60,14 @@ struct HistoryActions {
         });
 
         for (const auto& [id, flowgraph] : state.flowgraph.items) {
-            if (flowgraph && state.flowgraph.history.try_emplace(id).second) {
-                enqueue({.flowgraph = id, .command = Unchanged, .silent = true});
+            if (!flowgraph) {
+                continue;
+            }
+            const auto [entry, created] = state.flowgraph.history.try_emplace(id);
+            const U64 edits = flowgraph->moduleConfigEdits();
+            if (created || entry->second.moduleConfigEdits != edits) {
+                entry->second.moduleConfigEdits = edits;
+                enqueueEdit({.flowgraph = id, .command = Unchanged, .silent = true});
             }
         }
     }
@@ -83,6 +89,9 @@ struct HistoryActions {
             return;
         }
 
+        if (const auto entry = state.flowgraph.history.find(edit.flowgraph); entry != state.flowgraph.history.end()) {
+            ++entry->second.pendingEdits;
+        }
         auto capture = std::make_shared<Capture>();
         callbacks.enqueueCommandWithCompletion([flowgraph = item->second, command = edit.command, capture]() {
             capture->before = CaptureFlowgraphSnapshot(*flowgraph);
@@ -90,6 +99,10 @@ struct HistoryActions {
             capture->after = CaptureFlowgraphSnapshot(*flowgraph);
             return result;
         }, edit.silent, [this, edit, capture](Result result) {
+            if (const auto entry = state.flowgraph.history.find(edit.flowgraph);
+                entry != state.flowgraph.history.end() && entry->second.pendingEdits > 0) {
+                --entry->second.pendingEdits;
+            }
             record(edit, *capture);
             if (edit.onComplete) {
                 edit.onComplete(result);
@@ -105,7 +118,7 @@ struct HistoryActions {
         auto& history = entry->second;
 
         if (history.entries.empty()) {
-            history.entries.push_back(capture.before);
+            history.seed(capture.before);
         }
         if (ClassifyFlowgraphChange(history.current(), *capture.before) == FlowgraphChange::Content) {
             history.commit(capture.before);
@@ -181,7 +194,7 @@ struct HistoryActions {
         auto& history = entry->second;
         if (live) {
             if (history.entries.empty()) {
-                history.entries.push_back(live);
+                history.seed(live);
             } else if (ClassifyFlowgraphChange(history.current(), *live) == FlowgraphChange::Content) {
                 history.commit(live);
                 history.mergeKey.clear();
@@ -219,10 +232,16 @@ struct HistoryActions {
         if (entry == state.flowgraph.history.end()) {
             return;
         }
+        auto& history = entry->second;
         if (report.reached) {
-            entry->second.absorb(report.reached);
+            auto saved = history.saved;
+            const bool drifted = ClassifyFlowgraphChange(history.current(), *report.reached) == FlowgraphChange::Content;
+            history.absorb(report.reached);
+            if (drifted) {
+                history.saved = std::move(saved);
+            }
         }
-        finish(id, entry->second);
+        finish(id, history);
     }
 
     void finish(const std::string& id, FlowgraphHistory& history) {

@@ -98,6 +98,11 @@ class JETSTREAM_API Generic {
 
     std::vector<std::string> takeDroppedFiles();
 
+    void setInterceptClose(bool enabled);
+    bool interceptClose() const;
+    void addCloseRequest();
+    bool takeCloseRequest();
+
  protected:
     Config config;
 
@@ -120,6 +125,8 @@ class JETSTREAM_API Generic {
     std::atomic<bool> redrawRequested = true;
     std::mutex droppedFilesMutex;
     std::vector<std::string> droppedFiles;
+    std::atomic<bool> closeIntercepted = false;
+    std::atomic<bool> closeRequested = false;
 };
 
 template<DeviceType DeviceId>
