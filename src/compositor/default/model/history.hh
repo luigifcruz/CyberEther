@@ -26,6 +26,7 @@ struct FlowgraphSnapshot {
         DeviceType device = DeviceType::CPU;
         RuntimeType runtime = RuntimeType::NATIVE;
         ProviderType provider;
+        bool frozen = false;
         Parser::Map config;
         std::size_t configHash = 0;
         std::map<std::string, BlockEndpoint> inputs;

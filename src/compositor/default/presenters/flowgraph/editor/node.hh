@@ -146,6 +146,7 @@ struct FlowgraphNodePresenter {
             .module = blockData.type,
             .title = blockData.title,
             .state = blockState,
+            .frozen = blockData.frozen,
             .nodeSize = blockData.nodeSize,
             .diagnostic = hasDiagnostic ? Sakura::CleanUserMessage(blockData.diagnostic) : "",
         };

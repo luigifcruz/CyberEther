@@ -4,6 +4,7 @@
 #include <atomic>
 #include <mutex>
 #include <memory>
+#include <optional>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -64,6 +65,7 @@ struct Flowgraph::Impl {
 
     Result resolveInputs(const TensorMap& requested, TensorMap& resolved) const;
     std::vector<std::string> collectDownstream(const std::string& name) const;
+    std::optional<std::string> frozenUpstream(const TensorMap& inputs) const;
 };
 
 }  // namespace Jetstream

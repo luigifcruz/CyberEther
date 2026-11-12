@@ -35,7 +35,7 @@ Before building your first flowgraph, it helps to know a few terms that appear t
 
 ## Creating a simple flowgraph
 
-The CyberEther editor is a node-based flowgraph editor. You build a pipeline by adding blocks, wiring their ports together, and tuning each block's parameters. The flowgraph runs while you edit it. As soon as a block has everything it needs, it begins processing live data. The play and pause button, the first one in the editor toolbar, freezes processing while the views keep their last data.
+The CyberEther editor is a node-based flowgraph editor. You build a pipeline by adding blocks, wiring their ports together, and tuning each block's parameters. The flowgraph runs while you edit it. As soon as a block has everything it needs, it begins processing live data. The play and pause button, the first one in the editor toolbar, pauses processing while the views keep their last data.
 
 ### 1. Add a source block
 

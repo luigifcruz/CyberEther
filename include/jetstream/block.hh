@@ -95,6 +95,7 @@ class JETSTREAM_API Block {
     const ProviderType& provider() const;
     const State& state() const;
     const std::string& diagnostic() const;
+    bool frozen() const;
 
     // I/O
 

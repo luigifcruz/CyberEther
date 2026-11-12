@@ -23,6 +23,7 @@ struct FlowgraphNodeMenu {
         bool configDetached = false;
         bool plotDetachEnabled = false;
         bool plotDetached = false;
+        bool frozen = false;
         std::vector<DeviceOption> devices;
         Sakura::Callback<void()> onCopy;
         Sakura::Callback<void()> onPaste;
@@ -31,6 +32,7 @@ struct FlowgraphNodeMenu {
         Sakura::Callback<void()> onToggleConfigDetach;
         Sakura::Callback<void()> onTogglePlotDetach;
         Sakura::Callback<void()> onReload;
+        Sakura::Callback<void()> onToggleFrozen;
         Sakura::Callback<void()> onDelete;
         Sakura::Callback<void()> onDocumentation;
         Sakura::Callback<void(U64)> onDeviceSelect;
@@ -95,6 +97,12 @@ struct FlowgraphNodeMenu {
                     .label = ICON_LC_CPU " Change Device",
                     .enabled = !devices.empty(),
                     .children = std::move(devices),
+                },
+                {
+                    .label = this->config.frozen ? ICON_LC_SNOWFLAKE " Unfreeze Block"
+                                                 : ICON_LC_SNOWFLAKE " Freeze Block",
+                    .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "B"),
+                    .onClick = this->config.onToggleFrozen,
                 },
                 {
                     .label = ICON_LC_ROTATE_CW " Reload Block",

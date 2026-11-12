@@ -92,6 +92,8 @@ const char* StateColorKey(NodeState state) {
         case NodeState::Pending:
         case NodeState::Loading:
             return "node_outline_pending";
+        case NodeState::Frozen:
+            return "node_outline_frozen";
         default:
             return "node_outline";
     }
@@ -2175,6 +2177,12 @@ bool NodeEditor::keyEvent(const KeyEvent& event) {
                 return false;
             }
             config.onCopyShortcut(root.selection);
+            return true;
+        case KeyCode::B:
+            if (!initial || root.selection.empty() || !config.onFreezeShortcut) {
+                return false;
+            }
+            config.onFreezeShortcut(root.selection);
             return true;
         case KeyCode::V: {
             if (!initial || !config.pasteEnabled || !config.onPasteShortcut) {

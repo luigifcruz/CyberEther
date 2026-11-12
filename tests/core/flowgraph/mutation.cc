@@ -659,3 +659,83 @@ TEST_CASE_METHOD(FlowgraphFixture,
         REQUIRE(ViewBlock(*flowgraph, "leaf").outputs.at("buffer").tensor.id() == leafOutputId);
     }
 }
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                  "Flowgraph freeze stops a block and leaves downstream blocks waiting on it",
+                  "[core][flowgraph][mutation][freeze]") {
+    CreateChain(*flowgraph);
+
+    REQUIRE(flowgraph->blockFreeze("middle", true) == Result::SUCCESS);
+    const auto middle = ViewBlock(*flowgraph, "middle");
+    REQUIRE(middle.frozen);
+    REQUIRE(middle.state == Block::State::Created);
+    REQUIRE(middle.outputs.empty());
+    const auto leaf = ViewBlock(*flowgraph, "leaf");
+    REQUIRE_FALSE(leaf.frozen);
+    REQUIRE(leaf.state == Block::State::Incomplete);
+    REQUIRE(leaf.diagnostic == "Waiting on frozen block 'middle'.");
+    RequireConnection(*flowgraph, "middle", "buffer", "source", "signal");
+    RequireConnection(*flowgraph, "leaf", "buffer", "middle", "buffer");
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    REQUIRE(flowgraph->blockFreeze("middle", true) == Result::SUCCESS);
+    REQUIRE(ViewBlock(*flowgraph, "middle").frozen);
+
+    REQUIRE(flowgraph->blockFreeze("middle", false) == Result::SUCCESS);
+    RequireIntactChain(*flowgraph);
+    REQUIRE_FALSE(ViewBlock(*flowgraph, "middle").frozen);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                  "Flowgraph freeze works on sources and names the frozen block further down",
+                  "[core][flowgraph][mutation][freeze]") {
+    CreateChain(*flowgraph);
+
+    REQUIRE(flowgraph->blockFreeze("missing", true) == Result::ERROR);
+    REQUIRE(flowgraph->blockFreeze("source", true) == Result::SUCCESS);
+    REQUIRE(ViewBlock(*flowgraph, "source").frozen);
+    RequireState(*flowgraph, "middle", Block::State::Incomplete);
+    RequireState(*flowgraph, "leaf", Block::State::Incomplete);
+    REQUIRE(ViewBlock(*flowgraph, "middle").diagnostic == "Waiting on frozen block 'source'.");
+    REQUIRE(ViewBlock(*flowgraph, "leaf").diagnostic == "Waiting on frozen block 'source'.");
+
+    REQUIRE(flowgraph->blockFreeze("source", false) == Result::SUCCESS);
+    RequireIntactChain(*flowgraph);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                  "Flowgraph freeze survives rename, upstream rebuilds, reconnects and serialization",
+                  "[core][flowgraph][mutation][freeze]") {
+    CreateChain(*flowgraph);
+    REQUIRE(flowgraph->blockFreeze("middle", true) == Result::SUCCESS);
+
+    REQUIRE(flowgraph->blockRename("middle", "off") == Result::SUCCESS);
+    REQUIRE(ViewBlock(*flowgraph, "off").frozen);
+    RequireConnection(*flowgraph, "leaf", "buffer", "off", "buffer");
+
+    Parser::Map config;
+    REQUIRE(flowgraph->blockConfig("source", config) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockRecreate("source", config) == Result::SUCCESS);
+    REQUIRE(ViewBlock(*flowgraph, "off").frozen);
+
+    REQUIRE(flowgraph->blockDisconnect("off", "buffer") == Result::SUCCESS);
+    REQUIRE(ViewBlock(*flowgraph, "off").frozen);
+    REQUIRE(ViewBlock(*flowgraph, "off").state == Block::State::Created);
+    REQUIRE(flowgraph->blockConnect("off", "buffer", "source", "signal") == Result::SUCCESS);
+
+    std::vector<char> blob;
+    REQUIRE(flowgraph->exportToBlob(blob) == Result::SUCCESS);
+    const std::string yaml(blob.begin(), blob.end());
+    REQUIRE(yaml.find("frozen: true") != std::string::npos);
+    REQUIRE(yaml.find("${graph.off.output.buffer}") != std::string::npos);
+
+    Flowgraph restored;
+    REQUIRE(restored.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(restored.importFromBlob(blob) == Result::SUCCESS);
+    REQUIRE(ViewBlock(restored, "off").frozen);
+    REQUIRE(ViewBlock(restored, "off").state == Block::State::Created);
+    REQUIRE_FALSE(ViewBlock(restored, "leaf").frozen);
+    REQUIRE(ViewBlock(restored, "leaf").state == Block::State::Incomplete);
+    RequireConnection(restored, "leaf", "buffer", "off", "buffer");
+    REQUIRE(restored.destroy() == Result::SUCCESS);
+}

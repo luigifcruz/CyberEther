@@ -73,7 +73,8 @@ class JETSTREAM_API Flowgraph {
                        const TensorMap& inputs,
                        const DeviceType& device = DeviceType::CPU,
                        const RuntimeType& runtime = RuntimeType::NATIVE,
-                       const ProviderType& provider = "generic");
+                       const ProviderType& provider = "generic",
+                       bool frozen = false);
     Result blockDestroy(const std::string name,
                         bool propagate = true);
     Result blockRename(const std::string oldName,
@@ -84,6 +85,8 @@ class JETSTREAM_API Flowgraph {
                         const std::string sourcePort);
     Result blockDisconnect(const std::string blockName,
                            const std::string inputPort);
+    Result blockFreeze(const std::string name,
+                       bool frozen);
     Result blockReconfigure(const std::string name,
                             const Parser::Map& config);
     Result blockReconfigure(const std::string name,

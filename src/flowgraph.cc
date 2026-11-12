@@ -37,6 +37,7 @@ struct BlockState {
     RuntimeType runtime;
     ProviderType provider;
     Block::State state = Block::State::None;
+    bool frozen = false;
     Parser::Map config;
     TensorMap inputs;
 };
@@ -49,11 +50,12 @@ struct FlowgraphBlockDocument {
     DeviceType device = DeviceType::CPU;
     RuntimeType runtime = RuntimeType::NATIVE;
     ProviderType provider = "generic";
+    std::optional<bool> frozen;
     std::optional<Parser::Map> config;
     std::optional<Parser::Map> input;
     std::optional<Parser::Map> meta;
 
-    JST_SERDES(name, module, device, runtime, provider, config, input, meta);
+    JST_SERDES(name, module, device, runtime, provider, frozen, config, input, meta);
 };
 
 struct FlowgraphDocument {
@@ -124,6 +126,7 @@ Result CaptureBlockState(const std::shared_ptr<Block>& block,
     state.runtime = block->runtime();
     state.provider = block->provider();
     state.state = block->state();
+    state.frozen = block->frozen();
 
     const auto result = block->config().serialize(state.config);
     if (result != Result::SUCCESS && result != Result::RELOAD) {
@@ -179,7 +182,7 @@ Result ReconstructBlocks(Flowgraph& flowgraph,
 
     const auto create = [&](const BlockState& state) {
         return flowgraph.blockCreate(state.name, state.type, state.config, state.inputs,
-                                     state.device, state.runtime, state.provider);
+                                     state.device, state.runtime, state.provider, state.frozen);
     };
 
     const auto destroy = [&](const std::string& name) {
@@ -373,7 +376,7 @@ Result Flowgraph::Impl::resolveInputs(const TensorMap& requested, TensorMap& res
         }
 
         const auto& producer = blocks.at(ext.block);
-        if (producer->state() != Block::State::Created) {
+        if (producer->state() != Block::State::Created || producer->frozen()) {
             resolved[slot].requested(ext.block, ext.port);
             result = Result::INCOMPLETE;
             continue;
@@ -434,6 +437,38 @@ std::vector<std::string> Flowgraph::Impl::collectDownstream(const std::string& n
     }
 
     return result;
+}
+
+std::optional<std::string> Flowgraph::Impl::frozenUpstream(const TensorMap& inputs) const {
+    std::queue<std::string> queue;
+    std::unordered_set<std::string> visited;
+
+    for (const auto& [_, link] : inputs) {
+        if (link.external.has_value()) {
+            queue.push(link.external->block);
+        }
+    }
+
+    while (!queue.empty()) {
+        const auto current = queue.front();
+        queue.pop();
+
+        const auto block = blocks.find(current);
+        if (!visited.insert(current).second || block == blocks.end()) {
+            continue;
+        }
+        if (block->second->frozen()) {
+            return current;
+        }
+
+        for (const auto& [_, link] : block->second->inputs()) {
+            if (link.external.has_value()) {
+                queue.push(link.external->block);
+            }
+        }
+    }
+
+    return std::nullopt;
 }
 
 Flowgraph::Flowgraph() {
@@ -581,7 +616,8 @@ Result Flowgraph::blockCreate(const std::string name,
                               const TensorMap& inputs,
                               const DeviceType& device,
                               const RuntimeType& runtime,
-                              const ProviderType& provider) {
+                              const ProviderType& provider,
+                              bool frozen) {
     JST_INFO("[FLOWGRAPH] Creating block '{}' of type '{}'.", name, type);
     JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
@@ -595,6 +631,7 @@ Result Flowgraph::blockCreate(const std::string name,
     std::shared_ptr<Block> block;
     JST_CHECK(Registry::BuildBlock(type, block));
     block->impl->_configChangesPending = impl->configChangesPending;
+    block->impl->_frozen = frozen;
 
     TensorMap resolvedInputs;
     {
@@ -620,6 +657,7 @@ Result Flowgraph::blockCreate(const std::string name,
         pending.runtime = runtime;
         pending.provider = provider;
         pending.state = Block::State::Creating;
+        pending.frozen = frozen;
         pending.nodeSize = block->config().nodeSize();
         pending.config = config;
         pending.inputs = resolvedInputs;
@@ -659,6 +697,12 @@ Result Flowgraph::blockCreate(const std::string name,
 
         impl->transientBlocks.erase(name);
         impl->blocks[name] = block;
+
+        if (block->state() == Block::State::Incomplete) {
+            if (const auto source = impl->frozenUpstream(inputs)) {
+                block->impl->_diagnostic = jst::fmt::format("Waiting on frozen block '{}'.", *source);
+            }
+        }
 
         // Register dependency list.
 
@@ -953,6 +997,35 @@ Result Flowgraph::blockDisconnect(const std::string blockName,
 
     auto nextStates = previousStates;
     nextStates.front().inputs.erase(inputPort);
+    return ReconstructBlocks(*this, impl, previousStates, nextStates);
+}
+
+Result Flowgraph::blockFreeze(const std::string name, bool frozen) {
+    JST_INFO("[FLOWGRAPH] {} block '{}'.", frozen ? "Freezing" : "Unfreezing", name);
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
+
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+
+    std::vector<BlockState> previousStates;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        if (!impl->blocks.contains(name)) {
+            JST_ERROR("[FLOWGRAPH] Cannot freeze block '{}' because it doesn't exist.", name);
+            return Result::ERROR;
+        }
+
+        const auto& block = impl->blocks.at(name);
+        if (block->frozen() == frozen) {
+            return Result::SUCCESS;
+        }
+
+        JST_CHECK(CaptureAffectedBlockStates(*impl, name, previousStates));
+    }
+
+    auto nextStates = previousStates;
+    nextStates.front().frozen = frozen;
     return ReconstructBlocks(*this, impl, previousStates, nextStates);
 }
 
@@ -1376,6 +1449,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         DeviceType device = DeviceType::CPU;
         RuntimeType runtime = RuntimeType::NATIVE;
         ProviderType provider = "generic";
+        bool frozen = false;
         Parser::Map config;
         std::unordered_map<std::string, OutputRef> inputs;
         Parser::Map meta;
@@ -1396,6 +1470,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         def.device = blockEntry.device;
         def.runtime = blockEntry.runtime;
         def.provider = blockEntry.provider;
+        def.frozen = blockEntry.frozen.value_or(false);
         if (blockEntry.config.has_value()) {
             def.config = *blockEntry.config;
         }
@@ -1531,7 +1606,8 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
                                         requestedInputs,
                                         def.device,
                                         def.runtime,
-                                        def.provider);
+                                        def.provider,
+                                        def.frozen);
         if (result != Result::SUCCESS) {
             for (auto created = createdBlocks.rbegin();
                  created != createdBlocks.rend();
@@ -1684,6 +1760,9 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
         blockDocument.device = block->device();
         blockDocument.runtime = block->runtime();
         blockDocument.provider = block->provider();
+        if (block->frozen()) {
+            blockDocument.frozen = true;
+        }
 
         Parser::Map config;
         JST_CHECK(block->config(config));

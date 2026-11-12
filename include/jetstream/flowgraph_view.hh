@@ -43,6 +43,7 @@ class JETSTREAM_API Flowgraph::View {
         RuntimeType runtime = RuntimeType::NATIVE;
         ProviderType provider = "generic";
         Block::State state = Block::State::None;
+        bool frozen = false;
         Block::NodeSize nodeSize = Block::NodeSize::S;
         std::string diagnostic;
     };
