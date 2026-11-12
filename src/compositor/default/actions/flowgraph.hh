@@ -703,7 +703,8 @@ struct FlowgraphActions {
                 }
                 *clipboard = *copied;
                 if (cut) {
-                    for (const auto* block : FlowgraphDependencyOrder(*copied) | std::views::reverse) {
+                    const auto order = FlowgraphDependencyOrder(*copied);
+                    for (const auto* block : order | std::views::reverse) {
                         JST_CHECK(flowgraph->blockDestroy(block->name));
                         destroyed->push_back(block->name);
                     }
