@@ -171,6 +171,7 @@ struct MailCancelCloseFlowgraph {};
 struct MailSaveFlowgraph {
     std::string flowgraph;
     std::string path;
+    bool pick = false;
 };
 
 struct MailOpenFlowgraphPath {

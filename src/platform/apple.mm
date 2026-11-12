@@ -3,6 +3,8 @@
 #import <Foundation/Foundation.h>
 #include <dispatch/dispatch.h>
 
+#include <filesystem>
+
 #ifdef JST_OS_IOS
 #import <UIKit/UIKit.h>
 #else
@@ -179,8 +181,17 @@ Result SaveFile(std::string& path,
         NSSavePanel* panel = [NSSavePanel savePanel];
 
         if (!path.empty()) {
-            const auto name = PathToUtf8(PathFromUtf8(path).filename());
+            const auto initial = PathFromUtf8(path);
+            const auto name = PathToUtf8(initial.filename());
             [panel setNameFieldStringValue:[NSString stringWithUTF8String:name.c_str()]];
+
+            std::error_code error;
+            const auto directory = std::filesystem::absolute(initial, error).parent_path();
+            if (!error && std::filesystem::is_directory(directory, error)) {
+                const auto directoryPath = PathToUtf8(directory);
+                [panel setDirectoryURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:directoryPath.c_str()]
+                                                  isDirectory:YES]];
+            }
         }
 
         NSMutableArray* allowedTypes = [NSMutableArray array];

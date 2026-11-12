@@ -214,13 +214,13 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        std::string path = msg.path.empty() ? state.flowgraph.items.at(msg.flowgraph)->path() : msg.path;
-        if (path.empty()) {
-            std::string pickedPath;
+        const std::string currentPath = state.flowgraph.items.at(msg.flowgraph)->path();
+        std::string path = msg.path.empty() ? currentPath : msg.path;
+        if (path.empty() || msg.pick) {
             auto enqueueMail = callbacks.enqueueMail;
             callbacks.requestFile({
                 .mode = FilePickerMode::Save,
-                .initialPath = pickedPath,
+                .initialPath = currentPath,
                 .extensions = {"yaml", "yml"},
                 .callback = [enqueueMail, flowgraph = msg.flowgraph](std::string p) mutable {
                     enqueueMail(MailSaveFlowgraph{.flowgraph = flowgraph, .path = std::move(p)});
