@@ -41,6 +41,10 @@ struct OnboardingView {
     };
 
     struct Config {
+        std::string icon;
+        std::string title;
+        std::string subtitle;
+        std::string action;
         std::string version;
         std::vector<Feature> features;
         std::vector<Section> sections;
@@ -265,19 +269,19 @@ struct OnboardingView {
         std::vector<std::unique_ptr<Group>> groups;
     };
 
-    struct WhatsNew {
+    struct Page {
         void update(const Config& config) {
             using Text = Sakura::Text;
 
             this->config = &config;
 
             icon.update({
-                .str = ICON_LC_SPARKLES,
+                .str = config.icon,
                 .colorKey = "text_primary",
                 .scale = Sakura::Typography::Scale::Heading,
             });
             title.update({
-                .str = "What's New",
+                .str = config.title,
                 .font = Text::Font::Display,
                 .scale = Sakura::Typography::Scale::Headline,
             });
@@ -291,7 +295,7 @@ struct OnboardingView {
             });
 
             subtitle.update({
-                .str = "See what changed in the latest release of CyberEther.",
+                .str = config.subtitle,
                 .font = Text::Font::Sans,
                 .tone = Text::Tone::Secondary,
                 .scale = Sakura::Typography::Scale::Lead,
@@ -308,7 +312,7 @@ struct OnboardingView {
             highlights.update(config.sections);
 
             proceed.update({
-                .str = "Continue",
+                .str = config.action,
                 .tone = CardButton::Tone::Action,
                 .height = ButtonHeight,
                 .onClick = [this]() {
@@ -328,7 +332,7 @@ struct OnboardingView {
                 },
             });
             panel.update({
-                .id = "OnboardingWhatsNew",
+                .id = "Onboarding",
                 .content = &stack,
                 .backgroundColorKey = "popup_bg",
             });
@@ -354,16 +358,16 @@ struct OnboardingView {
 
     void update(Config config) {
         this->config = std::move(config);
-        whatsNew.update(this->config);
+        page.update(this->config);
     }
 
     Sakura::Component& component() {
-        return whatsNew.component();
+        return page.component();
     }
 
  private:
     Config config;
-    WhatsNew whatsNew;
+    Page page;
 };
 
 }  // namespace Jetstream

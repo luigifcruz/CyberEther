@@ -206,6 +206,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Module edits are deferred, mapped, coalesced
     REQUIRE(std::any_cast<F32>(saved.at("threshold")) == 0.3f);
     REQUIRE(std::any_cast<std::string>(saved.at("caption")) == "after");
     REQUIRE(control->reconfigurations == 1);
+    CHECK(flowgraph->moduleConfigEdits() == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Unbound module edits reject the whole patch",
@@ -235,6 +236,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Module edits follow validation recreation an
         REQUIRE(std::any_cast<F32>(viewBlock("edit").config.at("threshold")) == -1.0f);
         REQUIRE_FALSE(control->configChangePending());
         REQUIRE(control->configChangeResult() == Result::ERROR);
+        CHECK(flowgraph->moduleConfigEdits() == 0);
     }
     SECTION("apply failures restore the previous graph") {
         control->failApply = true;
@@ -244,6 +246,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Module edits follow validation recreation an
         REQUIRE(std::any_cast<F32>(viewBlock("edit").config.at("threshold")) == 0.5f);
         REQUIRE(control->configChangeResult() == Result::ERROR);
         REQUIRE(Control()->level == 0.5f);
+        CHECK(flowgraph->moduleConfigEdits() == 0);
     }
     SECTION("structural edits recreate") {
         Parser::Map edit;

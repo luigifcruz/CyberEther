@@ -18,7 +18,6 @@ struct DefaultCompositorCallbacks {
     Sakura::Callback<void(Mail&&)> enqueueMail;
     Sakura::Callback<void(Sakura::Callback<Result()>, bool)> enqueueCommand;
     Sakura::Callback<void(Sakura::Callback<Result()>, bool, Sakura::Callback<void(Result)>)> enqueueCommandWithCompletion;
-    Sakura::Callback<void(Sakura::Callback<Result()>, bool, Mail)> enqueueCommandWithMail;
     Sakura::Callback<void(FlowgraphEdit)> enqueueFlowgraphEdit;
     Sakura::Callback<void(Sakura::ToastType, I32, const std::string&)> notify;
     Sakura::Callback<void(Result, const std::string&)> notifyResult;

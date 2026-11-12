@@ -221,6 +221,7 @@ struct WorkbenchActions {
         }
         if (ui.closingFlowgraph.has_value() && !items.contains(*ui.closingFlowgraph)) {
             ui.closingFlowgraph.reset();
+            ui.quitting = false;
         }
         if (!ui.focusedFlowgraph.has_value() && !ui.pendingFocusedFlowgraph.has_value() && items.size() == 1) {
             ui.focusedFlowgraph = items.begin()->first;
@@ -385,6 +386,35 @@ struct WorkbenchActions {
     }
 
     Result handle(const MailQuit&) {
+        return Quit(state);
+    }
+
+    static Result Quit(DefaultCompositorState& state) {
+        auto& ui = state.interface;
+        if (!ui.quitting) {
+            ui.discardedFlowgraphs.clear();
+        }
+
+        const auto pending = [&](const std::string& flowgraph) {
+            return state.flowgraph.items.contains(flowgraph) && state.flowgraphMayLoseChanges(flowgraph) &&
+                   !ui.discardedFlowgraphs.contains(flowgraph);
+        };
+        std::optional<std::string> next;
+        if (ui.focusedFlowgraph.has_value() && pending(*ui.focusedFlowgraph)) {
+            next = ui.focusedFlowgraph;
+        } else if (const auto entry = std::find_if(state.flowgraph.items.begin(), state.flowgraph.items.end(),
+                                                   [&](const auto& item) { return pending(item.first); });
+                   entry != state.flowgraph.items.end()) {
+            next = entry->first;
+        }
+
+        if (next.has_value()) {
+            ui.quitting = true;
+            ui.closingFlowgraph = std::move(next);
+            return Result::SUCCESS;
+        }
+        ui.quitting = false;
+        ui.closingFlowgraph.reset();
         return state.system.instance->requestStop();
     }
 

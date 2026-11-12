@@ -39,14 +39,6 @@ DefaultCompositor::DefaultCompositor() :
                                                Sakura::Callback<void(Result)> onComplete) {
             Compositor::Impl::enqueue(std::move(fn).release(), silent, std::move(onComplete).release());
         },
-        .enqueueCommandWithMail = [this](Sakura::Callback<Result()> fn, bool silent, Mail mail) {
-            Compositor::Impl::enqueue(std::move(fn).release(), silent,
-                                      [this, mail = std::move(mail)](const Result result) {
-                                          if (result == Result::SUCCESS) {
-                                              enqueue(Mail(mail));
-                                          }
-                                      });
-        },
         .enqueueFlowgraphEdit = [this](FlowgraphEdit edit) {
             actions.enqueueFlowgraphEdit(std::move(edit));
         },
@@ -89,6 +81,9 @@ DefaultCompositor::~DefaultCompositor() {
     if (viewport && previousIntegratedTitlebar.has_value()) {
         viewport->setIntegratedTitlebar(*previousIntegratedTitlebar);
     }
+    if (viewport) {
+        viewport->setInterceptClose(false);
+    }
 }
 
 Result DefaultCompositor::create() {
@@ -127,8 +122,6 @@ Result DefaultCompositor::create() {
     if (!viewport || viewport->id() != "headless") {
         if (auto onboarding = OnboardingActions::Detect(settings.interface, JETSTREAM_VERSION_STR)) {
             enqueue(std::move(*onboarding));
-        } else if (settings.interface.welcomeVersion != JETSTREAM_VERSION_STR) {
-            enqueue(MailDismissOnboarding{});
         }
     }
 
@@ -228,6 +221,9 @@ Result DefaultCompositor::create() {
         previousIntegratedTitlebar = viewport->integratedTitlebar();
         viewport->setIntegratedTitlebar(true);
     }
+    if (viewport) {
+        viewport->setInterceptClose(true);
+    }
     workbench.update(presenters.build());
 
     updater.start();
@@ -254,6 +250,9 @@ Result DefaultCompositor::destroy() {
     if (viewport && previousIntegratedTitlebar.has_value()) {
         viewport->setIntegratedTitlebar(*previousIntegratedTitlebar);
         previousIntegratedTitlebar.reset();
+    }
+    if (viewport) {
+        viewport->setInterceptClose(false);
     }
 
     return Result::SUCCESS;
@@ -347,6 +346,9 @@ Result DefaultCompositor::present() {
     droppedFiles.clear();
     if (state.system.viewport) {
         droppedFiles = state.system.viewport->takeDroppedFiles();
+        if (state.system.viewport->takeCloseRequest()) {
+            enqueue(MailQuit{});
+        }
     }
 
     return Result::SUCCESS;

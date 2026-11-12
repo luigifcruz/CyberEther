@@ -2,13 +2,18 @@
 
 #include "compositor/default/actions/base.hh"
 #include "flowgraph_fixture.hh"
+#include "tools/random.hh"
+
+#include "jetstream/platform.hh"
 
 #include <algorithm>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 using namespace Jetstream;
@@ -93,6 +98,15 @@ struct HistoryFixture : FlowgraphFixture {
 
     FlowgraphHistory& graphHistory() {
         return state.flowgraph.history.at("graph");
+    }
+
+    void markSaved() {
+        graphHistory().markSaved(graphHistory().entries[graphHistory().cursor], true);
+    }
+
+    void save(const std::filesystem::path& path) {
+        REQUIRE(flowgraphActions.handle(MailSaveFlowgraph{.flowgraph = "graph", .path = Platform::PathToUtf8(path)}) ==
+                Result::SUCCESS);
     }
 
     std::vector<std::string> blocks() {
@@ -646,6 +660,175 @@ TEST_CASE_METHOD(HistoryFixture, "The history stays within its capacity and forg
     state.flowgraph.items.erase("graph");
     history.reconcile();
     CHECK_FALSE(state.flowgraph.history.contains("graph"));
+}
+
+TEST_CASE_METHOD(HistoryFixture, "A flowgraph is unsaved only away from the undo step it was saved at",
+                 "[core][compositor][history]") {
+    createChain();
+    REQUIRE(setNode("leaf", NodeMeta{10.0f, 20.0f, 200.0f, 100.0f}) == Result::SUCCESS);
+    start();
+    CHECK_FALSE(graphHistory().unsaved());
+
+    edit([&] { return create("a"); });
+    CHECK(graphHistory().unsaved());
+    undo();
+    CHECK_FALSE(graphHistory().unsaved());
+    redo();
+    CHECK(graphHistory().unsaved());
+
+    markSaved();
+    CHECK_FALSE(graphHistory().unsaved());
+    undo();
+    CHECK(graphHistory().unsaved());
+    redo();
+    CHECK_FALSE(graphHistory().unsaved());
+
+    REQUIRE(setNode("leaf", NodeMeta{300.0f, 400.0f, 200.0f, 100.0f}) == Result::SUCCESS);
+    arrange();
+    CHECK(graphHistory().unsaved());
+}
+
+TEST_CASE_METHOD(HistoryFixture, "An edit right after a save starts a new undo step instead of merging",
+                 "[core][compositor][history]") {
+    createChain();
+    start();
+    edit([&] { return setSourceValue(1.0f); }, "source/value");
+    markSaved();
+
+    now += HistoryActions::MergeWindow / 4;
+    edit([&] { return setSourceValue(2.0f); }, "source/value");
+    CHECK(graphHistory().unsaved());
+
+    undo();
+    CHECK(sourceValue() == 1.0f);
+    CHECK_FALSE(graphHistory().unsaved());
+}
+
+TEST_CASE_METHOD(HistoryFixture, "Saving a flowgraph to a file marks its current undo step as saved",
+                 "[core][compositor][history]") {
+    const auto path = std::filesystem::temp_directory_path() / ("cyberether-unsaved-" + Random::HexToken() + ".yml");
+    start();
+    edit([&] { return create("a"); });
+    REQUIRE(graphHistory().unsaved());
+
+    save(path);
+    drain();
+    CHECK_FALSE(graphHistory().unsaved());
+    CHECK(std::any_of(mail.begin(), mail.end(), [](const Mail& message) {
+        return std::holds_alternative<MailRememberFlowgraph>(message);
+    }));
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE_METHOD(HistoryFixture, "Saving after the editor sizes a new block leaves the flowgraph saved",
+                 "[core][compositor][history]") {
+    const auto path = std::filesystem::temp_directory_path() / ("cyberether-unsaved-" + Random::HexToken() + ".yml");
+    start();
+    edit([&] {
+        JST_CHECK(setNode("a", NodeMeta{120.0f, 80.0f, 0.0f, 0.0f}));
+        return create("a");
+    });
+    placeNode("a", NodeMeta{120.0f, 80.0f, 240.0f, 160.0f});
+    REQUIRE(graphHistory().current().find("a")->node->width == 0.0f);
+
+    save(path);
+    drain();
+    CHECK_FALSE(graphHistory().unsaved());
+
+    undo();
+    CHECK(graphHistory().unsaved());
+    redo();
+    CHECK_FALSE(graphHistory().unsaved());
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE_METHOD(HistoryFixture, "Collapsing a block panel marks the flowgraph unsaved until it is saved",
+                 "[core][compositor][history]") {
+    const auto path = std::filesystem::temp_directory_path() / ("cyberether-unsaved-" + Random::HexToken() + ".yml");
+    createChain();
+    start();
+
+    REQUIRE(flowgraphActions.handle(MailSetConfigCollapsed{.flowgraph = "graph", .block = "leaf", .collapsed = false}) ==
+            Result::SUCCESS);
+    CHECK_FALSE(graphHistory().unsaved());
+    REQUIRE(flowgraphActions.handle(MailSetConfigCollapsed{.flowgraph = "graph", .block = "leaf", .collapsed = true}) ==
+            Result::SUCCESS);
+    CHECK(graphHistory().unsaved());
+    CHECK_FALSE(graphHistory().canUndo());
+
+    save(path);
+    drain();
+    CHECK_FALSE(graphHistory().unsaved());
+
+    REQUIRE(flowgraphActions.handle(MailSetMetricsCollapsed{.flowgraph = "graph", .block = "leaf", .collapsed = true}) ==
+            Result::SUCCESS);
+    CHECK(graphHistory().unsaved());
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE_METHOD(HistoryFixture, "A save racing an undo keeps the step that reached the file",
+                 "[core][compositor][history]") {
+    const auto path = std::filesystem::temp_directory_path() / ("cyberether-unsaved-" + Random::HexToken() + ".yml");
+    start();
+    edit([&] { return create("a"); });
+
+    SECTION("undo requested right after the save") {
+        save(path);
+        undo();
+    }
+    SECTION("save requested right after the undo") {
+        REQUIRE(history.handle(MailUndoFlowgraph{.flowgraph = "graph"}) == Result::SUCCESS);
+        save(path);
+        drain();
+    }
+    CHECK(blocks().empty());
+    CHECK(graphHistory().unsaved());
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE_METHOD(HistoryFixture, "A flowgraph with edits still in flight is not settled",
+                 "[core][compositor][history]") {
+    start();
+    markSaved();
+    request([&] { return create("a"); });
+    CHECK_FALSE(graphHistory().unsaved());
+    CHECK_FALSE(graphHistory().settled());
+    CHECK(state.flowgraphMayLoseChanges("graph"));
+
+    drain();
+    CHECK(graphHistory().settled());
+    CHECK(graphHistory().unsaved());
+
+    markSaved();
+    REQUIRE(history.handle(MailUndoFlowgraph{.flowgraph = "graph"}) == Result::SUCCESS);
+    CHECK_FALSE(graphHistory().unsaved());
+    CHECK_FALSE(graphHistory().settled());
+    drain();
+    CHECK(graphHistory().settled());
+    CHECK(graphHistory().unsaved());
+}
+
+TEST_CASE_METHOD(HistoryFixture, "A failed restore onto the saved step keeps the flowgraph unsaved",
+                 "[core][compositor][history]") {
+    start();
+    edit([&] { return create("a", TestFlowgraph::kSyntheticSourceType); });
+
+    auto broken = std::make_shared<FlowgraphSnapshot>(*graphHistory().entries[0]);
+    FlowgraphSnapshot::Block unknown;
+    unknown.name = "unknown";
+    unknown.type = "flowgraph_test_type_that_does_not_exist";
+    broken->blocks.push_back(unknown);
+    graphHistory().entries[0] = broken;
+    graphHistory().markSaved(broken, false);
+
+    undo();
+    REQUIRE(notified.size() == 1);
+    CHECK(graphHistory().cursor == 0);
+    CHECK(graphHistory().unsaved());
 }
 
 TEST_CASE("Config fingerprints follow values, ignore entry order and stay quiet on opaque values",

@@ -16,6 +16,11 @@ enum class ModalContent : I32 {
     Onboarding,
 };
 
+enum class OnboardingPage : I32 {
+    Welcome = 0,
+    WhatsNew,
+};
+
 
 enum class RegistryPage : I32 {
     Overview = 0,

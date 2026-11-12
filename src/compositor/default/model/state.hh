@@ -170,6 +170,8 @@ struct DefaultCompositorState {
         std::optional<std::string> focusedFlowgraph;
         std::optional<std::string> pendingFocusedFlowgraph;
         std::optional<std::string> closingFlowgraph;
+        bool quitting = false;
+        std::unordered_set<std::string> discardedFlowgraphs;
         std::optional<WorkspaceTab> focusedTab;
         bool tabNavigationPending = false;
         bool startTab = false;
@@ -217,6 +219,7 @@ struct DefaultCompositorState {
         std::optional<std::string> flowgraph;
         std::optional<std::string> renameBlockOldName;
         std::optional<PythonDependencyRequest> dependencyRequest;
+        OnboardingPage onboardingPage = OnboardingPage::WhatsNew;
     };
 
     struct DebugState {
@@ -472,6 +475,16 @@ struct DefaultCompositorState {
             return std::nullopt;
         }
         return interface.focusedFlowgraph;
+    }
+
+    bool flowgraphUnsaved(const std::string& id) const {
+        const auto entry = flowgraph.history.find(id);
+        return entry != flowgraph.history.end() && entry->second.unsaved();
+    }
+
+    bool flowgraphMayLoseChanges(const std::string& id) const {
+        const auto entry = flowgraph.history.find(id);
+        return entry != flowgraph.history.end() && (entry->second.unsaved() || !entry->second.settled());
     }
 
     bool tabsHidden() const {
