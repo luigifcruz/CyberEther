@@ -308,7 +308,11 @@ struct TitlebarView {
             bind(KeyCode::T, Action::NewTab),
             bind(KeyCode::O, Action::OpenFlowgraph),
             bind(KeyCode::S, Action::SaveFlowgraph),
-            bind(KeyCode::S, Action::SaveFlowgraphAs, Sakura::Shortcuts::Modifier::PrimaryShift),
+            {
+                .key = KeyCode::S,
+                .modifier = Sakura::Shortcuts::Modifier::PrimaryShift,
+                .onPressed = [this]() { emit(Action::SaveFlowgraphAs); },
+            },
             bind(KeyCode::W, Action::CloseFlowgraph),
             bind(KeyCode::I, Action::ShowFlowgraphInfo),
             bind(KeyCode::G, Action::SendFeedback),
@@ -405,12 +409,10 @@ struct TitlebarView {
         "Trace",
     };
 
-    Sakura::Shortcuts::Binding bind(KeyCode key,
-                                    Action value,
-                                    Sakura::Shortcuts::Modifier modifier = Sakura::Shortcuts::Modifier::Primary) {
+    Sakura::Shortcuts::Binding bind(KeyCode key, Action value) {
         return {
             .key = key,
-            .modifier = modifier,
+            .modifier = Sakura::Shortcuts::Modifier::Primary,
             .onPressed = [this, value]() { emit(value); },
         };
     }
