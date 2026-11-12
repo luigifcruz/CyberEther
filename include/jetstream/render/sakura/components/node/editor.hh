@@ -101,7 +101,6 @@ struct NodeEditor : public Component {
 
     struct Config {
         std::string id;
-        bool pasteEnabled = false;
         bool frameOnOpen = false;
         F32 scale = 1.0f;
         std::vector<Node> nodes;

@@ -283,7 +283,6 @@ struct FlowgraphEditor {
 
         nodeEditor.update({
             .id = this->config.id + "editor",
-            .pasteEnabled = true,
             .frameOnOpen = true,
             .scale = ZoomScale,
             .nodes = std::move(nodes),

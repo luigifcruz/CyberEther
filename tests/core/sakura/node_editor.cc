@@ -2255,7 +2255,6 @@ TEST_CASE("Pasting while another layer covers the pointer places the block at th
         stack.update({.id = "a:content", .items = {{.child = &body}}});
         editor.update({
             .id = "editor",
-            .pasteEnabled = true,
             .nodes = {{.id = "a", .header = false, .title = "a", .content = &stack, .resize = ResizeAxes::X,
                        .dimensions = {120.0f, 0.0f}, .gridPosition = Extent2D<F32>{40.0f, 40.0f}}},
             .onPasteShortcut = [&](Extent2D<F32> point) { pastes.push_back(point); },

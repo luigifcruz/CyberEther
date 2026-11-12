@@ -2232,7 +2232,7 @@ bool NodeEditor::keyEvent(const KeyEvent& event) {
             root.setSelection(root.depth);
             return true;
         case KeyCode::V: {
-            if (!initial || !config.pasteEnabled || !config.onPasteShortcut) {
+            if (!initial || !config.onPasteShortcut) {
                 return false;
             }
             const Rect& bounds = impl->bounds;
