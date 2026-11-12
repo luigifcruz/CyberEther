@@ -1,0 +1,16 @@
+.git
+.aws
+.agents
+.codex
+.cache
+.dist
+.build
+build
+build-*
+builddir
+__pycache__
+**/__pycache__
+subprojects/*
+!subprojects/*.wrap
+!subprojects/packagefiles
+!subprojects/packagefiles/**

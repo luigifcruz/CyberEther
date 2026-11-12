@@ -85,6 +85,7 @@ struct JETSTREAM_API Device {
         std::vector<Range> frequencyRanges;
         std::vector<Range> sampleRateRanges;
         std::vector<std::string> antennas;
+        U64 receiveChannels = 1;
         bool automaticGain = false;
         bool biasTee = false;
         std::string gainUnit = "dB";

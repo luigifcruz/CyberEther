@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_DOMAINS_IO_SDR_BLOCK_HH
 #define JETSTREAM_DOMAINS_IO_SDR_BLOCK_HH
 
+#include <vector>
+
 #include "jetstream/block.hh"
 
 namespace Jetstream::Blocks {
@@ -8,6 +10,9 @@ namespace Jetstream::Blocks {
 struct Sdr : public Block::Config {
     std::string deviceString = "";
     std::string antenna = "";
+    U64 channels = 1;
+    std::vector<U64> automaticGains;
+    std::vector<F32> manualGains;
     F32 frequency = 96.9e6;
     F32 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
@@ -21,17 +26,25 @@ struct Sdr : public Block::Config {
     JST_BLOCK_TYPE(sdr);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
-    JST_BLOCK_PARAMS(deviceString, antenna, frequency, frequencyStep,
-                     sampleRate, automaticGain, manualGain, biasTee, numberOfBatches,
-                     numberOfTimeSamples, bufferMultiplier);
+    JST_BLOCK_PARAMS(deviceString, antenna, channels, automaticGains, manualGains,
+                     frequency, frequencyStep, sampleRate, automaticGain, manualGain,
+                     biasTee, numberOfBatches, numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
-        "SDR",
-        "Receives samples from a USB radio.",
+        "SDR", "Receives samples from a USB radio.",
         "# SDR\n"
         "\n"
         "Streams complex samples from a radio plugged in over USB, using drivers built "
         "into CyberEther. It usually starts a chain, feeding a Spectrum Analyzer to "
         "watch the band or a Filter that isolates one station.\n"
+        "\n"
+        "**Multi-channel reception:** Set Channels to the number of receivers on "
+        "one device. All channels share frequency and sample rate and produce one "
+        "tensor. With two receivers, the default output shape is [2, 8, 8192]: "
+        "channels, batches, samples. Use Slice [0, ...] for RX1 and [1, ...] for "
+        "RX2. Each selected channel is a contiguous view with no sample copy. "
+        "The native bladeRF 2.0 backend supports up to two receivers; the original "
+        "bladeRF supports one. Two-channel bladeRF reception requires FPGA "
+        "v0.15.3 or newer for correct timestamps.\n"
         "\n"
         "- **The radio paces the chain.** Each buffer comes out only once the radio has"
         " delivered all of its samples.\n"
@@ -44,9 +57,14 @@ struct Sdr : public Block::Config {
         "\n"
         "| Port | Type | Shape |\n"
         "|---|---|---|\n"
-        "| **Output** (out) | CF32 | Batches x Samples, on a `batchAxis` then a "
-        "`sampleAxis`. Sets `frequency` and `sampleRate` to the values the radio "
-        "applied to these samples. |\n"
+        "| **Output** (out) | CF32 | Batches x Samples for one receiver; Channels x "
+        "Batches x Samples for multiple receivers. Sets the signal axes, frequency, "
+        "and sampleRate to describe the captured samples. |\n"
+        "\n"
+        "One channel produces [batches, samples] with batchAxis 0 and sampleAxis 1. "
+        "Multiple channels produce [channels, batches, samples] with channelAxis 0, "
+        "batchAxis 1, and sampleAxis 2. All channels advance and discard samples "
+        "together. Changing Channels recreates the output with the new shape.\n"
         "\n"
         "## Settings\n"
         "\n"
@@ -56,7 +74,16 @@ struct Sdr : public Block::Config {
         "driver and serial number. A saved radio that is missing shows as Configured "
         "device. |\n"
         "| **Antenna** | Default | Default and the radio's receive ports | Receive "
-        "port. Only LimeSDR lists ports. |\n"
+        "port for single-channel reception. Only LimeSDR lists ports. |\n"
+        "| **Channels** | 1 | 1 to the selected device capacity | Adds an outer "
+        "channel axis when above 1. Selects receivers in hardware RX order. |\n"
+        "| **Automatic Gains** | Empty | One 0 or 1 per channel | Optional "
+        "per-channel overrides: 1 enables automatic gain, 0 selects manual gain. "
+        "Missing entries use Automatic Gain. Lists resize with Channels. |\n"
+        "| **Manual Gains** | Empty | One gain per channel | Optional per-channel "
+        "manual gains in hardware RX order. Empty uses Manual Gain for every "
+        "channel. Each value is clamped to that receiver range; lists resize with "
+        "Channels. |\n"
         "| **Frequency** | 96.9 MHz | Within the radio's range | Center frequency of "
         "the output. |\n"
         "| **Sample Rate** | 2 MHz | Within the radio's range | Complex samples per "
@@ -86,7 +113,8 @@ struct Sdr : public Block::Config {
         "| **Buffer Loss** | Share of samples overwritten before the chain read them "
         "since the stream started. Gaps the radio reported show next to it as GAP. |\n"
         "| **Throughput** | Rate the chain reads in MB/s, next to the rate the radio "
-        "sends at 8 bytes per sample. |\n"
+        "sends at 8 bytes per sample per channel; reports all channels combined. "
+        "|\n"
         "\n"
         "## Recipes\n"
         "\n"
@@ -135,7 +163,10 @@ struct Sdr : public Block::Config {
         "## Under the Hood\n"
         "\n"
         "A receive thread reads the radio into a ring buffer, and each cycle copies out"
-        " one full buffer. Frequency, Automatic Gain, and Manual Gain changes apply "
+        " one full frame from every channel into a channel-major tensor. Memory "
+        "and USB bandwidth scale with Channels. Sample alignment is preserved; "
+        "antenna phase and gain calibration are separate. "
+        "Frequency, Automatic Gain, and Manual Gain changes apply "
         "while the stream keeps running. A sample rate change reapplies the whole "
         "configuration.\n"
         "\n"
@@ -143,8 +174,8 @@ struct Sdr : public Block::Config {
         "\n"
         "- Bands wider than the sample rate need **SDR Sweep**.\n"
         "- Radios with only a SoapySDR driver work through **SoapySDR**.\n"
-        "- **Spectrum Analyzer** shows the band it receives."
-    );
+        "- **Slice** selects one receiver from a multi-channel output.\n"
+        "- **Spectrum Analyzer** shows the band it receives.");
 };
 
 }  // namespace Jetstream::Blocks

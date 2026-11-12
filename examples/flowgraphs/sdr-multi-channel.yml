@@ -1,0 +1,113 @@
+---
+version: 2
+title: Multi-channel SDR
+summary: Split a native multi-channel capture into separate receiver streams.
+author: CyberEther
+license: MIT
+description: One native SDR block receives RX1 and RX2 in one tensor; Slice blocks select each receiver for a spectrum analyzer. Select a bladeRF 2.0 in Device to start.
+graph:
+  - name: note
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Multi-channel SDR
+        Select a **bladeRF 2.0** in the SDR block Device dropdown.
+        **Channels** is set to **2**. Connect antennas to **RX1** and **RX2**.
+
+        Output has shape [2, 8, 8192]: channels, batches, samples.
+        Slice [0, ...] selects RX1; Slice [1, ...] selects RX2.
+        Both selections are contiguous views with no sample copy.
+
+        Frequency and Sample Rate apply to every channel. Automatic Gains and
+        Manual Gains optionally specify one gain setting per receiver.
+        Channels drop older samples together if a chain falls behind.
+
+        Two-channel bladeRF reception needs FPGA v0.15.3 or newer.
+        The original bladeRF has one receiver and cannot run this example.
+        Sample alignment is preserved; antenna phase/gain calibration is separate.
+    meta:
+      node:
+        x: 40
+        y: 550
+        width: 360
+        height: 300
+  - name: radio
+    module: sdr
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: ''
+      channels: 2
+      frequency: 96900000
+      sampleRate: 2000000
+      automaticGain: true
+      automaticGains: [1, 1]
+      biasTee: false
+    meta:
+      node:
+        x: 40
+        y: 40
+        width: 340
+        height: 0
+  - name: select_rx1
+    module: slice
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      slice: '[0, ...]'
+    input:
+      buffer: '${graph.radio.output.signal}'
+    meta:
+      node:
+        x: 450
+        y: 40
+        width: 320
+        height: 0
+  - name: select_rx2
+    module: slice
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      slice: '[1, ...]'
+    input:
+      buffer: '${graph.radio.output.signal}'
+    meta:
+      node:
+        x: 450
+        y: 550
+        width: 320
+        height: 0
+  - name: rx1
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config: {}
+    input:
+      buffer: '${graph.select_rx1.output.buffer}'
+    meta:
+      node:
+        x: 850
+        y: 40
+        width: 800
+        height: 0
+  - name: rx2
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config: {}
+    input:
+      buffer: '${graph.select_rx2.output.buffer}'
+    meta:
+      node:
+        x: 850
+        y: 550
+        width: 800
+        height: 0

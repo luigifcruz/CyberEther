@@ -10,6 +10,11 @@ JETSTREAM_API void ConvertU8(const U8* input, CF32* output, U64 count);
 JETSTREAM_API void ConvertI8(const I8* input, CF32* output, U64 count);
 JETSTREAM_API void ConvertI16(const I16* input, CF32* output, U64 count, F32 scale);
 
+// Input contains interleaved I/Q words in channel order.
+// Each output destination receives count complex samples.
+JETSTREAM_API void ConvertI16Channels(const I16* input, CF32* first, CF32* second,
+                                      U64 count, F32 scale);
+
 JETSTREAM_API U64 GuardSamples(F64 seconds, F64 sampleRate);
 
 }  // namespace Jetstream::Radio
