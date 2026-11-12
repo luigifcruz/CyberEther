@@ -1,4 +1,3 @@
-// TODO: Stop stripping single quotes in NormalizeScalar, rapidyaml already unquotes scalars.
 // TODO: Reject anchors, aliases, duplicate keys, and multi-document streams instead of accepting them silently.
 // TODO: Reject lone carriage returns and bound nesting depth, both currently crash the process.
 // TODO: Emit scalars in a style that reads back identically, such as "!tag", "...", and control characters.
@@ -15,14 +14,6 @@
 namespace Jetstream {
 
 namespace {
-
-std::string NormalizeScalar(const std::string& value) {
-    if (value.size() >= 2 && value.front() == '\'' && value.back() == '\'') {
-        return value.substr(1, value.size() - 2);
-    }
-
-    return value;
-}
 
 [[noreturn]] void ThrowBasicError(ryml::csubstr msg, const ryml::ErrorDataBasic&, void*) {
     throw std::runtime_error({msg.str, msg.len});
@@ -94,7 +85,7 @@ Result DeserializeValue(ryml::ConstNodeRef node, std::any& value) {
 
     std::string scalar;
     node >> scalar;
-    value = NormalizeScalar(scalar);
+    value = std::move(scalar);
     return Result::SUCCESS;
 }
 
