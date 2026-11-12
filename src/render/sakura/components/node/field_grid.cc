@@ -38,7 +38,7 @@ struct NodeFieldGrid::Impl {
             return placements;
         }
 
-        const F32 gap = Px(ctx, NodeField::Gap);
+        const F32 gap = std::max(1.0f, std::round(Px(ctx, NodeField::Gap)));
         const F32 minColumnWidth = Px(ctx, kFieldColumnMinWidth);
         const U64 columns = std::min<U64>(
             std::max<U64>(1, items.size()),
