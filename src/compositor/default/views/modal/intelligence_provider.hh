@@ -19,6 +19,7 @@ namespace Jetstream {
 struct IntelligenceProviderView {
     static constexpr const char* ChatCompletionsLabel = "Chat Completions";
     static constexpr const char* ResponsesLabel = "Responses";
+    static constexpr const char* MessagesLabel = "Messages";
     static constexpr const char* KeychainLabel = "System Keychain";
     static constexpr const char* EnvironmentLabel = "Environment Variable";
 
@@ -67,7 +68,7 @@ struct IntelligenceProviderView {
             .id = "IntelligenceProviderHeader",
             .title = this->config.editMode ? ICON_FA_ROBOT " Edit Provider"
                                            : ICON_FA_ROBOT " Add Provider",
-            .description = "Connect an OpenAI-compatible endpoint for agent chat.",
+            .description = "Connect an OpenAI-compatible or Anthropic endpoint for agent chat.",
         });
 
         typeField.update({
@@ -133,11 +134,16 @@ struct IntelligenceProviderView {
 
         apiCombo.update({
             .id = "##intelligence-provider-api",
-            .options = {ChatCompletionsLabel, ResponsesLabel},
-            .value = api == "responses" ? ResponsesLabel : ChatCompletionsLabel,
+            .options = {ChatCompletionsLabel, ResponsesLabel, MessagesLabel},
+            .value = apiLabel(),
             .disabled = this->config.saving,
             .onChange = [this](const std::string& value) {
-                const std::string next = value == ResponsesLabel ? "responses" : "chat_completions";
+                std::string next = "chat_completions";
+                if (value == ResponsesLabel) {
+                    next = "responses";
+                } else if (value == MessagesLabel) {
+                    next = "messages";
+                }
                 if (api == next) {
                     return;
                 }
@@ -408,6 +414,16 @@ struct IntelligenceProviderView {
             return "Save Provider";
         }
         return nameTaken() ? "Update Provider" : "Add Provider";
+    }
+
+    const char* apiLabel() const {
+        if (api == "responses") {
+            return ResponsesLabel;
+        }
+        if (api == "messages") {
+            return MessagesLabel;
+        }
+        return ChatCompletionsLabel;
     }
 
     std::string typeDescription() const {

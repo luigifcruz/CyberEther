@@ -111,6 +111,7 @@ TEST_CASE("Model discovery retains provider output allowances", "[agent][provide
 
 TEST_CASE("Provider headers are limited to the selected integration", "[agent][providers][headers]") {
     const auto kind = GENERATE(Agent::Provider::Kind::OpenAI,
+                               Agent::Provider::Kind::Anthropic,
                                Agent::Provider::Kind::OpenRouter,
                                Agent::Provider::Kind::OpenCodeGo,
                                Agent::Provider::Kind::Fireworks,
@@ -133,10 +134,13 @@ TEST_CASE("Provider headers are limited to the selected integration", "[agent][p
     const auto contains = [&](const char* name) {
         return headers.find(name) != headers.end();
     };
+    const bool anthropic = kind == Agent::Provider::Kind::Anthropic;
     const bool openRouter = kind == Agent::Provider::Kind::OpenRouter;
     const bool openCodeGo = kind == Agent::Provider::Kind::OpenCodeGo;
 
-    REQUIRE(contains("Authorization"));
+    CHECK(contains("Authorization") == !anthropic);
+    CHECK(contains("x-api-key") == anthropic);
+    CHECK(contains("anthropic-version") == anthropic);
     CHECK(contains("HTTP-Referer") == openRouter);
     CHECK(contains("X-Title") == openRouter);
     CHECK(contains("x-session-id") == openRouter);

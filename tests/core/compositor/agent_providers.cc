@@ -67,6 +67,19 @@ TEST_CASE("Provider normalization takes the request format from the matched prof
         CHECK(normalized.modelsPath == "/api/v1/models");
     }
 
+    SECTION("the Anthropic endpoint selects the Messages format") {
+        const Settings::Intelligence::Provider stored{
+            .name = "Anthropic",
+            .host = "https://api.anthropic.com",
+            .chatPath = "/v1/messages",
+        };
+        REQUIRE(AgentProviders::Identify(stored) == Kind::Anthropic);
+
+        const auto normalized = AgentProviders::Normalize(stored);
+        CHECK(normalized.api == "messages");
+        CHECK(normalized.modelsPath == "/v1/models?limit=1000");
+    }
+
     SECTION("a custom endpoint keeps the configured format") {
         const Settings::Intelligence::Provider stored{
             .name = "Local",

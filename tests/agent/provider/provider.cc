@@ -23,6 +23,10 @@ TEST_CASE("Provider detection matches exact endpoints rather than host substring
             Kind::Custom);
     REQUIRE(identify("https://api.openai.com", "/v1/responses") ==
             Kind::OpenAI);
+    REQUIRE(identify("https://api.anthropic.com/", "/v1/messages") ==
+            Kind::Anthropic);
+    REQUIRE(identify("https://api.anthropic.com", "/v1/chat/completions") ==
+            Kind::Custom);
     REQUIRE(identify("https://OPENROUTER.AI/", "/api/v1/chat/completions") ==
             Kind::OpenRouter);
     REQUIRE(identify("https://opencode.ai", "/zen/go/v1/chat/completions") ==

@@ -41,6 +41,7 @@ std::string ReadKey(const Config& config) {
 
 constexpr U32 kReasoningSetting = 1;
 constexpr U32 kEncryptedContent = 2;
+constexpr U32 kThinkingSetting = 4;
 
 void Remove(nlohmann::json& request, U32 rejected) {
     if (rejected & kReasoningSetting) {
@@ -48,6 +49,10 @@ void Remove(nlohmann::json& request, U32 rejected) {
     }
     if (rejected & kEncryptedContent) {
         request.erase("include");
+    }
+    if (rejected & kThinkingSetting) {
+        request.erase("thinking");
+        request.erase("output_config");
     }
 }
 
@@ -67,6 +72,9 @@ U32 ParamOptions(const std::string& param, U32 requested) {
     if (param == "include" || param.starts_with("include[")) {
         return requested & kEncryptedContent;
     }
+    if (param.starts_with("thinking") || param.starts_with("output_config")) {
+        return requested & kThinkingSetting;
+    }
     return 0;
 }
 
@@ -82,7 +90,9 @@ U32 MessageOptions(std::string message) {
     const bool rejected = mentions("unsupported") ||
                           mentions("not supported") ||
                           mentions("unknown parameter") ||
-                          mentions("unrecognized");
+                          mentions("unrecognized") ||
+                          mentions("not permitted") ||
+                          mentions("does not support");
     if (!rejected) {
         return 0;
     }
@@ -96,6 +106,9 @@ U32 MessageOptions(std::string message) {
     if (mentions("reasoning") && (!encrypted || mentions("reasoning.summary"))) {
         mentioned |= kReasoningSetting;
     }
+    if (mentions("thinking") || mentions("output_config") || mentions("effort")) {
+        mentioned |= kThinkingSetting;
+    }
     return mentioned;
 }
 
@@ -106,6 +119,9 @@ U32 Rejected(const Provider::Error& failure, const std::string& response, const 
     }
     if (request.contains("include")) {
         requested |= kEncryptedContent;
+    }
+    if (request.contains("thinking") || request.contains("output_config")) {
+        requested |= kThinkingSetting;
     }
 
     const bool invalidRequest = failure.kind == Provider::Error::Kind::InvalidRequest;
@@ -158,17 +174,25 @@ class Capabilities {
 };
 
 nlohmann::json RequestBody(const Config& config, const Provider::Request& request, bool reasoning) {
-    if (config.api == Provider::Api::Responses) {
-        return Detail::Responses::Encode(config, request, reasoning);
+    switch (config.api) {
+        case Provider::Api::Responses:
+            return Detail::Responses::Encode(config, request, reasoning);
+        case Provider::Api::Messages:
+            return Detail::Messages::Encode(config, request, reasoning);
+        default:
+            return Detail::ChatCompletions::Encode(config, request, reasoning);
     }
-    return Detail::ChatCompletions::Encode(config, request, reasoning);
 }
 
 std::unique_ptr<Detail::EventStream> ResponseStream(const Config& config) {
-    if (config.api == Provider::Api::Responses) {
-        return Detail::Responses::Decoder();
+    switch (config.api) {
+        case Provider::Api::Responses:
+            return Detail::Responses::Decoder();
+        case Provider::Api::Messages:
+            return Detail::Messages::Decoder();
+        default:
+            return Detail::ChatCompletions::Decoder();
     }
-    return Detail::ChatCompletions::Decoder();
 }
 
 Provider::Error Validate(const Config& config, bool models, const std::string& model, const std::string& key) {
@@ -212,7 +236,12 @@ Platform::Http::Headers Headers(const Config& config, const std::string& key, co
         headers.emplace_back(profile.sessionHeader, sessionId);
     }
 
-    if (!key.empty()) {
+    if (key.empty()) {
+        return headers;
+    }
+    if (!profile.keyHeader.empty()) {
+        headers.emplace_back(profile.keyHeader, key);
+    } else {
         headers.emplace_back("Authorization", "Bearer " + key);
     }
     return headers;
@@ -485,8 +514,10 @@ Result Provider::models(std::vector<Model>& models, Provider::Error* error,
             }
 
             Model model{item["id"].get<std::string>(), {}};
-            if (item.contains("name") && item["name"].is_string()) {
-                model.name = item["name"].get<std::string>();
+            for (const char* label : {"name", "display_name"}) {
+                if (model.name.empty() && item.contains(label) && item[label].is_string()) {
+                    model.name = item[label].get<std::string>();
+                }
             }
             if (item.contains("context_length") && item["context_length"].is_number_unsigned()) {
                 model.contextLength = item["context_length"].get<U64>();

@@ -40,8 +40,8 @@ constexpr std::array kRules{
          {Kind::Timeout, "The provider timed out", "Try again later."}},
 };
 
-constexpr std::array<std::string_view, 4> kServerCodes{
-    "server_error", "internal_server_error", "overloaded_error", "service_unavailable",
+constexpr std::array<std::string_view, 5> kServerCodes{
+    "server_error", "internal_server_error", "overloaded_error", "service_unavailable", "api_error",
 };
 
 void ReadErrorCode(const nlohmann::json& payload, Provider::Error& error) {

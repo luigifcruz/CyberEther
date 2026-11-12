@@ -26,6 +26,21 @@ std::span<const Provider::Profile> Provider::Profile::All() {
             .promptCacheKey = true,
         },
         Profile{
+            .kind = Kind::Anthropic,
+            .name = "Anthropic",
+            .description = "Claude models through the Anthropic Messages API.",
+            .host = "https://api.anthropic.com",
+            .api = Api::Messages,
+            .chatPath = "/v1/messages",
+            .modelsPath = "/v1/models?limit=1000",
+            .catalogId = "anthropic",
+            .requestReasoning = true,
+            .keyHeader = "x-api-key",
+            .headers = {
+                {"anthropic-version", "2026-10-21"},
+            },
+        },
+        Profile{
             .kind = Kind::OpenRouter,
             .name = "OpenRouter",
             .description = "Routes to hundreds of models behind a single API key.",
@@ -102,12 +117,22 @@ Provider::Kind Provider::Profile::Identify(const std::string& host, const std::s
 }
 
 const char* Provider::Name(Api api) {
-    return api == Api::Responses ? "responses" : "chat_completions";
+    switch (api) {
+        case Api::Responses:
+            return "responses";
+        case Api::Messages:
+            return "messages";
+        default:
+            return "chat_completions";
+    }
 }
 
 Provider::Api Provider::Parse(const std::string& name, Api fallback) {
     if (name == Name(Api::Responses)) {
         return Api::Responses;
+    }
+    if (name == Name(Api::Messages)) {
+        return Api::Messages;
     }
     if (name == Name(Api::ChatCompletions)) {
         return Api::ChatCompletions;

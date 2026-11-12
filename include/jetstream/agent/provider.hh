@@ -20,6 +20,7 @@ class JETSTREAM_API Provider {
  public:
     enum class Kind {
         OpenAI,
+        Anthropic,
         OpenRouter,
         OpenCodeGo,
         Fireworks,
@@ -29,6 +30,7 @@ class JETSTREAM_API Provider {
     enum class Api {
         ChatCompletions,
         Responses,
+        Messages,
     };
 
     enum class Scope {
@@ -136,6 +138,7 @@ class JETSTREAM_API Provider {
         bool nestedReasoningEffort = false;
         std::vector<std::string> cacheBreakpointModels;
         std::string sessionHeader;
+        std::string keyHeader;
         std::vector<std::pair<std::string, std::string>> headers;
 
         bool ready(Scope scope, bool hasKey) const;
