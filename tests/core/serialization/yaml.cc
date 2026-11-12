@@ -194,3 +194,58 @@ TEST_CASE("Parser::YamlEncode preserves output on unsupported values", "[core][s
     REQUIRE(Parser::YamlEncode(data, yaml) == Result::ERROR);
     REQUIRE(yaml == "unchanged");
 }
+
+TEST_CASE("Parser::YamlDecode accepts every line break style", "[core][serialization][yaml]") {
+    SECTION("lone carriage returns separate entries") {
+        Parser::Map data;
+        REQUIRE(Parser::YamlDecode("first: a\rsecond: b\r", data) == Result::SUCCESS);
+        REQUIRE(std::any_cast<std::string>(data.at("first")) == "a");
+        REQUIRE(std::any_cast<std::string>(data.at("second")) == "b");
+    }
+
+    SECTION("lone carriage returns nest blocks") {
+        Parser::Map data;
+        REQUIRE(Parser::YamlDecode("outer:\r  inner: value\r", data) == Result::SUCCESS);
+        const auto& outer = std::any_cast<const Parser::Map&>(data.at("outer"));
+        REQUIRE(std::any_cast<std::string>(outer.at("inner")) == "value");
+    }
+
+    SECTION("block scalars read every line break as a newline") {
+        Parser::Map data;
+        REQUIRE(Parser::YamlDecode("note: |\r  first\r\n  second\n  third\r", data) == Result::SUCCESS);
+        REQUIRE(std::any_cast<std::string>(data.at("note")) == "first\nsecond\nthird\n");
+    }
+}
+
+TEST_CASE("Parser::YamlDecode bounds nesting depth", "[core][serialization][yaml][errors]") {
+    const auto nested = [](U64 levels) {
+        return "label: " + std::string(levels, '[') + std::string(levels, ']') + "\n";
+    };
+
+    SECTION("documents within the limit decode") {
+        Parser::Map data;
+        REQUIRE(Parser::YamlDecode(nested(32), data) == Result::SUCCESS);
+        REQUIRE(data.at("label").type() == typeid(Parser::Sequence));
+    }
+
+    SECTION("deep flow documents are rejected") {
+        Parser::Map data;
+        data["label"] = std::string("unchanged");
+
+        REQUIRE(Parser::YamlDecode(nested(1'000'000), data) == Result::ERROR);
+        REQUIRE(std::any_cast<std::string>(data.at("label")) == "unchanged");
+    }
+
+    SECTION("deep block documents are rejected") {
+        std::string yaml;
+        for (U64 i = 0; i < 1'000; ++i) {
+            yaml += std::string(i, ' ') + "k:\n";
+        }
+
+        Parser::Map data;
+        data["label"] = std::string("unchanged");
+
+        REQUIRE(Parser::YamlDecode(yaml, data) == Result::ERROR);
+        REQUIRE(std::any_cast<std::string>(data.at("label")) == "unchanged");
+    }
+}
