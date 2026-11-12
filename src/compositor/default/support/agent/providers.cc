@@ -157,9 +157,14 @@ AgentProviders::Provider AgentProviders::Preset(Agent::Provider::Kind kind) {
 }
 
 AgentProviders::Provider AgentProviders::Normalize(Provider provider) {
-    const auto& defaults = Agent::Provider::Profile::Find(Identify(provider));
+    const auto kind = Identify(provider);
+    const auto& defaults = Agent::Provider::Profile::Find(kind);
 
-    if (provider.api.empty()) {
+    // A provider only identifies as a built-in profile when it targets that profile's
+    // endpoint, and the endpoint dictates the request format. A stored value that
+    // disagrees (for example chat_completions against /v1/responses) can never work,
+    // so the profile wins. Custom endpoints keep whatever the user configured.
+    if (provider.api.empty() || kind != Agent::Provider::Kind::Custom) {
         provider.api = Agent::Provider::Name(defaults.api);
     }
     if (provider.chatPath.empty()) {
