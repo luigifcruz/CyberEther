@@ -466,6 +466,21 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
     }
 }
 
+TEST_CASE("Overload badge names what overloaded",
+          "[modules][signal_view][overload]") {
+    using Modules::detail::FormatOverloadBadge;
+    REQUIRE(FormatOverloadBadge(false, false, false, 0.0).text.empty());
+    REQUIRE(FormatOverloadBadge(true, false, false, 0.0).text == "CLIP");
+    REQUIRE(FormatOverloadBadge(true, false, false, 0.0000004).text == "CLIP <0.01%");
+    REQUIRE(FormatOverloadBadge(true, false, false, 0.0002).text == "CLIP 0.02%");
+    REQUIRE(FormatOverloadBadge(true, false, true, 0.0123).text == "CLIP 1.2%");
+    REQUIRE(FormatOverloadBadge(true, true, false, 0.25).text == "CLIP 25%  RF OVLD");
+    REQUIRE(FormatOverloadBadge(false, false, true, 0.0).text == "ADC HIGH");
+    REQUIRE(FormatOverloadBadge(false, true, true, 0.0).text == "ADC HIGH  RF OVLD");
+    REQUIRE(FormatOverloadBadge(true, false, false, 0.01).severe);
+    REQUIRE_FALSE(FormatOverloadBadge(false, true, true, 0.0).severe);
+}
+
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
 TEST_CASE("Axis vertical scale can move the divider without recreating resources",
           "[modules][signal_view][split][axis][regression]") {

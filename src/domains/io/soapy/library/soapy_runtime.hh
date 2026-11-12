@@ -75,6 +75,10 @@ struct SoapyApi {
     SoapyAbi::Range* (*getFrequencyRange)(const SoapyAbi::Device*, int, std::size_t,
                                           std::size_t*) = nullptr;
     char** (*listAntennas)(const SoapyAbi::Device*, int, std::size_t, std::size_t*) = nullptr;
+    char** (*listChannelSensors)(const SoapyAbi::Device*, int, std::size_t,
+                                 std::size_t*) = nullptr;
+    char* (*readChannelSensor)(const SoapyAbi::Device*, int, std::size_t,
+                               const char*) = nullptr;
     int (*setAntenna)(SoapyAbi::Device*, int, std::size_t, const char*) = nullptr;
     int (*setFrequency)(SoapyAbi::Device*, int, std::size_t, double,
                         const SoapyAbi::Kwargs*) = nullptr;

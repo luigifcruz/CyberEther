@@ -144,10 +144,132 @@ Result SignalViewFrequency::read(const Tensor& input) {
     return Result::SUCCESS;
 }
 
+Result SignalViewOverload::read(const Tensor& input) {
+    *this = {};
+    JST_CHECK(ReadAttribute(input, "clippedSamples", clippedSamples));
+    JST_CHECK(ReadAttribute(input, "receivedSamples", receivedSamples));
+    JST_CHECK(ReadAttribute(input, "overloadFlags", flags));
+    return Result::SUCCESS;
+}
+
+namespace detail {
+
+namespace {
+
+std::string FormatPercent(const F64 ratio) {
+    const F64 percent = ratio * 100.0;
+    if (percent >= 10.0) {
+        return jst::fmt::format("{:.0f}%", percent);
+    }
+    if (percent >= 1.0) {
+        return jst::fmt::format("{:.1f}%", percent);
+    }
+    if (percent >= 0.01) {
+        return jst::fmt::format("{:.2f}%", percent);
+    }
+    return "<0.01%";
+}
+
+}  // namespace
+
+OverloadBadge FormatOverloadBadge(const bool clipped,
+                                  const bool rf,
+                                  const bool high,
+                                  const F64 clipRatio) {
+    std::vector<std::string> parts;
+    if (clipped) {
+        parts.push_back(clipRatio > 0.0
+            ? jst::fmt::format("CLIP {}", FormatPercent(clipRatio))
+            : "CLIP");
+    } else if (high) {
+        parts.push_back("ADC HIGH");
+    }
+    if (rf) {
+        parts.push_back("RF OVLD");
+    }
+    OverloadBadge badge;
+    for (const auto& part : parts) {
+        badge.text += (badge.text.empty() ? "" : "  ") + part;
+    }
+    badge.severe = clipped;
+    return badge;
+}
+
+}  // namespace detail
+
+void SignalViewCanvas::updateOverload(const Context& context) {
+    using Clock = std::chrono::steady_clock;
+    constexpr auto kHold = std::chrono::seconds(2);
+    const auto now = Clock::now();
+    const auto& source = context.overload;
+    const U64 flags = source.flags.value_or(0);
+
+    if (source.clippedSamples) {
+        if (overload.lastClipped && *source.clippedSamples > *overload.lastClipped) {
+            overload.clipUntil = now + kHold;
+        }
+        overload.lastClipped = source.clippedSamples;
+    }
+
+    // Share of samples clipped over the last 0.5 to 1 s, from two counts
+    // taken half a second apart.
+    if (source.clippedSamples && source.receivedSamples) {
+        constexpr auto kStep = std::chrono::milliseconds(500);
+        const OverloadState::Count count{now, *source.clippedSamples, *source.receivedSamples};
+        if (!overload.newer || count.received < overload.newer->received) {
+            overload.older = count;
+            overload.newer = count;
+        } else if (now - overload.newer->time >= kStep) {
+            overload.older = overload.newer;
+            overload.newer = count;
+        }
+        const U64 received = count.received - overload.older->received;
+        overload.clipRatio = received > 0
+            ? static_cast<F64>(count.clipped - overload.older->clipped) /
+                  static_cast<F64>(received)
+            : overload.clipRatio;
+    }
+    if (overload.clipRatio > 0.0) {
+        overload.heldClipRatio = overload.clipRatio;
+    } else if (now >= overload.clipUntil) {
+        overload.heldClipRatio = 0.0;
+    }
+    if (flags & (detail::kOverloadLargeAdc | detail::kOverloadSaturation)) {
+        overload.clipUntil = now + kHold;
+    }
+    if (flags & (detail::kOverloadLargeLmt | detail::kOverloadSmallLmt)) {
+        overload.rfUntil = now + kHold;
+    }
+    if (flags & detail::kOverloadSmallAdc) {
+        overload.highUntil = now + kHold;
+    }
+
+    if (!text || !text->getConfig().elements.contains("overload")) {
+        return;
+    }
+    const auto badge = detail::FormatOverloadBadge(now < overload.clipUntil,
+                                                   now < overload.rfUntil,
+                                                   now < overload.highUntil,
+                                                   overload.heldClipRatio);
+    auto element = text->get("overload");
+    element.position = {
+        axis->paddingScale().x - pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
+        axis->paddingScale().y - pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f +
+            (text->getConfig().font
+                ? static_cast<F32>(text->getConfig().font->lineHeight()) * element.scale
+                : 0.0f)),
+    };
+    element.fill = badge.text.empty() ? " " : badge.text;
+    element.color = badge.severe ? ColorRGBA<F32>{1.0f, 0.25f, 0.2f, 1.0f}
+                                 : ColorRGBA<F32>{1.0f, 0.65f, 0.1f, 1.0f};
+    text->update("overload", element);
+}
+
 void SignalViewCanvas::reset(const SignalView& config) {
     splitter = {};
     splitter.ratio = config.splitRatio;
     displayHeld = false;
+    overload = {};
     cursor = {};
     markerPositions = config.markers;
     updateMarkersFlag = false;
@@ -203,6 +325,10 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
               .position = {-1.0f, 1.0f},
               .alignment = {0, 0},
               .color = kAccentColor}},
+            {"overload",
+             {.scale = kLabelScale,
+              .position = {1.0f, 1.0f},
+              .alignment = {2, 0}}},
             {"amplitude-title",
              {.scale = kLabelScale,
               .position = {-1.0f, 0.5f},
@@ -743,6 +869,7 @@ void SignalViewCanvas::updateState(const Context& context) {
 
 Result SignalViewCanvas::present(const Context& context) {
     updateLabels(context);
+    updateOverload(context);
     JST_CHECK(updateMarkers(context));
     JST_CHECK(updateCursor(context));
 

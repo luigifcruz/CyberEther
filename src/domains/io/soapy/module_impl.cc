@@ -2,6 +2,8 @@
 #include "library/soapysdr.hh"
 
 #include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <exception>
 #include <new>
 
@@ -277,7 +279,25 @@ Result SoapyImpl::emitFrame() {
         return Result::YIELD;
     }
     JST_CHECK(result);
-    return publishMetadata(metadata);
+    JST_CHECK(publishMetadata(metadata));
+
+    // Overload state for displays downstream, such as the spectrum header.
+    const U64 clipped = clippedSamples.get();
+    if (publishedClippedSamples != clipped) {
+        JST_CHECK(buffer.setAttribute("clippedSamples", clipped));
+        publishedClippedSamples = clipped;
+    }
+    const U64 received = receivedSamples.get();
+    if (publishedReceivedSamples != received) {
+        JST_CHECK(buffer.setAttribute("receivedSamples", received));
+        publishedReceivedSamples = received;
+    }
+    const U64 flags = overloadFlags.get();
+    if (publishedOverloadFlags != flags) {
+        JST_CHECK(buffer.setAttribute("overloadFlags", flags));
+        publishedOverloadFlags = flags;
+    }
+    return Result::SUCCESS;
 }
 
 Result SoapyImpl::soapyThreadLoop() {
@@ -286,6 +306,17 @@ Result SoapyImpl::soapyThreadLoop() {
     const auto readSize = std::min<std::size_t>(temporaryBufferSize, stream.capacity());
     const auto readBuffer = std::span<CF32>{tmp.data(), readSize};
     SoapyReceiveStatus receiveStatus;
+
+    // A sample at full scale means the ADC clipped. SoapySDR scales sc16 by
+    // 1/32768, so full scale reads 32767/32768 or -1.
+    constexpr F32 kClipLevel = 0.9999f;
+    U64 clippedTotal = 0;
+    U64 receivedTotal = 0;
+    // The radio reports its overload signals set until the gain first
+    // changes after start-up; trust them only once they have read clear.
+    constexpr auto kOverloadPollPeriod = std::chrono::milliseconds(50);
+    auto nextOverloadPoll = std::chrono::steady_clock::now();
+    bool overloadArmed = false;
 
     while (streaming) {
         const auto lock = access.lock();
@@ -309,6 +340,17 @@ Result SoapyImpl::soapyThreadLoop() {
             errored = true;
             break;
         } else if (action == SoapyReceiveStatus::Action::Samples) {
+            U64 clipped = 0;
+            for (std::size_t i = 0; i < received.sampleCount; ++i) {
+                clipped += std::abs(tmp[i].real()) >= kClipLevel ||
+                           std::abs(tmp[i].imag()) >= kClipLevel;
+            }
+            if (clipped > 0) {
+                clippedTotal += clipped;
+                clippedSamples.publish(clippedTotal);
+            }
+            receivedTotal += received.sampleCount;
+            receivedSamples.publish(receivedTotal);
             stream.push(readGeneration, tmp.data(), received.sampleCount);
             Scheduler::Context::NotifyPendingCompute();
             const U64 capacity = stream.capacity();
@@ -317,6 +359,14 @@ Result SoapyImpl::soapyThreadLoop() {
                                       static_cast<F32>(capacity);
                 const F32 smoothedFill = bufferFill.get() * 0.99f + newFill * 0.01f;
                 bufferFill.publish(smoothedFill);
+            }
+            const auto now = std::chrono::steady_clock::now();
+            if (receiverDevice.supportsOverloadSensor() && now >= nextOverloadPoll) {
+                nextOverloadPoll = now + kOverloadPollPeriod;
+                if (const auto bits = receiverDevice.readOverloadSensor()) {
+                    overloadArmed |= *bits == 0;
+                    overloadFlags.publish(overloadArmed ? *bits : 0);
+                }
             }
             const F32 actualMB = static_cast<F32>(stream.throughput() * sizeof(CF32)) / 1e6f;
             const F32 expectedMB = static_cast<F32>(stream.metadata().sampleRate * sizeof(CF32)) / 1e6f;
