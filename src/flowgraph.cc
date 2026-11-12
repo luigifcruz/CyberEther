@@ -26,11 +26,6 @@ namespace Jetstream {
 
 namespace {
 
-struct OutputRef {
-    std::string block;
-    std::string port;
-};
-
 struct BlockState {
     std::string name;
     std::string type;
@@ -42,7 +37,7 @@ struct BlockState {
     TensorMap inputs;
 };
 
-using OutputLookup = std::unordered_map<U64, OutputRef>;
+using OutputLookup = std::unordered_map<U64, BlockEndpoint>;
 
 OutputLookup BuildOutputLookup(const std::vector<std::string>& blockNames,
                                const std::unordered_map<std::string, std::shared_ptr<Block>>& blocks) {
