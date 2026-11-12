@@ -40,7 +40,6 @@ struct FlowgraphEditor {
 
     struct Config {
         std::string id;
-        U64 clipboardBlocks = 0;
         U64 selectionRequest = 0;
         std::vector<std::string> selection;
         bool canUndo = false;
@@ -188,7 +187,6 @@ struct FlowgraphEditor {
                 .inspectorId = jst::fmt::format("{}:{}:inspector", this->config.id, blockName),
                 .block = std::move(block),
                 .targets = targets(blockName).size(),
-                .clipboardBlocks = this->config.clipboardBlocks,
                 .timingEnabled = this->config.debugTimingEnabled,
                 .onCopy = [this, blockName]() {
                     emit(this->config.onCopyBlocks, targets(blockName));
@@ -285,7 +283,7 @@ struct FlowgraphEditor {
 
         nodeEditor.update({
             .id = this->config.id + "editor",
-            .pasteEnabled = this->config.clipboardBlocks > 0,
+            .pasteEnabled = true,
             .frameOnOpen = true,
             .scale = ZoomScale,
             .nodes = std::move(nodes),
@@ -355,10 +353,8 @@ struct FlowgraphEditor {
                 },
                 {.separator = true},
                 {
-                    .label = FlowgraphNodeMenu::BlocksLabel(ICON_LC_CLIPBOARD_PASTE " Paste",
-                                                            this->config.clipboardBlocks),
+                    .label = ICON_LC_CLIPBOARD_PASTE " Paste",
                     .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "V"),
-                    .enabled = this->config.clipboardBlocks > 0,
                     .onClick = [this]() {
                         if (this->config.onPasteBlock) {
                             this->config.onPasteBlock(flowgraphContextMenuGridPos);

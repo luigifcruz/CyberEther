@@ -100,7 +100,6 @@ struct MenuRig {
     LayerSlot slot;
     LayerHost host;
     std::vector<std::string> calls;
-    U64 clipboardBlocks = 1;
     bool configDetachEnabled = true;
     bool configDetached = false;
     bool plotDetachEnabled = true;
@@ -121,7 +120,6 @@ struct MenuRig {
     void show() {
         menu.update({
             .open = true,
-            .clipboardBlocks = clipboardBlocks,
             .configDetachEnabled = configDetachEnabled,
             .configDetached = configDetached,
             .plotDetachEnabled = plotDetachEnabled,
@@ -395,16 +393,14 @@ TEST_CASE("Node menu opens at the cursor and closes on outside clicks without ru
     CHECK(rig.calls == std::vector<std::string>{"close"});
 }
 
-TEST_CASE("Node menu paste, detach, and device entries follow their enabled flags",
+TEST_CASE("Node menu detach and device entries follow their enabled flags",
           "[core][sakura][flowgraph][editor-views]") {
     MenuRig rig;
-    rig.clipboardBlocks = 0;
     rig.configDetachEnabled = false;
     rig.plotDetachEnabled = false;
     rig.devices.clear();
     rig.show();
 
-    rig.host.click(kMenuX, kPasteY);
     rig.host.click(kMenuX, kDetachY);
     rig.host.click(kMenuX, kPlotY);
     rig.host.click(kMenuX, kDeviceY);
@@ -1308,10 +1304,8 @@ TEST_CASE("Editor presenter sends copy, cut, duplicate, and select mail and pass
     CHECK(std::get<MailSelectBlocks>(mails[3]).flowgraph == "graph");
     CHECK(std::get<MailSelectBlocks>(mails[3]).blockIds == std::vector<std::string>{"fft", "ifft"});
 
-    state.clipboard.blocks.resize(2);
     state.flowgraph.selections["graph"] = {.requests = 7, .blocks = {"fft_1"}};
     const auto selected = FlowgraphEditorPresenter(context).build("graph", graph);
-    CHECK(selected.clipboardBlocks == 2);
     CHECK(selected.selectionRequest == 7);
     CHECK(selected.selection == std::vector<std::string>{"fft_1"});
 }

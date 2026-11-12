@@ -285,7 +285,6 @@ struct FlowgraphNode {
         std::string inspectorId;
         BlockData block;
         U64 targets = 1;
-        U64 clipboardBlocks = 0;
         bool timingEnabled = false;
         Sakura::Callback<void()> onCopy;
         Sakura::Callback<void()> onCut;
@@ -497,7 +496,6 @@ struct FlowgraphNode {
         menu.update({
             .open = menuOpen,
             .targets = this->config.targets,
-            .clipboardBlocks = this->config.clipboardBlocks,
             .configDetachEnabled = hasConfigFields,
             .configDetached = block.configDetached,
             .plotDetachEnabled = hasSurfaces,

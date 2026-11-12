@@ -1,4 +1,5 @@
 #include "jetstream/flowgraph.hh"
+#include "flowgraph_document.hh"
 #include "jetstream/block_context.hh"
 #include "jetstream/detail/block_impl.hh"
 #include "jetstream/detail/module_impl.hh"
@@ -42,32 +43,6 @@ struct BlockState {
 };
 
 using OutputLookup = std::unordered_map<U64, OutputRef>;
-
-struct FlowgraphBlockDocument {
-    std::string name;
-    std::string module;
-    DeviceType device = DeviceType::CPU;
-    RuntimeType runtime = RuntimeType::NATIVE;
-    ProviderType provider = "generic";
-    std::optional<Parser::Map> config;
-    std::optional<Parser::Map> input;
-    std::optional<Parser::Map> meta;
-
-    JST_SERDES(name, module, device, runtime, provider, config, input, meta);
-};
-
-struct FlowgraphDocument {
-    std::string version = "2";
-    std::optional<std::string> title;
-    std::optional<std::string> summary;
-    std::optional<std::string> author;
-    std::optional<std::string> license;
-    std::optional<std::string> description;
-    std::vector<FlowgraphBlockDocument> graph;
-    std::optional<Parser::Map> meta;
-
-    JST_SERDES(version, title, summary, author, license, description, graph, meta);
-};
 
 OutputLookup BuildOutputLookup(const std::vector<std::string>& blockNames,
                                const std::unordered_map<std::string, std::shared_ptr<Block>>& blocks) {
@@ -286,27 +261,6 @@ Result ReconstructBlocks(Flowgraph& flowgraph,
     return Result::SUCCESS;
 }
 
-std::optional<Parser::Map> CompactMetadataMap(const Parser::Map& meta) {
-    Parser::Map compact;
-
-    for (const auto& entry : meta) {
-        if (entry.value.type() != typeid(Parser::Map)) {
-            continue;
-        }
-
-        const auto& value = std::any_cast<const Parser::Map&>(entry.value);
-        if (!value.empty()) {
-            compact[entry.key] = value;
-        }
-    }
-
-    if (compact.empty()) {
-        return std::nullopt;
-    }
-
-    return compact;
-}
-
 Result MigrateFlowgraphVersion100To200(Parser::Map& root) {
     if (!root.contains("version") && root.contains("protocolVersion")) {
         root["version"] = root.at("protocolVersion");
@@ -344,17 +298,54 @@ Result MigrateFlowgraphVersion100To200(Parser::Map& root) {
     return Result::SUCCESS;
 }
 
-std::optional<OutputRef> ParseGraphReference(const std::string& value) {
+}  // namespace
+
+Result FlowgraphDocument::encode(std::string& yaml) const {
+    Parser::Map root;
+    JST_CHECK(serialize(root));
+
+    std::string text;
+    JST_CHECK(Parser::YamlEncode(root, text));
+
+    yaml = "---\n" + text;
+
+    return Result::SUCCESS;
+}
+
+std::optional<Parser::Map> FlowgraphDocument::CompactMeta(const Parser::Map& meta) {
+    Parser::Map compact;
+
+    for (const auto& entry : meta) {
+        if (entry.value.type() != typeid(Parser::Map)) {
+            continue;
+        }
+
+        const auto& value = std::any_cast<const Parser::Map&>(entry.value);
+        if (!value.empty()) {
+            compact[entry.key] = value;
+        }
+    }
+
+    if (compact.empty()) {
+        return std::nullopt;
+    }
+
+    return compact;
+}
+
+std::string FlowgraphDocument::Reference(const BlockEndpoint& endpoint) {
+    return jst::fmt::format("${{graph.{}.output.{}}}", endpoint.block, endpoint.port);
+}
+
+std::optional<BlockEndpoint> FlowgraphDocument::ParseReference(const std::string& value) {
     static const std::regex pattern(R"(\$\{graph\.([^.]+)\.output\.([^.]+)\})");
     std::smatch matches;
     if (!std::regex_match(value, matches, pattern) || matches.size() != 3) {
         return std::nullopt;
     }
 
-    return OutputRef{matches[1].str(), matches[2].str()};
+    return BlockEndpoint{matches[1].str(), matches[2].str()};
 }
-
-}  // namespace
 
 Result Flowgraph::Impl::resolveInputs(const TensorMap& requested, TensorMap& resolved) const {
     Result result = Result::SUCCESS;
@@ -1373,7 +1364,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         RuntimeType runtime = RuntimeType::NATIVE;
         ProviderType provider = "generic";
         Parser::Map config;
-        std::unordered_map<std::string, OutputRef> inputs;
+        std::unordered_map<std::string, BlockEndpoint> inputs;
         Parser::Map meta;
     };
 
@@ -1406,7 +1397,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         if (blockEntry.input.has_value()) {
             for (const auto& [slot, encodedSource] : *blockEntry.input) {
                 const auto& source = std::any_cast<const std::string&>(encodedSource);
-                const auto ref = ParseGraphReference(source);
+                const auto ref = FlowgraphDocument::ParseReference(source);
                 if (!ref.has_value()) {
                     JST_ERROR("[FLOWGRAPH] Block '{}' input '{}' has invalid link '{}'.",
                               blockEntry.name,
@@ -1667,13 +1658,13 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     if (!description.empty()) {
         document.description = description;
     }
-    document.meta = CompactMetadataMap(metadataValues);
+    document.meta = FlowgraphDocument::CompactMeta(metadataValues);
 
     const auto outputLookup = BuildOutputLookup(impl->blockOrder, impl->blocks);
 
     for (const auto& name : impl->blockOrder) {
         const auto& block = impl->blocks.at(name);
-        FlowgraphBlockDocument blockDocument;
+        FlowgraphDocument::Block blockDocument;
 
         blockDocument.name = name;
         blockDocument.module = block->config().type();
@@ -1710,7 +1701,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
                 return Result::ERROR;
             }
 
-            inputs[slot] = jst::fmt::format("${{graph.{}.output.{}}}",  producerBlock, producerPort);
+            inputs[slot] = FlowgraphDocument::Reference({producerBlock, producerPort});
         }
 
         if (!inputs.empty()) {
@@ -1718,20 +1709,16 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
         }
 
         if (blockMetadataValues.contains(name)) {
-            blockDocument.meta = CompactMetadataMap(blockMetadataValues.at(name));
+            blockDocument.meta = FlowgraphDocument::CompactMeta(blockMetadataValues.at(name));
         }
 
         document.graph.push_back(std::move(blockDocument));
     }
 
-    Parser::Map root;
-    JST_CHECK(document.serialize(root));
-
     std::string yamlText;
-    JST_CHECK(Parser::YamlEncode(root, yamlText));
+    JST_CHECK(document.encode(yamlText));
 
-    blob = {'-', '-', '-', '\n'};
-    blob.insert(blob.end(), yamlText.begin(), yamlText.end());
+    blob.assign(yamlText.begin(), yamlText.end());
 
     return Result::SUCCESS;
 }

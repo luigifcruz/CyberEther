@@ -689,10 +689,15 @@ struct FlowgraphActions {
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
         auto copied = std::make_shared<FlowgraphSnapshot>();
         auto destroyed = std::make_shared<std::vector<std::string>>();
+        auto yaml = std::make_shared<std::string>();
+        auto previous = std::exchange(pendingCopy, yaml);
         callbacks.enqueueFlowgraphEdit({
             .flowgraph = msg.flowgraph,
-            .command = [flowgraph, clipboard = clipboard, blockIds = msg.blockIds, cut = msg.cut, copied,
-                        destroyed]() -> Result {
+            .command = [flowgraph, blockIds = msg.blockIds, cut = msg.cut, copied, destroyed, yaml,
+                        previous]() -> Result {
+                if (previous) {
+                    *yaml = *previous;
+                }
                 const auto snapshot = CaptureFlowgraphSnapshot(*flowgraph);
                 if (!snapshot) {
                     return Result::ERROR;
@@ -701,7 +706,7 @@ struct FlowgraphActions {
                 if (copied->blocks.empty()) {
                     return Result::SUCCESS;
                 }
-                *clipboard = *copied;
+                JST_CHECK(EncodeFlowgraphBlocks(*copied, *yaml));
                 if (cut) {
                     const auto order = FlowgraphDependencyOrder(*copied);
                     for (const auto* block : order | std::views::reverse) {
@@ -712,13 +717,18 @@ struct FlowgraphActions {
                 return Result::SUCCESS;
             },
             .silent = !msg.cut,
-            .onComplete = [this, flowgraphId = msg.flowgraph, cut = msg.cut, copied, destroyed](Result result) {
+            .onComplete = [this, flowgraphId = msg.flowgraph, cut = msg.cut, copied, destroyed, yaml](Result result) {
+                if (pendingCopy == yaml) {
+                    pendingCopy.reset();
+                }
                 if (copied->blocks.empty()) {
                     callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot copy blocks because they no longer exist.");
                     return;
                 }
 
-                state.clipboard = *copied;
+                if (!yaml->empty()) {
+                    callbacks.setClipboardText(*yaml);
+                }
                 for (const auto& block : *destroyed) {
                     callbacks.enqueueMail(MailRemoveLayoutBlock{.flowgraph = flowgraphId, .block = block});
                 }
@@ -749,13 +759,18 @@ struct FlowgraphActions {
         auto empty = std::make_shared<bool>(false);
         callbacks.enqueueFlowgraphEdit({
             .flowgraph = msg.flowgraph,
-            .command = [flowgraph, clipboard = clipboard, point = msg.gridPosition, created, empty]() -> Result {
-                *empty = clipboard->blocks.empty();
-                return PasteFlowgraphBlocks(*flowgraph, *clipboard, point, *created);
+            .command = [flowgraph, pending = pendingCopy, text = callbacks.getClipboardText(),
+                        point = msg.gridPosition, created, empty]() -> Result {
+                const auto blocks = DecodeFlowgraphBlocks(pending && !pending->empty() ? *pending : text);
+                if (!blocks.has_value()) {
+                    *empty = true;
+                    return Result::SUCCESS;
+                }
+                return PasteFlowgraphBlocks(*flowgraph, *blocks, point, *created);
             },
             .onComplete = [this, select = selectOnComplete(msg.flowgraph, created), empty](Result result) {
                 if (*empty) {
-                    callbacks.notify(Sakura::ToastType::Warning, 3000, "Clipboard is empty.");
+                    callbacks.notify(Sakura::ToastType::Warning, 3000, "Clipboard has no blocks to paste.");
                 }
                 select(result);
             },
@@ -908,7 +923,7 @@ struct FlowgraphActions {
     }
 
  private:
-    std::shared_ptr<FlowgraphSnapshot> clipboard = std::make_shared<FlowgraphSnapshot>();
+    std::shared_ptr<std::string> pendingCopy;
 
     static std::string ReconfigureMergeKey(const std::string& block, const Parser::Map& config) {
         std::vector<std::string> keys;

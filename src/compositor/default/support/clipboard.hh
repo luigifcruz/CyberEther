@@ -13,6 +13,10 @@ namespace Jetstream {
 
 FlowgraphSnapshot CopyFlowgraphBlocks(const FlowgraphSnapshot& source, const std::vector<std::string>& names);
 
+Result EncodeFlowgraphBlocks(const FlowgraphSnapshot& blocks, std::string& yaml);
+
+std::optional<FlowgraphSnapshot> DecodeFlowgraphBlocks(const std::string& yaml);
+
 Result PasteFlowgraphBlocks(Flowgraph& flowgraph,
                             const FlowgraphSnapshot& blocks,
                             std::optional<Extent2D<F32>> point,

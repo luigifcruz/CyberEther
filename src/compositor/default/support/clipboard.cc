@@ -4,6 +4,7 @@
 
 #include "../model/meta.hh"
 
+#include "flowgraph_document.hh"
 #include "jetstream/flowgraph_view.hh"
 #include "jetstream/parser.hh"
 #include "tools/naming.hh"
@@ -81,6 +82,104 @@ FlowgraphSnapshot CopyFlowgraphBlocks(const FlowgraphSnapshot& source, const std
         });
     }
     return copied;
+}
+
+Result EncodeFlowgraphBlocks(const FlowgraphSnapshot& blocks, std::string& yaml) {
+    FlowgraphDocument document;
+    for (const auto& block : blocks.blocks) {
+        FlowgraphDocument::Block entry{
+            .name = block.name,
+            .module = block.type,
+            .device = block.device,
+            .runtime = block.runtime,
+            .provider = block.provider,
+        };
+        if (!block.config.empty()) {
+            entry.config = block.config;
+        }
+
+        Parser::Map input;
+        for (const auto& [slot, source] : block.inputs) {
+            input[slot] = FlowgraphDocument::Reference(source);
+        }
+        if (!input.empty()) {
+            entry.input = std::move(input);
+        }
+
+        Parser::Map meta = block.metadata;
+        if (block.node.has_value()) {
+            JST_CHECK(Parser::Serialize(meta, "node", *block.node));
+        }
+        entry.meta = FlowgraphDocument::CompactMeta(meta);
+
+        document.graph.push_back(std::move(entry));
+    }
+
+    return document.encode(yaml);
+}
+
+std::optional<FlowgraphSnapshot> DecodeFlowgraphBlocks(const std::string& yaml) {
+    Parser::Map root;
+    if (Parser::YamlDecode(yaml, root) != Result::SUCCESS) {
+        return std::nullopt;
+    }
+
+    FlowgraphDocument document;
+    if (document.deserialize(root) != Result::SUCCESS) {
+        return std::nullopt;
+    }
+    if (document.version != "2" || document.graph.empty()) {
+        return std::nullopt;
+    }
+
+    FlowgraphSnapshot blocks;
+    for (auto& entry : document.graph) {
+        if (entry.name.empty() || entry.name.find('.') != std::string::npos) {
+            return std::nullopt;
+        }
+        if (entry.module.empty() || blocks.find(entry.name)) {
+            return std::nullopt;
+        }
+
+        FlowgraphSnapshot::Block block{
+            .name = std::move(entry.name),
+            .type = std::move(entry.module),
+            .device = entry.device,
+            .runtime = entry.runtime,
+            .provider = std::move(entry.provider),
+            .config = entry.config.value_or(Parser::Map{}),
+        };
+        block.configHash = FlowgraphValueFingerprint(std::any(block.config));
+
+        for (const auto& [slot, value] : entry.input.value_or(Parser::Map{})) {
+            const auto* reference = std::any_cast<std::string>(&value);
+            const auto source = reference ? FlowgraphDocument::ParseReference(*reference) : std::nullopt;
+            if (!source.has_value()) {
+                return std::nullopt;
+            }
+            block.inputs[slot] = *source;
+        }
+
+        for (const auto& [key, value] : entry.meta.value_or(Parser::Map{})) {
+            if (value.type() == typeid(Parser::Map)) {
+                block.metadata[key] = value;
+            }
+        }
+        NodeMeta node;
+        if (block.metadata.contains("node") && Parser::Deserialize(block.metadata, "node", node) == Result::SUCCESS) {
+            block.node = node;
+        }
+
+        blocks.blocks.push_back(std::move(block));
+    }
+
+    for (auto& block : blocks.blocks) {
+        std::erase_if(block.inputs, [&](const auto& input) {
+            return !blocks.find(input.second.block);
+        });
+    }
+
+    return blocks;
 }
 
 Result PasteFlowgraphBlocks(Flowgraph& flowgraph,

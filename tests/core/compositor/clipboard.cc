@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "compositor/default/actions/base.hh"
+#include "compositor/default/support/clipboard.hh"
 #include "flowgraph_fixture.hh"
 #include "tools/naming.hh"
 
@@ -27,6 +28,7 @@ struct ClipboardFixture : FlowgraphFixture {
     std::vector<Mail> mail;
     std::vector<std::pair<Sakura::ToastType, std::string>> toasts;
     std::deque<std::function<void()>> commands;
+    std::string systemClipboard;
     U64 delivered = 0;
 
     ClipboardFixture() {
@@ -38,6 +40,12 @@ struct ClipboardFixture : FlowgraphFixture {
             toasts.emplace_back(type, message);
         };
         callbacks.notifyResult = [](Result, const std::string&) {};
+        callbacks.setClipboardText = [this](const std::string& text) {
+            systemClipboard = text;
+        };
+        callbacks.getClipboardText = [this]() {
+            return systemClipboard;
+        };
         callbacks.enqueueCommandWithCompletion = [this](Sakura::Callback<Result()> command,
                                                         bool,
                                                         Sakura::Callback<void(Result)> onComplete) {
@@ -104,6 +112,10 @@ struct ClipboardFixture : FlowgraphFixture {
     void redo() {
         REQUIRE(history.handle(MailRedoFlowgraph{.flowgraph = "graph"}) == Result::SUCCESS);
         drain();
+    }
+
+    FlowgraphSnapshot clipboard() const {
+        return DecodeFlowgraphBlocks(systemClipboard).value_or(FlowgraphSnapshot{});
     }
 
     FlowgraphHistory& graphHistory() {
@@ -176,10 +188,10 @@ TEST_CASE_METHOD(ClipboardFixture, "Copied blocks paste under new names with the
     createChain();
 
     copy({"leaf", "middle"});
-    REQUIRE(state.clipboard.blocks.size() == 2);
-    CHECK(state.clipboard.find("middle")->inputs.empty());
-    REQUIRE(state.clipboard.find("leaf")->inputs.contains("buffer"));
-    CHECK(state.clipboard.find("leaf")->inputs.at("buffer").block == "middle");
+    REQUIRE(clipboard().blocks.size() == 2);
+    CHECK(clipboard().find("middle")->inputs.empty());
+    REQUIRE(clipboard().find("leaf")->inputs.contains("buffer"));
+    CHECK(clipboard().find("leaf")->inputs.at("buffer").block == "middle");
     REQUIRE(toasts.size() == 1);
     CHECK(toasts.back().second == "2 blocks copied to clipboard.");
     CHECK_FALSE(graphHistory().canUndo());
@@ -223,7 +235,7 @@ TEST_CASE_METHOD(ClipboardFixture, "Cut removes the blocks in one undo step and 
     CHECK(removedTiles() == std::vector<std::string>{"leaf", "middle"});
     REQUIRE_FALSE(toasts.empty());
     CHECK(toasts.back().second == "2 blocks cut to clipboard.");
-    CHECK(state.clipboard.blocks.size() == 2);
+    CHECK(clipboard().blocks.size() == 2);
 
     paste(Extent2D<F32>{300.0f, 40.0f});
     CHECK(blocks() == std::vector<std::string>{"leaf", "middle", "source"});
@@ -250,8 +262,8 @@ TEST_CASE_METHOD(ClipboardFixture, "Paste and undo requested before a copy or cu
             Result::SUCCESS);
     drain();
     CHECK(blocks() == std::vector<std::string>{"leaf", "leaf_1", "middle", "source"});
-    REQUIRE(state.clipboard.blocks.size() == 1);
-    CHECK(state.clipboard.blocks.front().name == "leaf");
+    REQUIRE(clipboard().blocks.size() == 1);
+    CHECK(clipboard().blocks.front().name == "leaf");
 
     REQUIRE(flowgraphActions.handle(MailCopyBlock{.flowgraph = "graph", .blockIds = {"leaf_1"}, .cut = true}) ==
             Result::SUCCESS);
@@ -262,6 +274,24 @@ TEST_CASE_METHOD(ClipboardFixture, "Paste and undo requested before a copy or cu
 
     undo();
     CHECK(blocks() == std::vector<std::string>{"leaf", "middle", "source"});
+}
+
+TEST_CASE_METHOD(ClipboardFixture, "Paste after a queued cut that finds nothing uses the cut before it",
+                 "[core][compositor][clipboard]") {
+    createChain();
+    copy({"source"});
+
+    REQUIRE(flowgraphActions.handle(MailCopyBlock{.flowgraph = "graph", .blockIds = {"leaf"}, .cut = true}) ==
+            Result::SUCCESS);
+    REQUIRE(flowgraphActions.handle(MailCopyBlock{.flowgraph = "graph", .blockIds = {"leaf"}, .cut = true}) ==
+            Result::SUCCESS);
+    REQUIRE(flowgraphActions.handle(MailPasteBlock{.flowgraph = "graph", .gridPosition = Extent2D<F32>{0.0f, 600.0f}}) ==
+            Result::SUCCESS);
+    drain();
+    CHECK(blocks() == std::vector<std::string>{"leaf", "middle", "source"});
+    CHECK(sourceOf("leaf").empty());
+    REQUIRE(clipboard().blocks.size() == 1);
+    CHECK(clipboard().blocks.front().name == "leaf");
 }
 
 TEST_CASE_METHOD(ClipboardFixture, "Duplicate offsets the copies, selects them, and leaves the clipboard alone",
@@ -279,8 +309,8 @@ TEST_CASE_METHOD(ClipboardFixture, "Duplicate offsets the copies, selects them, 
     CHECK(node("leaf_1").x == 640.0f);
     CHECK(node("leaf_1").width == 240.0f);
     CHECK(selected() == std::vector<std::string>{"middle_1", "leaf_1"});
-    REQUIRE(state.clipboard.blocks.size() == 1);
-    CHECK(state.clipboard.blocks.front().name == "source");
+    REQUIRE(clipboard().blocks.size() == 1);
+    CHECK(clipboard().blocks.front().name == "source");
     CHECK(toasts.empty());
 
     duplicate({"leaf_1"});
@@ -326,10 +356,92 @@ TEST_CASE_METHOD(ClipboardFixture, "Copy of missing blocks and paste of an empty
     CHECK(toasts.back().first == Sakura::ToastType::Warning);
 
     copy({"missing"}, true);
-    CHECK(state.clipboard.blocks.empty());
+    CHECK(clipboard().blocks.empty());
     CHECK(toasts.back().first == Sakura::ToastType::Error);
     CHECK(blocks() == std::vector<std::string>{"a"});
     CHECK(state.flowgraph.selections.empty());
+}
+
+TEST_CASE_METHOD(ClipboardFixture, "Copied blocks reach the system clipboard as flowgraph YAML",
+                 "[core][compositor][clipboard]") {
+    createChain();
+
+    copy({"middle", "leaf"});
+    CHECK(systemClipboard.starts_with("---\n"));
+    CHECK(systemClipboard.find("version: 2") != std::string::npos);
+    CHECK(systemClipboard.find("${graph.middle.output.buffer}") != std::string::npos);
+    CHECK(systemClipboard.find("${graph.source.output.signal}") == std::string::npos);
+
+    const auto decoded = DecodeFlowgraphBlocks(systemClipboard);
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->blocks.size() == 2);
+    REQUIRE(decoded->find("middle"));
+    CHECK(decoded->find("middle")->type == TestFlowgraph::kSyntheticPassType);
+    CHECK(decoded->find("middle")->inputs.empty());
+    REQUIRE(decoded->find("middle")->node.has_value());
+    CHECK(decoded->find("middle")->node->x == 300.0f);
+    CHECK(decoded->find("middle")->node->width == 220.0f);
+    REQUIRE(decoded->find("leaf"));
+    CHECK(decoded->find("leaf")->inputs.at("buffer").block == "middle");
+    CHECK(decoded->find("leaf")->inputs.at("buffer").port == "buffer");
+
+}
+
+TEST_CASE_METHOD(ClipboardFixture, "Blocks from another app paste from the system clipboard and plain text pastes nothing",
+                 "[core][compositor][clipboard]") {
+    createChain();
+    copy({"source"});
+
+    systemClipboard = jst::fmt::format(
+        "version: 2\n"
+        "graph:\n"
+        "  - name: feed\n"
+        "    module: {}\n"
+        "    meta:\n"
+        "      node: {{x: 100, y: 200, width: 180, height: 90}}\n"
+        "  - name: tap\n"
+        "    module: {}\n"
+        "    input:\n"
+        "      buffer: ${{graph.feed.output.signal}}\n"
+        "    meta:\n"
+        "      node: {{x: 400, y: 200, width: 180, height: 90}}\n",
+        TestFlowgraph::kSyntheticSourceType,
+        TestFlowgraph::kSyntheticPassType);
+
+    paste(Extent2D<F32>{1000.0f, 0.0f});
+    CHECK(blocks() == std::vector<std::string>{"feed", "leaf", "middle", "source", "tap"});
+    CHECK(sourceOf("tap") == "feed");
+    CHECK(node("feed").x == 1000.0f);
+    CHECK(node("tap").x == 1300.0f);
+    CHECK(selected() == std::vector<std::string>{"feed", "tap"});
+
+    toasts.clear();
+    systemClipboard = "plain text";
+    paste(Extent2D<F32>{0.0f, 600.0f});
+    CHECK(blocks() == std::vector<std::string>{"feed", "leaf", "middle", "source", "tap"});
+    REQUIRE(toasts.size() == 1);
+    CHECK(toasts.back().first == Sakura::ToastType::Warning);
+}
+
+TEST_CASE("System clipboard text that is not a block list is ignored", "[core][compositor][clipboard]") {
+    CHECK_FALSE(DecodeFlowgraphBlocks("").has_value());
+    CHECK_FALSE(DecodeFlowgraphBlocks("hello").has_value());
+    CHECK(DecodeFlowgraphBlocks("\"version\": 2\n\"graph\":\n  - name: a\n    module: m\n").has_value());
+    CHECK_FALSE(DecodeFlowgraphBlocks("graph: 3\n").has_value());
+    CHECK_FALSE(DecodeFlowgraphBlocks("version: 2\ngraph: []\n").has_value());
+    CHECK_FALSE(DecodeFlowgraphBlocks("version: 1\ngraph:\n  - name: a\n    module: m\n").has_value());
+    CHECK_FALSE(DecodeFlowgraphBlocks("version: 2\ngraph:\n  - name: a.b\n    module: m\n").has_value());
+    CHECK_FALSE(DecodeFlowgraphBlocks("version: 2\ngraph:\n  - name: a\n").has_value());
+    CHECK_FALSE(DecodeFlowgraphBlocks("version: 2\ngraph:\n  - name: a\n    module: m\n"
+                                      "  - name: a\n    module: m\n").has_value());
+    CHECK_FALSE(DecodeFlowgraphBlocks("version: 2\ngraph:\n  - name: a\n    module: m\n"
+                                      "    input:\n      x: a.b\n").has_value());
+
+    const auto outside = DecodeFlowgraphBlocks("version: 2\ngraph:\n  - name: a\n    module: m\n"
+                                               "    input:\n      x: ${graph.gone.output.y}\n");
+    REQUIRE(outside.has_value());
+    REQUIRE(outside->blocks.size() == 1);
+    CHECK(outside->blocks.front().inputs.empty());
 }
 
 TEST_CASE("Pasted block names keep free names and count up from a numeric suffix", "[core][compositor][clipboard]") {

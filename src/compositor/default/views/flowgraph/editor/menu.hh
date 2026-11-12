@@ -19,7 +19,6 @@ struct FlowgraphNodeMenu {
     struct Config {
         bool open = false;
         U64 targets = 1;
-        U64 clipboardBlocks = 0;
         bool configDetachEnabled = false;
         bool configDetached = false;
         bool plotDetachEnabled = false;
@@ -73,9 +72,8 @@ struct FlowgraphNodeMenu {
                     .onClick = this->config.onCut,
                 },
                 {
-                    .label = BlocksLabel(ICON_LC_CLIPBOARD_PASTE " Paste", this->config.clipboardBlocks),
+                    .label = ICON_LC_CLIPBOARD_PASTE " Paste",
                     .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "V"),
-                    .enabled = this->config.clipboardBlocks > 0,
                     .onClick = this->config.onPaste,
                 },
                 {

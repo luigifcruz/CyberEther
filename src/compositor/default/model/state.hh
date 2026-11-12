@@ -426,7 +426,6 @@ struct DefaultCompositorState {
     FlowgraphState flowgraph;
     TerminalState terminal;
     BenchmarkState benchmark;
-    FlowgraphSnapshot clipboard;
     RemoteState remote;
     RegistryState registry;
     MapsState maps;
