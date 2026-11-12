@@ -202,7 +202,7 @@ void AgentRuntime::serve() {
         .address = settings.mcp.address,
         .port = static_cast<U16>(settings.mcp.port),
         .instructions = McpPrompt(),
-        .tools = Agent::Tools::Functions(state.agent.captureSupported),
+        .tools = Agent::Tools::Available(state.agent.captureSupported),
         .executeTool = tools.focused(),
     }) : Result::ERROR;
 

@@ -336,7 +336,7 @@ std::vector<Entry> Toolbox::Catalog() {
         Entry::FromJson({
             "search_blocks",
             "Find block types for a task. Searches type, title, domain, summary, description, device, runtime, and provider, then returns ranked implementation options and each type's default_width in graph units for planning layout. default_width is the node width before resizing, and height grows with config fields and rendered surfaces.",
-            R"({"type":"object","properties":{"query":{"type":"string","description":"Words describing the block or task."},"domain":{"type":"string"},"device":{"type":"string"},"runtime":{"type":"string"},"provider":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false})",
+            R"({"type":"object","properties":{"query":{"type":"string","description":"Words describing the block or task."},"domain":{"type":"string","description":"Keep only one domain: core, dsp, io, ml, or visualization."},"device":{"type":"string","description":"Keep only implementations for this compute device, such as cpu or cuda."},"runtime":{"type":"string","description":"Keep only implementations for this runtime, such as native or python."},"provider":{"type":"string","description":"Keep only implementations from this provider; most are generic."},"limit":{"type":"integer","minimum":1,"maximum":50,"description":"Maximum block types to return. Default 15."}},"additionalProperties":false})",
         }, SearchBlocks),
         Entry::FromJson({
             "get_block_docs",
@@ -358,6 +358,7 @@ std::vector<Entry> Toolbox::Catalog() {
             "open_example",
             "Open a bundled example as a new flowgraph and select it for subsequent tools. Returns the new flowgraph name and its summary. Use only when the user wants to open or start from an example; get_example reads it without changing the graph.",
             R"({"type":"object","required":["key"],"properties":{"key":{"type":"string","description":"Exact example key from list_examples."}},"additionalProperties":false})",
+            {.mutates = true},
         }, OpenExample, ExampleGraph},
     };
 }

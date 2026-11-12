@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -76,6 +77,57 @@ TEST_CASE("Agent exposes the consolidated tool surface", "[agent][tools]") {
     }
 
     REQUIRE(actual == expected);
+}
+
+TEST_CASE("Agent tool parameters all carry descriptions", "[agent][tools]") {
+    std::vector<std::string> undescribed;
+    const auto visit = [&](const auto& self, const nlohmann::json& schema,
+                           const std::string& path) -> void {
+        if (schema.is_array()) {
+            for (const auto& value : schema) {
+                self(self, value, path);
+            }
+            return;
+        }
+        if (!schema.is_object()) {
+            return;
+        }
+        if (schema.contains("properties")) {
+            for (const auto& property : schema.at("properties").items()) {
+                const auto& value = property.value();
+                if (!value.contains("const") && !value.contains("description")) {
+                    undescribed.push_back(path + "." + property.key());
+                }
+            }
+        }
+        for (const auto& child : schema.items()) {
+            self(self, child.value(), path);
+        }
+    };
+
+    for (const auto& definition : Agent::Tools::Definitions()) {
+        const auto& tool = definition.function;
+        visit(visit, nlohmann::json::parse(tool.parametersJson), tool.name);
+    }
+
+    CHECK(undescribed == std::vector<std::string>{});
+}
+
+TEST_CASE("Only graph-changing agent tools are marked as mutating", "[agent][tools]") {
+    std::set<std::string> mutating;
+    std::set<std::string> destructive;
+    for (const auto& definition : Agent::Tools::Definitions()) {
+        if (definition.flags.mutates) {
+            mutating.insert(definition.function.name);
+        }
+        if (definition.flags.destructive) {
+            destructive.insert(definition.function.name);
+        }
+    }
+
+    CHECK(mutating == std::set<std::string>{"apply_flowgraph_patch", "open_example"});
+    CHECK(destructive == std::set<std::string>{"apply_flowgraph_patch"});
+    CHECK(Agent::Tools::Available(true).size() == Agent::Tools::Definitions().size());
 }
 
 TEST_CASE("Removed agent tools cannot be dispatched", "[agent][tools]") {

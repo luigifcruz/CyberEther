@@ -285,7 +285,7 @@ std::vector<Entry> Toolbox::Inspect() {
             "viewport gives the visible canvas rectangle, the toolbar rectangle "
             "floating over its top edge, and the open_area below the toolbar, "
             "all in graph coordinates.",
-            R"({"type":"object","properties":{"detail":{"type":"string","enum":["summary","routing","full"]},"sink":{"type":"string","description":"For routing detail, the downstream block to trace, such as an audio or visualization sink."}},"additionalProperties":false})",
+            R"({"type":"object","properties":{"detail":{"type":"string","enum":["summary","routing","full"],"description":"Amount of detail to return. Default summary."},"sink":{"type":"string","description":"For routing detail, the downstream block to trace, such as an audio or visualization sink."}},"additionalProperties":false})",
             {.needsGraph = true, .reportsLayout = true},
         }, InspectFlowgraph);
     flowgraph.annotate = [](Json& body, const Json&, const Layout& layout) { Geometry::Viewport(body, layout); };
