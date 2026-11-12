@@ -151,4 +151,21 @@ std::vector<std::string> Generic::takeDroppedFiles() {
     return std::exchange(droppedFiles, {});
 }
 
+void Generic::setInterceptClose(bool enabled) {
+    closeIntercepted = enabled;
+}
+
+bool Generic::interceptClose() const {
+    return closeIntercepted;
+}
+
+void Generic::addCloseRequest() {
+    closeRequested = true;
+    requestRedraw();
+}
+
+bool Generic::takeCloseRequest() {
+    return closeRequested.exchange(false);
+}
+
 }  // namespace Jetstream::Viewport 

@@ -264,8 +264,25 @@ TEST_CASE("Welcome filter mails store the search text, category and page and res
     CHECK(state.interface.welcomePage == 0);
 }
 
+namespace {
+
+FlowgraphHistory UnsavedHistory() {
+    FlowgraphHistory history;
+    history.seed(std::make_shared<FlowgraphSnapshot>());
+    history.commit(std::make_shared<FlowgraphSnapshot>());
+    return history;
+}
+
+FlowgraphHistory SavedHistory() {
+    auto history = UnsavedHistory();
+    history.markSaved(history.entries[history.cursor], true);
+    return history;
+}
+
+}  // namespace
+
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Closing a flowgraph with blocks asks first and cancelling or forcing settles the prompt",
+                 "Closing a flowgraph with unsaved changes asks first and cancelling or forcing settles the prompt",
                  "[core][compositor][flowgraph-actions]") {
     REQUIRE(flowgraph->blockCreate("source", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
     DefaultCompositorState state;
@@ -277,6 +294,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     FlowgraphActions actions(state, callbacks);
     state.flowgraph.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
     state.flowgraph.items["empty"] = std::make_shared<Flowgraph>();
+    state.flowgraph.history["graph"] = UnsavedHistory();
 
     REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "graph"}) == Result::SUCCESS);
     CHECK(state.interface.closingFlowgraph == std::optional<std::string>("graph"));
@@ -293,6 +311,71 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "empty"}) == Result::SUCCESS);
     CHECK_FALSE(state.interface.closingFlowgraph.has_value());
     CHECK(commands == 2);
+}
+
+TEST_CASE("Closing a flowgraph back at its saved undo step closes it without asking",
+          "[core][compositor][flowgraph-actions]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    U64 commands = 0;
+    callbacks.enqueueCommand = [&](std::function<Result()>, bool) {
+        ++commands;
+    };
+    FlowgraphActions actions(state, callbacks);
+    state.flowgraph.items["graph"] = std::make_shared<Flowgraph>();
+    state.flowgraph.history["graph"] = SavedHistory();
+
+    REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "graph"}) == Result::SUCCESS);
+    CHECK_FALSE(state.interface.closingFlowgraph.has_value());
+    CHECK(commands == 1);
+
+    state.flowgraph.history["graph"].pendingEdits = 1;
+    REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "graph"}) == Result::SUCCESS);
+    CHECK(state.interface.closingFlowgraph == std::optional<std::string>("graph"));
+    CHECK(commands == 1);
+}
+
+TEST_CASE("Quitting asks about each unsaved flowgraph in turn and cancelling stops the quit",
+          "[core][compositor][flowgraph-actions]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    U64 commands = 0;
+    callbacks.enqueueCommand = [&](std::function<Result()>, bool) {
+        ++commands;
+    };
+    WorkbenchActions workbench(state, callbacks);
+    FlowgraphActions actions(state, callbacks);
+    for (const auto* name : {"a", "b"}) {
+        state.flowgraph.items[name] = std::make_shared<Flowgraph>();
+        state.flowgraph.history[name] = UnsavedHistory();
+    }
+    state.flowgraph.items["saved"] = std::make_shared<Flowgraph>();
+    state.flowgraph.history["saved"] = SavedHistory();
+    state.interface.focusedFlowgraph = "b";
+
+    REQUIRE(workbench.handle(MailQuit{}) == Result::SUCCESS);
+    CHECK(state.interface.quitting);
+    CHECK(state.interface.closingFlowgraph == std::optional<std::string>("b"));
+
+    REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "b", .force = true}) == Result::SUCCESS);
+    CHECK(state.interface.quitting);
+    CHECK(state.interface.closingFlowgraph == std::optional<std::string>("a"));
+    CHECK(commands == 0);
+
+    REQUIRE(actions.handle(MailCancelCloseFlowgraph{}) == Result::SUCCESS);
+    CHECK_FALSE(state.interface.quitting);
+    CHECK_FALSE(state.interface.closingFlowgraph.has_value());
+
+    REQUIRE(workbench.handle(MailQuit{}) == Result::SUCCESS);
+    CHECK(state.interface.closingFlowgraph == std::optional<std::string>("b"));
+
+    REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "a"}) == Result::SUCCESS);
+    CHECK_FALSE(state.interface.quitting);
+    CHECK(state.interface.closingFlowgraph == std::optional<std::string>("a"));
+
+    REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "a", .force = true}) == Result::SUCCESS);
+    CHECK_FALSE(state.interface.closingFlowgraph.has_value());
+    CHECK(commands == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -437,9 +520,6 @@ TEST_CASE("Recent flowgraph history records a path only after its open or save s
     DefaultCompositorCallbacks callbacks;
     std::vector<Mail> completions;
     std::vector<std::function<void(Result)>> imports;
-    callbacks.enqueueCommandWithMail = [&](std::function<Result()>, bool, Mail mail) {
-        completions.push_back(std::move(mail));
-    };
     callbacks.enqueueCommandWithCompletion = [&](std::function<Result()>, bool, std::function<void(Result)> done) {
         imports.push_back(std::move(done));
     };
@@ -469,6 +549,8 @@ TEST_CASE("Recent flowgraph history records a path only after its open or save s
     const auto savedPath = Platform::PathToUtf8(sandbox.root() / "saved.yml");
     REQUIRE(actions.handle(MailSaveFlowgraph{.flowgraph = "graph", .path = savedPath}) == Result::SUCCESS);
     CHECK(state.interface.recentFlowgraphs.empty());
+    REQUIRE(imports.size() == 3);
+    imports[2](Result::SUCCESS);
 
     REQUIRE(completions.size() == 2);
     for (const auto& mail : completions) {

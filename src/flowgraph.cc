@@ -558,6 +558,10 @@ bool Flowgraph::paused() const {
     return impl->created.load() && impl->scheduler && impl->scheduler->paused();
 }
 
+U64 Flowgraph::moduleConfigEdits() const {
+    return impl->moduleConfigEdits.load();
+}
+
 Result Flowgraph::blockCreate(const std::string name,
                               const Block::Config& config,
                               const TensorMap& inputs,
@@ -1809,6 +1813,8 @@ Result Flowgraph::processConfigChanges() {
         if (current && result != Result::SUCCESS && result != Result::RELOAD) {
             JST_WARN("[FLOWGRAPH] Could not apply module configuration edit for '{}'.",
                      edit.name);
+        } else if (current) {
+            ++impl->moduleConfigEdits;
         }
     }
     // Like an editor command, an unsuccessful edit does not stop the graph.

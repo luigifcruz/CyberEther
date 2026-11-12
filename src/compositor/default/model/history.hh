@@ -82,7 +82,11 @@ struct FlowgraphHistory {
 
     std::vector<Entry> entries;
     U64 cursor = 0;
+    Entry saved;
+    bool untracked = false;
+    U64 moduleConfigEdits = 0;
 
+    U64 pendingEdits = 0;
     I64 pendingSteps = 0;
     bool restoring = false;
     std::vector<std::variant<FlowgraphEdit, I64>> deferred;
@@ -98,8 +102,29 @@ struct FlowgraphHistory {
         return cursor + 1 < entries.size();
     }
 
+    bool unsaved() const {
+        return untracked || (!entries.empty() && entries[cursor] != saved);
+    }
+
+    bool settled() const {
+        return pendingEdits == 0 && !restoring && deferred.empty();
+    }
+
     const FlowgraphSnapshot& current() const {
         return *entries[cursor];
+    }
+
+    void seed(Entry first) {
+        saved = first;
+        entries.push_back(std::move(first));
+    }
+
+    void markSaved(Entry exported, bool current) {
+        if (current) {
+            absorb(exported);
+        }
+        saved = std::move(exported);
+        mergeKey.clear();
     }
 
     void commit(Entry next) {
@@ -112,6 +137,9 @@ struct FlowgraphHistory {
     }
 
     void absorb(Entry next) {
+        if (entries[cursor] == saved) {
+            saved = next;
+        }
         entries[cursor] = std::move(next);
     }
 

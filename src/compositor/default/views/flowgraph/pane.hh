@@ -48,6 +48,7 @@ struct FlowgraphPane {
         std::vector<std::string> adopts;
         std::optional<Description> description;
         bool empty = false;
+        bool unsaved = false;
         bool showTips = true;
         bool dependencyReviewAvailable = false;
         Callout::Tone dependencyReviewTone = Callout::Tone::Info;
@@ -305,6 +306,7 @@ struct FlowgraphPane {
             .group = "main",
             .icon = ICON_LC_WORKFLOW,
             .content = &layoutDock,
+            .unsaved = config.unsaved,
             .onClose = config.onClose,
             .onFocus = config.onFocus,
         });

@@ -59,6 +59,7 @@ struct FlowgraphPanePresenter {
             .environment = environment.build(flowgraphId, flowgraph),
             .description = description(flowgraphId, flowgraph, enqueue),
             .empty = flowgraph->view().empty(),
+            .unsaved = context.state.flowgraphUnsaved(flowgraphId),
             .showTips = context.state.interface.showTips,
             .dependencyReviewAvailable = hasDependencyReview(flowgraph),
             .dependencyReviewTone = dependencyReviewTone(),

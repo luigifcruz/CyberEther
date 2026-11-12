@@ -1231,7 +1231,8 @@ struct SavedPaneFile {
     }
 
     void save(PaneRig& rig) const {
-        rig.callbacks.enqueueCommandWithMail = [](Sakura::Callback<Result()> command, bool, Mail) {
+        rig.callbacks.enqueueCommandWithCompletion = [](Sakura::Callback<Result()> command, bool,
+                                                        Sakura::Callback<void(Result)>) {
             REQUIRE(command() == Result::SUCCESS);
         };
         REQUIRE(FlowgraphActions(rig.state, rig.callbacks).handle(

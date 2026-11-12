@@ -59,6 +59,7 @@ struct Dock : public Component {
         Component* content = nullptr;
         bool closable = true;
         bool closeOnlyMinimized = false;
+        bool unsaved = false;
         bool maximizable = true;
         bool card = true;
         bool leftmost = false;

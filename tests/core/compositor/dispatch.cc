@@ -39,7 +39,8 @@ struct DispatchFixture : FlowgraphFixture {
         REQUIRE(flowgraph->metadata().set("editor", EditorMeta{}) == Result::SUCCESS);
         REQUIRE(flowgraph->metadata().set("surface_default", SurfaceMeta{}, "a") == Result::SUCCESS);
         REQUIRE(actions.handle(MailSetFlowgraphLayout{"graph", initialLayout}) == Result::SUCCESS);
-        callbacks.enqueueCommandWithMail = [this](Sakura::Callback<Result()> command, bool, Mail) {
+        callbacks.enqueueCommandWithCompletion = [this](Sakura::Callback<Result()> command, bool,
+                                                        Sakura::Callback<void(Result)>) {
             REQUIRE(command() == Result::SUCCESS);
             ++saves;
         };

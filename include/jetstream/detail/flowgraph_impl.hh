@@ -26,6 +26,7 @@ struct Flowgraph::Impl {
     std::atomic<bool> created = false;
     std::shared_ptr<std::atomic<bool>> configChangesPending =
         std::make_shared<std::atomic<bool>>(false);
+    std::atomic<U64> moduleConfigEdits = 0;
 
     std::unique_ptr<Metadata> metadata;
     std::shared_ptr<Environment> environment;

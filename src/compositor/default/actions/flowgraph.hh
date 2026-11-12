@@ -3,6 +3,7 @@
 
 #include "persist.hh"
 #include "workbench.hh"
+#include "../support/history.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -233,10 +234,32 @@ struct FlowgraphActions {
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
 
         JST_CHECK(LayoutActions(state.flowgraph).prepareSave(msg.flowgraph));
-        callbacks.enqueueCommandWithMail([flowgraph, path]() -> Result {
+        bool untracked = false;
+        if (const auto entry = state.flowgraph.history.find(msg.flowgraph); entry != state.flowgraph.history.end()) {
+            untracked = std::exchange(entry->second.untracked, false);
+        }
+        auto exported = std::make_shared<FlowgraphHistory::Entry>();
+        callbacks.enqueueCommandWithCompletion([flowgraph, path, exported]() -> Result {
+            *exported = CaptureFlowgraphSnapshot(*flowgraph);
             JST_CHECK(flowgraph->exportToFile(path));
             return Result::SUCCESS;
-        }, false, MailRememberFlowgraph{.path = path, .title = flowgraph->title()});
+        }, false, [this, name = msg.flowgraph, path, title = flowgraph->title(), exported, untracked](Result result) {
+            const auto entry = state.flowgraph.history.find(name);
+            if (result != Result::SUCCESS) {
+                if (untracked && entry != state.flowgraph.history.end()) {
+                    entry->second.untracked = true;
+                }
+                return;
+            }
+            if (entry != state.flowgraph.history.end() && *exported) {
+                auto& history = entry->second;
+                const auto change = history.entries.empty() ? FlowgraphChange::Content
+                                                            : ClassifyFlowgraphChange(history.current(), **exported);
+                history.markSaved(*exported, change == FlowgraphChange::None ||
+                                                 (change == FlowgraphChange::Layout && !history.restoring));
+            }
+            callbacks.enqueueMail(MailRememberFlowgraph{.path = path, .title = title});
+        });
 
         return Result::SUCCESS;
     }
@@ -320,12 +343,17 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        const auto& flowgraph = state.flowgraph.items.at(msg.flowgraph);
-        if (!msg.force && !flowgraph->view().empty()) {
-            state.interface.closingFlowgraph = msg.flowgraph;
+        auto& ui = state.interface;
+        if (!msg.force && state.flowgraphMayLoseChanges(msg.flowgraph)) {
+            ui.closingFlowgraph = msg.flowgraph;
+            ui.quitting = false;
             return Result::SUCCESS;
         }
-        state.interface.closingFlowgraph.reset();
+        if (ui.quitting && ui.closingFlowgraph == msg.flowgraph) {
+            ui.discardedFlowgraphs.insert(msg.flowgraph);
+            return WorkbenchActions::Quit(state);
+        }
+        ui.closingFlowgraph.reset();
 
         auto inst = state.system.instance;
         auto name = msg.flowgraph;
@@ -340,6 +368,7 @@ struct FlowgraphActions {
 
     Result handle(const MailCancelCloseFlowgraph&) {
         state.interface.closingFlowgraph.reset();
+        state.interface.quitting = false;
         return Result::SUCCESS;
     }
 
@@ -787,6 +816,9 @@ struct FlowgraphActions {
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
         ConfigMeta existing;
         flowgraph->metadata().get("config", existing, msg.block);
+        if (existing.collapsed != msg.collapsed) {
+            markUntracked(msg.flowgraph);
+        }
         existing.collapsed = msg.collapsed;
         flowgraph->metadata().set("config", existing, msg.block);
         return Result::SUCCESS;
@@ -800,6 +832,9 @@ struct FlowgraphActions {
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
         ConfigMeta existing;
         flowgraph->metadata().get("config", existing, msg.block);
+        if (existing.tileMetricsCollapsed != msg.collapsed) {
+            markUntracked(msg.flowgraph);
+        }
         existing.tileMetricsCollapsed = msg.collapsed;
         flowgraph->metadata().set("config", existing, msg.block);
         return Result::SUCCESS;
@@ -853,6 +888,12 @@ struct FlowgraphActions {
     }
 
  private:
+    void markUntracked(const std::string& flowgraph) {
+        if (const auto history = state.flowgraph.history.find(flowgraph); history != state.flowgraph.history.end()) {
+            history->second.untracked = true;
+        }
+    }
+
     static std::string ReconfigureMergeKey(const std::string& block, const Parser::Map& config) {
         std::vector<std::string> keys;
         for (const auto& [key, _] : config) {

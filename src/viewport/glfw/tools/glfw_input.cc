@@ -430,6 +430,14 @@ struct GlfwInput::Impl {
         From(window).viewport.requestRedraw();
     }
 
+    static void OnClose(GLFWwindow* window) {
+        auto& impl = From(window);
+        if (impl.viewport.interceptClose()) {
+            glfwSetWindowShouldClose(window, GLFW_FALSE);
+            impl.viewport.addCloseRequest();
+        }
+    }
+
     static void OnDrop(GLFWwindow* window, int count, const char** paths) {
         auto& impl = From(window);
         if (count <= 0 || !paths) {
@@ -463,6 +471,7 @@ GlfwInput::GlfwInput(GLFWwindow* window, Generic& viewport) {
     glfwSetKeyCallback(window, &Impl::OnKey);
     glfwSetCharCallback(window, &Impl::OnChar);
     glfwSetDropCallback(window, &Impl::OnDrop);
+    glfwSetWindowCloseCallback(window, &Impl::OnClose);
     glfwSetWindowRefreshCallback(window, &Impl::OnRefresh);
     glfwSetWindowSizeCallback(window, &Impl::OnResize);
     glfwSetFramebufferSizeCallback(window, &Impl::OnResize);
@@ -519,6 +528,7 @@ GlfwInput::~GlfwInput() {
     glfwSetKeyCallback(impl->window, nullptr);
     glfwSetCharCallback(impl->window, nullptr);
     glfwSetDropCallback(impl->window, nullptr);
+    glfwSetWindowCloseCallback(impl->window, nullptr);
     glfwSetWindowRefreshCallback(impl->window, nullptr);
     glfwSetWindowSizeCallback(impl->window, nullptr);
     glfwSetFramebufferSizeCallback(impl->window, nullptr);

@@ -55,6 +55,9 @@ constexpr F32 kStripRotation = -90.0f;
 constexpr F32 kStripTitleSize = 17.0f;
 constexpr F32 kInkNudge = 0.5f;
 constexpr F32 kIdleCloseOpacity = 0.35f;
+constexpr F32 kUnsavedGlyph = 32.0f;
+constexpr F32 kUnsavedDot = kUnsavedGlyph / 6.0f;
+constexpr F32 kUnsavedGap = 5.0f;
 constexpr F32 kHeaderButtonGap = 2.0f;
 constexpr F32 kHeaderIconGap = 6.0f;
 constexpr F32 kPillBarHeight = 38.0f;
@@ -354,6 +357,7 @@ struct Dock::Impl {
         std::unique_ptr<Text> text = std::make_unique<Text>();
         std::unique_ptr<Text> glyph = std::make_unique<Text>();
         std::unique_ptr<Text> close = std::make_unique<Text>();
+        std::unique_ptr<Text> marker = std::make_unique<Text>();
         std::unique_ptr<Text> maximize = std::make_unique<Text>();
         std::unique_ptr<Text> minimize = std::make_unique<Text>();
         std::unique_ptr<Label> spine = std::make_unique<Label>();
@@ -580,8 +584,8 @@ struct Dock::Impl {
         }
         contentCount = managed.size();
         const auto captionParts = [&](Caption& caption) {
-            managed.insert(managed.end(), {caption.text.get(), caption.glyph.get(), caption.close.get(), caption.maximize.get(),
-                                            caption.minimize.get(), caption.spine.get()});
+            managed.insert(managed.end(), {caption.text.get(), caption.glyph.get(), caption.close.get(), caption.marker.get(),
+                                            caption.maximize.get(), caption.minimize.get(), caption.spine.get()});
             for (auto& action : caption.actions) {
                 managed.push_back(action.get());
             }
@@ -2304,7 +2308,9 @@ void Dock::layout(const Context& ctx) {
                 labels.push_back(caption->glyph.get());
                 cursor += glyph.x + Px(ctx, kIconGap);
             }
-            const F32 titleRoom = std::max(0.0f, tab.right() - cursor - (closable ? reserve : padding));
+            const bool unsaved = item && item->unsaved;
+            const F32 markerRoom = unsaved ? Px(ctx, kUnsavedGap + kUnsavedDot) : 0.0f;
+            const F32 titleRoom = std::max(0.0f, tab.right() - cursor - (closable ? reserve : padding) - markerRoom);
             if (caption) {
                 auto& text = *caption->text;
                 text.update({.str = Fit(s.metrics, caption->title, font, titleRoom, kTabFont),
@@ -2314,6 +2320,11 @@ void Dock::layout(const Context& ctx) {
                 const F32 textWidth = std::min(textSize.x, titleRoom);
                 layoutChild(ctx, text, {cursor, tabY + std::floor((tabHeight - textSize.y) * 0.5f), textWidth, textSize.y}, tab);
                 labels.push_back(&text);
+                const auto size = prepareGlyph(*caption->marker, ICON_LC_DOT, "cyber_blue", kUnsavedGlyph,
+                                               unsaved ? 1.0f : 0.0f);
+                placeGlyph(*caption->marker,
+                           {cursor + textWidth + Px(ctx, kUnsavedGap + kUnsavedDot * 0.5f), tabY + tabHeight * 0.5f},
+                           size, tab);
             }
             const bool showClose = closable && (selected || hovered);
             const Rect close = closable ? Rect{tab.right() - Px(ctx, kPillCloseMargin) - closeSize,

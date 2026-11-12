@@ -13,7 +13,6 @@ core_test_domains = {
         'compositor/metrics.cc',
         'compositor/onboarding.cc',
         'compositor/settings_tab.cc',
-        'compositor/start_tab.cc',
         'compositor/tiles.cc',
     ],
     'extensions': [
@@ -132,6 +131,7 @@ if not jst_is_windows
             'compositor/config_edits.cc',
             'compositor/dispatch.cc',
             'compositor/history.cc',
+            'compositor/start_tab.cc',
             'compositor/live_markdown.cc',
             'compositor/terminal.cc',
             'compositor/agent_bridge.cc',

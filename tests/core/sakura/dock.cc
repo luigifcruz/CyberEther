@@ -170,7 +170,7 @@ class SurfaceTexture final : public Render::Texture {
 bool ButtonGlyph(const Sakura::Text& text) {
     const auto& str = text.config().str;
     return str == ICON_LC_X || str == ICON_LC_MAXIMIZE_2 ||
-           str == ICON_LC_MINIMIZE_2;
+           str == ICON_LC_MINIMIZE_2 || str == ICON_LC_DOT;
 }
 
 const Sakura::Text* GlyphIn(Sakura::Component& dock, const Rect& card, const std::string& icon) {
@@ -247,6 +247,55 @@ TEST_CASE("Tab mode can hide its tabs while keeping the bar and the active pane"
     host.click(first.x + 2.0f, first.y + first.height * 0.5f);
     host.place(ctx, kScreen);
     CHECK(a.layouts == 0);
+}
+
+TEST_CASE("Tab mode marks an unsaved pane with a dot after its title without restructuring",
+          "[core][sakura][dock][retention]") {
+    Scene scene;
+    Probe a;
+    Dock dock;
+    Host host(dock);
+    Frames frames(host, kScreen, scene.context());
+    bool unsaved = false;
+    const auto update = [&] {
+        auto pane = MakePane("a", &a);
+        pane.unsaved = unsaved;
+        dock.update({.tabs = true, .panes = {pane}});
+    };
+    const auto find = [&](const std::string& str) -> const Sakura::Text* {
+        for (auto* text : Direct<Sakura::Text>(dock)) {
+            if (text->config().str == str) {
+                return text;
+            }
+        }
+        return nullptr;
+    };
+    REQUIRE(frames.settle(update));
+    const auto* dot = find(ICON_LC_DOT);
+    const auto* title = find("a");
+    REQUIRE(dot);
+    REQUIRE(title);
+    CHECK(dot->config().opacity == 0.0f);
+    const U64 restructures = frames.restructures;
+    const U64 rebuilds = frames.rebuilds;
+
+    unsaved = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(dot->config().opacity == 1.0f);
+    CHECK(dot->config().colorKey == "cyber_blue");
+    const Rect titleFrame = Peek::Frame(*title);
+    const Rect dotFrame = Peek::Frame(*dot);
+    CHECK(dotFrame.x + dotFrame.width * 0.5f > titleFrame.x + titleFrame.width);
+    CHECK(dotFrame.y + dotFrame.height * 0.5f == Catch::Approx(titleFrame.y + titleFrame.height * 0.5f).margin(1.0f));
+
+    unsaved = false;
+    CHECK(RepaintOnly(frames.run(update)));
+    REQUIRE(frames.settle(update));
+    CHECK(dot->config().opacity == 0.0f);
+    CHECK(frames.restructures == restructures);
+    CHECK(frames.rebuilds == rebuilds);
 }
 
 TEST_CASE("Tab mode places an aside on the right that shares one gutter with the content and draws above it",
