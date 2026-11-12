@@ -63,7 +63,7 @@ std::vector<Entry> Toolbox::Connections() {
         Entry::FromJson({
             "find_connection_options",
             "Find candidate output/input port pairs between two existing blocks before connecting them. Pairs list the active ports; confidence is high when the port names match, and semantic compatibility is only determined when connected.",
-            R"({"type":"object","required":["source","destination"],"properties":{"source":{"type":"string"},"destination":{"type":"string"}},"additionalProperties":false})",
+            R"({"type":"object","required":["source","destination"],"properties":{"source":{"type":"string","description":"Exact name of the upstream block."},"destination":{"type":"string","description":"Exact name of the downstream block."}},"additionalProperties":false})",
             {.needsGraph = true},
         }, FindConnectionOptions),
         Entry::FromJson({

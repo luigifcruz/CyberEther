@@ -54,6 +54,13 @@ struct Field {
     FieldKind kind;
     bool required = false;
     const char* description = nullptr;
+
+    constexpr Field(const char* name, FieldKind kind, bool required = false,
+                    const char* description = nullptr) :
+        name(name), kind(kind), required(required), description(description) {}
+
+    constexpr Field(const char* name, FieldKind kind, const char* description) :
+        name(name), kind(kind), description(description) {}
 };
 
 struct Operation {
@@ -449,44 +456,44 @@ void SetNodeLayout(Patch& patch, const Json& operation, Json& result) {
 
 const std::array<Operation, 7> kOperations = {{
     {"create_block", {
-        {"type", FieldKind::String, true},
-        {"ref", FieldKind::String},
-        {"name", FieldKind::String},
-        {"device", FieldKind::String},
-        {"runtime", FieldKind::String},
-        {"provider", FieldKind::String},
-        {"config", FieldKind::Object},
-        {"x", FieldKind::Coordinate},
-        {"y", FieldKind::Coordinate},
+        {"type", FieldKind::String, true, "Exact block type from search_blocks or get_block_docs."},
+        {"ref", FieldKind::String, "Label that later operations in this call may use as '$ref' in place of the name."},
+        {"name", FieldKind::String, "Block name; generated from the type when omitted."},
+        {"device", FieldKind::String, "Compute device implementation, such as cpu or cuda. Default cpu."},
+        {"runtime", FieldKind::String, "Runtime implementation, such as native or python. Default native."},
+        {"provider", FieldKind::String, "Provider implementation from search_blocks. Default generic."},
+        {"config", FieldKind::Object, "Config fields to set, in the base values shown by get_block_docs default_config."},
+        {"x", FieldKind::Coordinate, "Initial left edge in graph coordinates."},
+        {"y", FieldKind::Coordinate, "Initial top edge in graph coordinates."},
     }, CreateBlock},
     {"reconfigure_block", {
-        {"name", FieldKind::String, true},
-        {"config", FieldKind::Object, true},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
+        {"config", FieldKind::Object, true, "Config fields to change, in base values; omitted fields stay unchanged."},
     }, ReconfigureBlock},
     {"patch_block_text", {
-        {"name", FieldKind::String, true},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
         {"field", FieldKind::String, true, "Text config field, such as code."},
         {"patch", FieldKind::String, true, "Hunks of @@, space, -, and + lines."},
     }, PatchBlockText},
     {"connect", {
-        {"source", FieldKind::String, true},
-        {"output", FieldKind::String, true},
-        {"block", FieldKind::String, true},
-        {"input", FieldKind::String, true},
+        {"source", FieldKind::String, true, "Exact name of the upstream block."},
+        {"output", FieldKind::String, true, "Output port of the upstream block."},
+        {"block", FieldKind::String, true, "Exact name of the downstream block."},
+        {"input", FieldKind::String, true, "Input port of the downstream block."},
     }, Connect},
     {"disconnect", {
-        {"block", FieldKind::String, true},
-        {"input", FieldKind::String, true},
+        {"block", FieldKind::String, true, "Exact name of the downstream block."},
+        {"input", FieldKind::String, true, "Input port to disconnect from its source."},
     }, Disconnect},
     {"delete_block", {
-        {"name", FieldKind::String, true},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
     }, DeleteBlock},
     {"set_node_layout", {
-        {"name", FieldKind::String, true},
-        {"x", FieldKind::Coordinate},
-        {"y", FieldKind::Coordinate},
-        {"width", FieldKind::Size},
-        {"height", FieldKind::Size},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
+        {"x", FieldKind::Coordinate, "New left edge in graph coordinates."},
+        {"y", FieldKind::Coordinate, "New top edge in graph coordinates."},
+        {"width", FieldKind::Size, "Saved content width in graph units."},
+        {"height", FieldKind::Size, "Saved content height in graph units."},
     }, SetNodeLayout, CheckLayout},
 }};
 
@@ -836,7 +843,7 @@ std::vector<Entry> Toolbox::Patch() {
         "set_node_layout size that did not take effect is listed in "
         "size_not_applied.",
         PatchSchema(),
-        {.needsGraph = true, .reportsLayout = true},
+        {.needsGraph = true, .reportsLayout = true, .mutates = true, .destructive = true},
     }, ApplyPatch);
 
     entry.newGraph = PatchGraph;
