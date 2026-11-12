@@ -81,6 +81,10 @@ bool Moved(Extent2D<F32> from, Extent2D<F32> to) {
     return std::abs(from.x - to.x) > 0.5f || std::abs(from.y - to.y) > 0.5f;
 }
 
+bool AnyModifier(const KeyModifiers& modifiers) {
+    return modifiers.control || modifiers.shift || modifiers.alt || modifiers.super;
+}
+
 const char* StateColorKey(NodeState state) {
     switch (state) {
         case NodeState::Error:
@@ -2151,11 +2155,20 @@ void NodeEditor::layout(const Context& ctx) {
 bool NodeEditor::keyEvent(const KeyEvent& event) {
     auto& root = impl->root;
     const auto& config = root.config;
-    if (event.type != KeyEventType::Press || textEditorFocused() ||
-        !(event.modifiers.control || event.modifiers.super)) {
+    if (event.type != KeyEventType::Press || textEditorFocused()) {
         return false;
     }
     const bool initial = !event.repeat;
+    if (event.key == KeyCode::Delete || event.key == KeyCode::Backspace) {
+        if (!initial || AnyModifier(event.modifiers) || root.selection.empty() || !config.onDeleteShortcut) {
+            return false;
+        }
+        config.onDeleteShortcut(root.selection);
+        return true;
+    }
+    if (!(event.modifiers.control || event.modifiers.super)) {
+        return false;
+    }
     switch (event.key) {
         case KeyCode::C:
             if (!initial || !config.onCopyShortcut) {
@@ -2198,6 +2211,10 @@ bool NodeEditor::keyEvent(const KeyEvent& event) {
 
 bool NodeEditor::focusesOnClick() const {
     return true;
+}
+
+bool NodeEditor::occludes(const Extent2D<F32>& point) const {
+    return frame().contains(point.x, point.y);
 }
 
 F32 NodeEditor::zoom() const {

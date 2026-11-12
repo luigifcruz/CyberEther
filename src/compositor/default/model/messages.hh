@@ -544,7 +544,7 @@ struct MailOpenRenameBlock {
 
 struct MailDeleteBlock {
     std::string flowgraph;
-    std::string blockId;
+    std::vector<std::string> blockIds;
 };
 
 struct MailReloadBlock {

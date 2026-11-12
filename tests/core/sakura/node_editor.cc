@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
@@ -11,6 +12,7 @@
 
 #include "harness.hh"
 #include "component_harness.hh"
+#include "scene.hh"
 
 #include <algorithm>
 #include <limits>
@@ -69,6 +71,7 @@ struct Graph {
     std::vector<Extent2D<F32>> menus;
     std::vector<Extent2D<F32>> doubleClicks;
     std::vector<std::vector<std::string>> copies;
+    std::vector<std::vector<std::string>> deletes;
     std::vector<std::vector<std::string>> selections;
     std::optional<Rect> viewport;
     std::optional<Extent2D<F32>> center;
@@ -161,6 +164,9 @@ struct Graph {
             },
             .onCopyShortcut = [this](const std::vector<std::string>& ids) {
                 copies.push_back(ids);
+            },
+            .onDeleteShortcut = [this](const std::vector<std::string>& ids) {
+                deletes.push_back(ids);
             },
             .onSelectionChange = [this](const std::vector<std::string>& ids) {
                 selections.push_back(ids);
@@ -284,6 +290,82 @@ U64 Dirty(Graph& graph) {
 }
 
 }  // namespace
+
+TEST_CASE("A docked editor takes click focus after framing nodes", "[core][sakura][node-editor]") {
+    const auto key = GENERATE(KeyCode::Delete, KeyCode::Backspace);
+    Scene scene;
+    NodeEditor editor;
+    Sakura::Dock dock;
+    Sakura::Layer layer;
+    layer.update({.content = &dock});
+    LayerHost host({&layer});
+    Frames frames(host, Rect{120.0f, 90.0f, 800.0f, 600.0f}, scene.context());
+    std::vector<std::vector<std::string>> deletes;
+    std::vector<std::string> selection;
+    Rect viewport;
+    const auto update = [&] {
+        editor.update({
+            .id = "editor",
+            .frameOnOpen = true,
+            .scale = 0.8f,
+            .nodes = {
+                {
+                    .id = "a",
+                    .title = "a",
+                    .dimensions = {120.0f, 80.0f},
+                    .gridPosition = Extent2D<F32>{40.0f, 40.0f},
+                },
+                {
+                    .id = "b",
+                    .title = "b",
+                    .dimensions = {120.0f, 80.0f},
+                    .gridPosition = Extent2D<F32>{400.0f, 40.0f},
+                },
+            },
+            .onDeleteShortcut = [&](const std::vector<std::string>& ids) { deletes.push_back(ids); },
+            .onSelectionChange = [&](const std::vector<std::string>& ids) { selection = ids; },
+            .onViewportGridChange = [&](Rect next) { viewport = next; },
+        });
+        dock.update({.panes = {MakePane("graph", &editor)}, .tiles = Leaf("graph")});
+    };
+    REQUIRE(frames.settle(update));
+    const auto bounds = Peek::Frame(editor);
+    const F32 ratio = bounds.width / viewport.width;
+    const auto press = [&](F32 x, F32 y, KeyModifiers modifiers) {
+        const U64 generation = Sakura::Access::focusGeneration(host);
+        auto event = Mouse(MouseEventType::Click, x, y);
+        event.modifiers = modifiers;
+        host.send(event);
+        Sakura::Access::clickFocus(host, Extent2D<F32>{x, y}, true, generation);
+        CHECK(Sakura::Access::focusOwner(host) == &editor);
+        frames.run(update);
+    };
+    const auto release = [&](F32 x, F32 y) {
+        host.send(Mouse(MouseEventType::Release, x, y));
+        frames.run(update);
+        CHECK(Sakura::Access::focusOwner(host) == &editor);
+    };
+    SECTION("Marquee selection starts on the empty editor surface") {
+        press(bounds.x + 10.0f, bounds.y + 10.0f, {.shift = true});
+        const F32 x = bounds.right() - 10.0f;
+        const F32 y = bounds.bottom() - 10.0f;
+        host.send(Mouse(MouseEventType::Move, x, y));
+        frames.run(update);
+        release(x, y);
+    }
+    SECTION("Click and Shift-click select node headers") {
+        for (U64 i = 0; i < 2; ++i) {
+            const F32 x = bounds.x + ((i ? 400.0f : 40.0f) + 20.0f - viewport.x) * ratio;
+            const F32 y = bounds.y + (48.0f - viewport.y) * ratio;
+            press(x, y, {.shift = i != 0});
+            release(x, y);
+        }
+    }
+    CHECK(selection == std::vector<std::string>{"a", "b"});
+    CHECK(Tap(host, key));
+    REQUIRE(deletes.size() == 1);
+    CHECK(deletes[0] == std::vector<std::string>{"a", "b"});
+}
 
 TEST_CASE("Saved editor navigation survives delayed nodes and rejects nonfinite input",
           "[core][sakura][node-editor][recovery]") {
@@ -1771,6 +1853,47 @@ TEST_CASE("Modifier clicks build a node selection that drags together and Shift 
     graph.send(MouseEventType::Move, 30.0f, 280.0f);
     graph.release(30.0f, 280.0f);
     CHECK(graph.copy() == std::vector<std::string>{"c"});
+}
+
+TEST_CASE("Delete and Backspace report the whole selection only without modifiers or a focused field",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Sakura::NodeTextInput input;
+    input.update({.id = "field", .value = "12", .submit = Sakura::NodeTextInput::Submit::OnEnter});
+    Block& a = graph.add("a", {40.0f, 40.0f}, {200.0f, 0.0f});
+    Block& b = graph.add("b", {400.0f, 40.0f});
+    a.content.consume = false;
+    b.content.consume = false;
+    a.field = &input;
+    graph.step();
+    graph.step();
+
+    CHECK_FALSE(Tap(graph.host, KeyCode::Delete));
+    CHECK(graph.deletes.empty());
+
+    graph.click(60.0f, 50.0f);
+    graph.press(420.0f, 60.0f, MouseButton::Left, 1, {.shift = true});
+    graph.release(420.0f, 60.0f);
+    REQUIRE(graph.copy() == std::vector<std::string>{"a", "b"});
+
+    CHECK(Tap(graph.host, KeyCode::Delete));
+    CHECK(Tap(graph.host, KeyCode::Backspace));
+    REQUIRE(graph.deletes.size() == 2);
+    CHECK(graph.deletes[0] == std::vector<std::string>{"a", "b"});
+    CHECK(graph.deletes[1] == std::vector<std::string>{"a", "b"});
+
+    CHECK_FALSE(Tap(graph.host, KeyCode::Delete, {.control = true}));
+    CHECK_FALSE(Tap(graph.host, KeyCode::Backspace, {.shift = true}));
+    CHECK_FALSE(Sakura::Access::key(graph.host, {KeyEventType::Press, KeyCode::Delete, {}, true}));
+    CHECK(graph.deletes.size() == 2);
+
+    const Rect frame = Peek::Frame(input);
+    REQUIRE_FALSE(frame.empty());
+    graph.click(frame.x + frame.width * 0.5f, frame.y + frame.height * 0.5f);
+    REQUIRE(input.focused());
+    Tap(graph.host, KeyCode::Backspace);
+    Tap(graph.host, KeyCode::Delete);
+    CHECK(graph.deletes.size() == 2);
 }
 
 TEST_CASE("Adding or removing a node restructures the editor once without a rebuild and then settles",
