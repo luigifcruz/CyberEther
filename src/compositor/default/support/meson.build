@@ -1,4 +1,5 @@
 src_lst += files([
+    'clipboard.cc',
     'docs.cc',
     'feedback.cc',
     'gallery.cc',

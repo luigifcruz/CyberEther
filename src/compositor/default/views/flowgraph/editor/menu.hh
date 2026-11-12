@@ -18,14 +18,17 @@ struct FlowgraphNodeMenu {
 
     struct Config {
         bool open = false;
-        bool pasteEnabled = false;
+        U64 targets = 1;
+        U64 clipboardBlocks = 0;
         bool configDetachEnabled = false;
         bool configDetached = false;
         bool plotDetachEnabled = false;
         bool plotDetached = false;
         std::vector<DeviceOption> devices;
         Sakura::Callback<void()> onCopy;
+        Sakura::Callback<void()> onCut;
         Sakura::Callback<void()> onPaste;
+        Sakura::Callback<void()> onDuplicate;
         Sakura::Callback<void()> onRename;
         Sakura::Callback<void()> onInspect;
         Sakura::Callback<void()> onToggleConfigDetach;
@@ -60,16 +63,27 @@ struct FlowgraphNodeMenu {
         menu.update({
             .entries = {
                 {
-                    .label = ICON_LC_COPY " Copy Block",
+                    .label = BlocksLabel(ICON_LC_COPY " Copy", this->config.targets),
                     .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "C"),
                     .onClick = this->config.onCopy,
                 },
                 {
-                    .label = ICON_LC_CLIPBOARD_PASTE " Paste Block",
+                    .label = BlocksLabel(ICON_LC_SCISSORS " Cut", this->config.targets),
+                    .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "X"),
+                    .onClick = this->config.onCut,
+                },
+                {
+                    .label = BlocksLabel(ICON_LC_CLIPBOARD_PASTE " Paste", this->config.clipboardBlocks),
                     .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "V"),
-                    .enabled = this->config.pasteEnabled,
+                    .enabled = this->config.clipboardBlocks > 0,
                     .onClick = this->config.onPaste,
                 },
+                {
+                    .label = BlocksLabel(ICON_LC_COPY_PLUS " Duplicate", this->config.targets),
+                    .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "D"),
+                    .onClick = this->config.onDuplicate,
+                },
+                {.separator = true},
                 {
                     .label = ICON_LC_TAG " Rename Block",
                     .onClick = this->config.onRename,
@@ -107,7 +121,7 @@ struct FlowgraphNodeMenu {
                 },
                 {.separator = true},
                 {
-                    .label = ICON_LC_X " Delete Block",
+                    .label = BlocksLabel(ICON_LC_X " Delete", this->config.targets),
                     .shortcut = "DEL",
                     .colorKey = "error_red",
                     .onClick = this->config.onDelete,
@@ -120,6 +134,13 @@ struct FlowgraphNodeMenu {
 
     Sakura::Component& component() {
         return menu;
+    }
+
+    static std::string BlocksLabel(const std::string& action, U64 count) {
+        if (count > 1) {
+            return jst::fmt::format("{} {} Blocks", action, count);
+        }
+        return action + " Block";
     }
 
  private:

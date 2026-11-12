@@ -71,8 +71,12 @@ struct Graph {
     std::vector<Extent2D<F32>> menus;
     std::vector<Extent2D<F32>> doubleClicks;
     std::vector<std::vector<std::string>> copies;
+    std::vector<std::vector<std::string>> cuts;
+    std::vector<std::vector<std::string>> duplicates;
     std::vector<std::vector<std::string>> deletes;
     std::vector<std::vector<std::string>> selections;
+    std::vector<std::string> requestedSelection;
+    U64 selectionRequest = 0;
     std::optional<Rect> viewport;
     std::optional<Extent2D<F32>> center;
     U64 centerReports = 0;
@@ -150,6 +154,8 @@ struct Graph {
             .scale = scale,
             .nodes = std::move(nodes),
             .links = links,
+            .selection = requestedSelection,
+            .selectionRequest = selectionRequest,
             .onEditorContextMenu = [this](Extent2D<F32> point) {
                 menus.push_back(point);
             },
@@ -164,6 +170,12 @@ struct Graph {
             },
             .onCopyShortcut = [this](const std::vector<std::string>& ids) {
                 copies.push_back(ids);
+            },
+            .onCutShortcut = [this](const std::vector<std::string>& ids) {
+                cuts.push_back(ids);
+            },
+            .onDuplicateShortcut = [this](const std::vector<std::string>& ids) {
+                duplicates.push_back(ids);
             },
             .onDeleteShortcut = [this](const std::vector<std::string>& ids) {
                 deletes.push_back(ids);
@@ -180,6 +192,11 @@ struct Graph {
             .onViewChange = [this](NodeEditor::View view) { viewReports.push_back(view); },
             .onNodesArranged = [this]() { arranged.push_back(blocks.front()->last()); },
         });
+    }
+
+    void select(std::vector<std::string> ids) {
+        requestedSelection = std::move(ids);
+        ++selectionRequest;
     }
 
     FrameStats step() {
@@ -1623,14 +1640,14 @@ TEST_CASE("Pressing or panning the empty canvas clears the node selection", "[co
     CHECK(graph.copy() == std::vector<std::string>{"a"});
 
     graph.click(600.0f, 500.0f);
-    CHECK(graph.copy().empty());
+    CHECK(graph.selections.back().empty());
 
     graph.click(60.0f, 60.0f);
     CHECK(graph.copy() == std::vector<std::string>{"a"});
 
     graph.drag(600.0f, 500.0f, 650.0f, 520.0f);
     CheckPoint(*graph.center, 350.0f, 280.0f);
-    CHECK(graph.copy().empty());
+    CHECK(graph.selections.back().empty());
 
     graph.click(110.0f, 80.0f);
     CHECK(graph.copy() == std::vector<std::string>{"a"});
@@ -1843,7 +1860,8 @@ TEST_CASE("Modifier clicks build a node selection that drags together and Shift 
     CHECK(graph.copy() == std::vector<std::string>{"a", "c"});
 
     graph.click(700.0f, 550.0f);
-    CHECK(graph.copy().empty());
+    CHECK(graph.selections.back().empty());
+    CHECK_FALSE(Tap(graph.host, KeyCode::C, {.control = true}));
 
     graph.click(120.0f, 100.0f);
     REQUIRE(graph.copy() == std::vector<std::string>{"a"});
@@ -1894,6 +1912,92 @@ TEST_CASE("Delete and Backspace report the whole selection only without modifier
     Tap(graph.host, KeyCode::Backspace);
     Tap(graph.host, KeyCode::Delete);
     CHECK(graph.deletes.size() == 2);
+}
+
+TEST_CASE("Escape clears the selection, Ctrl+A selects every node, and Ctrl+X and Ctrl+D report the selection",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    for (const auto& [id, x] : {std::pair{"a", 40.0f}, std::pair{"b", 300.0f}, std::pair{"c", 560.0f}}) {
+        graph.add(id, {x, 40.0f}).content.consume = false;
+    }
+    graph.step();
+    graph.step();
+
+    graph.click(700.0f, 550.0f);
+    CHECK_FALSE(Tap(graph.host, KeyCode::Escape));
+    CHECK_FALSE(Tap(graph.host, KeyCode::X, {.control = true}));
+    CHECK_FALSE(Tap(graph.host, KeyCode::D, {.control = true}));
+    CHECK(graph.cuts.empty());
+    CHECK(graph.duplicates.empty());
+
+    CHECK(Tap(graph.host, KeyCode::A, {.super = true}));
+    graph.step();
+    CHECK(graph.selections.back() == std::vector<std::string>{"a", "b", "c"});
+
+    CHECK_FALSE(Tap(graph.host, KeyCode::Escape, {.shift = true}));
+    CHECK(Tap(graph.host, KeyCode::Escape));
+    graph.step();
+    CHECK(graph.selections.back().empty());
+
+    graph.click(320.0f, 60.0f);
+    CHECK(Tap(graph.host, KeyCode::X, {.control = true}));
+    CHECK(Tap(graph.host, KeyCode::D, {.control = true}));
+    CHECK_FALSE(Sakura::Access::key(graph.host, {KeyEventType::Press, KeyCode::D, {.control = true}, true}));
+    CHECK(graph.cuts == std::vector<std::vector<std::string>>{{"b"}});
+    CHECK(graph.duplicates == std::vector<std::vector<std::string>>{{"b"}});
+
+    graph.press(20.0f, 20.0f, MouseButton::Left, 1, {.shift = true});
+    graph.move(700.0f, 300.0f);
+    CHECK(Tap(graph.host, KeyCode::Escape));
+    graph.step();
+    graph.release(700.0f, 300.0f);
+    graph.step();
+    CHECK(graph.selections.back().empty());
+
+    graph.press(700.0f, 550.0f, MouseButton::Left, 1, {.shift = true});
+    graph.move(690.0f, 540.0f);
+    CHECK(Tap(graph.host, KeyCode::Escape));
+    graph.move(20.0f, 20.0f);
+    graph.release(20.0f, 20.0f);
+    graph.step();
+    CHECK(graph.selections.back().empty());
+
+    graph.press(700.0f, 550.0f, MouseButton::Left, 1, {.shift = true});
+    graph.move(690.0f, 540.0f);
+    CHECK(Tap(graph.host, KeyCode::A, {.control = true}));
+    graph.step();
+    graph.release(690.0f, 540.0f);
+    graph.step();
+    auto all = graph.selections.back();
+    std::sort(all.begin(), all.end());
+    CHECK(all == std::vector<std::string>{"a", "b", "c"});
+}
+
+TEST_CASE("A requested selection waits for its nodes and a click drops it", "[core][sakura][node-editor]") {
+    Graph graph;
+    graph.add("a", {40.0f, 40.0f}).content.consume = false;
+    graph.select({"a"});
+    graph.step();
+    graph.step();
+    CHECK(graph.selections.back().empty());
+    graph.click(60.0f, 60.0f);
+    REQUIRE(graph.selections.back() == std::vector<std::string>{"a"});
+
+    graph.select({"a", "b"});
+    graph.step();
+    CHECK(graph.selections.back() == std::vector<std::string>{"a"});
+
+    graph.add("b", {300.0f, 40.0f}).content.consume = false;
+    graph.step();
+    CHECK(graph.selections.back() == std::vector<std::string>{"a", "b"});
+
+    graph.select({"c"});
+    graph.step();
+    graph.click(700.0f, 550.0f);
+    graph.add("c", {560.0f, 40.0f});
+    graph.step();
+    graph.step();
+    CHECK(graph.selections.back().empty());
 }
 
 TEST_CASE("Adding or removing a node restructures the editor once without a rebuild and then settles",

@@ -953,6 +953,8 @@ struct GraphRoot : public Component {
     std::vector<std::string> depth;
     std::vector<std::string> selection;
     std::optional<std::vector<std::string>> reportedSelection;
+    std::optional<std::vector<std::string>> pendingSelection;
+    bool configured = false;
 
     Polyline grid;
     Curves links;
@@ -1052,6 +1054,10 @@ struct GraphRoot : public Component {
     }
 
     void apply(NodeEditor::Config next) {
+        if (configured && next.selectionRequest != config.selectionRequest) {
+            pendingSelection = next.selection;
+        }
+        configured = true;
         if (next.view != config.view && next.view &&
             std::isfinite(next.view->pan.x) && std::isfinite(next.view->pan.y) &&
             std::isfinite(next.view->zoom) && next.view->zoom > 0.0f) {
@@ -1096,7 +1102,32 @@ struct GraphRoot : public Component {
         }
         config = std::move(next);
         rebuildOrder();
+        applyPendingSelection();
         reportSelection();
+    }
+
+    void setSelection(std::vector<std::string> ids) {
+        pendingSelection.reset();
+        if (interaction == Interaction::Box) {
+            interaction = Interaction::None;
+            boxBase.clear();
+        }
+        selection = std::move(ids);
+        raise(selection);
+        invalidate(Dirty::Layout);
+        reportSelection();
+    }
+
+    void applyPendingSelection() {
+        if (!pendingSelection.has_value()) {
+            return;
+        }
+        const bool present = std::all_of(pendingSelection->begin(), pendingSelection->end(), [this](const auto& id) {
+            return frames.contains(id);
+        });
+        if (present) {
+            setSelection(std::move(*pendingSelection));
+        }
     }
 
     void reportSelection() {
@@ -1775,6 +1806,9 @@ struct GraphRoot : public Component {
         if (event.type == MouseEventType::Click || event.type == MouseEventType::Scroll) {
             framed = true;
         }
+        if (event.type == MouseEventType::Click) {
+            pendingSelection.reset();
+        }
         const HoverKey before = hoverKey();
         const auto previous = mousePx;
         const bool handled = dispatchMouse(event);
@@ -2166,15 +2200,36 @@ bool NodeEditor::keyEvent(const KeyEvent& event) {
         config.onDeleteShortcut(root.selection);
         return true;
     }
+    if (event.key == KeyCode::Escape) {
+        if (!initial || AnyModifier(event.modifiers) ||
+            (root.selection.empty() && root.interaction != GraphRoot::Interaction::Box)) {
+            return false;
+        }
+        root.setSelection({});
+        return true;
+    }
     if (!(event.modifiers.control || event.modifiers.super)) {
         return false;
     }
+    const auto shortcut = [&](const Callback<void(const std::vector<std::string>&)>& callback) {
+        if (!initial || root.selection.empty() || !callback) {
+            return false;
+        }
+        callback(root.selection);
+        return true;
+    };
     switch (event.key) {
         case KeyCode::C:
-            if (!initial || !config.onCopyShortcut) {
+            return shortcut(config.onCopyShortcut);
+        case KeyCode::X:
+            return shortcut(config.onCutShortcut);
+        case KeyCode::D:
+            return shortcut(config.onDuplicateShortcut);
+        case KeyCode::A:
+            if (!initial || root.depth.empty()) {
                 return false;
             }
-            config.onCopyShortcut(root.selection);
+            root.setSelection(root.depth);
             return true;
         case KeyCode::V: {
             if (!initial || !config.pasteEnabled || !config.onPasteShortcut) {

@@ -32,31 +32,13 @@ bool Failed(Result result) {
     return result != Result::SUCCESS && result != Result::INCOMPLETE && result != Result::RELOAD;
 }
 
-std::vector<const FlowgraphSnapshot::Block*> DependencyOrder(const FlowgraphSnapshot& snapshot) {
-    std::vector<const FlowgraphSnapshot::Block*> order;
-    std::unordered_set<std::string> placed;
-    order.reserve(snapshot.blocks.size());
-    while (order.size() < snapshot.blocks.size()) {
-        const auto before = order.size();
-        for (const auto& block : snapshot.blocks) {
-            const bool ready = std::all_of(block.inputs.begin(), block.inputs.end(), [&](const auto& input) {
-                return placed.contains(input.second.block) || !snapshot.find(input.second.block);
-            });
-            if (!placed.contains(block.name) && ready) {
-                placed.insert(block.name);
-                order.push_back(&block);
-            }
-        }
-        if (order.size() == before) {
-            break;
-        }
+Result ClearMetadata(Flowgraph& flowgraph, const std::string& block) {
+    std::vector<std::string> keys;
+    JST_CHECK(flowgraph.metadata().keys(keys, block));
+    for (const auto& key : keys) {
+        JST_CHECK(flowgraph.metadata().clear(key, block));
     }
-    for (const auto& block : snapshot.blocks) {
-        if (!placed.contains(block.name)) {
-            order.push_back(&block);
-        }
-    }
-    return order;
+    return Result::SUCCESS;
 }
 
 Result Capture(const Flowgraph& flowgraph, FlowgraphSnapshot& snapshot) {
@@ -102,6 +84,33 @@ Result Capture(const Flowgraph& flowgraph, FlowgraphSnapshot& snapshot) {
 }
 
 }  // namespace
+
+std::vector<const FlowgraphSnapshot::Block*> FlowgraphDependencyOrder(const FlowgraphSnapshot& snapshot) {
+    std::vector<const FlowgraphSnapshot::Block*> order;
+    std::unordered_set<std::string> placed;
+    order.reserve(snapshot.blocks.size());
+    while (order.size() < snapshot.blocks.size()) {
+        const auto before = order.size();
+        for (const auto& block : snapshot.blocks) {
+            const bool ready = std::all_of(block.inputs.begin(), block.inputs.end(), [&](const auto& input) {
+                return placed.contains(input.second.block) || !snapshot.find(input.second.block);
+            });
+            if (!placed.contains(block.name) && ready) {
+                placed.insert(block.name);
+                order.push_back(&block);
+            }
+        }
+        if (order.size() == before) {
+            break;
+        }
+    }
+    for (const auto& block : snapshot.blocks) {
+        if (!placed.contains(block.name)) {
+            order.push_back(&block);
+        }
+    }
+    return order;
+}
 
 std::size_t FlowgraphValueFingerprint(const std::any& value) {
     if (!value.has_value()) {
@@ -154,6 +163,34 @@ FlowgraphChange ClassifyFlowgraphChange(const FlowgraphSnapshot& previous, const
         }
     }
     return change;
+}
+
+Result CreateFlowgraphBlock(Flowgraph& flowgraph, const FlowgraphSnapshot::Block& block) {
+    JST_CHECK(ClearMetadata(flowgraph, block.name));
+    for (const auto& [key, value] : block.metadata) {
+        JST_CHECK(flowgraph.metadata().set(key, std::any_cast<const Parser::Map&>(value), block.name));
+    }
+    if (block.node.has_value()) {
+        JST_CHECK(flowgraph.metadata().set("node", *block.node, block.name));
+    }
+
+    TensorMap inputs;
+    for (const auto& [slot, source] : block.inputs) {
+        inputs[slot].requested(source.block, source.port);
+    }
+    const Result result = flowgraph.blockCreate(block.name,
+                                                block.type,
+                                                block.config,
+                                                inputs,
+                                                block.device,
+                                                block.runtime,
+                                                block.provider);
+    if (Failed(result)) {
+        ClearMetadata(flowgraph, block.name);
+        return result;
+    }
+
+    return Result::SUCCESS;
 }
 
 Result ApplyFlowgraphSnapshot(Flowgraph& flowgraph,
@@ -210,7 +247,7 @@ Result ApplyFlowgraphSnapshot(Flowgraph& flowgraph,
     }
 
     bool destroyed = false;
-    const auto currentOrder = DependencyOrder(current);
+    const auto currentOrder = FlowgraphDependencyOrder(current);
     for (auto block = currentOrder.rbegin(); block != currentOrder.rend(); ++block) {
         const auto* wanted = target.find((*block)->name);
         if (wanted && wanted->type == (*block)->type) {
@@ -227,32 +264,10 @@ Result ApplyFlowgraphSnapshot(Flowgraph& flowgraph,
         JST_CHECK(Capture(flowgraph, current));
     }
 
-    for (const auto* block : DependencyOrder(target)) {
+    for (const auto* block : FlowgraphDependencyOrder(target)) {
         const auto* existing = current.find(block->name);
         if (!existing) {
-            std::vector<std::string> stale;
-            JST_CHECK(flowgraph.metadata().keys(stale, block->name));
-            for (const auto& key : stale) {
-                step(flowgraph.metadata().clear(key, block->name));
-            }
-            for (const auto& [key, value] : block->metadata) {
-                step(flowgraph.metadata().set(key, std::any_cast<const Parser::Map&>(value), block->name));
-            }
-            if (block->node.has_value()) {
-                step(flowgraph.metadata().set("node", *block->node, block->name));
-            }
-
-            TensorMap inputs;
-            for (const auto& [slot, source] : block->inputs) {
-                inputs[slot].requested(source.block, source.port);
-            }
-            step(flowgraph.blockCreate(block->name,
-                                       block->type,
-                                       block->config,
-                                       inputs,
-                                       block->device,
-                                       block->runtime,
-                                       block->provider));
+            step(CreateFlowgraphBlock(flowgraph, *block));
             continue;
         }
 

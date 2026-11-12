@@ -27,9 +27,13 @@ struct FlowgraphRestoreReport {
 
 std::size_t FlowgraphValueFingerprint(const std::any& value);
 
+std::vector<const FlowgraphSnapshot::Block*> FlowgraphDependencyOrder(const FlowgraphSnapshot& snapshot);
+
 FlowgraphHistory::Entry CaptureFlowgraphSnapshot(const Flowgraph& flowgraph);
 
 FlowgraphChange ClassifyFlowgraphChange(const FlowgraphSnapshot& previous, const FlowgraphSnapshot& next);
+
+Result CreateFlowgraphBlock(Flowgraph& flowgraph, const FlowgraphSnapshot::Block& block);
 
 Result ApplyFlowgraphSnapshot(Flowgraph& flowgraph,
                               const FlowgraphSnapshot& target,

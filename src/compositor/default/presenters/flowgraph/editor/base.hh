@@ -35,7 +35,7 @@ struct FlowgraphEditorPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         FlowgraphEditor::Config config{
             .id = flowgraphId,
-            .clipboardHasData = context.state.clipboard.hasData,
+            .clipboardBlocks = context.state.clipboard.blocks.size(),
             .debugTimingEnabled = context.state.debug.timingEnabled,
             .onBuildBlockOptions = [catalog = catalog]() {
                 return catalog.buildBlockCatalog();
@@ -49,12 +49,21 @@ struct FlowgraphEditorPresenter {
                     enqueue(MailCreateBlock{flowgraphId, moduleId, gridPosition,
                                             device, runtime, provider});
             },
-            .onCopyBlock = [enqueue, flowgraphId](const std::string& blockName) {
-                enqueue(MailCopyBlock{flowgraphId, blockName});
+            .onCopyBlocks = [enqueue, flowgraphId](const std::vector<std::string>& blockNames) {
+                enqueue(MailCopyBlock{.flowgraph = flowgraphId, .blockIds = blockNames});
+            },
+            .onCutBlocks = [enqueue, flowgraphId](const std::vector<std::string>& blockNames) {
+                enqueue(MailCopyBlock{.flowgraph = flowgraphId, .blockIds = blockNames, .cut = true});
             },
             .onPasteBlock =
                 [enqueue, flowgraphId](std::optional<Extent2D<F32>> gridPosition) {
                     enqueue(MailPasteBlock{flowgraphId, gridPosition});
+            },
+            .onDuplicateBlocks = [enqueue, flowgraphId](const std::vector<std::string>& blockNames) {
+                enqueue(MailDuplicateBlock{.flowgraph = flowgraphId, .blockIds = blockNames});
+            },
+            .onSelectBlocks = [enqueue, flowgraphId](const std::vector<std::string>& blockNames) {
+                enqueue(MailSelectBlocks{.flowgraph = flowgraphId, .blockIds = blockNames});
             },
             .onRenameBlock = [enqueue, flowgraphId](const std::string& blockName) {
                 enqueue(MailOpenRenameBlock{flowgraphId, blockName});
@@ -135,6 +144,12 @@ struct FlowgraphEditorPresenter {
                     flowgraphId, blockName, detached});
             },
         };
+
+        if (const auto selection = context.state.flowgraph.selections.find(flowgraphId);
+            selection != context.state.flowgraph.selections.end()) {
+            config.selectionRequest = selection->second.requests;
+            config.selection = selection->second.blocks;
+        }
 
         const auto& agent = context.state.agent;
         EditorMeta editor;
