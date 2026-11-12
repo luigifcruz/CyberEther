@@ -6,6 +6,8 @@
 
 #include <functional>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace Jetstream::Sakura {
@@ -13,6 +15,7 @@ namespace Jetstream::Sakura {
 struct Shortcuts : public Component {
     enum class Modifier {
         Any,
+        None,
         Primary,
         PrimaryAlt,
         PrimaryShift,
@@ -35,6 +38,9 @@ struct Shortcuts : public Component {
 
         bool operator==(const Config&) const = default;
     };
+
+    static std::string Label(Modifier modifier, std::string_view key);
+    static const char* PrimaryName();
 
     Shortcuts();
     ~Shortcuts() override;

@@ -1470,8 +1470,18 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     CHECK(Tap(host, KeyCode::Z, {.super = true}));
     CHECK(Tap(host, KeyCode::Z, {.control = true, .shift = true}));
     CHECK(Tap(host, KeyCode::Z, {.shift = true, .super = true}));
+    CHECK(Tap(host, KeyCode::Y, {.control = true}));
+    CHECK(Tap(host, KeyCode::Y, {.super = true}));
     CHECK_FALSE(Tap(host, KeyCode::Z));
-    CHECK(actions == std::vector<Action>{Action::Undo, Action::Undo, Action::Redo, Action::Redo});
+    CHECK_FALSE(Tap(host, KeyCode::Y, {.control = true, .shift = true}));
+    CHECK(actions == std::vector<Action>{Action::Undo, Action::Undo, Action::Redo, Action::Redo, Action::Redo,
+                                         Action::Redo});
+
+    actions.clear();
+    CHECK(Tap(host, KeyCode::Space));
+    CHECK_FALSE(Tap(host, KeyCode::Space, {.control = true}));
+    CHECK_FALSE(Tap(host, KeyCode::Space, {.shift = true}));
+    CHECK(actions == std::vector<Action>{Action::TogglePause});
 
     actions.clear();
     CHECK_FALSE(Tap(host, KeyCode::N, {.control = true}));
@@ -1498,7 +1508,8 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
 #endif
 }
 
-TEST_CASE("Undo and redo shortcuts go to the active flowgraph and do nothing without one", "[core][sakura][views]") {
+TEST_CASE("Undo, redo and pause shortcuts go to the active flowgraph and do nothing without one",
+          "[core][sakura][views]") {
     Mailbox mailbox;
     const auto press = [&](TitlebarView::Action action) {
         TitlebarPresenter(mailbox.context()).build().onAction(action);
@@ -1506,8 +1517,10 @@ TEST_CASE("Undo and redo shortcuts go to the active flowgraph and do nothing wit
 
     press(TitlebarView::Action::Undo);
     press(TitlebarView::Action::Redo);
+    press(TitlebarView::Action::TogglePause);
     CHECK(mailbox.last<MailUndoFlowgraph>() == nullptr);
     CHECK(mailbox.last<MailRedoFlowgraph>() == nullptr);
+    CHECK(mailbox.last<MailSetFlowgraphPaused>() == nullptr);
 
     mailbox.state.flowgraph.items["graph"] = nullptr;
     mailbox.state.interface.focusedFlowgraph = "graph";
@@ -1519,6 +1532,12 @@ TEST_CASE("Undo and redo shortcuts go to the active flowgraph and do nothing wit
     REQUIRE(redo != nullptr);
     CHECK(undo->flowgraph == "graph");
     CHECK(redo->flowgraph == "graph");
+
+    press(TitlebarView::Action::TogglePause);
+    const auto* pause = mailbox.last<MailSetFlowgraphPaused>();
+    REQUIRE(pause != nullptr);
+    CHECK(pause->flowgraph == "graph");
+    CHECK(pause->paused);
 }
 
 TEST_CASE("The voice shortcut starts voice when it is off and ends it when it is on", "[core][sakura][views]") {

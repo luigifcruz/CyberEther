@@ -50,6 +50,7 @@ struct TitlebarView {
         ToggleSidebar,
         Undo,
         Redo,
+        TogglePause,
     };
 
     enum class TabAction {
@@ -103,6 +104,7 @@ struct TitlebarView {
         this->config = std::move(config);
 
         using Entry = Sakura::MenuEntry;
+        using Modifier = Sakura::Shortcuts::Modifier;
         const auto action = [this](Action value) {
             return [this, value]() { emit(value); };
         };
@@ -121,7 +123,11 @@ struct TitlebarView {
             {.label = "What's New", .onClick = action(Action::WhatsNew)},
             std::move(updateEntry),
             separator,
-            {.label = "Settings", .shortcut = "CTRL+,", .onClick = action(Action::Settings)},
+            {
+                .label = "Settings",
+                .shortcut = Sakura::Shortcuts::Label(Modifier::Primary, ","),
+                .onClick = action(Action::Settings),
+            },
             separator,
         };
         appEntries.push_back({
@@ -134,7 +140,11 @@ struct TitlebarView {
                 {.label = "Luigi's Twitter", .onClick = action(Action::OpenTwitter)},
             },
         });
-        appEntries.push_back({.label = "Send Feedback", .shortcut = "CTRL+G", .onClick = action(Action::SendFeedback)});
+        appEntries.push_back({
+            .label = "Send Feedback",
+            .shortcut = Sakura::Shortcuts::Label(Modifier::Primary, "G"),
+            .onClick = action(Action::SendFeedback),
+        });
         appEntries.push_back(separator);
         appEntries.push_back({
             .label = "Developer",
@@ -284,8 +294,15 @@ struct TitlebarView {
 
     std::vector<Sakura::Shortcuts::Binding> shortcuts() {
         std::vector<Sakura::Shortcuts::Binding> bindings = {
-            bindEdit(Sakura::Shortcuts::Modifier::Primary, Action::Undo),
-            bindEdit(Sakura::Shortcuts::Modifier::PrimaryShift, Action::Redo),
+            bindEdit(KeyCode::Z, Sakura::Shortcuts::Modifier::Primary, Action::Undo),
+            bindEdit(KeyCode::Z, Sakura::Shortcuts::Modifier::PrimaryShift, Action::Redo),
+            bindEdit(KeyCode::Y, Sakura::Shortcuts::Modifier::Primary, Action::Redo),
+            {
+                .key = KeyCode::Space,
+                .modifier = Sakura::Shortcuts::Modifier::None,
+                .yieldsToText = true,
+                .onPressed = [this]() { emit(Action::TogglePause); },
+            },
             bind(KeyCode::T, Action::NewTab),
             bind(KeyCode::O, Action::OpenFlowgraph),
             bind(KeyCode::S, Action::SaveFlowgraph),
@@ -393,9 +410,9 @@ struct TitlebarView {
         };
     }
 
-    Sakura::Shortcuts::Binding bindEdit(Sakura::Shortcuts::Modifier modifier, Action value) {
+    Sakura::Shortcuts::Binding bindEdit(KeyCode key, Sakura::Shortcuts::Modifier modifier, Action value) {
         return {
-            .key = KeyCode::Z,
+            .key = key,
             .modifier = modifier,
             .repeat = true,
             .yieldsToText = true,
@@ -405,6 +422,7 @@ struct TitlebarView {
 
     void updateTabMenu() {
         using Entry = Sakura::MenuEntry;
+        using Modifier = Sakura::Shortcuts::Modifier;
         const auto tab = [this](TabAction value) {
             return [this, value]() {
                 if (config.onTabAction && !tabFlowgraph.empty()) {
@@ -414,16 +432,28 @@ struct TitlebarView {
         };
         tabMenu.update({
             .entries = {
-                {.label = "Save", .onClick = tab(TabAction::Save)},
+                {
+                    .label = "Save",
+                    .shortcut = Sakura::Shortcuts::Label(Modifier::Primary, "S"),
+                    .onClick = tab(TabAction::Save),
+                },
                 {.label = "Rename", .onClick = tab(TabAction::Rename)},
-                {.label = "Info", .onClick = tab(TabAction::Info)},
+                {
+                    .label = "Info",
+                    .shortcut = Sakura::Shortcuts::Label(Modifier::Primary, "I"),
+                    .onClick = tab(TabAction::Info),
+                },
                 {
                     .label = "Environment View",
                     .selected = config.environmentFlowgraphs.contains(tabFlowgraph),
                     .onClick = tab(TabAction::ToggleEnvironment),
                 },
                 Entry{.separator = true},
-                {.label = "Close", .onClick = tab(TabAction::Close)},
+                {
+                    .label = "Close",
+                    .shortcut = Sakura::Shortcuts::Label(Modifier::Primary, "W"),
+                    .onClick = tab(TabAction::Close),
+                },
             },
             .open = tabOpen,
             .atCursor = false,

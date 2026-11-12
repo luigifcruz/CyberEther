@@ -33,7 +33,8 @@ struct FlowgraphConfigPythonField {
             .id = this->config.id + "Editor",
             .value = shown,
             .consoleOutput = this->config.consoleOutput,
-            .status = dirty ? "Edited. Press Ctrl+Enter to run." : this->config.status,
+            .status = dirty ? jst::fmt::format("Edited. Press {}+Enter to run.", Sakura::Shortcuts::PrimaryName())
+                            : this->config.status,
             .height = 0.0f,
             .statusTone = dirty ? Sakura::StatusTone::Info : this->config.statusTone,
             .consoleVisible = this->config.consoleVisible,

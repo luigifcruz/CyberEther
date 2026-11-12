@@ -326,20 +326,20 @@ struct FlowgraphEditor {
             .entries = {
                 {
                     .label = ICON_LC_UNDO_2 " Undo",
-                    .shortcut = "CTRL+Z",
+                    .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "Z"),
                     .enabled = this->config.canUndo,
                     .onClick = this->config.onUndo,
                 },
                 {
                     .label = ICON_LC_REDO_2 " Redo",
-                    .shortcut = "CTRL+SHIFT+Z",
+                    .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryShift, "Z"),
                     .enabled = this->config.canRedo,
                     .onClick = this->config.onRedo,
                 },
                 {.separator = true},
                 {
                     .label = ICON_LC_CLIPBOARD_PASTE " Paste Block",
-                    .shortcut = "CTRL+V",
+                    .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "V"),
                     .enabled = this->config.clipboardHasData,
                     .onClick = [this]() {
                         if (this->config.onPasteBlock) {
@@ -366,7 +366,7 @@ struct FlowgraphEditor {
             .icon = this->config.paused ? ICON_LC_PLAY : ICON_LC_PAUSE,
             .iconColorKey = this->config.paused ? "run_state_paused" : "run_state_running",
             .tinted = true,
-            .tooltip = this->config.paused ? "Resume flowgraph" : "Pause flowgraph",
+            .tooltip = this->config.paused ? "Resume flowgraph (Space)" : "Pause flowgraph (Space)",
             .size = {PillHeight, PillHeight},
             .onClick = this->config.onTogglePause,
         });

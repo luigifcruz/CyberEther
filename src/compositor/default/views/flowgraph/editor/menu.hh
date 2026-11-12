@@ -61,12 +61,12 @@ struct FlowgraphNodeMenu {
             .entries = {
                 {
                     .label = ICON_LC_COPY " Copy Block",
-                    .shortcut = "CTRL+C",
+                    .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "C"),
                     .onClick = this->config.onCopy,
                 },
                 {
                     .label = ICON_LC_CLIPBOARD_PASTE " Paste Block",
-                    .shortcut = "CTRL+V",
+                    .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "V"),
                     .enabled = this->config.pasteEnabled,
                     .onClick = this->config.onPaste,
                 },

@@ -68,6 +68,9 @@ struct TitlebarPresenter {
                          terminalTab = context.state.terminal.focused,
                          timing = context.state.debug.timingEnabled,
                          agentVisible = context.state.agent.ui.visible,
+                         activePaused = activeFlowgraph.has_value() &&
+                                        context.state.flowgraph.items.at(*activeFlowgraph) &&
+                                        context.state.flowgraph.items.at(*activeFlowgraph)->paused(),
                          sidebarOpen = context.state.interface.welcomeSidebarOpen,
                          voiceVisible = context.state.agent.ui.voiceVisible](TitlebarView::Action action) {
                 using Action = TitlebarView::Action;
@@ -164,6 +167,14 @@ struct TitlebarPresenter {
                     case Action::Redo:
                         if (activeFlowgraph.has_value()) {
                             enqueue(MailRedoFlowgraph{.flowgraph = activeFlowgraph.value()});
+                        }
+                        break;
+                    case Action::TogglePause:
+                        if (activeFlowgraph.has_value()) {
+                            enqueue(MailSetFlowgraphPaused{
+                                .flowgraph = activeFlowgraph.value(),
+                                .paused = !activePaused,
+                            });
                         }
                         break;
                     case Action::ShowFlowgraphInfo:
