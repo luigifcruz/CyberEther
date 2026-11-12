@@ -27,9 +27,11 @@ TEST_CASE("Onboarding stays hidden when the welcome version matches the running 
     CHECK_FALSE(OnboardingActions::Detect(interface, JETSTREAM_VERSION_STR).has_value());
 }
 
-TEST_CASE("Onboarding stays hidden on a first install", "[core][compositor][onboarding]") {
+TEST_CASE("Onboarding opens the welcome page on a first install", "[core][compositor][onboarding]") {
     const Settings::Interface interface;
-    CHECK_FALSE(OnboardingActions::Detect(interface, "2.0.0").has_value());
+    const auto mail = OnboardingActions::Detect(interface, "2.0.0");
+    REQUIRE(mail.has_value());
+    CHECK(mail->page == OnboardingPage::Welcome);
 }
 
 TEST_CASE("Onboarding opens after an update", "[core][compositor][onboarding]") {
@@ -37,10 +39,12 @@ TEST_CASE("Onboarding opens after an update", "[core][compositor][onboarding]") 
     interface.welcomeVersion = "1.19.0";
     auto mail = OnboardingActions::Detect(interface, "2.0.0");
     REQUIRE(mail.has_value());
+    CHECK(mail->page == OnboardingPage::WhatsNew);
 
     interface.welcomeVersion = "3.0.0";
     mail = OnboardingActions::Detect(interface, "2.0.0");
     REQUIRE(mail.has_value());
+    CHECK(mail->page == OnboardingPage::WhatsNew);
 }
 
 TEST_CASE("Onboarding treats an empty welcome version with saved flowgraphs as an update",
@@ -49,11 +53,13 @@ TEST_CASE("Onboarding treats an empty welcome version with saved flowgraphs as a
     recents.recentFlowgraphs = {Entry("/flows/radio.yml")};
     auto mail = OnboardingActions::Detect(recents, "2.0.0");
     REQUIRE(mail.has_value());
+    CHECK(mail->page == OnboardingPage::WhatsNew);
 
     Settings::Interface favorites;
     favorites.favoriteFlowgraphs = {Entry("/flows/fm.yml")};
     mail = OnboardingActions::Detect(favorites, "2.0.0");
     REQUIRE(mail.has_value());
+    CHECK(mail->page == OnboardingPage::WhatsNew);
 }
 
 TEST_CASE("Opening onboarding shows the modal", "[core][compositor][onboarding]") {
@@ -63,7 +69,11 @@ TEST_CASE("Opening onboarding shows the modal", "[core][compositor][onboarding]"
 
     REQUIRE(actions.handle(MailOpenOnboarding{}) == Result::SUCCESS);
     CHECK(state.modal.content == std::optional<ModalContent>(ModalContent::Onboarding));
+    CHECK(state.modal.onboardingPage == OnboardingPage::WhatsNew);
     CHECK_FALSE(state.modal.flowgraph.has_value());
+
+    REQUIRE(actions.handle(MailOpenOnboarding{.page = OnboardingPage::Welcome}) == Result::SUCCESS);
+    CHECK(state.modal.onboardingPage == OnboardingPage::Welcome);
 }
 
 TEST_CASE("Dismissing onboarding closes it and persists the running version",

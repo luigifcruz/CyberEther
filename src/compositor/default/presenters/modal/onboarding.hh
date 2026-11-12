@@ -22,18 +22,55 @@ struct OnboardingModalPresenter {
 
     OnboardingView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
+        const auto onDismiss = [enqueue]() {
+            enqueue(MailDismissOnboarding{});
+        };
+
+        if (context.state.modal.onboardingPage == OnboardingPage::Welcome) {
+            return OnboardingView::Config{
+                .icon = ICON_LC_ROCKET,
+                .title = "Welcome to CyberEther",
+                .subtitle = "The best workspace for building accelerated signal processing pipelines.",
+                .action = "Get Started",
+                .version = Release,
+                .features = Basics(),
+                .sections = {{"Getting Started", "gallery_green", Basics()}},
+                .onDismiss = onDismiss,
+            };
+        }
 
         return OnboardingView::Config{
+            .icon = ICON_LC_SPARKLES,
+            .title = "What's New",
+            .subtitle = "See what changed in the latest release of CyberEther.",
+            .action = "Continue",
             .version = Release,
             .features = Highlights(),
             .sections = Sections(),
-            .onDismiss = [enqueue]() {
-                enqueue(MailDismissOnboarding{});
-            },
+            .onDismiss = onDismiss,
         };
     }
 
  private:
+    static std::vector<OnboardingView::Feature> Basics() {
+        return {
+            {ICON_LC_LAYOUT_GRID, "Start from the gallery",
+             "Dozens of ready-to-go examples are waiting in the Start tab for you to try, tweak, and learn from.",
+             "gallery_purple"},
+            {ICON_LC_BOXES, "Build your own",
+             "Press New Flowgraph in the Start tab, double-click the canvas to add a block, "
+             "then drag from an output to an input to connect it.",
+             "gallery_cyan"},
+            {ICON_LC_WAND_SPARKLES, "Ask the assistant",
+             "Describe the flowgraph you want or ask it anything. It is fully optional and can be enabled in Settings.",
+             "gallery_green"},
+            {ICON_LC_BOOK_OPEN, "Read the docs",
+             "The full documentation is built right in. "
+             "Press the help button in the titlebar to open it in its own tab.",
+             "gallery_orange"},
+        };
+    }
+
     static std::vector<OnboardingView::Feature> Highlights() {
         return {
             {ICON_LC_HOUSE, "The Start tab",
