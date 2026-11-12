@@ -29,14 +29,11 @@ struct OnboardingActions {
         const bool fresh = interface.welcomeVersion.empty() &&
                            interface.recentFlowgraphs.empty() &&
                            interface.favoriteFlowgraphs.empty();
-        if (fresh) {
-            return std::nullopt;
-        }
-        return MailOpenOnboarding{};
+        return MailOpenOnboarding{.page = fresh ? OnboardingPage::Welcome : OnboardingPage::WhatsNew};
     }
 
-    Result handle(const MailOpenOnboarding&) {
-        state.modal = {.content = ModalContent::Onboarding};
+    Result handle(const MailOpenOnboarding& msg) {
+        state.modal = {.content = ModalContent::Onboarding, .onboardingPage = msg.page};
         return Result::SUCCESS;
     }
 

@@ -217,6 +217,7 @@ struct DefaultCompositorState {
         std::optional<std::string> flowgraph;
         std::optional<std::string> renameBlockOldName;
         std::optional<PythonDependencyRequest> dependencyRequest;
+        OnboardingPage onboardingPage = OnboardingPage::WhatsNew;
     };
 
     struct DebugState {

@@ -510,7 +510,9 @@ struct MailSetFeedbackText {
 
 struct MailSubmitFeedback {};
 
-struct MailOpenOnboarding {};
+struct MailOpenOnboarding {
+    OnboardingPage page = OnboardingPage::WhatsNew;
+};
 
 struct MailDismissOnboarding {};
 

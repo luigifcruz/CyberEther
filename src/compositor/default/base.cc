@@ -124,8 +124,6 @@ Result DefaultCompositor::create() {
     if (!viewport || viewport->id() != "headless") {
         if (auto onboarding = OnboardingActions::Detect(settings.interface, JETSTREAM_VERSION_STR)) {
             enqueue(std::move(*onboarding));
-        } else if (settings.interface.welcomeVersion != JETSTREAM_VERSION_STR) {
-            enqueue(MailDismissOnboarding{});
         }
     }
 
