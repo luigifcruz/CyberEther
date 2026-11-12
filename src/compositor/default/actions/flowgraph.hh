@@ -214,13 +214,13 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        std::string path = msg.path.empty() ? state.flowgraph.items.at(msg.flowgraph)->path() : msg.path;
-        if (path.empty()) {
-            std::string pickedPath;
+        const std::string currentPath = state.flowgraph.items.at(msg.flowgraph)->path();
+        std::string path = msg.path.empty() ? currentPath : msg.path;
+        if (path.empty() || msg.pick) {
             auto enqueueMail = callbacks.enqueueMail;
             callbacks.requestFile({
                 .mode = FilePickerMode::Save,
-                .initialPath = pickedPath,
+                .initialPath = currentPath,
                 .extensions = {"yaml", "yml"},
                 .callback = [enqueueMail, flowgraph = msg.flowgraph](std::string p) mutable {
                     enqueueMail(MailSaveFlowgraph{.flowgraph = flowgraph, .path = std::move(p)});
@@ -505,23 +505,34 @@ struct FlowgraphActions {
             return Result::ERROR;
         }
 
-        if (msg.blockId.empty()) {
-            JST_ERROR("Failed to delete block due to empty block ID.");
+        std::vector<std::string> blockIds;
+        for (const auto& blockId : msg.blockIds) {
+            if (!blockId.empty() && std::find(blockIds.begin(), blockIds.end(), blockId) == blockIds.end()) {
+                blockIds.push_back(blockId);
+            }
+        }
+        if (blockIds.empty()) {
+            JST_ERROR("Failed to delete blocks due to empty block IDs.");
             return Result::ERROR;
         }
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        auto blockId = msg.blockId;
+        auto destroyed = std::make_shared<std::vector<std::string>>();
 
         callbacks.enqueueFlowgraphEdit({
             .flowgraph = msg.flowgraph,
-            .command = [flowgraph, blockId]() -> Result {
-                return flowgraph->blockDestroy(blockId);
+            .command = [flowgraph, blockIds, destroyed]() -> Result {
+                for (const auto& blockId : blockIds) {
+                    JST_CHECK(flowgraph->blockDestroy(blockId));
+                    destroyed->push_back(blockId);
+                }
+                return Result::SUCCESS;
             },
-            .onComplete = mailOnSuccess(MailRemoveLayoutBlock{
-                .flowgraph = msg.flowgraph,
-                .block = blockId,
-            }),
+            .onComplete = [enqueueMail = callbacks.enqueueMail, flowgraphId = msg.flowgraph, destroyed](Result) {
+                for (const auto& blockId : *destroyed) {
+                    enqueueMail(MailRemoveLayoutBlock{.flowgraph = flowgraphId, .block = blockId});
+                }
+            },
         });
 
         return Result::SUCCESS;

@@ -171,6 +171,7 @@ struct MailCancelCloseFlowgraph {};
 struct MailSaveFlowgraph {
     std::string flowgraph;
     std::string path;
+    bool pick = false;
 };
 
 struct MailOpenFlowgraphPath {
@@ -544,7 +545,7 @@ struct MailOpenRenameBlock {
 
 struct MailDeleteBlock {
     std::string flowgraph;
-    std::string blockId;
+    std::vector<std::string> blockIds;
 };
 
 struct MailReloadBlock {

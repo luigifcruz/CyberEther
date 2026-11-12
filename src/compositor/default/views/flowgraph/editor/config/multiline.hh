@@ -31,7 +31,8 @@ struct FlowgraphConfigMultilineField {
         editor.update({
             .id = this->config.id + "Editor",
             .value = shown,
-            .status = dirty ? "Edited. Press Ctrl+Enter to apply." : this->config.status,
+            .status = dirty ? jst::fmt::format("Edited. Press {}+Enter to apply.", Sakura::Shortcuts::PrimaryName())
+                            : this->config.status,
             .height = 200.0f,
             .statusTone = dirty ? Sakura::StatusTone::Info : this->config.statusTone,
             .collapsible = collapsible,

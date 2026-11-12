@@ -993,11 +993,11 @@ TEST_CASE("Right clicking a pill opens the tab menu at the cursor acting on that
         rig.place();
         CHECK(PopupFrames(rig.host).empty());
     };
-    for (const char* label : {"Save", "Rename", "Info", "Environment View", "Close"}) {
+    for (const char* label : {"Save", "Save As", "Rename", "Info", "Environment View", "Close"}) {
         pick(label);
     }
     CHECK(rig.tabActions == std::vector<std::pair<TabAction, std::string>>{
-        {TabAction::Save, "b"}, {TabAction::Rename, "b"}, {TabAction::Info, "b"},
+        {TabAction::Save, "b"}, {TabAction::SaveAs, "b"}, {TabAction::Rename, "b"}, {TabAction::Info, "b"},
         {TabAction::ToggleEnvironment, "b"}, {TabAction::Close, "b"}});
     CHECK(rig.presses.empty());
 
@@ -1007,7 +1007,7 @@ TEST_CASE("Right clicking a pill opens the tab menu at the cursor acting on that
     rig.host.click(600.0f, 600.0f);
     rig.place();
     CHECK(PopupFrames(rig.host).empty());
-    CHECK(rig.tabActions.size() == 5);
+    CHECK(rig.tabActions.size() == 6);
 }
 
 TEST_CASE("Titlebar presenter actions enqueue the matching mail", "[core][sakura][views]") {
@@ -1268,6 +1268,11 @@ TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph",
     config.onTabAction(TabAction::Save, "b");
     REQUIRE(mailbox.last<MailSaveFlowgraph>() != nullptr);
     CHECK(mailbox.last<MailSaveFlowgraph>()->flowgraph == "b");
+    CHECK_FALSE(mailbox.last<MailSaveFlowgraph>()->pick);
+    config.onTabAction(TabAction::SaveAs, "b");
+    REQUIRE(mailbox.last<MailSaveFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailSaveFlowgraph>()->flowgraph == "b");
+    CHECK(mailbox.last<MailSaveFlowgraph>()->pick);
     config.onTabAction(TabAction::Rename, "b");
     CHECK(mailbox.last<MailOpenModal>()->content == ModalContent::FlowgraphInfo);
     CHECK(mailbox.last<MailOpenModal>()->flowgraph == std::optional<std::string>("b"));
@@ -1470,8 +1475,23 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     CHECK(Tap(host, KeyCode::Z, {.super = true}));
     CHECK(Tap(host, KeyCode::Z, {.control = true, .shift = true}));
     CHECK(Tap(host, KeyCode::Z, {.shift = true, .super = true}));
+    CHECK(Tap(host, KeyCode::Y, {.control = true}));
+    CHECK(Tap(host, KeyCode::Y, {.super = true}));
     CHECK_FALSE(Tap(host, KeyCode::Z));
-    CHECK(actions == std::vector<Action>{Action::Undo, Action::Undo, Action::Redo, Action::Redo});
+    CHECK_FALSE(Tap(host, KeyCode::Y, {.control = true, .shift = true}));
+    CHECK(actions == std::vector<Action>{Action::Undo, Action::Undo, Action::Redo, Action::Redo, Action::Redo,
+                                         Action::Redo});
+
+    actions.clear();
+    CHECK(Tap(host, KeyCode::Space));
+    CHECK_FALSE(Tap(host, KeyCode::Space, {.control = true}));
+    CHECK_FALSE(Tap(host, KeyCode::Space, {.shift = true}));
+    CHECK(actions == std::vector<Action>{Action::TogglePause});
+
+    actions.clear();
+    CHECK(Tap(host, KeyCode::S, {.control = true, .shift = true}));
+    CHECK(Tap(host, KeyCode::S, {.shift = true, .super = true}));
+    CHECK(actions == std::vector<Action>{Action::SaveFlowgraphAs, Action::SaveFlowgraphAs});
 
     actions.clear();
     CHECK_FALSE(Tap(host, KeyCode::N, {.control = true}));
@@ -1498,7 +1518,8 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
 #endif
 }
 
-TEST_CASE("Undo and redo shortcuts go to the active flowgraph and do nothing without one", "[core][sakura][views]") {
+TEST_CASE("Undo, redo and pause shortcuts go to the active flowgraph and do nothing without one",
+          "[core][sakura][views]") {
     Mailbox mailbox;
     const auto press = [&](TitlebarView::Action action) {
         TitlebarPresenter(mailbox.context()).build().onAction(action);
@@ -1506,8 +1527,10 @@ TEST_CASE("Undo and redo shortcuts go to the active flowgraph and do nothing wit
 
     press(TitlebarView::Action::Undo);
     press(TitlebarView::Action::Redo);
+    press(TitlebarView::Action::TogglePause);
     CHECK(mailbox.last<MailUndoFlowgraph>() == nullptr);
     CHECK(mailbox.last<MailRedoFlowgraph>() == nullptr);
+    CHECK(mailbox.last<MailSetFlowgraphPaused>() == nullptr);
 
     mailbox.state.flowgraph.items["graph"] = nullptr;
     mailbox.state.interface.focusedFlowgraph = "graph";
@@ -1519,6 +1542,12 @@ TEST_CASE("Undo and redo shortcuts go to the active flowgraph and do nothing wit
     REQUIRE(redo != nullptr);
     CHECK(undo->flowgraph == "graph");
     CHECK(redo->flowgraph == "graph");
+
+    press(TitlebarView::Action::TogglePause);
+    const auto* pause = mailbox.last<MailSetFlowgraphPaused>();
+    REQUIRE(pause != nullptr);
+    CHECK(pause->flowgraph == "graph");
+    CHECK(pause->paused);
 }
 
 TEST_CASE("The voice shortcut starts voice when it is off and ends it when it is on", "[core][sakura][views]") {
@@ -4343,7 +4372,7 @@ TEST_CASE("Dependency review layout follows the install state", "[core][sakura][
     CHECK(tables() == 0);
 }
 
-TEST_CASE("Flowgraph info modal saves to the browsed path and resets it for another flowgraph",
+TEST_CASE("Flowgraph info modal saves to the browsed path and resets it when the flowgraph or its path changes",
           "[core][sakura][views]") {
     ModalRig rig;
     std::vector<std::string> saved;
@@ -4381,7 +4410,7 @@ TEST_CASE("Flowgraph info modal saves to the browsed path and resets it for anot
     config.flowgraphId = "c";
     buttons = show();
     CHECK(Press(rig.host, *buttons[1]));
-    CHECK(saved == std::vector<std::string>{"/flows/a.yml", "/flows/b.yml", "/flows/b.yml", "/flows/c.yml"});
+    CHECK(saved == std::vector<std::string>{"/flows/a.yml", "/flows/b.yml", "/flows/c.yml", "/flows/c.yml"});
 }
 
 TEST_CASE("Feedback modal submits only within the length limits and while idle", "[core][sakura][views]") {

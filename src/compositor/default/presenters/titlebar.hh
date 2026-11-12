@@ -68,6 +68,9 @@ struct TitlebarPresenter {
                          terminalTab = context.state.terminal.focused,
                          timing = context.state.debug.timingEnabled,
                          agentVisible = context.state.agent.ui.visible,
+                         activePaused = activeFlowgraph.has_value() &&
+                                        context.state.flowgraph.items.at(*activeFlowgraph) &&
+                                        context.state.flowgraph.items.at(*activeFlowgraph)->paused(),
                          sidebarOpen = context.state.interface.welcomeSidebarOpen,
                          voiceVisible = context.state.agent.ui.voiceVisible](TitlebarView::Action action) {
                 using Action = TitlebarView::Action;
@@ -156,6 +159,13 @@ struct TitlebarPresenter {
                             missing("No focused flowgraph to save.");
                         }
                         break;
+                    case Action::SaveFlowgraphAs:
+                        if (activeFlowgraph.has_value()) {
+                            enqueue(MailSaveFlowgraph{.flowgraph = activeFlowgraph.value(), .pick = true});
+                        } else {
+                            missing("No focused flowgraph to save.");
+                        }
+                        break;
                     case Action::Undo:
                         if (activeFlowgraph.has_value()) {
                             enqueue(MailUndoFlowgraph{.flowgraph = activeFlowgraph.value()});
@@ -164,6 +174,14 @@ struct TitlebarPresenter {
                     case Action::Redo:
                         if (activeFlowgraph.has_value()) {
                             enqueue(MailRedoFlowgraph{.flowgraph = activeFlowgraph.value()});
+                        }
+                        break;
+                    case Action::TogglePause:
+                        if (activeFlowgraph.has_value()) {
+                            enqueue(MailSetFlowgraphPaused{
+                                .flowgraph = activeFlowgraph.value(),
+                                .paused = !activePaused,
+                            });
                         }
                         break;
                     case Action::ShowFlowgraphInfo:
@@ -202,6 +220,9 @@ struct TitlebarPresenter {
                 switch (action) {
                     case TabAction::Save:
                         enqueue(MailSaveFlowgraph{.flowgraph = flowgraph});
+                        break;
+                    case TabAction::SaveAs:
+                        enqueue(MailSaveFlowgraph{.flowgraph = flowgraph, .pick = true});
                         break;
                     case TabAction::Rename:
                     case TabAction::Info:

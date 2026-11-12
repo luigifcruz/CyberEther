@@ -4,6 +4,7 @@
 #include "harness.hh"
 #include "component_harness.hh"
 
+#include <jetstream/macros.hh>
 #include <jetstream/render/sakura/clipboard.hh>
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/shortcuts.hh>
@@ -14,6 +15,7 @@
 #include "render/sakura/detail/input_router.hh"
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -769,6 +771,38 @@ TEST_CASE("Primary modifiers match exactly, so binding order does not matter",
     CHECK_FALSE(Tap(host, KeyCode::Z, {.control = true, .shift = true, .alt = true}));
     CHECK(Sakura::Access::key(host, Press(KeyCode::Z, {.super = true}, true)));
     CHECK(fired == std::vector<std::string>{"undo", "undo", "redo", "redo", "alt", "undo"});
+}
+
+TEST_CASE("Bare modifier shortcuts ignore chords and labels name the platform modifier",
+          "[core][sakura][input][shortcuts]") {
+    U64 fired = 0;
+    Probe content({40.0f, 20.0f});
+    Sakura::Shortcuts keys;
+    keys.update({
+        .bindings = {{.key = KeyCode::Space, .modifier = Sakura::Shortcuts::Modifier::None,
+                      .onPressed = [&] { ++fired; }}},
+        .content = &content,
+    });
+    Host host(keys);
+
+    CHECK_FALSE(Tap(host, KeyCode::Space, {.control = true}));
+    CHECK_FALSE(Tap(host, KeyCode::Space, {.super = true}));
+    CHECK_FALSE(Tap(host, KeyCode::Space, {.shift = true}));
+    CHECK_FALSE(Tap(host, KeyCode::Space, {.alt = true}));
+    CHECK(Tap(host, KeyCode::Space));
+    CHECK(fired == 1);
+
+    const std::string primary = std::string(Sakura::Shortcuts::PrimaryName());
+    std::string upper = primary;
+    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) { return std::toupper(c); });
+    CHECK(Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::None, "SPACE") == "SPACE");
+    CHECK(Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "Z") == upper + "+Z");
+    CHECK(Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryShift, "Z") == upper + "+SHIFT+Z");
+#if defined(JST_OS_MAC)
+    CHECK(primary == "Cmd");
+#else
+    CHECK(primary == "Ctrl");
+#endif
 }
 
 TEST_CASE("Shortcuts settle with content and binding or enabled changes cause no work",

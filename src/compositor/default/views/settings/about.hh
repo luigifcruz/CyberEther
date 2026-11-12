@@ -76,7 +76,7 @@ struct AboutSettingsView {
             .description = "Help us improve CyberEther.",
             .rows = {{
                 .label = "Send Feedback",
-                .description = "Report bugs or suggest improvements. Shortcut: Ctrl+G.",
+                .description = "Report bugs or suggest improvements.",
                 .control = &feedbackButton,
             }},
         });

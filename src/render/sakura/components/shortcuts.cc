@@ -1,5 +1,7 @@
 #include <jetstream/render/sakura/components/shortcuts.hh>
 
+#include <jetstream/macros.hh>
+
 #include "../context.hh"
 
 #include <utility>
@@ -13,6 +15,8 @@ bool Matches(Shortcuts::Modifier modifier, const KeyModifiers& modifiers) {
     switch (modifier) {
         case Shortcuts::Modifier::Any:
             return true;
+        case Shortcuts::Modifier::None:
+            return !primary && !modifiers.shift && !modifiers.alt;
         case Shortcuts::Modifier::Primary:
             return primary && !modifiers.shift && !modifiers.alt;
         case Shortcuts::Modifier::PrimaryAlt:
@@ -24,6 +28,40 @@ bool Matches(Shortcuts::Modifier modifier, const KeyModifiers& modifiers) {
 }
 
 }  // namespace
+
+std::string Shortcuts::Label(Modifier modifier, std::string_view key) {
+#if defined(JST_OS_MAC)
+    constexpr std::string_view primary = "CMD+";
+    constexpr std::string_view alt = "OPTION+";
+#else
+    constexpr std::string_view primary = "CTRL+";
+    constexpr std::string_view alt = "ALT+";
+#endif
+    std::string label;
+    switch (modifier) {
+        case Modifier::Any:
+        case Modifier::None:
+            break;
+        case Modifier::Primary:
+            label = primary;
+            break;
+        case Modifier::PrimaryAlt:
+            label = std::string(primary) + std::string(alt);
+            break;
+        case Modifier::PrimaryShift:
+            label = std::string(primary) + "SHIFT+";
+            break;
+    }
+    return label + std::string(key);
+}
+
+const char* Shortcuts::PrimaryName() {
+#if defined(JST_OS_MAC)
+    return "Cmd";
+#else
+    return "Ctrl";
+#endif
+}
 
 struct Shortcuts::Impl {
     Config config;
