@@ -108,6 +108,7 @@ struct FlowgraphNodeMenu {
                 {.separator = true},
                 {
                     .label = ICON_LC_X " Delete Block",
+                    .shortcut = "DEL",
                     .colorKey = "error_red",
                     .onClick = this->config.onDelete,
                 },

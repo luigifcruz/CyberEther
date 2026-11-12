@@ -1066,6 +1066,56 @@ TEST_CASE("Editor records an arrangement only after nodes persist the geometry i
     CHECK(events == std::vector<std::string>{"layout 300,200", "arranged"});
 }
 
+TEST_CASE("Editor deletes every live selected block on Delete in one request",
+          "[core][sakura][flowgraph][editor-views]") {
+    Scene scene;
+    FlowgraphEditor editor;
+    LayerSlot slot;
+    slot.hold(editor.component(), kScreen);
+    LayerHost host({&slot});
+    Frames frames(host, kScreen, scene.context());
+    frames.verify = false;
+    auto first = NodeConfig().block;
+    first.layout = FlowgraphNode::Layout{40.0f, 40.0f, 0.0f, 0.0f};
+    auto second = NodeConfig().block;
+    second.name = "ifft";
+    second.layout = FlowgraphNode::Layout{400.0f, 40.0f, 0.0f, 0.0f};
+    std::vector<std::vector<std::string>> deletes;
+    FlowgraphEditor::Measured measured;
+    const auto update = [&] {
+        editor.update({
+            .id = "graph",
+            .measure = true,
+            .graph = {first, second},
+            .onDeleteBlocks = [&](const std::vector<std::string>& blocks) { deletes.push_back(blocks); },
+            .onLayout = [&](FlowgraphEditor::Measured next) { measured = next; },
+        });
+    };
+    REQUIRE(frames.settle(update));
+
+    const F32 scale = kScreen.width / measured.viewport.width;
+    const auto click = [&](const std::string& block, KeyModifiers modifiers) {
+        const auto node = measured.nodes.at(block).bounds;
+        const F32 x = kScreen.x + (node.x + 20.0f - measured.viewport.x) * scale;
+        const F32 y = kScreen.y + (node.y + 8.0f - measured.viewport.y) * scale;
+        frames.ctx.mouse = Extent2D<F32>{x, y};
+        const U64 generation = Sakura::Access::focusGeneration(host);
+        auto press = Mouse(MouseEventType::Click, x, y);
+        press.modifiers = modifiers;
+        host.send(press);
+        Sakura::Access::clickFocus(host, Extent2D<F32>{x, y}, true, generation);
+        frames.run(update);
+        host.send(Mouse(MouseEventType::Release, x, y));
+        frames.run(update);
+    };
+    click("fft", {});
+    click("ifft", {.shift = true});
+
+    CHECK(Tap(host, KeyCode::Delete));
+    REQUIRE(deletes.size() == 1);
+    CHECK(deletes[0] == std::vector<std::string>{"fft", "ifft"});
+}
+
 TEST_CASE("Editor toolbar pause, save, and environment buttons run their callbacks and follow the run state",
           "[core][sakura][flowgraph][editor-views]") {
     Scene scene;
@@ -1136,6 +1186,23 @@ TEST_CASE("Editor presenter wires the toolbar to pause, save, and environment ma
     config.onToggleEnvironment();
     CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(mails.back()).value);
 
+}
+
+TEST_CASE("Editor presenter sends the blocks to delete as one mail",
+          "[core][sakura][flowgraph][editor-views]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<Mail> mails;
+    callbacks.enqueueMail = [&](Mail&& mail) { mails.push_back(std::move(mail)); };
+    const PresenterContext context{state, callbacks};
+    auto graph = std::make_shared<Flowgraph>();
+
+    auto config = FlowgraphEditorPresenter(context).build("graph", graph);
+    config.onDeleteBlocks({"fft", "ifft"});
+    REQUIRE(mails.size() == 1);
+    const auto& mail = std::get<MailDeleteBlock>(mails[0]);
+    CHECK(mail.flowgraph == "graph");
+    CHECK(mail.blockIds == std::vector<std::string>{"fft", "ifft"});
 }
 
 TEST_CASE("Node plot detach sends every attached surface out and the plot menu entry toggles them all",

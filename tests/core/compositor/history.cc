@@ -485,6 +485,64 @@ TEST_CASE_METHOD(HistoryFixture, "Undo brings a deleted block back where the edi
     CHECK(node("a").y == 60.0f);
 }
 
+TEST_CASE_METHOD(HistoryFixture, "Deleting several blocks at once is one undo step and drops each of their tiles",
+                 "[core][compositor][history]") {
+    createChain();
+    start();
+    callbacks.enqueueFlowgraphEdit = [this](FlowgraphEdit edit) {
+        history.enqueueEdit(std::move(edit));
+    };
+
+    REQUIRE(flowgraphActions.handle(MailDeleteBlock{.flowgraph = "graph",
+                                                    .blockIds = {"source", "middle", "source", ""}}) ==
+            Result::SUCCESS);
+    drain();
+    REQUIRE(blocks() == std::vector<std::string>{"leaf"});
+
+    std::vector<std::string> removed;
+    for (const auto& message : mail) {
+        if (const auto* remove = std::get_if<MailRemoveLayoutBlock>(&message)) {
+            removed.push_back(remove->block);
+        }
+    }
+    CHECK(removed == std::vector<std::string>{"source", "middle"});
+
+    undo();
+    CHECK(blocks() == std::vector<std::string>{"leaf", "middle", "source"});
+    CHECK(sourceOf("middle") == "source");
+    CHECK(sourceOf("leaf") == "middle");
+    CHECK_FALSE(graphHistory().canUndo());
+
+    redo();
+    CHECK(blocks() == std::vector<std::string>{"leaf"});
+}
+
+TEST_CASE_METHOD(HistoryFixture, "A failed multi-delete keeps the blocks it removed in one undo step",
+                 "[core][compositor][history]") {
+    createChain();
+    start();
+    callbacks.enqueueFlowgraphEdit = [this](FlowgraphEdit edit) {
+        history.enqueueEdit(std::move(edit));
+    };
+
+    REQUIRE(flowgraphActions.handle(MailDeleteBlock{.flowgraph = "graph", .blockIds = {"leaf", "missing", "source"}}) ==
+            Result::SUCCESS);
+    drain();
+    REQUIRE(blocks() == std::vector<std::string>{"middle", "source"});
+
+    std::vector<std::string> removed;
+    for (const auto& message : mail) {
+        if (const auto* remove = std::get_if<MailRemoveLayoutBlock>(&message)) {
+            removed.push_back(remove->block);
+        }
+    }
+    CHECK(removed == std::vector<std::string>{"leaf"});
+
+    undo();
+    CHECK(blocks() == std::vector<std::string>{"leaf", "middle", "source"});
+    CHECK_FALSE(graphHistory().canUndo());
+}
+
 TEST_CASE_METHOD(HistoryFixture, "An edit made outside the compositor becomes its own undo step",
                  "[core][compositor][history]") {
     start();

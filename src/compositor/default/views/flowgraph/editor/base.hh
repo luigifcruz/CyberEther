@@ -60,7 +60,7 @@ struct FlowgraphEditor {
         Sakura::Callback<void(std::optional<Extent2D<F32>>)> onPasteBlock;
         Sakura::Callback<void(const std::string&)> onRenameBlock;
         Sakura::Callback<void(const std::string&)> onReloadBlock;
-        Sakura::Callback<void(const std::string&)> onDeleteBlock;
+        Sakura::Callback<void(const std::vector<std::string>&)> onDeleteBlocks;
         Sakura::Callback<void(const std::string&)> onOpenDocumentation;
         Sakura::Callback<void(const std::string&, DeviceType, RuntimeType, ProviderType)> onChangeBlockDevice;
         Sakura::Callback<void(const std::string&, const std::string&, const std::string&, const std::string&)> onConnectBlock;
@@ -210,8 +210,8 @@ struct FlowgraphEditor {
                     }
                 },
                 .onDelete = [this, blockName]() {
-                    if (this->config.onDeleteBlock) {
-                        this->config.onDeleteBlock(blockName);
+                    if (this->config.onDeleteBlocks) {
+                        this->config.onDeleteBlocks({blockName});
                     }
                 },
                 .onDocumentation = [this, blockName]() {
@@ -301,6 +301,17 @@ struct FlowgraphEditor {
             .onCopyShortcut = [this](const std::vector<std::string>& selectedNodes) {
                 if (!selectedNodes.empty() && liveBlocks.contains(selectedNodes[0]) && this->config.onCopyBlock) {
                     this->config.onCopyBlock(selectedNodes[0]);
+                }
+            },
+            .onDeleteShortcut = [this](const std::vector<std::string>& selectedNodes) {
+                std::vector<std::string> blocks;
+                for (const auto& id : selectedNodes) {
+                    if (liveBlocks.contains(id)) {
+                        blocks.push_back(id);
+                    }
+                }
+                if (!blocks.empty() && this->config.onDeleteBlocks) {
+                    this->config.onDeleteBlocks(blocks);
                 }
             },
             .onSelectionChange = [this](const std::vector<std::string>& selected) {
