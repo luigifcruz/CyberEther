@@ -273,4 +273,36 @@ std::optional<F32> SignalViewLineplot::sample(const F32 position) const {
     return yLower + (yUpper - yLower) * fraction;
 }
 
+std::optional<F32> SignalViewLineplot::peak(const F32 left, const F32 right) const {
+    const U64 count = config.numberOfElements;
+    if (count < 2 || displayedPoints.size() < count * 2 || !(right >= left)) {
+        return std::nullopt;
+    }
+    // Only bins that fall inside the window; zoomed in, there may be none.
+    const auto toIndex = [count](const F32 position) {
+        return std::clamp((position + 1.0f) * 0.5f * static_cast<F32>(count - 1),
+                          0.0f, static_cast<F32>(count - 1));
+    };
+    const F32 firstIndex = std::ceil(toIndex(left));
+    const F32 lastIndex = std::floor(toIndex(right));
+    if (firstIndex > lastIndex) {
+        return std::nullopt;
+    }
+    const U64 first = static_cast<U64>(firstIndex);
+    const U64 last = static_cast<U64>(lastIndex);
+    // A peak is higher than both neighbours; the end of a slope is not one.
+    const auto level = [this](const U64 i) { return displayedPoints[(i * 2) + 1]; };
+    std::optional<U64> best;
+    for (U64 i = std::max<U64>(first, 1); i <= last && i + 1 < count; i++) {
+        const bool isPeak = level(i) > level(i - 1) && level(i) >= level(i + 1);
+        if (isPeak && (!best || level(i) > level(*best))) {
+            best = i;
+        }
+    }
+    if (!best) {
+        return std::nullopt;
+    }
+    return static_cast<F32>(*best) * 2.0f / static_cast<F32>(count - 1) - 1.0f;
+}
+
 }  // namespace Jetstream::Modules

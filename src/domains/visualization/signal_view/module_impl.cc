@@ -52,6 +52,11 @@ Result SignalViewImpl::validate() {
         return Result::ERROR;
     }
 
+    if (config.amplitudeScale != "compressed" && config.amplitudeScale != "log") {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid amplitude scale '{}'.", config.amplitudeScale);
+        return Result::ERROR;
+    }
+
     if (config.markers.size() > detail::MaxMarkers) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] At most {} markers are supported.", detail::MaxMarkers);
         return Result::ERROR;
@@ -348,6 +353,7 @@ Result SignalViewImpl::reconfigure() {
         config.fill == fill &&
         config.waterfallHeight == waterfallHeight &&
         config.density == density &&
+        config.amplitudeScale == amplitudeScale &&
         config.xLabel == xLabel &&
         config.amplitudeLabel == amplitudeLabel &&
         config.waterfallLabel == waterfallLabel) {

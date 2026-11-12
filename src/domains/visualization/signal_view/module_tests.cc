@@ -466,6 +466,201 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
     }
 }
 
+TEST_CASE("Lineplot peak search finds the nearby local peak",
+          "[modules][signal_view][cursor][peak]") {
+    Modules::SignalViewLineplot lineplot;
+    lineplot.config.numberOfElements = 9;
+    // Bins at x = -1, -0.75, ..., 1. A narrow peak at bin 3 (-0.25), a
+    // taller one at bin 6 (0.5), and a slope rising to the right edge.
+    const std::array<F32, 9> levels = {0.0f, 0.1f, 0.2f, 0.9f, 0.2f, 0.3f, 1.0f, 0.5f, 0.8f};
+    lineplot.displayedPoints.resize(levels.size() * 2);
+    for (U64 i = 0; i < levels.size(); i++) {
+        lineplot.displayedPoints[(i * 2) + 0] = static_cast<F32>(i) * 0.25f - 1.0f;
+        lineplot.displayedPoints[(i * 2) + 1] = levels[i];
+    }
+
+    // Only the peak inside the window counts, not the taller one elsewhere.
+    REQUIRE(lineplot.peak(-0.4f, -0.1f) == Catch::Approx(-0.25f));
+    REQUIRE(lineplot.peak(0.3f, 0.6f) == Catch::Approx(0.5f));
+    // Both peaks in the window: the higher wins.
+    REQUIRE(lineplot.peak(-0.4f, 0.6f) == Catch::Approx(0.5f));
+    // The end of a slope is not a peak.
+    REQUIRE_FALSE(lineplot.peak(0.9f, 1.0f).has_value());
+    REQUIRE_FALSE(lineplot.peak(-1.0f, -0.6f).has_value());
+    // A window narrower than one bin holds no bin at all.
+    REQUIRE_FALSE(lineplot.peak(-0.24f, -0.01f).has_value());
+}
+
+TEST_CASE("Amplitude division steps like an analyzer knob",
+          "[modules][signal_view][axis][ticks]") {
+    using Modules::detail::NextAmplitudeDivision;
+    REQUIRE(NextAmplitudeDivision(10.0, true) == 5.0);
+    REQUIRE(NextAmplitudeDivision(5.0, true) == 2.0);
+    REQUIRE(NextAmplitudeDivision(1.0, true) == 1.0);
+    REQUIRE(NextAmplitudeDivision(10.0, false) == 20.0);
+    REQUIRE(NextAmplitudeDivision(20.0, false) == 20.0);
+    // Off-knob ranges snap to the neighbouring setting.
+    REQUIRE(NextAmplitudeDivision(12.0, true) == 10.0);
+    REQUIRE(NextAmplitudeDivision(12.0, false) == 20.0);
+}
+
+TEST_CASE("Axis ticks land on round values",
+          "[modules][signal_view][axis][ticks]") {
+    using Axis = Render::Components::Axis;
+
+    const auto isMultiple = [](const F64 value, const F64 step) {
+        const F64 k = value / step;
+        return std::abs(k - std::round(k)) < 1e-6;
+    };
+
+    SECTION("61.44 MS/s around 100 MHz") {
+        const auto ticks = Axis::ComputeTicks(69.28, 130.72, 6.0);
+        REQUIRE(ticks.step == Catch::Approx(10.0));
+        REQUIRE(ticks.decimals == 0);
+        REQUIRE(ticks.minorDivisions == 5);
+        REQUIRE(ticks.values.size() == 7);
+        REQUIRE(ticks.values.front() == Catch::Approx(70.0));
+        REQUIRE(ticks.values.back() == Catch::Approx(130.0));
+    }
+
+    SECTION("Two steps use quarter minor ticks") {
+        const auto ticks = Axis::ComputeTicks(97.5, 102.5, 1.5);
+        REQUIRE(ticks.step == Catch::Approx(2.0));
+        REQUIRE(ticks.minorDivisions == 4);
+        REQUIRE(ticks.values.size() == 3);
+        REQUIRE(ticks.values[1] == Catch::Approx(100.0));
+    }
+
+    SECTION("Sub-unit steps get decimals") {
+        const auto ticks = Axis::ComputeTicks(99.0, 101.0, 0.3);
+        REQUIRE(ticks.step == Catch::Approx(0.5));
+        REQUIRE(ticks.decimals == 1);
+        REQUIRE(ticks.values.size() == 3);
+
+        const auto fine = Axis::ComputeTicks(100.0012, 100.0019, 0.0001);
+        REQUIRE(fine.step == Catch::Approx(0.0001));
+        REQUIRE(fine.decimals == 4);
+        for (const F64 value : fine.values) {
+            REQUIRE(isMultiple(value, fine.step));
+        }
+    }
+
+    SECTION("Ticks never sit on the frame edges") {
+        const auto ticks = Axis::ComputeTicks(0.0, 10.0, 2.0);
+        REQUIRE(ticks.values.size() == 4);
+        REQUIRE(ticks.values.front() == Catch::Approx(2.0));
+        REQUIRE(ticks.values.back() == Catch::Approx(8.0));
+    }
+
+    SECTION("Negative ranges and gigahertz values") {
+        const auto normalized = Axis::ComputeTicks(-1.0, 1.0, 0.4);
+        REQUIRE(normalized.step == Catch::Approx(0.5));
+        REQUIRE(normalized.values.size() == 3);
+        REQUIRE(normalized.values[1] == Catch::Approx(0.0));
+
+        const auto wifi = Axis::ComputeTicks(2419.28, 2480.72, 7.0);
+        REQUIRE(wifi.step == Catch::Approx(10.0));
+        REQUIRE(wifi.values.front() == Catch::Approx(2420.0));
+        REQUIRE(wifi.values.back() == Catch::Approx(2480.0));
+    }
+
+    SECTION("Invalid ranges produce no ticks") {
+        REQUIRE(Axis::ComputeTicks(1.0, 1.0, 0.1).values.empty());
+        REQUIRE(Axis::ComputeTicks(2.0, 1.0, 0.1).values.empty());
+        REQUIRE(Axis::ComputeTicks(0.0, std::numeric_limits<F64>::infinity(), 0.1).values.empty());
+        const auto fallback = Axis::ComputeTicks(0.0, 10.0, 0.0);
+        REQUIRE(fallback.step == Catch::Approx(1.0));
+    }
+}
+
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Axis X range places grid lines on round values",
+          "[modules][signal_view][axis][ticks]") {
+    LabelTestWindow window;
+    Render::Components::Axis::Config config;
+    config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    LabelTestAxis axis(config);
+    REQUIRE(axis.create(&window) == Result::SUCCESS);
+    REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / 800.0f}) == Result::SUCCESS);
+    REQUIRE(axis.setShowFrameTicks(true) == Result::SUCCESS);
+    JST_LOG_LAST_ERROR().clear();
+
+    for (const auto& [left, right] : std::vector<std::pair<F64, F64>>{
+             {69.28, 130.72}, {84.64, 115.36}, {99.0, 101.0},
+             {99.9, 100.1}, {2419.28, 2480.72}, {-1.0, 1.0}}) {
+        REQUIRE(axis.updateXRange(left, right) == Result::SUCCESS);
+        CHECK(JST_LOG_LAST_ERROR() == "");
+        const auto& ticks = axis.currentXTicks();
+        REQUIRE(ticks.step > 0.0);
+        REQUIRE_FALSE(ticks.values.empty());
+        REQUIRE(ticks.values.size() <= 63);
+        REQUIRE(axis.currentVerticalLineCount() == ticks.values.size() + 2);
+        for (const F64 value : ticks.values) {
+            REQUIRE(value > left);
+            REQUIRE(value < right);
+            const F64 k = value / ticks.step;
+            REQUIRE(std::abs(k - std::round(k)) < 1e-6);
+        }
+    }
+
+    // Amplitudes: linear, and compressed like the default trace.
+    const auto compressed = [](const F64 value) {
+        return static_cast<F32>(std::tanh(2.0 * (2.0 * (value + 100.0) / 100.0 - 1.0)));
+    };
+    for (const bool linear : {true, false}) {
+        REQUIRE(axis.updateYRange(-100.0, 0.0, linear
+            ? Render::Components::Axis::PositionMap{}
+            : Render::Components::Axis::PositionMap{compressed}) == Result::SUCCESS);
+        CHECK(JST_LOG_LAST_ERROR() == "");
+        const auto& ticks = axis.currentYTicks();
+        REQUIRE(ticks.step > 0.0);
+        REQUIRE(ticks.values.size() >= 2);
+        REQUIRE(ticks.values.size() <= 15);
+        REQUIRE(axis.currentHorizontalLineCount() == ticks.values.size() + 2);
+        for (U64 i = 0; i < ticks.values.size(); i++) {
+            const F64 k = ticks.values[i] / ticks.step;
+            REQUIRE(std::abs(k - std::round(k)) < 1e-6);
+            if (i > 0) {
+                REQUIRE(ticks.values[i] > ticks.values[i - 1]);
+            }
+        }
+        if (linear) {
+            // Ten divisions over 100 dB, labelled or not.
+            REQUIRE(ticks.step == Catch::Approx(10.0));
+            // Evenly spaced: every multiple of the step inside the range.
+            REQUIRE(ticks.values.size() ==
+                    static_cast<U64>(std::round(100.0 / ticks.step)) - 1);
+        }
+    }
+    // A requested step, such as 10 dB/div, sets every line whatever the height,
+    // even where labels must skip lines.
+    for (const F32 height : {800.0f, 693.0f, 345.0f}) {
+        CAPTURE(height);
+        REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / height}) == Result::SUCCESS);
+        for (const F64 step : {10.0, 5.0, 2.0}) {
+            REQUIRE(axis.updateYRange(-10.0 * step, 0.0, {}, step) == Result::SUCCESS);
+            const auto& ticks = axis.currentYTicks();
+            REQUIRE(ticks.step == Catch::Approx(step));
+            REQUIRE(ticks.values.size() == 9);
+        }
+    }
+    // Too short for ten divisions (80 px of plot): lines widen rather than merge.
+    REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / 160.0f}) == Result::SUCCESS);
+    REQUIRE(axis.updateYRange(-100.0, 0.0, {}, 10.0) == Result::SUCCESS);
+    REQUIRE(axis.currentYTicks().step == Catch::Approx(20.0));
+    REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / 800.0f}) == Result::SUCCESS);
+
+    REQUIRE(axis.clearYRange() == Result::SUCCESS);
+    REQUIRE(axis.currentYTicks().values.empty());
+
+    REQUIRE(axis.updateXRange(1.0, 1.0) == Result::ERROR);
+    REQUIRE(axis.clearXRange() == Result::SUCCESS);
+    REQUIRE(axis.currentXTicks().values.empty());
+    REQUIRE(axis.currentVerticalLineCount() % 2 == 1);
+    REQUIRE(axis.destroy(&window) == Result::SUCCESS);
+}
+#endif
+
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
 TEST_CASE("Axis vertical scale can move the divider without recreating resources",
           "[modules][signal_view][split][axis][regression]") {
@@ -1752,6 +1947,18 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owni
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
     present();
     REQUIRE(spanLabel(0) == "0.7500");
+
+    // Delete with no marker under the mouse removes the one placed last.
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.25f},
+    });
+    original->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Delete, {}});
+    present();
+    REQUIRE(SignalViewImplAccess::canvasOf(*impl).markerPositions == std::vector<F32>{-0.5f});
+    REQUIRE(pending());
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(storedMarkers() == std::vector<F32>{-0.5f});
 
     original->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Click,
