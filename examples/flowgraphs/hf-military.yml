@@ -1,0 +1,425 @@
+---
+version: 2
+title: HF Military
+summary: Find and fingerprint HF utility-band signals.
+author: Chase Valentine
+description: Receives 2-22 MHz HF with a HackRF, finds active channels and fingerprints one as a military or utility digital mode, showing wideband and channel spectra plus a live detection dashboard.
+graph:
+  - name: hf_controls
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        # HF Military & Diplomatic Modes: controls. Edit and press Done.
+        
+        TARGET_KHZ = "auto"     # channel to analyse, in kHz (e.g. 8992.0 for HFGCS, 10000 for WWV), or "auto" = strongest found
+        SIDEBAND = "USB"        # USB or LSB: where the audio passband sits relative to the dial frequency
+        AUDIO_LOW_HZ = 300      # analysed audio passband
+        AUDIO_HIGH_HZ = 3400
+        WINDOW_S = 2.0          # seconds of channel history used for fingerprinting
+        MIN_SNR_DB = 10.0       # finder: channel must be this far above the local floor
+        RESET = 0               # bump to clear finder tracks and the detection log
+        
+        
+        def compute(ctx):
+            ctx.env["hf_control"] = {
+                "target_khz": TARGET_KHZ, "sideband": SIDEBAND, "audio_low": AUDIO_LOW_HZ, "audio_high": AUDIO_HIGH_HZ,
+                "window_s": WINDOW_S, "min_snr_db": MIN_SNR_DB, "reset": RESET,
+            }
+            return YIELD(0.5)
+      file: ''
+      inputCount: 0
+      outputCount: 0
+      outputTensorSpecs: []
+      throttled: true
+    meta:
+      node:
+        x: 296
+        y: 770
+        width: 900
+        height: 330
+  - name: hf_rx
+    module: sdr
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: 'driver=hackrf,serial=0000000000000000955c64dc294186c3'
+      antenna: ''
+      frequency: 1.2e+07
+      frequencyStep: 1000000
+      sampleRate: 2e+07
+      automaticGain: false
+      manualGain: 40
+      biasTee: false
+      numberOfBatches: 8
+      numberOfTimeSamples: 262144
+      bufferMultiplier: 6
+    meta:
+      node:
+        x: 20
+        y: 170
+        width: 220
+        height: 0
+  - name: hf_spectrum
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      mode: lineplot_waterfall
+      lineplotAveraging: 8
+      waterfallAveraging: 1
+      maxHold: true
+      fill: true
+      rangeMin: -100
+      rangeMax: -20
+      waterfallHeight: 1024
+      colormap: turbo
+      density: false
+      persistence: 256
+      splitRatio: 0.5
+      markers: '[]'
+      pins: '[]'
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
+    input:
+      buffer: '${graph.hf_rx.output.signal}'
+    meta:
+      node:
+        x: 296
+        y: 170
+        width: 1500
+        height: 560
+      surface_default:
+        attachedHeight: 468
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: hf_analyzer
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import time
+        import numpy as np
+        
+        # HF utility-band analyzer on a 20 MS/s HackRF capture centred on 12 MHz (2-22 MHz).
+        #  1. Finder: one big FFT per buffer, local-floor detection of active channels, allocation labels.
+        #  2. Channelizer: the target channel is cut out of the same FFT and brought to a 9.77 kS/s baseband.
+        #  3. Fingerprint: occupied bandwidth, tones and spacing, symbol-rate lines, PSK order, FSK shift.
+        #  4. Classifier: rules for MIL-STD-188-110/141, STANAG 4415/4481, CIS-12/36/50, XPA, HM01, Pactor.
+        
+        NB = 1024                      # narrowband samples per buffer (bins taken from the big FFT)
+        TRACK_TTL_S = 90.0
+        ALLOC = [(2.3, 2.5, "120 m broadcast"), (2.85, 3.155, "aero (MWARA/VOLMET)"), (3.2, 3.4, "90 m broadcast"),
+                 (3.5, 4.0, "amateur 80 m"), (4.0, 4.07, "maritime"), (4.75, 5.06, "60 m broadcast"), (5.45, 5.73, "aero"),
+                 (5.9, 6.2, "49 m broadcast"), (6.2, 6.525, "maritime"), (6.525, 6.765, "aero"), (7.0, 7.3, "amateur 40 m"),
+                 (7.2, 7.45, "41 m broadcast"), (8.195, 8.815, "maritime"), (8.815, 9.04, "aero"), (9.4, 9.9, "31 m broadcast"),
+                 (9.995, 10.005, "WWV/WWVH 10 MHz"), (10.1, 10.15, "amateur 30 m"), (11.6, 12.1, "25 m broadcast"),
+                 (12.23, 13.2, "maritime"), (13.2, 13.36, "aero"), (13.57, 13.87, "22 m broadcast"), (14.0, 14.35, "amateur 20 m"),
+                 (14.995, 15.005, "WWV 15 MHz"), (15.1, 15.8, "19 m broadcast"), (16.36, 17.41, "maritime"), (17.48, 17.9, "16 m broadcast"),
+                 (18.07, 18.17, "amateur 17 m"), (18.78, 18.9, "maritime"), (19.68, 19.8, "maritime"), (19.995, 20.005, "WWV 20 MHz"),
+                 (21.0, 21.45, "amateur 15 m"), (21.45, 21.85, "13 m broadcast")]
+        BAUDS = [2400, 1800, 1200, 600, 300, 200, 125, 120, 100, 75, 62.5, 50, 45.45, 10]
+        
+        tracks = {}
+        spec_avg = None
+        env_avg = None
+        buffers = 0
+        last_publish = 0.0
+        reset_seen = None
+        log = []
+        last_modes = []
+        
+        
+        def _alloc(mhz):
+            for lo, hi, name in ALLOC:
+                if lo <= mhz <= hi:
+                    return name
+            return "fixed / utility (mil, dipl, numbers)"
+        
+        
+        def _nearest_baud(f):
+            b = min(BAUDS, key=lambda v: abs(v - f))
+            return b if abs(b - f) / b < 0.06 else None
+        
+        
+        def _classify(fp):
+            bw, nt, sp, baud, psk, two = fp["bw_hz"], fp["tones"], fp["spacing_hz"], fp["baud"], fp["psk_order"], fp["fsk_shift_hz"]
+            if fp["snr_db"] < 8:
+                return "no signal / below floor", 0
+            if nt >= 2 and nt <= 3 and two and 800 <= two <= 900 and baud in (75, 50):
+                return "STANAG 4481 FSK / naval 75 Bd 850 Hz shift", 80
+            if nt == 2 and two and 150 <= two <= 200 and baud in (45.45, 50):
+                return "RTTY 170 Hz 45 Bd (not military)", 70
+            if nt == 2 and two and 180 <= two <= 220 and baud == 200:
+                return "Pactor I (200 Bd FSK, 200 Hz shift)", 75
+            if nt == 2 and two and 400 <= two <= 500 and baud == 100:
+                return "Pactor II (2-tone DPSK 100 Bd)", 75
+            if 15 <= nt <= 20 and 100 <= sp <= 140 and baud == 100:
+                return "Pactor III (up to 18 tones, 100 Bd)", 80
+            if 8 <= nt <= 9 and 230 <= sp <= 270 and baud == 125:
+                return "MIL-STD-188-141A 2G-ALE (8-FSK, 125 Bd)", 90
+            if 11 <= nt <= 13 and 180 <= sp <= 220 and baud in (120, 100):
+                return "CIS-12 / AT3004D (12-tone OFDM, 120 Bd)", 85
+            if 30 <= nt <= 55 and 55 <= sp <= 70 and baud in (50, 62.5):
+                return "CIS-36-50 / CIS-50-50 (multi-tone, 50 Bd)", 80
+            if 8 <= nt <= 18 and 80 <= sp <= 130 and baud == 10:
+                return "XPA / XPA2 polytone (numbers station)", 75
+            if 35 <= nt <= 50 and 40 <= sp <= 60 and bw > 2000:
+                return "HM01 RDFT block (Cuban hybrid voice/digital)", 65
+            if bw >= 2100 and baud == 2400 and psk >= 4:
+                return "serial-tone 2400 Bd PSK: MIL-STD-188-110A/B (or STANAG 4415 / 3G-ALE / 4481-PSK)", 85
+            if bw >= 2100 and baud == 1800 and psk >= 4:
+                return "Pactor IV / 188-110 variant (1800 Bd PSK)", 60
+            if bw >= 2100 and baud == 2400:
+                return "2400 Bd serial tone (PSK order unclear): 188-110 family", 60
+            if bw >= 6000:
+                return "broadcast / voice AM (wideband)", 60
+            if nt >= 1 and bw < 400 and baud is None:
+                return "carrier / CW / unmodulated", 50
+            return "unknown (%d tones, %.0f Hz spacing, %.0f Hz wide, baud %s)" % (nt, sp, bw, baud), 20
+        
+        
+        def compute(ctx):
+            global spec_avg, env_avg, buffers, last_publish, reset_seen, last_modes
+            ctl = ctx.env.get("hf_control", {}) or {}
+            if reset_seen is None:
+                reset_seen = ctl.get("reset", 0)
+            elif ctl.get("reset", 0) != reset_seen:
+                reset_seen = ctl.get("reset", 0)
+                tracks.clear(); log.clear(); spec_avg = None; env_avg = None
+            raw = np.asarray(ctx.inputs[0]).reshape(-1)
+            attrs = ctx.input_attrs[0]
+            fc = float(attrs["frequency"]) if "frequency" in attrs else 12e6
+            fs = float(attrs["sampleRate"]) if "sampleRate" in attrs else 20e6
+            n = raw.size
+            now = time.time()
+            buffers += 1
+            X = np.fft.fftshift(np.fft.fft(raw))
+            binhz = fs / n
+            mag = np.abs(X) / n
+        
+            # ---- finder at ~1 kHz resolution ----
+            dec = max(1, int(round(1000.0 / binhz)))
+            m = mag[: (n // dec) * dec].reshape(-1, dec).mean(axis=1)
+            pdb = 20.0 * np.log10(m + 1e-12)
+            fmhz = (fc + (np.arange(m.size) * dec + dec / 2.0 - n / 2.0) * binhz) / 1e6
+            k = 201
+            floor = np.convolve(np.sort(pdb)[: int(0.5 * pdb.size)].mean() * np.ones(1), np.ones(1))[0]
+            local = np.convolve(pdb, np.ones(k) / k, mode="same")
+            local = np.minimum(local, np.convolve(np.minimum(pdb, local), np.ones(k) / k, mode="same") + 3.0)
+            thr = float(ctl.get("min_snr_db", 10.0))
+            above = pdb > local + thr
+            above[: 40] = False; above[-40:] = False
+            dcbin = int(np.argmin(np.abs(fmhz - fc / 1e6)))
+            above[dcbin - 3: dcbin + 4] = False
+            edges = np.flatnonzero(np.diff(above.astype(np.int8)))
+            starts = list(edges[above[edges + 1]] + 1) if edges.size else []
+            ends = list(edges[~above[edges + 1]] + 1) if edges.size else []
+            if above[0]:
+                starts = [0] + starts
+            if above[-1]:
+                ends = ends + [above.size]
+            seen = set()
+            for s, e in zip(starts, ends):
+                bw = (e - s) * dec * binhz
+                if bw > 25e3:
+                    continue
+                seg = pdb[s:e]
+                w = 10 ** (seg / 10.0)
+                f0 = float(np.sum(fmhz[s:e] * w) / np.sum(w))
+                key = round(f0 * 500) / 500.0
+                t = tracks.setdefault(key, dict(seen=0, first=buffers))
+                t.update(mhz=f0, peak=float(seg.max()), snr=float(seg.max() - local[s:e].mean()), bw=bw, last=now,
+                         seen=t["seen"] + 1, alloc=_alloc(f0))
+                seen.add(key)
+            for kk in [kk for kk, t in tracks.items() if now - t["last"] > TRACK_TTL_S]:
+                tracks.pop(kk)
+        
+            # ---- target selection ----
+            target = ctl.get("target_khz", "auto")
+            try:
+                target_mhz = float(target) / 1e3
+            except (TypeError, ValueError):
+                cands = [t for t in tracks.values() if t["bw"] <= 4500 and now - t["last"] < 5.0]
+                target_mhz = max(cands, key=lambda t: t["snr"])["mhz"] if cands else fc / 1e6 + 0.5
+            usb = str(ctl.get("sideband", "USB")).upper() != "LSB"
+            span_center = target_mhz * 1e6 + (2000.0 if usb else -2000.0)
+            c0 = int(round((span_center - fc) / binhz)) + n // 2
+            c0 = int(np.clip(c0, NB // 2, n - NB // 2))
+            nb_fs = NB * binhz
+            seg = X[c0 - NB // 2: c0 + NB // 2]
+            xnb = np.fft.ifft(np.fft.ifftshift(seg)) * (NB / n)
+            xnb = xnb.astype(np.complex64)
+            ctx.outputs[0][...] = xnb
+            ctx.output_attrs[0]["frequency"] = np.float32(span_center)
+            ctx.output_attrs[0]["sampleRate"] = np.float32(nb_fs)
+        
+            # ---- fingerprint (incoherent averaging across buffers) ----
+            alpha = 1.0 / max(1.0, float(ctl.get("window_s", 2.0)) * 9.5)
+            ps = np.abs(seg) ** 2 / n ** 2
+            spec_avg = ps if spec_avg is None else (1 - alpha) * spec_avg + alpha * ps
+            fa = (np.arange(NB) - NB / 2) * binhz + (2000.0 if usb else -2000.0)   # audio-frequency axis, Hz
+            if not usb:
+                fa = -fa
+            lo_a, hi_a = float(ctl.get("audio_low", 300)), float(ctl.get("audio_high", 3400))
+            band = (fa >= lo_a) & (fa <= hi_a)
+            sdb = 10 * np.log10(spec_avg + 1e-20)
+            nf = float(np.percentile(sdb[band], 20))
+            sig = band & (sdb > nf + 8)
+            snr = float(sdb[band].max() - nf)
+            if sig.any():
+                idx = np.flatnonzero(sig)
+                bw = float((fa[idx[-1]] - fa[idx[0]]))
+            else:
+                bw = 0.0
+            # tones: local maxima above nf+10 with >= 3-bin prominence
+            pk = np.flatnonzero(band & (sdb > nf + 10) & (sdb >= np.roll(sdb, 1)) & (sdb >= np.roll(sdb, -1)))
+            pk = [p for p in pk if sdb[p] >= max(sdb[max(0, p - 3)], sdb[min(NB - 1, p + 3)]) + 3]
+            tones = len(pk)
+            spacing = float(np.median(np.diff(fa[pk]))) if tones >= 2 else 0.0
+            shift = float(abs(fa[pk[-1]] - fa[pk[0]])) if tones == 2 else 0.0
+            # symbol-rate lines from the envelope spectrum of the narrowband signal
+            env = np.abs(xnb) ** 2
+            env = env - env.mean()
+            E = np.abs(np.fft.rfft(env * np.hanning(NB))) ** 2
+            env_avg = E if env_avg is None else (1 - alpha) * env_avg + alpha * E
+            fe = np.fft.rfftfreq(NB, 1.0 / nb_fs)
+            cand = (fe >= 8) & (fe <= 2600)
+            baud = None
+            if cand.any():
+                base = np.median(env_avg[cand])
+                j = int(np.argmax(env_avg * cand))
+                if env_avg[j] > 6 * base:
+                    baud = _nearest_baud(float(fe[j]))
+            # PSK order: strongest spectral line in x^2, x^4, x^8
+            psk = 0
+            for order in (2, 4, 8):
+                P = np.abs(np.fft.fft(xnb ** order * np.hanning(NB))) ** 2
+                if P.max() > 12 * np.median(P):
+                    psk = order
+            fp = dict(target_mhz=round(target_mhz, 4), sideband="USB" if usb else "LSB", snr_db=round(snr, 1), bw_hz=round(bw),
+                      tones=tones, spacing_hz=round(spacing), fsk_shift_hz=round(shift), baud=baud, psk_order=psk)
+            mode, conf = _classify(fp)
+            last_modes = (last_modes + [mode])[-4:]
+            stable = len(last_modes) == 4 and all(mm == mode for mm in last_modes)
+            if stable and conf >= 60 and (not log or log[0]["mode"] != mode or abs(log[0]["mhz"] - target_mhz) > 0.002):
+                log.insert(0, dict(time=time.strftime("%H:%M:%S", time.localtime(now)), mhz=round(target_mhz, 4), mode=mode, conf=conf,
+                                   snr=round(snr, 1)))
+                del log[20:]
+        
+            if now - last_publish < 0.5:
+                return
+            last_publish = now
+            rows = sorted(tracks.values(), key=lambda t: -t["snr"])[:20]
+            ctx.env["hf"] = {
+                "buffers": buffers, "span": "%.1f-%.1f MHz" % ((fc - fs / 2) / 1e6, (fc + fs / 2) / 1e6),
+                "channels_now": len(seen),
+                "target": fp, "mode": mode, "confidence": conf,
+                "channels": [dict(khz="%.1f" % (t["mhz"] * 1e3), alloc=t["alloc"], peak="%.1f" % t["peak"], snr="%.1f" % t["snr"],
+                                  bw="%.1f" % (t["bw"] / 1e3), duty="%.0f" % (100.0 * t["seen"] / max(1, buffers - t["first"] + 1)),
+                                  last=time.strftime("%H:%M:%S", time.localtime(t["last"]))) for t in rows],
+                "log": log,
+            }
+      file: ''
+      inputCount: 1
+      outputCount: 1
+      outputTensorSpecs:
+        - shape: '[1024]'
+          axes: '[S]'
+          dtype: CF32
+          device: cpu
+      throttled: true
+    input:
+      input0: '${graph.hf_rx.output.signal}'
+    meta:
+      node:
+        x: 1836
+        y: 170
+        width: 640
+        height: 560
+  - name: channel_spectrum
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      mode: lineplot_waterfall
+      lineplotAveraging: 8
+      waterfallAveraging: 1
+      maxHold: false
+      fill: true
+      rangeMin: -90
+      rangeMax: -10
+      waterfallHeight: 512
+      colormap: turbo
+      density: false
+      persistence: 256
+      splitRatio: 0.5
+      markers: '[]'
+      pins: '[]'
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
+    input:
+      buffer: '${graph.hf_analyzer.output.output0}'
+    meta:
+      node:
+        x: 2516
+        y: 170
+        width: 900
+        height: 560
+      surface_default:
+        attachedHeight: 434
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: hf_dashboard
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # HF Military / Diplomatic / Intelligence Modes
+        ```stats 4
+        Target | ${env.hf.target.target_mhz} MHz ${env.hf.target.sideband} | blue | SNR ${env.hf.target.snr_db} dB
+        Verdict | ${env.hf.mode} | red | confidence ${env.hf.confidence} %
+        Fingerprint | ${env.hf.target.tones} tones @ ${env.hf.target.spacing_hz} Hz | purple | BW ${env.hf.target.bw_hz} Hz, baud ${env.hf.target.baud}, PSK order ${env.hf.target.psk_order}, FSK shift ${env.hf.target.fsk_shift_hz} Hz
+        Capture | ${env.hf.span} | green | ${env.hf.buffers} buffers, ${env.hf.channels_now} channels active now
+        ```
+        Set `TARGET_KHZ` in **hf_controls** (or leave `auto` for the strongest narrow channel) and `SIDEBAND`. **channel_spectrum** shows the tuned channel at 9.5 Hz resolution. The verdict is a fingerprint match, not a decode; a mode is logged below once it has been stable for four analysis windows.
+        
+        **Mode rules:** 188-110A/B/D, STANAG 4415, 3G-ALE, 4481-PSK = 2400 Bd serial-tone PSK ~2.4-3 kHz; 141A 2G-ALE = 8 tones @ 250 Hz, 125 Bd; STANAG 4481 FSK = 850 Hz shift 75 Bd; CIS-12/AT3004D = 12 tones @ 200 Hz, 120 Bd; CIS-36-50 / CIS-50-50 = 36-50 tones @ 62.5 Hz, 50 Bd; XPA/XPA2 = 10-16 tones @ ~100 Hz, 10 Bd; HM01 = ~43-tone RDFT block alternating with AM voice; Pactor I = 200 Bd 2-FSK 200 Hz; Pactor II = 2-tone DPSK 100 Bd; Pactor III = up to 18 tones 100 Bd; Pactor IV = 1800 Bd PSK.
+        
+        ## Active channels (2-22 MHz)
+        | kHz | Allocation | Peak dBFS | SNR dB | BW kHz | Duty % | Last |
+        |--:|---|--:|--:|--:|--:|---|
+        | ${env.hf.channels[*].khz} | ${env.hf.channels[*].alloc} | ${env.hf.channels[*].peak} | ${env.hf.channels[*].snr} | ${env.hf.channels[*].bw} | ${env.hf.channels[*].duty} | ${env.hf.channels[*].last} |
+        
+        ## Detections log
+        | Time | MHz | Mode | Conf % | SNR dB |
+        |---|--:|---|--:|--:|
+        | ${env.hf.log[*].time} | ${env.hf.log[*].mhz} | ${env.hf.log[*].mode} | ${env.hf.log[*].conf} | ${env.hf.log[*].snr} |
+        
+        > [!NOTE]
+        > Without an antenna the channel list is the HackRF's own spurs (20.000 MHz clock harmonic, 4619, 2310 kHz etc.). Real HF needs a long wire or active loop; WWV 10/15/20 MHz and the 49/31 m broadcast bands are the first sanity checks.
+    meta:
+      node:
+        x: 3456
+        y: 170
+        width: 1500
+        height: 1180

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <barrier>
+#include <cctype>
 #include <chrono>
 #include <functional>
 #include <future>
@@ -1211,4 +1212,30 @@ TEST_CASE("Registry factories can enqueue deferred registry work", "[core][regis
     std::shared_ptr<Block> builtBlock;
     REQUIRE(Registry::BuildBlock(blockType, builtBlock) == Result::SUCCESS);
     REQUIRE(builtBlock != nullptr);
+}
+
+TEST_CASE("Bundled examples include the cellular, ISM and HF dashboards", "[registry][examples]") {
+    const std::vector<std::pair<std::string, std::string>> expected = {
+        {"valentine-rf-cellops", "Valentine RF Cellops"},
+        {"ism", "ISM Band Survey"},
+        {"hf-military", "HF Military"},
+    };
+
+    for (const auto& [key, title] : expected) {
+        const auto found = Registry::ListAvailableFlowgraphs(key);
+        REQUIRE(found.size() == 1);
+        REQUIRE(found[0].title == title);
+        REQUIRE(found[0].summary != "No summary.");
+        REQUIRE(found[0].description != "No description.");
+        REQUIRE(found[0].content.find("\ngraph:\n") != std::string::npos);
+    }
+
+    for (const auto& example : Registry::ListAvailableFlowgraphs()) {
+        std::string lowered = example.content;
+        for (auto& character : lowered) {
+            character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+        }
+        INFO("example " << example.key);
+        REQUIRE(lowered.find("password") == std::string::npos);
+    }
 }

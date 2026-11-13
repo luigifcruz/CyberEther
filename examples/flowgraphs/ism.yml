@@ -1,0 +1,887 @@
+---
+version: 2
+title: ISM Band Survey
+summary: Survey sub-GHz, 915 MHz and 2.4 GHz ISM bands.
+author: Chase Valentine
+description: Uses RTL-SDR, LimeSDR XTRX and HackRF radios to scan 300-960 MHz, 433.92 MHz, 902-928 MHz and 2.4 GHz, showing spectra, decoded OOK devices, carrier tracks and band occupancy.
+graph:
+  - name: subghz_sweep
+    module: sdr_sweep
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: 'driver=rtlsdr,serial=00001090'
+      antenna: ''
+      automaticGain: false
+      manualGain: 40.2
+      biasTee: false
+      startFrequency: 300000000
+      endFrequency: 960000000
+      sampleRate: 0
+      resolution: 50000
+      dwell: 1
+      settlingTime: 0
+    meta:
+      node:
+        x: 20
+        y: 170
+        width: 220
+        height: 0
+  - name: ism24_sweep
+    module: sdr_sweep
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: 'driver=hackrf,serial=0000000000000000955c64dc294186c3'
+      antenna: ''
+      automaticGain: true
+      manualGain: 40
+      biasTee: false
+      startFrequency: 2400000000
+      endFrequency: 2483500000
+      sampleRate: 0
+      resolution: 100000
+      dwell: 1
+      settlingTime: 0
+    meta:
+      node:
+        x: 730.00006
+        y: 794
+        width: 220
+        height: 0
+  - name: subghz_finder
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import time
+        import numpy as np
+        
+        # Sub-GHz ISM activity map for the 300-960 MHz sweep: per-band levels and a tracked list of
+        # narrowband carriers labelled by the band they fall in.
+        
+        BANDS = [
+            ("315 MHz remotes / TPMS", 300.0, 320.0),
+            ("345 MHz security sensors", 340.0, 350.0),
+            ("433 MHz ISM (remotes, sensors)", 433.05, 434.79),
+            ("FRS / GMRS", 462.5, 467.8),
+            ("EU 868 ISM", 863.0, 870.0),
+            ("Z-Wave US 908.4 / 916", 908.0, 916.5),
+            ("US 915 ISM (LoRa, FHSS)", 902.0, 928.0),
+        ]
+        THRESH_DB = 16.0
+        MIN_BINS = 2
+        MAX_BW_HZ = 600e3
+        TRACK_TTL_S = 120.0
+        
+        tracks = {}
+        sweeps = 0
+        last_fp = None
+        last_publish = 0.0
+        reset_seen = None
+        
+        
+        def _band(f):
+            for name, lo, hi in BANDS:
+                if lo <= f <= hi:
+                    return name
+            return "other"
+        
+        
+        def compute(ctx):
+            global sweeps, last_fp, last_publish
+            global reset_seen
+            tok = (ctx.env.get("lab_control", {}) or {}).get("reset_all", 0)
+            if reset_seen is None:
+                reset_seen = tok
+            elif tok != reset_seen:
+                reset_seen = tok
+                tracks.clear(); sweeps = 0
+            x = np.asarray(ctx.inputs[0]).reshape(-1)
+            attrs = ctx.input_attrs[0]
+            fc = float(attrs["frequency"]) if "frequency" in attrs else 0.0
+            fs = float(attrs["sampleRate"]) if "sampleRate" in attrs else 0.0
+            n = x.size
+            now = time.time()
+            fp = (n, float(np.abs(x[:128]).sum()))
+            if fp == last_fp or fs <= 0 or n < 16:
+                return
+            last_fp = fp
+            sweeps += 1
+            pwr = 20.0 * np.log10(np.abs(np.fft.fftshift(np.fft.fft(x))) / n + 1e-12)
+            freqs = (fc + (np.arange(n) - n / 2.0) * (fs / n)) / 1e6
+            bin_hz = fs / n
+            band_rows = []
+            for name, lo, hi in BANDS:
+                m = (freqs >= lo) & (freqs <= hi)
+                if not m.any():
+                    continue
+                p = pwr[m]
+                nf = float(np.percentile(p, 30))
+                band_rows.append(dict(band=name, range="%.1f-%.1f" % (lo, hi), peak="%.1f" % p.max(), noise="%.1f" % nf,
+                                      occ="%.0f" % (100.0 * np.mean(p > nf + 8.0)), peak_mhz="%.3f" % freqs[m][int(np.argmax(p))]))
+            noise = float(np.percentile(pwr, 30))
+            above = pwr > noise + THRESH_DB
+            edges = np.flatnonzero(np.diff(above.astype(np.int8)))
+            starts = list(edges[above[edges + 1]] + 1) if edges.size else []
+            ends = list(edges[~above[edges + 1]] + 1) if edges.size else []
+            if above[0]:
+                starts = [0] + starts
+            if above[-1]:
+                ends = ends + [n]
+            seen = set()
+            for s, e in zip(starts, ends):
+                bw = (e - s) * bin_hz
+                if bw > MAX_BW_HZ or (e - s) < MIN_BINS:
+                    continue
+                seg = pwr[s:e]
+                w = 10 ** (seg / 10.0)
+                f0 = float(np.sum(freqs[s:e] * w) / np.sum(w))
+                key = round(f0 * 10) / 10.0
+                tr = tracks.setdefault(key, dict(seen=0, first_sweep=sweeps))
+                tr.update(freq=f0, peak=float(seg.max()), snr=float(seg.max() - noise), bw_khz=bw / 1e3, last=now,
+                          seen=tr["seen"] + 1, band=_band(f0))
+                seen.add(key)
+            for k in [k for k, t in tracks.items() if now - t["last"] > TRACK_TTL_S]:
+                tracks.pop(k)
+            if now - last_publish < 0.5:
+                return
+            last_publish = now
+            rows = []
+            for k, t in tracks.items():
+                duty = t["seen"] / max(1, sweeps - t["first_sweep"] + 1)
+                rows.append(dict(freq="%.3f" % t["freq"], band=t["band"], peak="%.1f" % t["peak"], snr="%.1f" % t["snr"],
+                                 bw="%.0f" % t["bw_khz"], duty="%.0f" % (100 * duty), active="YES" if k in seen else "no",
+                                 last=time.strftime("%H:%M:%S", time.localtime(t["last"])), _k=-t["snr"]))
+            rows.sort(key=lambda r: r["_k"])
+            for r in rows:
+                r.pop("_k")
+            ctx.env["subghz"] = {"sweeps": sweeps, "noise_dbfs": round(noise, 1), "span": "%.0f-%.0f MHz" % (freqs[0], freqs[-1]),
+                                 "carriers_now": len(seen), "bands": band_rows, "carriers": rows[:15]}
+      file: ''
+      inputCount: 1
+      outputCount: 0
+      outputTensorSpecs: []
+      throttled: true
+    input:
+      input0: '${graph.subghz_sweep.output.signal}'
+    meta:
+      node:
+        x: 1336
+        y: 170
+        width: 600
+        height: 500
+  - name: ism24_classifier
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import time
+        import numpy as np
+        
+        # 2.4 GHz ISM classifier for the HackRF sweep: Zigbee channels 11-26, BLE advertising channels,
+        # Wi-Fi 20 MHz blocks, and frequency-hopper statistics, from mean power per 1 MHz channel.
+        
+        THRESH_DB = 8.0
+        HISTORY = 60
+        hist = []
+        sweeps = 0
+        last_fp = None
+        last_publish = 0.0
+        reset_seen = None
+        
+        
+        def compute(ctx):
+            global sweeps, last_fp, last_publish
+            global reset_seen
+            tok = (ctx.env.get("lab_control", {}) or {}).get("reset_all", 0)
+            if reset_seen is None:
+                reset_seen = tok
+            elif tok != reset_seen:
+                reset_seen = tok
+                hist.clear(); sweeps = 0
+            x = np.asarray(ctx.inputs[0]).reshape(-1)
+            attrs = ctx.input_attrs[0]
+            fc = float(attrs["frequency"]) if "frequency" in attrs else 0.0
+            fs = float(attrs["sampleRate"]) if "sampleRate" in attrs else 0.0
+            n = x.size
+            now = time.time()
+            fp = (n, float(np.abs(x[:128]).sum()))
+            if fp == last_fp or fs <= 0 or n < 16:
+                return
+            last_fp = fp
+            sweeps += 1
+            pwr = 20.0 * np.log10(np.abs(np.fft.fftshift(np.fft.fft(x))) / n + 1e-12)
+            freqs = (fc + (np.arange(n) - n / 2.0) * (fs / n)) / 1e6
+            f0 = int(np.floor(freqs[0]))
+            nch = int(np.ceil(freqs[-1])) - f0
+            idx = np.clip((freqs - f0).astype(int), 0, nch - 1)
+            lin = 10.0 ** (pwr / 10.0)
+            s = np.zeros(nch); c = np.zeros(nch)
+            np.add.at(s, idx, lin); np.add.at(c, idx, 1.0)
+            ch = 10.0 * np.log10(s / np.maximum(c, 1.0) + 1e-20)
+            noise = float(np.percentile(ch, 30))
+            active = ch > noise + THRESH_DB
+            hist.append((active, ch))
+            del hist[:-HISTORY]
+            if now - last_publish < 0.5:
+                return
+            last_publish = now
+            A = np.array([h[0] for h in hist]); P = np.array([h[1] for h in hist])
+            occ = A.mean(axis=0); pk = P.max(axis=0)
+            mhz = lambda i: f0 + i + 0.5
+        
+            def chan(f):
+                i = int(f - f0)
+                return i if 0 <= i < nch else None
+        
+            wifi = []
+            wifi_mask = np.zeros(nch, dtype=bool)
+            for wch, fw in ((1, 2412), (6, 2437), (11, 2462)):
+                lo, hi = chan(fw - 9), chan(fw + 9)
+                if lo is not None and hi is not None:
+                    o = float(occ[lo:hi + 1].mean())
+                    if o > 0.1:
+                        wifi.append(dict(ch=wch, mhz=fw, occ="%.0f" % (100 * o), peak="%.1f" % pk[lo:hi + 1].max()))
+                        wifi_mask[lo:hi + 1] = True
+            zig = []
+            for z in range(11, 27):
+                fz = 2405 + 5 * (z - 11)
+                i = chan(fz)
+                if i is not None and occ[i] > 0.05:
+                    zig.append(dict(ch=z, mhz=fz, occ="%.0f" % (100 * occ[i]), peak="%.1f" % pk[i],
+                                    note="inside Wi-Fi block" if wifi_mask[i] else "clear"))
+            ble = []
+            for name, fb in (("adv 37", 2402), ("adv 38", 2426), ("adv 39", 2480)):
+                i = chan(fb)
+                if i is not None:
+                    ble.append(dict(ch=name, mhz=fb, occ="%.0f" % (100 * occ[i]), peak="%.1f" % pk[i],
+                                    note="inside Wi-Fi block" if wifi_mask[i] else "clear"))
+            hop = np.flatnonzero((occ > 0.03) & (occ < 0.7))
+            fixed = np.flatnonzero(occ >= 0.7)
+            ctx.env["ism24"] = {
+                "sweeps": sweeps, "noise_dbfs": round(noise, 1), "active_now": int(active.sum()),
+                "fixed_channels": int(fixed.size), "hopper_channels": int(hop.size),
+                "hopper_range": "%.0f-%.0f MHz" % (mhz(hop.min()) - 0.5, mhz(hop.max()) + 0.5) if hop.size else "--",
+                "hops_per_sweep": round(float(A[:, hop].sum(axis=1).mean()), 1) if hop.size else 0.0,
+                "zigbee": zig, "ble_adv": ble, "wifi": wifi,
+            }
+      file: ''
+      inputCount: 1
+      outputCount: 0
+      outputTensorSpecs: []
+      throttled: true
+    input:
+      input0: '${graph.ism24_sweep.output.signal}'
+    meta:
+      node:
+        x: 3288
+        y: 707
+        width: 600
+        height: 500
+  - name: ism_dashboard
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Low-Power ISM Lab
+        ```stats 4
+        433 OOK | ${env.ook.decoded} frames | green | ${env.ook.bursts} bursts, floor ${env.ook.floor_db} dB
+        Sub-GHz sweep | ${env.subghz.sweeps} sweeps | blue | ${env.subghz.carriers_now} carriers now, floor ${env.subghz.noise_dbfs} dBFS
+        915 ISM (XTRX) | ${env.ism915.blocks_now} blocks now | purple | floor ${env.ism915.noise_dbfs} dBFS
+        2.4 GHz | ${env.ism24.hopper_channels} hopping ch | red | ${env.ism24.hops_per_sweep} hops/sweep, ${env.ism24.fixed_channels} fixed
+        ```
+        ## 433.92 MHz OOK devices (ook_rx, rtl_433 style)
+        Press a remote, open a door sensor, or wait for a weather sensor. Retune **ook_rx** to 315 MHz for garage openers / TPMS.
+        
+        | Device code | Bits | Mod | Seen | RSSI dB | Short us | Long us | Guess | Last |
+        |---|--:|---|--:|--:|--:|--:|---|---|
+        | ${env.ook.devices[*].code} | ${env.ook.devices[*].bits} | ${env.ook.devices[*].mod} | ${env.ook.devices[*].count} | ${env.ook.devices[*].rssi} | ${env.ook.devices[*].short} | ${env.ook.devices[*].long} | ${env.ook.devices[*].kind} | ${env.ook.devices[*].last} |
+        
+        ## Sub-GHz band map (300-960 MHz sweep)
+        | Band | MHz | Peak dBFS | Noise | Occ % | Peak at MHz |
+        |---|---|--:|--:|--:|--:|
+        | ${env.subghz.bands[*].band} | ${env.subghz.bands[*].range} | ${env.subghz.bands[*].peak} | ${env.subghz.bands[*].noise} | ${env.subghz.bands[*].occ} | ${env.subghz.bands[*].peak_mhz} |
+        
+        | Carrier MHz | Band | Peak | SNR | BW kHz | Duty % | Active | Last |
+        |--:|---|--:|--:|--:|--:|---|---|
+        | ${env.subghz.carriers[*].freq} | ${env.subghz.carriers[*].band} | ${env.subghz.carriers[*].peak} | ${env.subghz.carriers[*].snr} | ${env.subghz.carriers[*].bw} | ${env.subghz.carriers[*].duty} | ${env.subghz.carriers[*].active} | ${env.subghz.carriers[*].last} |
+        
+        ## 902-928 MHz bursts (XTRX, whole band at once)
+        **${env.ism915.fhss.verdict}**: ${env.ism915.fhss.bursts_per_min} bursts/min over ${env.ism915.fhss.channels_seen} channels (${env.ism915.fhss.range}, median spacing ${env.ism915.fhss.spacing_khz} kHz)
+        
+        | MHz | BW kHz | Peak | SNR | Hits | Classification | Last |
+        |--:|--:|--:|--:|--:|---|---|
+        | ${env.ism915.blocks[*].freq} | ${env.ism915.blocks[*].bw} | ${env.ism915.blocks[*].peak} | ${env.ism915.blocks[*].snr} | ${env.ism915.blocks[*].hits} | ${env.ism915.blocks[*].kind} | ${env.ism915.blocks[*].last} |
+        
+        ## 2.4 GHz (HackRF sweep)
+        Wi-Fi: | ch | MHz | Occ % | Peak |
+        |---|--:|--:|--:|
+        | ${env.ism24.wifi[*].ch} | ${env.ism24.wifi[*].mhz} | ${env.ism24.wifi[*].occ} | ${env.ism24.wifi[*].peak} |
+        
+        | Zigbee ch | MHz | Occ % | Peak | Note |
+        |--:|--:|--:|--:|---|
+        | ${env.ism24.zigbee[*].ch} | ${env.ism24.zigbee[*].mhz} | ${env.ism24.zigbee[*].occ} | ${env.ism24.zigbee[*].peak} | ${env.ism24.zigbee[*].note} |
+        
+        | BLE | MHz | Occ % | Peak | Note |
+        |---|--:|--:|--:|---|
+        | ${env.ism24.ble_adv[*].ch} | ${env.ism24.ble_adv[*].mhz} | ${env.ism24.ble_adv[*].occ} | ${env.ism24.ble_adv[*].peak} | ${env.ism24.ble_adv[*].note} |
+    meta:
+      node:
+        x: 3961.4888
+        y: 171.74153
+        width: 1107
+        height: 1262.388
+  - name: ook_rx
+    module: sdr
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: 'driver=rtlsdr,serial=00000978'
+      antenna: ''
+      frequency: 4.3392e+08
+      frequencyStep: 1000000
+      sampleRate: 1024000
+      automaticGain: false
+      manualGain: 28
+      biasTee: false
+      numberOfBatches: 8
+      numberOfTimeSamples: 8192
+      bufferMultiplier: 8
+    meta:
+      node:
+        x: 20
+        y: 790
+        width: 220
+        height: 0
+  - name: ook_decoder
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import time
+        import numpy as np
+        
+        # rtl_433-style OOK/ASK decoder for 433.92 MHz (retune ook_rx to 315 MHz for garage/TPMS gear).
+        # Extracts pulses from each burst, decides PWM vs PPM, recovers bits, fingerprints devices by code.
+        
+        FS = 1.024e6
+        SMOOTH = 8                 # envelope smoothing, samples
+        THRESH_DB = 12.0           # pulse threshold above the noise floor
+        MIN_PULSE_US = 100.0
+        FRAME_GAP_US = 12000.0     # a low this long ends a frame (fob header gaps are ~4 ms, repeats ~15 ms+)
+        MIN_PULSES = 8
+        MAX_FRAMES = 12
+        MAX_DEVICES = 24
+        
+        frame = []
+        carry = None
+        frames = []
+        devices = {}
+        stats = dict(buffers=0, bursts=0, decoded=0, floor_db=None)
+        last_publish = 0.0
+        reset_seen = None
+        
+        
+        def _classify(nbits, mod, short, long_):
+            ratio = long_ / max(short, 1.0)
+            if mod == "PWM" and 60 <= nbits <= 80 and 1.8 < ratio < 4.0:
+                return "rolling-code key fob (KeeLoq-like, 66-bit)"
+            if mod == "PWM" and 48 <= nbits <= 59:
+                return "key fob / garage remote (rolling code, PWM)"
+            if nbits in (24, 25) and mod == "PWM" and 2.2 < ratio < 4.5:
+                return "EV1527/PT2262 remote (20-bit address + 4-bit button)"
+            if nbits in (36, 37, 40, 41) and mod == "PWM":
+                return "weather/temperature sensor (PWM)"
+            if nbits in (32, 33, 34) and mod == "PPM":
+                return "PPM sensor (Oregon/Acurite style)"
+            if mod == "PPM" and 60 <= nbits <= 70:
+                return "TPMS/automotive (PPM)"
+            return "unknown %s, %d bits" % (mod, nbits)
+        
+        
+        def _decode(pulses, rssi, now):
+            hi = np.array([p[0] for p in pulses])
+            lo = np.array([p[1] for p in pulses[1:]])
+            if hi.size < MIN_PULSES:
+                return
+            if lo.size and float(np.median(lo)) < 40.0:
+                return                      # continuous carrier with noise dips: handled by the FSK path
+            # Drop leading preamble/header: pulses whose preceding gap is far longer than the rest.
+            if lo.size > 4:
+                med = float(np.median(lo))
+                cut = int(np.argmax(lo > 6 * med)) + 1 if np.any(lo > 6 * med) else 0
+                if 0 < cut < hi.size - MIN_PULSES:
+                    hi, lo = hi[cut:], lo[cut:]
+            stats["bursts"] += 1
+            hi_ratio = hi.max() / max(hi.min(), 1.0)
+            lo_ratio = (lo.max() / max(lo.min(), 1.0)) if lo.size else 1.0
+            if hi_ratio >= 1.8 and hi_ratio >= lo_ratio:
+                mod, d = "PWM", hi
+            elif lo_ratio >= 1.8:
+                mod, d = "PPM", lo
+            else:
+                mod, d = "MANCHESTER?", hi
+            thr = (d.min() + d.max()) / 2.0
+            bits = (d > thr).astype(int)
+            short = float(np.median(d[d <= thr])) if np.any(d <= thr) else float(d.min())
+            long_ = float(np.median(d[d > thr])) if np.any(d > thr) else float(d.max())
+            bitstr = "".join(str(b) for b in bits)
+            hexstr = format(int(bitstr, 2), "X") if bits.size else ""
+            nbits = int(bits.size)
+            kind = _classify(nbits, mod, short, long_)
+            key = "%s/%d/%s" % (mod, nbits, hexstr)
+            dev = devices.setdefault(key, dict(code=hexstr, bits=nbits, mod=mod, first=now, count=0))
+            dev.update(count=dev["count"] + 1, last=now, rssi=round(rssi, 1), short_us=round(short), long_us=round(long_), kind=kind)
+            frames.insert(0, dict(time=time.strftime("%H:%M:%S", time.localtime(now)), mod=mod, bits=nbits,
+                                  code=hexstr[:24], rssi=round(rssi, 1), short=round(short), long=round(long_),
+                                  kind=kind, pulses=int(hi.size)))
+            del frames[MAX_FRAMES:]
+            stats["decoded"] += 1
+        
+        
+        def _decode_fsk(seg, rssi, now):
+            """Continuous burst: FM-discriminate, binarise around the centre, recover symbols."""
+            if seg.size < 2000:
+                return
+            d = np.angle(seg[1:] * np.conj(seg[:-1])) * FS / (2.0 * np.pi)      # instantaneous frequency, Hz
+            d = np.convolve(d, np.ones(6) / 6.0, mode="same")
+            lo_q, hi_q = np.percentile(d, 10), np.percentile(d, 90)
+            dev_khz = (hi_q - lo_q) / 2e3
+            if dev_khz < 2.0:
+                kind = "continuous carrier, no modulation (ASK/CW?)"
+                sym_us, nbits, hexstr, rate = 0, 0, "", 0
+            else:
+                bits_raw = d > (lo_q + hi_q) / 2.0
+                edges = np.flatnonzero(np.diff(bits_raw.astype(np.int8))) + 1
+                bounds = np.concatenate([[0], edges, [bits_raw.size]])
+                runs = np.diff(bounds)
+                runs = runs[runs >= 4]
+                if runs.size < 8:
+                    return
+                sym = float(np.percentile(runs, 10))
+                sym_us = sym * 1e6 / FS
+                rate = FS / sym / 1e3
+                bits = []
+                for i in range(len(bounds) - 1):
+                    n = int(round((bounds[i + 1] - bounds[i]) / sym))
+                    bits.extend([int(bits_raw[bounds[i]])] * max(n, 0))
+                nbits = len(bits)
+                hexstr = format(int("".join(str(b) for b in bits[:256]), 2), "X") if bits else ""
+                kind = "FSK burst: %.1f ms, dev +/-%.0f kHz, ~%.1f kbps" % (seg.size / FS * 1e3, dev_khz, rate)
+                if 20 <= rate <= 60 and 10 <= seg.size / FS * 1e3 <= 200:
+                    kind += " (modern key fob / TPMS style)"
+            stats["bursts"] += 1
+            stats["decoded"] += 1
+            key = "FSK/%s" % hexstr[:12]
+            dev = devices.setdefault(key, dict(code=hexstr, bits=nbits, mod="FSK", first=now, count=0))
+            dev.update(count=dev["count"] + 1, last=now, rssi=round(rssi, 1), short_us=round(sym_us), long_us=round(dev_khz),
+                       kind=kind, code=hexstr, bits=nbits)
+            frames.insert(0, dict(time=time.strftime("%H:%M:%S", time.localtime(now)), mod="FSK", bits=nbits,
+                                  code=hexstr[:24], rssi=round(rssi, 1), short=round(sym_us), long=round(dev_khz),
+                                  kind=kind, pulses=0))
+            del frames[MAX_FRAMES:]
+        
+        
+        def compute(ctx):
+            global carry, frame, last_publish
+            global reset_seen
+            ctl = ctx.env.get("lab_control", {}) or {}
+            token = (ctl.get("reset_all", 0), ctl.get("reset_ook", 0))
+            if reset_seen is None:
+                reset_seen = token
+            elif token != reset_seen:
+                reset_seen = token
+                frames.clear(); devices.clear(); frame = []; carry = None
+                stats.update(buffers=0, bursts=0, decoded=0)
+            x = np.asarray(ctx.inputs[0]).reshape(-1)
+            # Band-limit to +/-250 kHz around the tuned frequency and notch the RTL-SDR DC/LO leakage.
+            X = np.fft.fft(x)
+            fbin = np.fft.fftfreq(x.size, 1.0 / FS)
+            X[(np.abs(fbin) < 15e3) | (np.abs(fbin) > 250e3)] = 0
+            x = np.fft.ifft(X).astype(np.complex64)
+            now = time.time()
+            stats["buffers"] += 1
+            p = np.convolve(np.abs(x) ** 2, np.ones(SMOOTH, dtype=np.float32) / SMOOTH, mode="same")
+            pdb = 10.0 * np.log10(p + 1e-18)
+            floor = float(np.percentile(pdb, 20))
+            stats["floor_db"] = floor if stats["floor_db"] is None else 0.9 * stats["floor_db"] + 0.1 * floor
+            mask = pdb > stats["floor_db"] + THRESH_DB
+            peak_db = float(pdb.max())
+            # FSK/continuous bursts: close gaps shorter than 40 us and look for long solid runs.
+            closed = np.convolve(mask.astype(np.float32), np.ones(40, dtype=np.float32), mode="same") > 0
+            ce = np.flatnonzero(np.diff(closed.astype(np.int8))) + 1
+            cb = np.concatenate([[0], ce, [closed.size]])
+            for i in range(len(cb) - 1):
+                s, e = int(cb[i]), int(cb[i + 1])
+                if closed[s] and e - s >= 2000 and mask[s:e].mean() > 0.8:
+                    _decode_fsk(x[s:e], float(pdb[s:e].max()) - stats["floor_db"], now)
+            edges = np.flatnonzero(np.diff(mask.astype(np.int8))) + 1
+            bounds = np.concatenate([[0], edges, [mask.size]])
+            runs = [(bool(mask[bounds[i]]), int(bounds[i + 1] - bounds[i])) for i in range(len(bounds) - 1)]
+            if carry is not None and runs and runs[0][0] == carry[0]:
+                runs[0] = (carry[0], carry[1] + runs[0][1])
+            elif carry is not None:
+                runs.insert(0, carry)
+            carry = runs.pop() if runs else None
+            us = 1e6 / FS
+            low_before = 0.0
+            for level, length in runs:
+                dur = length * us
+                if level:
+                    if dur >= MIN_PULSE_US:
+                        frame.append((dur, low_before))
+                    low_before = 0.0
+                else:
+                    low_before += dur
+                    if low_before >= FRAME_GAP_US and frame:
+                        _decode(frame, peak_db - stats["floor_db"], now)
+                        frame = []
+            if carry is not None and not carry[0] and carry[1] * us >= FRAME_GAP_US and frame:
+                _decode(frame, peak_db - stats["floor_db"], now)
+                frame = []
+        
+            for k in [k for k, d in devices.items() if now - d["last"] > 600.0]:
+                devices.pop(k)
+            if now - last_publish < 0.5:
+                return
+            last_publish = now
+            devs = sorted(devices.values(), key=lambda d: -d["last"])[:MAX_DEVICES]
+            ctx.env["ook"] = {
+                "buffers": stats["buffers"], "bursts": stats["bursts"], "decoded": stats["decoded"],
+                "floor_db": round(stats["floor_db"], 1), "threshold_db": THRESH_DB,
+                "frames": frames,
+                "devices": [dict(code=d["code"][:24], bits=d["bits"], mod=d["mod"], count=d["count"], rssi=d["rssi"],
+                                 short=d["short_us"], long=d["long_us"], kind=d["kind"],
+                                 last=time.strftime("%H:%M:%S", time.localtime(d["last"]))) for d in devs],
+            }
+      file: ''
+      inputCount: 1
+      outputCount: 0
+      outputTensorSpecs: []
+      throttled: false
+    input:
+      input0: '${graph.ook_rx.output.signal}'
+    meta:
+      node:
+        x: 296
+        y: 790
+        width: 396
+        height: 555
+  - name: ism915_rx
+    module: sdr
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: 'driver=limesuiteng,serial=000000000e5dd86c'
+      antenna: LNAW
+      frequency: 9.15e+08
+      frequencyStep: 1000000
+      sampleRate: 3.072e+07
+      automaticGain: false
+      manualGain: 33
+      biasTee: false
+      numberOfBatches: 16
+      numberOfTimeSamples: 65536
+      bufferMultiplier: 4
+    meta:
+      node:
+        x: 1976
+        y: 170
+        width: 220
+        height: 0
+  - name: ism915_watch
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import time
+        import numpy as np
+        
+        # 902-928 MHz burst watch on the XTRX 30.72 MS/s capture. Each buffer is spectrally segmented
+        # into energy blocks; bandwidth classifies them (LoRa 125/250/500 kHz, narrow FSK such as Z-Wave
+        # or 915 MHz sensors, wide FHSS), and blocks are tracked over time by centre frequency.
+        
+        NFFT = 65536
+        THRESH_DB = 9.0
+        MIN_BW_KHZ = 8.0
+        TRACK_TTL_S = 120.0
+        ZWAVE = ((908.42, "Z-Wave R2 40 kbps"), (908.40, "Z-Wave R1 9.6 kbps"), (916.00, "Z-Wave R3 100 kbps"))
+        
+        tracks = {}
+        buffers = 0
+        last_publish = 0.0
+        noise_est = None
+        hops = []            # (time, freq_mhz) of narrow one-off bursts
+        reset_seen = None
+        
+        
+        def _kind(bw_khz, f_mhz):
+            for fz, name in ZWAVE:
+                if abs(f_mhz - fz) < 0.06 and bw_khz < 150:
+                    return name
+            if 100 <= bw_khz <= 160:
+                return "LoRa-like 125 kHz"
+            if 200 <= bw_khz <= 300:
+                return "LoRa-like 250 kHz"
+            if 420 <= bw_khz <= 600:
+                return "LoRa-like 500 kHz"
+            if bw_khz < 100:
+                return "narrow FSK/OOK (sensor, meter, remote)"
+            if bw_khz > 1000:
+                return "wideband (FHSS/DSSS)"
+            return "unclassified %.0f kHz" % bw_khz
+        
+        
+        def compute(ctx):
+            global buffers, last_publish, noise_est
+            global reset_seen
+            ctl = ctx.env.get("lab_control", {}) or {}
+            token = (ctl.get("reset_all", 0), ctl.get("reset_915", 0))
+            if reset_seen is None:
+                reset_seen = token
+            elif token != reset_seen:
+                reset_seen = token
+                tracks.clear(); hops.clear(); buffers = 0
+            raw = np.asarray(ctx.inputs[0])
+            attrs = ctx.input_attrs[0]
+            fc = float(attrs["frequency"]) if "frequency" in attrs else 915e6
+            fs = float(attrs["sampleRate"]) if "sampleRate" in attrs else 30.72e6
+            flat = raw.reshape(-1)
+            nb = max(1, flat.size // NFFT)
+            n = NFFT
+            now = time.time()
+            buffers += 1
+            win = np.hanning(n).astype(np.float32)
+            blocks = flat[: nb * NFFT].reshape(nb, NFFT) * win[None, :]
+            mag = np.abs(np.fft.fftshift(np.fft.fft(blocks, axis=1), axes=1)) / n
+            pwr = 20.0 * np.log10(mag.max(axis=0) + 1e-12)          # max-hold over the batches in this buffer
+            pwr = np.convolve(pwr, np.ones(8) / 8.0, mode="same")
+            freqs = (fc + (np.arange(n) - n / 2.0) * (fs / n)) / 1e6
+            bin_hz = fs / n
+            nf = float(np.percentile(20.0 * np.log10(mag.mean(axis=0) + 1e-12), 30)) + 4.0   # floor of a max-hold
+            noise_est = nf if noise_est is None else 0.95 * noise_est + 0.05 * nf
+            above = pwr > noise_est + THRESH_DB
+            above[: int(n * 0.02)] = False
+            above[-int(n * 0.02):] = False
+            dc = n // 2
+            above[dc - 40: dc + 40] = False
+            edges = np.flatnonzero(np.diff(above.astype(np.int8)))
+            starts = list(edges[above[edges + 1]] + 1) if edges.size else []
+            ends = list(edges[~above[edges + 1]] + 1) if edges.size else []
+            if above[0]:
+                starts = [0] + starts
+            if above[-1]:
+                ends = ends + [n]
+            seen = set()
+            for s, e in zip(starts, ends):
+                bw_khz = (e - s) * bin_hz / 1e3
+                if bw_khz < MIN_BW_KHZ:
+                    continue
+                seg = pwr[s:e]
+                w = 10 ** (seg / 10.0)
+                f0 = float(np.sum(freqs[s:e] * w) / np.sum(w))
+                key = round(f0 * 20) / 20.0
+                tr = tracks.setdefault(key, dict(hits=0, first=now))
+                tr.update(freq=f0, bw=bw_khz, peak=float(seg.max()), snr=float(seg.max() - noise_est), last=now,
+                          hits=tr["hits"] + 1, kind=_kind(bw_khz, f0))
+                seen.add(key)
+                if bw_khz < 100:
+                    hops.append((now, f0))
+            hops[:] = [h for h in hops if now - h[0] < 60.0]
+            for k in [k for k, t in tracks.items() if now - t["last"] > TRACK_TTL_S]:
+                tracks.pop(k)
+            if now - last_publish < 0.5:
+                return
+            last_publish = now
+            rows = sorted(tracks.values(), key=lambda t: -t["last"])[:15]
+            hf = np.array(sorted(set(round(h[1], 2) for h in hops)))
+            spacing = float(np.median(np.diff(hf))) * 1e3 if hf.size > 3 else 0.0
+            fhss = {"bursts_per_min": len(hops), "channels_seen": int(hf.size),
+                    "range": "%.2f-%.2f MHz" % (hf.min(), hf.max()) if hf.size else "--",
+                    "spacing_khz": round(spacing, 0),
+                    "verdict": ("FHSS network active (%d channels in 60 s)" % hf.size) if hf.size >= 6 else
+                               ("sporadic narrow bursts" if hf.size else "quiet")}
+            ctx.env["ism915"] = {
+                "buffers": buffers, "noise_dbfs": round(noise_est, 1), "span": "%.1f-%.1f MHz" % (freqs[0], freqs[-1]),
+                "blocks_now": len(seen),
+                "fhss": fhss,
+                "blocks": [dict(freq="%.3f" % t["freq"], bw="%.0f" % t["bw"], peak="%.1f" % t["peak"], snr="%.1f" % t["snr"],
+                                hits=t["hits"], kind=t["kind"], last=time.strftime("%H:%M:%S", time.localtime(t["last"])))
+                           for t in rows],
+            }
+      file: ''
+      inputCount: 1
+      outputCount: 0
+      outputTensorSpecs: []
+      throttled: true
+    input:
+      input0: '${graph.ism915_rx.output.signal}'
+    meta:
+      node:
+        x: 3292
+        y: 170
+        width: 600
+        height: 500
+  - name: lab_controls
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        # Low-Power ISM Lab controls. Edit a value and press Done; analyzers react within a second.
+        # To reset statistics, change the RESET number to anything different (e.g. 1 -> 2).
+        
+        RESET_ALL = 0        # bump to clear every analyzer (OOK devices, carrier tracks, 915 bursts, 2.4 GHz history)
+        RESET_OOK = 0        # bump to clear only the 433 MHz decoder tables
+        RESET_915 = 0        # bump to clear only the 915 MHz burst watch
+        
+        
+        def compute(ctx):
+            ctx.env["lab_control"] = {"reset_all": RESET_ALL, "reset_ook": RESET_OOK, "reset_915": RESET_915}
+            return YIELD(0.5)
+      file: ''
+      inputCount: 0
+      outputCount: 0
+      outputTensorSpecs: []
+      throttled: true
+    meta:
+      node:
+        x: 20
+        y: 1380
+        width: 900
+        height: 217.12952
+  - name: subghz_spectrum
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      mode: lineplot_waterfall
+      lineplotAveraging: 2
+      waterfallAveraging: 1
+      maxHold: true
+      fill: true
+      rangeMin: -90
+      rangeMax: -10
+      waterfallHeight: 512
+      colormap: turbo
+      density: false
+      persistence: 256
+      splitRatio: 0.5
+      markers: '[]'
+      pins: '[]'
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Sweeps
+    input:
+      buffer: '${graph.subghz_sweep.output.signal}'
+    meta:
+      node:
+        x: 296
+        y: 170
+        width: 1000
+        height: 500
+      surface_default:
+        attachedHeight: 374
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: ism915_spectrum
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      mode: lineplot_waterfall
+      lineplotAveraging: 4
+      waterfallAveraging: 1
+      maxHold: true
+      fill: true
+      rangeMin: -110
+      rangeMax: -20
+      waterfallHeight: 1024
+      colormap: turbo
+      density: false
+      persistence: 256
+      splitRatio: 0.5
+      markers: '[]'
+      pins: '[]'
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
+    input:
+      buffer: '${graph.ism915_rx.output.signal}'
+    meta:
+      node:
+        x: 2252
+        y: 170
+        width: 1000
+        height: 500
+      surface_default:
+        attachedHeight: 374
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: ism24_spectrum
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      mode: lineplot_waterfall
+      lineplotAveraging: 1
+      waterfallAveraging: 1
+      maxHold: true
+      fill: true
+      rangeMin: -90
+      rangeMax: -10
+      waterfallHeight: 512
+      colormap: turbo
+      density: false
+      persistence: 256
+      splitRatio: 0.5
+      markers: '[]'
+      pins: '[]'
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Sweeps
+    input:
+      buffer: '${graph.ism24_sweep.output.signal}'
+    meta:
+      node:
+        x: 1010
+        y: 710
+        width: 2226
+        height: 664
+      surface_default:
+        attachedHeight: 572
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''

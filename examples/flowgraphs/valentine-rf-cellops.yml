@@ -1,0 +1,1765 @@
+---
+version: 2
+title: Valentine RF Cellops
+summary: Scan cellular and drone bands with several SDRs.
+author: Chase Valentine
+description: Sweeps 617-2690 MHz with a LimeSDR XTRX, decodes ADS-B and LTE cells on RTL-SDRs, Remote ID beacons on a HackRF, and 5G NR on a Pluto, showing spectra, tables and alerts.
+graph:
+  - name: scan_controls
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        # Valentine RF Cellular Operations: scan controls.
+        # Edit a value below and press Done; the analyzer applies it within a second.
+        
+        HOLD_BAND = "n71"         # Watchlist band name to hold, e.g. "B41/n41". "" resumes the sweep.
+        OPEN_ALERT = 0            # Alert id whose saved FFT evidence shows in the Evidence plot. 0 = live trace.
+        ACK_ALERT = 0             # Alert id to acknowledge, or "all".
+        SORT_BY = "class"         # Watchlist order: class (drone bands first), peak, occupancy, noise, name, last_scan, status
+        
+        PEAK_ALERT_DBFS = -45.0   # Alert when a band peak rises above this level
+        OCCUPANCY_ALERT = 0.60    # Alert when this fraction of a band's bins sits above the noise floor
+        NOISE_RISE_ALERT_DB = 8.0 # Alert when a band's noise floor rises this far above its running baseline
+        DRONE_ALERT_DB = 15.0     # Drone bands: alert when the peak rises this far above the band's baseline noise
+        OCCUPANCY_MARGIN_DB = 6.0 # A bin counts as occupied this far above the band noise floor
+        STALE_AFTER_S = 120.0     # A band not rescanned within this time is marked STALE
+        
+        
+        def compute(ctx):
+            ctx.env["cellops_control"] = {
+                "hold_band": HOLD_BAND,
+                "open_alert": OPEN_ALERT,
+                "ack_alert": ACK_ALERT,
+                "sort_by": SORT_BY,
+                "peak_alert_dbfs": PEAK_ALERT_DBFS,
+                "occupancy_alert": OCCUPANCY_ALERT,
+                "noise_rise_alert_db": NOISE_RISE_ALERT_DB,
+                "drone_alert_db": DRONE_ALERT_DB,
+                "occupancy_margin_db": OCCUPANCY_MARGIN_DB,
+                "stale_after_s": STALE_AFTER_S,
+            }
+            return YIELD(0.5)
+      file: ''
+      inputCount: 0
+      outputCount: 0
+      outputTensorSpecs: []
+      throttled: true
+    meta:
+      node:
+        x: 3428
+        y: 170
+        width: 700
+        height: 600
+  - name: ops_header
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Valentine RF Drone Tracker
+        ```stats 6
+        Radio | ${env.cellops.radio.device} | blue | ${env.cellops.radio.antenna}
+        Receiver | ${env.cellops.radio.health} | green | last sweep ${env.cellops.radio.last_sweep} (${env.cellops.radio.sweep_age} ago)
+        Mode | ${env.cellops.mode} | purple | ${env.cellops.mode_hint}
+        Sweep span | ${env.cellops.radio.span} | blue | ${env.cellops.radio.bins} bins, ${env.cellops.radio.sweeps} sweeps
+        Sweep speed | ${env.cellops.radio.speed} | yellow | buffer loss ${env.cellops.radio.loss}
+        Alerts | ${env.cellops.counts.new} new | red | ${env.cellops.counts.ack} acknowledged
+        ```
+        **Thresholds** (edit in scan_controls): peak above ${env.cellops.thresholds.peak_dbfs} dBFS, occupancy above ${env.cellops.thresholds.occupancy_pct} %, noise rise above ${env.cellops.thresholds.noise_rise_db} dB, drone link ${env.cellops.thresholds.drone_db} dB over baseline, stale after ${env.cellops.thresholds.stale_s} s. **Hold:** set `HOLD_BAND`, then copy its edges into the sweep Start/End. **Resume:** clear `HOLD_BAND`, sweep back to 617 / 2690 MHz.
+    meta:
+      node:
+        x: -190
+        y: 71
+        width: 1325.2366
+        height: 473.29095
+  - name: band_watchlist
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Band Watchlist
+        Sorted by **${env.cellops.sort_by}** (`SORT_BY` in scan_controls). Class **drone** = Zipline-style links: 900 MHz ISM, 2.4 GHz ISM, FAA Remote ID BT ch37/38/39, Wi-Fi ch6. Status: FULL, PARTIAL, IDLE, STALE, NOT SCANNED, UNSUPPORTED, HELD.
+        
+        | # | Band | Class | DL MHz | Status | Peak dBFS | Noise dBFS | Occ % | Cov % | Last scan | Age s |
+        |--:|---|---|---|---|--:|--:|--:|--:|---|--:|
+        | ${env.cellops.bands[*].rank} | ${env.cellops.bands[*].name} | ${env.cellops.bands[*].cls} | ${env.cellops.bands[*].range} | ${env.cellops.bands[*].status} | ${env.cellops.bands[*].peak} | ${env.cellops.bands[*].noise} | ${env.cellops.bands[*].occupancy} | ${env.cellops.bands[*].coverage} | ${env.cellops.bands[*].last_scan} | ${env.cellops.bands[*].age} |
+    meta:
+      node:
+        x: -38
+        y: 588.0001
+        width: 770
+        height: 730
+  - name: alert_queue
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Alert Queue
+        **Evidence plot shows:** ${env.cellops.evidence.source}
+        
+        Open: set `OPEN_ALERT` to an ID in scan_controls (0 returns to the live trace). Acknowledge: set `ACK_ALERT` to an ID or `"all"`.
+        
+        | ID | Time | Band | Kind | Value | Thr | Peak | Noise | Status |
+        |--:|---|---|---|--:|--:|--:|--:|---|
+        | ${env.cellops.alerts[*].id} | ${env.cellops.alerts[*].time} | ${env.cellops.alerts[*].band} | ${env.cellops.alerts[*].kind} | ${env.cellops.alerts[*].value} | ${env.cellops.alerts[*].threshold} | ${env.cellops.alerts[*].peak} | ${env.cellops.alerts[*].noise} | ${env.cellops.alerts[*].status} |
+    meta:
+      node:
+        x: 2552
+        y: 170
+        width: 820
+        height: 600
+  - name: sdr_adsb
+    module: sdr
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: 'driver=rtlsdr,serial=00001090'
+      antenna: ''
+      frequency: 1.09e+09
+      frequencyStep: 1000000
+      sampleRate: 2000000
+      automaticGain: true
+      manualGain: 29.7
+      biasTee: false
+      numberOfBatches: 8
+      numberOfTimeSamples: 32768
+      bufferMultiplier: 4
+    meta:
+      node:
+        x: 0
+        y: 1420
+        width: 220
+        height: 0
+  - name: sdr_lte
+    module: sdr
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: 'driver=rtlsdr,serial=00000978'
+      antenna: ''
+      frequency: 6.39e+08
+      frequencyStep: 1000000
+      sampleRate: 1920000
+      automaticGain: false
+      manualGain: 40.2
+      biasTee: false
+      numberOfBatches: 2
+      numberOfTimeSamples: 9600
+      bufferMultiplier: 4
+    meta:
+      node:
+        x: 0
+        y: 2180
+        width: 220
+        height: 0
+  - name: adsb_decoder
+    module: adsb
+    device: cpu
+    runtime: native
+    provider: generic
+    input:
+      signal: '${graph.sdr_adsb.output.signal}'
+    meta:
+      node:
+        x: 280
+        y: 1420
+        width: 1100
+        height: 700
+      surface_default:
+        attachedHeight: 590
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: lte_cell_scanner
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import time
+        import numpy as np
+        
+        # LTE cell scanner: PSS/SSS detection at 1.92 MS/s (128-point symbols, 15 kHz subcarriers).
+        # Reports the Physical Cell ID (PCI = 3*NID1 + NID2), timing, CFO and PSS power of every cell
+        # heard on the carrier the sdr_lte block is tuned to.
+        
+        FS = 1.92e6
+        NFFT = 128
+        CP = 9
+        SEEN_TTL_S = 30.0
+        MIN_METRIC = 0.25       # normalised PSS correlation needed to count a detection
+        MIN_SSS_Q = 6.0         # SSS peak over mean score needed to trust the NID1 decision
+        MAX_ROWS = 8
+        OFFSETS_HZ = (-300e3, -200e3, -100e3, 0.0, 100e3, 200e3, 300e3)   # 100 kHz raster around the tuned centre
+        
+        
+        def _pss_freq(u):
+            n = np.arange(62)
+            d = np.where(n < 31, np.exp(-1j * np.pi * u * n * (n + 1) / 63.0),
+                         np.exp(-1j * np.pi * u * (n + 1) * (n + 2) / 63.0))
+            return d
+        
+        
+        def _to_time(d62):
+            X = np.zeros(NFFT, dtype=np.complex128)
+            X[NFFT // 2 - 31: NFFT // 2] = d62[:31]
+            X[NFFT // 2 + 1: NFFT // 2 + 32] = d62[31:]
+            return np.fft.ifft(np.fft.ifftshift(X)) * NFFT
+        
+        
+        def _mseq(taps):
+            x = np.zeros(31, dtype=int)
+            x[4] = 1
+            for i in range(26):
+                x[i + 5] = sum(x[i + t] for t in taps) % 2
+            return 1 - 2 * x
+        
+        
+        S_SEQ = _mseq((0, 2))
+        C_SEQ = _mseq((0, 3))
+        Z_SEQ = _mseq((0, 1, 2, 4))
+        
+        
+        def _sss(nid1, nid2, subframe):
+            qp = nid1 // 30
+            q = (nid1 + qp * (qp + 1) // 2) // 30
+            mp = nid1 + q * (q + 1) // 2
+            m0 = mp % 31
+            m1 = (m0 + mp // 31 + 1) % 31
+            n = np.arange(31)
+            s0 = S_SEQ[(n + m0) % 31]
+            s1 = S_SEQ[(n + m1) % 31]
+            c0 = C_SEQ[(n + nid2) % 31]
+            c1 = C_SEQ[(n + nid2 + 3) % 31]
+            z0 = Z_SEQ[(n + (m0 % 8)) % 31]
+            z1 = Z_SEQ[(n + (m1 % 8)) % 31]
+            d = np.zeros(62)
+            if subframe == 0:
+                d[0::2] = s0 * c0
+                d[1::2] = s1 * c1 * z0
+            else:
+                d[0::2] = s1 * c0
+                d[1::2] = s0 * c1 * z1
+            return d
+        
+        
+        PSS_U = (25, 29, 34)
+        PSS_F = [_pss_freq(u) for u in PSS_U]
+        PSS_T = [_to_time(d) for d in PSS_F]
+        SSS_TABLE = {nid2: np.array([[_sss(n1, nid2, sf) for sf in (0, 5)] for n1 in range(168)])
+                     for nid2 in range(3)}
+        
+        cells = {}
+        last_publish = 0.0
+        buffers = 0
+        
+        
+        def _subcarriers(sym):
+            Y = np.fft.fftshift(np.fft.fft(sym))
+            return np.concatenate([Y[NFFT // 2 - 31: NFFT // 2], Y[NFFT // 2 + 1: NFFT // 2 + 32]])
+        
+        
+        def compute(ctx):
+            global last_publish, buffers
+            x = np.asarray(ctx.inputs[0]).reshape(-1).astype(np.complex64)
+            attrs = ctx.input_attrs[0]
+            fc = float(attrs["frequency"]) if "frequency" in attrs else 0.0
+            n = x.size
+            buffers += 1
+            now = time.time()
+        
+            # PSS correlation for the three roots, normalised by local energy.
+            N = 1 << int(np.ceil(np.log2(n + NFFT)))
+            energy = np.convolve(np.abs(x) ** 2, np.ones(NFFT), mode="valid")
+            tt = np.arange(n) / FS
+            peaks = []
+            corr_best = None
+            best_metric = 0.0
+            for off in OFFSETS_HZ:
+                xs = (x * np.exp(-2j * np.pi * off * tt)).astype(np.complex64) if off else x
+                X = np.fft.fft(xs, N)
+                for nid2 in range(3):
+                    c = np.fft.ifft(X * np.conj(np.fft.fft(PSS_T[nid2], N)))[: n - NFFT + 1]
+                    metric = np.abs(c) ** 2 / (energy * 62.0 * NFFT + 1e-9)
+                    t = int(np.argmax(metric))
+                    peaks.append((nid2, float(metric[t]), t, off, xs))
+                    if metric[t] > best_metric:
+                        best_metric = float(metric[t])
+                        corr_best = metric
+            trace = np.sqrt(np.clip(corr_best, 0.0, 1.0)).astype(np.float32)
+            if trace.size != 1024:
+                trace = np.interp(np.linspace(0, 1, 1024), np.linspace(0, 1, trace.size), trace).astype(np.float32)
+            ctx.outputs[0][...] = trace
+        
+            for nid2, metric, t, off, x in peaks:
+                if metric < MIN_METRIC or t < NFFT + CP:
+                    continue
+                # CFO from the cyclic prefix of the PSS symbol.
+                cp_corr = np.sum(x[t - CP: t] * np.conj(x[t - CP + NFFT: t + NFFT]))
+                cfo_hz = -np.angle(cp_corr) / (2.0 * np.pi) * 15e3
+                # Remove CFO, then equalise the SSS symbol with the PSS channel estimate.
+                k = np.arange(-(NFFT + CP), NFFT)
+                seg = x[t - NFFT - CP: t + NFFT] * np.exp(-2j * np.pi * cfo_hz * k / FS)
+                Ypss = _subcarriers(seg[NFFT + CP:])
+                Ysss = _subcarriers(seg[:NFFT])
+                H = Ypss * np.conj(PSS_F[nid2])
+                H = np.convolve(H, np.ones(5) / 5.0, mode="same")
+                Yeq = Ysss * np.conj(H) / (np.abs(H) ** 2 + 1e-9)
+                scores = np.real(SSS_TABLE[nid2] @ Yeq)
+                nid1, sf = np.unravel_index(int(np.argmax(scores)), scores.shape)
+                sss_q = float(scores.max() / (np.abs(scores).mean() + 1e-9))
+                if sss_q < MIN_SSS_Q:
+                    continue
+                pci = int(3 * nid1 + nid2)
+                power_db = float(10.0 * np.log10(np.mean(np.abs(Ypss) ** 2) / NFFT ** 2 + 1e-20))
+                c = cells.setdefault(pci, dict(pci=pci, nid1=int(nid1), nid2=nid2, hits=0, first=now))
+                c.update(hits=c["hits"] + 1, last=now, metric=round(metric, 3), sss_quality=round(sss_q, 1),
+                         subframe=int(5 * sf), timing_us=round(1e6 * (t % 9600) / FS, 1),
+                         cfo_hz=round(float(cfo_hz) + off, 1), power_dbfs=round(power_db, 1))
+        
+            for pci in [p for p, c in cells.items() if now - c.get("last", now) > SEEN_TTL_S]:
+                cells.pop(pci)
+        
+            if now - last_publish < 0.5:
+                return
+            last_publish = now
+            rows = sorted(cells.values(), key=lambda c: -c["hits"])[:MAX_ROWS]
+            ctx.env["cellscan"] = {
+                "carrier_mhz": round(fc / 1e6, 3),
+                "buffers": buffers,
+                "cells_seen": len(rows),
+                "best_metric": round(best_metric, 3),
+                "cells": [dict(pci=c["pci"], nid1=c["nid1"], nid2=c["nid2"], hits=c["hits"],
+                               power="%.1f" % c["power_dbfs"], metric="%.2f" % c["metric"],
+                               sss_q="%.1f" % c["sss_quality"], cfo="%.0f" % c["cfo_hz"],
+                               timing="%.1f" % c["timing_us"], subframe=c["subframe"],
+                               last=time.strftime("%H:%M:%S", time.localtime(c["last"]))) for c in rows],
+            }
+      file: ''
+      inputCount: 1
+      outputCount: 1
+      outputTensorSpecs:
+        - shape: '[1024]'
+          axes: '[S]'
+          dtype: F32
+          device: cpu
+      throttled: true
+    input:
+      input0: '${graph.sdr_lte.output.signal}'
+    meta:
+      node:
+        x: 280
+        y: 2180
+        width: 700
+        height: 400
+  - name: pss_correlation
+    module: lineplot
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      averaging: 4
+      maxHold: false
+      fill: true
+      density: false
+      persistence: 256
+      rangeMin: -100
+      rangeMax: 0
+      xLabel: Buffer time (10 ms)
+      yLabel: PSS correlation
+      markers: '[]'
+      pins: '[]'
+    input:
+      signal: '${graph.lte_cell_scanner.output.output0}'
+    meta:
+      node:
+        x: 1020
+        y: 2180
+        width: 600
+        height: 400
+      surface_default:
+        attachedHeight: 308
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: cell_table
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # LTE Cell Scanner (${env.cellscan.carrier_mhz} MHz)
+        RTL-SDR 00000978 parked on one carrier; PSS/SSS correlation gives each cell's Physical Cell ID. Cells drop off 30 s after they were last heard. Retune **sdr_lte** to scan another carrier (B13 751, B12 739/737, B14 763, B5 881.5, B2 1960, B66 2145, B41 2500-2690 MHz).
+        
+        Buffers ${env.cellscan.buffers}, cells heard ${env.cellscan.cells_seen}, best PSS metric ${env.cellscan.best_metric}
+        
+        | PCI | NID1 | NID2 | Hits | PSS dBFS | Metric | SSS q | CFO Hz | Timing us | SF | Last |
+        |--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|
+        | ${env.cellscan.cells[*].pci} | ${env.cellscan.cells[*].nid1} | ${env.cellscan.cells[*].nid2} | ${env.cellscan.cells[*].hits} | ${env.cellscan.cells[*].power} | ${env.cellscan.cells[*].metric} | ${env.cellscan.cells[*].sss_q} | ${env.cellscan.cells[*].cfo} | ${env.cellscan.cells[*].timing} | ${env.cellscan.cells[*].subframe} | ${env.cellscan.cells[*].last} |
+    meta:
+      node:
+        x: 1660
+        y: 2180
+        width: 1000
+        height: 380
+  - name: remote_id_table
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Remote ID / Drone Beacons (BLE ch${env.rid.channel})
+        HackRF + LNA on 2426 MHz. Legacy BLE advertising is decoded and ASTM F3411 (UUID 0xFFFA) Remote ID messages are parsed. BT5 long-range and Wi-Fi Remote ID are not decoded.
+        ```stats 5
+        Bursts/s | ${env.rid.bursts_per_s} | blue | ${env.rid.bursts_total} total, floor ${env.rid.noise_dbfs} dBFS
+        Burst length | ${env.rid.burst_len_us.median} us | blue | ${env.rid.burst_len_us.min} to ${env.rid.burst_len_us.max} us
+        Interval | ${env.rid.interval_ms.median} ms | purple | p10 ${env.rid.interval_ms.p10}, p90 ${env.rid.interval_ms.p90} ms
+        Decoded | ${env.rid.decoded} | green | ${env.rid.crc_fail} CRC failures
+        Remote ID | ${env.rid.rid_packets} packets | red | ${env.rid.other_ble_devices} other BLE devices
+        ```
+        | Zipline? | Serial (UAS ID) | Operator ID | UA type | Lat | Lon | Alt m | Height m | Speed m/s | Hdg | V m/s | Rate Hz | Pkts | Last | MAC |
+        |---|---|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|---|
+        | ${env.rid.drones[*].zipline} | ${env.rid.drones[*].serial} | ${env.rid.drones[*].operator} | ${env.rid.drones[*].ua} | ${env.rid.drones[*].lat} | ${env.rid.drones[*].lon} | ${env.rid.drones[*].alt} | ${env.rid.drones[*].height} | ${env.rid.drones[*].speed} | ${env.rid.drones[*].heading} | ${env.rid.drones[*].vspeed} | ${env.rid.drones[*].rate_hz} | ${env.rid.drones[*].packets} | ${env.rid.drones[*].last} | ${env.rid.drones[*].mac} |
+        
+        Operator position: ${env.rid.drones[*].op_lat}, ${env.rid.drones[*].op_lon}; self-ID: ${env.rid.drones[*].self_id}
+    meta:
+      node:
+        x: 1020
+        y: 2820
+        width: 1900
+        height: 600
+  - name: sdr_rid
+    module: sdr
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: 'driver=hackrf,serial=0000000000000000955c64dc294186c3'
+      antenna: ''
+      frequency: 2.426e+09
+      frequencyStep: 1000000
+      sampleRate: 4000000
+      automaticGain: false
+      manualGain: 44
+      biasTee: true
+      numberOfBatches: 4
+      numberOfTimeSamples: 65536
+      bufferMultiplier: 4
+    meta:
+      node:
+        x: 0
+        y: 2820
+        width: 220
+        height: 0
+  - name: remote_id_decoder
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import time
+        import numpy as np
+        
+        # FAA Remote ID receiver: BLE 4 legacy advertising on channel 38 (2426 MHz) at 4 MS/s,
+        # ASTM F3411 / OpenDroneID parsing, and burst timing statistics.
+        # Source: HackRF (+LNA) in sdr_rid. Change CHANNEL and the sdr_rid frequency together:
+        # ch37 = 2402 MHz, ch38 = 2426 MHz, ch39 = 2480 MHz.
+        
+        FS = 4.0e6
+        SPB = 4                     # samples per bit at 1 Mb/s
+        CHANNEL = 38
+        AA = 0x8E89BED6
+        BURST_DB = 8.0              # burst threshold above the noise floor (on a 4 us power envelope)
+        ENVELOPE = 16               # samples averaged for the power envelope
+        LPF_CUTOFF_HZ = 0.75e6      # one-sided passband of the pre-detection low-pass
+        LPF_TAPS = 31
+        MIN_BURST_US = 60.0
+        MAX_BURST_US = 2000.0
+        MAX_DEVICES = 20
+        HISTORY = 200
+        ZIPLINE_HINTS = ("ZIP", "ZIPLINE")   # matched against serial, operator ID, and self-ID text
+        
+        ua_types = {0: "none", 1: "airplane", 2: "helicopter/multirotor", 3: "gyroplane", 4: "hybrid lift",
+                    5: "ornithopter", 6: "glider", 7: "kite", 8: "free balloon", 9: "captive balloon",
+                    10: "airship", 11: "parachute", 12: "rocket", 13: "tethered", 14: "ground obstacle", 15: "other"}
+        
+        
+        def _bits_lsb(value, nbits):
+            return [(value >> i) & 1 for i in range(nbits)]
+        
+        
+        SYNC = np.array(_bits_lsb(0xAA, 8) + _bits_lsb(AA, 32), dtype=np.float32)
+        SYNC_NRZ = np.repeat(2.0 * SYNC - 1.0, SPB)
+        _n = np.arange(LPF_TAPS) - (LPF_TAPS - 1) / 2.0
+        LPF = np.sinc(2.0 * LPF_CUTOFF_HZ / FS * _n) * np.hamming(LPF_TAPS)
+        LPF = (LPF / LPF.sum()).astype(np.float32)
+        
+        
+        def _dewhiten(bits, channel):
+            p = [1] + [(channel >> (5 - i)) & 1 for i in range(6)]
+            out = []
+            for b in bits:
+                o = p[6]
+                out.append(b ^ o)
+                p = [o, p[0], p[1], p[2], p[3] ^ o, p[4], p[5]]
+            return out
+        
+        
+        def _crc24(bits):
+            p = [(0x555555 >> i) & 1 for i in range(24)]
+            taps = (1, 3, 4, 6, 9, 10)
+            for b in bits:
+                fb = b ^ p[23]
+                new = [fb] + [p[i - 1] ^ (fb if i in taps else 0) for i in range(1, 24)]
+                p = new
+            return [p[23 - i] for i in range(24)]
+        
+        
+        def _bytes(bits):
+            return bytes(sum(b << i for i, b in enumerate(bits[k:k + 8])) for k in range(0, len(bits) - 7, 8))
+        
+        
+        def _text(raw):
+            return raw.split(b"\x00")[0].decode("ascii", "replace").strip()
+        
+        
+        def _i32(b):
+            return int.from_bytes(b, "little", signed=True)
+        
+        
+        def _u16(b):
+            return int.from_bytes(b, "little")
+        
+        
+        def _parse_message(m, dev):
+            mtype = m[0] >> 4
+            if mtype == 0x0:
+                dev["id_type"] = m[1] >> 4
+                dev["ua_type"] = ua_types.get(m[1] & 0xF, str(m[1] & 0xF))
+                dev["serial"] = _text(m[2:22])
+            elif mtype == 0x1:
+                flags = m[1] & 0xF
+                direction = m[2] + (180 if flags & 0x2 else 0)
+                speed = m[3] * 0.25 if not flags & 0x1 else m[3] * 0.75 + 63.75
+                vspeed = int.from_bytes(m[4:5], "little", signed=True) * 0.5
+                lat = _i32(m[5:9]) * 1e-7
+                lon = _i32(m[9:13]) * 1e-7
+                dev.update(status=m[1] >> 4, heading=direction, speed_mps=round(speed, 1), vspeed_mps=vspeed,
+                           lat=round(lat, 6), lon=round(lon, 6),
+                           alt_baro_m=round(_u16(m[13:15]) * 0.5 - 1000.0, 1),
+                           alt_geo_m=round(_u16(m[15:17]) * 0.5 - 1000.0, 1),
+                           height_m=round(_u16(m[17:19]) * 0.5 - 1000.0, 1),
+                           fix_time="%.1f s past the hour" % (_u16(m[21:23]) * 0.1))
+            elif mtype == 0x3:
+                dev["self_id"] = _text(m[2:25])
+            elif mtype == 0x4:
+                dev.update(operator_lat=round(_i32(m[2:6]) * 1e-7, 6), operator_lon=round(_i32(m[6:10]) * 1e-7, 6),
+                           operator_alt_m=round(_u16(m[18:20]) * 0.5 - 1000.0, 1))
+            elif mtype == 0x5:
+                dev["operator_id"] = _text(m[2:22])
+            elif mtype == 0xF:
+                count = m[2]
+                for i in range(count):
+                    sub = m[3 + 25 * i: 28 + 25 * i]
+                    if len(sub) == 25:
+                        _parse_message(sub, dev)
+            dev["messages"] = dev.get("messages", 0) + 1
+        
+        
+        def _parse_adv(pdu_bytes, now):
+            """Return (mac, is_remote_id) after parsing AD structures."""
+            if len(pdu_bytes) < 8:
+                return None, False
+            mac = ":".join("%02X" % b for b in pdu_bytes[2:8][::-1])
+            data = pdu_bytes[8:]
+            rid = False
+            i = 0
+            dev = devices.setdefault(mac, dict(mac=mac, first=now, bursts=0, intervals=[]))
+            while i + 1 < len(data):
+                ln = data[i]
+                if ln == 0 or i + 1 + ln > len(data):
+                    break
+                ad_type = data[i + 1]
+                body = data[i + 2: i + 1 + ln]
+                if ad_type == 0x16 and len(body) >= 4 and body[0] == 0xFA and body[1] == 0xFF and body[2] == 0x0D:
+                    rid = True
+                    msg = body[4:]
+                    if len(msg) >= 25:
+                        _parse_message(msg, dev)
+                i += 1 + ln
+            if rid:
+                dev["last"] = now
+            return mac, rid
+        
+        
+        def _decode_burst(seg):
+            d = np.angle(seg[1:] * np.conj(seg[:-1])).astype(np.float32)
+            d -= np.median(d)
+            if d.size < SYNC_NRZ.size + 16 * SPB:
+                return None
+            corr = np.correlate(d, SYNC_NRZ, mode="valid")
+            start = int(np.argmax(corr))
+            if corr[start] < 0.35 * SYNC_NRZ.size * np.abs(d).mean():
+                return None
+            bit_start = start + SYNC_NRZ.size
+            nbits = (d.size - bit_start) // SPB
+            if nbits < 16 + 24:
+                return None
+            soft = d[bit_start: bit_start + nbits * SPB].reshape(nbits, SPB).sum(axis=1)
+            raw = [1 if v > 0 else 0 for v in soft]
+            bits = _dewhiten(raw, CHANNEL)
+            header = _bytes(bits[:16])
+            length = header[1]
+            if length > 37 or 16 + 8 * length + 24 > len(bits):
+                return None
+            pdu_bits = bits[: 16 + 8 * length]
+            crc_rx = bits[16 + 8 * length: 16 + 8 * length + 24]
+            if _crc24(pdu_bits) != crc_rx:
+                return "crc"
+            return _bytes(pdu_bits)
+        
+        
+        devices = {}
+        stats = dict(bursts=0, decoded=0, crc_fail=0, rid_packets=0)
+        burst_lengths = []
+        burst_times = []
+        noise_db = None
+        sample_clock = 0
+        last_publish = 0.0
+        
+        
+        def compute(ctx):
+            global noise_db, sample_clock, last_publish
+            x = np.convolve(np.asarray(ctx.inputs[0]).reshape(-1), LPF, mode="same")
+            now = time.time()
+            env = np.convolve(np.abs(x) ** 2, np.ones(ENVELOPE, dtype=np.float32) / ENVELOPE, mode="same")
+            mag_db = 10.0 * np.log10(env + 1e-18)
+            floor = float(np.percentile(mag_db, 20))
+            noise_db = floor if noise_db is None else 0.9 * noise_db + 0.1 * floor
+            above = mag_db > noise_db + BURST_DB
+            edges = np.flatnonzero(np.diff(above.astype(np.int8)))
+            starts = edges[above[edges + 1]] + 1 if edges.size else np.array([], dtype=int)
+            if above[0]:
+                starts = np.concatenate([[0], starts])
+            ends = edges[~above[edges + 1]] + 1 if edges.size else np.array([], dtype=int)
+            if above[-1]:
+                ends = np.concatenate([ends, [x.size]])
+            k = 0
+            for s, e in zip(starts, ends):
+                dur_us = (e - s) / FS * 1e6
+                if dur_us < MIN_BURST_US or dur_us > MAX_BURST_US:
+                    continue
+                stats["bursts"] += 1
+                burst_lengths.append(dur_us)
+                burst_times.append((sample_clock + s) / FS)
+                del burst_lengths[:-HISTORY]
+                del burst_times[:-HISTORY]
+                k += 1
+                if k > 40:
+                    continue
+                s0, e0 = max(0, s - 8), min(x.size, e + 8)
+                res = _decode_burst(x[s0:e0])
+                if res is None:
+                    continue
+                if res == "crc":
+                    stats["crc_fail"] += 1
+                    continue
+                stats["decoded"] += 1
+                mac, rid = _parse_adv(res, now)
+                if mac:
+                    dev = devices[mac]
+                    dev["bursts"] += 1
+                    t = (sample_clock + s) / FS
+                    if "last_t" in dev:
+                        dev["intervals"].append(t - dev["last_t"])
+                        del dev["intervals"][:-50]
+                    dev["last_t"] = t
+                    dev["last_seen"] = now
+                    dev["rid"] = dev.get("rid", False) or rid
+                    if rid:
+                        stats["rid_packets"] += 1
+            sample_clock += x.size
+        
+            for mac in [m for m, d in devices.items() if now - d.get("last_seen", now) > 120.0]:
+                devices.pop(mac)
+        
+            if now - last_publish < 0.5:
+                return
+            last_publish = now
+            rid_devs = sorted([d for d in devices.values() if d.get("rid")], key=lambda d: -d.get("last_seen", 0))
+            others = sum(1 for d in devices.values() if not d.get("rid"))
+            rows = []
+            for d in rid_devs[:MAX_DEVICES]:
+                iv = d["intervals"]
+                ident = " ".join(str(d.get(k, "")) for k in ("serial", "operator_id", "self_id")).upper()
+                rows.append(dict(mac=d["mac"], serial=d.get("serial", "--"), operator=d.get("operator_id", "--"),
+                                 ua=d.get("ua_type", "--"), lat=d.get("lat", "--"), lon=d.get("lon", "--"),
+                                 alt=d.get("alt_geo_m", "--"), height=d.get("height_m", "--"),
+                                 speed=d.get("speed_mps", "--"), heading=d.get("heading", "--"),
+                                 vspeed=d.get("vspeed_mps", "--"), op_lat=d.get("operator_lat", "--"),
+                                 op_lon=d.get("operator_lon", "--"), self_id=d.get("self_id", "--"),
+                                 packets=d["bursts"], rate_hz="%.2f" % (1.0 / np.median(iv)) if len(iv) >= 3 else "--",
+                                 zipline="YES" if any(h in ident for h in ZIPLINE_HINTS) else "no",
+                                 last=time.strftime("%H:%M:%S", time.localtime(d["last_seen"]))))
+            iv_all = np.diff(np.array(burst_times)) if len(burst_times) >= 3 else np.array([])
+            window = (burst_times[-1] - burst_times[0]) if len(burst_times) >= 2 else 0.0
+            ctx.env["rid"] = {
+                "channel": CHANNEL,
+                "noise_dbfs": round(noise_db, 1),
+                "bursts_total": stats["bursts"],
+                "bursts_per_s": round(len(burst_times) / window, 1) if window > 0 else 0.0,
+                "burst_len_us": {"median": round(float(np.median(burst_lengths)), 0) if burst_lengths else 0,
+                                 "min": round(float(np.min(burst_lengths)), 0) if burst_lengths else 0,
+                                 "max": round(float(np.max(burst_lengths)), 0) if burst_lengths else 0},
+                "interval_ms": {"median": round(float(np.median(iv_all)) * 1e3, 1) if iv_all.size else 0,
+                                "p10": round(float(np.percentile(iv_all, 10)) * 1e3, 1) if iv_all.size else 0,
+                                "p90": round(float(np.percentile(iv_all, 90)) * 1e3, 1) if iv_all.size else 0},
+                "decoded": stats["decoded"], "crc_fail": stats["crc_fail"], "rid_packets": stats["rid_packets"],
+                "other_ble_devices": others,
+                "drones": rows,
+            }
+      file: ''
+      inputCount: 1
+      outputCount: 0
+      outputTensorSpecs: []
+      throttled: false
+    input:
+      input0: '${graph.sdr_rid.output.signal}'
+    meta:
+      node:
+        x: 280
+        y: 2820
+        width: 700
+        height: 400
+  - name: rid_spectrum
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      mode: lineplot_waterfall
+      lineplotAveraging: 1
+      waterfallAveraging: 1
+      maxHold: false
+      fill: true
+      rangeMin: -80
+      rangeMax: 0
+      waterfallHeight: 512
+      colormap: turbo
+      density: false
+      persistence: 256
+      splitRatio: 0.5
+      markers: '[]'
+      pins: '[]'
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
+    input:
+      buffer: '${graph.sdr_rid.output.signal}'
+    meta:
+      node:
+        x: 2960
+        y: 2820
+        width: 900
+        height: 599.291
+      surface_default:
+        attachedHeight: 474
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: nr_cell_table
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # 5G NR Cell Scanner via Pluto (network stream)
+        Pluto IQ arrives over TCP on port **5001** (CI16), no driver needed. Scanner looks for SSB PSS/SSS at **${env.nrscan.center_mhz} MHz** and the -100/0/+100 kHz raster neighbours. Buffers ${env.nrscan.buffers}, cells ${env.nrscan.cells_seen}, best PSS metric ${env.nrscan.best_metric}.
+        
+        **Start the stream on the Pluto** (`ssh root@192.168.50.25` with the Pluto's default login; replace HOST with this PC's IP):
+        ```
+        iio_attr -c -o ad9361-phy altvoltage0 frequency 634950000
+        iio_attr -c -i ad9361-phy voltage0 sampling_frequency 3840000
+        iio_attr -c -i ad9361-phy voltage0 rf_bandwidth 3600000
+        iio_attr -c -i ad9361-phy voltage0 gain_control_mode slow_attack
+        iio_readdev -b 65536 cf-ad9361-lpc | nc HOST 5001
+        ```
+        If the link cannot sustain 15 MB/s, use 1920000 for the sample rate, set **pluto_stream** Samples to 9600, and `FS = 1.92e6` in nr_cell_scanner.
+        
+        **Finding the SSB:** step the LO across the n71 GSCN points 618.15, 619.35, ... 651.75 MHz (1.2 MHz steps) and update `CENTER_HZ` in nr_cell_scanner to match. An SSB shows in the waterfall as a 3.6 MHz-wide burst every 20 ms; the table fills once PSS/SSS lock.
+        
+        | PCI | NID1 | NID2 | Hits | SSB MHz | PSS dBFS | Metric | SSS q | CFO Hz | Timing us | Last |
+        |--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|
+        | ${env.nrscan.cells[*].pci} | ${env.nrscan.cells[*].nid1} | ${env.nrscan.cells[*].nid2} | ${env.nrscan.cells[*].hits} | ${env.nrscan.cells[*].ssb} | ${env.nrscan.cells[*].power} | ${env.nrscan.cells[*].metric} | ${env.nrscan.cells[*].sss_q} | ${env.nrscan.cells[*].cfo} | ${env.nrscan.cells[*].timing} | ${env.nrscan.cells[*].last} |
+    meta:
+      node:
+        x: 2680
+        y: 3480
+        width: 1000
+        height: 640
+  - name: pluto_iiod
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import socket
+        import time
+        import numpy as np
+        
+        # libiio network (iiod) client for the SignalLens Pro / Pluto at 192.168.50.25:30431.
+        # Configures the AD9361 and streams RX1 IQ into the graph. Edit and press Done to retune.
+        
+        HOST = "192.168.50.25"
+        PORT = 30431
+        CENTER_HZ = 639.75e6        # RX LO (n71 GSCN point)
+        FS = 3.84e6                 # sample rate; keep in step with FS in nr_cell_scanner
+        RF_BW_HZ = 3.6e6
+        GAIN_MODE = "manual"        # slow_attack, fast_attack, or manual
+        MANUAL_GAIN_DB = 60
+        RX_PORT = "A_BALANCED"      # only A_BALANCED exists on this hardware (B/C rejected with -22)
+        DEV = "cf-ad9361-lpc"
+        PHY = "ad9361-phy"
+        BATCHES, SAMPLES = 2, 19200
+        NSAMP = BATCHES * SAMPLES
+        NBYTES = NSAMP * 4          # two int16 per sample
+        
+        sock = None
+        stats = dict(buffers=0, mbytes=0.0, errors=0, connects=0, last_error="", state="idle", mask="")
+        last_publish = 0.0
+        last_rate_t = 0.0
+        last_rate_bytes = 0.0
+        rate_mbps = 0.0
+        
+        
+        def _line():
+            data = bytearray()
+            while not data.endswith(b"\n"):
+                c = sock.recv(1)
+                if not c:
+                    raise ConnectionError("connection closed")
+                data += c
+            return bytes(data).strip().decode("ascii", "replace")
+        
+        
+        def _recv_exact(n):
+            out = bytearray()
+            while len(out) < n:
+                chunk = sock.recv(min(65536, n - len(out)))
+                if not chunk:
+                    raise ConnectionError("connection closed mid-buffer")
+                out += chunk
+            return bytes(out)
+        
+        
+        def _cmd(text):
+            sock.sendall((text + "\r\n").encode())
+            return int(_line())
+        
+        
+        def _write_attr(dev, direction, chan, attr, value):
+            payload = (str(value) + "\0").encode()
+            chan_part = "%s %s " % (direction, chan) if chan else ""
+            sock.sendall(("WRITE %s %s%s %d\r\n" % (dev, chan_part, attr, len(payload))).encode() + payload)
+            ret = int(_line())
+            if ret < 0:
+                raise RuntimeError("WRITE %s %s = %s failed (%d)" % (chan or dev, attr, value, ret))
+            return ret
+        
+        
+        def _connect():
+            global sock
+            s = socket.create_connection((HOST, PORT), timeout=5.0)
+            s.settimeout(5.0)
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock = s
+            _cmd("TIMEOUT 3000")
+            _write_attr(PHY, "OUTPUT", "altvoltage0", "frequency", int(CENTER_HZ))
+            _write_attr(PHY, "INPUT", "voltage0", "sampling_frequency", int(FS))
+            _write_attr(PHY, "INPUT", "voltage0", "rf_bandwidth", int(RF_BW_HZ))
+            _write_attr(PHY, "INPUT", "voltage0", "gain_control_mode", GAIN_MODE)
+            _write_attr(PHY, "INPUT", "voltage0", "rf_port_select", RX_PORT)
+            if GAIN_MODE == "manual":
+                _write_attr(PHY, "INPUT", "voltage0", "hardwaregain", MANUAL_GAIN_DB)
+            ret = _cmd("OPEN %s %d 00000003" % (DEV, NSAMP))
+            if ret < 0:
+                raise RuntimeError("OPEN failed (%d)" % ret)
+            stats["connects"] += 1
+            stats["state"] = "streaming"
+        
+        
+        def _read_attr(s, dev, direction, chan, attr):
+            chan_part = "%s %s " % (direction, chan) if chan else ""
+            s.sendall(("READ %s %s%s\r\n" % (dev, chan_part, attr)).encode())
+            head = b""
+            while not head.strip():
+                head = b""
+                while not head.endswith(b"\n"):
+                    c = s.recv(1)
+                    if not c:
+                        raise ConnectionError("closed")
+                    head += c
+            n = int(head.strip())
+            if n <= 0:
+                return "err %d" % n
+            out = b""
+            while len(out) < n:
+                chunk = s.recv(n - len(out))
+                if not chunk:
+                    break
+                out += chunk
+            return out.rstrip(b"\0\n").decode("ascii", "replace")
+        
+        
+        def _readback():
+            """Query radio state on a separate, short-lived iiod connection so streaming is never disturbed."""
+            s = None
+            try:
+                s = socket.create_connection((HOST, PORT), timeout=3.0)
+                s.settimeout(3.0)
+                stats["radio"] = {
+                    "rx_lo_hz": _read_attr(s, PHY, "OUTPUT", "altvoltage0", "frequency"),
+                    "fs_hz": _read_attr(s, PHY, "INPUT", "voltage0", "sampling_frequency"),
+                    "rf_bw_hz": _read_attr(s, PHY, "INPUT", "voltage0", "rf_bandwidth"),
+                    "gain_mode": _read_attr(s, PHY, "INPUT", "voltage0", "gain_control_mode"),
+                    "hardwaregain": _read_attr(s, PHY, "INPUT", "voltage0", "hardwaregain"),
+                    "rssi": _read_attr(s, PHY, "INPUT", "voltage0", "rssi"),
+                    "rx_port": _read_attr(s, PHY, "INPUT", "voltage0", "rf_port_select"),
+                    "bist_prbs": _read_attr(s, PHY, "", "", "bist_prbs"),
+                    "loopback": _read_attr(s, PHY, "", "", "loopback"),
+                }
+            except Exception as e:
+                stats["radio"] = {"error": str(e)}
+            finally:
+                if s is not None:
+                    try:
+                        s.close()
+                    except Exception:
+                        pass
+        
+        
+        def _close():
+            global sock
+            if sock is not None:
+                try:
+                    sock.sendall(("CLOSE %s\r\n" % DEV).encode())
+                except Exception:
+                    pass
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+            sock = None
+            stats["state"] = "disconnected"
+        
+        
+        def _read_buffer():
+            sock.sendall(("READBUF %s %d\r\n" % (DEV, NBYTES)).encode())
+            out = bytearray()
+            while len(out) < NBYTES:
+                n = int(_line())
+                if n < 0:
+                    raise RuntimeError("READBUF error (%d)" % n)
+                if n == 0:
+                    break
+                stats["mask"] = _line()
+                out += _recv_exact(n)
+            return bytes(out)
+        
+        
+        def _publish(ctx, now):
+            global last_publish
+            if now - last_publish < 0.5:
+                return
+            last_publish = now
+            ctx.env["pluto"] = {
+                "host": "%s:%d" % (HOST, PORT), "state": stats["state"], "center_hz": float(CENTER_HZ),
+                "center_mhz": round(CENTER_HZ / 1e6, 3), "fs": float(FS), "gain": GAIN_MODE,
+                "buffers": stats["buffers"], "mb_received": round(stats["mbytes"], 1),
+                "rate_mbps": round(rate_mbps, 1), "connects": stats["connects"], "errors": stats["errors"],
+                "last_error": stats["last_error"], "mask": stats["mask"],
+                "radio": stats.get("radio", {}),
+                "psd_16_dbfs": stats.get("psd_16_dbfs", []),
+                "samples": {k: stats.get(k, "--") for k in ("i_min", "i_max", "q_min", "q_max", "rms", "zero_frac", "head_hex")},
+            }
+        
+        
+        def compute(ctx):
+            global last_rate_t, last_rate_bytes, rate_mbps
+            now = time.time()
+            if sock is None:
+                try:
+                    _connect()
+                except Exception as e:
+                    stats["errors"] += 1
+                    stats["last_error"] = "connect: %s" % e
+                    stats["state"] = "retrying"
+                    _close()
+                    _publish(ctx, now)
+                    return YIELD(2.0)
+            try:
+                data = _read_buffer()
+            except Exception as e:
+                stats["errors"] += 1
+                stats["last_error"] = "read: %s" % e
+                _close()
+                _publish(ctx, now)
+                return YIELD(1.0)
+            if len(data) < NBYTES:
+                return SKIP
+            iq = np.frombuffer(data, dtype="<i2").astype(np.float32).reshape(-1, 2)
+            x = (iq[:, 0] + 1j * iq[:, 1]) / 2048.0
+            stats["i_min"] = int(iq[:, 0].min()); stats["i_max"] = int(iq[:, 0].max())
+            stats["q_min"] = int(iq[:, 1].min()); stats["q_max"] = int(iq[:, 1].max())
+            stats["rms"] = round(float(np.sqrt(np.mean(np.abs(x) ** 2))), 5)
+            stats["zero_frac"] = round(float(np.mean((iq[:, 0] == 0) & (iq[:, 1] == 0))), 3)
+            stats["head_hex"] = data[:16].hex()
+            spec = np.abs(np.fft.fftshift(np.fft.fft(x[:16384]))) ** 2 / 16384.0 ** 2
+            bands = 10.0 * np.log10(spec.reshape(16, -1).mean(axis=1) + 1e-20)
+            stats["psd_16_dbfs"] = [round(float(v), 1) for v in bands]
+            ctx.outputs[0][...] = x.reshape(BATCHES, SAMPLES).astype(np.complex64)
+            ctx.output_attrs[0]["frequency"] = np.float32(CENTER_HZ)
+            ctx.output_attrs[0]["sampleRate"] = np.float32(FS)
+            stats["buffers"] += 1
+            stats["mbytes"] += NBYTES / 1e6
+            if stats["buffers"] % 100 == 0:
+                _readback()
+            if now - last_rate_t >= 1.0:
+                if last_rate_t:
+                    rate_mbps = 8.0 * (stats["mbytes"] - last_rate_bytes) / (now - last_rate_t)
+                last_rate_t = now
+                last_rate_bytes = stats["mbytes"]
+            _publish(ctx, now)
+        
+        
+        def cleanup():
+            _close()
+      file: ''
+      inputCount: 0
+      outputCount: 1
+      outputTensorSpecs:
+        - shape: '[2, 19200]'
+          axes: '[B, S]'
+          dtype: CF32
+          device: cpu
+      throttled: false
+    meta:
+      node:
+        x: 0
+        y: 3480
+        width: 300
+        height: 400
+  - name: nr_cell_scanner
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import time
+        import numpy as np
+        
+        # 5G NR cell scanner (SSB case A, 15 kHz SCS) for the Pluto stream.
+        # Stage 1: fractional CFO from cyclic-prefix correlation over the whole buffer.
+        # Stage 2: differential frequency-domain PSS search over sliding 256-point windows, which is
+        #          immune to residual CFO and timing and yields the SSB centre offset in subcarriers.
+        # Stage 3: time-domain refinement at that offset, then SSS decode -> N_ID^cell = 3*NID1 + NID2.
+        
+        CENTER_HZ = 646.95e6      # overwritten from env.pluto.center_hz
+        FS = 3.84e6
+        SCS = 15e3
+        NFFT = int(round(FS / SCS))
+        CP = int(round(144 * FS / 30.72e6))
+        SYM = NFFT + CP
+        HOP = 32
+        MIN_DIFF = 0.45           # differential PSS score needed (false alarms on OFDM data reach ~0.35)
+        MIN_SSS_Q = 5.0
+        SEEN_TTL_S = 30.0
+        MAX_ROWS = 8
+        MAX_SHIFT = 90            # search SSB centres within +/- 90 subcarriers (1.35 MHz)
+        
+        
+        def _mseq127(init, taps):
+            x = list(init)
+            for i in range(120):
+                x.append(sum(x[i + t] for t in taps) % 2)
+            return np.array(x)
+        
+        
+        XP = _mseq127([0, 1, 1, 0, 1, 1, 1], (0, 4))
+        X0 = _mseq127([1, 0, 0, 0, 0, 0, 0], (0, 4))
+        X1 = _mseq127([1, 0, 0, 0, 0, 0, 0], (0, 1))
+        N127 = np.arange(127)
+        
+        
+        def _pss(nid2):
+            return 1.0 - 2.0 * XP[(N127 + 43 * nid2) % 127]
+        
+        
+        def _sss(nid1, nid2):
+            m0 = 15 * (nid1 // 112) + 5 * nid2
+            m1 = nid1 % 112
+            return (1.0 - 2.0 * X0[(N127 + m0) % 127]) * (1.0 - 2.0 * X1[(N127 + m1) % 127])
+        
+        
+        BIN0 = NFFT // 2 - 64
+        
+        
+        def _to_time(d):
+            X = np.zeros(NFFT, dtype=np.complex128)
+            X[BIN0: BIN0 + 127] = d
+            return np.fft.ifft(np.fft.ifftshift(X)) * NFFT
+        
+        
+        PSS_F = [_pss(i) for i in range(3)]
+        PSS_T = [_to_time(d) for d in PSS_F]
+        SSS_TABLE = {nid2: np.array([_sss(n1, nid2) for n1 in range(336)]) for nid2 in range(3)}
+        NCORR = 512
+        DIFF_K = []
+        for _d in PSS_F:
+            kern = np.zeros(NFFT - 1)
+            kern[BIN0: BIN0 + 126] = _d[:-1] * _d[1:]
+            DIFF_K.append(np.conj(np.fft.fft(kern, NCORR)))
+        
+        cells = {}
+        last_publish = 0.0
+        buffers = 0
+        best_seen = 0.0
+        last_cfo = 0.0
+        tally = {}
+        last_stage3 = {}
+        
+        
+        def _subcarriers(sym):
+            return np.fft.fftshift(np.fft.fft(sym))[BIN0: BIN0 + 127]
+        
+        
+        def compute(ctx):
+            global last_publish, buffers, best_seen, CENTER_HZ, last_cfo, last_stage3
+            CENTER_HZ = float(ctx.env.get("pluto", {}).get("center_hz", CENTER_HZ))
+            raw = np.asarray(ctx.inputs[0])
+            x = raw.reshape(-1).astype(np.complex64)
+            n = x.size
+            buffers += 1
+            now = time.time()
+            tt = np.arange(n) / FS
+        
+            # Stage 1: fractional CFO (within +/- SCS/2) from CP correlation.
+            cp_sum = np.sum(x[NFFT:] * np.conj(x[:-NFFT]))
+            f_frac = float(np.angle(cp_sum) / (2.0 * np.pi) * SCS)
+            last_cfo = f_frac
+            x = (x * np.exp(-2j * np.pi * f_frac * tt)).astype(np.complex64)
+        
+            # Stage 2: differential PSS search.
+            nwin = (n - NFFT) // HOP
+            idx = np.arange(nwin)[:, None] * HOP + np.arange(NFFT)[None, :]
+            Y = np.fft.fftshift(np.fft.fft(x[idx], axis=1), axes=1)
+            Z = Y[:, :-1] * np.conj(Y[:, 1:])
+            Z = Z / (np.abs(Z).sum(axis=1, keepdims=True) + 1e-12)
+            ZF = np.fft.fft(Z, NCORR, axis=1)
+            best = (0.0, 0, 0, 0)
+            for nid2 in range(3):
+                C = np.abs(np.fft.ifft(ZF * DIFF_K[nid2][None, :], axis=1))
+                shifts = np.concatenate([np.arange(0, MAX_SHIFT + 1), np.arange(NCORR - MAX_SHIFT, NCORR)])
+                Cs = C[:, shifts]
+                w, j = np.unravel_index(int(np.argmax(Cs)), Cs.shape)
+                score = float(Cs[w, j])
+                if score > best[0]:
+                    k0 = int(shifts[j])
+                    if k0 > NCORR // 2:
+                        k0 -= NCORR
+                    best = (score, nid2, int(w), k0)
+            score, nid2, w, k0 = best
+            best_seen = max(best_seen * 0.97, score)
+            if score >= MIN_DIFF:
+                key = "nid2=%d shift=%+d" % (nid2, k0)
+                tally[key] = tally.get(key, 0) + 1
+        
+            # Output: differential score per window (for the plot).
+            trace = np.zeros(nwin, dtype=np.float32)
+            Cbest = np.abs(np.fft.ifft(ZF * DIFF_K[nid2][None, :], axis=1))
+            trace[:] = Cbest.max(axis=1)
+            ctx.outputs[0][...] = np.interp(np.linspace(0, 1, 1024), np.linspace(0, 1, nwin), trace).astype(np.float32)
+            ctx.outputs[1][...] = raw.reshape(ctx.outputs[1].shape)
+            ctx.output_attrs[1]["frequency"] = np.float32(CENTER_HZ)
+            ctx.output_attrs[1]["sampleRate"] = np.float32(FS)
+        
+            if score >= MIN_DIFF:
+                # Stage 3: shift the SSB to DC, refine timing in the time domain, decode SSS.
+                xs = (x * np.exp(-2j * np.pi * (k0 * SCS) * tt)).astype(np.complex64)
+                lo = max(CP, w * HOP - 2 * HOP)
+                hi = min(n - NFFT, w * HOP + 3 * HOP)
+                seg = xs[lo: hi + NFFT]
+                c = np.correlate(seg, PSS_T[nid2], mode="valid")
+                t = lo + int(np.argmax(np.abs(c)))
+                td_norm = float(np.abs(c).max() / (np.sqrt(np.sum(np.abs(xs[t: t + NFFT]) ** 2) * 127.0 * NFFT) + 1e-9))
+                last_stage3 = {"td_corr": round(td_norm, 3), "t": int(t)}
+                if t >= CP and t + 2 * SYM + NFFT <= n:
+                    cp_corr = np.sum(xs[t - CP: t] * np.conj(xs[t - CP + NFFT: t + NFFT]))
+                    cfo2 = -np.angle(cp_corr) / (2.0 * np.pi) * SCS
+                    k = np.arange(-CP, 2 * SYM + NFFT)
+                    blk = xs[t - CP: t + 2 * SYM + NFFT] * np.exp(-2j * np.pi * cfo2 * k / FS)
+                    Ypss = _subcarriers(blk[CP: CP + NFFT])
+                    Ysss = _subcarriers(blk[CP + 2 * SYM: CP + 2 * SYM + NFFT])
+                    H = np.convolve(Ypss * PSS_F[nid2], np.ones(5) / 5.0, mode="same")
+                    Yeq = Ysss * np.conj(H) / (np.abs(H) ** 2 + 1e-9)
+                    scores = np.real(SSS_TABLE[nid2] @ Yeq)
+                    nid1 = int(np.argmax(scores))
+                    sss_q = float(scores.max() / (np.abs(scores).mean() + 1e-9))
+                    last_stage3.update(sss_q=round(sss_q, 2), nid1=nid1, cfo2=round(float(cfo2), 1))
+                    if sss_q >= MIN_SSS_Q:
+                        pci = 3 * nid1 + nid2
+                        power_db = float(10.0 * np.log10(np.mean(np.abs(Ypss) ** 2) / NFFT ** 2 + 1e-20))
+                        c = cells.setdefault(pci, dict(pci=pci, nid1=nid1, nid2=nid2, hits=0))
+                        c.update(hits=c["hits"] + 1, last=now, metric=score, sss_q=sss_q,
+                                 cfo=f_frac + float(cfo2), ssb_mhz=(CENTER_HZ + k0 * SCS) / 1e6,
+                                 power=power_db, timing_us=1e6 * t / FS)
+        
+            for pci in [p for p, c in cells.items() if now - c["last"] > SEEN_TTL_S]:
+                cells.pop(pci)
+        
+            if now - last_publish < 0.5:
+                return
+            last_publish = now
+            rows = sorted(cells.values(), key=lambda c: -c["hits"])[:MAX_ROWS]
+            ctx.env["nrscan"] = {
+                "center_mhz": round(CENTER_HZ / 1e6, 3),
+                "buffers": buffers,
+                "cells_seen": len(rows),
+                "best_metric": round(best_seen, 3),
+                "last_candidate": {"score": round(score, 3), "nid2": nid2, "shift_sc": k0, "window": w},
+                "frac_cfo_hz": round(last_cfo, 1),
+                "stage3": dict(last_stage3),
+                "tally": dict(sorted(tally.items(), key=lambda kv: -kv[1])[:6]),
+                "cells": [dict(pci=c["pci"], nid1=c["nid1"], nid2=c["nid2"], hits=c["hits"],
+                               ssb="%.3f" % c["ssb_mhz"], power="%.1f" % c["power"], metric="%.2f" % c["metric"],
+                               sss_q="%.1f" % c["sss_q"], cfo="%.0f" % c["cfo"], timing="%.0f" % c["timing_us"],
+                               last=time.strftime("%H:%M:%S", time.localtime(c["last"]))) for c in rows],
+            }
+      file: ''
+      inputCount: 1
+      outputCount: 2
+      outputTensorSpecs:
+        - shape: '[1024]'
+          axes: '[S]'
+          dtype: F32
+          device: cpu
+        - shape: '[2, 19200]'
+          axes: '[B, S]'
+          dtype: CF32
+          device: cpu
+      throttled: true
+    input:
+      input0: '${graph.pluto_iiod.output.output0}'
+    meta:
+      node:
+        x: 360
+        y: 3480
+        width: 700
+        height: 400
+  - name: nr_pss_correlation
+    module: lineplot
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      averaging: 4
+      maxHold: false
+      fill: true
+      density: false
+      persistence: 256
+      rangeMin: -100
+      rangeMax: 0
+      xLabel: Buffer time (10 ms)
+      yLabel: NR PSS correlation
+      markers: '[]'
+      pins: '[]'
+    input:
+      signal: '${graph.nr_cell_scanner.output.output0}'
+    meta:
+      node:
+        x: 1100
+        y: 3480
+        width: 600
+        height: 347.29102
+      surface_default:
+        attachedHeight: 256
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: pluto_spectrum
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      mode: lineplot_waterfall
+      lineplotAveraging: 1
+      waterfallAveraging: 1
+      maxHold: false
+      fill: true
+      rangeMin: -90
+      rangeMax: -10
+      waterfallHeight: 512
+      colormap: turbo
+      density: false
+      persistence: 256
+      splitRatio: 0.5
+      markers: '[]'
+      pins: '[]'
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time (10 ms rows)
+    input:
+      buffer: '${graph.pluto_iiod.output.output0}'
+    meta:
+      node:
+        x: 1740
+        y: 3480
+        width: 900
+        height: 520
+      surface_default:
+        attachedHeight: 394
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: sweep
+    module: sdr_sweep
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      deviceString: 'driver=limesuiteng,serial=000000000e5dd86c'
+      antenna: ''
+      automaticGain: false
+      manualGain: 30
+      biasTee: false
+      startFrequency: 617000000
+      endFrequency: 2690000000
+      sampleRate: 0
+      resolution: 100000
+      dwell: 2
+      settlingTime: 0
+    meta:
+      node:
+        x: 3428
+        y: 810
+        width: 220
+        height: 0
+  - name: band_analyzer
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      source: editor
+      code: |
+        import time
+        import numpy as np
+        
+        # Watchlist (MHz). Class "cell" = U.S. LTE / 5G NR downlink bands.
+        # Class "drone" = unlicensed links used by delivery drones such as Zipline:
+        # 900 MHz ISM telemetry, FAA Remote ID Bluetooth advertising channels 37/38/39,
+        # Remote ID Wi-Fi beacon/NAN on channel 6, and the whole 2.4 GHz ISM band.
+        BANDS = [
+            ("n71",        "5G/LTE 600",            617.0,  652.0, "cell"),
+            ("B29",        "LTE 700 SDL",           717.0,  728.0, "cell"),
+            ("B12/B17",    "LTE 700 Lower",         729.0,  746.0, "cell"),
+            ("B13",        "LTE 700 Upper C",       746.0,  756.0, "cell"),
+            ("B14",        "LTE 700 PS",            758.0,  768.0, "cell"),
+            ("B5/n5",      "LTE/5G 850",            869.0,  894.0, "cell"),
+            ("ISM900",     "Drone 900 MHz telemetry", 902.0, 928.0, "drone"),
+            ("B2/B25/n25", "LTE/5G PCS",           1930.0, 1995.0, "cell"),
+            ("B4/B66/n66", "LTE/5G AWS",           2110.0, 2200.0, "cell"),
+            ("B30",        "LTE WCS",              2350.0, 2360.0, "cell"),
+            ("ISM2400",    "Drone 2.4 GHz ISM",    2400.0, 2483.5, "drone"),
+            ("RID-BT37",   "Drone Remote ID BT ch37", 2401.0, 2403.0, "drone"),
+            ("RID-BT38",   "Drone Remote ID BT ch38", 2425.0, 2427.0, "drone"),
+            ("RID-WiFi6",  "Drone Remote ID Wi-Fi ch6", 2427.0, 2447.0, "drone"),
+            ("RID-BT39",   "Drone Remote ID BT ch39", 2479.0, 2481.0, "drone"),
+            ("B41/n41",    "LTE/5G BRS",           2496.0, 2690.0, "cell"),
+            ("n48",        "5G CBRS",              3550.0, 3700.0, "cell"),
+            ("n77",        "5G C-band",            3700.0, 3980.0, "cell"),
+        ]
+        RADIO_MIN_MHZ = 30.0      # LimeSDR XTRX tuning range
+        RADIO_MAX_MHZ = 3800.0
+        HISTORY = 120             # sweeps kept per band in the occupancy heatmap
+        TRACE_POINTS = 512
+        MAX_ALERTS = 50
+        
+        history = np.zeros((len(BANDS), HISTORY), dtype=np.float32)
+        bands = [dict(name=n, tech=t, lo=lo, hi=hi, cls=c, peak=None, noise=None, occ=None,
+                      coverage=0.0, cov_status="", last_scan_t=0.0, bins=0, baseline=None, live=None)
+                 for (n, t, lo, hi, c) in BANDS]
+        alerts = []
+        evidence = {}
+        next_alert_id = 1
+        sweep_count = 0
+        last_fingerprint = None
+        last_sweep_t = 0.0
+        span = (0.0, 0.0)
+        bins = 0
+        trace = np.zeros(TRACE_POINTS, dtype=np.float32)
+        trace_meta = {"source": "waiting for first sweep", "lo": 617.0, "hi": 652.0}
+        last_publish = 0.0
+        
+        
+        def _hms(t):
+            return time.strftime("%H:%M:%S", time.localtime(t))
+        
+        
+        def _resample(p, n=TRACE_POINTS):
+            p = np.asarray(p, dtype=np.float32)
+            if p.size == n:
+                return p.copy()
+            return np.interp(np.linspace(0.0, 1.0, n), np.linspace(0.0, 1.0, p.size), p).astype(np.float32)
+        
+        
+        def _raise_alert(b, kind, value, thr, p, now):
+            global next_alert_id
+            for a in alerts:
+                if a["band"] == b["name"] and a["kind"] == kind and a["status"] == "NEW":
+                    return
+            aid = next_alert_id
+            next_alert_id += 1
+            alerts.insert(0, dict(id=aid, time=_hms(now), band=b["name"], kind=kind,
+                                  value="%.1f" % value, threshold="%.1f" % thr, status="NEW",
+                                  peak="%.1f" % b["peak"], noise="%.1f" % b["noise"]))
+            evidence[aid] = dict(trace=_resample(p), lo=b["lo"], hi=b["hi"], band=b["name"], kind=kind, time=_hms(now))
+            del alerts[MAX_ALERTS:]
+            keep = {a["id"] for a in alerts}
+            for k in list(evidence):
+                if k not in keep:
+                    evidence.pop(k)
+        
+        
+        def _fmt(v):
+            return "--" if v is None else "%.1f" % v
+        
+        
+        def compute(ctx):
+            global sweep_count, last_fingerprint, last_sweep_t, span, bins, trace, trace_meta, last_publish
+            ctrl = ctx.env.get("cellops_control", {}) or {}
+            peak_thr = float(ctrl.get("peak_alert_dbfs", -45.0))
+            occ_thr = float(ctrl.get("occupancy_alert", 0.6))
+            rise_thr = float(ctrl.get("noise_rise_alert_db", 8.0))
+            occ_margin = float(ctrl.get("occupancy_margin_db", 6.0))
+            stale_after = float(ctrl.get("stale_after_s", 120.0))
+            drone_margin = float(ctrl.get("drone_alert_db", 10.0))
+            hold_band = str(ctrl.get("hold_band", "") or "")
+            open_alert = ctrl.get("open_alert", 0) or 0
+            ack_alert = ctrl.get("ack_alert", 0) or 0
+            sort_by = str(ctrl.get("sort_by", "peak") or "peak")
+        
+            x = np.asarray(ctx.inputs[0]).reshape(-1)
+            attrs = ctx.input_attrs[0]
+            fc = float(attrs["frequency"]) if "frequency" in attrs else 0.0
+            fs = float(attrs["sampleRate"]) if "sampleRate" in attrs else 0.0
+            n = int(x.size)
+            now = time.time()
+        
+            head = min(n, 256)
+            fp = (n, float(np.abs(x[:head]).sum()), float(np.abs(x[-head:]).sum()))
+            new_sweep = fp != last_fingerprint and n > 8 and fs > 0.0
+        
+            if new_sweep:
+                last_fingerprint = fp
+                sweep_count += 1
+                last_sweep_t = now
+                bins = n
+                spec = np.fft.fftshift(np.fft.fft(x))
+                pwr = (20.0 * np.log10(np.abs(spec) / n + 1e-12)).astype(np.float32)
+                freqs = (fc + (np.arange(n) - n / 2.0) * (fs / n)) / 1e6
+                span = (float(freqs[0]), float(freqs[-1]))
+                history[:, :-1] = history[:, 1:]
+                for i, b in enumerate(bands):
+                    ov = max(0.0, min(b["hi"], span[1]) - max(b["lo"], span[0]))
+                    cov = ov / (b["hi"] - b["lo"])
+                    mask = (freqs >= b["lo"]) & (freqs <= b["hi"])
+                    nb = int(mask.sum())
+                    b["in_span"] = bool(nb >= 4 and cov > 0.0)
+                    if nb >= 4 and cov > 0.0:
+                        p = pwr[mask]
+                        noise = float(np.percentile(p, 20))
+                        peak = float(p.max())
+                        occ = float(np.mean(p > noise + occ_margin))
+                        b.update(peak=peak, noise=noise, occ=occ, coverage=100.0 * cov, bins=nb,
+                                 last_scan_t=now, live=p, cov_status="FULL" if cov >= 0.98 else "PARTIAL")
+                        history[i, -1] = occ
+                        if peak > peak_thr:
+                            _raise_alert(b, "PEAK", peak, peak_thr, p, now)
+                        if occ > occ_thr:
+                            _raise_alert(b, "OCCUPANCY", 100.0 * occ, 100.0 * occ_thr, p, now)
+                        if b["baseline"] is not None and noise > b["baseline"] + rise_thr:
+                            _raise_alert(b, "NOISE RISE", noise - b["baseline"], rise_thr, p, now)
+                        if b["cls"] == "drone" and b["baseline"] is not None and peak > b["baseline"] + drone_margin:
+                            _raise_alert(b, "DRONE LINK", peak - b["baseline"], drone_margin, p, now)
+                        b["baseline"] = noise if b["baseline"] is None else 0.9 * b["baseline"] + 0.1 * noise
+                    else:
+                        history[i, -1] = 0.0
+        
+            # Acknowledge alerts.
+            if ack_alert:
+                for a in alerts:
+                    if str(ack_alert).lower() == "all" or str(a["id"]) == str(ack_alert):
+                        a["status"] = "ACK"
+        
+            # Evidence trace: an opened alert, else the held band, else the strongest live band.
+            try:
+                open_id = int(open_alert)
+            except (TypeError, ValueError):
+                open_id = 0
+            if open_id and open_id in evidence:
+                ev = evidence[open_id]
+                trace = ev["trace"]
+                trace_meta = {"source": "ALERT #%d %s %s at %s (saved FFT)" % (open_id, ev["band"], ev["kind"], ev["time"]),
+                              "lo": ev["lo"], "hi": ev["hi"]}
+            else:
+                target = None
+                if hold_band:
+                    target = next((b for b in bands if b["name"] == hold_band), None)
+                if target is None or target["live"] is None:
+                    live = [b for b in bands if b["live"] is not None]
+                    target = max(live, key=lambda b: b["peak"]) if live else None
+                if target is not None and target["live"] is not None:
+                    trace = _resample(target["live"])
+                    label = "HELD" if hold_band and target["name"] == hold_band else "LIVE strongest"
+                    trace_meta = {"source": "%s %s %s" % (label, target["name"], _hms(target["last_scan_t"])),
+                                  "lo": target["lo"], "hi": target["hi"]}
+        
+            ctx.outputs[0][...] = history
+            ctx.outputs[1][...] = np.clip((trace + 100.0) / 100.0, 0.0, 1.0)
+            ctx.output_attrs[1]["frequency"] = np.float32((trace_meta["lo"] + trace_meta["hi"]) * 0.5e6)
+            ctx.output_attrs[1]["sampleRate"] = np.float32((trace_meta["hi"] - trace_meta["lo"]) * 1e6)
+        
+            if not new_sweep and now - last_publish < 0.5:
+                return
+            last_publish = now
+        
+            rows = []
+            for b in bands:
+                unsupported = b["hi"] > RADIO_MAX_MHZ or b["lo"] < RADIO_MIN_MHZ
+                age = (now - b["last_scan_t"]) if b["last_scan_t"] else None
+                if unsupported:
+                    status = "UNSUPPORTED"
+                elif b["last_scan_t"] == 0.0:
+                    status = "NOT SCANNED"
+                elif age is not None and age > stale_after:
+                    status = "STALE"
+                elif not b.get("in_span", False):
+                    status = "IDLE"
+                else:
+                    status = b["cov_status"]
+                if hold_band and b["name"] == hold_band:
+                    status = "HELD " + status
+                rows.append(dict(name=b["name"], tech=b["tech"], cls=b["cls"], range="%.0f-%.0f" % (b["lo"], b["hi"]),
+                                 status=status, peak=_fmt(b["peak"]), noise=_fmt(b["noise"]),
+                                 occupancy="--" if b["occ"] is None else "%.0f" % (100.0 * b["occ"]),
+                                 coverage="%.0f" % b["coverage"],
+                                 last_scan=_hms(b["last_scan_t"]) if b["last_scan_t"] else "--",
+                                 age="--" if age is None else "%.0f" % age,
+                                 _peak=b["peak"] if b["peak"] is not None else -999.0,
+                                 _noise=b["noise"] if b["noise"] is not None else -999.0,
+                                 _occ=b["occ"] if b["occ"] is not None else -1.0,
+                                 _t=b["last_scan_t"], _held=1 if (hold_band and b["name"] == hold_band) else 0))
+            keys = {
+                "peak": lambda r: (-r["_held"], -r["_peak"]),
+                "occupancy": lambda r: (-r["_held"], -r["_occ"]),
+                "noise": lambda r: (-r["_held"], -r["_noise"]),
+                "name": lambda r: (-r["_held"], r["name"]),
+                "last_scan": lambda r: (-r["_held"], -r["_t"]),
+                "status": lambda r: (-r["_held"], r["status"]),
+                "class": lambda r: (-r["_held"], 0 if r["cls"] == "drone" else 1, -r["_peak"]),
+            }
+            rows.sort(key=keys.get(sort_by, keys["peak"]))
+            for i, r in enumerate(rows):
+                r["rank"] = i + 1
+                for k in [k for k in r if k.startswith("_")]:
+                    r.pop(k)
+        
+            held = next((b for b in bands if b["name"] == hold_band), None) if hold_band else None
+            if held is not None:
+                mode = "HOLD %s" % held["name"]
+                hint = "sweep Start/End = %.0f / %.0f MHz" % (held["lo"], held["hi"])
+            else:
+                mode = "SCANNING"
+                hint = "set HOLD_BAND in scan_controls to hold"
+            speed = ctx.metrics.get_value("sweep", "sweepSpeed", default="--")
+            loss = ctx.metrics.get_value("sweep", "bufferLoss", default=0.0)
+            if isinstance(loss, (tuple, list)) and loss:
+                loss = loss[0]
+            try:
+                loss_s = loss if isinstance(loss, str) else "%.1f%%" % (100.0 * float(loss))
+            except (TypeError, ValueError):
+                loss_s = str(loss)
+            sweep_age = (now - last_sweep_t) if last_sweep_t else None
+            ctx.env["cellops"] = {
+                "mode": mode,
+                "mode_hint": hint,
+                "sort_by": sort_by,
+                "radio": {
+                    "device": "LimeSDR XTRX", "antenna": "LNAW, RX only",
+                    "span": "%.0f-%.0f MHz" % span if span[1] > 0 else "--",
+                    "bins": int(bins), "sweeps": int(sweep_count),
+                    "last_sweep": _hms(last_sweep_t) if last_sweep_t else "--",
+                    "sweep_age": "--" if sweep_age is None else "%.0f s" % sweep_age,
+                    "speed": str(speed), "loss": loss_s,
+                    "health": "NO DATA" if sweep_age is None else ("STALLED" if sweep_age > stale_after else "OK"),
+                },
+                "thresholds": {"peak_dbfs": peak_thr, "occupancy_pct": 100.0 * occ_thr,
+                                "noise_rise_db": rise_thr, "drone_db": drone_margin, "stale_s": stale_after},
+                "bands": rows,
+                "alerts": [dict(a) for a in alerts],
+                "counts": {"new": sum(1 for a in alerts if a["status"] == "NEW"),
+                           "ack": sum(1 for a in alerts if a["status"] == "ACK")},
+                "evidence": dict(trace_meta),
+            }
+      file: ''
+      inputCount: 1
+      outputCount: 2
+      outputTensorSpecs:
+        - shape: '[18, 120]'
+          axes: ''
+          dtype: F32
+          device: cpu
+        - shape: '[512]'
+          axes: '[S]'
+          dtype: F32
+          device: cpu
+      throttled: true
+    input:
+      input0: '${graph.sweep.output.signal}'
+    meta:
+      node:
+        x: 4184
+        y: 170
+        width: 880
+        height: 1180
+  - name: occupancy_heatmap
+    module: frame
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      fit: cover
+      colormap: plasma
+      autoRange: false
+      interpolation: bilinear
+      xLabel: Sweeps (oldest to newest)
+      yLabel: 'Band (n71, B29, B12/17, B13, B14, B5, ISM900, B2/25, B4/66, B30, ISM2400, BT37, BT38, WiFi6, BT39, B41, n48, n77)'
+    input:
+      frame: '${graph.band_analyzer.output.output0}'
+    meta:
+      node:
+        x: 791.0003
+        y: 712.00006
+        width: 1709
+        height: 612.2909
+      surface_default:
+        attachedHeight: 521
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: live_spectrum
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      mode: lineplot_waterfall
+      lineplotAveraging: 2
+      waterfallAveraging: 1
+      maxHold: true
+      fill: true
+      rangeMin: -110
+      rangeMax: -20
+      waterfallHeight: 256
+      colormap: plasma
+      density: false
+      persistence: 256
+      splitRatio: 0.45
+      markers: '[]'
+      pins: '[]'
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Sweeps
+    input:
+      buffer: '${graph.sweep.output.signal}'
+    meta:
+      node:
+        x: 1167
+        y: 139
+        width: 1329
+        height: 720
+      surface_default:
+        attachedHeight: 628
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
+  - name: evidence_fft
+    module: lineplot
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      averaging: 69
+      maxHold: true
+      fill: true
+      density: true
+      persistence: 256
+      rangeMin: -100
+      rangeMax: 0
+      xLabel: Frequency (MHz)
+      yLabel: Amplitude (dBFS)
+      markers: '[]'
+      pins: '[]'
+    input:
+      signal: '${graph.band_analyzer.output.output1}'
+    meta:
+      node:
+        x: 2552
+        y: 810
+        width: 820
+        height: 539.29095
+      surface_default:
+        attachedHeight: 448
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        configCollapsed: true
+        windowId: ''
