@@ -38,8 +38,8 @@ std::vector<Entry> Toolbox::Text() {
             "lines (match=true) plus context; pattern is literal unless regex is "
             "true. Otherwise returns lines from offset (1-based) up to limit, with "
             "next_offset when more remain. Returned line numbers are separate "
-            "metadata; never copy them into patches. Use patch_block_text in "
-            "apply_flowgraph_patch for partial edits, or reconfigure_block to "
+            "metadata; never copy them into patches. Use patch_block_text for "
+            "partial edits, or reconfigure_block in apply_flowgraph_patch to "
             "replace the entire field.",
             R"({"type":"object","required":["name","field"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."},"field":{"type":"string","description":"Text config field, such as code."},"pattern":{"type":"string","description":"Text to find on a line."},"regex":{"type":"boolean","description":"Treat pattern as an ECMAScript regular expression."},"context":{"type":"integer","minimum":0,"maximum":20,"description":"Lines of context around each match. Default 2."},"offset":{"type":"integer","minimum":1,"description":"First line to return when pattern is absent. Default 1."},"limit":{"type":"integer","minimum":1,"maximum":500,"description":"Maximum lines to return. Default 200."}},"additionalProperties":false})",
             {.needsGraph = true},

@@ -2,11 +2,28 @@
 
 #include "tools/naming.hh"
 
+#include <algorithm>
+#include <cctype>
+
 namespace Jetstream::Agent {
 
 namespace Detail {
 
 namespace {
+
+std::string UnknownTool(const std::string& name) {
+    const bool identifier = !name.empty() && std::all_of(name.begin(), name.end(), [](const unsigned char c) {
+        return std::isalnum(c) || c == '_' || c == '-' || c == '.' || c == ':' || c == '/';
+    });
+    if (identifier) {
+        return jst::fmt::format("Unknown tool '{}'.", name);
+    }
+
+    return jst::fmt::format("Unknown tool '{}'. This is not a tool name. An earlier call in the same reply "
+                            "was probably cut apart by a literal </parameter>, </function> or <function= "
+                            "sequence in one of its arguments, so check that call's result before "
+                            "continuing.", name);
+}
 
 Tools::Output Dispatch(Host& host, const Call& call) {
     try {
@@ -17,7 +34,7 @@ Tools::Output Dispatch(Host& host, const Call& call) {
 
         const auto* entry = Toolbox::Find(call.tool);
         if (!entry) {
-            return Response::Failure(jst::fmt::format("Unknown tool '{}'.", call.tool));
+            return Response::Failure(UnknownTool(call.tool));
         }
 
         return entry->execute({host, call.flowgraph, call.create, args});

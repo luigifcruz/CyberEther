@@ -164,6 +164,8 @@ Tools::Output CaptureView(const Invocation& call) {
         {"surface", matchedId},
         {"width", size.x},
         {"height", size.y},
+        {"image_width", width},
+        {"image_height", height},
     };
     return Response::Reply(body, {image});
 }
@@ -174,7 +176,11 @@ std::vector<Entry> Toolbox::Capture() {
     return {{
         {
             "inspect_block_view",
-            "Capture one rendered surface from a visual block and return its surface id and dimensions. The image itself is attached to the conversation as the next user message.",
+            "Capture one rendered surface from a visual block and return its surface id and dimensions. "
+            "width and height are the surface size in pixels; image_width and image_height are the size "
+            "of the attached image, which is scaled down when the surface is large, so measure positions "
+            "in the image against image_width and image_height. The image itself is attached to the "
+            "conversation right after this result.",
             R"({"type":"object","required":["name"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."},"surface":{"type":"string","description":"Optional surface id from inspect_block."}},"additionalProperties":false})",
             {.needsGraph = true, .needsCapture = true},
         },

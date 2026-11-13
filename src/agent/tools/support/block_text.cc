@@ -40,6 +40,12 @@ struct Hunk {
             return step.kind != ' ';
         });
     }
+
+    bool empty() const {
+        return anchor.empty() && std::all_of(steps.begin(), steps.end(), [](const Step& step) {
+            return step.kind == ' ' && step.text.find_first_not_of(" \t") == std::string::npos;
+        });
+    }
 };
 
 struct Replacement {
@@ -153,7 +159,10 @@ std::string HunkAnchor(const std::string& line) {
     return anchor;
 }
 
-std::string ParsePatch(const std::string& patch, std::vector<Hunk>& hunks) {
+// Lenient where a relaxed reading cannot alter text: a line with no prefix is read as an
+// unchanged line, which only helps locate the hunk, and a bare hunk with no lines is
+// dropped. `unprefixed` reports the first line read that way, or 0.
+std::string ParsePatch(const std::string& patch, std::vector<Hunk>& hunks, U64& unprefixed) {
     std::string normalized;
     normalized.reserve(patch.size());
     for (const char c : patch) {
@@ -204,10 +213,16 @@ std::string ParsePatch(const std::string& patch, std::vector<Hunk>& hunks) {
         } else if (line.front() == ' ' || line.front() == '-' || line.front() == '+') {
             steps.push_back({line.front(), line.substr(1)});
         } else {
-            return jst::fmt::format("Patch line {} does not start with a space, '-', '+', or '@@'. "
-                                    "Unchanged lines start with a space.", index + 1);
+            if (unprefixed == 0) {
+                unprefixed = index + 1;
+            }
+            steps.push_back({' ', line});
         }
     }
+
+    std::erase_if(hunks, [](const Hunk& hunk) {
+        return hunk.empty();
+    });
 
     if (hunks.empty()) {
         return "Patch has no hunks.";
@@ -313,6 +328,23 @@ Indent Shift(const std::string& original, const std::string& written) {
     return {};
 }
 
+// An unchanged line written exactly one space short of the original lost its one-space
+// prefix, not its indentation, so added lines keep the indentation they were written with.
+// A changed line written at that same short column shows the whole hunk is under-indented
+// instead, and the shift is kept.
+Indent StepShift(const std::string& original, const Step& step, const Hunk& hunk) {
+    const Indent indent = Shift(original, step.text);
+    if (step.kind != ' ' || indent.add != " ") {
+        return indent;
+    }
+
+    const std::string wrote = LeadingSpace(step.text);
+    const bool sameColumn = std::any_of(hunk.steps.begin(), hunk.steps.end(), [&](const Step& other) {
+        return other.kind != ' ' && !Trim(other.text).empty() && LeadingSpace(other.text) == wrote;
+    });
+    return sameColumn ? indent : Indent{};
+}
+
 Indent IndentShift(const Lines& lines, U64 start, const Hunk& hunk) {
     U64 index = start;
     for (const auto& step : hunk.steps) {
@@ -324,7 +356,7 @@ Indent IndentShift(const Lines& lines, U64 start, const Hunk& hunk) {
         if (Trim(step.text).empty() || Trim(original).empty()) {
             continue;
         }
-        return Shift(original, step.text);
+        return StepShift(original, step, hunk);
     }
     return {};
 }
@@ -400,7 +432,7 @@ Replacement LooseReplacement(const Lines& lines, U64 first, const Hunk& hunk, U6
     const auto written = std::find_if(hunk.steps.begin(), hunk.steps.end(), [](const Step& step) {
         return step.kind != '+' && !Blank(step.text);
     });
-    const Indent indent = Shift(lines[first], written->text);
+    const Indent indent = StepShift(lines[first], *written, hunk);
 
     U64 leading = 0;
     for (auto step = hunk.steps.begin(); step != written; ++step) {
@@ -671,11 +703,55 @@ std::string BlockText::Read(const Graph& flowgraph, const std::string& name, con
     return {};
 }
 
-BlockText::Patch BlockText::Apply(const std::string& text, const std::string& patch) {
+namespace {
+
+// With unprefixed lines in play, a '+' line at the edge of a hunk that repeats the text
+// line beside it may be an unchanged line that lost its prefix. Refuse instead of guessing.
+std::string PlusCollision(const Lines& lines, const Hunk& hunk, U64 number, const Replacement& at) {
+    if (hunk.steps.empty()) {
+        return {};
+    }
+
+    const Step& head = hunk.steps.front();
+    const Step& tail = hunk.steps.back();
+    const U64 end = at.start + at.count;
+    const bool before = head.kind == '+' && at.start > 0 && lines[at.start - 1] == "+" + head.text;
+    const bool after = tail.kind == '+' && end < lines.size() && lines[end] == "+" + tail.text;
+    if (!before && !after) {
+        return {};
+    }
+
+    return jst::fmt::format("Hunk {}: the line '+{}' is already in the text next to this hunk, so it is "
+                            "unclear whether it is an unchanged line written without its one-space prefix "
+                            "or an addition. Start unchanged lines with one space.",
+                            number, before ? head.text : tail.text);
+}
+
+std::string Unescape(const std::string& patch) {
+    std::string plain;
+    plain.reserve(patch.size());
+    for (U64 i = 0; i < patch.size(); ++i) {
+        const bool escaped = patch[i] == '\\' && i + 1 < patch.size() &&
+                             (patch[i + 1] == '"' || patch[i + 1] == '\\');
+        if (escaped) {
+            ++i;
+        }
+        plain += patch[i];
+    }
+    return plain;
+}
+
+BlockText::Patch Attempt(const std::string& text, const std::string& patch) {
     BlockText::Patch result;
 
     std::vector<Hunk> hunks;
-    result.error = ParsePatch(patch, hunks);
+    U64 unprefixed = 0;
+    result.error = ParsePatch(patch, hunks, unprefixed);
+    if (unprefixed != 0) {
+        result.note = jst::fmt::format("Patch line {} does not start with a space, '-', '+', or '@@', so "
+                                       "it was read as an unchanged line. Unchanged lines start with "
+                                       "one space.", unprefixed);
+    }
     if (!result.error.empty()) {
         return result;
     }
@@ -684,7 +760,10 @@ BlockText::Patch BlockText::Apply(const std::string& text, const std::string& pa
     std::vector<Replacement> replacements(hunks.size());
     U64 cursor = 0;
     for (U64 index = 0; index < hunks.size(); ++index) {
-        result.error = LocateHunk(lines, std::move(hunks[index]), index + 1, cursor, replacements[index]);
+        result.error = LocateHunk(lines, hunks[index], index + 1, cursor, replacements[index]);
+        if (result.error.empty() && unprefixed != 0) {
+            result.error = PlusCollision(lines, hunks[index], index + 1, replacements[index]);
+        }
         if (!result.error.empty()) {
             return result;
         }
@@ -714,6 +793,31 @@ BlockText::Patch BlockText::Apply(const std::string& text, const std::string& pa
 
     result.lineCount = VisibleLineCount(lines);
     result.text = Text::JoinLines(lines);
+    return result;
+}
+
+}  // namespace
+
+BlockText::Patch BlockText::Apply(const std::string& text, const std::string& patch) {
+    auto result = Attempt(text, patch);
+    if (result.error.empty()) {
+        return result;
+    }
+
+    if (!result.note.empty()) {
+        result.error += " " + result.note;
+        result.note.clear();
+    }
+
+    // Unescaping is only a dry run: the model's over-escaping is not uniform, so applying
+    // the unescaped patch could write broken code. The hint says what to resend instead.
+    const std::string plain = Unescape(patch);
+    if (plain != patch && Attempt(text, plain).error.empty()) {
+        result.error += " The patch does match once \\\" is read as \" and \\\\ as \\, so its quotes "
+                        "and backslashes are escaped one time too many. Send the lines exactly as "
+                        "read_block_text returns them; the patch_block_text tool takes the patch "
+                        "as plain text.";
+    }
     return result;
 }
 
