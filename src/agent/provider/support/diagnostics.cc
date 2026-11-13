@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <optional>
 
 namespace Jetstream::Agent::Detail {
 
@@ -144,6 +145,30 @@ bool ContextOverflow(const Provider::Error& error, std::string detail) {
            detail.find("prompt is too long") != std::string::npos;
 }
 
+std::optional<U64> ImageLimit(std::string detail) {
+    std::transform(detail.begin(), detail.end(), detail.begin(), [](unsigned char value) {
+        return static_cast<char>(std::tolower(value));
+    });
+
+    constexpr std::string_view prefix = "at most ";
+    const auto start = detail.find(prefix);
+    if (start == std::string::npos) {
+        return std::nullopt;
+    }
+
+    const size_t first = start + prefix.size();
+    size_t end = first;
+    U64 limit = 0;
+    while (end < detail.size() && end - first < 6 && std::isdigit(static_cast<unsigned char>(detail[end]))) {
+        limit = limit * 10 + static_cast<U64>(detail[end] - '0');
+        ++end;
+    }
+    if (end == first || !std::string_view(detail).substr(end).starts_with(" image")) {
+        return std::nullopt;
+    }
+    return limit;
+}
+
 }  // namespace
 
 std::string Diagnostics::Flatten(std::string_view value) {
@@ -213,6 +238,12 @@ Provider::Error Diagnostics::Payload(const nlohmann::json& payload, I32 status, 
     if (ContextOverflow(error, detail)) {
         error.kind = Provider::Error::Kind::ContextLength;
         error.message += " The request exceeds the model's context window.";
+    }
+    if (error.kind == Provider::Error::Kind::InvalidRequest) {
+        if (const auto limit = ImageLimit(detail)) {
+            error.imageLimit = *limit;
+            error.message += " Lower this provider's image limit in Settings.";
+        }
     }
     return error;
 }

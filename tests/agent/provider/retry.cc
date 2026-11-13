@@ -534,4 +534,112 @@ TEST_CASE("Output token exhaustion remains an error and is never retried", "[age
     CHECK_FALSE(response.state);
 }
 
+TEST_CASE("A rejected reasoning effort is dropped without touching other reasoning options",
+          "[agent][providers][retry]") {
+    const std::string rejection = GENERATE(
+        R"({"error":{"message":"1 validation error","param":"body.reasoning_effort","code":400}})",
+        R"({"error":{"message":"Invalid value","param":"reasoning_effort"}})",
+        R"({"error":{"message":"Unsupported parameter: reasoning_effort"}})");
+
+    AgentTest::ProviderServer provider;
+    std::vector<Json> requests;
+    provider.server.Post("/chat", [&](const auto& request, auto& response) {
+        requests.push_back(Json::parse(request.body));
+        if (requests.back().contains("reasoning_effort")) {
+            response.status = 400;
+            response.set_content(rejection, "application/json");
+            return;
+        }
+        response.set_content(completion, "text/event-stream");
+    });
+    provider.start();
+
+    auto config = provider.config();
+    config.retries = 3;
+    Agent::Provider client(config);
+
+    const std::vector<Agent::Provider::Message> messages{{"user", "Hello " + rejection}};
+    auto request = AgentTest::Request(messages);
+    request.reasoningEffort = "max";
+    Agent::Provider::Callbacks callbacks;
+    callbacks.onReasoning = [](const std::string&, bool) {};
+
+    Agent::Provider::Response response;
+    REQUIRE(client.stream(request, callbacks, response) == Result::SUCCESS);
+
+    REQUIRE(requests.size() == 2);
+    CHECK(requests[0]["reasoning_effort"] == "max");
+    CHECK_FALSE(requests[1].contains("reasoning_effort"));
+    CHECK(requests[1]["reasoning"] == Json({{"enabled", true}}));
+    CHECK(requests[1]["messages"] == requests[0]["messages"]);
+
+    REQUIRE(client.stream(request, callbacks, response) == Result::SUCCESS);
+    REQUIRE(requests.size() == 3);
+    CHECK(requests[2] == requests[1]);
+}
+
+TEST_CASE("An unrelated rejection does not drop the reasoning effort", "[agent][providers][retry]") {
+    const std::string rejection = GENERATE(
+        R"({"error":{"message":"Invalid tool schema","param":"tools"}})",
+        R"({"error":{"message":"Unsupported value for max_tokens"}})");
+
+    AgentTest::ProviderServer provider;
+    int count = 0;
+    provider.server.Post("/chat", [&](const auto&, auto& response) {
+        ++count;
+        response.status = 400;
+        response.set_content(rejection, "application/json");
+    });
+    provider.start();
+
+    auto config = provider.config();
+    config.retries = 3;
+    config.requestReasoning = false;
+
+    const std::vector<Agent::Provider::Message> messages{{"user", "Unrelated " + rejection}};
+    auto request = AgentTest::Request(messages);
+    request.reasoningEffort = "low";
+    Agent::Provider::Response response;
+    REQUIRE(Agent::Provider(config).stream(request, {}, response) == Result::ERROR);
+
+    CHECK(count == 1);
+    CHECK(response.error.status == 400);
+}
+
+TEST_CASE("A param-less effort rejection still drops the nested reasoning options", "[agent][providers][retry]") {
+    AgentTest::ProviderServer provider;
+    std::vector<Json> requests;
+    provider.server.Post("/v1/responses", [&](const auto& request, auto& response) {
+        requests.push_back(Json::parse(request.body));
+        if (requests.back().contains("reasoning")) {
+            response.status = 400;
+            response.set_content(
+                R"({"error":{"message":"Unsupported parameter: 'reasoning_effort' is not supported with this model."}})",
+                "application/json");
+            return;
+        }
+        response.set_content(std::string("data: {\"type\":\"response.output_text.delta\",\"delta\":\"Done\"}\n\n") +
+                             responseCompleted, "text/event-stream");
+    });
+    provider.start();
+
+    auto config = provider.config();
+    UseResponses(config);
+    config.retries = 3;
+
+    const std::vector<Agent::Provider::Message> messages{{"user", "Nested effort"}};
+    auto request = AgentTest::Request(messages);
+    request.reasoningEffort = "high";
+    Agent::Provider::Callbacks callbacks;
+    callbacks.onReasoning = [](const std::string&, bool) {};
+
+    Agent::Provider::Response response;
+    REQUIRE(Agent::Provider(config).stream(request, callbacks, response) == Result::SUCCESS);
+
+    REQUIRE(requests.size() == 2);
+    CHECK(requests[0].contains("reasoning"));
+    CHECK_FALSE(requests[0].contains("reasoning_effort"));
+    CHECK_FALSE(requests[1].contains("reasoning"));
+}
+
 #endif

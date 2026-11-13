@@ -8,6 +8,7 @@
 #include "jetstream/settings.hh"
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <optional>
 #include <string>
@@ -174,6 +175,35 @@ struct IntelligenceProviderView {
             },
         });
 
+        imagesField.update({
+            .id = "IntelligenceProviderImagesField",
+            .label = "Images",
+            .description = "Newest images kept in each request; older ones are replaced by a note. "
+                           "Attach tool images to the tool result only when the endpoint accepts them there.",
+        });
+
+        maxImagesInput.update({
+            .id = "##intelligence-provider-max-images",
+            .value = std::to_string(maxImages),
+            .hint = "Images per request (default 4).",
+            .submit = Sakura::TextInput::Submit::OnCommit,
+            .disabled = this->config.saving,
+            .onChange = [this](const std::string& value) {
+                imagesValue(value, maxImages);
+            },
+        });
+
+        toolImagesCheckbox.update({
+            .id = "IntelligenceProviderToolImages",
+            .label = "Attach tool images to tool results",
+            .value = toolResultImages,
+            .onChange = [this](bool value) {
+                if (!this->config.saving) {
+                    toolResultImages = value;
+                }
+            },
+        });
+
         keyField.update({
             .id = "IntelligenceProviderKeyField",
             .label = "API Key",
@@ -279,6 +309,10 @@ struct IntelligenceProviderView {
             chatPathInput.render(ctx);
             modelsPathInput.render(ctx);
         });
+        imagesField.render(ctx, [this](const Sakura::Context& ctx) {
+            maxImagesInput.render(ctx);
+            toolImagesCheckbox.render(ctx);
+        });
         keyField.render(ctx, [this](const Sakura::Context& ctx) {
             keySourceCombo.render(ctx);
             if (keySource == KeySource::Keychain) {
@@ -316,6 +350,8 @@ struct IntelligenceProviderView {
         modelsPath = provider.modelsPath;
         apiKey.clear();
         requestReasoning = provider.requestReasoning;
+        maxImages = provider.maxImages;
+        toolResultImages = provider.toolResultImages;
         markDirty();
     }
 
@@ -340,6 +376,8 @@ struct IntelligenceProviderView {
             provider.apiKeyEnv = apiKeyEnv;
         }
         provider.requestReasoning = requestReasoning;
+        provider.maxImages = maxImages;
+        provider.toolResultImages = toolResultImages;
         return provider;
     }
 
@@ -472,10 +510,22 @@ struct IntelligenceProviderView {
         Environment,
     };
 
+    static bool imagesValue(const std::string& label, U64& images) {
+        if (label.empty() || label.size() > 3 || !std::all_of(label.begin(), label.end(), [](unsigned char c) {
+            return std::isdigit(c);
+        })) {
+            return false;
+        }
+        images = std::stoull(label);
+        return true;
+    }
+
     Config config;
     std::optional<U64> lastSession;
     U64 draftRevision = 0;
     bool requestReasoning = false;
+    U64 maxImages = 4;
+    bool toolResultImages = false;
     std::string typeLabel;
     std::string name;
     std::string host;
@@ -495,6 +545,9 @@ struct IntelligenceProviderView {
     Sakura::Combo apiCombo;
     Sakura::TextInput chatPathInput;
     Sakura::TextInput modelsPathInput;
+    Sakura::SettingField imagesField;
+    Sakura::TextInput maxImagesInput;
+    Sakura::Checkbox toolImagesCheckbox;
     Sakura::SettingField keyField;
     Sakura::Combo keySourceCombo;
     Sakura::TextInput keyInput;

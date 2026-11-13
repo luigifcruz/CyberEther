@@ -48,6 +48,8 @@ class AgentProviders {
     static bool Ready(const Provider& provider, Agent::Provider::Scope scope);
     static bool Transferable(const Provider& stored, const Provider& target);
     static std::string Effort(const Model& model);
+    static std::string ExtraBody(const Model& model);
+    static U64 ContextWindow(const Model& model);
     static bool Same(const Model& model, const std::string& provider, const std::string& id);
     static bool Same(const Model& a, const Model& b);
     static std::shared_ptr<Agent::Provider> Client(const Provider& provider);
