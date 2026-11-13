@@ -22,6 +22,7 @@ struct DefaultCompositorCallbacks {
     Sakura::Callback<void(Sakura::ToastType, I32, const std::string&)> notify;
     Sakura::Callback<void(Result, const std::string&)> notifyResult;
     Sakura::Callback<void(const std::string&)> setClipboardText;
+    Sakura::Callback<std::string()> getClipboardText;
     Sakura::Callback<Result(FilePickerRequest)> requestFile;
     Sakura::Callback<void(const std::string&, Agent::Tools::Layout)> layout;
     Sakura::Callback<void()> checkForUpdates;

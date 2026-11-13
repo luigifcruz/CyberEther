@@ -60,16 +60,18 @@ F32 RowY(U64 entries, U64 separators) {
 
 constexpr F32 kMenuX = 120.0f;
 const F32 kCopyY = RowY(0, 0);
-const F32 kPasteY = RowY(1, 0);
-const F32 kRenameY = RowY(2, 0);
-const F32 kInspectY = RowY(3, 0);
-const F32 kDetachY = RowY(4, 0);
-const F32 kPlotY = RowY(5, 0);
-const F32 kDeviceY = RowY(6, 1);
-const F32 kFreezeY = RowY(7, 1);
-const F32 kReloadY = RowY(8, 1);
-const F32 kDocumentationY = RowY(9, 2);
-const F32 kDeleteY = RowY(10, 3);
+const F32 kCutY = RowY(1, 0);
+const F32 kPasteY = RowY(2, 0);
+const F32 kDuplicateY = RowY(3, 0);
+const F32 kRenameY = RowY(4, 1);
+const F32 kInspectY = RowY(5, 1);
+const F32 kDetachY = RowY(6, 1);
+const F32 kPlotY = RowY(7, 1);
+const F32 kDeviceY = RowY(8, 2);
+const F32 kFreezeY = RowY(9, 2);
+const F32 kReloadY = RowY(10, 2);
+const F32 kDocumentationY = RowY(11, 3);
+const F32 kDeleteY = RowY(12, 4);
 
 template<typename Update>
 bool Settles(Frames& frames, Update update) {
@@ -99,7 +101,6 @@ struct MenuRig {
     LayerSlot slot;
     LayerHost host;
     std::vector<std::string> calls;
-    bool pasteEnabled = true;
     bool configDetachEnabled = true;
     bool configDetached = false;
     bool plotDetachEnabled = true;
@@ -120,14 +121,15 @@ struct MenuRig {
     void show() {
         menu.update({
             .open = true,
-            .pasteEnabled = pasteEnabled,
             .configDetachEnabled = configDetachEnabled,
             .configDetached = configDetached,
             .plotDetachEnabled = plotDetachEnabled,
             .plotDetached = plotDetached,
             .devices = devices,
             .onCopy = record("copy"),
+            .onCut = record("cut"),
             .onPaste = record("paste"),
+            .onDuplicate = record("duplicate"),
             .onRename = record("rename"),
             .onInspect = record("inspect"),
             .onToggleConfigDetach = record("detach"),
@@ -360,7 +362,9 @@ TEST_CASE("Node menu entries close the menu and then run their action",
     MenuRig rig;
     const std::vector<std::pair<F32, std::string>> entries = {
         {kCopyY, "copy"},
+        {kCutY, "cut"},
         {kPasteY, "paste"},
+        {kDuplicateY, "duplicate"},
         {kRenameY, "rename"},
         {kInspectY, "inspect"},
         {kDetachY, "detach"},
@@ -392,16 +396,14 @@ TEST_CASE("Node menu opens at the cursor and closes on outside clicks without ru
     CHECK(rig.calls == std::vector<std::string>{"close"});
 }
 
-TEST_CASE("Node menu paste, detach, and device entries follow their enabled flags",
+TEST_CASE("Node menu detach and device entries follow their enabled flags",
           "[core][sakura][flowgraph][editor-views]") {
     MenuRig rig;
-    rig.pasteEnabled = false;
     rig.configDetachEnabled = false;
     rig.plotDetachEnabled = false;
     rig.devices.clear();
     rig.show();
 
-    rig.host.click(kMenuX, kPasteY);
     rig.host.click(kMenuX, kDetachY);
     rig.host.click(kMenuX, kPlotY);
     rig.host.click(kMenuX, kDeviceY);
@@ -422,6 +424,11 @@ TEST_CASE("Node menu paste, detach, and device entries follow their enabled flag
     rig.show();
     rig.host.click(kMenuX, kPlotY);
     CHECK(rig.calls == std::vector<std::string>{"close", "plot"});
+}
+
+TEST_CASE("Node menu labels count the blocks an entry acts on", "[core][sakura][flowgraph][editor-views]") {
+    CHECK(FlowgraphNodeMenu::BlocksLabel("Copy", 1) == "Copy Block");
+    CHECK(FlowgraphNodeMenu::BlocksLabel("Copy", 3) == "Copy 3 Blocks");
 }
 
 TEST_CASE("Node menu device submenu reports the index of the chosen device",
@@ -1125,6 +1132,75 @@ TEST_CASE("Editor deletes or freezes every live selected block on Delete or Prim
     CHECK(deletes[0] == std::vector<std::string>{"fft", "ifft"});
 }
 
+TEST_CASE("Editor sends the whole selection on copy, cut, and duplicate and applies requested selections",
+          "[core][sakura][flowgraph][editor-views]") {
+    Scene scene;
+    FlowgraphEditor editor;
+    LayerSlot slot;
+    slot.hold(editor.component(), kScreen);
+    LayerHost host({&slot});
+    Frames frames(host, kScreen, scene.context());
+    frames.verify = false;
+    auto first = NodeConfig().block;
+    first.layout = FlowgraphNode::Layout{40.0f, 40.0f, 0.0f, 0.0f};
+    auto second = NodeConfig().block;
+    second.name = "ifft";
+    second.layout = FlowgraphNode::Layout{400.0f, 40.0f, 0.0f, 0.0f};
+    std::vector<std::pair<std::string, std::vector<std::string>>> calls;
+    const auto record = [&](const char* name) {
+        return [&calls, name](const std::vector<std::string>& blocks) { calls.emplace_back(name, blocks); };
+    };
+    U64 selectionRequest = 3;
+    std::vector<std::string> selection = {"fft"};
+    FlowgraphEditor::Measured measured;
+    const auto update = [&] {
+        editor.update({
+            .id = "graph",
+            .selectionRequest = selectionRequest,
+            .selection = selection,
+            .measure = true,
+            .graph = {first, second},
+            .onCopyBlocks = record("copy"),
+            .onCutBlocks = record("cut"),
+            .onDuplicateBlocks = record("duplicate"),
+            .onLayout = [&](FlowgraphEditor::Measured next) { measured = next; },
+        });
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(measured.selected.empty());
+
+    const F32 scale = kScreen.width / measured.viewport.width;
+    const auto click = [&](const std::string& block, KeyModifiers modifiers) {
+        const auto node = measured.nodes.at(block).bounds;
+        const F32 x = kScreen.x + (node.x + 20.0f - measured.viewport.x) * scale;
+        const F32 y = kScreen.y + (node.y + 8.0f - measured.viewport.y) * scale;
+        frames.ctx.mouse = Extent2D<F32>{x, y};
+        const U64 generation = Sakura::Access::focusGeneration(host);
+        auto press = Mouse(MouseEventType::Click, x, y);
+        press.modifiers = modifiers;
+        host.send(press);
+        Sakura::Access::clickFocus(host, Extent2D<F32>{x, y}, true, generation);
+        frames.run(update);
+        host.send(Mouse(MouseEventType::Release, x, y));
+        frames.run(update);
+    };
+    click("fft", {});
+    click("ifft", {.shift = true});
+
+    CHECK(Tap(host, KeyCode::C, {.control = true}));
+    CHECK(Tap(host, KeyCode::X, {.control = true}));
+    CHECK(Tap(host, KeyCode::D, {.control = true}));
+    const std::vector<std::string> both = {"fft", "ifft"};
+    CHECK(calls == std::vector<std::pair<std::string, std::vector<std::string>>>{
+                       {"copy", both}, {"cut", both}, {"duplicate", both}});
+
+    selectionRequest = 4;
+    selection = {"ifft"};
+    frames.run(update);
+    frames.run(update);
+    CHECK(measured.selected == std::vector<std::string>{"ifft"});
+}
+
 TEST_CASE("Editor toolbar pause, save, and environment buttons run their callbacks and follow the run state",
           "[core][sakura][flowgraph][editor-views]") {
     Scene scene;
@@ -1218,6 +1294,35 @@ TEST_CASE("Editor presenter sends the blocks to delete or freeze as one mail",
     const auto& freeze = std::get<MailToggleBlockFrozen>(mails[1]);
     CHECK(freeze.flowgraph == "graph");
     CHECK(freeze.blockIds == std::vector<std::string>{"fft"});
+}
+
+TEST_CASE("Editor presenter sends copy, cut, duplicate, and select mail and passes the clipboard and selection",
+          "[core][sakura][flowgraph][editor-views]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<Mail> mails;
+    callbacks.enqueueMail = [&](Mail&& mail) { mails.push_back(std::move(mail)); };
+    const PresenterContext context{state, callbacks};
+    auto graph = std::make_shared<Flowgraph>();
+
+    auto config = FlowgraphEditorPresenter(context).build("graph", graph);
+    config.onCopyBlocks({"fft"});
+    config.onCutBlocks({"fft", "ifft"});
+    config.onDuplicateBlocks({"ifft"});
+    config.onSelectBlocks({"fft", "ifft"});
+    REQUIRE(mails.size() == 4);
+    CHECK_FALSE(std::get<MailCopyBlock>(mails[0]).cut);
+    CHECK(std::get<MailCopyBlock>(mails[0]).blockIds == std::vector<std::string>{"fft"});
+    CHECK(std::get<MailCopyBlock>(mails[1]).cut);
+    CHECK(std::get<MailCopyBlock>(mails[1]).blockIds == std::vector<std::string>{"fft", "ifft"});
+    CHECK(std::get<MailDuplicateBlock>(mails[2]).blockIds == std::vector<std::string>{"ifft"});
+    CHECK(std::get<MailSelectBlocks>(mails[3]).flowgraph == "graph");
+    CHECK(std::get<MailSelectBlocks>(mails[3]).blockIds == std::vector<std::string>{"fft", "ifft"});
+
+    state.flowgraph.selections["graph"] = {.requests = 7, .blocks = {"fft_1"}};
+    const auto selected = FlowgraphEditorPresenter(context).build("graph", graph);
+    CHECK(selected.selectionRequest == 7);
+    CHECK(selected.selection == std::vector<std::string>{"fft_1"});
 }
 
 TEST_CASE("Node plot detach sends every attached surface out and the plot menu entry toggles them all",

@@ -285,10 +285,12 @@ struct FlowgraphNode {
         std::string id;
         std::string inspectorId;
         BlockData block;
-        bool pasteEnabled = false;
+        U64 targets = 1;
         bool timingEnabled = false;
         Sakura::Callback<void()> onCopy;
+        Sakura::Callback<void()> onCut;
         Sakura::Callback<void(Extent2D<F32>)> onPaste;
+        Sakura::Callback<void()> onDuplicate;
         Sakura::Callback<void()> onRename;
         Sakura::Callback<void()> onReload;
         Sakura::Callback<void()> onToggleFrozen;
@@ -497,7 +499,7 @@ struct FlowgraphNode {
 
         menu.update({
             .open = menuOpen,
-            .pasteEnabled = this->config.pasteEnabled,
+            .targets = this->config.targets,
             .configDetachEnabled = hasConfigFields,
             .configDetached = block.configDetached,
             .plotDetachEnabled = hasSurfaces,
@@ -505,6 +507,7 @@ struct FlowgraphNode {
             .frozen = block.frozen,
             .devices = deviceOptions,
             .onCopy = this->config.onCopy,
+            .onCut = this->config.onCut,
             .onPaste = [this]() {
                 if (this->config.onPaste) {
                     Extent2D<F32> pastePosition = {50.0f, 50.0f};
@@ -517,6 +520,7 @@ struct FlowgraphNode {
                     this->config.onPaste(pastePosition);
                 }
             },
+            .onDuplicate = this->config.onDuplicate,
             .onRename = this->config.onRename,
             .onInspect = [this]() {
                 inspector.open();

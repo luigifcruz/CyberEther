@@ -254,6 +254,11 @@ struct DefaultCompositorState {
             std::string markdown;
         };
 
+        struct Selection {
+            U64 requests = 0;
+            std::vector<std::string> blocks;
+        };
+
         struct ConfigDraft {
             std::string flowgraph;
             std::string block;
@@ -278,6 +283,7 @@ struct DefaultCompositorState {
         std::unordered_map<std::string, Documentation> documentation;
         std::unordered_map<std::string, std::string> environment;
         std::unordered_set<std::string> closedDescriptions;
+        std::unordered_map<std::string, Selection> selections;
         SurfaceTracks surfaces;
     };
 
@@ -309,15 +315,6 @@ struct DefaultCompositorState {
         std::optional<U64> focused;
         std::optional<U64> requested;
         U64 requests = 0;
-    };
-
-    struct ClipboardState {
-        std::string moduleType;
-        DeviceType device;
-        RuntimeType runtime;
-        ProviderType provider;
-        Parser::Map config;
-        bool hasData = false;
     };
 
     struct BenchmarkState {
@@ -432,7 +429,6 @@ struct DefaultCompositorState {
     FlowgraphState flowgraph;
     TerminalState terminal;
     BenchmarkState benchmark;
-    ClipboardState clipboard;
     RemoteState remote;
     RegistryState registry;
     MapsState maps;

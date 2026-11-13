@@ -102,16 +102,19 @@ struct NodeEditor : public Component {
 
     struct Config {
         std::string id;
-        bool pasteEnabled = false;
         bool frameOnOpen = false;
         F32 scale = 1.0f;
         std::vector<Node> nodes;
         std::vector<Link> links;
+        std::vector<std::string> selection;
+        U64 selectionRequest = 0;
         Callback<void(Extent2D<F32>)> onEditorContextMenu;
         Callback<void(Extent2D<F32>)> onEditorDoubleClick;
         Callback<void(PinRef, PinRef)> onLinkCreated;
         Callback<void(const std::string&)> onLinkDestroyed;
         Callback<void(const std::vector<std::string>&)> onCopyShortcut;
+        Callback<void(const std::vector<std::string>&)> onCutShortcut;
+        Callback<void(const std::vector<std::string>&)> onDuplicateShortcut;
         Callback<void(const std::vector<std::string>&)> onDeleteShortcut;
         Callback<void(const std::vector<std::string>&)> onFreezeShortcut;
         Callback<void(const std::vector<std::string>&)> onSelectionChange;

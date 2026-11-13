@@ -600,12 +600,23 @@ struct MailSetConfigDraft {
 
 struct MailCopyBlock {
     std::string flowgraph;
-    std::string blockId;
+    std::vector<std::string> blockIds;
+    bool cut = false;
 };
 
 struct MailPasteBlock {
     std::string flowgraph;
     std::optional<Extent2D<F32>> gridPosition;
+};
+
+struct MailDuplicateBlock {
+    std::string flowgraph;
+    std::vector<std::string> blockIds;
+};
+
+struct MailSelectBlocks {
+    std::string flowgraph;
+    std::vector<std::string> blockIds;
 };
 
 struct MailSetNodeMeta {
@@ -858,6 +869,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetConfigDraft,
                           MailCopyBlock,
                           MailPasteBlock,
+                          MailDuplicateBlock,
+                          MailSelectBlocks,
                           MailSetNodeMeta,
                           MailUndoFlowgraph,
                           MailRedoFlowgraph,

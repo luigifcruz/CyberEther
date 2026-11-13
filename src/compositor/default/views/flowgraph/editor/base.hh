@@ -40,7 +40,8 @@ struct FlowgraphEditor {
 
     struct Config {
         std::string id;
-        bool clipboardHasData = false;
+        U64 selectionRequest = 0;
+        std::vector<std::string> selection;
         bool canUndo = false;
         bool canRedo = false;
         bool debugTimingEnabled = false;
@@ -56,8 +57,11 @@ struct FlowgraphEditor {
         Sakura::Callback<void()> onRedo;
 
         Sakura::Callback<void(const std::string&, std::optional<Extent2D<F32>>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
-        Sakura::Callback<void(const std::string&)> onCopyBlock;
+        Sakura::Callback<void(const std::vector<std::string>&)> onCopyBlocks;
+        Sakura::Callback<void(const std::vector<std::string>&)> onCutBlocks;
         Sakura::Callback<void(std::optional<Extent2D<F32>>)> onPasteBlock;
+        Sakura::Callback<void(const std::vector<std::string>&)> onDuplicateBlocks;
+        Sakura::Callback<void(const std::vector<std::string>&)> onSelectBlocks;
         Sakura::Callback<void(const std::string&)> onRenameBlock;
         Sakura::Callback<void(const std::string&)> onReloadBlock;
         Sakura::Callback<void(const std::vector<std::string>&)> onToggleBlockFrozen;
@@ -183,17 +187,21 @@ struct FlowgraphEditor {
                 .id = blockName,
                 .inspectorId = jst::fmt::format("{}:{}:inspector", this->config.id, blockName),
                 .block = std::move(block),
-                .pasteEnabled = this->config.clipboardHasData,
+                .targets = targets(blockName).size(),
                 .timingEnabled = this->config.debugTimingEnabled,
                 .onCopy = [this, blockName]() {
-                    if (this->config.onCopyBlock) {
-                        this->config.onCopyBlock(blockName);
-                    }
+                    emit(this->config.onCopyBlocks, targets(blockName));
+                },
+                .onCut = [this, blockName]() {
+                    emit(this->config.onCutBlocks, targets(blockName));
                 },
                 .onPaste = [this](Extent2D<F32> pastePos) {
                     if (this->config.onPasteBlock) {
                         this->config.onPasteBlock(pastePos);
                     }
+                },
+                .onDuplicate = [this, blockName]() {
+                    emit(this->config.onDuplicateBlocks, targets(blockName));
                 },
                 .onRename = [this, blockName]() {
                     if (this->config.onRenameBlock) {
@@ -216,9 +224,7 @@ struct FlowgraphEditor {
                     }
                 },
                 .onDelete = [this, blockName]() {
-                    if (this->config.onDeleteBlocks) {
-                        this->config.onDeleteBlocks({blockName});
-                    }
+                    emit(this->config.onDeleteBlocks, targets(blockName));
                 },
                 .onDocumentation = [this, blockName]() {
                     if (this->config.onOpenDocumentation) {
@@ -283,11 +289,12 @@ struct FlowgraphEditor {
 
         nodeEditor.update({
             .id = this->config.id + "editor",
-            .pasteEnabled = this->config.clipboardHasData,
             .frameOnOpen = true,
             .scale = ZoomScale,
             .nodes = std::move(nodes),
             .links = std::move(links),
+            .selection = this->config.selection,
+            .selectionRequest = this->config.selectionRequest,
             .onEditorContextMenu = [this](Extent2D<F32> gridPosition) {
                 flowgraphContextMenuGridPos = gridPosition;
                 flowgraphContextMenuOpen = true;
@@ -305,21 +312,19 @@ struct FlowgraphEditor {
                 handleLinkDestruction(linkId);
             },
             .onCopyShortcut = [this](const std::vector<std::string>& selectedNodes) {
-                if (!selectedNodes.empty() && liveBlocks.contains(selectedNodes[0]) && this->config.onCopyBlock) {
-                    this->config.onCopyBlock(selectedNodes[0]);
-                }
+                emit(this->config.onCopyBlocks, live(selectedNodes));
+            },
+            .onCutShortcut = [this](const std::vector<std::string>& selectedNodes) {
+                emit(this->config.onCutBlocks, live(selectedNodes));
+            },
+            .onDuplicateShortcut = [this](const std::vector<std::string>& selectedNodes) {
+                emit(this->config.onDuplicateBlocks, live(selectedNodes));
             },
             .onDeleteShortcut = [this](const std::vector<std::string>& selectedNodes) {
-                const auto blocks = liveSelection(selectedNodes);
-                if (!blocks.empty() && this->config.onDeleteBlocks) {
-                    this->config.onDeleteBlocks(blocks);
-                }
+                emit(this->config.onDeleteBlocks, live(selectedNodes));
             },
             .onFreezeShortcut = [this](const std::vector<std::string>& selectedNodes) {
-                const auto blocks = liveSelection(selectedNodes);
-                if (!blocks.empty() && this->config.onToggleBlockFrozen) {
-                    this->config.onToggleBlockFrozen(blocks);
-                }
+                emit(this->config.onToggleBlockFrozen, live(selectedNodes));
             },
             .onSelectionChange = [this](const std::vector<std::string>& selected) {
                 measured.selected = selected;
@@ -356,13 +361,20 @@ struct FlowgraphEditor {
                 },
                 {.separator = true},
                 {
-                    .label = ICON_LC_CLIPBOARD_PASTE " Paste Block",
+                    .label = ICON_LC_CLIPBOARD_PASTE " Paste",
                     .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "V"),
-                    .enabled = this->config.clipboardHasData,
                     .onClick = [this]() {
                         if (this->config.onPasteBlock) {
                             this->config.onPasteBlock(flowgraphContextMenuGridPos);
                         }
+                    },
+                },
+                {
+                    .label = ICON_LC_SQUARE_DASHED_MOUSE_POINTER " Select All",
+                    .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "A"),
+                    .enabled = !liveBlocks.empty(),
+                    .onClick = [this]() {
+                        emit(this->config.onSelectBlocks, {nodeViewIds.begin(), nodeViewIds.end()});
                     },
                 },
             },
@@ -461,14 +473,29 @@ struct FlowgraphEditor {
     }
 
  private:
-    std::vector<std::string> liveSelection(const std::vector<std::string>& selectedNodes) const {
+    std::vector<std::string> live(const std::vector<std::string>& ids) const {
         std::vector<std::string> blocks;
-        for (const auto& id : selectedNodes) {
+        for (const auto& id : ids) {
             if (liveBlocks.contains(id)) {
                 blocks.push_back(id);
             }
         }
         return blocks;
+    }
+
+    std::vector<std::string> targets(const std::string& blockName) const {
+        const auto& selected = measured.selected;
+        if (std::find(selected.begin(), selected.end(), blockName) == selected.end()) {
+            return {blockName};
+        }
+        return live(selected);
+    }
+
+    static void emit(const Sakura::Callback<void(const std::vector<std::string>&)>& callback,
+                     const std::vector<std::string>& blocks) {
+        if (!blocks.empty() && callback) {
+            callback(blocks);
+        }
     }
 
     void openBlockPicker(const Extent2D<F32>& gridPosition) {

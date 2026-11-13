@@ -51,6 +51,9 @@ DefaultCompositor::DefaultCompositor() :
         .setClipboardText = [this](const std::string& value) {
             Sakura::SetClipboardText(state.system.render.get(), value);
         },
+        .getClipboardText = [this]() {
+            return Sakura::GetClipboardText(state.system.render.get());
+        },
         .requestFile = [this](FilePickerRequest request) {
             return actions.requestFile(std::move(request));
         },

@@ -5,6 +5,8 @@
 #include "workbench.hh"
 #include "../support/history.hh"
 #include "../model/callbacks.hh"
+#include "../support/clipboard.hh"
+#include "../support/history.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
 #include "layout.hh"
@@ -26,6 +28,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <regex>
 #include <string>
 #include <string_view>
@@ -65,6 +68,8 @@ struct FlowgraphActions {
                               MailReconfigureBlock,
                               MailCopyBlock,
                               MailPasteBlock,
+                              MailDuplicateBlock,
+                              MailSelectBlocks,
                               MailSetNodeMeta,
                               MailSetEditorMeta,
                               MailSetConfigCollapsed,
@@ -742,79 +747,144 @@ struct FlowgraphActions {
 
     Result handle(const MailCopyBlock& msg) {
         if (!state.flowgraph.items.contains(msg.flowgraph)) {
-            JST_ERROR("Failed to copy block because flowgraph was not found.");
+            JST_ERROR("Failed to copy blocks because flowgraph was not found.");
             return Result::ERROR;
         }
 
-        if (msg.blockId.empty()) {
-            JST_ERROR("Failed to copy block due to empty block ID.");
+        if (msg.blockIds.empty()) {
+            JST_ERROR("Failed to copy blocks due to empty block IDs.");
             return Result::ERROR;
         }
 
-        auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        Flowgraph::View::BlockData block;
-        if (flowgraph->view().block(msg.blockId, block) != Result::SUCCESS) {
-            JST_ERROR("Failed to copy block because block was not found.");
-            return Result::ERROR;
-        }
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        auto copied = std::make_shared<FlowgraphSnapshot>();
+        auto destroyed = std::make_shared<std::vector<std::string>>();
+        auto yaml = std::make_shared<std::string>();
+        auto previous = std::exchange(pendingCopy, yaml);
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = msg.flowgraph,
+            .command = [flowgraph, blockIds = msg.blockIds, cut = msg.cut, copied, destroyed, yaml,
+                        previous]() -> Result {
+                if (previous) {
+                    *yaml = *previous;
+                }
+                const auto snapshot = CaptureFlowgraphSnapshot(*flowgraph);
+                if (!snapshot) {
+                    return Result::ERROR;
+                }
+                *copied = CopyFlowgraphBlocks(*snapshot, blockIds);
+                if (copied->blocks.empty()) {
+                    return Result::SUCCESS;
+                }
+                JST_CHECK(EncodeFlowgraphBlocks(*copied, *yaml));
+                if (cut) {
+                    const auto order = FlowgraphDependencyOrder(*copied);
+                    for (const auto* block : order | std::views::reverse) {
+                        JST_CHECK(flowgraph->blockDestroy(block->name));
+                        destroyed->push_back(block->name);
+                    }
+                }
+                return Result::SUCCESS;
+            },
+            .silent = !msg.cut,
+            .onComplete = [this, flowgraphId = msg.flowgraph, cut = msg.cut, copied, destroyed, yaml](Result result) {
+                if (pendingCopy == yaml) {
+                    pendingCopy.reset();
+                }
+                if (copied->blocks.empty()) {
+                    callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot copy blocks because they no longer exist.");
+                    return;
+                }
 
-        state.clipboard.moduleType = block.type;
-        state.clipboard.device = block.device;
-        state.clipboard.runtime = block.runtime;
-        state.clipboard.provider = block.provider;
-        state.clipboard.config = block.config;
-        state.clipboard.hasData = true;
+                if (!yaml->empty()) {
+                    callbacks.setClipboardText(*yaml);
+                }
+                for (const auto& block : *destroyed) {
+                    callbacks.enqueueMail(MailRemoveLayoutBlock{.flowgraph = flowgraphId, .block = block});
+                }
+                if (result != Result::SUCCESS) {
+                    return;
+                }
 
-        callbacks.notify(Sakura::ToastType::Info, 3000, "Block copied to clipboard.");
+                const U64 count = copied->blocks.size();
+                callbacks.notify(Sakura::ToastType::Info,
+                                 3000,
+                                 jst::fmt::format("{} {} to clipboard.",
+                                                  count == 1 ? std::string("Block") : jst::fmt::format("{} blocks", count),
+                                                  cut ? "cut" : "copied"));
+            },
+        });
 
         return Result::SUCCESS;
     }
 
     Result handle(const MailPasteBlock& msg) {
         if (!state.flowgraph.items.contains(msg.flowgraph)) {
-            JST_ERROR("Failed to paste block because flowgraph was not found.");
+            JST_ERROR("Failed to paste blocks because flowgraph was not found.");
             return Result::ERROR;
         }
 
-        if (!state.clipboard.hasData) {
-            callbacks.notify(Sakura::ToastType::Warning, 3000, "Clipboard is empty.");
-            return Result::SUCCESS;
-        }
-
-        auto flowgraph = state.flowgraph.items[msg.flowgraph];
-
-        const std::string blockName = Naming::UniqueName(state.clipboard.moduleType, [&](const std::string& candidate) {
-            return flowgraph->view().has(candidate);
-        });
-
-        if (msg.gridPosition.has_value()) {
-            const auto& pos = msg.gridPosition.value();
-            const NodeMeta nodeMeta = {pos.x, pos.y, 0.0f, 0.0f};
-            flowgraph->metadata().set("node", nodeMeta, blockName);
-        }
-
-        auto config = state.clipboard.config;
-        auto moduleType = state.clipboard.moduleType;
-        auto device = state.clipboard.device;
-        auto runtime = state.clipboard.runtime;
-        auto provider = state.clipboard.provider;
-
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        auto created = std::make_shared<std::vector<std::string>>();
+        auto empty = std::make_shared<bool>(false);
         callbacks.enqueueFlowgraphEdit({
             .flowgraph = msg.flowgraph,
-            .command = [flowgraph, blockName, moduleType, config, device, runtime, provider]() -> Result {
-                JST_CHECK_ALLOW(flowgraph->blockCreate(blockName,
-                                                      moduleType,
-                                                      config,
-                                                      {},
-                                                      device,
-                                                      runtime,
-                                                      provider),
-                                Result::INCOMPLETE);
-
-                return Result::SUCCESS;
+            .command = [flowgraph, pending = pendingCopy, text = callbacks.getClipboardText(),
+                        point = msg.gridPosition, created, empty]() -> Result {
+                const auto blocks = DecodeFlowgraphBlocks(pending && !pending->empty() ? *pending : text);
+                if (!blocks.has_value()) {
+                    *empty = true;
+                    return Result::SUCCESS;
+                }
+                return PasteFlowgraphBlocks(*flowgraph, *blocks, point, *created);
+            },
+            .onComplete = [this, select = selectOnComplete(msg.flowgraph, created), empty](Result result) {
+                if (*empty) {
+                    callbacks.notify(Sakura::ToastType::Warning, 3000, "Clipboard has no blocks to paste.");
+                }
+                select(result);
             },
         });
 
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailDuplicateBlock& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            JST_ERROR("Failed to duplicate blocks because flowgraph was not found.");
+            return Result::ERROR;
+        }
+
+        if (msg.blockIds.empty()) {
+            JST_ERROR("Failed to duplicate blocks due to empty block IDs.");
+            return Result::ERROR;
+        }
+
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        auto created = std::make_shared<std::vector<std::string>>();
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = msg.flowgraph,
+            .command = [flowgraph, blockIds = msg.blockIds, created]() -> Result {
+                const auto snapshot = CaptureFlowgraphSnapshot(*flowgraph);
+                if (!snapshot) {
+                    return Result::ERROR;
+                }
+                return PasteFlowgraphBlocks(*flowgraph, CopyFlowgraphBlocks(*snapshot, blockIds), {}, *created);
+            },
+            .onComplete = selectOnComplete(msg.flowgraph, created),
+        });
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSelectBlocks& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            return Result::SUCCESS;
+        }
+
+        auto& selection = state.flowgraph.selections[msg.flowgraph];
+        selection.requests += 1;
+        selection.blocks = msg.blockIds;
         return Result::SUCCESS;
     }
 
@@ -929,6 +999,8 @@ struct FlowgraphActions {
     }
 
  private:
+    std::shared_ptr<std::string> pendingCopy;
+
     void markUntracked(const std::string& flowgraph) {
         if (const auto history = state.flowgraph.history.find(flowgraph); history != state.flowgraph.history.end()) {
             history->second.untracked = true;
@@ -946,6 +1018,15 @@ struct FlowgraphActions {
             mergeKey += "\n" + key;
         }
         return mergeKey;
+    }
+
+    Sakura::Callback<void(Result)> selectOnComplete(const std::string& flowgraphId,
+                                                    std::shared_ptr<std::vector<std::string>> created) {
+        return [enqueueMail = callbacks.enqueueMail, flowgraphId, created](Result) {
+            if (!created->empty()) {
+                enqueueMail(MailSelectBlocks{.flowgraph = flowgraphId, .blockIds = std::move(*created)});
+            }
+        };
     }
 
     Sakura::Callback<void(Result)> mailOnSuccess(Mail mail) const {
