@@ -907,6 +907,43 @@ Entry::NewGraph PatchGraph(Host&, const Json& raw) {
     return {name, {}};
 }
 
+constexpr U64 kMaxGraphNameBytes = 64;
+
+Entry::NewGraph NamedGraph(Host&, const Json& args) {
+    if (!args.is_object() || !args.contains("name")) {
+        return {"flowgraph", {}};
+    }
+    if (!args["name"].is_string()) {
+        return {{}, "new_flowgraph 'name' must be a string."};
+    }
+
+    std::string name;
+    for (const char c : args["name"].get<std::string>()) {
+        if (static_cast<unsigned char>(c) >= 0x20 && c != 0x7f) {
+            name += c;
+        }
+    }
+    const auto first = name.find_first_not_of(' ');
+    if (first == std::string::npos) {
+        return {"flowgraph", {}};
+    }
+    name = name.substr(first, name.find_last_not_of(' ') - first + 1);
+    if (name.size() > kMaxGraphNameBytes) {
+        return {{}, "new_flowgraph 'name' is too long; use at most 64 bytes."};
+    }
+    return {name, {}};
+}
+
+Tools::Output NewFlowgraph(const Invocation& call) {
+    const Json body = {
+        {"created", call.created},
+        {"block_count", 0},
+        {"note", "The new graph is empty and selected, so later calls act on it. "
+                 "Graphs that were already open are unchanged."},
+    };
+    return Response::Reply(body);
+}
+
 }  // namespace
 
 std::vector<Entry> Toolbox::Patch() {
@@ -914,7 +951,8 @@ std::vector<Entry> Toolbox::Patch() {
         "apply_flowgraph_patch",
         "Apply an ordered edit to the selected graph. Only when none is selected, "
         "a graph is created automatically; flowgraph_name names that new graph and "
-        "is ignored otherwise. Operations execute sequentially and stop on failure "
+        "is ignored otherwise. To build in a new graph while one is selected, call "
+        "new_flowgraph first. Operations execute sequentially and stop on failure "
         "without rolling back earlier changes, returning status='partial'. A failed "
         "result with may_have_applied=true may have changed the graph before failing, "
         "so inspect it before retrying. "
@@ -978,7 +1016,22 @@ std::vector<Entry> Toolbox::Patch() {
         {.needsGraph = true, .reportsLayout = true, .mutates = true, .destructive = true},
     }, PatchText);
 
-    return {std::move(entry), std::move(text)};
+    Entry fresh{
+        {
+            "new_flowgraph",
+            "Create a new empty flowgraph and select it for subsequent calls. Use this when the user "
+            "asks for a new flowgraph, dashboard, or project while another graph is open; without it, "
+            "edits go to the graph that is already selected. Graphs that are already open stay open "
+            "and unchanged. Returns the name of the new graph, which can differ from the requested "
+            "name when that one is taken.",
+            R"({"type":"object","properties":{"name":{"type":"string","description":"Name for the new graph, at most 64 bytes. Default flowgraph."}},"additionalProperties":false})",
+            {.mutates = true},
+        },
+        NewFlowgraph,
+    };
+    fresh.newGraph = NamedGraph;
+
+    return {std::move(entry), std::move(text), std::move(fresh)};
 }
 
 }  // namespace Jetstream::Agent::Detail

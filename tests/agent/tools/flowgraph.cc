@@ -80,6 +80,7 @@ TEST_CASE("Agent exposes the consolidated tool surface", "[agent][tools]") {
         "open_example",
         "list_flowgraphs",
         "open_flowgraph",
+        "new_flowgraph",
     };
 
     std::set<std::string> actual;
@@ -975,4 +976,60 @@ TEST_CASE("Saved flowgraphs are listed and opened only from the user's folders",
         created->destroy();
     }
     std::filesystem::remove_all(root);
+}
+
+TEST_CASE("new_flowgraph starts an empty graph even while another one is selected", "[agent][tools][new-flowgraph]") {
+    auto open = std::make_shared<Flowgraph>();
+    REQUIRE(open->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    GraphHost host(open);
+    host.folders = {"anywhere"};
+    Agent::Tools tools(host);
+
+    SECTION("the selected graph is left alone and a named graph is created") {
+        auto call = tools.prepare(open, "new_flowgraph", R"({"name":"  HF Modes  "})");
+        REQUIRE_FALSE(call.output.has_value());
+        CHECK(call.create == "HF Modes");
+        CHECK(call.flowgraph == nullptr);
+
+        const auto result = tools.run(call, {});
+        REQUIRE_FALSE(result.error);
+        const auto body = nlohmann::json::parse(result.content);
+        CHECK(body["created"] == "HF Modes");
+        CHECK(body["block_count"] == 0);
+        REQUIRE(host.createdGraphs.size() == 1);
+        CHECK(host.createdGraphs.front() != open);
+        CHECK(call.flowgraph == host.createdGraphs.front());
+    }
+
+    SECTION("the name is optional and blank names fall back to the default") {
+        CHECK(tools.prepare(open, "new_flowgraph", "{}").create == "flowgraph");
+        CHECK(tools.prepare(open, "new_flowgraph", R"({"name":"   "})").create == "flowgraph");
+        CHECK(tools.prepare(nullptr, "new_flowgraph", "{}").create == "flowgraph");
+    }
+
+    SECTION("control characters are dropped from the name") {
+        CHECK(tools.prepare(open, "new_flowgraph", R"({"name":"HF\nModes\t2"})").create == "HFModes2");
+    }
+
+    SECTION("bad names are refused before anything is created") {
+        const auto wrongType = tools.execute(open, "new_flowgraph", R"({"name":5})");
+        CHECK(wrongType.error);
+        const nlohmann::json tooLong = {{"name", std::string(65, 'a')}};
+        const auto longName = tools.execute(open, "new_flowgraph", tooLong.dump());
+        CHECK(longName.error);
+        CHECK(nlohmann::json::parse(longName.content)["error"].get<std::string>().find("64") != std::string::npos);
+        CHECK(host.createdGraphs.empty());
+    }
+
+    SECTION("apply_flowgraph_patch still edits the selected graph") {
+        const auto call = tools.prepare(open, "apply_flowgraph_patch", R"({"flowgraph_name":"other","operations":[]})");
+        CHECK(call.create.empty());
+        CHECK(call.flowgraph == open);
+    }
+
+    for (auto& created : host.createdGraphs) {
+        created->destroy();
+    }
+    open->destroy();
 }
