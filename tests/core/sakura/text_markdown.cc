@@ -198,6 +198,209 @@ TEST_CASE("Markdown refreshes cached layout when fonts arrive and the width chan
     }
 }
 
+TEST_CASE("Markdown measurement and display share prepared revisions across view identities",
+          "[core][sakura][markdown][prepared][retention]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    TextMarkdown measurer;
+    TextMarkdown markdown;
+    Host host(markdown);
+    Frames frames(host, {0.0f, 0.0f, 300.0f, 400.0f}, ctx);
+    TextMarkdown::Config config{.id = "measure", .value = "# First\n\n**Body** text.\n\n```python\nvalue = 1\n```",
+                                .fontSize = 15.0f};
+    measurer.update(config);
+    const auto first = measurer.prepared();
+    REQUIRE(first);
+    config.id = "display";
+    config.prepared = first;
+    const auto update = [&] { markdown.update(config); };
+    REQUIRE(frames.settle(update));
+    CHECK(markdown.prepared() == first);
+    CHECK(&markdown.headings() == &measurer.headings());
+    CHECK(Retains(frames, update));
+
+    config.value = "# Second\n\n**Updated** body.\n\n```python\nvalue = 2\n```";
+    config.id = "measure";
+    measurer.update(config);
+    REQUIRE(measurer.prepared() != first);
+    config.id = "display";
+    config.prepared = measurer.prepared();
+    CHECK(Kept(frames.run(update)));
+    REQUIRE(frames.settle(update));
+    CHECK(markdown.prepared() == measurer.prepared());
+    CHECK(markdown.headings().at(0).text == "Second");
+    CHECK(Retains(frames, update));
+
+    config.textColorKey = "text_secondary";
+    config.padding = Sakura::Padding{18.0f, 0.0f, 12.0f, 0.0f};
+    REQUIRE(frames.settle(update));
+    CHECK(markdown.prepared() == measurer.prepared());
+    CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Markdown rejects prepared documents with different parsing inputs",
+          "[core][sakura][markdown][prepared]") {
+    const auto ctx = MakeContext();
+    TextMarkdown measurer;
+    const TextMarkdown::Config base{
+        .id = "measure", .value = "# Title\n\nFirst line\nsecond line.\n\n```python\nvalue = 1\n```\n\n"
+                                 "<details>\n<summary>More</summary>\n\nHidden text.\n\n</details>",
+        .fontSize = 15.0f,
+    };
+    measurer.update(base);
+    for (int input = 0; input < 6; ++input) {
+        CAPTURE(input);
+        auto config = base;
+        config.id = "display";
+        config.prepared = measurer.prepared();
+        switch (input) {
+            case 0: config.value += "\n\nAppended text."; break;
+            case 1: config.fontSize = 24.0f; break;
+            case 2: config.hero = TextMarkdown::Hero{.title = "Hero"}; break;
+            case 3: config.softBreaks = true; break;
+            case 4: config.styleScales.back() = 1.4f; break;
+            case 5: config.detailsOpen = {true}; break;
+        }
+        TextMarkdown markdown;
+        Host host(markdown);
+        markdown.update(config);
+        CHECK(markdown.prepared() != measurer.prepared());
+        config.prepared.reset();
+        TextMarkdown fresh;
+        Host freshHost(fresh);
+        fresh.update(config);
+        const auto measured = MeasureAt(host, ctx, 240.0f);
+        const auto expected = MeasureAt(freshHost, ctx, 240.0f);
+        CHECK(measured.x == Catch::Approx(expected.x));
+        CHECK(measured.y == Catch::Approx(expected.y));
+        CHECK(markdown.headings() == fresh.headings());
+    }
+}
+
+TEST_CASE("Shared markdown keeps table and stats geometry local to each view",
+          "[core][sakura][markdown][prepared]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    ctx.palette = DistinctPalette();
+    TextMarkdown measurer;
+    Host measureHost(measurer);
+    TextMarkdown::Config config{
+        .id = "measure", .value = "# Shared\n\n| Column one | Column two |\n|---|---|\n"
+                                 "| **Words that wrap across several lines** | A wrapping cell |\n\n"
+                                 "```stats\nOne | 123\nTwo | 456\nThree | 789\n```",
+        .fontSize = 15.0f,
+    };
+    measurer.update(config);
+    (void)MeasureAt(measureHost, ctx, 600.0f);
+    const auto prepared = measurer.prepared();
+    config.id = "display";
+    config.prepared = prepared;
+    TextMarkdown markdown;
+    Host host(markdown);
+    markdown.update(config);
+    REQUIRE(markdown.prepared() == prepared);
+    for (const F32 width : {180.0f, 480.0f, 120.0f, 320.0f}) {
+        CAPTURE(width);
+        if (width == 120.0f) {
+            window.load(Sakura::Typography::BodyFont, inter_regular_compressed_data);
+            window.load(Sakura::Typography::BodyBoldFont, inter_bold_compressed_data);
+        }
+        (void)MeasureAt(measureHost, ctx, 600.0f - width);
+        config.prepared.reset();
+        TextMarkdown fresh;
+        Host freshHost(fresh);
+        fresh.update(config);
+        const auto measured = MeasureAt(host, ctx, width);
+        const auto expected = MeasureAt(freshHost, ctx, width);
+        CHECK(measured.x == Catch::Approx(expected.x));
+        CHECK(measured.y == Catch::Approx(expected.y));
+        host.place(ctx, {0.0f, 0.0f, width, 600.0f});
+        freshHost.place(ctx, {0.0f, 0.0f, width, 600.0f});
+        CHECK(Drawn(markdown) == Drawn(fresh));
+        CHECK(markdown.prepared() == prepared);
+        CHECK(measurer.prepared() == prepared);
+    }
+}
+
+TEST_CASE("Shared markdown keeps code scrolling local to each view",
+          "[core][sakura][markdown][prepared]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    TextMarkdown first;
+    TextMarkdown second;
+    Host firstHost(first);
+    Host secondHost(second);
+    TextMarkdown::Config config{.id = "first", .value = kLongCode, .fontSize = 15.0f};
+    first.update(config);
+    config.id = "second";
+    config.prepared = first.prepared();
+    second.update(config);
+    const Rect rect = {0.0f, 0.0f, 140.0f, 300.0f};
+    firstHost.place(ctx, rect);
+    secondHost.place(ctx, rect);
+    REQUIRE(first.prepared() == second.prepared());
+    REQUIRE(first.metrics().regions.size() == 1);
+    REQUIRE(second.metrics().regions.size() == 1);
+    REQUIRE(first.metrics().regions[0].maxScrollX > 0.0f);
+    REQUIRE(firstHost.send(Wheel(40.0f, RowCenter(first, 1), -10.0f, 0.0f)));
+    firstHost.place(ctx, rect);
+    secondHost.place(ctx, rect);
+    CHECK(first.metrics().regions[0].scrollX > 0.0f);
+    CHECK(second.metrics().regions[0].scrollX == 0.0f);
+    CHECK(first.prepared() == second.prepared());
+}
+
+TEST_CASE("Shared markdown keeps local details state through streaming and identity changes",
+          "[core][sakura][markdown][prepared]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    TextMarkdown measurer;
+    TextMarkdown markdown;
+    Host host(markdown);
+    TextMarkdown::Config config{
+        .id = "measure", .value = "<details>\n<summary>More</summary>\n\nHidden body.\n\n</details>",
+        .fontSize = 15.0f,
+    };
+    measurer.update(config);
+    config.id = "display";
+    config.prepared = measurer.prepared();
+    markdown.update(config);
+    const Rect rect = {0.0f, 0.0f, 300.0f, 400.0f};
+    host.place(ctx, rect);
+    REQUIRE(markdown.prepared() == measurer.prepared());
+    REQUIRE_FALSE(DrawnRect(markdown, "Hidden body.").has_value());
+    const F32 y = RowCenter(markdown, 0);
+    REQUIRE(host.send(Mouse(MouseEventType::Click, 40.0f, y)));
+    REQUIRE(host.send(Mouse(MouseEventType::Release, 40.0f, y)));
+    host.place(ctx, rect);
+    CHECK(DrawnRect(markdown, "Hidden body.").has_value());
+    const auto opened = markdown.prepared();
+    CHECK(opened != measurer.prepared());
+    markdown.update(config);
+    CHECK(markdown.prepared() == opened);
+
+    config.id = "measure";
+    config.value += "\n\nStreamed text.";
+    measurer.update(config);
+    config.id = "display";
+    config.prepared = measurer.prepared();
+    markdown.update(config);
+    host.place(ctx, rect);
+    CHECK(markdown.prepared() != measurer.prepared());
+    CHECK(DrawnRect(markdown, "Hidden body.").has_value());
+
+    config.id = "new-display";
+    config.prepared = markdown.prepared();
+    markdown.update(config);
+    host.place(ctx, rect);
+    CHECK(markdown.prepared() != config.prepared);
+    CHECK_FALSE(DrawnRect(markdown, "Hidden body.").has_value());
+}
+
 TEST_CASE("Consecutive code blocks keep their backgrounds apart", "[core][sakura][markdown]") {
     const auto ctx = MakeContext();
     TextMarkdown singleMarkdown;

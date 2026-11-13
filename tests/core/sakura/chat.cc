@@ -919,6 +919,7 @@ TEST_CASE("Chat transcripts settle under a persistent snapshot and repaint as th
     CHECK(Retains(frames, update));
 
     const F32 before = Visible<Sakura::TextMarkdown>(transcript).back().height;
+    const auto prepared = Direct<Sakura::TextMarkdown>(transcript).back()->prepared();
     std::string streamed = "Answer 3";
     for (int i = 0; i < 30; ++i) {
         streamed += " continued";
@@ -926,6 +927,7 @@ TEST_CASE("Chat transcripts settle under a persistent snapshot and repaint as th
     snapshot.messages.tail = std::make_shared<const Chat::Message>(AssistantMessage({MarkdownPart(0, 2, streamed)}));
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Visible<Sakura::TextMarkdown>(transcript).back().height > before);
+    CHECK(Direct<Sakura::TextMarkdown>(transcript).back()->prepared() != prepared);
     CHECK(Retains(frames, update));
 
     CHECK(frames.restructures == restructures);
@@ -984,6 +986,10 @@ TEST_CASE("Chat transcripts reuse slots while scrolling through history", "[core
     const U64 restructures = frames.restructures;
     const U64 rebuilds = frames.rebuilds;
 
+    std::vector<std::shared_ptr<const Sakura::TextMarkdown::Prepared>> prepared;
+    for (const auto* view : Direct<Sakura::TextMarkdown>(transcript)) {
+        prepared.push_back(view->prepared());
+    }
     for (int step = 0; step < 40; ++step) {
         wheel(1.0f);
         CHECK(Kept(frames.run(update)));
@@ -998,6 +1004,12 @@ TEST_CASE("Chat transcripts reuse slots while scrolling through history", "[core
     CHECK(frames.restructures == restructures);
     CHECK(frames.rebuilds == rebuilds);
     CHECK(Visible<Sakura::TextMarkdown>(transcript).back().bottom() == Approx(kRect.bottom()).margin(1.0f));
+    const auto markdowns = Direct<Sakura::TextMarkdown>(transcript);
+    for (const auto& document : prepared) {
+        CHECK(std::any_of(markdowns.begin(), markdowns.end(), [&](const auto* view) {
+            return view->prepared() == document;
+        }));
+    }
     CHECK(Retains(frames, update));
 }
 

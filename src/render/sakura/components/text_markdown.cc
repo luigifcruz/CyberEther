@@ -775,6 +775,16 @@ std::string SoftJoin(const std::vector<std::string>& lines) {
 struct DetailsState {
     std::string summary;
     bool open = false;
+    bool initiallyOpen = false;
+
+    static bool Resolve(U64 detail, const std::string& summary, bool initiallyOpen,
+                        const std::vector<DetailsState>& previous, const std::vector<bool>& forced) {
+        if (detail < forced.size()) {
+            return forced[detail];
+        }
+        const bool known = detail < previous.size() && previous[detail].summary == summary;
+        return known ? previous[detail].open : initiallyOpen;
+    }
 };
 
 struct DetailsMarker {
@@ -891,9 +901,8 @@ struct DetailsExpansion {
             }
             const U64 end = oneLine ? i : closing(body, to);
             const U64 detail = states.size();
-            const bool known = detail < previous.size() && previous[detail].summary == summary;
-            const bool open = detail < forced.size() ? forced[detail] : known ? previous[detail].open : initiallyOpen;
-            states.push_back({.summary = summary, .open = open});
+            const bool open = DetailsState::Resolve(detail, summary, initiallyOpen, previous, forced);
+            states.push_back({.summary = summary, .open = open, .initiallyOpen = initiallyOpen});
             if (emit) {
                 push("", DetailsMarker{.detail = detail, .open = open, .summary = summary});
                 push("");
@@ -1704,6 +1713,32 @@ struct DocumentBuilder {
 
 }  // namespace
 
+struct TextMarkdown::Prepared {
+    std::string value;
+    F32 fontSize = 0.0f;
+    std::optional<Hero> hero;
+    bool softBreaks = false;
+    std::vector<F32> styleScales;
+    std::vector<DetailsState> details;
+    Document document;
+
+    bool matches(const Config& config, const std::vector<DetailsState>& previous) const {
+        if (value != config.value || fontSize != config.fontSize || hero != config.hero ||
+            softBreaks != config.softBreaks || styleScales != config.styleScales) {
+            return false;
+        }
+        for (U64 i = 0; i < details.size(); ++i) {
+            const auto& state = details[i];
+            const bool open =
+                DetailsState::Resolve(i, state.summary, state.initiallyOpen, previous, config.detailsOpen);
+            if (state.open != open) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
+
 struct TextMarkdown::Impl {
     struct DecorationFrame {
         Rect rect;
@@ -1770,7 +1805,9 @@ struct TextMarkdown::Impl {
     Label markers;
     Label headers;
     SyntaxHighlighter highlighter;
-    Document document;
+    std::shared_ptr<const Prepared> prepared = std::make_shared<Prepared>();
+    std::vector<Table> tables;
+    std::vector<StatGrid> stats;
     mutable TextMetrics textMetrics;
     U64 styleRevision = 0;
     bool parsed = false;
@@ -1788,18 +1825,41 @@ struct TextMarkdown::Impl {
     const Render::Window* gridConfigWindow = nullptr;
     U64 gridConfigFontRevision = 0;
 
-    void rebuild() {
+    const Document& document() const {
+        return prepared->document;
+    }
+
+    void adopt(std::shared_ptr<const Prepared> next) {
+        prepared = std::move(next);
+        details = prepared->details;
+        tables = document().tables;
+        stats = document().stats;
+        tablesLayout = {
+            .lineIndent = document().lineIndent,
+            .lineWrapWidth = document().lineWrapWidth,
+            .lineRowMode = document().lineRowMode,
+        };
         ++styleRevision;
+        tablesLayoutValid = false;
+        gridConfigDirty = true;
+    }
+
+    void rebuild() {
+        auto next = std::make_shared<Prepared>();
+        next->value = config.value;
+        next->fontSize = config.fontSize;
+        next->hero = config.hero;
+        next->softBreaks = config.softBreaks;
+        next->styleScales = config.styleScales;
         const std::vector<std::string> source = SplitLines(config.value);
         DetailsExpansion expansion(source, details, config.detailsOpen);
-        details = std::move(expansion.states);
         BlockScanner scanner(expansion.lines, expansion.markers, config.fontSize, config.softBreaks);
         const std::vector<Block> blocks = scanner.run();
         const F32 inset = codeInset();
-        document = DocumentBuilder(config.fontSize, inset, inset, highlighter)
-                       .build(blocks, scanner.footnotes, config.hero);
-        tablesLayoutValid = false;
-        gridConfigDirty = true;
+        next->document = DocumentBuilder(config.fontSize, inset, inset, highlighter)
+                             .build(blocks, scanner.footnotes, config.hero);
+        next->details = std::move(expansion.states);
+        adopt(std::move(next));
     }
 
     F32 codeGlyphSize() const {
@@ -1813,30 +1873,30 @@ struct TextMarkdown::Impl {
     }
 
     std::vector<F32> lineIndents() const {
-        return document.lineIndent;
+        return tablesLayout.lineIndent;
     }
 
     F32 minimumContentWidth(const std::vector<F32>& indents) const {
         const F32 glyph = glyphMinimumWidth();
         F32 widest = widestTableWidth();
-        for (const auto& grid : document.stats) {
+        for (const auto& grid : stats) {
             widest = std::max(widest, grid.width + 2.0f * grid.inset);
         }
         for (U64 i = 0; i < indents.size(); ++i) {
-            if (i < document.lineWrapWidth.size() && document.lineWrapWidth[i] > 0.0f) {
+            if (i < tablesLayout.lineWrapWidth.size() && tablesLayout.lineWrapWidth[i] > 0.0f) {
                 continue;
             }
-            const F32 rightInset = i < document.lineRightInset.size() ? document.lineRightInset[i] : 0.0f;
+            const F32 rightInset = i < document().lineRightInset.size() ? document().lineRightInset[i] : 0.0f;
             if (indents[i] <= 0.0f && rightInset <= 0.0f) {
                 continue;
             }
-            widest = std::max(widest, indents[i] + glyph * document.scaleAt(i) + rightInset);
+            widest = std::max(widest, indents[i] + glyph * document().scaleAt(i) + rightInset);
         }
         return widest;
     }
 
     std::optional<U64> summaryAt(U64 line) const {
-        for (const auto& [summaryLine, detail] : document.summaries) {
+        for (const auto& [summaryLine, detail] : document().summaries) {
             if (summaryLine == line && detail < details.size()) {
                 return detail;
             }
@@ -1845,7 +1905,7 @@ struct TextMarkdown::Impl {
     }
 
     const Deco* codeHeaderAt(U64 line) const {
-        for (const auto& deco : document.decos) {
+        for (const auto& deco : document().decos) {
             if (deco.kind == Deco::Kind::Code && deco.first == line) {
                 return &deco;
             }
@@ -1931,7 +1991,7 @@ struct TextMarkdown::Impl {
 
     F32 widestTableWidth() const {
         F32 widest = 0.0f;
-        for (const auto& table : document.tables) {
+        for (const auto& table : tables) {
             widest = std::max(widest, table.width + 2.0f * table.inset);
         }
         return widest;
@@ -1942,14 +2002,7 @@ struct TextMarkdown::Impl {
         if (!(tablesLayoutValid && tablesLayoutWidth == textWidth && tablesLayoutFonts == fonts)) {
             layoutTables(textWidth);
             layoutStats(textWidth);
-            std::vector<F32> indents = lineIndents();
-            const F32 minimumWidth = minimumContentWidth(indents);
-            tablesLayout = {
-                .lineIndent = std::move(indents),
-                .lineWrapWidth = document.lineWrapWidth,
-                .lineRowMode = document.lineRowMode,
-                .contentMinWidth = minimumWidth,
-            };
+            tablesLayout.contentMinWidth = minimumContentWidth(tablesLayout.lineIndent);
             tablesLayoutValid = fontsReady();
             tablesLayoutWidth = textWidth;
             tablesLayoutFonts = std::move(fonts);
@@ -1967,7 +2020,7 @@ struct TextMarkdown::Impl {
         const bool bounded = std::isfinite(textWidth) && textWidth > 0.0f;
         const F32 glyphMinimum = glyphMinimumWidth();
 
-        for (auto& table : document.tables) {
+        for (auto& table : tables) {
             if (table.columns == 0 || table.rows == 0) {
                 continue;
             }
@@ -2006,8 +2059,8 @@ struct TextMarkdown::Impl {
                         shift = columnWidth - cell.width;
                     }
                 }
-                document.lineIndent[cell.line] = table.inset + table.columnX[c] + padX + shift;
-                document.lineWrapWidth[cell.line] = columnWidth + kTableWrapSlack;
+                tablesLayout.lineIndent[cell.line] = table.inset + table.columnX[c] + padX + shift;
+                tablesLayout.lineWrapWidth[cell.line] = columnWidth + kTableWrapSlack;
             }
         }
     }
@@ -2017,7 +2070,7 @@ struct TextMarkdown::Impl {
         const F32 gap = body * kStatGapEmRatio;
         const F32 pad = body * kStatPadEmRatio;
         const F32 minTile = body * kStatMinTileEm;
-        for (auto& grid : document.stats) {
+        for (auto& grid : stats) {
             const F32 width = std::isfinite(textWidth) ? textWidth - 2.0f * grid.inset : textWidth;
             const bool bounded = std::isfinite(width) && width > 0.0f;
             const U64 count = grid.tiles.size();
@@ -2038,11 +2091,11 @@ struct TextMarkdown::Impl {
                 const U64 column = i % grid.columns;
                 tile.x = static_cast<F32>(column) * (grid.tileWidth + gap);
                 for (U64 line = tile.first; line <= tile.last; ++line) {
-                    document.lineIndent[line] = grid.inset + tile.x + pad;
-                    document.lineWrapWidth[line] = std::max(1.0f, grid.tileWidth - 2.0f * pad);
+                    tablesLayout.lineIndent[line] = grid.inset + tile.x + pad;
+                    tablesLayout.lineWrapWidth[line] = std::max(1.0f, grid.tileWidth - 2.0f * pad);
                     if (line == tile.first) {
-                        document.lineRowMode[line] = i == 0 || column == 0 ? TextGrid::RowMode::Next
-                                                                           : TextGrid::RowMode::Same;
+                        tablesLayout.lineRowMode[line] = i == 0 || column == 0 ? TextGrid::RowMode::Next
+                                                                               : TextGrid::RowMode::Same;
                     }
                 }
             }
@@ -2156,13 +2209,13 @@ struct TextMarkdown::Impl {
     }
 
     F32 rowHeight(U64 line) const {
-        return config.fontSize * document.scaleAt(line) * kLineHeightRatio;
+        return config.fontSize * document().scaleAt(line) * kLineHeightRatio;
     }
 
     Padding gridPadding() const {
         const F32 horizontal = config.fontSize * Typography::TextPaddingRatio;
         Padding padding = config.padding.value_or(Padding{horizontal, 0.0f, horizontal, 0.0f});
-        padding.bottom += document.trailingPad;
+        padding.bottom += document().trailingPad;
         return padding;
     }
 
@@ -2171,7 +2224,7 @@ struct TextMarkdown::Impl {
         const F32 minimumWidth = minimumContentWidth(indents);
         return {
             .id = config.id + ":grid",
-            .value = document.plainValue,
+            .value = document().plainValue,
             .editable = false,
             .fontSize = config.fontSize,
             .lineHeight = Typography::BodyLineHeight,
@@ -2182,14 +2235,14 @@ struct TextMarkdown::Impl {
             .scrollbarInset = config.scrollbarInset,
             .wrap = TextGrid::Wrap::Word,
             .padding = gridPadding(),
-            .lineScale = document.lineScale,
-            .lineTopGap = document.lineTopGap,
+            .lineScale = document().lineScale,
+            .lineTopGap = document().lineTopGap,
             .lineIndent = std::move(indents),
-            .lineRowMode = document.lineRowMode,
-            .lineWrapWidth = document.lineWrapWidth,
-            .lineRightInset = document.lineRightInset,
+            .lineRowMode = tablesLayout.lineRowMode,
+            .lineWrapWidth = tablesLayout.lineWrapWidth,
+            .lineRightInset = document().lineRightInset,
             .contentMinWidth = minimumWidth,
-            .scrollRegions = document.scrollRegions,
+            .scrollRegions = document().scrollRegions,
             .backgroundColorKey = config.backgroundColorKey,
             .textColorKey = config.textColorKey,
             .lineNumberColorKey = config.lineNumberColorKey,
@@ -2210,13 +2263,13 @@ struct TextMarkdown::Impl {
             .styleRevision = styleRevision,
             .styler = [this](const std::vector<std::string>&, U64)
                           -> const std::vector<std::vector<StyleId>>& {
-                return document.styles;
+                return document().styles;
             },
-            .widthLayout = document.tables.empty() && document.stats.empty()
+            .widthLayout = tables.empty() && stats.empty()
                 ? std::function<TextGrid::WidthLayout(F32)>{}
                 : [this](F32 textWidth) { return layoutForTextWidth(textWidth); },
             .onPositionClick = [this](TextGrid::Position pos) -> bool {
-                const LinkSpan* span = document.linkAt(pos);
+                const LinkSpan* span = document().linkAt(pos);
                 if (span == nullptr) {
                     return false;
                 }
@@ -2231,7 +2284,7 @@ struct TextMarkdown::Impl {
                 return true;
             },
             .isPositionInteractive = [this](TextGrid::Position pos) -> bool {
-                return document.linkAt(pos) != nullptr;
+                return document().linkAt(pos) != nullptr;
             },
         };
     }
@@ -2444,7 +2497,7 @@ struct TextMarkdown::Impl {
             .str = deco.marker,
             .visible = frame.on,
             .color = frame.marker,
-            .fontSize = frame.body * document.scaleAt(deco.first),
+            .fontSize = frame.body * document().scaleAt(deco.first),
             .alignment = {2, 1},
         });
     }
@@ -2458,7 +2511,7 @@ struct TextMarkdown::Impl {
     }
 
     void addTableChrome(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
-        const Table& table = document.tables[deco.table];
+        const Table& table = tables[deco.table];
         if (table.columns == 0 || table.rows == 0 || table.columnX.size() != table.columns + 1) {
             return;
         }
@@ -2503,7 +2556,7 @@ struct TextMarkdown::Impl {
     }
 
     void addStatTiles(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
-        const StatGrid& grid = document.stats[deco.table];
+        const StatGrid& grid = stats[deco.table];
         const F32 pad = frame.body * kStatPadEmRatio;
         const F32 left = frame.rect.x + frame.bodyPad - frame.scrollX;
         for (U64 start = 0; start < grid.tiles.size(); start += grid.columns) {
@@ -2551,7 +2604,7 @@ struct TextMarkdown::Impl {
 
     DecorationPools buildDecorations(const DecorationFrame& frame) const {
         DecorationPools pools;
-        for (const auto& deco : document.decos) {
+        for (const auto& deco : document().decos) {
             if (pools.full()) {
                 break;
             }
@@ -2713,12 +2766,20 @@ void TextMarkdown::update(Config config) {
         impl->tablesLayoutValid = false;
     }
     if (changed) {
-        impl->rebuild();
+        if (impl->config.prepared && impl->config.prepared->matches(impl->config, impl->details)) {
+            impl->adopt(impl->config.prepared);
+        } else {
+            impl->rebuild();
+        }
         impl->parsed = true;
     }
     if (changed || widthInputsChanged) {
         impl->syncGrid();
     }
+}
+
+std::shared_ptr<const TextMarkdown::Prepared> TextMarkdown::prepared() const {
+    return impl->parsed ? impl->prepared : nullptr;
 }
 
 F32 TextMarkdown::naturalWidth() const {
@@ -2730,7 +2791,7 @@ const TextGrid::Metrics& TextMarkdown::metrics() const {
 }
 
 const std::vector<TextMarkdown::Heading>& TextMarkdown::headings() const {
-    return impl->document.headings;
+    return impl->document().headings;
 }
 
 F32 TextMarkdown::glideToLine(U64 line) {
