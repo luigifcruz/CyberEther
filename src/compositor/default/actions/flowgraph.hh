@@ -60,6 +60,7 @@ struct FlowgraphActions {
                               MailOpenRenameBlock,
                               MailRenameBlock,
                               MailDeleteBlock,
+                              MailToggleBlockFrozen,
                               MailReloadBlock,
                               MailChangeBlockDevice,
                               MailConnectBlock,
@@ -566,6 +567,46 @@ struct FlowgraphActions {
                 for (const auto& blockId : *destroyed) {
                     enqueueMail(MailRemoveLayoutBlock{.flowgraph = flowgraphId, .block = blockId});
                 }
+            },
+        });
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailToggleBlockFrozen& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            JST_ERROR("Failed to toggle block freeze because flowgraph was not found.");
+            return Result::ERROR;
+        }
+
+        std::vector<std::string> blockIds;
+        for (const auto& blockId : msg.blockIds) {
+            if (!blockId.empty() && std::find(blockIds.begin(), blockIds.end(), blockId) == blockIds.end()) {
+                blockIds.push_back(blockId);
+            }
+        }
+        if (blockIds.empty()) {
+            JST_ERROR("Failed to toggle block freeze due to empty block IDs.");
+            return Result::ERROR;
+        }
+
+        auto flowgraph = state.flowgraph.items[msg.flowgraph];
+
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = msg.flowgraph,
+            .command = [flowgraph, blockIds]() -> Result {
+                bool freeze = false;
+                for (const auto& blockId : blockIds) {
+                    Flowgraph::View::BlockInfo block;
+                    if (flowgraph->view().info(blockId, block) == Result::SUCCESS && !block.frozen) {
+                        freeze = true;
+                    }
+                }
+
+                for (const auto& blockId : blockIds) {
+                    JST_CHECK(flowgraph->blockFreeze(blockId, freeze));
+                }
+                return Result::SUCCESS;
             },
         });
 

@@ -94,6 +94,9 @@ Result EncodeFlowgraphBlocks(const FlowgraphSnapshot& blocks, std::string& yaml)
             .runtime = block.runtime,
             .provider = block.provider,
         };
+        if (block.frozen) {
+            entry.frozen = true;
+        }
         if (!block.config.empty()) {
             entry.config = block.config;
         }
@@ -147,6 +150,7 @@ std::optional<FlowgraphSnapshot> DecodeFlowgraphBlocks(const std::string& yaml) 
             .device = entry.device,
             .runtime = entry.runtime,
             .provider = std::move(entry.provider),
+            .frozen = entry.frozen.value_or(false),
             .config = entry.config.value_or(Parser::Map{}),
         };
         block.configHash = FlowgraphValueFingerprint(std::any(block.config));

@@ -550,6 +550,11 @@ struct MailDeleteBlock {
     std::vector<std::string> blockIds;
 };
 
+struct MailToggleBlockFrozen {
+    std::string flowgraph;
+    std::vector<std::string> blockIds;
+};
+
 struct MailReloadBlock {
     std::string flowgraph;
     std::string blockId;
@@ -855,6 +860,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailOpenRenameBlock,
                           MailRenameBlock,
                           MailDeleteBlock,
+                          MailToggleBlockFrozen,
                           MailReloadBlock,
                           MailChangeBlockDevice,
                           MailConnectBlock,

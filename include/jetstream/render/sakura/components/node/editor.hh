@@ -20,6 +20,7 @@ struct NodeEditor : public Component {
         Error,
         Pending,
         Loading,
+        Frozen,
     };
 
     enum class ResizeAxes : U8 {
@@ -115,6 +116,7 @@ struct NodeEditor : public Component {
         Callback<void(const std::vector<std::string>&)> onCutShortcut;
         Callback<void(const std::vector<std::string>&)> onDuplicateShortcut;
         Callback<void(const std::vector<std::string>&)> onDeleteShortcut;
+        Callback<void(const std::vector<std::string>&)> onFreezeShortcut;
         Callback<void(const std::vector<std::string>&)> onSelectionChange;
         Callback<void(Extent2D<F32>)> onPasteShortcut;
         Callback<void(Rect)> onViewportGridChange;

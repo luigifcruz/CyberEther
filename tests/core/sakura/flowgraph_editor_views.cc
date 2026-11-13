@@ -68,9 +68,10 @@ const F32 kInspectY = RowY(5, 1);
 const F32 kDetachY = RowY(6, 1);
 const F32 kPlotY = RowY(7, 1);
 const F32 kDeviceY = RowY(8, 2);
-const F32 kReloadY = RowY(9, 2);
-const F32 kDocumentationY = RowY(10, 3);
-const F32 kDeleteY = RowY(11, 4);
+const F32 kFreezeY = RowY(9, 2);
+const F32 kReloadY = RowY(10, 2);
+const F32 kDocumentationY = RowY(11, 3);
+const F32 kDeleteY = RowY(12, 4);
 
 template<typename Update>
 bool Settles(Frames& frames, Update update) {
@@ -134,6 +135,7 @@ struct MenuRig {
             .onToggleConfigDetach = record("detach"),
             .onTogglePlotDetach = record("plot"),
             .onReload = record("reload"),
+            .onToggleFrozen = record("freeze"),
             .onDelete = record("delete"),
             .onDocumentation = record("documentation"),
             .onDeviceSelect = [this](U64 index) {
@@ -367,6 +369,7 @@ TEST_CASE("Node menu entries close the menu and then run their action",
         {kInspectY, "inspect"},
         {kDetachY, "detach"},
         {kPlotY, "plot"},
+        {kFreezeY, "freeze"},
         {kReloadY, "reload"},
         {kDocumentationY, "documentation"},
         {kDeleteY, "delete"},
@@ -1073,7 +1076,7 @@ TEST_CASE("Editor records an arrangement only after nodes persist the geometry i
     CHECK(events == std::vector<std::string>{"layout 300,200", "arranged"});
 }
 
-TEST_CASE("Editor deletes every live selected block on Delete in one request",
+TEST_CASE("Editor deletes or freezes every live selected block on Delete or Primary+B in one request",
           "[core][sakura][flowgraph][editor-views]") {
     Scene scene;
     FlowgraphEditor editor;
@@ -1088,12 +1091,14 @@ TEST_CASE("Editor deletes every live selected block on Delete in one request",
     second.name = "ifft";
     second.layout = FlowgraphNode::Layout{400.0f, 40.0f, 0.0f, 0.0f};
     std::vector<std::vector<std::string>> deletes;
+    std::vector<std::vector<std::string>> freezes;
     FlowgraphEditor::Measured measured;
     const auto update = [&] {
         editor.update({
             .id = "graph",
             .measure = true,
             .graph = {first, second},
+            .onToggleBlockFrozen = [&](const std::vector<std::string>& blocks) { freezes.push_back(blocks); },
             .onDeleteBlocks = [&](const std::vector<std::string>& blocks) { deletes.push_back(blocks); },
             .onLayout = [&](FlowgraphEditor::Measured next) { measured = next; },
         });
@@ -1117,6 +1122,10 @@ TEST_CASE("Editor deletes every live selected block on Delete in one request",
     };
     click("fft", {});
     click("ifft", {.shift = true});
+
+    CHECK(Tap(host, KeyCode::B, {.control = true}));
+    REQUIRE(freezes.size() == 1);
+    CHECK(freezes[0] == std::vector<std::string>{"fft", "ifft"});
 
     CHECK(Tap(host, KeyCode::Delete));
     REQUIRE(deletes.size() == 1);
@@ -1264,7 +1273,7 @@ TEST_CASE("Editor presenter wires the toolbar to pause, save, and environment ma
 
 }
 
-TEST_CASE("Editor presenter sends the blocks to delete as one mail",
+TEST_CASE("Editor presenter sends the blocks to delete or freeze as one mail",
           "[core][sakura][flowgraph][editor-views]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
@@ -1279,6 +1288,12 @@ TEST_CASE("Editor presenter sends the blocks to delete as one mail",
     const auto& mail = std::get<MailDeleteBlock>(mails[0]);
     CHECK(mail.flowgraph == "graph");
     CHECK(mail.blockIds == std::vector<std::string>{"fft", "ifft"});
+
+    config.onToggleBlockFrozen({"fft"});
+    REQUIRE(mails.size() == 2);
+    const auto& freeze = std::get<MailToggleBlockFrozen>(mails[1]);
+    CHECK(freeze.flowgraph == "graph");
+    CHECK(freeze.blockIds == std::vector<std::string>{"fft"});
 }
 
 TEST_CASE("Editor presenter sends copy, cut, duplicate, and select mail and passes the clipboard and selection",

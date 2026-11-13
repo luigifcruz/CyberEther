@@ -57,6 +57,7 @@ Result Capture(const Flowgraph& flowgraph, FlowgraphSnapshot& snapshot) {
             .device = data.device,
             .runtime = data.runtime,
             .provider = data.provider,
+            .frozen = data.frozen,
             .config = std::move(data.config),
         };
         block.configHash = FlowgraphValueFingerprint(std::any(block.config));
@@ -152,8 +153,8 @@ FlowgraphChange ClassifyFlowgraphChange(const FlowgraphSnapshot& previous, const
     FlowgraphChange change = FlowgraphChange::None;
     for (const auto& block : next.blocks) {
         const auto* before = previous.find(block.name);
-        if (!before || !block.sameRuntime(*before) || block.configHash != before->configHash ||
-            !block.sameInputs(*before)) {
+        if (!before || !block.sameRuntime(*before) || block.frozen != before->frozen ||
+            block.configHash != before->configHash || !block.sameInputs(*before)) {
             return FlowgraphChange::Content;
         }
         if (block.node.has_value() && before->node.has_value() &&
@@ -184,7 +185,8 @@ Result CreateFlowgraphBlock(Flowgraph& flowgraph, const FlowgraphSnapshot::Block
                                                 inputs,
                                                 block.device,
                                                 block.runtime,
-                                                block.provider);
+                                                block.provider,
+                                                block.frozen);
     if (Failed(result)) {
         ClearMetadata(flowgraph, block.name);
         return result;
@@ -279,6 +281,10 @@ Result ApplyFlowgraphSnapshot(Flowgraph& flowgraph,
                                          block->provider));
         } else if (block->configHash != existing->configHash) {
             step(flowgraph.blockReconfigure(block->name, block->config));
+        }
+
+        if (block->frozen != existing->frozen) {
+            step(flowgraph.blockFreeze(block->name, block->frozen));
         }
 
         for (const auto& [slot, source] : block->inputs) {

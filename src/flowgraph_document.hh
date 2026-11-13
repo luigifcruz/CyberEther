@@ -18,11 +18,12 @@ struct FlowgraphDocument {
         DeviceType device = DeviceType::CPU;
         RuntimeType runtime = RuntimeType::NATIVE;
         ProviderType provider = "generic";
+        std::optional<bool> frozen;
         std::optional<Parser::Map> config;
         std::optional<Parser::Map> input;
         std::optional<Parser::Map> meta;
 
-        JST_SERDES(name, module, device, runtime, provider, config, input, meta);
+        JST_SERDES(name, module, device, runtime, provider, frozen, config, input, meta);
     };
 
     std::string version = "2";

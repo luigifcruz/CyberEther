@@ -437,6 +437,13 @@ TEST_CASE("System clipboard text that is not a block list is ignored", "[core][c
     CHECK_FALSE(DecodeFlowgraphBlocks("version: 2\ngraph:\n  - name: a\n    module: m\n"
                                       "    input:\n      x: a.b\n").has_value());
 
+    const auto frozen = DecodeFlowgraphBlocks("version: 2\ngraph:\n  - name: a\n    module: m\n    frozen: true\n");
+    REQUIRE(frozen.has_value());
+    CHECK(frozen->blocks.front().frozen);
+    std::string yaml;
+    REQUIRE(EncodeFlowgraphBlocks(*frozen, yaml) == Result::SUCCESS);
+    CHECK(yaml.find("frozen: true") != std::string::npos);
+
     const auto outside = DecodeFlowgraphBlocks("version: 2\ngraph:\n  - name: a\n    module: m\n"
                                                "    input:\n      x: ${graph.gone.output.y}\n");
     REQUIRE(outside.has_value());

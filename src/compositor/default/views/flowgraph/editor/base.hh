@@ -64,6 +64,7 @@ struct FlowgraphEditor {
         Sakura::Callback<void(const std::vector<std::string>&)> onSelectBlocks;
         Sakura::Callback<void(const std::string&)> onRenameBlock;
         Sakura::Callback<void(const std::string&)> onReloadBlock;
+        Sakura::Callback<void(const std::vector<std::string>&)> onToggleBlockFrozen;
         Sakura::Callback<void(const std::vector<std::string>&)> onDeleteBlocks;
         Sakura::Callback<void(const std::string&)> onOpenDocumentation;
         Sakura::Callback<void(const std::string&, DeviceType, RuntimeType, ProviderType)> onChangeBlockDevice;
@@ -212,6 +213,11 @@ struct FlowgraphEditor {
                         this->config.onReloadBlock(blockName);
                     }
                 },
+                .onToggleFrozen = [this, blockName]() {
+                    if (this->config.onToggleBlockFrozen) {
+                        this->config.onToggleBlockFrozen({blockName});
+                    }
+                },
                 .onInspectApply = [this, blockName](Parser::Map values) {
                     if (this->config.onReconfigureBlock) {
                         this->config.onReconfigureBlock(blockName, std::move(values), false, {});
@@ -316,6 +322,9 @@ struct FlowgraphEditor {
             },
             .onDeleteShortcut = [this](const std::vector<std::string>& selectedNodes) {
                 emit(this->config.onDeleteBlocks, live(selectedNodes));
+            },
+            .onFreezeShortcut = [this](const std::vector<std::string>& selectedNodes) {
+                emit(this->config.onToggleBlockFrozen, live(selectedNodes));
             },
             .onSelectionChange = [this](const std::vector<std::string>& selected) {
                 measured.selected = selected;
