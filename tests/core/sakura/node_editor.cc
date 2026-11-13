@@ -72,6 +72,7 @@ struct Graph {
     std::vector<Extent2D<F32>> doubleClicks;
     std::vector<std::vector<std::string>> copies;
     std::vector<std::vector<std::string>> deletes;
+    std::vector<std::vector<std::string>> freezes;
     std::vector<std::vector<std::string>> selections;
     std::optional<Rect> viewport;
     std::optional<Extent2D<F32>> center;
@@ -167,6 +168,9 @@ struct Graph {
             },
             .onDeleteShortcut = [this](const std::vector<std::string>& ids) {
                 deletes.push_back(ids);
+            },
+            .onFreezeShortcut = [this](const std::vector<std::string>& ids) {
+                freezes.push_back(ids);
             },
             .onSelectionChange = [this](const std::vector<std::string>& ids) {
                 selections.push_back(ids);
@@ -1894,6 +1898,65 @@ TEST_CASE("Delete and Backspace report the whole selection only without modifier
     Tap(graph.host, KeyCode::Backspace);
     Tap(graph.host, KeyCode::Delete);
     CHECK(graph.deletes.size() == 2);
+}
+
+TEST_CASE("Primary+B reports the whole selection only with a primary modifier, a selection and no focused field",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Sakura::NodeTextInput input;
+    input.update({.id = "field", .value = "12", .submit = Sakura::NodeTextInput::Submit::OnEnter});
+    Block& a = graph.add("a", {40.0f, 40.0f}, {200.0f, 0.0f});
+    Block& b = graph.add("b", {400.0f, 40.0f});
+    a.content.consume = false;
+    b.content.consume = false;
+    a.field = &input;
+    graph.step();
+    graph.step();
+
+    CHECK_FALSE(Tap(graph.host, KeyCode::B, {.control = true}));
+    CHECK(graph.freezes.empty());
+
+    graph.click(60.0f, 50.0f);
+    graph.press(420.0f, 60.0f, MouseButton::Left, 1, {.shift = true});
+    graph.release(420.0f, 60.0f);
+    REQUIRE(graph.copy() == std::vector<std::string>{"a", "b"});
+
+    CHECK_FALSE(Tap(graph.host, KeyCode::B));
+    CHECK(Tap(graph.host, KeyCode::B, {.control = true}));
+    CHECK(Tap(graph.host, KeyCode::B, {.super = true}));
+    REQUIRE(graph.freezes.size() == 2);
+    CHECK(graph.freezes[0] == std::vector<std::string>{"a", "b"});
+    CHECK(graph.freezes[1] == std::vector<std::string>{"a", "b"});
+
+    CHECK_FALSE(Sakura::Access::key(graph.host, {KeyEventType::Press, KeyCode::B, {.control = true}, true}));
+    CHECK(graph.freezes.size() == 2);
+
+    const Rect frame = Peek::Frame(input);
+    REQUIRE_FALSE(frame.empty());
+    graph.click(frame.x + frame.width * 0.5f, frame.y + frame.height * 0.5f);
+    REQUIRE(input.focused());
+    Tap(graph.host, KeyCode::B, {.control = true});
+    CHECK(graph.freezes.size() == 2);
+}
+
+TEST_CASE("A node toggling between frozen and normal only repaints",
+          "[core][sakura][node-editor][retention]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    REQUIRE(graph.frames.settle([&] {
+        graph.update();
+    }));
+    const U64 restructures = graph.frames.restructures;
+    const U64 rebuilds = graph.frames.rebuilds;
+
+    for (const auto state : {NodeEditor::NodeState::Frozen, NodeEditor::NodeState::Normal}) {
+        a.spec.state = state;
+        REQUIRE(graph.frames.settle([&] {
+            graph.update();
+        }));
+    }
+    CHECK(graph.frames.restructures == restructures);
+    CHECK(graph.frames.rebuilds == rebuilds);
 }
 
 TEST_CASE("Adding or removing a node restructures the editor once without a rebuild and then settles",

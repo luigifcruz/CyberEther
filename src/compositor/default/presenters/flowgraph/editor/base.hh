@@ -62,6 +62,9 @@ struct FlowgraphEditorPresenter {
             .onReloadBlock = [enqueue, flowgraphId](const std::string& blockName) {
                 enqueue(MailReloadBlock{flowgraphId, blockName});
             },
+            .onToggleBlockFrozen = [enqueue, flowgraphId](const std::vector<std::string>& blockNames) {
+                enqueue(MailToggleBlockFrozen{flowgraphId, blockNames});
+            },
             .onDeleteBlocks = [enqueue, flowgraphId](const std::vector<std::string>& blockNames) {
                 enqueue(MailDeleteBlock{flowgraphId, blockNames});
             },

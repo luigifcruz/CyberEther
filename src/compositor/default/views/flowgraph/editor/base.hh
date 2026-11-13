@@ -60,6 +60,7 @@ struct FlowgraphEditor {
         Sakura::Callback<void(std::optional<Extent2D<F32>>)> onPasteBlock;
         Sakura::Callback<void(const std::string&)> onRenameBlock;
         Sakura::Callback<void(const std::string&)> onReloadBlock;
+        Sakura::Callback<void(const std::vector<std::string>&)> onToggleBlockFrozen;
         Sakura::Callback<void(const std::vector<std::string>&)> onDeleteBlocks;
         Sakura::Callback<void(const std::string&)> onOpenDocumentation;
         Sakura::Callback<void(const std::string&, DeviceType, RuntimeType, ProviderType)> onChangeBlockDevice;
@@ -204,6 +205,11 @@ struct FlowgraphEditor {
                         this->config.onReloadBlock(blockName);
                     }
                 },
+                .onToggleFrozen = [this, blockName]() {
+                    if (this->config.onToggleBlockFrozen) {
+                        this->config.onToggleBlockFrozen({blockName});
+                    }
+                },
                 .onInspectApply = [this, blockName](Parser::Map values) {
                     if (this->config.onReconfigureBlock) {
                         this->config.onReconfigureBlock(blockName, std::move(values), false, {});
@@ -304,14 +310,15 @@ struct FlowgraphEditor {
                 }
             },
             .onDeleteShortcut = [this](const std::vector<std::string>& selectedNodes) {
-                std::vector<std::string> blocks;
-                for (const auto& id : selectedNodes) {
-                    if (liveBlocks.contains(id)) {
-                        blocks.push_back(id);
-                    }
-                }
+                const auto blocks = liveSelection(selectedNodes);
                 if (!blocks.empty() && this->config.onDeleteBlocks) {
                     this->config.onDeleteBlocks(blocks);
+                }
+            },
+            .onFreezeShortcut = [this](const std::vector<std::string>& selectedNodes) {
+                const auto blocks = liveSelection(selectedNodes);
+                if (!blocks.empty() && this->config.onToggleBlockFrozen) {
+                    this->config.onToggleBlockFrozen(blocks);
                 }
             },
             .onSelectionChange = [this](const std::vector<std::string>& selected) {
@@ -454,6 +461,16 @@ struct FlowgraphEditor {
     }
 
  private:
+    std::vector<std::string> liveSelection(const std::vector<std::string>& selectedNodes) const {
+        std::vector<std::string> blocks;
+        for (const auto& id : selectedNodes) {
+            if (liveBlocks.contains(id)) {
+                blocks.push_back(id);
+            }
+        }
+        return blocks;
+    }
+
     void openBlockPicker(const Extent2D<F32>& gridPosition) {
         blockPicker.open(config.onBuildBlockOptions ? config.onBuildBlockOptions()
                                                     : std::vector<FlowgraphBlockPicker::BlockOption>{},

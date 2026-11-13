@@ -279,6 +279,7 @@ Result Flowgraph::View::snapshot(const std::string& block,
     data.runtime = blockPtr->runtime();
     data.provider = blockPtr->provider();
     data.state = blockPtr->state();
+    data.frozen = blockPtr->frozen();
     data.nodeSize = blockPtr->config().nodeSize();
     data.diagnostic = blockPtr->diagnostic();
     data.inputs = blockPtr->inputs();

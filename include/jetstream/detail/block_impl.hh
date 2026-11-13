@@ -112,6 +112,7 @@ struct JETSTREAM_API Block::Impl {
     ProviderType _provider;
     Block::State _state = Block::State::None;
     std::string _diagnostic;
+    bool _frozen = false;
 
     // Timing
 

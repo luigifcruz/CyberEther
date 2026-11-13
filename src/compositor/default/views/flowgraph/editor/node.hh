@@ -265,6 +265,7 @@ struct FlowgraphNode {
         std::string module;
         std::string title;
         Block::State state = Block::State::None;
+        bool frozen = false;
         Block::NodeSize nodeSize = Block::NodeSize::S;
         std::string diagnostic;
         Parser::Map config;
@@ -290,6 +291,7 @@ struct FlowgraphNode {
         Sakura::Callback<void(Extent2D<F32>)> onPaste;
         Sakura::Callback<void()> onRename;
         Sakura::Callback<void()> onReload;
+        Sakura::Callback<void()> onToggleFrozen;
         Sakura::Callback<void(Parser::Map)> onInspectApply;
         Sakura::Callback<void()> onDelete;
         Sakura::Callback<void()> onDocumentation;
@@ -334,10 +336,12 @@ struct FlowgraphNode {
         const bool isPending = isBusy ||
                                block.state == Block::State::Incomplete;
         const bool configHidden = block.configCollapsed;
-        const auto nodeState = block.state == Block::State::Errored
-            ? NodeEditor::NodeState::Error
-            : isBusy ? NodeEditor::NodeState::Loading
-                         : isPending ? NodeEditor::NodeState::Pending : NodeEditor::NodeState::Normal;
+        const bool isErrored = block.state == Block::State::Errored;
+        const auto nodeState = isErrored    ? NodeEditor::NodeState::Error
+                             : isBusy       ? NodeEditor::NodeState::Loading
+                             : isPending    ? NodeEditor::NodeState::Pending
+                             : block.frozen ? NodeEditor::NodeState::Frozen
+                                            : NodeEditor::NodeState::Normal;
 
         if (!isBusy) {
             fieldStack.update(std::move(block.configFields), [this]() {
@@ -498,6 +502,7 @@ struct FlowgraphNode {
             .configDetached = block.configDetached,
             .plotDetachEnabled = hasSurfaces,
             .plotDetached = allSurfacesDetached,
+            .frozen = block.frozen,
             .devices = deviceOptions,
             .onCopy = this->config.onCopy,
             .onPaste = [this]() {
@@ -526,6 +531,7 @@ struct FlowgraphNode {
                 setSurfacesDetached(!allSurfacesDetached);
             },
             .onReload = this->config.onReload,
+            .onToggleFrozen = this->config.onToggleFrozen,
             .onDelete = this->config.onDelete,
             .onDocumentation = this->config.onDocumentation,
             .onDeviceSelect = [this](const U64 index) {

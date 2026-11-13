@@ -942,3 +942,64 @@ TEST_CASE("Block edits from the default dispatch are undone and redone through i
     }
     REQUIRE(flowgraph->destroy() == Result::SUCCESS);
 }
+
+TEST_CASE_METHOD(HistoryFixture, "Freezing several blocks is one undo step, and a mixed selection is all frozen",
+                 "[core][compositor][history]") {
+    createChain();
+    start();
+    callbacks.enqueueFlowgraphEdit = [this](FlowgraphEdit edit) {
+        history.enqueueEdit(std::move(edit));
+    };
+    const auto frozen = [&](const std::string& block) {
+        return viewBlock(block).frozen;
+    };
+
+    REQUIRE(flowgraphActions.handle(MailToggleBlockFrozen{.flowgraph = "graph",
+                                                            .blockIds = {"middle", "leaf", "middle", ""}}) ==
+            Result::SUCCESS);
+    drain();
+    CHECK_FALSE(frozen("source"));
+    CHECK(frozen("middle"));
+    CHECK(frozen("leaf"));
+    CHECK(sourceOf("leaf") == "middle");
+
+    REQUIRE(flowgraphActions.handle(MailToggleBlockFrozen{.flowgraph = "graph", .blockIds = {"middle"}}) ==
+            Result::SUCCESS);
+    drain();
+    CHECK_FALSE(frozen("middle"));
+    CHECK(frozen("leaf"));
+
+    undo();
+    CHECK(frozen("middle"));
+    CHECK(frozen("leaf"));
+
+    undo();
+    CHECK_FALSE(frozen("middle"));
+    CHECK_FALSE(frozen("leaf"));
+    CHECK_FALSE(graphHistory().canUndo());
+
+    redo();
+    CHECK(frozen("middle"));
+    CHECK(frozen("leaf"));
+    CHECK(sourceOf("leaf") == "middle");
+}
+
+TEST_CASE_METHOD(HistoryFixture, "Two freeze toggles queued before either runs cancel out",
+                 "[core][compositor][history]") {
+    createChain();
+    start();
+    callbacks.enqueueFlowgraphEdit = [this](FlowgraphEdit edit) {
+        history.enqueueEdit(std::move(edit));
+    };
+
+    REQUIRE(flowgraphActions.handle(MailToggleBlockFrozen{.flowgraph = "graph", .blockIds = {"middle"}}) ==
+            Result::SUCCESS);
+    REQUIRE(flowgraphActions.handle(MailToggleBlockFrozen{.flowgraph = "graph", .blockIds = {"middle"}}) ==
+            Result::SUCCESS);
+    drain();
+    CHECK_FALSE(viewBlock("middle").frozen);
+    CHECK(viewBlock("leaf").state == Block::State::Created);
+
+    CHECK(flowgraphActions.handle(MailToggleBlockFrozen{.flowgraph = "graph", .blockIds = {""}}) == Result::ERROR);
+    CHECK(commands.empty());
+}
