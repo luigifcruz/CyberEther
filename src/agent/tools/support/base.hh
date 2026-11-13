@@ -40,7 +40,7 @@ struct Entry {
 
     Definition definition;
     std::function<Tools::Output(const Invocation&)> execute;
-    NewGraph (*newGraph)(const Json& args) = nullptr;
+    NewGraph (*newGraph)(Host& host, const Json& args) = nullptr;
     void (*annotate)(Json& body, const Json& args, const Layout& layout) = nullptr;
 
     static Entry FromJson(Definition definition, Json (*execute)(const Graph&, const Json&));
@@ -53,6 +53,7 @@ class Toolbox {
     static const Entry* Find(const std::string& name);
 
     static std::vector<Entry> Catalog();
+    static std::vector<Entry> Saved();
     static std::vector<Entry> Inspect();
     static std::vector<Entry> Patch();
     static std::vector<Entry> Connections();

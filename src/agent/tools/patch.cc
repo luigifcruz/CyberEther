@@ -894,7 +894,7 @@ void AnnotatePatch(Json& body, const Json& raw, const Layout& layout) {
     }
 }
 
-Entry::NewGraph PatchGraph(const Json& raw) {
+Entry::NewGraph PatchGraph(Host&, const Json& raw) {
     const Json args = DecodeOperations(raw);
     if (!args.is_object() || !ValidateRequest(args).empty()) {
         return {};

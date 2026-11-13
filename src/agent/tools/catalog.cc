@@ -278,7 +278,7 @@ std::string ExampleGraphName(const std::string& key) {
     return name.empty() ? "example" : name;
 }
 
-Entry::NewGraph ExampleGraph(const Json& args) {
+Entry::NewGraph ExampleGraph(Host&, const Json& args) {
     if (!args.is_object() || !args.contains("key") || !args["key"].is_string()) {
         return {{}, "open_example requires a string 'key' from list_examples."};
     }

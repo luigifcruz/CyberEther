@@ -1,6 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <random>
 #include <set>
 #include <string>
 
@@ -17,6 +21,8 @@ namespace {
 
 struct GraphHost : Agent::Tools::Host {
     std::shared_ptr<Flowgraph> graph;
+    std::vector<std::string> folders;
+    std::vector<std::shared_ptr<Flowgraph>> createdGraphs;
 
     explicit GraphHost(std::shared_ptr<Flowgraph> graph) : graph(std::move(graph)) {}
 
@@ -24,8 +30,21 @@ struct GraphHost : Agent::Tools::Host {
         return false;
     }
 
-    Result create(const std::string&, std::shared_ptr<Flowgraph>&) override {
-        return Result::ERROR;
+    Result create(const std::string&, std::shared_ptr<Flowgraph>& created) override {
+        if (folders.empty()) {
+            return Result::ERROR;
+        }
+
+        created = std::make_shared<Flowgraph>();
+        if (created->create({}, nullptr, nullptr, nullptr) != Result::SUCCESS) {
+            return Result::ERROR;
+        }
+        createdGraphs.push_back(created);
+        return Result::SUCCESS;
+    }
+
+    std::vector<std::string> flowgraphFolders() override {
+        return folders;
     }
 };
 
@@ -59,6 +78,8 @@ TEST_CASE("Agent exposes the consolidated tool surface", "[agent][tools]") {
         "list_examples",
         "get_example",
         "open_example",
+        "list_flowgraphs",
+        "open_flowgraph",
     };
 
     std::set<std::string> actual;
@@ -806,4 +827,152 @@ TEST_CASE("Text patches tolerate missing prefixes without guessing", "[agent][to
     }
 
     REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Saved flowgraphs are listed and opened only from the user's folders", "[agent][tools][saved]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("cyberether-saved-flowgraphs-" + std::to_string(std::random_device{}()));
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "mine" / "nested");
+    std::filesystem::create_directories(root / "elsewhere");
+
+    const auto write = [](const std::filesystem::path& path, const std::string& content) {
+        std::ofstream(path) << content;
+    };
+    const std::string graph = "---\nversion: 2\ntitle: Cell Scan\nsummary: 'Watch the cellular bands.'\n"
+                              "graph:\n  - name: scan_note\n    module: note\n    device: cpu\n"
+                              "    runtime: native\n    config:\n      content: hello\n";
+    write(root / "mine" / "Cell Ops", graph);
+    write(root / "mine" / "second.yml", "---\nversion: 2\ngraph:\n  - name: other\n    module: note\n");
+    write(root / "mine" / "notes.txt", graph);
+    write(root / "mine" / "script", "#!/usr/bin/env python3\nprint('version: 2')\ngraph: no\n");
+    write(root / "mine" / "typed", "version: str = \"2\"\ntitle: str = \"token\"\ngraph: dict = {}\n");
+    write(root / "mine" / "config", "version: 1\nsummary: api_key=secret\ngraph: x\n  - name: password\n");
+    write(root / "mine" / "nested" / "deep.yml", graph);
+    write(root / "elsewhere" / "outside.yml", graph);
+
+    GraphHost host(nullptr);
+    const Agent::Tools tools(host);
+
+    SECTION("nothing is listed until a folder is known") {
+        const auto body = nlohmann::json::parse(tools.execute(nullptr, "list_flowgraphs", "{}").content);
+        CHECK(body["count"] == 0);
+        CHECK(body.contains("note"));
+    }
+
+    host.folders = {(root / "mine").string(), (root / "missing").string()};
+    const auto listed = nlohmann::json::parse(tools.execute(nullptr, "list_flowgraphs", "{}").content);
+
+    SECTION("only flowgraph documents directly inside known folders are listed") {
+        REQUIRE(listed["count"] == 2);
+        CHECK(listed["folders"].size() == 1);
+        CHECK(listed["flowgraphs"][0]["name"] == "Cell Ops");
+        CHECK(listed["flowgraphs"][0]["title"] == "Cell Scan");
+        CHECK(listed["flowgraphs"][0]["summary"] == "Watch the cellular bands.");
+        CHECK(listed["flowgraphs"][0]["block_count"] == 1);
+        CHECK(listed["flowgraphs"][0]["blocks"] == nlohmann::json::array({"scan_note"}));
+        CHECK(listed["flowgraphs"][1]["name"] == "second");
+    }
+
+    SECTION("a listed path opens in a new graph") {
+        const nlohmann::json args = {{"path", listed["flowgraphs"][0]["path"]}};
+        const auto result = tools.execute(nullptr, "open_flowgraph", args.dump());
+        REQUIRE_FALSE(result.error);
+
+        const auto body = nlohmann::json::parse(result.content);
+        CHECK(body["name"] == "Cell Ops");
+        CHECK(body["opened"] == "Cell_Ops");
+        REQUIRE(host.createdGraphs.size() == 1);
+        CHECK(host.createdGraphs.front()->view().has("scan_note"));
+        CHECK(body["flowgraph"]["block_count"] == 1);
+    }
+
+    SECTION("files that only resemble a flowgraph are not listed") {
+        for (const auto& entry : listed["flowgraphs"]) {
+            CHECK(entry["name"] != "typed");
+            CHECK(entry["name"] != "config");
+            CHECK(entry["name"] != "script");
+        }
+    }
+
+    SECTION("documents written by other tools are still recognised") {
+        write(root / "mine" / "windows.YML", "\xEF\xBB\xBF---\r\nversion: 2\r\ngraph:\r\n  - name: a\r\n");
+        write(root / "mine" / "described.yaml", "--- # exported\nauthor: me\ndescription: d\nversion: 2\n"
+                                                "graph:\n- name: flat\n  module: note\n- module: note\n"
+                                                "  name: later\nmeta:\n  - name: not_a_block\n");
+        write(root / "mine" / "latin.yml", "---\nversion: 2\ntitle: caf\xe9\ngraph:\n  - name: b\xe9ta\n");
+        write(root / "mine" / "caf\xe9.yml", "---\nversion: 2\ngraph:\n  - name: hidden\n");
+
+        const auto result = tools.execute(nullptr, "list_flowgraphs", "{}");
+        REQUIRE_FALSE(result.error);
+        const auto again = nlohmann::json::parse(result.content);
+
+        std::map<std::string, nlohmann::json> byName;
+        for (const auto& entry : again["flowgraphs"]) {
+            byName[entry["name"].get<std::string>()] = entry;
+        }
+        REQUIRE(byName.contains("windows"));
+        CHECK(byName["windows"]["blocks"] == nlohmann::json::array({"a"}));
+        REQUIRE(byName.contains("described"));
+        CHECK(byName["described"]["block_count"] == 2);
+        CHECK(byName["described"]["blocks"] == nlohmann::json::array({"flat"}));
+        REQUIRE(byName.contains("latin"));
+        CHECK(byName["latin"]["title"].get<std::string>().starts_with("caf"));
+        CHECK(again["count"] == 5);
+    }
+
+    SECTION("a symlink cannot reach outside a known folder") {
+        std::filesystem::create_symlink(root / "elsewhere" / "outside.yml", root / "mine" / "link.yml");
+        std::filesystem::create_directory_symlink(root / "elsewhere", root / "mine" / "linked");
+
+        const auto again = nlohmann::json::parse(tools.execute(nullptr, "list_flowgraphs", "{}").content);
+        CHECK(again["count"] == 2);
+
+        for (const auto& path : {root / "mine" / "link.yml", root / "mine" / "linked" / "outside.yml"}) {
+            const nlohmann::json args = {{"path", path.string()}};
+            CHECK(tools.execute(nullptr, "open_flowgraph", args.dump()).error);
+        }
+        CHECK(host.createdGraphs.empty());
+    }
+
+    SECTION("a file that fails to load is reported with a warning not to save") {
+        write(root / "mine" / "broken.yml", "---\nversion: 2\ngraph:\n  - name: bad\n    module: no_such_module\n");
+        const nlohmann::json args = {{"path", (root / "mine" / "broken.yml").string()}};
+        const auto result = tools.execute(nullptr, "open_flowgraph", args.dump());
+
+        CHECK(result.error);
+        const auto error = nlohmann::json::parse(result.content)["error"].get<std::string>();
+        CHECK(error.find("could not be loaded") != std::string::npos);
+        CHECK(error.find("without saving") != std::string::npos);
+        REQUIRE(host.createdGraphs.size() == 1);
+    }
+
+    SECTION("oversized or malformed paths are refused cheaply") {
+        const nlohmann::json args = {{"path", std::string(20000, 'x')}};
+        const auto result = tools.execute(nullptr, "open_flowgraph", args.dump());
+        CHECK(result.error);
+        CHECK(result.content.size() < 400);
+        CHECK(host.createdGraphs.empty());
+    }
+
+    SECTION("paths outside the listing are refused before any graph is created") {
+        for (const auto& path : {root / "elsewhere" / "outside.yml", root / "mine" / "nested" / "deep.yml",
+                                 root / "mine" / "notes.txt", root / "mine" / ".." / "elsewhere" / "outside.yml"}) {
+            CAPTURE(path);
+            const nlohmann::json args = {{"path", path.string()}};
+            const auto result = tools.execute(nullptr, "open_flowgraph", args.dump());
+            CHECK(result.error);
+            CHECK(nlohmann::json::parse(result.content)["error"].get<std::string>().find("list_flowgraphs") !=
+                  std::string::npos);
+        }
+        CHECK(host.createdGraphs.empty());
+        CHECK(tools.prepare(nullptr, "open_flowgraph", R"({"path":5})").output.has_value());
+    }
+
+    for (auto& created : host.createdGraphs) {
+        created->destroy();
+    }
+    std::filesystem::remove_all(root);
 }

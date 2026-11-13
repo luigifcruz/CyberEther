@@ -48,6 +48,10 @@ class JETSTREAM_API Tools {
         virtual std::optional<F32> width(Block::NodeSize) {
             return std::nullopt;
         }
+
+        virtual std::vector<std::string> flowgraphFolders() {
+            return {};
+        }
     };
 
     struct Output {

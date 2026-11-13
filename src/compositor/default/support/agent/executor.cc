@@ -147,6 +147,7 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
     std::unordered_map<std::string, std::shared_ptr<Flowgraph>> graphs;
     std::shared_ptr<Flowgraph> focused;
     std::set<std::string> reserved;
+    std::vector<std::string> folders;
 
     bool has(const std::string& name) override {
         return graphs.contains(name) || reserved.contains(name);
@@ -167,6 +168,11 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
 
     std::optional<F32> width(Block::NodeSize size) override {
         return DefaultNodeWidth(size);
+    }
+
+    std::vector<std::string> flowgraphFolders() override {
+        std::lock_guard lock(mutex);
+        return folders;
     }
 
     void failFocus(const std::string& name) {
@@ -469,6 +475,7 @@ void AgentExecutor::dispatch() {
         std::lock_guard<std::mutex> lock(shared->mutex);
         pending.swap(shared->queue);
         shared->instance = state.system.instance;
+        shared->folders = state.agent.settings.flowgraphFolders;
     }
 
     if (pending.empty()) {

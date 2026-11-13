@@ -4,6 +4,7 @@
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
+#include "persist.hh"
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
@@ -102,6 +103,8 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
+        rememberFolder(msg.path);
+
         auto inst = state.system.instance;
         auto name = GenerateRandomFlowgraphName();
         auto path = msg.path;
@@ -183,6 +186,8 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
+        rememberFolder(path);
+
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
 
         callbacks.enqueueCommand([flowgraph, path]() -> Result {
@@ -191,6 +196,33 @@ struct FlowgraphActions {
         }, false);
 
         return Result::SUCCESS;
+    }
+
+    // The agent may list and open saved flowgraphs only in folders the user has used, so
+    // each folder a flowgraph is opened from or saved to is remembered.
+    void rememberFolder(const std::string& path) {
+        constexpr U64 kMaxFolders = 16;
+
+        std::error_code error;
+        const auto file = std::filesystem::weakly_canonical(Platform::PathFromUtf8(path), error);
+        if (error || file.parent_path().empty()) {
+            return;
+        }
+
+        auto& folders = state.agent.settings.flowgraphFolders;
+        const auto name = Platform::PathToUtf8(file.parent_path());
+        if (!folders.empty() && folders.back() == name) {
+            return;
+        }
+
+        std::erase(folders, name);
+        folders.push_back(name);
+        if (folders.size() > kMaxFolders) {
+            folders.erase(folders.begin());
+        }
+        PersistSettings([&](Settings& settings) {
+            settings.intelligence.flowgraphFolders = folders;
+        });
     }
 
     Result handle(const MailCloseFlowgraph& msg) {

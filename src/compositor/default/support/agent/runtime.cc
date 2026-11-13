@@ -41,14 +41,14 @@ constexpr const char* kWorking =
 constexpr const char* kTurnBinding =
     "- The selected graph is bound when this turn or voice session starts; "
     "UI focus changes do not redirect tools. Automatic creation when no graph "
-    "is selected, or open_example, selects the new graph for subsequent calls. "
-    "If the bound graph closes, report the blocker.\n";
+    "is selected, open_example, or open_flowgraph selects the new graph for "
+    "subsequent calls. If the bound graph closes, report the blocker.\n";
 
 constexpr const char* kFocusBinding =
     "- Each call acts on the graph focused in the CyberEther window when the "
     "call runs, so the user can redirect calls by switching graphs. Automatic "
-    "creation when no graph is focused, or open_example, focuses the new graph "
-    "for subsequent calls.\n";
+    "creation when no graph is focused, open_example, or open_flowgraph focuses "
+    "the new graph for subsequent calls.\n";
 
 constexpr const char* kGuidance =
     "- Base edits on current tool evidence. Inspect only the relevant blocks or "
@@ -57,6 +57,8 @@ constexpr const char* kGuidance =
     "- Use inspect_block for current configuration, ports, and state; "
     "get_block_docs for behavior and configuration semantics; search_blocks "
     "for discovery.\n"
+    "- The user's own saved flowgraphs, such as dashboards and projects, come from "
+    "list_flowgraphs and open_flowgraph; bundled examples come from list_examples.\n"
     "- Use returned identifiers, ports, and allowed values. Consult block "
     "documentation for units; configuration uses base values, which can differ "
     "from scaled UI displays. Clarify undocumented units rather than guessing.\n"

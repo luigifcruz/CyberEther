@@ -1,6 +1,7 @@
 src_lst += files([
     'base.cc',
     'catalog.cc',
+    'saved.cc',
     'inspect.cc',
     'connections.cc',
     'patch.cc',

@@ -145,8 +145,9 @@ struct JETSTREAM_API Settings {
         std::vector<Provider> customProviders;
         Voice voice;
         Mcp mcp;
+        std::vector<std::string> flowgraphFolders;
 
-        JST_SERDES(enabled, provider, model, models, customProviders, voice, mcp);
+        JST_SERDES(enabled, provider, model, models, customProviders, voice, mcp, flowgraphFolders);
     };
 
     struct Developer {

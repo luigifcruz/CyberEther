@@ -70,6 +70,7 @@ const std::vector<Entry>& Toolbox::All() {
     static const auto entries = [] {
         const auto factories = {
             Catalog,
+            Saved,
             Inspect,
             Patch,
             Text,
@@ -178,7 +179,7 @@ Tools::Call Tools::prepare(const std::shared_ptr<Flowgraph>& target, const std::
         return call;
     }
 
-    const auto graph = entry->newGraph(Detail::Json::parse(args, nullptr, false));
+    const auto graph = entry->newGraph(host, Detail::Json::parse(args, nullptr, false));
     if (!graph.error.empty()) {
         call.output = Detail::Response::Failure(graph.error);
     } else if (!graph.name.empty()) {
