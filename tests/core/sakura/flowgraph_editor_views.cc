@@ -1,5 +1,6 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include "fonts.hh"
 #include "component_harness.hh"
@@ -17,6 +18,8 @@
 #include "compositor/default/views/flowgraph/editor/node.hh"
 #include "compositor/default/views/flowgraph/surface.hh"
 #include "flowgraph_fixture.hh"
+#include "render/sakura/detail/helpers.hh"
+#include "render/sakura/metrics.hh"
 #include "scene.hh"
 
 #include <jetstream/render/sakura/components/node/content_stack.hh>
@@ -702,6 +705,75 @@ TEST_CASE("Detached configs fill their tile with a field panel and keep the titl
     host.place(scene.ctx, bounds);
     CHECK(Find<Sakura::NodeField>(view.component()).empty());
     CHECK(Peek::Frame(view.component()) == bounds);
+}
+
+TEST_CASE("Detached config sections keep the field gap between grids and stepped fields at fractional DPI",
+          "[core][sakura][flowgraph][editor-views]") {
+    const F32 scale = GENERATE(0.7f, 0.9f, 1.25f, 1.5f, 1.8f);
+    const F32 origin = GENERATE(10.25f, 10.75f);
+    CAPTURE(scale, origin);
+    Scene scene;
+    auto ctx = scene.context();
+    ctx.pixelRatio = scale;
+    ctx.fontSize = Sakura::kNodeFont;
+    const auto text = [](const std::string& name, const std::string& label, const std::string& value) {
+        return FlowgraphConfigFieldConfig{
+            .id = "sdr:" + name,
+            .name = name,
+            .label = label,
+            .format = {{"type", std::string("text")}},
+            .values = {{name, value}},
+        };
+    };
+    FlowgraphDetachedConfig view;
+    view.update({
+        .id = "config:sdr",
+        .title = "SDR",
+        .configFields = {
+            text("device", "Device", "rtlsdr"),
+            text("antenna", "Antenna", "RX"),
+            {
+                .id = "sdr:frequency",
+                .name = "frequency",
+                .label = "Frequency",
+                .format = {{"type", std::string("float")}, {"step_config", std::string("frequencyStep")}},
+                .values = {{"frequency", 96.9e6f}, {"frequencyStep", 1.0e5f}},
+            },
+            text("sampleRate", "Sample Rate", "2.4"),
+            text("agc", "Automatic Gain", "on"),
+        },
+    });
+    Host host(view.component());
+    host.place(ctx, {origin, origin, 375.0f * scale, 600.0f * scale});
+
+    const auto fields = Find<Sakura::NodeField>(view.component());
+    REQUIRE(fields.size() == 5);
+    const auto painted = [](Sakura::Component& component) {
+        std::optional<Jetstream::Rect> bounds;
+        for (const auto* box : Find<Sakura::Box>(component)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && !instance.rect.empty() && instance.backgroundColor.a > 0.0f) {
+                    bounds = bounds ? Sakura::Union(*bounds, instance.rect) : instance.rect;
+                }
+            }
+        }
+        REQUIRE(bounds.has_value());
+        return *bounds;
+    };
+    std::vector<Jetstream::Rect> cells;
+    for (auto* field : fields) {
+        cells.push_back(painted(*field));
+    }
+    const auto upper = Sakura::Union(cells[0], cells[1]);
+    const auto lower = Sakura::Union(cells[3], cells[4]);
+    const F32 gap = cells[2].y - upper.bottom();
+    CHECK(gap >= 1.0f);
+    CHECK(lower.y - cells[2].bottom() == gap);
+    if (cells[1].y == cells[0].y) {
+        CHECK(cells[1].x - cells[0].right() == gap);
+    } else {
+        CHECK(cells[1].y - cells[0].bottom() == gap);
+    }
 }
 
 TEST_CASE("Detached configs settle under identical updates", "[core][sakura][flowgraph][editor-views]") {

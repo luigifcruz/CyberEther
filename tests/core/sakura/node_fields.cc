@@ -497,6 +497,66 @@ TEST_CASE("Node field grids measured without a width bound stack in one finite c
     CHECK(size.y == 53.0f);
 }
 
+TEST_CASE("Node field grids keep painted cell gaps uniform at fractional DPI and zoom", kTags) {
+    const F32 scale = GENERATE(0.7f, 0.9f, 1.0f, 1.25f, 1.5f, 1.8f, 2.0f);
+    const F32 origin = GENERATE(10.25f, 10.75f);
+    const U64 columns = GENERATE(1, 2, 3);
+    CAPTURE(scale, origin, columns);
+    const Scene scene;
+    auto ctx = scene.context();
+    ctx.pixelRatio = scale;
+    ctx.fontSize = Sakura::kNodeFont;
+    std::vector<std::unique_ptr<Sakura::Component>> inputs;
+    std::vector<std::unique_ptr<Sakura::NodeField>> fields;
+    Sakura::NodeFieldGrid grid;
+    Sakura::NodeFieldGrid::Config config;
+    for (U64 i = 0; i < 11; ++i) {
+        if (i % 2 == 0) {
+            auto input = std::make_unique<Sakura::NodeCombo>();
+            input->update({.value = "Client"});
+            inputs.push_back(std::move(input));
+        } else {
+            auto input = std::make_unique<Sakura::NodeTextInput>();
+            input->update({.value = "127.0.0.1"});
+            inputs.push_back(std::move(input));
+        }
+        auto field = std::make_unique<Sakura::NodeField>();
+        field->update({.label = "Value", .content = inputs.back().get()});
+        config.items.push_back({.child = field.get()});
+        fields.push_back(std::move(field));
+    }
+    grid.update(std::move(config));
+    Host host(grid);
+    const F32 width = 150.0f * columns * scale + 0.3f;
+    const auto size = host.measureOf(ctx, {width, kInfinite});
+    host.place(ctx, {origin, origin, size.x, size.y});
+
+    std::vector<Rect> painted;
+    for (const auto& field : fields) {
+        std::optional<Rect> bounds;
+        for (const auto* box : Find<Sakura::Box>(*field)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && !instance.rect.empty() && instance.backgroundColor.a > 0.0f) {
+                    bounds = bounds ? Sakura::Union(*bounds, instance.rect) : instance.rect;
+                }
+            }
+        }
+        REQUIRE(bounds.has_value());
+        painted.push_back(*bounds);
+    }
+    const F32 gap = painted[columns].y - painted.front().bottom();
+    CHECK(gap >= 1.0f);
+    for (U64 i = 0; i < painted.size(); ++i) {
+        CAPTURE(i);
+        if (i >= columns) {
+            CHECK(painted[i].y - painted[i - columns].bottom() == gap);
+        }
+        if (i % columns != 0) {
+            CHECK(painted[i].x - painted[i - 1].right() == gap);
+        }
+    }
+}
+
 TEST_CASE("Full width node grid items break the column groups around them", kTags) {
     const auto ctx = MakeContext();
     Probe a({0.0f, 21.0f});
@@ -649,6 +709,88 @@ TEST_CASE("Node content stack metrics report natural, fixed, minimum and flexibl
     CHECK(scaled.fixed == 52.0f);
     CHECK(scaled.minimum == 212.0f);
     CHECK(scaled.flexibleBasis == 180.0f);
+}
+
+TEST_CASE("Node content stacks keep repeated painted gaps uniform at fractional DPI and zoom", kTags) {
+    const F32 scale = GENERATE(0.7f, 0.9f, 1.0f, 1.25f, 1.5f, 1.8f, 2.0f);
+    const F32 origin = GENERATE(10.25f, 10.75f);
+    CAPTURE(scale, origin);
+    const Scene scene;
+    auto ctx = scene.context();
+    ctx.pixelRatio = scale;
+    ctx.fontSize = Sakura::kNodeFont;
+
+    std::vector<std::unique_ptr<Sakura::NodeTextInput>> inputs;
+    std::vector<std::unique_ptr<Sakura::NodeField>> fields;
+    const auto makeField = [&](const std::string& label) {
+        auto input = std::make_unique<Sakura::NodeTextInput>();
+        input->update({.value = "127.0.0.1"});
+        auto field = std::make_unique<Sakura::NodeField>();
+        field->update({.label = label, .content = input.get()});
+        inputs.push_back(std::move(input));
+        fields.push_back(std::move(field));
+        return fields.back().get();
+    };
+    Sakura::NodeFieldGrid grid;
+    Sakura::NodeFieldGrid::Config gridConfig;
+    for (U64 i = 0; i < 3; ++i) {
+        gridConfig.items.push_back({.child = makeField("Cell")});
+    }
+    grid.update(std::move(gridConfig));
+
+    struct Expected {
+        Sakura::Component* child;
+        std::optional<F32> gap;
+        F32 trailingGap = 0.0f;
+    };
+    const std::vector<Expected> layout = {
+        {makeField("Metric A"), std::nullopt},
+        {makeField("Metric B"), std::nullopt},
+        {makeField("Metric C"), std::nullopt, Sakura::NodeContentStack::Spacing},
+        {&grid, Sakura::NodeField::Gap},
+        {makeField("Stepped"), Sakura::NodeField::Gap},
+        {makeField("Tail"), Sakura::NodeField::Gap},
+        {makeField("Flush"), 0.0f},
+        {makeField("Last"), std::nullopt},
+    };
+    Sakura::NodeContentStack stack;
+    Sakura::NodeContentStack::Config config{.id = "stack"};
+    for (const auto& entry : layout) {
+        config.items.push_back({.child = entry.child, .gap = entry.gap, .trailingGap = entry.trailingGap});
+    }
+    stack.update(std::move(config));
+    Host host(stack);
+    const auto size = host.measureOf(ctx, {375.0f * scale + 0.3f, kInfinite});
+    host.place(ctx, {origin, origin, size.x, size.y});
+
+    std::vector<Rect> painted;
+    for (const auto& entry : layout) {
+        std::optional<Rect> bounds;
+        for (const auto* box : Find<Sakura::Box>(*entry.child)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && !instance.rect.empty() && instance.backgroundColor.a > 0.0f) {
+                    bounds = bounds ? Sakura::Union(*bounds, instance.rect) : instance.rect;
+                }
+            }
+        }
+        REQUIRE(bounds.has_value());
+        painted.push_back(*bounds);
+    }
+
+    std::vector<F32> gaps;
+    for (U64 i = 1; i < painted.size(); ++i) {
+        gaps.push_back(painted[i].y - painted[i - 1].bottom());
+    }
+    CAPTURE(gaps);
+    CHECK(gaps[0] >= 1.0f);
+    CHECK(gaps[1] == gaps[0]);
+    CHECK(gaps[6] == gaps[0]);
+    CHECK(gaps[3] >= 1.0f);
+    CHECK(gaps[4] == gaps[3]);
+    CHECK(gaps[0] > gaps[3]);
+    CHECK(gaps[2] > gaps[0]);
+    CHECK(gaps[5] == 0.0f);
+    CHECK(painted.back().bottom() <= std::ceil(origin + size.y));
 }
 
 TEST_CASE("Node field panels measure their content naturally, by its minimum when flexible, or fill", kTags) {

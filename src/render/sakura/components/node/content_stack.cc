@@ -24,8 +24,12 @@ struct NodeContentStack::Impl {
         return item.child && item.child->visible();
     }
 
+    static F32 Gap(const Context& ctx, F32 logical) {
+        return logical > 0.0f ? std::max(1.0f, std::round(Px(ctx, logical))) : 0.0f;
+    }
+
     F32 gapBefore(const Context& ctx, const Item& item) const {
-        return Px(ctx, item.gap.value_or(Spacing));
+        return Gap(ctx, item.gap.value_or(Spacing));
     }
 
     struct Arrangement {
@@ -56,7 +60,7 @@ struct NodeContentStack::Impl {
                 result.fixed += gapBefore(ctx, item);
             }
             first = false;
-            result.fixed += Px(ctx, item.trailingGap);
+            result.fixed += Gap(ctx, item.trailingGap);
             if (item.flex.has_value() && height.has_value()) {
                 const auto& flex = *item.flex;
                 const F32 minimum = Px(ctx, flex.minimum);
@@ -126,7 +130,7 @@ struct NodeContentStack::Impl {
                 result.total += gapBefore(ctx, items[i]);
             }
             first = false;
-            result.total += result.heights[i] + Px(ctx, items[i].trailingGap);
+            result.total += result.heights[i] + Gap(ctx, items[i].trailingGap);
         }
         return result;
     }
@@ -217,7 +221,7 @@ void NodeContentStack::layout(const Context& ctx) {
         }
         first = false;
         layoutChild(ctx, *item.child, {bounds.x, y, bounds.width, arrangement.heights[i]});
-        y += arrangement.heights[i] + Px(ctx, item.trailingGap);
+        y += arrangement.heights[i] + impl->Gap(ctx, item.trailingGap);
     }
 }
 

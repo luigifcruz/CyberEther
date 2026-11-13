@@ -1,7 +1,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <jetstream/render/sakura/components/aside.hh>
+#include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/markdown.hh>
 #include <jetstream/render/sakura/components/outline.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
@@ -12,6 +14,7 @@
 #include "component_harness.hh"
 #include "scene.hh"
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <string>
@@ -110,6 +113,42 @@ TEST_CASE("Outlines scale their lengths with the pixel ratio", "[core][sakura][o
     doubledHost.place(Doubled(scene.ctx), {0.0f, 0.0f, 600.0f, 600.0f});
     CHECK(RowFrame(doubled, 2).x - RowFrame(doubled, 0).x == 24.0f);
     CHECK(Track(doubled).config().instances.at(0).thickness == 3.0f);
+}
+
+TEST_CASE("Outlines keep a uniform heading pitch at fractional pixel ratios", "[core][sakura][outline]") {
+    const F32 scale = GENERATE(0.7f, 0.9f, 1.25f, 1.5f, 1.8f);
+    const F32 origin = GENERATE(10.25f, 10.75f);
+    CAPTURE(scale, origin);
+    Scene scene;
+    auto ctx = scene.ctx;
+    ctx.pixelRatio = scale;
+    Sakura::Outline outline;
+    outline.update({.entries = std::vector<Sakura::Outline::Entry>(4, {.label = "Heading"}), .active = 2});
+    Host host(outline);
+    const auto size = host.measureOf(ctx, {300.0f, kInfinite});
+    host.place(ctx, {origin, origin, 300.0f, size.y});
+
+    std::vector<F32> tops;
+    for (auto* label : Find<Sakura::Label>(outline)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.str == "Heading") {
+                tops.push_back(instance.rect.y);
+            }
+        }
+    }
+    REQUIRE(tops.size() == 4);
+    std::sort(tops.begin(), tops.end());
+    const F32 pitch = tops[1] - tops[0];
+    CAPTURE(tops);
+    CHECK(tops[2] - tops[1] == pitch);
+    CHECK(tops[3] - tops[2] == pitch);
+    for (U64 index = 1; index < 4; ++index) {
+        CHECK(RowFrame(outline, index).y - RowFrame(outline, index - 1).y == pitch);
+    }
+    CHECK(size.y == Approx(4.0f * pitch).margin(1.0f));
+    const auto& marker = Marker(outline).config().instances.at(0);
+    REQUIRE(marker.visible);
+    CHECK(marker.points.front().y == Approx(RowFrame(outline, 2).y - std::round(5.0f * scale)).margin(1.0f));
 }
 
 TEST_CASE("Outline lines follow the indentation with diagonals and no repeated points", "[core][sakura][outline]") {

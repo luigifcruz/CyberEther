@@ -8500,3 +8500,220 @@ TEST_CASE("Changing the pixel ratio at runtime keeps stored sizes and logical re
     CHECK(rig.logical("d").width == Catch::Approx(360.0f + 40.0f / 1.5f).margin(1.0f));
     CHECK(rig.emissions.trees.size() == 1);
 }
+
+namespace {
+
+const std::vector<std::string> kGutterPanes = {"a", "b", "c", "d"};
+
+ColorRGBA<F32> GutterFill(U64 index) {
+    return {0.1f + 0.2f * static_cast<F32>(index), 0.3f, 0.7f, 1.0f};
+}
+
+struct GutterRig {
+    Dock dock;
+    Host host{dock};
+    Sakura::Context ctx;
+    Rect bounds;
+
+    GutterRig(F32 scale, Rect bounds) : ctx(MakeContext({bounds.width, bounds.height})), bounds(bounds) {
+        ctx.pixelRatio = scale;
+    }
+
+    void place(const DockTiles& tiles, const std::vector<std::string>& hidden = {}, F64 time = 0.0) {
+        std::vector<Dock::Pane> panes;
+        for (U64 index = 0; index < kGutterPanes.size(); ++index) {
+            if (!Contains(tiles, kGutterPanes[index])) {
+                continue;
+            }
+            auto pane = MakePane(kGutterPanes[index]);
+            pane.fill = GutterFill(index);
+            pane.hidden = std::find(hidden.begin(), hidden.end(), kGutterPanes[index]) != hidden.end();
+            panes.push_back(pane);
+        }
+        dock.update({.panes = panes, .tiles = tiles, .headers = false});
+        ctx.time = time;
+        host.place(ctx, bounds);
+    }
+
+    std::optional<Rect> tile(const std::string& pane) {
+        const auto index = std::find(kGutterPanes.begin(), kGutterPanes.end(), pane) - kGutterPanes.begin();
+        for (const auto* box : Find<Sakura::Box>(dock)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.backgroundColor == GutterFill(index)) {
+                    return instance.rect;
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
+    static bool Contains(const DockTiles& tiles, const std::string& pane) {
+        if (tiles.children.empty()) {
+            return tiles.pane == pane;
+        }
+        return std::any_of(tiles.children.begin(), tiles.children.end(), [&](const auto& child) {
+            return Contains(child, pane);
+        });
+    }
+};
+
+F32 StartAlong(const Rect& rect, bool vertical) {
+    return vertical ? rect.y : rect.x;
+}
+
+F32 EndAlong(const Rect& rect, bool vertical) {
+    return vertical ? rect.bottom() : rect.right();
+}
+
+}  // namespace
+
+TEST_CASE("Dock gutters stay uniform and tiles reach the same edges at fractional pixel ratios",
+          "[core][sakura][dock]") {
+    const F32 scale = GENERATE(0.9f, 1.25f, 1.5f, 1.75f, 2.0f);
+    const bool vertical = GENERATE(false, true);
+    CAPTURE(scale, vertical);
+    const Rect bounds = {0.0f, 0.0f, 802.0f, 802.0f};
+
+    GutterRig single(scale, bounds);
+    single.place(Leaf("a"));
+    const auto whole = single.tile("a");
+    REQUIRE(whole.has_value());
+
+    GutterRig rig(scale, bounds);
+    std::vector<DockTiles> leaves;
+    for (const auto& pane : kGutterPanes) {
+        leaves.push_back(Leaf(pane));
+    }
+    const auto tiles = vertical ? Column({1.0f, 1.0f, 1.0f, 1.0f}, leaves) : Row({1.0f, 1.0f, 1.0f, 1.0f}, leaves);
+    rig.place(tiles);
+
+    std::vector<Rect> painted;
+    for (const auto& pane : kGutterPanes) {
+        const auto rect = rig.tile(pane);
+        REQUIRE(rect.has_value());
+        painted.push_back(*rect);
+    }
+    CAPTURE(painted);
+    const F32 gap = StartAlong(painted[1], vertical) - EndAlong(painted[0], vertical);
+    CHECK(gap >= 1.0f);
+    F32 smallest = Along(painted[0], vertical);
+    F32 largest = smallest;
+    for (U64 index = 1; index < painted.size(); ++index) {
+        CHECK(StartAlong(painted[index], vertical) - EndAlong(painted[index - 1], vertical) == gap);
+        CHECK(StartAlong(painted[index], !vertical) == StartAlong(*whole, !vertical));
+        CHECK(EndAlong(painted[index], !vertical) == EndAlong(*whole, !vertical));
+        smallest = std::min(smallest, Along(painted[index], vertical));
+        largest = std::max(largest, Along(painted[index], vertical));
+    }
+    CHECK(largest - smallest <= 1.0f);
+    CHECK(StartAlong(painted.front(), vertical) == StartAlong(*whole, vertical));
+    CHECK(EndAlong(painted.back(), vertical) == EndAlong(*whole, vertical));
+}
+
+TEST_CASE("Nested dock splits share one gutter across both axes at fractional pixel ratios", "[core][sakura][dock]") {
+    const F32 scale = GENERATE(0.9f, 1.25f, 1.5f, 1.75f);
+    CAPTURE(scale);
+    const Rect bounds = {0.0f, 0.0f, 802.0f, 802.0f};
+    GutterRig single(scale, bounds);
+    single.place(Leaf("a"));
+    const auto whole = single.tile("a");
+    REQUIRE(whole.has_value());
+
+    GutterRig rig(scale, bounds);
+    rig.place(Row({1.0f, 2.0f}, {Leaf("a"), Column({1.0f, 1.0f, 1.0f}, {Leaf("b"), Leaf("c"), Leaf("d")})}));
+    const auto a = rig.tile("a");
+    const auto b = rig.tile("b");
+    const auto c = rig.tile("c");
+    const auto d = rig.tile("d");
+    REQUIRE((a && b && c && d));
+    const F32 gap = b->x - a->right();
+    CHECK(gap >= 1.0f);
+    CHECK(c->y - b->bottom() == gap);
+    CHECK(d->y - c->bottom() == gap);
+    for (const auto& tile : {*b, *c, *d}) {
+        CHECK(tile.x == b->x);
+        CHECK(tile.right() == whole->right());
+    }
+    CHECK(a->x == whole->x);
+    CHECK(a->y == whole->y);
+    CHECK(b->y == whole->y);
+    CHECK(a->bottom() == whole->bottom());
+    CHECK(d->bottom() == whole->bottom());
+}
+
+TEST_CASE("Splits nested inside an inner tile end on that tile's snapped edge at fractional pixel ratios",
+          "[core][sakura][dock]") {
+    const F32 scale = GENERATE(0.9f, 1.25f, 1.5f, 1.75f);
+    const F32 extent = GENERATE(802.0f, 803.0f, 805.0f);
+    CAPTURE(scale, extent);
+    GutterRig rig(scale, {0.0f, 0.0f, extent, extent});
+    rig.place(Row({1.0f, 1.0f}, {Column({1.0f, 1.0f}, {Row({1.0f, 1.0f}, {Leaf("a"), Leaf("b")}), Leaf("c")}), Leaf("d")}));
+    const auto a = rig.tile("a");
+    const auto b = rig.tile("b");
+    const auto c = rig.tile("c");
+    const auto d = rig.tile("d");
+    REQUIRE((a && b && c && d));
+    const F32 gap = b->x - a->right();
+    CHECK(gap >= 1.0f);
+    CHECK(c->y - a->bottom() == gap);
+    CHECK(c->y - b->bottom() == gap);
+    CHECK(d->x - b->right() == gap);
+    CHECK(d->x - c->right() == gap);
+    CHECK(b->right() == c->right());
+    CHECK(a->x == c->x);
+}
+
+TEST_CASE("Hiding a dock tile at a fractional pixel ratio never overlaps neighbours and settles on uniform gutters",
+          "[core][sakura][dock]") {
+    const F32 scale = GENERATE(0.9f, 1.25f, 1.75f);
+    const F32 extent = GENERATE(802.0f, 803.0f, 805.0f);
+    CAPTURE(scale, extent);
+    GutterRig rig(scale, {0.0f, 0.0f, extent, extent});
+    std::vector<DockTiles> leaves;
+    for (const auto& pane : kGutterPanes) {
+        leaves.push_back(Leaf(pane));
+    }
+    const auto tiles = Row({1.0f, 1.0f, 1.0f, 1.0f}, leaves);
+    rig.place(tiles);
+    std::vector<Rect> open;
+    for (const auto& pane : kGutterPanes) {
+        open.push_back(*rig.tile(pane));
+    }
+
+    const auto shown = [&] {
+        std::vector<Rect> rects;
+        for (const auto& pane : kGutterPanes) {
+            if (const auto rect = rig.tile(pane); rect.has_value() && !rect->empty()) {
+                rects.push_back(*rect);
+            }
+        }
+        return rects;
+    };
+    rig.place(tiles, {"b"}, 1.0);
+    for (const F64 time : {1.05, 1.1, 1.15, 1.2, 1.3}) {
+        CAPTURE(time);
+        rig.place(tiles, {"b"}, time);
+        const auto rects = shown();
+        REQUIRE(rects.size() >= 3);
+        for (U64 index = 1; index < rects.size(); ++index) {
+            CHECK(rects[index].x >= rects[index - 1].right());
+        }
+        CHECK(rects.front().x == open.front().x);
+        CHECK(rects.back().right() == open.back().right());
+    }
+
+    rig.place(tiles, {"b"}, 3.0);
+    const auto settled = shown();
+    REQUIRE(settled.size() == 3);
+    const F32 gap = open[1].x - open[0].right();
+    CHECK(settled[1].x - settled[0].right() == gap);
+    CHECK(settled[2].x - settled[1].right() == gap);
+    CHECK(settled.front().x == open.front().x);
+    CHECK(settled.back().right() == open.back().right());
+
+    rig.place(tiles, {}, 4.0);
+    rig.place(tiles, {}, 6.0);
+    for (U64 index = 0; index < kGutterPanes.size(); ++index) {
+        CHECK(*rig.tile(kGutterPanes[index]) == open[index]);
+    }
+}
