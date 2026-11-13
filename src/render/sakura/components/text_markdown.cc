@@ -80,6 +80,8 @@ constexpr F32 kWidthTolerance = 0.5f;
 constexpr F32 kTableNarrowPadShare = 0.25f;
 constexpr F32 kFallbackGlyphWidthRatio = 0.5f;
 constexpr U64 kTableShrinkIterations = 24;
+constexpr std::string_view kFootnoteOpen = "[^";
+constexpr std::array<std::string_view, 2> kDetailsTags = {"<details", "</details"};
 constexpr F32 kCalloutPadEmRatio = 0.6f;
 constexpr F32 kCalloutInsetEmRatio = 1.0f;
 constexpr F32 kCalloutRadiusRatio = 0.8f;
@@ -175,6 +177,7 @@ struct Block {
     std::string tag;
     bool underline = false;
     std::optional<SyntaxHighlighter::Language> syntax;
+    U64 sourceOffset = 0;
 
     bool inlineParse() const { return kind != Kind::Code; }
 };
@@ -938,14 +941,29 @@ struct BlockScanner {
     bool prevList = false;
     bool softBreaks = false;
     U64 index = 0;
+    U64 blockStart = 0;
+    std::vector<U64> sourceOffsets;
 
     BlockScanner(const std::vector<std::string>& source, const std::vector<std::optional<DetailsMarker>>& markers,
-                 F32 body, bool softBreaks)
+                 F32 body, bool softBreaks, U64 offset = 0)
         : source(source), markers(markers), body(body), lineHeight(body * kLineHeightRatio),
-          indentUnit(body * kIndentEmRatio), softBreaks(softBreaks) {}
+          indentUnit(body * kIndentEmRatio), softBreaks(softBreaks) {
+        sourceOffsets.reserve(source.size());
+        for (const auto& line : source) {
+            sourceOffsets.push_back(offset);
+            offset += line.size() + 1;
+        }
+    }
+
+    void resume(const std::vector<Block>& previous, U64 count) {
+        blocks.assign(previous.begin(), previous.begin() + count);
+        prevHeading = !blocks.empty() && blocks.back().kind == Block::Kind::Heading;
+        prevList = !blocks.empty() && blocks.back().kind == Block::Kind::ListItem;
+    }
 
     std::vector<Block> run() {
         while (index < source.size()) {
+            blockStart = index;
             if (scanDetails()) {
                 continue;
             }
@@ -1008,6 +1026,7 @@ struct BlockScanner {
     }
 
     void emit(Block block, bool heading = false, bool list = false) {
+        block.sourceOffset = sourceOffsets[blockStart];
         blocks.push_back(std::move(block));
         prevHeading = heading;
         prevList = list;
@@ -1321,6 +1340,18 @@ struct Document {
 };
 
 struct DocumentBuilder {
+    struct Checkpoint {
+        U64 lines = 0;
+        U64 bytes = 0;
+        U64 decos = 0;
+        U64 tables = 0;
+        U64 stats = 0;
+        U64 regions = 0;
+        U64 headings = 0;
+        U64 summaries = 0;
+        F32 pendingGap = 0.0f;
+    };
+
     F32 body;
     F32 codeIndent;
     F32 codeRightInset;
@@ -1334,18 +1365,67 @@ struct DocumentBuilder {
     const Block* lastBlock = nullptr;
     F32 closedTail = 0.0f;
     std::optional<U64> closedAt;
+    std::vector<Checkpoint> checkpoints;
+    U64 plainBytes = 0;
 
     DocumentBuilder(F32 body, F32 codeIndent, F32 codeRightInset, SyntaxHighlighter& highlighter)
         : body(body), codeIndent(codeIndent), codeRightInset(codeRightInset), highlighter(highlighter) {}
 
+    Checkpoint checkpoint() const {
+        return {
+            .lines = lines.size(),
+            .bytes = plainBytes,
+            .decos = document.decos.size(),
+            .tables = document.tables.size(),
+            .stats = document.stats.size(),
+            .regions = document.scrollRegions.size(),
+            .headings = document.headings.size(),
+            .summaries = document.summaries.size(),
+            .pendingGap = pendingGap,
+        };
+    }
+
+    bool resume(const Document& previous, const std::vector<Checkpoint>& saved, U64 count) {
+        const auto& at = saved[count];
+        auto restored = SplitLines(previous.plainValue.substr(0, at.bytes));
+        if (restored.size() != at.lines) {
+            return false;
+        }
+        const auto copy = [](auto& target, const auto& source, U64 size) {
+            target.assign(source.begin(), source.begin() + size);
+        };
+        copy(document.lineScale, previous.lineScale, at.lines);
+        copy(document.lineTopGap, previous.lineTopGap, at.lines);
+        copy(document.lineIndent, previous.lineIndent, at.lines);
+        copy(document.lineRowMode, previous.lineRowMode, at.lines);
+        copy(document.lineWrapWidth, previous.lineWrapWidth, at.lines);
+        copy(document.lineRightInset, previous.lineRightInset, at.lines);
+        copy(document.styles, previous.styles, at.lines);
+        copy(document.links, previous.links, at.lines);
+        copy(document.decos, previous.decos, at.decos);
+        copy(document.tables, previous.tables, at.tables);
+        copy(document.stats, previous.stats, at.stats);
+        copy(document.scrollRegions, previous.scrollRegions, at.regions);
+        copy(document.headings, previous.headings, at.headings);
+        copy(document.summaries, previous.summaries, at.summaries);
+        lines = std::move(restored);
+        plainBytes = at.bytes;
+        pendingGap = at.pendingGap;
+        checkpoints.assign(saved.begin(), saved.begin() + count);
+        return true;
+    }
+
     Document build(const std::vector<Block>& blocks,
                    const std::vector<FootnoteSource>& sources,
-                   const std::optional<TextMarkdown::Hero>& hero) {
+                   const std::optional<TextMarkdown::Hero>& hero,
+                   U64 first = 0) {
         footnotes.sources = &sources;
-        if (hero.has_value()) {
+        if (first == 0 && hero.has_value()) {
             emitHero(*hero);
         }
-        for (const auto& block : blocks) {
+        for (U64 i = first; i < blocks.size(); ++i) {
+            checkpoints.push_back(checkpoint());
+            const auto& block = blocks[i];
             if (block.kind != Block::Kind::DetailsEnd) {
                 lastBlock = &block;
             }
@@ -1601,6 +1681,7 @@ struct DocumentBuilder {
                  TextGrid::RowMode rowMode = TextGrid::RowMode::Next,
                  F32 rightInset = 0.0f) {
         footnotes.resolve(lines.size());
+        plainBytes += text.size() + (lines.empty() ? 0 : 1);
         lines.push_back(std::move(text));
         document.lineScale.push_back(scale);
         document.lineTopGap.push_back(gap + std::exchange(pendingGap, 0.0f));
@@ -1711,6 +1792,23 @@ struct DocumentBuilder {
     }
 };
 
+bool AppendableMarkdown(std::string_view value) {
+    if (value.find(kFootnoteOpen) != std::string_view::npos) {
+        return false;
+    }
+    for (U64 at = value.find('<'); at != std::string_view::npos; at = value.find('<', at + 1)) {
+        for (const std::string_view tag : kDetailsTags) {
+            if (value.size() - at >= tag.size() &&
+                std::equal(tag.begin(), tag.end(), value.begin() + at, [](char a, unsigned char b) {
+                    return a == std::tolower(b);
+                })) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 struct TextMarkdown::Prepared {
@@ -1721,10 +1819,17 @@ struct TextMarkdown::Prepared {
     std::vector<F32> styleScales;
     std::vector<DetailsState> details;
     Document document;
+    std::vector<Block> blocks;
+    std::vector<DocumentBuilder::Checkpoint> checkpoints;
+    bool appendable = false;
+
+    bool sameFormat(const Config& config) const {
+        return fontSize == config.fontSize && hero == config.hero && softBreaks == config.softBreaks &&
+               styleScales == config.styleScales;
+    }
 
     bool matches(const Config& config, const std::vector<DetailsState>& previous) const {
-        if (value != config.value || fontSize != config.fontSize || hero != config.hero ||
-            softBreaks != config.softBreaks || styleScales != config.styleScales) {
+        if (value != config.value || !sameFormat(config)) {
             return false;
         }
         for (U64 i = 0; i < details.size(); ++i) {
@@ -1844,6 +1949,40 @@ struct TextMarkdown::Impl {
         gridConfigDirty = true;
     }
 
+    bool append(Prepared& next, const Prepared& previous) {
+        if (!previous.appendable || previous.blocks.size() < 2 || !previous.sameFormat(config) ||
+            config.value.size() <= previous.value.size() || !config.value.starts_with(previous.value)) {
+            return false;
+        }
+        const U64 overlap = std::min<U64>(previous.value.size(), kDetailsTags.back().size());
+        if (!AppendableMarkdown(std::string_view(config.value).substr(previous.value.size() - overlap))) {
+            return false;
+        }
+        U64 first = previous.blocks.size() - 2;
+        if (previous.blocks[first].kind == Block::Kind::Code ||
+            previous.blocks[first].kind == Block::Kind::Stats) {
+            ++first;
+        }
+        if (first == 0) {
+            return false;
+        }
+        const U64 offset = previous.blocks[first].sourceOffset;
+        const auto source = SplitLines(config.value.substr(offset));
+        const std::vector<std::optional<DetailsMarker>> markers;
+        BlockScanner scanner(source, markers, config.fontSize, config.softBreaks, offset);
+        scanner.resume(previous.blocks, first);
+        next.blocks = scanner.run();
+        const F32 inset = codeInset();
+        DocumentBuilder builder(config.fontSize, inset, inset, highlighter);
+        if (!builder.resume(previous.document, previous.checkpoints, first)) {
+            return false;
+        }
+        next.document = builder.build(next.blocks, scanner.footnotes, config.hero, first);
+        next.checkpoints = std::move(builder.checkpoints);
+        next.appendable = true;
+        return true;
+    }
+
     void rebuild() {
         auto next = std::make_shared<Prepared>();
         next->value = config.value;
@@ -1851,13 +1990,20 @@ struct TextMarkdown::Impl {
         next->hero = config.hero;
         next->softBreaks = config.softBreaks;
         next->styleScales = config.styleScales;
+        const auto& previous = config.prepared ? config.prepared : prepared;
+        if (append(*next, *previous)) {
+            adopt(std::move(next));
+            return;
+        }
         const std::vector<std::string> source = SplitLines(config.value);
         DetailsExpansion expansion(source, details, config.detailsOpen);
         BlockScanner scanner(expansion.lines, expansion.markers, config.fontSize, config.softBreaks);
-        const std::vector<Block> blocks = scanner.run();
+        next->blocks = scanner.run();
         const F32 inset = codeInset();
-        next->document = DocumentBuilder(config.fontSize, inset, inset, highlighter)
-                             .build(blocks, scanner.footnotes, config.hero);
+        DocumentBuilder builder(config.fontSize, inset, inset, highlighter);
+        next->document = builder.build(next->blocks, scanner.footnotes, config.hero);
+        next->checkpoints = std::move(builder.checkpoints);
+        next->appendable = AppendableMarkdown(config.value);
         next->details = std::move(expansion.states);
         adopt(std::move(next));
     }

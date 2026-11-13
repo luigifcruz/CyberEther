@@ -22,6 +22,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace Jetstream;
@@ -399,6 +400,173 @@ TEST_CASE("Shared markdown keeps local details state through streaming and ident
     host.place(ctx, rect);
     CHECK(markdown.prepared() != config.prepared);
     CHECK_FALSE(DrawnRect(markdown, "Hidden body.").has_value());
+}
+
+TEST_CASE("Streaming markdown matches a fresh parse across block and byte boundaries",
+          "[core][sakura][markdown][incremental]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    ctx.palette = DistinctPalette();
+    const std::string prefix = "# Stable heading\n\nA **stable** paragraph with [a link](https://example.com).\n\n"
+                               "```python\nstable = 1\n```\n\n";
+    for (const bool softBreaks : {false, true}) {
+        for (const U64 chunk : {U64{1}, U64{11}}) {
+            for (const auto& golden : kGoldens) {
+                CAPTURE(softBreaks, chunk, golden.name);
+                TextMarkdown markdown;
+                Host host(markdown);
+                TextMarkdown::Config config{
+                    .id = "streamed", .value = prefix, .fontSize = 15.0f, .softBreaks = softBreaks,
+                };
+                markdown.update(config);
+                const std::string tail = golden.value;
+                for (U64 end = 0; end <= tail.size();) {
+                    CAPTURE(end);
+                    config.value = prefix + tail.substr(0, end);
+                    markdown.update(config);
+                    TextMarkdown fresh;
+                    Host freshHost(fresh);
+                    fresh.update(config);
+                    const F32 width = end % 2 == 0 ? 240.0f : 180.0f;
+                    const auto measured = MeasureAt(host, ctx, width);
+                    const auto expected = MeasureAt(freshHost, ctx, width);
+                    CHECK(measured.x == Catch::Approx(expected.x));
+                    CHECK(measured.y == Catch::Approx(expected.y));
+                    CHECK(markdown.headings() == fresh.headings());
+                    host.place(ctx, {0.0f, 0.0f, width, 1600.0f});
+                    freshHost.place(ctx, {0.0f, 0.0f, width, 1600.0f});
+                    CHECK(Drawn(markdown) == Drawn(fresh));
+                    if (end == tail.size()) {
+                        break;
+                    }
+                    end = std::min<U64>(tail.size(), end + chunk);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Streaming markdown revisits table lookahead and falls back for document-wide syntax",
+          "[core][sakura][markdown][incremental]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    const std::string prefix = "# Stable\n\nFirst paragraph.\n\nSecond paragraph.\n\n";
+    const std::vector<std::pair<std::string, std::string>> cases = {
+        {"left | right\n---", "|---\n| a | b |\n\nAfter."},
+        {"```stats\n", "One | 123\nTwo | 456\n```\n\nAfter."},
+        {"```python\nvalue = \"", "streamed\"\n```\r\n\r\nAfter."},
+        {"A reference [", "^note].\n\n[^note]: A **footnote**.\n\nAfter."},
+        {"<DeT", "aIlS open>\n<summary>More</summary>\n\nBody.\n\n</details>\n\nAfter."},
+        {"A paragraph\n\n<!--", " a streamed comment -->\n\nAfter."},
+        {"## Unicode\n\n", "\xc3\xa9\xe4\xb8\xad\xf0\x9f\x98\x80 and **bold**."},
+    };
+    for (const auto& [start, tail] : cases) {
+        CAPTURE(start);
+        TextMarkdown markdown;
+        Host host(markdown);
+        TextMarkdown::Config config{.id = "streamed", .value = prefix + start, .fontSize = 15.0f};
+        if (start == "<DeT") {
+            config.detailsOpen = {true};
+        }
+        markdown.update(config);
+        for (U64 end = 0; end <= tail.size(); ++end) {
+            CAPTURE(end);
+            config.value = prefix + start + tail.substr(0, end);
+            markdown.update(config);
+            TextMarkdown fresh;
+            Host freshHost(fresh);
+            fresh.update(config);
+            host.place(ctx, {0.0f, 0.0f, 240.0f, 1200.0f});
+            freshHost.place(ctx, {0.0f, 0.0f, 240.0f, 1200.0f});
+            CHECK(markdown.headings() == fresh.headings());
+            CHECK(markdown.metrics().contentHeight == Catch::Approx(fresh.metrics().contentHeight));
+            CHECK(Drawn(markdown) == Drawn(fresh));
+        }
+    }
+}
+
+TEST_CASE("Incremental markdown preserves prior snapshots and handles edits and format changes",
+          "[core][sakura][markdown][incremental][prepared][retention]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    TextMarkdown markdown;
+    Host host(markdown);
+    Frames frames(host, {0.0f, 0.0f, 300.0f, 500.0f}, ctx);
+    TextMarkdown::Config config{
+        .id = "incremental", .value = "# Heading\n\n**First** paragraph.\n\n```python\nvalue = 1\n```\n\nTail.",
+        .fontSize = 15.0f,
+    };
+    const auto initial = config;
+    const auto update = [&] { markdown.update(config); };
+    REQUIRE(frames.settle(update));
+    const auto original = markdown.prepared();
+    for (int i = 0; i < 8; ++i) {
+        config.value += " appended";
+        CHECK(Kept(frames.run(update)));
+        REQUIRE(frames.settle(update));
+        CHECK(Retains(frames, update));
+    }
+    TextMarkdown snapshot;
+    auto snapshotConfig = initial;
+    snapshotConfig.prepared = original;
+    snapshot.update(snapshotConfig);
+    REQUIRE(snapshot.prepared() == original);
+    Host snapshotHost(snapshot);
+    snapshotHost.place(ctx, {0.0f, 0.0f, 300.0f, 500.0f});
+    CHECK(snapshot.metrics().contentHeight < markdown.metrics().contentHeight);
+
+    for (int edit = 0; edit < 5; ++edit) {
+        CAPTURE(edit);
+        switch (edit) {
+            case 0: config.value.replace(0, 9, "## Edited"); break;
+            case 1: config.value.resize(config.value.size() - 12); break;
+            case 2: config.fontSize = 21.0f; break;
+            case 3: config.styleScales.back() = 1.5f; break;
+            case 4: config.hero = TextMarkdown::Hero{.title = "Hero"}; break;
+        }
+        markdown.update(config);
+        TextMarkdown fresh;
+        Host freshHost(fresh);
+        fresh.update(config);
+        host.place(ctx, {0.0f, 0.0f, 300.0f, 1000.0f});
+        freshHost.place(ctx, {0.0f, 0.0f, 300.0f, 1000.0f});
+        CHECK(markdown.headings() == fresh.headings());
+        CHECK(Drawn(markdown) == Drawn(fresh));
+        config.value += " after edit";
+        markdown.update(config);
+    }
+}
+
+TEST_CASE("Streaming markdown under a multi-line hero matches a fresh parse",
+          "[core][sakura][markdown][incremental]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    TextMarkdown markdown;
+    Host host(markdown);
+    TextMarkdown::Config config{
+        .id = "streamed",
+        .value = "# Heading\n\nFirst paragraph.\n\nSecond paragraph.",
+        .fontSize = 15.0f,
+        .hero = TextMarkdown::Hero{.title = "Hero\ntitle", .subtitle = "Multi\nline subtitle"},
+    };
+    markdown.update(config);
+    for (const std::string tail : {" more", " text", "\n\nThird paragraph."}) {
+        CAPTURE(tail);
+        config.value += tail;
+        markdown.update(config);
+        TextMarkdown fresh;
+        Host freshHost(fresh);
+        fresh.update(config);
+        host.place(ctx, {0.0f, 0.0f, 240.0f, 1200.0f});
+        freshHost.place(ctx, {0.0f, 0.0f, 240.0f, 1200.0f});
+        CHECK(markdown.headings() == fresh.headings());
+        CHECK(markdown.metrics().contentHeight == Catch::Approx(fresh.metrics().contentHeight));
+        CHECK(Drawn(markdown) == Drawn(fresh));
+    }
 }
 
 TEST_CASE("Consecutive code blocks keep their backgrounds apart", "[core][sakura][markdown]") {
