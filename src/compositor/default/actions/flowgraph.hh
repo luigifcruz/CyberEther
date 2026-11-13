@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -124,9 +125,10 @@ struct FlowgraphActions {
         const auto extension = Text::ToLower(Platform::PathToUtf8(
             Platform::PathFromUtf8(msg.path).extension()));
 
-        if (extension != ".yml" && extension != ".yaml") {
+        const bool named = extension == ".yml" || extension == ".yaml";
+        if (!named && !(extension.empty() && LooksLikeFlowgraph(msg.path))) {
             callbacks.notify(Sakura::ToastType::Warning, 5000,
-                             "Only flowgraph files (.yml or .yaml) can be opened by dropping them here.");
+                             "Only flowgraph files can be opened by dropping them here.");
             return Result::SUCCESS;
         }
 
@@ -177,7 +179,7 @@ struct FlowgraphActions {
             callbacks.requestFile({
                 .mode = FilePickerMode::Save,
                 .initialPath = pickedPath,
-                .extensions = {"yaml", "yml"},
+                .extensions = {"yml", "yaml"},
                 .callback = [enqueueMail, flowgraph = msg.flowgraph](std::string p) mutable {
                     enqueueMail(MailSaveFlowgraph{.flowgraph = flowgraph, .path = std::move(p)});
                 },
@@ -196,6 +198,20 @@ struct FlowgraphActions {
         }, false);
 
         return Result::SUCCESS;
+    }
+
+    // Flowgraphs saved before the save dialog added an extension have none, so such a
+    // file is recognised by the keys every flowgraph document starts with.
+    static bool LooksLikeFlowgraph(const std::string& path) {
+        std::ifstream file(Platform::PathFromUtf8(path));
+        bool versioned = false;
+        bool graph = false;
+        std::string line;
+        for (U64 count = 0; count < 64 && std::getline(file, line); ++count) {
+            versioned = versioned || line.starts_with("version:");
+            graph = graph || line.starts_with("graph:");
+        }
+        return versioned && graph;
     }
 
     // The agent may list and open saved flowgraphs only in folders the user has used, so

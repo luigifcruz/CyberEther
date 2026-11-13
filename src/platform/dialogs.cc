@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -134,8 +135,27 @@ std::string ZenityFilter(const std::vector<std::string>& extensions) {
     return filter;
 }
 
+// Offered after the typed filter so a file saved under another name can still be chosen.
+constexpr const char* kZenityAllFiles = "--file-filter=All files | *";
+
 }  // namespace
 #endif
+
+std::string WithDefaultExtension(std::string path, const std::vector<std::string>& extensions) {
+    if (path.empty() || extensions.empty()) {
+        return path;
+    }
+
+    std::string current = PathToUtf8(PathFromUtf8(path).extension());
+    std::transform(current.begin(), current.end(), current.begin(), [](const unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+
+    const bool known = std::any_of(extensions.begin(), extensions.end(), [&](const std::string& extension) {
+        return current == "." + extension;
+    });
+    return known ? path : path + "." + extensions.front();
+}
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
@@ -164,6 +184,7 @@ Result PickFile(std::string& path,
     std::vector<std::string> arguments = {"--file-selection"};
     if (!extensions.empty()) {
         arguments.push_back("--file-filter=" + ZenityFilter(extensions));
+        arguments.push_back(kZenityAllFiles);
     }
 
     if (RunProcess("zenity", arguments, path) != Result::SUCCESS || path.empty()) {
@@ -291,12 +312,34 @@ Result SaveFile(std::string& path,
     }
     if (!extensions.empty()) {
         arguments.push_back("--file-filter=" + ZenityFilter(extensions));
+        arguments.push_back(kZenityAllFiles);
     }
     if (RunProcess("zenity", arguments, path) != Result::SUCCESS || path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
     }
     if (path.back() == '\n') path.pop_back();
+
+    // The dialog does not add an extension, and it only confirmed overwriting the name as
+    // typed, so a name completed here is confirmed again when that file already exists.
+    const std::string completed = WithDefaultExtension(path, extensions);
+    if (completed != path) {
+        std::error_code error;
+        if (std::filesystem::exists(PathFromUtf8(completed), error)) {
+            std::string answer;
+            const std::vector<std::string> question = {
+                "--question",
+                "--title=Replace file?",
+                "--text=" + PathToUtf8(PathFromUtf8(completed).filename()) + " already exists. Replace it?",
+            };
+            if (RunProcess("zenity", question, answer) != Result::SUCCESS) {
+                JST_ERROR("No file selected or operation cancelled.");
+                return Result::ERROR;
+            }
+        }
+        path = completed;
+    }
+
     if (callback) callback(path);
     return Result::SUCCESS;
 }
