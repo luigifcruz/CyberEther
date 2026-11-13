@@ -12,12 +12,48 @@
 namespace Jetstream::Text {
 
 inline std::string_view Utf8Prefix(std::string_view value, U64 limit) {
-    U64 end = std::min<U64>(limit, value.size());
-    while (end > 0 && end < value.size() &&
-           (static_cast<unsigned char>(value[end]) & 0xc0) == 0x80) {
+    const U64 cut = std::min<U64>(limit, value.size());
+    if (cut == value.size()) {
+        return value;
+    }
+
+    const auto continues = [&](const U64 index) {
+        return (static_cast<unsigned char>(value[index]) & 0xc0) == 0x80;
+    };
+
+    // A character has at most three continuation bytes. A longer run is not UTF-8, so the
+    // text is cut at the limit itself rather than walked back to nothing.
+    U64 end = cut;
+    while (end > 0 && cut - end < 3 && continues(end)) {
         --end;
     }
-    return value.substr(0, end);
+    return value.substr(0, continues(end) ? cut : end);
+}
+
+// Drops the "user:password@" part of every URL in the text, so an endpoint can be named in
+// a log or an error without its credentials.
+inline std::string WithoutUrlCredentials(std::string text) {
+    constexpr std::string_view scheme = "://";
+    constexpr std::string_view authorityEnd = "/?#\\\"<> \t\r\n";
+
+    std::string::size_type position = 0;
+    while ((position = text.find(scheme, position)) != std::string::npos) {
+        position += scheme.size();
+
+        auto end = text.find_first_of(authorityEnd, position);
+        if (end == std::string::npos) {
+            end = text.size();
+        }
+        if (end == position) {
+            continue;
+        }
+
+        const auto at = text.rfind('@', end - 1);
+        if (at != std::string::npos && at >= position) {
+            text.erase(position, at + 1 - position);
+        }
+    }
+    return text;
 }
 
 inline std::vector<std::string> SplitLines(const std::string& value) {

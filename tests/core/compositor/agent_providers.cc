@@ -243,6 +243,79 @@ TEST_CASE("Provider image options and model request fields reach the session con
     }
 }
 
+TEST_CASE("Chat transcript settings reach the session config", "[agent][compositor][transcript]") {
+    SettingsScope scope;
+    DefaultCompositorState state;
+    auto& settings = state.agent.settings;
+
+    SECTION("transcripts are on by default and live beside the settings file") {
+#if defined(JST_OS_LINUX)
+        const auto expected = Platform::PathToUtf8(scope.root / "cyberether" / "transcripts");
+#else
+        std::string configPath;
+        REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
+        const auto expected = Platform::PathToUtf8(Platform::PathFromUtf8(configPath) / "transcripts");
+#endif
+
+        const auto chat = AgentRuntime::Chat(state.agent, {});
+        CHECK(chat.transcript.enabled);
+        CHECK(chat.transcript.folder == expected);
+        CHECK_FALSE(std::filesystem::exists(Platform::PathFromUtf8(expected)));
+    }
+
+    SECTION("an absolute folder is passed through untouched") {
+        settings.transcriptFolder = "/var/tmp/agent transcripts";
+        const auto chat = AgentRuntime::Chat(state.agent, {});
+        CHECK(chat.transcript.enabled);
+        CHECK(chat.transcript.folder == "/var/tmp/agent transcripts");
+    }
+
+    SECTION("a hand-typed folder never depends on where the app was launched") {
+        const auto home = scope.root / "home";
+        TestSupport::ScopedEnvironment homeVariable{"HOME"};
+        REQUIRE(homeVariable.set(Platform::PathToUtf8(home)));
+
+        std::string configPath;
+        REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
+        const auto config = Platform::PathFromUtf8(configPath);
+
+        const auto folder = [&](const std::string& chosen) {
+            settings.transcriptFolder = chosen;
+            return Platform::PathFromUtf8(AgentRuntime::Chat(state.agent, {}).transcript.folder);
+        };
+
+        CHECK(folder("~/agent-logs/nemotron") == home / "agent-logs" / "nemotron");
+        CHECK(folder("~") == home);
+        CHECK(folder("~/") == home);
+        CHECK(folder("agent-logs") == config / "agent-logs");
+        CHECK(folder("./logs/agent") == config / "." / "logs" / "agent");
+        CHECK(folder("~someone/logs") == config / "~someone" / "logs");
+        CHECK(folder("~/agent-logs").is_absolute());
+        CHECK(folder("agent-logs").is_absolute());
+
+        // Resolving the folder creates nothing; the writer does that when a chat starts.
+        CHECK_FALSE(std::filesystem::exists(home));
+
+        SECTION("without a home folder the default is used") {
+            REQUIRE(homeVariable.set(std::nullopt));
+            CHECK(folder("~/agent-logs") == config / "transcripts");
+        }
+    }
+
+    SECTION("turning transcripts off leaves the session without a folder") {
+        settings.transcripts = false;
+        settings.transcriptFolder = "/var/tmp/agent transcripts";
+        const auto chat = AgentRuntime::Chat(state.agent, {});
+        CHECK_FALSE(chat.transcript.enabled);
+        CHECK(chat.transcript.folder.empty());
+    }
+
+    SECTION("voice sessions do not write transcripts") {
+        CHECK_FALSE(AgentRuntime::Call(state.agent, {}, {}).transcript.enabled);
+        CHECK_FALSE(Agent::Session::Config{}.transcript.enabled);
+    }
+}
+
 TEST_CASE("Model request fields combine the always-on object with the selected effort",
           "[agent][compositor][models][extra]") {
     using Json = nlohmann::json;

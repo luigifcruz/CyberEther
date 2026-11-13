@@ -2,6 +2,7 @@
 #define JETSTREAM_AGENT_SESSION_IMPL_HH
 
 #include "support/base.hh"
+#include "transcript.hh"
 
 #include <atomic>
 #include <condition_variable>
@@ -9,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -73,6 +75,7 @@ struct Session::Impl {
     std::optional<Mode> mode;
     std::shared_ptr<const std::vector<Provider::Message>> context;
     std::shared_ptr<Detail::OutputStore> outputs = std::make_shared<Detail::OutputStore>();
+    std::shared_ptr<Detail::Transcript> transcript;
     std::optional<U64> imageLimit;
     std::string imageLimitKey;
 
@@ -122,7 +125,7 @@ struct Session::Impl {
 class Session::Impl::Turn {
  public:
     Turn(Impl& session, Target target, Config config, std::shared_ptr<std::atomic<bool>> abort,
-         std::shared_ptr<Detail::OutputStore> outputs);
+         std::shared_ptr<Detail::OutputStore> outputs, std::shared_ptr<Detail::Transcript> transcript = {});
 
     void run(std::shared_ptr<const std::vector<Provider::Message>> context, const std::string& prompt,
              const std::string& sessionId);
@@ -150,6 +153,7 @@ class Session::Impl::Turn {
     Provider::Response respond(bool allowTools = true);
     bool lowerImageCap(const Provider::Response& response);
     void execute(const std::vector<Provider::FunctionCall>& calls, bool lastRound);
+    void skip(std::span<const Provider::FunctionCall> calls);
 
     void write(Segment::Kind kind, const std::string& text);
     void note(Segment segment);
@@ -161,6 +165,7 @@ class Session::Impl::Turn {
     std::shared_ptr<std::atomic<bool>> abort;
     Cancellation aborted;
     Detail::ToolRunner tools;
+    std::shared_ptr<Detail::Transcript> transcript;
     Provider::Callbacks callbacks;
     U64 announced = 0;
     bool streamed = false;

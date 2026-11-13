@@ -3,6 +3,7 @@
 #include "tools/text.hh"
 
 #include <algorithm>
+#include <span>
 #include <unordered_set>
 #include <utility>
 
@@ -32,6 +33,8 @@ constexpr const char* kDetachedImageNote =
     "\n[Image omitted from context: this provider does not accept images in tool results; "
     "capture the view again if needed.]";
 
+constexpr const char* kCancelledNote = "The turn was cancelled before it finished.";
+
 bool Blank(const Provider::Response& response) {
     return response.toolCalls.empty() && Text::IsBlank(response.text);
 }
@@ -56,7 +59,7 @@ Provider::Callbacks Observed(Provider::Callbacks callbacks, const std::function<
 }  // namespace
 
 Session::Impl::Turn::Turn(Impl& session, Target target, Config config, std::shared_ptr<std::atomic<bool>> abort,
-                          std::shared_ptr<Detail::OutputStore> outputs)
+                          std::shared_ptr<Detail::OutputStore> outputs, std::shared_ptr<Detail::Transcript> transcript)
     : session(session),
       target(target),
       config(std::move(config)),
@@ -64,7 +67,8 @@ Session::Impl::Turn::Turn(Impl& session, Target target, Config config, std::shar
       aborted([flag = this->abort]() {
           return flag->load();
       }),
-      tools(this->config.executeTool, std::move(outputs), this->config.maxToolTurns) {
+      tools(this->config.executeTool, std::move(outputs), this->config.maxToolTurns),
+      transcript(std::move(transcript)) {
     if (!this->config.tools.empty()) {
         this->config.tools.push_back(Detail::OutputStore::Schema());
     }
@@ -85,6 +89,16 @@ Session::Impl::Turn::Turn(Impl& session, Target target, Config config, std::shar
 void Session::Impl::Turn::run(std::shared_ptr<const std::vector<Provider::Message>> context,
                               const std::string& prompt, const std::string& id) {
     sessionId = id;
+
+    if (transcript) {
+        Detail::Transcript::Origin origin{.model = config.model, .reasoningEffort = config.reasoningEffort};
+        if (config.provider) {
+            const auto& endpoint = config.provider->config();
+            origin.provider = endpoint.name.empty() ? config.provider->profile().name : endpoint.name;
+            origin.host = endpoint.host;
+        }
+        transcript->user(origin, prompt);
+    }
 
     try {
         messages = Detail::Context::Materialize(config.systemContext, context, prompt, aborted);
@@ -121,6 +135,12 @@ void Session::Impl::Turn::run(std::shared_ptr<const std::vector<Provider::Messag
     }
     if (aborted()) {
         cancel();
+        if (transcript) {
+            transcript->event("Stopped", kCancelledNote);
+        }
+    }
+    if (transcript) {
+        transcript->flush();
     }
 
     complete();
@@ -301,7 +321,15 @@ Provider::Response Session::Impl::Turn::request(const std::vector<Provider::Mess
     error = response.error;
     usage = response.usage;
 
+    if (transcript) {
+        transcript->round(response, summary);
+        if (summary && !Text::IsBlank(response.text)) {
+            transcript->event("Context summary", response.text);
+        }
+    }
+
     if (!allowTools && !response.toolCalls.empty()) {
+        skip(response.toolCalls);
         fail(Provider::Error::Kind::Protocol, "The provider returned tool calls while execution was disabled.");
         response.state.reset();
     }
@@ -453,6 +481,7 @@ void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& cal
     for (U64 index = 0; index < calls.size(); ++index) {
         const auto& call = calls[index];
         if (aborted()) {
+            skip(std::span(calls).subspan(index));
             result = Result::ERROR;
             break;
         }
@@ -461,6 +490,9 @@ void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& cal
             announce(call.name);
         }
         note({Segment::Kind::ToolCall, call.arguments, 1, call.name});
+        if (transcript) {
+            transcript->call(call);
+        }
 
         Tools::Output output = tools.run(call, resultLimit(), lastRound, aborted);
         if (output.error && !lastRound && !aborted()) {
@@ -479,6 +511,9 @@ void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& cal
             }
         }
         note({Segment::Kind::ToolResult, output.content, 1, call.name, output.images.size()});
+        if (transcript) {
+            transcript->result(call, output);
+        }
 
         append({
             .role = "tool",
@@ -503,8 +538,21 @@ void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& cal
     }
 }
 
+// A call the model sent still belongs in the transcript when the turn ends before it runs.
+void Session::Impl::Turn::skip(const std::span<const Provider::FunctionCall> calls) {
+    if (!transcript) {
+        return;
+    }
+    for (const auto& call : calls) {
+        transcript->call(call, false);
+    }
+}
+
 void Session::Impl::Turn::write(Segment::Kind kind, const std::string& text) {
     session.append(target, kind, text);
+    if (transcript) {
+        transcript->stream(kind, text);
+    }
 }
 
 void Session::Impl::Turn::note(Segment segment) {

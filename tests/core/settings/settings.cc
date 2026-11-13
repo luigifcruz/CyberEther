@@ -811,6 +811,8 @@ TEST_CASE("Intelligence image and request options persist and default when absen
     CHECK(settings.intelligence.models[0].maxContextTokens == 0);
     CHECK(settings.intelligence.models[0].extraBody.empty());
     CHECK(settings.intelligence.models[0].effortBodies.empty());
+    CHECK(settings.intelligence.transcripts);
+    CHECK(settings.intelligence.transcriptFolder.empty());
 
     const std::string extra = R"({"note":"it's {quoted}: yes","temperature":0.6})";
     const std::string efforts = R"({"medium":{"chat_template_kwargs":{"enable_thinking":true,"medium_effort":true}}})";
@@ -819,11 +821,15 @@ TEST_CASE("Intelligence image and request options persist and default when absen
     settings.intelligence.models[0].maxContextTokens = 262144;
     settings.intelligence.models[0].extraBody = extra;
     settings.intelligence.models[0].effortBodies = efforts;
+    settings.intelligence.transcripts = false;
+    settings.intelligence.transcriptFolder = "/var/tmp/agent transcripts";
     REQUIRE(Settings::Set(settings) == Result::SUCCESS);
 
     const auto yaml = ReadFile(sandbox.path);
     CHECK(yaml.find("maxImages: 1") != std::string::npos);
     CHECK(yaml.find("toolResultImages: true") != std::string::npos);
+    CHECK(yaml.find("transcripts: false") != std::string::npos);
+    CHECK(yaml.find("transcriptFolder: ") != std::string::npos);
 
     {
         SettingsSandbox cacheSwitch("intelligence-options-cache-switch");
@@ -840,4 +846,6 @@ TEST_CASE("Intelligence image and request options persist and default when absen
     CHECK(restored.intelligence.models[0].maxContextTokens == 262144);
     CHECK(restored.intelligence.models[0].extraBody == extra);
     CHECK(restored.intelligence.models[0].effortBodies == efforts);
+    CHECK_FALSE(restored.intelligence.transcripts);
+    CHECK(restored.intelligence.transcriptFolder == "/var/tmp/agent transcripts");
 }

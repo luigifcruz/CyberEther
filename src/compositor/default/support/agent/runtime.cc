@@ -3,10 +3,12 @@
 #include "providers.hh"
 
 #include "jetstream/agent/tools.hh"
+#include "jetstream/platform.hh"
 #include "../../model/callbacks.hh"
 #include "../../model/state.hh"
 
 #include <algorithm>
+#include <filesystem>
 #include <utility>
 
 namespace Jetstream {
@@ -111,6 +113,42 @@ constexpr const char* kCommunication =
     "or arrow chains), or LaTeX. Express structure in prose or lists and math "
     "in plain text. Reserve GitHub-style callouts such as > [!IMPORTANT] "
     "for important information that could otherwise be missed.";
+
+// An empty setting keeps transcripts beside the settings file. The setting is typed by hand,
+// so "~" means the home folder and a relative path starts at the settings folder rather than
+// wherever the app happened to be launched from.
+std::string TranscriptFolder(const Settings::Intelligence& settings) {
+    const auto& chosen = settings.transcriptFolder;
+
+    std::filesystem::path folder;
+    if (chosen == "~" || chosen.starts_with("~/") || chosen.starts_with("~\\")) {
+        auto found = Platform::EnvironmentPath("HOME", folder);
+#if defined(JST_OS_WINDOWS)
+        if (found != Result::SUCCESS) {
+            found = Platform::EnvironmentPath("USERPROFILE", folder);
+        }
+#endif
+        if (found != Result::SUCCESS || !folder.is_absolute()) {
+            folder.clear();
+        } else if (chosen.size() > 2) {
+            folder /= Platform::PathFromUtf8(chosen.substr(2));
+        }
+    } else {
+        folder = Platform::PathFromUtf8(chosen);
+    }
+    if (folder.empty()) {
+        folder = "transcripts";
+    }
+
+    if (!folder.is_absolute()) {
+        std::string configPath;
+        if (Platform::ConfigPath(configPath) != Result::SUCCESS) {
+            return {};
+        }
+        folder = Platform::PathFromUtf8(configPath) / folder;
+    }
+    return Platform::PathToUtf8(folder);
+}
 
 }  // namespace
 
@@ -234,6 +272,9 @@ Agent::Session::Config AgentRuntime::Chat(const DefaultCompositorState::AgentSta
     };
     config.maxImages = provider.maxImages;
     config.toolResultImages = provider.toolResultImages;
+    if (settings.transcripts) {
+        config.transcript = {true, TranscriptFolder(settings)};
+    }
 
     for (const auto& model : settings.models) {
         if (!AgentProviders::Same(model, settings.provider, settings.model)) {

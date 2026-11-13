@@ -36,6 +36,7 @@ void Session::Impl::reset() {
     messages.clear();
     context.reset();
     outputs = std::make_shared<Detail::OutputStore>();
+    transcript.reset();
     contextTokens = 0;
     imageLimit.reset();
     imageLimitKey.clear();
@@ -151,12 +152,20 @@ bool Session::submit(const std::string& prompt, const Config& config) {
 
     Impl::Target target;
     std::shared_ptr<const std::vector<Provider::Message>> context;
+    std::shared_ptr<Detail::Transcript> transcript;
     std::string sessionId;
     {
         std::lock_guard<std::mutex> lock(impl->mutex);
         impl->messages.push_back(std::make_shared<Entry>(Entry{true, prompt, {}}));
         context = impl->context;
         sessionId = impl->sessionId;
+        if (config.transcript.enabled) {
+            // One file per conversation: it is opened by the worker and replaced on reset.
+            if (!impl->transcript) {
+                impl->transcript = std::make_shared<Detail::Transcript>(config.transcript.folder);
+            }
+            transcript = impl->transcript;
+        }
         impl->messages.push_back(std::make_shared<Entry>());
         target = {impl->messages.size() - 1, impl->generation};
         ++impl->revision;
@@ -170,9 +179,11 @@ bool Session::submit(const std::string& prompt, const Config& config) {
                                 sessionId = std::move(sessionId),
                                 config = config,
                                 abort = impl->abortRequested,
-                                outputs = impl->outputs]() mutable {
+                                outputs = impl->outputs,
+                                transcript = std::move(transcript)]() mutable {
         {
-            Impl::Turn turn(*impl, target, std::move(config), std::move(abort), std::move(outputs));
+            Impl::Turn turn(*impl, target, std::move(config), std::move(abort), std::move(outputs),
+                            std::move(transcript));
             turn.run(std::move(context), prompt, sessionId);
         }
 

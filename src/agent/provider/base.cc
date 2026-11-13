@@ -2,6 +2,7 @@
 
 #include "jetstream/logger.hh"
 #include "tools/random.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <atomic>
@@ -27,7 +28,8 @@ std::string ProviderContext(const Config& config) {
     if (config.host.empty()) {
         return "Provider";
     }
-    return config.host;
+    // The endpoint names itself in every error, the log and the chat; a password in it does not.
+    return Text::WithoutUrlCredentials(config.host);
 }
 
 Result Fail(Provider::Error failure, Provider::Error* output, const Config& config, std::string_view key,

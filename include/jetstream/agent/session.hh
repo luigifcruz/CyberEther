@@ -33,6 +33,11 @@ class JETSTREAM_API Session {
             std::string instructions;
         };
 
+        struct Transcript {
+            bool enabled = false;
+            std::string folder;
+        };
+
         std::shared_ptr<const Provider> provider;
         std::string model;
         std::string reasoningEffort;
@@ -49,6 +54,7 @@ class JETSTREAM_API Session {
         bool toolResultImages = false;
         U64 maxToolTurns = 40;
         Voice voice;
+        Transcript transcript;
     };
 
     struct Segment {
