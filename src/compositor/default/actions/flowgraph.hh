@@ -79,7 +79,7 @@ struct FlowgraphActions {
     }
 
     Result handle(const MailOpenFlowgraph&) {
-        std::string path;
+        std::string path = startFolder();
         auto enqueueMail = callbacks.enqueueMail;
         callbacks.requestFile({
             .mode = FilePickerMode::Open,
@@ -174,7 +174,10 @@ struct FlowgraphActions {
 
         std::string path = msg.path.empty() ? state.flowgraph.items.at(msg.flowgraph)->path() : msg.path;
         if (path.empty()) {
-            std::string pickedPath;
+            std::string pickedPath = startFolder();
+            if (!pickedPath.empty()) {
+                pickedPath += "untitled.yml";
+            }
             auto enqueueMail = callbacks.enqueueMail;
             callbacks.requestFile({
                 .mode = FilePickerMode::Save,
@@ -212,6 +215,19 @@ struct FlowgraphActions {
             graph = graph || line.starts_with("graph:");
         }
         return versioned && graph;
+    }
+
+    // File dialogs start where the user last opened or saved a flowgraph, so they do not
+    // have to navigate there from the home directory every time.
+    std::string startFolder() const {
+        const auto& folders = state.agent.settings.flowgraphFolders;
+        for (auto folder = folders.rbegin(); folder != folders.rend(); ++folder) {
+            std::error_code error;
+            if (std::filesystem::is_directory(Platform::PathFromUtf8(*folder), error)) {
+                return folder->ends_with('/') ? *folder : *folder + "/";
+            }
+        }
+        return {};
     }
 
     // The agent may list and open saved flowgraphs only in folders the user has used, so

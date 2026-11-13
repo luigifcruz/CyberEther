@@ -6,6 +6,7 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 #include "jetstream/settings.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <cctype>
@@ -248,7 +249,8 @@ struct IntelligenceProviderView {
             .password = true,
             .disabled = this->config.saving,
             .onChange = [this](const std::string& value) {
-                apiKey = value;
+                // A pasted key often carries a trailing line break, which is not valid in a header.
+                apiKey = Text::TrimBlank(value);
                 markDirty();
             },
         });

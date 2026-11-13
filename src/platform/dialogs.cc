@@ -127,15 +127,15 @@ std::string ExtensionJson(const std::vector<std::string>& extensions) {
 #elif defined(JST_OS_LINUX)
 namespace {
 
+// The filter is named after its patterns, so it is obvious which files a dialog is hiding.
 std::string ZenityFilter(const std::vector<std::string>& extensions) {
-    std::string filter = "Selected files |";
+    std::string patterns;
     for (const auto& extension : extensions) {
-        filter += " *." + extension;
+        patterns += (patterns.empty() ? "*." : " *.") + extension;
     }
-    return filter;
+    return patterns + " | " + patterns;
 }
 
-// Offered after the typed filter so a file saved under another name can still be chosen.
 constexpr const char* kZenityAllFiles = "--file-filter=All files | *";
 
 }  // namespace
@@ -182,9 +182,19 @@ Result PickFile(std::string& path,
                 const std::vector<std::string>& extensions,
                 std::function<void(std::string)> callback) {
     std::vector<std::string> arguments = {"--file-selection"};
+    if (!path.empty()) {
+        // Given a directory, the dialog opens its parent with the directory selected.
+        // Naming an entry inside it, even one that does not exist, opens the directory.
+        std::error_code error;
+        const auto start = PathFromUtf8(path);
+        const bool directory = std::filesystem::is_directory(start, error);
+        arguments.push_back("--filename=" + (directory ? PathToUtf8(start / "_") : path));
+    }
     if (!extensions.empty()) {
-        arguments.push_back("--file-filter=" + ZenityFilter(extensions));
+        // Everything is listed by default when opening: a folder whose files do not match
+        // the typed filter would otherwise look empty.
         arguments.push_back(kZenityAllFiles);
+        arguments.push_back("--file-filter=" + ZenityFilter(extensions));
     }
 
     if (RunProcess("zenity", arguments, path) != Result::SUCCESS || path.empty()) {
