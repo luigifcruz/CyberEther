@@ -1201,14 +1201,40 @@ struct Dock::Impl {
             }
         }
         F32 cursor = StartOf(area, vertical);
+        std::vector<F32> begins(count, 0.0f);
+        std::vector<F32> ends(count, 0.0f);
         for (U64 index = 0; index < count; ++index) {
             cursor += leads[index];
             const F32 size = split.sizes[index];
             split.rects[index] = vertical ? Rect{area.x, cursor, area.width, size} : Rect{cursor, area.y, size, area.height};
             const Rect snapped = device(split.rects[index]);
-            split.tiles[index] = vertical ? Rect{tile.x, snapped.y, tile.width, snapped.height}
-                                          : Rect{snapped.x, tile.y, snapped.width, tile.height};
+            begins[index] = StartOf(snapped, vertical);
+            ends[index] = begins[index] + Along(snapped, vertical);
             cursor += size;
+        }
+        const Rect whole = device(area);
+        const F32 tileStart = std::round(StartOf(tile, vertical));
+        const F32 tileEnd = std::round(StartOf(tile, vertical) + Along(tile, vertical));
+        std::optional<U64> previous;
+        for (U64 index = 0; index < count; ++index) {
+            if (split.shown[index] <= 0.0f) {
+                continue;
+            }
+            if (previous.has_value()) {
+                ends[*previous] = begins[index] - std::round(leads[index] * pixelRatio);
+            } else {
+                begins[index] += tileStart - StartOf(whole, vertical);
+            }
+            previous = index;
+        }
+        if (previous.has_value()) {
+            ends[*previous] += tileEnd - (StartOf(whole, vertical) + Along(whole, vertical));
+        }
+        for (U64 index = 0; index < count; ++index) {
+            const F32 begin = begins[index];
+            const F32 extent = std::max(0.0f, ends[index] - begin);
+            split.tiles[index] = vertical ? Rect{tile.x, begin, tile.width, extent}
+                                          : Rect{begin, tile.y, extent, tile.height};
         }
         if (open && settled) {
             for (U64 boundary = 1; boundary < count; ++boundary) {

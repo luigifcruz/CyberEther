@@ -126,7 +126,7 @@ Component* Outline::row(U64 index) const {
 
 Extent2D<F32> Outline::measure(const Context& ctx, Extent2D<F32> available) {
     const F32 infinite = std::numeric_limits<F32>::infinity();
-    const F32 padY = Px(ctx, kOutlineRowPadY);
+    const F32 padY = std::round(Px(ctx, kOutlineRowPadY));
     F32 width = 0.0f;
     F32 height = 0.0f;
     for (U64 index = 0; index < impl->config.entries.size(); ++index) {
@@ -144,7 +144,7 @@ void Outline::layout(const Context& ctx) {
     auto& s = *impl;
     const Rect bounds = frame();
     const F32 infinite = std::numeric_limits<F32>::infinity();
-    const F32 padY = Px(ctx, kOutlineRowPadY);
+    const F32 padY = std::round(Px(ctx, kOutlineRowPadY));
 
     s.rects.resize(s.config.entries.size());
     F32 cursor = bounds.y;
