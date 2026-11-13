@@ -5,6 +5,8 @@
 
 #include "tools/text.hh"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <span>
 #include <tuple>
@@ -201,6 +203,58 @@ std::string AgentProviders::Effort(const Model& model) {
         return *medium;
     }
     return efforts[efforts.size() / 2];
+}
+
+namespace {
+
+// Unlike a merge patch, a null in the overlay is kept, so the provider still sees the
+// request to remove that field from the encoded body.
+void Overlay(nlohmann::json& base, const nlohmann::json& overlay) {
+    for (const auto& [key, value] : overlay.items()) {
+        const auto existing = base.find(key);
+        if (value.is_object() && existing != base.end() && existing->is_object()) {
+            Overlay(*existing, value);
+        } else {
+            base[key] = value;
+        }
+    }
+}
+
+}  // namespace
+
+U64 AgentProviders::ContextWindow(const Model& model) {
+    if (!model.maxContextTokens) {
+        return model.contextLength;
+    }
+    return model.contextLength ? std::min(model.contextLength, model.maxContextTokens) : model.maxContextTokens;
+}
+
+std::string AgentProviders::ExtraBody(const Model& model) {
+    if (model.effortBodies.empty()) {
+        return model.extraBody;
+    }
+
+    // Malformed text is passed through so the provider rejects it with a clear
+    // configuration error instead of the setting being silently ignored.
+    const auto bodies = nlohmann::json::parse(model.effortBodies, nullptr, false);
+    if (!bodies.is_object()) {
+        return model.effortBodies;
+    }
+
+    const auto selected = bodies.find(Effort(model));
+    if (selected == bodies.end()) {
+        return model.extraBody;
+    }
+    if (model.extraBody.empty() || !selected->is_object()) {
+        return selected->dump();
+    }
+
+    auto merged = nlohmann::json::parse(model.extraBody, nullptr, false);
+    if (!merged.is_object()) {
+        return model.extraBody;
+    }
+    Overlay(merged, *selected);
+    return merged.dump();
 }
 
 bool AgentProviders::Same(const Model& model, const std::string& provider, const std::string& id) {

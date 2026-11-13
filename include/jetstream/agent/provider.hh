@@ -65,6 +65,7 @@ class JETSTREAM_API Provider {
         std::string message;
         std::string code;
         std::string retryAfter;
+        std::optional<U64> imageLimit;
 
         explicit operator bool() const {
             return kind != Kind::None;
@@ -172,6 +173,7 @@ class JETSTREAM_API Provider {
         std::string reasoningEffort;
         std::string reasoningContext;
         std::string sessionId;
+        std::string extraBody;
     };
 
     struct Callbacks {

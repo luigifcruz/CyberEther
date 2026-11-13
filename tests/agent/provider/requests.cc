@@ -648,4 +648,193 @@ TEST_CASE("Connection failures and request timeouts are different diagnostics", 
     CHECK(error.message.find("API key") == std::string::npos);
 }
 
+TEST_CASE("Tool images are encoded inside the tool result", "[agent][providers][images]") {
+    const bool responses = GENERATE(false, true);
+    const auto path = responses ? "/v1/responses" : "/chat";
+
+    AgentTest::ProviderServer provider;
+    nlohmann::json captured;
+    provider.server.Post(path, [&](const auto& input, auto& output) {
+        captured = nlohmann::json::parse(input.body);
+        output.set_content(responses ? "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Done\"}\n\n"
+                                       "data: {\"type\":\"response.completed\"}\n\ndata: [DONE]\n\n"
+                                     : Delta({{"content", "Done"}}) + Done(),
+                           "text/event-stream");
+    });
+    provider.start();
+
+    auto config = provider.config();
+    config.path = path;
+    config.api = responses ? Agent::Provider::Api::Responses : Agent::Provider::Api::ChatCompletions;
+
+    const std::vector<Agent::Provider::FunctionCall> calls{{"call_1", "inspect", "{}"}, {"call_2", "inspect", "{}"}};
+    const std::vector<Agent::Provider::Message> history{
+        {"user", "Inspect this"},
+        {"assistant", "", calls},
+        {"tool", R"({"found":true})", {}, "call_1", {"data:image/png;base64,AA=="}},
+        {"tool", R"({"ok":true})", {}, "call_2"},
+    };
+    Agent::Provider::Response response;
+    REQUIRE(Agent::Provider(config).stream(AgentTest::Request(history), {}, response) == Result::SUCCESS);
+
+    if (responses) {
+        nlohmann::json withImage;
+        nlohmann::json plain;
+        for (const auto& item : captured["input"]) {
+            if (item.value("type", "") == "function_call_output") {
+                (item["call_id"] == "call_1" ? withImage : plain) = item;
+            }
+        }
+        CHECK(withImage["output"] == nlohmann::json::array({
+            {{"type", "input_text"}, {"text", R"({"found":true})"}},
+            {{"type", "input_image"}, {"image_url", "data:image/png;base64,AA=="}},
+        }));
+        CHECK(plain["output"] == R"({"ok":true})");
+    } else {
+        REQUIRE(captured["messages"].size() == 4);
+        const auto& withImage = captured["messages"][2];
+        CHECK(withImage["role"] == "tool");
+        CHECK(withImage["tool_call_id"] == "call_1");
+        CHECK(withImage["content"] == nlohmann::json::array({
+            {{"type", "text"}, {"text", R"({"found":true})"}},
+            {{"type", "image_url"}, {"image_url", {{"url", "data:image/png;base64,AA=="}}}},
+        }));
+        CHECK(captured["messages"][3]["content"] == R"({"ok":true})");
+    }
+}
+
+TEST_CASE("Extra request fields merge over the encoded body", "[agent][providers][extra]") {
+    const bool responses = GENERATE(false, true);
+    const auto path = responses ? "/v1/responses" : "/chat";
+
+    AgentTest::ProviderServer provider;
+    nlohmann::json captured;
+    provider.server.Post(path, [&](const auto& input, auto& output) {
+        captured = nlohmann::json::parse(input.body);
+        output.set_content(responses ? "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Done\"}\n\n"
+                                       "data: {\"type\":\"response.completed\"}\n\ndata: [DONE]\n\n"
+                                     : Delta({{"content", "Done"}}) + Done(),
+                           "text/event-stream");
+    });
+    provider.start();
+
+    auto config = provider.config();
+    config.path = path;
+    config.api = responses ? Agent::Provider::Api::Responses : Agent::Provider::Api::ChatCompletions;
+    config.requestReasoning = false;
+
+    const std::vector<Agent::Provider::Message> messages{{"user", "Hello"}};
+    auto request = AgentTest::Request(messages);
+    request.maxOutputTokens = 512;
+    request.reasoningEffort = "high";
+    Agent::Provider::Response response;
+
+    SECTION("no extra fields leave the body untouched") {
+        REQUIRE(Agent::Provider(config).stream(request, {}, response) == Result::SUCCESS);
+        CHECK_FALSE(captured.contains("temperature"));
+        CHECK_FALSE(captured.contains("chat_template_kwargs"));
+    }
+
+    SECTION("objects merge, values override, and null removes") {
+        request.extraBody = responses
+            ? R"({"temperature":0.6,"max_output_tokens":null,"chat_template_kwargs":{"medium_effort":true}})"
+            : R"({"temperature":0.6,"max_tokens":null,"max_completion_tokens":64,"reasoning_effort":"none",
+                 "stream_options":{"continuous_usage_stats":true},"chat_template_kwargs":{"medium_effort":true}})";
+        REQUIRE(Agent::Provider(config).stream(request, {}, response) == Result::SUCCESS);
+
+        CHECK(captured["temperature"] == 0.6);
+        CHECK(captured["chat_template_kwargs"]["medium_effort"] == true);
+        CHECK(captured["model"] == AgentTest::ProviderServer::modelValue);
+        CHECK(captured["stream"] == true);
+        if (responses) {
+            CHECK_FALSE(captured.contains("max_output_tokens"));
+            CHECK(captured["input"].size() == 1);
+        } else {
+            CHECK_FALSE(captured.contains("max_tokens"));
+            CHECK(captured["max_completion_tokens"] == 64);
+            CHECK(captured["reasoning_effort"] == "none");
+            CHECK(captured["stream_options"] ==
+                  nlohmann::json({{"include_usage", true}, {"continuous_usage_stats", true}}));
+            CHECK(captured["messages"].size() == 1);
+        }
+    }
+
+    SECTION("invalid or structural extra fields fail before any request is sent") {
+        const std::string extra = GENERATE("not json", "[1]", "3", R"({"messages":[]})", R"({"stream":false})",
+                                           R"({"tools":null})", R"({"model":"other"})");
+        request.extraBody = extra;
+        REQUIRE(Agent::Provider(config).stream(request, {}, response) == Result::ERROR);
+        CHECK(response.error.kind == Kind::Configuration);
+        CHECK(response.error.message.find("extra request fields") != std::string::npos);
+        CHECK(captured.is_null());
+    }
+}
+
+TEST_CASE("Model discovery falls back to the vLLM context field", "[agent][providers][models]") {
+    AgentTest::ProviderServer provider;
+    provider.server.Get("/models", [](const auto&, auto& response) {
+        response.set_content(R"({"data":[
+            {"id":"a-served","max_model_len":1048576},
+            {"id":"b-tagged","context_length":4096,"max_model_len":8192},
+            {"id":"c-zeroed","max_model_len":0}
+        ]})", "application/json");
+    });
+    provider.start();
+
+    Agent::Provider client(provider.config());
+    std::vector<Agent::Provider::Model> models;
+    REQUIRE(client.models(models) == Result::SUCCESS);
+
+    REQUIRE(models.size() == 3);
+    CHECK(models[0].contextLength == 1048576);
+    CHECK(models[1].contextLength == 4096);
+    CHECK(models[2].contextLength == 0);
+}
+
+TEST_CASE("An image-count rejection reports the server's limit and is not retried",
+          "[agent][providers][errors][images]") {
+    struct Case {
+        int status;
+        const char* message;
+        std::optional<U64> limit;
+        Kind kind;
+    };
+    const auto example = GENERATE(
+        Case{400, "At most 1 image(s) may be provided in one prompt. (parameter=image)", 1, Kind::InvalidRequest},
+        Case{400, "At most 4 image(s) may be provided in one request.", 4, Kind::InvalidRequest},
+        Case{400, "At most 0 image(s) may be provided in one prompt.", 0, Kind::InvalidRequest},
+        Case{400, "At most 5 tools may be provided.", std::nullopt, Kind::InvalidRequest},
+        Case{400, "Provide at most one image.", std::nullopt, Kind::InvalidRequest},
+        Case{500, "At most 1 image(s) may be provided in one prompt.", std::nullopt, Kind::Server});
+    CAPTURE(example.message, example.status);
+
+    AgentTest::ProviderServer provider;
+    int count = 0;
+    provider.server.Post("/chat", [&](const auto&, auto& response) {
+        ++count;
+        const nlohmann::json body = {{"error", {{"message", example.message},
+                                                {"type", "BadRequestError"},
+                                                {"param", "image"},
+                                                {"code", example.status}}}};
+        response.status = example.status;
+        response.set_content(body.dump(), "application/json");
+    });
+    provider.start();
+
+    auto config = provider.config();
+    config.retries = example.status == 400 ? 3 : 0;
+
+    Agent::Provider::Error error;
+    REQUIRE(Chat(Agent::Provider(config), error) == Result::ERROR);
+
+    CHECK(error.kind == example.kind);
+    CHECK(error.imageLimit == example.limit);
+    CHECK(error.status == example.status);
+    CHECK(count == 1);
+    if (example.limit) {
+        CHECK(error.message.find("image(s)") != std::string::npos);
+        CHECK(error.message.find("image limit") != std::string::npos);
+    }
+}
+
 #endif

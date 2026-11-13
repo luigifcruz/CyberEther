@@ -41,7 +41,7 @@ bool AppendResponseHistory(nlohmann::json& input, const nlohmann::json& state) {
 
 void AppendMessage(nlohmann::json& input, const Provider::Message& message) {
     if (message.role == "tool") {
-        input.push_back(Responses::FunctionOutput(message.toolCallId, message.content));
+        input.push_back(Responses::FunctionOutput(message.toolCallId, message.content, message.images));
         return;
     }
 
@@ -298,12 +298,18 @@ nlohmann::json Responses::Function(const Provider::Function& tool) {
     return function;
 }
 
-nlohmann::json Responses::FunctionOutput(const std::string& callId, const std::string& output) {
-    return {
+nlohmann::json Responses::FunctionOutput(const std::string& callId, const std::string& output,
+                                         const std::vector<std::string>& images) {
+    nlohmann::json item = {
         {"type", "function_call_output"},
         {"call_id", callId},
-        {"output", output},
     };
+    if (images.empty()) {
+        item["output"] = output;
+    } else {
+        item["output"] = InputContent(output, images);
+    }
+    return item;
 }
 
 nlohmann::json Responses::InputContent(const std::string& text, const std::vector<std::string>& images) {

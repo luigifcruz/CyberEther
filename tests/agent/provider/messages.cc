@@ -305,4 +305,36 @@ TEST_CASE("Anthropic model discovery reads display names", "[agent][providers][m
     CHECK(models[0].name == "Claude Test");
 }
 
+TEST_CASE("Anthropic Messages carries tool images inside the tool result", "[agent][providers][messages][images]") {
+    AgentTest::ProviderServer provider;
+    Json captured;
+    provider.server.Post("/v1/messages", [&](const auto& request, auto& response) {
+        captured = Json::parse(request.body);
+        response.set_content(Start() + TextBlock(0, "Done") + Finish("end_turn"), "text/event-stream");
+    });
+    provider.start();
+
+    const std::vector<Agent::Provider::FunctionCall> calls{{"toolu_1", "inspect", "{}"}, {"toolu_2", "inspect", "{}"}};
+    const std::vector<Agent::Provider::Message> history{
+        {"user", "Inspect this"},
+        {"assistant", "", calls},
+        {"tool", R"({"found":true})", {}, "toolu_1", {"data:image/png;base64,AA=="}, nullptr, true},
+        {"tool", R"({"ok":true})", {}, "toolu_2"},
+    };
+    Agent::Provider::Response response;
+    REQUIRE(Agent::Provider(Config(provider)).stream(AgentTest::Request(history), {}, response) == Result::SUCCESS);
+
+    const auto& results = captured["messages"].back()["content"];
+    REQUIRE(results.size() == 2);
+    CHECK(results[0]["type"] == "tool_result");
+    CHECK(results[0]["tool_use_id"] == "toolu_1");
+    CHECK(results[0]["is_error"] == true);
+    REQUIRE(results[0]["content"].size() == 2);
+    CHECK(results[0]["content"][0] == Json({{"type", "text"}, {"text", R"({"found":true})"}}));
+    CHECK(results[0]["content"][1]["type"] == "image");
+    CHECK(results[0]["content"][1]["source"] ==
+          Json({{"type", "base64"}, {"media_type", "image/png"}, {"data", "AA=="}}));
+    CHECK(results[1]["content"] == R"({"ok":true})");
+}
+
 #endif

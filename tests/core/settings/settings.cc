@@ -786,3 +786,58 @@ TEST_CASE("Map rendering preferences preserve old defaults and persist each laye
     REQUIRE(mixed.deserialize(ReadDocument(sandbox.path)) == Result::SUCCESS);
     CHECK(mixed.maps.rendering == settings.maps.rendering);
 }
+
+TEST_CASE("Intelligence image and request options persist and default when absent",
+          "[core][settings][intelligence]") {
+    SettingsSandbox sandbox("intelligence-options");
+    WriteFile(sandbox.path,
+              "intelligence:\n"
+              "  customProviders:\n"
+              "    - name: Local\n"
+              "      host: http://localhost:8000\n"
+              "      api: chat_completions\n"
+              "      requestReasoning: false\n"
+              "  models:\n"
+              "    - provider: Local\n"
+              "      id: m\n"
+              "      contextLength: 1048576\n");
+
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    REQUIRE(settings.intelligence.customProviders.size() == 1);
+    REQUIRE(settings.intelligence.models.size() == 1);
+    CHECK(settings.intelligence.customProviders[0].maxImages == 4);
+    CHECK_FALSE(settings.intelligence.customProviders[0].toolResultImages);
+    CHECK(settings.intelligence.models[0].maxContextTokens == 0);
+    CHECK(settings.intelligence.models[0].extraBody.empty());
+    CHECK(settings.intelligence.models[0].effortBodies.empty());
+
+    const std::string extra = R"({"note":"it's {quoted}: yes","temperature":0.6})";
+    const std::string efforts = R"({"medium":{"chat_template_kwargs":{"enable_thinking":true,"medium_effort":true}}})";
+    settings.intelligence.customProviders[0].maxImages = 1;
+    settings.intelligence.customProviders[0].toolResultImages = true;
+    settings.intelligence.models[0].maxContextTokens = 262144;
+    settings.intelligence.models[0].extraBody = extra;
+    settings.intelligence.models[0].effortBodies = efforts;
+    REQUIRE(Settings::Set(settings) == Result::SUCCESS);
+
+    const auto yaml = ReadFile(sandbox.path);
+    CHECK(yaml.find("maxImages: 1") != std::string::npos);
+    CHECK(yaml.find("toolResultImages: true") != std::string::npos);
+
+    {
+        SettingsSandbox cacheSwitch("intelligence-options-cache-switch");
+        Settings ignored;
+        REQUIRE(Settings::Get(ignored) == Result::SUCCESS);
+    }
+
+    Settings restored;
+    REQUIRE(Settings::Get(restored) == Result::SUCCESS);
+    REQUIRE(restored.intelligence.customProviders.size() == 1);
+    REQUIRE(restored.intelligence.models.size() == 1);
+    CHECK(restored.intelligence.customProviders[0].maxImages == 1);
+    CHECK(restored.intelligence.customProviders[0].toolResultImages);
+    CHECK(restored.intelligence.models[0].maxContextTokens == 262144);
+    CHECK(restored.intelligence.models[0].extraBody == extra);
+    CHECK(restored.intelligence.models[0].effortBodies == efforts);
+}
