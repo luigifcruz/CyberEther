@@ -715,6 +715,33 @@ TEST_CASE("Chat transcripts stretch past the tail under a trackpad drag and spri
     CHECK(Retains(frames, update));
 }
 
+TEST_CASE("Moving a stretched chat resets placement before the tree becomes clean",
+          "[core][sakura][chat][retention][wayland-scroll]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    frames.timeStep = 1.0 / 60.0;
+    const Chat::Snapshot snapshot = Questions(30);
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    auto event = Wheel(200.0f, 150.0f, -3.0f);
+    event.phase = ScrollPhase::Began;
+    REQUIRE(place.send(event));
+    frames.run(update);
+    REQUIRE(Bottom(transcript) < place.target.bottom() - 1.0f);
+
+    place.target.y += 40.0f;
+    Sakura::Access::invalidate(place);
+    CHECK(Kept(frames.run(update)));
+    CHECK(Bottom(transcript) == Approx(place.target.bottom()).margin(1.0f));
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(Bottom(transcript) == Approx(place.target.bottom()).margin(1.0f));
+}
+
 TEST_CASE("Chat transcripts reset scroll and disclosures when the generation changes", "[core][sakura][chat]") {
     Scene scene;
     Twin twin;
@@ -919,6 +946,7 @@ TEST_CASE("Chat transcripts settle under a persistent snapshot and repaint as th
     CHECK(Retains(frames, update));
 
     const F32 before = Visible<Sakura::TextMarkdown>(transcript).back().height;
+    const auto prepared = Direct<Sakura::TextMarkdown>(transcript).back()->prepared();
     std::string streamed = "Answer 3";
     for (int i = 0; i < 30; ++i) {
         streamed += " continued";
@@ -926,6 +954,7 @@ TEST_CASE("Chat transcripts settle under a persistent snapshot and repaint as th
     snapshot.messages.tail = std::make_shared<const Chat::Message>(AssistantMessage({MarkdownPart(0, 2, streamed)}));
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Visible<Sakura::TextMarkdown>(transcript).back().height > before);
+    CHECK(Direct<Sakura::TextMarkdown>(transcript).back()->prepared() != prepared);
     CHECK(Retains(frames, update));
 
     CHECK(frames.restructures == restructures);
@@ -984,6 +1013,10 @@ TEST_CASE("Chat transcripts reuse slots while scrolling through history", "[core
     const U64 restructures = frames.restructures;
     const U64 rebuilds = frames.rebuilds;
 
+    std::vector<std::shared_ptr<const Sakura::TextMarkdown::Prepared>> prepared;
+    for (const auto* view : Direct<Sakura::TextMarkdown>(transcript)) {
+        prepared.push_back(view->prepared());
+    }
     for (int step = 0; step < 40; ++step) {
         wheel(1.0f);
         CHECK(Kept(frames.run(update)));
@@ -998,6 +1031,12 @@ TEST_CASE("Chat transcripts reuse slots while scrolling through history", "[core
     CHECK(frames.restructures == restructures);
     CHECK(frames.rebuilds == rebuilds);
     CHECK(Visible<Sakura::TextMarkdown>(transcript).back().bottom() == Approx(kRect.bottom()).margin(1.0f));
+    const auto markdowns = Direct<Sakura::TextMarkdown>(transcript);
+    for (const auto& document : prepared) {
+        CHECK(std::any_of(markdowns.begin(), markdowns.end(), [&](const auto* view) {
+            return view->prepared() == document;
+        }));
+    }
     CHECK(Retains(frames, update));
 }
 

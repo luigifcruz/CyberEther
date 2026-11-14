@@ -36,6 +36,7 @@ class JETSTREAM_API Window {
  public:
     struct Config {
         F32 scale = 1.0f;
+        F32 touchpadScrollSpeed = 1.0f;
     };
 
     struct Stats {
@@ -53,6 +54,7 @@ class JETSTREAM_API Window {
     }
 
     void setScale(F32 scale);
+    void setTouchpadScrollSpeed(F32 speed);
 
     Result create();
     Result destroy();

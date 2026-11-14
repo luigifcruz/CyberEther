@@ -8,6 +8,8 @@
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 #include "creation.hh"
 
+#include <optional>
+
 namespace Jetstream::Render {
 
 using Implementation = SurfaceImp<DeviceType::Vulkan>;
@@ -302,15 +304,24 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
 
     // Encode programs.
 
-    VkRect2D fullScissor{};
-    fullScissor.offset = {0, 0};
-    fullScissor.extent = {static_cast<U32>(framebufferResolve->size().x),
-                          static_cast<U32>(framebufferResolve->size().y)};
+    const ScissorRect fullScissor = {0, 0, static_cast<U32>(framebufferResolve->size().x),
+                                           static_cast<U32>(framebufferResolve->size().y)};
+    std::optional<ScissorRect> previousScissor;
     for (auto& program : programs) {
         if (!program->enabled()) {
             continue;
         }
-        vkCmdSetScissor(commandBuffer, 0, 1, &fullScissor);
+        const auto scissor = program->getConfig().scissorRect.value_or(fullScissor);
+        if (scissor.width == 0 || scissor.height == 0) {
+            continue;
+        }
+        if (previousScissor != scissor) {
+            VkRect2D rect{};
+            rect.offset = {static_cast<I32>(scissor.x), static_cast<I32>(scissor.y)};
+            rect.extent = {scissor.width, scissor.height};
+            vkCmdSetScissor(commandBuffer, 0, 1, &rect);
+            previousScissor = scissor;
+        }
         JST_CHECK(program->encode(commandBuffer, renderPass));
     }
 

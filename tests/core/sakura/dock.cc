@@ -123,6 +123,7 @@ void CheckApprox(const DockTiles& actual, const DockTiles& expected) {
 
 struct CursorDock : Dock {
     using Dock::cursorAt;
+    using Dock::cursorOverChildren;
 };
 
 struct Columns : Sakura::Component {
@@ -317,7 +318,7 @@ TEST_CASE("Tab mode places an aside on the right that shares one gutter with the
     CHECK(aside.laidClip == area);
     CHECK(b.laidFrame == Rect{0.0f, kBar, 600.0f, 600.0f - kBar});
     CHECK(BoxWith(dock, area) != nullptr);
-    host.click(area.x + gap * 0.5f, 300.0f);
+    host.click(area.x + gap + 20.0f, 300.0f);
     CHECK(aside.count(MouseEventType::Click) == 1);
     CHECK(b.count(MouseEventType::Click) == 0);
 
@@ -341,6 +342,68 @@ TEST_CASE("Tab mode places an aside on the right that shares one gutter with the
     host.click(700.0f, 300.0f);
     CHECK(aside.count(MouseEventType::Click) == clicks);
     CHECK(b.count(MouseEventType::Click) == 1);
+}
+
+TEST_CASE("Dragging the aside gutter resizes the aside within its bounds and a double click restores it",
+          "[core][sakura][dock]") {
+    const auto ctx = MakeContext();
+    const F32 gap = Dock::ContentPadding;
+    Probe b;
+    Probe aside({150.0f, 10.0f});
+    CursorDock dock;
+    Host host(dock);
+    const auto update = [&](bool resizable) {
+        dock.update({.tabs = true, .panes = {MakePane("b", &b)}, .aside = &aside, .asideWidth = 340.0f,
+                     .resizable = resizable});
+        host.place(ctx, kScreen);
+    };
+    const auto handle = [&] {
+        return aside.laidFrame.x + gap * 0.5f;
+    };
+
+    update(true);
+    CHECK(aside.laidFrame.width == 340.0f + gap);
+    CHECK(dock.cursorOverChildren({handle(), 300.0f}) == SurfaceCursor::ResizeEW);
+    CHECK_FALSE(dock.cursorOverChildren({handle(), kBar + 1.0f}).has_value());
+
+    const F32 start = handle();
+    CHECK(host.send(Mouse(MouseEventType::Click, start, 300.0f)));
+    CHECK(dock.resizing());
+    CHECK(host.send(Mouse(MouseEventType::Move, start - 40.0f, 300.0f)));
+    host.place(ctx, kScreen);
+    CHECK(aside.laidFrame.width == 380.0f + gap);
+    CHECK(b.laidFrame.width == 800.0f - 380.0f);
+
+    CHECK(host.send(Mouse(MouseEventType::Move, 0.0f, 300.0f)));
+    host.place(ctx, kScreen);
+    CHECK(aside.laidFrame.width == 400.0f);
+
+    CHECK(host.send(Mouse(MouseEventType::Move, 800.0f, 300.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Release, 800.0f, 300.0f)));
+    CHECK_FALSE(dock.resizing());
+    host.place(ctx, kScreen);
+    CHECK(aside.laidFrame.width == 320.0f + gap);
+    CHECK(aside.count(MouseEventType::Click) == 0);
+
+    update(true);
+    CHECK(aside.laidFrame.width == 320.0f + gap);
+
+    CHECK(host.send(Mouse(MouseEventType::Click, handle(), 300.0f, MouseButton::Left, 2)));
+    CHECK(host.send(Mouse(MouseEventType::Release, handle(), 300.0f)));
+    host.place(ctx, kScreen);
+    CHECK(aside.laidFrame.width == 340.0f + gap);
+
+    CHECK(host.send(Mouse(MouseEventType::Click, handle(), 300.0f)));
+    CHECK(dock.resizing());
+    update(false);
+    CHECK_FALSE(dock.resizing());
+    CHECK(host.send(Mouse(MouseEventType::Move, 0.0f, 300.0f)));
+    host.place(ctx, kScreen);
+    CHECK(aside.laidFrame.width == 340.0f + gap);
+    CHECK(host.send(Mouse(MouseEventType::Release, 0.0f, 300.0f)));
+    CHECK_FALSE(dock.cursorOverChildren({handle(), 300.0f}).has_value());
+    CHECK(host.send(Mouse(MouseEventType::Click, handle(), 300.0f)));
+    CHECK_FALSE(dock.resizing());
 }
 
 TEST_CASE("An aside settles after it is mounted and keeps its structure when its width changes",

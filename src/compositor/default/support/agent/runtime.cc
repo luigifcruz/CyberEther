@@ -7,11 +7,55 @@
 #include "../../model/state.hh"
 
 #include <algorithm>
+#include <atomic>
+#include <mutex>
 #include <utility>
 
 namespace Jetstream {
 
 namespace {
+
+class MutedAudio : public Agent::Session::Audio {
+ public:
+    MutedAudio(U32 sampleRate, std::unique_ptr<Agent::Session::Audio> device, std::shared_ptr<std::atomic<bool>> muted) :
+        Audio(sampleRate), device(std::move(device)), muted(std::move(muted)) {}
+
+    Result start() override {
+        return device->start();
+    }
+
+    void stop() override {
+        device->stop();
+    }
+
+    std::vector<I16> capture(U64 minimumSamples) override {
+        auto samples = device->capture(minimumSamples);
+        if (muted->load()) {
+            std::fill(samples.begin(), samples.end(), I16{0});
+        }
+        return samples;
+    }
+
+    void play(const std::string& base64) override {
+        device->play(base64);
+    }
+
+    void flush() override {
+        device->flush();
+    }
+
+    F32 input() const override {
+        return muted->load() ? 0.0f : device->input();
+    }
+
+    F32 output() const override {
+        return device->output();
+    }
+
+ private:
+    std::unique_ptr<Agent::Session::Audio> device;
+    std::shared_ptr<std::atomic<bool>> muted;
+};
 
 constexpr const char* kRole =
     "# Role\n"
@@ -117,10 +161,50 @@ constexpr const char* kCommunication =
 
 }  // namespace
 
+struct AgentRuntime::Mute {
+    using Flag = std::shared_ptr<std::atomic<bool>>;
+
+    Flag flag() {
+        std::lock_guard lock(mutex);
+        return current;
+    }
+
+    void renew() {
+        std::lock_guard lock(mutex);
+        current = std::make_shared<std::atomic<bool>>(false);
+    }
+
+    void set(bool value) {
+        std::lock_guard lock(mutex);
+        current->store(value);
+    }
+
+    bool get() {
+        std::lock_guard lock(mutex);
+        return current->load();
+    }
+
+ private:
+    std::mutex mutex;
+    Flag current = std::make_shared<std::atomic<bool>>(false);
+};
+
+Agent::Session::AudioFactory AgentRuntime::MuteAudio(Agent::Session::AudioFactory factory, std::shared_ptr<Mute> mute) {
+    return [factory = std::move(factory), mute = std::move(mute)](U32 sampleRate)
+               -> std::unique_ptr<Agent::Session::Audio> {
+        auto device = factory ? factory(sampleRate) : std::make_unique<Agent::Session::Audio>(sampleRate);
+        if (!device) {
+            return nullptr;
+        }
+        return std::make_unique<MutedAudio>(sampleRate, std::move(device), mute->flag());
+    };
+}
+
 AgentRuntime::AgentRuntime(DefaultCompositorState& state, const DefaultCompositorCallbacks& callbacks, Voice voice) :
     state(state),
     callbacks(callbacks),
-    conversation(std::move(voice.live), std::move(voice.audio)),
+    mute(std::make_shared<Mute>()),
+    conversation(std::move(voice.live), MuteAudio(std::move(voice.audio), mute)),
     tools(state, callbacks) {}
 
 AgentRuntime::~AgentRuntime() {
@@ -154,6 +238,11 @@ bool AgentRuntime::listen(const Settings::Intelligence::Voice& voice) {
 void AgentRuntime::hangup() {
     conversation.hangup();
     conversation.setMode(Agent::Session::Mode::Text);
+    mute->renew();
+}
+
+void AgentRuntime::setMuted(bool value) {
+    mute->set(value);
 }
 
 AgentExecutor& AgentRuntime::executor() {
@@ -166,7 +255,7 @@ Agent::Session& AgentRuntime::session() {
 
 void AgentRuntime::publish() {
     const auto status = conversation.status();
-    state.agent.voice = {status.phase, status.input, status.output};
+    state.agent.voice = {status.phase, status.input, status.output, mute->get()};
 
     auto update = conversation.updates(cursor);
     if (!update) {

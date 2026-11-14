@@ -589,6 +589,13 @@ void SignalViewWaterfall3D::processInputEvents(std::vector<InputEvent>&& events)
                 }
                 break;
             }
+            case MouseEventType::Zoom: {
+                if (std::isfinite(event.zoom) && event.zoom > 0.0f && event.zoom != 1.0f) {
+                    cameraGoal.dolly(1.0f / event.zoom);
+                    cameraHome = false;
+                }
+                break;
+            }
             case MouseEventType::Enter: {
                 break;
             }

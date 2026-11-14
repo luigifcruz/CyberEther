@@ -31,6 +31,7 @@ struct AgentActions {
                               MailSetAgentChatVisible,
                               MailSetAgentVoiceVisible,
                               MailStartAgentVoice,
+                              MailSetAgentVoiceMuted,
                               MailSubmitAgentChat,
                               MailCancelAgentChat,
                               MailClearAgentChat,
@@ -58,6 +59,7 @@ struct AgentActions {
     Result handle(const MailSetAgentChatVisible& msg);
     Result handle(const MailSetAgentVoiceVisible& msg);
     Result handle(const MailStartAgentVoice&);
+    Result handle(const MailSetAgentVoiceMuted& msg);
     Result handle(const MailSubmitAgentChat& msg);
     Result handle(const MailCancelAgentChat&);
     Result handle(const MailClearAgentChat&);

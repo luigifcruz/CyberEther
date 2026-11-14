@@ -24,6 +24,7 @@ namespace Jetstream {
 struct SettingsActions {
     using Filter = std::tuple<MailSetBackgroundParticles,
                               MailSetShowTips,
+                              MailSetTouchpadScrollSpeed,
                               MailSetGraphicsScale,
                               MailSetGraphicsDevice,
                               MailSetSettingsSection,
@@ -51,6 +52,7 @@ struct SettingsActions {
     static void ResetPages(DefaultCompositorState& state);
     Result handle(const MailSetBackgroundParticles& msg);
     Result handle(const MailSetShowTips& msg);
+    Result handle(const MailSetTouchpadScrollSpeed& msg);
     Result handle(const MailSetGraphicsScale& msg);
     Result handle(const MailSetGraphicsDevice& msg);
     Result handle(const MailSetSettingsSection& msg);

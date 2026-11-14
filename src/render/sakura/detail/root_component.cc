@@ -302,6 +302,13 @@ bool RootComponent::mouseEvent(const MouseEvent& event) {
     if (token.expired()) {
         return true;
     }
+    if (event.type == MouseEventType::Scroll &&
+        (event.phase == ScrollPhase::Ended || event.phase == ScrollPhase::MomentumEnded)) {
+        scrollPhaseEnded(event.phase);
+        if (token.expired()) {
+            return true;
+        }
+    }
     if (event.type == MouseEventType::Leave || event.type == MouseEventType::Cancel ||
         (event.type == MouseEventType::Release && event.cancel)) {
         auto cancelled = event;

@@ -103,6 +103,9 @@ std::optional<FlowgraphDocumentation::Config> FlowgraphPanePresenter::documentat
         .onClose = [enqueue, flowgraphId]() {
             enqueue(MailCloseDocumentation{flowgraphId});
         },
+        .onOpenUrl = [enqueue](const std::string& url) {
+            enqueue(MailOpenUrl{.url = url, .notifyResult = true});
+        },
     };
 }
 

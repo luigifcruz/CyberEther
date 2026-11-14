@@ -775,6 +775,92 @@ TEST_CASE("Spinners repaint only while the clock ticks and settle when frozen or
     CHECK(frames.restructures == 0);
 }
 
+TEST_CASE("Spinners stop scheduling while fully clipped and resume at the current phase",
+          "[core][sakura][controls][spinner][retention]") {
+    const auto clipped = GENERATE(Rect{10, -22, 20, 20}, Rect{10, 602, 20, 20},
+                                   Rect{-22, 10, 20, 20}, Rect{802, 10, 20, 20});
+    const bool initiallyClipped = GENERATE(false, true);
+    const Rect shown = {10, 10, 20, 20};
+    auto ctx = MakeContext();
+    Sakura::Spinner spinner;
+    spinner.update({.diameter = 20.0f, .thickness = 2.0f, .period = 1.0f});
+    Place place(spinner, initiallyClipped ? clipped : shown);
+    Host host(place);
+    const auto tick = [&] {
+        ctx.time += 0.05;
+        const U64 before = Sakura::Access::layoutRuns();
+        host.place(ctx, kScreen);
+        return Sakura::Access::layoutRuns() - before;
+    };
+    REQUIRE(tick() > 0);
+    if (!initiallyClipped) {
+        for (U64 frame = 0; frame < 4; ++frame) {
+            CHECK(tick() > 0);
+        }
+        place.move(clipped);
+        REQUIRE(tick() > 0);
+    }
+    for (U64 frame = 0; frame < 8; ++frame) {
+        CHECK(tick() == 0);
+    }
+
+    place.move(shown);
+    ctx.time = 8.2;
+    REQUIRE(tick() > 0);
+    const auto lines = Direct<Sakura::Polyline>(spinner);
+    REQUIRE(lines.size() == 1);
+    const auto head = lines.front()->config().instances.at(1).points.front();
+    CHECK(head.x == Catch::Approx(20.0f).margin(0.01f));
+    CHECK(head.y == Catch::Approx(29.0f).margin(0.01f));
+    for (U64 frame = 0; frame < 4; ++frame) {
+        CHECK(tick() > 0);
+    }
+}
+
+TEST_CASE("Spinner scheduling follows inherited clips without moving its frame",
+          "[core][sakura][controls][spinner][retention]") {
+    struct ClippedSpinner : Sakura::Component {
+        Sakura::Spinner spinner;
+        Rect area = {0, 0, 15, 40};
+
+        ClippedSpinner() {
+            addChild(spinner);
+            spinner.update({.diameter = 20.0f});
+        }
+
+        void layout(const Sakura::Context& ctx) override {
+            layoutChild(ctx, spinner, {10, 10, 20, 20}, area);
+        }
+    } content;
+    const auto shown = GENERATE(Rect{0, 0, 15, 40}, Rect{0, 0, 10, 40});
+    content.area = shown;
+    Host host(content);
+    auto ctx = MakeContext();
+    const auto tick = [&] {
+        ctx.time += 0.05;
+        const U64 before = Sakura::Access::layoutRuns();
+        host.place(ctx, kScreen);
+        return Sakura::Access::layoutRuns() - before;
+    };
+    for (U64 frame = 0; frame < 4; ++frame) {
+        CHECK(tick() > 0);
+    }
+
+    content.area = GENERATE(Rect{0, 0, 8, 40}, Rect{0, 0, 0, 0}, Rect{32, 0, 10, 40});
+    Sakura::Access::invalidate(content);
+    REQUIRE(tick() > 0);
+    for (U64 frame = 0; frame < 8; ++frame) {
+        CHECK(tick() == 0);
+    }
+
+    content.area = shown;
+    Sakura::Access::invalidate(content);
+    for (U64 frame = 0; frame < 4; ++frame) {
+        CHECK(tick() > 0);
+    }
+    CHECK(Sakura::Access::frame(content.spinner) == Rect{10, 10, 20, 20});
+}
+
 TEST_CASE("Disabled pill buttons ignore clicks, drop hover and the hand cursor, and fade",
           "[core][sakura][controls]") {
     const Scene scene;

@@ -55,6 +55,14 @@ Result AgentActions::handle(const MailStartAgentVoice&) {
     return Result::SUCCESS;
 }
 
+Result AgentActions::handle(const MailSetAgentVoiceMuted& msg) {
+    if (state.agent.ui.voiceVisible) {
+        runtime.setMuted(msg.value);
+        state.agent.voice.muted = msg.value;
+    }
+    return Result::SUCCESS;
+}
+
 Result AgentActions::handle(const MailSubmitAgentChat& msg) {
     auto& agent = state.agent;
     if (!agent.settings.enabled || !runtime.submit(msg.text)) {

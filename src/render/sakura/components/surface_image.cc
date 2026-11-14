@@ -159,6 +159,11 @@ bool SurfaceImage::mouseEvent(const MouseEvent& event) {
             }
             return false;
         case MouseEventType::Scroll:
+            if (event.touch) {
+                return false;
+            }
+            [[fallthrough]];
+        case MouseEventType::Zoom:
             if (!inside) {
                 return false;
             }

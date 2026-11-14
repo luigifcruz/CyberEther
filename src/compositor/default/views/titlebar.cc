@@ -125,10 +125,12 @@ void TitlebarView::update(Config config) {
         voicePill.update({
             .phase = voice.phase,
             .level = voice.level,
+            .muted = voice.muted,
             .startHint = "Click to reconnect",
             .stopHint = "Click to end",
             .onStart = voice.onStart,
             .onStop = voice.onStop,
+            .onMute = voice.onMute,
         });
         indicators.push_back({.child = &voicePill});
     } else if (this->config.intelligenceEnabled) {

@@ -96,6 +96,7 @@ enum class JETSTREAM_API MouseEventType : U8 {
     Enter = 4,
     Leave = 5,
     Cancel = 6,
+    Zoom = 7,
 };
 
 enum class JETSTREAM_API ScrollPhase : U8 {
@@ -119,6 +120,8 @@ struct JETSTREAM_API MouseEvent {
     ScrollPhase phase = ScrollPhase::None;
     bool precise = false;
     bool smooth = false;
+    F32 zoom = 1.0f;
+    bool touch = false;
 };
 
 struct JETSTREAM_API FocusEvent {

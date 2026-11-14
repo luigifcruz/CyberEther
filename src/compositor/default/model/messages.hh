@@ -36,6 +36,10 @@ struct MailSetAgentVoiceVisible {
 
 struct MailStartAgentVoice {};
 
+struct MailSetAgentVoiceMuted {
+    bool value = false;
+};
+
 enum class AgentComposer : U8 {
     Dock,
     Welcome,
@@ -294,6 +298,10 @@ struct MailSetMapsRendering {
 
 struct MailSetShowTips {
     bool value = false;
+};
+
+struct MailSetTouchpadScrollSpeed {
+    F32 value = 1.0f;
 };
 
 struct MailSetFlowgraphEnvironmentVisible {
@@ -792,6 +800,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailQuit,
                            MailSetBackgroundParticles,
                            MailSetShowTips,
+                           MailSetTouchpadScrollSpeed,
                            MailSetMapsHighResolution,
                            MailSetMapsRendering,
                            MailClearMapsCache,
@@ -809,6 +818,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSetAgentChatVisible,
                            MailSetAgentVoiceVisible,
                            MailStartAgentVoice,
+                           MailSetAgentVoiceMuted,
                            MailSubmitAgentChat,
                            MailCancelAgentChat,
                            MailClearAgentChat,

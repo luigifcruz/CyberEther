@@ -226,6 +226,7 @@ struct ChatTranscript::Impl {
         F32 summaryHeight = 0.0f;
         Extent2D<F32> toggleSize = {0.0f, 0.0f};
         std::string label;
+        std::shared_ptr<const TextMarkdown::Prepared> prepared;
 
         bool matches(const Block& block, F32 at, const Metrics& m) const {
             return revision == block.revision && width == at && font == m.font && window == m.window &&
@@ -632,8 +633,10 @@ struct ChatTranscript::Impl {
         block.text = &part.text;
         auto& cached = measurements[block.key];
         if (!cached.matches(block, m.contentWidth, m)) {
-            markdownMeasurer.update(MarkdownText(measureId("markdown", block.key), part.text, m.font, false,
-                                                 details));
+            auto text = MarkdownText(measureId("markdown", block.key), part.text, m.font, false, details);
+            text.prepared = cached.prepared;
+            markdownMeasurer.update(std::move(text));
+            cached.prepared = markdownMeasurer.prepared();
             cached.store(block, m.contentWidth, m);
             cached.height =
                 std::max(m.lineHeight, self.measureChild(markdownMeasurer, ctx, {m.contentWidth, kUnbounded}).y);
@@ -671,8 +674,10 @@ struct ChatTranscript::Impl {
                 cached.height += m.summaryGap + cached.summaryHeight;
             }
             if (block.expanded) {
-                markdownMeasurer.update(MarkdownText(measureId("body", block.key), part.text, m.font, true,
-                                                     details));
+                auto text = MarkdownText(measureId("body", block.key), part.text, m.font, true, details);
+                text.prepared = cached.prepared;
+                markdownMeasurer.update(std::move(text));
+                cached.prepared = markdownMeasurer.prepared();
                 cached.bodyHeight = self.measureChild(markdownMeasurer, ctx, {m.contentWidth, kUnbounded}).y;
                 cached.height += m.partGap + cached.bodyHeight;
             }
@@ -877,6 +882,7 @@ struct ChatTranscript::Impl {
             Bind(self, slot, placement->block->revision, *placement->block->text, m.font, [&](std::string value) {
                 auto text = MarkdownText(slotId("markdown", i), std::move(value), m.font, disclosure,
                                          detailsFor(placement->block->key));
+                text.prepared = measurements.at(placement->block->key).prepared;
                 text.onDetailsToggle = [this, &self, i](const std::vector<bool>& open) {
                     toggleDetails(self, i, open);
                 };
@@ -1079,6 +1085,7 @@ void ChatTranscript::layout(const Context& ctx) {
     state.buildRows(*this, ctx, m);
     const F32 height = state.contentHeight(m);
     state.clampScroll(m, height);
+    state.layoutScroll(*this, ctx, m, height);
     state.overscrollY = state.scroll.overscroll(ctx).y;
 
     auto placements = state.place(m);
@@ -1089,7 +1096,6 @@ void ChatTranscript::layout(const Context& ctx) {
     const auto markdown = Impl::Assign(state.markdowns, placements.markdown);
     const auto disclosures = Impl::Assign(state.summaries, placements.disclosures);
 
-    state.layoutScroll(*this, ctx, m, height);
     state.layoutUsers(*this, ctx, m, users);
     state.layoutMarkdown(*this, ctx, m, markdown);
     state.layoutDisclosures(*this, ctx, m, disclosures);

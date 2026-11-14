@@ -81,14 +81,18 @@ struct JETSTREAM_API Settings {
             JST_SERDES(path, title, accessed);
         };
 
+        static constexpr F32 DefaultTouchpadScrollSpeed = 1.0f;
+
         std::string themeKey = "Dark";
         bool backgroundParticles = true;
         bool showTips = true;
+        F32 touchpadScrollSpeed = DefaultTouchpadScrollSpeed;
         std::vector<FlowgraphEntry> recentFlowgraphs;
         std::vector<FlowgraphEntry> favoriteFlowgraphs;
         std::string welcomeVersion;
 
-        JST_SERDES(themeKey, backgroundParticles, showTips, recentFlowgraphs, favoriteFlowgraphs, welcomeVersion);
+        JST_SERDES(themeKey, backgroundParticles, showTips, touchpadScrollSpeed, recentFlowgraphs, favoriteFlowgraphs,
+                   welcomeVersion);
     };
 
     struct Maps {

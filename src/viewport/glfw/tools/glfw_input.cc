@@ -12,6 +12,11 @@
 #include "browser_wheel.hh"
 #endif
 
+#ifdef JST_OS_LINUX
+#include "wayland_pointer.hh"
+#include "../../tools/touch_gesture.hh"
+#endif
+
 #include <GLFW/glfw3.h>
 
 #include <array>
@@ -239,6 +244,10 @@ struct GlfwInput::Impl {
 #ifdef JST_OS_BROWSER
     std::unique_ptr<BrowserWheel> wheel;
 #endif
+#ifdef JST_OS_LINUX
+    std::unique_ptr<WaylandPointer> pointer;
+    TouchGesture touchGesture{viewport.input()};
+#endif
 
     Impl(GLFWwindow* window, Generic& viewport) : window(window), viewport(viewport) {}
 
@@ -360,23 +369,51 @@ struct GlfwInput::Impl {
         }
         impl.heldModifiers.fill(false);
         impl.pushModifiers({});
+#ifdef JST_OS_LINUX
+        if (impl.pointer) {
+            impl.pointer->focus(focused != 0);
+        }
+#endif
         impl.viewport.input().push(Render::InputQueue::Focus{focused != 0});
     }
 
     static void OnEnter(GLFWwindow* window, int entered) {
         auto& impl = From(window);
         impl.pointerInside = entered != 0;
+#ifdef JST_OS_LINUX
+        if (impl.touchGesture.active()) {
+            return;
+        }
+        impl.touchGesture.resumePointer();
+#endif
         impl.viewport.input().push(Render::InputQueue::Hover{entered != 0});
     }
 
     static void OnCursor(GLFWwindow* window, double x, double y) {
         auto& impl = From(window);
+#ifdef JST_OS_LINUX
+        if (impl.touchGesture.active()) {
+            return;
+        }
+        impl.touchGesture.resumePointer();
+#endif
         impl.viewport.input().push(Render::InputQueue::Pointer{
             Extent2D<F32>{static_cast<F32>(x), static_cast<F32>(y)}});
     }
 
     static void OnButton(GLFWwindow* window, int button, int action, int mods) {
         auto& impl = From(window);
+#ifdef JST_OS_LINUX
+        if (impl.touchGesture.active()) {
+            return;
+        }
+        if (impl.touchGesture.ownsPointer()) {
+            double x = 0.0;
+            double y = 0.0;
+            glfwGetCursorPos(window, &x, &y);
+            OnCursor(window, x, y);
+        }
+#endif
         if (action == GLFW_PRESS) {
             impl.readClipboard();
         }
@@ -387,8 +424,28 @@ struct GlfwInput::Impl {
         }
     }
 
+#ifdef JST_OS_LINUX
+    void onTouch(const TouchGesture::Event& event) {
+        bool allowStart = true;
+        if (event.type == TouchGesture::Event::Type::Down) {
+            for (int button = GLFW_MOUSE_BUTTON_LEFT; button <= GLFW_MOUSE_BUTTON_MIDDLE; ++button) {
+                if (glfwGetMouseButton(window, button) == GLFW_PRESS) {
+                    allowStart = false;
+                    break;
+                }
+            }
+        }
+        touchGesture.handle(event, glfwGetTime(), allowStart);
+    }
+#endif
+
     static void OnScroll(GLFWwindow* window, double x, double y) {
         auto& impl = From(window);
+#ifdef JST_OS_LINUX
+        if (impl.pointer && impl.pointer->available()) {
+            return;
+        }
+#endif
         impl.viewport.input().push(impl.takeWheel({static_cast<F32>(x), static_cast<F32>(y)}));
     }
 
@@ -511,10 +568,19 @@ GlfwInput::GlfwInput(GLFWwindow* window, Generic& viewport) {
             .delta = scroll.delta, .phase = scroll.phase, .precise = true});
     });
 #endif
+#ifdef JST_OS_LINUX
+    impl->pointer = std::make_unique<WaylandPointer>(window,
+        [input = impl.get()](const auto& scroll) {
+            auto event = scroll.event;
+            event.position = scroll.position;
+            input->viewport.input().push(event);
+        },
+        [input = impl.get()](const auto& touch) { input->onTouch(touch); });
+#endif
 }
 
 GlfwInput::~GlfwInput() {
-#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS) || defined(JST_OS_LINUX)
     impl->pointer.reset();
 #endif
 #ifdef JST_OS_BROWSER
@@ -548,6 +614,13 @@ void GlfwInput::poll() {
     impl->applyClipboard();
 #ifdef JST_OS_WINDOWS
     impl->pointer->poll();
+#endif
+#ifdef JST_OS_LINUX
+    impl->pointer->poll();
+    impl->touchGesture.poll(glfwGetTime());
+    if (impl->touchGesture.ownsPointer()) {
+        return;
+    }
 #endif
 #ifdef __EMSCRIPTEN__
     impl->readClipboard();

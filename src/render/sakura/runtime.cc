@@ -29,6 +29,7 @@ Context Runtime::context() {
     return Context{
         .palette = config.palette ? *config.palette : EmptyPalette(),
         .render = config.render,
+        .interfaceScale = config.render ? config.render->getConfig().scale : 1.0f,
         .input = &this->impl->input,
     };
 }

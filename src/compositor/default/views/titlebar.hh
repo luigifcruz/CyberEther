@@ -76,8 +76,10 @@ struct TitlebarView {
 
         Phase phase = Phase::Idle;
         F32 level = 0.0f;
+        bool muted = false;
         Sakura::Callback<void()> onStart;
         Sakura::Callback<void()> onStop;
+        Sakura::Callback<void()> onMute;
     };
 
     struct Config {

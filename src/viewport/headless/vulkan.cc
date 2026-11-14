@@ -122,6 +122,10 @@ Extent2D<F32> Implementation::framebufferSize() const {
     return {static_cast<F32>(extent.width), static_cast<F32>(extent.height)};
 }
 
+Result Implementation::waitForPresent() {
+    return Result::SUCCESS;
+}
+
 Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     // Cycle through images.
 

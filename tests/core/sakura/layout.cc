@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/components/box.hh>
@@ -15,6 +16,8 @@
 #include <jetstream/render/sakura/components/wave_line.hh>
 
 #include "component_harness.hh"
+#include "render/sakura/metrics.hh"
+#include "viewport/glfw/tools/wayland_scroll.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -706,6 +709,21 @@ TEST_CASE("Scrollers follow trackpad gestures point for point and keep the wheel
     place();
     REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
     CHECK(scrollY == 76.0f);
+
+    ctx.interfaceScale = 2.0f;
+    place();
+    REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
+    CHECK(scrollY == 86.0f);
+    place();
+    REQUIRE(wheel(-1.0f, ScrollPhase::None));
+    CHECK(scrollY == 134.0f);
+
+    place();
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 300.0f});
+    ctx.interfaceScale = 1.0f;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 300.0f});
+    REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
+    CHECK(scrollY == 154.0f);
 }
 
 namespace {
@@ -716,6 +734,7 @@ struct ElasticRig {
     Host host{scroll};
     F32 scrollY = 0.0f;
     U64 notified = 0;
+    Rect bounds = {0.0f, 0.0f, 200.0f, 100.0f};
 
     ElasticRig() {
         ctx.time = 1.0;
@@ -726,10 +745,10 @@ struct ElasticRig {
         scroll.update({.id = "elastic",
                        .contentHeight = 1000.0f,
                        .scrollY = scrollY,
-                       .wheelStep = 48.0f,
+                       .wheelStep = Sakura::kWheelStep,
                        .onScrollY = [this](F32 next) { scrollY = next; },
                        .onOverscroll = [this] { ++notified; }});
-        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+        host.place(ctx, bounds);
     }
 
     bool wheel(F32 dy, ScrollPhase phase) {
@@ -791,6 +810,171 @@ TEST_CASE("Trackpad drags stretch past the edge with resistance and spring back 
     CHECK(rig.scrollY == 0.0f);
 }
 
+TEST_CASE("Wayland precision scrolling retains the ordinary scroll distance and fractional movement",
+          "[core][sakura][layout][wayland-scroll]") {
+    using Source = Viewport::WaylandScroll::Source;
+    Source source = Source::Finger;
+    SECTION("touchpad") { source = Source::Finger; }
+    SECTION("continuous device") { source = Source::Continuous; }
+    SECTION("wheel") { source = Source::Wheel; }
+
+    ElasticRig rig;
+    rig.scrollY = 200.0f;
+    rig.place();
+    Viewport::WaylandScroll native;
+    Render::InputState input;
+    const auto move = [&](F32 distance, U32 time) {
+        native.source = source;
+        native.timestamp = time;
+        native.axes[0].distance = distance;
+        std::vector<Render::InputQueue::Event> queued;
+        native.frame(time / 1000.0, true, [&](auto event) {
+            event.position = Extent2D<F32>{100.0f, 50.0f};
+            queued.push_back(event);
+        });
+        input.advance(time / 1000.0, queued);
+        for (const auto& event : input.events()) {
+            if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                REQUIRE(rig.host.send(*mouse));
+            }
+        }
+        rig.place();
+    };
+    move(10.0f, 100);
+    CHECK(rig.scrollY == Catch::Approx(248.0f));
+    move(0.25f, 110);
+    CHECK(rig.scrollY == Catch::Approx(249.2f));
+}
+
+TEST_CASE("Wayland touchpads at the default speed move one wheel step per ten axis units",
+          "[core][sakura][layout][wayland-scroll]") {
+    using Source = Viewport::WaylandScroll::Source;
+    Source source = Source::Finger;
+    SECTION("touchpad") { source = Source::Finger; }
+    SECTION("wheel") { source = Source::Wheel; }
+
+    ElasticRig rig;
+    rig.scrollY = 200.0f;
+    rig.place();
+    Viewport::WaylandScroll native;
+    Render::InputState input;
+    std::vector<Render::InputQueue::Event> queued;
+    native.source = source;
+    native.timestamp = 100;
+    native.axes[0].distance = 10.0f;
+    native.frame(0.1, true, [&](auto event) {
+        event.position = Extent2D<F32>{100.0f, 50.0f};
+        queued.push_back(event);
+    });
+    input.advance(0.1, queued);
+    for (const auto& event : input.events()) {
+        if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+            REQUIRE(rig.host.send(*mouse));
+        }
+    }
+    rig.place();
+    CHECK(rig.scrollY == Catch::Approx(200.0f + Sakura::kWheelStep));
+}
+
+TEST_CASE("Wayland flings carry a scroller to its edge across batched rendered frames",
+          "[core][sakura][layout][wayland-scroll]") {
+    using Source = Viewport::WaylandScroll::Source;
+    ElasticRig rig;
+    rig.scrollY = 200.0f;
+    rig.place();
+    Viewport::WaylandScroll native;
+    Render::InputState input;
+    std::vector<Render::InputQueue::Event> queued;
+    const auto emit = [&](auto event) {
+        event.position = Extent2D<F32>{100.0f, 50.0f};
+        queued.push_back(event);
+    };
+    F64 now = rig.ctx.time;
+    const auto render = [&] {
+        input.advance(now, queued);
+        queued.clear();
+        for (const auto& event : input.events()) {
+            if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                rig.host.send(*mouse);
+            }
+        }
+        rig.ctx.time = now;
+        rig.place();
+    };
+    for (U32 i = 0; i < 3; ++i) {
+        native.source = Source::Finger;
+        native.timestamp = 100 + i * 10;
+        native.axes[0].distance = 10.0f;
+        native.frame(now, true, emit);
+        now += 0.01;
+        render();
+    }
+    native.timestamp = 125;
+    native.axes[0].stopped = true;
+    native.frame(now, true, emit);
+    render();
+    const F32 lifted = rig.scrollY;
+    U64 ended = 0;
+    for (U32 frame = 0; frame < 180; ++frame) {
+        for (U32 pump = 0; pump < 5; ++pump) {
+            now += 1.0 / 300.0;
+            native.step(now, emit);
+        }
+        for (const auto& event : queued) {
+            const auto& wheel = std::get<Render::InputQueue::Wheel>(event);
+            ended += wheel.phase == ScrollPhase::MomentumEnded ? 1 : 0;
+        }
+        render();
+    }
+    CHECK(ended == 1);
+    CHECK(rig.scrollY > lifted + 100.0f);
+    CHECK(rig.scrollY == Catch::Approx(900.0f));
+    CHECK(rig.offset() == 0.0f);
+}
+
+TEST_CASE("Stretched gestures hold elastic space until the actual lift", "[core][sakura][layout]") {
+    ElasticRig rig;
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began));
+    const F32 held = rig.offset();
+    REQUIRE(held < 0.0f);
+    CHECK(rig.advance(2.0) == held);
+    CHECK_FALSE(rig.wheel(0.0f, ScrollPhase::Ended));
+    CHECK(rig.advance(1.0) == 0.0f);
+}
+
+TEST_CASE("Withdrawn and cancelled gestures cannot retain elastic space", "[core][sakura][layout][wayland-scroll]") {
+    ElasticRig rig;
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began));
+    REQUIRE(rig.offset() < 0.0f);
+    // Hidden subtrees are concealed by the next paint pass.
+    SECTION("hidden scroller misses release") {
+        rig.scroll.setVisible(false);
+        REQUIRE(Sakura::Access::paint(rig.scroll) == Result::SUCCESS);
+        rig.wheel(0.0f, ScrollPhase::Ended);
+        rig.scroll.setVisible(true);
+    }
+    SECTION("hidden ancestor cancels descendants") {
+        rig.host.setVisible(false);
+        REQUIRE(Sakura::Access::paint(rig.host) == Result::SUCCESS);
+        rig.host.setVisible(true);
+    }
+    SECTION("explicit cancellation") {
+        rig.host.send(MouseEvent{.type = MouseEventType::Cancel});
+    }
+    SECTION("target moves outside pinned release") {
+        rig.bounds.x = 300.0f;
+        rig.place();
+        rig.wheel(0.0f, ScrollPhase::Ended);
+        rig.bounds.x = 0.0f;
+    }
+    rig.place();
+    CHECK(rig.advance(2.0) == 0.0f);
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began));
+    CHECK(rig.offset() < 0.0f);
+    rig.wheel(0.0f, ScrollPhase::Ended);
+    CHECK(rig.advance(1.0) == 0.0f);
+}
+
 TEST_CASE("Momentum after a stretched release never bounces again once the spring settles",
           "[core][sakura][layout]") {
     ElasticRig rig;
@@ -816,25 +1000,16 @@ TEST_CASE("Momentum after a stretched release never bounces again once the sprin
     CHECK(rig.offset() < 0.0f);
 }
 
-TEST_CASE("Stretched gestures that never report a lift release after a timeout", "[core][sakura][layout]") {
-    ElasticRig rig;
-    rig.wheel(0.0f, ScrollPhase::Began);
-    rig.wheel(4.0f, ScrollPhase::Changed);
-    const F32 held = rig.offset();
-    REQUIRE(held < 0.0f);
-    CHECK(rig.advance(0.25) == held);
-    CHECK(rig.advance(1.5) == 0.0f);
-}
-
-TEST_CASE("Stretches that start after an idle period hold until the gesture times out", "[core][sakura][layout]") {
+TEST_CASE("Resting fingers keep a stretch that started after an idle period", "[core][sakura][layout]") {
     ElasticRig rig;
     rig.ctx.time += 5.0;
     rig.wheel(0.0f, ScrollPhase::Began);
     rig.wheel(4.0f, ScrollPhase::Changed);
     const F32 held = rig.offset();
     REQUIRE(held < 0.0f);
-    CHECK(rig.advance(0.2) == held);
-    CHECK(rig.advance(1.5) == 0.0f);
+    CHECK(rig.advance(2.0) == held);
+    rig.wheel(0.0f, ScrollPhase::Ended);
+    CHECK(rig.advance(1.0) == 0.0f);
 }
 
 TEST_CASE("Scrollers leave trackpad gestures on an axis they cannot scroll to the scroller below",
@@ -942,7 +1117,7 @@ TEST_CASE("Scroll areas move their content with the stretch", "[core][sakura][la
     area.update({.id = "stretch", .content = &child, .height = 200.0f, .border = false});
     Host host(area);
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    const F32 rest = child.laidFrame.y;
+    const F32 rest = Peek::Frame(child).y;
 
     auto event = Wheel(100.0f, 100.0f, 0.0f);
     event.phase = ScrollPhase::Began;
@@ -952,7 +1127,7 @@ TEST_CASE("Scroll areas move their content with the stretch", "[core][sakura][la
     host.send(event);
     ctx.time += 1.0 / 60.0;
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    CHECK(child.laidFrame.y > rest);
+    CHECK(Peek::Frame(child).y > rest);
 }
 
 TEST_CASE("Scroll areas drop the stretch and gesture of the previous id", "[core][sakura][layout]") {
@@ -964,7 +1139,7 @@ TEST_CASE("Scroll areas drop the stretch and gesture of the previous id", "[core
     area.update({.id = "a", .content = &child, .height = 200.0f, .border = false});
     Host host(area);
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    const F32 rest = child.laidFrame.y;
+    const F32 rest = Peek::Frame(child).y;
 
     auto event = Wheel(100.0f, 100.0f, 0.0f);
     event.phase = ScrollPhase::Began;
@@ -974,14 +1149,14 @@ TEST_CASE("Scroll areas drop the stretch and gesture of the previous id", "[core
     host.send(event);
     ctx.time += 1.0 / 60.0;
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    REQUIRE(child.laidFrame.y > rest);
+    REQUIRE(Peek::Frame(child).y > rest);
 
     area.update({.id = "b", .content = &child, .height = 200.0f, .border = false});
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    CHECK(child.laidFrame.y == rest);
+    CHECK(Peek::Frame(child).y == rest);
     ctx.time += 1.0 / 60.0;
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    CHECK(child.laidFrame.y == rest);
+    CHECK(Peek::Frame(child).y == rest);
 
     event.scroll = {0.0f, 0.0f};
     event.phase = ScrollPhase::Ended;
@@ -1308,6 +1483,11 @@ TEST_CASE("Scroll areas return to the top when their id changes and keep the off
     place("a");
     const F32 scrolled = Peek::Frame(content).y;
     CHECK(scrolled < top);
+    CHECK(content.currentFrame().y == top);
+    content.consume = true;
+    REQUIRE(host.send(Mouse(MouseEventType::Click, 50.0f, 25.0f)));
+    REQUIRE_FALSE(content.events.empty());
+    CHECK(content.events.back().position.y == Catch::Approx(25.0f - scrolled));
     place("a");
     CHECK(Peek::Frame(content).y == scrolled);
     place("b");
@@ -1559,10 +1739,11 @@ TEST_CASE("Scroll areas glide to a requested target, report offsets once, and yi
     ++request;
     place(1.0);
     place(1.175);
-    CHECK(target.currentFrame().y > 0.0f);
-    CHECK(target.currentFrame().y < 400.0f);
+    CHECK(Peek::Frame(target).y > 0.0f);
+    CHECK(Peek::Frame(target).y < 400.0f);
     place(1.5);
-    CHECK(target.currentFrame().y == 0.0f);
+    CHECK(Peek::Frame(target).y == 0.0f);
+    CHECK(target.currentFrame().y == 400.0f);
     CHECK(offsets.back() == 400.0f);
     const U64 reported = offsets.size();
     place(1.6);
@@ -1577,7 +1758,50 @@ TEST_CASE("Scroll areas glide to a requested target, report offsets once, and yi
         ctx.time = time;
         host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
     }
-    CHECK(above.currentFrame().y < 0.0f);
+    CHECK(Peek::Frame(above).y < 0.0f);
+}
+
+TEST_CASE("Scroll areas glide to a target inside a scrolled nested area", "[core][sakura][layout]") {
+    Probe spacer({100.0f, 400.0f});
+    Probe innerAbove({100.0f, 100.0f});
+    Probe target({100.0f, 40.0f});
+    Probe innerBelow({100.0f, 600.0f});
+    Probe outerBelow({100.0f, 600.0f});
+    for (auto* probe : {&spacer, &innerAbove, &target, &innerBelow, &outerBelow}) {
+        probe->consume = false;
+        probe->prepare();
+    }
+    Stack innerContent;
+    innerContent.update({.spacing = 0.0f, .centerCross = false,
+                         .items = {{.child = &innerAbove}, {.child = &target}, {.child = &innerBelow}}});
+    Sakura::ScrollArea inner;
+    Stack outerContent;
+    outerContent.update({.spacing = 0.0f, .centerCross = false,
+                         .items = {{.child = &spacer}, {.child = &inner}, {.child = &outerBelow}}});
+    Sakura::ScrollArea outer;
+    Host host(outer);
+    auto ctx = MakeContext();
+    U64 innerRequest = 0;
+    U64 outerRequest = 0;
+    const auto place = [&](F64 time) {
+        inner.update({.content = &innerContent, .height = 100.0f, .border = false, .scrollTarget = &target,
+                      .scrollRequest = innerRequest});
+        outer.update({.content = &outerContent, .height = Sakura::Fill, .border = false, .scrollTarget = &target,
+                      .scrollRequest = outerRequest});
+        ctx.time = time;
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    };
+
+    place(0.0);
+    ++innerRequest;
+    place(1.0);
+    place(1.5);
+    REQUIRE(Peek::Frame(target).y == 400.0f);
+
+    ++outerRequest;
+    place(2.0);
+    place(2.5);
+    CHECK(Peek::Frame(target).y == 0.0f);
 }
 
 TEST_CASE("Upward reveals keep their child's top at their top edge while they grow", "[core][sakura][layout]") {

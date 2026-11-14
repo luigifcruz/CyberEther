@@ -15,16 +15,6 @@ static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }
 
-#ifndef JST_OS_WINDOWS
-static bool IsWaylandPlatform() {
-#ifdef GLFW_PLATFORM_WAYLAND
-    return glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
-#else
-    return false;
-#endif
-}
-#endif
-
 namespace Jetstream::Viewport {
 
 using Implementation = GLFW<DeviceType::Vulkan>;
@@ -148,6 +138,14 @@ Result Implementation::createSwapchain() {
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapchainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapchainSupport.capabilities);
 
+    waitForPresentKHR = nullptr;
+    presentId = 0;
+    waitedPresentId = 0;
+    if (config.vsync && Backend::State<DeviceType::Vulkan>()->supportsPresentWait()) {
+        waitForPresentKHR = reinterpret_cast<PFN_vkWaitForPresentKHR>(
+            vkGetDeviceProcAddr(device, "vkWaitForPresentKHR"));
+    }
+
     U32 imageCount = swapchainSupport.capabilities.minImageCount + 1;
     if (swapchainSupport.capabilities.maxImageCount > 0 && imageCount > swapchainSupport.capabilities.maxImageCount) {
         imageCount = swapchainSupport.capabilities.maxImageCount;
@@ -266,6 +264,30 @@ Render::WindowMetrics::Policy Implementation::scalePolicy() const {
     return Render::WindowMetrics::Policy::ContentScale;
 }
 
+Result Implementation::waitForPresent() {
+    if (!waitForPresentKHR || presentId < 2 || waitedPresentId >= presentId - 1) {
+        return Result::SUCCESS;
+    }
+
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    const VkResult result = waitForPresentKHR(device, swapchain, presentId - 1, 100000000);
+    if (result == VK_TIMEOUT) {
+        return Result::SKIP;
+    }
+    if (result == VK_ERROR_OUT_OF_DATE_KHR ||
+        result == VK_ERROR_SURFACE_LOST_KHR ||
+        result == VK_SUBOPTIMAL_KHR) {
+        return Result::RECREATE;
+    }
+    if (result != VK_SUCCESS) {
+        JST_ERROR("[VULKAN] Failed to wait for presentation.");
+        return Result::ERROR;
+    }
+
+    waitedPresentId = presentId - 1;
+    return Result::SUCCESS;
+}
+
 Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     // Check if framebuffer size is different from swapchain extent.
 
@@ -315,6 +337,15 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
 
     presentInfo.pImageIndices = &_currentDrawableIndex;
 
+    const U64 nextPresentId = presentId + 1;
+    VkPresentIdKHR presentIdInfo{};
+    presentIdInfo.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR;
+    presentIdInfo.swapchainCount = 1;
+    presentIdInfo.pPresentIds = &nextPresentId;
+    if (waitForPresentKHR) {
+        presentInfo.pNext = &presentIdInfo;
+    }
+
     VkResult result = VK_SUCCESS;
     auto& presentQueue = Backend::State<DeviceType::Vulkan>()->getPresentQueue();
 
@@ -333,6 +364,7 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
         return Result::ERROR;
     }
 
+    presentId = nextPresentId;
     return Result::SUCCESS;
 }
 
@@ -380,23 +412,14 @@ VkSurfaceFormatKHR Implementation::chooseSwapSurfaceFormat(const std::vector<VkS
 }
 
 VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-#ifdef JST_OS_WINDOWS
-    static_cast<void>(availablePresentModes);
-#endif
-    if (config.vsync) {
-        // TODO: Re-evaluate if we want MAILBOX.
-#ifndef JST_OS_WINDOWS
+    if (!config.vsync) {
         for (const auto &availablePresentMode : availablePresentModes) {
-            // HACK: Mailbox is not currently supported on Wayland.
-            if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR && !IsWaylandPlatform()) {
-                JST_DEBUG("[VULKAN] Swap mailbox presentation mode is available.");
+            if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
                 return availablePresentMode;
             }
         }
-#endif
-        return VK_PRESENT_MODE_FIFO_KHR;
     }
-    return VK_PRESENT_MODE_IMMEDIATE_KHR;
+    return VK_PRESENT_MODE_FIFO_KHR;
 }
 
 VkExtent2D Implementation::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {

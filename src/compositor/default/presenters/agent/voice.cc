@@ -37,8 +37,12 @@ std::optional<TitlebarView::VoiceIndicator> AgentVoicePresenter::build() const {
     TitlebarView::VoiceIndicator indicator{
         .phase = IndicatorPhase(voice.phase),
         .level = std::max(Loudness(voice.input), Loudness(voice.output)),
+        .muted = voice.muted,
         .onStop = [enqueue]() {
             enqueue(MailSetAgentVoiceVisible{.value = false});
+        },
+        .onMute = [enqueue, muted = voice.muted]() {
+            enqueue(MailSetAgentVoiceMuted{.value = !muted});
         },
     };
     if (indicator.phase == TitlebarView::VoiceIndicator::Phase::Idle) {

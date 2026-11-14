@@ -2,12 +2,17 @@
 #define JETSTREAM_RENDER_SAKURA_DETAIL_ACCESS_HH
 
 #include "component.hh"
+#include "touch_scroll.hh"
 
 namespace Jetstream::Sakura {
 
 struct Access {
     static Rect frame(const Component& component) {
         return component.frame();
+    }
+
+    static Extent2D<F32> translation(const Component& component) {
+        return component.translation();
     }
 
     static void layout(Component& root, const Context& ctx, Rect viewport) {
@@ -27,8 +32,15 @@ struct Access {
     }
 
     static bool mouseEvent(Component& root, const MouseEvent& event) {
-        return root.mouseEvent(event);
+        return TouchScroll::dispatch(root, event, [](Component& component, const MouseEvent& event) {
+            return component.mouseEvent(event);
+        });
     }
+
+    static Component* parent(const Component& component) { return component.impl->parent; }
+    static U64 attachmentGeneration(const Component& component) { return component.impl->attachmentGeneration; }
+    static U64 hiddenGeneration(const Component& component) { return component.impl->hiddenGeneration; }
+    static void scrollPhaseEnded(Component& component, ScrollPhase phase) { component.scrollPhaseEnded(phase); }
 
     static bool resourceDirty(const Component& root) {
         return root.impl->treeResourceDirty();

@@ -1170,7 +1170,8 @@ TEST_CASE("Chat composers scale padding, margins, and rounding with the pixel ra
     CHECK(Find<Sakura::Box>(host).front()->config().cornerRadius == 8.0f);
 }
 
-TEST_CASE("Chat composers with chrome draw the elevated card instead of the flat background", kComposerTags) {
+TEST_CASE("Chat composers with chrome draw elevated cards for the composer and its send button instead of flat fills",
+          kComposerTags) {
     Scene scene;
     Sakura::ChatComposer composer;
     Host host(composer);
@@ -1198,8 +1199,11 @@ TEST_CASE("Chat composers with chrome draw the elevated card instead of the flat
     const auto raised = place(true);
     CHECK(raised.height == flat.height);
     const auto cards = Find<Sakura::Card>(host);
-    REQUIRE(cards.size() == 1);
+    REQUIRE(cards.size() == 2);
     CHECK(Peek::Frame(*cards.front()) == raised);
+    const Rect send = Peek::Frame(*cards.back());
+    CHECK(send.width > 0.0f);
+    CHECK(send.width == send.height);
     CHECK(backgrounds(raised) == 0);
     CHECK(Find<Sakura::TextGrid>(host).size() == 1);
 }

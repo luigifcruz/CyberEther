@@ -38,6 +38,19 @@ Result SettingsActions::handle(const MailSetShowTips& msg) {
     return Result::SUCCESS;
 }
 
+Result SettingsActions::handle(const MailSetTouchpadScrollSpeed& msg) {
+    state.interface.touchpadScrollSpeed = msg.value;
+    if (state.system.render) {
+        state.system.render->setTouchpadScrollSpeed(msg.value);
+    }
+
+    JST_CHECK(PersistSettings([&](Settings& settings) {
+        settings.interface.touchpadScrollSpeed = msg.value;
+    }));
+
+    return Result::SUCCESS;
+}
+
 Result SettingsActions::handle(const MailSetGraphicsScale& msg) {
     state.graphics.scale = msg.value;
     state.system.render->setScale(msg.value);

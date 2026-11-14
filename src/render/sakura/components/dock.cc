@@ -37,6 +37,7 @@ constexpr F32 kCardGap = Dock::ContentPadding;
 constexpr F32 kColumnWidth = 420.0f;
 constexpr F32 kFlexColumnWidth = 480.0f;
 constexpr F32 kMinColumnWidth = 240.0f;
+constexpr F32 kMinAsideWidth = 320.0f;
 constexpr F32 kSizeFloor = 64.0f;
 constexpr F32 kSplitMinimum = 48.0f;
 constexpr F32 kSplitShare = 0.45f;
@@ -410,6 +411,7 @@ struct Dock::Impl {
         HeaderMinimize,
         HeaderAction,
         Splitter,
+        Aside,
         Handled,
     };
 
@@ -656,6 +658,28 @@ struct Dock::Impl {
     std::optional<std::pair<std::string, U64>> hoveredHeaderAction;
     U64 pressAction = 0;
     std::optional<U64> hoveredSplitter;
+    Rect asideHandle;
+    F32 asideCurrent = 0.0f;
+    F32 asideRoom = 0.0f;
+    F32 asideWidth = 0.0f;
+    F32 pressAsideWidth = 0.0f;
+    bool hoveredAside = false;
+
+    bool asideAt(const Extent2D<F32>& point) const {
+        return !asideHandle.empty() &&
+               Inflate(asideHandle, kSplitterSlack * pixelRatio).contains(point.x, point.y);
+    }
+
+    bool resizeAside(const Extent2D<F32>& point) {
+        const F32 maximum = std::max(kMinAsideWidth, asideRoom / pixelRatio);
+        const F32 width =
+            std::clamp(pressAsideWidth + (pressPoint.x - point.x) / pixelRatio, kMinAsideWidth, maximum);
+        if (width == asideWidth) {
+            return false;
+        }
+        asideWidth = width;
+        return true;
+    }
 
     Rect hoveredHeaderButton() const {
         for (const auto& leaf : leaves) {
@@ -2144,7 +2168,7 @@ void Dock::update(Config config) {
 }
 
 bool Dock::resizing() const {
-    return impl->press == Impl::Press::Splitter;
+    return impl->press == Impl::Press::Splitter || impl->press == Impl::Press::Aside;
 }
 
 std::string Dock::paneAt(const Extent2D<F32>& point) const {
@@ -2374,14 +2398,21 @@ void Dock::layout(const Context& ctx) {
         const F32 contentTop = s.tabBar.height - overlap;
         s.contentArea = {s.bounds.x, s.bounds.y + contentTop, s.bounds.width,
                          std::max(0.0f, s.bounds.height - contentTop)};
+        s.asideHandle = {};
         if (auto* aside = s.config.aside) {
             const F32 room = std::max(0.0f, s.contentArea.width * 0.5f - gap);
-            const F32 natural = s.config.asideWidth == 0.0f
-                                    ? measureChild(*aside, ctx, {room, s.contentArea.height}).x
-                                    : 0.0f;
-            const F32 width = std::round(ResolveLength(ctx, s.config.asideWidth, natural, room)) + gap;
+            const F32 preferred = s.asideWidth > 0.0f ? s.asideWidth : s.config.asideWidth;
+            const F32 natural = preferred == 0.0f ? measureChild(*aside, ctx, {room, s.contentArea.height}).x
+                                                  : 0.0f;
+            const F32 resolved = std::round(ResolveLength(ctx, preferred, natural, room));
+            const F32 width = resolved + gap;
             const Rect area = {s.contentArea.right() - width, s.contentArea.y, width, s.contentArea.height};
             s.contentArea.width -= width - gap;
+            s.asideCurrent = resolved;
+            s.asideRoom = room;
+            if (s.config.resizable) {
+                s.asideHandle = {area.x, area.y + gap, gap, std::max(0.0f, area.height - 2.0f * gap)};
+            }
             if (!s.config.hideTabs) {
                 backgroundInstances.push_back({.rect = area, .backgroundColor = ctx.color("background")});
             }
@@ -2391,6 +2422,13 @@ void Dock::layout(const Context& ctx) {
     } else {
         s.tabBar = {};
         s.contentArea = s.bounds;
+        s.asideHandle = {};
+    }
+    if (s.asideHandle.empty()) {
+        s.hoveredAside = false;
+        if (s.press == Impl::Press::Aside) {
+            s.press = Impl::Press::None;
+        }
     }
 
     if (tabs) {
@@ -2610,6 +2648,15 @@ void Dock::layout(const Context& ctx) {
                                      splitterLine, std::max(0.0f, rect.height - 2.0f * radius)};
         splitterInstances.push_back({.rect = mark, .visible = hot, .backgroundColor = ctx.color("separator_hovered")});
     }
+    if (!s.asideHandle.empty()) {
+        const Rect& rect = s.asideHandle;
+        splitterInstances.push_back({
+            .rect = {rect.x + std::floor((rect.width - splitterLine) * 0.5f), rect.y + radius, splitterLine,
+                     std::max(0.0f, rect.height - 2.0f * radius)},
+            .visible = s.hoveredAside || s.press == Impl::Press::Aside,
+            .backgroundColor = ctx.color("separator_hovered"),
+        });
+    }
 
     std::vector<Component*> shown = std::move(labels);
     shown.insert(shown.end(), chrome.begin(), chrome.end());
@@ -2826,6 +2873,12 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                 }
                 return true;
             }
+            if (s.press == Impl::Press::Aside) {
+                if (s.resizeAside(point)) {
+                    invalidate(Dirty::Layout);
+                }
+                return true;
+            }
             if ((s.press == Impl::Press::Tab || s.press == Impl::Press::Header) && s.drag && s.known(s.pressPane)) {
                 const F32 dx = point.x - s.pressPoint.x;
                 const F32 dy = point.y - s.pressPoint.y;
@@ -2870,10 +2923,11 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                 }
             }
             const auto splitter = s.splitterAt(point);
+            const bool aside = s.asideAt(point);
             if (tab != s.hoveredTab || tabClose != s.hoveredTabClose || headerClose != s.hoveredHeaderClose ||
                 headerMaximize != s.hoveredHeaderMaximize || headerMinimize != s.hoveredHeaderMinimize ||
                 headerAction != s.hoveredHeaderAction ||
-                splitter != s.hoveredSplitter) {
+                splitter != s.hoveredSplitter || aside != s.hoveredAside) {
                 s.hoveredTab = tab;
                 s.hoveredTabClose = tabClose;
                 s.hoveredHeaderClose = headerClose;
@@ -2881,6 +2935,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                 s.hoveredHeaderMinimize = headerMinimize;
                 s.hoveredHeaderAction = headerAction;
                 s.hoveredSplitter = splitter;
+                s.hoveredAside = aside;
                 invalidate(Dirty::Layout);
             }
             if (s.press != Impl::Press::None) {
@@ -2899,6 +2954,18 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                     }
                     return true;
                 }
+            }
+            if (event.button == MouseButton::Left && s.asideAt(point)) {
+                if (event.clicks >= 2) {
+                    s.press = Impl::Press::Handled;
+                    s.asideWidth = 0.0f;
+                } else {
+                    s.press = Impl::Press::Aside;
+                    s.pressPoint = point;
+                    s.pressAsideWidth = s.asideCurrent / s.pixelRatio;
+                }
+                invalidate(Dirty::Layout);
+                return true;
             }
             if (event.button == MouseButton::Left) {
                 if (const auto tab = s.tabAt(point)) {
@@ -3110,7 +3177,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                                  s.hoveredTabClose || !s.hoveredHeaderClose.empty() ||
                                  !s.hoveredHeaderMaximize.empty() || !s.hoveredHeaderMinimize.empty() ||
                                  s.hoveredHeaderAction.has_value() ||
-                                 s.hoveredSplitter.has_value();
+                                 s.hoveredSplitter.has_value() || s.hoveredAside;
             if (s.dragging && s.drag) {
                 s.drag->reset();
             }
@@ -3126,6 +3193,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
             s.hoveredHeaderMinimize.clear();
             s.hoveredHeaderAction.reset();
             s.hoveredSplitter.reset();
+            s.hoveredAside = false;
             if (changed) {
                 invalidate(Dirty::Layout);
             }
@@ -3134,6 +3202,13 @@ bool Dock::mouseEvent(const MouseEvent& event) {
         default:
             return mouseEventChildren(event);
     }
+}
+
+std::optional<SurfaceCursor> Dock::cursorOverChildren(const Extent2D<F32>& point) const {
+    if (impl->press == Impl::Press::Aside || impl->asideAt(point)) {
+        return SurfaceCursor::ResizeEW;
+    }
+    return std::nullopt;
 }
 
 std::optional<SurfaceCursor> Dock::cursorAt(const Extent2D<F32>& point) const {

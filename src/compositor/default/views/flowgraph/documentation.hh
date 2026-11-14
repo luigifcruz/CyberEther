@@ -9,11 +9,14 @@
 namespace Jetstream {
 
 struct FlowgraphDocumentation {
+    static constexpr F32 MaxWidth = 720.0f;
+
     struct Config {
         std::string id;
         std::string title;
         std::string markdown;
         Sakura::Callback<void()> onClose;
+        Sakura::Callback<void(const std::string&)> onOpenUrl;
     };
 
     void update(Config config);

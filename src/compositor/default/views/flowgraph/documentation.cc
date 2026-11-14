@@ -8,6 +8,14 @@ void FlowgraphDocumentation::update(Config config) {
         .id = this->config.id + ":markdown",
         .value = this->config.markdown,
         .scrollbar = true,
+        .onLink = [this](const std::string& url) {
+            if (!this->config.onOpenUrl) {
+                return false;
+            }
+            this->config.onOpenUrl(url);
+            return true;
+        },
+        .maxWidth = MaxWidth,
     });
 }
 
