@@ -894,6 +894,8 @@ TEST_CASE("Wordmark developer submenu toggles timing, opens tools, and picks a l
                                              Action::OpenDeveloperSettings});
 
     const auto submenu = developer();
+    CHECK(MenuLabel(rig.host, Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryAlt, "T")) != nullptr);
+    CHECK(MenuLabel(rig.host, Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryAlt, "R")) != nullptr);
     REQUIRE(ClickMenu(rig.host, "Log Level"));
     rig.place();
     const auto logLevels = rightmost();
@@ -1480,6 +1482,17 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     CHECK(Tap(host, KeyCode::S, {.control = true, .shift = true}));
     CHECK(Tap(host, KeyCode::S, {.shift = true, .super = true}));
     CHECK(actions == std::vector<Action>{Action::SaveFlowgraphAs, Action::SaveFlowgraphAs});
+
+    actions.clear();
+    CHECK(Tap(host, KeyCode::T, {.control = true, .alt = true}));
+    CHECK(Tap(host, KeyCode::T, {.alt = true, .super = true}));
+    CHECK(Tap(host, KeyCode::R, {.control = true, .alt = true}));
+    CHECK(Tap(host, KeyCode::R, {.alt = true, .super = true}));
+    CHECK_FALSE(Tap(host, KeyCode::R, {.control = true}));
+    CHECK_FALSE(Tap(host, KeyCode::R, {.alt = true}));
+    CHECK_FALSE(Tap(host, KeyCode::T, {.control = true, .shift = true, .alt = true}));
+    CHECK(actions == std::vector<Action>{Action::ToggleTiming, Action::ToggleTiming, Action::ReloadPlugins,
+                                         Action::ReloadPlugins});
 
     actions.clear();
     CHECK_FALSE(Tap(host, KeyCode::N, {.control = true}));

@@ -215,6 +215,16 @@ std::vector<Sakura::Shortcuts::Binding> TitlebarView::shortcuts() {
             .modifier = Sakura::Shortcuts::Modifier::PrimaryShift,
             .onPressed = [this]() { emit(Action::SaveFlowgraphAs); },
         },
+        {
+            .key = KeyCode::T,
+            .modifier = Sakura::Shortcuts::Modifier::PrimaryAlt,
+            .onPressed = [this]() { emit(Action::ToggleTiming); },
+        },
+        {
+            .key = KeyCode::R,
+            .modifier = Sakura::Shortcuts::Modifier::PrimaryAlt,
+            .onPressed = [this]() { emit(Action::ReloadPlugins); },
+        },
         bind(KeyCode::W, Action::CloseFlowgraph),
         bind(KeyCode::I, Action::ShowFlowgraphInfo),
         bind(KeyCode::G, Action::SendFeedback),

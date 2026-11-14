@@ -132,10 +132,19 @@ struct TitlebarView {
             });
         }
         return {
-            {.label = "Show Timing", .selected = config.debugTimingEnabled, .onClick = action(Action::ToggleTiming)},
+            {
+                .label = "Show Timing",
+                .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryAlt, "T"),
+                .selected = config.debugTimingEnabled,
+                .onClick = action(Action::ToggleTiming),
+            },
             {.label = "Show Benchmarks", .onClick = action(Action::ShowBenchmarks)},
             separator,
-            {.label = "Reload Plugins", .onClick = action(Action::ReloadPlugins)},
+            {
+                .label = "Reload Plugins",
+                .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryAlt, "R"),
+                .onClick = action(Action::ReloadPlugins),
+            },
             separator,
             {.label = "Log Level", .children = std::move(levels)},
             separator,
