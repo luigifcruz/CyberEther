@@ -19,38 +19,11 @@ struct FlowgraphDocumentation {
         Sakura::Callback<void(const std::string&)> onOpenUrl;
     };
 
-    void update(Config config) {
-        this->config = std::move(config);
-        markdown.update({
-            .id = this->config.id + ":markdown",
-            .value = this->config.markdown,
-            .scrollbar = true,
-            .onLink = [this](const std::string& url) {
-                if (!this->config.onOpenUrl) {
-                    return false;
-                }
-                this->config.onOpenUrl(url);
-                return true;
-            },
-            .maxWidth = MaxWidth,
-        });
-    }
-
-    Sakura::Component& component() {
-        return markdown;
-    }
-
-    const std::string& id() const {
-        return config.id;
-    }
-
-    const std::string& title() const {
-        return config.title;
-    }
-
-    Sakura::Callback<void()> closeCallback() const {
-        return config.onClose;
-    }
+    void update(Config config);
+    Sakura::Component& component();
+    const std::string& id() const;
+    const std::string& title() const;
+    Sakura::Callback<void()> closeCallback() const;
 
  private:
     Config config;

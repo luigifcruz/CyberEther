@@ -13,22 +13,8 @@ namespace Jetstream {
 struct RemoteQrModalPresenter {
     const PresenterContext& context;
 
-    explicit RemoteQrModalPresenter(const PresenterContext& context) : context(context) {}
-
-    RemoteQrView::Config build() const {
-        const auto& remote = context.state.remote;
-        const auto enqueue = context.callbacks.enqueueMail;
-        const std::string url = remote.started ? remote.inviteUrl : std::string();
-        return {
-            .inviteUrl = url,
-            .onCopyLink = [enqueue, url]() {
-                enqueue(MailCopyText{.label = "Invite link", .value = url});
-            },
-            .onClose = [enqueue]() {
-                enqueue(MailCloseModal{});
-            },
-        };
-    }
+    explicit RemoteQrModalPresenter(const PresenterContext& context);
+    RemoteQrView::Config build() const;
 };
 
 }  // namespace Jetstream

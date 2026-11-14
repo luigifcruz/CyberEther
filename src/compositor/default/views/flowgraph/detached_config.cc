@@ -1,0 +1,75 @@
+#include "detached_config.hh"
+
+namespace Jetstream {
+
+void FlowgraphDetachedConfig::update(Config config) {
+    using Stack = Sakura::NodeContentStack;
+
+    if (config.id != this->config.id || !initialized) {
+        metricsVisible = config.metricsOpen;
+        initialized = true;
+    }
+    this->config = std::move(config);
+
+    while (metrics.size() > this->config.metrics.size()) {
+        metrics.pop_back();
+    }
+    while (metrics.size() < this->config.metrics.size()) {
+        metrics.push_back(std::make_unique<FlowgraphMetricInstance>());
+    }
+    for (U64 i = 0; i < metrics.size(); ++i) {
+        metrics[i]->update(std::move(this->config.metrics[i]));
+    }
+
+    fields.update(std::move(this->config.configFields));
+    std::vector<Stack::Item> items;
+    if (metricsVisible) {
+        for (const auto& metric : metrics) {
+            items.push_back({.child = &metric->component()});
+        }
+        if (!metrics.empty()) {
+            items.back().trailingGap = Stack::Spacing;
+        }
+    }
+    fields.appendItems(items);
+
+    content.update({
+        .id = this->config.id + ":content",
+        .items = std::move(items),
+    });
+    panel.update({
+        .id = this->config.id + ":panel",
+        .content = &content,
+        .height = Sakura::Fill,
+    });
+}
+
+std::vector<Sakura::Dock::Action> FlowgraphDetachedConfig::actions() {
+    if (metrics.empty()) {
+        return {};
+    }
+    return {{
+        .icon = ICON_LC_GAUGE,
+        .active = metricsVisible,
+        .onClick = [this]() {
+            metricsVisible = !metricsVisible;
+            if (config.onToggleMetricsOpen) {
+                config.onToggleMetricsOpen(metricsVisible);
+            }
+        },
+    }};
+}
+
+Sakura::Component& FlowgraphDetachedConfig::component() {
+    return panel;
+}
+
+const std::string& FlowgraphDetachedConfig::title() const {
+    return config.title;
+}
+
+Sakura::Callback<void()> FlowgraphDetachedConfig::closeCallback() const {
+    return config.onClose;
+}
+
+}  // namespace Jetstream

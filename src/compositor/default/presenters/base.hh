@@ -9,12 +9,8 @@ namespace Jetstream {
 struct DefaultPresenterRegistry {
  public:
     DefaultPresenterRegistry(const DefaultCompositorState& state,
-                             const DefaultCompositorCallbacks& callbacks) : context{state, callbacks},
-                                                                            workbench(context) {}
-
-    WorkbenchView::Config build() const {
-        return workbench.build();
-    }
+                             const DefaultCompositorCallbacks& callbacks);
+    WorkbenchView::Config build() const;
 
  private:
     PresenterContext context;

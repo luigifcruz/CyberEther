@@ -4,17 +4,7 @@ core_test_main = '../support/catch_main.cc'
 
 core_test_domains = {
     'application': ['application/instance_backend.cc'],
-    'compositor': [
-        'compositor/compositor.cc',
-        'compositor/docs.cc',
-        'compositor/file_picker.cc',
-        'compositor/gallery.cc',
-        'compositor/layout.cc',
-        'compositor/metrics.cc',
-        'compositor/onboarding.cc',
-        'compositor/settings_tab.cc',
-        'compositor/tiles.cc',
-    ],
+    'compositor': ['compositor/compositor.cc'],
     'extensions': [
         'extensions/plugins.cc',
         'extensions/benchmark.cc',
@@ -131,6 +121,14 @@ core_test_domains = {
 if not jst_is_windows
     core_test_domains += {
         'compositor': core_test_domains['compositor'] + [
+            'compositor/docs.cc',
+            'compositor/file_picker.cc',
+            'compositor/gallery.cc',
+            'compositor/layout.cc',
+            'compositor/metrics.cc',
+            'compositor/onboarding.cc',
+            'compositor/settings_tab.cc',
+            'compositor/tiles.cc',
             'compositor/clipboard.cc',
             'compositor/config_edits.cc',
             'compositor/dispatch.cc',

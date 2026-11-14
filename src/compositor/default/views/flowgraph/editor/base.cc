@@ -1,0 +1,449 @@
+#include "base.hh"
+
+namespace Jetstream {
+
+void FlowgraphEditor::update(Config config) {
+    this->config = std::move(config);
+
+    nodeViewIds.clear();
+    linkViewIds.clear();
+    liveBlocks.clear();
+
+    blockPicker.update({
+        .onCreateBlock = [this](const std::string& moduleId,
+                                Extent2D<F32> gridPosition,
+                                DeviceType device,
+                                RuntimeType runtime,
+                                ProviderType provider) {
+            nodeEditor.stopFraming();
+            if (this->config.onCreateBlock) {
+                this->config.onCreateBlock(moduleId, gridPosition, device, runtime, provider);
+            }
+        },
+    });
+
+    for (const auto& block : this->config.graph) {
+        if (block.state != Block::State::Destroyed) {
+            liveBlocks.insert(block.name);
+        }
+    }
+
+    for (const auto& block : this->config.graph) {
+        if (!liveBlocks.contains(block.name)) {
+            continue;
+        }
+        for (const auto& input : block.inputs) {
+            if (!input.source.has_value() || !liveBlocks.contains(input.source->block)) {
+                continue;
+            }
+
+            const auto& source = input.source.value();
+            const std::string linkId = FlowgraphLinkId(block.name, input.port.id);
+            auto& linkView = linkViews[linkId];
+            linkView.update({
+                .id = linkId,
+                .start = {
+                    .nodeId = source.block,
+                    .pinId = source.port,
+                    .isInput = false,
+                },
+                .end = {
+                    .nodeId = block.name,
+                    .pinId = input.port.id,
+                    .isInput = true,
+                },
+                .connection = {
+                    .consumerName = block.name,
+                    .inputSlot = input.port.id,
+                    .producerName = source.block,
+                    .producerPort = source.port,
+                    .resolved = source.resolved,
+                    .tensor = source.tensor,
+                },
+            });
+            linkViewIds.push_back(linkId);
+        }
+    }
+
+    std::erase_if(linkViews, [this](const auto& entry) {
+        return std::find(linkViewIds.begin(), linkViewIds.end(), entry.first) == linkViewIds.end();
+    });
+
+    for (auto& block : this->config.graph) {
+        if (!liveBlocks.contains(block.name)) {
+            continue;
+        }
+
+        const std::string blockName = block.name;
+        const auto base = block.layout;
+        for (auto& field : block.configFields) {
+            field.onApply = [this, blockName](Parser::Map values,
+                                              const bool silent,
+                                              Sakura::Callback<void(Result)> onComplete) {
+                if (this->config.onReconfigureBlock) {
+                    this->config.onReconfigureBlock(blockName, std::move(values), silent, std::move(onComplete));
+                }
+            };
+            field.onError = [this](Result result, std::string message) {
+                if (this->config.onConfigError) {
+                    this->config.onConfigError(result, std::move(message));
+                }
+            };
+            field.onBrowsePath = [this](bool save,
+                                        std::vector<std::string> extensions,
+                                        Sakura::Callback<void(std::string)> onPicked) {
+                if (this->config.onBrowseConfigPath) {
+                    this->config.onBrowseConfigPath(save, std::move(extensions), std::move(onPicked));
+                }
+            };
+            field.onOpenUrl = [this](const std::string& url) {
+                if (this->config.onOpenUrl) {
+                    this->config.onOpenUrl(url);
+                }
+            };
+        }
+        FlowgraphNode::Config nodeConfig{
+            .id = blockName,
+            .inspectorId = jst::fmt::format("{}:{}:inspector", this->config.id, blockName),
+            .block = std::move(block),
+            .targets = targets(blockName).size(),
+            .timingEnabled = this->config.debugTimingEnabled,
+            .onCopy = [this, blockName]() {
+                emit(this->config.onCopyBlocks, targets(blockName));
+            },
+            .onCut = [this, blockName]() {
+                emit(this->config.onCutBlocks, targets(blockName));
+            },
+            .onPaste = [this](Extent2D<F32> pastePos) {
+                if (this->config.onPasteBlock) {
+                    this->config.onPasteBlock(pastePos);
+                }
+            },
+            .onDuplicate = [this, blockName]() {
+                emit(this->config.onDuplicateBlocks, targets(blockName));
+            },
+            .onRename = [this, blockName]() {
+                if (this->config.onRenameBlock) {
+                    this->config.onRenameBlock(blockName);
+                }
+            },
+            .onReload = [this, blockName]() {
+                if (this->config.onReloadBlock) {
+                    this->config.onReloadBlock(blockName);
+                }
+            },
+            .onToggleFrozen = [this, blockName]() {
+                if (this->config.onToggleBlockFrozen) {
+                    this->config.onToggleBlockFrozen({blockName});
+                }
+            },
+            .onInspectApply = [this, blockName](Parser::Map values) {
+                if (this->config.onReconfigureBlock) {
+                    this->config.onReconfigureBlock(blockName, std::move(values), false, {});
+                }
+            },
+            .onDelete = [this, blockName]() {
+                emit(this->config.onDeleteBlocks, targets(blockName));
+            },
+            .onDocumentation = [this, blockName]() {
+                if (this->config.onOpenDocumentation) {
+                    this->config.onOpenDocumentation(blockName);
+                }
+            },
+            .onDeviceSelect = [this, blockName](DeviceType device,
+                                                RuntimeType runtime,
+                                                ProviderType provider) {
+                if (!this->config.onChangeBlockDevice) {
+                    return;
+                }
+
+                this->config.onChangeBlockDevice(blockName, device, runtime, provider);
+            },
+            .onLayout = [this, blockName, base](F32 x, F32 y, F32 width, F32 height) {
+                if (this->config.onNodeLayout) {
+                    this->config.onNodeLayout(blockName, x, y, width, height, base);
+                }
+            },
+            .onBounds = [this, blockName](Rect bounds, Extent2D<F32> size, std::optional<Extent2D<F32>> content) {
+                measured.nodes[blockName] = {bounds, size, content};
+            },
+            .onConfigCollapse = [this, blockName](bool collapsed) {
+                if (this->config.onNodeConfigCollapse) {
+                    this->config.onNodeConfigCollapse(blockName, collapsed);
+                }
+            },
+            .onConfigDetach = [this, blockName](bool detached) {
+                if (this->config.onNodeConfigDetach) {
+                    this->config.onNodeConfigDetach(blockName, detached);
+                }
+            },
+        };
+
+        nodeViews[blockName].update(std::move(nodeConfig));
+        nodeViewIds.push_back(blockName);
+    }
+
+    // Nodes persist their geometry in update, so the arrangement is recorded after them.
+    if (std::exchange(arrangePending, false) && this->config.onNodesArranged) {
+        this->config.onNodesArranged();
+    }
+
+    std::erase_if(nodeViews, [this](const auto& entry) {
+        return !liveBlocks.contains(entry.first);
+    });
+    std::erase_if(measured.nodes, [this](const auto& entry) {
+        return !liveBlocks.contains(entry.first);
+    });
+
+    std::vector<Sakura::NodeEditor::Node> nodes;
+    nodes.reserve(nodeViewIds.size());
+    for (const auto& nodeViewId : nodeViewIds) {
+        nodes.push_back(nodeViews.at(nodeViewId).takeNode());
+    }
+    std::vector<Sakura::NodeEditor::Link> links;
+    links.reserve(linkViewIds.size());
+    for (const auto& linkViewId : linkViewIds) {
+        links.push_back(linkViews.at(linkViewId).takeLink());
+    }
+
+    nodeEditor.update({
+        .id = this->config.id + "editor",
+        .frameOnOpen = true,
+        .scale = ZoomScale,
+        .nodes = std::move(nodes),
+        .links = std::move(links),
+        .selection = this->config.selection,
+        .selectionRequest = this->config.selectionRequest,
+        .onEditorContextMenu = [this](Extent2D<F32> gridPosition) {
+            flowgraphContextMenuGridPos = gridPosition;
+            flowgraphContextMenuOpen = true;
+        },
+        .onEditorDoubleClick = [this](Extent2D<F32> gridPosition) {
+            if (!blockPicker.isOpen()) {
+                openBlockPicker(gridPosition);
+            }
+        },
+        .onLinkCreated = [this](Sakura::NodeEditor::PinRef startPin,
+                                Sakura::NodeEditor::PinRef endPin) {
+            handleLinkCreation(startPin, endPin);
+        },
+        .onLinkDestroyed = [this](const std::string& linkId) {
+            handleLinkDestruction(linkId);
+        },
+        .onCopyShortcut = [this](const std::vector<std::string>& selectedNodes) {
+            emit(this->config.onCopyBlocks, live(selectedNodes));
+        },
+        .onCutShortcut = [this](const std::vector<std::string>& selectedNodes) {
+            emit(this->config.onCutBlocks, live(selectedNodes));
+        },
+        .onDuplicateShortcut = [this](const std::vector<std::string>& selectedNodes) {
+            emit(this->config.onDuplicateBlocks, live(selectedNodes));
+        },
+        .onDeleteShortcut = [this](const std::vector<std::string>& selectedNodes) {
+            emit(this->config.onDeleteBlocks, live(selectedNodes));
+        },
+        .onFreezeShortcut = [this](const std::vector<std::string>& selectedNodes) {
+            emit(this->config.onToggleBlockFrozen, live(selectedNodes));
+        },
+        .onSelectionChange = [this](const std::vector<std::string>& selected) {
+            measured.selected = selected;
+        },
+        .onPasteShortcut = [this](Extent2D<F32> gridPosition) {
+            if (this->config.onPasteBlock) {
+                this->config.onPasteBlock(gridPosition);
+            }
+        },
+        .onViewportGridChange = [this](Rect viewport) {
+            viewportGridCenter = {viewport.x + viewport.width * 0.5f, viewport.y + viewport.height * 0.5f};
+            measured.viewport = viewport;
+        },
+        .view = this->config.view,
+        .onViewChange = this->config.onViewChange,
+        .onNodesArranged = [this]() {
+            arrangePending = true;
+        },
+    });
+
+    flowgraphContextMenu.update({
+        .entries = {
+            {
+                .label = ICON_LC_UNDO_2 " Undo",
+                .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "Z"),
+                .enabled = this->config.canUndo,
+                .onClick = this->config.onUndo,
+            },
+            {
+                .label = ICON_LC_REDO_2 " Redo",
+                .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryShift, "Z"),
+                .enabled = this->config.canRedo,
+                .onClick = this->config.onRedo,
+            },
+            {.separator = true},
+            {
+                .label = ICON_LC_CLIPBOARD_PASTE " Paste",
+                .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "V"),
+                .onClick = [this]() {
+                    if (this->config.onPasteBlock) {
+                        this->config.onPasteBlock(flowgraphContextMenuGridPos);
+                    }
+                },
+            },
+            {
+                .label = ICON_LC_SQUARE_DASHED_MOUSE_POINTER " Select All",
+                .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "A"),
+                .enabled = !liveBlocks.empty(),
+                .onClick = [this]() {
+                    emit(this->config.onSelectBlocks, {nodeViewIds.begin(), nodeViewIds.end()});
+                },
+            },
+        },
+        .open = flowgraphContextMenuOpen,
+        .onClose = [this]() {
+            flowgraphContextMenuOpen = false;
+        },
+    });
+
+    using Item = Sakura::Overlay::Item;
+    std::vector<Item> items = {{.child = &nodeEditor}};
+    for (const auto& nodeViewId : nodeViewIds) {
+        items.push_back({.child = &nodeViews.at(nodeViewId).menuComponent()});
+    }
+    items.push_back({.child = &flowgraphContextMenu});
+    items.push_back({.child = &blockPicker.component()});
+    const F32 zoom = nodeEditor.zoom();
+    runButton.update({
+        .icon = this->config.paused ? ICON_LC_PLAY : ICON_LC_PAUSE,
+        .iconColorKey = this->config.paused ? "run_state_paused" : "run_state_running",
+        .tinted = true,
+        .tooltip = this->config.paused ? "Resume flowgraph (Space)" : "Pause flowgraph (Space)",
+        .size = {PillHeight, PillHeight},
+        .onClick = this->config.onTogglePause,
+    });
+    saveButton.update({
+        .icon = ICON_LC_SAVE,
+        .tooltip = "Save flowgraph",
+        .size = {PillHeight, PillHeight},
+        .onClick = this->config.onSave,
+    });
+    addButton.update({
+        .icon = ICON_LC_PACKAGE_PLUS,
+        .tooltip = "Add block",
+        .size = {PillHeight, PillHeight},
+        .onClick = [this]() {
+            nodeEditor.stopFraming();
+            openBlockPicker(viewportGridCenter);
+        },
+    });
+    environmentButton.update({
+        .icon = ICON_LC_TABLE_PROPERTIES,
+        .tooltip = "Environment variables",
+        .size = {PillHeight, PillHeight},
+        .onClick = this->config.onToggleEnvironment,
+    });
+    zoomPill.update({
+        .label = jst::fmt::format("{}%", std::lround(zoom * 100.0f)),
+        .canDecrement = nodeEditor.canZoom(-1),
+        .canIncrement = nodeEditor.canZoom(1),
+        .size = {ZoomPillWidth, PillHeight},
+        .onDecrement = [this]() {
+            nodeEditor.zoomStep(-1);
+        },
+        .onIncrement = [this]() {
+            nodeEditor.zoomStep(1);
+        },
+        .onReset = [this]() {
+            nodeEditor.zoomReset();
+        },
+    });
+    F32 edge = PillMargin;
+    const auto place = [&](Sakura::Component& child, F32 width) {
+        items.push_back({
+            .child = &child,
+            .anchor = Sakura::Anchor::BottomRight,
+            .offset = {-edge, -PillMargin},
+            .size = {width, PillHeight},
+        });
+        edge += width + PillGap;
+    };
+    place(zoomPill, ZoomPillWidth);
+    place(environmentButton, PillHeight);
+    place(addButton, PillHeight);
+    place(saveButton, PillHeight);
+    place(runButton, PillHeight);
+    overlay.update({.items = std::move(items)});
+
+    if (this->config.measure && this->config.onLayout && nodeEditor.shown()) {
+        this->config.onLayout(measured);
+    }
+}
+
+Sakura::Component& FlowgraphEditor::component() {
+    return overlay;
+}
+
+bool FlowgraphEditor::pickerOpen() const {
+    return blockPicker.isOpen();
+}
+
+void FlowgraphEditor::appendWindows(std::vector<Sakura::FloatingLayer::Window>& windows) {
+    for (const auto& nodeViewId : nodeViewIds) {
+        nodeViews.at(nodeViewId).appendWindows(windows);
+    }
+}
+
+std::vector<std::string> FlowgraphEditor::live(const std::vector<std::string>& ids) const {
+    std::vector<std::string> blocks;
+    for (const auto& id : ids) {
+        if (liveBlocks.contains(id)) {
+            blocks.push_back(id);
+        }
+    }
+    return blocks;
+}
+
+std::vector<std::string> FlowgraphEditor::targets(const std::string& blockName) const {
+    const auto& selected = measured.selected;
+    if (std::find(selected.begin(), selected.end(), blockName) == selected.end()) {
+        return {blockName};
+    }
+    return live(selected);
+}
+
+void FlowgraphEditor::emit(const Sakura::Callback<void(const std::vector<std::string>&)>& callback,
+                           const std::vector<std::string>& blocks) {
+    if (!blocks.empty() && callback) {
+        callback(blocks);
+    }
+}
+
+void FlowgraphEditor::openBlockPicker(const Extent2D<F32>& gridPosition) {
+    blockPicker.open(config.onBuildBlockOptions ? config.onBuildBlockOptions()
+                                                : std::vector<FlowgraphBlockPicker::BlockOption>{},
+                     gridPosition);
+}
+
+void FlowgraphEditor::handleLinkCreation(const Sakura::NodeEditor::PinRef& startPin,
+                                         const Sakura::NodeEditor::PinRef& endPin) const {
+    if (startPin.isInput == endPin.isInput || !config.onConnectBlock) {
+        return;
+    }
+    if (!liveBlocks.contains(startPin.nodeId) || !liveBlocks.contains(endPin.nodeId)) {
+        return;
+    }
+
+    const auto& input = startPin.isInput ? startPin : endPin;
+    const auto& output = startPin.isInput ? endPin : startPin;
+    config.onConnectBlock(input.nodeId, input.pinId, output.nodeId, output.pinId);
+}
+
+void FlowgraphEditor::handleLinkDestruction(const std::string& linkId) const {
+    const auto it = linkViews.find(linkId);
+    if (it == linkViews.end() || !config.onDisconnectBlock) {
+        return;
+    }
+
+    const auto& info = it->second.connection();
+    config.onDisconnectBlock(info.consumerName, info.inputSlot);
+}
+
+}  // namespace Jetstream

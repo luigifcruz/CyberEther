@@ -154,9 +154,7 @@ struct DefaultCompositorState {
         std::string themeKey = "Dark";
         Sakura::Palette colorMap;
 
-        bool dark() const {
-            return themeKey != "Light";
-        }
+        bool dark() const;
     };
 
     struct InterfaceState {
@@ -270,10 +268,8 @@ struct DefaultCompositorState {
         };
 
         static std::string FieldKey(const std::string& flowgraphId,
-                                           const std::string& blockName,
-                                           const std::string& fieldName) {
-            return jst::fmt::format("{}:{}:{}", flowgraphId, blockName, fieldName);
-        }
+                                    const std::string& blockName,
+                                    const std::string& fieldName);
 
         std::unordered_map<std::string, std::shared_ptr<Flowgraph>> items;
         std::unordered_map<std::string, TileMeta> layouts;
@@ -417,7 +413,6 @@ struct DefaultCompositorState {
         std::string text;
     };
 
-
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;
@@ -437,65 +432,17 @@ struct DefaultCompositorState {
     FilePickerState filePicker;
     FeedbackState feedback;
 
-    bool startTabShown() const {
-        return interface.startTab || workspaceTabs() == 0;
-    }
-
-    bool tabShown(WorkspaceTab tab) const {
-        switch (tab) {
-            case WorkspaceTab::Start:
-                return startTabShown();
-            case WorkspaceTab::Settings:
-                return interface.settingsTab;
-            case WorkspaceTab::Docs:
-                return interface.docsTab;
-        }
-        return false;
-    }
-
-    bool tabActive(WorkspaceTab tab) const {
-        return interface.focusedTab == tab && tabShown(tab);
-    }
-
-    bool startTabActive() const {
-        return tabActive(WorkspaceTab::Start);
-    }
-
-    bool settingsTabActive() const {
-        return tabActive(WorkspaceTab::Settings);
-    }
-
-    bool docsTabActive() const {
-        return tabActive(WorkspaceTab::Docs);
-    }
-
-    std::optional<std::string> activeFlowgraph() const {
-        if (startTabActive() || settingsTabActive() || docsTabActive() || terminal.focused.has_value()) {
-            return std::nullopt;
-        }
-        if (!interface.focusedFlowgraph.has_value() || !flowgraph.items.contains(*interface.focusedFlowgraph)) {
-            return std::nullopt;
-        }
-        return interface.focusedFlowgraph;
-    }
-
-    bool flowgraphUnsaved(const std::string& id) const {
-        const auto entry = flowgraph.history.find(id);
-        return entry != flowgraph.history.end() && entry->second.unsaved();
-    }
-
-    bool flowgraphMayLoseChanges(const std::string& id) const {
-        const auto entry = flowgraph.history.find(id);
-        return entry != flowgraph.history.end() && (entry->second.unsaved() || !entry->second.settled());
-    }
-
-    bool tabsHidden() const {
-        return workspaceTabs() == 0 && !interface.startTab && !interface.settingsTab && !interface.docsTab;
-    }
-
-    U64 workspaceTabs() const {
-        return flowgraph.items.size() + terminal.tabs.size();
-    }
+    bool startTabShown() const;
+    bool tabShown(WorkspaceTab tab) const;
+    bool tabActive(WorkspaceTab tab) const;
+    bool startTabActive() const;
+    bool settingsTabActive() const;
+    bool docsTabActive() const;
+    std::optional<std::string> activeFlowgraph() const;
+    bool flowgraphUnsaved(const std::string& id) const;
+    bool flowgraphMayLoseChanges(const std::string& id) const;
+    bool tabsHidden() const;
+    U64 workspaceTabs() const;
 };
 
 }  // namespace Jetstream

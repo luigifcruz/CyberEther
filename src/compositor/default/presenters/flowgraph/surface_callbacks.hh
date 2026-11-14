@@ -21,34 +21,7 @@ struct FlowgraphSurfaceCallbacks {
                                            const std::string& flowgraphId,
                                            const std::string& blockName,
                                            const std::string& metaKey,
-                                           const SurfacePlacement placement) {
-        return {
-            .onSize = [enqueue, surface, flowgraphId, blockName, metaKey, placement](
-                          const Sakura::SurfaceResize& resize) {
-                enqueue(MailResizeSurface{
-                    .surface = surface,
-                    .flowgraph = flowgraphId,
-                    .block = blockName,
-                    .metaKey = metaKey,
-                    .placement = placement,
-                    .resize = {
-                        .logicalSize = resize.logicalSize,
-                        .framebufferSize = resize.framebufferSize,
-                        .scale = resize.scale,
-                    },
-                });
-            },
-            .onInput = [enqueue, surface](InputEvent event) {
-                enqueue(MailSurfaceInput{
-                    .surface = surface,
-                    .event = event,
-                });
-            },
-            .resolveCursor = [surface]() {
-                return surface->cursor();
-            },
-        };
-    }
+                                           const SurfacePlacement placement);
 };
 
 }  // namespace Jetstream

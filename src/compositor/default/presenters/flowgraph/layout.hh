@@ -18,64 +18,17 @@
 
 namespace Jetstream {
 
-inline std::string DescribeTile(const std::string& key) {
-    if (key == kLayoutDocumentationPane) {
-        return "Documentation";
-    }
-    if (key == kLayoutEnvironmentPane) {
-        return "Environment";
-    }
-    if (key == kLayoutDescriptionPane) {
-        return "Description";
-    }
-    if (ParseTerminalPaneKey(key).has_value()) {
-        return "Terminal";
-    }
-    if (auto config = ParseConfigTileKey(key)) {
-        return *config + " Controls";
-    }
-    if (auto surface = ParseSurfaceTileKey(key)) {
-        return jst::fmt::format("{} ({})", surface->first, surface->second);
-    }
-    return key;
-}
+std::string DescribeTile(const std::string& key);
 
-inline TilePaneMap LayoutToDockPanes(const std::string& flowgraphId) {
-    return [flowgraphId](const std::string& pane) -> std::optional<std::string> {
-        if (pane == kLayoutEditorPane) {
-            return MakeEditorPaneId(flowgraphId);
-        }
-        if (IsTransientPane(pane) || IsLayoutPane(pane)) {
-            return pane;
-        }
-        return std::nullopt;
-    };
-}
+TilePaneMap LayoutToDockPanes(const std::string& flowgraphId);
 
-inline TilePaneMap DockToLayoutPanes(const std::string& flowgraphId) {
-    return [flowgraphId](const std::string& pane) -> std::optional<std::string> {
-        if (pane == MakeEditorPaneId(flowgraphId)) {
-            return std::string(kLayoutEditorPane);
-        }
-        if (IsTransientPane(pane) || IsLayoutPane(pane)) {
-            return pane;
-        }
-        return std::nullopt;
-    };
-}
+TilePaneMap DockToLayoutPanes(const std::string& flowgraphId);
 
 struct LayoutPresenter {
     const PresenterContext& context;
 
-    explicit LayoutPresenter(const PresenterContext& context) : context(context) {}
-
-    std::optional<Sakura::DockTiles> build(const std::string& flowgraphId) const {
-        const auto layoutIt = context.state.flowgraph.layouts.find(flowgraphId);
-        if (layoutIt == context.state.flowgraph.layouts.end()) {
-            return std::nullopt;
-        }
-        return ToDockTiles(layoutIt->second, LayoutToDockPanes(flowgraphId));
-    }
+    explicit LayoutPresenter(const PresenterContext& context);
+    std::optional<Sakura::DockTiles> build(const std::string& flowgraphId) const;
 };
 
 }  // namespace Jetstream
