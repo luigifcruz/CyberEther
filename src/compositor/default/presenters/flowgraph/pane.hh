@@ -136,6 +136,9 @@ struct FlowgraphPanePresenter {
             .onClose = [enqueue, flowgraphId]() {
                 enqueue(MailCloseDocumentation{flowgraphId});
             },
+            .onOpenUrl = [enqueue](const std::string& url) {
+                enqueue(MailOpenUrl{.url = url, .notifyResult = true});
+            },
         };
     }
 
