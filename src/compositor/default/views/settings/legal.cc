@@ -118,6 +118,7 @@ const std::vector<LegalSettingsView::Dependency>& LegalSettingsView::Dependencie
         {"tree-sitter-json", "MIT"},
         {"ONNX Runtime", "MIT"},
         {"GLFW", "zlib/libpng"},
+        {"Wayland", "MIT"},
         {"spirv-cross", "Apache License 2.0"},
         {"Apple metal-cpp", "Apache License 2.0"},
         {"glslang", "BSD-3-Clause"},
