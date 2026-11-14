@@ -152,6 +152,7 @@ class JETSTREAM_API InputState {
     MouseEvent momentumEvent{};
     F64 momentumSteppedAt = 0.0;
     bool samplingMomentum = false;
+    bool gestureHeld = false;
 
     struct Trickle {
         bool moved = false;

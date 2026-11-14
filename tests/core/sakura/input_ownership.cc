@@ -129,7 +129,7 @@ U64 FocusCount(const std::vector<InputEvent>& events, bool focused) {
 
 }  // namespace
 
-TEST_CASE("An overlay cannot swallow an explicit elastic scroll release", "[core][sakura][input][ownership][wayland-scroll]") {
+TEST_CASE("An overlay cannot swallow an elastic scroll release", "[core][sakura][input][ownership][wayland-scroll]") {
     InputFixture fixture;
     fixture.ctx.time = 1.0;
     Sakura::Scroller scroll;
@@ -145,7 +145,7 @@ TEST_CASE("An overlay cannot swallow an explicit elastic scroll release", "[core
     root.setLayers({&back, &modal});
     fixture.place(root);
     MouseEvent wheel{.type = MouseEventType::Scroll, .position = {100, 100}, .scroll = {0, 4},
-                     .phase = ScrollPhase::Began, .precise = true, .explicitRelease = true};
+                     .phase = ScrollPhase::Began, .precise = true};
     REQUIRE(Sakura::Access::mouseEvent(root, wheel));
     const F32 stretched = scroll.overscroll(fixture.ctx).y;
     REQUIRE(stretched < 0.0f);
@@ -188,12 +188,12 @@ TEST_CASE("A temporarily zero-sized canvas cancels held scrolling without mouse 
     frame.windowFocused = true;
     frame.pointer = Extent2D<F32>{100, 100};
     frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {100, 100}, .scroll = {0, 4},
-                              .phase = ScrollPhase::Began, .explicitRelease = true}};
+                              .phase = ScrollPhase::Began}};
     root.dispatch(router.route(frame, {0, 0, 800, 300}));
     REQUIRE(scroll.overscroll(fixture.ctx).y < 0.0f);
     ++frame.serial;
     frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {100, 100},
-                              .phase = ScrollPhase::Ended, .explicitRelease = true}};
+                              .phase = ScrollPhase::Ended}};
     root.dispatch(router.route(frame, {0, 0, 0, 0}));
     CHECK(scroll.overscroll(fixture.ctx).y == 0.0f);
     ++frame.serial;

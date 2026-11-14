@@ -3,6 +3,7 @@
 #include <jetstream/render/sakura/components/box.hh>
 
 #include "../context.hh"
+#include "../detail/access.hh"
 #include "../detail/helpers.hh"
 #include "../detail/wheel_motion.hh"
 #include "../metrics.hh"
@@ -27,7 +28,6 @@ constexpr F32 kSettleDistance = 0.25f;
 constexpr F32 kSettleSpeed = 10.0f;
 constexpr F32 kMinShrunkThumbRatio = 0.5f;
 constexpr F64 kMaxStep = 1.0 / 30.0;
-constexpr F64 kGestureTimeout = 0.3;
 
 F32 RubberBand(F32 stretch, F32 extent) {
     if (extent <= 0.0f) {
@@ -164,9 +164,6 @@ struct Scroller::Impl {
     Elastic elasticY;
     F32 pixelRatio = 1.0f;
     F64 steppedAt = -1.0;
-    F64 lastGesture = 0.0;
-    bool gesturePending = false;
-    bool explicitRelease = false;
     Extent2D<F32> speed = {0.0f, 0.0f};
     Extent2D<F32> travel = {0.0f, 0.0f};
     F64 sampledAt = -1.0;
@@ -182,8 +179,6 @@ struct Scroller::Impl {
         speed = {0.0f, 0.0f};
         travel = {0.0f, 0.0f};
         sampledAt = -1.0;
-        gesturePending = false;
-        explicitRelease = false;
         dragAxis = DragAxis::None;
     }
 
@@ -397,7 +392,6 @@ struct Scroller::Impl {
         if (maxScrollY() > 0.0f) {
             elasticY.grab(viewport.height);
         }
-        gesturePending = true;
     }
 
     void release() {
@@ -406,10 +400,6 @@ struct Scroller::Impl {
     }
 
     void step(Scroller& self, F64 time) {
-        if (gesturePending) {
-            gesturePending = false;
-            lastGesture = time;
-        }
         if (time != steppedAt) {
             const bool restart = elasticX.restart || elasticY.restart;
             elasticX.restart = false;
@@ -421,9 +411,6 @@ struct Scroller::Impl {
             (void)setScrollY(self, wheelY.advance(scrollY, wheelElapsed, maxScrollY()));
             wheelSteppedAt = wheelX.active() || wheelY.active() ? time : -1.0;
             steppedAt = time;
-            if (touching() && !explicitRelease && time - lastGesture > kGestureTimeout) {
-                release();
-            }
             const Extent2D<F32> before = {elasticX.offset, elasticY.offset};
             elasticX.spring(dt);
             elasticY.spring(dt);
@@ -443,8 +430,6 @@ struct Scroller::Impl {
             if (config.onOverscroll) {
                 config.onOverscroll();
             }
-        } else if (touching() && !explicitRelease && (elasticX.offset != 0.0f || elasticY.offset != 0.0f)) {
-            self.requestFrame(lastGesture + kGestureTimeout);
         }
     }
 };
@@ -491,7 +476,7 @@ Extent2D<F32> Scroller::overscroll(const Context& ctx) {
 }
 
 void Scroller::layout(const Context& ctx) {
-    if (impl->touching() && impl->explicitRelease && (impl->viewport != frame() || impl->inputClip != clip() ||
+    if (impl->touching() && (impl->viewport != frame() || impl->inputClip != clip() ||
                              impl->inputTranslation != translation())) {
         impl->resetInteraction();
     }
@@ -553,11 +538,9 @@ bool Scroller::wheel(const MouseEvent& event) {
 
     switch (event.phase) {
         case ScrollPhase::Began:
-            s.explicitRelease = event.explicitRelease;
             s.grab();
             break;
         case ScrollPhase::Changed:
-            s.explicitRelease = event.explicitRelease;
             if (!held) {
                 s.grab();
             }
@@ -635,7 +618,6 @@ bool Scroller::wheel(const MouseEvent& event) {
         (void)s.setScrollX(*this, move(s.elasticX, s.scrollX, s.maxScrollX(), delta.x, s.speed.x, s.viewport.width));
     }
     if (consumedX || consumedY) {
-        s.gesturePending = true;
         invalidate(Dirty::Layout);
     }
     if (before.x != s.elasticX.offset || before.y != s.elasticY.offset) {
@@ -649,6 +631,7 @@ void Scroller::conceal() {
 }
 
 void Scroller::scrollPhaseEnded(ScrollPhase phase) {
+    const auto token = Access::alive(*this);
     if (phase == ScrollPhase::MomentumEnded) {
         impl->elasticX.bounced = false;
         impl->elasticY.bounced = false;
@@ -656,6 +639,9 @@ void Scroller::scrollPhaseEnded(ScrollPhase phase) {
     if (impl->touching()) {
         impl->release();
         impl->notifyOverscroll(*this);
+        if (token.expired()) {
+            return;
+        }
     }
     Component::scrollPhaseEnded(phase);
 }

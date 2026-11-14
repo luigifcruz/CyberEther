@@ -715,7 +715,7 @@ TEST_CASE("Chat transcripts stretch past the tail under a trackpad drag and spri
     CHECK(Retains(frames, update));
 }
 
-TEST_CASE("Moving an explicitly stretched chat resets placement before the tree becomes clean",
+TEST_CASE("Moving a stretched chat resets placement before the tree becomes clean",
           "[core][sakura][chat][retention][wayland-scroll]") {
     Scene scene;
     Transcript transcript;
@@ -729,7 +729,6 @@ TEST_CASE("Moving an explicitly stretched chat resets placement before the tree 
     REQUIRE(frames.settle(update));
     auto event = Wheel(200.0f, 150.0f, -3.0f);
     event.phase = ScrollPhase::Began;
-    event.explicitRelease = true;
     REQUIRE(place.send(event));
     frames.run(update);
     REQUIRE(Bottom(transcript) < place.target.bottom() - 1.0f);

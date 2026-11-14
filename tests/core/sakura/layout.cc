@@ -735,10 +735,9 @@ struct ElasticRig {
         host.place(ctx, bounds);
     }
 
-    bool wheel(F32 dy, ScrollPhase phase, bool explicitRelease = false) {
+    bool wheel(F32 dy, ScrollPhase phase) {
         auto event = Wheel(100.0f, 50.0f, dy);
         event.phase = phase;
-        event.explicitRelease = explicitRelease;
         const bool handled = host.send(event);
         place();
         return handled;
@@ -829,25 +828,25 @@ TEST_CASE("Wayland precision scrolling retains the ordinary scroll distance and 
     CHECK(rig.scrollY == Catch::Approx(249.2f));
 }
 
-TEST_CASE("Explicit-release gestures hold elastic space until the actual lift", "[core][sakura][layout]") {
+TEST_CASE("Stretched gestures hold elastic space until the actual lift", "[core][sakura][layout]") {
     ElasticRig rig;
-    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began, true));
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began));
     const F32 held = rig.offset();
     REQUIRE(held < 0.0f);
     CHECK(rig.advance(2.0) == held);
-    CHECK_FALSE(rig.wheel(0.0f, ScrollPhase::Ended, true));
+    CHECK_FALSE(rig.wheel(0.0f, ScrollPhase::Ended));
     CHECK(rig.advance(1.0) == 0.0f);
 }
 
-TEST_CASE("Withdrawn and cancelled explicit gestures cannot retain elastic space", "[core][sakura][layout][wayland-scroll]") {
+TEST_CASE("Withdrawn and cancelled gestures cannot retain elastic space", "[core][sakura][layout][wayland-scroll]") {
     ElasticRig rig;
-    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began, true));
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began));
     REQUIRE(rig.offset() < 0.0f);
     // Hidden subtrees are concealed by the next paint pass.
     SECTION("hidden scroller misses release") {
         rig.scroll.setVisible(false);
         REQUIRE(Sakura::Access::paint(rig.scroll) == Result::SUCCESS);
-        rig.wheel(0.0f, ScrollPhase::Ended, true);
+        rig.wheel(0.0f, ScrollPhase::Ended);
         rig.scroll.setVisible(true);
     }
     SECTION("hidden ancestor cancels descendants") {
@@ -861,14 +860,14 @@ TEST_CASE("Withdrawn and cancelled explicit gestures cannot retain elastic space
     SECTION("target moves outside pinned release") {
         rig.bounds.x = 300.0f;
         rig.place();
-        rig.wheel(0.0f, ScrollPhase::Ended, true);
+        rig.wheel(0.0f, ScrollPhase::Ended);
         rig.bounds.x = 0.0f;
     }
     rig.place();
     CHECK(rig.advance(2.0) == 0.0f);
-    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began, true));
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began));
     CHECK(rig.offset() < 0.0f);
-    rig.wheel(0.0f, ScrollPhase::Ended, true);
+    rig.wheel(0.0f, ScrollPhase::Ended);
     CHECK(rig.advance(1.0) == 0.0f);
 }
 
@@ -897,25 +896,16 @@ TEST_CASE("Momentum after a stretched release never bounces again once the sprin
     CHECK(rig.offset() < 0.0f);
 }
 
-TEST_CASE("Stretched gestures that never report a lift release after a timeout", "[core][sakura][layout]") {
-    ElasticRig rig;
-    rig.wheel(0.0f, ScrollPhase::Began);
-    rig.wheel(4.0f, ScrollPhase::Changed);
-    const F32 held = rig.offset();
-    REQUIRE(held < 0.0f);
-    CHECK(rig.advance(0.25) == held);
-    CHECK(rig.advance(1.5) == 0.0f);
-}
-
-TEST_CASE("Stretches that start after an idle period hold until the gesture times out", "[core][sakura][layout]") {
+TEST_CASE("Resting fingers keep a stretch that started after an idle period", "[core][sakura][layout]") {
     ElasticRig rig;
     rig.ctx.time += 5.0;
     rig.wheel(0.0f, ScrollPhase::Began);
     rig.wheel(4.0f, ScrollPhase::Changed);
     const F32 held = rig.offset();
     REQUIRE(held < 0.0f);
-    CHECK(rig.advance(0.2) == held);
-    CHECK(rig.advance(1.5) == 0.0f);
+    CHECK(rig.advance(2.0) == held);
+    rig.wheel(0.0f, ScrollPhase::Ended);
+    CHECK(rig.advance(1.0) == 0.0f);
 }
 
 TEST_CASE("Scrollers leave trackpad gestures on an axis they cannot scroll to the scroller below",

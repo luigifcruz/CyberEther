@@ -64,7 +64,6 @@ TEST_CASE("Explicit release starts decaying momentum and eventually allows idle"
         state.advance(1.0 + i / 120.0, {});
         for (const auto& event : Scrolls(state)) {
             CHECK(event.position == Extent2D<F32>{50.0f, 70.0f});
-            CHECK(event.explicitRelease);
             if (event.phase == ScrollPhase::Momentum) {
                 CHECK(event.scroll.y > previous);
                 CHECK(event.scroll.y < 0.0f);
@@ -161,6 +160,21 @@ TEST_CASE("Native cancellations end each synthesized stream exactly once", "[cor
         state.advance(10.0, {cancel(ScrollPhase::MomentumEnded)});
         CHECK(Scrolls(state).empty());
     }
+    CHECK_FALSE(state.hasPending());
+}
+
+TEST_CASE("A native cancellation releases a gesture that resumed after a key press", "[core][render][scroll-momentum]") {
+    Render::InputState state;
+    state.advance(1.0, {Finger(ScrollPhase::Began, 100)});
+    state.advance(1.005, {Queue::Key{KeyCode::Escape, true}});
+    REQUIRE(Scrolls(state).size() == 1);
+    CHECK(Scrolls(state)[0].phase == ScrollPhase::Ended);
+    state.advance(1.01, {Finger(ScrollPhase::Changed, 110)});
+    REQUIRE(Scrolls(state).size() == 1);
+    CHECK(Scrolls(state)[0].phase == ScrollPhase::Changed);
+    state.advance(1.02, {Queue::Wheel{.phase = ScrollPhase::Ended, .precise = true, .explicitRelease = true}});
+    REQUIRE(Scrolls(state).size() == 1);
+    CHECK(Scrolls(state)[0].phase == ScrollPhase::Ended);
     CHECK_FALSE(state.hasPending());
 }
 

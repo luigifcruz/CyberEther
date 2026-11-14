@@ -344,7 +344,7 @@ bool InputState::process(const InputQueue::Event& event, F64 time, Trickle& tric
         }
         const bool ends = wheel->phase == ScrollPhase::Ended || wheel->phase == ScrollPhase::MomentumEnded;
         if (ends && wheel->explicitRelease && !wheel->synthesizeMomentum && !wheel->remote) {
-            if (momentum.active() || samplingMomentum) {
+            if (momentum.active() || samplingMomentum || gestureHeld) {
                 trickle.wheeled = true;
                 cancelMomentum();
             }
@@ -363,16 +363,21 @@ bool InputState::process(const InputQueue::Event& event, F64 time, Trickle& tric
         scroll.phase = wheel->phase;
         scroll.precise = wheel->precise;
         scroll.smooth = wheel->smooth;
-        scroll.explicitRelease = wheel->explicitRelease;
         frameEvents.push_back(scroll);
         if (wheel->synthesizeMomentum && !wheel->remote) {
             if (wheel->phase == ScrollPhase::Began) {
                 samplingMomentum = true;
             }
-            if (samplingMomentum && (wheel->phase == ScrollPhase::Began || wheel->phase == ScrollPhase::Changed)) {
+            if (wheel->phase == ScrollPhase::Began || wheel->phase == ScrollPhase::Changed) {
+                gestureHeld = true;
                 momentumEvent = scroll;
-                momentum.sample(wheel->timestamp, wheel->delta);
-            } else if (samplingMomentum && wheel->phase == ScrollPhase::Ended) {
+                if (samplingMomentum) {
+                    momentum.sample(wheel->timestamp, wheel->delta);
+                }
+            } else if (wheel->phase == ScrollPhase::Ended) {
+                gestureHeld = false;
+            }
+            if (samplingMomentum && wheel->phase == ScrollPhase::Ended) {
                 samplingMomentum = false;
                 if (momentum.release(wheel->timestamp)) {
                     momentum.advance(std::max(0.0, elapsed - time));
@@ -562,14 +567,15 @@ void InputState::clear() {
 }
 
 void InputState::cancelMomentum() {
-    if (momentum.active() || samplingMomentum) {
+    if (momentum.active() || samplingMomentum || gestureHeld) {
         auto end = momentumEvent;
-        end.phase = samplingMomentum ? ScrollPhase::Ended : ScrollPhase::MomentumEnded;
+        end.phase = samplingMomentum || gestureHeld ? ScrollPhase::Ended : ScrollPhase::MomentumEnded;
         end.scroll = {0.0f, 0.0f};
         frameEvents.push_back(end);
     }
     momentum.reset();
     samplingMomentum = false;
+    gestureHeld = false;
 }
 
 void InputState::advanceMomentum() {

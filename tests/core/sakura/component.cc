@@ -27,6 +27,7 @@ struct Board : Sakura::Component {
     using Component::inheritedClip;
     using Component::mountChildren;
     using Component::removeChild;
+    using Component::scrollPhaseEnded;
     using Component::setChildren;
 
     std::vector<std::pair<Sakura::Component*, Rect>> slots;
@@ -665,7 +666,6 @@ TEST_CASE("Scroller withdrawal and clip changes cancel explicit elastic gestures
     place();
     auto event = Wheel(100.0f, 50.0f, 4.0f);
     event.phase = ScrollPhase::Began;
-    event.explicitRelease = true;
     REQUIRE(board.mouseEventChildren(event));
     REQUIRE(scroll.overscroll(ctx).y < 0.0f);
     SECTION("unmount and remount the same identity") {
@@ -692,4 +692,22 @@ TEST_CASE("Scroller withdrawal and clip changes cancel explicit elastic gestures
     ctx.time += 2.0;
     place();
     CHECK(scroll.overscroll(ctx).y == 0.0f);
+}
+
+TEST_CASE("A scroller destroyed by its release callback ends the broadcast safely", "[core][sakura][component][wayland-scroll]") {
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    auto scroll = std::make_unique<Sakura::Scroller>();
+    scroll->update({.contentHeight = 1000.0f});
+    Board board;
+    board.put(*scroll, {0.0f, 0.0f, 200.0f, 100.0f});
+    board.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    auto event = Wheel(100.0f, 50.0f, 4.0f);
+    event.phase = ScrollPhase::Began;
+    REQUIRE(board.mouseEventChildren(event));
+    REQUIRE(scroll->overscroll(ctx).y < 0.0f);
+    scroll->update({.contentHeight = 1000.0f, .onOverscroll = [&] { scroll.reset(); }});
+    board.scrollPhaseEnded(ScrollPhase::Ended);
+    CHECK(scroll == nullptr);
+    CHECK(board.children().empty());
 }
