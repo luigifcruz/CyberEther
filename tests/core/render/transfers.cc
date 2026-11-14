@@ -1647,6 +1647,104 @@ TEST_CASE("Retired component destructors can reenter window synchronization and 
     REQUIRE(released);
 }
 
+TEST_CASE("Attachment retirement waits for the latest submitted frame",
+          "[core][render][window][surface][retirement]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto surface = MakeFramebufferSurface(texture);
+    std::shared_ptr<Render::WindowAttachment> attachment;
+    SECTION("Standalone texture") { attachment = texture; }
+    SECTION("Surface and its leased framebuffer") { attachment = surface; }
+
+    U64 synchronizations = 0;
+    window.synchronizeHandler = [&] {
+        CHECK_FALSE(surface->hasStartedDestruction());
+        CHECK(texture->destroyCount == 0);
+        CHECK(window.outstandingSubmissions > 0);
+        ++synchronizations;
+        return Result::SUCCESS;
+    };
+    surface->destructionHandler = [&] {
+        CHECK(window.outstandingSubmissions == 0);
+        return Result::SUCCESS;
+    };
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(attachment) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.unbind(attachment) == Result::SUCCESS);
+    for (U64 i = 0; i < 5; ++i) {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+        CHECK(synchronizations == (i == 4 ? 1 : 0));
+        CHECK(texture->destroyCount == (i == 4 ? 1 : 0));
+    }
+    REQUIRE(window.stop() == Result::SUCCESS);
+    window.synchronizeHandler = {};
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Failed attachment retirement synchronization keeps the whole batch retryable",
+          "[core][render][window][surface][retirement]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto surface = MakeFramebufferSurface(texture);
+    std::array<U32, 2> source{};
+    auto buffer = MakeBuffer(source);
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(window.bind(buffer) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+
+    window.synchronizeHandler = [] { return Result::ERROR; };
+    bool shutdown = false;
+    SECTION("Deferred destruction") {
+        REQUIRE(window.unbind(surface) == Result::SUCCESS);
+        REQUIRE(window.unbind(buffer) == Result::SUCCESS);
+        for (U64 i = 0; i < 4; ++i) {
+            REQUIRE(window.begin() == Result::SUCCESS);
+            REQUIRE(window.end() == Result::SUCCESS);
+        }
+        REQUIRE(window.begin() == Result::SUCCESS);
+        CHECK(window.end() == Result::ERROR);
+    }
+    SECTION("Shutdown with work still in flight") {
+        shutdown = true;
+        REQUIRE(window.stop() == Result::SUCCESS);
+        CHECK(window.destroy() == Result::ERROR);
+    }
+    CHECK_FALSE(surface->hasStartedDestruction());
+    CHECK(texture->destroyCount == 0);
+    CHECK(buffer->destroyCount == 0);
+    CHECK(window.destructionCount() == 0);
+
+    U64 synchronizations = 0;
+    window.synchronizeHandler = [&] {
+        CHECK_FALSE(surface->hasStartedDestruction());
+        CHECK(texture->destroyCount == 0);
+        CHECK(buffer->destroyCount == 0);
+        ++synchronizations;
+        return Result::SUCCESS;
+    };
+    if (shutdown) {
+        REQUIRE(window.destroy() == Result::SUCCESS);
+    } else {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+    }
+    CHECK(synchronizations == 1);
+    CHECK(surface->hasStartedDestruction());
+    CHECK(texture->destroyCount == 1);
+    CHECK(buffer->destroyCount == 1);
+    if (!shutdown) {
+        REQUIRE(window.stop() == Result::SUCCESS);
+        window.synchronizeHandler = {};
+        REQUIRE(window.destroy() == Result::SUCCESS);
+    }
+}
+
 TEST_CASE("Render transfer ranges align and reject overflow", "[core][render][transfer]") {
     U64 used = 3;
     U64 offset = 0;

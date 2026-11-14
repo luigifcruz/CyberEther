@@ -622,7 +622,7 @@ Result Window::end() {
     }
 
     Result result = res;
-    if (retirementReady) {
+    if (retirementReady || !expiredAttachments.empty()) {
         const Result syncResult = underlyingSynchronize();
         if (syncResult == Result::SUCCESS || syncResult == Result::RELOAD) {
             std::lock_guard<std::mutex> lock(attachmentStateMutex);
@@ -632,6 +632,11 @@ Result Window::end() {
             }
         } else {
             result = syncResult;
+            std::lock_guard<std::mutex> lock(attachmentStateMutex);
+            for (const auto& [stored, pending] : expiredAttachments) {
+                destroyingAttachments.erase(pending.attachment.get());
+            }
+            expiredAttachments.clear();
         }
     }
     for (auto& [stored, pending] : expiredAttachments) {

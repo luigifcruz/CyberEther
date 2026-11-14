@@ -118,7 +118,7 @@ Result SoapyImpl::create() {
     outputs()["signal"].produced(name(), "signal", buffer);
 
     generation = 0;
-    resetStream(frequency, sampleRate);
+    resetStream(frequency, appliedSampleRate);
     publishedMetadata = {};
     JST_CHECK(publishMetadata(stream.metadata()));
 
@@ -252,10 +252,10 @@ Result SoapyImpl::reconfigure() {
     });
 }
 
-void SoapyImpl::resetStream(const F32 appliedFrequency, const F32 appliedSampleRate) {
+void SoapyImpl::resetStream(const F32 appliedFrequency, const F64 appliedRate) {
     stream.reset({
         .frequency = appliedFrequency,
-        .sampleRate = appliedSampleRate,
+        .sampleRate = appliedRate,
         .generation = ++generation,
     });
 }
@@ -360,16 +360,16 @@ std::optional<SoapyAbi::Range> SoapyImpl::getGainRange() const {
 
 Result SoapyImpl::applyTuning(const Tuning& desired, const bool force) {
     if (force || desired.sampleRate != tuned.sampleRate) {
-        JST_CHECK(receiverDevice.setSampleRate(desired.sampleRate));
+        JST_CHECK(receiverDevice.setSampleRate(desired.sampleRate, appliedSampleRate));
         tuned.sampleRate = desired.sampleRate;
-        resetStream(tuned.frequency, tuned.sampleRate);
+        resetStream(tuned.frequency, appliedSampleRate);
     }
 
     const bool retuned = force || desired.frequency != tuned.frequency;
     if (retuned) {
         JST_CHECK(receiverDevice.setTunerFrequency(desired.frequency));
         tuned.frequency = desired.frequency;
-        resetStream(tuned.frequency, tuned.sampleRate);
+        resetStream(tuned.frequency, appliedSampleRate);
         gainRange.publish(receiverDevice.getGainRange());
     }
 

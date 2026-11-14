@@ -82,7 +82,7 @@ class JETSTREAM_API SoapyReceiver {
     F32 clampGain(F32 gain) const;
     Result setAntenna(const std::string& antenna);
     Result setTunerFrequency(F32 frequency);
-    Result setSampleRate(F32 sampleRate);
+    Result setSampleRate(F32 sampleRate, F64& appliedSampleRate);
     Result setAutomaticGain(bool automaticGain);
     Result setGain(F32 gain);
     Result setBiasTee(bool enabled);
@@ -108,7 +108,6 @@ class JETSTREAM_API SoapyReceiver {
     std::shared_ptr<SoapyLibrary> library;
     SoapyAbi::Device* device = nullptr;
     SoapyAbi::Stream* stream = nullptr;
-    std::vector<SoapyAbi::Range> sampleRateRanges;
     std::vector<SoapyAbi::Range> frequencyRanges;
     std::vector<std::string> antennas;
     std::optional<SoapyAbi::Range> gainRange;

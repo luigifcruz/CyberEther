@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <span>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -26,13 +27,15 @@
 
 #include "jetstream/types.hh"
 #include "resources/shaders/map_shaders.hh"
-#include "resources/geodata/geodata.hh"
+
+namespace Jetstream::Resources {
+extern const unsigned char GeoDataBundle[];
+extern const std::size_t GeoDataBundleSize;
+}
 
 namespace Jetstream::Render::Components {
 
 static constexpr F32 kPi = static_cast<F32>(JST_PI);
-static_assert(Resources::GeoDataFormatVersion == 2,
-              "Rebuild geodata with the geographic-only binary format.");
 
 static glm::vec3 LonLatToSphere(F32 lon, F32 lat) {
     return MapContext::LonLatToSphere(lon, lat);
@@ -44,17 +47,74 @@ static inline F32 WrapLongitude(const F32 longitude) {
 
 // Gzip decompression helper.
 
-static bool DecompressGzip(const uint8_t* src,
-                           uint32_t srcLen,
-                           std::vector<uint8_t>& dst,
-                           uint32_t rawLen) {
-    dst.resize(rawLen);
+struct GeoDataResource {
+    const uint8_t* data;
+    uint32_t size;
+    uint32_t rawSize;
+};
+
+using GeoDataIndex = std::unordered_map<std::string_view, GeoDataResource>;
+
+static uint32_t ReadGeoDataU32(const uint8_t* data) {
+    return static_cast<uint32_t>(data[0]) |
+           (static_cast<uint32_t>(data[1]) << 8) |
+           (static_cast<uint32_t>(data[2]) << 16) |
+           (static_cast<uint32_t>(data[3]) << 24);
+}
+
+static GeoDataIndex ReadGeoDataIndex() {
+    const std::span<const uint8_t> data(Resources::GeoDataBundle, Resources::GeoDataBundleSize);
+    if (data.size() < 16 || std::memcmp(data.data(), "CYEMAP\0\0", 8) != 0 ||
+        ReadGeoDataU32(data.data() + 8) != 3) {
+        return {};
+    }
+
+    const uint32_t count = ReadGeoDataU32(data.data() + 12);
+    GeoDataIndex index;
+    size_t position = 16;
+    for (uint32_t i = 0; i < count; ++i) {
+        // Each entry is [U16 name length, U32 gzip length, U32 raw length],
+        // followed by its ASCII name and gzip payload.
+        if (data.size() - position < 10) {
+            return {};
+        }
+        const auto entry = data.data() + position;
+        const size_t nameSize = entry[0] | (static_cast<uint16_t>(entry[1]) << 8);
+        const uint32_t size = ReadGeoDataU32(entry + 2);
+        const uint32_t rawSize = ReadGeoDataU32(entry + 6);
+        position += 10;
+        if (nameSize == 0 || size == 0 || rawSize == 0 ||
+            nameSize > data.size() - position) {
+            return {};
+        }
+        const std::string_view name(reinterpret_cast<const char*>(data.data() + position),
+                                    nameSize);
+        position += nameSize;
+        if (size > data.size() - position ||
+            !index.emplace(name, GeoDataResource{data.data() + position, size, rawSize}).second) {
+            return {};
+        }
+        position += size;
+    }
+    return position == data.size() ? index : GeoDataIndex{};
+}
+
+static bool DecompressGzip(const std::string_view name,
+                           std::vector<uint8_t>& dst) {
+    static const auto resources = ReadGeoDataIndex();
+    const auto it = resources.find(name);
+    if (it == resources.end()) {
+        JST_ERROR("[GEOMAP] Missing map resource: {}.", name);
+        return false;
+    }
+    const auto& resource = it->second;
+    dst.resize(resource.rawSize);
 
     z_stream strm{};
-    strm.next_in = const_cast<Bytef*>(src);
-    strm.avail_in = srcLen;
+    strm.next_in = const_cast<Bytef*>(resource.data);
+    strm.avail_in = resource.size;
     strm.next_out = dst.data();
-    strm.avail_out = rawLen;
+    strm.avail_out = resource.rawSize;
 
     if (inflateInit2(&strm, 15 + 16) != Z_OK) {
         return false;
@@ -63,7 +123,8 @@ static bool DecompressGzip(const uint8_t* src,
     int ret = inflate(&strm, Z_FINISH);
     inflateEnd(&strm);
 
-    if (ret != Z_STREAM_END) {
+    if (ret != Z_STREAM_END || strm.total_out != resource.rawSize ||
+        strm.total_in != resource.size) {
         return false;
     }
 
@@ -75,12 +136,10 @@ static bool DecompressGzip(const uint8_t* src,
 // Binary format: [U32 float_count]
 //                [F32 lon1,lat1,lon2,lat2 * segment_count]
 
-static Result LoadLineSegmentsFromMemory(const uint8_t* gz,
-                                         uint32_t gzLen,
-                                         uint32_t rawLen,
+static Result LoadLineSegmentsFromMemory(const std::string_view name,
                                          std::vector<F32>& geographicVertices) {
     std::vector<uint8_t> raw;
-    if (!DecompressGzip(gz, gzLen, raw, rawLen)) {
+    if (!DecompressGzip(name, raw)) {
         JST_ERROR("[GEOMAP] Failed to decompress line data.");
         return Result::ERROR;
     }
@@ -136,13 +195,11 @@ struct StyledLineSegments {
 //                            [F32 lon1,lat1,lon2,lat2 * segment_count]
 //                            [F32 min_zoom * segment_count]
 //                            [U8 class * segment_count]
-static Result LoadStyledLineSegmentsFromMemory(const uint8_t* gz,
-                                                uint32_t gzLen,
-                                                uint32_t rawLen,
+static Result LoadStyledLineSegmentsFromMemory(const std::string_view name,
                                                 U64 categoryCount,
                                                 StyledLineSegments& output) {
     std::vector<uint8_t> raw;
-    if (!DecompressGzip(gz, gzLen, raw, rawLen)) {
+    if (!DecompressGzip(name, raw)) {
         JST_ERROR("[GEOMAP] Failed to decompress styled line data.");
         return Result::ERROR;
     }
@@ -204,13 +261,11 @@ static Result LoadStyledLineSegmentsFromMemory(const uint8_t* gz,
 //                [F32 lon,lat * vertex_count]
 //                [U32 * index_count]
 
-static Result LoadPreTriangulatedFromMemory(const uint8_t* gz,
-                                            uint32_t gzLen,
-                                            uint32_t rawLen,
+static Result LoadPreTriangulatedFromMemory(const std::string_view name,
                                             std::vector<F32>& geographicVertices,
                                             std::vector<U32>& indices) {
     std::vector<uint8_t> raw;
-    if (!DecompressGzip(gz, gzLen, raw, rawLen)) {
+    if (!DecompressGzip(name, raw)) {
         JST_ERROR("[GEOMAP] Failed to decompress "
                   "pre-triangulated data.");
         return Result::ERROR;
@@ -318,12 +373,10 @@ static void UppercaseAscii(std::string& s) {
     }
 }
 
-static Result LoadLabelsFromMemory(const uint8_t* gz,
-                                   uint32_t gzLen,
-                                   uint32_t rawLen,
+static Result LoadLabelsFromMemory(const std::string_view name,
                                    std::vector<LabelInfo>& labels) {
     std::vector<uint8_t> raw;
-    if (!DecompressGzip(gz, gzLen, raw, rawLen)) {
+    if (!DecompressGzip(name, raw)) {
         JST_ERROR("[GEOMAP] Failed to decompress label data.");
         return Result::ERROR;
     }
@@ -470,9 +523,7 @@ static void CopyCameraFields(GpuUniforms& dst, const GpuUniforms& src) {
 // Bathymetry depth layer descriptor.
 
 struct BathymetrySource {
-    const uint8_t* gz;
-    uint32_t gzLen;
-    uint32_t rawLen;
+    std::string_view resource;
     U32 depth;       // meters
     float r, g, b;   // color for this depth level
 };
@@ -483,49 +534,27 @@ struct BathymetrySource {
 // underlay, which provides the base ocean color with a guaranteed
 // hole-free silhouette (see GenerateWaterSphereMesh below).
 static constexpr BathymetrySource BathymetrySources[] = {
-    {Resources::ne_10m_bathymetry_K_200_tri_gz,
-     Resources::ne_10m_bathymetry_K_200_tri_gz_len,
-     Resources::ne_10m_bathymetry_K_200_tri_raw_len,
+    {"ne_10m_bathymetry_K_200_tri",
      200,   0.094f, 0.161f, 0.290f},
-    {Resources::ne_10m_bathymetry_J_1000_tri_gz,
-     Resources::ne_10m_bathymetry_J_1000_tri_gz_len,
-     Resources::ne_10m_bathymetry_J_1000_tri_raw_len,
+    {"ne_10m_bathymetry_J_1000_tri",
      1000,  0.082f, 0.145f, 0.271f},
-    {Resources::ne_10m_bathymetry_I_2000_tri_gz,
-     Resources::ne_10m_bathymetry_I_2000_tri_gz_len,
-     Resources::ne_10m_bathymetry_I_2000_tri_raw_len,
+    {"ne_10m_bathymetry_I_2000_tri",
      2000,  0.071f, 0.129f, 0.251f},
-    {Resources::ne_10m_bathymetry_H_3000_tri_gz,
-     Resources::ne_10m_bathymetry_H_3000_tri_gz_len,
-     Resources::ne_10m_bathymetry_H_3000_tri_raw_len,
+    {"ne_10m_bathymetry_H_3000_tri",
      3000,  0.059f, 0.114f, 0.231f},
-    {Resources::ne_10m_bathymetry_G_4000_tri_gz,
-     Resources::ne_10m_bathymetry_G_4000_tri_gz_len,
-     Resources::ne_10m_bathymetry_G_4000_tri_raw_len,
+    {"ne_10m_bathymetry_G_4000_tri",
      4000,  0.047f, 0.098f, 0.212f},
-    {Resources::ne_10m_bathymetry_F_5000_tri_gz,
-     Resources::ne_10m_bathymetry_F_5000_tri_gz_len,
-     Resources::ne_10m_bathymetry_F_5000_tri_raw_len,
+    {"ne_10m_bathymetry_F_5000_tri",
      5000,  0.039f, 0.082f, 0.192f},
-    {Resources::ne_10m_bathymetry_E_6000_tri_gz,
-     Resources::ne_10m_bathymetry_E_6000_tri_gz_len,
-     Resources::ne_10m_bathymetry_E_6000_tri_raw_len,
+    {"ne_10m_bathymetry_E_6000_tri",
      6000,  0.031f, 0.067f, 0.173f},
-    {Resources::ne_10m_bathymetry_D_7000_tri_gz,
-     Resources::ne_10m_bathymetry_D_7000_tri_gz_len,
-     Resources::ne_10m_bathymetry_D_7000_tri_raw_len,
+    {"ne_10m_bathymetry_D_7000_tri",
      7000,  0.024f, 0.055f, 0.153f},
-    {Resources::ne_10m_bathymetry_C_8000_tri_gz,
-     Resources::ne_10m_bathymetry_C_8000_tri_gz_len,
-     Resources::ne_10m_bathymetry_C_8000_tri_raw_len,
+    {"ne_10m_bathymetry_C_8000_tri",
      8000,  0.020f, 0.043f, 0.133f},
-    {Resources::ne_10m_bathymetry_B_9000_tri_gz,
-     Resources::ne_10m_bathymetry_B_9000_tri_gz_len,
-     Resources::ne_10m_bathymetry_B_9000_tri_raw_len,
+    {"ne_10m_bathymetry_B_9000_tri",
      9000,  0.016f, 0.035f, 0.114f},
-    {Resources::ne_10m_bathymetry_A_10000_tri_gz,
-     Resources::ne_10m_bathymetry_A_10000_tri_gz_len,
-     Resources::ne_10m_bathymetry_A_10000_tri_raw_len,
+    {"ne_10m_bathymetry_A_10000_tri",
      10000, 0.012f, 0.027f, 0.094f},
 };
 
@@ -811,18 +840,14 @@ struct GeoMapBaseLayer::Impl {
 };
 
 // Append triangulated polygons with one color to a merged layer.
-static Result AppendColoredFill(const uint8_t* gz,
-                                uint32_t gzLen,
-                                uint32_t rawLen,
+static Result AppendColoredFill(const std::string_view name,
                                 float r,
                                 float g,
                                 float b,
                                 MergedFillLayer& layer) {
     std::vector<F32> tmpGeographic;
     std::vector<U32> tmpIndices;
-    JST_CHECK(LoadPreTriangulatedFromMemory(gz,
-                                            gzLen,
-                                            rawLen,
+    JST_CHECK(LoadPreTriangulatedFromMemory(name,
                                             tmpGeographic,
                                             tmpIndices));
 
@@ -960,33 +985,25 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     // Load coastlines and country borders separately so they can use
     // independent visual weights.
     JST_CHECK(LoadLineSegmentsFromMemory(
-        Resources::ne_10m_coastline_segments_gz,
-        Resources::ne_10m_coastline_segments_gz_len,
-        Resources::ne_10m_coastline_segments_raw_len,
+        "ne_10m_coastline_segments",
         pimpl->coastlines.vertices));
 
     JST_CHECK(LoadLineSegmentsFromMemory(
-        Resources::ne_10m_admin_0_boundary_lines_land_segments_gz,
-        Resources::ne_10m_admin_0_boundary_lines_land_segments_gz_len,
-        Resources::ne_10m_admin_0_boundary_lines_land_segments_raw_len,
+        "ne_10m_admin_0_boundary_lines_land_segments",
         pimpl->countryBorders.vertices));
     pimpl->countryBorders.instanceCount =
         pimpl->countryBorders.vertices.size() / 4;
 
     // Load minor lines: state/province borders.
     JST_CHECK(LoadLineSegmentsFromMemory(
-        Resources::ne_10m_admin_1_states_provinces_lines_segments_gz,
-        Resources::ne_10m_admin_1_states_provinces_lines_segments_gz_len,
-        Resources::ne_10m_admin_1_states_provinces_lines_segments_raw_len,
+        "ne_10m_admin_1_states_provinces_lines_segments",
         pimpl->stateBorders.vertices));
 
     // Preserve disputed-boundary class and source minimum zoom metadata.
     {
         StyledLineSegments styled;
         JST_CHECK(LoadStyledLineSegmentsFromMemory(
-            Resources::ne_10m_admin_0_boundary_lines_disputed_areas_styled_segments_gz,
-            Resources::ne_10m_admin_0_boundary_lines_disputed_areas_styled_segments_gz_len,
-            Resources::ne_10m_admin_0_boundary_lines_disputed_areas_styled_segments_raw_len,
+            "ne_10m_admin_0_boundary_lines_disputed_areas_styled_segments",
             pimpl->disputed.size(),
             styled));
         for (U64 i = 0; i < pimpl->disputed.size(); ++i) {
@@ -1003,31 +1020,21 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     {
         struct Group {
             U64 idx;
-            const uint8_t* gz;
-            uint32_t gzLen;
-            uint32_t rawLen;
+            std::string_view resource;
         };
         const Group groups[] = {
             {Impl::GeoEquator,
-             Resources::ne_10m_geographic_lines_equator_segments_gz,
-             Resources::ne_10m_geographic_lines_equator_segments_gz_len,
-             Resources::ne_10m_geographic_lines_equator_segments_raw_len},
+             "ne_10m_geographic_lines_equator_segments"},
             {Impl::GeoTropics,
-             Resources::ne_10m_geographic_lines_tropics_segments_gz,
-             Resources::ne_10m_geographic_lines_tropics_segments_gz_len,
-             Resources::ne_10m_geographic_lines_tropics_segments_raw_len},
+             "ne_10m_geographic_lines_tropics_segments"},
             {Impl::GeoPolar,
-             Resources::ne_10m_geographic_lines_polar_segments_gz,
-             Resources::ne_10m_geographic_lines_polar_segments_gz_len,
-             Resources::ne_10m_geographic_lines_polar_segments_raw_len},
+             "ne_10m_geographic_lines_polar_segments"},
             {Impl::GeoDateLine,
-             Resources::ne_10m_geographic_lines_dateline_segments_gz,
-             Resources::ne_10m_geographic_lines_dateline_segments_gz_len,
-             Resources::ne_10m_geographic_lines_dateline_segments_raw_len},
+             "ne_10m_geographic_lines_dateline_segments"},
         };
         for (const auto& g : groups) {
             JST_CHECK(LoadLineSegmentsFromMemory(
-                g.gz, g.gzLen, g.rawLen,
+                g.resource,
                 pimpl->geo[g.idx].vertices));
         }
     }
@@ -1036,9 +1043,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     // order while assigning exactly one color to every source layer.
     for (U64 i = 0; i < NumBathymetryLayers; ++i) {
         const auto& src = BathymetrySources[i];
-        JST_CHECK(AppendColoredFill(src.gz,
-                                    src.gzLen,
-                                    src.rawLen,
+        JST_CHECK(AppendColoredFill(src.resource,
                                     src.r,
                                     src.g,
                                     src.b,
@@ -1047,25 +1052,19 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
 
     // Load authoritative country polygons + urban + lakes into one buffer.
     // Draw order: countries first, urban on top, lakes on top.
-    JST_CHECK(AppendColoredFill(Resources::ne_10m_admin_0_countries_tri_gz,
-                                Resources::ne_10m_admin_0_countries_tri_gz_len,
-                                Resources::ne_10m_admin_0_countries_tri_raw_len,
+    JST_CHECK(AppendColoredFill("ne_10m_admin_0_countries_tri",
                                 kLandColor[0],
                                 kLandColor[1],
                                 kLandColor[2],
                                 pimpl->landcover));
 
-    JST_CHECK(AppendColoredFill(Resources::ne_10m_urban_areas_tri_gz,
-                                Resources::ne_10m_urban_areas_tri_gz_len,
-                                Resources::ne_10m_urban_areas_tri_raw_len,
+    JST_CHECK(AppendColoredFill("ne_10m_urban_areas_tri",
                                 kUrbanColor[0],
                                 kUrbanColor[1],
                                 kUrbanColor[2],
                                 pimpl->landcover));
 
-    JST_CHECK(AppendColoredFill(Resources::ne_10m_lakes_tri_gz,
-                                Resources::ne_10m_lakes_tri_gz_len,
-                                Resources::ne_10m_lakes_tri_raw_len,
+    JST_CHECK(AppendColoredFill("ne_10m_lakes_tri",
                                 0.106f,
                                 0.176f,
                                 0.310f,  // lakes: water blue
@@ -1074,9 +1073,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     // The same urban polygons glow at night; they are drawn by a separate
     // translucent pass so only positions are needed.
     JST_CHECK(LoadPreTriangulatedFromMemory(
-        Resources::ne_10m_urban_areas_tri_gz,
-        Resources::ne_10m_urban_areas_tri_gz_len,
-        Resources::ne_10m_urban_areas_tri_raw_len,
+        "ne_10m_urban_areas_tri",
         pimpl->urbanLights.geographicPositions,
         pimpl->urbanLights.indices));
     pimpl->urbanLights.indexCount = pimpl->urbanLights.indices.size();
@@ -1085,9 +1082,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     {
         StyledLineSegments styled;
         JST_CHECK(LoadStyledLineSegmentsFromMemory(
-            Resources::ne_10m_rivers_lake_centerlines_styled_segments_gz,
-            Resources::ne_10m_rivers_lake_centerlines_styled_segments_gz_len,
-            Resources::ne_10m_rivers_lake_centerlines_styled_segments_raw_len,
+            "ne_10m_rivers_lake_centerlines_styled_segments",
             pimpl->rivers.size(),
             styled));
         for (U64 i = 0; i < pimpl->rivers.size(); ++i) {
@@ -1765,49 +1760,31 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     std::vector<LabelInfo> allLabels;
 
     JST_CHECK(LoadLabelsFromMemory(
-        Resources::ne_10m_populated_places_simple_labels_gz,
-        Resources::ne_10m_populated_places_simple_labels_gz_len,
-        Resources::ne_10m_populated_places_simple_labels_raw_len,
+        "ne_10m_populated_places_simple_labels",
         allLabels));
     JST_CHECK(LoadLabelsFromMemory(
-        Resources::ne_10m_admin_0_countries_labels_gz,
-        Resources::ne_10m_admin_0_countries_labels_gz_len,
-        Resources::ne_10m_admin_0_countries_labels_raw_len,
+        "ne_10m_admin_0_countries_labels",
         allLabels));
     JST_CHECK(LoadLabelsFromMemory(
-        Resources::ne_10m_admin_1_states_provinces_labels_gz,
-        Resources::ne_10m_admin_1_states_provinces_labels_gz_len,
-        Resources::ne_10m_admin_1_states_provinces_labels_raw_len,
+        "ne_10m_admin_1_states_provinces_labels",
         allLabels));
     JST_CHECK(LoadLabelsFromMemory(
-        Resources::ne_10m_airports_labels_gz,
-        Resources::ne_10m_airports_labels_gz_len,
-        Resources::ne_10m_airports_labels_raw_len,
+        "ne_10m_airports_labels",
         allLabels));
     JST_CHECK(LoadLabelsFromMemory(
-        Resources::ne_10m_geography_marine_polys_labels_gz,
-        Resources::ne_10m_geography_marine_polys_labels_gz_len,
-        Resources::ne_10m_geography_marine_polys_labels_raw_len,
+        "ne_10m_geography_marine_polys_labels",
         allLabels));
     JST_CHECK(LoadLabelsFromMemory(
-        Resources::ne_10m_geography_regions_elevation_points_labels_gz,
-        Resources::ne_10m_geography_regions_elevation_points_labels_gz_len,
-        Resources::ne_10m_geography_regions_elevation_points_labels_raw_len,
+        "ne_10m_geography_regions_elevation_points_labels",
         allLabels));
     JST_CHECK(LoadLabelsFromMemory(
-        Resources::ne_10m_geography_regions_polys_labels_gz,
-        Resources::ne_10m_geography_regions_polys_labels_gz_len,
-        Resources::ne_10m_geography_regions_polys_labels_raw_len,
+        "ne_10m_geography_regions_polys_labels",
         allLabels));
     JST_CHECK(LoadLabelsFromMemory(
-        Resources::ne_10m_rivers_lake_centerlines_labels_gz,
-        Resources::ne_10m_rivers_lake_centerlines_labels_gz_len,
-        Resources::ne_10m_rivers_lake_centerlines_labels_raw_len,
+        "ne_10m_rivers_lake_centerlines_labels",
         allLabels));
     JST_CHECK(LoadLabelsFromMemory(
-        Resources::ne_10m_lakes_labels_gz,
-        Resources::ne_10m_lakes_labels_gz_len,
-        Resources::ne_10m_lakes_labels_raw_len,
+        "ne_10m_lakes_labels",
         allLabels));
 
     JST_INFO("[GEOMAP] Loaded {} total label candidates.", allLabels.size());

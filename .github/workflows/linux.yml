@@ -112,7 +112,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           set -euo pipefail
-          python -m pip install meson ninja numpy mapbox_earcut
+          python -m pip install meson ninja numpy
 
       - name: Install Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
