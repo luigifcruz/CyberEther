@@ -62,6 +62,8 @@ struct TextMarkdown : public Component {
         bool operator==(const Hero&) const = default;
     };
 
+    struct Prepared;
+
     struct Config {
         std::string id;
         std::string value;
@@ -96,6 +98,7 @@ struct TextMarkdown : public Component {
         std::vector<bool> detailsOpen;
         Callback<void(const std::vector<bool>&)> onDetailsToggle;
         Callback<bool(F32 offset)> onReveal;
+        std::shared_ptr<const Prepared> prepared;
 
         bool operator==(const Config&) const = default;
     };
@@ -112,6 +115,7 @@ struct TextMarkdown : public Component {
     ~TextMarkdown();
 
     void update(Config config);
+    std::shared_ptr<const Prepared> prepared() const;
     F32 naturalWidth() const;
     const TextGrid::Metrics& metrics() const;
     const std::vector<Heading>& headings() const;
