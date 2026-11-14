@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -895,11 +896,11 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailResizeSurface> {
     using variant::variant;
 
-    Mail();
+    Mail() noexcept(std::is_nothrow_default_constructible_v<variant>);
     Mail(const Mail& other);
-    Mail(Mail&& other) noexcept;
+    Mail(Mail&& other) noexcept(std::is_nothrow_move_constructible_v<variant>);
     Mail& operator=(const Mail& other);
-    Mail& operator=(Mail&& other) noexcept;
+    Mail& operator=(Mail&& other) noexcept(std::is_nothrow_move_assignable_v<variant>);
     ~Mail();
 };
 
