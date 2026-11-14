@@ -45,7 +45,9 @@ struct Scroller : public Component {
 
  protected:
     void layout(const Context& ctx) override;
+    void conceal() override;
     bool mouseEvent(const MouseEvent& event) override;
+    void scrollPhaseEnded(ScrollPhase phase) override;
 
  private:
     struct Impl;

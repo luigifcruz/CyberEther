@@ -1309,6 +1309,24 @@ bool Component::mouseEventChildren(const MouseEvent& event) {
     return false;
 }
 
+void Component::scrollPhaseEnded(ScrollPhase phase) {
+    const std::weak_ptr<bool> token = impl->alive;
+    Chain snapshot;
+    for (auto* child : impl->children) {
+        if (child) {
+            snapshot.push_back({child, child->impl->alive});
+        }
+    }
+    for (const auto& [child, alive] : snapshot) {
+        if (token.expired()) {
+            return;
+        }
+        if (!alive.expired() && child->impl->parent == this) {
+            child->scrollPhaseEnded(phase);
+        }
+    }
+}
+
 bool Component::deliverChild(Component& child, const MouseEvent& event) {
     if (!hasChild(child) || !child.impl->visible) {
         return false;

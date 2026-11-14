@@ -49,6 +49,8 @@ core_test_domains = {
         'render/components.cc',
         'render/browser_wheel.cc',
         'render/input_state.cc',
+        'render/scroll_momentum.cc',
+        'render/wayland_scroll.cc',
         'render/present_list.cc',
         'render/transfers.cc',
         'render/surface_edits.cc',
@@ -142,6 +144,20 @@ if not jst_is_windows
 endif
 
 core_test_targets = []
+if jst_is_linux and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
+    wayland_pointer_server_protocol = custom_target('pointer-gestures-server',
+        input: pointer_xml, output: 'pointer-gestures-server.h',
+        command: [pointer_scanner, 'server-header', '@INPUT@', '@OUTPUT@'])
+    wayland_pointer_tests = executable(
+        'jetstream-core-wayland-pointer-tests',
+        ['render/wayland_pointer.cc', wayland_pointer_server_protocol] + wayland_pointer_protocols,
+        dependencies: dep_lst + [libjetstream_dep, catch2_dep, dependency('wayland-server', version: '>=1.21')],
+        include_directories: inc_lst,
+    )
+    core_test_targets += [wayland_pointer_tests]
+    test('core-wayland-pointer', wayland_pointer_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+endif
 if jst_is_windows and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     windows_titlebar_tests = executable(
         'jetstream-core-windows-titlebar-tests',

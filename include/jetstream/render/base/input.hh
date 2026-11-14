@@ -3,6 +3,7 @@
 
 #include <array>
 #include <bitset>
+#include <chrono>
 #include <deque>
 #include <mutex>
 #include <optional>
@@ -11,6 +12,7 @@
 #include <vector>
 
 #include "jetstream/platform.hh"
+#include "jetstream/render/base/scroll_momentum.hh"
 #include "jetstream/surface.hh"
 #include "jetstream/types.hh"
 
@@ -35,6 +37,11 @@ class JETSTREAM_API InputQueue {
         ScrollPhase phase = ScrollPhase::None;
         bool precise = false;
         bool smooth = false;
+        bool explicitRelease = false;
+        bool synthesizeMomentum = false;
+        U32 timestamp = 0;
+        std::optional<Extent2D<F32>> position;
+        std::optional<std::chrono::steady_clock::time_point> receivedAt;
     };
 
     struct Key {
@@ -104,7 +111,8 @@ class JETSTREAM_API InputState {
     const std::optional<Extent2D<F32>>& pointer() const { return pointerPosition; }
     const std::array<bool, 3>& buttons() const { return buttonDown; }
     bool keyDown(KeyCode key) const;
-    bool hasPending() const { return !pendingEvents.empty(); }
+    bool hasPending() const { return !pendingEvents.empty() || momentum.active(); }
+    F64 waitTimeout(F64 maximum) const;
     const std::vector<Event>& events() const { return frameEvents; }
 
  private:
@@ -133,7 +141,17 @@ class JETSTREAM_API InputState {
     std::array<bool, kKeyCount> keys{};
     std::array<F32, kKeyCount> keyDuration{};
     std::vector<Event> frameEvents;
-    std::deque<InputQueue::Event> pendingEvents;
+    struct Pending {
+        InputQueue::Event event;
+        F64 time;
+    };
+    std::deque<Pending> pendingEvents;
+    std::optional<U32> scrollTimestamp;
+    F64 scrollTime = 0.0;
+    ScrollMomentum momentum;
+    MouseEvent momentumEvent{};
+    F64 momentumSteppedAt = 0.0;
+    bool samplingMomentum = false;
 
     struct Trickle {
         bool moved = false;
@@ -146,12 +164,14 @@ class JETSTREAM_API InputState {
         std::bitset<kKeyCount> keys;
     };
 
-    bool process(const InputQueue::Event& event, Trickle& trickle);
+    bool process(const InputQueue::Event& event, F64 time, Trickle& trickle);
     bool movePointer(const std::optional<Extent2D<F32>>& next, Trickle& trickle);
     bool button(MouseButton button, bool down, Trickle& trickle);
     bool potentiallyChar(KeyCode key) const;
     void clear();
     void repeatKeys();
+    void cancelMomentum();
+    void advanceMomentum();
 };
 
 }  // namespace Jetstream::Render

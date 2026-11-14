@@ -12,6 +12,10 @@
 #include "browser_wheel.hh"
 #endif
 
+#ifdef JST_OS_LINUX
+#include "wayland_pointer.hh"
+#endif
+
 #include <GLFW/glfw3.h>
 
 #include <array>
@@ -239,6 +243,9 @@ struct GlfwInput::Impl {
 #ifdef JST_OS_BROWSER
     std::unique_ptr<BrowserWheel> wheel;
 #endif
+#ifdef JST_OS_LINUX
+    std::unique_ptr<WaylandPointer> pointer;
+#endif
 
     Impl(GLFWwindow* window, Generic& viewport) : window(window), viewport(viewport) {}
 
@@ -360,6 +367,11 @@ struct GlfwInput::Impl {
         }
         impl.heldModifiers.fill(false);
         impl.pushModifiers({});
+#ifdef JST_OS_LINUX
+        if (impl.pointer) {
+            impl.pointer->focus(focused != 0);
+        }
+#endif
         impl.viewport.input().push(Render::InputQueue::Focus{focused != 0});
     }
 
@@ -389,6 +401,11 @@ struct GlfwInput::Impl {
 
     static void OnScroll(GLFWwindow* window, double x, double y) {
         auto& impl = From(window);
+#ifdef JST_OS_LINUX
+        if (impl.pointer && impl.pointer->available()) {
+            return;
+        }
+#endif
         impl.viewport.input().push(impl.takeWheel({static_cast<F32>(x), static_cast<F32>(y)}));
     }
 
@@ -502,10 +519,17 @@ GlfwInput::GlfwInput(GLFWwindow* window, Generic& viewport) {
             .delta = scroll.delta, .phase = scroll.phase, .precise = true});
     });
 #endif
+#ifdef JST_OS_LINUX
+    impl->pointer = std::make_unique<WaylandPointer>(window, [input = impl.get()](const auto& scroll) {
+        auto event = scroll.event;
+        event.position = scroll.position;
+        input->viewport.input().push(event);
+    });
+#endif
 }
 
 GlfwInput::~GlfwInput() {
-#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS) || defined(JST_OS_LINUX)
     impl->pointer.reset();
 #endif
 #ifdef JST_OS_BROWSER
@@ -537,6 +561,9 @@ void GlfwInput::poll() {
     impl->applyCursor();
     impl->applyClipboard();
 #ifdef JST_OS_WINDOWS
+    impl->pointer->poll();
+#endif
+#ifdef JST_OS_LINUX
     impl->pointer->poll();
 #endif
 #ifdef __EMSCRIPTEN__

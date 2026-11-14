@@ -150,6 +150,8 @@ struct Scroller::Impl {
     Box hThumb;
 
     Rect viewport;
+    Rect inputClip;
+    Extent2D<F32> inputTranslation = {0.0f, 0.0f};
     F32 scrollX = 0.0f;
     F32 scrollY = 0.0f;
     F32 targetX = 0.0f;
@@ -164,12 +166,34 @@ struct Scroller::Impl {
     F64 steppedAt = -1.0;
     F64 lastGesture = 0.0;
     bool gesturePending = false;
+    bool explicitRelease = false;
     Extent2D<F32> speed = {0.0f, 0.0f};
     Extent2D<F32> travel = {0.0f, 0.0f};
     F64 sampledAt = -1.0;
     WheelMotion wheelX;
     WheelMotion wheelY;
     F64 wheelSteppedAt = -1.0;
+
+    void resetInteraction() {
+        wheelX.cancel();
+        wheelY.cancel();
+        elasticX = {};
+        elasticY = {};
+        speed = {0.0f, 0.0f};
+        travel = {0.0f, 0.0f};
+        sampledAt = -1.0;
+        gesturePending = false;
+        explicitRelease = false;
+        dragAxis = DragAxis::None;
+    }
+
+    void cancelInteraction(Scroller& self) {
+        const bool stretched = !elasticX.resting() || !elasticY.resting();
+        resetInteraction();
+        if (stretched) {
+            notifyOverscroll(self);
+        }
+    }
 
     void sample(Extent2D<F32> delta) {
         if (steppedAt != sampledAt) {
@@ -397,7 +421,7 @@ struct Scroller::Impl {
             (void)setScrollY(self, wheelY.advance(scrollY, wheelElapsed, maxScrollY()));
             wheelSteppedAt = wheelX.active() || wheelY.active() ? time : -1.0;
             steppedAt = time;
-            if (touching() && time - lastGesture > kGestureTimeout) {
+            if (touching() && !explicitRelease && time - lastGesture > kGestureTimeout) {
                 release();
             }
             const Extent2D<F32> before = {elasticX.offset, elasticY.offset};
@@ -419,7 +443,7 @@ struct Scroller::Impl {
             if (config.onOverscroll) {
                 config.onOverscroll();
             }
-        } else if (touching() && (elasticX.offset != 0.0f || elasticY.offset != 0.0f)) {
+        } else if (touching() && !explicitRelease && (elasticX.offset != 0.0f || elasticY.offset != 0.0f)) {
             self.requestFrame(lastGesture + kGestureTimeout);
         }
     }
@@ -457,16 +481,7 @@ void Scroller::update(Config config) {
 }
 
 void Scroller::reset() {
-    auto& s = *impl;
-    s.wheelX.cancel();
-    s.wheelY.cancel();
-    s.elasticX = {};
-    s.elasticY = {};
-    s.speed = {0.0f, 0.0f};
-    s.travel = {0.0f, 0.0f};
-    s.sampledAt = -1.0;
-    s.gesturePending = false;
-    s.dragAxis = Impl::DragAxis::None;
+    impl->resetInteraction();
     invalidate(Dirty::Layout);
 }
 
@@ -476,7 +491,13 @@ Extent2D<F32> Scroller::overscroll(const Context& ctx) {
 }
 
 void Scroller::layout(const Context& ctx) {
+    if (impl->touching() && impl->explicitRelease && (impl->viewport != frame() || impl->inputClip != clip() ||
+                             impl->inputTranslation != translation())) {
+        impl->resetInteraction();
+    }
     impl->viewport = frame();
+    impl->inputClip = clip();
+    impl->inputTranslation = translation();
     impl->pixelRatio = ctx.pixelRatio;
     impl->resolveTheme(ctx);
     impl->scrollY = std::clamp(impl->targetY, 0.0f, impl->maxScrollY());
@@ -532,9 +553,11 @@ bool Scroller::wheel(const MouseEvent& event) {
 
     switch (event.phase) {
         case ScrollPhase::Began:
+            s.explicitRelease = event.explicitRelease;
             s.grab();
             break;
         case ScrollPhase::Changed:
+            s.explicitRelease = event.explicitRelease;
             if (!held) {
                 s.grab();
             }
@@ -621,6 +644,22 @@ bool Scroller::wheel(const MouseEvent& event) {
     return consumedY || consumedX;
 }
 
+void Scroller::conceal() {
+    impl->cancelInteraction(*this);
+}
+
+void Scroller::scrollPhaseEnded(ScrollPhase phase) {
+    if (phase == ScrollPhase::MomentumEnded) {
+        impl->elasticX.bounced = false;
+        impl->elasticY.bounced = false;
+    }
+    if (impl->touching()) {
+        impl->release();
+        impl->notifyOverscroll(*this);
+    }
+    Component::scrollPhaseEnded(phase);
+}
+
 bool Scroller::mouseEvent(const MouseEvent& event) {
     switch (event.type) {
         case MouseEventType::Scroll: {
@@ -681,9 +720,7 @@ bool Scroller::mouseEvent(const MouseEvent& event) {
             return false;
         }
         case MouseEventType::Cancel: {
-            impl->wheelX.cancel();
-            impl->wheelY.cancel();
-            impl->dragAxis = Impl::DragAxis::None;
+            impl->cancelInteraction(*this);
             return false;
         }
         case MouseEventType::Release: {

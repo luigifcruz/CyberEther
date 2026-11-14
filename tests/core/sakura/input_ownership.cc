@@ -4,6 +4,7 @@
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/popup.hh>
+#include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/components/surface_image.hh>
 
 #include "harness.hh"
@@ -127,6 +128,79 @@ U64 FocusCount(const std::vector<InputEvent>& events, bool focused) {
 }
 
 }  // namespace
+
+TEST_CASE("An overlay cannot swallow an explicit elastic scroll release", "[core][sakura][input][ownership][wayland-scroll]") {
+    InputFixture fixture;
+    fixture.ctx.time = 1.0;
+    Sakura::Scroller scroll;
+    scroll.update({.contentHeight = 1000.0f});
+    InputSink sink;
+    RegionLayer back(scroll, {0, 0, 400, 300});
+    struct Modal : RegionLayer {
+        using RegionLayer::RegionLayer;
+        bool modal() const override { return true; }
+    } modal(sink, {0, 0, 400, 300});
+    modal.setVisible(false);
+    InputRoot root;
+    root.setLayers({&back, &modal});
+    fixture.place(root);
+    MouseEvent wheel{.type = MouseEventType::Scroll, .position = {100, 100}, .scroll = {0, 4},
+                     .phase = ScrollPhase::Began, .precise = true, .explicitRelease = true};
+    REQUIRE(Sakura::Access::mouseEvent(root, wheel));
+    const F32 stretched = scroll.overscroll(fixture.ctx).y;
+    REQUIRE(stretched < 0.0f);
+    SECTION("modal") {
+        modal.setVisible(true);
+        fixture.place(root);
+        REQUIRE(root.target(wheel.position) == &modal);
+    }
+    SECTION("interactive popup") {
+        root.popups.replace(back, Sakura::Access::alive(back), {{.content = &sink,
+            .anchor = {0, 0, 400, 1}, .size = {400, 200}}});
+        fixture.place(root);
+        REQUIRE(root.target(wheel.position) == &root.popups);
+    }
+    // Opening the overlay does not pretend that fingers have lifted.
+    fixture.ctx.time += 1.0;
+    CHECK(scroll.overscroll(fixture.ctx).y == stretched);
+    wheel.phase = ScrollPhase::Ended;
+    wheel.scroll = {0, 0};
+    Sakura::Access::mouseEvent(root, wheel);
+    for (int frame = 0; frame < 120; ++frame) {
+        fixture.ctx.time += 1.0 / 60.0;
+        fixture.place(root);
+        scroll.overscroll(fixture.ctx);
+    }
+    CHECK(scroll.overscroll(fixture.ctx).y == 0.0f);
+}
+
+TEST_CASE("A temporarily zero-sized canvas cancels held scrolling without mouse buttons", "[core][sakura][input][ownership][wayland-scroll]") {
+    InputFixture fixture;
+    fixture.ctx.time = 1.0;
+    Sakura::Scroller scroll;
+    scroll.update({.contentHeight = 1000.0f});
+    RegionLayer layer(scroll, {0, 0, 400, 300});
+    InputRoot root;
+    root.setLayers({&layer});
+    fixture.place(root);
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{100, 100};
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {100, 100}, .scroll = {0, 4},
+                              .phase = ScrollPhase::Began, .explicitRelease = true}};
+    root.dispatch(router.route(frame, {0, 0, 800, 300}));
+    REQUIRE(scroll.overscroll(fixture.ctx).y < 0.0f);
+    ++frame.serial;
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {100, 100},
+                              .phase = ScrollPhase::Ended, .explicitRelease = true}};
+    root.dispatch(router.route(frame, {0, 0, 0, 0}));
+    CHECK(scroll.overscroll(fixture.ctx).y == 0.0f);
+    ++frame.serial;
+    frame.events.clear();
+    root.dispatch(router.route(frame, {0, 0, 800, 300}));
+    CHECK(scroll.overscroll(fixture.ctx).y == 0.0f);
+}
 
 TEST_CASE("Secondary releases preserve the primary layer capture and dock drag",
           "[core][sakura][input][ownership][review17]") {

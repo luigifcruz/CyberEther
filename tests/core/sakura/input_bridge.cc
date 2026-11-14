@@ -113,6 +113,19 @@ Routed Route(Feed& feed, Sakura::InputFrame& frame, Sakura::InputRouter& router,
 
 }  // namespace
 
+TEST_CASE("Scroll termination crosses a changed surface boundary", "[core][sakura][input][bridge][wayland-scroll]") {
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{100, 100};
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {100, 100},
+                              .phase = ScrollPhase::Ended, .explicitRelease = true}};
+    const auto output = router.route(frame, {200, 200, 100, 100});
+    const auto mouse = Only<MouseEvent>(output.events);
+    REQUIRE(mouse.size() == 1);
+    CHECK(mouse.front().phase == ScrollPhase::Ended);
+}
+
 TEST_CASE("The input bridge keeps native Control and Command names and modifiers on every platform",
           "[core][sakura][input][bridge]") {
     const bool macOS = GENERATE(false, true);

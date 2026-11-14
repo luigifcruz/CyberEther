@@ -56,6 +56,9 @@ Platform::DeadlineWaiter::Clock::time_point WaitDeadline(F64 seconds) {
 }  // namespace
 
 void InputQueue::push(Event event) {
+    if (auto* wheel = std::get_if<Wheel>(&event); wheel && wheel->synthesizeMomentum && !wheel->receivedAt) {
+        wheel->receivedAt = std::chrono::steady_clock::now();
+    }
     {
         std::lock_guard lock(mutex);
         events.push_back(std::move(event));
@@ -203,6 +206,13 @@ bool InputState::keyDown(KeyCode key) const {
     return index > 0 && index < kKeyCount && keys[index];
 }
 
+F64 InputState::waitTimeout(F64 maximum) const {
+    if (!pendingEvents.empty()) {
+        return 0.0;
+    }
+    return momentum.active() ? std::min(maximum, 1.0 / 240.0) : maximum;
+}
+
 void InputState::advance(F64 now, const std::vector<InputQueue::Event>& queued) {
     if (lastClock.has_value()) {
         if (now <= *lastClock) {
@@ -220,11 +230,28 @@ void InputState::advance(F64 now, const std::vector<InputQueue::Event>& queued) 
     frameEvents.clear();
     focusLost = false;
 
-    pendingEvents.insert(pendingEvents.end(), queued.begin(), queued.end());
+    const auto receivedNow = std::chrono::steady_clock::now();
+    for (const auto& event : queued) {
+        F64 time = elapsed;
+        if (const auto* wheel = std::get_if<InputQueue::Wheel>(&event);
+            wheel && wheel->synthesizeMomentum && !wheel->remote) {
+            if (wheel->receivedAt) {
+                time -= std::max(0.0, std::chrono::duration<F64>(receivedNow - *wheel->receivedAt).count());
+            }
+            const U32 span = wheel->timestamp - scrollTimestamp.value_or(wheel->timestamp);
+            if (scrollTimestamp && span < 0x80000000u) {
+                time = std::min(time, scrollTime + span / 1000.0);
+            }
+            scrollTimestamp = wheel->timestamp;
+            scrollTime = time;
+        }
+        pendingEvents.push_back({event, time});
+    }
     Trickle trickle;
-    while (!pendingEvents.empty() && process(pendingEvents.front(), trickle)) {
+    while (!pendingEvents.empty() && process(pendingEvents.front().event, pendingEvents.front().time, trickle)) {
         pendingEvents.pop_front();
     }
+    advanceMomentum();
 
     for (U64 index = 1; index < kKeyCount; ++index) {
         F32& duration = keyDuration[index];
@@ -234,7 +261,7 @@ void InputState::advance(F64 now, const std::vector<InputQueue::Event>& queued) 
     repeatKeys();
 }
 
-bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
+bool InputState::process(const InputQueue::Event& event, F64 time, Trickle& trickle) {
     if (const auto* focus = std::get_if<InputQueue::Focus>(&event)) {
         hostFocused = focus->focused;
         focusLost = !focus->focused;
@@ -315,17 +342,50 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
         if (trickle.buttons.any()) {
             return false;
         }
+        const bool ends = wheel->phase == ScrollPhase::Ended || wheel->phase == ScrollPhase::MomentumEnded;
+        if (ends && wheel->explicitRelease && !wheel->synthesizeMomentum && !wheel->remote) {
+            if (momentum.active() || samplingMomentum) {
+                trickle.wheeled = true;
+                cancelMomentum();
+            }
+            return true;
+        }
+        if (!wheel->synthesizeMomentum || wheel->remote || wheel->phase == ScrollPhase::Began) {
+            cancelMomentum();
+        }
         trickle.wheeled = true;
         MouseEvent scroll{};
         scroll.type = MouseEventType::Scroll;
-        scroll.position = point;
+        scroll.position = wheel->position.value_or(point);
         scroll.scroll = wheel->delta;
         scroll.modifiers = currentModifiers;
-        scroll.positioned = pointerPosition.has_value();
+        scroll.positioned = wheel->position.has_value() || pointerPosition.has_value();
         scroll.phase = wheel->phase;
         scroll.precise = wheel->precise;
         scroll.smooth = wheel->smooth;
+        scroll.explicitRelease = wheel->explicitRelease;
         frameEvents.push_back(scroll);
+        if (wheel->synthesizeMomentum && !wheel->remote) {
+            if (wheel->phase == ScrollPhase::Began) {
+                samplingMomentum = true;
+            }
+            if (samplingMomentum && (wheel->phase == ScrollPhase::Began || wheel->phase == ScrollPhase::Changed)) {
+                momentumEvent = scroll;
+                momentum.sample(wheel->timestamp, wheel->delta);
+            } else if (samplingMomentum && wheel->phase == ScrollPhase::Ended) {
+                samplingMomentum = false;
+                if (momentum.release(wheel->timestamp)) {
+                    momentum.advance(std::max(0.0, elapsed - time));
+                }
+                if (momentum.active()) {
+                    momentumEvent = scroll;
+                    momentumEvent.phase = ScrollPhase::Momentum;
+                    momentumEvent.scroll = {0.0f, 0.0f};
+                    momentumSteppedAt = elapsed;
+                    frameEvents.push_back(momentumEvent);
+                }
+            }
+        }
         return true;
     }
 
@@ -342,6 +402,9 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
         trickle.keyChanged = true;
         trickle.nonCharKeyChanged = trickle.nonCharKeyChanged || !character;
         keys[index] = key->down;
+        if (key->down) {
+            cancelMomentum();
+        }
         keyDuration[index] = -1.0f;
         frameEvents.push_back(KeyEvent{key->down ? KeyEventType::Press : KeyEventType::Release,
                                        key->key, currentModifiers});
@@ -392,6 +455,9 @@ bool InputState::movePointer(const std::optional<Extent2D<F32>>& next, Trickle& 
         return false;
     }
     trickle.moved = true;
+    if (!next.has_value()) {
+        cancelMomentum();
+    }
     pointerPosition = next;
     MouseEvent move{};
     move.type = next.has_value() ? MouseEventType::Move : MouseEventType::Leave;
@@ -449,6 +515,9 @@ bool InputState::button(MouseButton pressed, bool down, Trickle& trickle) {
     trickle.buttons.set(index);
     ctrlLeftAsRight = setAlias || (ctrlLeftAsRight && !clearAlias);
     buttonDown[index] = down;
+    if (down) {
+        cancelMomentum();
+    }
 
     MouseEvent event{};
     event.type = down ? MouseEventType::Click : MouseEventType::Release;
@@ -482,6 +551,7 @@ bool InputState::button(MouseButton pressed, bool down, Trickle& trickle) {
 }
 
 void InputState::clear() {
+    cancelMomentum();
     keys.fill(false);
     keyDuration.fill(-1.0f);
     currentModifiers = {};
@@ -489,6 +559,34 @@ void InputState::clear() {
     clickCount.fill(0);
     clickTime.fill(-std::numeric_limits<F64>::infinity());
     ctrlLeftAsRight = false;
+}
+
+void InputState::cancelMomentum() {
+    if (momentum.active() || samplingMomentum) {
+        auto end = momentumEvent;
+        end.phase = samplingMomentum ? ScrollPhase::Ended : ScrollPhase::MomentumEnded;
+        end.scroll = {0.0f, 0.0f};
+        frameEvents.push_back(end);
+    }
+    momentum.reset();
+    samplingMomentum = false;
+}
+
+void InputState::advanceMomentum() {
+    if (!momentum.active()) {
+        return;
+    }
+    auto event = momentumEvent;
+    event.scroll = momentum.advance(elapsed - momentumSteppedAt);
+    momentumSteppedAt = elapsed;
+    if (event.scroll.x != 0.0f || event.scroll.y != 0.0f) {
+        frameEvents.push_back(event);
+    }
+    if (!momentum.active()) {
+        event.phase = ScrollPhase::MomentumEnded;
+        event.scroll = {0.0f, 0.0f};
+        frameEvents.push_back(event);
+    }
 }
 
 void InputState::repeatKeys() {

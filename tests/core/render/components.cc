@@ -23,12 +23,13 @@ namespace {
 
 thread_local int allocationCountdown = -1;
 
-Result FailAllocation(int countdown, auto&& operation) {
+std::pair<Result, bool> FailAllocation(int countdown, auto&& operation) {
     allocationCountdown = countdown;
     try {
         const Result result = operation();
+        const bool injected = allocationCountdown < 0;
         allocationCountdown = -1;
-        return result;
+        return {result, injected};
     } catch (...) {
         allocationCountdown = -1;
         throw;
@@ -113,12 +114,21 @@ void NoUploads(ComponentWindow<D>& window) {
 template<DeviceType D>
 void RetryUploads(ComponentWindow<D>& window, ComponentDriver<D>& driver,
                   auto& component, int failures, U64 buffers, auto&& update) {
-    for (int allocation = 0; allocation < failures; ++allocation) {
+    int errors = 0;
+    bool exhausted = false;
+    for (int allocation = 0; allocation < 128; ++allocation) {
         CAPTURE(allocation);
         update(allocation);
-        const Result result = FailAllocation(allocation, [&] { return component.present(); });
-        REQUIRE(result == Result::ERROR);
-        REQUIRE(component.present() == Result::SUCCESS);
+        const auto [result, injected] = FailAllocation(allocation, [&] { return component.present(); });
+        if (result == Result::ERROR) {
+            REQUIRE(injected);
+            ++errors;
+            REQUIRE(component.present() == Result::SUCCESS);
+        } else {
+            REQUIRE(result == Result::SUCCESS);
+        }
+        // Successful notification-allocation recovery must retain every upload
+        // without a retry that could conceal lost work.
         {
             Render::Transfer::Batch batch;
             REQUIRE(window.collect(batch) == Result::SUCCESS);
@@ -127,7 +137,13 @@ void RetryUploads(ComponentWindow<D>& window, ComponentDriver<D>& driver,
         driver.render(window);
         REQUIRE(component.present() == Result::SUCCESS);
         NoUploads(window);
+        if (!injected) {
+            exhausted = true;
+            break;
+        }
     }
+    REQUIRE(exhausted);
+    CHECK(errors == failures);
 }
 
 void FillMesh(Mesh& mesh) {

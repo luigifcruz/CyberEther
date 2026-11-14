@@ -26,6 +26,7 @@ struct InputRouter {
         generation = 0;
         sampled = false;
         hovered = false;
+        scrolling = false;
         pointer.reset();
         modifiers = {};
         position = {0.0f, 0.0f};
@@ -39,6 +40,7 @@ struct InputRouter {
     U64 routed = 0;
     bool sampled = false;
     bool hovered = false;
+    bool scrolling = false;
     std::optional<Extent2D<F32>> pointer;
     KeyModifiers modifiers;
     Extent2D<F32> position = {0.0f, 0.0f};

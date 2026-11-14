@@ -396,10 +396,10 @@ TEST_CASE("Scroll areas scroll by a wheel step that follows the pixel ratio", "[
         auto ctx = scene.ctx;
         ctx.pixelRatio = pixelRatio;
         host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-        const F32 before = content.laidFrame.y;
+        const F32 before = Peek::Frame(content).y;
         host.send(Wheel(50.0f, 50.0f, -1.0f));
         host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-        return before - content.laidFrame.y;
+        return before - Peek::Frame(content).y;
     };
     const F32 single = scrolled(1.0f);
     REQUIRE(single > 0.0f);

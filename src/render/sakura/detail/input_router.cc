@@ -26,7 +26,7 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
     }
     routed = input.serial;
     sampled = true;
-    if (!input.windowFocused && (captured() || !keys.empty())) {
+    if (!input.windowFocused && (captured() || scrolling || !keys.empty())) {
         cancel(output);
     }
 
@@ -102,7 +102,10 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
                 buttons[index] = false;
                 break;
             case MouseEventType::Scroll:
-                if (!hovered) continue;
+                if (!hovered && mouse->phase != ScrollPhase::Ended && mouse->phase != ScrollPhase::MomentumEnded) continue;
+                if (mouse->phase != ScrollPhase::None) {
+                    scrolling = mouse->phase != ScrollPhase::Ended && mouse->phase != ScrollPhase::MomentumEnded;
+                }
                 break;
             case MouseEventType::Move:
                 if (!hovered && !captured()) continue;
@@ -120,7 +123,7 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
         }
     }
     if (!input.pointer || !valid(*input.pointer)) {
-        if (captured()) cancel(output);
+        if (captured() || scrolling) cancel(output);
         hovered = false;
         pointer.reset();
     } else if (!pointerCancelled) {
@@ -160,7 +163,8 @@ void InputRouter::cancel(Output& output, bool explicitEvent) {
             });
         }
     }
-    if (held || explicitEvent) output.events.push_back(MouseEvent{.type = MouseEventType::Cancel});
+    if (held || scrolling || explicitEvent) output.events.push_back(MouseEvent{.type = MouseEventType::Cancel});
+    scrolling = false;
     hovered = false;
 }
 

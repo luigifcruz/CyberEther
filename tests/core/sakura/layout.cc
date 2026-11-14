@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/components/box.hh>
@@ -15,6 +16,7 @@
 #include <jetstream/render/sakura/components/wave_line.hh>
 
 #include "component_harness.hh"
+#include "viewport/glfw/tools/wayland_scroll.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -716,6 +718,7 @@ struct ElasticRig {
     Host host{scroll};
     F32 scrollY = 0.0f;
     U64 notified = 0;
+    Rect bounds = {0.0f, 0.0f, 200.0f, 100.0f};
 
     ElasticRig() {
         ctx.time = 1.0;
@@ -729,12 +732,13 @@ struct ElasticRig {
                        .wheelStep = 48.0f,
                        .onScrollY = [this](F32 next) { scrollY = next; },
                        .onOverscroll = [this] { ++notified; }});
-        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+        host.place(ctx, bounds);
     }
 
-    bool wheel(F32 dy, ScrollPhase phase) {
+    bool wheel(F32 dy, ScrollPhase phase, bool explicitRelease = false) {
         auto event = Wheel(100.0f, 50.0f, dy);
         event.phase = phase;
+        event.explicitRelease = explicitRelease;
         const bool handled = host.send(event);
         place();
         return handled;
@@ -789,6 +793,83 @@ TEST_CASE("Trackpad drags stretch past the edge with resistance and spring back 
     CHECK(previous < 0.0f);
     CHECK(rig.advance(1.0) == 0.0f);
     CHECK(rig.scrollY == 0.0f);
+}
+
+TEST_CASE("Wayland precision scrolling retains the ordinary scroll distance and fractional movement",
+          "[core][sakura][layout][wayland-scroll]") {
+    using Source = Viewport::WaylandScroll::Source;
+    Source source = Source::Finger;
+    SECTION("touchpad") { source = Source::Finger; }
+    SECTION("continuous device") { source = Source::Continuous; }
+    SECTION("wheel") { source = Source::Wheel; }
+
+    ElasticRig rig;
+    rig.scrollY = 200.0f;
+    rig.place();
+    Viewport::WaylandScroll native;
+    Render::InputState input;
+    const auto move = [&](F32 distance, U32 time) {
+        native.source = source;
+        native.timestamp = time;
+        native.axes[0].distance = distance;
+        native.frame([&](auto event) {
+            event.position = Extent2D<F32>{100.0f, 50.0f};
+            input.advance(time / 1000.0, {event});
+        });
+        for (const auto& event : input.events()) {
+            if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                REQUIRE(rig.host.send(*mouse));
+            }
+        }
+        rig.place();
+    };
+    move(10.0f, 100);
+    CHECK(rig.scrollY == Catch::Approx(248.0f));
+    move(0.25f, 110);
+    CHECK(rig.scrollY == Catch::Approx(249.2f));
+}
+
+TEST_CASE("Explicit-release gestures hold elastic space until the actual lift", "[core][sakura][layout]") {
+    ElasticRig rig;
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began, true));
+    const F32 held = rig.offset();
+    REQUIRE(held < 0.0f);
+    CHECK(rig.advance(2.0) == held);
+    CHECK_FALSE(rig.wheel(0.0f, ScrollPhase::Ended, true));
+    CHECK(rig.advance(1.0) == 0.0f);
+}
+
+TEST_CASE("Withdrawn and cancelled explicit gestures cannot retain elastic space", "[core][sakura][layout][wayland-scroll]") {
+    ElasticRig rig;
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began, true));
+    REQUIRE(rig.offset() < 0.0f);
+    // Hidden subtrees are concealed by the next paint pass.
+    SECTION("hidden scroller misses release") {
+        rig.scroll.setVisible(false);
+        REQUIRE(Sakura::Access::paint(rig.scroll) == Result::SUCCESS);
+        rig.wheel(0.0f, ScrollPhase::Ended, true);
+        rig.scroll.setVisible(true);
+    }
+    SECTION("hidden ancestor cancels descendants") {
+        rig.host.setVisible(false);
+        REQUIRE(Sakura::Access::paint(rig.host) == Result::SUCCESS);
+        rig.host.setVisible(true);
+    }
+    SECTION("explicit cancellation") {
+        rig.host.send(MouseEvent{.type = MouseEventType::Cancel});
+    }
+    SECTION("target moves outside pinned release") {
+        rig.bounds.x = 300.0f;
+        rig.place();
+        rig.wheel(0.0f, ScrollPhase::Ended, true);
+        rig.bounds.x = 0.0f;
+    }
+    rig.place();
+    CHECK(rig.advance(2.0) == 0.0f);
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began, true));
+    CHECK(rig.offset() < 0.0f);
+    rig.wheel(0.0f, ScrollPhase::Ended, true);
+    CHECK(rig.advance(1.0) == 0.0f);
 }
 
 TEST_CASE("Momentum after a stretched release never bounces again once the spring settles",

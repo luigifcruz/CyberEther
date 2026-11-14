@@ -1079,6 +1079,7 @@ void ChatTranscript::layout(const Context& ctx) {
     state.buildRows(*this, ctx, m);
     const F32 height = state.contentHeight(m);
     state.clampScroll(m, height);
+    state.layoutScroll(*this, ctx, m, height);
     state.overscrollY = state.scroll.overscroll(ctx).y;
 
     auto placements = state.place(m);
@@ -1089,7 +1090,6 @@ void ChatTranscript::layout(const Context& ctx) {
     const auto markdown = Impl::Assign(state.markdowns, placements.markdown);
     const auto disclosures = Impl::Assign(state.summaries, placements.disclosures);
 
-    state.layoutScroll(*this, ctx, m, height);
     state.layoutUsers(*this, ctx, m, users);
     state.layoutMarkdown(*this, ctx, m, markdown);
     state.layoutDisclosures(*this, ctx, m, disclosures);
