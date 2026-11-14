@@ -1,19 +1,17 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_WORKBENCH_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_WORKBENCH_HH
 
-#include "flowgraph/key_value.hh"
-#include "flowgraph/window.hh"
-#include "file_picker.hh"
-#include "hud/info.hh"
-#include "hud/remote.hh"
-#include "hud/welcome.hh"
-#include "menubar.hh"
-#include "modal/container.hh"
-
 #include "agent/chat.hh"
-#include "agent/voice.hh"
+#include "flowgraph/close_prompt.hh"
+#include "flowgraph/pane.hh"
+#include "file_picker.hh"
+#include "modal/container.hh"
+#include "docs.hh"
+#include "settings/base.hh"
+#include "start_tab/base.hh"
+#include "terminal.hh"
+#include "titlebar.hh"
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -23,170 +21,93 @@
 
 namespace Jetstream {
 
+struct WorkspaceShellView {
+    static constexpr F32 PromptGap = Sakura::Spacing::Small;
+
+    struct Config {
+        std::vector<Sakura::Dock::Pane> panes;
+        std::optional<std::string> activate;
+        bool hideTabs = false;
+        Sakura::Component* aside = nullptr;
+        std::optional<FlowgraphClosePromptView::Config> closePrompt;
+    };
+
+    void updateTitlebar(TitlebarView::Config config);
+    void updatePanes(Config config);
+    Sakura::Component& component();
+    Sakura::ModalLayer::Config promptLayer();
+    TitlebarView& bar();
+    Sakura::Dock& dock();
+
+ private:
+    TitlebarView titlebar;
+    Sakura::Dock workspace;
+    FlowgraphClosePromptView closing;
+    std::optional<Rect> promptAnchor;
+    Sakura::Overlay shell;
+    Sakura::Shortcuts keys;
+};
+
 struct WorkbenchView {
     struct Config {
         bool filePending = false;
         bool backgroundParticles = true;
         AgentChatView::Config agentChat;
-        AgentVoiceView::Config agentVoice;
-        std::optional<Sakura::DebugWindow::Config> debugWindow;
-        std::optional<InfoHudView::Config> infoHud;
-        std::optional<WelcomeHudView::Config> welcomeHud;
-        std::optional<RemoteHudView::Config> remoteHud;
-        MenubarView::Config menubar;
+        std::optional<StartTabView::Config> startTab;
+        bool hideTabs = false;
+        U64 startTabRequests = 0;
+        bool startTabFocused = false;
+        std::optional<SettingsView::Config> settings;
+        U64 settingsTabRequests = 0;
+        bool settingsTabFocused = false;
+        std::optional<DocsView::Config> docs;
+        U64 docsTabRequests = 0;
+        bool docsTabFocused = false;
+        TitlebarView::Config titlebar;
+        std::optional<FlowgraphClosePromptView::Config> closePrompt;
         ModalView::Config modal;
-        std::optional<FlowgraphKeyValueWindow::Config> flowgraphMetadata;
-        std::optional<FlowgraphKeyValueWindow::Config> flowgraphEnvironment;
-        std::vector<FlowgraphWindow::Config> flowgraphs;
+        std::vector<FlowgraphPane::Config> flowgraphs;
+        std::vector<TerminalView::Config> terminals;
+        std::vector<TerminalTabView::Config> terminalTabs;
+        std::optional<std::string> terminalRequested;
+        U64 terminalRequests = 0;
+        bool terminalFocused = false;
         FilePickerView::Config filePicker;
     };
 
-    void update(Config config) {
-        this->config = std::move(config);
-
-        workspaceBackground.update({
-            .id = "workspace-background",
-            .particles = this->config.backgroundParticles,
-            .topOffset = this->config.filePending ? 0.0f : menuBarHeight,
-        });
-
-        if (this->config.filePending) {
-            filePendingHud.update({
-                .id = "file-pending",
-                .anchor = Sakura::Hud::Anchor::Center,
-                .backgroundColorKey = "transparent",
-                .borderColorKey = "transparent",
-            });
-            filePendingText.update({
-                .id = "file-pending-text",
-                .str = "Select a file from the browser dialog.",
-            });
-            return;
-        }
-
-        if (this->config.infoHud.has_value()) {
-            infoHud.update(std::move(this->config.infoHud.value()));
-        }
-        if (this->config.welcomeHud.has_value()) {
-            welcomeHud.update(std::move(this->config.welcomeHud.value()));
-        }
-        if (this->config.remoteHud.has_value()) {
-            remoteHud.update(std::move(this->config.remoteHud.value()));
-        }
-        notifications.update({.id = "notifications", .topOffset = menuBarHeight});
-        if (this->config.debugWindow.has_value()) {
-            debugWindow.update(std::move(this->config.debugWindow.value()));
-        }
-        this->config.agentChat.topOffset = menuBarHeight;
-        agentChat.update(std::move(this->config.agentChat));
-        agentVoice.update(this->config.agentVoice);
-
-        auto menubarConfig = std::move(this->config.menubar);
-        auto onHeight = std::move(menubarConfig.onHeight);
-        menubarConfig.onHeight = [this, onHeight = std::move(onHeight)](F32 height) {
-            menuBarHeight = height;
-            if (onHeight) {
-                onHeight(height);
-            }
-        };
-        menubar.update(std::move(menubarConfig));
-
-        flowgraphOrder.clear();
-        std::unordered_set<std::string> activeFlowgraphs;
-        for (auto& flowgraphConfig : this->config.flowgraphs) {
-            flowgraphOrder.push_back(flowgraphConfig.id);
-            activeFlowgraphs.insert(flowgraphConfig.id);
-            flowgraphConfig.dockId = static_cast<U64>(Sakura::DockspaceId());
-            flowgraphWindows[flowgraphConfig.id].update(std::move(flowgraphConfig));
-        }
-
-        std::vector<std::string> staleFlowgraphs;
-        for (const auto& [flowgraphId, _] : flowgraphWindows) {
-            if (!activeFlowgraphs.contains(flowgraphId)) {
-                staleFlowgraphs.push_back(flowgraphId);
-            }
-        }
-        for (const auto& flowgraphId : staleFlowgraphs) {
-            flowgraphWindows.erase(flowgraphId);
-        }
-
-        if (this->config.flowgraphMetadata.has_value()) {
-            flowgraphMetadataWindow.update(std::move(this->config.flowgraphMetadata.value()));
-        }
-        if (this->config.flowgraphEnvironment.has_value()) {
-            flowgraphEnvironmentWindow.update(std::move(this->config.flowgraphEnvironment.value()));
-        }
-
-        modal.update(std::move(this->config.modal));
-        filePicker.update(std::move(this->config.filePicker));
-    }
-
-    void render(const Sakura::Context& ctx) {
-        if (config.filePending) {
-            workspaceBackground.render(ctx);
-            filePendingHud.render(ctx, [this](const Sakura::Context& ctx) {
-                filePendingText.render(ctx);
-            });
-            return;
-        }
-
-        if (config.infoHud.has_value()) {
-            infoHud.render(ctx);
-        }
-        if (config.welcomeHud.has_value()) {
-            welcomeHud.render(ctx);
-        }
-        if (config.remoteHud.has_value()) {
-            remoteHud.render(ctx);
-        }
-        notifications.render(ctx);
-        if (config.debugWindow.has_value()) {
-            debugWindow.render(ctx);
-        }
-        menubar.render(ctx);
-        workspaceBackground.render(ctx);
-        Sakura::Dockspace({.topOffset = Sakura::Scale(ctx, menuBarHeight)});
-        if (config.agentVoice.visible) {
-            agentVoice.render(ctx);
-        } else {
-            agentChat.render(ctx);
-        }
-
-        for (const auto& flowgraphId : flowgraphOrder) {
-            if (flowgraphWindows.contains(flowgraphId)) {
-                flowgraphWindows.at(flowgraphId).render(ctx);
-            }
-        }
-
-        if (config.flowgraphMetadata.has_value()) {
-            flowgraphMetadataWindow.render(ctx);
-        }
-        if (config.flowgraphEnvironment.has_value()) {
-            flowgraphEnvironmentWindow.render(ctx);
-        }
-
-        modal.render(ctx);
-        filePicker.render(ctx);
-    }
+    void update(Config config);
+    void render(const Sakura::Context& ctx);
+    bool dropFiles(const std::vector<std::string>& paths);
 
  private:
     Config config;
-    F32 menuBarHeight = 0.0f;
-    Sakura::Hud filePendingHud;
+    Sakura::Root root;
+    Sakura::BackgroundLayer background;
+    Sakura::Layer content;
+    Sakura::FloatingLayer floating;
+    Sakura::HudLayer huds;
+    Sakura::ToastLayer toasts;
+    Sakura::ModalLayer promptLayer;
+    Sakura::ModalLayer modalLayer;
+    Sakura::ModalLayer filePickerLayer;
     Sakura::Text filePendingText;
-    Sakura::WorkspaceBackground workspaceBackground;
-    InfoHudView infoHud;
-    WelcomeHudView welcomeHud;
-    RemoteHudView remoteHud;
-    Sakura::Notifications notifications;
-    Sakura::DebugWindow debugWindow;
+    Sakura::Panel filePendingPanel;
     AgentChatView agentChat;
-    AgentVoiceView agentVoice;
-    MenubarView menubar;
+    StartTabView startTab;
+    U64 startTabRequests = 0;
+    bool startTabShown = false;
+    U64 startTabVisits = 0;
+    SettingsView settings;
+    U64 settingsTabRequests = 0;
+    DocsView docs;
+    U64 docsTabRequests = 0;
+    WorkspaceShellView workspaceShell;
     std::vector<std::string> flowgraphOrder;
-    std::unordered_map<std::string, FlowgraphWindow> flowgraphWindows;
-    FlowgraphKeyValueWindow flowgraphMetadataWindow;
-    FlowgraphKeyValueWindow flowgraphEnvironmentWindow;
+    std::unordered_map<std::string, FlowgraphPane> flowgraphPanes;
+    std::vector<std::string> terminalOrder;
+    std::unordered_map<std::string, TerminalView> terminalViews;
+    std::unordered_map<std::string, TerminalTabView> terminalTabViews;
+    U64 terminalRequests = 0;
     ModalView modal;
     FilePickerView filePicker;
 };

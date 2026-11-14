@@ -161,6 +161,32 @@ bool SelectImplementation(const std::string& type, const Json& operation, Implem
     return false;
 }
 
+bool ValidateConfigKeys(const Parser::Map& config, const Parser::Map& available, Json& result) {
+    Json unknownKeys = Json::array();
+    for (const auto& field : config) {
+        if (!available.contains(field.key)) {
+            unknownKeys.push_back(field.key);
+        }
+    }
+    if (unknownKeys.empty()) {
+        return true;
+    }
+
+    std::vector<std::string> availableKeys;
+    for (const auto& field : available) {
+        availableKeys.push_back(field.key);
+    }
+
+    const auto key = unknownKeys.front().get<std::string>();
+    result.update({
+        {"error", jst::fmt::format("Unknown config key '{}'.{}", key,
+                                   Lookup::Similar(key, availableKeys, "config keys"))},
+        {"unknown_config_keys", std::move(unknownKeys)},
+        {"available_config_keys", std::move(availableKeys)},
+    });
+    return false;
+}
+
 void PlaceNode(const Graph& flowgraph, const Json& operation, const std::string& name, Json& result) {
     if (!operation.contains("x") && !operation.contains("y")) {
         return;
@@ -230,6 +256,18 @@ void CreateBlock(Patch& patch, const Json& operation, Json& result) {
         result["error"] = jst::fmt::format("Could not decode 'config' for block type '{}'.", type);
         return;
     }
+    if (!config.empty()) {
+        std::shared_ptr<Block> prototype;
+        Parser::Map available;
+        if (Registry::BuildBlock(type, prototype) != Result::SUCCESS ||
+            prototype->config().serialize(available) != Result::SUCCESS) {
+            result["error"] = jst::fmt::format("Could not inspect config keys for block type '{}'.", type);
+            return;
+        }
+        if (!ValidateConfigKeys(config, available, result)) {
+            return;
+        }
+    }
 
     const Result created = flowgraph->blockCreate(name, type, config, {},
                                                   selected.device, selected.runtime, selected.provider);
@@ -260,8 +298,12 @@ void ReconfigureBlock(Patch& patch, const Json& operation, Json& result) {
         result["error"] = jst::fmt::format("Could not decode 'config' for block '{}'.", name);
         return;
     }
+    if (!ValidateConfigKeys(config, current.config, result)) {
+        return;
+    }
 
-    const Result changed = flowgraph->blockReconfigure(name, config);
+    bool recreated = false;
+    const Result changed = flowgraph->blockReconfigure(name, config, recreated);
     if (!Applied(changed)) {
         result["error"] = jst::fmt::format("Could not reconfigure block '{}'.", name);
         return;
@@ -278,7 +320,7 @@ void ReconfigureBlock(Patch& patch, const Json& operation, Json& result) {
     }
 
     result.update({
-        {"status", ResultName(changed)},
+        {"status", ResultName(recreated ? Result::RECREATE : changed)},
         {"name", name},
         {"config", Serialize::CompactMap(applied)},
         {"state", GetBlockStateName(after.state)},
@@ -309,7 +351,8 @@ void PatchBlockText(Patch& patch, const Json& operation, Json& result) {
     Parser::Map config;
     config[field] = patched.text;
 
-    const Result changed = flowgraph->blockReconfigure(name, config);
+    bool recreated = false;
+    const Result changed = flowgraph->blockReconfigure(name, config, recreated);
     if (!Applied(changed)) {
         result["error"] = jst::fmt::format("Could not apply the patched '{}' to block '{}'.", field, name);
         return;
@@ -319,7 +362,7 @@ void PatchBlockText(Patch& patch, const Json& operation, Json& result) {
     flowgraph->view().block(name, after);
 
     result.update({
-        {"status", ResultName(changed)},
+        {"status", ResultName(recreated ? Result::RECREATE : changed)},
         {"name", name},
         {"field", field},
         {"line_count", patched.lineCount},
@@ -807,7 +850,11 @@ std::vector<Entry> Toolbox::Patch() {
         "create_block accepts optional x and y graph coordinates for initial "
         "placement with automatic sizing. Its result includes effective config "
         "with defaults and runtime-defined ports; wiring may require a later patch. "
-        "reconfigure_block results echo only the supplied config fields. Both "
+        "reconfigure_block results echo only the supplied config fields. A status "
+        "of recreated on reconfigure_block or patch_block_text means the block and "
+        "everything downstream was rebuilt, which clears their plot history. A status "
+        "of success means no rebuild, though a view can still clear its own history "
+        "when a setting changes how that history is scaled. Both "
         "config readbacks shorten long strings and arrays; inspect_block returns "
         "complete values. "
         "patch_block_text edits part of one text config field, such as python code; "
@@ -836,7 +883,7 @@ std::vector<Entry> Toolbox::Patch() {
         "set_node_layout size that did not take effect is listed in "
         "size_not_applied.",
         PatchSchema(),
-        {.needsGraph = true, .reportsLayout = true},
+        {.needsGraph = true, .editsGraph = true, .reportsLayout = true},
     }, ApplyPatch);
 
     entry.newGraph = PatchGraph;

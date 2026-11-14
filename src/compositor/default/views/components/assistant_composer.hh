@@ -1,33 +1,44 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_ASSISTANT_COMPOSER_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_ASSISTANT_COMPOSER_HH
 
-#include "jetstream/render/sakura/components/retained/chat_composer.hh"
+#include "jetstream/config.hh"
+#include "jetstream/render/sakura/components/chat_composer.hh"
 #include "jetstream/render/sakura/typography.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
+#include "jetstream/surface.hh"
+
+#include <array>
+#include <random>
 
 namespace Jetstream {
 
-inline Sakura::Retained::ChatComposer::Style AssistantComposerStyle(Sakura::Retained::ChatComposer::Style style,
-                                                                     F32 pixelRatio) {
-    style.placeholder = "Ask anything...";
-    style.icon = ICON_FA_WAND_MAGIC_SPARKLES;
-    style.iconColorKey = "text_secondary";
-    style.minLines = 1.0f;
-    style.maxLines = 5.0f;
-    style.fontSize = Sakura::Typography::FontSize * pixelRatio;
-    style.padding *= pixelRatio;
-    style.borderWidth *= pixelRatio;
-    if (style.cornerRadius) {
-        *style.cornerRadius *= pixelRatio;
-    }
-    style.margin = {
-        style.margin.left * pixelRatio,
-        style.margin.top * pixelRatio,
-        style.margin.right * pixelRatio,
-        style.margin.bottom * pixelRatio,
+struct AssistantComposer {
+    static constexpr KeyCode VoiceKey = KeyCode::J;
+#if defined(JST_OS_MAC)
+    static constexpr const char* VoiceHint = "Start voice (Cmd+J)";
+#else
+    static constexpr const char* VoiceHint = "Start voice (Ctrl+J)";
+#endif
+
+    static constexpr std::array<const char*, 12> Prompts = {
+        "Build an FM radio receiver.",
+        "Show me the signals around me.",
+        "Track the aircraft flying overhead on a globe.",
+        "Build a spectrum analyzer for my SDR.",
+        "Generate a QPSK signal and show its constellation.",
+        "Show me how noise affects a clean tone.",
+        "Teach me how a spectrum analyzer works.",
+        "Build a waterfall of the Wi-Fi band.",
+        "Listen to pilots on the aircraft band.",
+        "Show me the difference between AM and FM.",
+        "Show me what clipping does to a sine wave.",
+        "Stream my SDR to another computer.",
     };
-    return style;
-}
+
+    static const char* RandomPrompt();
+    static Sakura::ChatComposer::Style Style(Sakura::ChatComposer::Style style,
+                                             const char* placeholder = "Ask anything...");
+};
 
 }  // namespace Jetstream
 

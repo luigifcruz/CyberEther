@@ -51,6 +51,7 @@ class JETSTREAM_API Vulkan {
 
     bool hasUnifiedMemory() const;
     bool supportsMultiDrawIndirect() const;
+    bool supportsPresentWait() const;
     bool canExportDeviceMemory() const;
     bool canImportDeviceMemory() const;
     bool canImportHostMemory() const;
@@ -91,12 +92,12 @@ class JETSTREAM_API Vulkan {
         return descriptorPool;
     }
 
-    constexpr VkFence& getDefaultFence() {
-        return defaultFence;
+    constexpr VkPipelineCache& getPipelineCache() {
+        return pipelineCache;
     }
 
-    constexpr VkCommandPool& getDefaultCommandPool() {
-        return defaultCommandPool;
+    constexpr VkFence& getDefaultFence() {
+        return defaultFence;
     }
 
     constexpr VkCommandBuffer& getDefaultCommandBuffer() {
@@ -110,6 +111,7 @@ class JETSTREAM_API Vulkan {
     VkPhysicalDevice physicalDevice;
     VkPhysicalDeviceProperties properties;
     VkDescriptorPool descriptorPool;
+    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
     VkFence defaultFence;
     VkCommandBuffer defaultCommandBuffer;
     VkCommandPool defaultCommandPool;
@@ -126,6 +128,7 @@ class JETSTREAM_API Vulkan {
         PhysicalDeviceType physicalDeviceType;
         bool hasUnifiedMemory;
         bool supportsMultiDrawIndirect;
+        bool supportsPresentWait;
         U64 physicalMemory;
         U64 totalProcessorCount;
         bool lowPowerStatus;
@@ -148,8 +151,6 @@ class JETSTREAM_API Vulkan {
     std::set<std::string> getOptionalDeviceExtensions();
     std::set<std::string> checkDeviceExtensionSupport(const VkPhysicalDevice& device,
                                                       const std::set<std::string>& extensions);
-
-    bool isDeviceSuitable(const VkPhysicalDevice& device);
 };
 
 }  // namespace Jetstream::Backend

@@ -143,12 +143,12 @@ struct SignalViewSplitInteraction {
                  bool enabled,
                  bool& commit) {
         commit = false;
-        if (event.type == MouseEventType::Leave) {
+        if (event.type == MouseEventType::Leave || event.type == MouseEventType::Cancel ||
+            (event.type == MouseEventType::Release && event.cancel)) {
             const bool consumed = dragging;
             dragging = false;
             return consumed;
         }
-        const F32 x = event.position.x * size.x;
         const F32 y = event.position.y * size.y;
         if (dragging) {
             if ((event.type == MouseEventType::Move ||
@@ -172,6 +172,24 @@ struct SignalViewSplitInteraction {
         return false;
     }
 };
+
+struct SignalViewHeaderFit {
+    bool span = true;
+    bool zoom = true;
+};
+
+inline SignalViewHeaderFit FitSignalViewHeader(F32 room, F32 full, F32 brief, F32 zoom, F32 gap) {
+    const auto fits = [&](F32 header, F32 trailing) {
+        return header + (trailing > 0.0f ? gap + trailing : 0.0f) <= room;
+    };
+    if (fits(full, zoom)) {
+        return {.span = true, .zoom = true};
+    }
+    if (fits(brief, zoom)) {
+        return {.span = false, .zoom = true};
+    }
+    return {.span = false, .zoom = false};
+}
 
 }  // namespace detail
 
@@ -311,6 +329,7 @@ struct SignalViewCanvas {
     Result destroy(const std::shared_ptr<Render::Window>& window);
 
     Result processSurfaceEvents(std::vector<SurfaceEvent>&& events);
+    Result applyTheme(const Context& context);
     SurfaceCursor processInputEvents(std::vector<InputEvent>&& events,
                                      const Context& context,
                                      const Edits& edits);
@@ -319,6 +338,7 @@ struct SignalViewCanvas {
     Result present(const Context& context);
 
     SurfaceInteractionState interaction;
+    std::optional<SurfaceTheme> appliedTheme;
     detail::SignalViewSplitInteraction splitter;
     CursorState cursor;
     bool displayHeld = false;
@@ -345,7 +365,7 @@ struct SignalViewCanvas {
     std::shared_ptr<Render::Components::Text> markerTagText;
 
  private:
-    void updateLabels(const Context& context);
+    Result updateLabels(const Context& context);
     Result updateCursor(const Context& context);
     Result updateMarkers(const Context& context);
     F32 viewTranslation() const;

@@ -1,67 +1,66 @@
 #include <jetstream/render/sakura/components/setting_field.hh>
 
 #include <jetstream/render/sakura/components/divider.hh>
+#include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/text.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
+
+#include <utility>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
 struct SettingField::Impl {
     Config config;
-    Text labelText;
-    Text descriptionText;
+    Text label;
+    Text description;
     Divider divider;
+    Stack stack;
 };
 
 SettingField::SettingField() {
-    this->impl = std::make_unique<Impl>();
+    impl = std::make_unique<Impl>();
+    addChild(impl->stack);
 }
 
 SettingField::~SettingField() = default;
-SettingField::SettingField(SettingField&&) noexcept = default;
-SettingField& SettingField::operator=(SettingField&&) noexcept = default;
 
-bool SettingField::update(Config config) {
+void SettingField::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
     impl->config = std::move(config);
-    impl->labelText.update({
-        .id = impl->config.id + "Label",
-        .str = impl->config.label,
-    });
-    impl->descriptionText.update({
-        .id = impl->config.id + "Description",
+    impl->label.update({.str = impl->config.label, .font = Text::Font::Sans});
+    impl->description.update({
         .str = impl->config.description,
+        .font = Text::Font::Sans,
         .tone = Text::Tone::Disabled,
         .wrapped = true,
     });
-    impl->divider.update({
-        .id = impl->config.id + "Divider",
-    });
-    return true;
+    impl->divider.update({});
+    std::vector<Stack::Item> items;
+    if (!impl->config.label.empty()) {
+        items.push_back({.child = &impl->label});
+    }
+    if (impl->config.control) {
+        items.push_back({.child = impl->config.control});
+    }
+    if (!impl->config.description.empty()) {
+        items.push_back({.child = &impl->description});
+    }
+    if (impl->config.divider) {
+        items.push_back({.child = &impl->divider});
+    }
+    impl->stack.update({.items = std::move(items)});
 }
 
-void SettingField::render(const Context& ctx, Child child) const {
-    const auto& config = impl->config;
+Extent2D<F32> SettingField::measure(const Context& ctx, Extent2D<F32> available) {
+    return measureChild(impl->stack, ctx, available);
+}
 
-    ImGui::PushID(config.id.c_str());
-
-    if (!config.label.empty()) {
-        impl->labelText.render(ctx);
-    }
-
-    if (child) {
-        child(ctx);
-    }
-
-    if (!config.description.empty()) {
-        impl->descriptionText.render(ctx);
-    }
-
-    if (config.divider) {
-        impl->divider.render(ctx);
-    }
-
-    ImGui::PopID();
+void SettingField::layout(const Context& ctx) {
+    layoutChild(ctx, impl->stack, frame());
 }
 
 }  // namespace Jetstream::Sakura

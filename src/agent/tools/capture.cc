@@ -116,7 +116,7 @@ Tools::Output CaptureView(const Invocation& call) {
             return Response::Failure(jst::fmt::format("Block '{}' has no rendered view to capture.", name));
         }
         return Response::Failure(jst::fmt::format("Block '{}' has no surface '{}'. Available surfaces: {}",
-                                                  name, surfaceId, Json(availableIds).dump()));
+                                                  name, surfaceId, Response::Dump(availableIds)));
     }
 
     const auto& config = texture->getConfig();

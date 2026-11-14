@@ -1978,14 +1978,14 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
         std::lock_guard lock(TestScript().mutex);
         TestScript().nextRead = Radio::Device::Capture{.status = Radio::Device::Status::Discontinuity, .lost = 64};
     }
-    REQUIRE(WaitFor([&] { return metric("bufferLoss").first == "0.00% (1 GAP)"; }));
+    REQUIRE(WaitFor([&] { return metric("bufferLoss").first == "0.0% (1 GAP)"; }));
     REQUIRE(metric("bufferLoss").second == 0.0f);
 
     // Twenty samples into an eight-sample buffer overwrite twelve.
     TestScript().budget = 20;
     REQUIRE(WaitFor([&] { return TestScript().budget == 0; }));
     REQUIRE(WaitFor([&] { return metric("bufferLoss").second > 0.0f; }));
-    REQUIRE(metric("bufferLoss") == std::pair<std::string, F32>{"60.00% (1 GAP)", 0.6f});
+    REQUIRE(metric("bufferLoss") == std::pair<std::string, F32>{"60.0% (1 GAP)", 0.6f});
     REQUIRE(metric("throughput").first.ends_with("/ 16.0 MB/s"));
 }
 

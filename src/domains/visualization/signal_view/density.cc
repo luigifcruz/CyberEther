@@ -1,5 +1,7 @@
 #include "density.hh"
 
+#include <cstring>
+
 #include "jetstream/constants.hh"
 #include "resources/shaders/signal_view_shaders.hh"
 
@@ -202,7 +204,10 @@ Result SignalViewDensity::update(const WaterfallFrame& frame) {
 Result SignalViewDensity::present(const SurfaceInteractionState& interaction) {
     uniforms.offset = interaction.offset + 0.5f * (1.0f - 1.0f / interaction.zoom);
     uniforms.zoom = interaction.zoom;
-    JST_CHECK(uniformBuffer->update());
+    if (std::memcmp(&uniforms, &uploadedUniforms, sizeof(uniforms)) != 0) {
+        JST_CHECK(uniformBuffer->update());
+        uploadedUniforms = uniforms;
+    }
     if (accumulateDirty) {
         JST_CHECK(accumulateUniformBuffer->update());
         accumulateKernel->update();

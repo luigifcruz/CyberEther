@@ -3,6 +3,7 @@
 #include "jetstream/render/devices/vulkan/texture.hh"
 #include "jetstream/render/devices/vulkan/program.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
+#include "creation.hh"
 
 namespace Jetstream::Render {
 
@@ -44,8 +45,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     }
 
     const auto& shader = config.shaders[DeviceType::Vulkan];
-    VkShaderModule vertShaderModule = Backend::LoadShader(shader[0], device);
-    VkShaderModule fragShaderModule = Backend::LoadShader(shader[1], device);
+    vertShaderModule = Backend::LoadShader(shader[0], device);
+    fragShaderModule = Backend::LoadShader(shader[1], device);
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -100,7 +101,9 @@ Result Implementation::create(VkRenderPass& renderPass,
         info.bindingCount = static_cast<U32>(bindings.size());
         info.pBindings = bindings.data();
 
-        JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &descriptorSetLayout), [&]{
+        JST_VK_CHECK(Detail::CreateHandle(descriptorSetLayout, [&](auto* output) {
+            return vkCreateDescriptorSetLayout(device, &info, nullptr, output);
+        }), [&]{
             JST_ERROR("[VULKAN] Can't create descriptor set layout.");
         });
 
@@ -110,7 +113,9 @@ Result Implementation::create(VkRenderPass& renderPass,
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &descriptorSetLayout;
 
-        JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
+        JST_VK_CHECK(Detail::CreateHandle(descriptorSet, [&](auto* output) {
+            return vkAllocateDescriptorSets(device, &allocInfo, output);
+        }), [&]{
             JST_ERROR("[VULKAN] Failed to allocate descriptor sets.");
         });
     }
@@ -136,42 +141,7 @@ Result Implementation::create(VkRenderPass& renderPass,
         vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
     }
 
-    for (U64 i = 0; i < textures.size(); i++) {
-        auto& texture = textures[i];
-
-        {
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageView = texture->getViewHandle();
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-            VkWriteDescriptorSet descriptorWriteBuffer{};
-            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWriteBuffer.dstSet = descriptorSet;
-            descriptorWriteBuffer.dstBinding = bindingOffset++;
-            descriptorWriteBuffer.dstArrayElement = 0;
-            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            descriptorWriteBuffer.descriptorCount = 1;
-            descriptorWriteBuffer.pImageInfo = &imageInfo;
-
-            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
-        }
-
-        {
-            VkDescriptorImageInfo samplerInfo{};
-            samplerInfo.sampler = texture->getSamplerHandler();
-
-            VkWriteDescriptorSet descriptorWriteBuffer{};
-            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWriteBuffer.dstSet = descriptorSet;
-            descriptorWriteBuffer.dstBinding = bindingOffset++;
-            descriptorWriteBuffer.dstArrayElement = 0;
-            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-            descriptorWriteBuffer.descriptorCount = 1;
-            descriptorWriteBuffer.pImageInfo = &samplerInfo;
-
-            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
-        }
-    }
+    JST_CHECK(writeTextureDescriptors());
 
     // Attach Vertex buffers.
 
@@ -244,7 +214,15 @@ Result Implementation::create(VkRenderPass& renderPass,
                                            VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
 
-    if (config.enableAlphaBlending) {
+    if (config.eraseBlending) {
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    } else if (config.enableAlphaBlending) {
         colorBlendAttachment.blendEnable = VK_TRUE;
         colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
         colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
@@ -275,7 +253,9 @@ Result Implementation::create(VkRenderPass& renderPass,
     }
     pipelineLayoutInfo.pushConstantRangeCount = 0;
 
-    JST_VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(pipelineLayout, [&](auto* output) {
+        return vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create pipeline layout.");
     });
 
@@ -305,7 +285,14 @@ Result Implementation::create(VkRenderPass& renderPass,
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    JST_VK_CHECK(vkCreateGraphicsPipelines(device, nullptr, 1, &pipelineInfo, nullptr, &graphicsPipeline), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(graphicsPipeline, [&](auto* output) {
+        return vkCreateGraphicsPipelines(device,
+                                         Backend::State<DeviceType::Vulkan>()->getPipelineCache(),
+                                         1,
+                                         &pipelineInfo,
+                                         nullptr,
+                                         output);
+    }), [&]{
         JST_ERROR("[VULKAN] Can't create graphics pipeline.");
     });
 
@@ -313,6 +300,71 @@ Result Implementation::create(VkRenderPass& renderPass,
 
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
+    fragShaderModule = VK_NULL_HANDLE;
+    vertShaderModule = VK_NULL_HANDLE;
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::writeTextureDescriptors() {
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+
+    for (const auto& texture : textures) {
+        if (!texture || !texture->allocated() ||
+            texture->getViewHandle() == VK_NULL_HANDLE ||
+            texture->getSamplerHandler() == VK_NULL_HANDLE) {
+            return Result::ERROR;
+        }
+    }
+    U64 binding = buffers.size();
+    for (U64 i = 0; i < textures.size(); i++) {
+        auto& texture = textures[i];
+        {
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageView = texture->getViewHandle();
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            VkWriteDescriptorSet descriptorWriteBuffer{};
+            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWriteBuffer.dstSet = descriptorSet;
+            descriptorWriteBuffer.dstBinding = binding++;
+            descriptorWriteBuffer.dstArrayElement = 0;
+            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            descriptorWriteBuffer.descriptorCount = 1;
+            descriptorWriteBuffer.pImageInfo = &imageInfo;
+
+            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
+        }
+
+        {
+            VkDescriptorImageInfo samplerInfo{};
+            samplerInfo.sampler = texture->getSamplerHandler();
+
+            VkWriteDescriptorSet descriptorWriteBuffer{};
+            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWriteBuffer.dstSet = descriptorSet;
+            descriptorWriteBuffer.dstBinding = binding++;
+            descriptorWriteBuffer.dstArrayElement = 0;
+            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+            descriptorWriteBuffer.descriptorCount = 1;
+            descriptorWriteBuffer.pImageInfo = &samplerInfo;
+
+            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
+        }
+    }
+    return Result::SUCCESS;
+}
+
+Result Implementation::rebindTextures() {
+    if (bindings.empty() || textures.empty()) {
+        return Result::SUCCESS;
+    }
+
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_ERROR("[VULKAN] Can't wait for graphics queue before rebinding textures.");
+    });
+
+    JST_CHECK(writeTextureDescriptors());
 
     return Result::SUCCESS;
 }
@@ -325,13 +377,20 @@ Result Implementation::destroy() {
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& descriptorPool = Backend::State<DeviceType::Vulkan>()->getDescriptorPool();
 
-    if (!bindings.empty()) {
+    if (descriptorSet != VK_NULL_HANDLE) {
         vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
-        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
     }
-
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
+    vkDestroyShaderModule(device, fragShaderModule, nullptr);
+    vkDestroyShaderModule(device, vertShaderModule, nullptr);
+    descriptorSet = VK_NULL_HANDLE;
+    descriptorSetLayout = VK_NULL_HANDLE;
+    pipelineLayout = VK_NULL_HANDLE;
+    graphicsPipeline = VK_NULL_HANDLE;
+    fragShaderModule = VK_NULL_HANDLE;
+    vertShaderModule = VK_NULL_HANDLE;
     bindings.clear();
 
     return Result::SUCCESS;
@@ -347,16 +406,6 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
     // Bind graphics pipeline.
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-
-    // Set scissor rect.
-    if (config.scissorRect) {
-        VkRect2D scissor{};
-        const auto& sr = *config.scissorRect;
-        scissor.offset = {static_cast<I32>(sr.x),
-                          static_cast<I32>(sr.y)};
-        scissor.extent = {sr.width, sr.height};
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-    }
 
     // Attach frame encoder.
 

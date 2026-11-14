@@ -99,6 +99,11 @@ Result Block::create(const std::string& name,
         }
     }
 
+    if (impl->_frozen) {
+        impl->_state = State::Created;
+        return Result::SUCCESS;
+    }
+
     // Check if block provides all requested inputs.
 
     for (const auto& [key, _] : impl->_interface->inputs()) {
@@ -213,15 +218,25 @@ Result Block::destroy() {
                  impl->_name, impl->_modules.size());
     }
 
-    const auto result = impl->destroy();
-    if (result != Result::SUCCESS && result != Result::RELOAD) {
-        impl->_state = State::Errored;
-        return result;
+    if (!impl->_frozen) {
+        const auto result = impl->destroy();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            impl->_state = State::Errored;
+            return result;
+        }
     }
 
     impl->_state = State::Destroyed;
 
     return Result::SUCCESS;
+}
+
+Result Block::describe() {
+    JST_ASSERT(impl->_state == State::None,
+               "[BLOCK] Cannot describe block type '{}' in state '{}'.", config().type(), impl->_state);
+
+    impl->_interface = std::make_shared<Interface>();
+    return impl->define();
 }
 
 Result Block::reconfigure(const Parser::Map& config) {
@@ -230,7 +245,7 @@ Result Block::reconfigure(const Parser::Map& config) {
     JST_CHECK(impl->_candidateConfig->deserialize(config));
 
     // Errored blocks may no longer have the modules needed for in-place reconfiguration.
-    if (impl->_state == State::Errored) {
+    if (impl->_state == State::Errored || impl->_frozen) {
         return Result::RECREATE;
     }
 
@@ -408,6 +423,10 @@ const Block::State& Block::state() const {
 
 const std::string& Block::diagnostic() const {
     return impl->_diagnostic;
+}
+
+bool Block::frozen() const {
+    return impl->_frozen;
 }
 
 const std::vector<std::shared_ptr<Module::Surface>>& Block::surfaces() const {

@@ -94,13 +94,16 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying draw.");
 
-    if (buffer->isBuffered()) {
+    if (indexedIndirectBuffer) {
         JST_CHECK(indexedIndirectBuffer->destroy());
-        indexedDrawCommands.clear();
-    } else {
-        JST_CHECK(indirectBuffer->destroy());
-        drawCommands.clear();
+        indexedIndirectBuffer.reset();
     }
+    if (indirectBuffer) {
+        JST_CHECK(indirectBuffer->destroy());
+        indirectBuffer.reset();
+    }
+    indexedDrawCommands.clear();
+    drawCommands.clear();
     transferBuffers.clear();
 
     JST_CHECK(buffer->destroy());
@@ -109,6 +112,10 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
+    if (drawCount == 0) {
+        return Result::SUCCESS;
+    }
+
     JST_CHECK(buffer->encode(commandBuffer));
 
     const bool supportsMultiDrawIndirect =

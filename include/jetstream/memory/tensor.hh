@@ -97,6 +97,7 @@ class JETSTREAM_API Tensor : public std::enable_shared_from_this<Tensor> {
     Result setDerivedAttribute(const std::string& key,
                                std::function<std::any()> compute);
     std::any attribute(const std::string& key) const;
+    Result visitAttribute(const std::string& key, const std::function<void(const std::any&)>& visit) const;
     Result propagateAttributes(const Tensor& source);
 
     void* data();

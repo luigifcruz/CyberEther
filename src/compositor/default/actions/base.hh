@@ -2,20 +2,27 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_BASE_HH
 
 #include "benchmark.hh"
+#include "config_drafts.hh"
 #include "dependencies.hh"
 #include "feedback.hh"
 #include "file_picker.hh"
 #include "flowgraph.hh"
+#include "gallery.hh"
+#include "history.hh"
+#include "layout.hh"
 #include "live_markdown.hh"
 #include "maps.hh"
+#include "metrics.hh"
+#include "onboarding.hh"
 #include "remote.hh"
 #include "settings.hh"
-#include "stacks.hh"
+#include "terminal.hh"
 #include "workbench.hh"
 #include "agent.hh"
 
 #include "jetstream/logger.hh"
 
+#include <deque>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -26,96 +33,31 @@ namespace Jetstream {
 
 class DefaultActions {
  public:
-    DefaultActions(DefaultCompositorState& state, DefaultCompositorCallbacks& callbacks, AgentRuntime& runtime) {
-        workbench = std::make_shared<WorkbenchActions>(state, callbacks);
-        settings = std::make_shared<SettingsActions>(state, callbacks);
-        benchmark = std::make_shared<BenchmarkActions>(state, callbacks);
-        remote = std::make_shared<RemoteActions>(state, callbacks);
-        maps = std::make_shared<MapsActions>(state, callbacks);
-        filePicker = std::make_shared<FilePickerActions>(state, callbacks);
-        flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
-        dependencies = std::make_shared<DependencyActions>(callbacks);
-        stacks = std::make_shared<StackActions>(state.flowgraph, callbacks);
-        liveMarkdown = std::make_shared<LiveMarkdownActions>(state.flowgraph);
-        feedback = std::make_shared<FeedbackActions>(state, callbacks);
-        agent = std::make_shared<AgentActions>(state, callbacks, runtime);
-    }
-
-    Result handle(const Mail& mail) {
-        Result result = Result::SUCCESS;
-        if (Handle(*workbench, mail, result)) {
-            return result;
-        }
-        if (Handle(*settings, mail, result)) {
-            return result;
-        }
-        if (Handle(*benchmark, mail, result)) {
-            return result;
-        }
-        if (Handle(*remote, mail, result)) {
-            return result;
-        }
-        if (Handle(*maps, mail, result)) {
-            return result;
-        }
-        if (Handle(*filePicker, mail, result)) {
-            return result;
-        }
-        if (Handle(*flowgraph, mail, result)) {
-            return result;
-        }
-        if (Handle(*dependencies, mail, result)) {
-            return result;
-        }
-        if (Handle(*stacks, mail, result)) {
-            return result;
-        }
-        if (Handle(*feedback, mail, result)) {
-            return result;
-        }
-        if (Handle(*agent, mail, result)) {
-            return result;
-        }
-
-        JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unhandled mail.");
-        return Result::ERROR;
-    }
-
-    Result requestFile(FilePickerRequest request) {
-        return filePicker->request(std::move(request));
-    }
-
-    void reconcileFilePicker() {
-        filePicker->reconcileAvailability();
-    }
-
-    void restoreStacks() {
-        stacks->restoreFromMetadata();
-    }
-
-    void refreshLiveMarkdown() {
-        liveMarkdown->refresh();
-    }
-
-    void cancelFilePicker() {
-        filePicker->cancel();
-    }
-
-    void reconcileAgent() {
-        agent->reconcile();
-    }
-
-    void reconcileMaps() {
-        maps->reconcile();
-    }
-
-    void shutdownMaps() {
-        maps->shutdown();
-    }
-
-    void shutdownAgent() {
-        agent->shutdown();
-    }
+    DefaultActions(DefaultCompositorState& state, DefaultCompositorCallbacks& callbacks, AgentRuntime& runtime);
+    Result dispatch(const std::deque<Mail>& pending);
+    Result handle(const Mail& mail);
+    Result requestFile(FilePickerRequest request);
+    void reconcileFilePicker();
+    void settleStartTab();
+    void refreshRegistry();
+    void settlePendingFocus();
+    void reconcileFlowgraphs();
+    void reconcileModal();
+    void restoreLayouts();
+    void reconcileHistory();
+    void enqueueFlowgraphEdit(FlowgraphEdit edit);
+    void refreshLiveMarkdown();
+    void refreshConfigDrafts();
+    void refreshMetrics();
+    void cancelFilePicker();
+    void reconcileAgent();
+    void reconcileMaps();
+    void shutdownMaps();
+    void shutdownAgent();
+    void reconcileGallery();
+    void shutdownGallery();
+    void reconcileTerminals();
+    void shutdownTerminals();
 
  private:
     template<class Action, class... Signals>
@@ -139,14 +81,20 @@ class DefaultActions {
     std::shared_ptr<DependencyActions> dependencies;
     std::shared_ptr<FilePickerActions> filePicker;
     std::shared_ptr<FlowgraphActions> flowgraph;
+    std::shared_ptr<HistoryActions> history;
     std::shared_ptr<LiveMarkdownActions> liveMarkdown;
+    std::shared_ptr<ConfigDraftActions> configDrafts;
+    std::shared_ptr<MetricActions> metrics;
     std::shared_ptr<RemoteActions> remote;
     std::shared_ptr<MapsActions> maps;
     std::shared_ptr<SettingsActions> settings;
-    std::shared_ptr<StackActions> stacks;
+    std::shared_ptr<LayoutActions> layouts;
     std::shared_ptr<WorkbenchActions> workbench;
     std::shared_ptr<FeedbackActions> feedback;
+    std::shared_ptr<OnboardingActions> onboarding;
     std::shared_ptr<AgentActions> agent;
+    std::shared_ptr<GalleryActions> gallery;
+    std::shared_ptr<TerminalActions> terminals;
 };
 
 }  // namespace Jetstream

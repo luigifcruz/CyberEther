@@ -10,31 +10,44 @@
 
 namespace Jetstream::Sakura {
 
-struct NodeField {
-    using Child = std::function<void(const Context&)>;
+struct NodeOverlay {
+    Callback<Component*()> content;
+    U64 revision = 0;
 
+    explicit operator bool() const {
+        return static_cast<bool>(content);
+    }
+
+    Component* operator()() const {
+        return content();
+    }
+
+    bool operator==(const NodeOverlay&) const = default;
+};
+
+struct NodeField : public Component {
     static constexpr F32 Gap = 2.0f;
 
     struct Config {
         std::string id;
         std::string label;
-        std::string help;
+        NodeOverlay tooltip;
         bool title = true;
         bool background = true;
-        bool divider = false;
+        Component* content = nullptr;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeField();
     ~NodeField();
 
-    NodeField(NodeField&&) noexcept;
-    NodeField& operator=(NodeField&&) noexcept;
+    void update(Config config);
 
-    NodeField(const NodeField&) = delete;
-    NodeField& operator=(const NodeField&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx, Child child) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
 
  private:
     struct Impl;

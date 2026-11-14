@@ -82,6 +82,11 @@ std::set<std::string> Vulkan::getRequiredDeviceExtensions() {
 std::set<std::string> Vulkan::getOptionalDeviceExtensions() {
     std::set<std::string> extensions;
 
+    if (!config.headless) {
+        extensions.insert(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+        extensions.insert(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+    }
+
 #if defined(VK_KHR_external_memory_fd)
     extensions.insert(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
     extensions.insert(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
@@ -345,6 +350,12 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             }
         }
 
+        if (!supportedDeviceExtensions.contains(VK_KHR_PRESENT_ID_EXTENSION_NAME) ||
+            !supportedDeviceExtensions.contains(VK_KHR_PRESENT_WAIT_EXTENSION_NAME)) {
+            supportedDeviceExtensions.erase(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+            supportedDeviceExtensions.erase(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+        }
+
         deviceExtensions.insert(deviceExtensions.end(), supportedDeviceExtensions.begin(), supportedDeviceExtensions.end());
     }
 
@@ -449,8 +460,24 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
         createInfo.pEnabledFeatures = &deviceFeatures;
 
+        VkPhysicalDevicePresentWaitFeaturesKHR presentWaitFeatures{};
+        presentWaitFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
+        VkPhysicalDevicePresentIdFeaturesKHR presentIdFeatures{};
+        presentIdFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
+        presentIdFeatures.pNext = &presentWaitFeatures;
+
+        if (supportedDeviceExtensions.contains(VK_KHR_PRESENT_WAIT_EXTENSION_NAME)) {
+            VkPhysicalDeviceFeatures2 features{};
+            features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            features.pNext = &presentIdFeatures;
+            vkGetPhysicalDeviceFeatures2(physicalDevice, &features);
+            cache.supportsPresentWait = presentIdFeatures.presentId && presentWaitFeatures.presentWait;
+            if (cache.supportsPresentWait) {
+                createInfo.pNext = &presentIdFeatures;
+            }
+        }
+
         std::vector<const char*> vulkanDeviceExtensions(deviceExtensions.size());
-        std::vector<const char*> vulkanValidationLayers(validationLayers.size());
 
         std::transform(deviceExtensions.begin(), deviceExtensions.end(), vulkanDeviceExtensions.begin(),
                        [](const std::string& str) { return str.c_str(); });
@@ -458,14 +485,6 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         createInfo.enabledExtensionCount = static_cast<U32>(vulkanDeviceExtensions.size());
         createInfo.ppEnabledExtensionNames = vulkanDeviceExtensions.data();
         createInfo.enabledLayerCount = 0;
-
-        if (config.validationEnabled) {
-            std::transform(validationLayers.begin(), validationLayers.end(), vulkanValidationLayers.begin(),
-                           [](const std::string& str) { return str.c_str(); });
-
-            createInfo.enabledLayerCount = static_cast<U32>(vulkanValidationLayers.size());
-            createInfo.ppEnabledLayerNames = vulkanValidationLayers.data();
-        }
 
         JST_VK_CHECK_THROW(vkCreateDevice(physicalDevice, &createInfo, nullptr, &device), [&]{
             JST_FATAL("[VULKAN] Can't create logical device.");
@@ -500,7 +519,6 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     {
         VkDescriptorPoolSize poolSizes[] = {
             { VK_DESCRIPTOR_TYPE_SAMPLER, 8192 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8192 },
             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 8192 },
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8192 },
             { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 8192 },
@@ -521,6 +539,17 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
         JST_VK_CHECK_THROW(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool), [&]{
             JST_FATAL("[VULKAN] Can't create descriptor pool.")
+        });
+    }
+
+    // Create pipeline cache.
+
+    {
+        VkPipelineCacheCreateInfo pipelineCacheInfo{};
+        pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+
+        JST_VK_CHECK_THROW(vkCreatePipelineCache(device, &pipelineCacheInfo, nullptr, &pipelineCache), [&]{
+            JST_FATAL("[VULKAN] Can't create pipeline cache.")
         });
     }
 
@@ -593,6 +622,9 @@ Vulkan::~Vulkan() {
     vkFreeCommandBuffers(device, defaultCommandPool, 1, &defaultCommandBuffer);
     vkDestroyCommandPool(device, defaultCommandPool, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+    if (pipelineCache != VK_NULL_HANDLE) {
+        vkDestroyPipelineCache(device, pipelineCache, nullptr);
+    }
 
     if (debugReportCallback != VK_NULL_HANDLE) {
         PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
@@ -640,6 +672,10 @@ bool Vulkan::hasUnifiedMemory() const {
 
 bool Vulkan::supportsMultiDrawIndirect() const {
     return cache.supportsMultiDrawIndirect;
+}
+
+bool Vulkan::supportsPresentWait() const {
+    return cache.supportsPresentWait;
 }
 
 bool Vulkan::canExportDeviceMemory() const {

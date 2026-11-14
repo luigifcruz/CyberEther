@@ -32,175 +32,20 @@ struct FlowgraphNodePresenter {
     FlowgraphCatalogPresenter catalog;
     FlowgraphSurfacePresenter surfaces;
 
-    explicit FlowgraphNodePresenter(const PresenterContext& context) : context(context),
-                                                                       surfaces(context) {}
-
-    void buildInputs(FlowgraphNode::BlockData& block, const Flowgraph::View::BlockData& blockData) const {
-        for (const auto& interfaceInfo : blockData.interfaceInputs) {
-            FlowgraphNode::Input input{
-                .port = {
-                    .id = interfaceInfo.name,
-                    .label = interfaceInfo.label,
-                    .help = interfaceInfo.help,
-                },
-            };
-
-            const auto inputIt = blockData.inputs.find(interfaceInfo.name);
-            if (inputIt != blockData.inputs.end() && inputIt->second.external.has_value()) {
-                input.source = FlowgraphNode::Link{
-                    .block = inputIt->second.external->block,
-                    .port = inputIt->second.external->port,
-                    .resolved = inputIt->second.resolved(),
-                    .tensor = inputIt->second.tensor,
-                };
-            }
-
-            block.inputs.push_back(std::move(input));
-        }
-    }
-
-    void buildOutputs(FlowgraphNode::BlockData& block, const Flowgraph::View::BlockData& blockData) const {
-        for (const auto& interfaceInfo : blockData.interfaceOutputs) {
-            FlowgraphNode::Output output{
-                .port = {
-                    .id = interfaceInfo.name,
-                    .label = interfaceInfo.label,
-                    .help = interfaceInfo.help,
-                },
-            };
-
-            const auto outputIt = blockData.outputs.find(interfaceInfo.name);
-            if (outputIt != blockData.outputs.end()) {
-                output.tensor = outputIt->second.tensor;
-            }
-
-            block.outputs.push_back(std::move(output));
-        }
-    }
-
-    void buildBlockMetrics(FlowgraphNode::BlockData& block,
-                           const std::string& nodeViewId,
-                           const Flowgraph::View::BlockData& blockData) const {
-        for (const auto& metric : blockData.metrics) {
-            if (Parser::Get<std::string>(metric.format, "visibility") == "internal") {
-                continue;
-            }
-
-            block.metrics.push_back({
-                .id = nodeViewId + ":metric:" + metric.name,
-                .label = metric.label,
-                .help = metric.help,
-                .format = metric.format,
-                .value = metric.value,
-            });
-        }
-    }
-
+    explicit FlowgraphNodePresenter(const PresenterContext& context);
+    void buildInputs(FlowgraphNode::BlockData& block, const Flowgraph::View::BlockData& blockData) const;
+    void buildOutputs(FlowgraphNode::BlockData& block, const Flowgraph::View::BlockData& blockData) const;
     void buildConfigFields(FlowgraphNode::BlockData& block,
                            const std::string& flowgraphId,
                            const std::string& blockName,
                            const std::string& nodeViewId,
-                           const Flowgraph::View::BlockData& blockData) const {
-        block.config = blockData.config;
-        block.configFields = BuildFlowgraphConfigFields(nodeViewId, blockData);
-        ApplyLiveMarkdown(block.configFields, context.state.flowgraph, flowgraphId, blockName);
-    }
-
+                           const Flowgraph::View::BlockData& blockData) const;
     void buildTiming(FlowgraphNode::BlockData& block,
-                     const Flowgraph::View::BlockData& blockData) const {
-        F32 totalTime = 0.0f;
-        U64 maxCycles = 0;
-
-        for (const auto& metric : blockData.metrics) {
-            if (Parser::Get<std::string>(metric.format, "type") != "timing" ||
-                Parser::Get<std::string>(metric.format, "visibility") != "internal") {
-                continue;
-            }
-
-            Module::Timing timing;
-            try {
-                timing = std::any_cast<Module::Timing>(metric.value);
-            } catch (const std::bad_any_cast&) {
-                continue;
-            }
-
-            const F32 averageComputeTime = timing.cycles == 0
-                ? 0.0f
-                : timing.computeTime / static_cast<F32>(timing.cycles);
-            const auto& label = metric.label.empty() ? metric.name : metric.label;
-
-            block.timing.push_back(jst::fmt::format("{} ({}/{}/{}): {:.3f} ms",
-                                                    label,
-                                                    timing.backend,
-                                                    timing.device,
-                                                    timing.runtime,
-                                                    averageComputeTime));
-            totalTime += averageComputeTime;
-            maxCycles = std::max(maxCycles, timing.cycles);
-        }
-
-        if (block.timing.empty()) {
-            return;
-        }
-
-        const std::string cyclesStr = (maxCycles > 1000)
-            ? jst::fmt::format("{:.1f}k", maxCycles / 1000.0f)
-            : jst::fmt::format("{}", maxCycles);
-        block.timing.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
-    }
-
+                     const Flowgraph::View::BlockData& blockData) const;
     FlowgraphNode::BlockData build(const std::string& flowgraphId,
                                    const std::shared_ptr<Flowgraph>& flowgraph,
                                    const std::string& blockName,
-                                   const Flowgraph::View::BlockData& blockData) const {
-        const std::string nodeViewId = flowgraphId + ":" + blockName;
-        const Block::State blockState = blockData.state;
-        const bool hasDiagnostic = (blockState == Block::State::Errored ||
-                                     blockState == Block::State::Incomplete) &&
-                                    !blockData.diagnostic.empty();
-        FlowgraphNode::BlockData block{
-            .name = blockName,
-            .module = blockData.type,
-            .title = blockData.title,
-            .documentation = blockData.description,
-            .device = blockData.device,
-            .runtime = blockData.runtime,
-            .provider = blockData.provider,
-            .state = blockState,
-            .nodeSize = blockData.nodeSize,
-            .diagnostic = hasDiagnostic ? Sakura::CleanUserMessage(blockData.diagnostic) : "",
-        };
-        block.deviceOptions = catalog.buildDeviceOptions(block.module,
-                                                         block.device,
-                                                         block.runtime,
-                                                         block.provider);
-
-        NodeMeta nodeMeta;
-        flowgraph->metadata().get("node", nodeMeta, blockName);
-        block.layout = FlowgraphNode::Layout{
-            .x = nodeMeta.x,
-            .y = nodeMeta.y,
-            .width = nodeMeta.width,
-            .height = nodeMeta.height,
-        };
-
-        ConfigMeta configMeta;
-        flowgraph->metadata().get("config", configMeta, blockName);
-        block.configCollapsed = configMeta.collapsed;
-        block.configDetached = configMeta.detached;
-
-        buildInputs(block, blockData);
-        buildOutputs(block, blockData);
-
-        if (blockState != Block::State::Creating) {
-            buildBlockMetrics(block, nodeViewId, blockData);
-            buildConfigFields(block, flowgraphId, blockName, nodeViewId, blockData);
-            buildTiming(block, blockData);
-            surfaces.buildSurfaces(block, flowgraph, flowgraphId, blockName, nodeViewId, blockData);
-        }
-
-        return block;
-    }
+                                   const Flowgraph::View::BlockData& blockData) const;
 };
 
 }  // namespace Jetstream

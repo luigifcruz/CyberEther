@@ -45,7 +45,6 @@ class JETSTREAM_API Session {
         U64 modelOutputTokens = 0;
         U64 maxToolResultChars = 32768;
         U64 maxImages = 4;
-        U64 maxToolTurns = 40;
         Voice voice;
     };
 

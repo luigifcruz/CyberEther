@@ -32,11 +32,11 @@ If you cannot answer these questions, do not install the plugin. CyberEther will
 You need a `.cep` file saved somewhere on your computer. Pick a permanent location for it, such as a `Plugins` folder in your home directory, because CyberEther loads the plugin from that exact path every time it starts. Then:
 
 1. Launch CyberEther.
-2. Open the **CyberEther** menu in the top menubar and click **Preferences...**. The shortcut is `CTRL+,`.
-3. In the **Sections** sidebar of the preferences window, click **Registry**.
-4. Find the **Plugins** section and click **Add Plugin**.
-5. In the **Register Plugin** dialog, click **Browse File** and pick your `.cep` file. You can also type or paste the full path into the **Plugin Path** field.
-6. Read the trust warning. If you trust where the plugin came from, tick **I trust the source of this plugin**. The register button stays disabled until you tick the box.
+2. Open the **CyberEther** menu in the titlebar and click **Settings**. The shortcut is `CTRL+,`.
+3. In the settings sidebar, click **Registry**.
+4. Find the **Plugins** card and click **Add**.
+5. Click **Browse** and pick your `.cep` file. You can also type or paste the full path into the **Plugin Path** field.
+6. Read the trust warning. If you trust where the plugin came from, turn on **Trust Source**. The register button stays disabled until it is on and a path is set.
 7. Click **Register Plugin**.
 
 CyberEther loads the plugin immediately and shows a "Plugin loaded." notification. The plugin now appears in the Plugins table with its name, version, and status.
@@ -71,16 +71,16 @@ CyberEther remembers the path to the `.cep` file. It does not copy the bundle in
 
 ## Managing Installed Plugins
 
-The Plugins table in **Preferences → Registry** lists every registered plugin with its status and two actions:
+The **Plugins** card in **Settings** > **Registry** lists every registered plugin. Click a plugin to open its page, which shows its status, details, blocks, and examples, plus two actions:
 
 - **Reload** unloads and reloads that plugin. Use it after replacing the `.cep` file with a newer version. All flowgraphs must be closed first, otherwise CyberEther asks you to close them.
-- **Delete** removes the plugin from the registered list. Blocks that were already loaded stay available until you restart CyberEther. The `.cep` file itself is not deleted from your disk.
+- **Remove** removes the plugin from the registered list. Blocks that were already loaded stay available until you restart CyberEther. The `.cep` file itself is not deleted from your disk.
 
-The **Flowgraph** menu in the top menubar also has a **Reload Plugins** item that reloads every registered plugin at once.
+The **CyberEther** menu also has **Developer** > **Reload Plugins**, which reloads every registered plugin at once.
 
 ## Troubleshooting
 
-The **Status** column in the Plugins table tells you where a plugin stands:
+The **Status** row on each plugin's page tells you where a plugin stands:
 
 | Status | Meaning |
 |--------|---------|
@@ -100,4 +100,4 @@ The exact reason is printed to the log. Run CyberEther from a terminal and look 
 A few limitations to be aware of:
 
 - Browser plugins cannot be reloaded in place because WebAssembly side modules cannot be unloaded. Refresh the page after replacing a plugin.
-- Command-line plugins are temporary. Register a plugin through the preferences window to load it automatically in future sessions.
+- Command-line plugins are temporary. Register a plugin in **Settings** to load it automatically in future sessions.

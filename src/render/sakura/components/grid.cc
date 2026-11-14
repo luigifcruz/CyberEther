@@ -1,55 +1,164 @@
 #include <jetstream/render/sakura/components/grid.hh>
 
-#include "../helpers.hh"
+#include <jetstream/render/sakura/components/scroller.hh>
+
+#include "../context.hh"
+#include "../metrics.hh"
+#include "../detail/clip_layer.hh"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <utility>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
 struct Grid::Impl {
     Config config;
+    ClipLayer clipLayer;
+    Scroller scroll;
+    F32 scrollY = 0.0f;
+    std::vector<F32> rowHeights;
+
+    U64 columns() const {
+        return std::max<U64>(1, config.columns);
+    }
+
+    U64 columns(const Context& ctx, F32 width) const {
+        const U64 most = columns();
+        if (config.minCellWidth <= 0.0f || !std::isfinite(width)) {
+            return most;
+        }
+        const F32 padX = Px(ctx, config.cellPadding.x);
+        const F32 outer = config.outerPadding ? padX : 0.0f;
+        const F32 fit = (width - 2.0f * outer + 2.0f * padX) / (Px(ctx, config.minCellWidth) + 2.0f * padX);
+        return std::clamp<U64>(static_cast<U64>(std::max(0.0f, std::floor(fit))), 1, most);
+    }
+
+    F32 cellWidth(const Context& ctx, F32 width) const {
+        const F32 padX = Px(ctx, config.cellPadding.x);
+        const F32 outer = config.outerPadding ? padX : 0.0f;
+        const F32 n = static_cast<F32>(columns(ctx, width));
+        return std::max(0.0f, (width - 2.0f * outer - (n - 1.0f) * 2.0f * padX) / n);
+    }
+
+    template<typename Measure>
+    F32 measureRows(const Context& ctx, F32 width, const Measure& measure) {
+        const F32 padY = Px(ctx, config.cellPadding.y);
+        const F32 cell = cellWidth(ctx, width);
+        const U64 n = columns(ctx, width);
+        rowHeights.assign((config.items.size() + n - 1) / n, 0.0f);
+        for (U64 index = 0; index < config.items.size(); ++index) {
+            auto* item = config.items[index];
+            if (!item) {
+                continue;
+            }
+            const F32 height = measure(*item, cell);
+            rowHeights[index / n] = std::max(rowHeights[index / n], height + 2.0f * padY);
+        }
+        F32 total = 0.0f;
+        for (const F32 height : rowHeights) {
+            total += height;
+        }
+        return total;
+    }
 };
 
 Grid::Grid() {
-    this->impl = std::make_unique<Impl>();
+    impl = std::make_unique<Impl>();
+    addChild(impl->scroll);
+    addChild(impl->clipLayer);
 }
 
 Grid::~Grid() = default;
-Grid::Grid(Grid&&) noexcept = default;
-Grid& Grid::operator=(Grid&&) noexcept = default;
 
-bool Grid::update(Config config) {
-    this->impl->config = std::move(config);
-    return true;
+void Grid::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
+    std::vector<Component*> items;
+    for (auto* item : config.items) {
+        if (item) {
+            items.push_back(item);
+        }
+    }
+    impl->clipLayer.mount(items);
+    impl->config = std::move(config);
 }
 
-void Grid::render(const Context& ctx, Children children) const {
-    const auto& config = this->impl->config;
-
-    ImGui::PushID(config.id.c_str());
-    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, Private::ToImVec2(Scale(ctx, config.cellPadding)));
-    ImGuiTableFlags flags = ImGuiTableFlags_SizingStretchSame |
-                            ImGuiTableFlags_NoBordersInBody |
-                            ImGuiTableFlags_NoBordersInBodyUntilResize |
-                            ImGuiTableFlags_ScrollY;
-    flags |= config.outerPadding ? ImGuiTableFlags_PadOuterX : ImGuiTableFlags_NoPadOuterX;
-    if (ImGui::BeginTable(config.id.c_str(),
-                          std::max<U64>(1, config.columns),
-                          flags,
-                          Private::ToImVec2(Scale(ctx, config.size)))) {
-        for (U64 i = 0; i < config.columns; ++i) {
-            const std::string columnId = "##grid-column" + std::to_string(i);
-            ImGui::TableSetupColumn(columnId.c_str(), ImGuiTableColumnFlags_WidthStretch);
-        }
-
-        for (U64 i = 0; i < children.size(); ++i) {
-            ImGui::TableNextColumn();
-            if (children[i]) {
-                children[i](ctx);
+Extent2D<F32> Grid::measure(const Context& ctx, Extent2D<F32> available) {
+    const auto& config = impl->config;
+    const F32 infinite = std::numeric_limits<F32>::infinity();
+    F32 natural = 0.0f;
+    if (config.size.x == 0.0f) {
+        for (auto* item : config.items) {
+            if (item) {
+                natural = std::max(natural, measureChild(*item, ctx, {infinite, infinite}).x);
             }
         }
-        ImGui::EndTable();
+        const F32 padX = Px(ctx, config.cellPadding.x);
+        const F32 n = static_cast<F32>(impl->columns());
+        natural = n * natural + (n - 1.0f) * 2.0f * padX + (config.outerPadding ? 2.0f * padX : 0.0f);
     }
-    ImGui::PopStyleVar();
-    ImGui::PopID();
+    const F32 width = ResolveLength(ctx, config.size.x, natural, available.x);
+    const auto measureItem = [&](Component& item, F32 cell) {
+        return measureChild(item, ctx, {cell, infinite}).y;
+    };
+    natural = config.size.y == 0.0f ? impl->measureRows(ctx, width, measureItem) : 0.0f;
+    return {width, ResolveLength(ctx, config.size.y, natural, available.y)};
+}
+
+void Grid::layout(const Context& ctx) {
+    const Rect bounds = frame();
+    const auto& config = impl->config;
+    const F32 padX = Px(ctx, config.cellPadding.x);
+    const F32 padY = Px(ctx, config.cellPadding.y);
+    const F32 outer = config.outerPadding ? padX : 0.0f;
+    const auto measureItem = [&](Component& item, F32 cell) {
+        return measureChild(item, ctx, {cell, std::numeric_limits<F32>::infinity()}).y;
+    };
+    F32 width = bounds.width;
+    F32 contentHeight = impl->measureRows(ctx, width, measureItem);
+    const F32 scrollbar = Px(ctx, kScrollbarSize);
+    if (contentHeight > bounds.height + 0.5f) {
+        width = std::max(0.0f, bounds.width - scrollbar);
+        contentHeight = impl->measureRows(ctx, width, measureItem);
+    }
+    impl->scrollY = std::clamp(impl->scrollY, 0.0f, std::max(0.0f, contentHeight - bounds.height));
+
+    impl->scroll.update({
+        .contentHeight = contentHeight,
+        .scrollY = impl->scrollY,
+        .wheelStep = Px(ctx, kWheelStep),
+        .thickness = scrollbar,
+        .margin = 0.0f,
+        .thumbInset = Px(ctx, kScrollbarGrabInset),
+        .trackColorKey = "scrollbar_bg",
+        .thumbColorKey = "scrollbar_grab",
+        .onScrollY = [this](F32 next) {
+            impl->scrollY = next;
+            invalidate(Dirty::Layout);
+        },
+    });
+    layoutChild(ctx, impl->scroll, bounds);
+    layoutChild(ctx, impl->clipLayer, bounds);
+
+    const U64 n = impl->columns(ctx, width);
+    const F32 cell = impl->cellWidth(ctx, width);
+    F32 y = bounds.y - impl->scrollY - impl->scroll.overscroll(ctx).y;
+    for (U64 row = 0; row < impl->rowHeights.size(); ++row) {
+        for (U64 column = 0; column < n; ++column) {
+            const U64 index = row * n + column;
+            if (index >= config.items.size() || !config.items[index]) {
+                continue;
+            }
+            const F32 x = bounds.x + outer + static_cast<F32>(column) * (cell + 2.0f * padX);
+            impl->clipLayer.place(ctx, *config.items[index],
+                                  {x, y + padY, cell, std::max(0.0f, impl->rowHeights[row] - 2.0f * padY)});
+        }
+        y += impl->rowHeights[row];
+    }
 }
 
 }  // namespace Jetstream::Sakura

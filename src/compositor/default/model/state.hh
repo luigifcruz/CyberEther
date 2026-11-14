@@ -8,6 +8,8 @@
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/plugin.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/runtime_context_python.hh"
 #include "jetstream/settings.hh"
@@ -18,13 +20,17 @@
 
 #include "ui.hh"
 #include "meta.hh"
+#include "history.hh"
 #include "file_picker.hh"
+#include "surface_theme.hh"
 
 #include "jetstream/agent/provider.hh"
 #include "jetstream/agent/session.hh"
+#include "jetstream/render/sakura/components/terminal.hh"
 #include "jetstream/render/sakura/toast.hh"
 
 #include <atomic>
+#include <chrono>
 #include <future>
 #include <map>
 #include <memory>
@@ -32,6 +38,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -109,10 +116,12 @@ struct DefaultCompositorState {
             Agent::Session::Phase phase = Agent::Session::Phase::Idle;
             F32 input = 0.0f;
             F32 output = 0.0f;
+            bool muted = false;
         };
 
         struct UiState {
             bool visible = false;
+            bool unread = false;
             bool voiceVisible = false;
             bool settingsShown = false;
             U64 chatFocusRequests = 0;
@@ -144,29 +153,55 @@ struct DefaultCompositorState {
         Sakura::Runtime runtime;
         std::string themeKey = "Dark";
         Sakura::Palette colorMap;
+
+        bool dark() const;
     };
 
     struct InterfaceState {
+        static constexpr U64 MaxRecentFlowgraphs = 5;
+
         bool filePending = false;
-        bool infoPanelEnabled = true;
         bool backgroundParticles = true;
-        bool flowgraphMetadataVisible = false;
-        std::string flowgraphMetadataSearch;
-        bool flowgraphEnvironmentVisible = false;
-        std::string flowgraphEnvironmentSearch;
+        bool showTips = true;
+        F32 touchpadScrollSpeed = Settings::Interface::DefaultTouchpadScrollSpeed;
+        std::vector<Settings::Interface::FlowgraphEntry> recentFlowgraphs;
+        std::vector<Settings::Interface::FlowgraphEntry> favoriteFlowgraphs;
 
         std::optional<std::string> focusedFlowgraph;
         std::optional<std::string> pendingFocusedFlowgraph;
+        std::optional<std::string> closingFlowgraph;
+        bool quitting = false;
+        std::unordered_set<std::string> discardedFlowgraphs;
+        std::optional<WorkspaceTab> focusedTab;
+        bool tabNavigationPending = false;
+        bool startTab = false;
+        U64 startTabBaseline = 0;
+        U64 startTabRequests = 0;
+        WelcomeSection welcomeSection = WelcomeSection::All;
+        bool welcomeSidebarOpen = true;
+        std::string welcomeQuery;
+        std::string welcomeCategory;
+        U64 welcomePage = 0;
+        bool settingsTab = false;
+        U64 settingsTabRequests = 0;
+        bool docsTab = false;
+        U64 docsTabRequests = 0;
+        std::string docsPage;
+        std::string docsAnchor;
+        U64 docsNavigations = 0;
+        std::string docsQuery;
     };
 
     struct GraphicsState {
         std::optional<DeviceType> device;
         F32 scale = 1.0f;
-        U64 framerate = 60;
     };
 
     struct SettingsState {
         SettingsSection section = SettingsSection::General;
+        RegistryPage registryPage = RegistryPage::Overview;
+        std::string registryPlugin;
+        IntelligencePage intelligencePage = IntelligencePage::Overview;
     };
 
     struct RuntimeState {
@@ -184,11 +219,11 @@ struct DefaultCompositorState {
         std::optional<std::string> flowgraph;
         std::optional<std::string> renameBlockOldName;
         std::optional<PythonDependencyRequest> dependencyRequest;
+        OnboardingPage onboardingPage = OnboardingPage::WhatsNew;
     };
 
     struct DebugState {
         int logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
-        bool latencyEnabled = false;
         bool timingEnabled = false;
     };
 
@@ -208,36 +243,76 @@ struct DefaultCompositorState {
     };
 
     struct FlowgraphState {
-        struct StackWindowState {
-            StackMeta meta;
-            bool restoreDockLayout = false;
-            bool dockInMainDockspace = true;
-        };
-
         struct BlockSnapshot {
             std::string name;
             Flowgraph::View::BlockData data;
         };
 
-        static std::string LiveMarkdownKey(const std::string& flowgraphId,
-                                           const std::string& blockName,
-                                           const std::string& fieldName) {
-            return flowgraphId + ":" + blockName + ":" + fieldName;
-        }
+        struct Documentation {
+            std::string block;
+            std::string title;
+            std::string markdown;
+        };
+
+        struct Selection {
+            U64 requests = 0;
+            std::vector<std::string> blocks;
+        };
+
+        struct ConfigDraft {
+            std::string flowgraph;
+            std::string block;
+            std::string field;
+            std::string base;
+            std::string text;
+        };
+
+        static std::string FieldKey(const std::string& flowgraphId,
+                                    const std::string& blockName,
+                                    const std::string& fieldName);
 
         std::unordered_map<std::string, std::shared_ptr<Flowgraph>> items;
-        std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> stacks;
+        std::unordered_map<std::string, TileMeta> layouts;
+        std::unordered_map<std::string, FlowgraphHistory> history;
+        std::unordered_set<std::string> restoredLayouts;
         std::unordered_map<std::string, std::vector<BlockSnapshot>> blocks;
         std::unordered_map<std::string, std::string> liveMarkdown;
+        std::unordered_map<std::string, ConfigDraft> configDrafts;
+        std::unordered_map<std::string, Documentation> documentation;
+        std::unordered_map<std::string, std::string> environment;
+        std::unordered_set<std::string> closedDescriptions;
+        std::unordered_map<std::string, Selection> selections;
+        SurfaceTracks surfaces;
     };
 
-    struct ClipboardState {
-        std::string moduleType;
-        DeviceType device;
-        RuntimeType runtime;
-        ProviderType provider;
-        Parser::Map config;
-        bool hasData = false;
+    struct TerminalState {
+        struct Item {
+            struct Placement {
+                std::string anchor;
+                bool stacked = false;
+            };
+
+            std::string title;
+            std::string directory;
+            std::optional<std::string> flowgraph;
+            std::optional<U64> tab;
+            std::optional<Placement> placement;
+            Sakura::Terminal::Screen screen;
+            U64 revision = 0;
+            U64 focusRequests = 0;
+            U64 focusedAt = 0;
+            I32 zoom = 0;
+            std::optional<std::string> search;
+        };
+
+        std::map<U64, Item> items;
+        std::map<U64, TileMeta> tabs;
+        U64 next = 1;
+        U64 nextTab = 1;
+        U64 focusSerial = 0;
+        std::optional<U64> focused;
+        std::optional<U64> requested;
+        U64 requests = 0;
     };
 
     struct BenchmarkState {
@@ -272,10 +347,46 @@ struct DefaultCompositorState {
         bool started = false;
         U64 clientCount = 0;
         std::string inviteUrl;
-        std::string roomId;
-        std::string accessToken;
         std::vector<Instance::Remote::ClientInfo> clients;
         std::vector<std::string> waitlist;
+    };
+
+    struct RegistryState {
+        struct BlockEntry {
+            std::string type;
+            std::string domain;
+            std::string title;
+            std::string summary;
+        };
+
+        struct PluginEntry {
+            std::string path;
+            std::optional<Plugin::Info> info;
+            bool exists = false;
+        };
+
+        struct GalleryFetch {
+            struct Fetched {
+                std::vector<Registry::FlowgraphRegistration> flowgraphs;
+                bool complete = true;
+            };
+
+            std::vector<Registry::FlowgraphRegistration> flowgraphs;
+            std::future<std::optional<Fetched>> future;
+            std::shared_ptr<std::atomic<bool>> cancel;
+            std::chrono::steady_clock::time_point started;
+            std::chrono::steady_clock::time_point next;
+            bool cached = false;
+            bool loading = false;
+            bool attempted = false;
+            bool failed = false;
+        };
+
+        bool stale = true;
+        std::vector<BlockEntry> blocks;
+        std::vector<Registry::FlowgraphRegistration> flowgraphs;
+        GalleryFetch gallery;
+        std::vector<PluginEntry> registered;
     };
 
     struct FilePickerState {
@@ -313,12 +424,25 @@ struct DefaultCompositorState {
     DebugState debug;
     UpdateState update;
     FlowgraphState flowgraph;
+    TerminalState terminal;
     BenchmarkState benchmark;
-    ClipboardState clipboard;
     RemoteState remote;
+    RegistryState registry;
     MapsState maps;
     FilePickerState filePicker;
     FeedbackState feedback;
+
+    bool startTabShown() const;
+    bool tabShown(WorkspaceTab tab) const;
+    bool tabActive(WorkspaceTab tab) const;
+    bool startTabActive() const;
+    bool settingsTabActive() const;
+    bool docsTabActive() const;
+    std::optional<std::string> activeFlowgraph() const;
+    bool flowgraphUnsaved(const std::string& id) const;
+    bool flowgraphMayLoseChanges(const std::string& id) const;
+    bool tabsHidden() const;
+    U64 workspaceTabs() const;
 };
 
 }  // namespace Jetstream

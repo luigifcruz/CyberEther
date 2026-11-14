@@ -2,6 +2,7 @@
 #define JETSTREAM_FLOWGRAPH_VIEW_HH
 
 #include <any>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,6 +43,7 @@ class JETSTREAM_API Flowgraph::View {
         RuntimeType runtime = RuntimeType::NATIVE;
         ProviderType provider = "generic";
         Block::State state = Block::State::None;
+        bool frozen = false;
         Block::NodeSize nodeSize = Block::NodeSize::S;
         std::string diagnostic;
     };
@@ -71,6 +73,10 @@ class JETSTREAM_API Flowgraph::View {
     Result config(const std::string& block, Parser::Map& config) const;
     Result inputs(const std::string& block, TensorMap& inputs) const;
     Result outputs(const std::string& block, TensorMap& outputs) const;
+    Result readTensor(const std::string& block,
+                      const std::string& port,
+                      bool output,
+                      const std::function<Result(const TensorLink&)>& read) const;
     Result interfaceInputs(const std::string& block, std::vector<InterfaceEntry>& inputs) const;
     Result interfaceOutputs(const std::string& block, std::vector<InterfaceEntry>& outputs) const;
     Result interfaceConfigs(const std::string& block, std::vector<InterfaceEntry>& configs) const;

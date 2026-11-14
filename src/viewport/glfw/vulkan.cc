@@ -3,25 +3,17 @@
 
 #include <GLFW/glfw3.h>
 
-#include <string>
-#include <utility>
-#include <vector>
+#include "tools/glfw_input.hh"
 
-#include "tools/imgui_impl_glfw.h"
+#ifdef JST_OS_MAC
+#include "tools/cocoa_titlebar.hh"
+#elif defined(JST_OS_WINDOWS)
+#include "tools/windows_titlebar.hh"
+#endif
 
 static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }
-
-#ifndef JST_OS_WINDOWS
-static bool IsWaylandPlatform() {
-#ifdef GLFW_PLATFORM_WAYLAND
-    return glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
-#else
-    return false;
-#endif
-}
-#endif
 
 namespace Jetstream::Viewport {
 
@@ -68,21 +60,8 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
-    glfwSetWindowUserPointer(window, this);
-    glfwSetDropCallback(window, [](GLFWwindow* handle, int count, const char** paths) {
-        auto* viewport = static_cast<Implementation*>(glfwGetWindowUserPointer(handle));
-        if (!viewport || count <= 0 || !paths) {
-            return;
-        }
-        std::vector<std::string> files;
-        files.reserve(static_cast<U64>(count));
-        for (int i = 0; i < count; ++i) {
-            if (paths[i]) {
-                files.emplace_back(paths[i]);
-            }
-        }
-        (void)viewport->addFileDropEvent(std::move(files));
-    });
+    attachPlatform(std::make_unique<GlfwInput>(window, *this));
+    pumpPlatform();
 
     // Initialize variables.
     swapchain = VK_NULL_HANDLE;
@@ -96,6 +75,8 @@ Result Implementation::create() {
 
     // Create swapchain.
     JST_CHECK(createSwapchain());
+
+    setIntegratedTitlebar(config.integratedTitlebar);
 
     return Result::SUCCESS;
 }
@@ -117,10 +98,27 @@ Result Implementation::destroy() {
 
     // Destroy GLFW.
 
+    titlebar.reset();
+    detachPlatform();
+
     glfwDestroyWindow(window);
+    window = nullptr;
     glfwTerminate();
 
     return Result::SUCCESS;
+}
+
+void Implementation::setIntegratedTitlebar(bool enabled) {
+    Generic::setIntegratedTitlebar(enabled);
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+    if (enabled && window && !titlebar) {
+        titlebar = std::make_shared<decltype(titlebar)::element_type>(window, [this]() {
+            input().push(Render::InputQueue::Button{MouseButton::Left, false});
+        });
+    } else if (!enabled) {
+        titlebar.reset();
+    }
+#endif
 }
 
 Result Implementation::createSwapchain() {
@@ -142,6 +140,14 @@ Result Implementation::createSwapchain() {
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapchainSupport.formats);
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapchainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapchainSupport.capabilities);
+
+    waitForPresentKHR = nullptr;
+    presentId = 0;
+    waitedPresentId = 0;
+    if (config.vsync && Backend::State<DeviceType::Vulkan>()->supportsPresentWait()) {
+        waitForPresentKHR = reinterpret_cast<PFN_vkWaitForPresentKHR>(
+            vkGetDeviceProcAddr(device, "vkWaitForPresentKHR"));
+    }
 
     U32 imageCount = swapchainSupport.capabilities.minImageCount + 1;
     if (swapchainSupport.capabilities.maxImageCount > 0 && imageCount > swapchainSupport.capabilities.maxImageCount) {
@@ -233,12 +239,6 @@ Result Implementation::destroySwapchain() {
     return Result::SUCCESS;
 }
 
-Result Implementation::createImgui() {
-    ImGui_ImplGlfw_InitForVulkan(window, true);
-
-    return Result::SUCCESS;
-}
-
 Extent2D<F32> Implementation::displaySize() const {
     I32 width = 0;
     I32 height = 0;
@@ -247,28 +247,47 @@ Extent2D<F32> Implementation::displaySize() const {
     return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
-F32 Implementation::scale(const F32& scale) const {
-    I32 wWidth, wHeight;
-    glfwGetWindowSize(window, &wWidth, &wHeight);
+Extent2D<F32> Implementation::framebufferSize() const {
+    I32 width = 0;
+    I32 height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
 
-    I32 fWidth, fHeight;
-    glfwGetFramebufferSize(window, &fWidth, &fHeight);
-
-    F32 x, y;
-    glfwGetWindowContentScale(window, &x, &y);
-
-    // This is a X11/Windows fix. If the Framebuffer and Window sizes are the same
-    // but the Scale is different than 1, it means HIDPI is necessary.
-    if ((wWidth == fWidth) && (x > 1.0)) {
-        return scale * x;
-    } else {
-        return scale;
-    }
+    return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
-Result Implementation::destroyImgui() {
-    ImGui_ImplGlfw_Shutdown();
+Extent2D<F32> Implementation::contentScale() const {
+    F32 x = 1.0f;
+    F32 y = 1.0f;
+    glfwGetWindowContentScale(window, &x, &y);
 
+    return {x, y};
+}
+
+Render::WindowMetrics::Policy Implementation::scalePolicy() const {
+    return Render::WindowMetrics::Policy::ContentScale;
+}
+
+Result Implementation::waitForPresent() {
+    if (!waitForPresentKHR || presentId < 2 || waitedPresentId >= presentId - 1) {
+        return Result::SUCCESS;
+    }
+
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    const VkResult result = waitForPresentKHR(device, swapchain, presentId - 1, 100000000);
+    if (result == VK_TIMEOUT) {
+        return Result::SKIP;
+    }
+    if (result == VK_ERROR_OUT_OF_DATE_KHR ||
+        result == VK_ERROR_SURFACE_LOST_KHR ||
+        result == VK_SUBOPTIMAL_KHR) {
+        return Result::RECREATE;
+    }
+    if (result != VK_SUCCESS) {
+        JST_ERROR("[VULKAN] Failed to wait for presentation.");
+        return Result::ERROR;
+    }
+
+    waitedPresentId = presentId - 1;
     return Result::SUCCESS;
 }
 
@@ -305,8 +324,6 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
         return Result::ERROR;
     }
 
-    ImGui_ImplGlfw_NewFrame();
-
     return Result::SUCCESS;
 }
 
@@ -322,6 +339,15 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     presentInfo.swapchainCount = 1;
 
     presentInfo.pImageIndices = &_currentDrawableIndex;
+
+    const U64 nextPresentId = presentId + 1;
+    VkPresentIdKHR presentIdInfo{};
+    presentIdInfo.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR;
+    presentIdInfo.swapchainCount = 1;
+    presentIdInfo.pPresentIds = &nextPresentId;
+    if (waitForPresentKHR) {
+        presentInfo.pNext = &presentIdInfo;
+    }
 
     VkResult result = VK_SUCCESS;
     auto& presentQueue = Backend::State<DeviceType::Vulkan>()->getPresentQueue();
@@ -341,6 +367,7 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
         return Result::ERROR;
     }
 
+    presentId = nextPresentId;
     return Result::SUCCESS;
 }
 
@@ -388,23 +415,14 @@ VkSurfaceFormatKHR Implementation::chooseSwapSurfaceFormat(const std::vector<VkS
 }
 
 VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-#ifdef JST_OS_WINDOWS
-    static_cast<void>(availablePresentModes);
-#endif
-    if (config.vsync) {
-        // TODO: Re-evaluate if we want MAILBOX.
-#ifndef JST_OS_WINDOWS
+    if (!config.vsync) {
         for (const auto &availablePresentMode : availablePresentModes) {
-            // HACK: Mailbox is not currently supported on Wayland.
-            if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR && !IsWaylandPlatform()) {
-                JST_DEBUG("[VULKAN] Swap mailbox presentation mode is available.");
+            if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
                 return availablePresentMode;
             }
         }
-#endif
-        return VK_PRESENT_MODE_FIFO_KHR;
     }
-    return VK_PRESENT_MODE_IMMEDIATE_KHR;
+    return VK_PRESENT_MODE_FIFO_KHR;
 }
 
 VkExtent2D Implementation::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
@@ -448,23 +466,89 @@ Extent2D<U64> Implementation::getSwapchainExtent() const {
 
 Result Implementation::waitEvents() {
     {
+#ifndef JST_OS_MAC
         std::scoped_lock lock(frameScopeMutex);
+#endif
         glfwPollEvents();
+#ifdef JST_OS_MAC
+        if (titlebar) {
+            titlebar->poll();
+        }
+#endif
+        pumpPlatform();
     }
+#ifdef JST_OS_WINDOWS
+    if (titlebar) {
+        titlebar->poll();
+    }
+#endif
     std::this_thread::sleep_for(std::chrono::milliseconds(3));
     return Result::SUCCESS;
 }
 
 Result Implementation::pollEvents() {
     {
+#ifndef JST_OS_MAC
         std::scoped_lock lock(frameScopeMutex);
+#endif
         glfwPollEvents();
+#ifdef JST_OS_MAC
+        if (titlebar) {
+            titlebar->poll();
+        }
+#endif
+        pumpPlatform();
     }
+#ifdef JST_OS_WINDOWS
+    if (titlebar) {
+        titlebar->poll();
+    }
+#endif
     return Result::SUCCESS;
+}
+
+bool Implementation::retainedPresent() const {
+    return true;
 }
 
 bool Implementation::keepRunning() {
     return !glfwWindowShouldClose(window);
+}
+
+Render::TitlebarChrome Implementation::titlebarChrome() const {
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+    if (titlebar) {
+        return titlebar->chrome();
+    }
+#endif
+    return {};
+}
+
+void Implementation::beginWindowDrag() {
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+    if (titlebar) {
+        titlebar->beginDrag();
+    }
+#endif
+}
+
+void Implementation::zoomWindow() {
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+    if (titlebar) {
+        titlebar->zoom();
+    }
+#endif
+}
+
+bool Implementation::setDarkAppearance(bool dark) {
+#ifdef JST_OS_MAC
+    return CocoaTitlebar::SetAppearance(window, dark);
+#elif defined(JST_OS_WINDOWS)
+    return WindowsTitlebar::SetAppearance(window, dark);
+#else
+    (void)dark;
+    return false;
+#endif
 }
 
 }  // namespace Jetstream::Viewport

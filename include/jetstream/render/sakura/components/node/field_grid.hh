@@ -4,37 +4,35 @@
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace Jetstream::Sakura {
 
-struct NodeFieldGrid {
-    using Child = std::function<void(const Context&)>;
-
+struct NodeFieldGrid : public Component {
     struct Item {
-        Child child;
+        Component* child = nullptr;
         bool fullWidth = false;
+
+        bool operator==(const Item&) const = default;
     };
 
     struct Config {
         std::string id;
-        F32 minColumnWidth = 140.0f;
+        std::vector<Item> items;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeFieldGrid();
     ~NodeFieldGrid();
 
-    NodeFieldGrid(NodeFieldGrid&&) noexcept;
-    NodeFieldGrid& operator=(NodeFieldGrid&&) noexcept;
+    void update(Config config);
 
-    NodeFieldGrid(const NodeFieldGrid&) = delete;
-    NodeFieldGrid& operator=(const NodeFieldGrid&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx, const std::vector<Item>& items) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

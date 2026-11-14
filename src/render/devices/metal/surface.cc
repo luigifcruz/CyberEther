@@ -3,6 +3,10 @@
 #include "jetstream/render/devices/metal/surface.hh"
 #include "jetstream/render/devices/metal/kernel.hh"
 #include "jetstream/render/devices/metal/buffer.hh"
+#include "jetstream/render/devices/metal/draw.hh"
+#include "jetstream/render/devices/metal/vertex.hh"
+
+#include <optional>
 
 namespace Jetstream::Render {
 
@@ -19,17 +23,48 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
         framebuffer = std::make_shared<TextureImp<DeviceType::Metal>>(framebufferConfig);
     }
 
-    for (auto& program : config.programs) {
-        programs.push_back(
-            std::dynamic_pointer_cast<ProgramImp<DeviceType::Metal>>(program)
-        );
-    }
+    (void)reorderPrograms(config.programs);
 
     for (auto& kernel : config.kernels) {
         kernels.push_back(
             std::dynamic_pointer_cast<KernelImp<DeviceType::Metal>>(kernel)
         );
     }
+}
+
+Result Implementation::reorderPrograms(const std::vector<std::shared_ptr<Program>>& ordered) {
+    decltype(programs) candidate;
+    for (const auto& program : ordered) {
+        auto typed = std::dynamic_pointer_cast<ProgramImp<DeviceType::Metal>>(program);
+        if (!typed) {
+            return Result::ERROR;
+        }
+        candidate.push_back(std::move(typed));
+    }
+    programs.swap(candidate);
+    return Result::SUCCESS;
+}
+
+bool Implementation::appendable() const {
+    return true;
+}
+
+Result Implementation::validateAppend(const std::vector<std::shared_ptr<Program>>& newPrograms,
+                                       const std::vector<std::shared_ptr<Kernel>>& newKernels) const {
+    return validateObjects<DeviceType::Metal>(newPrograms, newKernels);
+}
+
+Result Implementation::createAppended(const std::vector<std::shared_ptr<Program>>& newPrograms,
+                                       const std::vector<std::shared_ptr<Kernel>>& newKernels) {
+    const auto& activeFramebuffer = (config.multisampled) ? framebuffer : framebufferResolve;
+    return appendObjects(newPrograms, newKernels, programs, kernels, [&](auto& object) {
+        if constexpr (std::is_same_v<std::decay_t<decltype(object)>,
+                                     std::shared_ptr<ProgramImp<DeviceType::Metal>>>) {
+            return object->create(activeFramebuffer->getPixelFormat(), config.multisampled);
+        } else {
+            return object->create();
+        }
+    }, [](auto& object) { return object->destroy(); });
 }
 
 Result Implementation::create() {
@@ -49,7 +84,7 @@ Result Implementation::create() {
         JST_CHECK(kernel->create());
     }
 
-    requestedSize = framebufferResolve->size();
+    resizeResult = Result::SUCCESS;
     resetFramebuffer();
 
     return Result::SUCCESS;
@@ -68,7 +103,10 @@ Result Implementation::destroy() {
 
     JST_CHECK(destroyFramebuffer());
 
-    renderPassDescriptor->release();
+    if (renderPassDescriptor) {
+        renderPassDescriptor->release();
+        renderPassDescriptor = nullptr;
+    }
 
     return Result::SUCCESS;
 }
@@ -116,35 +154,43 @@ Result Implementation::destroyFramebuffer() {
     return Result::SUCCESS;
 }
 
-Result Implementation::prepare() {
-    framebufferChanged = framebufferResolve->size(requestedSize);
-    if (framebufferChanged) {
-        resetFramebuffer();
-        if (config.multisampled) {
-            framebuffer->size(requestedSize);
-        }
+bool Implementation::created() const {
+    return renderPassDescriptor != nullptr;
+}
 
-        JST_CHECK(destroyFramebuffer());
-        JST_CHECK(framebufferResolve->destroy());
-        JST_CHECK(framebufferResolve->create());
-        JST_CHECK(createFramebuffer());
+Result Implementation::rebuildFramebuffer() {
+    if (config.multisampled) {
+        framebuffer->size(requestedSize);
     }
+
+    JST_CHECK(destroyFramebuffer());
+    JST_CHECK(framebufferResolve->destroy());
+    JST_CHECK(framebufferResolve->create());
+    JST_CHECK(createFramebuffer());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
-    if (!shouldDraw(framebufferChanged)) {
+    const bool required = shouldDraw(framebufferResized);
+    JST_CHECK(drawResult());
+    if (!required) {
+        return Result::SUCCESS;
+    }
+    if (hiddenAndIdle(visible, framebufferResized)) {
+        shouldDrawGraphics(visible);
         return Result::SUCCESS;
     }
 
     // Encode kernels.
 
-    auto computeCmdEncoder = commandBuffer->computeCommandEncoder();
-    for (auto& kernel : kernels) {
-        JST_CHECK(kernel->encode(computeCmdEncoder));
+    if (kernelsPending()) {
+        auto computeCmdEncoder = commandBuffer->computeCommandEncoder();
+        for (auto& kernel : kernels) {
+            JST_CHECK(kernel->encode(computeCmdEncoder));
+        }
+        computeCmdEncoder->endEncoding();
     }
-    computeCmdEncoder->endEncoding();
 
     if (!shouldDrawGraphics(visible)) {
         return Result::SUCCESS;
@@ -162,29 +208,26 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
 
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
     const auto& sz = framebufferResolve->size();
-    MTL::ScissorRect fullScissor = {0, 0, static_cast<NS::UInteger>(sz.x),
-                                          static_cast<NS::UInteger>(sz.y)};
+    const ScissorRect fullScissor = {0, 0, static_cast<U32>(sz.x), static_cast<U32>(sz.y)};
+    std::optional<ScissorRect> previousScissor;
     for (auto& program : programs) {
         if (!program->enabled()) {
             continue;
         }
-        renderCmdEncoder->setScissorRect(fullScissor);
+        const auto scissor = program->getConfig().scissorRect.value_or(fullScissor);
+        if (scissor.width == 0 || scissor.height == 0) {
+            continue;
+        }
+        if (previousScissor != scissor) {
+            MTL::ScissorRect rect = {scissor.x, scissor.y, scissor.width, scissor.height};
+            renderCmdEncoder->setScissorRect(rect);
+            previousScissor = scissor;
+        }
         JST_CHECK(program->draw(renderCmdEncoder));
     }
     renderCmdEncoder->endEncoding();
 
     return Result::SUCCESS;
-}
-
-const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
-    if (!framebufferResolve) {
-        return NullSize2D;
-    }
-
-    requestedSize = size;
-    invalidate();
-
-    return framebufferResolve->size();
 }
 
 }  // namespace Jetstream::Render

@@ -1286,9 +1286,17 @@ Result Tensor::setDerivedAttribute(const std::string& key,
 }
 
 std::any Tensor::attribute(const std::string& key) const {
+    std::any value;
+    visitAttribute(key, [&value](const std::any& entry) {
+        value = entry;
+    });
+    return value;
+}
+
+Result Tensor::visitAttribute(const std::string& key, const std::function<void(const std::any&)>& visit) const {
     if (!impl) {
         JST_ERROR("[MEMORY:TENSOR] Tensor not initialized.");
-        return std::any();
+        return Result::ERROR;
     }
 
     const Impl* current = impl.get();
@@ -1298,21 +1306,25 @@ std::any Tensor::attribute(const std::string& key) const {
         }
         auto dit = current->derivedAttributes.find(key);
         if (dit != current->derivedAttributes.end()) {
+            std::any value;
             try {
-                return dit->second();
+                value = dit->second();
             } catch (const std::bad_any_cast&) {
-                return {};
+                value.reset();
             }
+            visit(value);
+            return Result::SUCCESS;
         }
         auto ait = current->attributes.find(key);
         if (ait != current->attributes.end()) {
-            return ait->second;
+            visit(ait->second);
+            return Result::SUCCESS;
         }
         current = current->attributeSource.get();
     }
 
     JST_ERROR("[MEMORY:TENSOR] Attribute '{}' does not exist.", key);
-    return std::any();
+    return Result::ERROR;
 }
 
 bool Tensor::inheritsAttributes(const Tensor& other) const {

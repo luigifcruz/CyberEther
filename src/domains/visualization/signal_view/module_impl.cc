@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <utility>
 
 #include "jetstream/memory/axis.hh"
 #include "jetstream/tools/numeric.hh"
@@ -358,6 +359,7 @@ Result SignalViewImpl::reconfigure() {
         updateLayoutFlag |= config.splitRatio != splitRatio;
         splitRatio = config.splitRatio;
         canvas.updateMarkersFlag |= config.markers != markers || config.pins != pins;
+        redrawFlag = true;
         markers = config.markers;
         pins = config.pins;
         lineplotAveraging = config.lineplotAveraging;
@@ -420,8 +422,7 @@ Result SignalViewImpl::resetHistoryState() {
 }
 
 Result SignalViewImpl::createPresent() {
-    SignalViewFrequency frequency;
-    JST_CHECK(frequency.read(input));
+    JST_CHECK(inputFrequency.read(input));
     auto& window = render();
 
     if (!window) {
@@ -466,7 +467,7 @@ Result SignalViewImpl::createPresent() {
         JST_CHECK(densityMap.create(window, densityBins));
     }
 
-    JST_CHECK(canvas.create(window, canvasContext(frequency)));
+    JST_CHECK(canvas.create(window, canvasContext()));
 
     JST_CHECK(surfaceCreateManifest({
         .id = "default",
@@ -491,19 +492,52 @@ Result SignalViewImpl::destroyPresent() {
     return canvas.destroy(window);
 }
 
-Result SignalViewImpl::present() {
-    SignalViewFrequency frequency;
-    JST_CHECK(frequency.read(input));
+Result SignalViewImpl::capture() {
+    JST_CHECK(inputFrequency.read(input));
 
+    if (waterfall3dEnabled) {
+        if (!waterfall3d.held()) {
+            JST_CHECK(waterfall3d.capture(waterfallFrame()));
+            waterfallHistory.clearDirty();
+        }
+        return Result::SUCCESS;
+    }
+
+    if (!canvas.renderSurface || canvas.displayHeld) {
+        return Result::SUCCESS;
+    }
+
+    if (waterfallEnabled) {
+        const auto frame = waterfallFrame();
+        redrawFlag |= frame.dirty.firstRowCount + frame.dirty.secondRowCount > 0;
+        JST_CHECK(waterfall.update(frame));
+        waterfallHistory.clearDirty();
+    }
+
+    if (densityEnabled) {
+        const auto frame = densityFrame();
+        redrawFlag |= frame.dirty.firstRowCount + frame.dirty.secondRowCount > 0 ||
+                      frame.elapsedRows > 0;
+        JST_CHECK(densityMap.update(frame));
+        densityHistory.clearDirty();
+    }
+
+    if (lineplotEnabled && updateSignalPointsFlag) {
+        JST_CHECK(lineplot.upload(signalPoints, updateHoldPointsFlag));
+        updateSignalPointsFlag = false;
+        redrawFlag = true;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result SignalViewImpl::present() {
     if (waterfall3dEnabled) {
         bool viewChanged = false;
         JST_CHECK(waterfall3d.present(surfaceConsumeSurfaceEvents(),
                                       surfaceConsumeInputEvents(),
-                                      waterfallFrame(), waterfall3dLabels(frequency), colormap,
+                                      waterfall3dLabels(), colormap,
                                       viewChanged));
-        if (!waterfall3d.held()) {
-            waterfallHistory.clearDirty();
-        }
         if (viewChanged) {
             surfaceUpdateManifestSize("default", waterfall3d.viewSize());
         }
@@ -514,10 +548,14 @@ Result SignalViewImpl::present() {
         return Result::SUCCESS;
     }
 
-    const auto context = canvasContext(frequency);
+    const auto context = canvasContext();
+    auto surfaceEvents = surfaceConsumeSurfaceEvents();
+    auto inputEvents = surfaceConsumeInputEvents();
+    const bool redraw = !surfaceEvents.empty() || !inputEvents.empty() ||
+                        std::exchange(redrawFlag, false);
 
-    JST_CHECK(canvas.processSurfaceEvents(surfaceConsumeSurfaceEvents()));
-    surfaceSetCursor(canvas.processInputEvents(surfaceConsumeInputEvents(), context, {
+    JST_CHECK(canvas.processSurfaceEvents(std::move(surfaceEvents)));
+    surfaceSetCursor(canvas.processInputEvents(std::move(inputEvents), context, {
         .splitEnabled = lineplotEnabled && waterfallEnabled && configChangeEnabled("splitRatio"),
         .pending = [this] { return configChangePending(); },
         .enabled = [this](const std::string& name) { return configChangeEnabled(name); },
@@ -532,36 +570,29 @@ Result SignalViewImpl::present() {
     }
 
     if (waterfallEnabled) {
-        if (!canvas.displayHeld) {
-            JST_CHECK(waterfall.update(waterfallFrame()));
-            waterfallHistory.clearDirty();
-        }
         JST_CHECK(waterfall.present(canvas.interaction, colormap));
     }
 
     if (densityEnabled) {
-        if (!canvas.displayHeld) {
-            JST_CHECK(densityMap.update(densityFrame()));
-            densityHistory.clearDirty();
-        }
         JST_CHECK(densityMap.present(canvas.interaction));
     }
 
     if (lineplotEnabled) {
-        if (updateSignalPointsFlag && !canvas.displayHeld) {
-            JST_CHECK(lineplot.upload(signalPoints, updateHoldPointsFlag));
-            updateSignalPointsFlag = false;
-        }
         JST_CHECK(lineplot.present());
     }
 
-    return canvas.present(context);
+    JST_CHECK(canvas.present(context));
+    if (redraw) {
+        canvas.renderSurface->invalidate();
+    }
+
+    return Result::SUCCESS;
 }
 
-SignalViewCanvas::Context SignalViewImpl::canvasContext(const SignalViewFrequency& frequency) {
+SignalViewCanvas::Context SignalViewImpl::canvasContext() {
     return {
         .config = *this,
-        .frequency = frequency,
+        .frequency = inputFrequency,
         .numberOfElements = numberOfElements,
         .lineplot = lineplotEnabled ? &lineplot : nullptr,
         .waterfall = waterfallEnabled ? &waterfall : nullptr,
@@ -585,8 +616,8 @@ WaterfallFrame SignalViewImpl::densityFrame() const {
     };
 }
 
-SignalViewWaterfall3DLabels SignalViewImpl::waterfall3dLabels(
-    const SignalViewFrequency& frequency) const {
+SignalViewWaterfall3DLabels SignalViewImpl::waterfall3dLabels() const {
+    const auto& frequency = inputFrequency;
     SignalViewWaterfall3DLabels labels;
     labels.frequency = xLabel;
     labels.time = waterfallLabel;

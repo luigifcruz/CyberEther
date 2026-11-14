@@ -2,32 +2,34 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_PATH_INPUT_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/node/field.hh>
+#include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
 #include <string>
 
 namespace Jetstream::Sakura {
 
-struct NodePathInput {
+struct NodePathInput : public Component {
     struct Config {
         std::string id;
         std::string value;
-        std::function<void(const std::string&)> onChange;
-        std::function<void()> onBrowse;
+        NodeOverlay tooltip;
+        Callback<void(const std::string&)> onChange;
+        Callback<void()> onBrowse;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodePathInput();
     ~NodePathInput();
 
-    NodePathInput(NodePathInput&&) noexcept;
-    NodePathInput& operator=(NodePathInput&&) noexcept;
+    void update(Config config);
 
-    NodePathInput(const NodePathInput&) = delete;
-    NodePathInput& operator=(const NodePathInput&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
 
  private:
     struct Impl;

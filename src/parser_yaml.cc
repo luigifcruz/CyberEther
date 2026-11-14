@@ -1,6 +1,5 @@
 // TODO: Stop stripping single quotes in NormalizeScalar, rapidyaml already unquotes scalars.
 // TODO: Reject anchors, aliases, duplicate keys, and multi-document streams instead of accepting them silently.
-// TODO: Reject lone carriage returns and bound nesting depth, both currently crash the process.
 // TODO: Emit scalars in a style that reads back identically, such as "!tag", "...", and control characters.
 
 #include "jetstream/parser.hh"
@@ -15,6 +14,27 @@
 namespace Jetstream {
 
 namespace {
+
+constexpr U64 MaxNestingDepth = 64;
+
+std::string NormalizeLineBreaks(const std::string& yaml) {
+    std::string normalized;
+    normalized.reserve(yaml.size());
+
+    for (U64 i = 0; i < yaml.size(); ++i) {
+        if (yaml[i] != '\r') {
+            normalized.push_back(yaml[i]);
+            continue;
+        }
+
+        normalized.push_back('\n');
+        if (i + 1 < yaml.size() && yaml[i + 1] == '\n') {
+            ++i;
+        }
+    }
+
+    return normalized;
+}
 
 std::string NormalizeScalar(const std::string& value) {
     if (value.size() >= 2 && value.front() == '\'' && value.back() == '\'') {
@@ -38,8 +58,8 @@ std::string NormalizeScalar(const std::string& value) {
 
 Result SerializeMap(const Parser::Map& data, ryml::NodeRef& node);
 Result SerializeSequence(const Parser::Sequence& sequence, ryml::NodeRef& node);
-Result DeserializeMap(ryml::ConstNodeRef node, Parser::Map& data);
-Result DeserializeSequence(ryml::ConstNodeRef node, Parser::Sequence& sequence);
+Result DeserializeMap(ryml::ConstNodeRef node, Parser::Map& data, U64 depth);
+Result DeserializeSequence(ryml::ConstNodeRef node, Parser::Sequence& sequence, U64 depth);
 
 Result SerializeValue(const std::any& value, ryml::NodeRef& node) {
     if (value.type() == typeid(Parser::Map)) {
@@ -72,17 +92,17 @@ Result SerializeSequence(const Parser::Sequence& sequence, ryml::NodeRef& node) 
     return Result::SUCCESS;
 }
 
-Result DeserializeValue(ryml::ConstNodeRef node, std::any& value) {
+Result DeserializeValue(ryml::ConstNodeRef node, std::any& value, U64 depth) {
     if (node.is_map()) {
         Parser::Map nested;
-        JST_CHECK(DeserializeMap(node, nested));
+        JST_CHECK(DeserializeMap(node, nested, depth + 1));
         value = std::move(nested);
         return Result::SUCCESS;
     }
 
     if (node.is_seq()) {
         Parser::Sequence nested;
-        JST_CHECK(DeserializeSequence(node, nested));
+        JST_CHECK(DeserializeSequence(node, nested, depth + 1));
         value = std::move(nested);
         return Result::SUCCESS;
     }
@@ -98,7 +118,12 @@ Result DeserializeValue(ryml::ConstNodeRef node, std::any& value) {
     return Result::SUCCESS;
 }
 
-Result DeserializeSequence(ryml::ConstNodeRef node, Parser::Sequence& sequence) {
+Result DeserializeSequence(ryml::ConstNodeRef node, Parser::Sequence& sequence, U64 depth) {
+    if (depth > MaxNestingDepth) {
+        JST_ERROR("[PARSER] YAML document is nested deeper than {} levels.", MaxNestingDepth);
+        return Result::ERROR;
+    }
+
     if (!node.is_seq()) {
         JST_ERROR("[PARSER] YAML node must be a sequence.");
         return Result::ERROR;
@@ -109,7 +134,7 @@ Result DeserializeSequence(ryml::ConstNodeRef node, Parser::Sequence& sequence) 
 
     for (const auto& child : node.children()) {
         std::any value;
-        JST_CHECK(DeserializeValue(child, value));
+        JST_CHECK(DeserializeValue(child, value, depth));
         decoded.push_back(std::move(value));
     }
 
@@ -139,7 +164,12 @@ Result SerializeMap(const Parser::Map& data, ryml::NodeRef& node) {
     return Result::SUCCESS;
 }
 
-Result DeserializeMap(ryml::ConstNodeRef node, Parser::Map& data) {
+Result DeserializeMap(ryml::ConstNodeRef node, Parser::Map& data, U64 depth) {
+    if (depth > MaxNestingDepth) {
+        JST_ERROR("[PARSER] YAML document is nested deeper than {} levels.", MaxNestingDepth);
+        return Result::ERROR;
+    }
+
     if (!node.is_map()) {
         JST_ERROR("[PARSER] YAML node must be a map.");
         return Result::ERROR;
@@ -150,7 +180,7 @@ Result DeserializeMap(ryml::ConstNodeRef node, Parser::Map& data) {
     for (const auto& child : node.children()) {
         std::string key(child.key().str, child.key().len);
         std::any value;
-        JST_CHECK(DeserializeValue(child, value));
+        JST_CHECK(DeserializeValue(child, value, depth));
         decoded[key] = std::move(value);
     }
 
@@ -183,9 +213,10 @@ Result Parser::YamlDecode(const std::string& yaml, Parser::Map& data) {
     ryml::Parser::handler_type eventHandler(callbacks);
     ryml::Parser parser(&eventHandler);
     ryml::Tree tree(callbacks);
+    std::string normalized = NormalizeLineBreaks(yaml);
 
     try {
-        ryml::parse_in_arena(&parser, ryml::to_csubstr(yaml), &tree);
+        ryml::parse_in_place(&parser, ryml::to_substr(normalized), &tree);
     } catch (...) {
         JST_ERROR("[PARSER] Failed to parse YAML document.");
         return Result::ERROR;
@@ -196,7 +227,7 @@ Result Parser::YamlDecode(const std::string& yaml, Parser::Map& data) {
         root = root[0];
     }
 
-    return DeserializeMap(root, data);
+    return DeserializeMap(root, data, 1);
 }
 
 }  // namespace Jetstream

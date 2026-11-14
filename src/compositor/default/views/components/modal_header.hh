@@ -4,45 +4,21 @@
 #include "jetstream/render/sakura/base.hh"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace Jetstream {
 
-struct ModalHeader {
+struct ModalHeader : public Sakura::Stack {
     struct Config {
-        std::string id;
         std::string title;
         std::string description;
         F32 dividerSpacing = 4.0f;
     };
 
-    void update(Config config) {
-        this->config = std::move(config);
-        title.update({
-            .id = this->config.id + "Title",
-            .str = this->config.title,
-        });
-        description.update({
-            .id = this->config.id + "Description",
-            .str = this->config.description,
-            .tone = Sakura::Text::Tone::Secondary,
-            .wrapped = true,
-        });
-        divider.update({
-            .id = this->config.id + "Divider",
-            .spacing = this->config.dividerSpacing,
-        });
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        title.render(ctx);
-        if (!config.description.empty()) {
-            description.render(ctx);
-        }
-        divider.render(ctx);
-    }
+    void update(Config config);
 
  private:
-    Config config;
     Sakura::Text title;
     Sakura::Text description;
     Sakura::Divider divider;

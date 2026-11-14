@@ -2,53 +2,26 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_AGENT_VOICE_HH
 
 #include "../context.hh"
-#include "../../views/agent/voice.hh"
+
+#include "../../model/messages.hh"
+#include "../../views/titlebar.hh"
 
 #include <algorithm>
+#include <cmath>
+#include <optional>
 
 namespace Jetstream {
 
-inline Sakura::Retained::Voice::Phase VoicePhase(Agent::Session::Phase phase) {
-    using Phase = Sakura::Retained::Voice::Phase;
-    switch (phase) {
-        case Agent::Session::Phase::Connecting:
-            return Phase::Connecting;
-        case Agent::Session::Phase::Listening:
-            return Phase::Listening;
-        case Agent::Session::Phase::Delegating:
-            return Phase::Busy;
-        case Agent::Session::Phase::Idle:
-            break;
-    }
-    return Phase::Idle;
-}
-
 struct AgentVoicePresenter {
+    static constexpr F32 QuietDecibels = -54.0f;
+    static constexpr F32 LoudDecibels = -14.0f;
+
     const PresenterContext& context;
 
-    AgentVoiceView::Config build() const {
-        const auto& agent = context.state.agent;
-        const auto enqueue = context.callbacks.enqueueMail;
-        AgentVoiceView::Config config;
-        config.visible = agent.ui.voiceVisible;
-        if (!config.visible) {
-            return config;
-        }
-
-        const auto& voice = agent.voice;
-        auto& view = config.voice;
-        view.phase = VoicePhase(voice.phase);
-        view.level = std::clamp(std::max(voice.output * 3.0f, voice.input * 2.0f), 0.0f, 1.0f);
-        view.onDismiss = [enqueue]() {
-            enqueue(MailSetAgentVoiceVisible{.value = false});
-        };
-        if (view.phase == Sakura::Retained::Voice::Phase::Idle) {
-            view.onStart = [enqueue]() {
-                enqueue(MailStartAgentVoice{});
-            };
-        }
-        return config;
-    }
+    explicit AgentVoicePresenter(const PresenterContext& context);
+    static F32 Loudness(F32 rms);
+    static TitlebarView::VoiceIndicator::Phase IndicatorPhase(Agent::Session::Phase phase);
+    std::optional<TitlebarView::VoiceIndicator> build() const;
 };
 
 }  // namespace Jetstream

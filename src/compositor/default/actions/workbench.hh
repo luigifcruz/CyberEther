@@ -1,17 +1,25 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_WORKBENCH_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_WORKBENCH_HH
 
+#include "gallery.hh"
 #include "persist.hh"
+#include "settings.hh"
+#include "../support/docs.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
-#include "../support/themes.hh"
+#include "render/sakura/themes.hh"
 
 #include "jetstream/settings.hh"
 #include "jetstream/platform.hh"
 
+#include <algorithm>
+#include <filesystem>
+#include <optional>
 #include <string>
+#include <system_error>
 #include <tuple>
+#include <unordered_set>
 
 namespace Jetstream {
 
@@ -23,121 +31,69 @@ struct WorkbenchActions {
                               MailNotifyResult,
                               MailOpenUrl,
                               MailCopyText,
-                              MailSetFlowgraphMetadataVisible,
-                              MailSetFlowgraphMetadataSearch,
-                              MailSetFlowgraphEnvironmentVisible,
-                              MailSetFlowgraphEnvironmentSearch,
-                              MailQuit>;
+                              MailRevealPath,
+                              MailQuit,
+                              MailOpenStartTab,
+                              MailCloseStartTab,
+                              MailFocusStartTab,
+                              MailSetWelcomeSection,
+                              MailSetWelcomeSidebar,
+                              MailSetWelcomeQuery,
+                              MailSetWelcomeCategory,
+                              MailSetWelcomePage,
+                              MailOpenSettings,
+                              MailCloseSettings,
+                              MailFocusSettings,
+                              MailOpenDocs,
+                              MailCloseDocs,
+                              MailSetDocsQuery,
+                              MailFocusDocs>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
     WorkbenchActions(DefaultCompositorState& state,
-                     DefaultCompositorCallbacks& callbacks) :
-        state(state),
-        callbacks(callbacks) {}
+                     DefaultCompositorCallbacks& callbacks);
+    static void Focus(DefaultCompositorState& state, std::optional<WorkspaceTab> tab);
+    static void Open(DefaultCompositorState& state, WorkspaceTab tab);
+    static void Close(DefaultCompositorState& state, WorkspaceTab tab);
+    static void OpenSettings(DefaultCompositorState& state, SettingsSection section);
+    Result handle(const MailOpenStartTab&);
+    Result handle(const MailCloseStartTab&);
+    Result handle(const MailSetWelcomeSection& msg);
+    Result handle(const MailSetWelcomeSidebar& msg);
+    Result handle(const MailSetWelcomeQuery& msg);
+    Result handle(const MailSetWelcomeCategory& msg);
+    Result handle(const MailSetWelcomePage& msg);
+    Result handle(const MailFocusStartTab&);
+    Result handle(const MailOpenSettings& msg);
+    Result handle(const MailCloseSettings&);
+    Result handle(const MailFocusSettings&);
+    Result handle(const MailOpenDocs& msg);
+    Result handle(const MailCloseDocs&);
+    Result handle(const MailSetDocsQuery& msg);
+    Result handle(const MailFocusDocs&);
+    void settlePendingFocus();
+    void reconcileFlowgraphs();
+    static void Forget(DefaultCompositorState& state, const std::string& flowgraph);
+    void reconcileModal();
+    void settleStartTab();
+    Result handle(const MailApplyTheme& msg);
+    Result handle(const MailOpenModal& msg);
+    Result handle(const MailCloseModal&);
+    Result handle(const MailNotify& msg);
+    Result handle(const MailNotifyResult& msg);
+    Result handle(const MailOpenUrl& msg);
+    Result handle(const MailCopyText& msg);
+    Result handle(const MailRevealPath& msg);
+    Result handle(const MailQuit&);
+    static Result Quit(DefaultCompositorState& state);
 
-    Result handle(const MailApplyTheme& msg) {
-        if (!themes.contains(msg.themeKey)) {
-            callbacks.notify(Sakura::ToastType::Error,
-                             5000,
-                             "Cannot apply theme because it doesn't exist.");
-            return Result::SUCCESS;
-        }
+ private:
+    void focusShown(WorkspaceTab tab);
 
-        state.sakura.themeKey = msg.themeKey;
-        state.sakura.colorMap = themes.at(state.sakura.themeKey);
-        state.sakura.runtime.update({
-            .palette = &state.sakura.colorMap,
-            .render = state.system.render.get(),
-        });
-
-        JST_CHECK(PersistSettings([&](Settings& settings) {
-            settings.interface.themeKey = state.sakura.themeKey;
-        }));
-
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailOpenModal& msg) {
-        state.modal.content = msg.content;
-        state.modal.flowgraph = msg.flowgraph;
-        if (msg.content == ModalContent::Dependencies) {
-            state.modal.dependencyRequest = state.runtime.dependencyRequest;
-        } else {
-            state.modal.dependencyRequest.reset();
-        }
-        if (msg.settings.has_value()) {
-            state.settings.section = msg.settings.value();
-        }
-        if (msg.content != ModalContent::RenameBlock) {
-            state.modal.renameBlockOldName.reset();
-        }
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailCloseModal&) {
-        state.modal.content.reset();
-        state.modal.flowgraph.reset();
-        state.modal.renameBlockOldName.reset();
-        state.modal.dependencyRequest.reset();
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailNotify& msg) {
-        callbacks.notify(msg.type, msg.durationMs, msg.message);
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailNotifyResult& msg) {
-        callbacks.notifyResult(msg.result, msg.message);
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailOpenUrl& msg) {
-        const Result result = Platform::OpenUrl(msg.url);
-        if (msg.notifyResult) {
-            callbacks.notifyResult(result, "");
-        }
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailCopyText& msg) {
-        callbacks.setClipboardText(msg.value);
-        const std::string notification = msg.label + " copied to clipboard.";
-        callbacks.notify(Sakura::ToastType::Info, 3000, notification);
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailSetFlowgraphMetadataVisible& msg) {
-        state.interface.flowgraphMetadataVisible = msg.value;
-        if (!msg.value) {
-            state.interface.flowgraphMetadataSearch.clear();
-        }
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailSetFlowgraphMetadataSearch& msg) {
-        state.interface.flowgraphMetadataSearch = msg.value;
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailSetFlowgraphEnvironmentVisible& msg) {
-        state.interface.flowgraphEnvironmentVisible = msg.value;
-        if (!msg.value) {
-            state.interface.flowgraphEnvironmentSearch.clear();
-        }
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailSetFlowgraphEnvironmentSearch& msg) {
-        state.interface.flowgraphEnvironmentSearch = msg.value;
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailQuit&) {
-        return state.system.instance->requestStop();
-    }
+    std::unordered_set<std::string> knownFlowgraphs;
+    bool startTabWasShown = false;
 };
 
 }  // namespace Jetstream

@@ -39,7 +39,7 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
             if (scaleChanged) {
                 state.scale = event.scale;
             }
-            state.backgroundColor = event.backgroundColor;
+            state.theme = event.theme;
             state.placement = event.placement;
 
             if (sizeChanged || scaleChanged || placementChanged) {
@@ -55,12 +55,15 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
         if (!mouse) continue;
         const auto& event = *mouse;
         switch (event.type) {
-            case MouseEventType::Scroll: {
+            case MouseEventType::Scroll:
+            case MouseEventType::Zoom: {
                 if (!config.enableZoom) break;
+                if (event.type == MouseEventType::Zoom && (!std::isfinite(event.zoom) || event.zoom <= 0.0f)) break;
 
                 const F32 oldZoom = state.zoom;
                 state.zoom = std::clamp(
-                    state.zoom + event.scroll.y * config.zoomSpeed,
+                    event.type == MouseEventType::Zoom ? state.zoom * event.zoom
+                                                      : state.zoom + event.scroll.y * config.zoomSpeed,
                     config.minZoom,
                     config.maxZoom
                 );
@@ -114,7 +117,8 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
             case MouseEventType::Enter: {
                 break;
             }
-            case MouseEventType::Leave: {
+            case MouseEventType::Leave:
+            case MouseEventType::Cancel: {
                 state.dragging = false;
                 break;
             }

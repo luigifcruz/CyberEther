@@ -2,52 +2,150 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_EDITOR_HH
 
 #include <jetstream/render/sakura/component.hh>
-#include <jetstream/render/sakura/typography.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
+#include <jetstream/render/sakura/components/node/field.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace Jetstream::Sakura {
 
-struct NodeEditor {
-    using Child = std::function<void(const Context&)>;
+struct NodeEditor : public Component {
+    enum class NodeState : U8 {
+        Normal,
+        Error,
+        Pending,
+        Loading,
+        Frozen,
+    };
+
+    enum class ResizeAxes : U8 {
+        None = 0,
+        X = 1 << 0,
+        Y = 1 << 1,
+        XY = 3,
+    };
 
     struct PinRef {
         std::string nodeId;
         std::string pinId;
         bool isInput = false;
+
+        bool operator==(const PinRef&) const = default;
+    };
+
+    struct Pin {
+        std::string id;
+        bool isInput = false;
+        std::string label;
+        bool enableDetach = false;
+        NodeOverlay tooltip;
+
+        bool operator==(const Pin&) const = default;
+    };
+
+    struct Geometry {
+        Extent2D<F32> gridPosition;
+        Extent2D<F32> contentDimensions;
+        Extent2D<F32> dimensions;
+        F32 minimumHeight = 0.0f;
+        bool onscreen = false;
+
+        bool operator==(const Geometry&) const = default;
+    };
+
+    struct Node {
+        std::string id;
+        bool header = true;
+        std::string title;
+        std::string subtitle;
+        NodeState state = NodeState::Normal;
+        std::string diagnostic;
+        NodeOverlay diagnosticTooltip;
+        bool collapsible = false;
+        bool collapsed = false;
+        Callback<void()> onToggleCollapse;
+        Callback<void()> onDetach;
+        std::vector<Pin> pins;
+        NodeContentStack* content = nullptr;
+        ResizeAxes resize = ResizeAxes::X;
+        Extent2D<F32> dimensions = {0.0f, 0.0f};
+        Extent2D<F32> minimumDimensions = {120.0f, 100.0f};
+        std::optional<Extent2D<F32>> gridPosition;
+        std::vector<std::string> timing;
+        Callback<void()> onContextMenu;
+        Callback<void(const Geometry&)> onGeometryChange;
+
+        bool operator==(const Node&) const = default;
+    };
+
+    struct Link {
+        std::string id;
+        PinRef start;
+        PinRef end;
+        bool unresolved = false;
+        NodeOverlay tooltip;
+
+        bool operator==(const Link&) const = default;
+    };
+
+    struct View {
+        Extent2D<F32> pan = {0.0f, 0.0f};
+        F32 zoom = 1.0f;
+
+        bool operator==(const View&) const = default;
     };
 
     struct Config {
         std::string id;
-        F32 fontScale = Typography::ChromeScale;
-        F32 childRounding = 12.0f;
-        bool pasteEnabled = false;
-        std::function<void(Extent2D<F32>, Extent2D<F32>)> onEditorContextMenu;
-        std::function<void(Extent2D<F32>)> onEditorDoubleClick;
-        std::function<void(PinRef, PinRef)> onLinkCreated;
-        std::function<void(const std::string&)> onLinkDestroyed;
-        std::function<void(const std::vector<std::string>&)> onSelectionChange;
-        std::function<void(const std::vector<std::string>&)> onCopyShortcut;
-        std::function<void(Extent2D<F32>)> onPasteShortcut;
-        std::function<void(Extent2D<F32>)> onMouseGridPositionChange;
-        std::function<void(Rect)> onViewportGridChange;
+        bool frameOnOpen = false;
+        F32 scale = 1.0f;
+        std::vector<Node> nodes;
+        std::vector<Link> links;
+        std::vector<std::string> selection;
+        U64 selectionRequest = 0;
+        Callback<void(Extent2D<F32>)> onEditorContextMenu;
+        Callback<void(Extent2D<F32>)> onEditorDoubleClick;
+        Callback<void(PinRef, PinRef)> onLinkCreated;
+        Callback<void(const std::string&)> onLinkDestroyed;
+        Callback<void(const std::vector<std::string>&)> onCopyShortcut;
+        Callback<void(const std::vector<std::string>&)> onCutShortcut;
+        Callback<void(const std::vector<std::string>&)> onDuplicateShortcut;
+        Callback<void(const std::vector<std::string>&)> onDeleteShortcut;
+        Callback<void(const std::vector<std::string>&)> onFreezeShortcut;
+        Callback<void(const std::vector<std::string>&)> onSelectionChange;
+        Callback<void(Extent2D<F32>)> onPasteShortcut;
+        Callback<void(Rect)> onViewportGridChange;
+        std::optional<View> view;
+        Callback<void(View)> onViewChange;
+        Callback<void()> onNodesArranged;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeEditor();
     ~NodeEditor();
 
-    NodeEditor(NodeEditor&&) noexcept;
-    NodeEditor& operator=(NodeEditor&&) noexcept;
+    void update(Config config);
+    F32 zoom() const;
+    bool canZoom(int direction) const;
+    void zoomStep(int direction);
+    void zoomReset();
+    void stopFraming();
+    bool shown() const;
 
-    NodeEditor(const NodeEditor&) = delete;
-    NodeEditor& operator=(const NodeEditor&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx, Child child) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    void wentOnscreen(U64 frame) override;
+    void wentOffscreen(U64 frame) override;
+    bool keyEvent(const KeyEvent& event) override;
+    bool focusesOnClick() const override;
+    bool occludes(const Extent2D<F32>& point) const override;
 
  private:
     struct Impl;

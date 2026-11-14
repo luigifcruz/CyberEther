@@ -135,7 +135,7 @@ Result SdrImpl::define() {
                                     {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
         [this]() -> std::any {
             const F32 fill = moduleImpl ? moduleImpl->getBufferFill() : 0.0f;
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", fill * 100.0f), fill};
+            return std::pair<std::string, F32>{jst::fmt::format("{:.0f}%", fill * 100.0f), fill};
         }));
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",
@@ -146,8 +146,8 @@ Result SdrImpl::define() {
         [this]() -> std::any {
             const auto loss = moduleImpl ? moduleImpl->getLoss()
                                          : Modules::SdrImpl::LossSnapshot{};
-            auto label = loss.bufferLoss > 0.0 && loss.bufferLoss < 0.0001
-                ? std::string("<0.01%") : jst::fmt::format("{:.2f}%", loss.bufferLoss * 100.0);
+            auto label = loss.bufferLoss > 0.0 && loss.bufferLoss < 0.001
+                ? std::string("<0.1%") : jst::fmt::format("{:.1f}%", loss.bufferLoss * 100.0);
             if (loss.deviceGaps > 0) {
                 label = jst::fmt::format("{} ({} GAP)", label, loss.deviceGaps);
             }

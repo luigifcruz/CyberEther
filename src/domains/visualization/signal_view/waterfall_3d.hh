@@ -170,11 +170,6 @@ inline void Waterfall3DDecimateRow(const F32* bins,
     }
 }
 
-inline F32 Waterfall3DElevation(const F32 magnitude) {
-    const F32 gain = kWaterfall3DElevationGain;
-    return 0.5f + 0.5f * std::tanh(gain * (magnitude - 0.5f)) / std::tanh(gain * 0.5f);
-}
-
 inline F32 Waterfall3DMagnitude(const F32 elevation) {
     const F32 gain = kWaterfall3DElevationGain;
     return 0.5f + std::atanh((2.0f * elevation - 1.0f) * std::tanh(gain * 0.5f)) / gain;
@@ -480,15 +475,19 @@ class SignalViewWaterfall3D {
                   const std::string& colormap);
     Result destroy(const std::shared_ptr<Render::Window>& window);
 
+    Result capture(const WaterfallFrame& frame);
     Result present(std::vector<SurfaceEvent>&& surfaceEvents,
                    std::vector<InputEvent>&& inputEvents,
-                   const WaterfallFrame& frame,
                    const SignalViewWaterfall3DLabels& labels,
                    const std::string& colormap,
                    bool& viewChanged);
 
     const std::shared_ptr<Render::Texture>& framebuffer() const {
         return framebufferTexture;
+    }
+
+    const std::shared_ptr<Render::Surface>& surface() const {
+        return renderSurface;
     }
 
     const Extent2D<U64>& viewSize() const {
@@ -568,6 +567,7 @@ class SignalViewWaterfall3D {
     SignalViewWaterfall3DLabels labels;
 
     SurfaceInteractionState interaction;
+    SurfaceTheme appliedTheme;
     detail::Waterfall3DCamera camera;
     detail::Waterfall3DCamera cameraGoal;
     bool cameraHome = true;
@@ -575,6 +575,7 @@ class SignalViewWaterfall3D {
     std::chrono::steady_clock::time_point lastFrameTime;
     bool clockStarted = false;
     bool displayHeld = false;
+    bool dataChanged = false;
     bool sceneDirty = true;
     bool ticksDirty = true;
 

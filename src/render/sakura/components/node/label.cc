@@ -1,86 +1,97 @@
 #include <jetstream/render/sakura/components/node/label.hh>
 
-#include <jetstream/render/sakura/components/text.hh>
+#include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/label.hh>
 
-#include "base.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+
+#include <algorithm>
+#include <memory>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
 struct NodeLabel::Impl {
     Config config;
-    Text label;
+    Box frame;
+    Label text;
+    TextMetrics metrics;
 };
 
 NodeLabel::NodeLabel() {
     this->impl = std::make_unique<Impl>();
+    addChild(impl->text);
 }
 
 NodeLabel::~NodeLabel() = default;
-NodeLabel::NodeLabel(NodeLabel&&) noexcept = default;
-NodeLabel& NodeLabel::operator=(NodeLabel&&) noexcept = default;
 
-bool NodeLabel::update(Config config) {
+void NodeLabel::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
     impl->config = std::move(config);
-    impl->label.update({
-        .id = impl->config.id,
-        .str = impl->config.str,
-        .font = impl->config.font,
-        .tone = impl->config.tone,
-        .align = impl->config.align,
-        .wrapped = impl->config.wrapped,
-        .clipped = impl->config.clipped,
-        .scale = impl->config.scale,
-    });
-    return true;
+    if (impl->config.boxed) {
+        setChildren({&impl->frame, &impl->text});
+    } else {
+        setChildren({&impl->text});
+    }
 }
 
-void NodeLabel::render(const Context& ctx) const {
-    if (!impl->config.boxed) {
-        impl->label.render(ctx);
-        return;
+Extent2D<F32> NodeLabel::measure(const Context& ctx, Extent2D<F32> available) {
+    const F32 line = Px(ctx, NodeFontOf(ctx));
+    return {FillLength(available.x), FitLength(impl->config.boxed ? line + Px(ctx, 16.0f) : line, available.y)};
+}
+
+void NodeLabel::layout(const Context& ctx) {
+    const auto& config = impl->config;
+    const Rect bounds = frame();
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
+    const F32 padding = config.boxed ? std::min(Px(ctx, 8.0f), bounds.width * 0.5f) : 0.0f;
+    const F32 paddingY = config.boxed ? Px(ctx, 8.0f) : 0.0f;
+    const Rect textRect = {bounds.x + padding, bounds.y + paddingY, std::max(0.0f, bounds.width - 2.0f * padding), fontSize};
+
+    if (config.boxed) {
+        impl->frame.update({
+            .instances = {{
+                .rect = Snap(bounds),
+                .visible = !bounds.empty(),
+                .backgroundColor = ctx.color("card"),
+            }},
+            .clip = bounds,
+            .cornerRadius = Px(ctx, 6.0f),
+            .borderWidth = Hairline(ctx),
+            .borderColor = ctx.color("table_border_strong"),
+        });
     }
 
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
-    const F32 width = std::max(0.0f, ImGui::GetContentRegionAvail().x);
-    const F32 padding = Scale(ctx, 8.0f);
-    const F32 paddingX = std::min(padding, width * 0.5f);
-    const F32 contentRight = origin.x + width - paddingX;
-    ImGuiWindow* window = ImGui::GetCurrentWindow();
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    impl->metrics.setWindow(ctx.render);
+    std::string line = config.str.substr(0, config.str.find('\n'));
+    const bool overflows = config.align != Align::Left &&
+                           impl->metrics.measure(Typography::MonoFont, line, fontSize) > textRect.width;
+    const I32 alignX = overflows                     ? 0
+                       : config.align == Align::Center ? 1
+                       : config.align == Align::Right  ? 2
+                                                       : 0;
+    impl->text.update({
+        .instances = {{
+            .rect = textRect,
+            .str = std::move(line),
+            .visible = !bounds.empty(),
+            .color = ctx.color(config.colorKey),
+            .fontSize = fontSize,
+            .alignment = {alignX, 1},
+        }},
+        .clip = Intersect(bounds, textRect),
+        .fontName = Typography::MonoFont,
+        .maxCharacters = 256,
+    });
 
-    // Keep the frame and text in the node's current canvas channel. A child
-    // window would submit its text after all nodes, bypassing their depth order.
-    ImDrawListSplitter splitter;
-    splitter.Split(drawList, 2);
-    splitter.SetCurrentChannel(drawList, 1);
-
-    const F32 contentMaxX = window->ContentRegionRect.Max.x;
-    const F32 workMaxX = window->WorkRect.Max.x;
-    window->ContentRegionRect.Max.x = contentRight;
-    window->WorkRect.Max.x = contentRight;
-    ImGui::SetCursorScreenPos(ImVec2(origin.x + paddingX, origin.y + padding));
-    ImGui::BeginGroup();
-    ImGui::PushClipRect(ImVec2(origin.x + paddingX, window->ClipRect.Min.y),
-                        ImVec2(contentRight, window->ClipRect.Max.y), true);
-    impl->label.render(ctx);
-    ImGui::PopClipRect();
-    ImGui::EndGroup();
-    const F32 height = ImGui::GetItemRectSize().y + 2.0f * padding;
-    window->ContentRegionRect.Max.x = contentMaxX;
-    window->WorkRect.Max.x = workMaxX;
-
-    splitter.SetCurrentChannel(drawList, 0);
-    const ImVec2 end(origin.x + width, origin.y + height);
-    drawList->AddRectFilled(origin, end,
-                            ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "card")),
-                            Scale(ctx, 6.0f));
-    drawList->AddRect(origin, end,
-                      ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "table_border_strong")),
-                      Scale(ctx, 6.0f));
-    splitter.Merge(drawList);
-
-    ImGui::SetCursorScreenPos(origin);
-    ImGui::Dummy(ImVec2(width, height));
+    if (config.boxed) {
+        layoutChild(ctx, impl->frame, bounds);
+    }
+    layoutChild(ctx, impl->text, bounds);
 }
 
 }  // namespace Jetstream::Sakura

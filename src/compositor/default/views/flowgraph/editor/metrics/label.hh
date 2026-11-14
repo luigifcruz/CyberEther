@@ -4,61 +4,23 @@
 #include "error.hh"
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphMetricLabel {
     using Config = FlowgraphMetricConfig;
 
-    void update(Config config) {
-        this->config = std::move(config);
-        parseValue();
-        frame.update({
-            .id = this->config.id,
-            .label = this->config.label,
-            .help = this->config.help,
-            .background = false,
-        });
-        text.update({
-            .id = this->config.id + "Text",
-            .str = value,
-            .align = Sakura::Text::Align::Right,
-            .clipped = true,
-        });
-        error.update({
-            .id = this->config.id + "Error",
-            .str = errorText,
-        });
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            if (!errorText.empty()) {
-                error.render(ctx);
-            } else {
-                text.render(ctx);
-            }
-        });
-    }
+    void update(Config config);
+    Sakura::Component& component();
 
  private:
-    void parseValue() {
-        value.clear();
-        errorText.clear();
-        if (!config.value.has_value()) {
-            errorText = "No metric";
-            return;
-        }
-
-        try {
-            value = std::any_cast<std::string>(config.value);
-        } catch (const std::bad_any_cast&) {
-            errorText = "Invalid metric type";
-        }
-    }
+    void parseValue();
 
     Config config;
     std::string value;
     std::string errorText;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     FlowgraphMetricError error;
     Sakura::NodeLabel text;

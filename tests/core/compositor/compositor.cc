@@ -106,8 +106,6 @@ TEST_CASE("Surface metadata preserves config panel state and accepts legacy atta
           "[core][compositor][metadata]") {
     SurfaceMeta source{
         .attachedHeight = 300,
-        .detachedWidth = 800,
-        .detachedHeight = 600,
         .detached = true,
         .configCollapsed = false,
     };
@@ -120,8 +118,6 @@ TEST_CASE("Surface metadata preserves config panel state and accepts legacy atta
     SurfaceMeta restored;
     REQUIRE(restored.deserialize(data) == Result::SUCCESS);
     REQUIRE(restored.attachedHeight == 300);
-    REQUIRE(restored.detachedWidth == 800);
-    REQUIRE(restored.detachedHeight == 600);
     REQUIRE(restored.detached);
     REQUIRE_FALSE(restored.configCollapsed);
 

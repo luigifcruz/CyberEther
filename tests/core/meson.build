@@ -4,10 +4,7 @@ core_test_main = '../support/catch_main.cc'
 
 core_test_domains = {
     'application': ['application/instance_backend.cc'],
-    'compositor': [
-        'compositor/compositor.cc',
-        'compositor/stacks.cc',
-    ],
+    'compositor': ['compositor/compositor.cc'],
     'extensions': [
         'extensions/plugins.cc',
         'extensions/benchmark.cc',
@@ -28,7 +25,9 @@ core_test_domains = {
         'memory/tensor.cc',
     ],
     'platform': [
+        'platform/deadline_waiter.cc',
         'platform/paths.cc',
+        'platform/pseudo_terminal.cc',
         'platform/secrets.cc',
         'platform/storage.cc',
         'platform/thread.cc',
@@ -36,27 +35,69 @@ core_test_domains = {
     'registry': ['registry/registry.cc'],
     'render': [
         'render/colormap.cc',
+        'render/components.cc',
+        'render/browser_wheel.cc',
+        'render/input_state.cc',
+        'render/scroll_momentum.cc',
+        'render/touch_gesture.cc',
+        'render/wayland_scroll.cc',
+        'render/present_list.cc',
         'render/transfers.cc',
+        'render/surface_edits.cc',
         'render/geomap_labels.cc',
         'render/map_layers.cc',
         'render/shapes.cc',
     ],
     'sakura': [
         'sakura/chat.cc',
+        'sakura/chat_composer.cc',
         'sakura/interface_controls.cc',
+        'sakura/scissor.cc',
         'sakura/key_value.cc',
-        'sakura/metric_label.cc',
+        'sakura/flowgraph_editor_views.cc',
+        'sakura/flowgraph_node_view.cc',
+        'sakura/flowgraph_pane.cc',
         'sakura/metric_progress_bar.cc',
-        'sakura/node.cc',
         'sakura/node_metadata.cc',
+        'sakura/outline.cc',
+        'sakura/component.cc',
+        'sakura/card.cc',
+        'sakura/controls.cc',
+        'sakura/pill_input.cc',
+        'sakura/tip_banner.cc',
+        'sakura/voice.cc',
+        'sakura/dock.cc',
+        'sakura/geometry.cc',
+        'sakura/idle_input.cc',
+        'sakura/input.cc',
+        'sakura/input_ownership.cc',
+        'sakura/modal_input.cc',
+        'sakura/config_identity.cc',
+        'sakura/popup_lifetime.cc',
+        'sakura/layout.cc',
+        'sakura/node_editor.cc',
+        'sakura/node_fields.cc',
+        'sakura/retention.cc',
+        'sakura/retention_shell.cc',
+        'sakura/search.cc',
+        'sakura/settings_components.cc',
+        'sakura/flowgraph_card.cc',
+        'sakura/pill_tabs.cc',
+        'sakura/shell.cc',
+        'sakura/table.cc',
+        'sakura/terminal.cc',
+        'sakura/views.cc',
+        'sakura/view_components.cc',
+        'sakura/sizing.cc',
         'sakura/surface_view.cc',
-        'sakura/surface_input.cc',
-        'sakura/superluminal_surface.cc',
+        'sakura/input_bridge.cc',
+        'sakura/superluminal.cc',
         'sakura/syntax_highlighter.cc',
         'sakura/text_grid.cc',
         'sakura/text_markdown.cc',
-        'sakura/vstack.cc',
-        'sakura/workspace_background.cc',
+        'sakura/text_metrics.cc',
+        'sakura/wheel_motion.cc',
+        'sakura/window_metrics.cc',
     ],
     'runtime': [
         'runtime/scheduler.cc',
@@ -80,21 +121,103 @@ core_test_domains = {
 if not jst_is_windows
     core_test_domains += {
         'compositor': core_test_domains['compositor'] + [
+            'compositor/docs.cc',
+            'compositor/file_picker.cc',
+            'compositor/gallery.cc',
+            'compositor/layout.cc',
+            'compositor/metrics.cc',
+            'compositor/onboarding.cc',
+            'compositor/settings_tab.cc',
+            'compositor/tiles.cc',
+            'compositor/clipboard.cc',
             'compositor/config_edits.cc',
+            'compositor/dispatch.cc',
+            'compositor/history.cc',
+            'compositor/start_tab.cc',
             'compositor/live_markdown.cc',
+            'compositor/terminal.cc',
             'compositor/agent_bridge.cc',
             'compositor/agent_providers.cc',
             'compositor/agent_responsiveness.cc',
-        ],
-        'render': core_test_domains['render'] + [
-            'render/dockspace_window.cc',
-            'render/field_grid.cc',
-            'render/range_input.cc',
         ],
     }
 endif
 
 core_test_targets = []
+if jst_is_windows
+    core_test_domains += {
+        'render': core_test_domains['render'] + ['../../src/viewport/tools/touch_gesture.cc'],
+    }
+endif
+if jst_is_linux and not jst_is_static and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
+    wayland_pointer_server_protocol = [
+        custom_target('wayland-server',
+            input: wayland_xml, output: 'wayland-protocol-server.h',
+            command: [pointer_scanner, 'server-header', '@INPUT@', '@OUTPUT@']),
+        custom_target('pointer-gestures-server',
+            input: pointer_xml, output: 'pointer-gestures-server.h',
+            command: [pointer_scanner, 'server-header', '@INPUT@', '@OUTPUT@']),
+    ]
+    wayland_pointer_tests = executable(
+        'jetstream-core-wayland-pointer-tests',
+        ['render/wayland_pointer.cc', wayland_pointer_server_protocol] + wayland_pointer_protocols,
+        dependencies: dep_lst + [libjetstream_dep, catch2_dep, wayland_client, dependency('wayland-server', version: '>=1.20')],
+        include_directories: inc_lst,
+    )
+    core_test_targets += [wayland_pointer_tests]
+    test('core-wayland-pointer', wayland_pointer_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+endif
+if jst_is_windows and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
+    windows_titlebar_tests = executable(
+        'jetstream-core-windows-titlebar-tests',
+        ['render/windows_titlebar.cc', '../../src/viewport/glfw/tools/windows_titlebar.cc'],
+        dependencies: dep_lst + [catch2_dep],
+        include_directories: inc_lst,
+    )
+    core_test_targets += [windows_titlebar_tests]
+    test('core-windows-titlebar', windows_titlebar_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+    windows_pointer_tests = executable(
+        'jetstream-core-windows-pointer-tests',
+        ['render/windows_pointer.cc', '../../src/viewport/glfw/tools/windows_titlebar.cc'],
+        dependencies: dep_lst + [catch2_dep],
+        include_directories: inc_lst,
+    )
+    core_test_targets += [windows_pointer_tests]
+    test('core-windows-pointer', windows_pointer_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+endif
+if jst_is_macos and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
+    cocoa_titlebar_tests = executable(
+        'jetstream-core-cocoa-titlebar-tests',
+        'render/cocoa_titlebar.mm',
+        dependencies: dep_lst + [catch2_dep],
+        include_directories: inc_lst + [core_test_includes],
+    )
+    core_test_targets += [cocoa_titlebar_tests]
+    test('core-cocoa-titlebar', cocoa_titlebar_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+    cocoa_pointer_tests = executable(
+        'jetstream-core-cocoa-pointer-tests',
+        'render/cocoa_pointer.mm',
+        dependencies: dep_lst + [catch2_dep],
+        link_with: libjetstream,
+        include_directories: inc_lst + [core_test_includes],
+    )
+    core_test_targets += [cocoa_pointer_tests]
+    test('core-cocoa-pointer', cocoa_pointer_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+endif
+if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
+    metal_program_cache_sources = ['render/metal_program_cache.cc']
+    if not jst_is_browser and not jst_is_static
+        metal_program_cache_sources += ['../../src/render/devices/metal/program.cc']
+    endif
+    core_test_domains += {
+        'metal-program-cache': metal_program_cache_sources,
+    }
+endif
 if cfg_lst.get('JETSTREAM_LOADER_ZLIB_AVAILABLE', false) and not jst_is_windows and not jst_is_browser
     # GeoMapTiles is internal (not DLL-exported); these tests synchronously
     # wait for its native worker threads without requiring a GPU or network.
@@ -119,9 +242,8 @@ if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_win
 endif
 
 foreach domain, sources : core_test_domains
-    # The sakura suite drives the node editor through imnodes internals
-    # (editor context, node pool), which are not exported from the shared
-    # library on Windows.
+    # The sakura suite drives Sakura internals, which are not exported from
+    # the shared library on Windows.
     if domain == 'sakura' and jst_is_windows
         continue
     endif
@@ -139,15 +261,28 @@ foreach domain, sources : core_test_domains
         ] : [],
     )
     core_test_targets += [domain_tests]
-    if jst_is_browser
-        test('core-' + domain, node,
-             args: [files('../browser/run.cjs'), domain_tests.full_path()],
-             depends: domain_tests,
-             suite: ['core', 'wasm'], is_parallel: false, timeout: 180)
-    else
-        test('core-' + domain, domain_tests,
-             suite: 'core', is_parallel: false, timeout: 180)
-    endif
+    # Sakura's 1,500+ cases exceed a single test's watchdog on slower runners.
+    # Catch2 partitions the same executable so every case still runs exactly
+    # once, with stable ordering and the same watchdog for each group.
+    shard_count = domain == 'sakura' ? 8 : 1
+    foreach shard : range(shard_count)
+        test_name = 'core-' + domain
+        test_args = []
+        if shard_count > 1
+            test_name += '-' + shard.to_string()
+            test_args = ['--order', 'lex', '--shard-count', shard_count.to_string(),
+                         '--shard-index', shard.to_string()]
+        endif
+        if jst_is_browser
+            test(test_name, node,
+                 args: [files('../browser/run.cjs'), domain_tests.full_path(), '--'] + test_args,
+                 depends: domain_tests,
+                 suite: ['core', 'wasm'], is_parallel: false, timeout: 180)
+        else
+            test(test_name, domain_tests, args: test_args,
+                 suite: 'core', is_parallel: false, timeout: 180)
+        endif
+    endforeach
 endforeach
 
 # TODO: Re-enable after CLI output capture supports separate Windows static CRTs.

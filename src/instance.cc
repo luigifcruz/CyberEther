@@ -13,8 +13,11 @@
 #include "resources/fonts/compressed_jbmm.hh"
 #include "resources/fonts/compressed_jbmb.hh"
 #include "resources/fonts/compressed_sg.hh"
+#include "resources/fonts/compressed_sgr.hh"
+#include "resources/fonts/compressed_sgsb.hh"
 #include "resources/fonts/compressed_inter.hh"
-#include "resources/fonts/compressed_fa.hh"
+#include "resources/fonts/compressed_fa_node.hh"
+#include "resources/fonts/compressed_lucide.hh"
 
 #include <unordered_map>
 #include <chrono>
@@ -248,7 +251,7 @@ Result Instance::create(const Config& config) {
 
         Render::Components::Font::Config cfg;
         cfg.data = sg_compressed_data;
-        cfg.size = 32.0f;
+        cfg.size = 64.0f;
 
         JST_CHECK(impl->render->build(font, cfg));
         JST_CHECK(impl->render->addFont("default_display", font));
@@ -258,12 +261,46 @@ Result Instance::create(const Config& config) {
         std::shared_ptr<Render::Components::Font> font;
 
         Render::Components::Font::Config cfg;
-        cfg.data = fas_compressed_data;
+        cfg.data = sgsb_compressed_data;
+        cfg.size = 32.0f;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_display_semibold", font));
+    }
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = sgr_compressed_data;
+        cfg.size = 32.0f;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_display_regular", font));
+    }
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = lucide_compressed_data;
         cfg.size = 32.0f;
         cfg.icons = true;
 
         JST_CHECK(impl->render->build(font, cfg));
         JST_CHECK(impl->render->addFont("default_icons", font));
+    }
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = fa_node_compressed_data;
+        cfg.size = 32.0f;
+        cfg.icons = true;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_node_icons", font));
     }
 
     {
@@ -328,6 +365,12 @@ Result Instance::destroy() {
     }
     if (impl->render && impl->render->hasFont("default_display")) {
         JST_CHECK(impl->render->removeFont("default_display"));
+    }
+    if (impl->render && impl->render->hasFont("default_display_semibold")) {
+        JST_CHECK(impl->render->removeFont("default_display_semibold"));
+    }
+    if (impl->render && impl->render->hasFont("default_display_regular")) {
+        JST_CHECK(impl->render->removeFont("default_display_regular"));
     }
     if (impl->render && impl->render->hasFont("default_body")) {
         JST_CHECK(impl->render->removeFont("default_body"));
@@ -465,8 +508,14 @@ Result Instance::compute() {
         return Result::SUCCESS;
     }
 
+    bool active = false;
     for (const auto& flowgraph : flowgraphs) {
         JST_CHECK(flowgraph->compute());
+        active = active || !flowgraph->paused();
+    }
+
+    if (!active) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     Scheduler::Impl::WaitComputeRound(epoch, std::chrono::milliseconds(100));
@@ -567,6 +616,7 @@ Result Instance::present(const std::function<Result()>& callback) {
 
     // Finish the render frame.
 
+    const U64 presentedFrames = impl->render->stats().presentedFrames;
     const auto& endRes = impl->render->end();
     frameGuard.active = false;
     if (endRes == Result::SKIP) {
@@ -580,7 +630,7 @@ Result Instance::present(const std::function<Result()>& callback) {
     // Capture frame.
 
     if (impl->remote && impl->remote->started()) {
-        impl->remote->captureFrame();
+        impl->remote->captureFrame(impl->render->stats().presentedFrames != presentedFrames);
     }
 
     // Process compositor interactions.

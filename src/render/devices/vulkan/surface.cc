@@ -3,7 +3,12 @@
 #include "jetstream/render/devices/vulkan/surface.hh"
 #include "jetstream/render/devices/vulkan/kernel.hh"
 #include "jetstream/render/devices/vulkan/buffer.hh"
+#include "jetstream/render/devices/vulkan/draw.hh"
+#include "jetstream/render/devices/vulkan/vertex.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
+#include "creation.hh"
+
+#include <optional>
 
 namespace Jetstream::Render {
 
@@ -20,17 +25,48 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
         framebuffer = std::make_shared<TextureImp<DeviceType::Vulkan>>(framebufferConfig);
     }
 
-    for (auto& program : config.programs) {
-        programs.push_back(
-            std::dynamic_pointer_cast<ProgramImp<DeviceType::Vulkan>>(program)
-        );
-    }
+    (void)reorderPrograms(config.programs);
 
     for (auto& kernel : config.kernels) {
         kernels.push_back(
             std::dynamic_pointer_cast<KernelImp<DeviceType::Vulkan>>(kernel)
         );
     }
+}
+
+Result Implementation::reorderPrograms(const std::vector<std::shared_ptr<Program>>& ordered) {
+    decltype(programs) candidate;
+    for (const auto& program : ordered) {
+        auto typed = std::dynamic_pointer_cast<ProgramImp<DeviceType::Vulkan>>(program);
+        if (!typed) {
+            return Result::ERROR;
+        }
+        candidate.push_back(std::move(typed));
+    }
+    programs.swap(candidate);
+    return Result::SUCCESS;
+}
+
+bool Implementation::appendable() const {
+    return true;
+}
+
+Result Implementation::validateAppend(const std::vector<std::shared_ptr<Program>>& newPrograms,
+                                       const std::vector<std::shared_ptr<Kernel>>& newKernels) const {
+    return validateObjects<DeviceType::Vulkan>(newPrograms, newKernels);
+}
+
+Result Implementation::createAppended(const std::vector<std::shared_ptr<Program>>& newPrograms,
+                                       const std::vector<std::shared_ptr<Kernel>>& newKernels) {
+    const auto& activeFramebuffer = (config.multisampled) ? framebuffer : framebufferResolve;
+    return appendObjects(newPrograms, newKernels, programs, kernels, [&](auto& object) {
+        if constexpr (std::is_same_v<std::decay_t<decltype(object)>,
+                                     std::shared_ptr<ProgramImp<DeviceType::Vulkan>>>) {
+            return object->create(renderPass, activeFramebuffer->size(), config.multisampled);
+        } else {
+            return object->create();
+        }
+    }, [](auto& object) { return object->destroy(); });
 }
 
 Result Implementation::create() {
@@ -106,7 +142,9 @@ Result Implementation::create() {
     renderPassInfo.dependencyCount = 2;
     renderPassInfo.pDependencies = dependencies;
 
-    JST_VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(renderPass, [&](auto* output) {
+        return vkCreateRenderPass(device, &renderPassInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create render pass.");
     });
 
@@ -138,11 +176,13 @@ Result Implementation::create() {
     framebufferInfo.height = framebufferResolve->size().y;
     framebufferInfo.layers = 1;
 
-    JST_VK_CHECK(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebufferObject), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(framebufferObject, [&](auto* output) {
+        return vkCreateFramebuffer(device, &framebufferInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create surface framebuffer.");
     });
 
-    requestedSize = framebufferResolve->size();
+    resizeResult = Result::SUCCESS;
     resetFramebuffer();
 
     return Result::SUCCESS;
@@ -154,6 +194,7 @@ Result Implementation::destroy() {
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     vkDestroyFramebuffer(device, framebufferObject, nullptr);
+    framebufferObject = VK_NULL_HANDLE;
 
     for (auto& kernel : kernels) {
         JST_CHECK(kernel->destroy());
@@ -168,32 +209,41 @@ Result Implementation::destroy() {
     }
 
     vkDestroyRenderPass(device, renderPass, nullptr);
+    renderPass = VK_NULL_HANDLE;
 
     return Result::SUCCESS;
 }
 
-Result Implementation::prepare() {
-    framebufferChanged = framebufferResolve->size(requestedSize);
-    if (framebufferChanged) {
-        JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
-            JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
-        });
+bool Implementation::created() const {
+    return renderPass != VK_NULL_HANDLE;
+}
 
-        if (config.multisampled) {
-            framebuffer->size(requestedSize);
-        }
+Result Implementation::rebuildFramebuffer() {
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
+    });
 
-        JST_CHECK(destroy());
-        JST_CHECK(framebufferResolve->destroy());
-        JST_CHECK(framebufferResolve->create());
-        JST_CHECK(create());
+    if (config.multisampled) {
+        framebuffer->size(requestedSize);
     }
+
+    JST_CHECK(destroy());
+    JST_CHECK(framebufferResolve->destroy());
+    JST_CHECK(framebufferResolve->create());
+    JST_CHECK(create());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
-    if (!shouldDraw(framebufferChanged)) {
+    commandsEncoded = false;
+    const bool required = shouldDraw(framebufferResized);
+    JST_CHECK(drawResult());
+    if (!required) {
+        return Result::SUCCESS;
+    }
+    if (hiddenAndIdle(visible, framebufferResized)) {
+        shouldDrawGraphics(visible);
         return Result::SUCCESS;
     }
 
@@ -206,6 +256,7 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
     // Ensure compute writes are visible to graphics.
 
     if (!kernels.empty()) {
+        commandsEncoded = true;
         VkMemoryBarrier memoryBarrier{};
         memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
         memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -232,6 +283,8 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
         return Result::SUCCESS;
     }
 
+    commandsEncoded = true;
+
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = renderPass;
@@ -255,15 +308,24 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
 
     // Encode programs.
 
-    VkRect2D fullScissor{};
-    fullScissor.offset = {0, 0};
-    fullScissor.extent = {static_cast<U32>(framebufferResolve->size().x),
-                          static_cast<U32>(framebufferResolve->size().y)};
+    const ScissorRect fullScissor = {0, 0, static_cast<U32>(framebufferResolve->size().x),
+                                           static_cast<U32>(framebufferResolve->size().y)};
+    std::optional<ScissorRect> previousScissor;
     for (auto& program : programs) {
         if (!program->enabled()) {
             continue;
         }
-        vkCmdSetScissor(commandBuffer, 0, 1, &fullScissor);
+        const auto scissor = program->getConfig().scissorRect.value_or(fullScissor);
+        if (scissor.width == 0 || scissor.height == 0) {
+            continue;
+        }
+        if (previousScissor != scissor) {
+            VkRect2D rect{};
+            rect.offset = {static_cast<I32>(scissor.x), static_cast<I32>(scissor.y)};
+            rect.extent = {scissor.width, scissor.height};
+            vkCmdSetScissor(commandBuffer, 0, 1, &rect);
+            previousScissor = scissor;
+        }
         JST_CHECK(program->encode(commandBuffer, renderPass));
     }
 
@@ -278,17 +340,6 @@ void Implementation::commit() {
         framebuffer->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
     commitDraw();
-}
-
-const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
-    if (!framebufferResolve) {
-        return NullSize2D;
-    }
-
-    requestedSize = size;
-    invalidate();
-
-    return framebufferResolve->size();
 }
 
 }  // namespace Jetstream::Render

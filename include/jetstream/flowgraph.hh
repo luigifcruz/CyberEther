@@ -42,6 +42,9 @@ class JETSTREAM_API Flowgraph {
                   const std::shared_ptr<Compositor>& compositor);
     Result start();
     Result stop();
+    Result pause();
+    Result resume();
+    bool paused() const;
     Result destroy();
 
     std::string title() const;
@@ -50,6 +53,7 @@ class JETSTREAM_API Flowgraph {
     std::string license() const;
     std::string description() const;
     std::string path() const;
+    U64 moduleConfigEdits() const;
 
     Result setTitle(const std::string& title);
     Result setSummary(const std::string& summary);
@@ -69,7 +73,8 @@ class JETSTREAM_API Flowgraph {
                        const TensorMap& inputs,
                        const DeviceType& device = DeviceType::CPU,
                        const RuntimeType& runtime = RuntimeType::NATIVE,
-                       const ProviderType& provider = "generic");
+                       const ProviderType& provider = "generic",
+                       bool frozen = false);
     Result blockDestroy(const std::string name,
                         bool propagate = true);
     Result blockRename(const std::string oldName,
@@ -80,8 +85,13 @@ class JETSTREAM_API Flowgraph {
                         const std::string sourcePort);
     Result blockDisconnect(const std::string blockName,
                            const std::string inputPort);
+    Result blockFreeze(const std::string name,
+                       bool frozen);
     Result blockReconfigure(const std::string name,
                             const Parser::Map& config);
+    Result blockReconfigure(const std::string name,
+                            const Parser::Map& config,
+                            bool& recreated);
     Result blockRecreate(const std::string name,
                          const Parser::Map& config);
     Result blockRecreate(const std::string name,
@@ -109,6 +119,8 @@ class JETSTREAM_API Flowgraph {
 
     View& view();
     const View& view() const;
+
+    static Result ReadTitle(const std::string& path, std::string& title);
 
  private:
     Result blockSetErroredFromModules(const std::unordered_set<std::string>& moduleNames);

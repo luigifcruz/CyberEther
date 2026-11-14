@@ -173,14 +173,14 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE_FALSE(settings.remote.access.autoApprove);
     REQUIRE(settings.remote.video.framerate == 30);
     REQUIRE(settings.interface.themeKey == "Dark");
-    REQUIRE(settings.interface.infoPanelEnabled);
     REQUIRE(settings.interface.backgroundParticles);
+    REQUIRE(settings.interface.touchpadScrollSpeed == Settings::Interface::DefaultTouchpadScrollSpeed);
+    REQUIRE(settings.interface.welcomeVersion.empty());
     REQUIRE(settings.intelligence.provider.empty());
     REQUIRE(settings.intelligence.model.empty());
     REQUIRE(settings.intelligence.models.empty());
     REQUIRE(settings.intelligence.customProviders.empty());
     REQUIRE(settings.developer.logLevel == defaults.developer.logLevel);
-    REQUIRE_FALSE(settings.developer.latencyEnabled);
     REQUIRE_FALSE(settings.developer.timingEnabled);
     REQUIRE(settings.benchmark.format == "markdown");
     REQUIRE(settings.registry.plugins.empty());
@@ -228,15 +228,15 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.graphics.scale = 1.25f;
     settings.graphics.framerate = 75;
     settings.interface.themeKey = "Light";
-    settings.interface.infoPanelEnabled = false;
     settings.interface.backgroundParticles = false;
+    settings.interface.touchpadScrollSpeed = 2.4f;
+    settings.interface.welcomeVersion = "2.0.0";
     settings.remote.broker.publicUrl = "https://example.com";
     settings.remote.video.codec = "av1";
     settings.remote.video.encoder = "software";
     settings.remote.access.autoApprove = true;
     settings.remote.video.framerate = 24;
     settings.developer.logLevel = 4;
-    settings.developer.latencyEnabled = true;
     settings.developer.timingEnabled = true;
     settings.registry.plugins.push_back(pluginPath);
     settings.runtime.python.path = runtimePath;
@@ -275,15 +275,15 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.graphics.scale == 1.25f);
     REQUIRE(restored.graphics.framerate == 75);
     REQUIRE(restored.interface.themeKey == "Light");
-    REQUIRE_FALSE(restored.interface.infoPanelEnabled);
     REQUIRE_FALSE(restored.interface.backgroundParticles);
+    REQUIRE(restored.interface.touchpadScrollSpeed == 2.4f);
+    REQUIRE(restored.interface.welcomeVersion == "2.0.0");
     REQUIRE(restored.remote.broker.publicUrl == "https://example.com");
     REQUIRE(restored.remote.video.codec == "av1");
     REQUIRE(restored.remote.video.encoder == "software");
     REQUIRE(restored.remote.access.autoApprove);
     REQUIRE(restored.remote.video.framerate == 24);
     REQUIRE(restored.developer.logLevel == 4);
-    REQUIRE(restored.developer.latencyEnabled);
     REQUIRE(restored.developer.timingEnabled);
     REQUIRE(restored.benchmark.format == "markdown");
     REQUIRE(restored.registry.plugins == settings.registry.plugins);
@@ -304,7 +304,6 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
               "  format: csv\n"
               "interface:\n"
               "  themeKey: Solarized\n"
-              "  infoPanelEnabled: false\n"
               "remote:\n"
               "  broker:\n"
               "    publicUrl: https://example.net\n"
@@ -331,7 +330,6 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
     REQUIRE_FALSE(settings.graphics.headless);
     REQUIRE(settings.graphics.deviceId == 0);
     REQUIRE(settings.interface.themeKey == "Solarized");
-    REQUIRE_FALSE(settings.interface.infoPanelEnabled);
     REQUIRE(settings.interface.backgroundParticles);
     REQUIRE(settings.remote.broker.publicUrl == "https://example.net");
     REQUIRE(settings.remote.access.autoApprove);
@@ -444,7 +442,7 @@ TEST_CASE("Transient settings can be restored before a retained update",
 
     Settings updated;
     REQUIRE(Settings::Get(updated) == Result::SUCCESS);
-    updated.interface.infoPanelEnabled = false;
+    updated.interface.backgroundParticles = false;
     REQUIRE(Settings::Set(updated) == Result::SUCCESS);
 
     const auto yaml = ReadFile(sandbox.path);

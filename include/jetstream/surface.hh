@@ -62,7 +62,7 @@ enum class JETSTREAM_API KeyCode : U16 {
     CapsLock, ScrollLock, NumLock, PrintScreen, Pause,
     Keypad0, Keypad1, Keypad2, Keypad3, Keypad4, Keypad5, Keypad6, Keypad7, Keypad8, Keypad9,
     KeypadDecimal, KeypadDivide, KeypadMultiply, KeypadSubtract, KeypadAdd, KeypadEnter, KeypadEqual,
-    AppBack, AppForward, Oem102,
+    Oem102,
 };
 
 enum class JETSTREAM_API KeyEventType : U8 {
@@ -77,9 +77,15 @@ struct JETSTREAM_API KeyEvent {
     bool repeat = false;
 };
 
+struct JETSTREAM_API TextEvent {
+    char32_t codepoint = 0;
+    KeyModifiers modifiers;
+};
+
 enum class JETSTREAM_API MouseButton : U8 {
     Left = 0,
     Right = 1,
+    Middle = 2,
 };
 
 enum class JETSTREAM_API MouseEventType : U8 {
@@ -89,6 +95,17 @@ enum class JETSTREAM_API MouseEventType : U8 {
     Scroll = 3,
     Enter = 4,
     Leave = 5,
+    Cancel = 6,
+    Zoom = 7,
+};
+
+enum class JETSTREAM_API ScrollPhase : U8 {
+    None = 0,
+    Began = 1,
+    Changed = 2,
+    Ended = 3,
+    Momentum = 4,
+    MomentumEnded = 5,
 };
 
 struct JETSTREAM_API MouseEvent {
@@ -97,6 +114,14 @@ struct JETSTREAM_API MouseEvent {
     Extent2D<F32> position;
     Extent2D<F32> scroll;
     KeyModifiers modifiers;
+    U8 clicks = 1;
+    bool cancel = false;
+    bool positioned = true;
+    ScrollPhase phase = ScrollPhase::None;
+    bool precise = false;
+    bool smooth = false;
+    F32 zoom = 1.0f;
+    bool touch = false;
 };
 
 struct JETSTREAM_API FocusEvent {
@@ -107,6 +132,11 @@ using InputEvent = std::variant<MouseEvent, KeyEvent, FocusEvent>;
 
 inline std::optional<MouseEvent> SurfaceMouseEvent(const InputEvent& event) {
     if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+        if (mouse->type == MouseEventType::Release && mouse->cancel) {
+            auto cancelled = *mouse;
+            cancelled.type = MouseEventType::Cancel;
+            return cancelled;
+        }
         return *mouse;
     }
     if (const auto* focus = std::get_if<FocusEvent>(&event); focus && !focus->focused) {
@@ -128,11 +158,28 @@ enum class JETSTREAM_API SurfacePlacementType : U8 {
     Detached = 1,
 };
 
+struct JETSTREAM_API SurfaceTheme {
+    ColorRGBA<F32> background = {0.0f, 0.0f, 0.0f, 1.0f};
+    ColorRGBA<F32> foreground = {1.0f, 1.0f, 1.0f, 1.0f};
+    ColorRGBA<F32> secondary = {0.62f, 0.66f, 0.72f, 1.0f};
+    ColorRGBA<F32> grid = {0.12f, 0.12f, 0.12f, 1.0f};
+    ColorRGBA<F32> majorGrid = {0.5f, 0.5f, 0.5f, 1.0f};
+    ColorRGBA<F32> accent = {1.0f, 0.85f, 0.0f, 1.0f};
+    ColorRGBA<F32> halo = {0.0f, 0.0f, 0.0f, 0.65f};
+    ColorRGBA<F32> pill = {0.07f, 0.07f, 0.07f, 0.9f};
+
+    bool operator==(const SurfaceTheme&) const = default;
+};
+
+inline ColorRGBA<F32> SurfaceAlpha(const ColorRGBA<F32>& color, F32 alpha) {
+    return {color.r, color.g, color.b, alpha};
+}
+
 struct JETSTREAM_API SurfaceEvent {
     SurfaceEventType type;
     Extent2D<U64> size;
     F32 scale = 1.0f;
-    ColorRGBA<F32> backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
+    SurfaceTheme theme;
     SurfacePlacementType placement = SurfacePlacementType::Detached;
 };
 
@@ -170,7 +217,7 @@ struct JETSTREAM_API SurfaceInteractionState {
     F32 offset = 0.0f;
     F32 scale = 1.0f;
     Extent2D<U64> viewSize = {512, 512};
-    ColorRGBA<F32> backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
+    SurfaceTheme theme;
 
     Extent2D<F32> cursorNormalized = {0.0f, 0.0f};
 

@@ -52,7 +52,9 @@ std::optional<Render::Components::MapContext::Uniforms> AdsbMapAutoFit::update(
         if (!std::isfinite(event.position.x) || !std::isfinite(event.position.y)) continue;
         if ((event.type == MouseEventType::Click && event.button == MouseButton::Left) ||
             (event.type == MouseEventType::Scroll &&
-             std::isfinite(event.scroll.y) && event.scroll.y != 0.0f)) {
+             std::isfinite(event.scroll.y) && event.scroll.y != 0.0f) ||
+            (event.type == MouseEventType::Zoom &&
+             std::isfinite(event.zoom) && event.zoom > 0.0f && event.zoom != 1.0f)) {
             // Yield to map navigation so the view never moves under the pointer.
             pending = false;
             return std::nullopt;

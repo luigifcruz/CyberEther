@@ -18,171 +18,74 @@
 #include "vector.hh"
 #include "vector_inline.hh"
 
+#include "../field_tooltip.hh"
+
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
 namespace Jetstream {
 
 struct FlowgraphConfigFieldInstance {
-    FlowgraphNodeHeightSpec heightSpec() const {
-        FlowgraphNodeHeightSpec spec;
-        visitFlexible(*this, [&spec](const auto& field) {
-            spec = field.heightSpec();
-        });
-        return spec;
-    }
+    enum class Kind {
+        Unknown,
+        Dropdown,
+        Float,
+        Int,
+        UInt,
+        Vector,
+        VectorInline,
+        Path,
+        Bool,
+        Range,
+        Tensor,
+        Markdown,
+        Python,
+        PythonConsole,
+        Multiline,
+        Text,
+    };
 
-    void update(FlowgraphConfigFieldConfig config) {
-        kind = Parser::Get<std::string>(config.format, "type");
-        const auto onError = config.onError;
-        const auto name = config.name;
-        const auto errorId = config.id + "Error";
-        unknownFrame.update({
-            .id = config.id,
-            .label = config.label,
-            .help = config.help,
-            .background = false,
-        });
-        Result result = Result::SUCCESS;
-
-        fullHeight = kind == "float" && !Parser::Get<std::string>(config.format, "step_config").empty();
-
-        if (kind == "dropdown") {
-            result = dropdown.update(std::move(config));
-        } else if (kind == "float") {
-            result = floatField.update(std::move(config));
-        } else if (kind == "int") {
-            result = intField.update(std::move(config));
-        } else if (kind == "uint") {
-            result = uintField.update(std::move(config));
-        } else if (kind == "vector") {
-            result = vectorField.update(std::move(config));
-        } else if (kind == "vector-inline") {
-            result = vectorInline.update(std::move(config));
-        } else if (kind == "filepicker" || kind == "filesave") {
-            result = path.update(std::move(config));
-        } else if (kind == "bool") {
-            result = boolField.update(std::move(config));
-        } else if (kind == "range") {
-            result = range.update(std::move(config));
-        } else if (kind == "tensor-config") {
-            result = tensor.update(std::move(config));
-        } else if (kind == "markdown") {
-            result = markdown.update(std::move(config));
-        } else if (kind == "python") {
-            result = python.update(std::move(config));
-        } else if (kind == "python-console") {
-            result = pythonConsole.update(std::move(config));
-        } else if (kind == "multiline") {
-            result = multiline.update(std::move(config));
-        } else if (kind == "text") {
-            result = text.update(std::move(config));
-        } else {
-            unknownText.update({
-                .id = errorId,
-                .str = "Unsupported config field: " + kind,
-                .tone = Sakura::Text::Tone::Warning,
-            });
-        }
-        if (result != Result::SUCCESS) {
-            const auto message = "Invalid configuration value for '" + name + "'.";
-            if (onError && notifiedDecodeError != errorId) {
-                notifiedDecodeError = errorId;
-                onError(result, message);
-            }
-            kind.clear();
-            fullHeight = false;
-            unknownText.update({
-                .id = errorId,
-                .str = message,
-                .tone = Sakura::Text::Tone::Warning,
-            });
-        } else {
-            notifiedDecodeError.clear();
-        }
-    }
-
-    bool isSimple() const {
-        if (fullHeight) {
-            return false;
-        }
-        return kind == "dropdown" || kind == "float" || kind == "int" ||
-               kind == "uint" || kind == "bool" || kind == "range" ||
-               kind == "text" || kind == "vector-inline" ||
-               kind == "filepicker" || kind == "filesave";
-    }
-
-    void setAllocatedHeight(std::optional<F32> height) {
-        visitFlexible(*this, [&height](auto& field) {
-            field.setAllocatedHeight(height);
-        });
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        if (kind == "dropdown") {
-            dropdown.render(ctx);
-        } else if (kind == "float") {
-            floatField.render(ctx);
-        } else if (kind == "int") {
-            intField.render(ctx);
-        } else if (kind == "uint") {
-            uintField.render(ctx);
-        } else if (kind == "vector") {
-            vectorField.render(ctx);
-        } else if (kind == "vector-inline") {
-            vectorInline.render(ctx);
-        } else if (kind == "filepicker" || kind == "filesave") {
-            path.render(ctx);
-        } else if (kind == "bool") {
-            boolField.render(ctx);
-        } else if (kind == "range") {
-            range.render(ctx);
-        } else if (kind == "tensor-config") {
-            tensor.render(ctx);
-        } else if (kind == "markdown") {
-            markdown.render(ctx);
-        } else if (kind == "python") {
-            python.render(ctx);
-        } else if (kind == "python-console") {
-            pythonConsole.render(ctx);
-        } else if (kind == "multiline") {
-            multiline.render(ctx);
-        } else if (kind == "text") {
-            text.render(ctx);
-        } else {
-            unknownFrame.render(ctx, [this](const Sakura::Context& ctx) {
-                unknownText.render(ctx);
-            });
-        }
-    }
+    FlowgraphNodeHeightSpec heightSpec() const;
+    void update(FlowgraphConfigFieldConfig config);
+    bool isSimple() const;
+    Sakura::Component& component();
 
  private:
-    template<typename Self, typename Visitor>
-    static void visitFlexible(Self& self, Visitor visitor) {
-        if (self.kind == "markdown") {
-            visitor(self.markdown);
-        } else if (self.kind == "python") {
-            visitor(self.python);
-        } else if (self.kind == "python-console") {
-            visitor(self.pythonConsole);
+    static Kind ParseKind(const std::string& value);
+
+    template<typename T>
+    static T& ensure(std::unique_ptr<T>& field) {
+        if (!field) {
+            field = std::make_unique<T>();
         }
+        return *field;
     }
 
-    std::string kind;
+    void reset();
+
+    Kind kind = Kind::Unknown;
+    bool failed = false;
+    std::string builtKind;
+    std::string builtId;
     std::string notifiedDecodeError;
     bool fullHeight = false;
-    FlowgraphConfigDropdownField dropdown;
-    FlowgraphConfigFloatField floatField;
-    FlowgraphConfigIntField intField;
-    FlowgraphConfigUIntField uintField;
-    FlowgraphConfigVectorField vectorField;
-    FlowgraphConfigVectorInlineField vectorInline;
-    FlowgraphConfigPathField path;
-    FlowgraphConfigBoolField boolField;
-    FlowgraphConfigRangeField range;
-    FlowgraphConfigTensorField tensor;
-    FlowgraphConfigMarkdownField markdown;
-    FlowgraphConfigPythonField python;
-    FlowgraphConfigPythonConsoleField pythonConsole;
-    FlowgraphConfigMultilineField multiline;
-    FlowgraphConfigTextField text;
+    std::unique_ptr<FlowgraphConfigDropdownField> dropdown;
+    std::unique_ptr<FlowgraphConfigFloatField> floatField;
+    std::unique_ptr<FlowgraphConfigIntField> intField;
+    std::unique_ptr<FlowgraphConfigUIntField> uintField;
+    std::unique_ptr<FlowgraphConfigVectorField> vectorField;
+    std::unique_ptr<FlowgraphConfigVectorInlineField> vectorInline;
+    std::unique_ptr<FlowgraphConfigPathField> path;
+    std::unique_ptr<FlowgraphConfigBoolField> boolField;
+    std::unique_ptr<FlowgraphConfigRangeField> range;
+    std::unique_ptr<FlowgraphConfigTensorField> tensor;
+    std::unique_ptr<FlowgraphConfigMarkdownField> markdown;
+    std::unique_ptr<FlowgraphConfigPythonField> python;
+    std::unique_ptr<FlowgraphConfigPythonConsoleField> pythonConsole;
+    std::unique_ptr<FlowgraphConfigMultilineField> multiline;
+    std::unique_ptr<FlowgraphConfigTextField> text;
+    FlowgraphFieldTooltip unknownHelp;
     Sakura::NodeField unknownFrame;
     Sakura::NodeLabel unknownText;
 };

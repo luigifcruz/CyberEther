@@ -140,8 +140,8 @@ class Session::Impl::Turn {
     Provider::Response request(const std::vector<Provider::Message>& messages, bool allowTools, bool summary = false);
     std::optional<std::string> summarize(std::string_view source, U64 targetBudget);
     bool compact(U64 targetBudget);
-    Provider::Response stream(bool allowTools = true);
-    void execute(const std::vector<Provider::FunctionCall>& calls, bool lastRound);
+    Provider::Response stream();
+    void execute(const std::vector<Provider::FunctionCall>& calls);
 
     void write(Segment::Kind kind, const std::string& text);
     void note(Segment segment);

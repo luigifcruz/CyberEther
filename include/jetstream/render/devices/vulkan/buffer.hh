@@ -6,6 +6,10 @@
 
 namespace Jetstream::Render {
 
+namespace Detail {
+struct BufferMemory;
+}  // namespace Detail
+
 template<>
 class JETSTREAM_API BufferImp<DeviceType::Vulkan> : public Buffer {
  public:
@@ -23,8 +27,9 @@ class JETSTREAM_API BufferImp<DeviceType::Vulkan> : public Buffer {
     }
 
  private:
-    VkBuffer buffer;
-    VkDeviceMemory memory;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    std::shared_ptr<Detail::BufferMemory> suballocation;
 
     friend class SurfaceImp<DeviceType::Vulkan>;
     friend class ProgramImp<DeviceType::Vulkan>;

@@ -1,15 +1,39 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "render/sakura/retained/syntax_highlighter.hh"
+#include "render/sakura/detail/syntax_highlighter.hh"
 
+#include <future>
 #include <string>
 #include <vector>
 
 using namespace Jetstream;
-using Highlighter = Sakura::Retained::SyntaxHighlighter;
+using Highlighter = Sakura::SyntaxHighlighter;
 
-TEST_CASE("Fence tags resolve to highlighter languages",
-          "[core][sakura][syntax]") {
+TEST_CASE("Independent highlighters share rules without sharing parse state", "[core][sakura][syntax][shared-query]") {
+    std::vector<std::future<bool>> workers;
+    for (int worker = 0; worker < 2; ++worker) {
+        workers.push_back(std::async(std::launch::async, [worker] {
+            const std::vector<std::string> cpp = {"int value = " + std::to_string(worker) + "; // note"};
+            const std::vector<std::string> python = {"def f():", "    return 1"};
+            const std::vector<std::string> json = {"{\"a\": 1}"};
+            for (int iteration = 0; iteration < 3; ++iteration) {
+                Highlighter highlighter;
+                if (highlighter.styles(cpp, 1, Highlighter::Language::Cpp)[0][0] != Highlighter::Type ||
+                    highlighter.styles(python, 1, Highlighter::Language::Python)[0][0] != Highlighter::Keyword ||
+                    highlighter.styles(json, 1, Highlighter::Language::Json)[0][6] != Highlighter::Number ||
+                    highlighter.styles(cpp, 1, Highlighter::Language::Cpp)[0][0] != Highlighter::Type) {
+                    return false;
+                }
+            }
+            return true;
+        }));
+    }
+    for (auto& worker : workers) {
+        CHECK(worker.get());
+    }
+}
+
+TEST_CASE("Fence tags resolve to highlighter languages", "[core][sakura][syntax]") {
     CHECK(Highlighter::LanguageForTag("python") == Highlighter::Language::Python);
     CHECK(Highlighter::LanguageForTag("Py") == Highlighter::Language::Python);
     CHECK(Highlighter::LanguageForTag("md") == Highlighter::Language::Markdown);
@@ -17,8 +41,7 @@ TEST_CASE("Fence tags resolve to highlighter languages",
     CHECK_FALSE(Highlighter::LanguageForTag("").has_value());
 }
 
-TEST_CASE("Python sources receive keyword, function, and number styles",
-          "[core][sakura][syntax]") {
+TEST_CASE("Python sources receive keyword, function, and number styles", "[core][sakura][syntax]") {
     Highlighter highlighter;
     const std::vector<std::string> lines = {"def f():", "    return 1  # done"};
     const auto styles = highlighter.highlight(lines, Highlighter::Language::Python);
@@ -32,8 +55,7 @@ TEST_CASE("Python sources receive keyword, function, and number styles",
     CHECK(styles[1][14] == Highlighter::Comment);
 }
 
-TEST_CASE("Fence tags cover yaml, shell, c family, and json aliases",
-          "[core][sakura][syntax]") {
+TEST_CASE("Fence tags cover yaml, shell, c family, and json aliases", "[core][sakura][syntax]") {
     CHECK(Highlighter::LanguageForTag("yml") == Highlighter::Language::Yaml);
     CHECK(Highlighter::LanguageForTag("sh") == Highlighter::Language::Bash);
     CHECK(Highlighter::LanguageForTag("zsh") == Highlighter::Language::Bash);
@@ -42,8 +64,7 @@ TEST_CASE("Fence tags cover yaml, shell, c family, and json aliases",
     CHECK(Highlighter::LanguageForTag("jsonc") == Highlighter::Language::Json);
 }
 
-TEST_CASE("YAML sources style keys, scalars, punctuation, and comments",
-          "[core][sakura][syntax]") {
+TEST_CASE("YAML sources style keys, scalars, punctuation, and comments", "[core][sakura][syntax]") {
     Highlighter highlighter;
     const std::vector<std::string> lines = {"graph:", "  - name: qpsk  # x", "    rate: 2.5"};
     const auto styles = highlighter.highlight(lines, Highlighter::Language::Yaml);
@@ -58,8 +79,7 @@ TEST_CASE("YAML sources style keys, scalars, punctuation, and comments",
     CHECK(styles[2][10] == Highlighter::Number);
 }
 
-TEST_CASE("Bash sources style keywords, variables, commands, and comments",
-          "[core][sakura][syntax]") {
+TEST_CASE("Bash sources style keywords, variables, commands, and comments", "[core][sakura][syntax]") {
     Highlighter highlighter;
     const std::vector<std::string> lines = {"export PATH=\"$HOME/bin\"  # add", "ls -la | grep x"};
     const auto styles = highlighter.highlight(lines, Highlighter::Language::Bash);
@@ -74,8 +94,7 @@ TEST_CASE("Bash sources style keywords, variables, commands, and comments",
     CHECK(styles[1][7] == Highlighter::Operator);
 }
 
-TEST_CASE("C++ sources style directives, types, functions, and literals",
-          "[core][sakura][syntax]") {
+TEST_CASE("C++ sources style directives, types, functions, and literals", "[core][sakura][syntax]") {
     Highlighter highlighter;
     const std::vector<std::string> lines = {"#include <vector>", "int main() { return 42; }  // c"};
     const auto styles = highlighter.highlight(lines, Highlighter::Language::Cpp);
@@ -90,8 +109,7 @@ TEST_CASE("C++ sources style directives, types, functions, and literals",
     CHECK(styles[1][27] == Highlighter::Comment);
 }
 
-TEST_CASE("JSON sources style keys apart from string values",
-          "[core][sakura][syntax]") {
+TEST_CASE("JSON sources style keys apart from string values", "[core][sakura][syntax]") {
     Highlighter highlighter;
     const std::vector<std::string> lines = {"{\"rate\": 2.5, \"on\": true, \"name\": \"x\"}"};
     const auto styles = highlighter.highlight(lines, Highlighter::Language::Json);
@@ -104,8 +122,7 @@ TEST_CASE("JSON sources style keys apart from string values",
     CHECK(styles[0][35] == Highlighter::String);
 }
 
-TEST_CASE("Switching languages keeps each compiled query usable",
-          "[core][sakura][syntax]") {
+TEST_CASE("Switching languages keeps each compiled query usable", "[core][sakura][syntax]") {
     Highlighter highlighter;
     const std::vector<std::string> python = {"def f():"};
     const std::vector<std::string> json = {"{\"a\": 1}"};
