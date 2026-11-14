@@ -295,6 +295,10 @@ void Window::setScale(F32 scale) {
     config.scale = scale;
 }
 
+void Window::setTouchpadScrollSpeed(F32 speed) {
+    config.touchpadScrollSpeed = speed;
+}
+
 Result Window::destroy() {
     JST_ASSERT(created, "Window is not created.");
     JST_ASSERT(!frameActive, "Cannot destroy a window during an active frame.");
@@ -1507,7 +1511,7 @@ void Window::updateMetrics(const Viewport::Generic& viewport) {
 void Window::updateInput(Viewport::Generic& viewport) {
     viewport.setCursor(std::exchange(_requestedCursor, SurfaceCursor::Default));
 
-    _input.configure({.macOS = viewport.macOSBehaviors()});
+    _input.configure({.macOS = viewport.macOSBehaviors(), .touchpadScrollSpeed = config.touchpadScrollSpeed});
     _input.advance(viewport.inputTime(), viewport.input().drain());
 }
 

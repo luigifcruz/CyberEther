@@ -164,6 +164,7 @@ struct DefaultCompositorState {
         bool filePending = false;
         bool backgroundParticles = true;
         bool showTips = true;
+        F32 touchpadScrollSpeed = Settings::Interface::DefaultTouchpadScrollSpeed;
         std::vector<Settings::Interface::FlowgraphEntry> recentFlowgraphs;
         std::vector<Settings::Interface::FlowgraphEntry> favoriteFlowgraphs;
 

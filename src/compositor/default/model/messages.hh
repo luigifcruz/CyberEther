@@ -294,6 +294,10 @@ struct MailSetShowTips {
     bool value = false;
 };
 
+struct MailSetTouchpadScrollSpeed {
+    F32 value = 1.0f;
+};
+
 struct MailSetFlowgraphEnvironmentVisible {
     std::string flowgraph;
     bool value = false;
@@ -772,6 +776,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailQuit,
                           MailSetBackgroundParticles,
                           MailSetShowTips,
+                          MailSetTouchpadScrollSpeed,
                           MailSetMapsHighResolution,
                           MailSetMapsRendering,
                           MailClearMapsCache,

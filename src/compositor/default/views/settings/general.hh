@@ -8,6 +8,7 @@
 #include "jetstream/memory/types.hh"
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
+#include "jetstream/settings.hh"
 
 #include <cmath>
 #include <string>
@@ -23,11 +24,13 @@ struct GeneralSettingsView {
         std::string renderer;
         bool backgroundParticles = false;
         bool showTips = true;
+        F32 touchpadScrollSpeed = Settings::Interface::DefaultTouchpadScrollSpeed;
         Sakura::Callback<void(const std::string&)> onThemeChange;
         Sakura::Callback<void(F32)> onInterfaceScaleChange;
         Sakura::Callback<void(DeviceType)> onRendererChange;
         Sakura::Callback<void(bool)> onBackgroundParticlesChange;
         Sakura::Callback<void(bool)> onShowTipsChange;
+        Sakura::Callback<void(F32)> onTouchpadScrollSpeedChange;
     };
 
     void update(Config config) {
@@ -61,12 +64,23 @@ struct GeneralSettingsView {
         });
 
         scaleStepper.update({
-            .options = scaleLabels(),
-            .selected = scaleIndex(this->config.interfaceScale),
+            .options = percentLabels(scaleValues()),
+            .selected = nearestIndex(scaleValues(), this->config.interfaceScale),
             .fallback = 10,
             .onSelect = [this](U64 index) {
                 if (this->config.onInterfaceScaleChange) {
                     this->config.onInterfaceScaleChange(scaleValues()[index]);
+                }
+            },
+        });
+
+        scrollSpeedStepper.update({
+            .options = percentLabels(scrollSpeedValues()),
+            .selected = nearestIndex(scrollSpeedValues(), this->config.touchpadScrollSpeed),
+            .fallback = nearestIndex(scrollSpeedValues(), Settings::Interface::DefaultTouchpadScrollSpeed),
+            .onSelect = [this](U64 index) {
+                if (this->config.onTouchpadScrollSpeedChange) {
+                    this->config.onTouchpadScrollSpeedChange(scrollSpeedValues()[index]);
                 }
             },
         });
@@ -138,6 +152,16 @@ struct GeneralSettingsView {
             },
         });
 
+        inputGroup.update({
+            .title = "Input",
+            .description = "How the interface responds to pointing devices.",
+            .rows = {{
+                .label = "Touchpad Scroll Speed",
+                .description = "Scale touchpad scrolling where the system reports it. Mouse wheels are not affected.",
+                .control = &scrollSpeedStepper,
+            }},
+        });
+
         renderingGroup.update({
             .title = "Rendering",
             .description = "The graphics backend that draws the interface.",
@@ -153,6 +177,7 @@ struct GeneralSettingsView {
             .items = {
                 {.child = &header},
                 {.child = &appearanceGroup},
+                {.child = &inputGroup},
                 {.child = &renderingGroup},
             },
         });
@@ -195,19 +220,29 @@ struct GeneralSettingsView {
         return values;
     }
 
-    static std::vector<std::string> scaleLabels() {
+    static const std::vector<F32>& scrollSpeedValues() {
+        static const std::vector<F32> values = [] {
+            std::vector<F32> steps;
+            for (U32 percent = 20; percent <= 1000; percent += 20) {
+                steps.push_back(static_cast<F32>(percent) / 100.0f);
+            }
+            return steps;
+        }();
+        return values;
+    }
+
+    static std::vector<std::string> percentLabels(const std::vector<F32>& values) {
         std::vector<std::string> labels;
-        for (const F32 value : scaleValues()) {
+        for (const F32 value : values) {
             labels.push_back(jst::fmt::format("{:.0f}%", value * 100.0f));
         }
         return labels;
     }
 
-    static U64 scaleIndex(F32 scale) {
-        const auto& values = scaleValues();
+    static U64 nearestIndex(const std::vector<F32>& values, F32 value) {
         U64 best = 0;
         for (U64 index = 0; index < values.size(); ++index) {
-            if (std::abs(values[index] - scale) < std::abs(values[best] - scale)) {
+            if (std::abs(values[index] - value) < std::abs(values[best] - value)) {
                 best = index;
             }
         }
@@ -218,10 +253,12 @@ struct GeneralSettingsView {
     SettingsHeader header;
     Sakura::PillTabs themeTabs;
     OptionStepper scaleStepper;
+    OptionStepper scrollSpeedStepper;
     Sakura::PillTabs rendererTabs;
     Sakura::Toggle particlesToggle;
     Sakura::Toggle tipsToggle;
     SectionGroup appearanceGroup;
+    SectionGroup inputGroup;
     SectionGroup renderingGroup;
     Sakura::Stack stack;
     std::string renderer;

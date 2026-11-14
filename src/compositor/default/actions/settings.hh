@@ -24,6 +24,7 @@ namespace Jetstream {
 struct SettingsActions {
     using Filter = std::tuple<MailSetBackgroundParticles,
                               MailSetShowTips,
+                              MailSetTouchpadScrollSpeed,
                               MailSetGraphicsScale,
                               MailSetGraphicsDevice,
                               MailSetSettingsSection,
@@ -76,6 +77,19 @@ struct SettingsActions {
 
         JST_CHECK(PersistSettings([&](Settings& settings) {
             settings.interface.showTips = msg.value;
+        }));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetTouchpadScrollSpeed& msg) {
+        state.interface.touchpadScrollSpeed = msg.value;
+        if (state.system.render) {
+            state.system.render->setTouchpadScrollSpeed(msg.value);
+        }
+
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.interface.touchpadScrollSpeed = msg.value;
         }));
 
         return Result::SUCCESS;

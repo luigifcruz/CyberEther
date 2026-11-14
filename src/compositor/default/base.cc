@@ -119,6 +119,10 @@ Result DefaultCompositor::create() {
 
     state.interface.backgroundParticles = settings.interface.backgroundParticles;
     state.interface.showTips = settings.interface.showTips;
+    state.interface.touchpadScrollSpeed = settings.interface.touchpadScrollSpeed;
+    if (render) {
+        render->setTouchpadScrollSpeed(state.interface.touchpadScrollSpeed);
+    }
     state.interface.recentFlowgraphs = settings.interface.recentFlowgraphs;
     state.interface.favoriteFlowgraphs = settings.interface.favoriteFlowgraphs;
     if (!viewport || viewport->id() != "headless") {

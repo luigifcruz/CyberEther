@@ -320,6 +320,10 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
         scroll.type = MouseEventType::Scroll;
         scroll.position = wheel->position.value_or(point);
         scroll.scroll = wheel->delta;
+        if (wheel->precise || wheel->phase != ScrollPhase::None) {
+            scroll.scroll.x *= config.touchpadScrollSpeed;
+            scroll.scroll.y *= config.touchpadScrollSpeed;
+        }
         scroll.modifiers = currentModifiers;
         scroll.positioned = wheel->position.has_value() || pointerPosition.has_value();
         scroll.phase = wheel->phase;

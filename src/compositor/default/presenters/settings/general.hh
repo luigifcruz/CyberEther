@@ -28,6 +28,7 @@ struct GeneralSettingsPresenter {
                 : GetDevicePrettyName(context.state.system.render->device()),
             .backgroundParticles = context.state.interface.backgroundParticles,
             .showTips = context.state.interface.showTips,
+            .touchpadScrollSpeed = context.state.interface.touchpadScrollSpeed,
             .onThemeChange = [enqueue](const std::string& themeKey) {
                 enqueue(MailApplyTheme{themeKey});
             },
@@ -42,6 +43,9 @@ struct GeneralSettingsPresenter {
             },
             .onShowTipsChange = [enqueue](bool value) {
                 enqueue(MailSetShowTips{.value = value});
+            },
+            .onTouchpadScrollSpeedChange = [enqueue](F32 value) {
+                enqueue(MailSetTouchpadScrollSpeed{.value = value});
             },
         };
     }

@@ -86,6 +86,7 @@ class JETSTREAM_API InputState {
  public:
     struct Config {
         bool macOS = false;
+        F32 touchpadScrollSpeed = 1.0f;
     };
 
     using Event = std::variant<MouseEvent, KeyEvent, TextEvent, FocusEvent>;

@@ -806,7 +806,7 @@ TEST_CASE("Wayland precision scrolling retains the ordinary scroll distance and 
     rig.scrollY = 200.0f;
     rig.place();
     Viewport::WaylandScroll native;
-    Render::InputState input;
+    Render::InputState input({.touchpadScrollSpeed = 4.8f});
     const auto move = [&](F32 distance, U32 time) {
         native.source = source;
         native.timestamp = time;
@@ -830,6 +830,43 @@ TEST_CASE("Wayland precision scrolling retains the ordinary scroll distance and 
     CHECK(rig.scrollY == Catch::Approx(249.2f));
 }
 
+TEST_CASE("Wayland touchpads follow the fingers at the default speed while wheels keep their step",
+          "[core][sakura][layout][wayland-scroll]") {
+    using Source = Viewport::WaylandScroll::Source;
+    Source source = Source::Finger;
+    F32 expected = 0.0f;
+    SECTION("touchpad") {
+        source = Source::Finger;
+        expected = 210.0f;
+    }
+    SECTION("wheel") {
+        source = Source::Wheel;
+        expected = 248.0f;
+    }
+
+    ElasticRig rig;
+    rig.scrollY = 200.0f;
+    rig.place();
+    Viewport::WaylandScroll native;
+    Render::InputState input;
+    std::vector<Render::InputQueue::Event> queued;
+    native.source = source;
+    native.timestamp = 100;
+    native.axes[0].distance = 10.0f;
+    native.frame(0.1, true, [&](auto event) {
+        event.position = Extent2D<F32>{100.0f, 50.0f};
+        queued.push_back(event);
+    });
+    input.advance(0.1, queued);
+    for (const auto& event : input.events()) {
+        if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+            REQUIRE(rig.host.send(*mouse));
+        }
+    }
+    rig.place();
+    CHECK(rig.scrollY == Catch::Approx(expected));
+}
+
 TEST_CASE("Wayland flings carry a scroller to its edge across batched rendered frames",
           "[core][sakura][layout][wayland-scroll]") {
     using Source = Viewport::WaylandScroll::Source;
@@ -837,7 +874,7 @@ TEST_CASE("Wayland flings carry a scroller to its edge across batched rendered f
     rig.scrollY = 200.0f;
     rig.place();
     Viewport::WaylandScroll native;
-    Render::InputState input;
+    Render::InputState input({.touchpadScrollSpeed = 4.8f});
     std::vector<Render::InputQueue::Event> queued;
     const auto emit = [&](auto event) {
         event.position = Extent2D<F32>{100.0f, 50.0f};

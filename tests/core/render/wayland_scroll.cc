@@ -61,8 +61,8 @@ TEST_CASE("Wayland finger frames preserve subpixel distance", "[core][render][wa
     feed.frame();
     REQUIRE(feed.events.size() == 1);
     const auto& event = feed.events.front();
-    CHECK(event.delta.x == Catch::Approx(0.72f));
-    CHECK(event.delta.y == Catch::Approx(-0.12f));
+    CHECK(event.delta.x == Catch::Approx(0.15f));
+    CHECK(event.delta.y == Catch::Approx(-0.025f));
     CHECK(event.phase == ScrollPhase::Began);
     CHECK(event.precise);
 
@@ -91,7 +91,7 @@ TEST_CASE("Wayland waits for every scrolling axis to stop before releasing", "[c
     feed.frame();
     REQUIRE(feed.events.size() >= 3);
     CHECK(feed.events[1].phase == ScrollPhase::Changed);
-    CHECK(feed.events[1].delta.x == Catch::Approx(-0.72f));
+    CHECK(feed.events[1].delta.x == Catch::Approx(-0.15f));
     CHECK(feed.events[2].phase == ScrollPhase::Ended);
     CHECK(feed.count(ScrollPhase::Ended) == 1);
 }
@@ -128,7 +128,7 @@ TEST_CASE("Wayland continuous sources stay precise without fabricating finger re
     feed.frame();
     REQUIRE(feed.events.size() == 1);
     CHECK(feed.events[0].precise);
-    CHECK(feed.events[0].delta.y == Catch::Approx(-0.24f));
+    CHECK(feed.events[0].delta.y == Catch::Approx(-0.05f));
     CHECK(feed.events[0].phase == ScrollPhase::None);
     feed.step(1.1);
     CHECK(feed.events.size() == 1);

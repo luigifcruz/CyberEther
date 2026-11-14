@@ -220,7 +220,7 @@ TEST_CASE("Native Wayland pointer receives precise frames and explicit lift", "[
     rig.frame();
     REQUIRE(rig.events.size() == 4);
     CHECK(rig.events[0].position == Extent2D<F32>{12.5f, 34.25f});
-    CHECK(rig.events[0].event.delta.y == Catch::Approx(-0.12f));
+    CHECK(rig.events[0].event.delta.y == Catch::Approx(-0.025f));
     CHECK(rig.events[0].event.phase == ScrollPhase::Began);
     CHECK(rig.events[1].event.phase == ScrollPhase::Changed);
     CHECK(rig.events[2].event.phase == ScrollPhase::Ended);
@@ -313,7 +313,7 @@ TEST_CASE("Native Wayland version five retains precise scrolling without high-re
     rig.enter();
     rig.finger(100, 0.25);
     REQUIRE(rig.events.size() == 1);
-    CHECK(rig.events[0].event.delta.y == Catch::Approx(-0.12f));
+    CHECK(rig.events[0].event.delta.y == Catch::Approx(-0.025f));
 }
 
 TEST_CASE("Native Wayland hold gestures cancel a fling without another scroll delta", "[wayland][native][scroll]") {
