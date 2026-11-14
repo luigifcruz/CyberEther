@@ -36,7 +36,11 @@ void TitlebarView::update(Config config) {
         .label = "Help",
         .children = {
             {.label = "Getting Started", .onClick = action(Action::GettingStarted)},
-            {.label = "Documentation", .onClick = action(Action::Documentation)},
+            {
+                .label = "Documentation",
+                .shortcut = Sakura::Shortcuts::Label(Modifier::None, "F1"),
+                .onClick = action(Action::Documentation),
+            },
             {.label = "Repository", .onClick = action(Action::OpenRepository)},
             {.label = "Report Issue", .onClick = action(Action::ReportIssue)},
             {.label = "Luigi's Twitter", .onClick = action(Action::OpenTwitter)},
