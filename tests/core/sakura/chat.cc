@@ -715,6 +715,33 @@ TEST_CASE("Chat transcripts stretch past the tail under a trackpad drag and spri
     CHECK(Retains(frames, update));
 }
 
+TEST_CASE("Moving a stretched chat resets placement before the tree becomes clean",
+          "[core][sakura][chat][retention][wayland-scroll]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    frames.timeStep = 1.0 / 60.0;
+    const Chat::Snapshot snapshot = Questions(30);
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    auto event = Wheel(200.0f, 150.0f, -3.0f);
+    event.phase = ScrollPhase::Began;
+    REQUIRE(place.send(event));
+    frames.run(update);
+    REQUIRE(Bottom(transcript) < place.target.bottom() - 1.0f);
+
+    place.target.y += 40.0f;
+    Sakura::Access::invalidate(place);
+    CHECK(Kept(frames.run(update)));
+    CHECK(Bottom(transcript) == Approx(place.target.bottom()).margin(1.0f));
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(Bottom(transcript) == Approx(place.target.bottom()).margin(1.0f));
+}
+
 TEST_CASE("Chat transcripts reset scroll and disclosures when the generation changes", "[core][sakura][chat]") {
     Scene scene;
     Twin twin;

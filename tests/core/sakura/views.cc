@@ -559,10 +559,12 @@ struct SettingsRig : ModalRig {
             .currentThemeKey = "Dark",
             .renderer = "Metal",
             .backgroundParticles = true,
+            .touchpadScrollSpeed = 1.0f,
             .onThemeChange = [log](const std::string& value) { log("theme:" + value); },
             .onInterfaceScaleChange = [log](F32 value) { log("scale:" + std::to_string(value)); },
             .onBackgroundParticlesChange = [log](bool value) { log("particles:" + Flag(value)); },
             .onShowTipsChange = [log](bool value) { log("tips:" + Flag(value)); },
+            .onTouchpadScrollSpeedChange = [log](F32 value) { log("scroll:" + std::to_string(value)); },
         };
         config.remote = {
             .broker = {.address = "127.0.0.1", .port = 8686},
@@ -3582,7 +3584,7 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     rig.show(SettingsSection::General);
     CHECK(rig.combos().empty());
     CHECK(Find<Sakura::PillTabs>(rig.view.component()).size() == 2);
-    CHECK(Find<Sakura::PillStepper>(rig.view.component()).size() == 1);
+    CHECK(Find<Sakura::PillStepper>(rig.view.component()).size() == 2);
     CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 2);
 
     rig.show(SettingsSection::Remote);
@@ -3601,20 +3603,21 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
 }
 
-TEST_CASE("General settings report theme, scale, background particles, and tips", "[core][sakura][views]") {
+TEST_CASE("General settings report theme, scale, scroll speed, background particles, and tips", "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::General);
 
     CHECK(PressLabel(rig.host, rig.view.component(), "Light"));
     auto steppers = Find<Sakura::PillStepper>(rig.view.component());
-    REQUIRE(steppers.size() == 1);
+    REQUIRE(steppers.size() == 2);
     CHECK(Step(rig.host, *steppers[0], false));
+    CHECK(Step(rig.host, *steppers[1], false));
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
     REQUIRE(toggles.size() == 2);
     CHECK(Press(rig.host, *toggles[0]));
     CHECK(Press(rig.host, *toggles[1]));
     CHECK(rig.calls == std::vector<std::string>{"theme:Light", "scale:" + std::to_string(0.95f),
-                                                 "particles:false", "tips:false"});
+                                                 "scroll:" + std::to_string(0.8f), "particles:false", "tips:false"});
 }
 
 TEST_CASE("Developer settings report toggles and the log level", "[core][sakura][views]") {
@@ -5782,6 +5785,10 @@ TEST_CASE("Settings presenter builds only the active section", "[core][sakura][v
     config.general.onShowTipsChange(false);
     REQUIRE(mailbox.last<MailSetShowTips>() != nullptr);
     CHECK_FALSE(mailbox.last<MailSetShowTips>()->value);
+    CHECK(config.general.touchpadScrollSpeed == Settings::Interface::DefaultTouchpadScrollSpeed);
+    config.general.onTouchpadScrollSpeedChange(2.4f);
+    REQUIRE(mailbox.last<MailSetTouchpadScrollSpeed>() != nullptr);
+    CHECK(mailbox.last<MailSetTouchpadScrollSpeed>()->value == 2.4f);
 }
 
 TEST_CASE("Intelligence presenter selects voice models and voices by index", "[core][sakura][views]") {

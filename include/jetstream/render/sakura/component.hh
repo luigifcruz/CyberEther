@@ -87,6 +87,7 @@ struct Component {
     virtual void wentOnscreen(U64 frame);
     virtual void wentOffscreen(U64 frame);
     virtual bool mouseEvent(const MouseEvent& event);
+    virtual void scrollPhaseEnded(ScrollPhase phase);
     virtual bool keyEvent(const KeyEvent& event);
     virtual bool textEvent(const TextEvent& event);
     virtual bool shortcutEvent(const KeyEvent& event);

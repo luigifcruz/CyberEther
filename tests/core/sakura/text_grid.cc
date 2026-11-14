@@ -15,6 +15,7 @@
 
 #include "render/sakura/context.hh"
 #include "render/sakura/detail/text_grid_viewport.hh"
+#include "render/sakura/detail/touch_scroll.hh"
 
 #include <optional>
 #include <string>
@@ -1517,6 +1518,51 @@ TEST_CASE("Text regions take only mostly horizontal wheel events and leave verti
     host.place(ctx, {0, 0, 160, 100});
     CHECK(document.grid.metrics().regions[0].scrollX == 10);
     CHECK(Peek::Frame(document).y == Catch::Approx(-20));
+}
+
+TEST_CASE("Text region touch ownership survives zero-delta release and momentum packets",
+          "[core][sakura][text-grid][scroll-region][touch][ownership]") {
+    auto ctx = MakeContext();
+    TextGrid grid;
+    Host host(grid);
+    auto config = RegionText(RegionLines(1));
+    config.scrollRegions = {{0, 0}};
+    grid.update(config);
+    host.place(ctx, {0, 0, 100, 100});
+    Sakura::TouchScroll gesture;
+    MouseEvent event{.type = MouseEventType::Scroll, .position = {40, 8}, .scroll = {-2, 0},
+                     .phase = ScrollPhase::Began, .precise = true, .touch = true};
+    REQUIRE(gesture.begin(grid, event));
+    const auto check = [&](F32 expected, bool active) {
+        host.place(ctx, {0, 0, 100, 100});
+        REQUIRE(grid.metrics().regions.size() == 1);
+        CHECK(grid.metrics().regions[0].scrollX == expected);
+        CHECK(gesture.active() == active);
+    };
+    check(20, true);
+    event.phase = ScrollPhase::Changed;
+    gesture.send(event);
+    check(40, true);
+    event.scroll = {};
+    gesture.send(event);
+    check(40, true);
+    event.phase = ScrollPhase::Ended;
+    gesture.send(event);
+    check(40, true);
+    event.phase = ScrollPhase::Momentum;
+    gesture.send(event);
+    check(40, true);
+    event.scroll = {-2, 0};
+    gesture.send(event);
+    check(60, true);
+    event.phase = ScrollPhase::MomentumEnded;
+    event.scroll = {};
+    gesture.send(event);
+    check(60, false);
+    event.phase = ScrollPhase::Momentum;
+    event.scroll = {-2, 0};
+    gesture.send(event);
+    check(60, false);
 }
 
 TEST_CASE("Shift turns vertical wheel travel into horizontal only once across a text region",

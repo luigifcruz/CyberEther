@@ -323,7 +323,8 @@ bool PopupLayer::route(const MouseEvent& event) {
         if (item.alive.expired() || !claim(item.content).request || !Access::acceptsInput(*item.content)) {
             continue;
         }
-        if ((event.type == MouseEventType::Click || event.type == MouseEventType::Scroll) &&
+        if ((event.type == MouseEventType::Click || event.type == MouseEventType::Scroll ||
+             event.type == MouseEventType::Zoom) &&
             !item.rect.contains(event.position.x, event.position.y)) {
             continue;
         }
@@ -504,10 +505,11 @@ bool PopupLayer::mouseEvent(const MouseEvent& event) {
             return !dismiss.empty();
         }
         case MouseEventType::Scroll:
+        case MouseEventType::Zoom:
             if (inside) {
-                route(event);
+                return route(event) || !event.touch;
             }
-            return inside;
+            return false;
         case MouseEventType::Move:
             route(event);
             return inside;

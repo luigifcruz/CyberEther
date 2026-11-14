@@ -13,6 +13,7 @@ namespace Jetstream::Sakura {
 struct Component::Impl {
     struct LayoutKey {
         F32 pixelRatio = 0.0f;
+        F32 interfaceScale = 0.0f;
         F32 fontSize = 0.0f;
         U64 fontRevision = 0;
         Extent2D<F32> translation = {0.0f, 0.0f};
@@ -76,6 +77,8 @@ struct Component::Impl {
     bool prepared = false;
     bool concealed = false;
     U64 childGeneration = 0;
+    U64 attachmentGeneration = 0;
+    U64 hiddenGeneration = 0;
     std::shared_ptr<FocusScope> focusScope;
     std::weak_ptr<FocusScope> focusHandle;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);

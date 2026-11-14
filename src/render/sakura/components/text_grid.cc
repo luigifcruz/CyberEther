@@ -263,7 +263,7 @@ struct TextGrid::Impl {
     F32 glideFrom = 0.0f;
     F32 glideTo = 0.0f;
     Extent2D<F32> elastic = {0.0f, 0.0f};
-    F32 pixelRatio = 1.0f;
+    F32 pointRatio = 1.0f;
     bool stickToBottomPending = false;
     F32 fontSizePixels = Typography::FontSize;
 
@@ -2032,7 +2032,7 @@ struct TextGrid::Impl {
         if (regionScroll.empty() || !pointerInside(position)) {
             return false;
         }
-        const bool swapped = event.modifiers.shift && event.scroll.x == 0.0f;
+        const bool swapped = !event.touch && event.modifiers.shift && event.scroll.x == 0.0f;
         const F32 dx = swapped ? event.scroll.y : event.scroll.x;
         const F32 dy = swapped ? 0.0f : event.scroll.y;
         if (dx == 0.0f || std::abs(dx) < std::abs(dy)) {
@@ -2045,12 +2045,12 @@ struct TextGrid::Impl {
         if (region >= regionScroll.size() || contentY < row.top || contentY >= row.top + row.height) {
             return false;
         }
-        const F32 step = WheelStep(event, lineHeightPixels() * kWheelScrollLines, pixelRatio);
+        const F32 step = WheelStep(event, lineHeightPixels() * kWheelScrollLines, pointRatio);
         const F32 previous = regionScroll[region];
         const F32 target = previous - dx * step;
         const F32 next = std::clamp(target, 0.0f, regionMaxScrollX(region));
         if (next == previous) {
-            return false;
+            return event.touch && regionMaxScrollX(region) > 0.0f;
         }
         event.scroll = {target == next ? 0.0f : (next - target) / step, 0.0f};
         event.modifiers.shift = false;
@@ -3110,7 +3110,7 @@ void TextGrid::layout(const Context& ctx) {
     impl->rect = frame();
     impl->clip = std::optional<Rect>(Intersect(frame(), clip()));
     impl->surfaceHeight = static_cast<F32>(ctx.framebufferSize.y);
-    impl->pixelRatio = ctx.pixelRatio;
+    impl->pointRatio = PointRatio(ctx);
     impl->now = ctx.time;
     impl->layingOut = true;
     if (ctx.windowFocused && !impl->windowFocused) {

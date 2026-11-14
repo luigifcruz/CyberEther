@@ -3,6 +3,7 @@
 #include "component_harness.hh"
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
 
@@ -26,6 +27,7 @@ struct Board : Sakura::Component {
     using Component::inheritedClip;
     using Component::mountChildren;
     using Component::removeChild;
+    using Component::scrollPhaseEnded;
     using Component::setChildren;
 
     std::vector<std::pair<Sakura::Component*, Rect>> slots;
@@ -545,7 +547,7 @@ TEST_CASE("Child mutation stays safe when a cancel callback destroys a child or 
             return Probe::mouseEvent(event);
         }
     };
-    const int mode = GENERATE(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+    const int mode = GENERATE(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
     CAPTURE(mode);
     auto board = std::make_unique<Board>();
     auto a = std::make_unique<Fragile>();
@@ -558,6 +560,18 @@ TEST_CASE("Child mutation stays safe when a cancel callback destroys a child or 
     const auto detached = [](const Sakura::Component& child) { return &Sakura::Access::root(child) == &child; };
 
     switch (mode) {
+        case 10:
+            a->onCancel = [&] { a.reset(); };
+            a->setVisible(false);
+            CHECK(a != nullptr);
+            CHECK_FALSE(a->visible());
+            break;
+        case 11:
+            a->onCancel = [&] { board.reset(); };
+            board->setVisible(false);
+            CHECK(board != nullptr);
+            CHECK_FALSE(board->visible());
+            break;
         case 0:
             a->onCancel = [&] { b.reset(); a.reset(); };
             board->mountChildren({third});
@@ -639,4 +653,61 @@ TEST_CASE("Child mutation stays safe when a cancel callback destroys a child or 
             break;
         }
     }
+}
+
+TEST_CASE("Scroller withdrawal and clip changes cancel explicit elastic gestures", "[core][sakura][component][wayland-scroll]") {
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    Sakura::Scroller scroll;
+    scroll.update({.contentHeight = 1000.0f});
+    Board board;
+    board.put(scroll, {0.0f, 0.0f, 200.0f, 100.0f});
+    const auto place = [&] { board.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f}); };
+    place();
+    auto event = Wheel(100.0f, 50.0f, 4.0f);
+    event.phase = ScrollPhase::Began;
+    REQUIRE(board.mouseEventChildren(event));
+    REQUIRE(scroll.overscroll(ctx).y < 0.0f);
+    SECTION("unmount and remount the same identity") {
+        board.mountChildren({});
+        event.phase = ScrollPhase::Ended;
+        event.scroll = {0.0f, 0.0f};
+        board.mouseEventChildren(event);
+        board.mountChildren({&scroll});
+    }
+    SECTION("remove and reattach the same identity") {
+        board.removeChild(scroll);
+        board.attach(scroll);
+    }
+    SECTION("clip excludes the pinned release") {
+        board.bound = Rect{0.0f, 0.0f, 50.0f, 100.0f};
+        place();
+        event.phase = ScrollPhase::Ended;
+        event.scroll = {0.0f, 0.0f};
+        board.mouseEventChildren(event);
+        board.bound.reset();
+    }
+    place();
+    CHECK(scroll.overscroll(ctx).y == 0.0f);
+    ctx.time += 2.0;
+    place();
+    CHECK(scroll.overscroll(ctx).y == 0.0f);
+}
+
+TEST_CASE("A scroller destroyed by its release callback ends the broadcast safely", "[core][sakura][component][wayland-scroll]") {
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    auto scroll = std::make_unique<Sakura::Scroller>();
+    scroll->update({.contentHeight = 1000.0f});
+    Board board;
+    board.put(*scroll, {0.0f, 0.0f, 200.0f, 100.0f});
+    board.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    auto event = Wheel(100.0f, 50.0f, 4.0f);
+    event.phase = ScrollPhase::Began;
+    REQUIRE(board.mouseEventChildren(event));
+    REQUIRE(scroll->overscroll(ctx).y < 0.0f);
+    scroll->update({.contentHeight = 1000.0f, .onOverscroll = [&] { scroll.reset(); }});
+    board.scrollPhaseEnded(ScrollPhase::Ended);
+    CHECK(scroll == nullptr);
+    CHECK(board.children().empty());
 }

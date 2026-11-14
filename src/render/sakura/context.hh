@@ -32,6 +32,7 @@ struct Context {
     std::reference_wrapper<const Palette> palette = EmptyPalette();
     Render::Window* render = nullptr;
     F32 pixelRatio = 1.0f;
+    F32 interfaceScale = 1.0f;
     Extent2D<U64> framebufferSize = {0, 0};
     bool windowFocused = false;
     std::optional<Extent2D<F32>> mouse;

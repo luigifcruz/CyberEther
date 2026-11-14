@@ -1,4 +1,5 @@
 src_lst += files([
+    'touch_scroll.cc',
     'chat_transcript.cc',
     'component.cc',
     'input_router.cc',

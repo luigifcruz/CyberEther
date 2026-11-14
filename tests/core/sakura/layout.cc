@@ -16,6 +16,8 @@
 #include <jetstream/render/sakura/components/wave_line.hh>
 
 #include "component_harness.hh"
+#include "render/sakura/metrics.hh"
+#include "viewport/glfw/tools/wayland_scroll.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -707,6 +709,21 @@ TEST_CASE("Scrollers follow trackpad gestures point for point and keep the wheel
     place();
     REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
     CHECK(scrollY == 76.0f);
+
+    ctx.interfaceScale = 2.0f;
+    place();
+    REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
+    CHECK(scrollY == 86.0f);
+    place();
+    REQUIRE(wheel(-1.0f, ScrollPhase::None));
+    CHECK(scrollY == 134.0f);
+
+    place();
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 300.0f});
+    ctx.interfaceScale = 1.0f;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 300.0f});
+    REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
+    CHECK(scrollY == 154.0f);
 }
 
 namespace {
@@ -717,6 +734,7 @@ struct ElasticRig {
     Host host{scroll};
     F32 scrollY = 0.0f;
     U64 notified = 0;
+    Rect bounds = {0.0f, 0.0f, 200.0f, 100.0f};
 
     ElasticRig() {
         ctx.time = 1.0;
@@ -727,10 +745,10 @@ struct ElasticRig {
         scroll.update({.id = "elastic",
                        .contentHeight = 1000.0f,
                        .scrollY = scrollY,
-                       .wheelStep = 48.0f,
+                       .wheelStep = Sakura::kWheelStep,
                        .onScrollY = [this](F32 next) { scrollY = next; },
                        .onOverscroll = [this] { ++notified; }});
-        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+        host.place(ctx, bounds);
     }
 
     bool wheel(F32 dy, ScrollPhase phase) {
@@ -792,6 +810,171 @@ TEST_CASE("Trackpad drags stretch past the edge with resistance and spring back 
     CHECK(rig.scrollY == 0.0f);
 }
 
+TEST_CASE("Wayland precision scrolling retains the ordinary scroll distance and fractional movement",
+          "[core][sakura][layout][wayland-scroll]") {
+    using Source = Viewport::WaylandScroll::Source;
+    Source source = Source::Finger;
+    SECTION("touchpad") { source = Source::Finger; }
+    SECTION("continuous device") { source = Source::Continuous; }
+    SECTION("wheel") { source = Source::Wheel; }
+
+    ElasticRig rig;
+    rig.scrollY = 200.0f;
+    rig.place();
+    Viewport::WaylandScroll native;
+    Render::InputState input;
+    const auto move = [&](F32 distance, U32 time) {
+        native.source = source;
+        native.timestamp = time;
+        native.axes[0].distance = distance;
+        std::vector<Render::InputQueue::Event> queued;
+        native.frame(time / 1000.0, true, [&](auto event) {
+            event.position = Extent2D<F32>{100.0f, 50.0f};
+            queued.push_back(event);
+        });
+        input.advance(time / 1000.0, queued);
+        for (const auto& event : input.events()) {
+            if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                REQUIRE(rig.host.send(*mouse));
+            }
+        }
+        rig.place();
+    };
+    move(10.0f, 100);
+    CHECK(rig.scrollY == Catch::Approx(248.0f));
+    move(0.25f, 110);
+    CHECK(rig.scrollY == Catch::Approx(249.2f));
+}
+
+TEST_CASE("Wayland touchpads at the default speed move one wheel step per ten axis units",
+          "[core][sakura][layout][wayland-scroll]") {
+    using Source = Viewport::WaylandScroll::Source;
+    Source source = Source::Finger;
+    SECTION("touchpad") { source = Source::Finger; }
+    SECTION("wheel") { source = Source::Wheel; }
+
+    ElasticRig rig;
+    rig.scrollY = 200.0f;
+    rig.place();
+    Viewport::WaylandScroll native;
+    Render::InputState input;
+    std::vector<Render::InputQueue::Event> queued;
+    native.source = source;
+    native.timestamp = 100;
+    native.axes[0].distance = 10.0f;
+    native.frame(0.1, true, [&](auto event) {
+        event.position = Extent2D<F32>{100.0f, 50.0f};
+        queued.push_back(event);
+    });
+    input.advance(0.1, queued);
+    for (const auto& event : input.events()) {
+        if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+            REQUIRE(rig.host.send(*mouse));
+        }
+    }
+    rig.place();
+    CHECK(rig.scrollY == Catch::Approx(200.0f + Sakura::kWheelStep));
+}
+
+TEST_CASE("Wayland flings carry a scroller to its edge across batched rendered frames",
+          "[core][sakura][layout][wayland-scroll]") {
+    using Source = Viewport::WaylandScroll::Source;
+    ElasticRig rig;
+    rig.scrollY = 200.0f;
+    rig.place();
+    Viewport::WaylandScroll native;
+    Render::InputState input;
+    std::vector<Render::InputQueue::Event> queued;
+    const auto emit = [&](auto event) {
+        event.position = Extent2D<F32>{100.0f, 50.0f};
+        queued.push_back(event);
+    };
+    F64 now = rig.ctx.time;
+    const auto render = [&] {
+        input.advance(now, queued);
+        queued.clear();
+        for (const auto& event : input.events()) {
+            if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                rig.host.send(*mouse);
+            }
+        }
+        rig.ctx.time = now;
+        rig.place();
+    };
+    for (U32 i = 0; i < 3; ++i) {
+        native.source = Source::Finger;
+        native.timestamp = 100 + i * 10;
+        native.axes[0].distance = 10.0f;
+        native.frame(now, true, emit);
+        now += 0.01;
+        render();
+    }
+    native.timestamp = 125;
+    native.axes[0].stopped = true;
+    native.frame(now, true, emit);
+    render();
+    const F32 lifted = rig.scrollY;
+    U64 ended = 0;
+    for (U32 frame = 0; frame < 180; ++frame) {
+        for (U32 pump = 0; pump < 5; ++pump) {
+            now += 1.0 / 300.0;
+            native.step(now, emit);
+        }
+        for (const auto& event : queued) {
+            const auto& wheel = std::get<Render::InputQueue::Wheel>(event);
+            ended += wheel.phase == ScrollPhase::MomentumEnded ? 1 : 0;
+        }
+        render();
+    }
+    CHECK(ended == 1);
+    CHECK(rig.scrollY > lifted + 100.0f);
+    CHECK(rig.scrollY == Catch::Approx(900.0f));
+    CHECK(rig.offset() == 0.0f);
+}
+
+TEST_CASE("Stretched gestures hold elastic space until the actual lift", "[core][sakura][layout]") {
+    ElasticRig rig;
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began));
+    const F32 held = rig.offset();
+    REQUIRE(held < 0.0f);
+    CHECK(rig.advance(2.0) == held);
+    CHECK_FALSE(rig.wheel(0.0f, ScrollPhase::Ended));
+    CHECK(rig.advance(1.0) == 0.0f);
+}
+
+TEST_CASE("Withdrawn and cancelled gestures cannot retain elastic space", "[core][sakura][layout][wayland-scroll]") {
+    ElasticRig rig;
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began));
+    REQUIRE(rig.offset() < 0.0f);
+    // Hidden subtrees are concealed by the next paint pass.
+    SECTION("hidden scroller misses release") {
+        rig.scroll.setVisible(false);
+        REQUIRE(Sakura::Access::paint(rig.scroll) == Result::SUCCESS);
+        rig.wheel(0.0f, ScrollPhase::Ended);
+        rig.scroll.setVisible(true);
+    }
+    SECTION("hidden ancestor cancels descendants") {
+        rig.host.setVisible(false);
+        REQUIRE(Sakura::Access::paint(rig.host) == Result::SUCCESS);
+        rig.host.setVisible(true);
+    }
+    SECTION("explicit cancellation") {
+        rig.host.send(MouseEvent{.type = MouseEventType::Cancel});
+    }
+    SECTION("target moves outside pinned release") {
+        rig.bounds.x = 300.0f;
+        rig.place();
+        rig.wheel(0.0f, ScrollPhase::Ended);
+        rig.bounds.x = 0.0f;
+    }
+    rig.place();
+    CHECK(rig.advance(2.0) == 0.0f);
+    REQUIRE(rig.wheel(4.0f, ScrollPhase::Began));
+    CHECK(rig.offset() < 0.0f);
+    rig.wheel(0.0f, ScrollPhase::Ended);
+    CHECK(rig.advance(1.0) == 0.0f);
+}
+
 TEST_CASE("Momentum after a stretched release never bounces again once the spring settles",
           "[core][sakura][layout]") {
     ElasticRig rig;
@@ -817,25 +1000,16 @@ TEST_CASE("Momentum after a stretched release never bounces again once the sprin
     CHECK(rig.offset() < 0.0f);
 }
 
-TEST_CASE("Stretched gestures that never report a lift release after a timeout", "[core][sakura][layout]") {
-    ElasticRig rig;
-    rig.wheel(0.0f, ScrollPhase::Began);
-    rig.wheel(4.0f, ScrollPhase::Changed);
-    const F32 held = rig.offset();
-    REQUIRE(held < 0.0f);
-    CHECK(rig.advance(0.25) == held);
-    CHECK(rig.advance(1.5) == 0.0f);
-}
-
-TEST_CASE("Stretches that start after an idle period hold until the gesture times out", "[core][sakura][layout]") {
+TEST_CASE("Resting fingers keep a stretch that started after an idle period", "[core][sakura][layout]") {
     ElasticRig rig;
     rig.ctx.time += 5.0;
     rig.wheel(0.0f, ScrollPhase::Began);
     rig.wheel(4.0f, ScrollPhase::Changed);
     const F32 held = rig.offset();
     REQUIRE(held < 0.0f);
-    CHECK(rig.advance(0.2) == held);
-    CHECK(rig.advance(1.5) == 0.0f);
+    CHECK(rig.advance(2.0) == held);
+    rig.wheel(0.0f, ScrollPhase::Ended);
+    CHECK(rig.advance(1.0) == 0.0f);
 }
 
 TEST_CASE("Scrollers leave trackpad gestures on an axis they cannot scroll to the scroller below",

@@ -71,8 +71,12 @@ inline F32 Hairline(const Context& ctx) {
     return std::max(1.0f, std::round(ctx.pixelRatio));
 }
 
-inline F32 WheelStep(const MouseEvent& event, F32 wheelStep, F32 pixelRatio) {
-    return event.phase != ScrollPhase::None || event.precise ? kPointsPerWheelUnit * pixelRatio : wheelStep;
+inline F32 PointRatio(const Context& ctx) {
+    return ctx.interfaceScale > 0.0f ? ctx.pixelRatio / ctx.interfaceScale : ctx.pixelRatio;
+}
+
+inline F32 WheelStep(const MouseEvent& event, F32 wheelStep, F32 pointRatio) {
+    return event.phase != ScrollPhase::None || event.precise ? kPointsPerWheelUnit * pointRatio : wheelStep;
 }
 
 inline ColorRGBA<F32> WithAlpha(ColorRGBA<F32> color, F32 alpha) {

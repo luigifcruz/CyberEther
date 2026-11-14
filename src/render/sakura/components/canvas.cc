@@ -76,6 +76,10 @@ struct Canvas::Impl {
     bool middleHeld = false;
     U64 dispatchDepth = 0;
     InputRouter router;
+    TouchScroll touchScroll;
+    enum class TouchMode { None, Scroll, Drag };
+    TouchMode touchMode = TouchMode::None;
+    Extent2D<F32> touchOrigin = {0.0f, 0.0f};
     bool inputDirtied = false;
     U64 deferredBuilds = 0;
     std::string surfaceId;
@@ -88,6 +92,7 @@ struct Canvas::Impl {
         Render::Window* render = nullptr;
         Extent2D<U64> framebufferSize = {0, 0};
         F32 pixelRatio = 0.0f;
+        F32 interfaceScale = 0.0f;
         Render::WindowMetrics metrics;
         bool windowFocused = false;
 
@@ -101,6 +106,7 @@ struct Canvas::Impl {
             .render = ctx.render,
             .framebufferSize = ctx.framebufferSize,
             .pixelRatio = ctx.pixelRatio,
+            .interfaceScale = ctx.interfaceScale,
             .metrics = ctx.render ? ctx.render->metrics() : Render::WindowMetrics{},
             .windowFocused = ctx.windowFocused,
         };
@@ -129,6 +135,7 @@ struct Canvas::Impl {
             root->impl->attachTo(nullptr);
         }
         root = nullptr;
+        touchScroll.reset();
         surfaceView.update({});
         (void)destroySurface();
     }
@@ -159,6 +166,7 @@ struct Canvas::Impl {
             .palette = ctx.palette,
             .render = renderWindow,
             .pixelRatio = context.pixelRatio,
+            .interfaceScale = ctx.interfaceScale,
             .framebufferSize = context.framebufferSize,
             .windowFocused = windowFocused,
             .mouse = mouse,
@@ -403,8 +411,7 @@ struct Canvas::Impl {
         return true;
     }
 
-    void handleMouse(const MouseEvent& rawEvent) {
-        MouseEvent event = ConvertMouse(rawEvent, context.framebufferSize);
+    bool dispatchMouse(MouseEvent event) {
         if (event.type == MouseEventType::Release && event.cancel) {
             event.type = MouseEventType::Cancel;
         }
@@ -415,13 +422,73 @@ struct Canvas::Impl {
         }
 
         if (!root) {
-            return;
+            return false;
         }
 
-        Access::mouseEvent(*root, event);
+        const bool handled = event.type == MouseEventType::Scroll && event.touch && event.phase == ScrollPhase::Began
+            ? touchScroll.begin(*root, event) : Access::mouseEvent(*root, event);
         if (root && treeDirtied()) {
             inputDirtied = true;
         }
+        return handled;
+    }
+
+    void handleMouse(const MouseEvent& rawEvent) {
+        MouseEvent event = ConvertMouse(rawEvent, context.framebufferSize);
+        if (event.type == MouseEventType::Scroll && event.touch) {
+            if (event.cancel) {
+                const bool dragging = touchMode == TouchMode::Drag;
+                touchMode = TouchMode::None;
+                touchScroll.reset();
+                if (!dragging) {
+                    return;
+                }
+                event.type = MouseEventType::Cancel;
+                dispatchMouse(event);
+                return;
+            }
+            if (event.phase == ScrollPhase::Began) {
+                touchOrigin = event.position;
+                if (dispatchMouse(event)) {
+                    touchMode = touchScroll.active() ? TouchMode::Scroll : TouchMode::None;
+                    return;
+                }
+                touchMode = TouchMode::Drag;
+                event.type = MouseEventType::Click;
+                event.button = MouseButton::Left;
+                const U64 generation = root ? Access::focusGeneration(*root) : 0;
+                dispatchMouse(event);
+                if (root) {
+                    Access::clickFocus(*root, mouse, true, generation);
+                }
+                return;
+            }
+            if (touchMode == TouchMode::Scroll) {
+                touchScroll.send(event);
+                if (!touchScroll.active()) {
+                    touchMode = TouchMode::None;
+                }
+                if (root && treeDirtied()) {
+                    inputDirtied = true;
+                    invalidateSurface();
+                }
+            } else if (touchMode == TouchMode::Drag && event.phase == ScrollPhase::Ended) {
+                event.type = MouseEventType::Release;
+                event.button = MouseButton::Left;
+                event.position = mouse.value_or(touchOrigin);
+                dispatchMouse(event);
+            }
+            if (event.phase == ScrollPhase::MomentumEnded ||
+                (event.phase == ScrollPhase::Ended && touchMode == TouchMode::Drag)) {
+                touchMode = TouchMode::None;
+            }
+            return;
+        }
+        if (event.type == MouseEventType::Cancel || event.type == MouseEventType::Leave) {
+            touchScroll.reset();
+            touchMode = TouchMode::None;
+        }
+        dispatchMouse(event);
     }
 
     void guardUnderlays() {
@@ -542,12 +609,19 @@ Canvas::~Canvas() = default;
 void Canvas::unmount(const Component& component) {
     if (impl->root == &component) {
         impl->root = nullptr;
+        impl->touchMode = Impl::TouchMode::None;
+        impl->touchScroll.reset();
     }
 }
 
 void Canvas::mount(Component& root) {
+    const bool changed = impl->root != &root;
     this->impl->root = &root;
     root.impl->attachTo(this);
+    if (changed) {
+        impl->touchMode = Impl::TouchMode::None;
+        impl->touchScroll.reset();
+    }
 }
 
 void Canvas::update(Config config) {

@@ -169,6 +169,22 @@ TEST_CASE("Show tips updates the interface state and persists the setting", "[co
     CHECK(settings.interface.showTips);
 }
 
+TEST_CASE("Touchpad scroll speed updates the interface state and persists the setting", "[core][compositor][settings-tab]") {
+    TestSupport::SettingsSandbox sandbox("compositor-scroll-speed");
+    sandbox.require();
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    SettingsActions actions(state, callbacks);
+    CHECK(state.interface.touchpadScrollSpeed == Settings::Interface::DefaultTouchpadScrollSpeed);
+
+    REQUIRE(actions.handle(MailSetTouchpadScrollSpeed{.value = 2.4f}) == Result::SUCCESS);
+    CHECK(state.interface.touchpadScrollSpeed == 2.4f);
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    CHECK(settings.interface.touchpadScrollSpeed == 2.4f);
+}
+
 TEST_CASE("Adding a plugin path that fails validation leaves the settings tab and registry snapshot alone",
           "[core][compositor][settings-tab]") {
     DefaultCompositorState state;
