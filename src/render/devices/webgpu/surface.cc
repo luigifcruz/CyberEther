@@ -6,6 +6,9 @@
 #include "jetstream/render/devices/webgpu/draw.hh"
 #include "jetstream/render/devices/webgpu/vertex.hh"
 
+#include <algorithm>
+#include <optional>
+
 namespace Jetstream::Render {
 
 using Implementation = SurfaceImp<DeviceType::WebGPU>;
@@ -145,12 +148,27 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder, bool visible) {
         wgpuCommandEncoderBeginRenderPass(commandEncoder, &renderPass);
 
     const auto& sz = framebuffer->size();
+    const ScissorRect fullScissor = {0, 0, static_cast<U32>(sz.x), static_cast<U32>(sz.y)};
+    std::optional<ScissorRect> previousScissor;
     for (auto& program : programs) {
         if (!program->enabled()) {
             continue;
         }
-        wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, 0, 0, sz.x, sz.y);
-        JST_CHECK(program->draw(renderPassEncoder, sz));
+        auto scissor = program->getConfig().scissorRect.value_or(fullScissor);
+        if (scissor.x >= sz.x || scissor.y >= sz.y) {
+            continue;
+        }
+        scissor.width = static_cast<U32>(std::min<U64>(scissor.width, sz.x - scissor.x));
+        scissor.height = static_cast<U32>(std::min<U64>(scissor.height, sz.y - scissor.y));
+        if (scissor.width == 0 || scissor.height == 0) {
+            continue;
+        }
+        if (previousScissor != scissor) {
+            wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, scissor.x, scissor.y, scissor.width,
+                                                scissor.height);
+            previousScissor = scissor;
+        }
+        JST_CHECK(program->draw(renderPassEncoder));
     }
 
     wgpuRenderPassEncoderEnd(renderPassEncoder);

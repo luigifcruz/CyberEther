@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <utility>
 
 #include "jetstream/render/devices/webgpu/buffer.hh"
@@ -296,31 +295,8 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::draw(WGPURenderPassEncoder& renderPassEncoder,
-                            const Extent2D<U64>& framebufferSize) {
+Result Implementation::draw(WGPURenderPassEncoder& renderPassEncoder) {
     wgpuRenderPassEncoderSetPipeline(renderPassEncoder, pipeline);
-
-    // Set scissor rect.
-    if (config.scissorRect) {
-        const auto& sr = *config.scissorRect;
-        if (sr.x >= framebufferSize.x || sr.y >= framebufferSize.y) {
-            return Result::SUCCESS;
-        }
-
-        const U32 width = static_cast<U32>(std::min<U64>(
-            sr.width, framebufferSize.x - sr.x));
-        const U32 height = static_cast<U32>(std::min<U64>(
-            sr.height, framebufferSize.y - sr.y));
-        if (width == 0 || height == 0) {
-            return Result::SUCCESS;
-        }
-
-        wgpuRenderPassEncoderSetScissorRect(renderPassEncoder,
-                                            sr.x,
-                                            sr.y,
-                                            width,
-                                            height);
-    }
 
     if (!bindings.empty()) {
         wgpuRenderPassEncoderSetBindGroup(renderPassEncoder, 0, bindGroup, 0, nullptr);
