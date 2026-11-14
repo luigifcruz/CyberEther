@@ -150,9 +150,14 @@ if jst_is_windows
     }
 endif
 if jst_is_linux and not jst_is_static and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
-    wayland_pointer_server_protocol = custom_target('pointer-gestures-server',
-        input: pointer_xml, output: 'pointer-gestures-server.h',
-        command: [pointer_scanner, 'server-header', '@INPUT@', '@OUTPUT@'])
+    wayland_pointer_server_protocol = [
+        custom_target('wayland-server',
+            input: wayland_xml, output: 'wayland-protocol-server.h',
+            command: [pointer_scanner, 'server-header', '@INPUT@', '@OUTPUT@']),
+        custom_target('pointer-gestures-server',
+            input: pointer_xml, output: 'pointer-gestures-server.h',
+            command: [pointer_scanner, 'server-header', '@INPUT@', '@OUTPUT@']),
+    ]
     wayland_pointer_tests = executable(
         'jetstream-core-wayland-pointer-tests',
         ['render/wayland_pointer.cc', wayland_pointer_server_protocol] + wayland_pointer_protocols,

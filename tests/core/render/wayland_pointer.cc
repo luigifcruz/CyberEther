@@ -8,7 +8,7 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 #include <wayland-client-core.h>
-#include <wayland-server.h>
+#include "wayland-protocol-server.h"
 #include <sys/socket.h>
 
 #include <memory>
