@@ -116,6 +116,7 @@ struct DefaultCompositorState {
             Agent::Session::Phase phase = Agent::Session::Phase::Idle;
             F32 input = 0.0f;
             F32 output = 0.0f;
+            bool muted = false;
         };
 
         struct UiState {

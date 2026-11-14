@@ -31,6 +31,7 @@ struct AgentActions {
                               MailSetAgentChatVisible,
                               MailSetAgentVoiceVisible,
                               MailStartAgentVoice,
+                              MailSetAgentVoiceMuted,
                               MailSubmitAgentChat,
                               MailCancelAgentChat,
                               MailClearAgentChat,
@@ -102,6 +103,14 @@ struct AgentActions {
     Result handle(const MailStartAgentVoice&) {
         if (state.agent.ui.voiceVisible && !startVoice()) {
             hideVoice();
+        }
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetAgentVoiceMuted& msg) {
+        if (state.agent.ui.voiceVisible) {
+            runtime.setMuted(msg.value);
+            state.agent.voice.muted = msg.value;
         }
         return Result::SUCCESS;
     }

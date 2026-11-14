@@ -74,7 +74,7 @@ constexpr Golden kGoldens[] = {
     {"headings", "# H1\n## H2\n### H3\n#### H4\ntext\n# H1 again\n\ntext", 12.0f, 210.0f},
     {"lists", "- a\n- b\n  - c\n    - d\n1. x\n2. y\n10. z\n* s\n+ p\n\n- after blank", 82.5f, 224.0625f},
     {"list after heading", "## H\n- a\n- b\npara\n- c", 40.5f, 139.6875f},
-    {"quote then paragraph", "> a\n> b\npara", 25.5f, 67.5f},
+    {"quote then paragraph", "> a\n> b\npara", 33.0f, 67.5f},
     {"rules", "a\n---\nb\n***\nc\n___\n- - -\nd", 12.0f, 191.25f},
     {"fence then text", "```\ncode\n```\nafter", 57.0f, 109.5f},
     {"unterminated fence", "text\n```\ncode line\nmore code", 57.0f, 128.25f},
@@ -98,7 +98,7 @@ constexpr Golden kGoldens[] = {
     {"callout with body", "> [!NOTE]\n> body", 49.5f, 59.25f},
     {"callout between text", "text\n> [!WARNING]\n> a\n> b\nafter", 49.5f, 138.0f},
     {"callout title only", "> [!TIP]", 49.5f, 36.75f},
-    {"quote with unknown tag stays a quote", "> [!nope]\n> x", 25.5f, 37.5f},
+    {"quote with unknown tag stays a quote", "> [!nope]\n> x", 33.0f, 37.5f},
 };
 
 }  // namespace

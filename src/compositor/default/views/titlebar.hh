@@ -76,8 +76,10 @@ struct TitlebarView {
 
         Phase phase = Phase::Idle;
         F32 level = 0.0f;
+        bool muted = false;
         Sakura::Callback<void()> onStart;
         Sakura::Callback<void()> onStop;
+        Sakura::Callback<void()> onMute;
     };
 
     struct Config {
@@ -225,10 +227,12 @@ struct TitlebarView {
             voicePill.update({
                 .phase = voice.phase,
                 .level = voice.level,
+                .muted = voice.muted,
                 .startHint = "Click to reconnect",
                 .stopHint = "Click to end",
                 .onStart = voice.onStart,
                 .onStop = voice.onStop,
+                .onMute = voice.onMute,
             });
             indicators.push_back({.child = &voicePill});
         } else if (this->config.intelligenceEnabled) {

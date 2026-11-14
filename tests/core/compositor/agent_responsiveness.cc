@@ -8,12 +8,14 @@
 
 #include "agent_voice.hh"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <future>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace Jetstream;
@@ -30,7 +32,7 @@ struct Harness {
     std::vector<std::string> notices;
     AgentRuntime runtime;
 
-    explicit Harness(Agent::Session::LiveFactory factory);
+    explicit Harness(Agent::Session::LiveFactory factory, Agent::Session::AudioFactory audio = {});
 
     std::vector<std::string> recorded() {
         std::lock_guard lock(mutex);
@@ -94,9 +96,9 @@ std::unique_ptr<Agent::Session::Audio> Silent(U32) {
     return std::make_unique<SilentAudio>();
 }
 
-Harness::Harness(Agent::Session::LiveFactory factory) :
+Harness::Harness(Agent::Session::LiveFactory factory, Agent::Session::AudioFactory audio) :
     callbacks(Recording(*this)),
-    runtime(state, callbacks, {.live = std::move(factory), .audio = Silent}) {}
+    runtime(state, callbacks, {.live = std::move(factory), .audio = audio ? std::move(audio) : Silent}) {}
 
 struct Gate {
     std::promise<void> entered;
@@ -440,4 +442,130 @@ TEST_CASE("Voice worker starts with fresh instructions and no conversation hando
     const auto transcript = session.snapshot();
     REQUIRE_FALSE(transcript.messages.empty());
     CHECK(transcript.messages.back().text == "Current speech");
+}
+
+TEST_CASE("Muting a voice call sends silence through teardown and hides the input level until the call ends",
+          "[agent][compositor][voice]") {
+    struct Sent {
+        std::mutex mutex;
+        std::vector<std::vector<I16>> chunks;
+
+        std::vector<std::vector<I16>> take() {
+            std::lock_guard lock(mutex);
+            return std::exchange(chunks, {});
+        }
+    };
+
+    struct Recorder final : FakeConnection {
+        Agent::Live::Callbacks callbacks;
+        Sent& sent;
+
+        Recorder(Agent::Live::Callbacks callbacks, Sent& sent)
+            : FakeConnection(callbacks), callbacks(std::move(callbacks)), sent(sent) {}
+
+        Result start() override {
+            callbacks.onState(Agent::Live::State::Listening, "");
+            return Result::SUCCESS;
+        }
+
+        void stop() override {}
+
+        void send(const std::vector<I16>& samples) override {
+            std::lock_guard lock(sent.mutex);
+            sent.chunks.push_back(samples);
+        }
+    };
+
+    struct LoudAudio final : Agent::Session::Audio {
+        LoudAudio() : Audio(24000) {}
+
+        Result start() override {
+            return Result::SUCCESS;
+        }
+
+        void stop() override {}
+
+        std::vector<I16> capture(U64 minimumSamples) override {
+            return std::vector<I16>(minimumSamples, I16{1000});
+        }
+
+        void play(const std::string&) override {}
+
+        void flush() override {}
+
+        F32 input() const override {
+            return 0.5f;
+        }
+
+        F32 output() const override {
+            return 0.0f;
+        }
+    };
+
+    Sent sent;
+    Harness harness(
+        [&](auto, auto callbacks) {
+            return std::make_unique<Recorder>(std::move(callbacks), sent);
+        },
+        [](U32) -> std::unique_ptr<Agent::Session::Audio> {
+            return std::make_unique<LoudAudio>();
+        });
+    auto& runtime = harness.runtime;
+
+    const auto await = [&](const auto& predicate) {
+        const auto deadline = std::chrono::steady_clock::now() + 3s;
+        while (std::chrono::steady_clock::now() < deadline) {
+            runtime.poll();
+            if (predicate()) {
+                return true;
+            }
+            std::this_thread::sleep_for(5ms);
+        }
+        return false;
+    };
+    const auto quiet = [](const std::vector<I16>& chunk) {
+        return std::all_of(chunk.begin(), chunk.end(), [](I16 sample) {
+            return sample == 0;
+        });
+    };
+    const auto silent = [&](const std::vector<std::vector<I16>>& chunks) {
+        return std::all_of(chunks.begin(), chunks.end(), quiet);
+    };
+    std::vector<std::vector<I16>> received;
+    const auto collect = [&] {
+        for (auto& chunk : sent.take()) {
+            received.push_back(std::move(chunk));
+        }
+    };
+
+    runtime.listen({});
+    REQUIRE(await([&] {
+        return harness.state.agent.voice.input > 0.0f;
+    }));
+    REQUIRE(await([&] {
+        collect();
+        return !received.empty();
+    }));
+    CHECK_FALSE(quiet(received.front()));
+    CHECK_FALSE(harness.state.agent.voice.muted);
+
+    runtime.setMuted(true);
+    REQUIRE(await([&] {
+        return harness.state.agent.voice.input == 0.0f;
+    }));
+    CHECK(harness.state.agent.voice.muted);
+    U64 first = 0;
+    REQUIRE(await([&] {
+        collect();
+        const auto found = std::find_if(received.begin(), received.end(), quiet);
+        first = static_cast<U64>(found - received.begin());
+        return found != received.end() && received.end() - found >= 3;
+    }));
+
+    runtime.hangup();
+    runtime.poll();
+    CHECK_FALSE(harness.state.agent.voice.muted);
+    runtime.shutdown();
+    collect();
+    CHECK(silent({received.begin() + static_cast<std::ptrdiff_t>(first), received.end()}));
 }

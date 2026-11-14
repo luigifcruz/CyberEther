@@ -35,6 +35,10 @@ struct MailSetAgentVoiceVisible {
 
 struct MailStartAgentVoice {};
 
+struct MailSetAgentVoiceMuted {
+    bool value = false;
+};
+
 enum class AgentComposer : U8 {
     Dock,
     Welcome,
@@ -808,6 +812,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetAgentChatVisible,
                           MailSetAgentVoiceVisible,
                           MailStartAgentVoice,
+                          MailSetAgentVoiceMuted,
                           MailSubmitAgentChat,
                           MailCancelAgentChat,
                           MailClearAgentChat,

@@ -5561,6 +5561,17 @@ TEST_CASE("Voice levels from the microphone and the assistant share one decibel 
     REQUIRE(idle->onStart);
     idle->onStart();
     CHECK(mailbox.count<MailStartAgentVoice>() == 1);
+    REQUIRE(idle->onMute);
+    CHECK_FALSE(idle->muted);
+    idle->onMute();
+    REQUIRE(mailbox.last<MailSetAgentVoiceMuted>() != nullptr);
+    CHECK(mailbox.last<MailSetAgentVoiceMuted>()->value);
+    mailbox.state.agent.voice.muted = true;
+    const auto muted = presenter.build();
+    REQUIRE(muted.has_value());
+    CHECK(muted->muted);
+    muted->onMute();
+    CHECK_FALSE(mailbox.last<MailSetAgentVoiceMuted>()->value);
     CHECK(TitlebarPresenter(mailbox.context()).build().voice.has_value());
 }
 

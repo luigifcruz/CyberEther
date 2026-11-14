@@ -4,6 +4,7 @@
 #include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -35,6 +36,8 @@ constexpr F32 kConnectingActivity = 0.35f;
 constexpr F32 kLevelRiseTime = 0.05f;
 constexpr F32 kLevelFallTime = 0.18f;
 constexpr F32 kHoverTime = 0.08f;
+constexpr F32 kMuteGap = 6.0f;
+constexpr F32 kMuteIcon = 14.0f;
 
 F32 Approach(F32 value, F32 goal, F32 elapsed) {
     value += (goal - value) * (1.0f - std::exp(-elapsed));
@@ -49,26 +52,82 @@ struct Voice::Impl {
     VoiceWave wave;
     Box cover;
     Text hint;
+    Box muteCover;
+    Text muteIcon;
+
+    Rect pill;
+    Rect mute;
 
     F32 busy = 0.0f;
     F32 activity = 0.0f;
     F32 level = 0.0f;
     F32 hover = 0.0f;
+    F32 muteHover = 0.0f;
     F32 clock = 0.0f;
 
     bool hovered = false;
+    bool hoveredMute = false;
     bool pressed = false;
+    bool pressedMute = false;
     bool starting = false;
     bool stalled = false;
 
+    bool mutes() const {
+        return static_cast<bool>(config.onMute);
+    }
+
     bool restarts() const {
         return config.phase == Phase::Idle && static_cast<bool>(config.onStart);
+    }
+
+    void split(const Context& ctx, const Rect& bounds) {
+        if (!mutes()) {
+            mute = {};
+            pill = bounds;
+            hoveredMute = false;
+            pressedMute = false;
+            return;
+        }
+        const F32 side = std::min(bounds.width, bounds.height);
+        const F32 offset = side + Px(ctx, kMuteGap);
+        mute = {bounds.x, bounds.y, side, bounds.height};
+        pill = {bounds.x + offset, bounds.y, std::max(0.0f, bounds.width - offset), bounds.height};
+    }
+
+    void layoutMute(Voice& self, const Context& ctx, bool shown) {
+        const F32 hover = std::clamp(muteHover, 0.0f, 1.0f);
+        const char* accent = config.muted ? "voice_stop" : "text_primary";
+        muteCover.update({
+            .instances = {{
+                .rect = mute,
+                .visible = shown && !mute.empty() && hover > 0.0f,
+                .backgroundColor = ctx.color("transparent"),
+            }},
+            .clip = mute,
+            .cornerRadius = mute.height * 0.5f,
+            .borderWidth = Px(ctx, kOutline),
+            .borderColor = WithAlpha(ctx.color(accent), hover),
+            .strokeFringe = true,
+            .capacity = 1,
+        });
+        self.layoutChild(ctx, muteCover, mute);
+
+        muteIcon.setVisible(!mute.empty());
+        muteIcon.update({
+            .str = config.muted ? ICON_LC_MIC_OFF : ICON_LC_MIC,
+            .align = Text::Align::Center,
+            .colorKey = config.muted ? "voice_stop" : (hoveredMute ? "text_primary" : "voice_dim"),
+            .scale = kMuteIcon / Typography::FontSize,
+        });
+        const F32 height = self.measureChild(muteIcon, ctx, {mute.width, std::numeric_limits<F32>::infinity()}).y;
+        self.layoutChild(ctx, muteIcon, {mute.x, std::round(mute.y + (mute.height - height) * 0.5f), mute.width, height},
+                         mute);
     }
 };
 
 Voice::Voice() {
     impl = std::make_unique<Impl>();
-    mountChildren({&impl->base, &impl->wave, &impl->cover, &impl->hint});
+    mountChildren({&impl->base, &impl->wave, &impl->cover, &impl->hint, &impl->muteCover, &impl->muteIcon});
 }
 
 Voice::~Voice() = default;
@@ -82,14 +141,16 @@ void Voice::update(Config config) {
 }
 
 Extent2D<F32> Voice::measure(const Context& ctx, Extent2D<F32> available) {
-    return FitExtent({Px(ctx, kWidth), Px(ctx, kHeight)}, available);
+    const F32 mute = impl->mutes() ? kHeight + kMuteGap : 0.0f;
+    return FitExtent({Px(ctx, kWidth + mute), Px(ctx, kHeight)}, available);
 }
 
 void Voice::layout(const Context& ctx) {
     auto& s = *impl;
     const auto& config = s.config;
-    const Rect bounds = frame();
-    const bool shown = !bounds.empty();
+    const bool shown = !frame().empty();
+    s.split(ctx, frame());
+    const Rect bounds = s.pill;
 
     const F32 dt = std::clamp(ctx.deltaTime, 0.0f, kMaxStep);
     const bool active = config.phase != Phase::Idle;
@@ -101,7 +162,10 @@ void Voice::layout(const Context& ctx) {
     s.activity = Approach(s.activity, engaged ? 1.0f : (active ? kConnectingActivity : 0.0f), dt / kActivityTime);
     s.level = Approach(s.level, level, dt / (level > s.level ? kLevelRiseTime : kLevelFallTime));
     s.hover = Approach(s.hover, hoverGoal, dt / kHoverTime);
-    const bool animating = active || s.busy != 0.0f || s.activity != 0.0f || s.level != 0.0f || s.hover != hoverGoal;
+    const F32 muteHoverGoal = s.hoveredMute ? 1.0f : 0.0f;
+    s.muteHover = Approach(s.muteHover, muteHoverGoal, dt / kHoverTime);
+    const bool animating = active || s.busy != 0.0f || s.activity != 0.0f || s.level != 0.0f ||
+                           s.hover != hoverGoal || s.muteHover != muteHoverGoal;
     if (animating) {
         s.clock += dt;
     }
@@ -113,17 +177,23 @@ void Voice::layout(const Context& ctx) {
     }
 
     const F32 radius = bounds.height * 0.5f;
+    std::vector<Rect> cards;
+    for (const Rect& rect : {s.mute, bounds}) {
+        if (shown && !rect.empty()) {
+            cards.push_back(rect);
+        }
+    }
     s.base.update({
-        .rects = shown ? std::vector<Rect>{bounds} : std::vector<Rect>{},
+        .rects = std::move(cards),
         .cornerRadius = radius,
         .softness = Px(ctx, kPillShadowSoftness),
         .drop = Px(ctx, kPillShadowDrop),
         .borderWidth = Px(ctx, 1.0f),
         .lineWidth = Px(ctx, 1.0f),
         .fillKey = "voice_bg",
-        .capacity = 1,
+        .capacity = 2,
     });
-    layoutChild(ctx, s.base, bounds);
+    layoutChild(ctx, s.base, frame());
 
     s.wave.update({
         .rect = bounds,
@@ -171,6 +241,8 @@ void Voice::layout(const Context& ctx) {
     const F32 height = measureChild(s.hint, ctx, {bounds.width, std::numeric_limits<F32>::infinity()}).y;
     layoutChild(ctx, s.hint, {bounds.x, std::round(bounds.y + (bounds.height - height) * 0.5f), bounds.width, height},
                 bounds);
+
+    s.layoutMute(*this, ctx, shown);
 }
 
 void Voice::wentOnscreen(U64) {
@@ -187,31 +259,52 @@ void Voice::wentOffscreen(U64) {
 bool Voice::mouseEvent(const MouseEvent& event) {
     auto& s = *impl;
     const Extent2D<F32> point = event.position;
-    const bool inside = frame().contains(point.x, point.y);
+    const bool inside = s.pill.contains(point.x, point.y);
+    const bool insideMute = !s.mute.empty() && s.mute.contains(point.x, point.y);
     switch (event.type) {
         case MouseEventType::Move:
-            if (s.hovered != inside) {
+            if (s.hovered != inside || s.hoveredMute != insideMute) {
                 s.hovered = inside;
+                s.hoveredMute = insideMute;
                 invalidate(Dirty::Layout);
             }
             return false;
         case MouseEventType::Leave:
         case MouseEventType::Cancel:
-            if (s.hovered) {
+            if (s.hovered || s.hoveredMute) {
                 invalidate(Dirty::Layout);
             }
             s.hovered = false;
+            s.hoveredMute = false;
             s.pressed = false;
+            s.pressedMute = false;
             return false;
         case MouseEventType::Click:
-            if (event.button != MouseButton::Left || !inside) {
+            if (event.button != MouseButton::Left) {
+                return false;
+            }
+            if (insideMute) {
+                s.pressedMute = true;
+                return true;
+            }
+            if (!inside) {
                 return false;
             }
             s.pressed = true;
             s.starting = s.restarts();
             return true;
         case MouseEventType::Release: {
-            if (event.button != MouseButton::Left || !s.pressed) {
+            if (event.button != MouseButton::Left) {
+                return false;
+            }
+            if (s.pressedMute) {
+                s.pressedMute = false;
+                if (insideMute && s.config.onMute) {
+                    s.config.onMute();
+                }
+                return true;
+            }
+            if (!s.pressed) {
                 return false;
             }
             s.pressed = false;
@@ -233,7 +326,8 @@ bool Voice::mouseEvent(const MouseEvent& event) {
 }
 
 std::optional<SurfaceCursor> Voice::cursorAt(const Extent2D<F32>& point) const {
-    if (!frame().contains(point.x, point.y)) {
+    const bool insideMute = !impl->mute.empty() && impl->mute.contains(point.x, point.y);
+    if (!insideMute && !impl->pill.contains(point.x, point.y)) {
         return std::nullopt;
     }
     return SurfaceCursor::Hand;
