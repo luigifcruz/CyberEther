@@ -69,6 +69,7 @@ struct RoundButton : public Component {
         F32 padding = 0.0f;
         F32 rounding = 0.0f;
         bool disabled = false;
+        bool chrome = false;
         std::string colorKey = "transparent";
         std::string hoveredColorKey = "button_hovered";
         std::string activeColorKey = "button_active";
@@ -80,6 +81,7 @@ struct RoundButton : public Component {
 
     Config config;
     Box background;
+    Card card;
     Label label;
     TextMetrics metrics;
     bool hovered = false;
@@ -87,6 +89,7 @@ struct RoundButton : public Component {
 
     RoundButton() {
         addChild(background);
+        addChild(card);
         addChild(label);
     }
 
@@ -117,11 +120,23 @@ struct RoundButton : public Component {
                                   : pressed && hovered ? config.activeColorKey
                                   : hovered            ? config.hoveredColorKey
                                                        : config.colorKey;
+        background.setVisible(!config.chrome);
         background.update({
             .instances = {{.rect = bounds, .visible = !bounds.empty(),
                            .backgroundColor = WithAlpha(ctx.color(fill), alpha)}},
             .clip = bounds,
             .cornerRadius = Px(ctx, config.rounding),
+        });
+        card.setVisible(config.chrome);
+        card.update({
+            .rects = {bounds},
+            .clip = clip(),
+            .cornerRadius = Px(ctx, config.rounding),
+            .borderWidth = Px(ctx, 1.0f),
+            .lineWidth = Px(ctx, 1.0f),
+            .fillKey = fill,
+            .opacity = alpha,
+            .capacity = 1,
         });
         label.update({
             .instances = {{.rect = bounds, .str = config.str, .visible = !bounds.empty() && !config.str.empty(),
@@ -132,6 +147,7 @@ struct RoundButton : public Component {
             .maxCharacters = 16,
         });
         layoutChild(ctx, background, bounds);
+        layoutChild(ctx, card, bounds);
         layoutChild(ctx, label, bounds);
     }
 
@@ -866,6 +882,7 @@ void ChatComposer::layout(const Context& ctx) {
         .fontSize = style.fontSize,
         .rounding = state.controlRounding(),
         .disabled = !config.busy && !voice && Jetstream::Text::IsBlank(state.text),
+        .chrome = style.chrome,
         .colorKey = "contrast_btn",
         .hoveredColorKey = "contrast_btn_hovered",
         .activeColorKey = "contrast_btn_active",
