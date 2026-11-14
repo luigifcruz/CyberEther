@@ -162,7 +162,7 @@ struct Scroller::Impl {
     ColorRGBA<F32> thumbColor = {1.0f, 1.0f, 1.0f, 0.25f};
     Elastic elasticX;
     Elastic elasticY;
-    F32 pixelRatio = 1.0f;
+    F32 pointRatio = 1.0f;
     F64 steppedAt = -1.0;
     Extent2D<F32> speed = {0.0f, 0.0f};
     Extent2D<F32> travel = {0.0f, 0.0f};
@@ -483,7 +483,7 @@ void Scroller::layout(const Context& ctx) {
     impl->viewport = frame();
     impl->inputClip = clip();
     impl->inputTranslation = translation();
-    impl->pixelRatio = ctx.pixelRatio;
+    impl->pointRatio = PointRatio(ctx);
     impl->resolveTheme(ctx);
     impl->scrollY = std::clamp(impl->targetY, 0.0f, impl->maxScrollY());
     impl->scrollX = std::clamp(impl->targetX, 0.0f, impl->maxScrollX());
@@ -572,7 +572,7 @@ bool Scroller::wheel(const MouseEvent& event) {
     }
 
     const bool sampled = event.phase != ScrollPhase::None || event.precise;
-    const F32 unit = WheelStep(event, s.config.wheelStep, s.pixelRatio);
+    const F32 unit = WheelStep(event, s.config.wheelStep, s.pointRatio);
     const bool dragging = event.phase == ScrollPhase::Began || event.phase == ScrollPhase::Changed;
     const bool coasting = event.phase == ScrollPhase::Momentum;
     const Extent2D<F32> before = {s.elasticX.offset, s.elasticY.offset};

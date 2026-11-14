@@ -63,6 +63,7 @@ void RequestPopup(const Context& ctx, PopupRequest request) {
 Component::Impl::LayoutKey Component::Impl::LayoutKey::Of(const Context& ctx) {
     return {
         .pixelRatio = ctx.pixelRatio,
+        .interfaceScale = ctx.interfaceScale,
         .fontSize = ctx.fontSize,
         .fontRevision = ctx.render ? ctx.render->fontRevision() : 0,
         .translation = ctx.translation,
@@ -72,7 +73,7 @@ Component::Impl::LayoutKey Component::Impl::LayoutKey::Of(const Context& ctx) {
 }
 
 bool Component::Impl::LayoutKey::matches(const Context& ctx) const {
-    return pixelRatio == ctx.pixelRatio && fontSize == ctx.fontSize && fontRevision == (ctx.render ? ctx.render->fontRevision() : 0) && translation == ctx.translation && backdropColorKey == ctx.backdropColorKey &&
+    return pixelRatio == ctx.pixelRatio && interfaceScale == ctx.interfaceScale && fontSize == ctx.fontSize && fontRevision == (ctx.render ? ctx.render->fontRevision() : 0) && translation == ctx.translation && backdropColorKey == ctx.backdropColorKey &&
            backdropTopColorKey == ctx.backdropTopColorKey;
 }
 

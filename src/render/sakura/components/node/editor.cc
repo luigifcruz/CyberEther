@@ -1397,6 +1397,7 @@ struct GraphRoot : public Component {
 
         Context measureCtx = ctx;
         measureCtx.pixelRatio = ratio;
+        measureCtx.interfaceScale = ratio / PointRatio(ctx);
         measureCtx.fontSize = kNodeFont;
         measureCtx.backdropColorKey = "node_background";
         for (const auto& id : depth) {
@@ -1439,6 +1440,7 @@ struct GraphRoot : public Component {
 
         Context nodeCtx = ctx.translated(offset);
         nodeCtx.pixelRatio = ratio;
+        nodeCtx.interfaceScale = ratio / PointRatio(ctx);
         nodeCtx.fontSize = kNodeFont;
         nodeCtx.backdropColorKey = "node_background";
         for (U64 i = 0; i < depth.size(); ++i) {

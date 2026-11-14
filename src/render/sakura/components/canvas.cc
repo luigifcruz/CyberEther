@@ -88,6 +88,7 @@ struct Canvas::Impl {
         Render::Window* render = nullptr;
         Extent2D<U64> framebufferSize = {0, 0};
         F32 pixelRatio = 0.0f;
+        F32 interfaceScale = 0.0f;
         Render::WindowMetrics metrics;
         bool windowFocused = false;
 
@@ -101,6 +102,7 @@ struct Canvas::Impl {
             .render = ctx.render,
             .framebufferSize = ctx.framebufferSize,
             .pixelRatio = ctx.pixelRatio,
+            .interfaceScale = ctx.interfaceScale,
             .metrics = ctx.render ? ctx.render->metrics() : Render::WindowMetrics{},
             .windowFocused = ctx.windowFocused,
         };
@@ -159,6 +161,7 @@ struct Canvas::Impl {
             .palette = ctx.palette,
             .render = renderWindow,
             .pixelRatio = context.pixelRatio,
+            .interfaceScale = ctx.interfaceScale,
             .framebufferSize = context.framebufferSize,
             .windowFocused = windowFocused,
             .mouse = mouse,

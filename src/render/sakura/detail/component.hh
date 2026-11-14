@@ -13,6 +13,7 @@ namespace Jetstream::Sakura {
 struct Component::Impl {
     struct LayoutKey {
         F32 pixelRatio = 0.0f;
+        F32 interfaceScale = 0.0f;
         F32 fontSize = 0.0f;
         U64 fontRevision = 0;
         Extent2D<F32> translation = {0.0f, 0.0f};

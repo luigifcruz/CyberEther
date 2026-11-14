@@ -111,6 +111,7 @@ struct Terminal::Impl {
     TerminalSprites canvas;
     bool stale = true;
     F32 syncedRatio = 0.0f;
+    F32 pointRatio = 1.0f;
     Render::Window* syncedWindow = nullptr;
     F32 fontPixels = 0.0f;
     F32 cellWidth = 1.0f;
@@ -134,6 +135,7 @@ struct Terminal::Impl {
     F64 blinkBase = 0.0;
 
     void sync(const Context& ctx) {
+        pointRatio = PointRatio(ctx);
         if (!stale && syncedRatio == ctx.pixelRatio && syncedWindow == ctx.render) {
             return;
         }
@@ -979,7 +981,7 @@ bool Terminal::mouseEvent(const MouseEvent& event) {
             if (!impl->inside(event.position) || event.scroll.y == 0.0f) {
                 return false;
             }
-            const F32 unit = WheelStep(event, kWheelRows * impl->cellHeight, impl->syncedRatio);
+            const F32 unit = WheelStep(event, kWheelRows * impl->cellHeight, impl->pointRatio);
             impl->wheelRemainder -= event.scroll.y * unit / impl->cellHeight;
             const F32 whole = std::trunc(impl->wheelRemainder);
             if (whole != 0.0f) {

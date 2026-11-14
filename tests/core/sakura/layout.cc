@@ -708,6 +708,21 @@ TEST_CASE("Scrollers follow trackpad gestures point for point and keep the wheel
     place();
     REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
     CHECK(scrollY == 76.0f);
+
+    ctx.interfaceScale = 2.0f;
+    place();
+    REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
+    CHECK(scrollY == 86.0f);
+    place();
+    REQUIRE(wheel(-1.0f, ScrollPhase::None));
+    CHECK(scrollY == 134.0f);
+
+    place();
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 300.0f});
+    ctx.interfaceScale = 1.0f;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 300.0f});
+    REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
+    CHECK(scrollY == 154.0f);
 }
 
 namespace {

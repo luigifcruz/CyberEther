@@ -263,7 +263,7 @@ struct TextGrid::Impl {
     F32 glideFrom = 0.0f;
     F32 glideTo = 0.0f;
     Extent2D<F32> elastic = {0.0f, 0.0f};
-    F32 pixelRatio = 1.0f;
+    F32 pointRatio = 1.0f;
     bool stickToBottomPending = false;
     F32 fontSizePixels = Typography::FontSize;
 
@@ -2045,7 +2045,7 @@ struct TextGrid::Impl {
         if (region >= regionScroll.size() || contentY < row.top || contentY >= row.top + row.height) {
             return false;
         }
-        const F32 step = WheelStep(event, lineHeightPixels() * kWheelScrollLines, pixelRatio);
+        const F32 step = WheelStep(event, lineHeightPixels() * kWheelScrollLines, pointRatio);
         const F32 previous = regionScroll[region];
         const F32 target = previous - dx * step;
         const F32 next = std::clamp(target, 0.0f, regionMaxScrollX(region));
@@ -3110,7 +3110,7 @@ void TextGrid::layout(const Context& ctx) {
     impl->rect = frame();
     impl->clip = std::optional<Rect>(Intersect(frame(), clip()));
     impl->surfaceHeight = static_cast<F32>(ctx.framebufferSize.y);
-    impl->pixelRatio = ctx.pixelRatio;
+    impl->pointRatio = PointRatio(ctx);
     impl->now = ctx.time;
     impl->layingOut = true;
     if (ctx.windowFocused && !impl->windowFocused) {
