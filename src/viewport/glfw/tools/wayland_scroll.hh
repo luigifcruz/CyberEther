@@ -125,10 +125,11 @@ class WaylandScroll {
 
     static F32 distance(const Axis& axis, bool precise) {
         constexpr F32 AxisUnitsPerStep = 10.0f;
+        constexpr F32 PointsPerStep = 48.0f;
         constexpr F32 PointsPerScrollUnit = 10.0f;
 
         if (precise) {
-            return -axis.distance / PointsPerScrollUnit;
+            return -axis.distance / AxisUnitsPerStep * PointsPerStep / PointsPerScrollUnit;
         }
         if (axis.value120.has_value()) {
             return -static_cast<F32>(*axis.value120) / 120.0f;
