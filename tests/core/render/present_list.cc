@@ -221,35 +221,6 @@ TEST_CASE("Identical consecutive frames skip presentation", "[core][render][pres
     CHECK(rig.viewport.idleWaits == 9);
 }
 
-TEST_CASE("Unconsumed momentum stays scheduled without spinning retained frames", "[core][render][present][retained]") {
-    using Queue = Render::InputQueue;
-    Rig rig;
-    REQUIRE(rig.frame() == Result::SUCCESS);
-    REQUIRE(rig.frame() == Result::SUCCESS);
-    for (U32 i = 0; i < 3; ++i) {
-        rig.viewport.input().push(Queue::Wheel{.delta = {0.0f, -1.0f},
-            .phase = i == 0 ? ScrollPhase::Began : ScrollPhase::Changed,
-            .precise = true, .explicitRelease = true, .synthesizeMomentum = true, .timestamp = 100 + i * 10});
-    }
-    rig.viewport.input().push(Queue::Wheel{.phase = ScrollPhase::Ended, .precise = true,
-        .explicitRelease = true, .synthesizeMomentum = true, .timestamp = 125});
-    REQUIRE(rig.frame() == Result::SUCCESS);
-    REQUIRE(rig.window.input().hasPending());
-    const U64 waits = rig.viewport.idleWaits;
-    const F64 delay = rig.window.input().waitTimeout(0.15);
-    CHECK(delay > 0.0);
-    CHECK(delay < 0.01);
-    rig.viewport.platform().clock += delay;
-    REQUIRE(rig.frame() == Result::SUCCESS);
-    CHECK(rig.viewport.idleWaits == waits + 1);
-    CHECK(rig.window.input().hasPending());
-    CHECK(rig.presents() == 1);
-    rig.viewport.input().push(Queue::Focus{false});
-    REQUIRE(rig.frame() == Result::SUCCESS);
-    CHECK_FALSE(rig.window.input().hasPending());
-    CHECK(rig.window.input().waitTimeout(0.15) == 0.15);
-}
-
 TEST_CASE("Surface wakes pause after a woken frame skips presentation until a frame presents",
           "[core][render][present][retained]") {
     Rig rig;

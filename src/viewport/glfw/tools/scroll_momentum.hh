@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_RENDER_BASE_SCROLL_MOMENTUM_HH
-#define JETSTREAM_RENDER_BASE_SCROLL_MOMENTUM_HH
+#ifndef JETSTREAM_VIEWPORT_GLFW_SCROLL_MOMENTUM_HH
+#define JETSTREAM_VIEWPORT_GLFW_SCROLL_MOMENTUM_HH
 
 #include <algorithm>
 #include <array>
@@ -7,7 +7,7 @@
 
 #include "jetstream/types.hh"
 
-namespace Jetstream::Render {
+namespace Jetstream::Viewport {
 
 class ScrollMomentum {
  public:
@@ -103,6 +103,6 @@ class ScrollMomentum {
     }
 };
 
-}  // namespace Jetstream::Render
+}  // namespace Jetstream::Viewport
 
 #endif

@@ -55,20 +55,10 @@ struct WaylandPointer::State {
     Extent2D<F32> scrollPosition = {0.0f, 0.0f};
     WaylandScroll scroll;
     F64 polledAt = glfwGetTime();
-    bool momentumAllowed = true;
 
-    void emit(Render::InputQueue::Wheel event) {
+    void emit(const Render::InputQueue::Wheel& event) {
         if (event.phase == ScrollPhase::Began || event.phase == ScrollPhase::None) {
             scrollPosition = position;
-        }
-        if (event.synthesizeMomentum) {
-            if (event.phase == ScrollPhase::Began) {
-                momentumAllowed = true;
-            }
-            momentumAllowed = momentumAllowed && glfwGetTime() - polledAt <= 0.25;
-            if (event.phase == ScrollPhase::Ended) {
-                event.synthesizeMomentum = momentumAllowed;
-            }
         }
         if (onScroll) {
             onScroll({event, scrollPosition});
@@ -185,7 +175,8 @@ struct WaylandPointer::State {
     static void Frame(void* data, wl_pointer*) {
         auto& self = Self(data);
         if (self.inside) {
-            self.scroll.frame([&self](const auto& event) { self.emit(event); });
+            const F64 now = glfwGetTime();
+            self.scroll.frame(now, now - self.polledAt <= 0.25, [&self](const auto& event) { self.emit(event); });
         } else {
             self.scroll.discardFrame();
         }
@@ -264,6 +255,7 @@ void WaylandPointer::focus(bool focused) {
 void WaylandPointer::poll() {
     if (state) {
         state->polledAt = glfwGetTime();
+        state->scroll.step(state->polledAt, [this](const auto& event) { state->emit(event); });
     }
 }
 

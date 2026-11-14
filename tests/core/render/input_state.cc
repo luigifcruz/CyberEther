@@ -823,3 +823,16 @@ TEST_CASE("Input queue deadline waits preserve notifications and timeouts",
         REQUIRE(surface);
     }
 }
+
+TEST_CASE("Native scroll positions do not restore hover after a leave", "[core][render][input]") {
+    Render::InputState state;
+    state.advance(1.0, {Queue::Pointer{Extent2D<F32>{50.0f, 70.0f}}});
+    state.advance(1.01, {Queue::Hover{false}, Queue::Wheel{
+        .phase = ScrollPhase::MomentumEnded, .precise = true, .position = Extent2D<F32>{50.0f, 70.0f}}});
+    CHECK_FALSE(state.pointer().has_value());
+    const auto scrolls = Only<MouseEvent>(state.events());
+    REQUIRE_FALSE(scrolls.empty());
+    CHECK(scrolls.back().type == MouseEventType::Scroll);
+    CHECK(scrolls.back().positioned);
+    CHECK(scrolls.back().position == Extent2D<F32>{50.0f, 70.0f});
+}

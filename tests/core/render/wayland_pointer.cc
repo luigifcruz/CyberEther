@@ -218,15 +218,45 @@ TEST_CASE("Native Wayland pointer receives precise frames and explicit lift", "[
     wl_pointer_send_motion(rig.pointer, 112, wl_fixed_from_int(200), wl_fixed_from_int(250));
     wl_pointer_send_axis_stop(rig.pointer, 115, WL_POINTER_AXIS_VERTICAL_SCROLL);
     rig.frame();
-    REQUIRE(rig.events.size() == 3);
+    REQUIRE(rig.events.size() == 4);
     CHECK(rig.events[0].position == Extent2D<F32>{12.5f, 34.25f});
     CHECK(rig.events[0].event.delta.y == Catch::Approx(-0.12f));
     CHECK(rig.events[0].event.phase == ScrollPhase::Began);
     CHECK(rig.events[1].event.phase == ScrollPhase::Changed);
     CHECK(rig.events[2].event.phase == ScrollPhase::Ended);
-    CHECK(rig.events[2].event.timestamp == 115);
-    CHECK(rig.events[2].event.synthesizeMomentum);
     CHECK(rig.events[2].position == rig.events[0].position);
+    CHECK(rig.events[3].event.phase == ScrollPhase::Momentum);
+}
+
+TEST_CASE("Native Wayland flings coast on the platform poll and end once", "[wayland][native][scroll]") {
+    Compositor rig;
+    rig.enter();
+    rig.finger(100, 10.0);
+    rig.finger(110, 10.0);
+    rig.finger(120, 10.0);
+    wl_pointer_send_axis_stop(rig.pointer, 125, WL_POINTER_AXIS_VERTICAL_SCROLL);
+    rig.frame();
+    REQUIRE(rig.events.back().event.phase == ScrollPhase::Momentum);
+    F32 travel = 0.0f;
+    U64 ended = 0;
+    for (U32 i = 0; i < 1000 && ended == 0; ++i) {
+        clockTime += 0.003;
+        const U64 before = rig.events.size();
+        rig.helper->poll();
+        for (U64 index = before; index < rig.events.size(); ++index) {
+            const auto& packet = rig.events[index];
+            CHECK(packet.position == Extent2D<F32>{12.5f, 34.25f});
+            travel += packet.event.delta.y;
+            ended += packet.event.phase == ScrollPhase::MomentumEnded ? 1 : 0;
+        }
+    }
+    CHECK(ended == 1);
+    CHECK(travel < -5.0f);
+    const U64 settled = rig.events.size();
+    clockTime += 0.1;
+    rig.helper->poll();
+    rig.helper->focus(false);
+    CHECK(rig.events.size() == settled);
 }
 
 TEST_CASE("Native Wayland wheel uses value120 rather than its simultaneous axis value", "[wayland][native][scroll]") {
@@ -238,7 +268,7 @@ TEST_CASE("Native Wayland wheel uses value120 rather than its simultaneous axis 
     rig.frame();
     REQUIRE(rig.events.size() == 1);
     CHECK(rig.events[0].event.delta.y == Catch::Approx(-0.125f));
-    CHECK_FALSE(rig.events[0].event.synthesizeMomentum);
+    CHECK(rig.events[0].event.phase == ScrollPhase::None);
 }
 
 TEST_CASE("Native Wayland leave and capability loss cancel instead of releasing momentum", "[wayland][native][scroll]") {
@@ -271,7 +301,9 @@ TEST_CASE("Native Wayland leave and capability loss cancel instead of releasing 
     }
     REQUIRE(rig.events.size() == 2);
     CHECK(rig.events.back().event.phase == ScrollPhase::Ended);
-    CHECK_FALSE(rig.events.back().event.synthesizeMomentum);
+    clockTime += 0.01;
+    rig.helper->poll();
+    CHECK(rig.events.size() == 2);
 }
 
 TEST_CASE("Native Wayland version five retains precise scrolling without high-resolution wheel metadata",
@@ -292,11 +324,14 @@ TEST_CASE("Native Wayland hold gestures cancel a fling without another scroll de
     rig.finger(110, 10.0);
     wl_pointer_send_axis_stop(rig.pointer, 115, WL_POINTER_AXIS_VERTICAL_SCROLL);
     rig.frame();
+    REQUIRE(rig.events.back().event.phase == ScrollPhase::Momentum);
     zwp_pointer_gesture_hold_v1_send_begin(rig.hold, 3, 120, rig.content, 2);
     REQUIRE(Roundtrip(client) == 0);
-    REQUIRE(rig.events.size() == 4);
+    REQUIRE(rig.events.size() == 5);
     CHECK(rig.events.back().event.phase == ScrollPhase::MomentumEnded);
-    CHECK_FALSE(rig.events.back().event.synthesizeMomentum);
+    clockTime += 0.01;
+    rig.helper->poll();
+    CHECK(rig.events.size() == 5);
 }
 
 TEST_CASE("Old Wayland seats leave GLFW's fallback available", "[wayland][native][scroll]") {
@@ -333,8 +368,6 @@ TEST_CASE("Native Wayland scrolling follows GLFW's first seat even among mixed v
 TEST_CASE("A first gesture queued during a native dispatch stall cannot start stale momentum", "[wayland][native][scroll]") {
     Compositor rig;
     rig.enter();
-    // No previous axis timestamp exists. Queue the whole gesture before the
-    // first delayed dispatch, with an arbitrary compositor timestamp epoch.
     for (uint32_t time : {100, 110, 120}) {
         wl_pointer_send_axis_source(rig.pointer, WL_POINTER_AXIS_SOURCE_FINGER);
         wl_pointer_send_axis(rig.pointer, time, WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_int(10));
@@ -346,49 +379,28 @@ TEST_CASE("A first gesture queued during a native dispatch stall cannot start st
     REQUIRE(Roundtrip(client) == 0);
     rig.helper->poll();
     REQUIRE(rig.events.size() == 4);
-    for (const auto& packet : rig.events) {
-        CHECK(packet.event.explicitRelease);
-    }
     CHECK(rig.events.back().event.phase == ScrollPhase::Ended);
-    CHECK_FALSE(rig.events.back().event.synthesizeMomentum);
-    Render::InputState input;
-    std::vector<Render::InputQueue::Event> queued;
-    for (const auto& packet : rig.events) queued.push_back(packet.event);
-    input.advance(clockTime, queued);
-    CHECK_FALSE(input.hasPending());
     rig.events.clear();
-    // Healthy dispatch restores momentum eligibility for the next gesture.
     rig.finger(1100, 10.0);
     rig.finger(1110, 10.0);
     wl_pointer_send_axis_stop(rig.pointer, 1115, WL_POINTER_AXIS_VERTICAL_SCROLL);
     rig.frame();
-    REQUIRE(rig.events.size() == 3);
-    CHECK(rig.events.back().event.synthesizeMomentum);
+    REQUIRE(rig.events.size() == 4);
+    CHECK(rig.events.back().event.phase == ScrollPhase::Momentum);
 }
 
 TEST_CASE("A native dispatch stall never invents a finger release mid-gesture", "[wayland][native][scroll]") {
     Compositor rig;
-    Render::InputState input;
     rig.enter();
     rig.finger(100, 10.0);
-    input.advance(clockTime, {rig.events.back().event});
-    rig.events.clear();
     clockTime += 1.0;
     rig.finger(110, 10.0);
-    REQUIRE(rig.events.size() == 1);
-    input.advance(clockTime, {rig.events.back().event});
-    REQUIRE(input.events().size() == 1);
-    CHECK(std::get<MouseEvent>(input.events().front()).phase == ScrollPhase::Changed);
-    input.advance(clockTime + 1.0, {});
-    CHECK(input.events().empty());
-    CHECK_FALSE(input.hasPending());
+    REQUIRE(rig.events.size() == 2);
+    CHECK(rig.events.back().event.phase == ScrollPhase::Changed);
     wl_pointer_send_axis_stop(rig.pointer, 115, WL_POINTER_AXIS_VERTICAL_SCROLL);
     rig.frame();
-    CHECK_FALSE(rig.events.back().event.synthesizeMomentum);
-    input.advance(clockTime + 1.01, {rig.events.back().event});
-    CHECK_FALSE(input.hasPending());
-    input.advance(clockTime + 1.02, {});
-    CHECK(input.events().empty());
+    REQUIRE(rig.events.size() == 3);
+    CHECK(rig.events.back().event.phase == ScrollPhase::Ended);
 }
 
 int main(int argc, char** argv) {

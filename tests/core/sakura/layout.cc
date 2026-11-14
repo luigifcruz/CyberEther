@@ -811,10 +811,12 @@ TEST_CASE("Wayland precision scrolling retains the ordinary scroll distance and 
         native.source = source;
         native.timestamp = time;
         native.axes[0].distance = distance;
-        native.frame([&](auto event) {
+        std::vector<Render::InputQueue::Event> queued;
+        native.frame(time / 1000.0, true, [&](auto event) {
             event.position = Extent2D<F32>{100.0f, 50.0f};
-            input.advance(time / 1000.0, {event});
+            queued.push_back(event);
         });
+        input.advance(time / 1000.0, queued);
         for (const auto& event : input.events()) {
             if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
                 REQUIRE(rig.host.send(*mouse));
@@ -826,6 +828,62 @@ TEST_CASE("Wayland precision scrolling retains the ordinary scroll distance and 
     CHECK(rig.scrollY == Catch::Approx(248.0f));
     move(0.25f, 110);
     CHECK(rig.scrollY == Catch::Approx(249.2f));
+}
+
+TEST_CASE("Wayland flings carry a scroller to its edge across batched rendered frames",
+          "[core][sakura][layout][wayland-scroll]") {
+    using Source = Viewport::WaylandScroll::Source;
+    ElasticRig rig;
+    rig.scrollY = 200.0f;
+    rig.place();
+    Viewport::WaylandScroll native;
+    Render::InputState input;
+    std::vector<Render::InputQueue::Event> queued;
+    const auto emit = [&](auto event) {
+        event.position = Extent2D<F32>{100.0f, 50.0f};
+        queued.push_back(event);
+    };
+    F64 now = rig.ctx.time;
+    const auto render = [&] {
+        input.advance(now, queued);
+        queued.clear();
+        for (const auto& event : input.events()) {
+            if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                rig.host.send(*mouse);
+            }
+        }
+        rig.ctx.time = now;
+        rig.place();
+    };
+    for (U32 i = 0; i < 3; ++i) {
+        native.source = Source::Finger;
+        native.timestamp = 100 + i * 10;
+        native.axes[0].distance = 10.0f;
+        native.frame(now, true, emit);
+        now += 0.01;
+        render();
+    }
+    native.timestamp = 125;
+    native.axes[0].stopped = true;
+    native.frame(now, true, emit);
+    render();
+    const F32 lifted = rig.scrollY;
+    U64 ended = 0;
+    for (U32 frame = 0; frame < 180; ++frame) {
+        for (U32 pump = 0; pump < 5; ++pump) {
+            now += 1.0 / 300.0;
+            native.step(now, emit);
+        }
+        for (const auto& event : queued) {
+            const auto& wheel = std::get<Render::InputQueue::Wheel>(event);
+            ended += wheel.phase == ScrollPhase::MomentumEnded ? 1 : 0;
+        }
+        render();
+    }
+    CHECK(ended == 1);
+    CHECK(rig.scrollY > lifted + 100.0f);
+    CHECK(rig.scrollY == Catch::Approx(900.0f));
+    CHECK(rig.offset() == 0.0f);
 }
 
 TEST_CASE("Stretched gestures hold elastic space until the actual lift", "[core][sakura][layout]") {

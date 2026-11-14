@@ -424,10 +424,10 @@ Result Window::begin() {
         graphicalLoopThreadId = std::this_thread::get_id();
     }
 
-    const F64 wait = _input.waitTimeout(std::exchange(presentState->idlePending, false) ? kIdleInterval : 0.0);
-    const bool idle = wait > 0.0;
+    const bool idle = std::exchange(presentState->idlePending, false);
     if (auto* viewport = underlyingViewport()) {
-        presentState->surfaceFrame = viewport->waitIdle(wait, idle && presentState->surfaceWake);
+        presentState->surfaceFrame = viewport->waitIdle(idle ? kIdleInterval : 0.0,
+                                                        idle && presentState->surfaceWake);
     }
 
     // Process attachment queues.
@@ -513,7 +513,7 @@ Result Window::finishPresent(const PresentPass& pass) {
         ++frameStats.presentedFrames;
     } else if (!pass.required) {
         ++frameStats.skippedPresents;
-        presentState->idlePending = true;
+        presentState->idlePending = !_input.hasPending();
         if (presentState->surfaceFrame) {
             presentState->surfaceWake = false;
         }
