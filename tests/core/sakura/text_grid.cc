@@ -1210,6 +1210,114 @@ TEST_CASE("Arrow navigation in a focused editor restarts the caret blink on that
     CHECK_FALSE(caret());
 }
 
+TEST_CASE("Clipped editors stop caret wakeups without losing focus and resume blinking on re-entry",
+          "[core][sakura][text-grid][cursor][clipped-caret][retention]") {
+    const auto clipped = GENERATE(Rect{10.0f, -40.0f, 200.0f, 40.0f}, Rect{10.0f, 600.0f, 200.0f, 40.0f},
+                                  Rect{-200.0f, 10.0f, 200.0f, 40.0f}, Rect{800.0f, 10.0f, 200.0f, 40.0f});
+    const bool initiallyClipped = GENERATE(false, true);
+    const Rect shown = {10.0f, 10.0f, 200.0f, 40.0f};
+    const Scene scene;
+    TextGrid grid;
+    grid.update({.id = "clipped-caret", .value = "abc", .editable = true,
+                 .fontSize = 15.0f, .padding = kNoPadding});
+    Place place(grid, initiallyClipped ? clipped : shown);
+    Frames frames(place, kScreen, scene.context());
+    frames.verify = false;
+    REQUIRE(frames.settle());
+    grid.focus();
+    REQUIRE(frames.settle());
+    REQUIRE(grid.focused());
+    REQUIRE(FocusOwner(place) == &grid);
+    if (!initiallyClipped) {
+        place.move(clipped);
+        REQUIRE(frames.run().laidOut);
+    }
+    frames.timeStep = 0.3;
+    for (U64 frame = 0; frame < 8; ++frame) {
+        CHECK(frames.run().clean());
+        CHECK(grid.focused());
+        CHECK(FocusOwner(place) == &grid);
+    }
+
+    const auto boxes = Direct<Sakura::Box>(grid);
+    REQUIRE(boxes.size() > 6);
+    const auto caret = [&] { return boxes[6]->config().instances.at(0).visible; };
+    CHECK_FALSE(caret());
+    place.move(shown);
+    frames.timeStep = 0.0;
+    frames.ctx.time = 8.1;
+    REQUIRE(frames.run().laidOut);
+    CHECK(grid.focused());
+    CHECK(caret());
+    frames.ctx.time = 8.7;
+    REQUIRE(frames.run().laidOut);
+    CHECK_FALSE(caret());
+    frames.ctx.time = 9.1;
+    REQUIRE(frames.run().laidOut);
+    CHECK(caret());
+    CHECK(Tap(place, KeyCode::RightArrow));
+    frames.run();
+    CHECK(grid.cursor() == TextGrid::Position{0, 1});
+    CHECK(grid.focused());
+    CHECK(caret());
+}
+
+TEST_CASE("Caret scheduling follows inherited clipping and window focus without moving the editor",
+          "[core][sakura][text-grid][cursor][clipped-caret][retention]") {
+    struct ClippedEditor : Sakura::Component {
+        TextGrid grid;
+        Rect area = {10.0f, 10.0f, 1.0f, 40.0f};
+
+        ClippedEditor() {
+            addChild(grid);
+            grid.update({.id = "clipped-caret", .value = "abc", .editable = true,
+                         .fontSize = 15.0f, .padding = kNoPadding});
+        }
+
+        void layout(const Sakura::Context& ctx) override {
+            layoutChild(ctx, grid, {10.0f, 10.0f, 200.0f, 40.0f}, area);
+        }
+    } content;
+    const Scene scene;
+    Frames frames(content, kScreen, scene.context());
+    frames.verify = false;
+    REQUIRE(frames.settle());
+    content.grid.focus();
+    REQUIRE(frames.settle());
+    frames.ctx.time = 0.7;
+    REQUIRE(frames.run().laidOut);
+    REQUIRE(content.grid.focused());
+
+    content.area = GENERATE(Rect{0.0f, 0.0f, 0.0f, 0.0f}, Rect{210.0f, 10.0f, 10.0f, 40.0f},
+                            Rect{10.0f, 50.0f, 200.0f, 10.0f});
+    Sakura::Access::invalidate(content);
+    REQUIRE(frames.run().laidOut);
+    frames.timeStep = 0.3;
+    for (U64 frame = 0; frame < 8; ++frame) {
+        CHECK(frames.run().clean());
+    }
+    frames.ctx.windowFocused = false;
+    frames.run();
+    CHECK(frames.run().clean());
+    frames.ctx.windowFocused = true;
+    frames.run();
+    for (U64 frame = 0; frame < 8; ++frame) {
+        CHECK(frames.run().clean());
+    }
+    CHECK(content.grid.focused());
+    CHECK(FocusOwner(content) == &content.grid);
+
+    content.area = {10.0f, 10.0f, 1.0f, 40.0f};
+    Sakura::Access::invalidate(content);
+    REQUIRE(frames.run().laidOut);
+    frames.timeStep = 0.6;
+    for (U64 frame = 0; frame < 4; ++frame) {
+        CHECK(frames.run().laidOut);
+    }
+    CHECK(Sakura::Access::frame(content.grid) == Rect{10.0f, 10.0f, 200.0f, 40.0f});
+    CHECK(content.grid.focused());
+}
+
 TEST_CASE("Stationary selection drags stay clean", "[core][sakura][text-grid][retention]") {
     Scene scene;
     TextGrid grid;
