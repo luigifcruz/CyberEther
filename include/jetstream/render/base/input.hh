@@ -36,6 +36,8 @@ class JETSTREAM_API InputQueue {
         bool precise = false;
         bool smooth = false;
         std::optional<Extent2D<F32>> position;
+        bool touch = false;
+        bool cancel = false;
     };
 
     struct Key {
@@ -62,7 +64,13 @@ class JETSTREAM_API InputQueue {
         bool entered = true;
     };
 
-    using Event = std::variant<Pointer, Button, Wheel, Key, Modifiers, Text, Focus, Hover>;
+    struct Zoom {
+        Extent2D<F32> position;
+        F32 factor = 1.0f;
+        bool remote = false;
+    };
+
+    using Event = std::variant<Pointer, Button, Wheel, Key, Modifiers, Text, Focus, Hover, Zoom>;
 
     void push(Event event);
     void pushText(const std::string& utf8);

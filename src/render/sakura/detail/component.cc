@@ -2,6 +2,7 @@
 
 #include "component.hh"
 #include "helpers.hh"
+#include "access.hh"
 #include "popup_layer.hh"
 #include "../context.hh"
 
@@ -368,6 +369,7 @@ Component::~Component() {
         if (child && child->impl) {
             child->impl->concealTree();
             child->impl->parent = nullptr;
+            ++child->impl->attachmentGeneration;
             child->impl->attachTo(nullptr);
         }
     }
@@ -391,6 +393,9 @@ void Component::setVisible(bool visible) {
         return;
     }
     impl->visible = visible;
+    if (!visible) {
+        ++impl->hiddenGeneration;
+    }
     impl->invalidate(visible && impl->hasUnbuilt() ? Dirty::Tree : Dirty::Paint);
     if (impl->parent) {
         impl->parent->impl->relayout();
@@ -410,6 +415,7 @@ void Component::addChild(Component& child) {
         }
     }
     child.impl->parent = this;
+    ++child.impl->attachmentGeneration;
     child.impl->attachTo(impl->canvas);
     child.impl->markUnbuilt();
     impl->adoptFocus(child);
@@ -439,6 +445,7 @@ void Component::removeChild(Component& child) {
     ++impl->childGeneration;
     child.impl->concealTree();
     child.impl->parent = nullptr;
+    ++child.impl->attachmentGeneration;
     child.impl->attachTo(nullptr);
     impl->invalidate(Dirty::Tree);
     impl->relayout();
@@ -484,6 +491,7 @@ void Component::clearChildren() {
         if (child) {
             child->impl->concealTree();
             child->impl->parent = nullptr;
+            ++child->impl->attachmentGeneration;
             child->impl->attachTo(nullptr);
         }
     }
@@ -913,7 +921,7 @@ bool Component::Impl::dropFiles(Extent2D<F32> point, const std::vector<std::stri
 }
 
 bool Component::deliver(Component& target, const MouseEvent& event) {
-    return target.mouseEvent(target.fromParent(event));
+    return Access::mouseEvent(target, target.fromParent(event));
 }
 
 Component::Impl& Component::Impl::root() {
@@ -1340,7 +1348,7 @@ bool Component::deliverChild(Component& child, const MouseEvent& event) {
         !child.impl->clip.contains(local.position.x, local.position.y)) {
         return false;
     }
-    return child.mouseEvent(local);
+    return Access::mouseEvent(child, local);
 }
 
 }  // namespace Jetstream::Sakura

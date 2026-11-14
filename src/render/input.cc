@@ -307,6 +307,26 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
         return button(pressed->button, pressed->down, trickle);
     }
 
+    if (const auto* zoom = std::get_if<InputQueue::Zoom>(&event)) {
+        const auto position = PixelPosition(zoom->position);
+        if (!position || !std::isfinite(zoom->factor) || zoom->factor <= 0.0f || zoom->factor == 1.0f) {
+            return true;
+        }
+        if (trickle.buttons.any() || !movePointer(position, trickle)) {
+            return false;
+        }
+        pointerInside = true;
+        lastValidPointer = position;
+        trickle.wheeled = true;
+        frameEvents.push_back(MouseEvent{
+            .type = MouseEventType::Zoom,
+            .position = *position,
+            .modifiers = currentModifiers,
+            .zoom = zoom->factor,
+        });
+        return true;
+    }
+
     if (const auto* wheel = std::get_if<InputQueue::Wheel>(&event)) {
         if (wheel->delta.x == 0.0f && wheel->delta.y == 0.0f && wheel->phase == ScrollPhase::None &&
             !wheel->precise) {
@@ -320,7 +340,7 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
         scroll.type = MouseEventType::Scroll;
         scroll.position = wheel->position.value_or(point);
         scroll.scroll = wheel->delta;
-        if (wheel->precise || wheel->phase != ScrollPhase::None) {
+        if (!wheel->touch && (wheel->precise || wheel->phase != ScrollPhase::None)) {
             scroll.scroll.x *= config.touchpadScrollSpeed;
             scroll.scroll.y *= config.touchpadScrollSpeed;
         }
@@ -329,6 +349,8 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
         scroll.phase = wheel->phase;
         scroll.precise = wheel->precise;
         scroll.smooth = wheel->smooth;
+        scroll.touch = wheel->touch;
+        scroll.cancel = wheel->cancel;
         frameEvents.push_back(scroll);
         return true;
     }

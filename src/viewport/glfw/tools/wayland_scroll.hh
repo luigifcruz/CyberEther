@@ -5,7 +5,7 @@
 #include <optional>
 
 #include "jetstream/render/base/input.hh"
-#include "scroll_momentum.hh"
+#include "../../tools/scroll_momentum.hh"
 
 namespace Jetstream::Viewport {
 

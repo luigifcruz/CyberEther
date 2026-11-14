@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_VIEWPORT_GLFW_SCROLL_MOMENTUM_HH
-#define JETSTREAM_VIEWPORT_GLFW_SCROLL_MOMENTUM_HH
+#ifndef JETSTREAM_VIEWPORT_TOOLS_SCROLL_MOMENTUM_HH
+#define JETSTREAM_VIEWPORT_TOOLS_SCROLL_MOMENTUM_HH
 
 #include <algorithm>
 #include <array>
@@ -39,10 +39,11 @@ class ScrollMomentum {
         samples[count++] = {time, delta};
     }
 
-    bool release(U32 time) {
+    bool release(U32 time, F64 decay = Decay) {
+        decayRate = decay;
         velocity = {speed(time, true), speed(time, false)};
         const F64 magnitude = std::hypot(velocity.x, velocity.y);
-        remaining = magnitude > StopSpeed ? std::log(magnitude / StopSpeed) / Decay : 0.0;
+        remaining = magnitude > StopSpeed ? std::log(magnitude / StopSpeed) / decayRate : 0.0;
         count = 0;
         return active();
     }
@@ -56,8 +57,8 @@ class ScrollMomentum {
             return {0.0f, 0.0f};
         }
         dt = std::min(dt, remaining);
-        const F32 decay = static_cast<F32>(std::exp(-Decay * dt));
-        const F32 distance = static_cast<F32>(-std::expm1(-Decay * dt) / Decay);
+        const F32 decay = static_cast<F32>(std::exp(-decayRate * dt));
+        const F32 distance = static_cast<F32>(-std::expm1(-decayRate * dt) / decayRate);
         const Extent2D<F32> delta = {velocity.x * distance, velocity.y * distance};
         velocity.x *= decay;
         velocity.y *= decay;
@@ -80,6 +81,7 @@ class ScrollMomentum {
     U64 count = 0;
     Extent2D<F32> velocity = {0.0f, 0.0f};
     F64 remaining = 0.0;
+    F64 decayRate = Decay;
 
     F32 speed(U32 time, bool horizontal) const {
         if (count < 2 || time - samples[count - 1].time >= Window) {

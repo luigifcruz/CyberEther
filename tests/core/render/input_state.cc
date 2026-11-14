@@ -837,7 +837,7 @@ TEST_CASE("Native scroll positions do not restore hover after a leave", "[core][
     CHECK(scrolls.back().position == Extent2D<F32>{50.0f, 70.0f});
 }
 
-TEST_CASE("Touchpad scroll speed scales precise and phased scrolling but not wheel notches", "[core][render][input]") {
+TEST_CASE("Touchpad scroll speed scales precise and phased scrolling but not wheel notches or touch", "[core][render][input]") {
     Render::InputState state({.touchpadScrollSpeed = 2.5f});
     state.advance(1.0, {
         Queue::Wheel{.delta = {0.0f, -1.0f}, .phase = ScrollPhase::Began},
@@ -845,13 +845,15 @@ TEST_CASE("Touchpad scroll speed scales precise and phased scrolling but not whe
         Queue::Wheel{.delta = {0.0f, -1.0f}, .phase = ScrollPhase::Momentum, .precise = true},
         Queue::Wheel{.delta = {0.0f, -1.0f}},
         Queue::Wheel{.delta = {0.0f, -1.0f}, .smooth = true},
+        Queue::Wheel{.delta = {0.0f, -1.0f}, .phase = ScrollPhase::Changed, .precise = true, .touch = true},
     });
     const auto scrolls = Only<MouseEvent>(state.events());
-    REQUIRE(scrolls.size() == 5);
+    REQUIRE(scrolls.size() == 6);
     CHECK(scrolls[0].scroll.y == -2.5f);
     CHECK(scrolls[1].scroll.x == 1.25f);
     CHECK(scrolls[1].scroll.y == -2.5f);
     CHECK(scrolls[2].scroll.y == -2.5f);
     CHECK(scrolls[3].scroll.y == -1.0f);
     CHECK(scrolls[4].scroll.y == -1.0f);
+    CHECK(scrolls[5].scroll.y == -1.0f);
 }

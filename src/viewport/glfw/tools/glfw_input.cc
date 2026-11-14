@@ -14,6 +14,7 @@
 
 #ifdef JST_OS_LINUX
 #include "wayland_pointer.hh"
+#include "../../tools/touch_gesture.hh"
 #endif
 
 #include <GLFW/glfw3.h>
@@ -245,6 +246,7 @@ struct GlfwInput::Impl {
 #endif
 #ifdef JST_OS_LINUX
     std::unique_ptr<WaylandPointer> pointer;
+    TouchGesture touchGesture{viewport.input()};
 #endif
 
     Impl(GLFWwindow* window, Generic& viewport) : window(window), viewport(viewport) {}
@@ -378,17 +380,40 @@ struct GlfwInput::Impl {
     static void OnEnter(GLFWwindow* window, int entered) {
         auto& impl = From(window);
         impl.pointerInside = entered != 0;
+#ifdef JST_OS_LINUX
+        if (impl.touchGesture.active()) {
+            return;
+        }
+        impl.touchGesture.resumePointer();
+#endif
         impl.viewport.input().push(Render::InputQueue::Hover{entered != 0});
     }
 
     static void OnCursor(GLFWwindow* window, double x, double y) {
         auto& impl = From(window);
+#ifdef JST_OS_LINUX
+        if (impl.touchGesture.active()) {
+            return;
+        }
+        impl.touchGesture.resumePointer();
+#endif
         impl.viewport.input().push(Render::InputQueue::Pointer{
             Extent2D<F32>{static_cast<F32>(x), static_cast<F32>(y)}});
     }
 
     static void OnButton(GLFWwindow* window, int button, int action, int mods) {
         auto& impl = From(window);
+#ifdef JST_OS_LINUX
+        if (impl.touchGesture.active()) {
+            return;
+        }
+        if (impl.touchGesture.ownsPointer()) {
+            double x = 0.0;
+            double y = 0.0;
+            glfwGetCursorPos(window, &x, &y);
+            OnCursor(window, x, y);
+        }
+#endif
         if (action == GLFW_PRESS) {
             impl.readClipboard();
         }
@@ -398,6 +423,21 @@ struct GlfwInput::Impl {
             impl.viewport.input().push(Render::InputQueue::Button{*pressed, action == GLFW_PRESS});
         }
     }
+
+#ifdef JST_OS_LINUX
+    void onTouch(const TouchGesture::Event& event) {
+        bool allowStart = true;
+        if (event.type == TouchGesture::Event::Type::Down) {
+            for (int button = GLFW_MOUSE_BUTTON_LEFT; button <= GLFW_MOUSE_BUTTON_MIDDLE; ++button) {
+                if (glfwGetMouseButton(window, button) == GLFW_PRESS) {
+                    allowStart = false;
+                    break;
+                }
+            }
+        }
+        touchGesture.handle(event, glfwGetTime(), allowStart);
+    }
+#endif
 
     static void OnScroll(GLFWwindow* window, double x, double y) {
         auto& impl = From(window);
@@ -520,11 +560,13 @@ GlfwInput::GlfwInput(GLFWwindow* window, Generic& viewport) {
     });
 #endif
 #ifdef JST_OS_LINUX
-    impl->pointer = std::make_unique<WaylandPointer>(window, [input = impl.get()](const auto& scroll) {
-        auto event = scroll.event;
-        event.position = scroll.position;
-        input->viewport.input().push(event);
-    });
+    impl->pointer = std::make_unique<WaylandPointer>(window,
+        [input = impl.get()](const auto& scroll) {
+            auto event = scroll.event;
+            event.position = scroll.position;
+            input->viewport.input().push(event);
+        },
+        [input = impl.get()](const auto& touch) { input->onTouch(touch); });
 #endif
 }
 
@@ -565,6 +607,10 @@ void GlfwInput::poll() {
 #endif
 #ifdef JST_OS_LINUX
     impl->pointer->poll();
+    impl->touchGesture.poll(glfwGetTime());
+    if (impl->touchGesture.ownsPointer()) {
+        return;
+    }
 #endif
 #ifdef __EMSCRIPTEN__
     impl->readClipboard();

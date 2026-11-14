@@ -50,6 +50,7 @@ struct Scroller : public Component {
     void scrollPhaseEnded(ScrollPhase phase) override;
 
  private:
+    bool wheelInput(const MouseEvent& event);
     struct Impl;
     std::unique_ptr<Impl> impl;
 };

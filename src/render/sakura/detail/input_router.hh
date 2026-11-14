@@ -27,6 +27,9 @@ struct InputRouter {
         sampled = false;
         hovered = false;
         scrolling = false;
+        touchScrolling = false;
+        touchReleased = false;
+        touchMomentum = false;
         pointer.reset();
         modifiers = {};
         position = {0.0f, 0.0f};
@@ -41,6 +44,9 @@ struct InputRouter {
     bool sampled = false;
     bool hovered = false;
     bool scrolling = false;
+    bool touchScrolling = false;
+    bool touchReleased = false;
+    bool touchMomentum = false;
     std::optional<Extent2D<F32>> pointer;
     KeyModifiers modifiers;
     Extent2D<F32> position = {0.0f, 0.0f};
@@ -70,7 +76,7 @@ struct InputRouter {
 
     Output& state(Output& output) const {
         output.hovered = hovered;
-        output.active = buttons[0] || buttons[1];
+        output.active = buttons[0] || buttons[1] || touchScrolling;
         output.middle = buttons[2];
         return output;
     }

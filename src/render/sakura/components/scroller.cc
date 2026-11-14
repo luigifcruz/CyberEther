@@ -5,6 +5,7 @@
 #include "../context.hh"
 #include "../detail/access.hh"
 #include "../detail/helpers.hh"
+#include "../detail/touch_scroll.hh"
 #include "../detail/wheel_motion.hh"
 #include "../metrics.hh"
 
@@ -517,19 +518,35 @@ void Scroller::layout(const Context& ctx) {
 }
 
 bool Scroller::wheel(const MouseEvent& event) {
+    return TouchScroll::dispatch(*this, event, [](Component& component, const MouseEvent& event) {
+        return static_cast<Scroller&>(component).wheelInput(event);
+    });
+}
+
+bool Scroller::wheelInput(const MouseEvent& event) {
     auto& s = *impl;
     if (!s.viewport.contains(event.position.x, event.position.y)) {
         return false;
     }
     F32 dx = event.scroll.x;
     F32 dy = event.scroll.y;
-    if (event.modifiers.shift && dx == 0.0f) {
+    if (!event.touch && event.modifiers.shift && dx == 0.0f) {
         dx = dy;
         dy = 0.0f;
     }
     const bool scrollsX = s.maxScrollX() > 0.0f;
     const bool scrollsY = s.maxScrollY() > 0.0f;
     const bool held = s.touching();
+
+    if (event.touch && event.phase == ScrollPhase::Began) {
+        if ((!scrollsX && !scrollsY) ||
+            (s.verticalVisible() && s.verticalTrackRect().contains(event.position.x, event.position.y)) ||
+            (s.horizontalVisible() && s.horizontalTrackRect().contains(event.position.x, event.position.y)) ||
+            (!scrollsX && std::abs(dx) > std::abs(dy)) ||
+            (!scrollsY && std::abs(dy) > std::abs(dx))) {
+            return false;
+        }
+    }
 
     if (!event.smooth) {
         s.wheelX.cancel();

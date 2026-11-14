@@ -4,7 +4,7 @@
 #include <functional>
 #include <memory>
 
-#include "jetstream/render/base/input.hh"
+#include "../../tools/touch_gesture.hh"
 
 struct GLFWwindow;
 
@@ -17,7 +17,10 @@ class WaylandPointer {
         Extent2D<F32> position;
     };
 
-    WaylandPointer(GLFWwindow* window, std::function<void(const Scroll&)> onScroll);
+    using Touch = TouchGesture::Event;
+
+    WaylandPointer(GLFWwindow* window, std::function<void(const Scroll&)> onScroll,
+                   std::function<void(const Touch&)> onTouch = {});
     ~WaylandPointer();
 
     WaylandPointer(const WaylandPointer&) = delete;

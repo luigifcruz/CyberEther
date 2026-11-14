@@ -81,12 +81,14 @@ struct Compositor {
     wl_global* seatGlobal = nullptr;
     wl_resource* seat = nullptr;
     wl_resource* pointer = nullptr;
+    wl_resource* touch = nullptr;
     wl_resource* content = nullptr;
     wl_resource* hold = nullptr;
     wl_compositor* compositor = nullptr;
     wl_registry* registry = nullptr;
     std::unique_ptr<Viewport::WaylandPointer> helper;
     std::vector<Viewport::WaylandPointer::Scroll> events;
+    std::vector<Viewport::WaylandPointer::Touch> touches;
     std::vector<uint32_t> boundSeatVersions;
 
     static void Destroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
@@ -121,7 +123,19 @@ struct Compositor {
                 auto& self = *static_cast<Compositor*>(data);
                 self.boundSeatVersions.push_back(version);
                 self.seat = wl_resource_create(client, &wl_seat_interface, version, id);
-                static const struct wl_seat_interface implementation = {.get_pointer = GetPointer, .release = Destroy};
+                static const struct wl_seat_interface implementation = {
+                    .get_pointer = GetPointer,
+                    .get_touch = [](wl_client* client, wl_resource* resource, uint32_t id) {
+                        auto& self = Self(resource);
+                        self.touch = wl_resource_create(client, &wl_touch_interface, wl_resource_get_version(resource), id);
+                        static const struct wl_touch_interface implementation = {.release = Destroy};
+                        wl_resource_set_implementation(self.touch, &implementation, &self, [](wl_resource* resource) {
+                            auto& owner = Self(resource);
+                            if (owner.touch == resource) owner.touch = nullptr;
+                        });
+                    },
+                    .release = Destroy,
+                };
                 wl_resource_set_implementation(self.seat, &implementation, data, nullptr);
                 wl_seat_send_capabilities(self.seat, WL_SEAT_CAPABILITY_POINTER);
             });
@@ -180,7 +194,8 @@ struct Compositor {
         surface = wl_compositor_create_surface(compositor);
         REQUIRE(Roundtrip(client) == 0);
         helper = std::make_unique<Viewport::WaylandPointer>(nullptr,
-            [this](const auto& scroll) { events.push_back(scroll); });
+            [this](const auto& scroll) { events.push_back(scroll); },
+            [this](const auto& touch) { touches.push_back(touch); });
         REQUIRE(Roundtrip(client) == 0);
     }
 
@@ -203,6 +218,14 @@ struct Compositor {
         REQUIRE(pointer);
         wl_pointer_send_enter(pointer, 1, content, wl_fixed_from_double(12.5), wl_fixed_from_double(34.25));
         frame();
+    }
+
+    void enableTouch() {
+        wl_seat_send_capabilities(seat, WL_SEAT_CAPABILITY_POINTER | WL_SEAT_CAPABILITY_TOUCH);
+        REQUIRE(Roundtrip(client) == 0);
+        REQUIRE(Roundtrip(client) == 0);
+        REQUIRE(touch);
+        touches.clear();
     }
 
     void frame() {
@@ -268,6 +291,77 @@ TEST_CASE("Native Wayland flings coast on the platform poll and end once", "[way
     rig.helper->poll();
     rig.helper->focus(false);
     CHECK(rig.events.size() == settled);
+}
+
+TEST_CASE("Native Wayland touch preserves contact identity coordinates timestamps and frame order", "[wayland][native][touch]") {
+    Compositor rig;
+    rig.enableTouch();
+    wl_touch_send_down(rig.touch, 1, 0xfffffff0u, rig.content, 7, wl_fixed_from_double(12.5), wl_fixed_from_double(34.25));
+    wl_touch_send_motion(rig.touch, 4, 7, wl_fixed_from_double(20.75), wl_fixed_from_int(40));
+    wl_touch_send_frame(rig.touch);
+    wl_touch_send_up(rig.touch, 2, 9, 7);
+    wl_touch_send_frame(rig.touch);
+    REQUIRE(Roundtrip(client) == 0);
+    REQUIRE(rig.touches.size() == 5);
+    using Type = Viewport::TouchGesture::Event::Type;
+    CHECK(rig.touches[0].type == Type::Down);
+    CHECK(rig.touches[0].id == 7);
+    CHECK(rig.touches[0].position == Extent2D<F32>{12.5f, 34.25f});
+    CHECK(rig.touches[0].timestamp == 0xfffffff0u);
+    CHECK(rig.touches[1].type == Type::Motion);
+    CHECK(rig.touches[1].position == Extent2D<F32>{20.75f, 40});
+    CHECK(rig.touches[1].timestamp == 4);
+    CHECK(rig.touches[2].type == Type::Frame);
+    CHECK(rig.touches[3].type == Type::Up);
+    CHECK(rig.touches[3].id == 7);
+    CHECK(rig.touches[3].timestamp == 9);
+    CHECK(rig.touches[4].type == Type::Frame);
+    for (const auto& event : rig.touches) CHECK(event.momentumAllowed);
+}
+
+TEST_CASE("Native Wayland touch cancellation survives focus capability and seat loss", "[wayland][native][touch]") {
+    Compositor rig;
+    rig.enableTouch();
+    wl_touch_send_down(rig.touch, 1, 100, rig.content, 1, 0, 0);
+    REQUIRE(Roundtrip(client) == 0);
+    rig.touches.clear();
+    SECTION("compositor cancellation") {
+        wl_touch_send_cancel(rig.touch);
+        REQUIRE(Roundtrip(client) == 0);
+    }
+    SECTION("focus loss") { rig.helper->focus(false); }
+    SECTION("capability loss") {
+        wl_seat_send_capabilities(rig.seat, WL_SEAT_CAPABILITY_POINTER);
+        REQUIRE(Roundtrip(client) == 0);
+        REQUIRE(Roundtrip(client) == 0);
+        CHECK_FALSE(rig.touch);
+    }
+    SECTION("seat loss") {
+        wl_global_remove(rig.seatGlobal);
+        REQUIRE(Roundtrip(client) == 0);
+        REQUIRE(Roundtrip(client) == 0);
+        CHECK_FALSE(rig.touch);
+    }
+    REQUIRE(rig.touches.size() == 1);
+    CHECK(rig.touches[0].type == Viewport::TouchGesture::Event::Type::Cancel);
+}
+
+TEST_CASE("Native Wayland touch marks stalled dispatch and releases resources without callbacks", "[wayland][native][touch]") {
+    Compositor rig;
+    rig.enableTouch();
+    clockTime += 1;
+    wl_touch_send_down(rig.touch, 1, 100, rig.content, 1, 0, 0);
+    wl_touch_send_up(rig.touch, 2, 120, 1);
+    wl_touch_send_frame(rig.touch);
+    REQUIRE(Roundtrip(client) == 0);
+    REQUIRE(rig.touches.size() == 3);
+    for (const auto& event : rig.touches) CHECK_FALSE(event.momentumAllowed);
+    rig.helper->poll();
+    rig.touches.clear();
+    rig.helper.reset();
+    REQUIRE(Roundtrip(client) == 0);
+    CHECK_FALSE(rig.touch);
+    CHECK(rig.touches.empty());
 }
 
 TEST_CASE("Native Wayland wheel uses value120 rather than its simultaneous axis value", "[wayland][native][scroll]") {

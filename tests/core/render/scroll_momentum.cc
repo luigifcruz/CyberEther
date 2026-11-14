@@ -1,7 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "viewport/glfw/tools/scroll_momentum.hh"
+#include "viewport/tools/scroll_momentum.hh"
 
 using namespace Jetstream;
 
@@ -61,4 +61,22 @@ TEST_CASE("Native scroll timestamps wrap and direction reversals discard old vel
     CHECK(distance < 0.25f);
     momentum.advance(1.0);
     CHECK_FALSE(momentum.active());
+}
+
+TEST_CASE("A gentler decay coasts further from the same release", "[core][render][scroll-momentum]") {
+    const auto travel = [](F64 decay) {
+        Viewport::ScrollMomentum momentum;
+        momentum.sample(100, {0.0f, -1.0f});
+        momentum.sample(110, {0.0f, -1.0f});
+        REQUIRE(momentum.release(115, decay));
+        F32 distance = 0.0f;
+        for (int i = 0; i < 1000 && momentum.active(); ++i) {
+            distance += momentum.advance(1.0 / 120.0).y;
+        }
+        return distance;
+    };
+    const F32 standard = travel(5.5);
+    const F32 gentle = travel(4.5);
+    CHECK(gentle < standard);
+    CHECK(gentle == Catch::Approx(standard * 5.5f / 4.5f).epsilon(0.01));
 }

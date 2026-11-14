@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
 #include "harness.hh"
@@ -124,6 +125,294 @@ TEST_CASE("Scroll termination crosses a changed surface boundary", "[core][sakur
     const auto mouse = Only<MouseEvent>(output.events);
     REQUIRE(mouse.size() == 1);
     CHECK(mouse.front().phase == ScrollPhase::Ended);
+}
+
+TEST_CASE("Touch routing retains off-canvas motion and pointerless momentum until termination", "[core][sakura][touch]") {
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{50, 50};
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .scroll = {0, -20}, .phase = ScrollPhase::Began, .touch = true}};
+    CHECK(router.route(frame, {0, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.pointer = Extent2D<F32>{150, 50};
+    frame.events.clear();
+    auto output = router.route(frame, {0, 0, 100, 100});
+    CHECK(output.active);
+    auto events = Only<MouseEvent>(output.events);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].type == MouseEventType::Move);
+    CHECK(events[0].position.x == 1.5f);
+    ++frame.serial;
+    frame.pointer.reset();
+    frame.events = {
+        MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .phase = ScrollPhase::Ended, .touch = true},
+        MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .phase = ScrollPhase::Momentum, .touch = true}};
+    output = router.route(frame, {0, 0, 100, 100});
+    CHECK(output.active);
+    CHECK_FALSE(output.hovered);
+    CHECK(Only<MouseEvent>(output.events).size() == 2);
+    ++frame.serial;
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .scroll = {0, -1},
+                               .phase = ScrollPhase::Momentum, .touch = true}};
+    output = router.route(frame, {0, 0, 100, 100});
+    CHECK(output.active);
+    REQUIRE(Only<MouseEvent>(output.events).size() == 1);
+    CHECK(Only<MouseEvent>(output.events)[0].scroll.y == -1);
+    ++frame.serial;
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .phase = ScrollPhase::MomentumEnded, .touch = true}};
+    output = router.route(frame, {0, 0, 100, 100});
+    CHECK_FALSE(output.active);
+    REQUIRE(Only<MouseEvent>(output.events).size() == 1);
+}
+
+TEST_CASE("Touch routing hands a release to momentum on a moved canvas and ends on a slow release",
+          "[core][sakura][touch]") {
+    const bool fling = GENERATE(true, false);
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{50, 50};
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .scroll = {0, -1}, .phase = ScrollPhase::Began, .touch = true}};
+    REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .phase = ScrollPhase::Ended, .touch = true}};
+    if (fling) {
+        frame.events.push_back(MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                                          .phase = ScrollPhase::Momentum, .touch = true});
+    }
+    auto output = router.route(frame, {400, 0, 100, 100});
+    CHECK(Only<MouseEvent>(output.events).size() == (fling ? 2 : 1));
+    CHECK(output.active);
+    ++frame.serial;
+    frame.pointer.reset();
+    frame.events.clear();
+    if (fling) {
+        frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .scroll = {0, -1},
+                                   .phase = ScrollPhase::Momentum, .touch = true}};
+    }
+    output = router.route(frame, {400, 0, 100, 100});
+    CHECK(output.active == fling);
+    CHECK(Only<MouseEvent>(output.events).size() == (fling ? 1 : 0));
+}
+
+TEST_CASE("A touch release never hands a fling to a canvas that did not own the gesture", "[core][sakura][touch]") {
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{50, 50};
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .scroll = {0, -1}, .phase = ScrollPhase::Began, .touch = true}};
+    CHECK_FALSE(router.route(frame, {400, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.events = {
+        MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .phase = ScrollPhase::Ended, .touch = true},
+        MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .phase = ScrollPhase::Momentum, .touch = true}};
+    auto output = router.route(frame, {400, 0, 100, 100});
+    CHECK_FALSE(output.active);
+    for (const auto& event : Only<MouseEvent>(output.events)) {
+        CHECK(event.phase != ScrollPhase::Momentum);
+    }
+    ++frame.serial;
+    frame.pointer.reset();
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .scroll = {0, -1},
+                               .phase = ScrollPhase::Momentum, .touch = true}};
+    output = router.route(frame, {400, 0, 100, 100});
+    CHECK_FALSE(output.active);
+    CHECK(Only<MouseEvent>(output.events).empty());
+}
+
+TEST_CASE("Invalid geometry cancels touch ownership retained across a release", "[core][sakura][touch]") {
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{50, 50};
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .scroll = {0, -1}, .phase = ScrollPhase::Began, .touch = true}};
+    REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .phase = ScrollPhase::Ended, .touch = true}};
+    REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.events.clear();
+    const auto output = router.route(frame, {0, 0, 0, 100});
+    CHECK_FALSE(output.active);
+    const auto events = Only<MouseEvent>(output.events);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].type == MouseEventType::Cancel);
+}
+
+TEST_CASE("Focus loss and invalid pointers cancel touch ownership retained across a release", "[core][sakura][touch]") {
+    const bool focus = GENERATE(true, false);
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{50, 50};
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .scroll = {0, -1}, .phase = ScrollPhase::Began, .touch = true}};
+    REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .phase = ScrollPhase::Ended, .touch = true}};
+    REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.events.clear();
+    if (focus) {
+        frame.windowFocused = false;
+    } else {
+        frame.pointer = Extent2D<F32>{std::numeric_limits<F32>::quiet_NaN(), 50};
+    }
+    const auto output = router.route(frame, {0, 0, 100, 100});
+    CHECK_FALSE(output.active);
+    const auto events = Only<MouseEvent>(output.events);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].type == MouseEventType::Cancel);
+}
+
+TEST_CASE("Non-touch scroll phases leave a touch gesture owned and cancellable", "[core][sakura][touch]") {
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{50, 50};
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .scroll = {0, -1}, .phase = ScrollPhase::Began, .touch = true}};
+    REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .phase = ScrollPhase::Ended, .precise = true}};
+    CHECK(router.route(frame, {0, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.pointer = Extent2D<F32>{150, 50};
+    frame.events.clear();
+    auto output = router.route(frame, {0, 0, 100, 100});
+    CHECK(output.active);
+    REQUIRE(Only<MouseEvent>(output.events).size() == 1);
+    CHECK(Only<MouseEvent>(output.events)[0].type == MouseEventType::Move);
+    ++frame.serial;
+    frame.windowFocused = false;
+    output = router.route(frame, {0, 0, 100, 100});
+    CHECK_FALSE(output.active);
+    const auto events = Only<MouseEvent>(output.events);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].type == MouseEventType::Cancel);
+}
+
+TEST_CASE("Interleaved touch and touchpad gestures each keep their own cancellation", "[core][sakura][touch]") {
+    const bool touchFirst = GENERATE(true, false);
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{50, 50};
+    const auto send = [&](decltype(frame.events) events) {
+        ++frame.serial;
+        frame.events = std::move(events);
+        return router.route(frame, {0, 0, 100, 100});
+    };
+    if (touchFirst) {
+        send({MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .scroll = {0, -1},
+                         .phase = ScrollPhase::Began, .touch = true}});
+        send({MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                         .phase = ScrollPhase::Ended, .precise = true}});
+        frame.pointer.reset();
+    } else {
+        send({MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .scroll = {0, -1},
+                         .phase = ScrollPhase::Began, .touch = true}});
+        send({MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                          .phase = ScrollPhase::Ended, .touch = true},
+              MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                          .phase = ScrollPhase::Momentum, .touch = true}});
+        send({MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50}, .scroll = {0, -1},
+                         .phase = ScrollPhase::Began, .precise = true}});
+        send({MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                         .phase = ScrollPhase::MomentumEnded, .touch = true}});
+        frame.windowFocused = false;
+    }
+    const auto output = send({});
+    CHECK_FALSE(output.active);
+    const auto events = Only<MouseEvent>(output.events);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].type == MouseEventType::Cancel);
+}
+
+TEST_CASE("Invalid touch targets cancel active routing", "[core][sakura][touch]") {
+    Sakura::InputRouter router;
+    Sakura::InputFrame frame;
+    frame.windowFocused = true;
+    frame.pointer = Extent2D<F32>{50, 50};
+    frame.events = {MouseEvent{.type = MouseEventType::Scroll, .position = {50, 50},
+                               .phase = ScrollPhase::Began, .touch = true}};
+    REQUIRE(router.route(frame, {0, 0, 100, 100}).active);
+    ++frame.serial;
+    frame.events.clear();
+    const auto output = router.route(frame, {0, 0, 0, 100});
+    CHECK_FALSE(output.active);
+    const auto events = Only<MouseEvent>(output.events);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].type == MouseEventType::Cancel);
+}
+
+TEST_CASE("Touch scrollers claim their axis and ignore Shift", "[core][sakura][touch]") {
+    SakuraTest::Scene scene;
+    Sakura::Scroller scroll;
+    F32 value = 0;
+    scroll.update({.contentHeight = 1000, .thickness = 10, .margin = 0,
+                   .onScrollY = [&](F32 next) { value = next; }});
+    SakuraTest::Host host(scroll);
+    host.place(scene.ctx, {0, 0, 200, 200});
+    MouseEvent event{.type = MouseEventType::Scroll, .position = {50, 50}, .scroll = {0, -2},
+                     .modifiers = {.shift = true}, .phase = ScrollPhase::Began, .precise = true, .touch = true};
+    SECTION("vertical movement") {
+        CHECK(host.send(event));
+        CHECK(value == Catch::Approx(20));
+    }
+    SECTION("cross-axis movement falls back to drag") {
+        event.scroll = {-2, 0};
+        CHECK_FALSE(host.send(event));
+        CHECK(value == 0);
+    }
+    SECTION("thumb movement falls back to drag") {
+        event.position = {195, 20};
+        CHECK_FALSE(host.send(event));
+        CHECK(value == 0);
+    }
+}
+
+TEST_CASE("Pinch zoom consumers preserve anchors and reject invalid factors", "[core][sakura][touch]") {
+    FrameInputProbe frame;
+    frame.view.zoom = 2;
+    frame.view.center = {0.5f, 0.5f};
+    const Extent2D<F32> position{0.3f, 0.4f};
+    const auto before = frame.view.center;
+    const F32 factor = GENERATE(2.0f, 0.0f, -1.0f, std::numeric_limits<F32>::quiet_NaN());
+    frame.processInputEvents({MouseEvent{.type = MouseEventType::Zoom, .position = position, .zoom = factor}});
+    if (factor > 0) {
+        CHECK(frame.view.zoom == 4);
+        CHECK(frame.view.center.x + (position.x - 0.5f) / frame.view.zoom ==
+              Catch::Approx(before.x + (position.x - 0.5f) / 2));
+        CHECK(frame.view.center.y + (position.y - 0.5f) / frame.view.zoom ==
+              Catch::Approx(before.y + (position.y - 0.5f) / 2));
+    } else {
+        CHECK(frame.view.zoom == 2);
+        CHECK(frame.view.center == before);
+    }
+    Modules::SignalViewWaterfall3D waterfall;
+    auto& camera = waterfall.*InputMember(WaterfallCameraMember{});
+    camera.distance = 4;
+    (waterfall.*InputMember(WaterfallInputMember{}))({MouseEvent{.type = MouseEventType::Zoom, .zoom = factor}});
+    CHECK(camera.distance == Catch::Approx(factor > 0 ? 2 : 4));
+    SurfaceInteractionState interaction;
+    interaction.zoom = 2;
+    interaction.offset = 0.1f;
+    interaction = ProcessSurfaceInteraction(interaction, {}, {
+        MouseEvent{.type = MouseEventType::Zoom, .position = position, .zoom = factor}});
+    CHECK(interaction.zoom == (factor > 0 ? 4 : 2));
+    CHECK(interaction.offset + (position.x - 0.5f) / interaction.zoom ==
+          Catch::Approx(0.1f + (position.x - 0.5f) / 2).margin(0.00001));
 }
 
 TEST_CASE("The input bridge keeps native Control and Command names and modifiers on every platform",

@@ -587,10 +587,13 @@ void FrameImpl::processInputEvents(const std::vector<InputEvent>& events) {
         if (!mouse) continue;
         const auto& event = *mouse;
         switch (event.type) {
-            case MouseEventType::Scroll: {
+            case MouseEventType::Scroll:
+            case MouseEventType::Zoom: {
+                if (event.type == MouseEventType::Zoom && (!std::isfinite(event.zoom) || event.zoom <= 0.0f)) break;
                 const F32 oldZoom = view.zoom;
-                const F32 newZoom = std::clamp(oldZoom * std::exp(event.scroll.y * kFrameZoomSpeed),
-                                               1.0f, kFrameMaxZoom);
+                const F32 factor = event.type == MouseEventType::Zoom ? event.zoom
+                                                                     : std::exp(event.scroll.y * kFrameZoomSpeed);
+                const F32 newZoom = std::clamp(oldZoom * factor, 1.0f, kFrameMaxZoom);
                 if (!std::isfinite(newZoom) || std::abs(newZoom - oldZoom) < 1e-6f) {
                     break;
                 }

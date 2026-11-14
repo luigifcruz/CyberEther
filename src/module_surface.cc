@@ -55,12 +55,15 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
         if (!mouse) continue;
         const auto& event = *mouse;
         switch (event.type) {
-            case MouseEventType::Scroll: {
+            case MouseEventType::Scroll:
+            case MouseEventType::Zoom: {
                 if (!config.enableZoom) break;
+                if (event.type == MouseEventType::Zoom && (!std::isfinite(event.zoom) || event.zoom <= 0.0f)) break;
 
                 const F32 oldZoom = state.zoom;
                 state.zoom = std::clamp(
-                    state.zoom + event.scroll.y * config.zoomSpeed,
+                    event.type == MouseEventType::Zoom ? state.zoom * event.zoom
+                                                      : state.zoom + event.scroll.y * config.zoomSpeed,
                     config.minZoom,
                     config.maxZoom
                 );

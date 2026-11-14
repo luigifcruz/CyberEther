@@ -77,6 +77,8 @@ struct Component::Impl {
     bool prepared = false;
     bool concealed = false;
     U64 childGeneration = 0;
+    U64 attachmentGeneration = 0;
+    U64 hiddenGeneration = 0;
     std::shared_ptr<FocusScope> focusScope;
     std::weak_ptr<FocusScope> focusHandle;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);

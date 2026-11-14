@@ -72,7 +72,8 @@ bool LoadWaylandClient() {
 namespace Jetstream::Viewport {
 
 struct WaylandPointer::State {
-    explicit State(GLFWwindow* window, std::function<void(const Scroll&)> callback) : onScroll(std::move(callback)) {
+    State(GLFWwindow* window, std::function<void(const Scroll&)> onScroll, std::function<void(const Touch&)> onTouch)
+        : onScroll(std::move(onScroll)), onTouch(std::move(onTouch)) {
         display = glfwGetWaylandDisplay();
         surface = glfwGetWaylandWindow(window);
         registry = wl_display_get_registry(display);
@@ -84,7 +85,9 @@ struct WaylandPointer::State {
 
     ~State() {
         onScroll = {};
+        onTouch = {};
         releasePointer();
+        releaseTouch();
         if (gestures) {
             zwp_pointer_gestures_v1_release(gestures);
         }
@@ -97,11 +100,13 @@ struct WaylandPointer::State {
     }
 
     std::function<void(const Scroll&)> onScroll;
+    std::function<void(const Touch&)> onTouch;
     wl_display* display = nullptr;
     wl_surface* surface = nullptr;
     wl_registry* registry = nullptr;
     wl_seat* seat = nullptr;
     wl_pointer* pointer = nullptr;
+    wl_touch* touch = nullptr;
     zwp_pointer_gestures_v1* gestures = nullptr;
     zwp_pointer_gesture_hold_v1* hold = nullptr;
     U32 seatName = 0;
@@ -139,6 +144,25 @@ struct WaylandPointer::State {
         inside = false;
     }
 
+    void emitTouch(Touch event) {
+        event.momentumAllowed = glfwGetTime() - polledAt <= 0.25;
+        if (onTouch) {
+            onTouch(event);
+        }
+    }
+
+    void cancelTouch() {
+        emitTouch({.type = Touch::Type::Cancel});
+    }
+
+    void releaseTouch() {
+        cancelTouch();
+        if (touch) {
+            wl_touch_release(touch);
+            touch = nullptr;
+        }
+    }
+
     void createHold() {
         if (gestures && pointer && !hold) {
             hold = zwp_pointer_gestures_v1_get_hold_gesture(gestures, pointer);
@@ -171,6 +195,7 @@ struct WaylandPointer::State {
         auto& self = Self(data);
         if (self.seat && name == self.seatName) {
             self.releasePointer();
+            self.releaseTouch();
             wl_seat_release(self.seat);
             self.seat = nullptr;
         }
@@ -195,6 +220,42 @@ struct WaylandPointer::State {
         } else {
             self.releasePointer();
         }
+        if (capabilities & WL_SEAT_CAPABILITY_TOUCH) {
+            if (!self.touch && self.onTouch) {
+                self.touch = wl_seat_get_touch(seat);
+                wl_touch_add_listener(self.touch, &TouchListener, data);
+            }
+        } else {
+            self.releaseTouch();
+        }
+    }
+
+    static void TouchDown(void* data, wl_touch*, U32, U32 time, wl_surface* surface, I32 id,
+                          wl_fixed_t x, wl_fixed_t y) {
+        auto& self = Self(data);
+        if (surface != self.surface) {
+            return;
+        }
+        self.cancel();
+        self.emitTouch({
+            .type = Touch::Type::Down,
+            .id = id,
+            .position = {static_cast<F32>(wl_fixed_to_double(x)), static_cast<F32>(wl_fixed_to_double(y))},
+            .timestamp = time,
+        });
+    }
+
+    static void TouchUp(void* data, wl_touch*, U32, U32 time, I32 id) {
+        Self(data).emitTouch({.type = Touch::Type::Up, .id = id, .timestamp = time});
+    }
+
+    static void TouchMotion(void* data, wl_touch*, U32 time, I32 id, wl_fixed_t x, wl_fixed_t y) {
+        Self(data).emitTouch({
+            .type = Touch::Type::Motion,
+            .id = id,
+            .position = {static_cast<F32>(wl_fixed_to_double(x)), static_cast<F32>(wl_fixed_to_double(y))},
+            .timestamp = time,
+        });
     }
 
     static void Enter(void* data, wl_pointer*, U32, wl_surface* surface, wl_fixed_t x, wl_fixed_t y) {
@@ -285,14 +346,22 @@ struct WaylandPointer::State {
         .axis = Axis, .frame = Frame, .axis_source = Source, .axis_stop = Stop,
         .axis_discrete = Discrete, .axis_value120 = Value120,
     };
+    static constexpr wl_touch_listener TouchListener = {
+        .down = TouchDown, .up = TouchUp, .motion = TouchMotion,
+        .frame = [](void* data, wl_touch*) { Self(data).emitTouch({.type = Touch::Type::Frame}); },
+        .cancel = [](void* data, wl_touch*) { Self(data).cancelTouch(); },
+        .shape = [](void*, wl_touch*, I32, wl_fixed_t, wl_fixed_t) {},
+        .orientation = [](void*, wl_touch*, I32, wl_fixed_t) {},
+    };
     static constexpr zwp_pointer_gesture_hold_v1_listener HoldListener = {
         HoldBegin, [](void*, zwp_pointer_gesture_hold_v1*, U32, U32, I32) {},
     };
 };
 
-WaylandPointer::WaylandPointer(GLFWwindow* window, std::function<void(const Scroll&)> onScroll) {
+WaylandPointer::WaylandPointer(GLFWwindow* window, std::function<void(const Scroll&)> onScroll,
+                               std::function<void(const Touch&)> onTouch) {
     if (glfwGetPlatform() == GLFW_PLATFORM_WAYLAND && LoadWaylandClient()) {
-        state = std::make_unique<State>(window, std::move(onScroll));
+        state = std::make_unique<State>(window, std::move(onScroll), std::move(onTouch));
     }
 }
 
@@ -305,6 +374,7 @@ bool WaylandPointer::available() const {
 void WaylandPointer::focus(bool focused) {
     if (state && !focused) {
         state->cancel();
+        state->cancelTouch();
     }
 }
 

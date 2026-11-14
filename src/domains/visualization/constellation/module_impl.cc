@@ -232,8 +232,10 @@ Result ConstellationImpl::present() {
         const auto mouse = SurfaceMouseEvent(input);
         if (!mouse) continue;
         const auto& event = *mouse;
-        if (event.type == MouseEventType::Scroll) {
-            const F32 newZoom = interaction.zoom * std::exp(event.scroll.y * kConstellationZoomSpeed);
+        if (event.type == MouseEventType::Scroll || event.type == MouseEventType::Zoom) {
+            const F32 factor = event.type == MouseEventType::Zoom ? event.zoom
+                                                                 : std::exp(event.scroll.y * kConstellationZoomSpeed);
+            const F32 newZoom = interaction.zoom * factor;
 
             if (std::isfinite(newZoom) && newZoom > std::numeric_limits<F32>::min()) {
                 interaction.viewChanged = interaction.viewChanged ||

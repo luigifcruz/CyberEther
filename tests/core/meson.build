@@ -50,6 +50,7 @@ core_test_domains = {
         'render/browser_wheel.cc',
         'render/input_state.cc',
         'render/scroll_momentum.cc',
+        'render/touch_gesture.cc',
         'render/wayland_scroll.cc',
         'render/present_list.cc',
         'render/transfers.cc',
@@ -144,6 +145,11 @@ if not jst_is_windows
 endif
 
 core_test_targets = []
+if jst_is_windows
+    core_test_domains += {
+        'render': core_test_domains['render'] + ['../../src/viewport/tools/touch_gesture.cc'],
+    }
+endif
 if jst_is_linux and not jst_is_static and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     wayland_pointer_server_protocol = custom_target('pointer-gestures-server',
         input: pointer_xml, output: 'pointer-gestures-server.h',

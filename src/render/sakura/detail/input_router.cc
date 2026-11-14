@@ -26,7 +26,7 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
     }
     routed = input.serial;
     sampled = true;
-    if (!input.windowFocused && (captured() || scrolling || !keys.empty())) {
+    if (!input.windowFocused && (captured() || scrolling || touchScrolling || !keys.empty())) {
         cancel(output);
     }
 
@@ -66,7 +66,8 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
         const bool edge = mouse->type == MouseEventType::Click || mouse->type == MouseEventType::Release;
         const U64 index = static_cast<U64>(mouse->button);
         if ((edge && index >= buttons.size()) ||
-            (!edge && mouse->type != MouseEventType::Move && mouse->type != MouseEventType::Scroll)) {
+            (!edge && mouse->type != MouseEventType::Move && mouse->type != MouseEventType::Scroll &&
+             mouse->type != MouseEventType::Zoom)) {
             continue;
         }
         if (!mouse->positioned) {
@@ -102,13 +103,28 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
                 buttons[index] = false;
                 break;
             case MouseEventType::Scroll:
-                if (!hovered && mouse->phase != ScrollPhase::Ended && mouse->phase != ScrollPhase::MomentumEnded) continue;
-                if (mouse->phase != ScrollPhase::None) {
-                    scrolling = mouse->phase != ScrollPhase::Ended && mouse->phase != ScrollPhase::MomentumEnded;
+                if (!hovered && !(mouse->touch && touchScrolling) && mouse->phase != ScrollPhase::Ended &&
+                    mouse->phase != ScrollPhase::MomentumEnded) continue;
+                if (mouse->phase == ScrollPhase::None) {
+                    break;
                 }
+                if (!mouse->touch) {
+                    scrolling = mouse->phase != ScrollPhase::Ended && mouse->phase != ScrollPhase::MomentumEnded;
+                    break;
+                }
+                if (mouse->cancel || mouse->phase == ScrollPhase::MomentumEnded) {
+                    touchScrolling = false;
+                } else if (mouse->phase == ScrollPhase::Began || mouse->phase == ScrollPhase::Changed) {
+                    touchScrolling = true;
+                }
+                touchReleased = touchScrolling && mouse->phase == ScrollPhase::Ended;
+                touchMomentum = touchScrolling && mouse->phase == ScrollPhase::Momentum;
                 break;
             case MouseEventType::Move:
-                if (!hovered && !captured()) continue;
+                if (!hovered && !captured() && !touchScrolling) continue;
+                break;
+            case MouseEventType::Zoom:
+                if (!hovered || !std::isfinite(mouse->zoom) || mouse->zoom <= 0.0f) continue;
                 break;
             default:
                 continue;
@@ -123,7 +139,14 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
         }
     }
     if (!input.pointer || !valid(*input.pointer)) {
-        if (captured() || scrolling) cancel(output);
+        if (touchReleased && !input.pointer) {
+            touchScrolling = false;
+            touchReleased = false;
+        }
+        const bool touchHeld = touchScrolling && !(touchMomentum && !input.pointer);
+        if (captured() || scrolling || touchHeld) {
+            cancel(output);
+        }
         hovered = false;
         pointer.reset();
     } else if (!pointerCancelled) {
@@ -132,7 +155,7 @@ InputRouter::Output InputRouter::route(const InputFrame& input, const Rect& scre
                              held.alt != modifiers.alt || held.super != modifiers.super;
         const bool moved = !pointer || *pointer != *input.pointer;
         locate(*input.pointer);
-        if ((moved || shifted) && (hovered || captured())) {
+        if ((moved || shifted) && (hovered || captured() || touchScrolling)) {
             output.events.push_back(MouseEvent{
                 .type = MouseEventType::Move,
                 .position = position,
@@ -163,8 +186,13 @@ void InputRouter::cancel(Output& output, bool explicitEvent) {
             });
         }
     }
-    if (held || scrolling || explicitEvent) output.events.push_back(MouseEvent{.type = MouseEventType::Cancel});
+    if (held || scrolling || touchScrolling || explicitEvent) {
+        output.events.push_back(MouseEvent{.type = MouseEventType::Cancel});
+    }
     scrolling = false;
+    touchScrolling = false;
+    touchReleased = false;
+    touchMomentum = false;
     hovered = false;
 }
 

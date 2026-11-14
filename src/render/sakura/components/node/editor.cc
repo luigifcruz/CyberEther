@@ -1281,7 +1281,7 @@ struct GraphRoot : public Component {
         return true;
     }
 
-    void zoomTo(F32 next) {
+    void zoomTo(F32 next, std::optional<Extent2D<F32>> origin = {}) {
         framed = true;
         next = std::clamp(next, kZoomMin, kZoomMax);
         if (next == zoom) {
@@ -1289,7 +1289,8 @@ struct GraphRoot : public Component {
         }
         const F32 nextRatio = ratio / zoom * next;
         if (viewport.width > 0.0f && viewport.height > 0.0f) {
-            const Extent2D<F32> center = {viewport.x + viewport.width * 0.5f, viewport.y + viewport.height * 0.5f};
+            const Extent2D<F32> center = origin.value_or(
+                Extent2D<F32>{viewport.x + viewport.width * 0.5f, viewport.y + viewport.height * 0.5f});
             const Extent2D<F32> anchor = {(center.x - viewport.x) / ratio - pan.x, (center.y - viewport.y) / ratio - pan.y};
             pan = {(center.x - viewport.x) / nextRatio - anchor.x, (center.y - viewport.y) / nextRatio - anchor.y};
         }
@@ -1830,6 +1831,16 @@ struct GraphRoot : public Component {
                     return frameFor(topmost)->dispatch(event);
                 }
                 return false;
+            }
+            case MouseEventType::Zoom: {
+                if (!std::isfinite(event.zoom) || event.zoom <= 0.0f) {
+                    return false;
+                }
+                if (auto* frame = frameFor(topmostNodeAt(toGrid(*mousePx))); frame && frame->dispatch(event)) {
+                    return true;
+                }
+                zoomTo(zoom * event.zoom, event.position);
+                return true;
             }
             case MouseEventType::Leave: {
                 moveTarget.clear();
