@@ -9,6 +9,7 @@
 #include <jetstream/render/base/texture.hh>
 #include <jetstream/render/components/curves.hh>
 #include <jetstream/render/components/mesh.hh>
+#include <jetstream/render/components/shapes.hh>
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/curves.hh>
 #include <jetstream/render/sakura/components/flowgraph_card.hh>
@@ -213,6 +214,10 @@ const Render::Vertex::Config& VertexLayout(const Render::Program& program) {
 }
 
 struct DrawableProbe : Sakura::Drawable {
+    static Components::Shapes& shapes(Sakura::Drawable& drawable) {
+        return *static_cast<Components::Shapes*>((drawable.*(&DrawableProbe::component)).get());
+    }
+
     static Components::Mesh& mesh(Sakura::Drawable& drawable) {
         return *static_cast<Components::Mesh*>((drawable.*(&DrawableProbe::component)).get());
     }
@@ -997,6 +1002,51 @@ TEST_CASE("Attached boxes rebuild only when their instances outgrow the capacity
         REQUIRE(rig.build(box) == Result::SUCCESS);
         CHECK_FALSE(Sakura::Access::resourceDirty(box));
     }
+}
+
+TEST_CASE("Boxes reappear after scrolling out of their clip without rebuilding geometry",
+          "[core][sakura][geometry][retention]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound shape resources require Vulkan or WebGPU support.");
+    }
+    Sakura::Box box;
+    Sakura::Box::Config config = {
+        .instances = {{.rect = {20.0f, 400.0f, 100.0f, 40.0f}, .backgroundColor = kInk}},
+    };
+    box.update(config);
+    REQUIRE(rig.build(box) == Result::SUCCESS);
+    auto& drawable = rig.drawable();
+    const auto scroll = [&](F32 offset) {
+        drawable.translation = {0.0f, -offset};
+        drawable.inherited = Rect{0.0f, offset, 200.0f, 100.0f};
+        REQUIRE(drawable.paint() == Result::SUCCESS);
+    };
+    scroll(0.0f);
+    CHECK_FALSE(rig.program().enabled());
+    scroll(400.0f);
+    CHECK(rig.program().enabled());
+    CHECK(rig.program().getConfig().scissorRect == Render::ScissorRect{0, 0, 200, 100});
+    std::span<Extent2D<F32>> positions, sizes;
+    auto& shape = DrawableProbe::shapes(drawable);
+    REQUIRE(shape.getPositions("rect", positions) == Result::SUCCESS);
+    REQUIRE(shape.getSizes("rect", sizes) == Result::SUCCESS);
+    const auto position = positions.front();
+    CHECK(sizes.front() == Extent2D<F32>{100.0f, 40.0f});
+    scroll(500.0f);
+    CHECK_FALSE(rig.program().enabled());
+    scroll(390.0f);
+    CHECK(rig.program().enabled());
+    CHECK(positions.front() == position);
+    CHECK(sizes.front() == Extent2D<F32>{100.0f, 40.0f});
+    CHECK_FALSE(Sakura::Access::resourceDirty(box));
+    CHECK(rig.surface.programs.size() == 1);
+    scroll(0.0f);
+    config.instances.front().rect.width = 150.0f;
+    box.update(config);
+    scroll(400.0f);
+    CHECK(rig.program().enabled());
+    CHECK(sizes.front() == Extent2D<F32>{150.0f, 40.0f});
 }
 
 TEST_CASE("Attached labels rebuild only when their instance or character capacity changes",

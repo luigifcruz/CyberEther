@@ -10,6 +10,10 @@ struct Access {
         return component.frame();
     }
 
+    static Extent2D<F32> translation(const Component& component) {
+        return component.translation();
+    }
+
     static void layout(Component& root, const Context& ctx, Rect viewport) {
         root.layoutRoot(ctx, viewport);
     }
