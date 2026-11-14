@@ -891,7 +891,7 @@ void Terminal::layout(const Context& ctx) {
     layoutChild(ctx, impl->decorations, content);
     layoutChild(ctx, impl->cursorGlyph, content);
 
-    if (impl->cursorBlinks()) {
+    if (impl->cursorBlinks() && !Intersect(bounds, clip()).empty()) {
         requestFrame(impl->nextBlink());
     }
 }
