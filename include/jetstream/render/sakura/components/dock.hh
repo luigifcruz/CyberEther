@@ -119,6 +119,7 @@ struct Dock : public Component {
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
     void layout(const Context& ctx) override;
     bool mouseEvent(const MouseEvent& event) override;
+    std::optional<SurfaceCursor> cursorOverChildren(const Extent2D<F32>& point) const override;
     std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
 
  private:
