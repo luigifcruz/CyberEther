@@ -56,6 +56,7 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     void zoomWindow();
     bool setDarkAppearance(bool dark);
 
+    Result waitForPresent();
     Result nextDrawable(VkSemaphore& semaphore);
     Result commitDrawable(std::vector<VkSemaphore>& semaphores);
 
@@ -85,6 +86,9 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     std::vector<VkImageView> swapchainImageViews;
     VkFormat swapchainImageFormat;
     VkExtent2D swapchainExtent;
+    PFN_vkWaitForPresentKHR waitForPresentKHR = nullptr;
+    U64 presentId = 0;
+    U64 waitedPresentId = 0;
     std::mutex frameScopeMutex;
 
     SwapChainSupportDetails querySwapChainSupport(const VkPhysicalDevice& device);

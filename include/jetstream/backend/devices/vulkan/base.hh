@@ -51,6 +51,7 @@ class JETSTREAM_API Vulkan {
 
     bool hasUnifiedMemory() const;
     bool supportsMultiDrawIndirect() const;
+    bool supportsPresentWait() const;
     bool canExportDeviceMemory() const;
     bool canImportDeviceMemory() const;
     bool canImportHostMemory() const;
@@ -127,6 +128,7 @@ class JETSTREAM_API Vulkan {
         PhysicalDeviceType physicalDeviceType;
         bool hasUnifiedMemory;
         bool supportsMultiDrawIndirect;
+        bool supportsPresentWait;
         U64 physicalMemory;
         U64 totalProcessorCount;
         bool lowPowerStatus;
