@@ -320,11 +320,6 @@ void TitlebarView::updateTabMenu() {
                 .shortcut = Sakura::Shortcuts::Label(Modifier::Primary, "I"),
                 .onClick = tab(TabAction::Info),
             },
-            {
-                .label = "Environment View",
-                .selected = config.environmentFlowgraphs.contains(tabFlowgraph),
-                .onClick = tab(TabAction::ToggleEnvironment),
-            },
             Entry{.separator = true},
             {
                 .label = "Close",

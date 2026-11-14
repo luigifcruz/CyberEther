@@ -10,10 +10,6 @@ TitlebarView::Config TitlebarPresenter::build() const {
     const bool startTabActive = context.state.startTabActive();
     const bool settingsTabActive = context.state.settingsTabActive();
     const bool docsTabActive = context.state.docsTabActive();
-    std::unordered_set<std::string> environmentFlowgraphs;
-    for (const auto& [flowgraph, _] : context.state.flowgraph.environment) {
-        environmentFlowgraphs.insert(flowgraph);
-    }
     const bool canCheckForUpdates = context.state.update.supported &&
                                     !context.state.update.checking &&
                                     !context.state.update.available &&
@@ -39,7 +35,6 @@ TitlebarView::Config TitlebarPresenter::build() const {
         .agentUnread = context.state.agent.ui.unread,
         .terminalEnabled = TerminalSession::Supported(),
         .voice = voice.build(),
-        .environmentFlowgraphs = environmentFlowgraphs,
         .debugTimingEnabled = context.state.debug.timingEnabled,
         .debugLogLevel = context.state.debug.logLevel,
         .sidebarOpen = context.state.tabsHidden() && context.state.startTabShown()
@@ -196,8 +191,7 @@ TitlebarView::Config TitlebarPresenter::build() const {
         .onLogLevel = [enqueue](I32 level) {
             enqueue(MailSetDebugLogLevel{.value = level});
         },
-        .onTabAction = [enqueue, environmentFlowgraphs](TitlebarView::TabAction action,
-                                                        const std::string& flowgraph) {
+        .onTabAction = [enqueue](TitlebarView::TabAction action, const std::string& flowgraph) {
             using TabAction = TitlebarView::TabAction;
             switch (action) {
                 case TabAction::Save:
@@ -209,12 +203,6 @@ TitlebarView::Config TitlebarPresenter::build() const {
                 case TabAction::Rename:
                 case TabAction::Info:
                     enqueue(MailOpenModal{.content = ModalContent::FlowgraphInfo, .flowgraph = flowgraph});
-                    break;
-                case TabAction::ToggleEnvironment:
-                    enqueue(MailSetFlowgraphEnvironmentVisible{
-                        .flowgraph = flowgraph,
-                        .value = !environmentFlowgraphs.contains(flowgraph),
-                    });
                     break;
                 case TabAction::Close:
                     enqueue(MailCloseFlowgraph{flowgraph});

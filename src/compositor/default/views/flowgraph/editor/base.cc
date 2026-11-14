@@ -340,6 +340,12 @@ void FlowgraphEditor::update(Config config) {
         .size = {PillHeight, PillHeight},
         .onClick = this->config.onToggleEnvironment,
     });
+    infoButton.update({
+        .icon = ICON_LC_INFO,
+        .tooltip = "Flowgraph info",
+        .size = {PillHeight, PillHeight},
+        .onClick = this->config.onInfo,
+    });
     zoomPill.update({
         .label = jst::fmt::format("{}%", std::lround(zoom * 100.0f)),
         .canDecrement = nodeEditor.canZoom(-1),
@@ -367,6 +373,7 @@ void FlowgraphEditor::update(Config config) {
     };
     place(zoomPill, ZoomPillWidth);
     place(environmentButton, PillHeight);
+    place(infoButton, PillHeight);
     place(addButton, PillHeight);
     place(saveButton, PillHeight);
     place(runButton, PillHeight);

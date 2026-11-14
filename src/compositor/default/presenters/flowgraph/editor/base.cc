@@ -163,6 +163,9 @@ FlowgraphEditor::Config FlowgraphEditorPresenter::build(const std::string& flowg
                                   open = context.state.flowgraph.environment.contains(flowgraphId)]() {
         enqueue(MailSetFlowgraphEnvironmentVisible{.flowgraph = flowgraphId, .value = !open});
     };
+    config.onInfo = [enqueue, flowgraphId]() {
+        enqueue(MailOpenModal{.content = ModalContent::FlowgraphInfo, .flowgraph = flowgraphId});
+    };
 
     const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
     if (blocks == context.state.flowgraph.blocks.end()) {

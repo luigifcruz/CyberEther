@@ -1273,7 +1273,7 @@ TEST_CASE("Editor sends the whole selection on copy, cut, and duplicate and appl
     CHECK(measured.selected == std::vector<std::string>{"ifft"});
 }
 
-TEST_CASE("Editor toolbar pause, save, and environment buttons run their callbacks and follow the run state",
+TEST_CASE("Editor toolbar pause, save, environment, and info buttons run their callbacks and follow the run state",
           "[core][sakura][flowgraph][editor-views]") {
     Scene scene;
     FlowgraphEditor editor;
@@ -1290,6 +1290,7 @@ TEST_CASE("Editor toolbar pause, save, and environment buttons run their callbac
             .onTogglePause = [&] { calls.push_back(paused ? "resume" : "pause"); },
             .onSave = [&] { calls.push_back("save"); },
             .onToggleEnvironment = [&] { calls.push_back("environment"); },
+            .onInfo = [&] { calls.push_back("info"); },
         });
         host.place(scene.ctx, kScreen);
     };
@@ -1310,15 +1311,16 @@ TEST_CASE("Editor toolbar pause, save, and environment buttons run their callbac
     CHECK_FALSE(press(ICON_LC_PLAY));
     CHECK(press(ICON_LC_SAVE));
     CHECK(press(ICON_LC_TABLE_PROPERTIES));
-    CHECK(Find<Sakura::PillIconButton>(host).size() == 4);
+    CHECK(press(ICON_LC_INFO));
+    CHECK(Find<Sakura::PillIconButton>(host).size() == 5);
     CHECK_FALSE(press(ICON_LC_SQUARE_TERMINAL));
     paused = true;
     frame();
     CHECK(press(ICON_LC_PLAY));
-    CHECK(calls == std::vector<std::string>{"pause", "save", "environment", "resume"});
+    CHECK(calls == std::vector<std::string>{"pause", "save", "environment", "info", "resume"});
 }
 
-TEST_CASE("Editor presenter wires the toolbar to pause, save, and environment mail",
+TEST_CASE("Editor presenter wires the toolbar to pause, save, environment, and info mail",
           "[core][sakura][flowgraph][editor-views]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
@@ -1332,11 +1334,14 @@ TEST_CASE("Editor presenter wires the toolbar to pause, save, and environment ma
     config.onTogglePause();
     config.onSave();
     config.onToggleEnvironment();
-    REQUIRE(mails.size() == 3);
+    config.onInfo();
+    REQUIRE(mails.size() == 4);
     CHECK(std::get<MailSetFlowgraphPaused>(mails[0]).flowgraph == "graph");
     CHECK(std::get<MailSetFlowgraphPaused>(mails[0]).paused);
     CHECK(std::get<MailSaveFlowgraph>(mails[1]).flowgraph == "graph");
     CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mails[2]).value);
+    CHECK(std::get<MailOpenModal>(mails[3]).content == ModalContent::FlowgraphInfo);
+    CHECK(std::get<MailOpenModal>(mails[3]).flowgraph == std::optional<std::string>("graph"));
 
     state.flowgraph.environment["graph"] = "";
     config = FlowgraphEditorPresenter(context).build("graph", graph);

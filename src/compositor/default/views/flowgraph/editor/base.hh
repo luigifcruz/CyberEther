@@ -81,6 +81,7 @@ struct FlowgraphEditor {
         Sakura::Callback<void()> onTogglePause;
         Sakura::Callback<void()> onSave;
         Sakura::Callback<void()> onToggleEnvironment;
+        Sakura::Callback<void()> onInfo;
     };
 
     void update(Config config);
@@ -107,6 +108,7 @@ struct FlowgraphEditor {
     Sakura::PillIconButton saveButton;
     Sakura::PillIconButton addButton;
     Sakura::PillIconButton environmentButton;
+    Sakura::PillIconButton infoButton;
     Sakura::Menu flowgraphContextMenu;
     bool flowgraphContextMenuOpen = false;
     bool arrangePending = false;

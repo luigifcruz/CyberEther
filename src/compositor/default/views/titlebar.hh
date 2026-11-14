@@ -12,7 +12,6 @@
 #include <array>
 #include <optional>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -59,7 +58,6 @@ struct TitlebarView {
         SaveAs,
         Rename,
         Info,
-        ToggleEnvironment,
         Close,
     };
 
@@ -94,7 +92,6 @@ struct TitlebarView {
         bool agentUnread = false;
         bool terminalEnabled = false;
         std::optional<VoiceIndicator> voice;
-        std::unordered_set<std::string> environmentFlowgraphs;
         bool debugTimingEnabled = false;
         I32 debugLogLevel = 0;
         std::optional<bool> sidebarOpen;

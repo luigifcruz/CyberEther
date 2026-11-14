@@ -995,12 +995,12 @@ TEST_CASE("Right clicking a pill opens the tab menu at the cursor acting on that
         rig.place();
         CHECK(PopupFrames(rig.host).empty());
     };
-    for (const char* label : {"Save", "Save As", "Rename", "Info", "Environment View", "Close"}) {
+    for (const char* label : {"Save", "Save As", "Rename", "Info", "Close"}) {
         pick(label);
     }
     CHECK(rig.tabActions == std::vector<std::pair<TabAction, std::string>>{
         {TabAction::Save, "b"}, {TabAction::SaveAs, "b"}, {TabAction::Rename, "b"}, {TabAction::Info, "b"},
-        {TabAction::ToggleEnvironment, "b"}, {TabAction::Close, "b"}});
+        {TabAction::Close, "b"}});
     CHECK(rig.presses.empty());
 
     rig.host.click(second.x, second.y, MouseButton::Right);
@@ -1009,7 +1009,7 @@ TEST_CASE("Right clicking a pill opens the tab menu at the cursor acting on that
     rig.host.click(600.0f, 600.0f);
     rig.place();
     CHECK(PopupFrames(rig.host).empty());
-    CHECK(rig.tabActions.size() == 6);
+    CHECK(rig.tabActions.size() == 5);
 }
 
 TEST_CASE("Titlebar presenter actions enqueue the matching mail", "[core][sakura][views]") {
@@ -1264,7 +1264,6 @@ TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph",
     using TabAction = TitlebarView::TabAction;
     Mailbox mailbox;
     mailbox.state.interface.focusedFlowgraph = "a";
-    mailbox.state.flowgraph.environment["a"] = "";
     auto config = TitlebarPresenter(mailbox.context()).build();
 
     config.onTabAction(TabAction::Save, "b");
@@ -1281,19 +1280,6 @@ TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph",
     config.onTabAction(TabAction::Close, "b");
     REQUIRE(mailbox.last<MailCloseFlowgraph>() != nullptr);
     CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "b");
-
-    mailbox.mails.clear();
-    config.onTabAction(TabAction::ToggleEnvironment, "b");
-    REQUIRE(mailbox.mails.size() == 1);
-    REQUIRE(std::holds_alternative<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]));
-    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).flowgraph == "b");
-    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).value);
-
-    mailbox.mails.clear();
-    config.onTabAction(TabAction::ToggleEnvironment, "a");
-    REQUIRE(mailbox.mails.size() == 1);
-    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).flowgraph == "a");
-    CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).value);
 }
 
 TEST_CASE("Titlebar presenter open terminal action opens a terminal in the active flowgraph folder",
@@ -1665,19 +1651,13 @@ TEST_CASE("Titlebar presenter tab info opens the flowgraph info of the chosen ta
     CHECK(mailbox.last<MailOpenModal>()->flowgraph == std::optional<std::string>("b"));
 }
 
-TEST_CASE("Menu checkmarks follow the tab environment views, the timing toggle, and the log level",
+TEST_CASE("Menu checkmarks follow the timing toggle and the log level",
           "[core][sakura][views]") {
     TitleRig rig;
     rig.config.debugTimingEnabled = true;
     rig.config.debugLogLevel = 2;
     rig.update();
     rig.place();
-    const auto tabMenu = [&](U64 index) {
-        const auto pill = rig.pill(index);
-        rig.host.click(pill.x, pill.y, MouseButton::Right);
-        rig.place();
-        return rig.popup();
-    };
     const auto dismiss = [&] {
         rig.host.click(600.0f, 700.0f);
         rig.place();
@@ -1691,16 +1671,6 @@ TEST_CASE("Menu checkmarks follow the tab environment views, the timing toggle, 
             }
         }
         return found;
-    };
-    const auto views = [&](U64 index) {
-        const auto menu = tabMenu(index);
-        REQUIRE(menu.width > 0.0f);
-        std::vector<bool> checked;
-        for (const char* label : {"Save", "Rename", "Info", "Environment View", "Close"}) {
-            checked.push_back(Checked(rig.host, label));
-        }
-        dismiss();
-        return checked;
     };
     const auto developer = [&] {
         rig.open(rig.shell.bar().leading());
@@ -1724,17 +1694,12 @@ TEST_CASE("Menu checkmarks follow the tab environment views, the timing toggle, 
         return checked;
     };
 
-    CHECK(views(0) == std::vector<bool>(5, false));
-    CHECK(views(1) == std::vector<bool>(5, false));
     CHECK(developer() == std::vector<bool>{true, false, false, false, false, false, true, false, false});
 
-    rig.config.environmentFlowgraphs = {"a"};
     rig.config.debugTimingEnabled = false;
     rig.config.debugLogLevel = 4;
     rig.update();
     rig.place();
-    CHECK(views(0) == std::vector<bool>{false, false, false, true, false});
-    CHECK(views(1) == std::vector<bool>(5, false));
     CHECK(developer() == std::vector<bool>{false, false, false, false, false, false, false, false, true});
 }
 
@@ -1747,11 +1712,6 @@ TEST_CASE("Toggling checked menu state while the menus are closed settles withou
     };
     REQUIRE(Settles(frames, update));
     const std::vector<std::function<void()>> toggles = {
-        [&] {
-            rig.config.environmentFlowgraphs = rig.config.environmentFlowgraphs.empty()
-                                                   ? std::unordered_set<std::string>{"a"}
-                                                   : std::unordered_set<std::string>{};
-        },
         [&] { rig.config.debugTimingEnabled = !rig.config.debugTimingEnabled; },
         [&] { rig.config.debugLogLevel = (rig.config.debugLogLevel + 1) % 5; },
     };
