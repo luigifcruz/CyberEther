@@ -12,6 +12,7 @@
 #include "jetstream/render/components/curves.hh"
 #include "jetstream/render/components/image.hh"
 #include "jetstream/render/components/mesh.hh"
+#include "jetstream/render/components/shapes.hh"
 #include "jetstream/render/components/text.hh"
 #include "../../../resources/fonts/compressed_jbmm.hh"
 #include "component_test_support.hh"
@@ -894,6 +895,97 @@ TEST_CASE("Metal mesh uploads active index ranges without changing pixels", "[co
 #endif
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Vulkan surfaces report clears and redraws but not retained idle frames",
+          "[core][render][native][vulkan][idle-submit]") {
+    if (!std::getenv("JETSTREAM_TEST_NATIVE_COMPONENTS")) {
+        SKIP("Set JETSTREAM_TEST_NATIVE_COMPONENTS=1 to run headless GPU regressions.");
+    }
+    constexpr auto device = DeviceType::Vulkan;
+    REQUIRE(Backend::Initialize<device>(Backend::Config{
+        .validationEnabled = false, .headless = true}) == Result::SUCCESS);
+    ComponentDriver<device> driver;
+    ComponentWindow<device> window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    auto texture = Frame<device>();
+    auto surface = std::make_shared<ComponentSurface<device>>(Render::Surface::Config{
+        .framebuffer = texture, .clearColor = {1, 0, 0, 1}, .retained = true,
+    });
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+
+    driver.render(window);
+    CHECK(surface->hasCommands());
+    CHECK(Pixel(driver.pixels(texture), 32, 32, 0) > 0.99f);
+    for (U64 frame = 0; frame < 8; ++frame) {
+        driver.render(window);
+        CHECK_FALSE(surface->hasCommands());
+    }
+
+    surface->clearColor({0, 1, 0, 1});
+    for (U64 frame = 0; frame < 8; ++frame) {
+        driver.render(window, surface.get());
+        CHECK_FALSE(surface->hasCommands());
+    }
+    CHECK(Pixel(driver.pixels(texture), 32, 32, 0) > 0.99f);
+    driver.render(window);
+    CHECK(surface->hasCommands());
+    CHECK(Pixel(driver.pixels(texture), 32, 32, 1) > 0.99f);
+    driver.render(window);
+    CHECK_FALSE(surface->hasCommands());
+
+    surface->size({32, 32});
+    driver.render(window, surface.get());
+    CHECK(surface->hasCommands());
+    driver.render(window);
+    CHECK_FALSE(surface->hasCommands());
+    ReleaseComponentSurface(window, surface);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Vulkan hidden compute work still reports encoded commands",
+          "[core][render][native][vulkan][idle-submit]") {
+    if (!std::getenv("JETSTREAM_TEST_NATIVE_COMPONENTS")) {
+        SKIP("Set JETSTREAM_TEST_NATIVE_COMPONENTS=1 to run headless GPU regressions.");
+    }
+    constexpr auto device = DeviceType::Vulkan;
+    REQUIRE(Backend::Initialize<device>(Backend::Config{
+        .validationEnabled = false, .headless = true}) == Result::SUCCESS);
+    ComponentDriver<device> driver;
+    ComponentWindow<device> window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    Shapes::Config config{.pixelSize = {2.0f / 64, 2.0f / 64}};
+    config.elements["rect"] = {
+        .color = {1, 0, 0, 1}, .size = {32, 32},
+    };
+    Shapes shapes(config);
+    REQUIRE(shapes.create(&window) == Result::SUCCESS);
+    auto texture = Frame<device>();
+    auto surface = Attach(window, shapes, texture);
+    REQUIRE(shapes.present() == Result::SUCCESS);
+    driver.render(window);
+    CHECK(surface->hasCommands());
+    const auto baseline = driver.pixels(texture);
+    REQUIRE(Pixel(baseline, 32, 32, 0) > 0.99f);
+    driver.render(window);
+    CHECK_FALSE(surface->hasCommands());
+
+    std::span<ColorRGBA<F32>> colors;
+    REQUIRE(shapes.getColors("rect", colors) == Result::SUCCESS);
+    colors[0] = {0, 1, 0, 1};
+    REQUIRE(shapes.updateColors("rect") == Result::SUCCESS);
+    REQUIRE(shapes.present() == Result::SUCCESS);
+    driver.render(window, surface.get());
+    CHECK(surface->hasCommands());
+    CHECK(driver.pixels(texture) == baseline);
+    driver.render(window, surface.get());
+    CHECK_FALSE(surface->hasCommands());
+    driver.render(window);
+    CHECK(surface->hasCommands());
+    CHECK(driver.pixels(texture) != baseline);
+    ReleaseComponentSurface(window, surface);
+    REQUIRE(shapes.destroy(&window) == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Vulkan text style changes update uniforms without rebuilding programs", "[core][render][native][vulkan][text-style]") {
     CheckNativeTextStyle<DeviceType::Vulkan>();
 }

@@ -26,6 +26,8 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
     Result encode(VkCommandBuffer& commandBuffer, bool visible = true);
     void commit();
 
+    bool commandsEncoded = false;
+
  private:
     std::shared_ptr<TextureImp<DeviceType::Vulkan>> framebufferResolve;
     std::shared_ptr<TextureImp<DeviceType::Vulkan>> framebuffer;

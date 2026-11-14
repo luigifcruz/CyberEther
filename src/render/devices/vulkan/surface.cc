@@ -236,6 +236,7 @@ Result Implementation::rebuildFramebuffer() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
+    commandsEncoded = false;
     const bool required = shouldDraw(framebufferResized);
     JST_CHECK(drawResult());
     if (!required) {
@@ -255,6 +256,7 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
     // Ensure compute writes are visible to graphics.
 
     if (!kernels.empty()) {
+        commandsEncoded = true;
         VkMemoryBarrier memoryBarrier{};
         memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
         memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -280,6 +282,8 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
     if (!shouldDrawGraphics(visible)) {
         return Result::SUCCESS;
     }
+
+    commandsEncoded = true;
 
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;

@@ -58,6 +58,14 @@ class HiddenSurface final : public Render::SurfaceImp<D> {
     using Render::SurfaceImp<D>::SurfaceImp;
     bool wantsDraw() { return this->shouldDraw(); }
     bool wantsGraphics(bool visible) { return this->shouldDrawGraphics(visible); }
+    bool hasCommands() const {
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+        if constexpr (D == DeviceType::Vulkan) {
+            return this->commandsEncoded;
+        }
+#endif
+        return false;
+    }
     Result bindingResult() const { return this->drawResult(); }
     Result hiddenFrame() {
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
@@ -260,6 +268,28 @@ TEST_CASE("Metal surface append validation rejects incompatible objects without 
 #endif
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Vulkan idle and hidden surfaces do not report encoded commands",
+          "[core][render][surface][visibility][vulkan][idle-submit]") {
+    auto framebuffer = std::make_shared<HiddenTexture<DeviceType::Vulkan>>(
+        Render::Texture::Config{.size = {2, 2}});
+    HiddenSurface<DeviceType::Vulkan> surface(
+        Render::Surface::Config{.framebuffer = framebuffer, .retained = true});
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(surface.wantsGraphics(true));
+    surface.commitDraw();
+
+    for (U64 frame = 0; frame < 8; ++frame) {
+        REQUIRE(surface.hiddenFrame() == Result::SUCCESS);
+        CHECK_FALSE(surface.hasCommands());
+    }
+    surface.invalidate();
+    for (U64 frame = 0; frame < 8; ++frame) {
+        REQUIRE(surface.hiddenFrame() == Result::SUCCESS);
+        CHECK_FALSE(surface.hasCommands());
+    }
+    CHECK(surface.wantsDraw());
+}
+
 TEST_CASE("Vulkan hidden frames preserve cancelled visible redraws",
           "[core][render][surface][visibility][vulkan]") {
     CheckHiddenCancelledGraphics<DeviceType::Vulkan>();

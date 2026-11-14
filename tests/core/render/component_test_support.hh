@@ -65,6 +65,12 @@ class ComponentSurface final : public Render::SurfaceImp<D> {
  public:
     using Render::SurfaceImp<D>::SurfaceImp;
     using Render::SurfaceImp<D>::prepare;
+    bool hasCommands() const {
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+        if constexpr (D == DeviceType::Vulkan) return this->commandsEncoded;
+#endif
+        return false;
+    }
     Result encode(auto command, bool visible) {
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
         if constexpr (D == DeviceType::Metal) return this->draw(command, visible);

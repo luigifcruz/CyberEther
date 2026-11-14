@@ -324,6 +324,7 @@ Result Implementation::underlyingEnd() {
         }
     }
 
+    bool surfaceCommandsEncoded = false;
     for (auto& surface : surfaces) {
         const auto& framebuffer = *surface->getConfig().framebuffer;
         result = surface->encode(commandBuffers[currentFrame],
@@ -331,6 +332,7 @@ Result Implementation::underlyingEnd() {
         if (result != Result::SUCCESS && result != Result::RELOAD) {
             return abortFrame(result);
         }
+        surfaceCommandsEncoded |= surface->commandsEncoded;
     }
 
     auto pass = beginPresent(transfers);
@@ -356,6 +358,11 @@ Result Implementation::underlyingEnd() {
     if (vkEndCommandBuffer(commandBuffers[currentFrame]) != VK_SUCCESS) {
         JST_ERROR("[VULKAN] Can't end command buffer.");
         return abortFrame(Result::ERROR);
+    }
+
+    if (!pass.required && transfers.empty() && !surfaceCommandsEncoded) {
+        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+        return finishPresent(pass);
     }
 
     // Reset synchronization fences and submit to queue.
