@@ -20,58 +20,11 @@ struct FlowgraphEnvironment {
         Sakura::Callback<void()> onClose;
     };
 
-    void update(Config config) {
-        this->config = std::move(config);
-
-        searchInput.update({
-            .value = this->config.search,
-            .hint = this->config.searchHint,
-            .submit = Sakura::TextInput::Submit::OnEdit,
-            .onChange = this->config.onSearchChange,
-        });
-        countText.update({
-            .str = this->config.entryCount,
-            .font = Sakura::Text::Font::Sans,
-            .tone = Sakura::Text::Tone::Secondary,
-        });
-        table.update({
-            .columns = {"Key", "Value"},
-            .nodes = this->config.nodes,
-            .fixedColumnWidths = {180.0f},
-            .size = {Sakura::Fill, Sakura::Fill},
-            .wrapped = true,
-            .resizable = true,
-        });
-        stack.update({
-            .items = {
-                {.child = &searchInput},
-                {.child = &countText},
-                {.child = &table, .grow = 1.0f},
-            },
-        });
-        panel.update({
-            .id = this->config.id + ":panel",
-            .content = &stack,
-            .size = {Sakura::Fill, Sakura::Fill},
-            .transparent = true,
-        });
-    }
-
-    Sakura::Component& component() {
-        return panel;
-    }
-
-    const std::string& id() const {
-        return config.id;
-    }
-
-    const std::string& title() const {
-        return config.title;
-    }
-
-    Sakura::Callback<void()> closeCallback() const {
-        return config.onClose;
-    }
+    void update(Config config);
+    Sakura::Component& component();
+    const std::string& id() const;
+    const std::string& title() const;
+    Sakura::Callback<void()> closeCallback() const;
 
  private:
     Config config;

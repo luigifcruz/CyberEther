@@ -11,19 +11,8 @@ struct FlowgraphMetricError {
         std::string str;
     };
 
-    void update(Config config) {
-        text.update({
-            .id = config.id,
-            .str = std::move(config.str),
-            .colorKey = "text_secondary",
-            .align = Sakura::NodeLabel::Align::Center,
-            .boxed = true,
-        });
-    }
-
-    Sakura::Component& component() {
-        return text;
-    }
+    void update(Config config);
+    Sakura::Component& component();
 
  private:
     Sakura::NodeLabel text;

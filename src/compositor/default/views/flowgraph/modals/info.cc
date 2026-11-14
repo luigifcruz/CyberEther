@@ -1,0 +1,133 @@
+#include "info.hh"
+
+namespace Jetstream {
+
+void FlowgraphInfoView::update(Config config) {
+    using TextInput = Sakura::TextInput;
+
+    if (this->config.flowgraphId != config.flowgraphId || this->config.path != config.path) {
+        filename = config.path;
+    }
+    this->config = std::move(config);
+    header.update({
+        .title = ICON_LC_INFO " Flowgraph Information",
+        .description = "Edit the focused flowgraph metadata and save location.",
+    });
+    titleInput.update({
+        .value = this->config.title,
+        .submit = TextInput::Submit::OnEdit,
+        .onChange = this->config.onTitleChange,
+    });
+    summaryInput.update({
+        .value = this->config.summary,
+        .submit = TextInput::Submit::OnEdit,
+        .onChange = this->config.onSummaryChange,
+    });
+    authorInput.update({
+        .value = this->config.author,
+        .submit = TextInput::Submit::OnEdit,
+        .onChange = this->config.onAuthorChange,
+    });
+    licenseInput.update({
+        .value = this->config.license,
+        .submit = TextInput::Submit::OnEdit,
+        .onChange = this->config.onLicenseChange,
+    });
+    descriptionInput.update({
+        .value = this->config.description,
+        .submit = TextInput::Submit::OnEdit,
+        .multiline = true,
+        .height = 80.0f,
+        .onChange = this->config.onDescriptionChange,
+    });
+    pathInput.update({
+        .value = filename,
+        .submit = TextInput::Submit::OnEdit,
+        .onChange = [this](const std::string& value) {
+            filename = value;
+        },
+    });
+    browseButton.update({
+        .str = "Browse File",
+        .size = {Sakura::Fill, 0.0f},
+        .onClick = [this]() {
+            if (this->config.onBrowse) {
+                this->config.onBrowse(filename, [this](std::string path) {
+                    filename = std::move(path);
+                });
+            }
+        },
+    });
+    saveButton.update({
+        .str = ICON_LC_SAVE " Save Flowgraph",
+        .size = {Sakura::Fill, 40.0f},
+        .variant = Sakura::Button::Variant::Action,
+        .onClick = [this]() {
+            if (this->config.onSave) {
+                this->config.onSave(filename);
+            }
+        },
+    });
+    divider.update({});
+    pathControls.update({
+        .items = {
+            {.child = &pathInput},
+            {.child = &browseButton},
+        },
+    });
+    titleField.update({
+        .label = "Title",
+        .description = "Display title for this flowgraph.",
+        .control = &titleInput,
+    });
+    summaryField.update({
+        .label = "Summary",
+        .description = "Short one-line summary.",
+        .control = &summaryInput,
+    });
+    authorField.update({
+        .label = "Author",
+        .description = "Flowgraph author or organization.",
+        .control = &authorInput,
+    });
+    licenseField.update({
+        .label = "License",
+        .description = "License identifier for this flowgraph.",
+        .control = &licenseInput,
+    });
+    descriptionField.update({
+        .label = "Description",
+        .description = "Longer flowgraph description.",
+        .control = &descriptionInput,
+    });
+    pathField.update({
+        .label = "File Path",
+        .description = "Save path for this flowgraph file.",
+        .control = &pathControls,
+        .divider = false,
+    });
+    stack.update({
+        .items = {
+            {.child = &header},
+            {.child = &titleField},
+            {.child = &summaryField},
+            {.child = &authorField},
+            {.child = &licenseField},
+            {.child = &descriptionField},
+            {.child = &pathField},
+            {.child = &divider},
+            {.child = &saveButton},
+        },
+    });
+    panel.update({
+        .id = "FlowgraphInfo",
+        .content = &stack,
+        .backgroundColorKey = "popup_bg",
+    });
+}
+
+Sakura::Component& FlowgraphInfoView::component() {
+    return panel;
+}
+
+}  // namespace Jetstream

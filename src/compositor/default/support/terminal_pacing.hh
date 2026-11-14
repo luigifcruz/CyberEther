@@ -14,25 +14,9 @@ class TerminalInputPacer {
     using Clock = std::chrono::steady_clock;
     static constexpr auto Spacing = std::chrono::milliseconds(8);
 
-    std::chrono::milliseconds delay(Clock::time_point now) const {
-        if (queued) {
-            return Spacing;
-        }
-        if (!lastSent) {
-            return std::chrono::milliseconds::zero();
-        }
-        return std::max(std::chrono::milliseconds::zero(),
-                        std::chrono::ceil<std::chrono::milliseconds>(*lastSent + Spacing - now));
-    }
-
-    void queue() { queued = true; }
-
-    void sent(Clock::time_point now) {
-        if (queued) {
-            lastSent = now;
-            queued = false;
-        }
-    }
+    std::chrono::milliseconds delay(Clock::time_point now) const;
+    void queue();
+    void sent(Clock::time_point now);
 
  private:
     std::optional<Clock::time_point> lastSent;

@@ -11,16 +11,8 @@ namespace Jetstream {
 struct LegalSettingsPresenter {
     const PresenterContext& context;
 
-    explicit LegalSettingsPresenter(const PresenterContext& context) : context(context) {}
-
-    LegalSettingsView::Config build() const {
-        const auto enqueue = context.callbacks.enqueueMail;
-        return LegalSettingsView::Config{
-            .onViewFullLicenses = [enqueue]() {
-                enqueue(MailOpenUrl{.url = "https://cyberether.org/docs/acknowledgments"});
-            },
-        };
-    }
+    explicit LegalSettingsPresenter(const PresenterContext& context);
+    LegalSettingsView::Config build() const;
 };
 
 }  // namespace Jetstream

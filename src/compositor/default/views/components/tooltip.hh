@@ -14,31 +14,10 @@ struct Tooltip {
         F32 wrapWidth = 420.0f;
     };
 
-    bool requested() {
-        const bool asked = pending;
-        pending = false;
-        ready = ready || asked;
-        return asked;
-    }
-
-    void update(Config config) {
-        panel.update({
-            .id = config.id + ":panel",
-            .content = config.content,
-            .size = {0.0f, 0.0f},
-            .maxWidth = config.wrapWidth - 2.0f * WindowPadding,
-            .transparent = true,
-        });
-    }
-
-    bool prepared() const {
-        return ready;
-    }
-
-    Sakura::Component* show() {
-        pending = true;
-        return ready ? &panel : nullptr;
-    }
+    bool requested();
+    void update(Config config);
+    bool prepared() const;
+    Sakura::Component* show();
 
  private:
     static constexpr F32 WindowPadding = Sakura::Spacing::Medium;

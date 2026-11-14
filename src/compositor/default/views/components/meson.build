@@ -1,0 +1,18 @@
+src_lst += files([
+    'assistant_composer.cc',
+    'callout.cc',
+    'card_button.cc',
+    'compact_button.cc',
+    'file_field.cc',
+    'flowgraph_cell.cc',
+    'hint_overlay.cc',
+    'modal_header.cc',
+    'option_stepper.cc',
+    'pagination.cc',
+    'section_group.cc',
+    'sidebar_heading.cc',
+    'sidebar_navigation.cc',
+    'sidebar_tiles.cc',
+    'status_badge.cc',
+    'tooltip.cc',
+])

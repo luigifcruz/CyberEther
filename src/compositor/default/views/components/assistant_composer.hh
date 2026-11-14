@@ -35,20 +35,9 @@ struct AssistantComposer {
         "Stream my SDR to another computer.",
     };
 
-    static const char* RandomPrompt() {
-        std::random_device device;
-        return Prompts[std::uniform_int_distribution<U64>(0, Prompts.size() - 1)(device)];
-    }
-
+    static const char* RandomPrompt();
     static Sakura::ChatComposer::Style Style(Sakura::ChatComposer::Style style,
-                                             const char* placeholder = "Ask anything...") {
-        style.placeholder = placeholder;
-        style.iconColorKey = "text_secondary";
-        style.minLines = 1.0f;
-        style.maxLines = 5.0f;
-        style.fontSize = Sakura::Typography::FontSize;
-        return style;
-    }
+                                             const char* placeholder = "Ask anything...");
 };
 
 }  // namespace Jetstream

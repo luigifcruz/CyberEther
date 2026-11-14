@@ -11,36 +11,8 @@
 namespace Jetstream {
 
 struct FlowgraphFieldTooltip {
-    void update(const std::string& id, const std::string& text, F32 wrapWidth = 420.0f) {
-        if (text != str) {
-            str = text;
-            ++revision;
-        }
-        if (!tooltip.requested() || str.empty()) {
-            return;
-        }
-        label.update({
-            .str = str,
-            .wrapped = true,
-        });
-        tooltip.update({
-            .id = id + "HelpTooltip",
-            .content = &label,
-            .wrapWidth = wrapWidth,
-        });
-    }
-
-    Sakura::NodeOverlay overlay() {
-        if (str.empty()) {
-            return {};
-        }
-        return {
-            .content = [this]() {
-                return tooltip.show();
-            },
-            .revision = revision,
-        };
-    }
+    void update(const std::string& id, const std::string& text, F32 wrapWidth = 420.0f);
+    Sakura::NodeOverlay overlay();
 
  private:
     std::string str;
