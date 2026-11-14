@@ -86,6 +86,7 @@ void TitlebarView::update(Config config) {
     });
     helpButton.update({
         .icon = ICON_LC_CIRCLE_QUESTION_MARK,
+        .tooltip = "Documentation (F1)",
         .colorKey = "text_secondary",
         .backgroundColorKey = "transparent",
         .hoverColorKey = "chrome_button_hover",
@@ -93,6 +94,7 @@ void TitlebarView::update(Config config) {
     });
     assistantButton.update({
         .icon = ICON_LC_WAND_SPARKLES,
+        .tooltip = jst::fmt::format("Assistant ({}+L)", Sakura::Shortcuts::PrimaryName()),
         .colorKey = "text_secondary",
         .backgroundColorKey = "transparent",
         .hoverColorKey = "chrome_button_hover",
@@ -107,6 +109,7 @@ void TitlebarView::update(Config config) {
     });
     terminalButton.update({
         .icon = ICON_LC_SQUARE_TERMINAL,
+        .tooltip = "Terminal (Ctrl+`)",
         .colorKey = "text_secondary",
         .backgroundColorKey = "transparent",
         .hoverColorKey = "chrome_button_hover",
@@ -229,8 +232,20 @@ std::vector<Sakura::Shortcuts::Binding> TitlebarView::shortcuts() {
         bind(KeyCode::I, Action::ShowFlowgraphInfo),
         bind(KeyCode::G, Action::SendFeedback),
         bind(KeyCode::Comma, Action::Settings),
-        bind(KeyCode::GraveAccent, Action::OpenTerminal),
+        {
+            .key = KeyCode::GraveAccent,
+            .modifier = Sakura::Shortcuts::Modifier::Control,
+            .onPressed = [this]() { emit(Action::OpenTerminal); },
+        },
+        {
+            .key = KeyCode::F1,
+            .modifier = Sakura::Shortcuts::Modifier::None,
+            .onPressed = [this]() { emit(Action::Documentation); },
+        },
     };
+    if (config.intelligenceEnabled) {
+        bindings.push_back(bind(KeyCode::L, Action::ToggleAgent));
+    }
 #ifndef JST_OS_BROWSER
     if (config.intelligenceEnabled) {
         bindings.push_back(bind(AssistantComposer::VoiceKey, Action::ToggleVoice));

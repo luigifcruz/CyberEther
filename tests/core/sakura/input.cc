@@ -716,6 +716,7 @@ TEST_CASE("Shortcuts match keys by modifier and repeat, pass layout through, and
             {.key = KeyCode::B, .modifier = Sakura::Shortcuts::Modifier::Primary, .onPressed = record("primary")},
             {.key = KeyCode::C, .modifier = Sakura::Shortcuts::Modifier::PrimaryAlt, .onPressed = record("alt")},
             {.key = KeyCode::D, .repeat = true, .onPressed = record("repeat")},
+            {.key = KeyCode::E, .modifier = Sakura::Shortcuts::Modifier::Control, .onPressed = record("control")},
         },
         .content = &content,
     };
@@ -733,12 +734,15 @@ TEST_CASE("Shortcuts match keys by modifier and repeat, pass layout through, and
     CHECK(Tap(host, KeyCode::C, {.control = true, .alt = true}));
     CHECK_FALSE(Sakura::Access::key(host, Press(KeyCode::A, {}, true)));
     CHECK(Sakura::Access::key(host, Press(KeyCode::D, {}, true)));
-    CHECK(fired == std::vector<std::string>{"any", "primary", "alt", "repeat"});
+    CHECK_FALSE(Tap(host, KeyCode::E, {.super = true}));
+    CHECK_FALSE(Tap(host, KeyCode::E, {.control = true, .shift = true}));
+    CHECK(Tap(host, KeyCode::E, {.control = true}));
+    CHECK(fired == std::vector<std::string>{"any", "primary", "alt", "repeat", "control"});
 
     config.enabled = false;
     keys.update(config);
     CHECK_FALSE(Tap(host, KeyCode::A));
-    CHECK(fired.size() == 4);
+    CHECK(fired.size() == 5);
 }
 
 TEST_CASE("Primary modifiers match exactly, so binding order does not matter",
@@ -798,6 +802,7 @@ TEST_CASE("Bare modifier shortcuts ignore chords and labels name the platform mo
     CHECK(Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::None, "SPACE") == "SPACE");
     CHECK(Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Primary, "Z") == upper + "+Z");
     CHECK(Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryShift, "Z") == upper + "+SHIFT+Z");
+    CHECK(Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::Control, "`") == "CTRL+`");
 #if defined(JST_OS_MAC)
     CHECK(primary == "Cmd");
 #else

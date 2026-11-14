@@ -23,6 +23,8 @@ bool Matches(Shortcuts::Modifier modifier, const KeyModifiers& modifiers) {
             return primary && modifiers.alt && !modifiers.shift;
         case Shortcuts::Modifier::PrimaryShift:
             return primary && modifiers.shift && !modifiers.alt;
+        case Shortcuts::Modifier::Control:
+            return modifiers.control && !modifiers.super && !modifiers.shift && !modifiers.alt;
     }
     return false;
 }
@@ -50,6 +52,9 @@ std::string Shortcuts::Label(Modifier modifier, std::string_view key) {
             break;
         case Modifier::PrimaryShift:
             label = std::string(primary) + "SHIFT+";
+            break;
+        case Modifier::Control:
+            label = "CTRL+";
             break;
     }
     return label + std::string(key);

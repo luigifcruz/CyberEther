@@ -19,6 +19,7 @@ struct Shortcuts : public Component {
         Primary,
         PrimaryAlt,
         PrimaryShift,
+        Control,
     };
 
     struct Binding {

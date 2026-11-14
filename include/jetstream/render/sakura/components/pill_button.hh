@@ -14,6 +14,7 @@ struct PillButton : public Component {
     struct Config {
         std::string icon;
         std::string label;
+        std::string tooltip;
         std::string colorKey = "text_primary";
         std::string backgroundColorKey = "pill_bg";
         std::string hoverColorKey = "pill_hover_bg";

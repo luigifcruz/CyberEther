@@ -5,6 +5,7 @@
 #include <jetstream/render/sakura/typography.hh>
 
 #include "../context.hh"
+#include "../detail/popup_layer.hh"
 #include "../metrics.hh"
 
 #include <algorithm>
@@ -31,6 +32,7 @@ struct PillButton::Impl {
     Box highlight;
     Text icon;
     Text label;
+    Text tooltip;
     bool hovered = false;
     bool pressed = false;
 
@@ -43,6 +45,7 @@ struct PillButton::Impl {
                      .scale = kPillButtonIcon / Typography::FontSize, .opacity = alpha()});
         label.update({.str = config.label, .font = Text::Font::Display, .colorKey = config.colorKey,
                       .scale = config.textSize / Typography::FontSize, .opacity = alpha()});
+        tooltip.update({.str = config.tooltip, .font = Text::Font::Sans, .scale = Typography::ChromeScale});
     }
 };
 
@@ -142,6 +145,18 @@ void PillButton::layout(const Context& ctx) {
     s.label.setVisible(!iconOnly);
     if (!iconOnly) {
         place(s.label);
+    }
+
+    if (s.hovered && !s.config.tooltip.empty()) {
+        RequestPopup(ctx, {
+            .content = &s.tooltip,
+            .anchor = bounds,
+            .placement = PopupPlacement::BelowEnd,
+            .panel = true,
+            .padding = kTooltipPadding,
+            .interactive = false,
+            .delayed = true,
+        });
     }
 }
 

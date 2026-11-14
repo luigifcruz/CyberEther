@@ -1900,6 +1900,56 @@ TEST_CASE("Pill icon buttons show their tooltip below after the hover delay and 
     CHECK(Retains(frames, update));
 }
 
+TEST_CASE("Pill buttons show their tooltip below after the hover delay and drop it on leave",
+          "[core][sakura][controls]") {
+    Scene scene;
+    Sakura::PillButton button;
+    LayerSlot slot;
+    LayerHost host({&slot});
+    slot.hold(button, {700.0f, 12.0f, 28.0f, 28.0f});
+    Frames frames(host, kScreen, scene.context());
+    frames.timeStep = 0.1;
+    frames.ctx.hoverDelay = 0.25f;
+    std::string tip = "Documentation";
+    const auto update = [&] {
+        button.update({.icon = ICON_LC_CIRCLE_QUESTION_MARK, .tooltip = tip});
+    };
+    const auto tooltip = [&]() -> std::optional<Jetstream::Rect> {
+        for (auto* text : Find<Sakura::Text>(host.popups)) {
+            if (!text->config().str.empty() && text->config().str == tip) {
+                return Peek::Frame(*text);
+            }
+        }
+        return std::nullopt;
+    };
+    REQUIRE(frames.settle(update));
+    CHECK_FALSE(tooltip().has_value());
+
+    Hover(host, frames, 714.0f, 26.0f);
+    frames.run(update);
+    CHECK_FALSE(tooltip().has_value());
+    for (U64 frame = 0; frame < 6; ++frame) {
+        frames.run(update);
+    }
+    REQUIRE(tooltip().has_value());
+    CHECK(tooltip()->y > 40.0f);
+    CHECK(tooltip()->right() <= 728.0f);
+    CHECK(Retains(frames, update));
+
+    Hover(host, frames, 300.0f, 300.0f);
+    frames.run(update);
+    CHECK_FALSE(tooltip().has_value());
+    CHECK(Retains(frames, update));
+
+    tip.clear();
+    REQUIRE(frames.settle(update));
+    Hover(host, frames, 714.0f, 26.0f);
+    for (U64 frame = 0; frame < 7; ++frame) {
+        frames.run(update);
+    }
+    CHECK(Find<Sakura::Text>(host.popups).empty());
+}
+
 TEST_CASE("Highlight text scales with the pixel ratio and reports clicks", "[core][sakura][search]") {
     Scene scene{Extent2D<F32>{1200.0f, 900.0f}};
     U64 clicks = 0;

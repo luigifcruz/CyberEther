@@ -1447,13 +1447,21 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     keys.update({.bindings = bar.shortcuts()});
     Host host(keys);
 
-    for (const auto key : {KeyCode::T, KeyCode::O, KeyCode::S, KeyCode::W, KeyCode::I, KeyCode::G, KeyCode::Comma,
-                           KeyCode::GraveAccent}) {
+    for (const auto key : {KeyCode::T, KeyCode::O, KeyCode::S, KeyCode::W, KeyCode::I, KeyCode::G, KeyCode::Comma}) {
         CHECK(Tap(host, key, {.control = true}));
     }
     CHECK(actions == std::vector<Action>{Action::NewTab, Action::OpenFlowgraph, Action::SaveFlowgraph,
                                          Action::CloseFlowgraph, Action::ShowFlowgraphInfo, Action::SendFeedback,
-                                         Action::Settings, Action::OpenTerminal});
+                                         Action::Settings});
+
+    actions.clear();
+    CHECK(Tap(host, KeyCode::GraveAccent, {.control = true}));
+    CHECK_FALSE(Tap(host, KeyCode::GraveAccent, {.super = true}));
+    CHECK_FALSE(Tap(host, KeyCode::GraveAccent, {.control = true, .super = true}));
+    CHECK(Tap(host, KeyCode::F1));
+    CHECK_FALSE(Tap(host, KeyCode::F1, {.control = true}));
+    CHECK_FALSE(Tap(host, KeyCode::Slash, {.shift = true, .super = true}));
+    CHECK(actions == std::vector<Action>{Action::OpenTerminal, Action::Documentation});
 
     actions.clear();
     CHECK(Tap(host, KeyCode::T, {.super = true}));
@@ -1499,6 +1507,7 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     CHECK_FALSE(Tap(host, KeyCode::T));
     CHECK_FALSE(Tap(host, KeyCode::S, {.alt = true}));
     CHECK_FALSE(Tap(host, KeyCode::J, {.control = true}));
+    CHECK_FALSE(Tap(host, KeyCode::L, {.control = true}));
     CHECK(actions.empty());
 
     bar.update({
@@ -1510,7 +1519,11 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     keys.update({.bindings = bar.shortcuts()});
     CHECK(Tap(host, KeyCode::J, {.control = true}));
     CHECK(Tap(host, KeyCode::J, {.super = true}));
-    CHECK(actions == std::vector<Action>{Action::ToggleVoice, Action::ToggleVoice});
+    CHECK(Tap(host, KeyCode::L, {.control = true}));
+    CHECK(Tap(host, KeyCode::L, {.super = true}));
+    CHECK_FALSE(Tap(host, KeyCode::L, {.control = true, .shift = true}));
+    CHECK(actions == std::vector<Action>{Action::ToggleVoice, Action::ToggleVoice, Action::ToggleAgent,
+                                         Action::ToggleAgent});
     CHECK(AssistantComposer::VoiceKey == KeyCode::J);
 #if defined(JST_OS_MAC)
     CHECK(std::string(AssistantComposer::VoiceHint) == "Start voice (Cmd+J)");
