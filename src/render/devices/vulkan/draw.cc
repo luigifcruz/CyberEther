@@ -112,6 +112,10 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
+    if (drawCount == 0) {
+        return Result::SUCCESS;
+    }
+
     JST_CHECK(buffer->encode(commandBuffer));
 
     const bool supportsMultiDrawIndirect =

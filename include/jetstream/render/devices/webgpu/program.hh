@@ -18,8 +18,7 @@ class JETSTREAM_API ProgramImp<DeviceType::WebGPU> : public Program {
  protected:
     Result create(const WGPUTextureFormat& pixelFormat);
     Result destroy();
-    Result draw(WGPURenderPassEncoder& renderPassEncoder,
-                const Extent2D<U64>& framebufferSize);
+    Result draw(WGPURenderPassEncoder& renderPassEncoder);
 
  private:
     WGPURenderPipeline pipeline = nullptr;

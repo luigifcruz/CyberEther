@@ -421,7 +421,6 @@ struct Canvas::Impl {
         Access::mouseEvent(*root, event);
         if (root && treeDirtied()) {
             inputDirtied = true;
-            invalidateSurface();
         }
     }
 
@@ -481,7 +480,6 @@ struct Canvas::Impl {
             }
             if (handled || (root && treeDirtied())) {
                 inputDirtied = true;
-                invalidateSurface();
             }
         }
         hovered = routed.hovered;

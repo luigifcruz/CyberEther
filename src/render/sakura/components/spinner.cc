@@ -4,6 +4,7 @@
 
 #include "../context.hh"
 #include "../metrics.hh"
+#include "../detail/helpers.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -83,7 +84,7 @@ void Spinner::layout(const Context& ctx) {
         .capacity = 8 * (kSegments + 1),
     });
     layoutChild(ctx, s.arc, bounds);
-    if (drawn && s.config.period > 0.0f) {
+    if (drawn && s.config.period > 0.0f && !Intersect(Inflate(bounds, Fringe(ctx)), clip()).empty()) {
         requestFrame();
     }
 }

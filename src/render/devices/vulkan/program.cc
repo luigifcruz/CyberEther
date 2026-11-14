@@ -407,16 +407,6 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-    // Set scissor rect.
-    if (config.scissorRect) {
-        VkRect2D scissor{};
-        const auto& sr = *config.scissorRect;
-        scissor.offset = {static_cast<I32>(sr.x),
-                          static_cast<I32>(sr.y)};
-        scissor.extent = {sr.width, sr.height};
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-    }
-
     // Attach frame encoder.
 
     for (auto& draw : draws) {

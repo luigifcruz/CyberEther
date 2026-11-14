@@ -3145,7 +3145,7 @@ void TextGrid::layout(const Context& ctx) {
 
     impl->reconcileCursorBlink();
     impl->notifyLayout();
-    if (impl->caretActive()) {
+    if (impl->caretActive() && !Intersect(frame(), clip()).empty()) {
         requestFrame(impl->nextBlink());
     }
     if (impl->gliding) {

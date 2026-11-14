@@ -35,7 +35,6 @@ Result Implementation::create() {
     glfwSetErrorCallback(&PrintGLFWError);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_DOUBLEBUFFER, config.vsync);
 
     auto [width, height] = config.size;
     window = glfwCreateWindow(width, height,
@@ -56,6 +55,8 @@ Result Implementation::create() {
     swapchain->setDevice(device);
     swapchain->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
     swapchain->setFramebufferOnly(true);
+    reinterpret_cast<void (*)(CA::MetalLayer*, SEL, BOOL)>(objc_msgSend)(
+        swapchain, sel_registerName("setDisplaySyncEnabled:"), static_cast<BOOL>(config.vsync));
 
     auto* native = static_cast<NS::Window*>(glfwGetCocoaWindow(window));
     native->contentView()->setLayer(swapchain);

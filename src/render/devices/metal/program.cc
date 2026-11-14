@@ -177,13 +177,6 @@ Result Implementation::destroy() {
 Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
     renderCmdEncoder->setRenderPipelineState(renderPipelineState);
 
-    // Set scissor rect.
-    if (config.scissorRect) {
-        const auto& sr = *config.scissorRect;
-        MTL::ScissorRect rect = {sr.x, sr.y, sr.width, sr.height};
-        renderCmdEncoder->setScissorRect(rect);
-    }
-
     // Attach frame fragment-shader buffers.
     for (U64 i = 0; i < buffers.size(); i++) {
         auto& [buffer, target] = buffers[i];

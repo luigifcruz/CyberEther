@@ -1,5 +1,6 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <jetstream/render/components/text.hh>
 #include <jetstream/render/sakura/clipboard.hh>
@@ -1037,6 +1038,47 @@ TEST_CASE("Terminal cursors blink while focused and stay hollow when unfocused",
     CHECK(glyph.instances[0].color == kWhite);
     frames.timeStep = 0.3;
     CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Clipped terminals stop cursor blink wakeups and resume blinking on re-entry",
+          "[core][sakura][terminal][cursor]") {
+    const auto clipped = GENERATE(Rect{10.0f, -220.0f, 400.0f, 200.0f}, Rect{10.0f, 600.0f, 400.0f, 200.0f},
+                                  Rect{-420.0f, 10.0f, 400.0f, 200.0f}, Rect{800.0f, 10.0f, 400.0f, 200.0f});
+    Scene scene;
+    Recorder recorder;
+    auto screen = MakeScreen();
+    screen.cursor = {.visible = true, .blinking = true, .column = 4, .row = 1, .text = "x", .textColor = kWhite};
+    Terminal terminal;
+    Place place(terminal, kBounds);
+    Frames frames(place, kScreen, scene.context());
+    frames.verify = false;
+    const auto update = [&] {
+        terminal.update(recorder.wire(&screen, 1));
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(FocusOwner(place) == &terminal);
+
+    place.move(clipped);
+    REQUIRE(frames.run(update).laidOut);
+    frames.timeStep = 0.3;
+    for (U64 frame = 0; frame < 8; ++frame) {
+        CHECK(frames.run(update).clean());
+        CHECK(FocusOwner(place) == &terminal);
+    }
+
+    place.move(kBounds);
+    REQUIRE(frames.run(update).laidOut);
+    const auto& cursor = CursorBox(place).config();
+    bool hidden = false;
+    bool shown = false;
+    for (U64 frame = 0; frame < 8 && !(hidden && shown); ++frame) {
+        frames.run(update);
+        hidden = hidden || !cursor.instances[0].visible;
+        shown = shown || cursor.instances[0].visible;
+    }
+    CHECK(hidden);
+    CHECK(shown);
+    CHECK(FocusOwner(place) == &terminal);
 }
 
 TEST_CASE("Terminal half blocks fill exactly half of their cell", "[core][sakura][terminal][sprites]") {

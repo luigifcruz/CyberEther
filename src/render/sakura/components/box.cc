@@ -147,11 +147,6 @@ struct Box::Impl : public Drawable {
         if (!active || !component || !context) {
             return Result::SUCCESS;
         }
-        std::vector<Rect> occluders;
-        occluders.reserve(later.size());
-        for (const auto& occluder : later) {
-            occluders.push_back(occluder.translated(-translation.x, -translation.y));
-        }
         std::span<Rect> uploaded;
         JST_CHECK(shape()->getHoles(kRectElementId, uploaded));
         bool changed = false;
@@ -159,9 +154,10 @@ struct Box::Impl : public Drawable {
             Rect hole;
             if (i < config.instances.size() && config.instances[i].visible && !config.instances[i].rect.empty()) {
                 const auto& instance = config.instances[i];
-                const Rect own = HollowInterior(instance.rect, config.cornerRadius, config.borderWidth,
+                const Rect screen = instance.rect.translated(translation.x, translation.y);
+                const Rect own = HollowInterior(screen, config.cornerRadius, config.borderWidth,
                                                 config.softness, instance.backgroundColor);
-                hole = LocalHole(instance.rect, LargestHole(instance.rect, own, occluders));
+                hole = LocalHole(screen, LargestHole(screen, own, later));
             }
             if (holes[i] != hole) {
                 holes[i] = hole;
@@ -182,9 +178,14 @@ struct Box::Impl : public Drawable {
         }
         auto* shape = this->shape();
 
+        const Rect visible = screenClip().value_or(Rect{0.0f, 0.0f, static_cast<F32>(context->framebufferSize.x),
+                                                        static_cast<F32>(context->framebufferSize.y)});
+        const F32 fringe = 2.0f + 2.0f * std::max(config.borderWidth, config.softness);
+        const auto instances = rendered();
         active = std::any_of(
-            config.instances.begin(), config.instances.end(), [](const auto& instance) {
-                return instance.visible && !instance.rect.empty();
+            instances.begin(), instances.end(), [&](const auto& instance) {
+                const Rect bounds = Inset(instance.rect.translated(translation.x, translation.y), -fringe);
+                return instance.visible && !instance.rect.empty() && !Intersect(bounds, visible).empty();
             });
         shape->enabled(active);
         if (!active) {

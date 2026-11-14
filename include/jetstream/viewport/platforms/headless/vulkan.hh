@@ -44,6 +44,7 @@ class Headless<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
+    Result waitForPresent();
     Result nextDrawable(VkSemaphore& semaphore);
     Result commitDrawable(std::vector<VkSemaphore>& semaphores);
 

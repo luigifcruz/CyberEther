@@ -147,15 +147,17 @@ void ScrollArea::layout(const Context& ctx) {
                            std::max(0.0f, bounds.height - 2.0f * inset)};
     layoutChild(ctx, impl->clipLayer, clipRect);
     if (impl->config.content) {
-        const Rect content = {bounds.x + padding, bounds.y + padding - impl->scrollY - overscroll, innerWidth,
+        const Rect content = {bounds.x + padding, bounds.y + padding, innerWidth,
                               std::max(0.0f, impl->contentHeight - 2.0f * padding)};
-        impl->clipLayer.place(ctx, *impl->config.content, content);
+        impl->clipLayer.place(ctx.translated({0.0f, -impl->scrollY - overscroll}), *impl->config.content, content);
         if (impl->scrollPending && impl->config.scrollTarget) {
             impl->scrollPending = false;
             const F32 maxScroll = std::max(0.0f, impl->contentHeight - bounds.height);
             impl->glideFrom = impl->scrollY;
-            impl->glideTo = std::clamp(Access::frame(*impl->config.scrollTarget).y - content.y, 0.0f,
-                                       maxScroll);
+            const auto& target = *impl->config.scrollTarget;
+            const F32 targetY = Access::frame(target).y + Access::translation(target).y -
+                                Access::translation(*impl->config.content).y;
+            impl->glideTo = std::clamp(targetY - content.y, 0.0f, maxScroll);
             impl->glideStart = ctx.time;
             requestFrame();
         }

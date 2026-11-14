@@ -249,6 +249,15 @@ Result Implementation::createPresenter() {
 }
 
 Result Implementation::underlyingBegin() {
+    const Result pacing = viewport->waitForPresent();
+    if (pacing == Result::RECREATE) {
+        JST_CHECK(underlyingRecreate());
+        return Result::SKIP;
+    }
+    if (pacing != Result::SUCCESS) {
+        return pacing;
+    }
+
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     // Wait for a frame to be available.
@@ -361,7 +370,7 @@ Result Implementation::underlyingEnd() {
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitDstStageMask = waitStages;
-        signalSemaphores.push_back(renderFinishedSemaphores[currentFrame]);
+        signalSemaphores.push_back(renderFinishedSemaphores[viewport->currentDrawableIndex()]);
         submitInfo.pSignalSemaphores = signalSemaphores.data();
         submitInfo.signalSemaphoreCount = static_cast<U32>(signalSemaphores.size());
     }
@@ -449,7 +458,7 @@ Result Implementation::createSynchronizationObjects() {
 
     currentFrame = 0;
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    renderFinishedSemaphores.resize(viewport->getSwapchainImageViewsCount());
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
     VkSemaphoreCreateInfo semaphoreInfo{};
@@ -470,22 +479,19 @@ Result Implementation::createSynchronizationObjects() {
         }
         imageAvailableSemaphores[i] = imageAvailable;
 
-        VkSemaphore renderFinished = VK_NULL_HANDLE;
-        if (vkCreateSemaphore(device,
-                              &semaphoreInfo,
-                              nullptr,
-                              &renderFinished) != VK_SUCCESS) {
-            JST_ERROR("[VULKAN] Failed to create synchronization objects.");
-            return Result::ERROR;
-        }
-        renderFinishedSemaphores[i] = renderFinished;
-
         VkFence inFlight = VK_NULL_HANDLE;
         if (vkCreateFence(device, &fenceInfo, nullptr, &inFlight) != VK_SUCCESS) {
             JST_ERROR("[VULKAN] Failed to create synchronization objects.");
             return Result::ERROR;
         }
         inFlightFences[i] = inFlight;
+    }
+
+    for (auto& semaphore : renderFinishedSemaphores) {
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
+            JST_ERROR("[VULKAN] Failed to create synchronization objects.");
+            return Result::ERROR;
+        }
     }
 
     return Result::SUCCESS;

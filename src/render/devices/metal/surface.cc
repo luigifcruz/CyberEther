@@ -6,6 +6,8 @@
 #include "jetstream/render/devices/metal/draw.hh"
 #include "jetstream/render/devices/metal/vertex.hh"
 
+#include <optional>
+
 namespace Jetstream::Render {
 
 using Implementation = SurfaceImp<DeviceType::Metal>;
@@ -206,13 +208,21 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
 
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
     const auto& sz = framebufferResolve->size();
-    MTL::ScissorRect fullScissor = {0, 0, static_cast<NS::UInteger>(sz.x),
-                                          static_cast<NS::UInteger>(sz.y)};
+    const ScissorRect fullScissor = {0, 0, static_cast<U32>(sz.x), static_cast<U32>(sz.y)};
+    std::optional<ScissorRect> previousScissor;
     for (auto& program : programs) {
         if (!program->enabled()) {
             continue;
         }
-        renderCmdEncoder->setScissorRect(fullScissor);
+        const auto scissor = program->getConfig().scissorRect.value_or(fullScissor);
+        if (scissor.width == 0 || scissor.height == 0) {
+            continue;
+        }
+        if (previousScissor != scissor) {
+            MTL::ScissorRect rect = {scissor.x, scissor.y, scissor.width, scissor.height};
+            renderCmdEncoder->setScissorRect(rect);
+            previousScissor = scissor;
+        }
         JST_CHECK(program->draw(renderCmdEncoder));
     }
     renderCmdEncoder->endEncoding();

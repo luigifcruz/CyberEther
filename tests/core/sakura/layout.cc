@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/components/box.hh>
@@ -942,7 +943,7 @@ TEST_CASE("Scroll areas move their content with the stretch", "[core][sakura][la
     area.update({.id = "stretch", .content = &child, .height = 200.0f, .border = false});
     Host host(area);
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    const F32 rest = child.laidFrame.y;
+    const F32 rest = Peek::Frame(child).y;
 
     auto event = Wheel(100.0f, 100.0f, 0.0f);
     event.phase = ScrollPhase::Began;
@@ -952,7 +953,7 @@ TEST_CASE("Scroll areas move their content with the stretch", "[core][sakura][la
     host.send(event);
     ctx.time += 1.0 / 60.0;
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    CHECK(child.laidFrame.y > rest);
+    CHECK(Peek::Frame(child).y > rest);
 }
 
 TEST_CASE("Scroll areas drop the stretch and gesture of the previous id", "[core][sakura][layout]") {
@@ -964,7 +965,7 @@ TEST_CASE("Scroll areas drop the stretch and gesture of the previous id", "[core
     area.update({.id = "a", .content = &child, .height = 200.0f, .border = false});
     Host host(area);
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    const F32 rest = child.laidFrame.y;
+    const F32 rest = Peek::Frame(child).y;
 
     auto event = Wheel(100.0f, 100.0f, 0.0f);
     event.phase = ScrollPhase::Began;
@@ -974,14 +975,14 @@ TEST_CASE("Scroll areas drop the stretch and gesture of the previous id", "[core
     host.send(event);
     ctx.time += 1.0 / 60.0;
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    REQUIRE(child.laidFrame.y > rest);
+    REQUIRE(Peek::Frame(child).y > rest);
 
     area.update({.id = "b", .content = &child, .height = 200.0f, .border = false});
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    CHECK(child.laidFrame.y == rest);
+    CHECK(Peek::Frame(child).y == rest);
     ctx.time += 1.0 / 60.0;
     host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
-    CHECK(child.laidFrame.y == rest);
+    CHECK(Peek::Frame(child).y == rest);
 
     event.scroll = {0.0f, 0.0f};
     event.phase = ScrollPhase::Ended;
@@ -1308,6 +1309,11 @@ TEST_CASE("Scroll areas return to the top when their id changes and keep the off
     place("a");
     const F32 scrolled = Peek::Frame(content).y;
     CHECK(scrolled < top);
+    CHECK(content.currentFrame().y == top);
+    content.consume = true;
+    REQUIRE(host.send(Mouse(MouseEventType::Click, 50.0f, 25.0f)));
+    REQUIRE_FALSE(content.events.empty());
+    CHECK(content.events.back().position.y == Catch::Approx(25.0f - scrolled));
     place("a");
     CHECK(Peek::Frame(content).y == scrolled);
     place("b");
@@ -1559,10 +1565,11 @@ TEST_CASE("Scroll areas glide to a requested target, report offsets once, and yi
     ++request;
     place(1.0);
     place(1.175);
-    CHECK(target.currentFrame().y > 0.0f);
-    CHECK(target.currentFrame().y < 400.0f);
+    CHECK(Peek::Frame(target).y > 0.0f);
+    CHECK(Peek::Frame(target).y < 400.0f);
     place(1.5);
-    CHECK(target.currentFrame().y == 0.0f);
+    CHECK(Peek::Frame(target).y == 0.0f);
+    CHECK(target.currentFrame().y == 400.0f);
     CHECK(offsets.back() == 400.0f);
     const U64 reported = offsets.size();
     place(1.6);
@@ -1577,7 +1584,50 @@ TEST_CASE("Scroll areas glide to a requested target, report offsets once, and yi
         ctx.time = time;
         host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
     }
-    CHECK(above.currentFrame().y < 0.0f);
+    CHECK(Peek::Frame(above).y < 0.0f);
+}
+
+TEST_CASE("Scroll areas glide to a target inside a scrolled nested area", "[core][sakura][layout]") {
+    Probe spacer({100.0f, 400.0f});
+    Probe innerAbove({100.0f, 100.0f});
+    Probe target({100.0f, 40.0f});
+    Probe innerBelow({100.0f, 600.0f});
+    Probe outerBelow({100.0f, 600.0f});
+    for (auto* probe : {&spacer, &innerAbove, &target, &innerBelow, &outerBelow}) {
+        probe->consume = false;
+        probe->prepare();
+    }
+    Stack innerContent;
+    innerContent.update({.spacing = 0.0f, .centerCross = false,
+                         .items = {{.child = &innerAbove}, {.child = &target}, {.child = &innerBelow}}});
+    Sakura::ScrollArea inner;
+    Stack outerContent;
+    outerContent.update({.spacing = 0.0f, .centerCross = false,
+                         .items = {{.child = &spacer}, {.child = &inner}, {.child = &outerBelow}}});
+    Sakura::ScrollArea outer;
+    Host host(outer);
+    auto ctx = MakeContext();
+    U64 innerRequest = 0;
+    U64 outerRequest = 0;
+    const auto place = [&](F64 time) {
+        inner.update({.content = &innerContent, .height = 100.0f, .border = false, .scrollTarget = &target,
+                      .scrollRequest = innerRequest});
+        outer.update({.content = &outerContent, .height = Sakura::Fill, .border = false, .scrollTarget = &target,
+                      .scrollRequest = outerRequest});
+        ctx.time = time;
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    };
+
+    place(0.0);
+    ++innerRequest;
+    place(1.0);
+    place(1.5);
+    REQUIRE(Peek::Frame(target).y == 400.0f);
+
+    ++outerRequest;
+    place(2.0);
+    place(2.5);
+    CHECK(Peek::Frame(target).y == 0.0f);
 }
 
 TEST_CASE("Upward reveals keep their child's top at their top edge while they grow", "[core][sakura][layout]") {
