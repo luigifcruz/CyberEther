@@ -1,17 +1,73 @@
 #include "wayland_pointer.hh"
 #include "wayland_scroll.hh"
 
+#include "jetstream/platform.hh"
+
+#include <algorithm>
+#include <cstring>
+#include <string>
+#include <type_traits>
+#include <utility>
+
+#include <wayland-client-core.h>
+
+namespace {
+
+struct WaylandClient {
+    decltype(&wl_proxy_marshal_flags) proxyMarshalFlags = nullptr;
+    decltype(&wl_proxy_add_listener) proxyAddListener = nullptr;
+    decltype(&wl_proxy_destroy) proxyDestroy = nullptr;
+    decltype(&wl_proxy_get_version) proxyGetVersion = nullptr;
+    decltype(&wl_display_roundtrip) displayRoundtrip = nullptr;
+};
+
+WaylandClient waylandClient;
+
+bool LoadWaylandClient() {
+    static const bool loaded = [] {
+        std::string error;
+        void* handle = Jetstream::Platform::OpenDynamicLibrary(
+            "libwayland-client.so.0", Jetstream::Platform::DynamicLibraryVisibility::Local, error);
+        if (!handle) {
+            return false;
+        }
+        const auto resolve = [&](auto& target, const char* symbol) {
+            target = reinterpret_cast<std::remove_reference_t<decltype(target)>>(
+                Jetstream::Platform::LoadDynamicLibrarySymbol(handle, symbol, error));
+            return target != nullptr;
+        };
+        if (resolve(waylandClient.proxyMarshalFlags, "wl_proxy_marshal_flags") &&
+            resolve(waylandClient.proxyAddListener, "wl_proxy_add_listener") &&
+            resolve(waylandClient.proxyDestroy, "wl_proxy_destroy") &&
+            resolve(waylandClient.proxyGetVersion, "wl_proxy_get_version") &&
+            resolve(waylandClient.displayRoundtrip, "wl_display_roundtrip")) {
+            return true;
+        }
+        waylandClient = {};
+        Jetstream::Platform::CloseDynamicLibrary(handle);
+        return false;
+    }();
+    return loaded;
+}
+
+}  // namespace
+
+#define wl_proxy_marshal_flags waylandClient.proxyMarshalFlags
+#define wl_proxy_add_listener waylandClient.proxyAddListener
+#define wl_proxy_destroy waylandClient.proxyDestroy
+#define wl_proxy_get_version waylandClient.proxyGetVersion
+#ifndef wl_display_roundtrip
+#define wl_display_roundtrip waylandClient.displayRoundtrip
+#endif
+
+#include <wayland-client-protocol.h>
+
+#include "pointer-gestures-client.h"
+
 #define GLFW_INCLUDE_NONE
 #define GLFW_EXPOSE_NATIVE_WAYLAND
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
-#include <wayland-client.h>
-
-#include "pointer-gestures-client.h"
-
-#include <algorithm>
-#include <cstring>
-#include <utility>
 
 namespace Jetstream::Viewport {
 
@@ -235,7 +291,7 @@ struct WaylandPointer::State {
 };
 
 WaylandPointer::WaylandPointer(GLFWwindow* window, std::function<void(const Scroll&)> onScroll) {
-    if (glfwGetPlatform() == GLFW_PLATFORM_WAYLAND) {
+    if (glfwGetPlatform() == GLFW_PLATFORM_WAYLAND && LoadWaylandClient()) {
         state = std::make_unique<State>(window, std::move(onScroll));
     }
 }

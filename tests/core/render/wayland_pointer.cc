@@ -4,9 +4,10 @@
 
 #define GLFW_INCLUDE_NONE
 #define GLFW_EXPOSE_NATIVE_WAYLAND
+#define GLFW_NATIVE_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
-#include <wayland-client.h>
+#include <wayland-client-core.h>
 #include <wayland-server.h>
 #include <sys/socket.h>
 
@@ -22,6 +23,32 @@ wl_display* client = nullptr;
 wl_surface* surface = nullptr;
 int platform = GLFW_PLATFORM_WAYLAND;
 double clockTime = 1.0;
+
+int Roundtrip(wl_display* display);
+int TestGlfwPlatform() { return platform; }
+double TestGlfwTime() { return clockTime; }
+wl_display* TestGlfwDisplay() { return client; }
+wl_surface* TestGlfwSurface(GLFWwindow*) { return surface; }
+
+}  // namespace
+
+#define glfwGetPlatform ::TestGlfwPlatform
+#define glfwGetTime ::TestGlfwTime
+#define glfwGetWaylandDisplay ::TestGlfwDisplay
+#define glfwGetWaylandWindow ::TestGlfwSurface
+#define wl_display_roundtrip ::Roundtrip
+#include "../../../src/viewport/glfw/tools/wayland_pointer.cc"
+#undef wl_display_roundtrip
+#undef wl_proxy_marshal_flags
+#undef wl_proxy_add_listener
+#undef wl_proxy_destroy
+#undef wl_proxy_get_version
+#undef glfwGetWaylandWindow
+#undef glfwGetWaylandDisplay
+#undef glfwGetPlatform
+#undef glfwGetTime
+
+namespace {
 
 // Pump a real client/server protocol connection deterministically on one thread.
 // The helper's GLFW accessors are the only stand-ins; all Wayland messages are real.
@@ -44,24 +71,7 @@ int Roundtrip(wl_display* display) {
     return 0;
 }
 
-int TestGlfwPlatform() { return platform; }
-double TestGlfwTime() { return clockTime; }
-wl_display* TestGlfwDisplay() { return client; }
-wl_surface* TestGlfwSurface(GLFWwindow*) { return surface; }
-
 }  // namespace
-
-#define glfwGetPlatform ::TestGlfwPlatform
-#define glfwGetTime ::TestGlfwTime
-#define glfwGetWaylandDisplay ::TestGlfwDisplay
-#define glfwGetWaylandWindow ::TestGlfwSurface
-#define wl_display_roundtrip ::Roundtrip
-#include "../../../src/viewport/glfw/tools/wayland_pointer.cc"
-#undef wl_display_roundtrip
-#undef glfwGetWaylandWindow
-#undef glfwGetWaylandDisplay
-#undef glfwGetPlatform
-#undef glfwGetTime
 
 using namespace Jetstream;
 
@@ -127,6 +137,7 @@ struct Compositor {
         REQUIRE(wl_client_create(server, sockets[0]));
         client = wl_display_connect_to_fd(sockets[1]);
         REQUIRE(client);
+        REQUIRE(LoadWaylandClient());
         wl_global_create(server, &wl_compositor_interface, 1, this,
             [](wl_client* client, void* data, uint32_t version, uint32_t id) {
                 auto* resource = wl_resource_create(client, &wl_compositor_interface, version, id);
