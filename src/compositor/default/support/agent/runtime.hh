@@ -38,6 +38,7 @@ class AgentRuntime {
     bool submit(const std::string& text);
     bool listen(const Settings::Intelligence::Voice& voice);
     void hangup();
+    void setMuted(bool value);
     Agent::Session& session();
     AgentExecutor& executor();
 
@@ -51,8 +52,11 @@ class AgentRuntime {
     static std::string VoicePrompt();
 
  private:
+    struct Mute;
+
     DefaultCompositorState& state;
     const DefaultCompositorCallbacks& callbacks;
+    std::shared_ptr<Mute> mute;
     Agent::Session conversation;
     AgentExecutor tools;
     Agent::Session::Cursor cursor;
@@ -61,6 +65,8 @@ class AgentRuntime {
 
     void publish();
     void serve();
+
+    static Agent::Session::AudioFactory MuteAudio(Agent::Session::AudioFactory factory, std::shared_ptr<Mute> mute);
 };
 
 }  // namespace Jetstream

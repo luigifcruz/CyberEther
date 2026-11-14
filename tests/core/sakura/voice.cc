@@ -3,6 +3,7 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/voice.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "render/sakura/detail/voice_wave.hh"
 
@@ -69,7 +70,7 @@ struct Rig {
 
     const Sakura::Box::Config& cover() {
         const auto boxes = Direct<Sakura::Box>(voice);
-        REQUIRE(boxes.size() == 1);
+        REQUIRE_FALSE(boxes.empty());
         return boxes.front()->config();
     }
 
@@ -78,6 +79,7 @@ struct Rig {
         REQUIRE(texts.size() == 1);
         return texts.front()->config();
     }
+
 };
 
 }  // namespace
@@ -93,6 +95,62 @@ TEST_CASE("Voice pills measure a fixed width wave and scale with the pixel ratio
     doubled.pixelRatio = 2.0f;
     CHECK(host.measureOf(doubled, {kInfinite, kInfinite}) == Extent2D<F32>{280.0f, 56.0f});
     CHECK(host.measureOf(scene.ctx, {100.0f, 20.0f}) == Extent2D<F32>{100.0f, 20.0f});
+}
+
+TEST_CASE("Voice pills with a mute action grow a round mic button on their left that toggles without ending the call",
+          "[core][sakura][voice]") {
+    Scene scene;
+    Sakura::Voice voice;
+    Host host(voice);
+    voice.update({.onMute = [] {}});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{140.0f + 28.0f + 6.0f, 28.0f});
+
+    U64 mutes = 0;
+    Scene rigScene;
+    Sakura::Voice pill;
+    const Rect wide = {kPill.x - 34.0f, kPill.y, kPill.width + 34.0f, kPill.height};
+    Place place{pill, wide};
+    Frames frames{place, kScreen, rigScene.context()};
+    frames.ctx.deltaTime = 0.1f;
+    frames.timeStep = 0.1;
+    U64 stops = 0;
+    Sakura::Voice::Config config = {
+        .phase = Sakura::Voice::Phase::Listening,
+        .onStop = [&] { ++stops; },
+        .onMute = [&] { ++mutes; },
+    };
+    const auto settle = [&] {
+        for (int frame = 0; frame < 30; ++frame) {
+            frames.run([&] { pill.update(config); });
+        }
+    };
+    settle();
+
+    const auto waves = Find<Sakura::VoiceWave>(pill);
+    REQUIRE(waves.size() == 1);
+    CHECK(waves.front()->config().rect == kPill);
+    const auto texts = Find<Sakura::Text>(pill);
+    REQUIRE(texts.size() == 2);
+    CHECK(texts.back()->config().str == ICON_LC_MIC);
+    CHECK(texts.back()->config().colorKey == "voice_dim");
+
+    const Extent2D<F32> button = {wide.x + 14.0f, wide.y + 14.0f};
+    CHECK(Peek::CursorAt(pill, button) == SurfaceCursor::Hand);
+    CHECK_FALSE(Peek::CursorAt(pill, {wide.x + 31.0f, button.y}).has_value());
+    place.send(Mouse(MouseEventType::Click, button.x, button.y));
+    place.send(Mouse(MouseEventType::Release, button.x, button.y));
+    CHECK(mutes == 1);
+    CHECK(stops == 0);
+
+    place.send(Mouse(MouseEventType::Click, button.x, button.y));
+    place.send(Mouse(MouseEventType::Release, kBody.x, kBody.y));
+    CHECK(mutes == 1);
+    CHECK(stops == 0);
+
+    config.muted = true;
+    settle();
+    CHECK(Find<Sakura::Text>(pill).back()->config().str == ICON_LC_MIC_OFF);
+    CHECK(Find<Sakura::Text>(pill).back()->config().colorKey == "voice_stop");
 }
 
 TEST_CASE("Voice pills fill with the wave and only show the end hint and a red outline while hovered", "[core][sakura][voice]") {
