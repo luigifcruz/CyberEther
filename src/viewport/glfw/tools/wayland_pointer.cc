@@ -60,7 +60,7 @@ bool LoadWaylandClient() {
 #define wl_display_roundtrip waylandClient.displayRoundtrip
 #endif
 
-#include <wayland-client-protocol.h>
+#include "wayland-protocol-client.h"
 
 #include "pointer-gestures-client.h"
 
