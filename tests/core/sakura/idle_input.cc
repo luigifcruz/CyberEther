@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include "harness.hh"
 #include "component_harness.hh"
@@ -11,20 +12,23 @@
 #include "compositor/default/views/workbench.hh"
 #include "flowgraph_fixture.hh"
 
+#include <jetstream/render/sakura/components/canvas.hh>
 #include <jetstream/render/sakura/components/floating_layer.hh>
 #include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
 #include <jetstream/render/sakura/components/root.hh>
+#include <jetstream/render/sakura/components/scroll_area.hh>
 
 #include "render/sakura/runtime.hh"
 #include "render/sakura/themes.hh"
 
-#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+#if defined(JETSTREAM_RENDER_METAL_AVAILABLE)
 #include "jetstream/backend/base.hh"
 #include "jetstream/render/components/font.hh"
 #include "jetstream/render/devices/metal/window.hh"
 #include "jetstream/viewport/adapters/metal.hh"
+#include "jetstream/viewport/platforms/headless/metal.hh"
 #include "../../../resources/fonts/compressed_fa_node.hh"
 #include "../../../resources/fonts/compressed_lucide.hh"
 #include "../../../resources/fonts/compressed_inter.hh"
@@ -33,6 +37,12 @@
 #include "../../../resources/fonts/compressed_sg.hh"
 #include "../../../resources/fonts/compressed_sgr.hh"
 #include "../../../resources/fonts/compressed_sgsb.hh"
+#elif defined(JETSTREAM_RENDER_VULKAN_AVAILABLE)
+#include "jetstream/backend/base.hh"
+#include "jetstream/render/components/font.hh"
+#include "jetstream/render/devices/vulkan/window.hh"
+#include "jetstream/viewport/platforms/headless/vulkan.hh"
+#include "../../../resources/fonts/compressed_jbmm.hh"
 #endif
 
 #include <cmath>
@@ -70,6 +80,223 @@ TEST_CASE("Workbench particles animate only while enabled",
     config.backgroundParticles = true;
     check(true);
 }
+
+#if defined(JETSTREAM_RENDER_METAL_AVAILABLE) || defined(JETSTREAM_RENDER_VULKAN_AVAILABLE)
+
+namespace {
+
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+constexpr DeviceType kDevice = DeviceType::Metal;
+#else
+constexpr DeviceType kDevice = DeviceType::Vulkan;
+#endif
+
+constexpr Jetstream::Rect kCanvasRegion = {0.0f, 0.0f, 400.0f, 300.0f};
+
+class SurfaceWindow : public Render::WindowImp<kDevice> {
+ public:
+    using Base = Render::WindowImp<kDevice>;
+    using Base::Base;
+    std::vector<std::shared_ptr<Render::Texture>> framebuffers;
+
+ protected:
+    Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
+        JST_CHECK(Base::bindSurface(surface));
+        framebuffers.push_back(surface->getConfig().framebuffer);
+        return Result::SUCCESS;
+    }
+
+    Result unbindSurface(const std::shared_ptr<Render::Surface>& surface) override {
+        JST_CHECK(Base::unbindSurface(surface));
+        std::erase(framebuffers, surface->getConfig().framebuffer);
+        return Result::SUCCESS;
+    }
+};
+
+struct CanvasInput {
+    std::shared_ptr<Viewport::Headless<kDevice>> viewport;
+    std::unique_ptr<SurfaceWindow> window;
+    Sakura::InputFrame input;
+    Sakura::Context ctx;
+    std::unique_ptr<Sakura::Canvas> canvas = std::make_unique<Sakura::Canvas>();
+
+    explicit CanvasInput(Sakura::Component& root) {
+        if (Backend::Initialize<kDevice>({.headless = true}) != Result::SUCCESS) {
+            SKIP("No native GPU is available for Canvas input retention.");
+        }
+        viewport = std::make_shared<Viewport::Headless<kDevice>>(
+            Viewport::Config{.size = {400, 300}, .framerate = 1000});
+        REQUIRE(viewport->create() == Result::SUCCESS);
+        window = std::make_unique<SurfaceWindow>(Render::Window::Config{}, viewport);
+        REQUIRE(window->create() == Result::SUCCESS);
+        REQUIRE(window->start() == Result::SUCCESS);
+        std::shared_ptr<Render::Components::Font> font;
+        REQUIRE(window->build(font, Render::Components::Font::Config{
+            .size = 32.0f,
+            .data = jbmm_compressed_data,
+        }) == Result::SUCCESS);
+        REQUIRE(window->addFont("default_mono", font) == Result::SUCCESS);
+        ctx.render = window.get();
+        ctx.input = &input;
+        ctx.windowFocused = true;
+        ctx.palette = Sakura::Themes.at(Sakura::ResolveThemeKey("dark"));
+        canvas->mount(root);
+        for (U64 frame = 0; frame < 8; ++frame) {
+            step();
+        }
+        REQUIRE(window->framebuffers.size() == 1);
+        REQUIRE_FALSE(step());
+    }
+
+    ~CanvasInput() {
+        canvas.reset();
+        (void)window->synchronize();
+        (void)window->stop();
+        (void)window->destroy();
+        (void)viewport->destroy();
+    }
+
+    bool step(std::vector<Sakura::FrameEvent> events = {}) {
+        input.advance(1.0f / 60.0f);
+        input.events = std::move(events);
+        ctx.time = input.time;
+        ctx.deltaTime = input.deltaTime;
+        ++ctx.frame;
+        canvas->update({.id = "canvas-input"});
+        REQUIRE(window->begin() == Result::SUCCESS);
+        canvas->render(ctx, kCanvasRegion);
+        std::vector<U64> revisions;
+        for (const auto& framebuffer : window->framebuffers) {
+            revisions.push_back(framebuffer->contentRevision());
+        }
+        REQUIRE(window->end() == Result::SUCCESS);
+        REQUIRE(window->framebuffers.size() == revisions.size());
+        for (U64 index = 0; index < revisions.size(); ++index) {
+            if (window->framebuffers[index]->contentRevision() != revisions[index]) {
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
+struct InputPaint : Sakura::Component {
+    Sakura::Box box;
+    bool dirtyLayout = false;
+    bool changeAppearance = false;
+    U64 handled = 0;
+    U64 laidOut = 0;
+
+    InputPaint() { addChild(box); }
+
+    bool handle() {
+        ++handled;
+        if (dirtyLayout || changeAppearance) {
+            invalidate(Dirty::Layout);
+        }
+        return true;
+    }
+
+    bool keyEvent(const KeyEvent& event) override {
+        return event.type == KeyEventType::Press && handle();
+    }
+
+    bool textEvent(const TextEvent&) override { return handle(); }
+
+    void layout(const Sakura::Context& ctx) override {
+        laidOut = handled;
+        box.update({.instances = {{
+            .rect = frame(),
+            .backgroundColor = changeAppearance ? ColorRGBA<F32>{1, 0, 0, 1} : ColorRGBA<F32>{0, 0, 1, 1},
+        }}});
+        layoutChild(ctx, box, frame());
+    }
+};
+
+}  // namespace
+
+TEST_CASE("Canvas retains its image when precise scrolling is clamped",
+          "[core][sakura][canvas][input][retention]") {
+    Sakura::Div content;
+    content.update({.size = {Sakura::Fill, 900.0f}, .border = false, .colorKey = "background"});
+    F32 offset = -1.0f;
+    Sakura::ScrollArea scroll;
+    scroll.update({.content = &content, .border = false, .onScroll = [&](F32 next) { offset = next; }});
+    CanvasInput fixture(scroll);
+    fixture.input.pointer = Extent2D<F32>{80.0f, 60.0f};
+    fixture.step();
+    REQUIRE_FALSE(fixture.step());
+
+    for (U64 frame = 0; frame < 4; ++frame) {
+        CHECK_FALSE(fixture.step({MouseEvent{
+            .type = MouseEventType::Scroll, .position = *fixture.input.pointer,
+            .scroll = {0, 1}, .precise = true,
+        }}));
+        CHECK(offset == 0.0f);
+    }
+    CHECK(fixture.step({MouseEvent{
+        .type = MouseEventType::Scroll, .position = *fixture.input.pointer,
+        .scroll = {0, -1}, .precise = true,
+    }}));
+    CHECK(offset > 0.0f);
+    CHECK_FALSE(fixture.step());
+}
+
+TEST_CASE("Canvas redraws hover transitions only when their appearance changes",
+          "[core][sakura][canvas][input][retention]") {
+    const bool visibleChange = GENERATE(false, true);
+    Sakura::Div content;
+    content.update({
+        .border = false, .colorKey = "background",
+        .hoveredColorKey = visibleChange ? "cyber_blue" : "background", .onClick = [] {},
+    });
+    CanvasInput fixture(content);
+    for (U64 frame = 0; frame < 4; ++frame) {
+        fixture.input.pointer = Extent2D<F32>{200.0f, 150.0f};
+        CHECK(fixture.step() == visibleChange);
+        CHECK_FALSE(fixture.step());
+        fixture.input.pointer = Extent2D<F32>{450.0f, 150.0f};
+        CHECK(fixture.step() == visibleChange);
+        CHECK_FALSE(fixture.step());
+    }
+}
+
+TEST_CASE("Canvas handles key and text input without assuming pixel damage",
+          "[core][sakura][canvas][input][retention]") {
+    const bool text = GENERATE(false, true);
+    InputPaint content;
+    content.dirtyLayout = GENERATE(false, true);
+    CanvasInput fixture(content);
+    REQUIRE(Sakura::Access::focus(content));
+    fixture.step();
+    REQUIRE_FALSE(fixture.step());
+    const auto send = [&] {
+        if (text) {
+            return fixture.step({TextEvent{.codepoint = U'x'}});
+        }
+        return fixture.step({KeyEvent{KeyEventType::Press, KeyCode::A, {}},
+                             KeyEvent{KeyEventType::Release, KeyCode::A, {}}});
+    };
+    CHECK_FALSE(send());
+    CHECK(content.handled == 1);
+    if (content.dirtyLayout) {
+        CHECK(content.laidOut == content.handled);
+    }
+    CHECK_FALSE(fixture.step());
+    content.changeAppearance = true;
+    CHECK(send());
+    CHECK(content.handled == 2);
+    CHECK(content.laidOut == content.handled);
+    CHECK_FALSE(fixture.step());
+}
+
+#else
+
+TEST_CASE("Canvas input retention requires a native GPU backend", "[core][sakura][canvas][input][retention]") {
+    SKIP("Canvas input retention drives a real Metal or Vulkan window.");
+}
+
+#endif
 
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
 
@@ -152,28 +379,9 @@ struct Tick {
     }
 };
 
-class MetalWindow : public Render::WindowImp<DeviceType::Metal> {
- public:
-    using WindowImp::WindowImp;
-    std::vector<std::shared_ptr<Render::Texture>> framebuffers;
-
- protected:
-    Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
-        JST_CHECK(WindowImp::bindSurface(surface));
-        framebuffers.push_back(surface->getConfig().framebuffer);
-        return Result::SUCCESS;
-    }
-
-    Result unbindSurface(const std::shared_ptr<Render::Surface>& surface) override {
-        JST_CHECK(WindowImp::unbindSurface(surface));
-        std::erase(framebuffers, surface->getConfig().framebuffer);
-        return Result::SUCCESS;
-    }
-};
-
 struct Workbench : FlowgraphFixture {
     std::shared_ptr<MetalViewport> viewport;
-    std::shared_ptr<MetalWindow> window;
+    std::shared_ptr<SurfaceWindow> window;
     Sakura::Palette palette = Sakura::Themes.at(Sakura::ResolveThemeKey(""));
     Sakura::Runtime runtime;
     DefaultCompositorState state;
@@ -193,7 +401,7 @@ struct Workbench : FlowgraphFixture {
         REQUIRE(Backend::Initialize<DeviceType::Metal>({.headless = true}) == Result::SUCCESS);
         viewport = std::make_shared<MetalViewport>();
         REQUIRE(viewport->create() == Result::SUCCESS);
-        window = std::make_shared<MetalWindow>(Render::Window::Config{.scale = 1.0f}, viewport);
+        window = std::make_shared<SurfaceWindow>(Render::Window::Config{.scale = 1.0f}, viewport);
         REQUIRE(window->create() == Result::SUCCESS);
         REQUIRE(window->start() == Result::SUCCESS);
         font("default_mono", jbmm_compressed_data, 32.0f);
