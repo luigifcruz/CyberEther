@@ -29,7 +29,6 @@ class JETSTREAM_API Surface : public WindowAttachment {
         bool multisampled = false;
         bool retained = false;
         bool composite = false;
-        bool sequenced = false;
     };
 
     struct Step {
@@ -61,7 +60,6 @@ class JETSTREAM_API Surface : public WindowAttachment {
 
     void clearColor(const ColorRGBA<F32>& color);
     void invalidate();
-    Result reorder(const std::vector<std::shared_ptr<Program>>& programs);
     Result sequence(std::vector<Step> steps);
 
     void commitDraw();
@@ -85,7 +83,6 @@ class JETSTREAM_API Surface : public WindowAttachment {
     virtual bool created() const;
     virtual Result rebuildFramebuffer();
 
-    virtual Result reorderPrograms(const std::vector<std::shared_ptr<Program>>& programs);
     virtual Result sequenceSteps(const std::vector<Step>& steps);
     virtual bool appendable() const;
     virtual Result validateAppend(const std::vector<std::shared_ptr<Program>>& programs,
@@ -248,7 +245,9 @@ class JETSTREAM_API Surface : public WindowAttachment {
 
     Result refreshBorrowedTextures();
 
-    std::vector<Step> steps;
+    Result resequence();
+
+    std::optional<std::vector<Step>> steps;
     bool drawPending = false;
     bool imageInitialized = false;
     bool graphicsSkipped = false;

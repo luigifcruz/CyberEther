@@ -139,7 +139,6 @@ TEST_CASE("Shapes skip uploads when instance data is unchanged",
     REQUIRE(surface.kernels.size() == 1);
     const auto& buffers = surface.kernels.front()->getConfig().buffers;
     const auto properties = buffers.at(1).first;
-    const auto holes = buffers.at(7).first;
     const auto uploaded = [](const std::shared_ptr<Render::Buffer>& buffer) {
         Render::Transfer::Batch batch;
         batch.collect(buffer);
@@ -154,7 +153,6 @@ TEST_CASE("Shapes skip uploads when instance data is unchanged",
 
     REQUIRE(shapes.present() == Result::SUCCESS);
     REQUIRE(uploaded(properties));
-    REQUIRE(uploaded(holes));
 
     updateProperties(4.0f);
     REQUIRE(uploaded(properties));
@@ -162,16 +160,6 @@ TEST_CASE("Shapes skip uploads when instance data is unchanged",
     REQUIRE_FALSE(uploaded(properties));
     updateProperties(2.0f);
     REQUIRE(uploaded(properties));
-
-    std::span<Rect> rects;
-    REQUIRE(shapes.getHoles("rect", rects) == Result::SUCCESS);
-    REQUIRE(shapes.updateHoles("rect") == Result::SUCCESS);
-    REQUIRE(shapes.present() == Result::SUCCESS);
-    REQUIRE_FALSE(uploaded(holes));
-    rects[1] = {1.0f, 1.0f, 2.0f, 2.0f};
-    REQUIRE(shapes.updateHoles("rect") == Result::SUCCESS);
-    REQUIRE(shapes.present() == Result::SUCCESS);
-    REQUIRE(uploaded(holes));
 
     REQUIRE(shapes.destroy(&window) == Result::SUCCESS);
 }

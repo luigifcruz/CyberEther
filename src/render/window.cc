@@ -952,6 +952,7 @@ Result Window::extend(const std::shared_ptr<Surface>& surface,
     surface->borrowedTextures.swap(nextBorrowed);
     transferState->invalidate();
     surface->invalidate();
+    JST_CHECK(surface->resequence());
 
     return Result::SUCCESS;
 }

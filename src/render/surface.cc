@@ -192,41 +192,11 @@ void Surface::invalidate() {
     dirty = true;
 }
 
-Result Surface::reorder(const std::vector<std::shared_ptr<Program>>& programs) {
-    if (programs == config.programs) {
-        return Result::SUCCESS;
-    }
-    if (programs.size() != config.programs.size()) {
-        return Result::ERROR;
-    }
-    std::unordered_map<const Program*, I64> counts;
-    for (const auto& program : config.programs) {
-        ++counts[program.get()];
-    }
-    for (const auto& program : programs) {
-        if (--counts[program.get()] < 0) {
-            return Result::ERROR;
-        }
-    }
-    auto candidate = programs;
-    JST_CHECK(reorderPrograms(candidate));
-    config.programs.swap(candidate);
-    invalidate();
-    return Result::SUCCESS;
-}
-
-Result Surface::reorderPrograms(const std::vector<std::shared_ptr<Program>>&) {
-    return Result::SUCCESS;
-}
-
 Result Surface::sequence(std::vector<Step> next) {
-    if (!config.sequenced) {
-        return Result::ERROR;
-    }
     std::erase_if(next, [](const Step& step) {
         return step.range.has_value() && (step.range->count == 0 || step.range->instanceCount == 0);
     });
-    if (next == steps) {
+    if (steps.has_value() && next == *steps) {
         return Result::SUCCESS;
     }
     std::unordered_set<const Program*> owned;
@@ -242,9 +212,21 @@ Result Surface::sequence(std::vector<Step> next) {
         }
     }
     JST_CHECK(sequenceSteps(next));
-    steps.swap(next);
+    steps = std::move(next);
     invalidate();
     return Result::SUCCESS;
+}
+
+Result Surface::resequence() {
+    if (steps.has_value()) {
+        return Result::SUCCESS;
+    }
+    std::vector<Step> whole;
+    whole.reserve(config.programs.size());
+    for (const auto& program : config.programs) {
+        whole.push_back({.program = program});
+    }
+    return sequenceSteps(whole);
 }
 
 Result Surface::sequenceSteps(const std::vector<Step>&) {

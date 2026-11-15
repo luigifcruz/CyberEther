@@ -492,15 +492,6 @@ Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
     return Result::SUCCESS;
 }
 
-Result Text::updateTranslation(const Extent2D<F32>& translation) {
-    const glm::vec2 next(translation.x, translation.y);
-    if (pimpl->uniforms.translation != next) {
-        pimpl->uniforms.translation = next;
-        pimpl->updateFontUniformBufferFlag = true;
-    }
-    return Result::SUCCESS;
-}
-
 Result Text::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
     pimpl->fontProgram->scissorRect(rect);
     return Result::SUCCESS;
@@ -513,18 +504,6 @@ Result Text::updateColor(const ColorRGBA<F32>& color) {
     config.color = color;
     JST_CHECK(pimpl->updateInstances());
     return Result::SUCCESS;
-}
-
-Result Text::updateStyle(F32 sharpness, F32 weight, F32 emboss, F32 embossBackdrop) {
-    if (config.sharpness == sharpness && config.weight == weight &&
-        config.emboss == emboss && config.embossBackdrop == embossBackdrop) {
-        return Result::SUCCESS;
-    }
-    config.sharpness = sharpness;
-    config.weight = weight;
-    config.emboss = emboss;
-    config.embossBackdrop = embossBackdrop;
-    return pimpl->updateUniforms();
 }
 
 void Text::enabled(bool value) {

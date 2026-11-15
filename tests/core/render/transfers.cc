@@ -253,8 +253,6 @@ class TestSurface final : public Render::Surface {
     U64 appendCalls = 0;
     U64 firstAppendedProgram = 0;
     U64 firstAppendedKernel = 0;
-    U64 reorderCalls = 0;
-    Result reorderResult = Result::SUCCESS;
     U64 sequenceCalls = 0;
     std::vector<Render::Surface::Step> backendSteps;
     bool typedAppends = false;
@@ -264,14 +262,6 @@ class TestSurface final : public Render::Surface {
     std::vector<std::shared_ptr<Render::Kernel>> backendKernels;
 
  protected:
-    Result reorderPrograms(const std::vector<std::shared_ptr<Render::Program>>& ordered) override {
-        ++reorderCalls;
-        if (reorderResult != Result::SUCCESS) {
-            return std::exchange(reorderResult, Result::SUCCESS);
-        }
-        backendPrograms = ordered;
-        return Result::SUCCESS;
-    }
     Result sequenceSteps(const std::vector<Render::Surface::Step>& steps) override {
         ++sequenceCalls;
         backendSteps = steps;
@@ -615,36 +605,6 @@ std::shared_ptr<TestSurface> MakeRetainedSurface(const std::shared_ptr<Render::B
 
 }  // namespace
 
-TEST_CASE("Surface reordering preserves the exact program multiset and invalidates only changes",
-          "[core][render][surface][reorder]") {
-    auto first = std::make_shared<Render::Program>(Render::Program::Config{});
-    auto second = std::make_shared<Render::Program>(Render::Program::Config{});
-    Render::Surface::Config config;
-    config.programs = {first, second, first};
-    config.retained = true;
-    TestSurface surface(config);
-    REQUIRE(surface.wantsDraw());
-    surface.commitDraw();
-    REQUIRE_FALSE(surface.wantsDraw());
-
-    REQUIRE(surface.reorder({first, second, first}) == Result::SUCCESS);
-    REQUIRE(surface.reorderCalls == 0);
-    REQUIRE_FALSE(surface.wantsDraw());
-    REQUIRE(surface.reorder({first, second}) == Result::ERROR);
-    REQUIRE(surface.reorder({first, second, second}) == Result::ERROR);
-    REQUIRE(surface.getConfig().programs == config.programs);
-    REQUIRE(surface.reorderCalls == 0);
-    REQUIRE_FALSE(surface.wantsDraw());
-
-    const std::vector<std::shared_ptr<Render::Program>> reordered = {second, first, first};
-    REQUIRE(surface.reorder(reordered) == Result::SUCCESS);
-    REQUIRE(surface.getConfig().programs == reordered);
-    REQUIRE(surface.reorderCalls == 1);
-    REQUIRE(surface.wantsDraw());
-    surface.commitDraw();
-    REQUIRE_FALSE(surface.wantsDraw());
-}
-
 TEST_CASE("Surface sequencing accepts only owned programs and invalidates only changes",
           "[core][render][surface][sequence]") {
     auto first = std::make_shared<Render::Program>(Render::Program::Config{});
@@ -654,21 +614,24 @@ TEST_CASE("Surface sequencing accepts only owned programs and invalidates only c
     config.programs = {first, second};
     config.retained = true;
 
-    TestSurface unordered(config);
-    REQUIRE(unordered.sequence({{.program = first}}) == Result::ERROR);
-    REQUIRE(unordered.sequenceCalls == 0);
-
-    config.sequenced = true;
     TestSurface surface(config);
     REQUIRE(surface.wantsDraw());
     surface.commitDraw();
     REQUIRE_FALSE(surface.wantsDraw());
 
-    REQUIRE(surface.sequence({}) == Result::SUCCESS);
     REQUIRE(surface.sequence({{.program = stranger}}) == Result::ERROR);
     REQUIRE(surface.sequence({{.program = nullptr}}) == Result::ERROR);
     REQUIRE(surface.sequence({{.program = first, .range = Render::Draw::Range{.count = 3}}}) == Result::ERROR);
     REQUIRE(surface.sequenceCalls == 0);
+    REQUIRE_FALSE(surface.wantsDraw());
+
+    REQUIRE(surface.sequence({}) == Result::SUCCESS);
+    REQUIRE(surface.sequenceCalls == 1);
+    REQUIRE(surface.backendSteps.empty());
+    REQUIRE(surface.wantsDraw());
+    surface.commitDraw();
+    REQUIRE(surface.sequence({}) == Result::SUCCESS);
+    REQUIRE(surface.sequenceCalls == 1);
     REQUIRE_FALSE(surface.wantsDraw());
 
     const std::vector<Render::Surface::Step> steps = {
@@ -677,14 +640,14 @@ TEST_CASE("Surface sequencing accepts only owned programs and invalidates only c
         {.program = second},
     };
     REQUIRE(surface.sequence(steps) == Result::SUCCESS);
-    REQUIRE(surface.sequenceCalls == 1);
+    REQUIRE(surface.sequenceCalls == 2);
     REQUIRE(surface.backendSteps == steps);
     REQUIRE(surface.wantsDraw());
     surface.commitDraw();
     REQUIRE_FALSE(surface.wantsDraw());
 
     REQUIRE(surface.sequence(steps) == Result::SUCCESS);
-    REQUIRE(surface.sequenceCalls == 1);
+    REQUIRE(surface.sequenceCalls == 2);
     REQUIRE_FALSE(surface.wantsDraw());
 }
 
@@ -724,6 +687,9 @@ TEST_CASE("Surface extension appends programs and kernels without recreating sha
     REQUIRE(surface->getConfig().programs.back() == program);
     REQUIRE(surface->getConfig().kernels.size() == 2);
     REQUIRE(surface->getConfig().kernels.back() == kernel);
+    REQUIRE(surface->sequenceCalls == 1);
+    REQUIRE(surface->backendSteps.size() == 2);
+    REQUIRE(surface->backendSteps.back() == Render::Surface::Step{.program = program});
     REQUIRE(surface->wantsDraw());
     REQUIRE(sharedBuffer->createCount == 1);
     REQUIRE(appendedBuffer->createCount == 1);
@@ -790,33 +756,6 @@ TEST_CASE("Surface extension rejects null surfaces and leaves unsupported or unb
     REQUIRE(surface->appendCalls == 0);
     REQUIRE(surface->getConfig().programs.empty());
     REQUIRE(window.destroy() == Result::SUCCESS);
-}
-
-TEST_CASE("Failed surface reorders preserve configuration and backend order until retry succeeds",
-          "[core][render][surface][reorder]") {
-    Result failure = Result::ERROR;
-    SECTION("Error") {}
-    SECTION("Skip") { failure = Result::SKIP; }
-    auto first = std::make_shared<Render::Program>(Render::Program::Config{});
-    auto second = std::make_shared<Render::Program>(Render::Program::Config{});
-    Render::Surface::Config config;
-    config.programs = {first, second};
-    config.retained = true;
-    TestSurface surface(config);
-    REQUIRE(surface.wantsDraw());
-    surface.commitDraw();
-    REQUIRE_FALSE(surface.wantsDraw());
-    surface.reorderResult = failure;
-    REQUIRE(surface.reorder({second, first}) == failure);
-    REQUIRE(surface.getConfig().programs == config.programs);
-    REQUIRE(surface.backendPrograms == config.programs);
-    REQUIRE(surface.reorderCalls == 1);
-    REQUIRE_FALSE(surface.wantsDraw());
-    REQUIRE(surface.reorder({second, first}) == Result::SUCCESS);
-    REQUIRE(surface.reorderCalls == 2);
-    REQUIRE(surface.getConfig().programs == std::vector<std::shared_ptr<Render::Program>>{second, first});
-    REQUIRE(surface.backendPrograms == surface.getConfig().programs);
-    REQUIRE(surface.wantsDraw());
 }
 
 TEST_CASE("Failed surface appends roll back partial backend creation dependencies and leases",

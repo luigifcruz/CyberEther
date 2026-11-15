@@ -23,26 +23,17 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
         framebuffer = std::make_shared<TextureImp<DeviceType::Metal>>(framebufferConfig);
     }
 
-    (void)reorderPrograms(config.programs);
+    for (const auto& program : config.programs) {
+        auto typed = std::dynamic_pointer_cast<ProgramImp<DeviceType::Metal>>(program);
+        programs.push_back(typed);
+        ordered.push_back({std::move(typed), std::nullopt, std::nullopt});
+    }
 
     for (auto& kernel : config.kernels) {
         kernels.push_back(
             std::dynamic_pointer_cast<KernelImp<DeviceType::Metal>>(kernel)
         );
     }
-}
-
-Result Implementation::reorderPrograms(const std::vector<std::shared_ptr<Program>>& ordered) {
-    decltype(programs) candidate;
-    for (const auto& program : ordered) {
-        auto typed = std::dynamic_pointer_cast<ProgramImp<DeviceType::Metal>>(program);
-        if (!typed) {
-            return Result::ERROR;
-        }
-        candidate.push_back(std::move(typed));
-    }
-    programs.swap(candidate);
-    return Result::SUCCESS;
 }
 
 Result Implementation::sequenceSteps(const std::vector<Step>& steps) {
@@ -236,31 +227,20 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
         }
         return true;
     };
-    if (config.sequenced) {
-        for (auto& step : ordered) {
-            if (!step.program->enabled()) {
-                continue;
-            }
-            if (!step.range.has_value()) {
-                if (clip(step.program->getConfig().scissorRect.value_or(fullScissor))) {
-                    JST_CHECK(step.program->draw(renderCmdEncoder));
-                    bound = nullptr;
-                }
-                continue;
-            }
-            if (clip(step.scissor.value_or(fullScissor))) {
-                JST_CHECK(step.program->draw(renderCmdEncoder, *step.range, bound != step.program.get()));
-                bound = step.program.get();
-            }
+    for (auto& step : ordered) {
+        if (!step.program->enabled()) {
+            continue;
         }
-    } else {
-        for (auto& program : programs) {
-            if (!program->enabled()) {
-                continue;
+        if (!step.range.has_value()) {
+            if (clip(step.program->getConfig().scissorRect.value_or(fullScissor))) {
+                JST_CHECK(step.program->draw(renderCmdEncoder));
+                bound = nullptr;
             }
-            if (clip(program->getConfig().scissorRect.value_or(fullScissor))) {
-                JST_CHECK(program->draw(renderCmdEncoder));
-            }
+            continue;
+        }
+        if (clip(step.scissor.value_or(fullScissor))) {
+            JST_CHECK(step.program->draw(renderCmdEncoder, *step.range, bound != step.program.get()));
+            bound = step.program.get();
         }
     }
     renderCmdEncoder->endEncoding();

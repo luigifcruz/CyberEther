@@ -15,7 +15,6 @@ class JETSTREAM_API SurfaceImp<DeviceType::Metal> : public Surface {
     Result destroy() override;
 
  protected:
-    Result reorderPrograms(const std::vector<std::shared_ptr<Program>>& ordered) override;
     Result sequenceSteps(const std::vector<Step>& steps) override;
     bool appendable() const override;
     Result validateAppend(const std::vector<std::shared_ptr<Program>>& programs,

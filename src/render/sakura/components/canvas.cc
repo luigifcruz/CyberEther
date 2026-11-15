@@ -232,7 +232,7 @@ struct Canvas::Impl {
     std::vector<Attachment> attachments;
     Render::Surface::Config* building = nullptr;
     std::vector<std::shared_ptr<Render::Components::Generic>> releasedComponents;
-    std::vector<std::shared_ptr<Render::Program>> releasedPrograms;
+    U64 releasedPrograms = 0;
     bool releasePending = false;
     std::optional<Extent2D<F32>> mouse;
     Rect screenRect;
@@ -386,7 +386,7 @@ struct Canvas::Impl {
     void retireAttachment(const Attachment& attachment, std::shared_ptr<Render::Components::Generic> component) {
         for (const auto& program : attachment.programs) {
             program->setEnabled(false);
-            releasedPrograms.push_back(program);
+            ++releasedPrograms;
         }
         if (component) {
             releasedComponents.push_back(std::move(component));
@@ -395,7 +395,7 @@ struct Canvas::Impl {
         for (const auto& live : attachments) {
             livePrograms += live.programs.size();
         }
-        if (releasedPrograms.size() > std::max<U64>(kCompactionMinimumPrograms, livePrograms / 4)) {
+        if (releasedPrograms > std::max<U64>(kCompactionMinimumPrograms, livePrograms / 4)) {
             releasePending = true;
         }
     }
@@ -415,16 +415,6 @@ struct Canvas::Impl {
             for (auto* orphan : orphans) {
                 retireAttachment(*orphan, orphan->drawable ? orphan->drawable->takeComponent() : nullptr);
             }
-        }
-        std::vector<std::shared_ptr<Render::Program>> programs;
-        for (const auto& attachment : ordered) {
-            programs.insert(programs.end(), attachment.programs.begin(), attachment.programs.end());
-        }
-        programs.insert(programs.end(), releasedPrograms.begin(), releasedPrograms.end());
-        const auto shared = painter.programs();
-        programs.insert(programs.end(), shared.begin(), shared.end());
-        if (surface->reorder(programs) != Result::SUCCESS) {
-            return false;
         }
         attachments = std::move(ordered);
         root->impl->clearStructureDirty();
@@ -479,7 +469,7 @@ struct Canvas::Impl {
             }
         }
         releasedComponents.clear();
-        releasedPrograms.clear();
+        releasedPrograms = 0;
         releasePending = false;
 
         for (auto& attachment : attachments) {
@@ -555,7 +545,6 @@ struct Canvas::Impl {
         surfaceConfig.multisampled = false;
         surfaceConfig.retained = true;
         surfaceConfig.composite = true;
-        surfaceConfig.sequenced = true;
 
         attachments.clear();
         repaint = false;
