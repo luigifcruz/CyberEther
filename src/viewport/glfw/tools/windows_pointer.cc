@@ -197,12 +197,8 @@ struct WindowsPointer::State {
     std::vector<POINTER_TOUCH_INFO> touchFrame;
     std::optional<std::pair<HANDLE, UINT32>> touchFrameId;
 
-    bool initialize(GLFWwindow* handle, std::function<void(const Scroll&)> onScroll,
-                    std::function<void(const Touch&)> onTouch,
-                    std::function<bool(const Extent2D<F32>&)> captionHit) {
+    bool initialize(GLFWwindow* handle, std::function<void(const Scroll&)> onScroll) {
         window = glfwGetWin32Window(handle);
-        this->onTouch = std::move(onTouch);
-        this->captionHit = std::move(captionHit);
         installed = window && SetWindowSubclass(window, Procedure, reinterpret_cast<UINT_PTR>(this),
                                                 reinterpret_cast<DWORD_PTR>(this)) != FALSE;
         if (!installed) {
@@ -554,7 +550,9 @@ WindowsPointer::WindowsPointer(GLFWwindow* window, std::function<void(const Scro
                                std::function<void(const Touch&)> onTouch,
                                std::function<bool(const Extent2D<F32>&)> captionHit)
     : state(std::make_unique<State>()) {
-    state->ready = state->initialize(window, std::move(onScroll), std::move(onTouch), std::move(captionHit));
+    state->onTouch = std::move(onTouch);
+    state->captionHit = std::move(captionHit);
+    state->ready = state->initialize(window, std::move(onScroll));
 }
 
 WindowsPointer::~WindowsPointer() = default;

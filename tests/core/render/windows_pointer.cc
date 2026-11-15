@@ -552,11 +552,11 @@ TEST_CASE_METHOD(TouchFixture, "Windows touch applies the final release position
 TEST_CASE_METHOD(TouchFixture, "Windows touch frame deduplication does not conflate different devices",
                  "[core][render][windows][touch][native]") {
     auto first = contact(1, POINTER_FLAG_DOWN, 100, 120);
-    first.pointerInfo.sourceDevice = reinterpret_cast<HANDLE>(1);
+    first.pointerInfo.sourceDevice = reinterpret_cast<HANDLE>(UINT_PTR{1});
     send(WM_POINTERDOWN, {first});
     const auto frameId = frame.id;
     auto second = contact(2, POINTER_FLAG_DOWN, 140, 120);
-    second.pointerInfo.sourceDevice = reinterpret_cast<HANDLE>(2);
+    second.pointerInfo.sourceDevice = reinterpret_cast<HANDLE>(UINT_PTR{2});
     frame.id = frameId - 1;
     send(WM_POINTERDOWN, {second}, 2);
     CHECK(frame.id == frameId);
@@ -713,7 +713,7 @@ TEST_CASE_METHOD(TouchFixture, "Windows titlebar touch stays native until every 
     frame.time += 50;
     send(WM_POINTERUP, {contact(1, POINTER_FLAG_UP)});
     clear();
-    captionStrip = std::numeric_limits<F32>::max();
+    captionStrip = std::numeric_limits<F32>::infinity();
     send(WM_POINTERDOWN, {contact(2, POINTER_FLAG_DOWN)}, 2);
     captionStrip = 0.0f;
     REQUIRE(touches.size() == 1);
@@ -736,7 +736,7 @@ TEST_CASE_METHOD(TouchFixture, "Windows titlebar touch stays native until every 
 
 TEST_CASE_METHOD(TouchFixture, "Windows titlebar touch without a client release cannot strand client touch",
                  "[core][render][windows][touch][native]") {
-    captionStrip = std::numeric_limits<F32>::max();
+    captionStrip = std::numeric_limits<F32>::infinity();
     send(WM_POINTERDOWN, {contact(2, POINTER_FLAG_DOWN)}, 2);
     captionStrip = 0.0f;
     SECTION("capture loss") {
@@ -753,14 +753,14 @@ TEST_CASE_METHOD(TouchFixture, "Windows titlebar touch without a client release 
 
 TEST_CASE_METHOD(TouchFixture, "Windows titlebar touch stays native while another device touches the client",
                  "[core][render][windows][touch][native]") {
-    captionStrip = std::numeric_limits<F32>::max();
+    captionStrip = std::numeric_limits<F32>::infinity();
     auto held = contact(2, POINTER_FLAG_DOWN);
-    held.pointerInfo.sourceDevice = reinterpret_cast<HANDLE>(1);
+    held.pointerInfo.sourceDevice = reinterpret_cast<HANDLE>(UINT_PTR{1});
     send(WM_POINTERDOWN, {held}, 2);
     captionStrip = 0.0f;
     clear();
     auto other = contact(3, POINTER_FLAG_DOWN);
-    other.pointerInfo.sourceDevice = reinterpret_cast<HANDLE>(2);
+    other.pointerInfo.sourceDevice = reinterpret_cast<HANDLE>(UINT_PTR{2});
     send(WM_POINTERDOWN, {other}, 3);
     held.pointerInfo.pointerFlags = POINTER_FLAG_UPDATE;
     send(WM_POINTERUPDATE, {held}, 2);
