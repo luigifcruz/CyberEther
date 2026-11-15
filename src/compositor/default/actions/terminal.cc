@@ -333,14 +333,15 @@ void TerminalActions::settle() {
             LayoutActions::KeepPanes(state.flowgraph, flowgraphId, claimer(flowgraphId, std::nullopt));
         }
     }
-    std::erase_if(terminals.tabs, [&](auto& entry) {
-        auto kept = FilterTiles(entry.second, claimer(std::nullopt, entry.first));
+    for (auto it = terminals.tabs.begin(); it != terminals.tabs.end();) {
+        auto kept = FilterTiles(it->second, claimer(std::nullopt, it->first));
         if (!kept.has_value()) {
-            return true;
+            it = terminals.tabs.erase(it);
+            continue;
         }
-        entry.second = std::move(*kept);
-        return false;
-    });
+        it->second = std::move(*kept);
+        ++it;
+    }
     for (auto& [id, terminal] : terminals.items) {
         if (terminal.tab.has_value() && !terminals.tabs.contains(*terminal.tab)) {
             terminal.placement.reset();
