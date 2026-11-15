@@ -7,8 +7,6 @@
 
 #include <jetstream/render/base/program.hh>
 #include <jetstream/render/base/texture.hh>
-#include <jetstream/render/components/curves.hh>
-#include <jetstream/render/components/mesh.hh>
 #include <jetstream/render/components/shapes.hh>
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/curves.hh>
@@ -162,15 +160,21 @@ struct BasicRig {
     Sakura::Palette palette;
     Sakura::Context ctx = MakeContext();
     Render::Surface::Config surface;
+    Sakura::Painter painter;
     std::vector<Sakura::Drawable*> drawables;
 
     BasicRig() {
         ctx.render = &window;
         ctx.palette = palette;
+        ctx.painter = &painter;
         ctx.attach = [this](const Sakura::Component&, Sakura::Drawable* drawable) {
             drawables.push_back(drawable);
             return drawable->attach(&ctx, surface);
         };
+    }
+
+    ~BasicRig() {
+        (void)painter.destroy(&window);
     }
 
     BasicRig(const BasicRig&) = delete;
@@ -181,7 +185,9 @@ struct BasicRig {
     }
 
     Result build(Sakura::Component& component) {
-        return Sakura::Access::build(component, ctx);
+        JST_CHECK(Sakura::Access::build(component, ctx));
+        JST_CHECK(painter.frame(ctx.framebufferSize));
+        return painter.grow(&window, surface);
     }
 
     Sakura::Drawable& drawable() {
@@ -189,7 +195,30 @@ struct BasicRig {
     }
 
     Result upload() {
-        return drawables.back()->upload();
+        JST_CHECK(drawables.back()->upload());
+        if (painter.starved()) {
+            JST_CHECK(painter.grow(&window, surface));
+            JST_CHECK(drawables.back()->upload());
+        }
+        return Result::SUCCESS;
+    }
+
+    std::optional<Render::Surface::Step> step() {
+        std::vector<Render::Surface::Step> steps;
+        drawables.back()->steps(steps);
+        if (steps.empty()) {
+            return std::nullopt;
+        }
+        return steps.back();
+    }
+
+    bool drawn() {
+        return step().has_value();
+    }
+
+    std::optional<Render::ScissorRect> scissor() {
+        const auto current = step();
+        return current.has_value() ? current->scissor : std::nullopt;
     }
 
     Render::Program& program() {
@@ -213,46 +242,64 @@ const Render::Vertex::Config& VertexLayout(const Render::Program& program) {
     return program.getConfig().draws.front()->getConfig().buffer->getConfig();
 }
 
-struct DrawableProbe : Sakura::Drawable {
-    static Components::Shapes& shapes(Sakura::Drawable& drawable) {
-        return *static_cast<Components::Shapes*>((drawable.*(&DrawableProbe::component)).get());
-    }
+bool Drawn(const Sakura::Drawable& drawable) {
+    std::vector<Render::Surface::Step> steps;
+    drawable.steps(steps);
+    return !steps.empty();
+}
 
-    static Components::Mesh& mesh(Sakura::Drawable& drawable) {
-        return *static_cast<Components::Mesh*>((drawable.*(&DrawableProbe::component)).get());
-    }
-};
+std::span<F32> Floats(const std::shared_ptr<Render::Buffer>& buffer) {
+    return {static_cast<F32*>(buffer->getConfig().buffer), static_cast<std::size_t>(buffer->byteSize() / sizeof(F32))};
+}
+
+std::span<F32> InstanceFloats(const Render::Surface::Step& step, U64 stride) {
+    const auto& layout = VertexLayout(*step.program);
+    return Floats(layout.instances[0].first).subspan(step.range->firstInstance * stride,
+                                                     step.range->instanceCount * stride);
+}
 
 struct MeshView {
-    std::span<Extent2D<F32>> positions;
-    std::span<ColorRGBA<F32>> colors;
+    template<typename T, U64 Offset>
+    struct Column {
+        F32* data = nullptr;
+        U64 count = 0;
+
+        T& operator[](U64 index) const {
+            return *reinterpret_cast<T*>(data + index * Sakura::Painter::MeshVertexStride + Offset);
+        }
+
+        U64 size() const {
+            return count;
+        }
+    };
+
+    Column<Extent2D<F32>, 0> positions;
+    Column<ColorRGBA<F32>, 4> colors;
     std::span<U32> indices;
 
     explicit MeshView(Rig& rig) {
-        const auto& layout = VertexLayout(rig.program());
-        positions = Contents<Extent2D<F32>>(layout.vertices[0].first);
-        colors = Contents<ColorRGBA<F32>>(layout.vertices[1].first);
-        indices = DrawableProbe::mesh(rig.drawable()).indices();
+        const auto step = rig.step();
+        if (!step.has_value()) {
+            return;
+        }
+        const auto& layout = VertexLayout(*step->program);
+        indices = Contents<U32>(layout.indices).subspan(step->range->first, step->range->count);
+        U64 count = 0;
+        for (const U32 index : indices) {
+            count = std::max<U64>(count, index + 1);
+        }
+        F32* first = Floats(layout.vertices[0].first).data() +
+                     static_cast<U64>(step->range->baseVertex) * Sakura::Painter::MeshVertexStride;
+        positions = {first, count};
+        colors = {first, count};
     }
 
     U64 vertices() const {
-        U64 count = 0;
-        while (count < colors.size() && colors[count].r > 0.0f) {
-            ++count;
-        }
-        return count;
+        return positions.size();
     }
 
     U64 triangles() const {
-        U64 count = 0;
-        while ((count + 1) * 3 <= indices.size()) {
-            const U32 a = indices[count * 3 + 0];
-            if (a == indices[count * 3 + 1] && a == indices[count * 3 + 2]) {
-                break;
-            }
-            ++count;
-        }
-        return count;
+        return indices.size() / 3;
     }
 
     std::vector<U32> head(U64 count) const {
@@ -260,16 +307,36 @@ struct MeshView {
     }
 };
 
-struct CurvesView {
-    std::span<Extent2D<F32>> templateVertices;
-    std::span<U32> templateIndices;
-    std::span<Components::Curves::Instance> instances;
+struct StrokeRecord {
+    Extent2D<F32> p0;
+    Extent2D<F32> p1;
+    Extent2D<F32> p2;
+    Extent2D<F32> p3;
+    ColorRGBA<F32> color;
+    F32 thickness;
+    F32 segments;
+    F32 reserved0;
+    F32 reserved1;
+    Extent2D<F32> origin;
+    F32 scale;
+    F32 fringe;
+};
 
-    explicit CurvesView(const Render::Program& program) {
-        const auto& layout = VertexLayout(program);
-        templateVertices = Contents<Extent2D<F32>>(layout.vertices[0].first);
-        templateIndices = Contents<U32>(layout.indices);
-        instances = Contents<Components::Curves::Instance>(layout.instances[0].first);
+static_assert(sizeof(StrokeRecord) == Sakura::Painter::CurveStride * sizeof(F32));
+
+struct StrokeView {
+    std::span<StrokeRecord> instances;
+    U64 indices = 0;
+
+    explicit StrokeView(Rig& rig) {
+        const auto step = rig.step();
+        if (!step.has_value()) {
+            return;
+        }
+        const auto floats = InstanceFloats(*step, Sakura::Painter::CurveStride);
+        instances = {reinterpret_cast<StrokeRecord*>(floats.data()),
+                     static_cast<std::size_t>(step->range->instanceCount)};
+        indices = step->range->count;
     }
 };
 
@@ -517,7 +584,7 @@ TEST_CASE("Thin strokes emit a solid center and two transparent fringe vertices 
     line.update({.instances = {Stroke({{0.0f, 0.0f}, {10.0f, 0.0f}, {20.0f, 0.0f}})}});
     REQUIRE(rig.build(line) == Result::SUCCESS);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    REQUIRE(rig.program().enabled());
+    REQUIRE(rig.drawn());
 
     const MeshView mesh(rig);
     REQUIRE(mesh.vertices() == 9);
@@ -742,7 +809,7 @@ TEST_CASE("Hidden, transparent, and degenerate polyline instances emit no geomet
                  }});
     REQUIRE(rig.build(line) == Result::SUCCESS);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    REQUIRE_FALSE(rig.program().enabled());
+    REQUIRE_FALSE(rig.drawn());
 
     const MeshView mesh(rig);
     REQUIRE(mesh.vertices() == 0);
@@ -768,7 +835,6 @@ TEST_CASE("Polyline instances that overflow the capacity are dropped along with 
     REQUIRE(rig.upload() == Result::SUCCESS);
 
     const MeshView mesh(rig);
-    REQUIRE(mesh.positions.size() == 12);
     REQUIRE(mesh.vertices() == 6);
     REQUIRE(mesh.triangles() == 4);
     for (U64 vertex = 0; vertex < 6; ++vertex) {
@@ -795,11 +861,14 @@ TEST_CASE("Polyline uploads combine origin, translation, scale, clip, and inheri
     rig.drawable().inherited = Rect{50.0f, 50.0f, 100.0f, 100.0f};
     REQUIRE(rig.upload() == Result::SUCCESS);
 
-    const auto uniforms = Uniforms(rig.program());
-    REQUIRE(uniforms.size() == 8);
-    REQUIRE(std::vector<F32>(uniforms.begin(), uniforms.end()) ==
-            std::vector<F32>{800.0f, 600.0f, 15.0f, 25.0f, 2.0f, 0.0f, 0.0f, 0.0f});
-    const auto scissor = rig.program().getConfig().scissorRect;
+    const auto step = rig.step();
+    REQUIRE(step.has_value());
+    const auto place = InstanceFloats(*step, Sakura::Painter::MeshInstanceStride);
+    REQUIRE(std::vector<F32>(place.begin(), place.end()) == std::vector<F32>{15.0f, 25.0f, 2.0f, 0.0f});
+    const auto frame = Uniforms(*step->program);
+    REQUIRE(frame[0] == 800.0f);
+    REQUIRE(frame[1] == 600.0f);
+    const auto scissor = rig.scissor();
     REQUIRE(scissor.has_value());
     REQUIRE(scissor->x == 55);
     REQUIRE(scissor->y == 55);
@@ -810,11 +879,11 @@ TEST_CASE("Polyline uploads combine origin, translation, scale, clip, and inheri
     config.clip.reset();
     line.update(config);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    REQUIRE_FALSE(rig.program().getConfig().scissorRect.has_value());
+    REQUIRE_FALSE(rig.scissor().has_value());
 
     rig.drawable().inherited = Rect{-40.0f, -40.0f, 60.0f, 60.0f};
     REQUIRE(rig.upload() == Result::SUCCESS);
-    const auto inherited = rig.program().getConfig().scissorRect;
+    const auto inherited = rig.scissor();
     REQUIRE(inherited.has_value());
     REQUIRE(inherited->x == 0);
     REQUIRE(inherited->y == 0);
@@ -882,7 +951,7 @@ TEST_CASE("Polyline updates repaint only when geometry, clip, or origin change",
     REQUIRE(frames.run().clean());
 }
 
-TEST_CASE("Hiding attached polylines and curves disables their programs",
+TEST_CASE("Hiding attached polylines and curves removes them from the draw list",
           "[core][sakura][geometry]") {
     Rig rig;
     if (!rig.supported()) {
@@ -892,53 +961,58 @@ TEST_CASE("Hiding attached polylines and curves disables their programs",
     line.update({.instances = {Stroke({{0.0f, 0.0f}, {10.0f, 0.0f}})}});
     REQUIRE(rig.build(line) == Result::SUCCESS);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    auto& mesh = rig.program();
-    REQUIRE(mesh.enabled());
+    auto& mesh = rig.drawable();
+    REQUIRE(Drawn(mesh));
 
     Sakura::Curves curves;
     curves.update({.instances = {{.p3 = {10.0f, 10.0f}, .segments = 8}}});
     REQUIRE(rig.build(curves) == Result::SUCCESS);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    auto& curve = rig.program();
-    REQUIRE(curve.enabled());
+    auto& curve = rig.drawable();
+    REQUIRE(Drawn(curve));
 
     line.setVisible(false);
     curves.setVisible(false);
     REQUIRE(Sakura::Access::paint(line) == Result::SUCCESS);
     REQUIRE(Sakura::Access::paint(curves) == Result::SUCCESS);
-    REQUIRE_FALSE(mesh.enabled());
-    REQUIRE_FALSE(curve.enabled());
+    REQUIRE_FALSE(Drawn(mesh));
+    REQUIRE_FALSE(Drawn(curve));
 }
 
-TEST_CASE("Changing polyline capacity after attachment rebuilds a mesh of the new size",
+TEST_CASE("Changing polyline capacity after attachment repaints into a larger range without rebuilding",
           "[core][sakura][geometry]") {
     Rig rig;
     if (!rig.supported()) {
         SKIP("Unbound mesh resources require Vulkan or WebGPU support.");
     }
     Sakura::Polyline line;
-    Sakura::Polyline::Config config = {.instances = {Stroke({{0.0f, 0.0f}, {10.0f, 0.0f}})}, .capacity = 64};
+    Sakura::Polyline::Config config = {
+        .instances = {
+            Stroke({{0.0f, 0.0f}, {10.0f, 0.0f}}),
+            Stroke({{0.0f, 20.0f}, {10.0f, 20.0f}}, 4.0f),
+            Stroke({{0.0f, 40.0f}, {10.0f, 40.0f}}),
+        },
+        .capacity = 6,
+    };
     line.update(config);
     REQUIRE(rig.build(line) == Result::SUCCESS);
-    REQUIRE(MeshView(rig).positions.size() == 64);
-    REQUIRE_FALSE(Sakura::Access::resourceDirty(line));
-
-    line.update(config);
-    REQUIRE_FALSE(Sakura::Access::resourceDirty(line));
-
-    config.capacity = 128;
-    line.update(config);
-    REQUIRE(Sakura::Access::resourceDirty(line));
-    REQUIRE(rig.build(line) == Result::SUCCESS);
-    REQUIRE_FALSE(Sakura::Access::resourceDirty(line));
-    REQUIRE(rig.surface.programs.size() == 2);
-    REQUIRE(MeshView(rig).positions.size() == 128);
-
     REQUIRE(rig.upload() == Result::SUCCESS);
     REQUIRE(MeshView(rig).vertices() == 6);
+    const U64 programs = rig.surface.programs.size();
+
+    line.update(config);
+    REQUIRE_FALSE(Sakura::Access::resourceDirty(line));
+
+    config.capacity = 64;
+    line.update(config);
+    REQUIRE_FALSE(Sakura::Access::resourceDirty(line));
+    REQUIRE(Sakura::Access::paintDirty(line));
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    REQUIRE(MeshView(rig).vertices() == 20);
+    REQUIRE(rig.surface.programs.size() == programs);
 }
 
-TEST_CASE("Attached boxes rebuild only when their instances outgrow the capacity",
+TEST_CASE("Attached boxes repaint without rebuilding when their instances or capacity change",
           "[core][sakura][geometry][retention]") {
     Rig rig;
     if (!rig.supported()) {
@@ -965,11 +1039,9 @@ TEST_CASE("Attached boxes rebuild only when their instances outgrow the capacity
 
         config.instances.push_back({.rect = {20.0f, 0.0f, 10.0f, 10.0f}});
         box.update(config);
-        CHECK(Sakura::Access::resourceDirty(box));
-        REQUIRE(rig.build(box) == Result::SUCCESS);
-        CHECK_FALSE(Sakura::Access::resourceDirty(box));
-        CHECK(rig.surface.programs.size() > programs);
+        CHECK(paintOnly(box));
         REQUIRE(Sakura::Access::paint(box) == Result::SUCCESS);
+        CHECK(rig.surface.programs.size() == programs);
 
         config.instances.pop_back();
         box.update(config);
@@ -981,7 +1053,7 @@ TEST_CASE("Attached boxes rebuild only when their instances outgrow the capacity
         CHECK(paintOnly(box));
     }
 
-    SECTION("Fixed capacity rebuilds only when the capacity itself changes") {
+    SECTION("Fixed capacity repaints when the capacity itself changes") {
         Sakura::Box box;
         Sakura::Box::Config config = {.instances = {{.rect = {0.0f, 0.0f, 10.0f, 10.0f}}}, .capacity = 4};
         box.update(config);
@@ -998,13 +1070,13 @@ TEST_CASE("Attached boxes rebuild only when their instances outgrow the capacity
 
         config.capacity = 8;
         box.update(config);
-        CHECK(Sakura::Access::resourceDirty(box));
-        REQUIRE(rig.build(box) == Result::SUCCESS);
+        CHECK(paintOnly(box));
+        REQUIRE(Sakura::Access::paint(box) == Result::SUCCESS);
         CHECK_FALSE(Sakura::Access::resourceDirty(box));
     }
 }
 
-TEST_CASE("Boxes reappear after scrolling out of their clip without rebuilding geometry",
+TEST_CASE("Boxes reappear after scrolling out of their clip without rebuilding",
           "[core][sakura][geometry][retention]") {
     Rig rig;
     if (!rig.supported()) {
@@ -1022,34 +1094,35 @@ TEST_CASE("Boxes reappear after scrolling out of their clip without rebuilding g
         drawable.inherited = Rect{0.0f, offset, 200.0f, 100.0f};
         REQUIRE(drawable.paint() == Result::SUCCESS);
     };
+    const auto instance = [&] {
+        const auto step = rig.step();
+        REQUIRE(step.has_value());
+        return InstanceFloats(*step, Sakura::Painter::ShapeStride);
+    };
     scroll(0.0f);
-    CHECK_FALSE(rig.program().enabled());
+    CHECK_FALSE(rig.drawn());
     scroll(400.0f);
-    CHECK(rig.program().enabled());
-    CHECK(rig.program().getConfig().scissorRect == Render::ScissorRect{0, 0, 200, 100});
-    std::span<Extent2D<F32>> positions, sizes;
-    auto& shape = DrawableProbe::shapes(drawable);
-    REQUIRE(shape.getPositions("rect", positions) == Result::SUCCESS);
-    REQUIRE(shape.getSizes("rect", sizes) == Result::SUCCESS);
-    const auto position = positions.front();
-    CHECK(sizes.front() == Extent2D<F32>{100.0f, 40.0f});
+    CHECK(rig.drawn());
+    CHECK(rig.scissor() == std::optional<Render::ScissorRect>{Render::ScissorRect{0, 0, 200, 100}});
+    CHECK(instance()[0] == Approx(100.0f * 2.0f / 800.0f));
+    CHECK(instance()[5] == Approx(40.0f * 2.0f / 600.0f));
+    CHECK(instance()[13] == Approx(1.0f - 2.0f * 20.0f / 600.0f));
     scroll(500.0f);
-    CHECK_FALSE(rig.program().enabled());
+    CHECK_FALSE(rig.drawn());
     scroll(390.0f);
-    CHECK(rig.program().enabled());
-    CHECK(positions.front() == position);
-    CHECK(sizes.front() == Extent2D<F32>{100.0f, 40.0f});
+    CHECK(rig.drawn());
+    CHECK(instance()[13] == Approx(1.0f - 2.0f * 30.0f / 600.0f));
     CHECK_FALSE(Sakura::Access::resourceDirty(box));
     CHECK(rig.surface.programs.size() == 1);
     scroll(0.0f);
     config.instances.front().rect.width = 150.0f;
     box.update(config);
     scroll(400.0f);
-    CHECK(rig.program().enabled());
-    CHECK(sizes.front() == Extent2D<F32>{150.0f, 40.0f});
+    CHECK(rig.drawn());
+    CHECK(instance()[0] == Approx(150.0f * 2.0f / 800.0f));
 }
 
-TEST_CASE("Attached labels rebuild only when their instance or character capacity changes",
+TEST_CASE("Attached labels repaint without rebuilding when their text, instances, or capacity change",
           "[core][sakura][geometry][retention]") {
     Rig rig;
     if (!rig.supported()) {
@@ -1065,48 +1138,40 @@ TEST_CASE("Attached labels rebuild only when their instance or character capacit
     };
     label.update(config);
     REQUIRE(rig.build(label) == Result::SUCCESS);
+    REQUIRE(Sakura::Access::paint(label) == Result::SUCCESS);
     REQUIRE_FALSE(Sakura::Access::resourceDirty(label));
+    REQUIRE(rig.drawn());
     const U64 programs = rig.surface.programs.size();
+    const auto glyphs = [&] {
+        const auto step = rig.step();
+        REQUIRE(step.has_value());
+        return step->range->count / 6;
+    };
+    const auto repaints = [&] {
+        label.update(config);
+        CHECK_FALSE(Sakura::Access::resourceDirty(label));
+        CHECK(Sakura::Access::paintDirty(label));
+        REQUIRE(Sakura::Access::paint(label) == Result::SUCCESS);
+        CHECK(rig.surface.programs.size() == programs);
+    };
+    CHECK(glyphs() == 4);
 
     config.instances.front().str = "Bandwidth";
     config.instances.front().color.g = 0.75f;
-    label.update(config);
-    CHECK_FALSE(Sakura::Access::resourceDirty(label));
+    repaints();
+    CHECK(glyphs() == 9);
 
     config.instances.push_back({.rect = {0.0f, 20.0f, 80.0f, 16.0f}, .str = "Rate", .color = kInk});
-    label.update(config);
-    CHECK(Sakura::Access::resourceDirty(label));
-    REQUIRE(rig.build(label) == Result::SUCCESS);
-    CHECK_FALSE(Sakura::Access::resourceDirty(label));
-    CHECK(rig.surface.programs.size() == programs + 1);
+    repaints();
+    CHECK(glyphs() == 13);
 
-    config.instances.pop_back();
-    label.update(config);
-    CHECK_FALSE(Sakura::Access::resourceDirty(label));
+    config.maxCharacters = 4;
+    repaints();
+    CHECK(glyphs() == 8);
 
-    config.instances.push_back({.rect = {0.0f, 40.0f, 80.0f, 16.0f}, .str = "Span", .color = kInk});
-    label.update(config);
-    CHECK_FALSE(Sakura::Access::resourceDirty(label));
-
-    config.maxCharacters = 32;
-    label.update(config);
-    CHECK(Sakura::Access::resourceDirty(label));
-    REQUIRE(rig.build(label) == Result::SUCCESS);
-    CHECK_FALSE(Sakura::Access::resourceDirty(label));
-
-    config.capacity = 8;
-    label.update(config);
-    CHECK(Sakura::Access::resourceDirty(label));
-    REQUIRE(rig.build(label) == Result::SUCCESS);
-    CHECK_FALSE(Sakura::Access::resourceDirty(label));
-
-    for (U64 index = 2; index < 10; ++index) {
-        config.instances.push_back({.rect = {0.0f, 20.0f * static_cast<F32>(index), 80.0f, 16.0f},
-                                    .str = "Row",
-                                    .color = kInk});
-    }
-    label.update(config);
-    CHECK_FALSE(Sakura::Access::resourceDirty(label));
+    config.capacity = 1;
+    repaints();
+    CHECK(glyphs() == 4);
 }
 
 TEST_CASE("Attached flowgraph cards redraw new content without rebuilding and stay within capacity",
@@ -1309,10 +1374,9 @@ TEST_CASE("Corner mask updates fill four corners at exact capacity and clip to t
     Sakura::UpdateCornerMask(rig.ctx, mask, rect, {0.0f, 0.0f, 250.0f, 600.0f});
     REQUIRE(rig.build(mask) == Result::SUCCESS);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    REQUIRE(rig.program().enabled());
+    REQUIRE(rig.drawn());
 
     const MeshView mesh(rig);
-    REQUIRE(mesh.positions.size() == Sakura::kCornerMaskCapacity);
     REQUIRE(mesh.vertices() == Sakura::kCornerMaskCapacity);
     REQUIRE(mesh.triangles() == 4 * (Sakura::kCornerMaskSegments + 2 * (Sakura::kCornerMaskSegments + 2)));
     const U64 half = Sakura::kCornerMaskCapacity / 2;
@@ -1323,7 +1387,7 @@ TEST_CASE("Corner mask updates fill four corners at exact capacity and clip to t
     RequireNear(mesh.positions[0], {100.0f, 100.0f}, 1.0f);
     REQUIRE(Distance(mesh.positions[2], {116.0f, 116.0f}) == Approx(16.0f).margin(0.5f));
 
-    const auto scissor = rig.program().getConfig().scissorRect;
+    const auto scissor = rig.scissor();
     REQUIRE(scissor.has_value());
     REQUIRE(scissor->x == 100);
     REQUIRE(scissor->y == 100);
@@ -1354,12 +1418,12 @@ TEST_CASE("Corner masks fall back to the backdrop color and clear without one",
     rig.ctx.backdropColorKey.clear();
     Sakura::UpdateCornerMask(rig.ctx, mask, rect, kScreen);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    REQUIRE_FALSE(rig.program().enabled());
+    REQUIRE_FALSE(rig.drawn());
 
     rig.ctx.backdropColorKey = "backdrop";
     Sakura::UpdateCornerMask(rig.ctx, mask, {10.0f, 10.0f, 0.0f, 60.0f}, kScreen);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    REQUIRE_FALSE(rig.program().enabled());
+    REQUIRE_FALSE(rig.drawn());
 }
 
 TEST_CASE("Curve uploads clamp segment counts and instance totals to the attached capacity",
@@ -1395,9 +1459,9 @@ TEST_CASE("Curve uploads clamp segment counts and instance totals to the attache
     curves.update(config);
     REQUIRE(rig.build(curves) == Result::SUCCESS);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    REQUIRE(rig.program().enabled());
+    REQUIRE(rig.drawn());
 
-    const CurvesView view(rig.program());
+    const StrokeView view(rig);
     REQUIRE(view.instances.size() == 2);
     REQUIRE(view.instances[0].p0 == first.p0);
     REQUIRE(view.instances[0].p1 == first.p1);
@@ -1407,35 +1471,44 @@ TEST_CASE("Curve uploads clamp segment counts and instance totals to the attache
     REQUIRE(view.instances[0].thickness == 2.5f);
     REQUIRE(view.instances[0].segments == 1.0f);
     REQUIRE(view.instances[1].segments == 16.0f);
+    REQUIRE(view.indices == 16 * 18);
+    for (const auto& instance : view.instances) {
+        REQUIRE(instance.origin == Extent2D<F32>{3.0f, 4.0f});
+        REQUIRE(instance.scale == 1.5f);
+        REQUIRE(instance.fringe == 0.75f);
+    }
 
-    const auto uniforms = Uniforms(rig.program());
-    REQUIRE(std::vector<F32>(uniforms.begin(), uniforms.end()) ==
-            std::vector<F32>{800.0f, 600.0f, 3.0f, 4.0f, 1.5f, 0.75f, 16.0f, 0.0f});
-    const auto scissor = rig.program().getConfig().scissorRect;
+    const auto scissor = rig.scissor();
     REQUIRE(scissor.has_value());
     REQUIRE(scissor->x == 10);
     REQUIRE(scissor->width == 20);
 
     view.instances[0].thickness = 99.0f;
-    config.origin = {6.0f, 7.0f};
     curves.update(config);
     REQUIRE(rig.upload() == Result::SUCCESS);
     REQUIRE(view.instances[0].thickness == 99.0f);
-    REQUIRE(Uniforms(rig.program())[2] == 6.0f);
+
+    config.origin = {6.0f, 7.0f};
+    curves.update(config);
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    REQUIRE(view.instances[0].thickness == 2.5f);
+    REQUIRE(view.instances[0].origin == Extent2D<F32>{6.0f, 7.0f});
 
     config.instances = {third};
     curves.update(config);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    REQUIRE(view.instances[0].thickness == 2.5f);
-    REQUIRE(view.instances[0].segments == 4.0f);
+    const StrokeView single(rig);
+    REQUIRE(single.instances.size() == 1);
+    REQUIRE(single.instances[0].thickness == 2.5f);
+    REQUIRE(single.instances[0].segments == 4.0f);
 
     config.instances.clear();
     curves.update(config);
     REQUIRE(rig.upload() == Result::SUCCESS);
-    REQUIRE_FALSE(rig.program().enabled());
+    REQUIRE_FALSE(rig.drawn());
 }
 
-TEST_CASE("Curve updates repaint on visible changes and rebuild only when attached capacity changes",
+TEST_CASE("Curve updates repaint on visible changes and never rebuild when attached",
           "[core][sakura][geometry]") {
     SECTION("Detached curves repaint for every visible field") {
         Sakura::Curves curves;
@@ -1458,175 +1531,170 @@ TEST_CASE("Curve updates repaint on visible changes and rebuild only when attach
         REQUIRE(RepaintOnly(frames.run([&] { curves.update(config); })));
     }
 
-    SECTION("Attached curves rebuild when capacity or segment limits change") {
+    SECTION("Attached curves repaint without rebuilding when capacity or segment limits change") {
         Rig rig;
         if (!rig.supported()) {
             SKIP("Unbound curve resources require Vulkan or WebGPU support.");
         }
         Sakura::Curves curves;
-        Sakura::Curves::Config config = {.instances = {{.segments = 8}}, .capacity = 4, .maxSegments = 8};
+        Sakura::Curves::Config config = {
+            .instances = {{.segments = 8}, {.segments = 8}, {.segments = 8}},
+            .capacity = 2,
+            .maxSegments = 8,
+        };
         curves.update(config);
         REQUIRE(rig.build(curves) == Result::SUCCESS);
-        REQUIRE_FALSE(Sakura::Access::resourceDirty(curves));
+        REQUIRE(rig.upload() == Result::SUCCESS);
+        REQUIRE(StrokeView(rig).instances.size() == 2);
+        REQUIRE(StrokeView(rig).indices == 8 * 18);
+        const U64 programs = rig.surface.programs.size();
 
         config.capacity = 6;
         curves.update(config);
-        REQUIRE(Sakura::Access::resourceDirty(curves));
-        REQUIRE(rig.build(curves) == Result::SUCCESS);
-        REQUIRE(CurvesView(rig.program()).instances.size() == 6);
+        REQUIRE_FALSE(Sakura::Access::resourceDirty(curves));
+        REQUIRE(rig.upload() == Result::SUCCESS);
+        REQUIRE(StrokeView(rig).instances.size() == 3);
 
         config.maxSegments = 32;
         curves.update(config);
-        REQUIRE(Sakura::Access::resourceDirty(curves));
-        REQUIRE(rig.build(curves) == Result::SUCCESS);
-        REQUIRE(CurvesView(rig.program()).templateVertices.size() == 33 * 4);
+        REQUIRE_FALSE(Sakura::Access::resourceDirty(curves));
+        REQUIRE(rig.upload() == Result::SUCCESS);
+        REQUIRE(StrokeView(rig).indices == 32 * 18);
+        REQUIRE(rig.surface.programs.size() == programs);
     }
 }
 
-TEST_CASE("Mesh configuration clamps capacities to at least one whole triangle",
-          "[core][sakura][geometry]") {
-    const Components::Mesh empty({.vertexCapacity = 0, .indexCapacity = 10});
-    REQUIRE(empty.getConfig().vertexCapacity == 3);
-    REQUIRE(empty.getConfig().indexCapacity == 9);
+TEST_CASE("Painter leases share one chunk and reuse the ranges they release", "[core][sakura][geometry][painter]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound painter resources require Vulkan or WebGPU support.");
+    }
+    using Kind = Sakura::Painter::Kind;
+    auto& painter = rig.painter;
+    painter.demand(Kind::Shapes, {.instances = 8});
+    REQUIRE(painter.starved());
+    REQUIRE(painter.grow(&rig.window, rig.surface) == Result::SUCCESS);
+    REQUIRE_FALSE(painter.starved());
+    REQUIRE(rig.surface.programs.size() == 1);
 
-    const Components::Mesh tiny({.vertexCapacity = 5, .indexCapacity = 1});
-    REQUIRE(tiny.getConfig().vertexCapacity == 5);
-    REQUIRE(tiny.getConfig().indexCapacity == 3);
+    const auto first = painter.acquire(Kind::Shapes, {.instances = 4});
+    const auto second = painter.acquire(Kind::Shapes, {.instances = 4});
+    REQUIRE(first.has_value());
+    REQUIRE(second.has_value());
+    CHECK(first->chunk == second->chunk);
+    CHECK(second->instance == first->instance + 4);
+    CHECK(painter.program(*first) == painter.program(*second));
+    CHECK(painter.instances(*first).size() == 4 * Sakura::Painter::ShapeStride);
 
-    const Components::Mesh exact({.vertexCapacity = 64, .indexCapacity = 288});
-    REQUIRE(exact.getConfig().indexCapacity == 288);
+    painter.release(*first);
+    const auto third = painter.acquire(Kind::Shapes, {.instances = 2});
+    const auto fourth = painter.acquire(Kind::Shapes, {.instances = 2});
+    REQUIRE(third.has_value());
+    REQUIRE(fourth.has_value());
+    CHECK(third->instance == first->instance);
+    CHECK(fourth->instance == first->instance + 2);
+
+    painter.release(*third);
+    painter.release(*fourth);
+    const auto merged = painter.acquire(Kind::Shapes, {.instances = 4});
+    REQUIRE(merged.has_value());
+    CHECK(merged->instance == first->instance);
+    CHECK(rig.surface.programs.size() == 1);
+
+    for (U64 round = 0; round < 8; ++round) {
+        painter.demand(Kind::Shapes, {.instances = 4});
+        REQUIRE(painter.grow(&rig.window, rig.surface) == Result::SUCCESS);
+        REQUIRE_FALSE(painter.starved());
+    }
+    CHECK(rig.surface.programs.size() == 1);
 }
 
-TEST_CASE("Mesh programs draw only while whole triangles are pending and the mesh is enabled",
-          "[core][sakura][geometry]") {
-    DeviceWindow window;
-    if (window.device() == DeviceType::None) {
-        SKIP("Unbound mesh resources require Vulkan or WebGPU support.");
+TEST_CASE("Boxes write the hole an occluder leaves into their own instance", "[core][sakura][geometry][occlusion]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound shape resources require Vulkan or WebGPU support.");
     }
-    Components::Mesh mesh({.vertexCapacity = 8, .indexCapacity = 12});
-    REQUIRE(mesh.create(&window) == Result::SUCCESS);
-    Render::Surface::Config surface;
-    REQUIRE(mesh.surface(surface) == Result::SUCCESS);
-    REQUIRE(surface.programs.size() == 1);
-    const auto& program = *surface.programs.front();
+    Sakura::Box box;
+    box.update({.instances = {{.rect = {0.0f, 0.0f, 200.0f, 200.0f}, .backgroundColor = {0.2f, 0.2f, 0.2f, 1.0f}}}});
+    REQUIRE(rig.build(box) == Result::SUCCESS);
+    REQUIRE(Sakura::Access::paint(box) == Result::SUCCESS);
+    const auto step = rig.step();
+    REQUIRE(step.has_value());
+    const auto instance = InstanceFloats(*step, Sakura::Painter::ShapeStride);
+    REQUIRE(instance.size() == 32);
+    CHECK(std::vector<F32>(instance.begin() + 28, instance.end()) == std::vector<F32>{0.0f, 0.0f, 0.0f, 0.0f});
 
-    REQUIRE(mesh.positions().size() == 8);
-    REQUIRE(mesh.colors().size() == 8);
-    REQUIRE(mesh.indices().size() == 12);
-    REQUIRE_FALSE(program.enabled());
+    REQUIRE(rig.drawable().occlude({Rect{0.0f, 0.0f, 200.0f, 200.0f}}) == Result::SUCCESS);
+    CHECK(std::vector<F32>(instance.begin() + 28, instance.end()) == std::vector<F32>{-0.5f, -0.5f, 1.0f, 1.0f});
+    CHECK(instance[24] == 1.0f);
 
-    REQUIRE(mesh.update(3, 2) == Result::SUCCESS);
-    REQUIRE_FALSE(program.enabled());
-    REQUIRE(mesh.update(3, 4) == Result::SUCCESS);
-    REQUIRE(program.enabled());
-    mesh.enabled(false);
-    REQUIRE_FALSE(program.enabled());
-    REQUIRE(mesh.update(100, 100) == Result::SUCCESS);
-    REQUIRE_FALSE(program.enabled());
-    mesh.enabled(true);
-    REQUIRE(program.enabled());
-    REQUIRE(mesh.update(0, 0) == Result::SUCCESS);
-    REQUIRE_FALSE(program.enabled());
+    REQUIRE(rig.drawable().occlude({}) == Result::SUCCESS);
+    CHECK(std::vector<F32>(instance.begin() + 28, instance.end()) == std::vector<F32>{0.0f, 0.0f, 0.0f, 0.0f});
 }
 
-TEST_CASE("Mesh transforms track the framebuffer size, origin, scale, and scissor",
-          "[core][sakura][geometry]") {
-    DeviceWindow window;
-    if (window.device() == DeviceType::None) {
-        SKIP("Unbound mesh resources require Vulkan or WebGPU support.");
+TEST_CASE("Painter records unmet demand and grows by one larger chunk", "[core][sakura][geometry][painter]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound painter resources require Vulkan or WebGPU support.");
     }
-    Components::Mesh mesh({.framebufferSize = {320.0f, 240.0f}});
-    REQUIRE(mesh.create(&window) == Result::SUCCESS);
-    Render::Surface::Config surface;
-    REQUIRE(mesh.surface(surface) == Result::SUCCESS);
-    const auto& program = *surface.programs.front();
+    using Kind = Sakura::Painter::Kind;
+    auto& painter = rig.painter;
+    REQUIRE_FALSE(painter.starved());
+    REQUIRE_FALSE(painter.acquire(Kind::Curves, {.instances = 4}).has_value());
+    REQUIRE(painter.starved());
+    REQUIRE(painter.grow(&rig.window, rig.surface) == Result::SUCCESS);
+    REQUIRE(rig.surface.programs.size() == 1);
 
-    const auto initial = Uniforms(program);
-    REQUIRE(std::vector<F32>(initial.begin(), initial.end()) ==
-            std::vector<F32>{320.0f, 240.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+    const auto small = painter.acquire(Kind::Curves, {.instances = 4});
+    REQUIRE(small.has_value());
+    REQUIRE_FALSE(painter.starved());
 
-    REQUIRE(mesh.updateTransform({1024.0f, 768.0f}, {12.0f, -4.0f}, 1.5f) == Result::SUCCESS);
-    REQUIRE(mesh.getConfig().framebufferSize == Extent2D<F32>{1024.0f, 768.0f});
-    const auto moved = Uniforms(program);
-    REQUIRE(std::vector<F32>(moved.begin(), moved.end()) ==
-            std::vector<F32>{1024.0f, 768.0f, 12.0f, -4.0f, 1.5f, 0.0f, 0.0f, 0.0f});
+    REQUIRE_FALSE(painter.acquire(Kind::Curves, {.instances = 100000}).has_value());
+    REQUIRE(painter.starved());
+    REQUIRE(painter.grow(&rig.window, rig.surface) == Result::SUCCESS);
+    REQUIRE(rig.surface.programs.size() == 2);
+    const auto large = painter.acquire(Kind::Curves, {.instances = 100000});
+    REQUIRE(large.has_value());
+    CHECK(large->chunk != small->chunk);
+    CHECK(painter.programs().size() == 2);
 
-    REQUIRE(mesh.updateScissorRect(Render::ScissorRect{1, 2, 3, 4}) == Result::SUCCESS);
-    REQUIRE(program.getConfig().scissorRect.has_value());
-    REQUIRE(program.getConfig().scissorRect->width == 3);
-    REQUIRE(mesh.updateScissorRect(std::nullopt) == Result::SUCCESS);
-    REQUIRE_FALSE(program.getConfig().scissorRect.has_value());
+    REQUIRE_FALSE(painter.acquire(Kind::Shapes, {.instances = 1}).has_value());
+    REQUIRE(painter.grow(&rig.window, rig.surface) == Result::SUCCESS);
+    CHECK(rig.surface.programs.size() == 3);
 }
 
-TEST_CASE("Curve components clamp their limits and build a four sided template per segment",
-          "[core][sakura][geometry]") {
-    const Components::Curves empty({.capacity = 0, .maxSegments = 0});
-    REQUIRE(empty.getConfig().capacity == 1);
-    REQUIRE(empty.getConfig().maxSegments == 1);
-
-    DeviceWindow window;
-    if (window.device() == DeviceType::None) {
-        SKIP("Unbound curve resources require Vulkan or WebGPU support.");
+TEST_CASE("Painter slots keep their lease until the need outgrows it or falls far below it",
+          "[core][sakura][geometry][painter]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound painter resources require Vulkan or WebGPU support.");
     }
-    Components::Curves curves({.capacity = 4, .maxSegments = 3});
-    REQUIRE(curves.create(&window) == Result::SUCCESS);
-    Render::Surface::Config surface;
-    REQUIRE(curves.surface(surface) == Result::SUCCESS);
-    const auto& program = *surface.programs.front();
+    using Kind = Sakura::Painter::Kind;
+    auto& painter = rig.painter;
+    painter.demand(Kind::Shapes, {.instances = 512});
+    REQUIRE(painter.grow(&rig.window, rig.surface) == Result::SUCCESS);
 
-    const CurvesView view(program);
-    REQUIRE(view.templateVertices.size() == 16);
-    REQUIRE(view.templateIndices.size() == 54);
-    REQUIRE(view.instances.size() == 4);
-    REQUIRE(curves.instances().size() == 4);
+    Sakura::Painter::Slot slot;
+    REQUIRE_FALSE(slot.held());
+    REQUIRE(slot.reserve(painter, Kind::Shapes, {.instances = 100}));
+    REQUIRE(slot.held());
+    CHECK(slot->size.instances == 128);
+    const U64 origin = slot->instance;
 
-    const F32 sides[] = {2.0f, 1.0f, -1.0f, -2.0f};
-    for (U64 point = 0; point < 4; ++point) {
-        for (U64 side = 0; side < 4; ++side) {
-            REQUIRE(view.templateVertices[point * 4 + side] == Extent2D<F32>{static_cast<F32>(point), sides[side]});
-        }
-    }
-    REQUIRE(std::vector<U32>(view.templateIndices.begin() + 18, view.templateIndices.begin() + 36) ==
-            std::vector<U32>{9, 5, 6, 6, 10, 9, 9, 5, 4, 4, 8, 9, 10, 6, 7, 7, 11, 10});
-    for (const auto index : view.templateIndices) {
-        REQUIRE(index < 16);
-    }
-    for (const auto& instance : view.instances) {
-        REQUIRE(instance.color.a == 0.0f);
-        REQUIRE(instance.segments == 1.0f);
-    }
-}
+    REQUIRE(slot.reserve(painter, Kind::Shapes, {.instances = 60}));
+    CHECK(slot->instance == origin);
+    CHECK(slot->size.instances == 128);
 
-TEST_CASE("Curve components draw only with pending instances and track transform uniforms",
-          "[core][sakura][geometry]") {
-    DeviceWindow window;
-    if (window.device() == DeviceType::None) {
-        SKIP("Unbound curve resources require Vulkan or WebGPU support.");
-    }
-    Components::Curves curves({.capacity = 2, .maxSegments = 4, .framebufferSize = {640.0f, 480.0f}});
-    REQUIRE(curves.create(&window) == Result::SUCCESS);
-    Render::Surface::Config surface;
-    REQUIRE(curves.surface(surface) == Result::SUCCESS);
-    const auto& program = *surface.programs.front();
+    REQUIRE(slot.reserve(painter, Kind::Shapes, {.instances = 200}));
+    CHECK(slot->size.instances == 256);
 
-    REQUIRE_FALSE(program.enabled());
-    REQUIRE(curves.update(5) == Result::SUCCESS);
-    REQUIRE(program.enabled());
-    curves.enabled(false);
-    REQUIRE_FALSE(program.enabled());
-    curves.enabled(true);
-    REQUIRE(program.enabled());
-    REQUIRE(curves.update(0) == Result::SUCCESS);
-    REQUIRE_FALSE(program.enabled());
+    REQUIRE(slot.reserve(painter, Kind::Shapes, {.instances = 8}));
+    CHECK(slot->size.instances == 8);
 
-    const auto initial = Uniforms(program);
-    REQUIRE(std::vector<F32>(initial.begin(), initial.end()) ==
-            std::vector<F32>{640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, 4.0f, 0.0f});
-    REQUIRE(curves.updateTransform({800.0f, 600.0f}, {2.0f, 3.0f}, 0.5f, 1.25f) == Result::SUCCESS);
-    REQUIRE(curves.getConfig().framebufferSize == Extent2D<F32>{800.0f, 600.0f});
-    const auto moved = Uniforms(program);
-    REQUIRE(std::vector<F32>(moved.begin(), moved.end()) ==
-            std::vector<F32>{800.0f, 600.0f, 2.0f, 3.0f, 0.5f, 1.25f, 4.0f, 0.0f});
+    slot.reset();
+    REQUIRE_FALSE(slot.held());
+    const auto whole = painter.acquire(Kind::Shapes, {.instances = 1024});
+    REQUIRE(whole.has_value());
 }
 
 TEST_CASE("Surface presenters emit each distinct resize once and ignore scale jitter",

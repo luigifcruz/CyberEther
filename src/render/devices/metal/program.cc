@@ -174,7 +174,7 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
+void Implementation::bind(MTL::RenderCommandEncoder* renderCmdEncoder) {
     renderCmdEncoder->setRenderPipelineState(renderPipelineState);
 
     // Attach frame fragment-shader buffers.
@@ -193,6 +193,20 @@ Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
         renderCmdEncoder->setFragmentTexture(textures[i]->getHandle(), i);
         renderCmdEncoder->setFragmentSamplerState(textures[i]->getSamplerStateHandle(), i);
     }
+}
+
+Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder, const Draw::Range& range, bool rebind) {
+    if (draws.size() != 1) {
+        return Result::ERROR;
+    }
+    if (rebind) {
+        bind(renderCmdEncoder);
+    }
+    return draws.front()->encode(renderCmdEncoder, range, rebind);
+}
+
+Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
+    bind(renderCmdEncoder);
 
     // Attach frame encoder.
     for (auto& draw : draws) {

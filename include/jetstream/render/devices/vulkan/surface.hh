@@ -16,6 +16,7 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
 
  protected:
     Result reorderPrograms(const std::vector<std::shared_ptr<Program>>& ordered) override;
+    Result sequenceSteps(const std::vector<Step>& steps) override;
     bool appendable() const override;
     Result validateAppend(const std::vector<std::shared_ptr<Program>>& programs,
                           const std::vector<std::shared_ptr<Kernel>>& kernels) const override;
@@ -34,7 +35,14 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
     VkFramebuffer framebufferObject = VK_NULL_HANDLE;
     VkRenderPass renderPass = VK_NULL_HANDLE;
 
+    struct Ordered {
+        std::shared_ptr<ProgramImp<DeviceType::Vulkan>> program;
+        std::optional<Draw::Range> range;
+        std::optional<ScissorRect> scissor;
+    };
+
     std::vector<std::shared_ptr<ProgramImp<DeviceType::Vulkan>>> programs;
+    std::vector<Ordered> ordered;
     std::vector<std::shared_ptr<KernelImp<DeviceType::Vulkan>>> kernels;
     std::vector<std::shared_ptr<BufferImp<DeviceType::Vulkan>>> buffers;
 

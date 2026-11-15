@@ -15,6 +15,8 @@ class JETSTREAM_API ProgramImp<DeviceType::Metal> : public Program {
     Result create(const MTL::PixelFormat& pixelFormat, bool multisampled);
     Result destroy();
     Result draw(MTL::RenderCommandEncoder* renderCmdEncoder);
+    Result draw(MTL::RenderCommandEncoder* renderCmdEncoder, const Draw::Range& range, bool bind);
+    void bind(MTL::RenderCommandEncoder* renderCmdEncoder);
 
  private:
     MTL::RenderPipelineState* renderPipelineState = nullptr;

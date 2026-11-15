@@ -24,6 +24,7 @@ namespace Jetstream::Sakura {
 const Palette& EmptyPalette();
 
 struct Drawable;
+struct Painter;
 struct PopupLayer;
 struct DockDrag;
 struct Component;
@@ -48,6 +49,7 @@ struct Context {
     bool underlays = false;
     std::string backdropColorKey;
     std::string backdropTopColorKey;
+    Painter* painter = nullptr;
     std::function<void(Drawable*, std::shared_ptr<Render::Components::Generic>)> release;
     std::function<Result(const Component&, Drawable*)> attach;
 

@@ -705,17 +705,42 @@ Result Text::Impl::updateElementVertex(Element& element) {
         return Result::ERROR;
     }
 
-    const auto& font = *config.font;
+    std::vector<Quad> quads;
+    quads.reserve(renderableCharacterCount);
+    element.bounds = Shape(*config.font, element.config.fill, element.config.scale, quads);
+    for (const auto& quad : quads) {
+        const U64 base = element.characterCount * 4;
+
+        element.posVertices[base + 0] = glm::vec2(quad.origin.x, quad.origin.y);
+        element.posVertices[base + 1] = glm::vec2(quad.corner.x, quad.origin.y);
+        element.posVertices[base + 2] = glm::vec2(quad.corner.x, quad.corner.y);
+        element.posVertices[base + 3] = glm::vec2(quad.origin.x, quad.corner.y);
+
+        element.fillVertices[base + 0] = glm::vec2(quad.texcoordOrigin.x, quad.texcoordOrigin.y);
+        element.fillVertices[base + 1] = glm::vec2(quad.texcoordCorner.x, quad.texcoordOrigin.y);
+        element.fillVertices[base + 2] = glm::vec2(quad.texcoordCorner.x, quad.texcoordCorner.y);
+        element.fillVertices[base + 3] = glm::vec2(quad.texcoordOrigin.x, quad.texcoordCorner.y);
+
+        element.characterCount++;
+    }
+
+    return Result::SUCCESS;
+}
+
+Extent2D<I32> Text::Shape(const Font& font, const std::string& fill, F32 scale, std::vector<Quad>& quads) {
+    if (fill.empty()) {
+        return {0, 0};
+    }
+
     const auto& atlasSize = font.atlasSize();
-    const F32 scale = element.config.scale;
     const F32 texel = scale / font.atlasScale();
-    const F32 lineHeight = ScaledLineHeight(config.font.get(), scale);
+    const F32 lineHeight = Impl::ScaledLineHeight(&font, scale);
     const F32 ascent = std::round(static_cast<F32>(font.ascent()) * scale);
-    const auto perGlyph = GlyphAdvances(config.font.get(), element.config.fill, scale);
+    const auto perGlyph = Impl::GlyphAdvances(&font, fill, scale);
 
     std::vector<F32> lineWidths(1, 0.0f);
-    for (U64 i = 0; i < element.config.fill.size(); ++i) {
-        if (element.config.fill[i] == '\n') {
+    for (U64 i = 0; i < fill.size(); ++i) {
+        if (fill[i] == '\n') {
             lineWidths.push_back(0.0f);
         } else {
             lineWidths.back() += perGlyph[i];
@@ -728,9 +753,9 @@ Result Text::Impl::updateElementVertex(Element& element) {
     F32 x = std::round((blockWidth - lineWidths[lineIndex]) * 0.5f);
     F32 y = 0.0f;
 
-    for (U64 i = 0; i < element.config.fill.size(); ++i) {
+    for (U64 i = 0; i < fill.size(); ++i) {
         U32 codepoint = 0;
-        const U64 length = Unicode::Decode(element.config.fill, i, codepoint);
+        const U64 length = Unicode::Decode(fill, i, codepoint);
         const F32 advance = perGlyph[i];
         i += length - 1;
 
@@ -756,31 +781,20 @@ Result Text::Impl::updateElementVertex(Element& element) {
         const F32 y0 = y - ascent - static_cast<F32>(b.yOffset) * scale;
         const F32 x1 = x0 + static_cast<F32>(b.x1 - b.x0) * texel;
         const F32 y1 = y0 - static_cast<F32>(b.y1 - b.y0) * texel;
-        const U64 base = element.characterCount * 4;
 
-        element.posVertices[base + 0] = glm::vec2(x0, y0);
-        element.posVertices[base + 1] = glm::vec2(x1, y0);
-        element.posVertices[base + 2] = glm::vec2(x1, y1);
-        element.posVertices[base + 3] = glm::vec2(x0, y1);
-
-        const F32 s0 = static_cast<F32>(b.x0) / static_cast<F32>(atlasSize.x);
-        const F32 t0 = static_cast<F32>(b.y0) / static_cast<F32>(atlasSize.y);
-        const F32 s1 = static_cast<F32>(b.x1) / static_cast<F32>(atlasSize.x);
-        const F32 t1 = static_cast<F32>(b.y1) / static_cast<F32>(atlasSize.y);
-
-        element.fillVertices[base + 0] = glm::vec2(s0, t0);
-        element.fillVertices[base + 1] = glm::vec2(s1, t0);
-        element.fillVertices[base + 2] = glm::vec2(s1, t1);
-        element.fillVertices[base + 3] = glm::vec2(s0, t1);
+        quads.push_back({
+            .origin = {x0, y0},
+            .corner = {x1, y1},
+            .texcoordOrigin = {static_cast<F32>(b.x0) / static_cast<F32>(atlasSize.x),
+                               static_cast<F32>(b.y0) / static_cast<F32>(atlasSize.y)},
+            .texcoordCorner = {static_cast<F32>(b.x1) / static_cast<F32>(atlasSize.x),
+                               static_cast<F32>(b.y1) / static_cast<F32>(atlasSize.y)},
+        });
 
         x += advance;
-        element.characterCount++;
     }
 
-    element.bounds.x = static_cast<I32>(blockWidth);
-    element.bounds.y = static_cast<I32>(lineHeight * static_cast<F32>(lineCount));
-
-    return Result::SUCCESS;
+    return {static_cast<I32>(blockWidth), static_cast<I32>(lineHeight * static_cast<F32>(lineCount))};
 }
 
 Result Text::present() {

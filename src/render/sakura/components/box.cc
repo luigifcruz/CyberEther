@@ -1,7 +1,6 @@
 #include <jetstream/render/sakura/components/box.hh>
 
 #include <jetstream/render/base.hh>
-#include <jetstream/render/components/shapes.hh>
 
 #include "../detail/drawable.hh"
 #include "../detail/helpers.hh"
@@ -20,23 +19,25 @@ constexpr U8 kStrokeFringe = 16;
 constexpr U8 kSoft = 32;
 constexpr U8 kTopLit = 64;
 constexpr F32 kCoverFringe = 1.0f;
-
-constexpr const char* kRectElementId = "rect";
+constexpr F32 kRectType = 1.0f;
+constexpr U64 kFill = 16;
+constexpr U64 kBorder = 20;
+constexpr U64 kParams = 24;
+constexpr U64 kHole = 28;
 
 }  // namespace
 
 struct Box::Impl : public Drawable {
     Config config;
     U64 capacity = 0;
-    U64 liveSlots = 0;
+    U64 drawn = 0;
     bool instancesDirty = true;
     Extent2D<U64> uploadedFramebuffer = {0, 0};
-    std::vector<U8> corners;
+    Extent2D<F32> uploadedTranslation = {0.0f, 0.0f};
+    U64 uploadedInstance = 0;
+    std::optional<Render::ScissorRect> clipRect;
     std::vector<Rect> holes;
-
-    Render::Components::Shapes* shape() const {
-        return as<Render::Components::Shapes>();
-    }
+    Painter::Slot slot;
 
     bool sameInstances(const Config& other) const {
         return config.instances == other.instances &&
@@ -64,35 +65,38 @@ struct Box::Impl : public Drawable {
         return std::max<U64>({1, capacity, other.instances.size()});
     }
 
-    Result attach(Context* context, Render::Surface::Config& surfaceConfig) override {
-        this->context = context;
+    Result attach(Context* context, Render::Surface::Config&) override {
+        JST_CHECK(join(context));
         capacity = requiredCapacity(config);
-        liveSlots = 0;
+        drawn = 0;
         instancesDirty = true;
         holes.assign(capacity, Rect{});
-
-        Render::Components::Shapes::Config shapeConfig;
-        shapeConfig.pixelSize = context->pixelSize();
-        shapeConfig.elements[kRectElementId] = {
-            .type = Render::Components::Shapes::Type::RECT,
-            .numberOfInstances = capacity,
-            .position = {-2.0f, -2.0f},
-            .size = {0.0f, 0.0f},
-            .cornerRadius = config.cornerRadius,
-            .borderWidth = edgeWidth(),
-            .borderColor = config.borderColor,
-        };
-
-        std::shared_ptr<Render::Components::Shapes> shapes;
-        JST_CHECK(context->render->build(shapes, shapeConfig));
-        return bind(context, std::move(shapes), surfaceConfig);
+        painter->demand(Painter::Kind::Shapes, {.instances = rendered().size()});
+        return Result::SUCCESS;
     }
 
     void conceal() override {
         active = false;
-        if (component) {
-            shape()->enabled(false);
+    }
+
+    void abandon() override {
+        slot.reset();
+        drawn = 0;
+    }
+
+    void steps(std::vector<Render::Surface::Step>& out) const override {
+        if (!active || !slot.held() || drawn == 0) {
+            return;
         }
+        out.push_back({
+            .program = painter->program(*slot),
+            .range = Render::Draw::Range{
+                .count = Painter::ShapeIndices,
+                .firstInstance = slot->instance,
+                .instanceCount = drawn,
+            },
+            .scissor = clipRect,
+        });
     }
 
     std::span<const Instance> rendered() const {
@@ -108,7 +112,7 @@ struct Box::Impl : public Drawable {
     }
 
     bool covers(const Rect& target) const override {
-        if (!active || !component || !context || config.softness > 0.0f) {
+        if (!active || !painter || !context || config.softness > 0.0f) {
             return false;
         }
         const auto clip = screenClip();
@@ -126,7 +130,7 @@ struct Box::Impl : public Drawable {
     bool active = false;
 
     void opaqueRects(std::vector<Rect>& rects) const override {
-        if (!active || !component || !context) {
+        if (!active || !painter || !context) {
             return;
         }
         const auto clip = screenClip();
@@ -144,16 +148,19 @@ struct Box::Impl : public Drawable {
     }
 
     Result occlude(const std::vector<Rect>& later) override {
-        if (!active || !component || !context) {
+        if (!active || !painter || !context) {
             return Result::SUCCESS;
         }
-        std::span<Rect> uploaded;
-        JST_CHECK(shape()->getHoles(kRectElementId, uploaded));
+        const auto instances = rendered();
+        std::span<F32> data;
+        if (slot.held()) {
+            data = painter->instances(*slot);
+        }
         bool changed = false;
-        for (U64 i = 0; i < holes.size() && i < uploaded.size(); ++i) {
+        for (U64 i = 0; i < holes.size(); ++i) {
             Rect hole;
-            if (i < config.instances.size() && config.instances[i].visible && !config.instances[i].rect.empty()) {
-                const auto& instance = config.instances[i];
+            if (i < instances.size() && instances[i].visible && !instances[i].rect.empty()) {
+                const auto& instance = instances[i];
                 const Rect screen = instance.rect.translated(translation.x, translation.y);
                 const Rect own = HollowInterior(screen, config.cornerRadius, config.borderWidth,
                                                 config.softness, instance.backgroundColor);
@@ -161,22 +168,26 @@ struct Box::Impl : public Drawable {
             }
             if (holes[i] != hole) {
                 holes[i] = hole;
-                uploaded[i] = hole;
+                if ((i + 1) * Painter::ShapeStride <= data.size()) {
+                    F32* out = data.data() + i * Painter::ShapeStride + kHole;
+                    out[0] = hole.x;
+                    out[1] = hole.y;
+                    out[2] = hole.width;
+                    out[3] = hole.height;
+                }
                 changed = true;
             }
         }
-        if (changed) {
-            JST_CHECK(shape()->updateHoles(kRectElementId));
-            JST_CHECK(shape()->present());
+        if (changed && slot.held()) {
+            painter->touch(*slot);
         }
         return Result::SUCCESS;
     }
 
     Result upload() override {
-        if (!component || !context) {
+        if (!painter || !context) {
             return Result::SUCCESS;
         }
-        auto* shape = this->shape();
 
         const Rect visible = screenClip().value_or(Rect{0.0f, 0.0f, static_cast<F32>(context->framebufferSize.x),
                                                         static_cast<F32>(context->framebufferSize.y)});
@@ -187,59 +198,70 @@ struct Box::Impl : public Drawable {
                 const Rect bounds = Inset(instance.rect.translated(translation.x, translation.y), -fringe);
                 return instance.visible && !instance.rect.empty() && !Intersect(bounds, visible).empty();
             });
-        shape->enabled(active);
         if (!active) {
             return Result::SUCCESS;
         }
 
+        if (!slot.reserve(*painter, Painter::Kind::Shapes, {.instances = instances.size()})) {
+            active = false;
+            return Result::SUCCESS;
+        }
+
         const auto& framebufferSize = context->framebufferSize;
+        clipRect = scissor(config.clip);
 
-        JST_CHECK(shape->updatePixelSize(context->pixelSize()));
-        JST_CHECK(shape->updateTranslation(translationNdc()));
-        JST_CHECK(shape->updateScissorRect(scissor(config.clip)));
-
-        if (!instancesDirty && uploadedFramebuffer == framebufferSize) {
+        if (!instancesDirty && uploadedFramebuffer == framebufferSize && uploadedTranslation == translation &&
+            uploadedInstance == slot->instance) {
             return Result::SUCCESS;
         }
         instancesDirty = false;
         uploadedFramebuffer = framebufferSize;
+        uploadedTranslation = translation;
+        uploadedInstance = slot->instance;
 
-        std::span<Extent2D<F32>> positions;
-        JST_CHECK(shape->getPositions(kRectElementId, positions));
-        std::span<Extent2D<F32>> sizes;
-        JST_CHECK(shape->getSizes(kRectElementId, sizes));
-        std::span<ColorRGBA<F32>> colors;
-        JST_CHECK(shape->getColors(kRectElementId, colors));
-        corners.assign(capacity, AllCorners | flags());
-
-        const U64 slots = std::min(capacity, std::max<U64>(config.instances.size(), liveSlots));
-        U64 nextLiveSlots = 0;
-        for (U64 i = 0; i < slots; ++i) {
-            const bool on = i < config.instances.size() &&
-                            config.instances[i].visible &&
-                            !config.instances[i].rect.empty();
-            if (!on) {
-                positions[i] = {-2.0f, -2.0f};
-                sizes[i] = {0.0f, 0.0f};
+        const auto pixel = context->pixelSize();
+        const auto shift = translationNdc();
+        const F32 edge = edgeWidth();
+        auto data = painter->instances(*slot);
+        std::fill(data.begin(), data.end(), 0.0f);
+        drawn = 0;
+        for (U64 i = 0; i < instances.size(); ++i) {
+            const auto& instance = instances[i];
+            F32* out = data.data() + i * Painter::ShapeStride;
+            out[10] = 1.0f;
+            out[15] = 1.0f;
+            if (!instance.visible || instance.rect.empty()) {
+                out[12] = -2.0f;
+                out[13] = -2.0f;
                 continue;
             }
-            nextLiveSlots = i + 1;
+            drawn = i + 1;
 
-            const auto& instance = config.instances[i];
-            positions[i] = PixelToNdc(framebufferSize, instance.rect.center().x, instance.rect.center().y);
-            sizes[i] = {instance.rect.width, instance.rect.height};
-            colors[i] = instance.backgroundColor;
-            corners[i] = instance.corners | flags();
+            const auto center = PixelToNdc(framebufferSize, instance.rect.center().x, instance.rect.center().y);
+            out[0] = instance.rect.width * pixel.x;
+            out[5] = instance.rect.height * pixel.y;
+            out[12] = center.x + shift.x;
+            out[13] = center.y + shift.y;
+            out[kFill + 0] = instance.backgroundColor.r;
+            out[kFill + 1] = instance.backgroundColor.g;
+            out[kFill + 2] = instance.backgroundColor.b;
+            out[kFill + 3] = instance.backgroundColor.a;
+            out[kBorder + 0] = config.borderColor.r;
+            out[kBorder + 1] = config.borderColor.g;
+            out[kBorder + 2] = config.borderColor.b;
+            out[kBorder + 3] = config.borderColor.a;
+            out[kParams + 0] = kRectType;
+            out[kParams + 1] = edge;
+            out[kParams + 2] = config.cornerRadius;
+            out[kParams + 3] = static_cast<F32>(instance.corners | flags());
+            if (i < holes.size()) {
+                out[kHole + 0] = holes[i].x;
+                out[kHole + 1] = holes[i].y;
+                out[kHole + 2] = holes[i].width;
+                out[kHole + 3] = holes[i].height;
+            }
         }
-
-        liveSlots = nextLiveSlots;
-
-        JST_CHECK(shape->updatePositions(kRectElementId));
-        JST_CHECK(shape->updateSizes(kRectElementId));
-        JST_CHECK(shape->updateColors(kRectElementId));
-
-        JST_CHECK(shape->updateProperties(kRectElementId, config.cornerRadius, edgeWidth(), config.borderColor));
-        JST_CHECK(shape->updateCorners(kRectElementId, corners));
+        painter->touch(*slot);
 
         return Result::SUCCESS;
     }
@@ -260,11 +282,13 @@ void Box::update(Config config) {
     const bool instancesChanged = !this->impl->sameInstances(config);
     const bool visualsChanged = instancesChanged || this->impl->config.clip != config.clip;
     const bool capacityChanged = this->impl->requiredCapacity(config) != this->impl->capacity;
-    this->impl->instancesDirty |= instancesChanged;
+    this->impl->instancesDirty |= instancesChanged || capacityChanged;
     this->impl->config = std::move(config);
 
     if (capacityChanged && this->impl->attached()) {
-        invalidate(Dirty::Resource);
+        this->impl->capacity = this->impl->requiredCapacity(this->impl->config);
+        this->impl->holes.resize(this->impl->capacity);
+        invalidate(Dirty::Paint);
     } else if (visualsChanged) {
         invalidate(Dirty::Paint);
     }

@@ -255,6 +255,8 @@ class TestSurface final : public Render::Surface {
     U64 firstAppendedKernel = 0;
     U64 reorderCalls = 0;
     Result reorderResult = Result::SUCCESS;
+    U64 sequenceCalls = 0;
+    std::vector<Render::Surface::Step> backendSteps;
     bool typedAppends = false;
     std::function<Result()> creationHandler;
     std::function<Result()> destructionHandler;
@@ -268,6 +270,11 @@ class TestSurface final : public Render::Surface {
             return std::exchange(reorderResult, Result::SUCCESS);
         }
         backendPrograms = ordered;
+        return Result::SUCCESS;
+    }
+    Result sequenceSteps(const std::vector<Render::Surface::Step>& steps) override {
+        ++sequenceCalls;
+        backendSteps = steps;
         return Result::SUCCESS;
     }
     bool appendable() const override { return acceptsAppends; }
@@ -635,6 +642,49 @@ TEST_CASE("Surface reordering preserves the exact program multiset and invalidat
     REQUIRE(surface.reorderCalls == 1);
     REQUIRE(surface.wantsDraw());
     surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+}
+
+TEST_CASE("Surface sequencing accepts only owned programs and invalidates only changes",
+          "[core][render][surface][sequence]") {
+    auto first = std::make_shared<Render::Program>(Render::Program::Config{});
+    auto second = std::make_shared<Render::Program>(Render::Program::Config{});
+    auto stranger = std::make_shared<Render::Program>(Render::Program::Config{});
+    Render::Surface::Config config;
+    config.programs = {first, second};
+    config.retained = true;
+
+    TestSurface unordered(config);
+    REQUIRE(unordered.sequence({{.program = first}}) == Result::ERROR);
+    REQUIRE(unordered.sequenceCalls == 0);
+
+    config.sequenced = true;
+    TestSurface surface(config);
+    REQUIRE(surface.wantsDraw());
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+
+    REQUIRE(surface.sequence({}) == Result::SUCCESS);
+    REQUIRE(surface.sequence({{.program = stranger}}) == Result::ERROR);
+    REQUIRE(surface.sequence({{.program = nullptr}}) == Result::ERROR);
+    REQUIRE(surface.sequence({{.program = first, .range = Render::Draw::Range{.count = 3}}}) == Result::ERROR);
+    REQUIRE(surface.sequenceCalls == 0);
+    REQUIRE_FALSE(surface.wantsDraw());
+
+    const std::vector<Render::Surface::Step> steps = {
+        {.program = second},
+        {.program = first, .scissor = Render::ScissorRect{0, 0, 4, 4}},
+        {.program = second},
+    };
+    REQUIRE(surface.sequence(steps) == Result::SUCCESS);
+    REQUIRE(surface.sequenceCalls == 1);
+    REQUIRE(surface.backendSteps == steps);
+    REQUIRE(surface.wantsDraw());
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+
+    REQUIRE(surface.sequence(steps) == Result::SUCCESS);
+    REQUIRE(surface.sequenceCalls == 1);
     REQUIRE_FALSE(surface.wantsDraw());
 }
 

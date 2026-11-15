@@ -49,6 +49,15 @@ class JETSTREAM_API Text : public Generic {
         static U64 Advance(std::string_view text, U64 pos, U64 count);
     };
 
+    struct Quad {
+        Extent2D<F32> origin = {0.0f, 0.0f};
+        Extent2D<F32> corner = {0.0f, 0.0f};
+        Extent2D<F32> texcoordOrigin = {0.0f, 0.0f};
+        Extent2D<F32> texcoordCorner = {0.0f, 0.0f};
+    };
+
+    static Extent2D<I32> Shape(const Font& font, const std::string& fill, F32 scale, std::vector<Quad>& quads);
+
     Text(const Config& config);
     ~Text();
 

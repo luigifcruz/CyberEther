@@ -416,6 +416,22 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
     return Result::SUCCESS;
 }
 
+Result Implementation::encode(VkCommandBuffer& commandBuffer, const Draw::Range& range, bool bind) {
+    if (draws.size() != 1) {
+        return Result::ERROR;
+    }
+
+    if (bind) {
+        if (!bindings.empty()) {
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1,
+                                    &descriptorSet, 0, nullptr);
+        }
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+    }
+
+    return draws.front()->encode(commandBuffer, range, bind);
+}
+
 VkShaderStageFlags Implementation::TargetToShaderStage(const Program::Target& target) {
     VkShaderStageFlags flags = 0;
 

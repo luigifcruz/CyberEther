@@ -39,6 +39,20 @@ Result Implementation::reorderPrograms(const std::vector<std::shared_ptr<Program
     return Result::SUCCESS;
 }
 
+Result Implementation::sequenceSteps(const std::vector<Step>& steps) {
+    decltype(ordered) candidate;
+    candidate.reserve(steps.size());
+    for (const auto& step : steps) {
+        auto typed = std::dynamic_pointer_cast<ProgramImp<DeviceType::WebGPU>>(step.program);
+        if (!typed) {
+            return Result::ERROR;
+        }
+        candidate.push_back({std::move(typed), step.range, step.scissor});
+    }
+    ordered.swap(candidate);
+    return Result::SUCCESS;
+}
+
 bool Implementation::appendable() const {
     return false;
 }
@@ -150,25 +164,49 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder, bool visible) {
     const auto& sz = framebuffer->size();
     const ScissorRect fullScissor = {0, 0, static_cast<U32>(sz.x), static_cast<U32>(sz.y)};
     std::optional<ScissorRect> previousScissor;
-    for (auto& program : programs) {
-        if (!program->enabled()) {
-            continue;
-        }
-        auto scissor = program->getConfig().scissorRect.value_or(fullScissor);
+    const ProgramImp<DeviceType::WebGPU>* bound = nullptr;
+    const auto clip = [&](ScissorRect scissor) {
         if (scissor.x >= sz.x || scissor.y >= sz.y) {
-            continue;
+            return false;
         }
         scissor.width = static_cast<U32>(std::min<U64>(scissor.width, sz.x - scissor.x));
         scissor.height = static_cast<U32>(std::min<U64>(scissor.height, sz.y - scissor.y));
         if (scissor.width == 0 || scissor.height == 0) {
-            continue;
+            return false;
         }
         if (previousScissor != scissor) {
             wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, scissor.x, scissor.y, scissor.width,
                                                 scissor.height);
             previousScissor = scissor;
         }
-        JST_CHECK(program->draw(renderPassEncoder));
+        return true;
+    };
+    if (config.sequenced) {
+        for (auto& step : ordered) {
+            if (!step.program->enabled()) {
+                continue;
+            }
+            if (!step.range.has_value()) {
+                if (clip(step.program->getConfig().scissorRect.value_or(fullScissor))) {
+                    JST_CHECK(step.program->draw(renderPassEncoder));
+                    bound = nullptr;
+                }
+                continue;
+            }
+            if (clip(step.scissor.value_or(fullScissor))) {
+                JST_CHECK(step.program->draw(renderPassEncoder, *step.range, bound != step.program.get()));
+                bound = step.program.get();
+            }
+        }
+    } else {
+        for (auto& program : programs) {
+            if (!program->enabled()) {
+                continue;
+            }
+            if (clip(program->getConfig().scissorRect.value_or(fullScissor))) {
+                JST_CHECK(program->draw(renderPassEncoder));
+            }
+        }
     }
 
     wgpuRenderPassEncoderEnd(renderPassEncoder);

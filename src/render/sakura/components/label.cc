@@ -7,6 +7,8 @@
 #include "../detail/helpers.hh"
 
 #include <algorithm>
+#include <cmath>
+#include <numbers>
 #include <utility>
 
 using Unicode = Jetstream::Render::Components::Text::Unicode;
@@ -17,37 +19,41 @@ namespace {
 
 constexpr const char* kFallbackFontName = Typography::MonoFont;
 
-std::string LabelElementId(U64 index) {
-    return jst::fmt::format("label{:06}", index);
-}
+constexpr U64 kQuadVertices = 4;
+constexpr U64 kQuadIndices = 6;
 
 }  // namespace
 
 struct Label::Impl : public Drawable {
     Config config;
     U64 capacity = 0;
-    U64 liveSlots = 0;
-    std::string attachedFontName;
+    U64 glyphs = 0;
     bool instancesDirty = true;
-    Extent2D<U64> uploadedFramebuffer = {0, 0};
-
-    Render::Components::Text* text() const {
-        return as<Render::Components::Text>();
-    }
+    bool active = false;
+    Extent2D<U64> shapedFramebuffer = {0, 0};
+    U64 uploadedVertex = 0;
+    bool uploaded = false;
+    std::optional<Render::ScissorRect> clipRect;
+    std::shared_ptr<Render::Components::Font> font;
+    std::vector<F32> geometry;
+    std::vector<Render::Components::Text::Quad> quads;
+    Painter::Slot slot;
 
     std::string resolveFontName(const std::string& fontName) const {
         return context->render->hasFont(fontName) ? fontName : std::string(kFallbackFontName);
     }
 
-    bool resolvedFontChanged(const Config& other) const {
-        return context && context->render && !attachedFontName.empty() &&
-               resolveFontName(other.fontName) != attachedFontName;
+    std::shared_ptr<Render::Components::Font> resolveFont() const {
+        const std::string fontName = resolveFontName(config.fontName);
+        return context->render->hasFont(fontName) ? context->render->font(fontName) : nullptr;
     }
 
-    bool sameResources(const Config& other) const {
-        return requiredCapacity(other) == capacity &&
-               config.fontName == other.fontName &&
-               config.maxCharacters == other.maxCharacters;
+    bool resolvedFontChanged(const Config& other) const {
+        if (!painter || !context || !context->render || !font) {
+            return false;
+        }
+        const std::string fontName = resolveFontName(other.fontName);
+        return context->render->hasFont(fontName) && context->render->font(fontName) != font;
     }
 
     U64 requiredCapacity(const Config& other) const {
@@ -55,13 +61,6 @@ struct Label::Impl : public Drawable {
             return other.capacity;
         }
         return std::max<U64>({1, capacity, other.instances.size()});
-    }
-
-    F32 fontPixelSize() const {
-        if (!component || !text()->getConfig().font) {
-            return 32.0f;
-        }
-        return text()->getConfig().font->getConfig().size;
     }
 
     static Extent2D<F32> AnchorPixels(const Instance& instance) {
@@ -75,106 +74,180 @@ struct Label::Impl : public Drawable {
         return {x, y};
     }
 
-    Result attach(Context* context, Render::Surface::Config& surfaceConfig) override {
-        this->context = context;
-        capacity = requiredCapacity(config);
-        liveSlots = 0;
-        instancesDirty = true;
+    void shape() {
+        geometry.clear();
+        glyphs = 0;
+        const auto& framebufferSize = context->framebufferSize;
+        const auto pixel = context->pixelSize();
+        const U64 characterCapacity = std::max<U64>(1, config.maxCharacters);
+        const F32 fontPixelSize = font->getConfig().size;
+        const U64 count = std::min<U64>(capacity, config.instances.size());
+        for (U64 i = 0; i < count; ++i) {
+            const auto& instance = config.instances[i];
+            if (!instance.visible || instance.str.empty()) {
+                continue;
+            }
+            quads.clear();
+            const auto bounds = Render::Components::Text::Shape(
+                *font, instance.str.substr(0, Unicode::Advance(instance.str, 0, characterCapacity)),
+                instance.fontSize / fontPixelSize, quads);
 
-        const std::string fontName = resolveFontName(config.fontName);
-        if (!context->render->hasFont(fontName)) {
+            Extent2D<F32> alignment = {0.0f, 0.0f};
+            if (instance.alignment.x == 1) {
+                alignment.x = -static_cast<F32>(bounds.x) / 2.0f;
+            } else if (instance.alignment.x == 2) {
+                alignment.x = -static_cast<F32>(bounds.x);
+            }
+            if (instance.alignment.y == 1) {
+                alignment.y = static_cast<F32>(bounds.y) / 2.0f;
+            } else if (instance.alignment.y == 2) {
+                alignment.y = static_cast<F32>(bounds.y);
+            }
+
+            const auto anchor = AnchorPixels(instance);
+            Extent2D<F32> origin = anchor;
+            if (instance.rotation == 0.0f && pixel.x > 0.0f && pixel.y > 0.0f) {
+                const auto ndc = PixelToNdc(framebufferSize, anchor.x, anchor.y);
+                origin = {std::round((ndc.x + 1.0f) / pixel.x + alignment.x),
+                          std::round((1.0f - ndc.y) / pixel.y - alignment.y)};
+                alignment = {0.0f, 0.0f};
+            }
+
+            const F32 angle = instance.rotation * std::numbers::pi_v<F32> / 180.0f;
+            const F32 cosine = std::cos(angle);
+            const F32 sine = std::sin(angle);
+            const auto& color = instance.color;
+            const auto emit = [&](F32 x, F32 y, F32 u, F32 v) {
+                const F32 localX = x + alignment.x;
+                const F32 localY = y + alignment.y;
+                geometry.insert(geometry.end(), {
+                    origin.x + localX * cosine - localY * sine,
+                    origin.y - (localX * sine + localY * cosine),
+                    u,
+                    v,
+                    color.r,
+                    color.g,
+                    color.b,
+                    color.a,
+                    -y,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                });
+            };
+            for (const auto& quad : quads) {
+                emit(quad.origin.x, quad.origin.y, quad.texcoordOrigin.x, quad.texcoordOrigin.y);
+                emit(quad.corner.x, quad.origin.y, quad.texcoordCorner.x, quad.texcoordOrigin.y);
+                emit(quad.corner.x, quad.corner.y, quad.texcoordCorner.x, quad.texcoordCorner.y);
+                emit(quad.origin.x, quad.corner.y, quad.texcoordOrigin.x, quad.texcoordCorner.y);
+            }
+            glyphs += quads.size();
+        }
+    }
+
+    Result attach(Context* context, Render::Surface::Config&) override {
+        JST_CHECK(join(context));
+        capacity = requiredCapacity(config);
+        instancesDirty = true;
+        uploaded = false;
+
+        font = resolveFont();
+        if (!font) {
             JST_ERROR("[SAKURA] Label could not resolve font '{}'.", config.fontName);
             return Result::ERROR;
         }
 
-        Render::Components::Text::Config textConfig;
-        textConfig.maxCharacters = std::max<U64>(1, config.maxCharacters);
-        textConfig.font = context->render->font(fontName);
-        attachedFontName = fontName;
-        textConfig.pixelSize = context->pixelSize();
-        textConfig.sharpness = config.sharpness;
-        textConfig.weight = config.weight;
-        textConfig.emboss = config.emboss;
-        textConfig.embossBackdrop = config.embossBackdrop;
-        for (U64 i = 0; i < capacity; ++i) {
-            textConfig.elements[LabelElementId(i)] = {
-                .scale = 1.0f,
-                .position = {-2.0f, -2.0f},
-                .fill = "",
-            };
+        U64 characters = 0;
+        const U64 limit = std::max<U64>(1, config.maxCharacters);
+        const U64 count = std::min<U64>(capacity, config.instances.size());
+        for (U64 i = 0; i < count; ++i) {
+            const auto& instance = config.instances[i];
+            characters += instance.visible ? std::min<U64>(instance.str.size(), limit) : 0;
         }
-
-        std::shared_ptr<Render::Components::Text> created;
-        JST_CHECK(context->render->build(created, textConfig));
-        return bind(context, std::move(created), surfaceConfig);
+        painter->demand(Painter::Kind::Glyphs, {.vertices = characters * kQuadVertices, .instances = 1}, font);
+        return Result::SUCCESS;
     }
 
     void conceal() override {
-        if (component) {
-            text()->enabled(false);
+        active = false;
+    }
+
+    void abandon() override {
+        slot.reset();
+        uploaded = false;
+    }
+
+    void steps(std::vector<Render::Surface::Step>& out) const override {
+        if (!active || !slot.held() || glyphs == 0) {
+            return;
         }
+        out.push_back({
+            .program = painter->program(*slot),
+            .range = Render::Draw::Range{
+                .count = glyphs * kQuadIndices,
+                .baseVertex = static_cast<I64>(slot->vertex),
+                .firstInstance = slot->instance,
+                .instanceCount = 1,
+            },
+            .scissor = clipRect,
+        });
     }
 
     Result upload() override {
-        if (!component || !context) {
+        if (!painter || !context) {
             return Result::SUCCESS;
         }
-        auto* text = this->text();
 
-        const bool active = std::any_of(
+        active = std::any_of(
             config.instances.begin(), config.instances.end(), [](const auto& instance) {
                 return instance.visible && !instance.str.empty();
             });
-        text->enabled(active);
         if (!active) {
             return Result::SUCCESS;
         }
 
-        const auto& framebufferSize = context->framebufferSize;
-        const U64 characterCapacity = std::max<U64>(1, text->getConfig().maxCharacters);
-
-        JST_CHECK(text->updatePixelSize(context->pixelSize()));
-        JST_CHECK(text->updateStyle(config.sharpness, config.weight, config.emboss, config.embossBackdrop));
-        JST_CHECK(text->updateTranslation(translationNdc()));
-        JST_CHECK(text->updateScissorRect(scissor(config.clip)));
-
-        if (!instancesDirty && uploadedFramebuffer == framebufferSize) {
+        const auto resolved = resolveFont();
+        if (!resolved) {
+            active = false;
             return Result::SUCCESS;
         }
-        instancesDirty = false;
-        uploadedFramebuffer = framebufferSize;
 
-        const U64 slots = std::min(capacity, std::max<U64>(config.instances.size(), liveSlots));
-        U64 nextLiveSlots = 0;
-        for (U64 i = 0; i < slots; ++i) {
-            const bool on = i < config.instances.size() &&
-                            config.instances[i].visible &&
-                            !config.instances[i].str.empty();
-            if (!on) {
-                if (i < liveSlots) {
-                    JST_CHECK(text->update(LabelElementId(i), {
-                        .scale = 1.0f,
-                        .position = {-2.0f, -2.0f},
-                        .fill = "",
-                    }));
-                }
-                continue;
-            }
-            nextLiveSlots = i + 1;
-
-            const auto& instance = config.instances[i];
-            const auto anchor = AnchorPixels(instance);
-            JST_CHECK(text->update(LabelElementId(i), {
-                .scale = instance.fontSize / fontPixelSize(),
-                .position = PixelToNdc(framebufferSize, anchor.x, anchor.y),
-                .alignment = instance.alignment,
-                .rotationDeg = instance.rotation,
-                .fill = instance.str.substr(0, Unicode::Advance(instance.str, 0, characterCapacity)),
-                .color = instance.color,
-            }));
+        if (instancesDirty || resolved != font || shapedFramebuffer != context->framebufferSize) {
+            font = resolved;
+            shapedFramebuffer = context->framebufferSize;
+            instancesDirty = false;
+            uploaded = false;
+            shape();
+        }
+        if (glyphs == 0) {
+            active = false;
+            return Result::SUCCESS;
         }
 
-        liveSlots = nextLiveSlots;
+        if (!slot.reserve(*painter, Painter::Kind::Glyphs, {.vertices = glyphs * kQuadVertices, .instances = 1},
+                          font)) {
+            active = false;
+            return Result::SUCCESS;
+        }
+        clipRect = scissor(config.clip);
+
+        if (!uploaded || uploadedVertex != slot->vertex) {
+            auto vertices = painter->vertices(*slot);
+            std::copy(geometry.begin(), geometry.end(), vertices.begin());
+            painter->touch(*slot);
+            uploaded = true;
+            uploadedVertex = slot->vertex;
+        }
+
+        auto place = painter->instances(*slot);
+        const F32 next[Painter::GlyphInstanceStride] = {
+            translation.x, translation.y, config.sharpness, config.weight,
+            config.emboss, config.embossBackdrop, 0.0f, 0.0f,
+        };
+        if (!std::equal(next, next + Painter::GlyphInstanceStride, place.begin())) {
+            std::copy(next, next + Painter::GlyphInstanceStride, place.begin());
+            painter->touchInstances(*slot);
+        }
 
         return Result::SUCCESS;
     }
@@ -198,12 +271,16 @@ void Label::update(Config config) {
                                 this->impl->config.weight != config.weight ||
                                 this->impl->config.emboss != config.emboss ||
                                 this->impl->config.embossBackdrop != config.embossBackdrop;
-    this->impl->instancesDirty |= instancesChanged;
-    const bool resourcesChanged = !this->impl->sameResources(config) || this->impl->resolvedFontChanged(config);
+    const bool resourcesChanged = this->impl->requiredCapacity(config) != this->impl->capacity ||
+                                  this->impl->config.fontName != config.fontName ||
+                                  this->impl->config.maxCharacters != config.maxCharacters ||
+                                  this->impl->resolvedFontChanged(config);
+    this->impl->instancesDirty |= instancesChanged || resourcesChanged;
     this->impl->config = std::move(config);
 
     if (resourcesChanged && this->impl->attached()) {
-        invalidate(Dirty::Resource);
+        this->impl->capacity = this->impl->requiredCapacity(this->impl->config);
+        invalidate(Dirty::Paint);
     } else if (visualsChanged) {
         invalidate(Dirty::Paint);
     }

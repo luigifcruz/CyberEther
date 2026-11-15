@@ -84,26 +84,53 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
-    MTL::PrimitiveType mode;
-
+MTL::PrimitiveType Implementation::primitive() const {
     switch (config.mode) {
         case Mode::TRIANGLE_STRIP:
-            mode = MTL::PrimitiveTypeTriangleStrip;
-            break;
+            return MTL::PrimitiveTypeTriangleStrip;
         case Draw::Mode::TRIANGLES:
-            mode = MTL::PrimitiveTypeTriangle;
-            break;
+            return MTL::PrimitiveTypeTriangle;
         case Draw::Mode::LINES:
-            mode = MTL::PrimitiveTypeLine;
-            break;
+            return MTL::PrimitiveTypeLine;
         case Draw::Mode::LINE_STRIP:
-            mode = MTL::PrimitiveTypeLineStrip;
-            break;
+            return MTL::PrimitiveTypeLineStrip;
         case Draw::Mode::POINTS:
-            mode = MTL::PrimitiveTypePoint;
-            break;
+            return MTL::PrimitiveTypePoint;
     }
+    return MTL::PrimitiveTypeTriangle;
+}
+
+Result Implementation::encode(MTL::RenderCommandEncoder* encoder, const Range& range, bool bind) {
+    if (bind) {
+        JST_CHECK(buffer->encode(encoder));
+    }
+
+    if (range.count == 0 || range.instanceCount == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (buffer->isBuffered()) {
+        encoder->drawIndexedPrimitives(primitive(),
+                                       range.count,
+                                       MTL::IndexTypeUInt32,
+                                       buffer->getIndexBuffer(),
+                                       range.first * sizeof(U32),
+                                       range.instanceCount,
+                                       range.baseVertex,
+                                       range.firstInstance);
+    } else {
+        encoder->drawPrimitives(primitive(),
+                                range.first,
+                                range.count,
+                                range.instanceCount,
+                                range.firstInstance);
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
+    const MTL::PrimitiveType mode = primitive();
 
     JST_CHECK(buffer->encode(encoder));
 

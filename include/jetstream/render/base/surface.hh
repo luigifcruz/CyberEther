@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_BASE_SURFACE_HH
 
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <type_traits>
 #include <unordered_set>
@@ -28,6 +29,15 @@ class JETSTREAM_API Surface : public WindowAttachment {
         bool multisampled = false;
         bool retained = false;
         bool composite = false;
+        bool sequenced = false;
+    };
+
+    struct Step {
+        std::shared_ptr<Program> program;
+        std::optional<Draw::Range> range;
+        std::optional<ScissorRect> scissor;
+
+        bool operator==(const Step&) const = default;
     };
 
     explicit Surface(const Config& config);
@@ -52,6 +62,7 @@ class JETSTREAM_API Surface : public WindowAttachment {
     void clearColor(const ColorRGBA<F32>& color);
     void invalidate();
     Result reorder(const std::vector<std::shared_ptr<Program>>& programs);
+    Result sequence(std::vector<Step> steps);
 
     void commitDraw();
 
@@ -75,6 +86,7 @@ class JETSTREAM_API Surface : public WindowAttachment {
     virtual Result rebuildFramebuffer();
 
     virtual Result reorderPrograms(const std::vector<std::shared_ptr<Program>>& programs);
+    virtual Result sequenceSteps(const std::vector<Step>& steps);
     virtual bool appendable() const;
     virtual Result validateAppend(const std::vector<std::shared_ptr<Program>>& programs,
                                   const std::vector<std::shared_ptr<Kernel>>& kernels) const;
@@ -236,6 +248,7 @@ class JETSTREAM_API Surface : public WindowAttachment {
 
     Result refreshBorrowedTextures();
 
+    std::vector<Step> steps;
     bool drawPending = false;
     bool imageInitialized = false;
     bool graphicsSkipped = false;

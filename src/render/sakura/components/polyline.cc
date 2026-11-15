@@ -1,7 +1,6 @@
 #include <jetstream/render/sakura/components/polyline.hh>
 
 #include <jetstream/render/base.hh>
-#include <jetstream/render/components/mesh.hh>
 
 #include "../detail/drawable.hh"
 #include "../detail/helpers.hh"
@@ -315,12 +314,13 @@ std::vector<Polyline::Instance> Polyline::CornerMasks(Rect rect,
 struct Polyline::Impl : public Drawable {
     Config config;
     Geometry geometry;
-    U64 vertexCapacity = 0;
+    U64 indexCount = 0;
+    U64 uploadedVertex = 0;
+    U64 uploadedIndex = 0;
     bool geometryDirty = true;
-
-    Render::Components::Mesh* mesh() const {
-        return as<Render::Components::Mesh>();
-    }
+    bool active = false;
+    std::optional<Render::ScissorRect> clipRect;
+    Painter::Slot slot;
 
     void tessellate() {
         geometry.clear();
@@ -348,71 +348,105 @@ struct Polyline::Impl : public Drawable {
         }
     }
 
-    Result attach(Context* context, Render::Surface::Config& surfaceConfig) override {
-        this->context = context;
-        vertexCapacity = std::max<U64>(1, config.capacity);
-
-        Render::Components::Mesh::Config meshConfig;
-        meshConfig.vertexCapacity = vertexCapacity;
-        meshConfig.indexCapacity = IndexCapacity(vertexCapacity);
-        meshConfig.framebufferSize = {
-            static_cast<F32>(context->framebufferSize.x),
-            static_cast<F32>(context->framebufferSize.y),
-        };
-
-        std::shared_ptr<Render::Components::Mesh> created;
-        JST_CHECK(context->render->build(created, meshConfig));
+    Result attach(Context* context, Render::Surface::Config&) override {
+        JST_CHECK(join(context));
         geometryDirty = true;
-        return bind(context, std::move(created), surfaceConfig);
+        painter->demand(Painter::Kind::Meshes, {
+            .vertices = geometry.positions.size(),
+            .indices = geometry.indices.size(),
+            .instances = 1,
+        });
+        return Result::SUCCESS;
     }
 
     void conceal() override {
-        if (component) {
-            mesh()->enabled(false);
+        active = false;
+    }
+
+    void abandon() override {
+        slot.reset();
+        geometryDirty = true;
+    }
+
+    void steps(std::vector<Render::Surface::Step>& out) const override {
+        if (!active || !slot.held() || indexCount == 0) {
+            return;
         }
+        out.push_back({
+            .program = painter->program(*slot),
+            .range = Render::Draw::Range{
+                .first = slot->index,
+                .count = indexCount,
+                .baseVertex = static_cast<I64>(slot->vertex),
+                .firstInstance = slot->instance,
+                .instanceCount = 1,
+            },
+            .scissor = clipRect,
+        });
     }
 
     Result upload() override {
-        if (!component || !context) {
+        if (!painter || !context) {
             return Result::SUCCESS;
         }
-        auto* mesh = this->mesh();
-        mesh->enabled(true);
 
-        JST_CHECK(mesh->updateTransform({
-            static_cast<F32>(context->framebufferSize.x),
-            static_cast<F32>(context->framebufferSize.y),
-        }, {config.origin.x + translation.x, config.origin.y + translation.y}, config.scale));
-
-        JST_CHECK(mesh->updateScissorRect(scissor(config.clip)));
-
-        if (!geometryDirty) {
+        const U64 vertexCount = geometry.positions.size();
+        active = vertexCount > 0 && geometry.indices.size() >= 3;
+        if (!active) {
             return Result::SUCCESS;
         }
-        geometryDirty = false;
+        if (!slot.reserve(*painter, Painter::Kind::Meshes, {
+                .vertices = vertexCount,
+                .indices = geometry.indices.size(),
+                .instances = 1,
+            })) {
+            active = false;
+            return Result::SUCCESS;
+        }
+        clipRect = scissor(config.clip);
 
-        const U64 vertexCount = std::min<U64>(geometry.positions.size(), mesh->getConfig().vertexCapacity);
-        const U64 indexCount = std::min<U64>(geometry.indices.size(), mesh->getConfig().indexCapacity);
+        if (geometryDirty || uploadedVertex != slot->vertex || uploadedIndex != slot->index) {
+            geometryDirty = false;
+            uploadedVertex = slot->vertex;
+            uploadedIndex = slot->index;
 
-        auto positions = mesh->positions();
-        auto colors = mesh->colors();
-        auto indices = mesh->indices();
-        std::copy_n(geometry.positions.begin(), vertexCount, positions.begin());
-        std::copy_n(geometry.colors.begin(), vertexCount, colors.begin());
-        U64 validIndices = 0;
-        for (U64 i = 0; i + 2 < indexCount; i += 3) {
-            if (geometry.indices[i] >= vertexCount ||
-                geometry.indices[i + 1] >= vertexCount ||
-                geometry.indices[i + 2] >= vertexCount) {
-                break;
+            auto vertices = painter->vertices(*slot);
+            for (U64 i = 0; i < vertexCount; ++i) {
+                F32* out = vertices.data() + i * Painter::MeshVertexStride;
+                out[0] = geometry.positions[i].x;
+                out[1] = geometry.positions[i].y;
+                out[2] = 0.0f;
+                out[3] = 0.0f;
+                out[4] = geometry.colors[i].r;
+                out[5] = geometry.colors[i].g;
+                out[6] = geometry.colors[i].b;
+                out[7] = geometry.colors[i].a;
             }
-            indices[i + 0] = geometry.indices[i + 0];
-            indices[i + 1] = geometry.indices[i + 1];
-            indices[i + 2] = geometry.indices[i + 2];
-            validIndices = i + 3;
+
+            auto indices = painter->indices(*slot);
+            indexCount = 0;
+            for (U64 i = 0; i + 2 < geometry.indices.size(); i += 3) {
+                if (geometry.indices[i] >= vertexCount ||
+                    geometry.indices[i + 1] >= vertexCount ||
+                    geometry.indices[i + 2] >= vertexCount) {
+                    break;
+                }
+                indices[i + 0] = geometry.indices[i + 0];
+                indices[i + 1] = geometry.indices[i + 1];
+                indices[i + 2] = geometry.indices[i + 2];
+                indexCount = i + 3;
+            }
+            painter->touch(*slot);
         }
 
-        JST_CHECK(mesh->update(vertexCount, validIndices));
+        auto place = painter->instances(*slot);
+        const F32 next[Painter::MeshInstanceStride] = {
+            config.origin.x + translation.x, config.origin.y + translation.y, config.scale, 0.0f,
+        };
+        if (!std::equal(next, next + Painter::MeshInstanceStride, place.begin())) {
+            std::copy(next, next + Painter::MeshInstanceStride, place.begin());
+            painter->touchInstances(*slot);
+        }
 
         return Result::SUCCESS;
     }
@@ -435,15 +469,12 @@ void Polyline::update(Config config) {
                                  impl->config.scale != config.scale ||
                                  impl->config.capacity != config.capacity;
     const bool clipChanged = impl->config.clip != config.clip || impl->config.origin != config.origin;
-    const bool resized = impl->attached() && std::max<U64>(1, config.capacity) != impl->vertexCapacity;
     impl->config = std::move(config);
     if (geometryChanged) {
         impl->tessellate();
         impl->geometryDirty = true;
     }
-    if (resized) {
-        invalidate(Dirty::Resource);
-    } else if (geometryChanged || clipChanged) {
+    if (geometryChanged || clipChanged) {
         invalidate(Dirty::Paint);
     }
 }

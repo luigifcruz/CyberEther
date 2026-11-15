@@ -47,6 +47,20 @@ Result Implementation::reorderPrograms(const std::vector<std::shared_ptr<Program
     return Result::SUCCESS;
 }
 
+Result Implementation::sequenceSteps(const std::vector<Step>& steps) {
+    decltype(ordered) candidate;
+    candidate.reserve(steps.size());
+    for (const auto& step : steps) {
+        auto typed = std::dynamic_pointer_cast<ProgramImp<DeviceType::Vulkan>>(step.program);
+        if (!typed) {
+            return Result::ERROR;
+        }
+        candidate.push_back({std::move(typed), step.range, step.scissor});
+    }
+    ordered.swap(candidate);
+    return Result::SUCCESS;
+}
+
 bool Implementation::appendable() const {
     return true;
 }
@@ -311,13 +325,10 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
     const ScissorRect fullScissor = {0, 0, static_cast<U32>(framebufferResolve->size().x),
                                            static_cast<U32>(framebufferResolve->size().y)};
     std::optional<ScissorRect> previousScissor;
-    for (auto& program : programs) {
-        if (!program->enabled()) {
-            continue;
-        }
-        const auto scissor = program->getConfig().scissorRect.value_or(fullScissor);
+    const ProgramImp<DeviceType::Vulkan>* bound = nullptr;
+    const auto clip = [&](const ScissorRect& scissor) {
         if (scissor.width == 0 || scissor.height == 0) {
-            continue;
+            return false;
         }
         if (previousScissor != scissor) {
             VkRect2D rect{};
@@ -326,7 +337,34 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
             vkCmdSetScissor(commandBuffer, 0, 1, &rect);
             previousScissor = scissor;
         }
-        JST_CHECK(program->encode(commandBuffer, renderPass));
+        return true;
+    };
+    if (config.sequenced) {
+        for (auto& step : ordered) {
+            if (!step.program->enabled()) {
+                continue;
+            }
+            if (!step.range.has_value()) {
+                if (clip(step.program->getConfig().scissorRect.value_or(fullScissor))) {
+                    JST_CHECK(step.program->encode(commandBuffer, renderPass));
+                    bound = nullptr;
+                }
+                continue;
+            }
+            if (clip(step.scissor.value_or(fullScissor))) {
+                JST_CHECK(step.program->encode(commandBuffer, *step.range, bound != step.program.get()));
+                bound = step.program.get();
+            }
+        }
+    } else {
+        for (auto& program : programs) {
+            if (!program->enabled()) {
+                continue;
+            }
+            if (clip(program->getConfig().scissorRect.value_or(fullScissor))) {
+                JST_CHECK(program->encode(commandBuffer, renderPass));
+            }
+        }
     }
 
     vkCmdEndRenderPass(commandBuffer);

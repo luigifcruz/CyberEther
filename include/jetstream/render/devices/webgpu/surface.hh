@@ -16,6 +16,7 @@ class JETSTREAM_API SurfaceImp<DeviceType::WebGPU> : public Surface {
 
  protected:
     Result reorderPrograms(const std::vector<std::shared_ptr<Program>>& ordered) override;
+    Result sequenceSteps(const std::vector<Step>& steps) override;
     bool appendable() const override;
     Result validateAppend(const std::vector<std::shared_ptr<Program>>& programs,
                           const std::vector<std::shared_ptr<Kernel>>& kernels) const override;
@@ -27,7 +28,14 @@ class JETSTREAM_API SurfaceImp<DeviceType::WebGPU> : public Surface {
 
  private:
     std::shared_ptr<TextureImp<DeviceType::WebGPU>> framebuffer;
+    struct Ordered {
+        std::shared_ptr<ProgramImp<DeviceType::WebGPU>> program;
+        std::optional<Draw::Range> range;
+        std::optional<ScissorRect> scissor;
+    };
+
     std::vector<std::shared_ptr<ProgramImp<DeviceType::WebGPU>>> programs;
+    std::vector<Ordered> ordered;
     std::vector<std::shared_ptr<KernelImp<DeviceType::WebGPU>>> kernels;
     std::vector<std::shared_ptr<BufferImp<DeviceType::WebGPU>>> buffers;
     bool ready = false;

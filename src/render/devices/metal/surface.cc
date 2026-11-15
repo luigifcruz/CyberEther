@@ -45,6 +45,20 @@ Result Implementation::reorderPrograms(const std::vector<std::shared_ptr<Program
     return Result::SUCCESS;
 }
 
+Result Implementation::sequenceSteps(const std::vector<Step>& steps) {
+    decltype(ordered) candidate;
+    candidate.reserve(steps.size());
+    for (const auto& step : steps) {
+        auto typed = std::dynamic_pointer_cast<ProgramImp<DeviceType::Metal>>(step.program);
+        if (!typed) {
+            return Result::ERROR;
+        }
+        candidate.push_back({std::move(typed), step.range, step.scissor});
+    }
+    ordered.swap(candidate);
+    return Result::SUCCESS;
+}
+
 bool Implementation::appendable() const {
     return true;
 }
@@ -210,20 +224,44 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
     const auto& sz = framebufferResolve->size();
     const ScissorRect fullScissor = {0, 0, static_cast<U32>(sz.x), static_cast<U32>(sz.y)};
     std::optional<ScissorRect> previousScissor;
-    for (auto& program : programs) {
-        if (!program->enabled()) {
-            continue;
-        }
-        const auto scissor = program->getConfig().scissorRect.value_or(fullScissor);
+    const ProgramImp<DeviceType::Metal>* bound = nullptr;
+    const auto clip = [&](const ScissorRect& scissor) {
         if (scissor.width == 0 || scissor.height == 0) {
-            continue;
+            return false;
         }
         if (previousScissor != scissor) {
             MTL::ScissorRect rect = {scissor.x, scissor.y, scissor.width, scissor.height};
             renderCmdEncoder->setScissorRect(rect);
             previousScissor = scissor;
         }
-        JST_CHECK(program->draw(renderCmdEncoder));
+        return true;
+    };
+    if (config.sequenced) {
+        for (auto& step : ordered) {
+            if (!step.program->enabled()) {
+                continue;
+            }
+            if (!step.range.has_value()) {
+                if (clip(step.program->getConfig().scissorRect.value_or(fullScissor))) {
+                    JST_CHECK(step.program->draw(renderCmdEncoder));
+                    bound = nullptr;
+                }
+                continue;
+            }
+            if (clip(step.scissor.value_or(fullScissor))) {
+                JST_CHECK(step.program->draw(renderCmdEncoder, *step.range, bound != step.program.get()));
+                bound = step.program.get();
+            }
+        }
+    } else {
+        for (auto& program : programs) {
+            if (!program->enabled()) {
+                continue;
+            }
+            if (clip(program->getConfig().scissorRect.value_or(fullScissor))) {
+                JST_CHECK(program->draw(renderCmdEncoder));
+            }
+        }
     }
     renderCmdEncoder->endEncoding();
 

@@ -6,14 +6,15 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     vec4 params;
 } uniforms;
 
-layout(location = 0) in vec2 inPosition;
+layout(location = 0) in vec4 inPoint;
 layout(location = 1) in vec4 inColor;
+layout(location = 2) in vec4 inPlace;
 
 layout(location = 0) out vec4 outColor;
 
 void main() {
     vec2 size = max(uniforms.frame.xy, vec2(1.0));
-    vec2 position = uniforms.frame.zw + inPosition * uniforms.params.x;
+    vec2 position = inPlace.xy + inPoint.xy * inPlace.z;
     gl_Position = vec4(position.x / size.x * 2.0 - 1.0,
                        1.0 - position.y / size.y * 2.0,
                        1.0,

@@ -16,6 +16,7 @@ class JETSTREAM_API DrawImp<DeviceType::Vulkan> : public Draw {
                  std::vector<VkVertexInputAttributeDescription>& attributeDescription,
                  VkPipelineInputAssemblyStateCreateInfo& inputAssembly);
     Result encode(VkCommandBuffer& commandBuffer);
+    Result encode(VkCommandBuffer& commandBuffer, const Range& range, bool bind);
     Result updateVertexCount(U64 vertexCount) override;
     Result updateInstanceCount(U64 instanceCount) override;
     Result destroy();

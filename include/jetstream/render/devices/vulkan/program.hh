@@ -18,6 +18,7 @@ class JETSTREAM_API ProgramImp<DeviceType::Vulkan> : public Program {
                   const Extent2D<U64>& framebufferSize,
                   bool multisampled);
     Result encode(VkCommandBuffer& commandBuffer, VkRenderPass& renderPass);
+    Result encode(VkCommandBuffer& commandBuffer, const Draw::Range& range, bool bind);
     Result destroy();
 
  private:

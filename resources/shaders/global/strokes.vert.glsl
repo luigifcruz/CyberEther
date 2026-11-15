@@ -11,6 +11,7 @@ layout(location = 1) in vec4 inStart;
 layout(location = 2) in vec4 inEnd;
 layout(location = 3) in vec4 inColor;
 layout(location = 4) in vec4 inStroke;
+layout(location = 5) in vec4 inFrame;
 
 layout(location = 0) out vec4 outColor;
 
@@ -21,7 +22,7 @@ vec2 bezier(float index, float segments) {
              3.0 * u * u * t * inStart.zw +
              3.0 * u * t * t * inEnd.xy +
              t * t * t * inEnd.zw;
-    return uniforms.frame.zw + p * uniforms.params.x;
+    return inFrame.xy + p * inFrame.z;
 }
 
 vec2 segmentNormal(vec2 a, vec2 b) {
@@ -34,7 +35,7 @@ vec2 segmentNormal(vec2 a, vec2 b) {
 }
 
 void main() {
-    float segments = clamp(inStroke.y, 1.0, uniforms.params.z);
+    float segments = clamp(inStroke.y, 1.0, max(uniforms.frame.z, 1.0));
     float index = min(inVertex.x, segments);
     float side = inVertex.y;
 
@@ -54,7 +55,7 @@ void main() {
         }
     }
 
-    float fringe = uniforms.params.y;
+    float fringe = inFrame.w;
     float thickness = max(inStroke.x, 1.0);
     float inner = inStroke.x > fringe ? (thickness - fringe) * 0.5 : 0.0;
     float offset = abs(side) > 1.5 ? inner + fringe : inner;

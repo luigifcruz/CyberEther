@@ -219,6 +219,38 @@ Result Surface::reorderPrograms(const std::vector<std::shared_ptr<Program>>&) {
     return Result::SUCCESS;
 }
 
+Result Surface::sequence(std::vector<Step> next) {
+    if (!config.sequenced) {
+        return Result::ERROR;
+    }
+    std::erase_if(next, [](const Step& step) {
+        return step.range.has_value() && (step.range->count == 0 || step.range->instanceCount == 0);
+    });
+    if (next == steps) {
+        return Result::SUCCESS;
+    }
+    std::unordered_set<const Program*> owned;
+    for (const auto& program : config.programs) {
+        owned.insert(program.get());
+    }
+    for (const auto& step : next) {
+        if (!step.program || !owned.contains(step.program.get())) {
+            return Result::ERROR;
+        }
+        if (step.range.has_value() && step.program->getConfig().draws.size() != 1) {
+            return Result::ERROR;
+        }
+    }
+    JST_CHECK(sequenceSteps(next));
+    steps.swap(next);
+    invalidate();
+    return Result::SUCCESS;
+}
+
+Result Surface::sequenceSteps(const std::vector<Step>&) {
+    return Result::SUCCESS;
+}
+
 bool Surface::appendable() const {
     return false;
 }

@@ -309,6 +309,21 @@ Result Implementation::draw(WGPURenderPassEncoder& renderPassEncoder) {
     return Result::SUCCESS;
 }
 
+Result Implementation::draw(WGPURenderPassEncoder& renderPassEncoder, const Draw::Range& range, bool bind) {
+    if (draws.size() != 1) {
+        return Result::ERROR;
+    }
+
+    if (bind) {
+        wgpuRenderPassEncoderSetPipeline(renderPassEncoder, pipeline);
+        if (!bindings.empty()) {
+            wgpuRenderPassEncoderSetBindGroup(renderPassEncoder, 0, bindGroup, 0, nullptr);
+        }
+    }
+
+    return draws.front()->encode(renderPassEncoder, range, bind);
+}
+
 WGPUShaderStage Implementation::TargetToShaderStage(const Program::Target& target) {
     WGPUShaderStage flags = WGPUShaderStage_None;
 

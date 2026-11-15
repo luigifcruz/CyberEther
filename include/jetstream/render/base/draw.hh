@@ -24,6 +24,16 @@ class JETSTREAM_API Draw {
         POINTS,
     };
 
+    struct Range {
+        U64 first = 0;
+        U64 count = 0;
+        I64 baseVertex = 0;
+        U64 firstInstance = 0;
+        U64 instanceCount = 1;
+
+        bool operator==(const Range&) const = default;
+    };
+
     struct Config {
         Mode mode = Mode::TRIANGLES;
         U64 numberOfDraws = 1;

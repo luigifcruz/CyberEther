@@ -3,6 +3,7 @@
 
 #include "../context.hh"
 #include "helpers.hh"
+#include "painter.hh"
 #include "underlay.hh"
 
 #include <jetstream/render/base/window.hh>
@@ -45,16 +46,24 @@ struct Drawable {
         return Result::SUCCESS;
     }
 
+    virtual void steps(std::vector<Render::Surface::Step>&) const {}
+
+    virtual void abandon() {}
+
     bool attached() const {
-        return component != nullptr;
+        return component != nullptr || painter != nullptr;
     }
 
     std::shared_ptr<Render::Components::Generic> takeComponent() {
+        abandon();
+        painter = nullptr;
         context = nullptr;
         return std::move(component);
     }
 
     Result detach(Render::Window* window) {
+        abandon();
+        painter = nullptr;
         if (component && window) {
             JST_CHECK(window->unbind(component));
         }
@@ -72,6 +81,15 @@ struct Drawable {
     }
 
  protected:
+    Result join(Context* target) {
+        if (!target || !target->painter) {
+            return Result::ERROR;
+        }
+        context = target;
+        painter = target->painter;
+        return Result::SUCCESS;
+    }
+
     template<typename T>
     Result bind(Context* target, std::shared_ptr<T> typed, Render::Surface::Config& surfaceConfig) {
         JST_CHECK(target->render->bind(typed));
@@ -116,6 +134,7 @@ struct Drawable {
 
  protected:
     Context* context = nullptr;
+    Painter* painter = nullptr;
     std::shared_ptr<Render::Components::Generic> component;
 };
 

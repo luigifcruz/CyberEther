@@ -11,6 +11,7 @@
 #include "../detail/drawable.hh"
 #include "../detail/helpers.hh"
 #include "../detail/input_router.hh"
+#include "../detail/painter.hh"
 #include "../surface_view.hh"
 
 #include <algorithm>
@@ -54,6 +55,8 @@ struct Canvas::Impl {
     std::shared_ptr<Render::Surface> surface;
     SurfaceView surfaceView;
     Context context;
+    Painter painter;
+    bool repaint = false;
     struct Attachment {
         const Component* owner = nullptr;
         Drawable* drawable = nullptr;
@@ -122,6 +125,7 @@ struct Canvas::Impl {
     }
 
     Impl() {
+        context.painter = &painter;
         context.release = [this](Drawable* drawable, std::shared_ptr<Render::Components::Generic> component) {
             release(drawable, std::move(component));
         };
@@ -250,6 +254,8 @@ struct Canvas::Impl {
             programs.insert(programs.end(), attachment.programs.begin(), attachment.programs.end());
         }
         programs.insert(programs.end(), releasedPrograms.begin(), releasedPrograms.end());
+        const auto shared = painter.programs();
+        programs.insert(programs.end(), shared.begin(), shared.end());
         if (surface->reorder(programs) != Result::SUCCESS) {
             return false;
         }
@@ -262,7 +268,10 @@ struct Canvas::Impl {
     Result extendSurface() {
         Render::Surface::Config extension;
         building = &extension;
-        const Result built = root->impl->buildPending(context);
+        Result built = root->impl->buildPending(context);
+        if (built == Result::SUCCESS) {
+            built = painter.grow(renderWindow, extension);
+        }
         building = nullptr;
         if (built != Result::SUCCESS) {
             return built;
@@ -271,6 +280,7 @@ struct Canvas::Impl {
         if (extended != Result::SUCCESS) {
             return extended;
         }
+        repaint = true;
         return restructureSurface() ? Result::SUCCESS : Result::ERROR;
     }
 
@@ -311,6 +321,7 @@ struct Canvas::Impl {
             }
         }
         attachments.clear();
+        JST_CHECK(painter.destroy(renderWindow));
 
         framebuffer.reset();
         boundWindow = nullptr;
@@ -327,8 +338,9 @@ struct Canvas::Impl {
 
         const bool underlays = UnderlaysAvailable(window->supportsEraseBlending(), config.clearColor);
         const bool underlaysChanged = bound && underlays != context.underlays;
+        const bool starved = painter.starved();
         const bool rebuildNeeded = !bound || boundWindow != window || releasePending || underlaysChanged ||
-                                   Access::resourceDirty(*root) ||
+                                   Access::resourceDirty(*root) || starved ||
                                    (Access::structureDirty(*root) && root->impl->hasUnbuilt());
         if (rebuildNeeded && root->impl->awaitingLayout() && deferredBuilds < kMaximumDeferredBuilds) {
             ++deferredBuilds;
@@ -338,7 +350,7 @@ struct Canvas::Impl {
 
         if (bound && (boundWindow != window || releasePending || underlaysChanged || Access::resourceDirty(*root))) {
             JST_CHECK(destroySurface());
-        } else if (bound && Access::structureDirty(*root) && root->impl->hasUnbuilt()) {
+        } else if (bound && (starved || (Access::structureDirty(*root) && root->impl->hasUnbuilt()))) {
             if (extendSurface() != Result::SUCCESS) {
                 JST_CHECK(destroySurface());
             }
@@ -347,6 +359,10 @@ struct Canvas::Impl {
         }
 
         if (bound) {
+            if (std::exchange(repaint, false)) {
+                root->impl->invalidatePaintTree();
+                invalidateSurface();
+            }
             surface->clearColor(config.clearColor);
             return Result::SUCCESS;
         }
@@ -372,10 +388,15 @@ struct Canvas::Impl {
         surfaceConfig.multisampled = false;
         surfaceConfig.retained = true;
         surfaceConfig.composite = true;
+        surfaceConfig.sequenced = true;
 
         attachments.clear();
+        repaint = false;
         building = &surfaceConfig;
-        const Result built = Access::build(*root, context);
+        Result built = Access::build(*root, context);
+        if (built == Result::SUCCESS) {
+            built = painter.grow(window, surfaceConfig);
+        }
         building = nullptr;
         if (built != Result::SUCCESS) {
             (void)destroySurface();
@@ -585,15 +606,37 @@ struct Canvas::Impl {
         return Result::SUCCESS;
     }
 
+    Result sequence() {
+        std::vector<Render::Surface::Step> steps;
+        if (!root) {
+            return surface->sequence(std::move(steps));
+        }
+        steps.reserve(attachments.size());
+        for (const auto& attachment : attachments) {
+            for (const auto& program : attachment.programs) {
+                steps.push_back({.program = program});
+            }
+            if (attachment.drawable) {
+                attachment.drawable->steps(steps);
+            }
+        }
+        return surface->sequence(std::move(steps));
+    }
+
     Result paintTree() {
-        if (!surfaceDirty || !root || !bound) {
+        if (!surfaceDirty || !bound) {
             return Result::SUCCESS;
         }
 
-        JST_CHECK(Access::paint(*root));
+        JST_CHECK(painter.frame(context.framebufferSize));
+        if (root) {
+            JST_CHECK(Access::paint(*root));
+        }
         JST_CHECK(occludeHidden());
+        JST_CHECK(painter.flush());
+        JST_CHECK(sequence());
 
-        if (!Access::resourceDirty(*root)) {
+        if ((!root || !Access::resourceDirty(*root)) && !painter.starved()) {
             surfaceDirty = false;
         }
         return Result::SUCCESS;
@@ -611,6 +654,7 @@ void Canvas::unmount(const Component& component) {
         impl->root = nullptr;
         impl->touchMode = Impl::TouchMode::None;
         impl->touchScroll.reset();
+        impl->invalidateSurface();
     }
 }
 
