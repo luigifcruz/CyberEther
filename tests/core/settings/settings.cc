@@ -182,6 +182,7 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE(settings.intelligence.customProviders.empty());
     REQUIRE(settings.developer.logLevel == defaults.developer.logLevel);
     REQUIRE_FALSE(settings.developer.timingEnabled);
+    REQUIRE_FALSE(settings.developer.renderStatsEnabled);
     REQUIRE(settings.benchmark.format == "markdown");
     REQUIRE(settings.registry.plugins.empty());
     REQUIRE(settings.runtime.python.path.empty());
@@ -238,6 +239,7 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.remote.video.framerate = 24;
     settings.developer.logLevel = 4;
     settings.developer.timingEnabled = true;
+    settings.developer.renderStatsEnabled = true;
     settings.registry.plugins.push_back(pluginPath);
     settings.runtime.python.path = runtimePath;
     settings.runtime.dependencyPolicy = "allow";
@@ -285,6 +287,7 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.remote.video.framerate == 24);
     REQUIRE(restored.developer.logLevel == 4);
     REQUIRE(restored.developer.timingEnabled);
+    REQUIRE(restored.developer.renderStatsEnabled);
     REQUIRE(restored.benchmark.format == "markdown");
     REQUIRE(restored.registry.plugins == settings.registry.plugins);
     REQUIRE(restored.runtime.python.path == runtimePath);

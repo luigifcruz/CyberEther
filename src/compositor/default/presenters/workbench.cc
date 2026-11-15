@@ -48,6 +48,7 @@ WorkbenchView::Config WorkbenchPresenter::build() const {
                              context.state.terminal.focused == context.state.terminal.requested;
     config.modal = modal.build();
     config.filePicker = filePicker.build();
+    config.renderStats = context.state.debug.renderStatsEnabled;
     config.backgroundParticles = context.state.interface.backgroundParticles &&
                                  (config.filePending || config.hideTabs);
     return config;

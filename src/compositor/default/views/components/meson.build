@@ -9,6 +9,7 @@ src_lst += files([
     'modal_header.cc',
     'option_stepper.cc',
     'pagination.cc',
+    'render_stats.cc',
     'section_group.cc',
     'sidebar_heading.cc',
     'sidebar_navigation.cc',

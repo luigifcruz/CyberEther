@@ -413,6 +413,10 @@ struct MailSetDebugTimingEnabled {
     bool value = false;
 };
 
+struct MailSetDebugRenderStatsEnabled {
+    bool value = false;
+};
+
 struct MailSetDebugLogLevel {
     int value = JST_LOG_DEBUG_DEFAULT_LEVEL;
 };
@@ -837,6 +841,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSetAgentVoiceName,
                            MailSetAgentMcp,
                            MailSetDebugTimingEnabled,
+                           MailSetDebugRenderStatsEnabled,
                            MailSetDebugLogLevel,
                            MailCheckForUpdates,
                            MailDownloadUpdate,

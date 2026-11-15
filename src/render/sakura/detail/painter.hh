@@ -38,6 +38,12 @@ struct Painter {
         Need size;
     };
 
+    struct Usage {
+        U64 buffers = 0;
+        U64 bytes = 0;
+        U64 uploaded = 0;
+    };
+
     struct Slot {
         Slot() = default;
         ~Slot();
@@ -108,6 +114,7 @@ struct Painter {
 
     Result frame(const Extent2D<U64>& framebufferSize);
     Result flush();
+    Usage usage() const;
 
  private:
     struct Impl;

@@ -15,8 +15,32 @@ struct Canvas {
     struct Config {
         std::string id;
         ColorRGBA<F32> clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        bool metered = false;
 
         bool operator==(const Config&) const = default;
+    };
+
+    struct Stats {
+        U64 revision = 0;
+        bool active = false;
+        F32 refreshRate = 0.0f;
+        F32 presentRate = 0.0f;
+        F32 smoothness = 1.0f;
+        U64 missedFrames = 0;
+        F32 idle = 1.0f;
+        F32 workAverage = 0.0f;
+        F32 workPeak = 0.0f;
+        F32 layoutRate = 0.0f;
+        F32 redrawRate = 0.0f;
+        F32 uploadRate = 0.0f;
+        U64 leaves = 0;
+        U64 draws = 0;
+        U64 buffers = 0;
+        U64 bufferBytes = 0;
+        U64 rebuilds = 0;
+        std::vector<F32> intervals;
+
+        bool operator==(const Stats&) const = default;
     };
 
     Canvas();
@@ -33,6 +57,7 @@ struct Canvas {
     void requestCursor(SurfaceCursor cursor);
     bool dropFiles(const std::vector<std::string>& paths);
     bool dispatching() const;
+    const Stats& stats() const;
 
  private:
     struct Impl;

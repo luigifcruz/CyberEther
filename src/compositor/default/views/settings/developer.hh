@@ -19,8 +19,10 @@ namespace Jetstream {
 struct DeveloperSettingsView {
     struct Config {
         bool timingEnabled = false;
+        bool renderStatsEnabled = false;
         int logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
         Sakura::Callback<void(bool)> onTimingEnabledChange;
+        Sakura::Callback<void(bool)> onRenderStatsEnabledChange;
         Sakura::Callback<void(int)> onLogLevelChange;
         Sakura::Callback<void()> onShowBenchmarks;
         Sakura::Callback<void()> onReloadPlugins;
@@ -33,6 +35,7 @@ struct DeveloperSettingsView {
     Config config;
     SettingsHeader header;
     Sakura::Toggle timingToggle;
+    Sakura::Toggle renderStatsToggle;
     OptionStepper logLevelStepper;
     SectionGroup diagnosticsGroup;
     CompactButton benchmarksButton;

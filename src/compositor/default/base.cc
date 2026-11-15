@@ -149,6 +149,7 @@ Result DefaultCompositor::create() {
 
     state.debug.logLevel = settings.developer.logLevel;
     state.debug.timingEnabled = settings.developer.timingEnabled;
+    state.debug.renderStatsEnabled = settings.developer.renderStatsEnabled;
     JST_LOG_SET_DEBUG_LEVEL(state.debug.logLevel);
 
     // Restore remote streaming preferences.

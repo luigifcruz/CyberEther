@@ -225,6 +225,7 @@ struct DefaultCompositorState {
     struct DebugState {
         int logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
         bool timingEnabled = false;
+        bool renderStatsEnabled = false;
     };
 
     struct UpdateState {

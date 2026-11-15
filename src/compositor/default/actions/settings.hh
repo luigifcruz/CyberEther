@@ -31,6 +31,7 @@ struct SettingsActions {
                               MailSetRegistryPage,
                               MailSetIntelligencePage,
                               MailSetDebugTimingEnabled,
+                              MailSetDebugRenderStatsEnabled,
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
                               MailDownloadUpdate,
@@ -59,6 +60,7 @@ struct SettingsActions {
     Result handle(const MailSetIntelligencePage& msg);
     Result handle(const MailSetRegistryPage& msg);
     Result handle(const MailSetDebugTimingEnabled& msg);
+    Result handle(const MailSetDebugRenderStatsEnabled& msg);
     Result handle(const MailSetDebugLogLevel& msg);
     Result handle(const MailCheckForUpdates&);
     Result handle(const MailDownloadUpdate&);

@@ -68,6 +68,7 @@ src_lst += files([
     'search_catalog.cc',
     'setting_field.cc',
     'spacer.cc',
+    'sparkline.cc',
     'stack.cc',
     'surface_image.cc',
     'text_input.cc',

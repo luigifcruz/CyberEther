@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_WORKBENCH_HH
 
 #include "agent/chat.hh"
+#include "components/render_stats.hh"
 #include "flowgraph/close_prompt.hh"
 #include "flowgraph/pane.hh"
 #include "file_picker.hh"
@@ -52,6 +53,7 @@ struct WorkbenchView {
     struct Config {
         bool filePending = false;
         bool backgroundParticles = true;
+        bool renderStats = false;
         AgentChatView::Config agentChat;
         std::optional<StartTabView::Config> startTab;
         bool hideTabs = false;
@@ -86,6 +88,7 @@ struct WorkbenchView {
     Sakura::Layer content;
     Sakura::FloatingLayer floating;
     Sakura::HudLayer huds;
+    RenderStatsView renderStats;
     Sakura::ToastLayer toasts;
     Sakura::ModalLayer promptLayer;
     Sakura::ModalLayer modalLayer;

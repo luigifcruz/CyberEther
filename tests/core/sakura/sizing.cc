@@ -86,6 +86,7 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     subjects.push_back(Make<Sakura::Button>("filling button", {.str = "Run", .size = {Sakura::Fill, Sakura::Fill}}));
     subjects.push_back(Make<Sakura::TextInput>("text input", {.value = "alpha"}));
     subjects.push_back(Make<Sakura::ProgressBar>("progress bar", {.value = 0.5f}));
+    subjects.push_back(Make<Sakura::Sparkline>("sparkline", {.values = {1.0f, 2.0f, 3.0f}, .limit = 2.0f}));
     subjects.push_back(Make<Sakura::Combo>("combo", {.options = {"Alpha", "Beta"}, .value = "Alpha"}));
     subjects.push_back(Make<Sakura::Text>("text", {.str = "alpha beta gamma"}));
     subjects.push_back(Make<Sakura::Text>("wrapped text", {.str = "alpha beta gamma", .wrapped = true}));

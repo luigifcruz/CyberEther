@@ -8,9 +8,13 @@ DeveloperSettingsView::Config DeveloperSettingsPresenter::build() const {
     const auto enqueue = context.callbacks.enqueueMail;
     return DeveloperSettingsView::Config{
         .timingEnabled = context.state.debug.timingEnabled,
+        .renderStatsEnabled = context.state.debug.renderStatsEnabled,
         .logLevel = context.state.debug.logLevel,
         .onTimingEnabledChange = [enqueue](bool value) {
             enqueue(MailSetDebugTimingEnabled{.value = value});
+        },
+        .onRenderStatsEnabledChange = [enqueue](bool value) {
+            enqueue(MailSetDebugRenderStatsEnabled{.value = value});
         },
         .onLogLevelChange = [enqueue](int value) {
             enqueue(MailSetDebugLogLevel{.value = value});

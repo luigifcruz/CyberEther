@@ -20,6 +20,7 @@
 #include <jetstream/render/sakura/components/pill_stepper.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/progress_bar.hh>
+#include <jetstream/render/sakura/components/sparkline.hh>
 #include <jetstream/render/sakura/components/node/progress_bar.hh>
 #include <jetstream/render/sakura/components/qr_code.hh>
 #include <jetstream/render/sakura/components/reveal.hh>
@@ -1128,6 +1129,54 @@ TEST_CASE("Progress bars stay clean while their value moves within one pixel",
     value = 0.6f;
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(frames.run(update).clean());
+}
+
+TEST_CASE("Sparklines settle, repaint for new values and keep the newest values at the right edge",
+          "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Sparkline strip;
+    Place place(strip, {10.0f, 10.0f, 96.0f, 20.0f});
+    Frames frames(place, kScreen, scene.context());
+    Sakura::Sparkline::Config config = {.values = {5.0f, 10.0f, 40.0f}, .limit = 10.0f, .alert = 15.0f,
+                                        .capacity = 24};
+    const auto update = [&] {
+        strip.update(config);
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    const auto bars = [&] {
+        const auto boxes = Find<Sakura::Box>(place);
+        REQUIRE(boxes.size() == 2);
+        return boxes.back()->config().instances;
+    };
+    const auto first = bars();
+    REQUIRE(first.size() == 3);
+    CHECK(first[2].rect.right() == 105.0f);
+    CHECK(first[0].rect.height == 5.0f);
+    CHECK(first[1].rect.height == 10.0f);
+    CHECK(first[2].rect.height == 20.0f);
+    CHECK(first[0].rect.bottom() == 30.0f);
+    CHECK(first[0].backgroundColor == first[1].backgroundColor);
+    CHECK_FALSE(first[2].backgroundColor == first[1].backgroundColor);
+
+    config.values.push_back(2.0f);
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(frames.run(update).clean());
+    CHECK(bars().size() == 4);
+
+    config.values.assign(100, 4.0f);
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(bars().size() == 24);
+
+    strip.update(config);
+    Place wide(strip, {10.0f, 10.0f, 130.0f, 20.0f});
+    Frames wideFrames(wide, kScreen, scene.context());
+    REQUIRE(wideFrames.settle(update));
+    const auto spread = Find<Sakura::Box>(wide).back()->config().instances;
+    REQUIRE(spread.size() == 24);
+    CHECK(spread.front().rect.x == 10.0f);
+    CHECK(spread.back().rect.right() == 139.0f);
 }
 
 TEST_CASE("Progress bars keep exact endpoints at fractional bounds", "[core][sakura][retention]") {

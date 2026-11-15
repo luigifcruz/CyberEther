@@ -150,7 +150,7 @@ struct Stream {
         dirtyEnd = std::max(dirtyEnd, offset + size);
     }
 
-    Result flush() {
+    Result flush(U64& uploaded) {
         if (!buffer || dirtyEnd <= dirtyBegin) {
             return Result::SUCCESS;
         }
@@ -158,6 +158,7 @@ struct Stream {
         const U64 end = std::min(dirtyEnd, capacity);
         if (end > begin) {
             JST_CHECK(buffer->update(begin, end - begin));
+            uploaded += (end - begin) * stride * sizeof(F32);
         }
         dirtyBegin = std::numeric_limits<U64>::max();
         dirtyEnd = 0;
@@ -346,18 +347,22 @@ struct Chunk : public Render::Components::Generic {
                instances.allocator.fits(need.instances);
     }
 
-    Result flush() {
+    Result flush(U64& uploaded) {
         if (uniformsDirty) {
             JST_CHECK(uniformBuffer->update());
             uniformsDirty = false;
         }
         if (vertices.leased) {
-            JST_CHECK(vertices.flush());
+            JST_CHECK(vertices.flush(uploaded));
         }
         if (indices.leased) {
-            JST_CHECK(indices.flush());
+            JST_CHECK(indices.flush(uploaded));
         }
-        return instances.flush();
+        return instances.flush(uploaded);
+    }
+
+    U64 bytes() const {
+        return vertexData.size() * sizeof(F32) + indexData.size() * sizeof(U32) + instanceData.size() * sizeof(F32);
     }
 };
 
@@ -381,6 +386,7 @@ struct Painter::Impl {
     std::vector<Pending> pending;
     Extent2D<U64> framebufferSize = {0, 0};
     U64 generation = 1;
+    U64 uploaded = 0;
 
     void applyFrame(Chunk& chunk) const {
         std::array<F32, kUniformFloats> next = {};
@@ -636,9 +642,17 @@ Result Painter::frame(const Extent2D<U64>& framebufferSize) {
 
 Result Painter::flush() {
     for (auto& chunk : impl->chunks) {
-        JST_CHECK(chunk->flush());
+        JST_CHECK(chunk->flush(impl->uploaded));
     }
     return Result::SUCCESS;
+}
+
+Painter::Usage Painter::usage() const {
+    Usage usage = {.buffers = impl->chunks.size() * 4, .uploaded = impl->uploaded};
+    for (const auto& chunk : impl->chunks) {
+        usage.bytes += chunk->bytes();
+    }
+    return usage;
 }
 
 }  // namespace Jetstream::Sakura

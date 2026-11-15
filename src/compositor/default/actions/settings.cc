@@ -101,6 +101,16 @@ Result SettingsActions::handle(const MailSetDebugTimingEnabled& msg) {
     return Result::SUCCESS;
 }
 
+Result SettingsActions::handle(const MailSetDebugRenderStatsEnabled& msg) {
+    state.debug.renderStatsEnabled = msg.value;
+
+    JST_CHECK(PersistSettings([&](Settings& settings) {
+        settings.developer.renderStatsEnabled = msg.value;
+    }));
+
+    return Result::SUCCESS;
+}
+
 Result SettingsActions::handle(const MailSetDebugLogLevel& msg) {
     state.debug.logLevel = msg.value;
     JST_LOG_SET_DEBUG_LEVEL(state.debug.logLevel);

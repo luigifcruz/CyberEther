@@ -164,8 +164,9 @@ struct JETSTREAM_API Settings {
     struct Developer {
         I32 logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
         bool timingEnabled = false;
+        bool renderStatsEnabled = false;
 
-        JST_SERDES(logLevel, timingEnabled);
+        JST_SERDES(logLevel, timingEnabled, renderStatsEnabled);
     };
 
     struct Benchmark {

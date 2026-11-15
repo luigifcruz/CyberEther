@@ -29,7 +29,7 @@ Root::~Root() = default;
 void Root::update(Config config) {
     impl->config = std::move(config);
     impl->root.setLayers(impl->config.layers);
-    impl->canvas.update({.id = impl->config.id + ":root"});
+    impl->canvas.update({.id = impl->config.id + ":root", .metered = impl->config.metered});
 }
 
 void Root::render(const Sakura::Context& ctx) {
@@ -38,6 +38,10 @@ void Root::render(const Sakura::Context& ctx) {
 
 bool Root::dropFiles(const std::vector<std::string>& paths) {
     return impl->canvas.dropFiles(paths);
+}
+
+const Canvas::Stats& Root::stats() const {
+    return impl->canvas.stats();
 }
 
 }  // namespace Jetstream::Sakura

@@ -16,6 +16,14 @@ void DeveloperSettingsView::update(Config config) {
             }
         },
     });
+    renderStatsToggle.update({
+        .value = this->config.renderStatsEnabled,
+        .onChange = [this](bool value) {
+            if (this->config.onRenderStatsEnabledChange) {
+                this->config.onRenderStatsEnabledChange(value);
+            }
+        },
+    });
     logLevelStepper.update({
         .options = {"Error", "Warning", "Info", "Debug", "Trace"},
         .selected = static_cast<U64>(std::clamp(this->config.logLevel, 0, 4)),
@@ -34,6 +42,11 @@ void DeveloperSettingsView::update(Config config) {
                 .label = "Show Timing",
                 .description = "Display engine timing information.",
                 .control = &timingToggle,
+            },
+            {
+                .label = "Show Render Stats",
+                .description = "Overlay frame rate, smoothness and redraw activity of the interface.",
+                .control = &renderStatsToggle,
             },
             {
                 .label = "Log Level",

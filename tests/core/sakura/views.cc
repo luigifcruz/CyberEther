@@ -19,6 +19,7 @@
 #include "compositor/default/presenters/modal/container.hh"
 #include "compositor/default/views/components/callout.hh"
 #include "compositor/default/views/components/hint_overlay.hh"
+#include "compositor/default/views/components/render_stats.hh"
 #include "compositor/default/views/components/tooltip.hh"
 #include "compositor/default/views/docs.hh"
 #include "compositor/default/views/file_picker.hh"
@@ -615,6 +616,7 @@ struct SettingsRig : ModalRig {
             .timingEnabled = true,
             .logLevel = 2,
             .onTimingEnabledChange = [log](bool value) { log("timing:" + Flag(value)); },
+            .onRenderStatsEnabledChange = [log](bool value) { log("render:" + Flag(value)); },
             .onLogLevelChange = [log](int value) { log("log:" + std::to_string(value)); },
         };
         config.about = {
@@ -1804,6 +1806,32 @@ TEST_CASE("Start tab holds the welcome screen whenever no flowgraph is open and 
     start->onClose();
     CHECK(mailbox.count<MailCloseStartTab>() == 1);
     CHECK(mailbox.mails.size() == 3);
+}
+
+TEST_CASE("Workbench shows render stats only while the developer setting is on", "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    CHECK_FALSE(WorkbenchPresenter(context).build().renderStats);
+
+    mailbox.state.debug.renderStatsEnabled = true;
+    const auto config = WorkbenchPresenter(context).build();
+    CHECK(config.renderStats);
+
+    SettingsActions actions(mailbox.state, mailbox.callbacks);
+    REQUIRE(actions.handle(MailSetDebugRenderStatsEnabled{.value = false}) == Result::SUCCESS);
+    CHECK_FALSE(mailbox.state.debug.renderStatsEnabled);
+}
+
+TEST_CASE("Render stats show the frame rate, the display rate and two metric tables", "[core][sakura][views]") {
+    RenderStatsView view;
+    view.update({.stats = {.revision = 5, .active = true, .refreshRate = 120.0f, .presentRate = 118.6f,
+                           .intervals = {8.3f, 8.4f, 20.0f}}});
+    CHECK(Find<Sakura::Sparkline>(view.component()).size() == 1);
+    CHECK(Find<Sakura::Table>(view.component()).size() == 2);
+    CHECK(ShownText(view.component(), "119 / 120 FPS") != nullptr);
+
+    view.update({.stats = {.revision = 6}});
+    CHECK(ShownText(view.component(), "000 FPS") != nullptr);
 }
 
 TEST_CASE("Workbench enables particles only while the background is exposed", "[core][sakura][views]") {
@@ -3611,13 +3639,14 @@ TEST_CASE("Developer settings report toggles and the log level", "[core][sakura]
     rig.show(SettingsSection::Developer);
 
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
-    REQUIRE(toggles.size() == 1);
+    REQUIRE(toggles.size() == 2);
     CHECK(Press(rig.host, *toggles[0]));
+    CHECK(Press(rig.host, *toggles[1]));
     auto steppers = Find<Sakura::PillStepper>(rig.view.component());
     REQUIRE(steppers.size() == 1);
     CHECK(Step(rig.host, *steppers[0], true));
     CHECK(Step(rig.host, *steppers[0], false));
-    CHECK(rig.calls == std::vector<std::string>{"timing:false", "log:3", "log:1"});
+    CHECK(rig.calls == std::vector<std::string>{"timing:false", "render:true", "log:3", "log:1"});
 }
 
 TEST_CASE("Developer settings open the benchmarks and reload plugins", "[core][sakura][views]") {

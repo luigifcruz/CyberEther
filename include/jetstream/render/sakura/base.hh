@@ -65,6 +65,7 @@
 #include <jetstream/render/sakura/components/sidebar_item.hh>
 #include <jetstream/render/sakura/components/shortcuts.hh>
 #include <jetstream/render/sakura/components/spacer.hh>
+#include <jetstream/render/sakura/components/sparkline.hh>
 #include <jetstream/render/sakura/components/spinner.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/status_bar.hh>

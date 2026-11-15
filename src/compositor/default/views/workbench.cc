@@ -108,7 +108,12 @@ void WorkbenchView::update(Config config) {
         return;
     }
 
-    huds.update({});
+    if (this->config.renderStats) {
+        renderStats.update({.stats = root.stats()});
+        huds.update({.huds = {renderStats.hud()}});
+    } else {
+        huds.update({});
+    }
 
     std::unordered_set<std::string> activeTerminals;
     for (const auto& terminalConfig : this->config.terminals) {
@@ -232,6 +237,7 @@ void WorkbenchView::update(Config config) {
     layers.push_back(&filePickerLayer);
     root.update({
         .id = "workbench",
+        .metered = this->config.renderStats,
         .layers = std::move(layers),
     });
 }
