@@ -83,7 +83,7 @@ void FlowgraphInfoView::update(Config config) {
         .lineWrapping = true,
         .scrollPastEnd = false,
         .showActiveLine = false,
-        .padding = Sakura::Padding{8.0f, 2.0f, 8.0f, 2.0f},
+        .padding = Sakura::Padding{AreaPadding, SummaryPadding, AreaPadding, SummaryPadding},
         .fontSize = InputText,
         .fontName = Sakura::Typography::DisplayFont,
         .backgroundColorKey = AreaFill,
@@ -103,7 +103,7 @@ void FlowgraphInfoView::update(Config config) {
     summaryIconColumn.update({
         .spacing = 0.0f,
         .items = {
-            {.child = &summaryIconDrop, .size = 5.0f},
+            {.child = &summaryIconDrop, .size = IconDrop},
             {.child = &summaryIcon},
         },
     });
@@ -112,7 +112,7 @@ void FlowgraphInfoView::update(Config config) {
         .spacing = 0.0f,
         .centerCross = false,
         .items = {
-            {.child = &summaryIconInset, .size = 8.0f},
+            {.child = &summaryIconInset, .size = IconInset},
             {.child = &summaryIconColumn},
             {.child = &summaryInput, .grow = 1.0f, .shrink = 1.0f},
         },
@@ -154,7 +154,7 @@ void FlowgraphInfoView::update(Config config) {
         .lineWrapping = true,
         .scrollPastEnd = false,
         .showActiveLine = false,
-        .padding = Sakura::Padding{8.0f, 6.0f, 8.0f, 6.0f},
+        .padding = Sakura::Padding{AreaPadding, DescriptionPadding, AreaPadding, DescriptionPadding},
         .fontName = Sakura::Typography::BodyFont,
         .backgroundColorKey = AreaFill,
         .onChange = [this](std::string value) {
@@ -227,7 +227,7 @@ void FlowgraphInfoView::update(Config config) {
     descriptionPreview.update({
         .id = "FlowgraphInfoPreview",
         .value = this->config.description.empty() ? "*Nothing to preview yet.*" : this->config.description,
-        .padding = Sakura::Padding{8.0f, 6.0f, 8.0f, 6.0f},
+        .padding = Sakura::Padding{AreaPadding, DescriptionPadding, AreaPadding, DescriptionPadding},
         .scrollbar = true,
     });
     descriptionCard.update({

@@ -37,164 +37,6 @@ constexpr U64 kMeterMinimumSamples = 4;
 constexpr F64 kMeterMissFactor = 1.5;
 constexpr F64 kMeterSmoothing = 0.2;
 
-struct Meter {
-    using Clock = std::chrono::steady_clock;
-
-    struct Frame {
-        bool laidOut = false;
-        bool painted = false;
-        U64 leaves = 0;
-        U64 draws = 0;
-        Painter::Usage usage;
-    };
-
-    Canvas::Stats stats;
-    bool started = false;
-    bool presentKnown = false;
-    bool primed = false;
-    bool debtPresented = false;
-    bool debtShared = false;
-    std::optional<U64> debtIndex;
-    Clock::time_point windowStart;
-    Clock::time_point tickTime;
-    Clock::time_point presentTime;
-    U64 tickIndex = 0;
-    U64 presentIndex = 0;
-    U64 seenPresented = 0;
-    U64 uploadedStart = 0;
-    U64 ticks = 0;
-    U64 presents = 0;
-    U64 layouts = 0;
-    U64 redraws = 0;
-    U64 workFrames = 0;
-    U64 rebuilds = 0;
-    F64 work = 0.0;
-    F64 workPeak = 0.0;
-    F64 pendingWork = 0.0;
-    F64 period = 0.0;
-    std::vector<F32> samples;
-    std::vector<F32> history;
-
-    static F64 Milliseconds(Clock::duration duration) {
-        return std::chrono::duration<F64, std::milli>(duration).count();
-    }
-
-    void tick(Clock::time_point now, U64 presented) {
-        if (!started) {
-            started = true;
-            windowStart = now;
-            tickTime = now;
-            seenPresented = presented;
-            return;
-        }
-        const U64 delta = presented - seenPresented;
-        seenPresented = presented;
-        if (delta > 0) {
-            presents += delta;
-            if (debtIndex.has_value()) {
-                debtPresented = debtPresented || tickIndex == *debtIndex;
-                debtShared = debtShared || tickIndex + 1 == *debtIndex || tickIndex == *debtIndex + 1;
-            }
-            if (presentKnown && presentIndex + 1 == tickIndex) {
-                const F32 interval = static_cast<F32>(Milliseconds(tickTime - presentTime));
-                samples.push_back(interval);
-                history.push_back(interval);
-                if (history.size() > kMeterHistory) {
-                    history.erase(history.begin(), history.end() - static_cast<I64>(kMeterHistory));
-                }
-            }
-            presentKnown = true;
-            presentTime = tickTime;
-            presentIndex = tickIndex;
-        }
-        ++ticks;
-        ++tickIndex;
-        tickTime = now;
-    }
-
-    void finish(Clock::time_point start, Clock::time_point now, const Frame& frame) {
-        const F64 spent = Milliseconds(now - start) + std::exchange(pendingWork, 0.0);
-        if (!std::exchange(primed, true)) {
-            uploadedStart = frame.usage.uploaded;
-        }
-        layouts += frame.laidOut ? 1 : 0;
-        redraws += frame.painted ? 1 : 0;
-        if (frame.laidOut || frame.painted) {
-            ++workFrames;
-            work += spent;
-            workPeak = std::max(workPeak, spent);
-        }
-        const F64 elapsed = Milliseconds(now - windowStart) / 1000.0;
-        if (elapsed < kMeterWindow) {
-            return;
-        }
-        publish(elapsed, frame);
-        windowStart = now;
-        uploadedStart = frame.usage.uploaded;
-        ticks = 0;
-        presents = 0;
-        layouts = 0;
-        redraws = 0;
-        workFrames = 0;
-        work = 0.0;
-        workPeak = 0.0;
-        samples.clear();
-    }
-
-    void publish(F64 elapsed, const Frame& frame) {
-        const U64 own = debtIndex.has_value() && debtPresented && !debtShared ? 1 : 0;
-        debtIndex.reset();
-        debtPresented = false;
-        debtShared = false;
-        const U64 shownPresents = presents > own ? presents - own : 0;
-        const U64 shownRedraws = redraws > own ? redraws - own : 0;
-        const U64 shownLayouts = layouts > own ? layouts - own : 0;
-        const bool active = shownPresents > 0;
-        if (!active && !stats.active && stats.revision > 0) {
-            return;
-        }
-
-        if (samples.size() >= kMeterMinimumSamples) {
-            auto sorted = samples;
-            std::sort(sorted.begin(), sorted.end());
-            const F64 candidate = sorted[sorted.size() / 2];
-            period = period > 0.0 ? period + (candidate - period) * kMeterSmoothing : candidate;
-        }
-        U64 missed = 0;
-        if (period > 0.0) {
-            for (const F32 sample : samples) {
-                missed += sample > period * kMeterMissFactor ? 1 : 0;
-            }
-        }
-
-        Canvas::Stats next;
-        next.revision = stats.revision + 1;
-        next.active = active;
-        next.refreshRate = period > 0.0 ? static_cast<F32>(1000.0 / period) : 0.0f;
-        next.presentRate = static_cast<F32>(static_cast<F64>(shownPresents) / elapsed);
-        next.smoothness = samples.empty() ? 1.0f
-                          : 1.0f - static_cast<F32>(missed) / static_cast<F32>(samples.size());
-        next.missedFrames = missed;
-        next.idle = ticks > 0 ? 1.0f - std::min(1.0f, static_cast<F32>(shownPresents) / static_cast<F32>(ticks))
-                              : 1.0f;
-        next.workAverage = workFrames > 0 ? static_cast<F32>(work / static_cast<F64>(workFrames)) : 0.0f;
-        next.workPeak = static_cast<F32>(workPeak);
-        next.layoutRate = static_cast<F32>(static_cast<F64>(shownLayouts) / elapsed);
-        next.redrawRate = static_cast<F32>(static_cast<F64>(shownRedraws) / elapsed);
-        next.uploadRate = shownRedraws > 0
-                              ? static_cast<F32>(static_cast<F64>(frame.usage.uploaded - uploadedStart) / elapsed)
-                              : 0.0f;
-        next.leaves = frame.leaves;
-        next.draws = frame.draws;
-        next.buffers = frame.usage.buffers;
-        next.bufferBytes = frame.usage.bytes;
-        next.rebuilds = rebuilds;
-        next.intervals = history;
-        stats = std::move(next);
-        debtIndex = tickIndex + 1;
-    }
-};
-
 MouseEvent ConvertMouse(const MouseEvent& event, const Extent2D<U64>& framebufferSize) {
     MouseEvent out = event;
     if (out.type == MouseEventType::Enter) {
@@ -210,6 +52,164 @@ MouseEvent ConvertMouse(const MouseEvent& event, const Extent2D<U64>& framebuffe
 }  // namespace
 
 struct Canvas::Impl {
+    struct Meter {
+        using Clock = std::chrono::steady_clock;
+
+        struct Frame {
+            bool laidOut = false;
+            bool painted = false;
+            U64 leaves = 0;
+            U64 draws = 0;
+            Painter::Usage usage;
+        };
+
+        Canvas::Stats stats;
+        bool started = false;
+        bool presentKnown = false;
+        bool primed = false;
+        bool debtPresented = false;
+        bool debtShared = false;
+        std::optional<U64> debtIndex;
+        Clock::time_point windowStart;
+        Clock::time_point tickTime;
+        Clock::time_point presentTime;
+        U64 tickIndex = 0;
+        U64 presentIndex = 0;
+        U64 seenPresented = 0;
+        U64 uploadedStart = 0;
+        U64 ticks = 0;
+        U64 presents = 0;
+        U64 layouts = 0;
+        U64 redraws = 0;
+        U64 workFrames = 0;
+        U64 rebuilds = 0;
+        F64 work = 0.0;
+        F64 workPeak = 0.0;
+        F64 pendingWork = 0.0;
+        F64 period = 0.0;
+        std::vector<F32> samples;
+        std::vector<F32> history;
+
+        static F64 Milliseconds(Clock::duration duration) {
+            return std::chrono::duration<F64, std::milli>(duration).count();
+        }
+
+        void tick(Clock::time_point now, U64 presented) {
+            if (!started) {
+                started = true;
+                windowStart = now;
+                tickTime = now;
+                seenPresented = presented;
+                return;
+            }
+            const U64 delta = presented - seenPresented;
+            seenPresented = presented;
+            if (delta > 0) {
+                presents += delta;
+                if (debtIndex.has_value()) {
+                    debtPresented = debtPresented || tickIndex == *debtIndex;
+                    debtShared = debtShared || tickIndex + 1 == *debtIndex || tickIndex == *debtIndex + 1;
+                }
+                if (presentKnown && presentIndex + 1 == tickIndex) {
+                    const F32 interval = static_cast<F32>(Milliseconds(tickTime - presentTime));
+                    samples.push_back(interval);
+                    history.push_back(interval);
+                    if (history.size() > kMeterHistory) {
+                        history.erase(history.begin(), history.end() - static_cast<I64>(kMeterHistory));
+                    }
+                }
+                presentKnown = true;
+                presentTime = tickTime;
+                presentIndex = tickIndex;
+            }
+            ++ticks;
+            ++tickIndex;
+            tickTime = now;
+        }
+
+        void finish(Clock::time_point start, Clock::time_point now, const Frame& frame) {
+            const F64 spent = Milliseconds(now - start) + std::exchange(pendingWork, 0.0);
+            if (!std::exchange(primed, true)) {
+                uploadedStart = frame.usage.uploaded;
+            }
+            layouts += frame.laidOut ? 1 : 0;
+            redraws += frame.painted ? 1 : 0;
+            if (frame.laidOut || frame.painted) {
+                ++workFrames;
+                work += spent;
+                workPeak = std::max(workPeak, spent);
+            }
+            const F64 elapsed = Milliseconds(now - windowStart) / 1000.0;
+            if (elapsed < kMeterWindow) {
+                return;
+            }
+            publish(elapsed, frame);
+            windowStart = now;
+            uploadedStart = frame.usage.uploaded;
+            ticks = 0;
+            presents = 0;
+            layouts = 0;
+            redraws = 0;
+            workFrames = 0;
+            work = 0.0;
+            workPeak = 0.0;
+            samples.clear();
+        }
+
+        void publish(F64 elapsed, const Frame& frame) {
+            const U64 own = debtIndex.has_value() && debtPresented && !debtShared ? 1 : 0;
+            debtIndex.reset();
+            debtPresented = false;
+            debtShared = false;
+            const U64 shownPresents = presents > own ? presents - own : 0;
+            const U64 shownRedraws = redraws > own ? redraws - own : 0;
+            const U64 shownLayouts = layouts > own ? layouts - own : 0;
+            const bool active = shownPresents > 0;
+            if (!active && !stats.active && stats.revision > 0) {
+                return;
+            }
+
+            if (samples.size() >= kMeterMinimumSamples) {
+                auto sorted = samples;
+                std::sort(sorted.begin(), sorted.end());
+                const F64 candidate = sorted[sorted.size() / 2];
+                period = period > 0.0 ? period + (candidate - period) * kMeterSmoothing : candidate;
+            }
+            U64 missed = 0;
+            if (period > 0.0) {
+                for (const F32 sample : samples) {
+                    missed += sample > period * kMeterMissFactor ? 1 : 0;
+                }
+            }
+
+            Canvas::Stats next;
+            next.revision = stats.revision + 1;
+            next.active = active;
+            next.refreshRate = period > 0.0 ? static_cast<F32>(1000.0 / period) : 0.0f;
+            next.presentRate = static_cast<F32>(static_cast<F64>(shownPresents) / elapsed);
+            next.smoothness = samples.empty() ? 1.0f
+                              : 1.0f - static_cast<F32>(missed) / static_cast<F32>(samples.size());
+            next.missedFrames = missed;
+            next.idle = ticks > 0 ? 1.0f - std::min(1.0f, static_cast<F32>(shownPresents) / static_cast<F32>(ticks))
+                                  : 1.0f;
+            next.workAverage = workFrames > 0 ? static_cast<F32>(work / static_cast<F64>(workFrames)) : 0.0f;
+            next.workPeak = static_cast<F32>(workPeak);
+            next.layoutRate = static_cast<F32>(static_cast<F64>(shownLayouts) / elapsed);
+            next.redrawRate = static_cast<F32>(static_cast<F64>(shownRedraws) / elapsed);
+            next.uploadRate = shownRedraws > 0
+                                  ? static_cast<F32>(static_cast<F64>(frame.usage.uploaded - uploadedStart) / elapsed)
+                                  : 0.0f;
+            next.leaves = frame.leaves;
+            next.draws = frame.draws;
+            next.buffers = frame.usage.buffers;
+            next.bufferBytes = frame.usage.bytes;
+            next.rebuilds = rebuilds;
+            next.intervals = history;
+            stats = std::move(next);
+            debtIndex = tickIndex + 1;
+        }
+    };
+
     Config config;
     Component* root = nullptr;
 
@@ -847,12 +847,12 @@ void Canvas::update(Config config) {
     }
     this->impl->config = std::move(config);
 
-    const auto start = Meter::Clock::now();
+    const auto start = Impl::Meter::Clock::now();
     if (this->impl->ensureSurface() != Result::SUCCESS) {
         JST_ERROR("[SAKURA] Canvas '{}' failed to create render surface.", this->impl->config.id);
     }
     if (this->impl->config.metered) {
-        this->impl->meter.pendingWork += Meter::Milliseconds(Meter::Clock::now() - start);
+        this->impl->meter.pendingWork += Impl::Meter::Milliseconds(Impl::Meter::Clock::now() - start);
     }
 }
 
@@ -863,7 +863,7 @@ void Canvas::render(const Sakura::Context& ctx, const Rect& region) {
     impl->painted = false;
 
     const bool metered = impl->config.metered && ctx.render;
-    const auto meterStart = Meter::Clock::now();
+    const auto meterStart = Impl::Meter::Clock::now();
     const U64 layoutsBefore = Access::layoutRuns();
     if (metered) {
         impl->meter.tick(meterStart, ctx.render->stats().presentedFrames);
@@ -872,7 +872,7 @@ void Canvas::render(const Sakura::Context& ctx, const Rect& region) {
         if (!metered) {
             return;
         }
-        impl->meter.finish(meterStart, Meter::Clock::now(), {
+        impl->meter.finish(meterStart, Impl::Meter::Clock::now(), {
             .laidOut = Access::layoutRuns() != layoutsBefore,
             .painted = impl->painted,
             .leaves = impl->attachments.size(),

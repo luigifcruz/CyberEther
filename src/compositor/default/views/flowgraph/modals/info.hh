@@ -20,6 +20,11 @@ struct FlowgraphInfoView {
     static constexpr F32 InputText = 14.0f;
     static constexpr F32 InputIcon = 13.0f;
     static constexpr F32 AreaInset = 6.0f;
+    static constexpr F32 AreaPadding = 8.0f;
+    static constexpr F32 SummaryPadding = 2.0f;
+    static constexpr F32 DescriptionPadding = 6.0f;
+    static constexpr F32 IconInset = 8.0f;
+    static constexpr F32 IconDrop = 5.0f;
     static constexpr F32 AreaBorder = 1.5f;
     static constexpr F32 AreaShadowSoftness = 4.0f;
     static constexpr F32 AreaShadowDrop = 1.0f;

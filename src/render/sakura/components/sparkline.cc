@@ -53,7 +53,7 @@ void Sparkline::layout(const Context& ctx) {
     const U64 capacity = std::max<U64>(1, config.capacity);
     const U64 slots = std::clamp<U64>(static_cast<U64>(bounds.width), 1, capacity);
     const F32 step = bounds.width / static_cast<F32>(slots);
-    const F32 gap = step >= kGapWidth ? 1.0f : 0.0f;
+    const F32 gap = step >= Px(ctx, kGapWidth) ? Hairline(ctx) : 0.0f;
     const U64 shown = std::min<U64>(slots, config.values.size());
     const U64 first = config.values.size() - shown;
 

@@ -18,364 +18,364 @@ namespace {
 constexpr U64 kUniformFloats = 8;
 constexpr U64 kHeadroom = 2;
 
-struct Layout {
-    const char* shader = "";
-    U64 vertexStride = 0;
-    U64 instanceStride = 0;
-    bool leasedVertices = false;
-    bool leasedIndices = false;
-    Painter::Need minimum;
-};
-
-Layout LayoutOf(Painter::Kind kind) {
-    switch (kind) {
-        case Painter::Kind::Shapes:
-            return {
-                .shader = "shapes",
-                .vertexStride = 2,
-                .instanceStride = Painter::ShapeStride,
-                .minimum = {.instances = 256},
-            };
-        case Painter::Kind::Glyphs:
-            return {
-                .shader = "glyphs",
-                .vertexStride = Painter::GlyphVertexStride,
-                .instanceStride = Painter::GlyphInstanceStride,
-                .leasedVertices = true,
-                .minimum = {.vertices = 4096, .instances = 64},
-            };
-        case Painter::Kind::Meshes:
-            return {
-                .shader = "meshes",
-                .vertexStride = Painter::MeshVertexStride,
-                .instanceStride = Painter::MeshInstanceStride,
-                .leasedVertices = true,
-                .leasedIndices = true,
-                .minimum = {.vertices = 4096, .indices = 12288, .instances = 64},
-            };
-        case Painter::Kind::Curves:
-            return {
-                .shader = "strokes",
-                .vertexStride = 2,
-                .instanceStride = Painter::CurveStride,
-                .minimum = {.instances = 64},
-            };
-    }
-    return {};
-}
-
-struct Allocator {
-    struct Extent {
-        U64 offset = 0;
-        U64 size = 0;
-    };
-
-    U64 capacity = 0;
-    std::vector<Extent> free;
-
-    void reset(U64 size) {
-        capacity = size;
-        free.clear();
-        if (size > 0) {
-            free.push_back({0, size});
-        }
-    }
-
-    bool fits(U64 size) const {
-        return size == 0 || std::any_of(free.begin(), free.end(), [size](const Extent& extent) {
-            return extent.size >= size;
-        });
-    }
-
-    U64 available() const {
-        U64 total = 0;
-        for (const auto& extent : free) {
-            total += extent.size;
-        }
-        return total;
-    }
-
-    U64 take(U64 size) {
-        if (size == 0) {
-            return 0;
-        }
-        for (auto it = free.begin(); it != free.end(); ++it) {
-            if (it->size < size) {
-                continue;
-            }
-            const U64 offset = it->offset;
-            it->offset += size;
-            it->size -= size;
-            if (it->size == 0) {
-                free.erase(it);
-            }
-            return offset;
-        }
-        return capacity;
-    }
-
-    void give(U64 offset, U64 size) {
-        if (size == 0) {
-            return;
-        }
-        auto next = std::lower_bound(free.begin(), free.end(), offset, [](const Extent& extent, U64 value) {
-            return extent.offset < value;
-        });
-        next = free.insert(next, {offset, size});
-        if (next + 1 != free.end() && next->offset + next->size == (next + 1)->offset) {
-            next->size += (next + 1)->size;
-            free.erase(next + 1);
-        }
-        if (next != free.begin() && (next - 1)->offset + (next - 1)->size == next->offset) {
-            (next - 1)->size += next->size;
-            free.erase(next);
-        }
-    }
-};
-
-struct Stream {
-    U64 stride = 0;
-    U64 capacity = 0;
-    bool leased = false;
-    Allocator allocator;
-    U64 dirtyBegin = std::numeric_limits<U64>::max();
-    U64 dirtyEnd = 0;
-    std::shared_ptr<Render::Buffer> buffer;
-
-    void touch(U64 offset, U64 size) {
-        if (size == 0) {
-            return;
-        }
-        dirtyBegin = std::min(dirtyBegin, offset);
-        dirtyEnd = std::max(dirtyEnd, offset + size);
-    }
-
-    Result flush(U64& uploaded) {
-        if (!buffer || dirtyEnd <= dirtyBegin) {
-            return Result::SUCCESS;
-        }
-        const U64 begin = dirtyBegin;
-        const U64 end = std::min(dirtyEnd, capacity);
-        if (end > begin) {
-            JST_CHECK(buffer->update(begin, end - begin));
-            uploaded += (end - begin) * stride * sizeof(F32);
-        }
-        dirtyBegin = std::numeric_limits<U64>::max();
-        dirtyEnd = 0;
-        return Result::SUCCESS;
-    }
-};
-
-struct Chunk : public Render::Components::Generic {
-    Painter::Kind kind = Painter::Kind::Shapes;
-    std::shared_ptr<Render::Components::Font> font;
-    Painter::Need capacity;
-    Layout layout;
-
-    std::vector<F32> vertexData;
-    std::vector<U32> indexData;
-    std::vector<F32> instanceData;
-    std::array<F32, kUniformFloats> uniforms = {};
-    bool uniformsDirty = true;
-
-    Stream vertices;
-    Stream indices;
-    Stream instances;
-
-    std::shared_ptr<Render::Buffer> uniformBuffer;
-    std::shared_ptr<Render::Vertex> vertex;
-    std::shared_ptr<Render::Draw> draw;
-    std::shared_ptr<Render::Program> program;
-
-    void fillTemplates() {
-        if (kind == Painter::Kind::Shapes) {
-            constexpr F32 corners[16] = {
-                -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f,
-                -2.0f, -2.0f, 2.0f, -2.0f, 2.0f, 2.0f, -2.0f, 2.0f,
-            };
-            constexpr U32 frame[Painter::ShapeIndices] = {
-                0, 1, 5, 0, 5, 4,
-                1, 2, 6, 1, 6, 5,
-                2, 3, 7, 2, 7, 6,
-                3, 0, 4, 3, 4, 7,
-            };
-            vertexData.assign(corners, corners + 16);
-            indexData.assign(frame, frame + Painter::ShapeIndices);
-        } else if (kind == Painter::Kind::Curves) {
-            constexpr F32 sides[4] = {2.0f, 1.0f, -1.0f, -2.0f};
-            const U64 points = Painter::CurveSegments + 1;
-            vertexData.resize(points * 4 * 2);
-            for (U64 point = 0; point < points; ++point) {
-                for (U64 side = 0; side < 4; ++side) {
-                    vertexData[(point * 4 + side) * 2 + 0] = static_cast<F32>(point);
-                    vertexData[(point * 4 + side) * 2 + 1] = sides[side];
-                }
-            }
-            indexData.resize(Painter::CurveSegments * 18);
-            for (U64 segment = 0; segment < Painter::CurveSegments; ++segment) {
-                const U32 a = static_cast<U32>(segment * 4);
-                const U32 b = a + 4;
-                const U32 triangles[18] = {
-                    b + 1, a + 1, a + 2,
-                    a + 2, b + 2, b + 1,
-                    b + 1, a + 1, a + 0,
-                    a + 0, b + 0, b + 1,
-                    b + 2, a + 2, a + 3,
-                    a + 3, b + 3, b + 2,
-                };
-                std::copy_n(triangles, 18, indexData.begin() + static_cast<I64>(segment * 18));
-            }
-        } else if (kind == Painter::Kind::Glyphs) {
-            const U64 quads = capacity.vertices / 4;
-            indexData.resize(quads * 6);
-            for (U64 quad = 0; quad < quads; ++quad) {
-                const U32 base = static_cast<U32>(quad * 4);
-                const U32 pattern[6] = {base, base + 1, base + 2, base + 2, base + 3, base};
-                std::copy_n(pattern, 6, indexData.begin() + static_cast<I64>(quad * 6));
-            }
-        }
-    }
-
-    Result create(Render::Window* window) override {
-        layout = LayoutOf(kind);
-
-        if (layout.leasedVertices) {
-            vertexData.assign(capacity.vertices * layout.vertexStride, 0.0f);
-        }
-        if (layout.leasedIndices) {
-            indexData.assign(capacity.indices, 0);
-        }
-        instanceData.assign(capacity.instances * layout.instanceStride, 0.0f);
-        fillTemplates();
-
-        vertices.stride = layout.vertexStride;
-        vertices.capacity = vertexData.size() / layout.vertexStride;
-        vertices.leased = layout.leasedVertices;
-        vertices.allocator.reset(layout.leasedVertices ? vertices.capacity : 0);
-
-        indices.stride = 1;
-        indices.capacity = indexData.size();
-        indices.leased = layout.leasedIndices;
-        indices.allocator.reset(layout.leasedIndices ? indices.capacity : 0);
-
-        instances.stride = layout.instanceStride;
-        instances.capacity = capacity.instances;
-        instances.leased = true;
-        instances.allocator.reset(instances.capacity);
-
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = uniforms.data();
-            cfg.elementByteSize = sizeof(F32) * kUniformFloats;
-            cfg.size = 1;
-            cfg.target = Render::Buffer::Target::UNIFORM;
-            JST_CHECK(window->build(uniformBuffer, cfg));
-        }
-
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = vertexData.data();
-            cfg.elementByteSize = sizeof(F32) * layout.vertexStride;
-            cfg.size = vertices.capacity;
-            cfg.target = Render::Buffer::Target::VERTEX;
-            JST_CHECK(window->build(vertices.buffer, cfg));
-        }
-
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = indexData.data();
-            cfg.elementByteSize = sizeof(U32);
-            cfg.size = indices.capacity;
-            cfg.target = Render::Buffer::Target::VERTEX_INDICES;
-            JST_CHECK(window->build(indices.buffer, cfg));
-        }
-
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = instanceData.data();
-            cfg.elementByteSize = sizeof(F32) * layout.instanceStride;
-            cfg.size = instances.capacity;
-            cfg.target = Render::Buffer::Target::VERTEX;
-            JST_CHECK(window->build(instances.buffer, cfg));
-        }
-
-        {
-            Render::Vertex::Config cfg;
-            cfg.vertices = {
-                {vertices.buffer, static_cast<U32>(layout.vertexStride)},
-            };
-            cfg.instances = {
-                {instances.buffer, static_cast<U32>(layout.instanceStride)},
-            };
-            cfg.indices = indices.buffer;
-            JST_CHECK(window->build(vertex, cfg));
-        }
-
-        {
-            Render::Draw::Config cfg;
-            cfg.numberOfDraws = 1;
-            cfg.numberOfInstances = 1;
-            cfg.buffer = vertex;
-            cfg.mode = Render::Draw::Mode::TRIANGLES;
-            JST_CHECK(window->build(draw, cfg));
-        }
-
-        {
-            Render::Program::Config cfg;
-            cfg.shaders = GlobalShadersPackage[layout.shader];
-            cfg.draws = {
-                draw,
-            };
-            if (font) {
-                cfg.textures = {
-                    font->atlas(),
-                };
-            }
-            cfg.buffers = {
-                {uniformBuffer, Render::Program::Target::VERTEX | Render::Program::Target::FRAGMENT},
-            };
-            cfg.enableAlphaBlending = true;
-            JST_CHECK(window->build(program, cfg));
-        }
-
-        return Result::SUCCESS;
-    }
-
-    bool fits(const Painter::Need& need) const {
-        return (!vertices.leased || vertices.allocator.fits(need.vertices)) &&
-               (!indices.leased || indices.allocator.fits(need.indices)) &&
-               instances.allocator.fits(need.instances);
-    }
-
-    Result flush(U64& uploaded) {
-        if (uniformsDirty) {
-            JST_CHECK(uniformBuffer->update());
-            uniformsDirty = false;
-        }
-        if (vertices.leased) {
-            JST_CHECK(vertices.flush(uploaded));
-        }
-        if (indices.leased) {
-            JST_CHECK(indices.flush(uploaded));
-        }
-        return instances.flush(uploaded);
-    }
-
-    U64 bytes() const {
-        return vertexData.size() * sizeof(F32) + indexData.size() * sizeof(U32) + instanceData.size() * sizeof(F32);
-    }
-};
-
-U64 Grown(U64 need, U64 minimum, U64 previous) {
-    if (need == 0 && minimum == 0) {
-        return 0;
-    }
-    return std::bit_ceil(std::max({need * kHeadroom, minimum, previous * 2}));
-}
-
 }  // namespace
 
 struct Painter::Impl {
+    struct Layout {
+        const char* shader = "";
+        U64 vertexStride = 0;
+        U64 instanceStride = 0;
+        bool leasedVertices = false;
+        bool leasedIndices = false;
+        Need minimum;
+    };
+
+    static Layout LayoutOf(Kind kind) {
+        switch (kind) {
+            case Kind::Shapes:
+                return {
+                    .shader = "shapes",
+                    .vertexStride = 2,
+                    .instanceStride = ShapeStride,
+                    .minimum = {.instances = 256},
+                };
+            case Kind::Glyphs:
+                return {
+                    .shader = "glyphs",
+                    .vertexStride = GlyphVertexStride,
+                    .instanceStride = GlyphInstanceStride,
+                    .leasedVertices = true,
+                    .minimum = {.vertices = 4096, .instances = 64},
+                };
+            case Kind::Meshes:
+                return {
+                    .shader = "meshes",
+                    .vertexStride = MeshVertexStride,
+                    .instanceStride = MeshInstanceStride,
+                    .leasedVertices = true,
+                    .leasedIndices = true,
+                    .minimum = {.vertices = 4096, .indices = 12288, .instances = 64},
+                };
+            case Kind::Curves:
+                return {
+                    .shader = "strokes",
+                    .vertexStride = 2,
+                    .instanceStride = CurveStride,
+                    .minimum = {.instances = 64},
+                };
+        }
+        return {};
+    }
+
+    struct Allocator {
+        struct Extent {
+            U64 offset = 0;
+            U64 size = 0;
+        };
+
+        U64 capacity = 0;
+        std::vector<Extent> free;
+
+        void reset(U64 size) {
+            capacity = size;
+            free.clear();
+            if (size > 0) {
+                free.push_back({0, size});
+            }
+        }
+
+        bool fits(U64 size) const {
+            return size == 0 || std::any_of(free.begin(), free.end(), [size](const Extent& extent) {
+                return extent.size >= size;
+            });
+        }
+
+        U64 available() const {
+            U64 total = 0;
+            for (const auto& extent : free) {
+                total += extent.size;
+            }
+            return total;
+        }
+
+        U64 take(U64 size) {
+            if (size == 0) {
+                return 0;
+            }
+            for (auto it = free.begin(); it != free.end(); ++it) {
+                if (it->size < size) {
+                    continue;
+                }
+                const U64 offset = it->offset;
+                it->offset += size;
+                it->size -= size;
+                if (it->size == 0) {
+                    free.erase(it);
+                }
+                return offset;
+            }
+            return capacity;
+        }
+
+        void give(U64 offset, U64 size) {
+            if (size == 0) {
+                return;
+            }
+            auto next = std::lower_bound(free.begin(), free.end(), offset, [](const Extent& extent, U64 value) {
+                return extent.offset < value;
+            });
+            next = free.insert(next, {offset, size});
+            if (next + 1 != free.end() && next->offset + next->size == (next + 1)->offset) {
+                next->size += (next + 1)->size;
+                free.erase(next + 1);
+            }
+            if (next != free.begin() && (next - 1)->offset + (next - 1)->size == next->offset) {
+                (next - 1)->size += next->size;
+                free.erase(next);
+            }
+        }
+    };
+
+    struct Stream {
+        U64 stride = 0;
+        U64 capacity = 0;
+        bool leased = false;
+        Allocator allocator;
+        U64 dirtyBegin = std::numeric_limits<U64>::max();
+        U64 dirtyEnd = 0;
+        std::shared_ptr<Render::Buffer> buffer;
+
+        void touch(U64 offset, U64 size) {
+            if (size == 0) {
+                return;
+            }
+            dirtyBegin = std::min(dirtyBegin, offset);
+            dirtyEnd = std::max(dirtyEnd, offset + size);
+        }
+
+        Result flush(U64& uploaded) {
+            if (!buffer || dirtyEnd <= dirtyBegin) {
+                return Result::SUCCESS;
+            }
+            const U64 begin = dirtyBegin;
+            const U64 end = std::min(dirtyEnd, capacity);
+            if (end > begin) {
+                JST_CHECK(buffer->update(begin, end - begin));
+                uploaded += (end - begin) * stride * sizeof(F32);
+            }
+            dirtyBegin = std::numeric_limits<U64>::max();
+            dirtyEnd = 0;
+            return Result::SUCCESS;
+        }
+    };
+
+    struct Chunk : public Render::Components::Generic {
+        Kind kind = Kind::Shapes;
+        std::shared_ptr<Render::Components::Font> font;
+        Need capacity;
+        Layout layout;
+
+        std::vector<F32> vertexData;
+        std::vector<U32> indexData;
+        std::vector<F32> instanceData;
+        std::array<F32, kUniformFloats> uniforms = {};
+        bool uniformsDirty = true;
+
+        Stream vertices;
+        Stream indices;
+        Stream instances;
+
+        std::shared_ptr<Render::Buffer> uniformBuffer;
+        std::shared_ptr<Render::Vertex> vertex;
+        std::shared_ptr<Render::Draw> draw;
+        std::shared_ptr<Render::Program> program;
+
+        void fillTemplates() {
+            if (kind == Kind::Shapes) {
+                constexpr F32 corners[16] = {
+                    -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f,
+                    -2.0f, -2.0f, 2.0f, -2.0f, 2.0f, 2.0f, -2.0f, 2.0f,
+                };
+                constexpr U32 frame[ShapeIndices] = {
+                    0, 1, 5, 0, 5, 4,
+                    1, 2, 6, 1, 6, 5,
+                    2, 3, 7, 2, 7, 6,
+                    3, 0, 4, 3, 4, 7,
+                };
+                vertexData.assign(corners, corners + 16);
+                indexData.assign(frame, frame + ShapeIndices);
+            } else if (kind == Kind::Curves) {
+                constexpr F32 sides[4] = {2.0f, 1.0f, -1.0f, -2.0f};
+                const U64 points = CurveSegments + 1;
+                vertexData.resize(points * 4 * 2);
+                for (U64 point = 0; point < points; ++point) {
+                    for (U64 side = 0; side < 4; ++side) {
+                        vertexData[(point * 4 + side) * 2 + 0] = static_cast<F32>(point);
+                        vertexData[(point * 4 + side) * 2 + 1] = sides[side];
+                    }
+                }
+                indexData.resize(CurveSegments * 18);
+                for (U64 segment = 0; segment < CurveSegments; ++segment) {
+                    const U32 a = static_cast<U32>(segment * 4);
+                    const U32 b = a + 4;
+                    const U32 triangles[18] = {
+                        b + 1, a + 1, a + 2,
+                        a + 2, b + 2, b + 1,
+                        b + 1, a + 1, a + 0,
+                        a + 0, b + 0, b + 1,
+                        b + 2, a + 2, a + 3,
+                        a + 3, b + 3, b + 2,
+                    };
+                    std::copy_n(triangles, 18, indexData.begin() + static_cast<I64>(segment * 18));
+                }
+            } else if (kind == Kind::Glyphs) {
+                const U64 quads = capacity.vertices / 4;
+                indexData.resize(quads * 6);
+                for (U64 quad = 0; quad < quads; ++quad) {
+                    const U32 base = static_cast<U32>(quad * 4);
+                    const U32 pattern[6] = {base, base + 1, base + 2, base + 2, base + 3, base};
+                    std::copy_n(pattern, 6, indexData.begin() + static_cast<I64>(quad * 6));
+                }
+            }
+        }
+
+        Result create(Render::Window* window) override {
+            layout = LayoutOf(kind);
+
+            if (layout.leasedVertices) {
+                vertexData.assign(capacity.vertices * layout.vertexStride, 0.0f);
+            }
+            if (layout.leasedIndices) {
+                indexData.assign(capacity.indices, 0);
+            }
+            instanceData.assign(capacity.instances * layout.instanceStride, 0.0f);
+            fillTemplates();
+
+            vertices.stride = layout.vertexStride;
+            vertices.capacity = vertexData.size() / layout.vertexStride;
+            vertices.leased = layout.leasedVertices;
+            vertices.allocator.reset(layout.leasedVertices ? vertices.capacity : 0);
+
+            indices.stride = 1;
+            indices.capacity = indexData.size();
+            indices.leased = layout.leasedIndices;
+            indices.allocator.reset(layout.leasedIndices ? indices.capacity : 0);
+
+            instances.stride = layout.instanceStride;
+            instances.capacity = capacity.instances;
+            instances.leased = true;
+            instances.allocator.reset(instances.capacity);
+
+            {
+                Render::Buffer::Config cfg;
+                cfg.buffer = uniforms.data();
+                cfg.elementByteSize = sizeof(F32) * kUniformFloats;
+                cfg.size = 1;
+                cfg.target = Render::Buffer::Target::UNIFORM;
+                JST_CHECK(window->build(uniformBuffer, cfg));
+            }
+
+            {
+                Render::Buffer::Config cfg;
+                cfg.buffer = vertexData.data();
+                cfg.elementByteSize = sizeof(F32) * layout.vertexStride;
+                cfg.size = vertices.capacity;
+                cfg.target = Render::Buffer::Target::VERTEX;
+                JST_CHECK(window->build(vertices.buffer, cfg));
+            }
+
+            {
+                Render::Buffer::Config cfg;
+                cfg.buffer = indexData.data();
+                cfg.elementByteSize = sizeof(U32);
+                cfg.size = indices.capacity;
+                cfg.target = Render::Buffer::Target::VERTEX_INDICES;
+                JST_CHECK(window->build(indices.buffer, cfg));
+            }
+
+            {
+                Render::Buffer::Config cfg;
+                cfg.buffer = instanceData.data();
+                cfg.elementByteSize = sizeof(F32) * layout.instanceStride;
+                cfg.size = instances.capacity;
+                cfg.target = Render::Buffer::Target::VERTEX;
+                JST_CHECK(window->build(instances.buffer, cfg));
+            }
+
+            {
+                Render::Vertex::Config cfg;
+                cfg.vertices = {
+                    {vertices.buffer, static_cast<U32>(layout.vertexStride)},
+                };
+                cfg.instances = {
+                    {instances.buffer, static_cast<U32>(layout.instanceStride)},
+                };
+                cfg.indices = indices.buffer;
+                JST_CHECK(window->build(vertex, cfg));
+            }
+
+            {
+                Render::Draw::Config cfg;
+                cfg.numberOfDraws = 1;
+                cfg.numberOfInstances = 1;
+                cfg.buffer = vertex;
+                cfg.mode = Render::Draw::Mode::TRIANGLES;
+                JST_CHECK(window->build(draw, cfg));
+            }
+
+            {
+                Render::Program::Config cfg;
+                cfg.shaders = GlobalShadersPackage[layout.shader];
+                cfg.draws = {
+                    draw,
+                };
+                if (font) {
+                    cfg.textures = {
+                        font->atlas(),
+                    };
+                }
+                cfg.buffers = {
+                    {uniformBuffer, Render::Program::Target::VERTEX | Render::Program::Target::FRAGMENT},
+                };
+                cfg.enableAlphaBlending = true;
+                JST_CHECK(window->build(program, cfg));
+            }
+
+            return Result::SUCCESS;
+        }
+
+        bool fits(const Need& need) const {
+            return (!vertices.leased || vertices.allocator.fits(need.vertices)) &&
+                   (!indices.leased || indices.allocator.fits(need.indices)) &&
+                   instances.allocator.fits(need.instances);
+        }
+
+        Result flush(U64& uploaded) {
+            if (uniformsDirty) {
+                JST_CHECK(uniformBuffer->update());
+                uniformsDirty = false;
+            }
+            if (vertices.leased) {
+                JST_CHECK(vertices.flush(uploaded));
+            }
+            if (indices.leased) {
+                JST_CHECK(indices.flush(uploaded));
+            }
+            return instances.flush(uploaded);
+        }
+
+        U64 bytes() const {
+            return vertexData.size() * sizeof(F32) + indexData.size() * sizeof(U32) + instanceData.size() * sizeof(F32);
+        }
+    };
+
+    static U64 Grown(U64 need, U64 minimum, U64 previous) {
+        if (need == 0 && minimum == 0) {
+            return 0;
+        }
+        return std::bit_ceil(std::max({need * kHeadroom, minimum, previous * 2}));
+    }
+
     struct Pending {
         Kind kind = Kind::Shapes;
         std::shared_ptr<Render::Components::Font> font;
@@ -495,7 +495,7 @@ Result Painter::grow(Render::Window* window, Render::Surface::Config& surface) {
     impl->pending.clear();
     ++impl->generation;
     for (const auto& entry : pending) {
-        const Layout layout = LayoutOf(entry.kind);
+        const Impl::Layout layout = Impl::LayoutOf(entry.kind);
         Need previous;
         bool satisfied = false;
         for (const auto& chunk : impl->chunks) {
@@ -509,15 +509,15 @@ Result Painter::grow(Render::Window* window, Render::Surface::Config& surface) {
         if (satisfied) {
             continue;
         }
-        auto chunk = std::make_shared<Chunk>();
+        auto chunk = std::make_shared<Impl::Chunk>();
         chunk->kind = entry.kind;
         chunk->font = entry.font;
         chunk->capacity = {
             .vertices = layout.leasedVertices
-                            ? Grown(entry.need.vertices, layout.minimum.vertices, previous.vertices) : 0,
+                            ? Impl::Grown(entry.need.vertices, layout.minimum.vertices, previous.vertices) : 0,
             .indices = layout.leasedIndices
-                           ? Grown(entry.need.indices, layout.minimum.indices, previous.indices) : 0,
-            .instances = Grown(entry.need.instances, layout.minimum.instances, previous.instances),
+                           ? Impl::Grown(entry.need.indices, layout.minimum.indices, previous.indices) : 0,
+            .instances = Impl::Grown(entry.need.instances, layout.minimum.instances, previous.instances),
         };
         JST_CHECK(window->bind(std::static_pointer_cast<Render::Components::Generic>(chunk)));
         impl->applyFrame(*chunk);

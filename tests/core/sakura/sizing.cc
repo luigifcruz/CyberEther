@@ -471,6 +471,36 @@ TEST_CASE("Fixed width panels keep their width and measure content at it", "[cor
     CHECK(host.measureOf(scene.ctx, {100.0f, kInfinite}) == Extent2D<F32>{100.0f, 45.0f});
 }
 
+TEST_CASE("Sparklines measure fill, fixed and natural sizes and scale with the pixel ratio",
+          "[core][sakura][sizing]") {
+    Scene scene;
+    Sakura::Sparkline strip;
+    Host host(strip);
+
+    strip.update({.values = {1.0f, 2.0f}});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{200.0f, 28.0f});
+    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 28.0f});
+    CHECK(host.measureOf(scene.ctx, {150.0f, 10.0f}) == Extent2D<F32>{150.0f, 10.0f});
+
+    strip.update({.values = {1.0f, 2.0f}, .size = {0.0f, 0.0f}});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{200.0f, 28.0f});
+    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{200.0f, 28.0f});
+
+    strip.update({.values = {1.0f, 2.0f}, .size = {120.0f, 40.0f}});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{120.0f, 40.0f});
+    CHECK(host.measureOf(scene.ctx, {100.0f, 20.0f}) == Extent2D<F32>{100.0f, 20.0f});
+
+    strip.update({.values = {1.0f, 2.0f}, .size = {Sakura::Fill, Sakura::Fill}});
+    CHECK(host.measureOf(scene.ctx, {300.0f, 50.0f}) == Extent2D<F32>{300.0f, 50.0f});
+
+    auto doubled = scene.ctx;
+    doubled.pixelRatio = 2.0f;
+    strip.update({.values = {1.0f, 2.0f}, .size = {0.0f, 0.0f}});
+    CHECK(host.measureOf(doubled, {kInfinite, kInfinite}) == Extent2D<F32>{400.0f, 56.0f});
+    strip.update({.values = {1.0f, 2.0f}, .size = {120.0f, 40.0f}});
+    CHECK(host.measureOf(doubled, {kInfinite, kInfinite}) == Extent2D<F32>{240.0f, 80.0f});
+}
+
 TEST_CASE("Progress bars and combos fall back to their natural width", "[core][sakura][sizing]") {
     Scene scene;
     Sakura::ProgressBar bar;
