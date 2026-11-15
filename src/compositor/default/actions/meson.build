@@ -3,6 +3,7 @@ src_lst += files([
     'base.cc',
     'benchmark.cc',
     'config_drafts.cc',
+    'crash_report.cc',
     'dependencies.cc',
     'feedback.cc',
     'file_picker.cc',

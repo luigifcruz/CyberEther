@@ -40,6 +40,10 @@ if jst_is_macos
     ]
 endif
 
+if jst_is_macos
+    src_lst += files('crash.cc')
+endif
+
 if jst_is_ios or jst_is_macos
     src_lst += files([
         'apple.mm',

@@ -3,6 +3,7 @@
 
 #include "benchmark.hh"
 #include "config_drafts.hh"
+#include "crash_report.hh"
 #include "dependencies.hh"
 #include "feedback.hh"
 #include "file_picker.hh"
@@ -92,6 +93,7 @@ class DefaultActions {
     std::shared_ptr<WorkbenchActions> workbench;
     std::shared_ptr<FeedbackActions> feedback;
     std::shared_ptr<OnboardingActions> onboarding;
+    std::shared_ptr<CrashReportActions> crashReport;
     std::shared_ptr<AgentActions> agent;
     std::shared_ptr<GalleryActions> gallery;
     std::shared_ptr<TerminalActions> terminals;

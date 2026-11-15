@@ -885,15 +885,16 @@ TEST_CASE("Wordmark developer submenu toggles timing, opens tools, and picks a l
         REQUIRE(submenu.x > menu.x);
         return submenu;
     };
-    for (const char* label : {"Show Timing", "Show Benchmarks", "Reload Plugins", "Open In Settings"}) {
+    for (const char* label : {"Show Timing", "Show Render Stats", "Show Benchmarks", "Reload Plugins",
+                              "Open In Settings"}) {
         CAPTURE(label);
         developer();
         REQUIRE(ClickMenu(rig.host, label));
         rig.place();
         CHECK(PopupFrames(rig.host).empty());
     }
-    CHECK(rig.actions == std::vector<Action>{Action::ToggleTiming, Action::ShowBenchmarks, Action::ReloadPlugins,
-                                             Action::OpenDeveloperSettings});
+    CHECK(rig.actions == std::vector<Action>{Action::ToggleTiming, Action::ToggleRenderStats, Action::ShowBenchmarks,
+                                             Action::ReloadPlugins, Action::OpenDeveloperSettings});
 
     const auto submenu = developer();
     CHECK(MenuLabel(rig.host, Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryAlt, "T")) != nullptr);
@@ -4492,6 +4493,32 @@ TEST_CASE("Feedback modal submits only within the length limits and while idle",
     CHECK(submitted == 1);
 }
 
+TEST_CASE("Crash report modal shows the report and sends or dismisses it", "[core][sakura][views]") {
+    ModalRig rig;
+    U64 submitted = 0;
+    U64 dismissed = 0;
+    CrashReportView view;
+    view.update({.report = "CyberEther Crash Report 1\nsignal 11\n", .count = 1,
+                 .onSubmit = [&] { ++submitted; }, .onDismiss = [&] { ++dismissed; }});
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{CrashReportView::Width, 0.0f},
+              .closeButton = false});
+    CHECK(Buttons(view.component()).empty());
+    CHECK(Find<Sakura::PillButton>(view.component()).size() == 2);
+    CHECK(Find<Sakura::LogView>(view.component()).size() == 1);
+
+    auto* send = Pill(view.component(), "Send Report");
+    REQUIRE(send != nullptr);
+    CHECK(Press(rig.host, *send));
+    CHECK(submitted == 1);
+    CHECK(dismissed == 0);
+
+    auto* dismiss = Pill(view.component(), "Don't Send");
+    REQUIRE(dismiss != nullptr);
+    CHECK(Press(rig.host, *dismiss));
+    CHECK(submitted == 1);
+    CHECK(dismissed == 1);
+}
+
 TEST_CASE("Modal views settle under identical updates", "[core][sakura][views]") {
     ModalRig rig;
     Mailbox mailbox;
@@ -4505,11 +4532,12 @@ TEST_CASE("Modal views settle under identical updates", "[core][sakura][views]")
         .dependencies = {{.requirement = "numpy"}},
     };
     mailbox.state.runtime.dependencyGeneration = 1;
+    mailbox.state.crashReport = {.reports = {"pending.crash"}, .preview = "CyberEther Crash Report 1\nsignal 11\n"};
     Frames frames(rig.host, kWide, rig.scene.ctx);
     ModalView view;
 
-    for (const auto content :
-         {ModalContent::About, ModalContent::Benchmark, ModalContent::Dependencies, ModalContent::RemoteQr}) {
+    for (const auto content : {ModalContent::About, ModalContent::Benchmark, ModalContent::Dependencies,
+                               ModalContent::RemoteQr, ModalContent::CrashReport}) {
         mailbox.state.modal.content = content;
         const auto update = [&] {
             view.update(ModalPresenter(mailbox.context()).build());

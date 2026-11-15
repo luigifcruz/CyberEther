@@ -14,6 +14,7 @@ enum class ModalContent : I32 {
     RemoteQr,
     DocsSearch,
     Onboarding,
+    CrashReport,
 };
 
 enum class OnboardingPage : I32 {

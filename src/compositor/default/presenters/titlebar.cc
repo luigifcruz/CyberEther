@@ -36,6 +36,7 @@ TitlebarView::Config TitlebarPresenter::build() const {
         .terminalEnabled = TerminalSession::Supported(),
         .voice = voice.build(),
         .debugTimingEnabled = context.state.debug.timingEnabled,
+        .debugRenderStatsEnabled = context.state.debug.renderStatsEnabled,
         .debugLogLevel = context.state.debug.logLevel,
         .sidebarOpen = context.state.tabsHidden() && context.state.startTabShown()
                            ? std::optional<bool>(context.state.interface.welcomeSidebarOpen)
@@ -44,6 +45,7 @@ TitlebarView::Config TitlebarPresenter::build() const {
                      missing, terminalSupported = TerminalSession::Supported(),
                      terminalTab = context.state.terminal.focused,
                      timing = context.state.debug.timingEnabled,
+                     renderStats = context.state.debug.renderStatsEnabled,
                      agentVisible = context.state.agent.ui.visible,
                      activePaused = activeFlowgraph.has_value() &&
                                     context.state.flowgraph.items.at(*activeFlowgraph) &&
@@ -99,6 +101,9 @@ TitlebarView::Config TitlebarPresenter::build() const {
                     break;
                 case Action::ToggleTiming:
                     enqueue(MailSetDebugTimingEnabled{.value = !timing});
+                    break;
+                case Action::ToggleRenderStats:
+                    enqueue(MailSetDebugRenderStatsEnabled{.value = !renderStats});
                     break;
                 case Action::ShowBenchmarks:
                     enqueue(MailOpenModal{.content = ModalContent::Benchmark});

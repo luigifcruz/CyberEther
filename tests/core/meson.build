@@ -121,6 +121,7 @@ core_test_domains = {
 if not jst_is_windows
     core_test_domains += {
         'compositor': core_test_domains['compositor'] + [
+            'compositor/crash_report.cc',
             'compositor/docs.cc',
             'compositor/file_picker.cc',
             'compositor/gallery.cc',

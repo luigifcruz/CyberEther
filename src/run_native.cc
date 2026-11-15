@@ -528,6 +528,12 @@ int Run(int argc, char* argv[]) {
 
     LogLevelGuard runLogLevel(_JST_LOG_DEBUG_LEVEL());
 
+#if defined(JST_OS_MAC)
+    if (std::string cachePath; Platform::CachePath(cachePath) == Result::SUCCESS) {
+        (void)Platform::InstallCrashHandler(Platform::PathFromUtf8(cachePath) / "crashes");
+    }
+#endif
+
     CommandType command = CommandType::Run;
     bool commandSelected = false;
     bool remoteEnabled = false;

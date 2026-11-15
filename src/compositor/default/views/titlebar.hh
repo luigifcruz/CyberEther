@@ -42,6 +42,7 @@ struct TitlebarView {
         ShowFlowgraphInfo,
         CloseFlowgraph,
         ToggleTiming,
+        ToggleRenderStats,
         ShowBenchmarks,
         ReloadPlugins,
         OpenDeveloperSettings,
@@ -93,6 +94,7 @@ struct TitlebarView {
         bool terminalEnabled = false;
         std::optional<VoiceIndicator> voice;
         bool debugTimingEnabled = false;
+        bool debugRenderStatsEnabled = false;
         I32 debugLogLevel = 0;
         std::optional<bool> sidebarOpen;
         Sakura::Callback<void(Action)> onAction;
@@ -137,6 +139,11 @@ struct TitlebarView {
                 .shortcut = Sakura::Shortcuts::Label(Sakura::Shortcuts::Modifier::PrimaryAlt, "T"),
                 .selected = config.debugTimingEnabled,
                 .onClick = action(Action::ToggleTiming),
+            },
+            {
+                .label = "Show Render Stats",
+                .selected = config.debugRenderStatsEnabled,
+                .onClick = action(Action::ToggleRenderStats),
             },
             {.label = "Show Benchmarks", .onClick = action(Action::ShowBenchmarks)},
             separator,
