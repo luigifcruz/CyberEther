@@ -178,10 +178,13 @@ if jst_is_windows and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     core_test_targets += [windows_titlebar_tests]
     test('core-windows-titlebar', windows_titlebar_tests,
          suite: 'core', is_parallel: false, timeout: 60)
+endif
+if jst_is_windows and not jst_is_static and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     windows_pointer_tests = executable(
         'jetstream-core-windows-pointer-tests',
-        ['render/windows_pointer.cc', '../../src/viewport/glfw/tools/windows_titlebar.cc'],
-        dependencies: dep_lst + [catch2_dep],
+        ['render/windows_pointer.cc', '../../src/viewport/glfw/tools/windows_titlebar.cc',
+         '../../src/viewport/glfw/tools/glfw_input.cc', '../../src/viewport/tools/touch_gesture.cc'],
+        dependencies: dep_lst + [libjetstream_dep, catch2_dep],
         include_directories: inc_lst,
     )
     core_test_targets += [windows_pointer_tests]

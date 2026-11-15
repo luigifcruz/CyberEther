@@ -11,7 +11,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace Jetstream::Viewport {
 
@@ -19,6 +22,18 @@ namespace {
 
 constexpr F32 PointsPerWheelUnit = 10.0f;
 constexpr F32 BaseDpi = 96.0f;
+constexpr DWORD FreshTouchTicks = 250;
+constexpr F64 FreshPollSeconds = 0.25;
+constexpr ULONG_PTR PromotedMouseMask = 0xFFFFFF80;
+constexpr ULONG_PTR PromotedTouchSignature = 0xFF515780;
+
+F32 DpiScale(HWND window) {
+    return std::max<F32>(1.0f, GetDpiForWindow(window) / BaseDpi);
+}
+
+bool FreshTouch(const POINTER_INFO& info) {
+    return GetTickCount() - info.dwTime <= FreshTouchTicks;
+}
 
 struct ScrollSequence {
     std::function<void(const WindowsPointer::Scroll&)> emit;
@@ -173,9 +188,22 @@ struct WindowsPointer::State {
     bool installed = false;
     bool initializedCOM = false;
     bool ready = false;
+    bool touchHandled = false;
+    F64 polledAt = glfwGetTime();
+    std::function<void(const Touch&)> onTouch;
+    std::function<bool(const Extent2D<F32>&)> captionHit;
+    std::unordered_map<UINT32, POINT> contacts;
+    std::unordered_map<UINT32, HANDLE> nativeContacts;
+    std::vector<POINTER_TOUCH_INFO> touchFrame;
+    std::optional<std::pair<HANDLE, UINT32>> touchFrameId;
 
     bool initialize(GLFWwindow* handle, std::function<void(const Scroll&)> onScroll) {
         window = glfwGetWin32Window(handle);
+        installed = window && SetWindowSubclass(window, Procedure, reinterpret_cast<UINT_PTR>(this),
+                                                reinterpret_cast<DWORD_PTR>(this)) != FALSE;
+        if (!installed) {
+            return false;
+        }
         const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         initializedCOM = SUCCEEDED(com);
         if (FAILED(com) && com != RPC_E_CHANGED_MODE) {
@@ -207,12 +235,11 @@ struct WindowsPointer::State {
         if (FAILED(manager->Activate(window)) || FAILED(viewport->Enable())) {
             return false;
         }
-        installed = SetWindowSubclass(window, Procedure, reinterpret_cast<UINT_PTR>(this),
-                                      reinterpret_cast<DWORD_PTR>(this)) != FALSE;
-        return installed;
+        return true;
     }
 
     ~State() {
+        onTouch = {};
         if (installed) {
             RemoveWindowSubclass(window, Procedure, reinterpret_cast<UINT_PTR>(this));
         }
@@ -239,20 +266,236 @@ struct WindowsPointer::State {
     }
 
     void stop() {
-        viewport->Stop();
-        handler->scroll.end();
-        handler->updating = false;
+        if (viewport) {
+            viewport->Stop();
+        }
+        if (handler) {
+            handler->scroll.end();
+            handler->updating = false;
+        }
+    }
+
+    bool ownsContact(UINT32 id) const {
+        return contacts.contains(id);
+    }
+
+    void emitTouch(Touch event) {
+        event.momentumAllowed = event.momentumAllowed && glfwGetTime() - polledAt <= FreshPollSeconds;
+        if (onTouch) {
+            onTouch(event);
+        }
+    }
+
+    void cancelTouch() {
+        contacts.clear();
+        emitTouch({.type = Touch::Type::Cancel});
+    }
+
+    void trackNative(UINT32 pointer) {
+        for (const auto& contact : touchFrame) {
+            const auto& info = contact.pointerInfo;
+            if (!(info.pointerFlags & (POINTER_FLAG_UP | POINTER_FLAG_CANCELED))) {
+                nativeContacts.insert_or_assign(info.pointerId, info.sourceDevice);
+            } else if (info.pointerId == pointer) {
+                nativeContacts.erase(pointer);
+            }
+        }
+    }
+
+    bool touch(UINT32 pointer) {
+        if (!onTouch) {
+            return false;
+        }
+        POINTER_INPUT_TYPE type = PT_POINTER;
+        if (!GetPointerType(pointer, &type)) {
+            if (ownsContact(pointer)) {
+                cancelTouch();
+                return true;
+            }
+            return false;
+        }
+        if (type != PT_TOUCH) {
+            return false;
+        }
+
+        UINT32 count = 0;
+        GetPointerFrameTouchInfo(pointer, &count, nullptr);
+        if (!count) {
+            cancelTouch();
+            return true;
+        }
+        touchFrame.resize(count);
+        if (!GetPointerFrameTouchInfo(pointer, &count, touchFrame.data()) || !count) {
+            cancelTouch();
+            return true;
+        }
+        touchFrame.resize(count);
+
+        std::erase_if(nativeContacts, [this](const auto& native) {
+            return native.second == touchFrame.front().pointerInfo.sourceDevice &&
+                   std::none_of(touchFrame.begin(), touchFrame.end(), [&](const auto& contact) {
+                       return contact.pointerInfo.pointerId == native.first;
+                   });
+        });
+        if (!nativeContacts.empty()) {
+            trackNative(pointer);
+            return false;
+        }
+
+        const auto& first = touchFrame.front().pointerInfo;
+        const auto frame = std::pair{first.sourceDevice, first.frameId};
+        if (touchFrameId == frame) {
+            return true;
+        }
+        touchFrameId = frame;
+
+        for (const auto& contact : touchFrame) {
+            const auto& info = contact.pointerInfo;
+            if ((info.pointerFlags & POINTER_FLAG_CANCELED) && ownsContact(info.pointerId)) {
+                cancelTouch();
+                return true;
+            }
+            if (info.pointerType != PT_TOUCH || !(info.pointerFlags & POINTER_FLAG_DOWN) ||
+                (info.pointerFlags & POINTER_FLAG_CANCELED) || ownsContact(info.pointerId) ||
+                info.hwndTarget != window) {
+                continue;
+            }
+            if (SendMessageW(window, WM_NCHITTEST, 0,
+                    MAKELPARAM(info.ptPixelLocation.x, info.ptPixelLocation.y)) != HTCLIENT) {
+                cancelTouch();
+                touchHandled = false;
+                return true;
+            }
+            POINT point = info.ptPixelLocation;
+            if (contacts.empty() && captionHit && ScreenToClient(window, &point) &&
+                captionHit({static_cast<F32>(point.x), static_cast<F32>(point.y)})) {
+                cancelTouch();
+                touchHandled = false;
+                trackNative(pointer);
+                return false;
+            }
+        }
+
+        const auto event = [scale = DpiScale(window)](const POINTER_INFO& info, Touch::Type type, POINT point) {
+            return Touch{
+                .type = type,
+                .id = info.pointerId,
+                .position = {static_cast<F32>(point.x), static_cast<F32>(point.y)},
+                .timestamp = info.dwTime,
+                .momentumAllowed = FreshTouch(info),
+                .scale = scale,
+            };
+        };
+
+        for (const auto& contact : touchFrame) {
+            const auto& info = contact.pointerInfo;
+            if (info.pointerType != PT_TOUCH || (info.pointerFlags & POINTER_FLAG_CANCELED) ||
+                !(info.pointerFlags & (POINTER_FLAG_UPDATE | POINTER_FLAG_UP)) || !ownsContact(info.pointerId)) {
+                continue;
+            }
+            POINT point = info.ptPixelLocation;
+            if (!ScreenToClient(window, &point)) {
+                cancelTouch();
+                return true;
+            }
+            auto& previous = contacts.at(info.pointerId);
+            if (point.x != previous.x || point.y != previous.y) {
+                previous = point;
+                emitTouch(event(info, Touch::Type::Motion, point));
+            }
+        }
+
+        for (const auto& contact : touchFrame) {
+            const auto& info = contact.pointerInfo;
+            if (info.pointerType != PT_TOUCH || (info.pointerFlags & POINTER_FLAG_CANCELED) ||
+                !(info.pointerFlags & POINTER_FLAG_DOWN) || ownsContact(info.pointerId) || info.hwndTarget != window) {
+                continue;
+            }
+            POINT point = info.ptPixelLocation;
+            if (!ScreenToClient(window, &point)) {
+                cancelTouch();
+                return true;
+            }
+            stop();
+            contacts.emplace(info.pointerId, point);
+            touchHandled = true;
+            emitTouch(event(info, Touch::Type::Down, point));
+        }
+
+        bool fresh = true;
+        for (const auto& contact : touchFrame) {
+            const auto& info = contact.pointerInfo;
+            if (!ownsContact(info.pointerId)) {
+                continue;
+            }
+            fresh = fresh && FreshTouch(info);
+            if (info.pointerFlags & POINTER_FLAG_UP) {
+                emitTouch(event(info, Touch::Type::Up, {}));
+                contacts.erase(info.pointerId);
+            }
+        }
+        emitTouch({.type = Touch::Type::Frame, .momentumAllowed = fresh});
+        return true;
+    }
+
+    bool touchMouse(UINT message) const {
+        if (!onTouch || !touchHandled) {
+            return false;
+        }
+        switch (message) {
+            case WM_MOUSEMOVE:
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONUP:
+            case WM_LBUTTONDBLCLK:
+            case WM_RBUTTONDOWN:
+            case WM_RBUTTONUP:
+            case WM_RBUTTONDBLCLK:
+            case WM_MBUTTONDOWN:
+            case WM_MBUTTONUP:
+            case WM_MBUTTONDBLCLK:
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONUP:
+            case WM_XBUTTONDBLCLK:
+            case WM_MOUSEWHEEL:
+            case WM_MOUSEHWHEEL:
+                return (static_cast<ULONG_PTR>(GetMessageExtraInfo()) & PromotedMouseMask) == PromotedTouchSignature;
+            default:
+                return false;
+        }
     }
 
     static LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
                                       UINT_PTR id, DWORD_PTR data) {
         auto& self = *reinterpret_cast<State*>(data);
+        if (self.touchMouse(message)) {
+            return 0;
+        }
         switch (message) {
+            case WM_POINTERDOWN:
+            case WM_POINTERUPDATE:
+            case WM_POINTERUP:
+                if (self.touch(GET_POINTERID_WPARAM(wParam))) {
+                    return 0;
+                }
+                break;
+            case WM_POINTERCAPTURECHANGED:
+                self.nativeContacts.erase(GET_POINTERID_WPARAM(wParam));
+                if (self.ownsContact(GET_POINTERID_WPARAM(wParam))) {
+                    self.cancelTouch();
+                }
+                break;
+            case WM_NCPOINTERDOWN:
+                self.cancelTouch();
+                self.touchHandled = false;
+                break;
             case DM_POINTERHITTEST: {
+                if (!self.ready) {
+                    break;
+                }
                 const UINT32 pointer = GET_POINTERID_WPARAM(wParam);
                 POINTER_INPUT_TYPE type = PT_POINTER;
                 if (GetPointerType(pointer, &type) && type == PT_TOUCHPAD) {
-                    self.handler->scroll.scale = std::max<F32>(1.0f, GetDpiForWindow(window) / BaseDpi);
+                    self.handler->scroll.scale = DpiScale(window);
                     if (SUCCEEDED(self.viewport->SetContact(pointer))) {
                         self.handler->updating = true;
                         return 0;
@@ -261,6 +504,9 @@ struct WindowsPointer::State {
                 break;
             }
             case WM_SIZE: {
+                if (!self.ready) {
+                    break;
+                }
                 RECT bounds{};
                 GetClientRect(window, &bounds);
                 if (bounds.right > 0 && bounds.bottom > 0 &&
@@ -276,13 +522,18 @@ struct WindowsPointer::State {
                     self.stop();
                 }
                 break;
+            case WM_CANCELMODE:
+                self.cancelTouch();
+                break;
             case WM_MOUSEWHEEL:
             case WM_MOUSEHWHEEL:
-                if (self.handler->scroll.started) {
+                if (self.handler && self.handler->scroll.started) {
                     self.stop();
                 }
                 break;
             case WM_NCDESTROY:
+                self.cancelTouch();
+                self.onTouch = {};
                 self.stop();
                 RemoveWindowSubclass(window, Procedure, id);
                 self.installed = false;
@@ -295,8 +546,12 @@ struct WindowsPointer::State {
     }
 };
 
-WindowsPointer::WindowsPointer(GLFWwindow* window, std::function<void(const Scroll&)> onScroll)
+WindowsPointer::WindowsPointer(GLFWwindow* window, std::function<void(const Scroll&)> onScroll,
+                               std::function<void(const Touch&)> onTouch,
+                               std::function<bool(const Extent2D<F32>&)> captionHit)
     : state(std::make_unique<State>()) {
+    state->onTouch = std::move(onTouch);
+    state->captionHit = std::move(captionHit);
     state->ready = state->initialize(window, std::move(onScroll));
 }
 
@@ -306,7 +561,15 @@ bool WindowsPointer::available() const {
     return state->ready;
 }
 
+void WindowsPointer::focus(bool focused) {
+    if (!focused) {
+        state->cancelTouch();
+        state->stop();
+    }
+}
+
 void WindowsPointer::poll() {
+    state->polledAt = glfwGetTime();
     if (state->ready && (state->handler->updating || state->handler->resetting)) {
         state->updates->Update(nullptr);
     }

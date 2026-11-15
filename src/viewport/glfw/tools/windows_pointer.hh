@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "jetstream/surface.hh"
+#include "../../tools/touch_gesture.hh"
 
 struct GLFWwindow;
 
@@ -18,14 +19,19 @@ class WindowsPointer {
         KeyModifiers modifiers;
     };
 
-    WindowsPointer(GLFWwindow* window, std::function<void(const Scroll&)> onScroll);
+    using Touch = TouchGesture::Event;
+
+    WindowsPointer(GLFWwindow* window, std::function<void(const Scroll&)> onScroll,
+                   std::function<void(const Touch&)> onTouch = {},
+                   std::function<bool(const Extent2D<F32>&)> captionHit = {});
     ~WindowsPointer();
 
     WindowsPointer(const WindowsPointer&) = delete;
     WindowsPointer& operator=(const WindowsPointer&) = delete;
 
-    void poll();
     bool available() const;
+    void focus(bool focused);
+    void poll();
     static KeyModifiers Modifiers();
 
  private:
