@@ -48,6 +48,8 @@ constexpr F32 kHoverLift = 3.0f;
 constexpr F64 kHoverDuration = 0.25;
 constexpr F64 kMaxHoverStep = 0.1;
 constexpr F32 kHoverBorderAlpha = 0.7f;
+constexpr F32 kBorderStrength = 1.1f;
+constexpr F32 kBorderWidth = 1.5f;
 constexpr F32 kCategoryText = 12.5f;
 constexpr F32 kTitleText = 24.0f;
 constexpr F32 kDescriptionText = 16.0f;
@@ -539,26 +541,28 @@ void FlowgraphCard::layout(const Context& ctx) {
     const Rect preview = {bounds.x, bounds.y, bounds.width, std::min(bounds.height, s.previewHeight(bounds.width))};
     const auto backdrop = ctx.color(kPreviewSurface);
 
+    const auto paper = ctx.color(kCardSurface);
+    auto border = ctx.color("setting_card_border");
+    border.a = std::min(1.0f, border.a * kBorderStrength);
+    const F32 outline = Px(ctx, kBorderWidth);
     s.card.update({
-        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color(kCardSurface)}},
+        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = paper}},
         .clip = bounds,
         .cornerRadius = Px(ctx, kPanelRounding),
-        .borderWidth = Px(ctx, 1.0f),
-        .borderColor = MixColor(ctx.color("setting_card_border"), WithAlpha(accent, kHoverBorderAlpha), hover),
-        .strokeFringe = true,
+        .borderWidth = outline,
+        .borderColor = MixColor(BlendOver(paper, border), BlendOver(paper, WithAlpha(accent, kHoverBorderAlpha)), hover),
         .capacity = 1,
     });
     layoutChild(ctx, s.card, bounds);
     s.preview.update({
-        .instances = {{.rect = Inset(preview, Hairline(ctx)), .visible = !preview.empty(), .backgroundColor = backdrop,
+        .instances = {{.rect = Inset(preview, outline), .visible = !preview.empty(), .backgroundColor = backdrop,
                        .corners = static_cast<U8>(Box::TopLeft | Box::TopRight)}},
         .clip = bounds,
-        .cornerRadius = std::max(0.0f, Px(ctx, kPanelRounding) - Hairline(ctx)),
+        .cornerRadius = std::max(0.0f, Px(ctx, kPanelRounding) - outline),
         .capacity = 1,
     });
     layoutChild(ctx, s.preview, bounds);
 
-    const F32 outline = Px(ctx, 1.0f);
     const Rect inside = {preview.x + outline, preview.y + outline, std::max(0.0f, preview.width - 2.0f * outline),
                          std::max(0.0f, preview.height - outline)};
     const F32 rounding = std::max(0.0f, Px(ctx, kPanelRounding) - outline);
