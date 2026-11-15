@@ -17,6 +17,7 @@ class TouchGesture {
         Extent2D<F32> position = {0.0f, 0.0f};
         U32 timestamp = 0;
         bool momentumAllowed = true;
+        F32 scale = 1.0f;
     };
 
     explicit TouchGesture(Render::InputQueue& input);
@@ -43,6 +44,7 @@ class TouchGesture {
     bool pointerOwned = false;
     bool momentumAllowed = true;
     bool coasting = false;
+    F32 scale = 1.0f;
     F64 steppedAt = 0.0;
     ScrollMomentum momentum;
     Extent2D<F32> origin = {0.0f, 0.0f};

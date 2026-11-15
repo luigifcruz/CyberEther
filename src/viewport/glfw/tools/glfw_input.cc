@@ -14,6 +14,9 @@
 
 #ifdef JST_OS_LINUX
 #include "wayland_pointer.hh"
+#endif
+
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
 #include "../../tools/touch_gesture.hh"
 #endif
 
@@ -246,6 +249,8 @@ struct GlfwInput::Impl {
 #endif
 #ifdef JST_OS_LINUX
     std::unique_ptr<WaylandPointer> pointer;
+#endif
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
     TouchGesture touchGesture{viewport.input()};
 #endif
 
@@ -369,7 +374,7 @@ struct GlfwInput::Impl {
         }
         impl.heldModifiers.fill(false);
         impl.pushModifiers({});
-#ifdef JST_OS_LINUX
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
         if (impl.pointer) {
             impl.pointer->focus(focused != 0);
         }
@@ -380,7 +385,7 @@ struct GlfwInput::Impl {
     static void OnEnter(GLFWwindow* window, int entered) {
         auto& impl = From(window);
         impl.pointerInside = entered != 0;
-#ifdef JST_OS_LINUX
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
         if (impl.touchGesture.active()) {
             return;
         }
@@ -391,7 +396,7 @@ struct GlfwInput::Impl {
 
     static void OnCursor(GLFWwindow* window, double x, double y) {
         auto& impl = From(window);
-#ifdef JST_OS_LINUX
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
         if (impl.touchGesture.active()) {
             return;
         }
@@ -403,7 +408,7 @@ struct GlfwInput::Impl {
 
     static void OnButton(GLFWwindow* window, int button, int action, int mods) {
         auto& impl = From(window);
-#ifdef JST_OS_LINUX
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
         if (impl.touchGesture.active()) {
             return;
         }
@@ -424,7 +429,7 @@ struct GlfwInput::Impl {
         }
     }
 
-#ifdef JST_OS_LINUX
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
     void onTouch(const TouchGesture::Event& event) {
         bool allowStart = true;
         if (event.type == TouchGesture::Event::Type::Down) {
@@ -558,15 +563,18 @@ GlfwInput::GlfwInput(GLFWwindow* window, Generic& viewport) {
     impl->wheel = std::make_unique<BrowserWheel>();
 #endif
 #ifdef JST_OS_WINDOWS
-    impl->pointer = std::make_unique<WindowsPointer>(window, [input = impl.get()](const auto& scroll) {
-        double x = 0.0;
-        double y = 0.0;
-        glfwGetCursorPos(input->window, &x, &y);
-        Impl::OnCursor(input->window, x, y);
-        input->viewport.input().push(Render::InputQueue::Modifiers{scroll.modifiers});
-        input->viewport.input().push(Render::InputQueue::Wheel{
-            .delta = scroll.delta, .phase = scroll.phase, .precise = true});
-    });
+    impl->pointer = std::make_unique<WindowsPointer>(window,
+        [input = impl.get()](const auto& scroll) {
+            double x = 0.0;
+            double y = 0.0;
+            glfwGetCursorPos(input->window, &x, &y);
+            Impl::OnCursor(input->window, x, y);
+            input->viewport.input().push(Render::InputQueue::Modifiers{scroll.modifiers});
+            input->viewport.input().push(Render::InputQueue::Wheel{
+                .delta = scroll.delta, .phase = scroll.phase, .precise = true});
+        },
+        [input = impl.get()](const auto& touch) { input->onTouch(touch); },
+        [input = impl.get()](const auto& point) { return point.y < input->viewport.titlebarChrome().height; });
 #endif
 #ifdef JST_OS_LINUX
     impl->pointer = std::make_unique<WaylandPointer>(window,
@@ -612,10 +620,7 @@ GlfwInput::~GlfwInput() {
 void GlfwInput::poll() {
     impl->applyCursor();
     impl->applyClipboard();
-#ifdef JST_OS_WINDOWS
-    impl->pointer->poll();
-#endif
-#ifdef JST_OS_LINUX
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
     impl->pointer->poll();
     impl->touchGesture.poll(glfwGetTime());
     if (impl->touchGesture.ownsPointer()) {

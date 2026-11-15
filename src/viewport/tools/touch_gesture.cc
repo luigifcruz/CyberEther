@@ -20,7 +20,8 @@ void TouchGesture::resumePointer() {
 
 void TouchGesture::scroll(U32 timestamp, ScrollPhase phase, Extent2D<F32> delta, bool cancelled) {
     constexpr F32 pointsPerScrollUnit = 10.0f;
-    const Extent2D<F32> units = {delta.x / pointsPerScrollUnit, delta.y / pointsPerScrollUnit};
+    const F32 step = pointsPerScrollUnit * scale;
+    const Extent2D<F32> units = {delta.x / step, delta.y / step};
     if (phase == ScrollPhase::Began || phase == ScrollPhase::Changed) {
         momentum.sample(timestamp, units);
     }
@@ -84,6 +85,7 @@ void TouchGesture::handle(const Event& event, F64 now, bool allowStart) {
                 return;
             }
             pointerOwned = true;
+            scale = event.scale;
             origin = event.position;
             last = event.position;
             startedAt = now;
@@ -124,7 +126,8 @@ void TouchGesture::handle(const Event& event, F64 now, bool allowStart) {
             constexpr F32 dragDistance = 8.0f;
             const F32 dx = event.position.x - origin.x;
             const F32 dy = event.position.y - origin.y;
-            if (dx * dx + dy * dy <= dragDistance * dragDistance) {
+            const F32 slop = dragDistance * scale;
+            if (dx * dx + dy * dy <= slop * slop) {
                 return;
             }
             action = Action::Swipe;
@@ -222,7 +225,8 @@ void TouchGesture::pinchFrame() {
     pinchDirty = false;
     const F32 distance = contactDistance();
     constexpr F32 minimumDistance = 8.0f;
-    if (distance >= minimumDistance && pinchDistance >= minimumDistance && distance != pinchDistance) {
+    const F32 minimum = minimumDistance * scale;
+    if (distance >= minimum && pinchDistance >= minimum && distance != pinchDistance) {
         input.push(Render::InputQueue::Zoom{pinchPosition, distance / pinchDistance});
     }
     pinchDistance = distance;

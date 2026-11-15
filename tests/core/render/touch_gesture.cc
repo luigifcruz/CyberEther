@@ -160,6 +160,39 @@ TEST_CASE("Touch swipes report logical deltas in scroll units and coast across t
     CHECK_FALSE(pointers.back().position);
 }
 
+TEST_CASE("Touch scale keeps slop, scroll units, and pinch distance in logical points", "[core][render][touch]") {
+    Touch touch;
+    const auto send = [&](Type type, I64 id, Extent2D<F32> position = {}) {
+        touch.gesture.handle({.type = type, .id = id, .position = position, .scale = 2.0f}, 1.0);
+    };
+    send(Type::Down, 1, {10, 20});
+    touch.queue.drain();
+    send(Type::Motion, 1, {24, 20});
+    CHECK(Select<Queue::Wheel>(touch.queue.drain()).empty());
+    send(Type::Motion, 1, {30, 20});
+    send(Type::Motion, 1, {50, 20});
+    const auto wheels = Select<Queue::Wheel>(touch.queue.drain());
+    REQUIRE(wheels.size() == 2);
+    CHECK(wheels[0].phase == ScrollPhase::Began);
+    CHECK(wheels[0].delta.x == Catch::Approx(1.0f));
+    CHECK(wheels[1].phase == ScrollPhase::Changed);
+    CHECK(wheels[1].delta.x == Catch::Approx(1.0f));
+    send(Type::Up, 1);
+    touch.queue.drain();
+
+    send(Type::Down, 1, {0, 0});
+    send(Type::Down, 2, {12, 0});
+    touch.queue.drain();
+    send(Type::Motion, 2, {24, 0});
+    send(Type::Frame, 0);
+    CHECK(Select<Queue::Zoom>(touch.queue.drain()).empty());
+    send(Type::Motion, 2, {48, 0});
+    send(Type::Frame, 0);
+    const auto zooms = Select<Queue::Zoom>(touch.queue.drain());
+    REQUIRE(zooms.size() == 1);
+    CHECK(zooms[0].factor == Catch::Approx(2.0f));
+}
+
 TEST_CASE("Touch rejects a physical drag until every ignored contact has lifted", "[core][render][touch]") {
     Touch touch;
     touch.send(Type::Down, 1, {}, 0, 1.0, false);
