@@ -290,9 +290,18 @@ struct NodeFrame : public Component {
         bool operator==(const Measured&) const = default;
     };
     std::optional<Measured> measured;
+    bool built = false;
+    Callback<void()> onBuilt;
 
     NodeFrame() {
         rebuildChildren();
+    }
+
+    Result build(Context&) override {
+        if (!std::exchange(built, true) && onBuilt) {
+            onBuilt();
+        }
+        return Result::SUCCESS;
     }
 
     void rebuildChildren() {
@@ -1009,6 +1018,7 @@ struct GraphRoot : public Component {
         NodeOverlay tooltip;
     };
     std::vector<LinkGeometry> linkGeometry;
+    std::unordered_set<std::string> shownLinks;
     std::vector<Rect> nodeRects;
 
     GraphRoot() {
@@ -1073,6 +1083,9 @@ struct GraphRoot : public Component {
             auto& frame = frames[node.id];
             if (!frame) {
                 frame = std::make_unique<NodeFrame>();
+                frame->onBuilt = [this]() {
+                    invalidate(Dirty::Layout);
+                };
                 depth.push_back(node.id);
                 childOrderDirty = true;
             }
@@ -1443,13 +1456,36 @@ struct GraphRoot : public Component {
         }
         frameContent();
 
+        nodeRects.clear();
+        nodeRects.reserve(depth.size());
+        for (const auto& id : depth) {
+            auto* node = frameFor(id);
+            const auto p = toPx(Extent2D<F32>{node->rect.x, node->rect.y});
+            nodeRects.push_back({p.x, p.y, node->rect.width * ratio, node->rect.height * ratio});
+            const bool onscreen = id == interactionNode ||
+                                  (interaction == Interaction::LinkCreation && id == linkStart.nodeId) ||
+                                  Overlaps(node->reach(nodeRects.back(), ratio), viewport);
+            if (node->visible() != onscreen) {
+                node->setVisible(onscreen);
+            }
+        }
+
         linkGeometry.clear();
+        std::unordered_set<std::string> shown;
         for (const auto& link : config.links) {
-            const auto* start = pinLayout(link.start);
-            const auto* end = pinLayout(link.end);
+            NodeFrame* startFrame = nullptr;
+            NodeFrame* endFrame = nullptr;
+            const auto* start = pinLayout(link.start, &startFrame);
+            const auto* end = pinLayout(link.end, &endFrame);
             if (!start || !end) {
                 continue;
             }
+            const bool pending = (startFrame->visible() && !startFrame->built) ||
+                                 (endFrame->visible() && !endFrame->built);
+            if (pending && !shownLinks.contains(link.id)) {
+                continue;
+            }
+            shown.insert(link.id);
             linkGeometry.push_back({
                 .id = link.id,
                 .curve = LinkBezier(start->center, end->center, link.start.isInput, kLinkSegmentsPerLength),
@@ -1460,18 +1496,12 @@ struct GraphRoot : public Component {
             });
         }
 
+        shownLinks = std::move(shown);
+
         resolveHover();
 
         drawGrid(ctx);
         drawLinks(ctx);
-
-        nodeRects.clear();
-        nodeRects.reserve(depth.size());
-        for (const auto& id : depth) {
-            const auto* node = frameFor(id);
-            const auto p = toPx(Extent2D<F32>{node->rect.x, node->rect.y});
-            nodeRects.push_back({p.x, p.y, node->rect.width * ratio, node->rect.height * ratio});
-        }
 
         const Extent2D<F32> offset = panOffset();
         const Rect localViewport = {viewport.x - offset.x, viewport.y - offset.y, viewport.width, viewport.height};
@@ -1483,13 +1513,7 @@ struct GraphRoot : public Component {
         nodeCtx.backdropColorKey = "node_background";
         for (U64 i = 0; i < depth.size(); ++i) {
             auto* frame = frameFor(depth[i]);
-            const bool onscreen = depth[i] == interactionNode ||
-                                  (interaction == Interaction::LinkCreation && depth[i] == linkStart.nodeId) ||
-                                  Overlaps(frame->reach(nodeRects[i], ratio), viewport);
-            if (frame->visible() != onscreen) {
-                frame->setVisible(onscreen);
-            }
-            if (!onscreen) {
+            if (!frame->visible()) {
                 continue;
             }
             frame->place({

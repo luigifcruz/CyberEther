@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/curves.hh>
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/node/content_stack.hh>
@@ -15,6 +16,7 @@
 #include "scene.hh"
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -1324,6 +1326,59 @@ TEST_CASE("Double clicking the canvas or a wire requests the block picker but a 
     graph.click(288.0f, 55.0f, 2);
     REQUIRE(graph.doubleClicks.size() == 2);
     CheckPoint(graph.doubleClicks[1], 288.0f, 55.0f);
+}
+
+TEST_CASE("A wire waits for the build of the nodes it joins and draws at once toward a culled node",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    graph.frames.verify = false;
+    graph.add("src", {40.0f, 40.0f}, {120.0f, 0.0f}, ResizeAxes::X, {Output("out")});
+    graph.links = {Wire("link", Ref("src", "out", false), Ref("dst", "in", true))};
+    graph.step();
+
+    const auto wires = [&graph]() {
+        std::vector<Sakura::Curves*> curves;
+        std::function<void(Sakura::Component&)> collect = [&](Sakura::Component& node) {
+            if (auto* found = dynamic_cast<Sakura::Curves*>(&node)) {
+                curves.push_back(found);
+            }
+            for (auto* child : Peek::Children(node)) {
+                if (child) {
+                    collect(*child);
+                }
+            }
+        };
+        collect(graph.editor);
+        REQUIRE_FALSE(curves.empty());
+        return curves.front()->config().instances.size();
+    };
+    const auto layoutOnly = [&graph]() {
+        graph.update();
+        graph.host.place(graph.frames.ctx, graph.frames.bounds);
+    };
+    CHECK(wires() == 0);
+
+    SECTION("A visible node holds the wire back until it is built") {
+        graph.add("dst", {400.0f, 40.0f}, {120.0f, 0.0f}, ResizeAxes::X, {Input("in")});
+        layoutOnly();
+        CHECK(wires() == 0);
+        graph.step();
+        CHECK(wires() == 1);
+        CHECK(Settle(graph));
+        CHECK(Dirty(graph) == 0);
+    }
+
+    SECTION("A culled node never builds and does not hold the wire back") {
+        Block& dst = graph.add("dst", {9000.0f, 40.0f}, {120.0f, 0.0f}, ResizeAxes::X, {Input("in")});
+        layoutOnly();
+        CHECK(wires() == 1);
+
+        dst.spec.gridPosition = {400.0f, 40.0f};
+        layoutOnly();
+        CHECK(wires() == 1);
+        graph.step();
+        CHECK(wires() == 1);
+    }
 }
 
 TEST_CASE("Pressing a wire body neither pans the canvas nor moves nodes", "[core][sakura][node-editor]") {
