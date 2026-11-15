@@ -40,7 +40,7 @@ if jst_is_macos
     ]
 endif
 
-if jst_is_macos
+if jst_is_macos or jst_is_windows
     src_lst += files('crash.cc')
 endif
 

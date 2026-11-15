@@ -37,7 +37,7 @@ CrashReport::~CrashReport() {
 
 std::vector<std::filesystem::path> CrashReport::Pending() {
     std::vector<std::filesystem::path> reports;
-#if defined(JST_OS_MAC)
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (Platform::PendingCrashReports(reports) != Result::SUCCESS) {
         reports.clear();
     }
@@ -63,6 +63,19 @@ void CrashReport::Discard(const std::vector<std::filesystem::path>& reports) {
     }
 }
 
+CrashReport::Outcome CrashReport::Judge(const bool failed, const I32 status) {
+    if (failed) {
+        return Outcome::Retry;
+    }
+    if (status >= 200 && status < 300) {
+        return Outcome::Accepted;
+    }
+    if (status >= 400 && status < 500 && status != 408 && status != 429) {
+        return Outcome::Rejected;
+    }
+    return Outcome::Retry;
+}
+
 void CrashReport::submit(const std::vector<std::filesystem::path>& reports) {
     U64 generation = 0;
     {
@@ -72,6 +85,7 @@ void CrashReport::submit(const std::vector<std::filesystem::path>& reports) {
     }
 
     std::thread([impl = pimpl, reports, generation]() {
+        U64 rejected = 0;
         for (const auto& report : reports) {
             const std::string content = Read(report);
             if (content.empty()) {
@@ -88,21 +102,29 @@ void CrashReport::submit(const std::vector<std::filesystem::path>& reports) {
                     -1, ' ', false, nlohmann::json::error_handler_t::replace),
                 .timeoutSeconds = 15,
             });
-            if (response.error) {
-                impl->finish(generation, Snapshot::Status::Error,
-                             "Unable to reach the crash report server. CyberEther will ask again next launch.");
-                return;
+            switch (Judge(static_cast<bool>(response.error), response.status)) {
+                case Outcome::Accepted:
+                    Discard({report});
+                    break;
+                case Outcome::Rejected:
+                    Discard({report});
+                    ++rejected;
+                    break;
+                case Outcome::Retry:
+                    impl->finish(generation, Snapshot::Status::Error,
+                                 response.error
+                                     ? "Unable to reach the crash report server. CyberEther will ask again next launch."
+                                     : jst::fmt::format("The crash report server answered with HTTP {}. "
+                                                        "CyberEther will ask again next launch.", response.status));
+                    return;
             }
-            if (response.status < 200 || response.status >= 300) {
-                impl->finish(generation, Snapshot::Status::Error,
-                             jst::fmt::format("The crash report server answered with HTTP {}. "
-                                              "CyberEther will ask again next launch.", response.status));
-                return;
-            }
-
-            Discard({report});
         }
 
+        if (rejected > 0) {
+            impl->finish(generation, Snapshot::Status::Error,
+                         "The crash report server did not accept the report. It was discarded.");
+            return;
+        }
         impl->finish(generation, Snapshot::Status::Success, {});
     }).detach();
 }

@@ -73,6 +73,22 @@ TEST_CASE("Crash report reads a saved report and rejects missing or oversized on
     CHECK(CrashReport::Read(oversized).empty());
 }
 
+TEST_CASE("Crash report uploads retry on transport or server trouble and drop permanent rejections",
+          "[core][compositor][crash_report]") {
+    using Outcome = CrashReport::Outcome;
+    CHECK(CrashReport::Judge(true, 0) == Outcome::Retry);
+    CHECK(CrashReport::Judge(true, 200) == Outcome::Retry);
+    CHECK(CrashReport::Judge(false, 200) == Outcome::Accepted);
+    CHECK(CrashReport::Judge(false, 202) == Outcome::Accepted);
+    CHECK(CrashReport::Judge(false, 400) == Outcome::Rejected);
+    CHECK(CrashReport::Judge(false, 404) == Outcome::Rejected);
+    CHECK(CrashReport::Judge(false, 413) == Outcome::Rejected);
+    CHECK(CrashReport::Judge(false, 408) == Outcome::Retry);
+    CHECK(CrashReport::Judge(false, 429) == Outcome::Retry);
+    CHECK(CrashReport::Judge(false, 500) == Outcome::Retry);
+    CHECK(CrashReport::Judge(false, 301) == Outcome::Retry);
+}
+
 TEST_CASE("Opening a crash report shows the modal with the pending reports", "[core][compositor][crash_report]") {
     const Reports reports(2);
     Rig rig;

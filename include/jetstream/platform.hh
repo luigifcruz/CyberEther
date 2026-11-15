@@ -108,7 +108,7 @@ JETSTREAM_API void WriteInterruptMessage(const char* message, std::size_t size) 
 // Crash
 //
 
-#if defined(JST_OS_MAC)
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
 JETSTREAM_API Result InstallCrashHandler(const std::filesystem::path& directory);
 JETSTREAM_API Result PendingCrashReports(std::vector<std::filesystem::path>& reports);
 #endif

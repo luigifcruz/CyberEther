@@ -24,6 +24,12 @@ class CrashReport {
         std::string message;
     };
 
+    enum class Outcome {
+        Accepted,
+        Rejected,
+        Retry,
+    };
+
     static constexpr U64 MaxSize = 256 * 1024;
     static constexpr const char* Host = "https://cyberether.org";
     static constexpr const char* Path = "/api/v1/crash";
@@ -37,6 +43,7 @@ class CrashReport {
     static std::vector<std::filesystem::path> Pending();
     static std::string Read(const std::filesystem::path& report);
     static void Discard(const std::vector<std::filesystem::path>& reports);
+    static Outcome Judge(bool failed, I32 status);
 
     void submit(const std::vector<std::filesystem::path>& reports);
     Snapshot snapshot() const;

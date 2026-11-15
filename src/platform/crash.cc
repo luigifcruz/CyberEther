@@ -7,10 +7,25 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
-#include <ctime>
 #include <string>
 #include <system_error>
 #include <vector>
+
+#if defined(JST_OS_WINDOWS)
+#include <csignal>
+#include <cstdlib>
+#include <cwchar>
+#include <exception>
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <sddl.h>
+#include <tlhelp32.h>
+#include <winternl.h>
+#undef ERROR
+#undef FATAL
+#else
+#include <ctime>
 
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -21,6 +36,7 @@
 #include <sys/sysctl.h>
 #include <sys/ucontext.h>
 #include <unistd.h>
+#endif
 
 namespace Jetstream::Platform {
 
@@ -28,24 +44,14 @@ namespace {
 
 constexpr std::size_t MaxImages = 4096;
 constexpr std::size_t MaxFrames = 128;
-constexpr std::size_t MaxImageName = 64;
-constexpr std::size_t MaxReportPath = 1024;
 constexpr std::size_t ReportCapacity = 64 * 1024;
-constexpr std::size_t AlternateStackSize = 128 * 1024;
-constexpr std::array<int, 6> CrashSignals = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP};
+constexpr std::size_t MaxStoredReports = 16;
 
-#if defined(__arm64__)
+#if defined(__arm64__) || defined(_M_ARM64)
 constexpr char Architecture[] = "arm64";
 #else
 constexpr char Architecture[] = "x86_64";
 #endif
-
-struct Image {
-    std::atomic<std::uintptr_t> begin{0};
-    std::uintptr_t end = 0;
-    std::array<std::uint8_t, 16> uuid = {};
-    std::array<char, MaxImageName> name = {};
-};
 
 struct Report {
     std::array<char, ReportCapacity> data = {};
@@ -88,18 +94,506 @@ struct Report {
     }
 };
 
-std::array<Image, MaxImages> images;
-std::atomic<std::size_t> imageCount{0};
-static_assert(std::atomic<std::uintptr_t>::is_always_lock_free);
-static_assert(std::atomic<std::size_t>::is_always_lock_free);
+using Frames = std::array<std::uintptr_t, MaxFrames>;
 
 Report report;
 std::size_t reportHeaderSize = 0;
+bool crashHandlerInstalled = false;
+static_assert(std::atomic<std::uintptr_t>::is_always_lock_free);
+static_assert(std::atomic<std::size_t>::is_always_lock_free);
+
+void WriteHeader(const std::string& system) {
+    report.size = 0;
+    report.text("CyberEther Crash Report 1\nversion " JETSTREAM_VERSION_STR "-" JETSTREAM_BUILD_TYPE "\nsystem ");
+    report.text(system.c_str());
+    report.text("\narchitecture ");
+    report.text(Architecture);
+    report.text("\n");
+    reportHeaderSize = report.size;
+}
+
+void WriteFrames(const Frames& frames, const std::size_t frameCount) noexcept {
+    for (std::size_t i = 0; i < frameCount; ++i) {
+        report.text("frame ");
+        report.address(frames[i]);
+        report.text("\n");
+    }
+}
+
+bool Referenced(const Frames& frames, const std::size_t frameCount,
+                const std::uintptr_t begin, const std::uintptr_t end) noexcept {
+    for (std::size_t i = 0; i < frameCount; ++i) {
+        if (frames[i] >= begin && frames[i] < end) {
+            return true;
+        }
+    }
+    return false;
+}
+
+#if defined(JST_OS_WINDOWS)
+
+constexpr std::size_t MaxImageName = 128;
+constexpr std::size_t MaxReportPath = 32768;
+constexpr DWORD FatalAppExit = 0x40000015;
+constexpr DWORD CodeViewSignature = 0x53445352;
+constexpr DWORD ReportWaitMilliseconds = 2000;
+constexpr ULONG ImageLoaded = 1;
+constexpr ULONG ImageUnloaded = 2;
+constexpr std::uint64_t WindowsEpoch = 116444736000000000ull;
+
+struct Image {
+    std::atomic<std::uintptr_t> begin{0};
+    std::uintptr_t end = 0;
+    GUID pdb = {};
+    DWORD age = 0;
+    DWORD timestamp = 0;
+    std::array<wchar_t, MaxImageName> name = {};
+};
+
+struct CodeView {
+    DWORD signature;
+    GUID guid;
+    DWORD age;
+};
+
+struct LoadedImage {
+    ULONG flags;
+    const UNICODE_STRING* fullName;
+    const UNICODE_STRING* baseName;
+    void* base;
+    ULONG size;
+};
+
+using Notification = void (CALLBACK*)(ULONG, const LoadedImage*, void*);
+using RegisterNotification = LONG (NTAPI*)(ULONG, Notification, void*, void**);
+using UnregisterNotification = LONG (NTAPI*)(void*);
+using VersionFunction = LONG (WINAPI*)(OSVERSIONINFOW*);
+using SignalHandler = void (*)(int);
+
+std::array<Image, MaxImages> images;
+std::atomic<std::size_t> imageCount{0};
+std::atomic<DWORD> crashThread{0};
+static_assert(std::atomic<DWORD>::is_always_lock_free);
+
+std::array<wchar_t, MaxReportPath> reportPath = {};
+HANDLE reportFile = INVALID_HANDLE_VALUE;
+HANDLE reportComplete = nullptr;
+void* notificationCookie = nullptr;
+UnregisterNotification unregisterNotification = nullptr;
+LPTOP_LEVEL_EXCEPTION_FILTER previousExceptionFilter = nullptr;
+std::terminate_handler previousTerminate = nullptr;
+SignalHandler previousAbort = SIG_DFL;
+
+U64 ProcessId() {
+    return GetCurrentProcessId();
+}
+
+std::filesystem::path CurrentReport() {
+    return std::filesystem::path(reportPath.data());
+}
+
+bool ReadIdentity(Image& image, void* base, const DWORD size) noexcept {
+    __try {
+        const auto* bytes = static_cast<const std::uint8_t*>(base);
+        if (size < sizeof(IMAGE_DOS_HEADER) || size < sizeof(IMAGE_NT_HEADERS)) {
+            return false;
+        }
+
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(bytes);
+        if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew < 0 ||
+            static_cast<DWORD>(dos->e_lfanew) > size - sizeof(IMAGE_NT_HEADERS)) {
+            return false;
+        }
+
+        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(bytes + dos->e_lfanew);
+        if (nt->Signature != IMAGE_NT_SIGNATURE) {
+            return false;
+        }
+
+        image.end = reinterpret_cast<std::uintptr_t>(base) + size;
+        image.timestamp = nt->FileHeader.TimeDateStamp;
+
+        const auto& debug = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG];
+        if (debug.VirtualAddress > size || debug.Size > size - debug.VirtualAddress) {
+            return true;
+        }
+
+        const auto* entries = reinterpret_cast<const IMAGE_DEBUG_DIRECTORY*>(bytes + debug.VirtualAddress);
+        for (DWORD i = 0; i < debug.Size / sizeof(IMAGE_DEBUG_DIRECTORY); ++i) {
+            const auto& entry = entries[i];
+            if (entry.Type != IMAGE_DEBUG_TYPE_CODEVIEW || entry.SizeOfData < sizeof(CodeView) ||
+                entry.AddressOfRawData > size || sizeof(CodeView) > size - entry.AddressOfRawData) {
+                continue;
+            }
+
+            const auto* codeView = reinterpret_cast<const CodeView*>(bytes + entry.AddressOfRawData);
+            if (codeView->signature == CodeViewSignature) {
+                image.pdb = codeView->guid;
+                image.age = codeView->age;
+                break;
+            }
+        }
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void AddImage(void* base, const DWORD size, const wchar_t* name, std::size_t length) noexcept {
+    const std::size_t index = imageCount.fetch_add(1, std::memory_order_relaxed);
+    if (index >= images.size()) {
+        return;
+    }
+
+    auto& image = images[index];
+    if (!ReadIdentity(image, base, size)) {
+        return;
+    }
+
+    length = std::min<std::size_t>(length, image.name.size() - 1);
+    for (std::size_t i = 0; i < length; ++i) {
+        image.name[i] = name[i];
+    }
+    image.begin.store(reinterpret_cast<std::uintptr_t>(base), std::memory_order_release);
+}
+
+void RemoveImage(void* base) noexcept {
+    const auto begin = reinterpret_cast<std::uintptr_t>(base);
+    const std::size_t count = std::min<std::size_t>(imageCount.load(std::memory_order_relaxed), images.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        if (images[i].begin.load(std::memory_order_relaxed) == begin) {
+            images[i].begin.store(0, std::memory_order_release);
+        }
+    }
+}
+
+void CALLBACK ImageChanged(const ULONG reason, const LoadedImage* image, void*) noexcept {
+    if (reason == ImageLoaded && image->baseName != nullptr) {
+        AddImage(image->base, image->size, image->baseName->Buffer, image->baseName->Length / sizeof(wchar_t));
+    } else if (reason == ImageUnloaded) {
+        RemoveImage(image->base);
+    }
+}
+
+void WriteName(const wchar_t* value) noexcept {
+    while (*value != L'\0' && report.size + 4 <= report.data.size()) {
+        std::uint32_t point = *value++;
+        if (point >= 0xd800 && point <= 0xdbff && *value >= 0xdc00 && *value <= 0xdfff) {
+            point = 0x10000 + ((point - 0xd800) << 10) + (*value++ - 0xdc00);
+        } else if (point >= 0xd800 && point <= 0xdfff) {
+            point = 0xfffd;
+        }
+
+        if (point < 0x80) {
+            report.data[report.size++] = static_cast<char>(point);
+        } else if (point < 0x800) {
+            report.data[report.size++] = static_cast<char>(0xc0 | (point >> 6));
+            report.data[report.size++] = static_cast<char>(0x80 | (point & 0x3f));
+        } else if (point < 0x10000) {
+            report.data[report.size++] = static_cast<char>(0xe0 | (point >> 12));
+            report.data[report.size++] = static_cast<char>(0x80 | ((point >> 6) & 0x3f));
+            report.data[report.size++] = static_cast<char>(0x80 | (point & 0x3f));
+        } else {
+            report.data[report.size++] = static_cast<char>(0xf0 | (point >> 18));
+            report.data[report.size++] = static_cast<char>(0x80 | ((point >> 12) & 0x3f));
+            report.data[report.size++] = static_cast<char>(0x80 | ((point >> 6) & 0x3f));
+            report.data[report.size++] = static_cast<char>(0x80 | (point & 0x3f));
+        }
+    }
+}
+
+void WriteImages(const Frames& frames, const std::size_t frameCount) noexcept {
+    const std::size_t count = std::min<std::size_t>(imageCount.load(std::memory_order_acquire), images.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& image = images[i];
+        const std::uintptr_t begin = image.begin.load(std::memory_order_acquire);
+        if (begin == 0 || !Referenced(frames, frameCount, begin, image.end)) {
+            continue;
+        }
+
+        report.text("image ");
+        report.address(begin);
+        report.text(" ");
+        report.address(image.end);
+        report.text(" ");
+        report.hex(image.pdb.Data1, 8);
+        report.hex(image.pdb.Data2, 4);
+        report.hex(image.pdb.Data3, 4);
+        for (const auto byte : image.pdb.Data4) {
+            report.hex(byte, 2);
+        }
+        report.text("-");
+        report.decimal(image.age);
+        report.text(" ");
+        WriteName(image.name.data());
+        report.text("\npe ");
+        report.address(begin);
+        report.text(" ");
+        report.hex(image.timestamp, 8);
+        report.text("\n");
+    }
+}
+
+bool Unwind(CONTEXT& context) noexcept {
+    __try {
+        DWORD64 base = 0;
+        if (const auto entry = RtlLookupFunctionEntry(context.Rip, &base, nullptr)) {
+            void* data = nullptr;
+            DWORD64 frame = 0;
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, context.Rip, entry, &context, &data, &frame, nullptr);
+            return true;
+        }
+
+        SIZE_T read = 0;
+        if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(context.Rsp),
+                               &context.Rip, sizeof(context.Rip), &read) || read != sizeof(context.Rip)) {
+            return false;
+        }
+        context.Rsp += sizeof(context.Rip);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void WriteCrash(const EXCEPTION_RECORD& exception, const CONTEXT& original, const char* reason) noexcept {
+    DWORD expected = 0;
+    const DWORD thread = GetCurrentThreadId();
+    if (!crashThread.compare_exchange_strong(expected, thread, std::memory_order_relaxed)) {
+        if (expected != thread) {
+            (void)WaitForSingleObject(reportComplete, ReportWaitMilliseconds);
+        }
+        return;
+    }
+
+    CONTEXT context = original;
+    ULONG_PTR stackBottom = 0;
+    ULONG_PTR stackTop = 0;
+    GetCurrentThreadStackLimits(&stackBottom, &stackTop);
+
+    Frames frames = {};
+    std::size_t frameCount = 0;
+    while (frameCount < MaxFrames && context.Rip != 0) {
+        const DWORD64 pc = context.Rip;
+        const DWORD64 sp = context.Rsp;
+        frames[frameCount++] = static_cast<std::uintptr_t>(pc);
+        if (sp < stackBottom || sp >= stackTop || !Unwind(context) || context.Rsp < sp ||
+            (context.Rip == pc && context.Rsp == sp)) {
+            break;
+        }
+    }
+
+    const bool memoryFault = (exception.ExceptionCode == EXCEPTION_ACCESS_VIOLATION ||
+                              exception.ExceptionCode == EXCEPTION_IN_PAGE_ERROR) &&
+                             exception.NumberParameters >= 2;
+
+    FILETIME time = {};
+    GetSystemTimeAsFileTime(&time);
+    const std::uint64_t ticks = (static_cast<std::uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+
+    report.size = reportHeaderSize;
+    report.text("time ");
+    report.decimal((ticks - WindowsEpoch) / 10000000);
+    report.text("\nreason ");
+    report.text(reason);
+    report.text("\nexception ");
+    report.address(exception.ExceptionCode);
+    if (memoryFault) {
+        report.text("\naccess ");
+        report.decimal(exception.ExceptionInformation[0]);
+    }
+    report.text("\naddress ");
+    report.address(memoryFault ? static_cast<std::uintptr_t>(exception.ExceptionInformation[1])
+                               : reinterpret_cast<std::uintptr_t>(exception.ExceptionAddress));
+    report.text("\n");
+    WriteFrames(frames, frameCount);
+    WriteImages(frames, frameCount);
+
+    std::size_t written = 0;
+    while (written < report.size) {
+        DWORD result = 0;
+        if (!WriteFile(reportFile, report.data.data() + written, static_cast<DWORD>(report.size - written),
+                       &result, nullptr) || result == 0) {
+            break;
+        }
+        written += result;
+    }
+    (void)FlushFileBuffers(reportFile);
+    (void)SetEvent(reportComplete);
+}
+
+LONG WINAPI HandleException(EXCEPTION_POINTERS* exception) noexcept {
+    if (exception != nullptr && exception->ExceptionRecord != nullptr && exception->ContextRecord != nullptr) {
+        WriteCrash(*exception->ExceptionRecord, *exception->ContextRecord, "unhandled_exception");
+    }
+    return previousExceptionFilter != nullptr ? previousExceptionFilter(exception) : EXCEPTION_CONTINUE_SEARCH;
+}
+
+[[noreturn]] void Terminate(const char* reason) noexcept {
+    CONTEXT context = {};
+    RtlCaptureContext(&context);
+    EXCEPTION_RECORD exception = {};
+    exception.ExceptionCode = FatalAppExit;
+    exception.ExceptionAddress = reinterpret_cast<void*>(context.Rip);
+    WriteCrash(exception, context, reason);
+    (void)TerminateProcess(GetCurrentProcess(), FatalAppExit);
+    std::_Exit(EXIT_FAILURE);
+}
+
+void HandleTerminate() noexcept {
+    Terminate("terminate");
+}
+
+void HandleAbort(int) noexcept {
+    Terminate("abort");
+}
+
+void Uninstall() {
+    if (!crashHandlerInstalled) {
+        return;
+    }
+
+    const auto currentFilter = SetUnhandledExceptionFilter(nullptr);
+    (void)SetUnhandledExceptionFilter(currentFilter == HandleException ? previousExceptionFilter : currentFilter);
+    if (std::get_terminate() == HandleTerminate) {
+        (void)std::set_terminate(previousTerminate);
+    }
+    const auto currentAbort = std::signal(SIGABRT, previousAbort);
+    if (currentAbort != HandleAbort && currentAbort != SIG_ERR) {
+        (void)std::signal(SIGABRT, currentAbort);
+    }
+    if (notificationCookie != nullptr && unregisterNotification != nullptr) {
+        (void)unregisterNotification(notificationCookie);
+    }
+
+    if (reportFile != INVALID_HANDLE_VALUE) {
+        (void)CloseHandle(reportFile);
+    }
+    if (crashThread.load(std::memory_order_relaxed) == 0) {
+        (void)DeleteFileW(reportPath.data());
+    }
+    if (reportComplete != nullptr) {
+        (void)CloseHandle(reportComplete);
+    }
+
+    notificationCookie = nullptr;
+    reportFile = INVALID_HANDLE_VALUE;
+    reportComplete = nullptr;
+    crashHandlerInstalled = false;
+}
+
+std::string SystemString() {
+    const auto function = reinterpret_cast<VersionFunction>(
+        GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion"));
+    OSVERSIONINFOW version = {};
+    version.dwOSVersionInfoSize = sizeof(version);
+    if (function == nullptr || function(&version) != 0) {
+        return "Windows unknown";
+    }
+    return "Windows " + std::to_string(version.dwMajorVersion) + "." + std::to_string(version.dwMinorVersion) +
+           "." + std::to_string(version.dwBuildNumber);
+}
+
+Result Install(const std::filesystem::path& path) {
+    const auto& native = path.native();
+    if (native.size() >= reportPath.size()) {
+        JST_ERROR("[PLATFORM] Crash report path is too long.");
+        return Result::ERROR;
+    }
+    std::copy(native.begin(), native.end(), reportPath.begin());
+    reportPath[native.size()] = L'\0';
+
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:P(A;;GA;;;OW)", SDDL_REVISION_1, &descriptor, nullptr)) {
+        JST_ERROR("[PLATFORM] Failed to build the crash report access rules: {}", GetLastError());
+        return Result::ERROR;
+    }
+    SECURITY_ATTRIBUTES security = {sizeof(SECURITY_ATTRIBUTES), descriptor, FALSE};
+    reportFile = CreateFileW(reportPath.data(), GENERIC_WRITE, FILE_SHARE_READ, &security,
+                             CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    const DWORD fileError = GetLastError();
+    (void)LocalFree(descriptor);
+    if (reportFile == INVALID_HANDLE_VALUE) {
+        JST_ERROR("[PLATFORM] Failed to open the crash report file: {}", fileError);
+        return Result::ERROR;
+    }
+
+    reportComplete = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (reportComplete == nullptr) {
+        JST_ERROR("[PLATFORM] Failed to create the crash report event: {}", GetLastError());
+        (void)CloseHandle(reportFile);
+        reportFile = INVALID_HANDLE_VALUE;
+        (void)DeleteFileW(reportPath.data());
+        return Result::ERROR;
+    }
+
+    WriteHeader(SystemString());
+
+    const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    const auto registerNotification = reinterpret_cast<RegisterNotification>(
+        GetProcAddress(ntdll, "LdrRegisterDllNotification"));
+    unregisterNotification = reinterpret_cast<UnregisterNotification>(
+        GetProcAddress(ntdll, "LdrUnregisterDllNotification"));
+    if (registerNotification != nullptr && unregisterNotification != nullptr) {
+        (void)registerNotification(0, ImageChanged, nullptr, &notificationCookie);
+    }
+
+    const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+    if (snapshot != INVALID_HANDLE_VALUE) {
+        MODULEENTRY32W module = {};
+        module.dwSize = sizeof(module);
+        if (Module32FirstW(snapshot, &module)) {
+            do {
+                AddImage(module.modBaseAddr, module.modBaseSize, module.szModule, std::wcslen(module.szModule));
+            } while (Module32NextW(snapshot, &module));
+        }
+        (void)CloseHandle(snapshot);
+    }
+
+    previousTerminate = std::set_terminate(HandleTerminate);
+    previousAbort = std::signal(SIGABRT, HandleAbort);
+    previousExceptionFilter = SetUnhandledExceptionFilter(HandleException);
+
+    crashHandlerInstalled = true;
+    if (std::atexit(Uninstall) != 0) {
+        JST_ERROR("[PLATFORM] Failed to register the crash handler cleanup.");
+        Uninstall();
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+#else
+
+constexpr std::size_t MaxImageName = 64;
+constexpr std::size_t MaxReportPath = 1024;
+constexpr std::size_t AlternateStackSize = 128 * 1024;
+constexpr std::array<int, 6> CrashSignals = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP};
+
+struct Image {
+    std::atomic<std::uintptr_t> begin{0};
+    std::uintptr_t end = 0;
+    std::array<std::uint8_t, 16> uuid = {};
+    std::array<char, MaxImageName> name = {};
+};
+
+std::array<Image, MaxImages> images;
+std::atomic<std::size_t> imageCount{0};
+
 std::array<char, MaxReportPath> reportPath = {};
 std::array<char, AlternateStackSize> alternateStack;
 std::array<struct sigaction, CrashSignals.size()> previousActions = {};
 std::atomic_flag crashed = ATOMIC_FLAG_INIT;
-bool crashHandlerInstalled = false;
+
+U64 ProcessId() {
+    return static_cast<U64>(getpid());
+}
+
+std::filesystem::path CurrentReport() {
+    return PathFromUtf8(reportPath.data());
+}
 
 void AddImage(const mach_header* header, intptr_t) {
     const auto* base = reinterpret_cast<const mach_header_64*>(header);
@@ -159,20 +653,12 @@ void RemoveImage(const mach_header* header, intptr_t) {
     }
 }
 
-void WriteImages(const std::array<std::uintptr_t, MaxFrames>& frames, const std::size_t frameCount) noexcept {
+void WriteImages(const Frames& frames, const std::size_t frameCount) noexcept {
     const std::size_t count = imageCount.load(std::memory_order_acquire);
     for (std::size_t i = 0; i < count; ++i) {
         const auto& image = images[i];
         const std::uintptr_t begin = image.begin.load(std::memory_order_acquire);
-        if (begin == 0) {
-            continue;
-        }
-
-        bool referenced = false;
-        for (std::size_t j = 0; j < frameCount && !referenced; ++j) {
-            referenced = frames[j] >= begin && frames[j] < image.end;
-        }
-        if (!referenced) {
+        if (begin == 0 || !Referenced(frames, frameCount, begin, image.end)) {
             continue;
         }
 
@@ -215,7 +701,7 @@ void HandleCrash(const int signal, siginfo_t* info, void* context) noexcept {
     const auto stackTop = reinterpret_cast<std::uintptr_t>(pthread_get_stackaddr_np(thread));
     const std::uintptr_t stackBottom = stackTop - pthread_get_stacksize_np(thread);
 
-    std::array<std::uintptr_t, MaxFrames> frames = {};
+    Frames frames = {};
     std::size_t frameCount = 0;
     frames[frameCount++] = pc;
     while (frameCount < MaxFrames) {
@@ -251,11 +737,7 @@ void HandleCrash(const int signal, siginfo_t* info, void* context) noexcept {
     report.address(lr);
 #endif
     report.text("\n");
-    for (std::size_t i = 0; i < frameCount; ++i) {
-        report.text("frame ");
-        report.address(frames[i]);
-        report.text("\n");
-    }
+    WriteFrames(frames, frameCount);
     WriteImages(frames, frameCount);
 
     const int file = open(reportPath.data(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
@@ -276,7 +758,7 @@ void HandleCrash(const int signal, siginfo_t* info, void* context) noexcept {
     }
 }
 
-std::string SystemString(const char* name) {
+std::string SystemValue(const char* name) {
     std::array<char, 64> value = {};
     std::size_t size = value.size() - 1;
     if (sysctlbyname(name, value.data(), &size, nullptr, 0) != 0) {
@@ -285,39 +767,19 @@ std::string SystemString(const char* name) {
     return value.data();
 }
 
-}  // namespace
+std::string SystemString() {
+    return "macOS " + SystemValue("kern.osproductversion") + " " + SystemValue("kern.osversion");
+}
 
-Result InstallCrashHandler(const std::filesystem::path& directory) {
-    if (crashHandlerInstalled) {
-        return Result::SUCCESS;
-    }
-
-    std::error_code error;
-    std::filesystem::create_directories(directory, error);
-    if (error) {
-        JST_ERROR("[PLATFORM] Failed to create the crash report directory: {}", error.message());
-        return Result::ERROR;
-    }
-
-    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-    const std::string path = PathToUtf8(
-        directory / (std::to_string(now) + "-" + std::to_string(getpid()) + ".crash"));
-    if (path.size() >= reportPath.size()) {
+Result Install(const std::filesystem::path& path) {
+    const std::string native = PathToUtf8(path);
+    if (native.size() >= reportPath.size()) {
         JST_ERROR("[PLATFORM] Crash report path is too long.");
         return Result::ERROR;
     }
-    std::memcpy(reportPath.data(), path.c_str(), path.size() + 1);
+    std::memcpy(reportPath.data(), native.c_str(), native.size() + 1);
 
-    report.size = 0;
-    report.text("CyberEther Crash Report 1\nversion " JETSTREAM_VERSION_STR "-" JETSTREAM_BUILD_TYPE "\nsystem macOS ");
-    report.text(SystemString("kern.osproductversion").c_str());
-    report.text(" ");
-    report.text(SystemString("kern.osversion").c_str());
-    report.text("\narchitecture ");
-    report.text(Architecture);
-    report.text("\n");
-    reportHeaderSize = report.size;
+    WriteHeader(SystemString());
 
     _dyld_register_func_for_add_image(AddImage);
     _dyld_register_func_for_remove_image(RemoveImage);
@@ -348,18 +810,80 @@ Result InstallCrashHandler(const std::filesystem::path& directory) {
     return Result::SUCCESS;
 }
 
+#endif
+
+void PruneReports(const std::filesystem::path& directory) {
+    std::vector<std::filesystem::path> reports;
+    std::error_code error;
+    std::filesystem::directory_iterator iterator(directory, error);
+    for (; !error && iterator != std::filesystem::directory_iterator(); iterator.increment(error)) {
+        std::error_code entryError;
+        if (iterator->path().extension() != ".crash" || !iterator->is_regular_file(entryError) || entryError) {
+            continue;
+        }
+
+        if (iterator->file_size(entryError) == 0 && !entryError) {
+            std::filesystem::remove(iterator->path(), entryError);
+        } else {
+            reports.push_back(iterator->path());
+        }
+    }
+    if (reports.size() <= MaxStoredReports) {
+        return;
+    }
+
+    std::sort(reports.begin(), reports.end());
+    reports.resize(reports.size() - MaxStoredReports);
+    for (const auto& report : reports) {
+        std::filesystem::remove(report, error);
+    }
+}
+
+}  // namespace
+
+Result InstallCrashHandler(const std::filesystem::path& directory) {
+    if (crashHandlerInstalled) {
+        return Result::SUCCESS;
+    }
+
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) {
+        JST_ERROR("[PLATFORM] Failed to create the crash report directory: {}", error.message());
+        return Result::ERROR;
+    }
+    PruneReports(directory);
+
+    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    const auto path = std::filesystem::absolute(
+        directory / (std::to_string(now) + "-" + std::to_string(ProcessId()) + ".crash"), error);
+    if (error) {
+        JST_ERROR("[PLATFORM] Failed to resolve the crash report path: {}", error.message());
+        return Result::ERROR;
+    }
+
+    return Install(path);
+}
+
 Result PendingCrashReports(std::vector<std::filesystem::path>& reports) {
     reports.clear();
     if (!crashHandlerInstalled) {
         return Result::SUCCESS;
     }
 
-    const auto current = PathFromUtf8(reportPath.data());
+    const auto current = CurrentReport();
     std::error_code error;
     std::filesystem::directory_iterator iterator(current.parent_path(), error);
     for (; !error && iterator != std::filesystem::directory_iterator(); iterator.increment(error)) {
         const auto& path = iterator->path();
-        if (path.extension() == ".crash" && path != current) {
+        if (path.extension() != ".crash" || path == current) {
+            continue;
+        }
+
+        std::error_code entryError;
+        if (!iterator->is_symlink(entryError) && iterator->is_regular_file(entryError) &&
+            iterator->file_size(entryError) > 0 && !entryError) {
             reports.push_back(path);
         }
     }
