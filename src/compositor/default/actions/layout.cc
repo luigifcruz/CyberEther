@@ -98,6 +98,9 @@ Result LayoutActions::handle(const MailSetFlowgraphLayout& msg) {
     if (!tiles.has_value()) {
         return Result::SUCCESS;
     }
+    if (msg.track) {
+        JST_CHECK(trackLayout(msg.flowgraph));
+    }
     const bool known = state.layouts.contains(msg.flowgraph);
     auto& layout = state.layouts[msg.flowgraph];
     const bool changed = !known || Parser::Hash(layout) != Parser::Hash(*tiles);

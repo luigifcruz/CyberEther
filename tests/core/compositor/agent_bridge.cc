@@ -7,6 +7,7 @@
 #include "compositor/default/support/agent/executor.hh"
 #include "compositor/default/model/callbacks.hh"
 #include "compositor/default/model/state.hh"
+#include "compositor/default/model/tiles.hh"
 #include "compositor/default/presenters/settings/intelligence_model.hh"
 #include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/registry.hh"
@@ -372,6 +373,103 @@ TEST_CASE("Malformed open_example arguments return errors from the UI poll",
 
         guard.done = true;
     }
+}
+
+TEST_CASE("Tile tools list placeable tiles and arrange them through layout mail",
+          "[agent][compositor][tiles]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("source", "signal_generator", {}, {}, DeviceType::CPU,
+                                RuntimeType::NATIVE, "generic") == Result::SUCCESS);
+
+    DefaultCompositorState state;
+    state.flowgraph.items["graph"] = graph;
+    state.flowgraph.layouts["graph"] = TileMeta{.pane = "flowgraph"};
+    state.interface.focusedFlowgraph = "graph";
+
+    std::vector<Mail> mails;
+    DefaultCompositorCallbacks callbacks;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+    callbacks.enqueueCommand = [](std::function<Result()> command, bool) {
+        command();
+    };
+
+    AgentExecutor bridge(state, callbacks);
+    auto executor = bridge.bind();
+    const auto invoke = [&](const std::string& name, const std::string& args) {
+        auto future = std::async(std::launch::async, [&] {
+            return executor(name, args, {});
+        });
+        PollBridge(bridge, [&] {
+            return future.wait_for(0ms) == std::future_status::ready;
+        });
+        if (future.wait_for(0ms) != std::future_status::ready) {
+            bridge.shutdown();
+        }
+        return nlohmann::json::parse(future.get().content);
+    };
+    const auto variant = [](const Mail& mail) -> const Mail::variant& {
+        return mail;
+    };
+
+    const auto listed = invoke("inspect_tiles", "{}");
+    CHECK(listed["layout"]["tile"] == "flowgraph");
+    REQUIRE(listed["unplaced"].size() == 1);
+    CHECK(listed["unplaced"][0]["tile"] == "config:source");
+
+    const auto arranged = invoke("arrange_tiles", R"({"layout":{"split":"row","children":[
+        {"tile":"flowgraph","minimized":true},
+        {"split":"column","size":300,"children":[{"tile":"config:source"}]}]}})");
+    CHECK(arranged["opened"] == nlohmann::json::array({"config:source"}));
+    CHECK(arranged["closed"].empty());
+    REQUIRE(mails.size() == 2);
+
+    const auto* detach = std::get_if<MailSetConfigDetached>(&variant(mails[0]));
+    REQUIRE(detach != nullptr);
+    CHECK(detach->block == "source");
+    CHECK(detach->detached);
+
+    const auto* layout = std::get_if<MailSetFlowgraphLayout>(&variant(mails[1]));
+    REQUIRE(layout != nullptr);
+    CHECK(layout->track);
+    REQUIRE(layout->tiles.has_value());
+    CHECK(IsTileLayout(*layout->tiles));
+    REQUIRE(layout->tiles->children.has_value());
+    REQUIRE(layout->tiles->children->size() == 2);
+    CHECK(layout->tiles->children->at(0).minimized == true);
+    CHECK(layout->tiles->children->at(1).pane == "config:source");
+    CHECK(layout->tiles->children->at(1).size == 300.0f);
+
+    mails.clear();
+    CHECK(invoke("arrange_tiles", R"({"layout":{"tile":"surface:source:missing"}})").contains("error"));
+    CHECK(invoke("arrange_tiles", R"({"layout":{"tile":"config:source"}})").contains("error"));
+    CHECK(invoke("arrange_tiles", R"({"layout":{"split":"row","children":[
+        {"tile":"flowgraph"},{"tile":"flowgraph"}]}})").contains("error"));
+    CHECK(mails.empty());
+
+    ConfigMeta config;
+    config.detached = true;
+    REQUIRE(graph->metadata().set("config", config, "source") == Result::SUCCESS);
+    const auto closed = invoke("arrange_tiles", R"({"layout":{"tile":"flowgraph"}})");
+    CHECK(closed["closed"] == nlohmann::json::array({"config:source"}));
+    REQUIRE(mails.size() == 2);
+    const auto* attach = std::get_if<MailSetConfigDetached>(&variant(mails[0]));
+    REQUIRE(attach != nullptr);
+    CHECK_FALSE(attach->detached);
+
+    invoke("arrange_tiles", R"({"layout":{"split":"row","children":[{"tile":"flowgraph"},{"tile":"config:source"}]}})");
+    REQUIRE(mails.size() == 4);
+    const auto* reopen = std::get_if<MailSetConfigDetached>(&variant(mails[2]));
+    REQUIRE(reopen != nullptr);
+    CHECK(reopen->detached);
+
+    bridge.shutdown();
+    REQUIRE(graph->blockDestroy("source", false) == Result::SUCCESS);
+    REQUIRE(graph->destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Agent tools return fresh rendered bounds without changing automatic sizing",

@@ -1,4 +1,5 @@
 #include "executor.hh"
+#include "tiles.hh"
 
 #include "../../model/callbacks.hh"
 #include "../../model/meta.hh"
@@ -274,6 +275,13 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
                 request.finish(Agent::Tools::Error("The graph selected for this turn was closed."));
                 return;
             }
+        }
+
+        if (AgentTiles::Handles(request.name)) {
+            if (request.start()) {
+                request.finish(AgentTiles(state, callbacks).execute(target, request.name, request.args));
+            }
+            return;
         }
 
         Agent::Tools::Call call;
