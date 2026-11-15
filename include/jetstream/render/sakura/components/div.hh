@@ -22,6 +22,8 @@ struct Div : public Component {
         F32 borderWidth = 1.0f;
         bool chrome = false;
         bool shadow = false;
+        F32 shadowSoftness = 18.0f;
+        F32 shadowDrop = 6.0f;
         bool waves = false;
         bool selected = false;
         std::string colorKey = "card";

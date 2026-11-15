@@ -74,7 +74,7 @@ Sakura::ModalLayer::Config ModalView::layer() {
         .content = content(),
         .size = modalSize(),
         .closeButton = config.content != ModalContent::Feedback && config.content != ModalContent::RemoteQr &&
-                       config.content != ModalContent::Onboarding,
+                       config.content != ModalContent::Onboarding && config.content != ModalContent::FlowgraphInfo,
         .onClose = [this]() {
             if (config.onClose) {
                 config.onClose();
@@ -113,6 +113,9 @@ Sakura::Component* ModalView::content() {
 Extent2D<F32> ModalView::modalSize() const {
     if (config.content == ModalContent::Feedback) {
         return Extent2D<F32>{520.0f, 0.0f};
+    }
+    if (config.content == ModalContent::FlowgraphInfo) {
+        return Extent2D<F32>{FlowgraphInfoView::Width, 0.0f};
     }
     if (config.content == ModalContent::RemoteQr) {
         return Extent2D<F32>{460.0f, 0.0f};

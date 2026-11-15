@@ -28,8 +28,6 @@ constexpr F32 kWaveThickness = 1.3f;
 constexpr F32 kWaveAlpha = 0.25f;
 constexpr U64 kWaveCapacity = 65536;
 constexpr F32 kCornerChord = 1.0f - 1.0f / std::numbers::sqrt2_v<F32>;
-constexpr F32 kFloatShadowSoftness = 18.0f;
-constexpr F32 kFloatShadowDrop = 6.0f;
 constexpr const char* kShadowColorKey = "tile_shadow";
 
 }  // namespace
@@ -167,8 +165,8 @@ void Div::layout(const Context& ctx) {
     const bool highlighted = config.selected || (impl->hovered && impl->interactive());
     const auto key = config.selected ? config.selectedColorKey : highlighted ? config.hoveredColorKey : config.colorKey;
     const bool shadowed = config.shadow && !config.chrome;
-    const F32 softness = Px(ctx, kFloatShadowSoftness);
-    const F32 drop = Px(ctx, kFloatShadowDrop);
+    const F32 softness = Px(ctx, config.shadowSoftness);
+    const F32 drop = Px(ctx, config.shadowDrop);
     impl->shadow.setVisible(shadowed);
     impl->shadow.update({
         .instances = {{

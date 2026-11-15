@@ -28,6 +28,7 @@ Result FlowgraphConfigMultilineField::update(Config config) {
         .height = 200.0f,
         .statusTone = dirty ? Sakura::StatusTone::Info : this->config.statusTone,
         .collapsible = collapsible,
+        .language = Sakura::CodeEditor::Language::Plain,
         .backgroundColorKey = "card",
         .onChange = [this](std::string nextValue) {
             if (this->config.onDraft) {

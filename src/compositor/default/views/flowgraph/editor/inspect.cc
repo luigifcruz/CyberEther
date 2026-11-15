@@ -11,6 +11,7 @@ void FlowgraphNodeInspector::update(Config config) {
         .status = status,
         .height = Sakura::Fill,
         .statusTone = statusTone,
+        .language = Sakura::CodeEditor::Language::Yaml,
         .backgroundColorKey = "tile_bg",
         .rounding = Sakura::FloatingLayer::Rounding,
         .onChange = [this](std::string value) {

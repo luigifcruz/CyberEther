@@ -32,14 +32,23 @@ constexpr F32 kConsoleMaxHeightRatio = 0.55f;
 
 bool SameEditorConfig(const CodeEditor::Config& a, const CodeEditor::Config& b) {
     return a.id == b.id && a.value == b.value && a.fontSize == b.fontSize && a.lineNumbers == b.lineNumbers &&
-           a.showActiveLine == b.showActiveLine && a.lineWrapping == b.lineWrapping && a.language == b.language &&
+           a.showActiveLine == b.showActiveLine && a.lineWrapping == b.lineWrapping &&
+           a.scrollPastEnd == b.scrollPastEnd && a.language == b.language &&
            a.padding == b.padding && a.rounding == b.rounding && a.backgroundColorKey == b.backgroundColorKey &&
            a.fontName == b.fontName;
 }
 
 TextEditor::Language ToEditorLanguage(CodeEditor::Language language) {
-    return language == CodeEditor::Language::Markdown ? TextEditor::Language::Markdown
-                                                      : TextEditor::Language::Python;
+    switch (language) {
+        case CodeEditor::Language::Markdown:
+            return TextEditor::Language::Markdown;
+        case CodeEditor::Language::Yaml:
+            return TextEditor::Language::Yaml;
+        case CodeEditor::Language::Plain:
+            return TextEditor::Language::Plain;
+        default:
+            return TextEditor::Language::Python;
+    }
 }
 
 }  // namespace
@@ -173,9 +182,11 @@ struct CodeEditor::Impl {
             .monospace = IsMonospaceFont(config.fontName),
             .lineNumbers = config.lineNumbers,
             .showActiveLine = config.showActiveLine,
-            .wrap = config.language == Language::Markdown ? TextGrid::Wrap::Word
-                    : config.lineWrapping                ? TextGrid::Wrap::Character
-                                                         : TextGrid::Wrap::None,
+            .wrap = config.language == Language::Markdown                    ? TextGrid::Wrap::Word
+                    : !config.lineWrapping                                   ? TextGrid::Wrap::None
+                    : config.language == Language::Plain                     ? TextGrid::Wrap::Word
+                                                                             : TextGrid::Wrap::Character,
+            .scrollPastEnd = config.scrollPastEnd,
             .padding = editorPaddingPixels(),
             .language = ToEditorLanguage(config.language),
             .backgroundColorKey = config.rounding > 0.0f ? std::string("transparent") : config.backgroundColorKey,

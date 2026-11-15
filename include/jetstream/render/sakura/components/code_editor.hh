@@ -18,6 +18,8 @@ struct CodeEditor : public Component {
     enum class Language : U8 {
         Python,
         Markdown,
+        Yaml,
+        Plain,
     };
 
     using StatusTone = Sakura::StatusTone;
@@ -35,6 +37,7 @@ struct CodeEditor : public Component {
         Language language = Language::Python;
         bool lineNumbers = true;
         bool lineWrapping = false;
+        bool scrollPastEnd = true;
         bool showActiveLine = true;
         std::optional<Padding> padding;
         F32 fontSize = Typography::FontSize;

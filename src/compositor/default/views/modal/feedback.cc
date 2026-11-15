@@ -38,7 +38,7 @@ void FeedbackView::update(Config config) {
         .id = "FeedbackModalEditor",
         .value = this->config.text,
         .height = EditorHeight,
-        .language = Sakura::CodeEditor::Language::Markdown,
+        .language = Sakura::CodeEditor::Language::Plain,
         .lineNumbers = false,
         .lineWrapping = true,
         .showActiveLine = false,

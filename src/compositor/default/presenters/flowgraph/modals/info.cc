@@ -47,6 +47,9 @@ std::optional<FlowgraphInfoView::Config> FlowgraphInfoModalPresenter::build() co
         .onSave = [enqueue, flowgraphId](const std::string& filename) {
             enqueue(MailSaveFlowgraphPath{.flowgraph = flowgraphId, .path = filename});
         },
+        .onClose = [enqueue]() {
+            enqueue(MailCloseModal{});
+        },
     };
 }
 

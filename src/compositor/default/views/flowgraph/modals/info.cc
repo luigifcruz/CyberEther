@@ -3,53 +3,182 @@
 namespace Jetstream {
 
 void FlowgraphInfoView::update(Config config) {
+    using Text = Sakura::Text;
     using TextInput = Sakura::TextInput;
 
     if (this->config.flowgraphId != config.flowgraphId || this->config.path != config.path) {
         filename = config.path;
     }
+    if (this->config.flowgraphId != config.flowgraphId) {
+        previewing = false;
+    }
     this->config = std::move(config);
-    header.update({
-        .title = ICON_LC_INFO " Flowgraph Information",
-        .description = "Edit the focused flowgraph metadata and save location.",
+
+    icon.update({
+        .str = ICON_LC_INFO,
+        .colorKey = "text_primary",
+        .scale = Sakura::Typography::Scale::Heading,
     });
+    title.update({
+        .str = "Flowgraph Information",
+        .font = Text::Font::Display,
+        .scale = Sakura::Typography::Scale::Headline,
+    });
+    titleRow.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::Small,
+        .items = {
+            {.child = &icon},
+            {.child = &title},
+        },
+    });
+    description.update({
+        .str = "Describe this flowgraph and choose where it is saved.",
+        .font = Text::Font::Sans,
+        .tone = Text::Tone::Secondary,
+        .wrapped = true,
+        .scale = Sakura::Typography::Scale::Lead,
+    });
+    headerText.update({
+        .spacing = Sakura::Spacing::XSmall,
+        .items = {
+            {.child = &titleRow},
+            {.child = &description},
+        },
+    });
+    descriptionTabs.update({
+        .items = {
+            {.icon = ICON_LC_PENCIL, .label = "Write"},
+            {.icon = ICON_LC_EYE, .label = "Preview"},
+        },
+        .selected = previewing ? 1u : 0u,
+        .compact = true,
+        .track = true,
+        .onSelect = [this](U64 index) {
+            previewing = index == 1;
+        },
+    });
+    header.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::Medium,
+        .items = {
+            {.child = &headerText, .grow = 1.0f, .shrink = 1.0f},
+            {.child = &descriptionTabs},
+        },
+    });
+
     titleInput.update({
+        .icon = ICON_LC_TYPE,
         .value = this->config.title,
+        .hint = "Untitled Flowgraph",
         .submit = TextInput::Submit::OnEdit,
         .onChange = this->config.onTitleChange,
     });
     summaryInput.update({
+        .id = "FlowgraphInfoSummary",
         .value = this->config.summary,
-        .submit = TextInput::Submit::OnEdit,
-        .onChange = this->config.onSummaryChange,
+        .height = SummaryHeight - 2.0f * AreaInset,
+        .language = Sakura::CodeEditor::Language::Plain,
+        .lineNumbers = false,
+        .lineWrapping = true,
+        .scrollPastEnd = false,
+        .showActiveLine = false,
+        .padding = Sakura::Padding{8.0f, 2.0f, 8.0f, 2.0f},
+        .fontSize = InputText,
+        .fontName = Sakura::Typography::DisplayFont,
+        .backgroundColorKey = AreaFill,
+        .onChange = [this](std::string value) {
+            if (this->config.onSummaryChange) {
+                this->config.onSummaryChange(value);
+            }
+        },
+    });
+    summaryIcon.update({
+        .str = ICON_LC_TEXT,
+        .colorKey = "text_secondary",
+        .scale = InputIcon / Sakura::Typography::FontSize,
+    });
+    summaryIconInset.update({});
+    summaryIconDrop.update({});
+    summaryIconColumn.update({
+        .spacing = 0.0f,
+        .items = {
+            {.child = &summaryIconDrop, .size = 5.0f},
+            {.child = &summaryIcon},
+        },
+    });
+    summaryRow.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = 0.0f,
+        .centerCross = false,
+        .items = {
+            {.child = &summaryIconInset, .size = 8.0f},
+            {.child = &summaryIconColumn},
+            {.child = &summaryInput, .grow = 1.0f, .shrink = 1.0f},
+        },
+    });
+    summaryCard.update({
+        .content = &summaryRow,
+        .size = {Sakura::Fill, SummaryHeight},
+        .padding = AreaInset,
+        .rounding = Sakura::Rounding::Card,
+        .border = true,
+        .borderWidth = AreaBorder,
+        .chrome = true,
+        .shadow = true,
+        .shadowSoftness = AreaShadowSoftness,
+        .shadowDrop = AreaShadowDrop,
+        .colorKey = AreaFill,
+        .hoveredColorKey = AreaFill,
     });
     authorInput.update({
+        .icon = ICON_LC_USER,
         .value = this->config.author,
+        .hint = "Name or organization",
         .submit = TextInput::Submit::OnEdit,
         .onChange = this->config.onAuthorChange,
     });
     licenseInput.update({
+        .icon = ICON_LC_SCALE,
         .value = this->config.license,
+        .hint = "MIT",
         .submit = TextInput::Submit::OnEdit,
         .onChange = this->config.onLicenseChange,
     });
-    descriptionInput.update({
+    descriptionEditor.update({
+        .id = "FlowgraphInfoDescription",
         .value = this->config.description,
-        .submit = TextInput::Submit::OnEdit,
-        .multiline = true,
-        .height = 80.0f,
-        .onChange = this->config.onDescriptionChange,
+        .height = DescriptionHeight - 2.0f * AreaInset,
+        .language = Sakura::CodeEditor::Language::Markdown,
+        .lineNumbers = false,
+        .lineWrapping = true,
+        .scrollPastEnd = false,
+        .showActiveLine = false,
+        .padding = Sakura::Padding{8.0f, 6.0f, 8.0f, 6.0f},
+        .fontName = Sakura::Typography::BodyFont,
+        .backgroundColorKey = AreaFill,
+        .onChange = [this](std::string value) {
+            if (this->config.onDescriptionChange) {
+                this->config.onDescriptionChange(value);
+            }
+        },
     });
+    field(titleField, titleLabel, "Title", titleInput);
+    field(summaryField, summaryLabel, "Summary", summaryCard);
+    field(authorField, authorLabel, "Author", authorInput);
+    field(licenseField, licenseLabel, "License", licenseInput);
+
     pathInput.update({
+        .icon = ICON_LC_FILE_BRACES,
         .value = filename,
+        .hint = "/path/to/flowgraph.yml",
         .submit = TextInput::Submit::OnEdit,
         .onChange = [this](const std::string& value) {
             filename = value;
         },
     });
     browseButton.update({
-        .str = "Browse File",
-        .size = {Sakura::Fill, 0.0f},
+        .icon = ICON_LC_FOLDER_OPEN,
         .onClick = [this]() {
             if (this->config.onBrowse) {
                 this->config.onBrowse(filename, [this](std::string path) {
@@ -58,65 +187,117 @@ void FlowgraphInfoView::update(Config config) {
             }
         },
     });
-    saveButton.update({
-        .str = ICON_LC_SAVE " Save Flowgraph",
-        .size = {Sakura::Fill, 40.0f},
-        .variant = Sakura::Button::Variant::Action,
-        .onClick = [this]() {
-            if (this->config.onSave) {
-                this->config.onSave(filename);
-            }
-        },
-    });
-    divider.update({});
-    pathControls.update({
+    pathRow.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::Small,
         .items = {
-            {.child = &pathInput},
+            {.child = &pathInput, .grow = 1.0f, .shrink = 1.0f},
             {.child = &browseButton},
         },
     });
-    titleField.update({
-        .label = "Title",
-        .description = "Display title for this flowgraph.",
-        .control = &titleInput,
-    });
-    summaryField.update({
-        .label = "Summary",
-        .description = "Short one-line summary.",
-        .control = &summaryInput,
-    });
-    authorField.update({
-        .label = "Author",
-        .description = "Flowgraph author or organization.",
-        .control = &authorInput,
-    });
-    licenseField.update({
-        .label = "License",
-        .description = "License identifier for this flowgraph.",
-        .control = &licenseInput,
-    });
-    descriptionField.update({
-        .label = "Description",
-        .description = "Longer flowgraph description.",
-        .control = &descriptionInput,
+    label(pathLabel, "File");
+    pathHint.update({
+        .str = filename.empty()  ? "Choose where this flowgraph is saved."
+               : canSave()       ? "Saving writes the flowgraph to this file."
+                                 : "The file name must end in .yml or .yaml.",
+        .font = Text::Font::Sans,
+        .tone = filename.empty() || canSave() ? Text::Tone::Disabled : Text::Tone::Warning,
+        .wrapped = true,
+        .scale = Sakura::Typography::Scale::Small,
     });
     pathField.update({
-        .label = "File Path",
-        .description = "Save path for this flowgraph file.",
-        .control = &pathControls,
-        .divider = false,
-    });
-    stack.update({
+        .spacing = Sakura::Spacing::XSmall,
         .items = {
-            {.child = &header},
+            {.child = &pathLabel},
+            {.child = &pathRow},
+            {.child = &pathHint},
+        },
+    });
+    detailsColumn.update({
+        .spacing = Sakura::Spacing::Medium,
+        .items = {
             {.child = &titleField},
             {.child = &summaryField},
             {.child = &authorField},
             {.child = &licenseField},
-            {.child = &descriptionField},
             {.child = &pathField},
-            {.child = &divider},
-            {.child = &saveButton},
+        },
+    });
+
+    descriptionPreview.update({
+        .id = "FlowgraphInfoPreview",
+        .value = this->config.description.empty() ? "*Nothing to preview yet.*" : this->config.description,
+        .padding = Sakura::Padding{8.0f, 6.0f, 8.0f, 6.0f},
+        .scrollbar = true,
+    });
+    descriptionCard.update({
+        .content = previewing ? static_cast<Sakura::Component*>(&descriptionPreview)
+                              : static_cast<Sakura::Component*>(&descriptionEditor),
+        .size = {Sakura::Fill, DescriptionHeight},
+        .padding = AreaInset,
+        .rounding = Sakura::Rounding::Card,
+        .border = true,
+        .borderWidth = AreaBorder,
+        .chrome = true,
+        .shadow = true,
+        .shadowSoftness = AreaShadowSoftness,
+        .shadowDrop = AreaShadowDrop,
+        .colorKey = AreaFill,
+        .hoveredColorKey = AreaFill,
+    });
+    field(descriptionColumn, descriptionOffset, " ", descriptionCard);
+    body.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::XLarge,
+        .centerCross = false,
+        .items = {
+            {.child = &detailsColumn, .size = DetailsWidth},
+            {.child = &descriptionColumn, .grow = 1.0f, .shrink = 1.0f},
+        },
+    });
+
+    cancel.update({
+        .label = "Cancel",
+        .hoverColorKey = "chrome_button_hover",
+        .height = ButtonHeight,
+        .onClick = [this]() {
+            if (this->config.onClose) {
+                this->config.onClose();
+            }
+        },
+    });
+    save.update({
+        .icon = ICON_LC_SAVE,
+        .label = "Save Flowgraph",
+        .colorKey = "action_btn_text",
+        .backgroundColorKey = "action_btn",
+        .hoverColorKey = "action_btn_hovered",
+        .raised = true,
+        .disabled = !canSave(),
+        .height = ButtonHeight,
+        .onClick = [this]() {
+            if (canSave() && this->config.onSave) {
+                this->config.onSave(filename);
+            }
+        },
+    });
+    footerSpacer.update({});
+    footer.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::Small,
+        .items = {
+            {.child = &footerSpacer, .grow = 1.0f},
+            {.child = &cancel},
+            {.child = &save},
+        },
+    });
+
+    stack.update({
+        .spacing = Sakura::Spacing::Large,
+        .items = {
+            {.child = &header},
+            {.child = &body},
+            {.child = &footer},
         },
     });
     panel.update({
@@ -128,6 +309,37 @@ void FlowgraphInfoView::update(Config config) {
 
 Sakura::Component& FlowgraphInfoView::component() {
     return panel;
+}
+
+void FlowgraphInfoView::label(Sakura::Text& text, const std::string& name) {
+    text.update({
+        .str = name,
+        .font = Sakura::Text::Font::DisplaySemiBold,
+        .scale = LabelText / Sakura::Typography::FontSize,
+    });
+}
+
+void FlowgraphInfoView::field(Sakura::Stack& stack,
+                              Sakura::Text& text,
+                              const std::string& name,
+                              Sakura::Component& control) {
+    label(text, name);
+    stack.update({
+        .spacing = Sakura::Spacing::XSmall,
+        .items = {
+            {.child = &text},
+            {.child = &control},
+        },
+    });
+}
+
+bool FlowgraphInfoView::canSave() const {
+    for (const std::string_view extension : {".yml", ".yaml"}) {
+        if (filename.size() > extension.size() && filename.ends_with(extension)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace Jetstream

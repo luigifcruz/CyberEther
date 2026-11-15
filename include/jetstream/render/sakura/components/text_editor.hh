@@ -18,6 +18,8 @@ struct TextEditor : public Component {
     enum class Language : U8 {
         Python,
         Markdown,
+        Yaml,
+        Plain,
     };
 
     struct Config {
@@ -30,6 +32,7 @@ struct TextEditor : public Component {
         bool lineNumbers = true;
         bool showActiveLine = false;
         TextGrid::Wrap wrap = TextGrid::Wrap::None;
+        bool scrollPastEnd = true;
         std::optional<Padding> padding;
         Language language = Language::Python;
         std::string backgroundColorKey = "transparent";

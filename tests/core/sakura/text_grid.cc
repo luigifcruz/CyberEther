@@ -1739,3 +1739,50 @@ TEST_CASE("Reverting text that changed a region's font keeps the region's glyph 
     CHECK(clipOf('a')->x == Catch::Approx(40));
     CHECK(clipOf('a')->right() == Catch::Approx(160));
 }
+
+TEST_CASE("Typed brackets and quotes pair only in grids that ask for it", "[core][sakura][text-grid]") {
+    const auto typed = [](bool autoPair) {
+        auto ctx = MakeContext();
+        TextGrid grid;
+        Host host(grid);
+        std::string edited;
+        TextGrid::Config config;
+        config.id = "pairing";
+        config.editable = true;
+        config.autoPair = autoPair;
+        config.onChange = [&](std::string value) { edited = std::move(value); };
+        grid.update(config);
+        host.place(ctx, {0, 0, 200, 100});
+        grid.focus();
+        Type(host, "(");
+        Type(host, "\"");
+        return edited;
+    };
+
+    CHECK(typed(false) == "(\"");
+    CHECK(typed(true) == "(\"\")");
+
+    const auto edited = [](bool autoPair, KeyCode key) {
+        auto ctx = MakeContext();
+        TextGrid grid;
+        Host host(grid);
+        std::string value;
+        TextGrid::Config config;
+        config.id = "pairing";
+        config.value = "()";
+        config.editable = true;
+        config.autoPair = autoPair;
+        config.onChange = [&](std::string next) { value = std::move(next); };
+        grid.update(config);
+        host.place(ctx, {0, 0, 200, 100});
+        grid.focus();
+        grid.setCursor({0, 1});
+        Tap(host, key);
+        return value;
+    };
+
+    CHECK(edited(false, KeyCode::Backspace) == ")");
+    CHECK(edited(true, KeyCode::Backspace).empty());
+    CHECK(edited(false, KeyCode::Enter) == "(\n)");
+    CHECK(edited(true, KeyCode::Enter) == "(\n    \n)");
+}

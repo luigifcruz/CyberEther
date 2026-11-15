@@ -1725,7 +1725,7 @@ struct TextGrid::Impl {
     }
 
     void insertTypedCharacter(char character) {
-        if (config.masked) {
+        if (config.masked || !config.autoPair) {
             insertText(std::string(1, character));
             return;
         }
@@ -1765,7 +1765,7 @@ struct TextGrid::Impl {
         auto& line = lines[cursor.line];
         if (cursor.column > 0) {
             const auto openingIndex = kAutoPairOpenings.find(line[cursor.column - 1]);
-            const bool pair = !config.masked && openingIndex != std::string_view::npos &&
+            const bool pair = config.autoPair && !config.masked && openingIndex != std::string_view::npos &&
                               cursor.column < line.size() && line[cursor.column] == kAutoPairClosings[openingIndex];
             U64 leadingWhitespace = LeadingWhitespaceColumn(line);
             if (!config.masked && !pair && leadingWhitespace == cursor.column) {
@@ -1823,7 +1823,7 @@ struct TextGrid::Impl {
         const std::string tail = line.substr(cursor.column);
         std::string indent = line.substr(0, LeadingWhitespaceColumn(line));
 
-        if (!beforeCursor.empty() && !tail.empty() &&
+        if (config.autoPair && !beforeCursor.empty() && !tail.empty() &&
             IsBracketPair(beforeCursor.back(), tail.front()) && !suppressAutoPair(cursor)) {
             const std::string innerIndent = indent + std::string(kTabSize, ' ');
             line = beforeCursor;
@@ -1842,11 +1842,6 @@ struct TextGrid::Impl {
         }
         if (policyIndent.has_value()) {
             indent = *policyIndent;
-        } else {
-            const auto lastContent = beforeCursor.find_last_not_of(" \t");
-            if (lastContent != std::string::npos && beforeCursor[lastContent] == ':') {
-                indent += std::string(kTabSize, ' ');
-            }
         }
 
         line = beforeCursor;

@@ -59,8 +59,18 @@ constexpr std::string_view kPythonTerminalStatementKeywords[] = {
 };
 
 SyntaxHighlighter::Language SyntaxLanguage(TextEditor::Language language) {
-    return language == TextEditor::Language::Markdown ? SyntaxHighlighter::Language::Markdown
-                                                       : SyntaxHighlighter::Language::Python;
+    switch (language) {
+        case TextEditor::Language::Markdown:
+            return SyntaxHighlighter::Language::Markdown;
+        case TextEditor::Language::Yaml:
+            return SyntaxHighlighter::Language::Yaml;
+        default:
+            return SyntaxHighlighter::Language::Python;
+    }
+}
+
+bool IsCode(TextEditor::Language language) {
+    return language == TextEditor::Language::Python || language == TextEditor::Language::Yaml;
 }
 
 std::span<const std::string_view> BlockOpenerNodes(TextEditor::Language language) {
@@ -120,6 +130,7 @@ struct TextEditor::Impl {
     SyntaxHighlighter highlighter;
     U64 lastRevision = 0;
     U64 styleRevision = 0;
+    std::vector<std::vector<StyleId>> unstyled;
 
     bool styleIsCommentOrString(StyleId id) const {
         return SyntaxHighlighter::IsCommentOrString(id);
@@ -213,6 +224,9 @@ struct TextEditor::Impl {
         const auto& line = lines[cursor.line];
         const std::string beforeCursor = line.substr(0, std::min<U64>(cursor.column, line.size()));
         std::string indent = line.substr(0, LeadingWhitespaceColumn(line));
+        if (!IsCode(config.language)) {
+            return indent;
+        }
 
         if (config.language == Language::Python) {
             const U64 lead = LeadingWhitespaceColumn(beforeCursor);
@@ -251,6 +265,9 @@ struct TextEditor::Impl {
         std::pair<Position, Position> basis = less(anchor, cursor) ? std::pair{anchor, cursor}
                                                                   : std::pair{cursor, anchor};
         const bool empty = basis.first == basis.second;
+        if (config.language == Language::Plain) {
+            return std::nullopt;
+        }
 
         TSNode root;
         if (!highlighter.rootNode(lines, lastRevision, SyntaxLanguage(config.language), root)) {
@@ -308,6 +325,7 @@ void TextEditor::update(Config config) {
         .lineNumbers = impl->config.lineNumbers,
         .showActiveLine = impl->config.showActiveLine,
         .wrap = impl->config.wrap,
+        .scrollPastEnd = impl->config.scrollPastEnd,
         .padding = impl->config.padding,
         .backgroundColorKey = impl->config.backgroundColorKey,
         .textColorKey = impl->config.textColorKey,
@@ -324,9 +342,13 @@ void TextEditor::update(Config config) {
         .styleBackgroundColorKeys = impl->config.styleBackgroundColorKeys,
         .styleScales = impl->config.styleScales,
         .styleRevision = impl->styleRevision,
+        .autoPair = IsCode(impl->config.language),
         .styler = [impl = this->impl.get()](const std::vector<std::string>& lines, U64 revision)
                       -> const std::vector<std::vector<StyleId>>& {
             impl->lastRevision = revision;
+            if (impl->config.language == Language::Plain) {
+                return impl->unstyled;
+            }
             return impl->highlighter.styles(lines, revision, SyntaxLanguage(impl->config.language));
         },
         .isStyleCommentOrString = [impl = this->impl.get()](StyleId id) {

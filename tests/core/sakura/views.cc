@@ -4366,6 +4366,7 @@ TEST_CASE("Flowgraph info modal saves to the browsed path and resets it when the
     ModalRig rig;
     std::vector<std::string> saved;
     std::vector<std::string> browsed;
+    U64 closed = 0;
     FlowgraphInfoView view;
     FlowgraphInfoView::Config config{
         .flowgraphId = "a",
@@ -4376,30 +4377,56 @@ TEST_CASE("Flowgraph info modal saves to the browsed path and resets it when the
             onSelect("/flows/b.yml");
         },
         .onSave = [&](const std::string& path) { saved.push_back(path); },
+        .onClose = [&] { ++closed; },
     };
     const auto show = [&] {
         view.update(config);
-        rig.show({.content = &view.component()});
-        return Buttons(view.component());
+        rig.show({.content = &view.component(), .size = Extent2D<F32>{FlowgraphInfoView::Width, 0.0f},
+                  .closeButton = false});
+    };
+    const auto save = [&] {
+        show();
+        auto* pill = Pill(view.component(), "Save Flowgraph");
+        REQUIRE(pill != nullptr);
+        Press(rig.host, *pill);
+    };
+    const auto browse = [&] {
+        show();
+        for (auto* pill : Find<Sakura::PillButton>(view.component())) {
+            if (pill != Pill(view.component(), "Save Flowgraph") && pill != Pill(view.component(), "Cancel")) {
+                return Press(rig.host, *pill);
+            }
+        }
+        return false;
     };
 
-    auto buttons = show();
-    REQUIRE(buttons.size() == 2);
-    CHECK(Find<Sakura::TextInput>(view.component()).size() == 6);
-    CHECK(Press(rig.host, *buttons[1]));
-    CHECK(Press(rig.host, *buttons[0]));
-    buttons = show();
-    CHECK(Press(rig.host, *buttons[1]));
+    show();
+    CHECK(Buttons(view.component()).empty());
+    CHECK(Find<Sakura::PillButton>(view.component()).size() == 3);
+    CHECK(Find<Sakura::PillInput>(view.component()).size() == 4);
+    CHECK(Find<Sakura::CodeEditor>(view.component()).size() == 2);
+
+    save();
+    CHECK(browse());
     CHECK(browsed == std::vector<std::string>{"/flows/a.yml"});
+    save();
 
     config.path = "/flows/c.yml";
-    buttons = show();
-    CHECK(Press(rig.host, *buttons[1]));
+    save();
 
     config.flowgraphId = "c";
-    buttons = show();
-    CHECK(Press(rig.host, *buttons[1]));
+    save();
     CHECK(saved == std::vector<std::string>{"/flows/a.yml", "/flows/b.yml", "/flows/c.yml", "/flows/c.yml"});
+
+    config.path = "/flows/c.txt";
+    save();
+    CHECK(saved.size() == 4);
+
+    show();
+    auto* cancel = Pill(view.component(), "Cancel");
+    REQUIRE(cancel != nullptr);
+    CHECK(Press(rig.host, *cancel));
+    CHECK(closed == 1);
 }
 
 TEST_CASE("Feedback modal submits only within the length limits and while idle", "[core][sakura][views]") {

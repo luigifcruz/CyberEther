@@ -127,6 +127,7 @@ struct TextGrid : public Component {
         bool singleLine = false;
         bool selectAllOnFocus = false;
         bool masked = false;
+        bool autoPair = false;
         Callback<bool(U32)> characterFilter;
         Callback<const std::vector<std::vector<StyleId>>&(
             const std::vector<std::string>& lines, U64 revision)> styler;
