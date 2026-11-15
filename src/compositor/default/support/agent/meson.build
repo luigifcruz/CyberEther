@@ -3,4 +3,5 @@ src_lst += files([
     'mcp.cc',
     'providers.cc',
     'runtime.cc',
+    'tiles.cc',
 ])

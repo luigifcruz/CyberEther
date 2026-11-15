@@ -1,6 +1,7 @@
 #include "runtime.hh"
 
 #include "providers.hh"
+#include "tiles.hh"
 
 #include "jetstream/agent/tools.hh"
 #include "../../model/callbacks.hh"
@@ -298,7 +299,7 @@ void AgentRuntime::serve() {
         .address = settings.mcp.address,
         .port = static_cast<U16>(settings.mcp.port),
         .instructions = McpPrompt(),
-        .tools = Agent::Tools::Functions(state.agent.captureSupported),
+        .tools = Functions(state.agent.captureSupported),
         .executeTool = tools.focused(),
     }) : Result::ERROR;
 
@@ -320,7 +321,7 @@ Agent::Session::Config AgentRuntime::Chat(const DefaultCompositorState::AgentSta
         .provider = AgentProviders::Client(providers.find(settings.provider)),
         .model = settings.model,
         .systemContext = SystemPrompt(),
-        .tools = Agent::Tools::Functions(agent.captureSupported),
+        .tools = Functions(agent.captureSupported),
         .executeTool = std::move(executeTool),
     };
 
@@ -349,7 +350,7 @@ Agent::Session::Config AgentRuntime::Call(const DefaultCompositorState::AgentSta
         .provider = AgentProviders::Client(AgentProviders(agent).find(voice.backend.provider)),
         .model = voice.backend.id,
         .systemContext = SystemPrompt(),
-        .tools = Agent::Tools::Functions(agent.captureSupported),
+        .tools = Functions(agent.captureSupported),
         .executeTool = std::move(executeTool),
         .voice = {
             .model = voice.model,
@@ -357,6 +358,14 @@ Agent::Session::Config AgentRuntime::Call(const DefaultCompositorState::AgentSta
             .instructions = VoicePrompt(),
         },
     };
+}
+
+std::vector<Agent::Provider::Function> AgentRuntime::Functions(bool captureSupported) {
+    auto functions = Agent::Tools::Functions(captureSupported);
+    for (auto& function : AgentTiles::Functions()) {
+        functions.push_back(std::move(function));
+    }
+    return functions;
 }
 
 std::string AgentRuntime::SystemPrompt() {

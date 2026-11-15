@@ -677,6 +677,7 @@ struct MailSetConfigDetached {
 struct MailSetFlowgraphLayout {
     std::string flowgraph;
     std::optional<TileMeta> tiles;
+    bool track = false;
 };
 
 struct MailRemoveLayoutBlock {
