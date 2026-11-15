@@ -56,8 +56,10 @@ struct Rig {
 
 }  // namespace
 
-TEST_CASE("Crash report stays hidden when no report is pending", "[core][compositor][crash_report]") {
-    CHECK_FALSE(CrashReportActions::Detect().has_value());
+TEST_CASE("Crash report stays hidden outside official packages and when no report is pending",
+          "[core][compositor][crash_report]") {
+    CHECK_FALSE(CrashReportActions::Detect(false).has_value());
+    CHECK_FALSE(CrashReportActions::Detect(true).has_value());
 }
 
 TEST_CASE("Crash report reads a saved report and rejects missing or oversized ones",

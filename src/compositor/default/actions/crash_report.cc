@@ -7,7 +7,11 @@ CrashReportActions::CrashReportActions(DefaultCompositorState& state,
     state(state),
     callbacks(callbacks) {}
 
-std::optional<MailOpenCrashReport> CrashReportActions::Detect() {
+std::optional<MailOpenCrashReport> CrashReportActions::Detect(const bool officialPackage) {
+    if (!officialPackage) {
+        return std::nullopt;
+    }
+
     auto reports = CrashReport::Pending();
     if (reports.empty()) {
         return std::nullopt;

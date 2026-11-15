@@ -496,7 +496,7 @@ void DefaultCompositor::updateFeedbackState() {
 void DefaultCompositor::updateCrashReportState() {
     if (!crashReportChecked && !state.modal.content.has_value() && (!viewport || viewport->id() != "headless")) {
         crashReportChecked = true;
-        if (auto pending = CrashReportActions::Detect()) {
+        if (auto pending = CrashReportActions::Detect(state.update.supported)) {
             enqueue(std::move(*pending));
         }
     }

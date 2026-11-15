@@ -21,7 +21,7 @@ struct CrashReportActions {
 
     CrashReportActions(DefaultCompositorState& state,
                        DefaultCompositorCallbacks& callbacks);
-    static std::optional<MailOpenCrashReport> Detect();
+    static std::optional<MailOpenCrashReport> Detect(bool officialPackage);
     Result handle(const MailOpenCrashReport& msg);
     Result handle(const MailSubmitCrashReport&);
     Result handle(const MailDismissCrashReport&);
