@@ -4,6 +4,7 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -389,6 +390,157 @@ TEST_CASE_METHOD(TouchFixture, "Windows GLFW touch owns the pointer until a phys
     positions = Select<Render::InputQueue::Pointer>(viewport.input().drain());
     REQUIRE(positions.size() == 1);
     CHECK(positions[0].position == Extent2D<F32>{250, 260});
+}
+
+TEST_CASE_METHOD(TouchFixture, "Windows GLFW hover changes after touch release preserve momentum",
+                 "[core][render][windows][touch][native]") {
+    const bool entered = GENERATE(false, true);
+    pointer.reset();
+    InputViewport viewport;
+    GlfwInput platform(window, viewport);
+    viewport.input().drain();
+    send(WM_POINTERDOWN, {contact(1, POINTER_FLAG_DOWN, 100, 120)});
+    frame.time += 8;
+    glfwSetTime(1.008);
+    send(WM_POINTERUPDATE, {contact(1, POINTER_FLAG_UPDATE, 100, below(20))});
+    platform.poll();
+    frame.time += 8;
+    glfwSetTime(1.016);
+    send(WM_POINTERUPDATE, {contact(1, POINTER_FLAG_UPDATE, 100, below(40))});
+    platform.poll();
+    frame.time += 4;
+    glfwSetTime(1.020);
+    send(WM_POINTERUP, {contact(1, POINTER_FLAG_UP, 100, below(40))});
+    const auto released = Select<Render::InputQueue::Wheel>(viewport.input().drain());
+    REQUIRE_FALSE(released.empty());
+    REQUIRE(released.back().phase == ScrollPhase::Momentum);
+    REQUIRE(platform.animating());
+
+    if (entered) {
+        const auto callback = glfwSetCursorEnterCallback(window, nullptr);
+        REQUIRE(callback);
+        glfwSetCursorEnterCallback(window, callback);
+        callback(window, GLFW_TRUE);
+    } else {
+        SendMessageW(native, WM_MOUSELEAVE, 0, 0);
+    }
+    CHECK(platform.animating());
+    glfwSetTime(1.028);
+    platform.poll();
+    const auto afterLeave = Select<Render::InputQueue::Wheel>(viewport.input().drain());
+    REQUIRE_FALSE(afterLeave.empty());
+    CHECK(afterLeave.back().phase == ScrollPhase::Momentum);
+    CHECK(afterLeave.back().delta.y > 0.0f);
+    CHECK_FALSE(afterLeave.back().cancel);
+
+    frame.extra = 0;
+    SendMessageW(native, WM_MOUSEMOVE, 0, MAKELPARAM(250, 260));
+    const auto mouse = Select<Render::InputQueue::Wheel>(viewport.input().drain());
+    REQUIRE(mouse.size() == 1);
+    CHECK(mouse.back().phase == ScrollPhase::MomentumEnded);
+    CHECK(mouse.back().cancel);
+    CHECK_FALSE(platform.animating());
+}
+
+TEST_CASE_METHOD(TouchFixture, "Windows GLFW mouse wheel after touch release restores the pointer",
+                 "[core][render][windows][touch][native]") {
+    pointer.reset();
+    InputViewport viewport;
+    GlfwInput platform(window, viewport);
+    viewport.input().drain();
+    send(WM_POINTERDOWN, {contact(1, POINTER_FLAG_DOWN, 100, 120)});
+    frame.time += 8;
+    glfwSetTime(1.008);
+    send(WM_POINTERUPDATE, {contact(1, POINTER_FLAG_UPDATE, 100, below(20))});
+    platform.poll();
+    frame.time += 8;
+    glfwSetTime(1.016);
+    send(WM_POINTERUPDATE, {contact(1, POINTER_FLAG_UPDATE, 100, below(40))});
+    platform.poll();
+    frame.time += 4;
+    glfwSetTime(1.020);
+    send(WM_POINTERUP, {contact(1, POINTER_FLAG_UP, 100, below(40))});
+    SendMessageW(native, WM_MOUSELEAVE, 0, 0);
+    viewport.input().drain();
+    REQUIRE(platform.animating());
+
+    frame.extra = 0;
+    SendMessageW(native, WM_MOUSEWHEEL, MAKEWPARAM(0, WHEEL_DELTA), 0);
+    const auto queued = viewport.input().drain();
+    const auto positions = Select<Render::InputQueue::Pointer>(queued);
+    REQUIRE_FALSE(positions.empty());
+    CHECK(positions.back().position.has_value());
+    const auto wheels = Select<Render::InputQueue::Wheel>(queued);
+    REQUIRE(wheels.size() == 2);
+    CHECK(wheels.front().phase == ScrollPhase::MomentumEnded);
+    CHECK(wheels.front().cancel);
+    CHECK_FALSE(wheels.back().touch);
+    CHECK(wheels.back().delta.y == 1.0f);
+    CHECK_FALSE(platform.animating());
+}
+
+TEST_CASE_METHOD(TouchFixture, "Windows touch freshness tolerates one coarse clock tick across wrap",
+                 "[core][render][windows][touch][native]") {
+    frame.time = GENERATE(0u, 8u, 1000u, 0xfffffff8u, 0xffffffffu);
+    const LONG age = GENERATE(-250, -17, -16, -15, -5, -1, 0, 1, 249, 250, 251, 1000);
+    auto packet = contact(1, POINTER_FLAG_UPDATE);
+    packet.pointerInfo.dwTime = frame.time - static_cast<DWORD>(age);
+    CAPTURE(frame.time, age, packet.pointerInfo.dwTime);
+    CHECK(FreshTouch(packet.pointerInfo) == (age >= -16 && age <= 250));
+}
+
+TEST_CASE_METHOD(TouchFixture, "Windows GLFW preserves fling for the recorded device clock-skew sequence",
+                 "[core][render][windows][touch][native]") {
+    pointer.reset();
+    InputViewport viewport;
+    GlfwInput platform(window, viewport);
+    viewport.input().drain();
+    const DWORD base = GENERATE(1000u, 0xfffffff0u);
+    struct Packet {
+        DWORD arrivalTick;
+        DWORD eventTick;
+        LONG x;
+        LONG y;
+        F64 elapsed;
+    };
+    constexpr std::array<Packet, 11> packets = {{
+        {16,  0, 100, 550, 0.000000},
+        {16,  5, 107, 518, 0.000203},
+        {16, 13, 114, 476, 0.006415},
+        {16, 21, 121, 427, 0.015020},
+        {47, 32, 131, 364, 0.026134},
+        {47, 40, 145, 297, 0.033782},
+        {47, 46, 161, 226, 0.040441},
+        {63, 57, 181, 153, 0.051027},
+        {78, 65, 205,  80, 0.059626},
+        {78, 71, 229,  11, 0.065387},
+        {94, 96, 229,  11, 0.089689},
+    }};
+    for (std::size_t i = 0; i < packets.size(); ++i) {
+        const auto& packet = packets[i];
+        frame.time = base + packet.arrivalTick;
+        glfwSetTime(1.0 + packet.elapsed);
+        const bool first = i == 0;
+        const bool last = i + 1 == packets.size();
+        const UINT message = first ? WM_POINTERDOWN : last ? WM_POINTERUP : WM_POINTERUPDATE;
+        const POINTER_FLAGS flags = first ? POINTER_FLAG_DOWN : last ? POINTER_FLAG_UP : POINTER_FLAG_UPDATE;
+        auto value = contact(1, flags, packet.x, packet.y);
+        value.pointerInfo.dwTime = base + packet.eventTick;
+        send(message, {value});
+        platform.poll();
+    }
+    const auto released = Select<Render::InputQueue::Wheel>(viewport.input().drain());
+    REQUIRE_FALSE(released.empty());
+    REQUIRE(released.back().phase == ScrollPhase::Momentum);
+    REQUIRE(platform.animating());
+    glfwSetTime(1.0 + packets.back().elapsed + 1.0 / 120.0);
+    platform.poll();
+    const auto coast = Select<Render::InputQueue::Wheel>(viewport.input().drain());
+    REQUIRE(coast.size() == 1);
+    CHECK(coast.front().phase == ScrollPhase::Momentum);
+    CHECK(coast.front().delta.y < 0.0f);
+    CHECK(coast.front().touch);
+    CHECK_FALSE(coast.front().cancel);
 }
 
 TEST_CASE_METHOD(TouchFixture, "Windows GLFW touch cannot steal a held physical mouse button",

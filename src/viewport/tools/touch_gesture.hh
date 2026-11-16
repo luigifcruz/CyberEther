@@ -28,6 +28,7 @@ class TouchGesture {
     void poll(F64 now);
 
     bool active() const;
+    bool animating() const;
     bool ownsPointer() const { return pointerOwned; }
     void resumePointer();
 

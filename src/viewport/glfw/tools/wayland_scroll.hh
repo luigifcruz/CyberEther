@@ -106,6 +106,10 @@ class WaylandScroll {
         source.reset();
     }
 
+    bool animating() const {
+        return coasting;
+    }
+
  private:
     bool gesture = false;
     bool coasting = false;

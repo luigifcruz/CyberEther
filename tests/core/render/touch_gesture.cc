@@ -130,6 +130,30 @@ TEST_CASE("Touch cancellation clears pending holds and ignores late contact pack
     CHECK(touch.queue.drain().empty());
 }
 
+TEST_CASE("Touch gestures animate while a hold is pending or a fling is coasting", "[core][render][touch]") {
+    Touch hold;
+    CHECK_FALSE(hold.gesture.animating());
+    hold.send(Type::Down, 1, {30, 40});
+    CHECK(hold.gesture.animating());
+    hold.gesture.poll(1.5);
+    CHECK_FALSE(hold.gesture.animating());
+    hold.send(Type::Up, 1, {}, 2000, 2.0);
+    CHECK_FALSE(hold.gesture.animating());
+
+    Touch fling;
+    fling.send(Type::Down, 1, {10, 20});
+    fling.send(Type::Motion, 1, {18, 20}, 0xfffffff0u);
+    fling.send(Type::Motion, 1, {19, 20}, 0xfffffffau);
+    fling.send(Type::Motion, 1, {22, 24}, 4);
+    CHECK_FALSE(fling.gesture.animating());
+    fling.send(Type::Up, 1, {}, 9, 1.1);
+    CHECK(fling.gesture.animating());
+    for (U32 i = 1; i <= 2000 && fling.gesture.animating(); ++i) {
+        fling.gesture.poll(1.1 + i * 0.008);
+    }
+    CHECK_FALSE(fling.gesture.animating());
+}
+
 TEST_CASE("Touch swipes report logical deltas in scroll units and coast across timestamp wrap", "[core][render][touch]") {
     Touch touch;
     touch.send(Type::Down, 1, {10, 20});

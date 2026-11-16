@@ -19,11 +19,13 @@ class TestPlatform final : public Jetstream::Viewport::Generic::Platform {
  public:
     Jetstream::F64 time() const override { return clock; }
     void poll() override {}
+    bool animating() const override { return ticking; }
     void setCursor(Jetstream::SurfaceCursor next) override { cursor = next; }
     std::string clipboardText() const override { return clipboard; }
     void setClipboardText(const std::string& text) override { clipboard = text; }
 
     Jetstream::F64 clock = 1.0;
+    bool ticking = false;
     Jetstream::SurfaceCursor cursor = Jetstream::SurfaceCursor::Default;
     std::string clipboard;
 };

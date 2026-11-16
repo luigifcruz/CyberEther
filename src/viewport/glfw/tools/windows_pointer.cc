@@ -23,6 +23,7 @@ namespace {
 constexpr F32 PointsPerWheelUnit = 10.0f;
 constexpr F32 BaseDpi = 96.0f;
 constexpr DWORD FreshTouchTicks = 250;
+constexpr LONG TouchClockLeadTicks = 16;
 constexpr F64 FreshPollSeconds = 0.25;
 constexpr ULONG_PTR PromotedMouseMask = 0xFFFFFF80;
 constexpr ULONG_PTR PromotedTouchSignature = 0xFF515780;
@@ -32,7 +33,8 @@ F32 DpiScale(HWND window) {
 }
 
 bool FreshTouch(const POINTER_INFO& info) {
-    return GetTickCount() - info.dwTime <= FreshTouchTicks;
+    const LONG age = static_cast<LONG>(GetTickCount() - info.dwTime);
+    return age >= -TouchClockLeadTicks && age <= static_cast<LONG>(FreshTouchTicks);
 }
 
 struct ScrollSequence {
@@ -570,9 +572,13 @@ void WindowsPointer::focus(bool focused) {
 
 void WindowsPointer::poll() {
     state->polledAt = glfwGetTime();
-    if (state->ready && (state->handler->updating || state->handler->resetting)) {
+    if (animating()) {
         state->updates->Update(nullptr);
     }
+}
+
+bool WindowsPointer::animating() const {
+    return state->ready && (state->handler->updating || state->handler->resetting);
 }
 
 KeyModifiers WindowsPointer::Modifiers() {

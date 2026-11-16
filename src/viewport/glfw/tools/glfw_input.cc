@@ -386,10 +386,9 @@ struct GlfwInput::Impl {
         auto& impl = From(window);
         impl.pointerInside = entered != 0;
 #if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
-        if (impl.touchGesture.active()) {
+        if (impl.touchGesture.ownsPointer()) {
             return;
         }
-        impl.touchGesture.resumePointer();
 #endif
         impl.viewport.input().push(Render::InputQueue::Hover{entered != 0});
     }
@@ -449,6 +448,14 @@ struct GlfwInput::Impl {
 #ifdef JST_OS_LINUX
         if (impl.pointer && impl.pointer->available()) {
             return;
+        }
+#endif
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
+        if (impl.touchGesture.ownsPointer()) {
+            double cursorX = 0.0;
+            double cursorY = 0.0;
+            glfwGetCursorPos(window, &cursorX, &cursorY);
+            OnCursor(window, cursorX, cursorY);
         }
 #endif
         impl.viewport.input().push(impl.takeWheel({static_cast<F32>(x), static_cast<F32>(y)}));
@@ -639,6 +646,14 @@ void GlfwInput::poll() {
     glfwGetCursorPos(impl->window, &x, &y);
     impl->viewport.input().push(Render::InputQueue::Pointer{
         Extent2D<F32>{static_cast<F32>(x), static_cast<F32>(y)}});
+#endif
+}
+
+bool GlfwInput::animating() const {
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
+    return impl->pointer->animating() || impl->touchGesture.animating();
+#else
+    return false;
 #endif
 }
 

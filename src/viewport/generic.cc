@@ -99,6 +99,7 @@ void Generic::attachPlatform(std::unique_ptr<Platform> next) {
 
 void Generic::detachPlatform() {
     platform.reset();
+    platformAnimating = false;
     std::lock_guard lock(snapshotMutex);
     snapshot.reset();
 }
@@ -108,7 +109,12 @@ void Generic::pumpPlatform() {
         return;
     }
     platform->poll();
+    platformAnimating = platform->animating();
     refreshSnapshot();
+}
+
+bool Generic::animating() const {
+    return platformAnimating;
 }
 
 void Generic::refreshSnapshot() {

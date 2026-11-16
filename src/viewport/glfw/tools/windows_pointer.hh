@@ -32,6 +32,7 @@ class WindowsPointer {
     bool available() const;
     void focus(bool focused);
     void poll();
+    bool animating() const;
     static KeyModifiers Modifiers();
 
  private:

@@ -162,6 +162,22 @@ TEST_CASE("Wayland finger lifts coast with decaying momentum that ends once", "[
     CHECK(feed.events.size() == settled);
 }
 
+TEST_CASE("Wayland scrolling animates only while a fling is coasting", "[core][render][wayland-scroll]") {
+    ScrollFeed feed;
+    CHECK_FALSE(feed.scroll.animating());
+    feed.finger(100, 10.0f);
+    CHECK_FALSE(feed.scroll.animating());
+    feed.finger(110, 10.0f);
+    feed.finger(120, 10.0f);
+    feed.lift(125);
+    CHECK(feed.scroll.animating());
+    for (U32 i = 1; i <= 1000 && feed.scroll.animating(); ++i) {
+        feed.step(1.0 + i * 0.003);
+    }
+    CHECK_FALSE(feed.scroll.animating());
+    CHECK(feed.count(ScrollPhase::MomentumEnded) == 1);
+}
+
 TEST_CASE("Wayland finger movement after a pause releases without momentum", "[core][render][wayland-scroll]") {
     ScrollFeed feed;
     feed.finger(100, 10.0f);
