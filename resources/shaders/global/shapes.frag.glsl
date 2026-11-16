@@ -111,8 +111,9 @@ void main() {
             float topPixels = (0.5 - inLocalPos.y) / localPixel.y;
             topFade = 1.0 - smoothstep(0.0, max(2.0 * inShapeParams.z, 1.0), topPixels);
         }
-        float stroke = clamp(1.0 - abs(sdPixels + 0.5 * borderWidth) / borderWidth, 0.0, 1.0) * inBorderColor.a *
-                       topFade;
+        float inner = clamp(0.5 - (sdPixels + borderWidth), 0.0, 1.0);
+        float band = clamp((outer - inner) / max(outer, 1.0e-6), 0.0, 1.0);
+        float stroke = band * inBorderColor.a * topFade;
         vec4 fill = vec4(inFillColor.rgb * inFillColor.a, inFillColor.a);
         vec4 composed = vec4(inBorderColor.rgb * stroke, stroke) + fill * (1.0 - stroke);
         outColor = vec4(composed.rgb / max(composed.a, 1.0e-6), composed.a * outer);
