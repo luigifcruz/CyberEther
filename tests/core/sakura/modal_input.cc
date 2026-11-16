@@ -167,13 +167,13 @@ struct ModalFixture {
         Sakura::Access::settleFocus(root);
     }
 
-    void mouse(MouseEventType type, F32 x, F32 y, MouseButton button = MouseButton::Left) {
+    void mouse(MouseEventType type, F32 x, F32 y, MouseButton button = MouseButton::Left, U8 clicks = 1) {
         input.advance(0.02f);
         input.pointer = Extent2D<F32>{x, y};
         if (type == MouseEventType::Click) input.buttons[static_cast<U64>(button)] = true;
         if (type == MouseEventType::Release) input.buttons[static_cast<U64>(button)] = false;
         if (type == MouseEventType::Cancel) input.buttons.fill(false);
-        input.events.push_back(MouseEvent{.type = type, .button = button, .position = {x, y}});
+        input.events.push_back(MouseEvent{.type = type, .button = button, .position = {x, y}, .clicks = clicks});
         for (const auto& event : router.route(input, {0, 0, 800, 600}).events) {
             if (const auto* raw = std::get_if<MouseEvent>(&event)) {
                 auto pointer = *raw;
@@ -362,6 +362,121 @@ TEST_CASE("A chromeless modal with a fixed width leaves room outside its content
     CHECK(frame.x == 100);
     CHECK(frame.width == 200);
     CHECK((!clip.has_value() || (clip->x < frame.x && clip->right() > frame.right())));
+}
+
+TEST_CASE("Modal backdrops preserve integrated titlebar drag and zoom without dismissing or passing input through",
+          "[core][sakura][modal-scope][titlebar]") {
+    ModalFixture fixture;
+    const F32 scale = GENERATE(1.0f, 1.5f, 2.0f);
+    SakuraTest::FakeWindow window;
+    window.viewport.chrome = Render::TitlebarChrome{
+        .integrated = true, .leadingInset = 60.0f, .height = 40.0f, .trailingInset = 138.0f,
+    };
+    fixture.ctx.render = &window;
+    fixture.ctx.pixelRatio = scale;
+    PointerProbe background;
+    PointerProbe content;
+    Sakura::Layer base;
+    base.update({.content = &background});
+    Sakura::ModalLayer modal;
+    U64 closed = 0;
+    modal.update({.content = &content, .size = {200, 100}, .closeButton = false,
+                  .dismissOutside = true, .onClose = [&] { ++closed; }});
+    fixture.root.setLayers({&base, &modal});
+    fixture.place();
+
+    const F32 x = 100.0f * scale;
+    const F32 y = 20.0f * scale;
+    fixture.mouse(MouseEventType::Click, x, y);
+    fixture.mouse(MouseEventType::Release, x, y);
+    CHECK(window.viewport.drags == 1);
+    CHECK(window.viewport.zooms == 0);
+    CHECK(closed == 0);
+
+    fixture.mouse(MouseEventType::Click, x, y, MouseButton::Left, 2);
+    fixture.mouse(MouseEventType::Release, x, y);
+    CHECK(window.viewport.drags == 1);
+    CHECK(window.viewport.zooms == 1);
+    CHECK(closed == 0);
+
+    fixture.click(content);
+    CHECK(content.count(MouseEventType::Click) == 1);
+    CHECK(closed == 0);
+    CHECK(window.viewport.drags == 1);
+    CHECK(window.viewport.zooms == 1);
+
+    // The native controls and content below the header are not drag regions.
+    fixture.mouse(MouseEventType::Click, 10.0f * scale, y);
+    fixture.mouse(MouseEventType::Release, 10.0f * scale, y);
+    fixture.mouse(MouseEventType::Click, 790.0f, y);
+    fixture.mouse(MouseEventType::Release, 790.0f, y);
+    fixture.mouse(MouseEventType::Click, x, 40.0f * scale);
+    fixture.mouse(MouseEventType::Release, x, 40.0f * scale);
+    fixture.mouse(MouseEventType::Click, x, y, MouseButton::Right);
+    fixture.mouse(MouseEventType::Release, x, y, MouseButton::Right);
+    CHECK(closed == 4);
+    CHECK(window.viewport.drags == 1);
+    CHECK(window.viewport.zooms == 1);
+    CHECK(background.count(MouseEventType::Click) == 0);
+    CHECK(background.count(MouseEventType::Release) == 0);
+
+    modal.update({});
+    fixture.place();
+    fixture.mouse(MouseEventType::Click, x, y);
+    fixture.mouse(MouseEventType::Release, x, y);
+    CHECK(background.count(MouseEventType::Click) == 1);
+    CHECK(background.count(MouseEventType::Release) == 1);
+    CHECK(window.viewport.drags == 1);
+    CHECK(window.viewport.zooms == 1);
+}
+
+TEST_CASE("The topmost modal keeps precedence when its content overlaps the integrated titlebar",
+          "[core][sakura][modal-scope][titlebar]") {
+    ModalFixture fixture;
+    SakuraTest::FakeWindow window;
+    window.viewport.chrome = Render::TitlebarChrome{.integrated = true, .height = 40.0f};
+    fixture.ctx.render = &window;
+    PointerProbe lowerContent;
+    PointerProbe upperContent;
+    Sakura::ModalLayer lower;
+    Sakura::ModalLayer upper;
+    lower.update({.content = &lowerContent, .size = {200, 100}, .closeButton = false});
+    upper.update({.content = &upperContent, .size = {300, 600}, .closeButton = false, .chrome = false});
+    fixture.root.setLayers({&lower, &upper});
+    fixture.place();
+    fixture.mouse(MouseEventType::Click, 400, 30);
+    fixture.mouse(MouseEventType::Release, 400, 30);
+    CHECK(upperContent.count(MouseEventType::Click) == 1);
+    CHECK(lowerContent.count(MouseEventType::Click) == 0);
+    CHECK(window.viewport.drags == 0);
+    CHECK(window.viewport.zooms == 0);
+
+    fixture.mouse(MouseEventType::Click, 100, 20);
+    fixture.mouse(MouseEventType::Release, 100, 20);
+    CHECK(window.viewport.drags == 1);
+    CHECK(lowerContent.count(MouseEventType::Click) == 0);
+}
+
+TEST_CASE("Modals do not treat a non-integrated or fullscreen header as native window chrome",
+          "[core][sakura][modal-scope][titlebar]") {
+    ModalFixture fixture;
+    SakuraTest::FakeWindow window;
+    window.viewport.chrome = GENERATE(
+        Render::TitlebarChrome{.integrated = false, .height = 40.0f},
+        Render::TitlebarChrome{.integrated = true});
+    fixture.ctx.render = &window;
+    PointerProbe content;
+    Sakura::ModalLayer modal;
+    U64 closed = 0;
+    modal.update({.content = &content, .size = {200, 100}, .dismissOutside = true,
+                  .onClose = [&] { ++closed; }});
+    fixture.root.setLayers({&modal});
+    fixture.place();
+    fixture.mouse(MouseEventType::Click, 100, 20);
+    fixture.mouse(MouseEventType::Release, 100, 20);
+    CHECK(window.viewport.drags == 0);
+    CHECK(window.viewport.zooms == 0);
+    CHECK(closed == 1);
 }
 
 TEST_CASE("A modal that dismisses outside closes on outside clicks only", "[core][sakura][modal-scope]") {

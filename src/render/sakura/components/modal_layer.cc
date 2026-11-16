@@ -8,6 +8,7 @@
 
 #include "../context.hh"
 #include "../metrics.hh"
+#include "../titlebar.hh"
 #include "../detail/helpers.hh"
 #include "../detail/access.hh"
 
@@ -27,6 +28,8 @@ struct ModalLayer::Impl {
     Stack stack;
     ScrollArea scroll;
     Rect rect;
+    Rect titlebar;
+    Render::Window* render = nullptr;
     F32 fitted = 0.0f;
 
     bool scrolls() const {
@@ -131,6 +134,13 @@ void ModalLayer::layout(const Context& ctx) {
     }
     impl->rect = rect;
 
+    const Titlebar::Chrome titlebar = Titlebar::Resolve(ctx.render);
+    const F32 leading = Px(ctx, titlebar.leadingInset);
+    const F32 trailing = Px(ctx, titlebar.trailingInset);
+    impl->render = ctx.render;
+    impl->titlebar = {bounds.x + leading, bounds.y, std::max(0.0f, bounds.width - leading - trailing),
+                      Px(ctx, titlebar.height)};
+
     impl->dim.update({.instances = {{.rect = bounds, .visible = config.chrome, .backgroundColor = ctx.color("modal_dim")}}});
     layoutChild(ctx, impl->dim, bounds);
     impl->window.update({
@@ -152,7 +162,12 @@ bool ModalLayer::mouseEvent(const MouseEvent& event) {
         return true;
     }
     const bool outside = !impl->rect.contains(event.position.x, event.position.y);
-    if (impl->config.dismissOutside && outside && event.type == MouseEventType::Click && impl->config.onClose) {
+    const bool press = outside && event.type == MouseEventType::Click;
+    if (press && event.button == MouseButton::Left && impl->titlebar.contains(event.position.x, event.position.y)) {
+        Titlebar::Press(impl->render, event.clicks);
+        return true;
+    }
+    if (impl->config.dismissOutside && press && impl->config.onClose) {
         impl->config.onClose();
     }
     return true;
