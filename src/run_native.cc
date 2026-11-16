@@ -528,12 +528,6 @@ int Run(int argc, char* argv[]) {
 
     LogLevelGuard runLogLevel(_JST_LOG_DEBUG_LEVEL());
 
-#if defined(JETSTREAM_PLATFORM_CRASH_AVAILABLE)
-    if (std::string cachePath; Platform::CachePath(cachePath) == Result::SUCCESS) {
-        (void)Platform::InstallCrashHandler(Platform::PathFromUtf8(cachePath) / "crashes");
-    }
-#endif
-
     CommandType command = CommandType::Run;
     bool commandSelected = false;
     bool remoteEnabled = false;
@@ -1142,6 +1136,12 @@ int Run(int argc, char* argv[]) {
     }
 
     Platform::IgnoreBrokenPipe();
+
+#if defined(JETSTREAM_PLATFORM_CRASH_AVAILABLE)
+    if (std::string cachePath; Platform::CachePath(cachePath) == Result::SUCCESS) {
+        (void)Platform::InstallCrashHandler(Platform::PathFromUtf8(cachePath) / "crashes");
+    }
+#endif
 
     std::optional<InterruptHandlerGuard> interruptHandler;
     Platform::WorkerThread computeThread;
