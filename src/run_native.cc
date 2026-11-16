@@ -528,7 +528,7 @@ int Run(int argc, char* argv[]) {
 
     LogLevelGuard runLogLevel(_JST_LOG_DEBUG_LEVEL());
 
-#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+#if defined(JETSTREAM_PLATFORM_CRASH_AVAILABLE)
     if (std::string cachePath; Platform::CachePath(cachePath) == Result::SUCCESS) {
         (void)Platform::InstallCrashHandler(Platform::PathFromUtf8(cachePath) / "crashes");
     }

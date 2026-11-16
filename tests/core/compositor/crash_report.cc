@@ -23,7 +23,7 @@ struct Reports {
         std::filesystem::create_directories(directory);
         for (U64 i = 0; i < count; ++i) {
             paths.push_back(directory / (std::to_string(i) + ".crash"));
-            std::ofstream(paths.back()) << "CyberEther Crash Report 1\nsignal " << i << "\n";
+            std::ofstream(paths.back(), std::ios::binary) << "CyberEther Crash Report 1\nsignal " << i << "\n";
         }
     }
 

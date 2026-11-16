@@ -12,7 +12,12 @@ namespace {
 
 volatile std::uint32_t completed = 0;
 
+CRASH_MODULE_NOINLINE void CrashModuleTouch(volatile std::uint32_t* counter) {
+    *counter = *counter + 1;
+}
+
 CRASH_MODULE_NOINLINE void CrashModuleFault(volatile std::uint32_t* address) {
+    CrashModuleTouch(&completed);
     *address = 42;
 }
 

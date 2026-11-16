@@ -189,7 +189,7 @@ if jst_is_windows and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     test('core-windows-pointer', windows_pointer_tests,
          suite: 'core', is_parallel: false, timeout: 60)
 endif
-if jst_is_macos or jst_is_windows
+if cfg_lst.get('JETSTREAM_PLATFORM_CRASH_AVAILABLE', false)
     crash_module = shared_library(
         'jetstream-crash-test-module',
         'platform/crash_module.cc',
@@ -198,6 +198,8 @@ if jst_is_macos or jst_is_windows
     crash_dependencies = core_test_dependencies
     if jst_is_windows
         crash_dependencies += [cpp.find_library('dbghelp')]
+    elif jst_is_linux
+        crash_dependencies += [cpp.find_library('dl', required: false)]
     endif
     crash_tests = executable(
         'jetstream-core-crash-tests',

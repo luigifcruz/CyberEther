@@ -37,7 +37,7 @@ CrashReport::~CrashReport() {
 
 std::vector<std::filesystem::path> CrashReport::Pending() {
     std::vector<std::filesystem::path> reports;
-#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+#if defined(JETSTREAM_PLATFORM_CRASH_AVAILABLE)
     if (Platform::PendingCrashReports(reports) != Result::SUCCESS) {
         reports.clear();
     }

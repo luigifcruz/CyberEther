@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -25,29 +26,38 @@
 #undef ERROR
 #undef FATAL
 #else
+#include <cerrno>
 #include <ctime>
 
-#include <dlfcn.h>
 #include <fcntl.h>
-#include <mach-o/dyld.h>
-#include <mach-o/loader.h>
 #include <pthread.h>
 #include <signal.h>
+#include <unistd.h>
+
+#if defined(JST_OS_MAC)
+#include <dlfcn.h>
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
 #include <sys/sysctl.h>
 #include <sys/ucontext.h>
-#include <unistd.h>
+#else
+#include <elf.h>
+#include <link.h>
+#include <sys/utsname.h>
+#include <ucontext.h>
+#endif
 #endif
 
 namespace Jetstream::Platform {
 
 namespace {
 
-constexpr std::size_t MaxImages = 4096;
+[[maybe_unused]] constexpr std::size_t MaxImages = 4096;
 constexpr std::size_t MaxFrames = 128;
 constexpr std::size_t ReportCapacity = 64 * 1024;
 constexpr std::size_t MaxStoredReports = 16;
 
-#if defined(__arm64__) || defined(_M_ARM64)
+#if defined(__aarch64__) || defined(_M_ARM64)
 constexpr char Architecture[] = "arm64";
 #else
 constexpr char Architecture[] = "x86_64";
@@ -567,20 +577,26 @@ Result Install(const std::filesystem::path& path) {
 
 #else
 
-constexpr std::size_t MaxImageName = 64;
 constexpr std::size_t MaxReportPath = 1024;
 constexpr std::size_t AlternateStackSize = 128 * 1024;
 constexpr std::array<int, 6> CrashSignals = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP};
 
-struct Image {
-    std::atomic<std::uintptr_t> begin{0};
-    std::uintptr_t end = 0;
-    std::array<std::uint8_t, 16> uuid = {};
-    std::array<char, MaxImageName> name = {};
+struct Registers {
+    std::uintptr_t pc = 0;
+    std::uintptr_t fp = 0;
+    std::uintptr_t lr = 0;
 };
 
-std::array<Image, MaxImages> images;
-std::atomic<std::size_t> imageCount{0};
+#if defined(__aarch64__)
+constexpr std::uintptr_t AddressMask = (std::uintptr_t{1} << 48) - 1;
+#else
+constexpr std::uintptr_t AddressMask = ~std::uintptr_t{0};
+#endif
+
+struct FrameRecord {
+    std::uintptr_t next = 0;
+    std::uintptr_t caller = 0;
+};
 
 std::array<char, MaxReportPath> reportPath = {};
 std::array<char, AlternateStackSize> alternateStack;
@@ -594,6 +610,20 @@ U64 ProcessId() {
 std::filesystem::path CurrentReport() {
     return PathFromUtf8(reportPath.data());
 }
+
+#if defined(JST_OS_MAC)
+
+constexpr std::size_t MaxImageName = 64;
+
+struct Image {
+    std::atomic<std::uintptr_t> begin{0};
+    std::uintptr_t end = 0;
+    std::array<std::uint8_t, 16> uuid = {};
+    std::array<char, MaxImageName> name = {};
+};
+
+std::array<Image, MaxImages> images;
+std::atomic<std::size_t> imageCount{0};
 
 void AddImage(const mach_header* header, intptr_t) {
     const auto* base = reinterpret_cast<const mach_header_64*>(header);
@@ -676,6 +706,330 @@ void WriteImages(const Frames& frames, const std::size_t frameCount) noexcept {
     }
 }
 
+Registers ReadRegisters(const ucontext_t& context) noexcept {
+#if defined(__aarch64__)
+    return {
+        .pc = static_cast<std::uintptr_t>(__darwin_arm_thread_state64_get_pc(context.uc_mcontext->__ss)),
+        .fp = static_cast<std::uintptr_t>(__darwin_arm_thread_state64_get_fp(context.uc_mcontext->__ss)),
+        .lr = static_cast<std::uintptr_t>(__darwin_arm_thread_state64_get_lr(context.uc_mcontext->__ss)),
+    };
+#else
+    return {
+        .pc = static_cast<std::uintptr_t>(context.uc_mcontext->__ss.__rip),
+        .fp = static_cast<std::uintptr_t>(context.uc_mcontext->__ss.__rbp),
+    };
+#endif
+}
+
+bool ReadFrameRecord(const std::uintptr_t fp, FrameRecord& record) noexcept {
+    const pthread_t thread = pthread_self();
+    const auto stackTop = reinterpret_cast<std::uintptr_t>(pthread_get_stackaddr_np(thread));
+    const std::uintptr_t stackBottom = stackTop - pthread_get_stacksize_np(thread);
+    if (fp < stackBottom || fp > stackTop - sizeof(record)) {
+        return false;
+    }
+
+    std::memcpy(&record, reinterpret_cast<const void*>(fp), sizeof(record));
+    return true;
+}
+
+std::string SystemValue(const char* name) {
+    std::array<char, 64> value = {};
+    std::size_t size = value.size() - 1;
+    if (sysctlbyname(name, value.data(), &size, nullptr, 0) != 0) {
+        return "unknown";
+    }
+    return value.data();
+}
+
+std::string SystemString() {
+    return "macOS " + SystemValue("kern.osproductversion") + " " + SystemValue("kern.osversion");
+}
+
+Result PrepareImages() {
+    _dyld_register_func_for_add_image(AddImage);
+    _dyld_register_func_for_remove_image(RemoveImage);
+    return Result::SUCCESS;
+}
+
+#else
+
+constexpr std::size_t MaxMapLine = 1024;
+constexpr std::size_t MapChunk = 4096;
+
+struct Mapping {
+    std::uintptr_t begin = 0;
+    std::uintptr_t end = 0;
+    std::uintptr_t headerEnd = 0;
+    std::uintptr_t bias = 0;
+    std::uintptr_t imageEnd = 0;
+    const ElfW(Phdr)* segments = nullptr;
+    std::size_t segmentCount = 0;
+    bool header = false;
+    bool parsed = false;
+    std::array<char, MaxMapLine> path = {};
+};
+
+Mapping mapping;
+std::array<char, MaxMapLine> mapLine = {};
+std::array<char, MapChunk> mapChunk = {};
+std::array<int, 2> stackProbe = {-1, -1};
+
+std::size_t AlignNote(const std::size_t size, const std::size_t alignment) noexcept {
+    return (size + alignment - 1) & ~(alignment - 1);
+}
+
+bool WriteBuildId() noexcept {
+    for (std::size_t i = 0; i < mapping.segmentCount; ++i) {
+        const auto& segment = mapping.segments[i];
+        const auto start = static_cast<std::uintptr_t>(mapping.bias + segment.p_vaddr);
+        if (segment.p_type != PT_NOTE || start < mapping.begin || start > mapping.end ||
+            segment.p_memsz > mapping.end - start) {
+            continue;
+        }
+
+        const std::size_t alignment = segment.p_align == 8 ? 8 : 4;
+        const auto* cursor = reinterpret_cast<const std::uint8_t*>(start);
+        const auto* limit = cursor + segment.p_memsz;
+        while (cursor + sizeof(ElfW(Nhdr)) <= limit) {
+            const auto* note = reinterpret_cast<const ElfW(Nhdr)*>(cursor);
+            const auto* name = cursor + sizeof(ElfW(Nhdr));
+            const auto* description = name + AlignNote(note->n_namesz, alignment);
+            const auto* next = description + AlignNote(note->n_descsz, alignment);
+            if (next > limit || next <= cursor) {
+                break;
+            }
+
+            if (note->n_type == NT_GNU_BUILD_ID && note->n_namesz == 4 && note->n_descsz > 0 &&
+                std::memcmp(name, "GNU", 4) == 0) {
+                for (std::size_t j = 0; j < note->n_descsz; ++j) {
+                    report.hex(description[j], 2);
+                }
+                return true;
+            }
+            cursor = next;
+        }
+    }
+    return false;
+}
+
+void ParseMapping() noexcept {
+    if (mapping.parsed) {
+        return;
+    }
+    mapping.parsed = true;
+    mapping.bias = mapping.begin;
+    mapping.imageEnd = 0;
+    mapping.segments = nullptr;
+    mapping.segmentCount = 0;
+
+    const std::uintptr_t headerSize = mapping.headerEnd - mapping.begin;
+    const auto* header = reinterpret_cast<const ElfW(Ehdr)*>(mapping.begin);
+    if (!mapping.header || headerSize < sizeof(ElfW(Ehdr)) ||
+        std::memcmp(header->e_ident, ELFMAG, SELFMAG) != 0 || header->e_phentsize != sizeof(ElfW(Phdr)) ||
+        header->e_phoff > headerSize || header->e_phnum * sizeof(ElfW(Phdr)) > headerSize - header->e_phoff) {
+        return;
+    }
+
+    const auto* segments = reinterpret_cast<const ElfW(Phdr)*>(mapping.begin + header->e_phoff);
+    bool loaded = false;
+    for (std::size_t i = 0; i < header->e_phnum; ++i) {
+        const auto& segment = segments[i];
+        if (segment.p_type != PT_LOAD) {
+            continue;
+        }
+
+        if (!loaded) {
+            mapping.bias = mapping.begin - static_cast<std::uintptr_t>(segment.p_vaddr - segment.p_offset);
+            loaded = true;
+        }
+        mapping.imageEnd = std::max(mapping.imageEnd,
+                                    mapping.bias + static_cast<std::uintptr_t>(segment.p_vaddr + segment.p_memsz));
+    }
+    if (!loaded) {
+        return;
+    }
+
+    mapping.segments = segments;
+    mapping.segmentCount = header->e_phnum;
+}
+
+void WriteMapping(const Frames& frames, const std::size_t frameCount) noexcept {
+    if (mapping.path[0] == '\0' || !Referenced(frames, frameCount, mapping.begin, mapping.end)) {
+        return;
+    }
+
+    ParseMapping();
+    mapping.end = std::max(mapping.end, mapping.imageEnd);
+
+    const char* separator = std::strrchr(mapping.path.data(), '/');
+
+    report.text("image ");
+    report.address(mapping.begin);
+    report.text(" ");
+    report.address(mapping.end);
+    report.text(" ");
+    if (!WriteBuildId()) {
+        report.text("0");
+    }
+    report.text(" ");
+    report.text(separator != nullptr ? separator + 1 : mapping.path.data());
+    report.text("\nbias ");
+    report.address(mapping.begin);
+    report.text(" ");
+    report.address(mapping.bias);
+    report.text("\n");
+}
+
+bool ReadHex(const char*& cursor, std::uintptr_t& value) noexcept {
+    const char* start = cursor;
+    value = 0;
+    for (;; ++cursor) {
+        if (*cursor >= '0' && *cursor <= '9') {
+            value = (value << 4) | static_cast<std::uintptr_t>(*cursor - '0');
+        } else if (*cursor >= 'a' && *cursor <= 'f') {
+            value = (value << 4) | static_cast<std::uintptr_t>(*cursor - 'a' + 10);
+        } else {
+            break;
+        }
+    }
+    return cursor != start;
+}
+
+void SkipField(const char*& cursor) noexcept {
+    while (*cursor != ' ' && *cursor != '\0') {
+        ++cursor;
+    }
+    while (*cursor == ' ') {
+        ++cursor;
+    }
+}
+
+void ReadMapping(const char* line, const Frames& frames, const std::size_t frameCount) noexcept {
+    const char* cursor = line;
+    std::uintptr_t begin = 0;
+    std::uintptr_t end = 0;
+    std::uintptr_t offset = 0;
+    if (!ReadHex(cursor, begin) || *cursor != '-') {
+        return;
+    }
+    ++cursor;
+    if (!ReadHex(cursor, end) || *cursor != ' ') {
+        return;
+    }
+    ++cursor;
+    const bool readable = *cursor == 'r';
+    SkipField(cursor);
+    if (!ReadHex(cursor, offset)) {
+        return;
+    }
+    SkipField(cursor);
+    SkipField(cursor);
+    SkipField(cursor);
+
+    if (*cursor != '/' && std::strcmp(cursor, "[vdso]") != 0) {
+        return;
+    }
+    if (std::strcmp(cursor, mapping.path.data()) == 0) {
+        if (offset != 0) {
+            mapping.end = std::max(mapping.end, end);
+            return;
+        }
+
+        ParseMapping();
+        if (begin < mapping.imageEnd) {
+            mapping.end = std::max(mapping.end, end);
+            return;
+        }
+    }
+
+    WriteMapping(frames, frameCount);
+    mapping.begin = begin;
+    mapping.end = end;
+    mapping.headerEnd = end;
+    mapping.header = offset == 0 && readable;
+    mapping.parsed = false;
+    std::strncpy(mapping.path.data(), cursor, mapping.path.size() - 1);
+    mapping.path[mapping.path.size() - 1] = '\0';
+}
+
+void WriteImages(const Frames& frames, const std::size_t frameCount) noexcept {
+    const int file = open("/proc/self/maps", O_RDONLY | O_CLOEXEC);
+    if (file < 0) {
+        return;
+    }
+
+    mapping.path[0] = '\0';
+    std::size_t length = 0;
+    for (;;) {
+        const ssize_t count = read(file, mapChunk.data(), mapChunk.size());
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count <= 0) {
+            break;
+        }
+
+        for (ssize_t i = 0; i < count; ++i) {
+            if (mapChunk[i] != '\n') {
+                if (length < mapLine.size() - 1) {
+                    mapLine[length++] = mapChunk[i];
+                }
+                continue;
+            }
+
+            mapLine[length] = '\0';
+            length = 0;
+            ReadMapping(mapLine.data(), frames, frameCount);
+        }
+    }
+    WriteMapping(frames, frameCount);
+    mapping.path[0] = '\0';
+    (void)close(file);
+}
+
+Registers ReadRegisters(const ucontext_t& context) noexcept {
+#if defined(__aarch64__)
+    return {
+        .pc = static_cast<std::uintptr_t>(context.uc_mcontext.pc),
+        .fp = static_cast<std::uintptr_t>(context.uc_mcontext.regs[29]),
+        .lr = static_cast<std::uintptr_t>(context.uc_mcontext.regs[30]),
+    };
+#else
+    return {
+        .pc = static_cast<std::uintptr_t>(context.uc_mcontext.gregs[REG_RIP]),
+        .fp = static_cast<std::uintptr_t>(context.uc_mcontext.gregs[REG_RBP]),
+    };
+#endif
+}
+
+bool ReadFrameRecord(const std::uintptr_t fp, FrameRecord& record) noexcept {
+    const auto size = static_cast<ssize_t>(sizeof(record));
+    if (write(stackProbe[1], reinterpret_cast<const void*>(fp), sizeof(record)) != size) {
+        return false;
+    }
+    return read(stackProbe[0], &record, sizeof(record)) == size;
+}
+
+std::string SystemString() {
+    struct utsname kernel = {};
+    if (uname(&kernel) != 0) {
+        return "Linux unknown";
+    }
+    return std::string("Linux ") + kernel.release;
+}
+
+Result PrepareImages() {
+    if (stackProbe[0] < 0 && pipe2(stackProbe.data(), O_CLOEXEC | O_NONBLOCK) != 0) {
+        JST_ERROR("[PLATFORM] Failed to create the crash handler stack probe.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+#endif
+
 void HandleCrash(const int signal, siginfo_t* info, void* context) noexcept {
     for (std::size_t i = 0; i < CrashSignals.size(); ++i) {
         (void)sigaction(CrashSignals[i], &previousActions[i], nullptr);
@@ -687,40 +1041,23 @@ void HandleCrash(const int signal, siginfo_t* info, void* context) noexcept {
         }
     }
 
-    const auto* userContext = static_cast<const ucontext_t*>(context);
-#if defined(__arm64__)
-    const auto pc = static_cast<std::uintptr_t>(__darwin_arm_thread_state64_get_pc(userContext->uc_mcontext->__ss));
-    const auto lr = static_cast<std::uintptr_t>(__darwin_arm_thread_state64_get_lr(userContext->uc_mcontext->__ss));
-    auto fp = static_cast<std::uintptr_t>(__darwin_arm_thread_state64_get_fp(userContext->uc_mcontext->__ss));
-#else
-    const auto pc = static_cast<std::uintptr_t>(userContext->uc_mcontext->__ss.__rip);
-    auto fp = static_cast<std::uintptr_t>(userContext->uc_mcontext->__ss.__rbp);
-#endif
-
-    const pthread_t thread = pthread_self();
-    const auto stackTop = reinterpret_cast<std::uintptr_t>(pthread_get_stackaddr_np(thread));
-    const std::uintptr_t stackBottom = stackTop - pthread_get_stacksize_np(thread);
+    const Registers registers = ReadRegisters(*static_cast<const ucontext_t*>(context));
 
     Frames frames = {};
     std::size_t frameCount = 0;
-    frames[frameCount++] = pc;
+    frames[frameCount++] = registers.pc;
+    std::uintptr_t fp = registers.fp;
     while (frameCount < MaxFrames) {
-        if (fp < stackBottom || fp > stackTop - 2 * sizeof(std::uintptr_t) || fp % sizeof(std::uintptr_t) != 0) {
+        FrameRecord record;
+        if (fp % sizeof(std::uintptr_t) != 0 || !ReadFrameRecord(fp, record) || record.caller == 0) {
             break;
         }
 
-        const auto* record = reinterpret_cast<const std::uintptr_t*>(fp);
-        const std::uintptr_t next = record[0];
-        const std::uintptr_t caller = record[1];
-        if (caller == 0) {
+        frames[frameCount++] = record.caller & AddressMask;
+        if (record.next <= fp) {
             break;
         }
-
-        frames[frameCount++] = caller;
-        if (next <= fp) {
-            break;
-        }
-        fp = next;
+        fp = record.next;
     }
 
     report.size = reportHeaderSize;
@@ -732,9 +1069,9 @@ void HandleCrash(const int signal, siginfo_t* info, void* context) noexcept {
     report.decimal(static_cast<std::uint64_t>(info->si_code));
     report.text("\naddress ");
     report.address(reinterpret_cast<std::uintptr_t>(info->si_addr));
-#if defined(__arm64__)
+#if defined(__aarch64__)
     report.text("\nlr ");
-    report.address(lr);
+    report.address(registers.lr & AddressMask);
 #endif
     report.text("\n");
     WriteFrames(frames, frameCount);
@@ -758,19 +1095,6 @@ void HandleCrash(const int signal, siginfo_t* info, void* context) noexcept {
     }
 }
 
-std::string SystemValue(const char* name) {
-    std::array<char, 64> value = {};
-    std::size_t size = value.size() - 1;
-    if (sysctlbyname(name, value.data(), &size, nullptr, 0) != 0) {
-        return "unknown";
-    }
-    return value.data();
-}
-
-std::string SystemString() {
-    return "macOS " + SystemValue("kern.osproductversion") + " " + SystemValue("kern.osversion");
-}
-
 Result Install(const std::filesystem::path& path) {
     const std::string native = PathToUtf8(path);
     if (native.size() >= reportPath.size()) {
@@ -780,9 +1104,7 @@ Result Install(const std::filesystem::path& path) {
     std::memcpy(reportPath.data(), native.c_str(), native.size() + 1);
 
     WriteHeader(SystemString());
-
-    _dyld_register_func_for_add_image(AddImage);
-    _dyld_register_func_for_remove_image(RemoveImage);
+    JST_CHECK(PrepareImages());
 
     stack_t currentStack = {};
     if (sigaltstack(nullptr, &currentStack) == 0 && (currentStack.ss_flags & SS_DISABLE) != 0) {

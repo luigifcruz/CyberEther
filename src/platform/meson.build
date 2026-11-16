@@ -40,7 +40,8 @@ if jst_is_macos
     ]
 endif
 
-if jst_is_macos or jst_is_windows
+if jst_is_macos or jst_is_windows or target_machine.system().startswith('linux')
+    cfg_lst.set('JETSTREAM_PLATFORM_CRASH_AVAILABLE', true)
     src_lst += files('crash.cc')
 endif
 

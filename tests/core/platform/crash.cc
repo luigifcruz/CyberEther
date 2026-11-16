@@ -28,13 +28,19 @@
 #undef FATAL
 #else
 #include <dlfcn.h>
-#include <mach-o/dyld.h>
-#include <mach-o/loader.h>
 #include <signal.h>
 #include <spawn.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#if defined(JST_OS_MAC)
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
+#else
+#include <elf.h>
+#include <link.h>
+#endif
 
 extern char** environ;
 #endif
@@ -90,9 +96,9 @@ int Fixture(const std::string& mode, const std::filesystem::path& directory) {
     }
 
     std::string error;
-    void* library = Platform::OpenDynamicLibrary(JETSTREAM_TEST_CRASH_MODULE,
-                                                 Platform::DynamicLibraryVisibility::Local,
-                                                 error);
+    const auto visibility = mode == "isolated" ? Platform::DynamicLibraryVisibility::Isolated
+                                               : Platform::DynamicLibraryVisibility::Local;
+    void* library = Platform::OpenDynamicLibrary(JETSTREAM_TEST_CRASH_MODULE, visibility, error);
     if (library == nullptr) {
         return 13;
     }
@@ -176,9 +182,14 @@ Exit Run(const std::filesystem::path& directory, const std::string& mode) {
 #else
 
 Exit Run(const std::filesystem::path& directory, const std::string& mode) {
-    std::array<char, 4096> executable{};
-    U32 size = static_cast<U32>(executable.size());
-    REQUIRE(_NSGetExecutablePath(executable.data(), &size) == 0);
+#if defined(JST_OS_MAC)
+    std::array<char, 4096> buffer{};
+    U32 size = static_cast<U32>(buffer.size());
+    REQUIRE(_NSGetExecutablePath(buffer.data(), &size) == 0);
+    std::string executable = buffer.data();
+#else
+    std::string executable = Platform::PathToUtf8(std::filesystem::read_symlink("/proc/self/exe"));
+#endif
 
     std::string fixture = "--crash-fixture";
     std::string modeArgument = mode;
@@ -187,7 +198,7 @@ Exit Run(const std::filesystem::path& directory, const std::string& mode) {
                                       directoryArgument.data(), nullptr};
 
     pid_t process = 0;
-    REQUIRE(posix_spawn(&process, executable.data(), nullptr, nullptr, arguments.data(), environ) == 0);
+    REQUIRE(posix_spawn(&process, executable.c_str(), nullptr, nullptr, arguments.data(), environ) == 0);
     int status = 0;
     REQUIRE(waitpid(process, &status, 0) == process);
     if (WIFSIGNALED(status)) {
@@ -213,7 +224,6 @@ struct SavedReport {
     };
 
     std::string text;
-    U64 lr = 0;
     std::vector<U64> frames;
     std::vector<Image> images;
 
@@ -227,8 +237,6 @@ struct SavedReport {
                 U64 address = 0;
                 fields >> std::hex >> address;
                 frames.push_back(address);
-            } else if (key == "lr") {
-                fields >> std::hex >> lr;
             } else if (key == "image") {
                 Image image;
                 fields >> std::hex >> image.begin >> image.end >> image.identity;
@@ -325,14 +333,9 @@ std::string Symbol(const void* address) {
     return info.dli_sname;
 }
 
-void CheckSymbols(const SavedReport& saved, const SavedReport::Image& module,
-                  const std::filesystem::path& modulePath) {
-    void* library = dlopen(Platform::PathToUtf8(modulePath).c_str(), RTLD_NOW | RTLD_LOCAL);
-    REQUIRE(library != nullptr);
-    Dl_info info = {};
-    REQUIRE(dladdr(dlsym(library, "CrashModuleCompute"), &info) != 0);
-    const auto* base = static_cast<const char*>(info.dli_fbase);
+#if defined(JST_OS_MAC)
 
+std::string Identity(const Dl_info& info) {
     std::ostringstream identity;
     const auto* header = static_cast<const mach_header_64*>(info.dli_fbase);
     const auto* command = reinterpret_cast<const load_command*>(header + 1);
@@ -344,14 +347,79 @@ void CheckSymbols(const SavedReport& saved, const SavedReport::Image& module,
         }
         command = reinterpret_cast<const load_command*>(reinterpret_cast<const char*>(command) + command->cmdsize);
     }
-    CHECK(module.identity == identity.str());
+    return identity.str();
+}
 
-    CHECK(Symbol(base + (saved.frames.front() - module.begin)).find("CrashModuleFault") != std::string::npos);
-#if defined(__arm64__)
-    REQUIRE(saved.lr >= module.begin);
-    REQUIRE(saved.lr < module.end);
-    CHECK(Symbol(base + (saved.lr - module.begin)) == "CrashModuleCompute");
+#else
+
+struct IdentitySearch {
+    const void* base = nullptr;
+    std::string identity = "0";
+};
+
+int FindIdentity(dl_phdr_info* info, std::size_t, void* data) {
+    auto& search = *static_cast<IdentitySearch*>(data);
+    if (reinterpret_cast<const void*>(info->dlpi_addr) != search.base) {
+        return 0;
+    }
+
+    for (std::size_t i = 0; i < info->dlpi_phnum; ++i) {
+        const auto& segment = info->dlpi_phdr[i];
+        if (segment.p_type != PT_NOTE) {
+            continue;
+        }
+
+        const std::size_t alignment = segment.p_align == 8 ? 8 : 4;
+        const auto align = [&](const std::size_t size) {
+            return (size + alignment - 1) & ~(alignment - 1);
+        };
+        const auto* cursor = reinterpret_cast<const U8*>(info->dlpi_addr + segment.p_vaddr);
+        const auto* limit = cursor + segment.p_memsz;
+        while (cursor + sizeof(ElfW(Nhdr)) <= limit) {
+            const auto* note = reinterpret_cast<const ElfW(Nhdr)*>(cursor);
+            const auto* name = cursor + sizeof(ElfW(Nhdr));
+            const auto* description = name + align(note->n_namesz);
+            if (note->n_type == NT_GNU_BUILD_ID && note->n_namesz == 4 &&
+                std::string(reinterpret_cast<const char*>(name), 3) == "GNU") {
+                std::ostringstream identity;
+                for (std::size_t j = 0; j < note->n_descsz; ++j) {
+                    identity << std::hex << std::setfill('0') << std::setw(2) << static_cast<unsigned>(description[j]);
+                }
+                search.identity = identity.str();
+                return 1;
+            }
+            cursor = description + align(note->n_descsz);
+        }
+    }
+    return 1;
+}
+
+std::string Identity(const Dl_info& info) {
+    IdentitySearch search = {.base = info.dli_fbase};
+    dl_iterate_phdr(FindIdentity, &search);
+    return search.identity;
+}
+
 #endif
+
+void CheckSymbols(const SavedReport& saved, const SavedReport::Image& module,
+                  const std::filesystem::path& modulePath) {
+    void* library = dlopen(Platform::PathToUtf8(modulePath).c_str(), RTLD_NOW | RTLD_LOCAL);
+    REQUIRE(library != nullptr);
+    Dl_info info = {};
+    REQUIRE(dladdr(dlsym(library, "CrashModuleCompute"), &info) != 0);
+    const auto* base = static_cast<const char*>(info.dli_fbase);
+    const auto symbol = [&](const U64 address) {
+        return address >= module.begin && address < module.end ? Symbol(base + (address - module.begin))
+                                                                : std::string();
+    };
+
+    CHECK(module.identity == Identity(info));
+#if defined(JST_OS_MAC)
+    CHECK(symbol(saved.frames.front()).find("CrashModuleFault") != std::string::npos);
+#endif
+    REQUIRE(saved.frames.size() >= 2);
+    CHECK(symbol(saved.frames[1]) == "CrashModuleCompute");
     dlclose(library);
 }
 
@@ -408,7 +476,11 @@ TEST_CASE("Crash handler keeps only the newest stored reports", "[core][platform
 
 TEST_CASE("Module faults save the faulting thread stack and the matching image identity",
           "[core][platform][crash_report]") {
+#if defined(JST_OS_LINUX) && defined(__GLIBC__)
+    const auto mode = GENERATE(std::string("main"), std::string("worker"), std::string("isolated"));
+#else
     const auto mode = GENERATE(std::string("main"), std::string("worker"));
+#endif
     const Directory directory;
     REQUIRE(Run(directory.path, mode).crashed);
 

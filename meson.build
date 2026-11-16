@@ -86,6 +86,10 @@ if jst_is_macos and not get_option('debug')
     add_project_arguments('-g', language: ['cpp', 'objcpp'])
 endif
 
+if target_machine.system().startswith('linux')
+    add_project_arguments('-fno-omit-frame-pointer', language: 'cpp')
+endif
+
 cpp = meson.get_compiler('cpp')
 if cpp.has_argument('-Wno-missing-field-initializers')
     # Config aggregates intentionally rely on defaults for unspecified fields.
