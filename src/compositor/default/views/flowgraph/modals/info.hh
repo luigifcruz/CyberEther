@@ -93,6 +93,8 @@ struct FlowgraphInfoView {
     Sakura::Stack detailsColumn;
     Sakura::PillTabs descriptionTabs;
     Sakura::CodeEditor descriptionEditor;
+    Sakura::Text descriptionHint;
+    Sakura::Overlay descriptionWrite;
     Sakura::Markdown descriptionPreview;
     Sakura::Div descriptionCard;
     Sakura::Text descriptionOffset;

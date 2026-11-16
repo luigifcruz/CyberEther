@@ -224,6 +224,20 @@ void FlowgraphInfoView::update(Config config) {
         },
     });
 
+    descriptionHint.update({
+        .str = "Write a description in Markdown. It shows in the Description panel.",
+        .font = Text::Font::Body,
+        .tone = Text::Tone::Secondary,
+    });
+    std::vector<Sakura::Overlay::Item> writeItems = {{.child = &descriptionEditor}};
+    if (this->config.description.empty()) {
+        writeItems.push_back({
+            .child = &descriptionHint,
+            .anchor = Sakura::Anchor::TopLeft,
+            .offset = {AreaPadding, DescriptionPadding},
+        });
+    }
+    descriptionWrite.update({.items = std::move(writeItems)});
     descriptionPreview.update({
         .id = "FlowgraphInfoPreview",
         .value = this->config.description.empty() ? "*Nothing to preview yet.*" : this->config.description,
@@ -232,7 +246,7 @@ void FlowgraphInfoView::update(Config config) {
     });
     descriptionCard.update({
         .content = previewing ? static_cast<Sakura::Component*>(&descriptionPreview)
-                              : static_cast<Sakura::Component*>(&descriptionEditor),
+                              : static_cast<Sakura::Component*>(&descriptionWrite),
         .size = {Sakura::Fill, DescriptionHeight},
         .padding = AreaInset,
         .rounding = Sakura::Rounding::Card,
