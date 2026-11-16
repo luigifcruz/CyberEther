@@ -3730,6 +3730,69 @@ TEST_CASE("Pane header actions sit left of maximize, show their state and hover,
     CHECK(clicks == 1);
 }
 
+TEST_CASE("Minimized panes stack their minimized actions down the strip and run them without restoring",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext();
+    Probe a;
+    Probe b;
+    U64 runs = 0;
+    U64 saves = 0;
+    Dock dock;
+    Host host(dock);
+    const auto update = [&] {
+        auto paneA = MakePane("a", &a);
+        paneA.closable = false;
+        paneA.startMinimized = true;
+        paneA.actions = {{.icon = ICON_LC_SLIDERS_HORIZONTAL}};
+        paneA.minimizedActions = {
+            {.icon = ICON_LC_PLAY, .colorKey = "run_state_paused", .onClick = [&] { ++runs; }},
+            {.icon = ICON_LC_SAVE, .onClick = [&] { ++saves; }},
+        };
+        dock.update({.panes = {paneA, MakePane("b", &b)}, .columns = true, .flexPane = "b"});
+        host.place(ctx, kScreen);
+    };
+    const auto shown = [&](const std::string& icon) -> const Sakura::Text* {
+        for (auto* text : Direct<Sakura::Text>(dock)) {
+            if (text->visible() && text->config().str == icon) {
+                return text;
+            }
+        }
+        return nullptr;
+    };
+    update();
+
+    REQUIRE_FALSE(a.visible());
+    const auto* play = shown(ICON_LC_PLAY);
+    const auto* save = shown(ICON_LC_SAVE);
+    REQUIRE(play);
+    REQUIRE(save);
+    CHECK_FALSE(shown(ICON_LC_SLIDERS_HORIZONTAL));
+    const Rect playFrame = Peek::Frame(*play);
+    const Rect saveFrame = Peek::Frame(*save);
+    CHECK(playFrame.width < 32.0f);
+    CHECK(playFrame.y < saveFrame.y);
+    CHECK(playFrame.x + playFrame.width * 0.5f == Catch::Approx(saveFrame.x + saveFrame.width * 0.5f));
+    CHECK(play->config().colorKey == "run_state_paused");
+    CHECK(save->config().colorKey == "tile_header_text");
+
+    const Extent2D<F32> center = {playFrame.x + playFrame.width * 0.5f, playFrame.y + playFrame.height * 0.5f};
+    host.send(Mouse(MouseEventType::Move, center.x, center.y));
+    update();
+    CHECK(shown(ICON_LC_PLAY)->config().colorKey == "tile_button_hover");
+    host.click(center.x, center.y);
+    update();
+    CHECK(runs == 1);
+    CHECK(saves == 0);
+    CHECK_FALSE(a.visible());
+
+    host.click(center.x, saveFrame.bottom() + 120.0f);
+    update();
+    CHECK(a.visible());
+    CHECK_FALSE(shown(ICON_LC_PLAY));
+    CHECK_FALSE(shown(ICON_LC_SAVE));
+    CHECK(shown(ICON_LC_SLIDERS_HORIZONTAL));
+}
+
 TEST_CASE("Strip tab close button shows on the active or hovered tab, faint until hovered",
           "[core][sakura][dock]") {
     const auto ctx = MakeContext();

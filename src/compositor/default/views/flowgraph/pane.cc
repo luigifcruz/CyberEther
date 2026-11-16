@@ -7,6 +7,16 @@ void FlowgraphPane::update(Config config) {
     editorConfig.onLayout = std::move(config.onMeasure);
     this->config = std::move(config);
 
+    std::vector<Sakura::Dock::Action> collapsedActions = {
+        {
+            .icon = editorConfig.paused ? ICON_LC_PLAY : ICON_LC_PAUSE,
+            .colorKey = editorConfig.paused ? "run_state_paused" : "run_state_running",
+            .onClick = editorConfig.onTogglePause,
+        },
+        {.icon = ICON_LC_SAVE, .onClick = editorConfig.onSave},
+        {.icon = ICON_LC_INFO, .onClick = editorConfig.onInfo},
+    };
+
     const std::vector<std::string> flowgraphHints = {
         "Drag from output to input to connect blocks.",
         "Drag blocks to move them around.",
@@ -158,6 +168,7 @@ void FlowgraphPane::update(Config config) {
         .content = &paneOverlay,
         .closable = false,
         .padding = Sakura::Dock::ContentPadding,
+        .minimizedActions = std::move(collapsedActions),
     }};
     for (const auto& surfaceId : detachedSurfaceOrder) {
         auto& surface = detachedSurfaceViews.at(surfaceId);

@@ -49,6 +49,7 @@ constexpr F32 kHeaderPadX = 12.0f;
 constexpr F32 kHeaderButton = 20.0f;
 constexpr F32 kCloseGlyph = 13.0f;
 constexpr F32 kHeaderGlyph = 12.0f;
+constexpr F32 kStripGlyph = 13.5f;
 constexpr F32 kStripWidth = 32.0f;
 constexpr F32 kGutterBand = 12.0f;
 constexpr F32 kStripPad = 12.0f;
@@ -698,6 +699,20 @@ struct Dock::Impl {
             }
         }
         return {};
+    }
+
+    static const std::vector<Action>& shownActions(const Pane& item, bool minimized) {
+        return minimized ? item.minimizedActions : item.actions;
+    }
+
+    const char* actionColor(const LeafLayout& leaf, U64 index, const Action& action) const {
+        if (hoveredHeaderAction == std::optional<std::pair<std::string, U64>>(std::make_pair(leaf.pane, index))) {
+            return "tile_button_hover";
+        }
+        if (!action.colorKey.empty()) {
+            return action.colorKey.c_str();
+        }
+        return action.active ? "cyber_blue" : "tile_header_text";
     }
 
     const Pane* pane(const std::string& id) const {
@@ -2095,7 +2110,7 @@ void Dock::update(Config config) {
         caption(impl->tabCaptions, item.id, item.title, item.icon);
         caption(impl->headerCaptions, item.id, item.title, item.icon);
         auto& actions = impl->headerCaptions[item.id].actions;
-        actions.resize(item.actions.size());
+        actions.resize(std::max(item.actions.size(), item.minimizedActions.size()));
         for (auto& action : actions) {
             if (!action) {
                 action = std::make_unique<Text>();
@@ -2508,16 +2523,33 @@ void Dock::layout(const Context& ctx) {
             if (fullscreenable) {
                 fullscreenButton(caption, {left, leaf.tile.bottom() - margin - button, button, button});
             }
+            const F32 step = button + Px(ctx, kHeaderButtonGap);
+            F32 top = leaf.tile.y + margin;
+            const F32 bottom = leaf.tile.bottom() - margin - (fullscreenable ? step : 0.0f);
             if (closable) {
-                leaf.close = {left, leaf.tile.y + margin, button, button};
+                leaf.close = {left, top, button, button};
+                top += step;
                 if (caption) {
                     glyphButton(*caption->close, leaf.close, ICON_LC_X,
                                 s.hoveredHeaderClose == leaf.pane ? "tile_button_hover" : "tile_header_text",
                                 kHeaderGlyph);
                 }
             }
+            if (item) {
+                const auto& actions = Impl::shownActions(*item, leaf.minimized);
+                for (U64 index = 0; index < actions.size() && top + button <= bottom; ++index) {
+                    const Rect rect = {left, top, button, button};
+                    top += step;
+                    leaf.actions.push_back(rect);
+                    if (caption && index < caption->actions.size()) {
+                        glyphButton(*caption->actions[index], rect, actions[index].icon.c_str(),
+                                    s.actionColor(leaf, index, actions[index]), kStripGlyph);
+                    }
+                }
+            }
             if (caption) {
-                const F32 reserve = std::max(Px(ctx, kStripPad), margin + button + Px(ctx, kHeaderButtonGap));
+                const F32 reserve = std::max({Px(ctx, kStripPad), margin + button + Px(ctx, kHeaderButtonGap),
+                                              top - leaf.tile.y});
                 const F32 room = std::max(0.0f, leaf.tile.height - 2.0f * reserve);
                 const F32 spineSize = Px(ctx, kStripTitleSize);
                 const std::string spine = Fit(s.metrics, caption->title, spineSize, room, kHeaderFont);
@@ -2575,18 +2607,15 @@ void Dock::layout(const Context& ctx) {
                                 kHeaderGlyph);
                 }
             }
-            if (item && !leaf.minimized) {
-                for (U64 index = 0; index < item->actions.size(); ++index) {
-                    const auto& action = item->actions[index];
+            if (item) {
+                const auto& actions = Impl::shownActions(*item, leaf.minimized);
+                for (U64 index = 0; index < actions.size() && right - button >= leaf.tile.x + inset; ++index) {
                     const Rect rect = {right - button, buttonY, button, button};
                     right = rect.x - Px(ctx, kHeaderButtonGap);
                     leaf.actions.push_back(rect);
                     if (caption && index < caption->actions.size()) {
-                        const bool hovered = s.hoveredHeaderAction ==
-                                             std::optional<std::pair<std::string, U64>>(std::make_pair(leaf.pane, index));
-                        glyphButton(*caption->actions[index], rect, action.icon.c_str(),
-                                    hovered ? "tile_button_hover" : action.active ? "cyber_blue" : "tile_header_text",
-                                    kHeaderGlyph);
+                        glyphButton(*caption->actions[index], rect, actions[index].icon.c_str(),
+                                    s.actionColor(leaf, index, actions[index]), kHeaderGlyph);
                     }
                 }
             }
@@ -3131,8 +3160,11 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                 for (const auto& leaf : s.leaves) {
                     if (leaf.pane == s.pressPane && s.pressAction < leaf.actions.size() &&
                         leaf.actions[s.pressAction].contains(point.x, point.y)) {
-                        if (const auto* item = s.pane(leaf.pane); item && s.pressAction < item->actions.size()) {
-                            onClick = item->actions[s.pressAction].onClick;
+                        if (const auto* item = s.pane(leaf.pane)) {
+                            const auto& actions = Impl::shownActions(*item, leaf.minimized);
+                            if (s.pressAction < actions.size()) {
+                                onClick = actions[s.pressAction].onClick;
+                            }
                         }
                     }
                 }

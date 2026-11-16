@@ -45,6 +45,7 @@ struct Dock : public Component {
 
     struct Action {
         std::string icon;
+        std::string colorKey;
         bool active = false;
         Callback<void()> onClick;
 
@@ -72,6 +73,7 @@ struct Dock : public Component {
         Callback<void()> onClose;
         Callback<void()> onFocus;
         std::vector<Action> actions;
+        std::vector<Action> minimizedActions;
 
         bool operator==(const Pane&) const = default;
     };
