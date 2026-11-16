@@ -69,6 +69,7 @@ struct TextGrid : public Component {
 
     struct WidthLayout {
         std::vector<F32> lineIndent;
+        std::vector<F32> lineNaturalIndent;
         std::vector<F32> lineWrapWidth;
         std::vector<RowMode> lineRowMode;
         F32 contentMinWidth = 0.0f;

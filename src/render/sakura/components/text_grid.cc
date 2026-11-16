@@ -352,6 +352,10 @@ struct TextGrid::Impl {
         const auto& indents = lineIndents();
         return line < indents.size() ? indents[line] : 0.0f;
     }
+    F32 lineNaturalIndentAt(U64 line) const {
+        const auto& natural = resolvedWidthLayout.lineNaturalIndent;
+        return config.widthLayout && line < natural.size() ? natural[line] : lineIndentAt(line);
+    }
     RowMode lineRowModeAt(U64 line) const {
         const auto& modes = config.widthLayout ? resolvedWidthLayout.lineRowMode : config.lineRowMode;
         return line < modes.size() ? modes[line] : RowMode::Next;
@@ -983,7 +987,7 @@ struct TextGrid::Impl {
         for (const auto& row : visualRows) {
             const F32 width = rowContentWidth(row);
             const F32 trailing = width > 0.0f ? lineTrailingMarginPixels(row.line) : 0.0f;
-            widest = std::max(widest, rowContentLeft(row) + width + lineRightInsetAt(row.line) + trailing);
+            widest = std::max(widest, lineNaturalIndentAt(row.line) + width + lineRightInsetAt(row.line) + trailing);
         }
         return (textLeftPixels() - rect.x) + widest + paddingPixels().right + scrollbarGutterPixels();
     }

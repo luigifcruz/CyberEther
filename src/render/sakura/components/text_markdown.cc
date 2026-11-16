@@ -299,6 +299,7 @@ struct Table {
     std::vector<TableCell> cells;
     std::vector<F32> columnX;
     F32 width = 0.0f;
+    F32 minWidth = 0.0f;
     F32 inset = 0.0f;
 
     const TableCell& cell(U64 row, U64 column) const { return cells[row * columns + column]; }
@@ -1888,6 +1889,8 @@ struct TextMarkdown::Impl {
     struct DecorationPools {
         std::vector<Box::Instance> boxes;
         std::vector<Box::Instance> tableBoxes;
+        std::vector<Box::Instance> tableFills;
+        std::vector<Box::Instance> tableFrames;
         std::vector<Box::Instance> codeBoxes;
         std::array<std::vector<Box::Instance>, kCalloutTones> callouts;
         std::vector<Label::Instance> markers;
@@ -1896,6 +1899,7 @@ struct TextMarkdown::Impl {
 
         bool full() const {
             return boxes.size() >= kMaxDecorations || tableBoxes.size() >= kMaxDecorations ||
+                   tableFills.size() >= kMaxDecorations || tableFrames.size() >= kMaxDecorations ||
                    codeBoxes.size() >= kMaxDecorations || markers.size() >= kMaxDecorations ||
                    headers.size() >= kMaxDecorations;
         }
@@ -1905,7 +1909,9 @@ struct TextMarkdown::Impl {
     TextGrid grid;
     std::array<Box, kCalloutTones> calloutChrome;
     Box codeChrome;
+    Box tableFill;
     Box tableChrome;
+    Box tableFrame;
     Box decorations;
     Label markers;
     Label headers;
@@ -1941,6 +1947,7 @@ struct TextMarkdown::Impl {
         stats = document().stats;
         tablesLayout = {
             .lineIndent = document().lineIndent,
+            .lineNaturalIndent = document().lineIndent,
             .lineWrapWidth = document().lineWrapWidth,
             .lineRowMode = document().lineRowMode,
         };
@@ -2138,7 +2145,7 @@ struct TextMarkdown::Impl {
     F32 widestTableWidth() const {
         F32 widest = 0.0f;
         for (const auto& table : tables) {
-            widest = std::max(widest, table.width + 2.0f * table.inset);
+            widest = std::max(widest, table.minWidth + 2.0f * table.inset);
         }
         return widest;
     }
@@ -2181,7 +2188,20 @@ struct TextMarkdown::Impl {
                 table.cells[i].width = cellNaturalWidth(table.cells[i]);
                 columnWidths[i % table.columns] = std::max(columnWidths[i % table.columns], table.cells[i].width);
             }
-            shrinkColumns(columnWidths, available - 2.0f * padX * static_cast<F32>(table.columns), minColumn);
+            const F32 room = available - 2.0f * padX * static_cast<F32>(table.columns);
+            shrinkColumns(columnWidths, room, minColumn);
+            F32 natural = 0.0f;
+            for (const F32 w : columnWidths) {
+                natural += w;
+            }
+            table.minWidth = natural + 2.0f * padX * static_cast<F32>(table.columns);
+            const std::vector<F32> naturalWidths = columnWidths;
+            if (bounded && natural > 0.0f && room > natural) {
+                const F32 grow = room / natural;
+                for (auto& w : columnWidths) {
+                    w *= grow;
+                }
+            }
 
             table.columnX.assign(table.columns + 1, 0.0f);
             for (U64 c = 0; c < table.columns; ++c) {
@@ -2193,20 +2213,25 @@ struct TextMarkdown::Impl {
             }
             table.width = table.columnX[table.columns];
 
+            const auto shift = [&](F32 cellWidth, F32 columnWidth, U64 column) {
+                if (cellWidth > columnWidth || table.aligns[column] < 0) {
+                    return 0.0f;
+                }
+                return table.aligns[column] == 0 ? (columnWidth - cellWidth) * 0.5f : columnWidth - cellWidth;
+            };
+            F32 naturalX = 0.0f;
             for (U64 i = 0; i < table.cells.size(); ++i) {
                 const auto& cell = table.cells[i];
                 const U64 c = i % table.columns;
-                const F32 columnWidth = columnWidths[c];
-                F32 shift = 0.0f;
-                if (cell.width <= columnWidth) {
-                    if (table.aligns[c] == 0) {
-                        shift = (columnWidth - cell.width) * 0.5f;
-                    } else if (table.aligns[c] > 0) {
-                        shift = columnWidth - cell.width;
-                    }
+                if (c == 0) {
+                    naturalX = 0.0f;
                 }
-                tablesLayout.lineIndent[cell.line] = table.inset + table.columnX[c] + padX + shift;
-                tablesLayout.lineWrapWidth[cell.line] = columnWidth + kTableWrapSlack;
+                tablesLayout.lineIndent[cell.line] =
+                    table.inset + table.columnX[c] + padX + shift(cell.width, columnWidths[c], c);
+                tablesLayout.lineNaturalIndent[cell.line] =
+                    table.inset + naturalX + padX + shift(cell.width, naturalWidths[c], c);
+                tablesLayout.lineWrapWidth[cell.line] = columnWidths[c] + kTableWrapSlack;
+                naturalX += naturalWidths[c] + 2.0f * padX;
             }
         }
     }
@@ -2238,6 +2263,7 @@ struct TextMarkdown::Impl {
                 tile.x = static_cast<F32>(column) * (grid.tileWidth + gap);
                 for (U64 line = tile.first; line <= tile.last; ++line) {
                     tablesLayout.lineIndent[line] = grid.inset + tile.x + pad;
+                    tablesLayout.lineNaturalIndent[line] = tablesLayout.lineIndent[line];
                     tablesLayout.lineWrapWidth[line] = std::max(1.0f, grid.tileWidth - 2.0f * pad);
                     if (line == tile.first) {
                         tablesLayout.lineRowMode[line] = i == 0 || column == 0 ? TextGrid::RowMode::Next
@@ -2683,11 +2709,21 @@ struct TextMarkdown::Impl {
         };
 
         const F32 headerBottom = table.rows > 1 ? frame.lineTop(table.cell(1, 0).line) - halfRowPad : bottom;
-        if (headerBottom > visibleTop && top < visibleBottom) {
-            const F32 fillTop = std::max(top, visibleTop);
-            push({left, fillTop, table.width, std::min(headerBottom, visibleBottom) - fillTop}, frame.codeBackground);
+        if (pools.tableFills.size() < kMaxDecorations) {
+            pools.tableFills.push_back({
+                .rect = {left - border * 0.5f, top - border * 0.5f, table.width + border, headerBottom - top + border * 0.5f},
+                .visible = frame.on,
+                .backgroundColor = frame.codeBackground,
+                .corners = table.rows > 1 ? static_cast<U8>(Box::TopLeft | Box::TopRight) : Box::AllCorners,
+            });
         }
-        horizontal(top);
+        if (pools.tableFrames.size() < kMaxDecorations) {
+            pools.tableFrames.push_back({
+                .rect = Inflate(Rect{left, top, table.width, bottom - top}, border * 0.5f),
+                .visible = frame.on,
+                .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f},
+            });
+        }
         for (U64 r = 1; r < table.rows; ++r) {
             const F32 y = frame.lineTop(table.cell(r, 0).line) - halfRowPad;
             if (y > visibleBottom) {
@@ -2695,8 +2731,7 @@ struct TextMarkdown::Impl {
             }
             horizontal(y);
         }
-        horizontal(bottom);
-        for (U64 c = 0; c <= table.columns; ++c) {
+        for (U64 c = 1; c < table.columns; ++c) {
             push({left + table.columnX[c] - border * 0.5f, visibleTop, border, visibleBottom - visibleTop}, frame.rule);
         }
     }
@@ -2798,9 +2833,25 @@ struct TextMarkdown::Impl {
             .strokeFringe = true,
             .capacity = kMaxDecorations,
         });
+        const F32 tableRadius = std::max(1.0f, frame.body * kCalloutRadiusRatio);
+        tableFill.update({
+            .instances = std::move(pools.tableFills),
+            .clip = frame.clip,
+            .cornerRadius = tableRadius,
+            .capacity = kMaxDecorations,
+        });
         tableChrome.update({
             .instances = std::move(pools.tableBoxes),
             .clip = frame.clip,
+            .capacity = kMaxDecorations,
+        });
+        tableFrame.update({
+            .instances = std::move(pools.tableFrames),
+            .clip = frame.clip,
+            .cornerRadius = tableRadius,
+            .borderWidth = std::max(1.0f, frame.body * kTableBorderRatio),
+            .borderColor = frame.rule,
+            .strokeFringe = true,
             .capacity = kMaxDecorations,
         });
         decorations.update({
@@ -2877,7 +2928,9 @@ TextMarkdown::TextMarkdown() {
         addChild(chrome);
     }
     addChild(this->impl->codeChrome);
+    addChild(this->impl->tableFill);
     addChild(this->impl->tableChrome);
+    addChild(this->impl->tableFrame);
     addChild(this->impl->decorations);
     addChild(this->impl->grid);
     addChild(this->impl->markers);
@@ -2982,7 +3035,9 @@ void TextMarkdown::layout(const Context& ctx) {
         layoutChild(ctx, chrome, bounds);
     }
     layoutChild(ctx, impl->codeChrome, bounds);
+    layoutChild(ctx, impl->tableFill, bounds);
     layoutChild(ctx, impl->tableChrome, bounds);
+    layoutChild(ctx, impl->tableFrame, bounds);
     layoutChild(ctx, impl->decorations, bounds);
     layoutChild(ctx, impl->markers, bounds);
     layoutChild(ctx, impl->headers, bounds);

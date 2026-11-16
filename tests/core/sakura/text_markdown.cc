@@ -811,6 +811,64 @@ TEST_CASE("Horizontal overflow shows a draggable scrollbar without vertical over
     CHECK(markdown.metrics().scrollX == Catch::Approx(36.0f));
 }
 
+TEST_CASE("Tables stretch their columns across the laid out width but measure at their natural width",
+          "[core][sakura][markdown]") {
+    const auto ctx = MakeContext();
+    TextMarkdown markdown;
+    Host host(markdown);
+    markdown.update({.id = "fill", .value = "| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |", .fontSize = 15.0f});
+
+    host.place(ctx, {0.0f, 0.0f, 156.0f, 200.0f});
+    const auto snug = DrawnRect(markdown, "c");
+    REQUIRE(snug.has_value());
+    CHECK(snug->right() < 156.0f);
+
+    host.place(ctx, {0.0f, 0.0f, 400.0f, 200.0f});
+    const auto first = DrawnRect(markdown, "a");
+    const auto last = DrawnRect(markdown, "c");
+    REQUIRE(first.has_value());
+    REQUIRE(last.has_value());
+    CHECK(first->x < 20.0f);
+    CHECK(last->x > 400.0f * 2.0f / 3.0f);
+    CHECK(markdown.metrics().scrollX == 0.0f);
+
+    CHECK(MeasureAt(host, ctx, 400.0f).x == Catch::Approx(156.0f));
+    CHECK(markdown.naturalWidth() == Catch::Approx(156.0f));
+}
+
+TEST_CASE("Tables draw a rounded outer frame over a header fill rounded only at the top",
+          "[core][sakura][markdown]") {
+    const auto ctx = MakeContext();
+    TextMarkdown markdown;
+    Host host(markdown);
+    markdown.update({.id = "rounded", .value = "| a | b |\n|---|---|\n| 1 | 2 |", .fontSize = 15.0f});
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+
+    const Sakura::Box* frame = nullptr;
+    const Sakura::Box* fill = nullptr;
+    for (const auto* box : Find<Sakura::Box>(markdown)) {
+        const auto& config = box->config();
+        if (config.instances.size() != 1 || config.cornerRadius <= 1.0f) {
+            continue;
+        }
+        if (config.borderWidth > 0.0f && config.instances[0].backgroundColor.a == 0.0f) {
+            frame = box;
+        } else if (config.borderWidth == 0.0f && config.instances[0].corners != Sakura::Box::AllCorners) {
+            fill = box;
+        }
+    }
+    REQUIRE(frame);
+    REQUIRE(fill);
+    const Jetstream::Rect outer = frame->config().instances[0].rect;
+    const Jetstream::Rect header = fill->config().instances[0].rect;
+    CHECK(fill->config().instances[0].corners == (Sakura::Box::TopLeft | Sakura::Box::TopRight));
+    CHECK(header.x == Catch::Approx(outer.x));
+    CHECK(header.y == Catch::Approx(outer.y));
+    CHECK(header.width == Catch::Approx(outer.width));
+    CHECK(header.bottom() < outer.bottom());
+    CHECK(outer.width > 250.0f);
+}
+
 TEST_CASE("Measuring after layout leaves the live table geometry in place", "[core][sakura][markdown]") {
     const auto ctx = MakeContext();
     TextMarkdown markdown;
