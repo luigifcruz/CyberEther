@@ -18,6 +18,7 @@ DefaultActions::DefaultActions(DefaultCompositorState& state, DefaultCompositorC
     metrics = std::make_shared<MetricActions>(state.flowgraph);
     feedback = std::make_shared<FeedbackActions>(state, callbacks);
     onboarding = std::make_shared<OnboardingActions>(state);
+    crashReport = std::make_shared<CrashReportActions>(state, callbacks);
     agent = std::make_shared<AgentActions>(state, callbacks, runtime);
     gallery = std::make_shared<GalleryActions>(state);
     terminals = std::make_shared<TerminalActions>(state, callbacks);
@@ -85,6 +86,9 @@ Result DefaultActions::handle(const Mail& mail) {
         return result;
     }
     if (Handle(*onboarding, mail, result)) {
+        return result;
+    }
+    if (Handle(*crashReport, mail, result)) {
         return result;
     }
     if (Handle(*agent, mail, result)) {

@@ -61,6 +61,11 @@ void ModalView::update(Config config) {
             onboardingView.update(std::move(viewConfig));
             break;
         }
+        case ModalContent::CrashReport: {
+            auto viewConfig = this->config.crashReport;
+            crashReportView.update(std::move(viewConfig));
+            break;
+        }
     }
 
     previousContent = this->config.content;
@@ -74,7 +79,8 @@ Sakura::ModalLayer::Config ModalView::layer() {
         .content = content(),
         .size = modalSize(),
         .closeButton = config.content != ModalContent::Feedback && config.content != ModalContent::RemoteQr &&
-                       config.content != ModalContent::Onboarding && config.content != ModalContent::FlowgraphInfo,
+                       config.content != ModalContent::Onboarding && config.content != ModalContent::FlowgraphInfo &&
+                       config.content != ModalContent::CrashReport,
         .onClose = [this]() {
             if (config.onClose) {
                 config.onClose();
@@ -106,6 +112,8 @@ Sakura::Component* ModalView::content() {
             return nullptr;
         case ModalContent::Onboarding:
             return &onboardingView.component();
+        case ModalContent::CrashReport:
+            return &crashReportView.component();
     }
     return nullptr;
 }
@@ -125,6 +133,9 @@ Extent2D<F32> ModalView::modalSize() const {
     }
     if (config.content == ModalContent::Onboarding) {
         return OnboardingView::Size();
+    }
+    if (config.content == ModalContent::CrashReport) {
+        return Extent2D<F32>{CrashReportView::Width, 0.0f};
     }
     return Sakura::ModalLayer::Config{}.size;
 }

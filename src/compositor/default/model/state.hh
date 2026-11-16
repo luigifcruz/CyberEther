@@ -31,6 +31,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <future>
 #include <map>
 #include <memory>
@@ -414,6 +415,12 @@ struct DefaultCompositorState {
         std::string text;
     };
 
+    struct CrashReportState {
+        std::vector<std::filesystem::path> reports;
+        std::string preview;
+        bool submitting = false;
+    };
+
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;
@@ -432,6 +439,7 @@ struct DefaultCompositorState {
     MapsState maps;
     FilePickerState filePicker;
     FeedbackState feedback;
+    CrashReportState crashReport;
 
     bool startTabShown() const;
     bool tabShown(WorkspaceTab tab) const;

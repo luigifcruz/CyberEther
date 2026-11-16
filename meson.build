@@ -76,6 +76,18 @@ if jst_is_windows
         '/D_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING',
         language: 'cpp',
     )
+    if not get_option('debug')
+        add_project_arguments('/Z7', language: 'cpp')
+        add_project_link_arguments('/DEBUG:FULL', '/OPT:REF', '/OPT:ICF', language: 'cpp')
+    endif
+endif
+
+if jst_is_macos and not get_option('debug')
+    add_project_arguments('-g', language: ['cpp', 'objcpp'])
+endif
+
+if target_machine.system().startswith('linux')
+    add_project_arguments('-fno-omit-frame-pointer', language: 'cpp')
 endif
 
 cpp = meson.get_compiler('cpp')

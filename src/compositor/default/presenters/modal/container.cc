@@ -10,16 +10,21 @@ ModalPresenter::ModalPresenter(const PresenterContext& context) : context(contex
                                                                   feedback(context),
                                                                   onboarding(context),
                                                                   remoteQr(context),
-                                                                  docsSearch(context) {}
+                                                                  docsSearch(context),
+                                                                  crashReport(context) {}
 
 ModalView::Config ModalPresenter::build() const {
     const auto enqueue = context.callbacks.enqueueMail;
 
     ModalView::Config config;
     config.content = context.state.modal.content;
-    config.onClose = [enqueue, onboarding = config.content == ModalContent::Onboarding]() {
+    config.onClose = [enqueue,
+                      onboarding = config.content == ModalContent::Onboarding,
+                      crashReport = config.content == ModalContent::CrashReport]() {
         if (onboarding) {
             enqueue(MailDismissOnboarding{});
+        } else if (crashReport) {
+            enqueue(MailDismissCrashReport{});
         } else {
             enqueue(MailCloseModal{});
         }
@@ -55,6 +60,9 @@ ModalView::Config ModalPresenter::build() const {
             break;
         case ModalContent::Onboarding:
             config.onboarding = onboarding.build();
+            break;
+        case ModalContent::CrashReport:
+            config.crashReport = crashReport.build();
             break;
     }
 

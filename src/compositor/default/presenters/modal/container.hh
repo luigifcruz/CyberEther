@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_CONTAINER_HH
 
 #include "benchmark.hh"
+#include "crash_report.hh"
 #include "dependencies.hh"
 #include "docs_search.hh"
 #include "feedback.hh"
@@ -27,6 +28,7 @@ struct ModalPresenter {
     OnboardingModalPresenter onboarding;
     RemoteQrModalPresenter remoteQr;
     DocsSearchModalPresenter docsSearch;
+    CrashReportModalPresenter crashReport;
 
     explicit ModalPresenter(const PresenterContext& context);
     ModalView::Config build() const;

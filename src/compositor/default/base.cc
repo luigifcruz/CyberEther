@@ -72,6 +72,9 @@ DefaultCompositor::DefaultCompositor() :
         .submitFeedback = [this](const std::string& text) {
             feedback.submit(text);
         },
+        .submitCrashReports = [this](const std::vector<std::filesystem::path>& reports) {
+            crashReport.submit(reports);
+        },
     },
     agent(state, callbacks),
     actions(state, callbacks, agent),
@@ -248,6 +251,7 @@ Result DefaultCompositor::destroy() {
     actions.shutdownMaps();
     updater.shutdown();
     feedback.shutdown();
+    crashReport.shutdown();
     if (Settings::Flush() != Result::SUCCESS) {
         JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Failed to save settings during shutdown. Continuing cleanup.");
     }
@@ -323,6 +327,7 @@ Result DefaultCompositor::poll() {
     actions.reconcileTerminals();
     actions.reconcileMaps();
     updateFeedbackState();
+    updateCrashReportState();
 
     // Build view configs while flowgraph access is confined to poll.
 
@@ -486,6 +491,35 @@ void DefaultCompositor::updateFeedbackState() {
             }
             break;
     }
+}
+
+void DefaultCompositor::updateCrashReportState() {
+    if (!crashReportChecked && !state.modal.content.has_value() && (!viewport || viewport->id() != "headless")) {
+        crashReportChecked = true;
+        if (auto pending = CrashReportActions::Detect(state.update.supported)) {
+            enqueue(std::move(*pending));
+        }
+    }
+
+    if (!state.crashReport.submitting) {
+        return;
+    }
+
+    const auto snapshot = crashReport.snapshot();
+    switch (snapshot.status) {
+        case CrashReport::Snapshot::Status::Idle:
+        case CrashReport::Snapshot::Status::Submitting:
+            return;
+        case CrashReport::Snapshot::Status::Success:
+            callbacks.notify(Sakura::ToastType::Success, 5000, "Crash report sent. Thank you!");
+            break;
+        case CrashReport::Snapshot::Status::Error:
+            callbacks.notify(Sakura::ToastType::Error, 8000, snapshot.message);
+            break;
+    }
+
+    crashReport.clear();
+    state.crashReport = {};
 }
 
 std::shared_ptr<Compositor::Impl> DefaultCompositorFactory() {

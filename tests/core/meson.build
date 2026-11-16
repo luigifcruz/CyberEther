@@ -121,6 +121,7 @@ core_test_domains = {
 if not jst_is_windows
     core_test_domains += {
         'compositor': core_test_domains['compositor'] + [
+            'compositor/crash_report.cc',
             'compositor/docs.cc',
             'compositor/file_picker.cc',
             'compositor/gallery.cc',
@@ -190,6 +191,29 @@ if jst_is_windows and not jst_is_static and cfg_lst.get('JETSTREAM_LOADER_GLFW_A
     core_test_targets += [windows_pointer_tests]
     test('core-windows-pointer', windows_pointer_tests,
          suite: 'core', is_parallel: false, timeout: 60)
+endif
+if cfg_lst.get('JETSTREAM_PLATFORM_CRASH_AVAILABLE', false)
+    crash_module = shared_library(
+        'jetstream-crash-test-module',
+        'platform/crash_module.cc',
+        install: false,
+    )
+    crash_dependencies = core_test_dependencies
+    if jst_is_windows
+        crash_dependencies += [cpp.find_library('dbghelp')]
+    elif jst_is_linux
+        crash_dependencies += [cpp.find_library('dl', required: false)]
+    endif
+    crash_tests = executable(
+        'jetstream-core-crash-tests',
+        'platform/crash.cc',
+        dependencies: crash_dependencies,
+        include_directories: core_test_includes,
+        cpp_args: ['-DJETSTREAM_TEST_CRASH_MODULE="' + crash_module.full_path().replace('\\', '/') + '"'],
+    )
+    core_test_targets += [crash_module, crash_tests]
+    test('core-crash', crash_tests,
+         depends: crash_module, suite: 'core', is_parallel: false, timeout: 120)
 endif
 if jst_is_macos and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     cocoa_titlebar_tests = executable(

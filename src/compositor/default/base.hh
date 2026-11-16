@@ -5,6 +5,7 @@
 
 #include "updater.hh"
 #include "support/feedback.hh"
+#include "support/crash_report.hh"
 
 #include "actions/base.hh"
 #include "support/agent/runtime.hh"
@@ -35,6 +36,7 @@ class DefaultCompositor : public Compositor::Impl {
     DefaultCompositorState state;
     Updater updater;
     Feedback feedback;
+    CrashReport crashReport;
     DefaultCompositorCallbacks callbacks;
     AgentRuntime agent;
     DefaultActions actions;
@@ -44,6 +46,7 @@ class DefaultCompositor : public Compositor::Impl {
     WorkbenchView workbench;
     std::vector<std::string> droppedFiles;
     std::optional<bool> previousIntegratedTitlebar;
+    bool crashReportChecked = false;
 
     void enqueue(Mail&& mail);
 
@@ -57,6 +60,7 @@ class DefaultCompositor : public Compositor::Impl {
     void updateRemoteState();
     void updateUpdaterState();
     void updateFeedbackState();
+    void updateCrashReportState();
 };
 
 }  // namespace Jetstream

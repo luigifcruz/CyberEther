@@ -1137,6 +1137,12 @@ int Run(int argc, char* argv[]) {
 
     Platform::IgnoreBrokenPipe();
 
+#if defined(JETSTREAM_PLATFORM_CRASH_AVAILABLE)
+    if (std::string cachePath; Platform::CachePath(cachePath) == Result::SUCCESS) {
+        (void)Platform::InstallCrashHandler(Platform::PathFromUtf8(cachePath) / "crashes");
+    }
+#endif
+
     std::optional<InterruptHandlerGuard> interruptHandler;
     Platform::WorkerThread computeThread;
     std::thread graphicalThread;

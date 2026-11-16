@@ -3,6 +3,7 @@
 
 #include "about.hh"
 #include "benchmark.hh"
+#include "crash_report.hh"
 #include "dependencies.hh"
 #include "docs_search.hh"
 #include "../flowgraph/modals/info.hh"
@@ -30,6 +31,7 @@ struct ModalView {
         RemoteQrView::Config remoteQr;
         DocsSearchView::Config docsSearch;
         OnboardingView::Config onboarding;
+        CrashReportView::Config crashReport;
         Sakura::Callback<void()> onClose;
     };
 
@@ -51,6 +53,7 @@ struct ModalView {
     RemoteQrView remoteQrView;
     DocsSearchView docsSearchView;
     OnboardingView onboardingView;
+    CrashReportView crashReportView;
 };
 
 }  // namespace Jetstream

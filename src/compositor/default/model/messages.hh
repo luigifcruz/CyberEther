@@ -12,6 +12,7 @@
 #include "jetstream/types.hh"
 
 #include <deque>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -529,6 +530,15 @@ struct MailOpenOnboarding {
 
 struct MailDismissOnboarding {};
 
+struct MailOpenCrashReport {
+    std::vector<std::filesystem::path> reports;
+    std::string preview;
+};
+
+struct MailSubmitCrashReport {};
+
+struct MailDismissCrashReport {};
+
 struct MailSetFlowgraphInfo {
     std::string flowgraph;
     std::optional<std::string> title;
@@ -873,6 +883,9 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSubmitFeedback,
                            MailOpenOnboarding,
                            MailDismissOnboarding,
+                           MailOpenCrashReport,
+                           MailSubmitCrashReport,
+                           MailDismissCrashReport,
                            MailSetFlowgraphInfo,
                            MailOpenRenameBlock,
                            MailRenameBlock,

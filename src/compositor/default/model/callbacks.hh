@@ -9,8 +9,10 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/types.hh"
 
+#include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Jetstream {
 
@@ -29,6 +31,7 @@ struct DefaultCompositorCallbacks {
     Sakura::Callback<void()> downloadUpdate;
     Sakura::Callback<bool()> applyUpdate;
     Sakura::Callback<void(const std::string&)> submitFeedback;
+    Sakura::Callback<void(const std::vector<std::filesystem::path>&)> submitCrashReports;
 };
 
 }  // namespace Jetstream

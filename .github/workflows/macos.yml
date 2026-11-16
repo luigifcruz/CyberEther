@@ -99,7 +99,9 @@ jobs:
       - name: Package binary
         run: |
           set -euo pipefail
-          mkdir -p .dist/artifacts .dist/bin
+          mkdir -p .dist/artifacts .dist/bin .dist/symbols
+          dsymutil build/cyberether -o .dist/symbols/cyberether.dSYM
+          dsymutil build/libjetstream.dylib -o .dist/symbols/libjetstream.dylib.dSYM
           cp build/cyberether .dist/bin/
           cp build/libjetstream.dylib .dist/bin/
           chmod 755 .dist/bin/cyberether .dist/bin/libjetstream.dylib
@@ -113,8 +115,11 @@ jobs:
           fi
 
           install_name_tool -add_rpath "@executable_path" .dist/bin/cyberether
+          strip -S .dist/bin/cyberether .dist/bin/libjetstream.dylib
 
           tar -C .dist/bin -czf .dist/artifacts/cyberether-macos-arm64.tar.gz cyberether libjetstream.dylib
+          tar -C .dist/symbols -czf .dist/artifacts/cyberether-macos-arm64-symbols.tar.gz \
+            cyberether.dSYM libjetstream.dylib.dSYM
 
       - name: Check binary dynamic dependencies
         uses: ./.github/actions/check-dynamic-deps
@@ -131,6 +136,11 @@ jobs:
         with:
           name: cyberether-bin-macos-arm64
           path: .dist/artifacts/cyberether-macos-arm64.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cyberether-symbols-macos-arm64
+          path: .dist/artifacts/cyberether-macos-arm64-symbols.tar.gz
 
   package:
     if: ${{ inputs.package_desktop }}
