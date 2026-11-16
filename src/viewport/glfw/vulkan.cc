@@ -11,6 +11,9 @@
 #include "tools/windows_titlebar.hh"
 #endif
 
+static constexpr double kIdleEventTimeout = 0.150;
+static constexpr double kAnimatingEventTimeout = 1.0 / 60.0;
+
 static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }
@@ -349,12 +352,10 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
         presentInfo.pNext = &presentIdInfo;
     }
 
-    VkResult result = VK_SUCCESS;
     auto& presentQueue = Backend::State<DeviceType::Vulkan>()->getPresentQueue();
-
-    {
-        std::scoped_lock lock(frameScopeMutex);
-        result = vkQueuePresentKHR(presentQueue, &presentInfo);
+    const VkResult result = vkQueuePresentKHR(presentQueue, &presentInfo);
+    if (animating()) {
+        glfwPostEmptyEvent();
     }
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR ||
@@ -465,45 +466,24 @@ Extent2D<U64> Implementation::getSwapchainExtent() const {
 }
 
 Result Implementation::waitEvents() {
-    {
-#ifndef JST_OS_MAC
-        std::scoped_lock lock(frameScopeMutex);
-#endif
-        glfwPollEvents();
-#ifdef JST_OS_MAC
-        if (titlebar) {
-            titlebar->poll();
-        }
-#endif
-        pumpPlatform();
-    }
-#ifdef JST_OS_WINDOWS
+    glfwWaitEventsTimeout(animating() ? kAnimatingEventTimeout : kIdleEventTimeout);
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (titlebar) {
         titlebar->poll();
     }
 #endif
-    std::this_thread::sleep_for(std::chrono::milliseconds(3));
+    pumpPlatform();
     return Result::SUCCESS;
 }
 
 Result Implementation::pollEvents() {
-    {
-#ifndef JST_OS_MAC
-        std::scoped_lock lock(frameScopeMutex);
-#endif
-        glfwPollEvents();
-#ifdef JST_OS_MAC
-        if (titlebar) {
-            titlebar->poll();
-        }
-#endif
-        pumpPlatform();
-    }
-#ifdef JST_OS_WINDOWS
+    glfwPollEvents();
+#if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (titlebar) {
         titlebar->poll();
     }
 #endif
+    pumpPlatform();
     return Result::SUCCESS;
 }
 
@@ -528,6 +508,7 @@ void Implementation::beginWindowDrag() {
 #if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (titlebar) {
         titlebar->beginDrag();
+        glfwPostEmptyEvent();
     }
 #endif
 }
@@ -536,6 +517,7 @@ void Implementation::zoomWindow() {
 #if defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (titlebar) {
         titlebar->zoom();
+        glfwPostEmptyEvent();
     }
 #endif
 }

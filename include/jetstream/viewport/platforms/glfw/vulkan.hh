@@ -2,7 +2,6 @@
 #define JETSTREAM_VIEWPORT_PLATFORM_GLFW_VULKAN_HH
 
 #include <memory>
-#include <mutex>
 #include <vector>
 
 #include "jetstream/viewport/adapters/vulkan.hh"
@@ -89,7 +88,6 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     PFN_vkWaitForPresentKHR waitForPresentKHR = nullptr;
     U64 presentId = 0;
     U64 waitedPresentId = 0;
-    std::mutex frameScopeMutex;
 
     SwapChainSupportDetails querySwapChainSupport(const VkPhysicalDevice& device);
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);

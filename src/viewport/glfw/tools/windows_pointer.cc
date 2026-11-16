@@ -570,9 +570,13 @@ void WindowsPointer::focus(bool focused) {
 
 void WindowsPointer::poll() {
     state->polledAt = glfwGetTime();
-    if (state->ready && (state->handler->updating || state->handler->resetting)) {
+    if (animating()) {
         state->updates->Update(nullptr);
     }
+}
+
+bool WindowsPointer::animating() const {
+    return state->ready && (state->handler->updating || state->handler->resetting);
 }
 
 KeyModifiers WindowsPointer::Modifiers() {

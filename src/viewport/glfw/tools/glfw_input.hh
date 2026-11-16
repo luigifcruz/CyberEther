@@ -21,6 +21,7 @@ class GlfwInput final : public Generic::Platform {
 
     F64 time() const override;
     void poll() override;
+    bool animating() const override;
     void setCursor(SurfaceCursor cursor) override;
     std::string clipboardText() const override;
     void setClipboardText(const std::string& text) override;

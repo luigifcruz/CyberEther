@@ -385,4 +385,8 @@ void WaylandPointer::poll() {
     }
 }
 
+bool WaylandPointer::animating() const {
+    return state && state->scroll.animating();
+}
+
 }  // namespace Jetstream::Viewport

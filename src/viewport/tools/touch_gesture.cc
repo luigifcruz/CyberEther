@@ -11,6 +11,10 @@ bool TouchGesture::active() const {
     return !contacts.empty() && action != Action::Ignored;
 }
 
+bool TouchGesture::animating() const {
+    return coasting || (active() && action == Action::Pending);
+}
+
 void TouchGesture::resumePointer() {
     if (!active()) {
         stop();

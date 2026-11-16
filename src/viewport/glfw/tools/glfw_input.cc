@@ -642,6 +642,14 @@ void GlfwInput::poll() {
 #endif
 }
 
+bool GlfwInput::animating() const {
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
+    return impl->pointer->animating() || impl->touchGesture.animating();
+#else
+    return false;
+#endif
+}
+
 void GlfwInput::setCursor(SurfaceCursor cursor) {
     if (impl->requestedCursor.exchange(cursor) != cursor) {
         WakeEvents();

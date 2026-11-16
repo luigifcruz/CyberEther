@@ -29,6 +29,7 @@ class WaylandPointer {
     bool available() const;
     void focus(bool focused);
     void poll();
+    bool animating() const;
 
  private:
     struct State;

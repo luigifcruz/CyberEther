@@ -47,6 +47,7 @@ class JETSTREAM_API Generic {
 
         virtual F64 time() const = 0;
         virtual void poll() = 0;
+        virtual bool animating() const = 0;
         virtual void setCursor(SurfaceCursor cursor) = 0;
         virtual std::string clipboardText() const = 0;
         virtual void setClipboardText(const std::string& text) = 0;
@@ -109,6 +110,7 @@ class JETSTREAM_API Generic {
     void attachPlatform(std::unique_ptr<Platform> next);
     void detachPlatform();
     void pumpPlatform();
+    bool animating() const;
 
  private:
     struct Snapshot {
@@ -123,6 +125,7 @@ class JETSTREAM_API Generic {
     std::string clipboard;
     Render::InputQueue inputQueue;
     std::atomic<bool> redrawRequested = true;
+    std::atomic<bool> platformAnimating = false;
     std::mutex droppedFilesMutex;
     std::vector<std::string> droppedFiles;
     std::atomic<bool> closeIntercepted = false;
