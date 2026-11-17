@@ -80,7 +80,7 @@ struct SpectrumAnalyzer : public Block::Config {
         "spectra averaged into each row. Hidden for Spectrum. |\n"
         "| **Max Hold** | Off | On, Off | Adds a trace of the highest level seen. "
         "Hidden for Waterfall and 3D Waterfall. |\n"
-        "| **Amplitude Scale** | Log (dB/div) | Compressed, Log (dB/div) | Compressed "
+        "| **Amplitude Scale** | Log (dB/div) | Log (dB/div), Compressed | Compressed "
         "squeezes the levels near Range Min and Range Max. Log spaces the axis evenly "
         "in dB, so every grid division is the same number of dB. Hidden for Waterfall "
         "and 3D Waterfall. |\n"

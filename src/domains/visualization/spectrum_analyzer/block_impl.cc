@@ -199,8 +199,8 @@ Result SpectrumAnalyzerImpl::define() {
         JST_CHECK(defineInterfaceConfig("amplitudeScale", "Amplitude Scale",
                                         "How levels are spaced on the amplitude axis.",
                                         {{"type", "dropdown"}, {"options", Parser::Sequence{
-                                            Parser::Map{{"label", "Compressed"}, {"value", "compressed"}},
                                             Parser::Map{{"label", "Log (dB/div)"}, {"value", "log"}},
+                                            Parser::Map{{"label", "Compressed"}, {"value", "compressed"}},
                                         }}}));
         JST_CHECK(defineInterfaceConfig("density", "Spectral Density",
                                         "Enable spectral density behind the trace.",
