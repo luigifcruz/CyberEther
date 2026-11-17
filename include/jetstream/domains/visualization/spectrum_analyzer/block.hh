@@ -19,7 +19,7 @@ struct SpectrumAnalyzer : public Block::Config {
     U64 waterfallHeight = 1024;
     std::string colormap = "turbo";
     bool density = false;
-    std::string amplitudeScale = "compressed";
+    std::string amplitudeScale = "log";
     U64 persistence = 256;
     F32 splitRatio = 0.5f;
     std::vector<F32> markers;
@@ -80,7 +80,7 @@ struct SpectrumAnalyzer : public Block::Config {
         "spectra averaged into each row. Hidden for Spectrum. |\n"
         "| **Max Hold** | Off | On, Off | Adds a trace of the highest level seen. "
         "Hidden for Waterfall and 3D Waterfall. |\n"
-        "| **Amplitude Scale** | Compressed | Compressed, Log (dB/div) | Compressed "
+        "| **Amplitude Scale** | Log (dB/div) | Compressed, Log (dB/div) | Compressed "
         "squeezes the levels near Range Min and Range Max. Log spaces the axis evenly "
         "in dB, so every grid division is the same number of dB. Hidden for Waterfall "
         "and 3D Waterfall. |\n"
