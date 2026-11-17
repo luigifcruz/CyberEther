@@ -2418,8 +2418,8 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == Block::State::Created);
     REQUIRE(viewBlock("radio").outputs.at("signal").tensor.shape() == Shape{1, 8});
-    REQUIRE(std::any_of(viewBlock("radio").interfaceConfigs.begin(),
-                        viewBlock("radio").interfaceConfigs.end(),
+    const auto created = viewBlock("radio");
+    REQUIRE(std::any_of(created.interfaceConfigs.begin(), created.interfaceConfigs.end(),
                         [](const auto& field) { return field.name == "channels"; }));
     REQUIRE(flowgraph->blockCreate("consumer", "flowgraph_test_pass", {}, {}) ==
             Result::SUCCESS);
