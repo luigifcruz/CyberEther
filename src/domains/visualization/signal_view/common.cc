@@ -162,38 +162,6 @@ void SignalViewOverload::read(const Tensor& input) {
     receivedSamples = count(ReceivedSamplesAttribute);
 }
 
-namespace detail {
-
-namespace {
-
-std::string FormatPercent(const F64 ratio) {
-    const F64 percent = ratio * 100.0;
-    if (percent >= 10.0) {
-        return jst::fmt::format("{:.0f}%", percent);
-    }
-    if (percent >= 1.0) {
-        return jst::fmt::format("{:.1f}%", percent);
-    }
-    if (percent >= 0.01) {
-        return jst::fmt::format("{:.2f}%", percent);
-    }
-    return "<0.01%";
-}
-
-}  // namespace
-
-std::string FormatOverloadBadge(const bool clipped, const F64 clipRatio) {
-    if (!clipped) {
-        return "";
-    }
-    if (clipRatio > 0.0) {
-        return jst::fmt::format("CLIP {}", FormatPercent(clipRatio));
-    }
-    return "CLIP";
-}
-
-}  // namespace detail
-
 void SignalViewCanvas::updateOverload(const Context& context) {
     using Clock = std::chrono::steady_clock;
     constexpr auto kHold = std::chrono::seconds(2);

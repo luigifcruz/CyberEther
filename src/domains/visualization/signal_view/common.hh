@@ -273,7 +273,25 @@ struct SignalViewOverload {
 
 namespace detail {
 
-std::string FormatOverloadBadge(bool clipped, F64 clipRatio);
+inline std::string FormatOverloadBadge(const bool clipped, const F64 clipRatio) {
+    if (!clipped) {
+        return "";
+    }
+    const F64 percent = clipRatio * 100.0;
+    if (percent >= 10.0) {
+        return jst::fmt::format("CLIP {:.0f}%", percent);
+    }
+    if (percent >= 1.0) {
+        return jst::fmt::format("CLIP {:.1f}%", percent);
+    }
+    if (percent >= 0.01) {
+        return jst::fmt::format("CLIP {:.2f}%", percent);
+    }
+    if (percent > 0.0) {
+        return "CLIP <0.01%";
+    }
+    return "CLIP";
+}
 
 }  // namespace detail
 
