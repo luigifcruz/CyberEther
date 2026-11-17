@@ -1,9 +1,11 @@
 #include "common.hh"
 
 #include <algorithm>
+#include <any>
 #include <array>
 #include <optional>
 #include <span>
+#include <string_view>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -18,6 +20,7 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr ColorRGBA<F32> kAccentColor = {1.0f, 0.85f, 0.0f, 1.0f};
+constexpr ColorRGBA<F32> kClipColor = {1.0f, 0.25f, 0.2f, 1.0f};
 constexpr ColorRGBA<F32> kCursorLineColor = {1.0f, 1.0f, 1.0f, 0.35f};
 constexpr ColorRGBA<F32> kCursorHaloColor = {0.0f, 0.0f, 0.0f, 0.65f};
 constexpr ColorRGBA<F32> kCursorPillColor = {0.07f, 0.07f, 0.07f, 0.9f};
@@ -144,10 +147,86 @@ Result SignalViewFrequency::read(const Tensor& input) {
     return Result::SUCCESS;
 }
 
+void SignalViewOverload::read(const Tensor& input) {
+    const auto count = [&](const std::string_view key) -> std::optional<U64> {
+        const std::string name(key);
+        if (!input.hasAttribute(name)) {
+            return std::nullopt;
+        }
+        const auto value = input.attribute(name);
+        const auto* typed = std::any_cast<U64>(&value);
+        return typed ? std::optional<U64>(*typed) : std::nullopt;
+    };
+
+    clippedSamples = count(ClippedSamplesAttribute);
+    receivedSamples = count(ReceivedSamplesAttribute);
+}
+
+void SignalViewCanvas::updateOverload(const Context& context) {
+    using Clock = std::chrono::steady_clock;
+    constexpr auto kHold = std::chrono::seconds(2);
+    const auto now = Clock::now();
+    const auto& source = context.overload;
+
+    if (source.clippedSamples) {
+        const U64 clipped = *source.clippedSamples;
+        if (overload.lastClipped) {
+            const U64 previous = clipped < *overload.lastClipped ? 0 : *overload.lastClipped;
+            if (clipped > previous) {
+                overload.clipUntil = now + kHold;
+            }
+        }
+        overload.lastClipped = clipped;
+    }
+
+    if (source.clippedSamples && source.receivedSamples) {
+        constexpr auto kStep = std::chrono::milliseconds(500);
+        const OverloadState::Count count{now, *source.clippedSamples, *source.receivedSamples};
+        if (!overload.newer || count.received < overload.newer->received ||
+            count.clipped < overload.newer->clipped) {
+            overload.older = count;
+            overload.newer = count;
+            overload.clipRatio = 0.0;
+        } else if (now - overload.newer->time >= kStep) {
+            overload.older = overload.newer;
+            overload.newer = count;
+        }
+        const U64 received = count.received - overload.older->received;
+        overload.clipRatio = received > 0
+            ? static_cast<F64>(count.clipped - overload.older->clipped) /
+                  static_cast<F64>(received)
+            : overload.clipRatio;
+    }
+    if (overload.clipRatio > 0.0) {
+        overload.heldClipRatio = overload.clipRatio;
+    } else if (now >= overload.clipUntil) {
+        overload.heldClipRatio = 0.0;
+    }
+
+    if (!text || !text->getConfig().elements.contains("overload")) {
+        return;
+    }
+    const auto badge = detail::FormatOverloadBadge(now < overload.clipUntil,
+                                                   overload.heldClipRatio);
+    auto element = text->get("overload");
+    const bool zoomShown = text->get("zoom").fill != " ";
+    const F32 lineOffset = zoomShown && text->getConfig().font
+        ? static_cast<F32>(text->getConfig().font->lineHeight()) * element.scale
+        : 0.0f;
+    element.position = {
+        axis->paddingScale().x - pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
+        axis->paddingScale().y -
+            pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f + lineOffset),
+    };
+    element.fill = badge.empty() ? " " : badge;
+    text->update("overload", element);
+}
+
 void SignalViewCanvas::reset(const SignalView& config) {
     splitter = {};
     splitter.ratio = config.splitRatio;
     displayHeld = false;
+    overload = {};
     cursor = {};
     markerPositions = config.markers;
     updateMarkersFlag = false;
@@ -215,6 +294,14 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
               .alignment = {1, 0},
               .rotationDeg = 90.0f}},
         };
+        if (config.clipIndicator) {
+            cfg.elements["overload"] = {
+                .scale = kLabelScale,
+                .position = {1.0f, 1.0f},
+                .alignment = {2, 0},
+                .color = kClipColor,
+            };
+        }
         JST_CHECK(window->build(text, cfg));
         JST_CHECK(window->bind(text));
     }
@@ -793,6 +880,7 @@ void SignalViewCanvas::updateState(const Context& context) {
 
 Result SignalViewCanvas::present(const Context& context) {
     updateLabels(context);
+    updateOverload(context);
     JST_CHECK(updateMarkers(context));
     JST_CHECK(updateCursor(context));
 

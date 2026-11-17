@@ -16,6 +16,7 @@ namespace {
 
 using DiscoveryClock = SoapyDiscovery::Clock;
 constexpr auto DiscoveryLifetime = std::chrono::seconds(1);
+constexpr F64 DefaultClipLevel = 0.999;
 
 struct DiscoveryEntry {
     std::shared_future<SoapyKwargsList> result;
@@ -310,6 +311,12 @@ Result SoapyReceiver::queryCapabilities() {
     }
     api.stringsClear(&names, antennaCount);
 
+    F64 fullScale = 0.0;
+    api.free(api.getNativeStreamFormat(device, SoapyAbi::RX, 0, &fullScale));
+    clipLevel = static_cast<F32>(fullScale >= 2.0
+        ? std::min(DefaultClipLevel, (fullScale - 1.0) / fullScale)
+        : DefaultClipLevel);
+
     queryGainRange();
 
     return Result::SUCCESS;
@@ -353,6 +360,10 @@ bool SoapyReceiver::supportsBiasTee() const {
 
 const std::optional<SoapyAbi::Range>& SoapyReceiver::getGainRange() const {
     return gainRange;
+}
+
+F32 SoapyReceiver::getClipLevel() const {
+    return clipLevel;
 }
 
 F32 SoapyReceiver::clampGain(const F32 gain) const {
@@ -616,6 +627,7 @@ void SoapyReceiver::reset() {
     frequencyRanges.clear();
     antennas.clear();
     gainRange.reset();
+    clipLevel = static_cast<F32>(DefaultClipLevel);
     biasTeeSupported = false;
     biasTeeNeedsCleanup = false;
     library.reset();

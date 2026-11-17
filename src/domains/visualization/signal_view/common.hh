@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -263,6 +264,37 @@ struct SignalViewFrequency {
     bool operator==(const SignalViewFrequency&) const = default;
 };
 
+struct SignalViewOverload {
+    std::optional<U64> clippedSamples;
+    std::optional<U64> receivedSamples;
+
+    void read(const Tensor& input);
+};
+
+namespace detail {
+
+inline std::string FormatOverloadBadge(const bool clipped, const F64 clipRatio) {
+    if (!clipped) {
+        return "";
+    }
+    const F64 percent = clipRatio * 100.0;
+    if (percent >= 10.0) {
+        return jst::fmt::format("CLIP {:.0f}%", percent);
+    }
+    if (percent >= 1.0) {
+        return jst::fmt::format("CLIP {:.1f}%", percent);
+    }
+    if (percent >= 0.01) {
+        return jst::fmt::format("CLIP {:.2f}%", percent);
+    }
+    if (percent > 0.0) {
+        return "CLIP <0.01%";
+    }
+    return "CLIP";
+}
+
+}  // namespace detail
+
 struct SignalViewLineplot;
 struct SignalViewWaterfall;
 struct SignalViewDensity;
@@ -275,6 +307,7 @@ struct SignalViewCanvas {
         SignalViewLineplot* lineplot = nullptr;
         SignalViewWaterfall* waterfall = nullptr;
         SignalViewDensity* density = nullptr;
+        SignalViewOverload overload = {};
     };
 
     struct Edits {
@@ -307,6 +340,20 @@ struct SignalViewCanvas {
         Extent2D<F32> origin = {0.0f, 0.0f};
     };
 
+    struct OverloadState {
+        struct Count {
+            std::chrono::steady_clock::time_point time;
+            U64 clipped = 0;
+            U64 received = 0;
+        };
+        std::optional<Count> older;
+        std::optional<Count> newer;
+        F64 clipRatio = 0.0;
+        F64 heldClipRatio = 0.0;
+        std::optional<U64> lastClipped;
+        std::chrono::steady_clock::time_point clipUntil;
+    };
+
     struct AmplitudeGrid {
         F64 lower = 0.0;
         F64 upper = 0.0;
@@ -331,6 +378,7 @@ struct SignalViewCanvas {
     SurfaceInteractionState interaction;
     detail::SignalViewSplitInteraction splitter;
     CursorState cursor;
+    OverloadState overload;
     bool displayHeld = false;
     Extent2D<F32> pixelSize;
 
@@ -357,6 +405,7 @@ struct SignalViewCanvas {
 
  private:
     void updateLabels(const Context& context);
+    void updateOverload(const Context& context);
     Result updateCursor(const Context& context);
     Result updateMarkers(const Context& context);
     F32 viewTranslation() const;

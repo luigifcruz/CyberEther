@@ -4,10 +4,13 @@
 #include <any>
 #include <chrono>
 #include <limits>
+#include <optional>
+#include <string>
 #include <thread>
 
 #include "environment.hh"
 #include "jetstream/domains/io/soapy/module.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
@@ -437,4 +440,46 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         REQUIRE(static_cast<const Modules::Soapy&>(module->config()).sampleRate == 61.44e6f);
     }
     REQUIRE(TestSoapy::State().concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy module publishes clipped and received sample counts",
+                 "[modules][soapy][clipping]") {
+    TestSoapy::State().emitSamples = true;
+    const auto module = BuildSoapyModule();
+    struct Cleanup {
+        std::shared_ptr<Module> module;
+        ~Cleanup() { static_cast<void>(module->destroy()); }
+    } cleanup{module};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.sampleRate = 20.0e6f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    const auto& output = module->outputs().at("signal").tensor;
+    const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
+        module->context()->runtime());
+    REQUIRE(runtime != nullptr);
+
+    const auto read = [&](const std::string& key) {
+        std::optional<U64> value;
+        REQUIRE(ReadAttribute(output, key, value) == Result::SUCCESS);
+        return value;
+    };
+    const auto waitFor = [&](const std::string& key, const auto& accept) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline) {
+            const auto result = runtime->computeSubmit();
+            REQUIRE((result == Result::SUCCESS || result == Result::YIELD));
+            if (const auto value = read(key); value && accept(*value)) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return false;
+    };
+
+    REQUIRE(waitFor("clippedSamples", [](const U64 value) { return value > 0; }));
+    REQUIRE(waitFor("receivedSamples", [](const U64 value) { return value > 0; }));
 }

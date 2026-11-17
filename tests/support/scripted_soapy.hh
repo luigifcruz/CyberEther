@@ -128,6 +128,11 @@ inline SoapyApi Api() {
         *count = 0;
         return nullptr;
     };
+    api.getNativeStreamFormat = [](const SoapyAbi::Device*, int, std::size_t,
+                                   double* fullScale) -> char* {
+        *fullScale = 32768.0;
+        return nullptr;
+    };
     api.getGainRange = [](const SoapyAbi::Device*, int, std::size_t) {
         return SoapyAbi::Range{0.0, 60.0, 0.0};
     };
