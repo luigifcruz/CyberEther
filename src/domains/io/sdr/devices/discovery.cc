@@ -335,6 +335,22 @@ bool Device::SupportsBiasTee(const std::string& selector) {
     return true;
 }
 
+U64 Device::ReceiveChannels(const std::string& selector) {
+    if (const auto capabilities = Cached(selector)) {
+        return capabilities->receiveChannels;
+    }
+    const auto selection = Selection::Parse(selector);
+    if (!selection) {
+        return 1;
+    }
+    for (const auto& info : List()) {
+        if (selection->matches(info)) {
+            return info.receiveChannels;
+        }
+    }
+    return 1;
+}
+
 Result Stream::Open(const std::string& selector, std::unique_ptr<Stream>& stream) {
     return OpenMode(selector, &Device::Driver::stream, stream);
 }

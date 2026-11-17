@@ -11,13 +11,12 @@ struct Sdr : public Block::Config {
     std::string deviceString = "";
     std::string antenna = "";
     U64 channels = 1;
-    std::vector<U64> automaticGains;
-    std::vector<F32> manualGains;
     F32 frequency = 96.9e6;
     F32 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
     F32 manualGain = 30.0f;
+    std::vector<F32> manualGains;
     bool biasTee = false;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
@@ -26,9 +25,9 @@ struct Sdr : public Block::Config {
     JST_BLOCK_TYPE(sdr);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
-    JST_BLOCK_PARAMS(deviceString, antenna, channels, automaticGains, manualGains,
-                     frequency, frequencyStep, sampleRate, automaticGain, manualGain,
-                     biasTee, numberOfBatches, numberOfTimeSamples, bufferMultiplier);
+    JST_BLOCK_PARAMS(deviceString, antenna, channels, frequency, frequencyStep,
+                     sampleRate, automaticGain, manualGain, manualGains, biasTee,
+                     numberOfBatches, numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "SDR",
         "Receives samples from a USB radio.",
@@ -63,7 +62,7 @@ struct Sdr : public Block::Config {
         "driver and serial number. A saved radio that is missing shows as Configured "
         "device. |\n"
         "| **Channels** | 1 | 1 to the radio's receivers | Receivers captured together "
-        "in hardware order. Only bladeRF 2 has two. |\n"
+        "in hardware order. Only bladeRF 2 has two, and other radios hide it. |\n"
         "| **Antenna** | Default | Default and the radio's receive ports | Receive "
         "port. Only LimeSDR lists ports. Hidden when Channels is above 1. |\n"
         "| **Frequency** | 96.9 MHz | Within the radio's range | Center frequency of "
@@ -73,18 +72,16 @@ struct Sdr : public Block::Config {
         "BirriaSDR show a list of their rates, and a rate missing from the list "
         "switches to the first. |\n"
         "| **Automatic Gain** | On | On, Off | Lets the radio set its gain. HackRF, "
-        "LimeSDR, and bladeRF 1 have none and always use Manual Gain. Labeled Default "
-        "Automatic Gain when Channels is above 1. |\n"
+        "LimeSDR, and bladeRF 1 have none and always use Manual Gain. Applies to every "
+        "channel. |\n"
         "| **Manual Gain** | 30 dB | Within the radio's gain range | Receive gain, "
-        "shown when Automatic Gain is off or Channels is above 1. The value snaps to "
-        "the nearest gain the radio applies, and on bladeRF 2 and PlutoSDR the limits "
+        "shown when Automatic Gain is off and Channels is 1. The value snaps to the "
+        "nearest gain the radio applies, and on bladeRF 2 and PlutoSDR the limits "
         "follow the tuned frequency. |\n"
-        "| **Automatic Gains** | Empty | One 0 or 1 per receiver | Per-receiver "
-        "Automatic Gain, with 1 for on. Missing entries use Automatic Gain. Shown when "
-        "Channels is above 1 or a list has entries. |\n"
-        "| **Manual Gains** | Empty | One gain per receiver | Per-receiver Manual Gain."
-        " Missing entries use Manual Gain. Shown when Channels is above 1 or a list has"
-        " entries. |\n"
+        "| **Manual Gains** | Empty | One per receiver, within the radio's gain range |"
+        " Receive gain of each receiver in RX order. Missing entries use Manual Gain. "
+        "Shown instead of Manual Gain when Channels is above 1 and Automatic Gain is "
+        "off. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable on "
         "RTL-SDR, Airspy, HackRF, and bladeRF 2. Hidden on other radios. |\n"
         "| **Batches** | 8 batches | 1 or more | Batches per output buffer. |\n"
@@ -133,9 +130,9 @@ struct Sdr : public Block::Config {
         "| The log warns that the frequency or sample rate is not supported | The value"
         " is outside the range of the radio | Pick a value the radio supports. The old "
         "value stays while running. |\n"
-        "| The block reports that the radio supports fewer receive channels | Channels "
-        "is above the receivers of the radio | Lower Channels. Only bladeRF 2 has two. "
-        "|\n"
+        "| The block reports that the channels exceed the total rate USB can carry | On"
+        " bladeRF 2, Sample Rate times Channels is above 80 MS/s | Lower Sample Rate to"
+        " 40 MHz or less with Channels 2. |\n"
         "| Buffer Loss rises above 0% | The chain reads slower than the radio sends | "
         "Lower Sample Rate or lighten the chain. Raise Buffer Multiplier for short "
         "stalls. |\n"
@@ -158,9 +155,9 @@ struct Sdr : public Block::Config {
         "## Under the Hood\n"
         "\n"
         "A receive thread reads the radio into a ring buffer, and each cycle copies out"
-        " one full buffer per channel. Frequency, Automatic Gain, and Manual Gain "
-        "changes apply while the stream keeps running. A sample rate change reapplies "
-        "the whole configuration.\n"
+        " one full buffer per channel. Frequency and gain changes apply while the "
+        "stream keeps running. A Sample Rate or Channels change reapplies the whole "
+        "configuration.\n"
         "\n"
         "## See Also\n"
         "\n"

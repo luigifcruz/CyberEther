@@ -44,7 +44,8 @@ constexpr unsigned SyncBufferSize = 8192;
 constexpr unsigned SyncTransfers = 8;
 constexpr unsigned SyncTimeout = 3500;
 constexpr U64 DrainSamples = 65536;
-constexpr U64 MessageSamples = 2048;
+constexpr U64 MessageSamples = 508;
+constexpr F64 MaxTotalSampleRate = 80.0e6;
 constexpr F32 Q11Scale = 2048.0f;
 constexpr bladerf_channel Channel = BLADERF_CHANNEL_RX(0);
 
@@ -94,18 +95,20 @@ class BladeRfStream final : public Stream {
     Result tune(F64 frequency) override;
     Result setAutomaticGain(bool automaticGain) override;
     Result setGain(F64 gain) override;
-    Result setChannelGain(U64 channel, bool automaticGain, F64 gain) override;
+    Result setChannelGains(const std::vector<F64>& gains) override;
 
  private:
     Result setFrequency(F64 frequency);
     Result resynchronize(U64 settle);
-    Result applyGainMode(bool requested, F64 gain, U64 index = 0);
-    Result applyGain(F64 gain, bool force, U64 index = 0);
+    Result applyGainMode(bool requested, F64 gain);
+    Result applyGain(F64 gain, bool force);
 
     bladerf* handle = nullptr;
     std::string board;
     bool biasTeeEnabled = false;
     bool streaming = false;
+    U64 receiveChannels = 1;
+    std::vector<F64> channelGains;
     U64 enabledChannels = 0;
     bool synchronized = false;
     U64 epoch = 0;
@@ -113,6 +116,7 @@ class BladeRfStream final : public Stream {
     TimestampFilter timestamps;
     std::vector<I16> raw;
     std::vector<I16> drain;
+    std::vector<CF32*> outputs;
 };
 
 BladeRfStream::~BladeRfStream() {
@@ -161,30 +165,30 @@ Result BladeRfStream::connect(const Device::Info& info) {
 }
 
 Result BladeRfStream::apply(const Settings& settings) {
-    if (settings.receiveChannels > 2) {
-        JST_ERROR("[SDR_BLADERF] This backend supports at most two RX channels.");
-        return Result::ERROR;
-    }
     if (settings.receiveChannels == 2) {
         struct bladerf_version version = {};
         if (bladerf_fpga_version(handle, &version) != 0) {
-            JST_ERROR(
-                "[SDR_BLADERF] Failed to query the FPGA version for multi-channel RX.");
+            JST_ERROR("[SDR_BLADERF] Failed to query the FPGA version for multi-channel RX.");
             return Result::ERROR;
         }
-        if (std::tuple{version.major, version.minor, version.patch} <
-            std::tuple{0, 15, 3}) {
-            JST_ERROR(
-                "[SDR_BLADERF] Multiple RX channels require FPGA v0.15.3 or newer "
-                "for correct timestamps, and the device has v{}.{}.{}. Load a compatible "
-                "FPGA image before enabling multiple channels.",
-                version.major, version.minor, version.patch);
+        if (std::tuple{version.major, version.minor, version.patch} < std::tuple{0, 15, 3}) {
+            JST_ERROR("[SDR_BLADERF] Multiple RX channels require FPGA v0.15.3 or newer for "
+                      "correct timestamps, and the device has v{}.{}.{}. Load a compatible FPGA "
+                      "image before enabling multiple channels.",
+                      version.major, version.minor, version.patch);
             return Result::ERROR;
         }
     }
     if (!Device::Range::Contains(deviceCapabilities.sampleRateRanges, settings.sampleRate)) {
         JST_ERROR("[SDR_BLADERF] Sample rate ({:.3f} MHz) not supported.",
                   settings.sampleRate / 1e6);
+        return Result::ERROR;
+    }
+    if (settings.sampleRate * static_cast<F64>(settings.receiveChannels) > MaxTotalSampleRate) {
+        JST_ERROR("[SDR_BLADERF] The total rate of {} channels at {:.3f} MHz exceeds the "
+                  "{:.0f} MS/s that USB can carry. Lower Sample Rate to {:.3f} MHz or less.",
+                  settings.receiveChannels, settings.sampleRate / 1e6, MaxTotalSampleRate / 1e6,
+                  MaxTotalSampleRate / static_cast<F64>(settings.receiveChannels) / 1e6);
         return Result::ERROR;
     }
     if (!Device::Range::Contains(deviceCapabilities.frequencyRanges, settings.frequency)) {
@@ -211,12 +215,9 @@ Result BladeRfStream::apply(const Settings& settings) {
         return Result::ERROR;
     }
 
-    appliedSettings.additionalGains.resize(settings.receiveChannels - 1);
+    receiveChannels = settings.receiveChannels;
+    channelGains = settings.channelGains;
     JST_CHECK(applyGainMode(settings.automaticGain, settings.gain));
-    for (U64 i = 0; i < settings.additionalGains.size(); ++i) {
-        const auto& gain = settings.additionalGains[i];
-        JST_CHECK(applyGainMode(gain.automatic, gain.gain, i + 1));
-    }
 
     if (deviceCapabilities.biasTee && (settings.biasTee || biasTeeEnabled)) {
         if (bladerf_set_bias_tee(handle, Channel, settings.biasTee) != 0) {
@@ -240,8 +241,7 @@ Result BladeRfStream::open() {
         JST_ERROR("[SDR_BLADERF] Failed to allocate the drain buffer.");
         return Result::ERROR;
     }
-    const auto layout =
-        requestedSettings.receiveChannels == 2 ? BLADERF_RX_X2 : BLADERF_RX_X1;
+    const auto layout = requestedSettings.receiveChannels == 2 ? BLADERF_RX_X2 : BLADERF_RX_X1;
     if (bladerf_sync_config(handle, layout, BLADERF_FORMAT_SC16_Q11_META, SyncBuffers,
                             SyncBufferSize, SyncTransfers, SyncTimeout) != 0) {
         JST_ERROR("[SDR_BLADERF] Failed to configure reception.");
@@ -284,12 +284,7 @@ Result BladeRfStream::setFrequency(const F64 frequency) {
         GainBand(appliedSettings.frequency) != GainBand(static_cast<F64>(actual));
     requestedSettings.frequency = frequency;
     appliedSettings.frequency = static_cast<F64>(actual);
-    JST_CHECK(applyGain(requestedSettings.gain, changedBand));
-    for (U64 i = 0; i < requestedSettings.additionalGains.size(); ++i) {
-        JST_CHECK(
-            applyGain(requestedSettings.additionalGains[i].gain, changedBand, i + 1));
-    }
-    return Result::SUCCESS;
+    return applyGain(requestedSettings.gain, changedBand);
 }
 
 Result BladeRfStream::tune(const F64 frequency) {
@@ -344,9 +339,8 @@ Device::Capture BladeRfStream::readChannels(std::span<std::span<CF32>> samples,
     const auto receive = [&](I16* data, const U64 count, bladerf_metadata& meta,
                              const std::chrono::milliseconds wait) {
         meta.flags = BLADERF_META_FLAG_RX_NOW;
-        const int status =
-            bladerf_sync_rx(handle, data, static_cast<unsigned>(count * channels),
-                            &meta, static_cast<unsigned>(wait.count()));
+        const int status = bladerf_sync_rx(handle, data, static_cast<unsigned>(count * channels),
+                                           &meta, static_cast<unsigned>(wait.count()));
         if (status == 0 && meta.actual_count % channels != 0) {
             synchronized = false;
             return BLADERF_ERR_UNEXPECTED;
@@ -354,12 +348,11 @@ Device::Capture BladeRfStream::readChannels(std::span<std::span<CF32>> samples,
         meta.actual_count /= channels;
         if (status == 0 && (meta.status & BLADERF_META_STATUS_OVERRUN) != 0 &&
             meta.actual_count >= count) {
-            const U64 latest = std::numeric_limits<U64>::max() -
-                               MessageSamples / channels - meta.actual_count;
+            const U64 latest = std::numeric_limits<U64>::max() - MessageSamples / channels -
+                               meta.actual_count;
             timestamps.lose(meta.timestamp > latest
-                                ? std::numeric_limits<U64>::max()
-                                : meta.timestamp + meta.actual_count +
-                                      MessageSamples / channels);
+                            ? std::numeric_limits<U64>::max()
+                            : meta.timestamp + meta.actual_count + MessageSamples / channels);
         }
         return status;
     };
@@ -413,13 +406,12 @@ Device::Capture BladeRfStream::readChannels(std::span<std::span<CF32>> samples,
     if (decision.status != Status::Samples) {
         return finish(capture);
     }
-    const auto* accepted = raw.data() + decision.skip * 2 * channels;
-    if (channels == 2) {
-        ConvertI16Channels(accepted, samples[0].data(), samples[1].data(),
-                           count - decision.skip, Q11Scale);
-    } else {
-        ConvertI16(accepted, samples[0].data(), count - decision.skip, Q11Scale);
+    outputs.clear();
+    for (const auto channel : samples) {
+        outputs.push_back(channel.data());
     }
+    ConvertI16Channels(raw.data() + decision.skip * 2 * channels, outputs,
+                       count - decision.skip, Q11Scale);
     capture.count = count - decision.skip;
     capture.timestamp = meta.timestamp + decision.skip;
     return finish(capture);
@@ -437,10 +429,10 @@ Result BladeRfStream::setGain(const F64 gain) {
     return Result::SUCCESS;
 }
 
-Result BladeRfStream::setChannelGain(const U64 channel, const bool automaticGain,
-                                     const F64 gain) {
-    JST_CHECK(applyGainMode(automaticGain, gain, channel));
-    requestedSettings.additionalGains[channel - 1] = {automaticGain, gain};
+Result BladeRfStream::setChannelGains(const std::vector<F64>& gains) {
+    channelGains = gains;
+    JST_CHECK(applyGain(requestedSettings.gain, false));
+    requestedSettings.channelGains = gains;
     return Result::SUCCESS;
 }
 
@@ -448,50 +440,48 @@ F64 BladeRfStream::resolveGain(const F64 gain, const std::optional<Device::Range
     return std::round(Stream::resolveGain(gain, range));
 }
 
-Result BladeRfStream::applyGainMode(const bool requested, const F64 gain,
-                                    const U64 index) {
+Result BladeRfStream::applyGainMode(const bool requested, const F64 gain) {
     const bool automatic = requested && deviceCapabilities.automaticGain;
     if (requested && !automatic) {
         JST_WARN("[SDR_BLADERF] Automatic gain is not supported by this bladeRF. "
                  "Using the manual gain.");
     }
-    if (bladerf_set_gain_mode(handle, BLADERF_CHANNEL_RX(index),
-                              automatic ? BLADERF_GAIN_AUTOMATIC : BLADERF_GAIN_MGC) != 0) {
-        JST_ERROR("[SDR_BLADERF] Failed to set the gain mode.");
-        return Result::ERROR;
+    for (U64 i = 0; i < receiveChannels; ++i) {
+        if (bladerf_set_gain_mode(handle, BLADERF_CHANNEL_RX(i),
+                                  automatic ? BLADERF_GAIN_AUTOMATIC : BLADERF_GAIN_MGC) != 0) {
+            JST_ERROR("[SDR_BLADERF] Failed to set the gain mode.");
+            return Result::ERROR;
+        }
     }
-    (index == 0 ? appliedSettings.automaticGain
-                : appliedSettings.additionalGains[index - 1].automatic) = automatic;
-    return applyGain(gain, true, index);
+    appliedSettings.automaticGain = automatic;
+    return applyGain(gain, true);
 }
 
-Result BladeRfStream::applyGain(const F64 gain, const bool force, const U64 index) {
-    auto& gainRange = index == 0 ? appliedSettings.gainRange
-                                 : appliedSettings.additionalGains[index - 1].range;
-    auto& appliedGain = index == 0 ? appliedSettings.gain
-                                   : appliedSettings.additionalGains[index - 1].gain;
-    const bool automatic = index == 0
-                               ? appliedSettings.automaticGain
-                               : appliedSettings.additionalGains[index - 1].automatic;
+Result BladeRfStream::applyGain(const F64 gain, const bool force) {
     const bladerf_range* range = nullptr;
-    if (bladerf_get_gain_range(handle, BLADERF_CHANNEL_RX(index), &range) != 0 ||
-        !range) {
+    if (bladerf_get_gain_range(handle, Channel, &range) != 0 || !range) {
         JST_ERROR("[SDR_BLADERF] Failed to query the gain range.");
-        gainRange.reset();
+        appliedSettings.gainRange.reset();
         return Result::ERROR;
     }
-    gainRange = Device::Range{static_cast<F64>(range->min) * range->scale,
+    appliedSettings.gainRange = Device::Range{static_cast<F64>(range->min) * range->scale,
                                              static_cast<F64>(range->max) * range->scale};
-    const F64 target = resolveGain(gain, gainRange);
-    const bool unchanged = !force && target == appliedGain;
-    if (!automatic && !unchanged &&
-        bladerf_set_gain(handle, BLADERF_CHANNEL_RX(index),
-                         static_cast<bladerf_gain>(target)) != 0) {
-        JST_ERROR("[SDR_BLADERF] Failed to set the gain to {:.0f} dB.", target);
-        appliedGain = std::numeric_limits<F64>::quiet_NaN();
-        return Result::ERROR;
+    appliedSettings.channelGains.resize(receiveChannels, std::numeric_limits<F64>::quiet_NaN());
+    for (U64 i = 0; i < receiveChannels; ++i) {
+        const F64 requested = i < channelGains.size() ? channelGains[i] : gain;
+        const F64 target = resolveGain(requested, appliedSettings.gainRange);
+        const bool unchanged = !force && target == appliedSettings.channelGains[i];
+        if (!appliedSettings.automaticGain && !unchanged &&
+            bladerf_set_gain(handle, BLADERF_CHANNEL_RX(i),
+                             static_cast<bladerf_gain>(target)) != 0) {
+            JST_ERROR("[SDR_BLADERF] Failed to set the RX{} gain to {:.0f} dB.", i + 1, target);
+            appliedSettings.gain = std::numeric_limits<F64>::quiet_NaN();
+            appliedSettings.channelGains[i] = std::numeric_limits<F64>::quiet_NaN();
+            return Result::ERROR;
+        }
+        appliedSettings.channelGains[i] = target;
     }
-    appliedGain = target;
+    appliedSettings.gain = resolveGain(gain, appliedSettings.gainRange);
     return Result::SUCCESS;
 }
 

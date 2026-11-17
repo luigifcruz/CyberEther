@@ -152,6 +152,7 @@ Result BladeRfSweep::connect(const Device::Info& info) {
     budget = BladeRfQuickTuneBudget(second ? std::optional<U64>(MaxQuickTuneProfiles)
                                            : std::nullopt);
     auto& caps = deviceCapabilities;
+    caps.receiveChannels = bladerf_get_channel_count(handle, BLADERF_RX);
     caps.frequencyRanges = ToRanges(frequency);
     caps.sampleRateRanges = ToRanges(rate);
     caps.automaticGain = second;

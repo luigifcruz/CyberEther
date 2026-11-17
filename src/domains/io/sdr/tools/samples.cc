@@ -26,11 +26,15 @@ void ConvertI16(const I16* input, CF32* output, const U64 count, const F32 scale
     }
 }
 
-void ConvertI16Channels(const I16* input, CF32* first, CF32* second,
-                         const U64 count, const F32 scale) {
+void ConvertI16Channels(const I16* input, std::span<CF32* const> outputs, const U64 count,
+                        const F32 scale) {
+    const U64 channels = outputs.size();
     for (U64 i = 0; i < count; ++i) {
-        first[i] = {input[4 * i] / scale, input[4 * i + 1] / scale};
-        second[i] = {input[4 * i + 2] / scale, input[4 * i + 3] / scale};
+        for (U64 channel = 0; channel < channels; ++channel) {
+            const I16* word = input + 2 * (i * channels + channel);
+            outputs[channel][i] = {static_cast<F32>(word[0]) / scale,
+                                   static_cast<F32>(word[1]) / scale};
+        }
     }
 }
 

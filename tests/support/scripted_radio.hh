@@ -279,12 +279,14 @@ class ScriptedStream final : public Radio::Stream {
         appliedSettings.automaticGain = settings.automaticGain;
         appliedSettings.gain = resolveGain(settings.gain, appliedSettings.gainRange);
         appliedSettings.biasTee = settings.biasTee;
-        appliedSettings.additionalGains.resize(settings.receiveChannels - 1);
-        for (U64 i = 0; i < settings.additionalGains.size(); ++i) {
-            appliedSettings.additionalGains[i].range = Radio::Device::Range{5.0, 55.0};
-            const auto& gain = settings.additionalGains[i];
-            JST_CHECK(setChannelGain(i + 1, gain.automatic, gain.gain));
+        if (settings.receiveChannels > 1) {
+            const auto call = jst::fmt::format("channels:{}", settings.receiveChannels);
+            TestScript().record(call);
+            if (TestScript().fails(call)) {
+                return Result::ERROR;
+            }
         }
+        applyChannelGains();
         return Result::SUCCESS;
     }
 
@@ -334,24 +336,31 @@ class ScriptedStream final : public Radio::Stream {
         }
         requestedSettings.gain = gain;
         appliedSettings.gain = resolveGain(gain, appliedSettings.gainRange);
+        applyChannelGains();
         return Result::SUCCESS;
     }
 
-    Result setChannelGain(const U64 channel, const bool automatic,
-                          const F64 gain) override {
-        const auto call = jst::fmt::format("gain{}:{:.0f}", channel + 1, gain);
+    Result setChannelGains(const std::vector<F64>& gains) override {
+        const auto call = jst::fmt::format("gains:{}", gains.size());
         TestScript().record(call);
         if (TestScript().fails(call)) {
             return Result::ERROR;
         }
-        requestedSettings.additionalGains[channel - 1] = {automatic, gain};
-        auto& applied = appliedSettings.additionalGains[channel - 1];
-        applied.automatic = automatic;
-        applied.gain = resolveGain(gain, applied.range);
+        requestedSettings.channelGains = gains;
+        applyChannelGains();
         return Result::SUCCESS;
     }
 
  private:
+    void applyChannelGains() {
+        const auto& gains = requestedSettings.channelGains;
+        appliedSettings.channelGains.resize(requestedSettings.receiveChannels);
+        for (U64 i = 0; i < appliedSettings.channelGains.size(); ++i) {
+            const F64 gain = i < gains.size() ? gains[i] : requestedSettings.gain;
+            appliedSettings.channelGains[i] = resolveGain(gain, appliedSettings.gainRange);
+        }
+    }
+
     ScriptedScene scene;
     bool running = false;
     bool biasTeeEnabled = false;
@@ -464,7 +473,11 @@ inline Radio::Device::Driver ScriptedDriver() {
         .name = "scripted",
         .enumerate = [] {
             std::lock_guard lock(TestScript().mutex);
-            return TestScript().devices;
+            auto devices = TestScript().devices;
+            for (auto& device : devices) {
+                device.receiveChannels = TestScript().receiveChannels;
+            }
+            return devices;
         },
         .stream = [](const Radio::Device::Info& info, std::unique_ptr<Radio::Stream>& stream) {
             if (TestScript().fails("open")) {

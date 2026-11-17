@@ -16,7 +16,6 @@ TEST_CASE("SDR block keeps the radio interface defaults",
     REQUIRE(config.deviceString.empty());
     REQUIRE(config.antenna.empty());
     REQUIRE(config.channels == 1);
-    REQUIRE(config.automaticGains.empty());
     REQUIRE(config.manualGains.empty());
     REQUIRE(config.frequency == 96.9e6f);
     REQUIRE(config.frequencyStep == 1000000.0f);
@@ -35,8 +34,7 @@ TEST_CASE("SDR block selections and settings round-trip through saved configurat
     config.antenna = "LNAW";
     config.biasTee = true;
     config.channels = 2;
-    config.automaticGains = {1, 0};
-    config.manualGains = {30.0f, 17.0f};
+    config.manualGains = {30.0f, 36.0f};
     config.frequency = 433.92e6f;
 
     Parser::Map serialized;
@@ -51,7 +49,6 @@ TEST_CASE("SDR block selections and settings round-trip through saved configurat
     REQUIRE(restored.antenna == config.antenna);
     REQUIRE(restored.biasTee);
     REQUIRE(restored.channels == 2);
-    REQUIRE(restored.automaticGains == config.automaticGains);
     REQUIRE(restored.manualGains == config.manualGains);
     REQUIRE(restored.frequency == config.frequency);
     REQUIRE(restored.hash() == config.hash());
@@ -139,6 +136,5 @@ TEST_CASE("SDR block keeps single RX defaults for older configurations",
     Blocks::Sdr config;
     REQUIRE(config.deserialize({{"frequency", F32{100.0e6}}}) == Result::SUCCESS);
     REQUIRE(config.channels == 1);
-    REQUIRE(config.automaticGains.empty());
     REQUIRE(config.manualGains.empty());
 }

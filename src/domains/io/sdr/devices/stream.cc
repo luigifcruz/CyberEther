@@ -53,42 +53,33 @@ Device::Capture Stream::readChannels(std::span<std::span<CF32>> samples,
     return read(samples.front(), timeout);
 }
 
-Result Stream::setChannelGain(const U64 channel, bool, F64) {
-    JST_ERROR("[SDR] {} does not support gain control on RX{}.", deviceInfo.label,
-              channel + 1);
-    return Result::ERROR;
+Result Stream::setChannelGains(const std::vector<F64>& gains) {
+    if (!gains.empty()) {
+        JST_ERROR("[SDR] A gain per receiver is not supported by {}.", deviceInfo.label);
+        return Result::ERROR;
+    }
+    requestedSettings.channelGains = gains;
+    return Result::SUCCESS;
 }
 
 Result Stream::start(const Settings& settings) {
     JST_CHECK(configure(settings));
-    const auto result = open();
-    if (result != Result::SUCCESS) {
-        close();
-    }
-    return result;
+    return open();
 }
 
 Result Stream::configure(const Settings& settings) {
-    if (settings.receiveChannels == 0 ||
-        settings.receiveChannels > deviceCapabilities.receiveChannels) {
-        JST_ERROR("[SDR] {} does not support {} receive channels.",
-                  deviceInfo.label, settings.receiveChannels);
+    if (settings.receiveChannels == 0) {
+        JST_ERROR("[SDR] Receive channels cannot be zero.");
         return Result::ERROR;
     }
-    if (!settings.additionalGains.empty() &&
-        settings.additionalGains.size() != settings.receiveChannels - 1) {
-        JST_ERROR("[SDR] Gain settings must match the receive channel count.");
+    if (settings.receiveChannels > deviceCapabilities.receiveChannels) {
+        JST_ERROR("[SDR] Channels ({}) is more than {} supports ({}).",
+                  settings.receiveChannels, deviceInfo.label,
+                  deviceCapabilities.receiveChannels);
         return Result::ERROR;
     }
-    Settings normalized = settings;
-    normalized.additionalGains.resize(settings.receiveChannels - 1);
     close();
-    JST_CHECK(apply(normalized));
-    if (appliedSettings.additionalGains.size() != normalized.additionalGains.size()) {
-        JST_ERROR("[SDR] {} did not apply all receive channel gains.",
-                  deviceInfo.label);
-        return Result::ERROR;
-    }
+    JST_CHECK(apply(settings));
     if (guard() == std::numeric_limits<U64>::max()) {
         JST_ERROR("[SDR] Settling guard exceeds the sample count range.");
         return Result::ERROR;
@@ -110,18 +101,11 @@ Result Stream::setSettlingTime(const F64 settlingTime) {
 Result Stream::update(const Settings& settings) {
     const auto previous = requestedSettings;
     if (settings.receiveChannels != previous.receiveChannels ||
-        settings.sampleRate != previous.sampleRate ||
-        settings.antenna != previous.antenna || settings.biasTee != previous.biasTee) {
+        settings.sampleRate != previous.sampleRate || settings.antenna != previous.antenna ||
+        settings.biasTee != previous.biasTee) {
         return restart(settings, previous);
     }
 
-    if (!settings.additionalGains.empty() &&
-        settings.additionalGains.size() != settings.receiveChannels - 1) {
-        JST_ERROR("[SDR] Gain settings must match the receive channel count.");
-        return Result::ERROR;
-    }
-    Settings normalized = settings;
-    normalized.additionalGains.resize(settings.receiveChannels - 1);
     const auto change = [&](const Settings& target) {
         if (target.frequency != previous.frequency) {
             if (!Device::Range::Contains(deviceCapabilities.frequencyRanges, target.frequency)) {
@@ -139,21 +123,15 @@ Result Stream::update(const Settings& settings) {
             resolveGain(target.gain, appliedSettings.gainRange) != appliedSettings.gain) {
             JST_CHECK(setGain(target.gain));
         }
-        for (U64 i = 0; i < target.additionalGains.size(); ++i) {
-            const auto& gain = target.additionalGains[i];
-            const auto& old = previous.additionalGains[i];
-            const auto& applied = appliedSettings.additionalGains[i];
-            if (gain.automatic != old.automatic || gain.gain != old.gain ||
-                resolveGain(gain.gain, applied.range) != applied.gain) {
-                JST_CHECK(setChannelGain(i + 1, gain.automatic, gain.gain));
-            }
+        if (target.channelGains != previous.channelGains) {
+            JST_CHECK(setChannelGains(target.channelGains));
         }
         if (target.settlingTime != previous.settlingTime) {
             JST_CHECK(setSettlingTime(target.settlingTime));
         }
         return Result::SUCCESS;
     };
-    const auto result = change(normalized);
+    const auto result = change(settings);
     return result == Result::SUCCESS ? result : restore(previous, result);
 }
 

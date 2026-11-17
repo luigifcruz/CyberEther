@@ -39,7 +39,6 @@ class JETSTREAM_API StreamBuffer {
               std::optional<U64> timestamp = std::nullopt, U64 epoch = 0);
     void split(U64 generation);
     Result pop(CF32* data, U64 count, Metadata& metadata);
-
     Result pop(std::span<CF32* const> data, U64 count, Metadata& metadata);
 
     Metadata metadata() const;

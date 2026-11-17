@@ -529,11 +529,8 @@ void MultiChannelRx(const Device::Info& info) {
     auto settings = Settings(stream->capabilities());
     settings.sampleRate = 2.0e6;
     settings.receiveChannels = 2;
-    settings.additionalGains.resize(1);
     settings.automaticGain = false;
-    settings.additionalGains[0].automatic = false;
     settings.gain = 15.0;
-    settings.additionalGains[0].gain = 25.0;
     Success(stream->start(settings), "start multi-channel RX");
     std::array<CF32, 16384> first;
     std::array<CF32, 16384> second;
@@ -590,23 +587,27 @@ void MultiChannelRx(const Device::Info& info) {
                 "excessive multi-channel RX sample loss");
     };
     receive("multi-channel RX start");
-    const F64 firstGain = stream->applied().gain;
-    settings.additionalGains[0].gain = 30.0;
-    Success(stream->update(settings), "change RX2 gain");
-    Require(stream->applied().gain == firstGain, "RX2 gain change modified RX1");
-    Require(stream->applied().additionalGains[0].gain ==
-                stream->resolveGain(settings.additionalGains[0].gain,
-                                    stream->applied().additionalGains[0].range),
-            "RX2 gain readback mismatch");
-    receive("independent RX2 manual gain");
-    settings.additionalGains[0].automatic = true;
-    Success(stream->update(settings), "enable RX2 automatic gain");
-    Require(!stream->applied().automaticGain &&
-                stream->applied().additionalGains[0].automatic,
-            "RX2 automatic gain modified RX1 gain mode");
-    receive("independent RX2 automatic gain");
-    settings.additionalGains[0].automatic = false;
-    Success(stream->update(settings), "restore RX2 manual gain");
+    settings.gain = 30.0;
+    Success(stream->update(settings), "change multi-channel RX gain");
+    Require(stream->applied().gain ==
+                stream->resolveGain(settings.gain, stream->applied().gainRange),
+            "multi-channel RX gain readback mismatch");
+    receive("multi-channel RX manual gain");
+    settings.channelGains = {settings.gain, settings.gain + 6.0};
+    Success(stream->update(settings), "apply multi-channel RX gain per receiver");
+    Require(stream->applied().channelGains.size() == 2 &&
+                stream->applied().channelGains[0] ==
+                    stream->resolveGain(settings.channelGains[0], stream->applied().gainRange) &&
+                stream->applied().channelGains[1] ==
+                    stream->resolveGain(settings.channelGains[1], stream->applied().gainRange),
+            "multi-channel RX gain per receiver readback mismatch");
+    receive("multi-channel RX gain per receiver");
+    settings.automaticGain = true;
+    Success(stream->update(settings), "enable multi-channel RX automatic gain");
+    Require(stream->applied().automaticGain, "multi-channel RX automatic gain not applied");
+    receive("multi-channel RX automatic gain");
+    settings.automaticGain = false;
+    Success(stream->update(settings), "restore multi-channel RX manual gain");
     settings.frequency += 1.0e6;
     Success(stream->update(settings), "retune multi-channel RX");
     receive("multi-channel RX retune");
@@ -615,6 +616,9 @@ void MultiChannelRx(const Device::Info& info) {
     receive("multi-channel RX sample-rate change");
     Success(stream->start(settings), "restart multi-channel RX");
     receive("multi-channel RX restart");
+    settings.sampleRate = 60.0e6;
+    Require(stream->start(settings) != Result::SUCCESS,
+            "multi-channel RX accepted a total rate above the USB budget");
 }
 
 void Recovery(const Device::Info& info) {

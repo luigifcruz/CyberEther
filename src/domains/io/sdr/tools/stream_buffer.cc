@@ -8,13 +8,13 @@
 
 namespace Jetstream::Radio {
 
-Result StreamBuffer::resize(const U64 capacity, const U64 channelCount) {
+Result StreamBuffer::resize(const U64 capacity, const U64 channels) {
     std::lock_guard lock(mutex);
-    if (channelCount == 0) {
+    if (channels == 0) {
         JST_ERROR("[SDR] Stream buffer requires at least one channel.");
         return Result::ERROR;
     }
-    std::vector<Tools::CircularBuffer<CF32>> replacement(channelCount);
+    std::vector<Tools::CircularBuffer<CF32>> replacement(channels);
     for (auto& channel : replacement) {
         JST_CHECK(channel.resize(capacity));
     }
