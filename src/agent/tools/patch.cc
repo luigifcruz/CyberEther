@@ -495,7 +495,7 @@ const std::array<Operation, 7> kOperations = {{
         {"type", FieldKind::String, true, "Exact block type from search_blocks or get_block_docs."},
         {"ref", FieldKind::String, false,
          "Label that later operations in this call may use as '$ref' in place of the name."},
-        {"name", FieldKind::String, false, "Block name; generated from the type when omitted."},
+        {"name", FieldKind::String, false, "Block name, generated from the type when omitted."},
         {"device", FieldKind::String, false, "Compute device implementation, such as cpu or cuda. Default cpu."},
         {"runtime", FieldKind::String, false, "Runtime implementation, such as native or python. Default native."},
         {"provider", FieldKind::String, false, "Provider implementation from search_blocks. Default generic."},
@@ -506,7 +506,7 @@ const std::array<Operation, 7> kOperations = {{
     }, CreateBlock},
     {"reconfigure_block", {
         {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
-        {"config", FieldKind::Object, true, "Config fields to change, in base values; omitted fields stay unchanged."},
+        {"config", FieldKind::Object, true, "Config fields to change, in base values. Omitted fields stay unchanged."},
     }, ReconfigureBlock},
     {"patch_block_text", {
         {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
@@ -598,7 +598,7 @@ std::string PatchSchema() {
         {"type", "array"},
         {"minItems", 1},
         {"items", {{"oneOf", std::move(variants)}}},
-        {"description", "Edits to apply in order; each names its kind in op."},
+        {"description", "Edits to apply in order, each naming its kind in op."},
     };
 
     return Json({
