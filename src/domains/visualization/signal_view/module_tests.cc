@@ -27,6 +27,7 @@
 #include "flowgraph_fixture.hh"
 
 #include "module_impl.hh"
+#include "render/components/axis_ticks.hh"
 #include "waterfall_3d.hh"
 
 using namespace Jetstream;
@@ -466,7 +467,7 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
     }
 }
 
-TEST_CASE("Lineplot peak search finds the nearby local peak",
+TEST_CASE("Signal View peak search finds the nearby local peak",
           "[modules][signal_view][cursor][peak]") {
     Modules::SignalViewLineplot lineplot;
     lineplot.config.numberOfElements = 9;
@@ -485,7 +486,7 @@ TEST_CASE("Lineplot peak search finds the nearby local peak",
     REQUIRE_FALSE(lineplot.peak(-0.24f, -0.01f).has_value());
 }
 
-TEST_CASE("Amplitude division steps like an analyzer knob",
+TEST_CASE("Signal View amplitude division steps like an analyzer knob",
           "[modules][signal_view][axis][ticks]") {
     using Modules::detail::NextAmplitudeDivision;
     REQUIRE(NextAmplitudeDivision(10.0, true) == 5.0);
@@ -495,75 +496,10 @@ TEST_CASE("Amplitude division steps like an analyzer knob",
     REQUIRE(NextAmplitudeDivision(20.0, false) == 20.0);
     REQUIRE(NextAmplitudeDivision(12.0, true) == 10.0);
     REQUIRE(NextAmplitudeDivision(12.0, false) == 20.0);
-}
-
-TEST_CASE("Axis ticks land on round values",
-          "[modules][signal_view][axis][ticks]") {
-    using Axis = Render::Components::Axis;
-
-    const auto isMultiple = [](const F64 value, const F64 step) {
-        const F64 k = value / step;
-        return std::abs(k - std::round(k)) < 1e-6;
-    };
-
-    SECTION("61.44 MS/s around 100 MHz") {
-        const auto ticks = Axis::ComputeTicks(69.28, 130.72, 6.0);
-        REQUIRE(ticks.step == Catch::Approx(10.0));
-        REQUIRE(ticks.decimals == 0);
-        REQUIRE(ticks.minorDivisions == 5);
-        REQUIRE(ticks.values.size() == 7);
-        REQUIRE(ticks.values.front() == Catch::Approx(70.0));
-        REQUIRE(ticks.values.back() == Catch::Approx(130.0));
-    }
-
-    SECTION("Two steps use quarter minor ticks") {
-        const auto ticks = Axis::ComputeTicks(97.5, 102.5, 1.5);
-        REQUIRE(ticks.step == Catch::Approx(2.0));
-        REQUIRE(ticks.minorDivisions == 4);
-        REQUIRE(ticks.values.size() == 3);
-        REQUIRE(ticks.values[1] == Catch::Approx(100.0));
-    }
-
-    SECTION("Sub-unit steps get decimals") {
-        const auto ticks = Axis::ComputeTicks(99.0, 101.0, 0.3);
-        REQUIRE(ticks.step == Catch::Approx(0.5));
-        REQUIRE(ticks.decimals == 1);
-        REQUIRE(ticks.values.size() == 3);
-
-        const auto fine = Axis::ComputeTicks(100.0012, 100.0019, 0.0001);
-        REQUIRE(fine.step == Catch::Approx(0.0001));
-        REQUIRE(fine.decimals == 4);
-        for (const F64 value : fine.values) {
-            REQUIRE(isMultiple(value, fine.step));
-        }
-    }
-
-    SECTION("Ticks never sit on the frame edges") {
-        const auto ticks = Axis::ComputeTicks(0.0, 10.0, 2.0);
-        REQUIRE(ticks.values.size() == 4);
-        REQUIRE(ticks.values.front() == Catch::Approx(2.0));
-        REQUIRE(ticks.values.back() == Catch::Approx(8.0));
-    }
-
-    SECTION("Negative ranges and gigahertz values") {
-        const auto normalized = Axis::ComputeTicks(-1.0, 1.0, 0.4);
-        REQUIRE(normalized.step == Catch::Approx(0.5));
-        REQUIRE(normalized.values.size() == 3);
-        REQUIRE(normalized.values[1] == Catch::Approx(0.0));
-
-        const auto wifi = Axis::ComputeTicks(2419.28, 2480.72, 7.0);
-        REQUIRE(wifi.step == Catch::Approx(10.0));
-        REQUIRE(wifi.values.front() == Catch::Approx(2420.0));
-        REQUIRE(wifi.values.back() == Catch::Approx(2480.0));
-    }
-
-    SECTION("Invalid ranges produce no ticks") {
-        REQUIRE(Axis::ComputeTicks(1.0, 1.0, 0.1).values.empty());
-        REQUIRE(Axis::ComputeTicks(2.0, 1.0, 0.1).values.empty());
-        REQUIRE(Axis::ComputeTicks(0.0, std::numeric_limits<F64>::infinity(), 0.1).values.empty());
-        const auto fallback = Axis::ComputeTicks(0.0, 10.0, 0.0);
-        REQUIRE(fallback.step == Catch::Approx(1.0));
-    }
+    REQUIRE(NextAmplitudeDivision(0.5, true) == 0.5);
+    REQUIRE(NextAmplitudeDivision(0.5, false) == 1.0);
+    REQUIRE(NextAmplitudeDivision(30.0, true) == 20.0);
+    REQUIRE(NextAmplitudeDivision(30.0, false) == 30.0);
 }
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
@@ -2557,6 +2493,25 @@ TEST_CASE("Signal View rejects non-finite configuration",
 
             Modules::SignalView config;
             config.rangeMin = -std::numeric_limits<F32>::infinity();
+            RequireSignalViewValidationError(implementation, config, input);
+        }
+    }
+}
+
+TEST_CASE("Signal View rejects an unknown amplitude scale",
+          "[modules][signal_view][validation]") {
+    const auto implementations = Registry::ListAvailableModules("signal_view");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& implementation : implementations) {
+        DYNAMIC_SECTION("Device: " << implementation.device
+                        << " Runtime: " << implementation.runtime) {
+            Tensor input;
+            REQUIRE(input.create(implementation.device, DataType::F32, {64}) ==
+                    Result::SUCCESS);
+
+            Modules::SignalView config;
+            config.amplitudeScale = "linear";
             RequireSignalViewValidationError(implementation, config, input);
         }
     }

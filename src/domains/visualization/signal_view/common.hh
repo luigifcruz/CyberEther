@@ -307,6 +307,15 @@ struct SignalViewCanvas {
         Extent2D<F32> origin = {0.0f, 0.0f};
     };
 
+    struct AmplitudeGrid {
+        F64 lower = 0.0;
+        F64 upper = 0.0;
+        F64 step = 0.0;
+        bool linear = false;
+
+        bool operator==(const AmplitudeGrid&) const = default;
+    };
+
     void reset(const SignalView& config);
     Result create(const std::shared_ptr<Render::Window>& window, const Context& context);
     Result destroy(const std::shared_ptr<Render::Window>& window);
@@ -330,6 +339,7 @@ struct SignalViewCanvas {
     std::array<TagBounds, detail::MaxMarkers> tagBounds;
     std::array<bool, detail::MaxMarkers> pinned{};
     MarkerDrag markerDrag;
+    std::optional<AmplitudeGrid> amplitudeGrid;
 
     std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Surface> renderSurface;
