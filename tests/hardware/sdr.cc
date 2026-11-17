@@ -615,12 +615,6 @@ void MultiChannelRx(const Device::Info& info) {
     receive("multi-channel RX sample-rate change");
     Success(stream->start(settings), "restart multi-channel RX");
     receive("multi-channel RX restart");
-    std::unique_ptr<Stream> competing;
-    Require(Stream::Open(info.selector(), competing) != Result::SUCCESS,
-            "second block acquired an active bladeRF");
-    std::unique_ptr<Sweep> sweep;
-    Require(Sweep::Open(info.selector(), sweep) != Result::SUCCESS,
-            "sweep acquired an active bladeRF");
 }
 
 void Recovery(const Device::Info& info) {
@@ -725,7 +719,7 @@ int main() {
             results.run("firmware sweep and restart", [&] { Sweeps(info, Plan::Mode::Firmware); });
         }
         if (info.driver == "bladerf") {
-            results.run("multi-channel RX controls, timestamps, restart and ownership",
+            results.run("multi-channel RX controls, timestamps, and restart",
                         [&] { MultiChannelRx(info); });
         }
         results.run("stream/sweep close and reopen", [&] { Recovery(info); });

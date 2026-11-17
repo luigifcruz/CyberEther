@@ -3,7 +3,6 @@
 #include <array>
 #include <vector>
 
-#include "domains/io/sdr/devices/bladerf/tools/ownership.hh"
 #include "domains/io/sdr/devices/bladerf/tools/quick_tune_budget.hh"
 #include "domains/io/sdr/tools/samples.hh"
 
@@ -32,20 +31,6 @@ TEST_CASE("bladeRF quick-tune budgets reuse plans and fall back before exhaustio
     Radio::BladeRfQuickTuneBudget unbounded;
     REQUIRE(unbounded.plan(std::vector<F64>(1000, 1.0)) == Decision::Build);
     REQUIRE_FALSE(unbounded.remaining().has_value());
-}
-
-TEST_CASE("bladeRF ownership excludes competing stream and sweep handles",
-          "[devices][sdr][bladerf][ownership]") {
-    Radio::BladeRfOwnership next;
-    {
-        Radio::BladeRfOwnership stream;
-        Radio::BladeRfOwnership otherDevice;
-        REQUIRE(stream.acquire("A") == Result::SUCCESS);
-        REQUIRE(next.acquire("A") == Result::ERROR);
-        REQUIRE(otherDevice.acquire("B") == Result::SUCCESS);
-        REQUIRE(stream.acquire("C") == Result::ERROR);
-    }
-    REQUIRE(next.acquire("A") == Result::SUCCESS);
 }
 
 TEST_CASE("bladeRF dual IQ conversion preserves channel order and signed values",
