@@ -606,7 +606,7 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
         if (event.type == MouseEventType::Move) {
             cursor.inside = true;
             cursor.position = event.position;
-            cursor.free = event.modifiers.alt;
+            cursor.snap = event.modifiers.alt;
         } else if (event.type == MouseEventType::Leave) {
             cursor.inside = false;
         }
@@ -634,8 +634,8 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
                 if (markerDrag.moved || travel > 3.0f * interaction.scale) {
                     markerDrag.moved = true;
                     markerPositions[*markerDrag.index] = event.modifiers.alt
-                        ? pointAtX(event.position.x)
-                        : snapToPeak(context, event.position.x);
+                        ? snapToPeak(context, event.position.x)
+                        : pointAtX(event.position.x);
                 }
                 if (!released) {
                     continue;
@@ -995,7 +995,7 @@ std::optional<F32> SignalViewCanvas::cursorPoint(const Context& context) const {
     if (!visible) {
         return std::nullopt;
     }
-    return cursor.free ? pointAtX(cursor.position.x) : snapToPeak(context, cursor.position.x);
+    return cursor.snap ? snapToPeak(context, cursor.position.x) : pointAtX(cursor.position.x);
 }
 
 F32 SignalViewCanvas::snapToPeak(const Context& context, const F32 x) const {

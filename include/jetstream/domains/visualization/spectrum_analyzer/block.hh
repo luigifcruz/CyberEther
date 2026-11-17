@@ -148,7 +148,7 @@ struct SpectrumAnalyzer : public Block::Config {
         " |\n"
         "| Remove the marker under the cursor, or the last one placed | Delete or "
         "Backspace |\n"
-        "| Follow the mouse exactly instead of the nearest peak | Hold Alt |\n"
+        "| Lock the cursor and markers onto the nearest peak | Hold Alt |\n"
         "| Resize the trace and waterfall | Drag the border between them. Spectrum + "
         "Waterfall only. |\n"
         "| Orbit around the surface | Drag in 3D Waterfall |\n"

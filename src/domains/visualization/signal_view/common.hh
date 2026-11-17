@@ -287,7 +287,7 @@ struct SignalViewCanvas {
     struct CursorState {
         bool inside = false;
         Extent2D<F32> position = {0.0f, 0.0f};
-        bool free = false;
+        bool snap = false;
         bool visible = false;
         bool marker = false;
         bool overMarker = false;
