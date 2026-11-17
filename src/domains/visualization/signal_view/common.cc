@@ -176,7 +176,7 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
             : config.waterfallLabel);
         cfg.yLabelOnRight = lineplot;
         cfg.gridColor = context.density ? ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 0.06f}
-                                        : ColorRGBA<F32>{0.26f, 0.26f, 0.26f, 1.0f};
+                                        : ColorRGBA<F32>{0.16f, 0.16f, 0.16f, 1.0f};
         cfg.majorGridColor = {0.5f, 0.5f, 0.5f, 1.0f};
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
