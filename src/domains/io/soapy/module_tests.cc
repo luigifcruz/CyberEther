@@ -166,8 +166,8 @@ TEST_CASE("Soapy device selections round-trip through the installed runtime",
     };
     const auto selection = Modules::SoapyDiscovery::SelectionArguments(device);
     Modules::SoapyKwargs parsed;
-    REQUIRE(library->kwargsFromString(Modules::SoapyDiscovery::FormatArguments(selection),
-                                      parsed) == Result::SUCCESS);
+    const auto markup = Modules::SoapyDiscovery::FormatArguments(selection);
+    REQUIRE(library->kwargsFromString(markup, parsed) == Result::SUCCESS);
     REQUIRE(parsed == selection);
     REQUIRE(parsed == Modules::SoapyKwargs{
         {"device", "usdr1"},
