@@ -18,6 +18,7 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr ColorRGBA<F32> kAccentColor = {1.0f, 0.85f, 0.0f, 1.0f};
+constexpr ColorRGBA<F32> kClipColor = {1.0f, 0.25f, 0.2f, 1.0f};
 constexpr ColorRGBA<F32> kCursorLineColor = {1.0f, 1.0f, 1.0f, 0.35f};
 constexpr ColorRGBA<F32> kCursorHaloColor = {0.0f, 0.0f, 0.0f, 0.65f};
 constexpr ColorRGBA<F32> kCursorPillColor = {0.07f, 0.07f, 0.07f, 0.9f};
@@ -148,7 +149,6 @@ Result SignalViewOverload::read(const Tensor& input) {
     *this = {};
     JST_CHECK(ReadAttribute(input, "clippedSamples", clippedSamples));
     JST_CHECK(ReadAttribute(input, "receivedSamples", receivedSamples));
-    JST_CHECK(ReadAttribute(input, "overloadFlags", flags));
     return Result::SUCCESS;
 }
 
@@ -172,27 +172,14 @@ std::string FormatPercent(const F64 ratio) {
 
 }  // namespace
 
-OverloadBadge FormatOverloadBadge(const bool clipped,
-                                  const bool rf,
-                                  const bool high,
-                                  const F64 clipRatio) {
-    std::vector<std::string> parts;
-    if (clipped) {
-        parts.push_back(clipRatio > 0.0
-            ? jst::fmt::format("CLIP {}", FormatPercent(clipRatio))
-            : "CLIP");
-    } else if (high) {
-        parts.push_back("ADC HIGH");
+std::string FormatOverloadBadge(const bool clipped, const F64 clipRatio) {
+    if (!clipped) {
+        return "";
     }
-    if (rf) {
-        parts.push_back("RF OVLD");
+    if (clipRatio > 0.0) {
+        return jst::fmt::format("CLIP {}", FormatPercent(clipRatio));
     }
-    OverloadBadge badge;
-    for (const auto& part : parts) {
-        badge.text += (badge.text.empty() ? "" : "  ") + part;
-    }
-    badge.severe = clipped;
-    return badge;
+    return "CLIP";
 }
 
 }  // namespace detail
@@ -202,7 +189,6 @@ void SignalViewCanvas::updateOverload(const Context& context) {
     constexpr auto kHold = std::chrono::seconds(2);
     const auto now = Clock::now();
     const auto& source = context.overload;
-    const U64 flags = source.flags.value_or(0);
 
     if (source.clippedSamples) {
         if (overload.lastClipped && *source.clippedSamples > *overload.lastClipped) {
@@ -232,22 +218,11 @@ void SignalViewCanvas::updateOverload(const Context& context) {
     } else if (now >= overload.clipUntil) {
         overload.heldClipRatio = 0.0;
     }
-    if (flags & (detail::kOverloadLargeAdc | detail::kOverloadSaturation)) {
-        overload.clipUntil = now + kHold;
-    }
-    if (flags & (detail::kOverloadLargeLmt | detail::kOverloadSmallLmt)) {
-        overload.rfUntil = now + kHold;
-    }
-    if (flags & detail::kOverloadSmallAdc) {
-        overload.highUntil = now + kHold;
-    }
 
     if (!text || !text->getConfig().elements.contains("overload")) {
         return;
     }
     const auto badge = detail::FormatOverloadBadge(now < overload.clipUntil,
-                                                   now < overload.rfUntil,
-                                                   now < overload.highUntil,
                                                    overload.heldClipRatio);
     auto element = text->get("overload");
     element.position = {
@@ -257,9 +232,7 @@ void SignalViewCanvas::updateOverload(const Context& context) {
                 ? static_cast<F32>(text->getConfig().font->lineHeight()) * element.scale
                 : 0.0f)),
     };
-    element.fill = badge.text.empty() ? " " : badge.text;
-    element.color = badge.severe ? ColorRGBA<F32>{1.0f, 0.25f, 0.2f, 1.0f}
-                                 : ColorRGBA<F32>{1.0f, 0.65f, 0.1f, 1.0f};
+    element.fill = badge.empty() ? " " : badge;
     text->update("overload", element);
 }
 
@@ -326,7 +299,8 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
             {"overload",
              {.scale = kLabelScale,
               .position = {1.0f, 1.0f},
-              .alignment = {2, 0}}},
+              .alignment = {2, 0},
+              .color = kClipColor}},
             {"amplitude-title",
              {.scale = kLabelScale,
               .position = {-1.0f, 0.5f},

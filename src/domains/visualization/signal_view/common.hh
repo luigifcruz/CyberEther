@@ -267,25 +267,13 @@ struct SignalViewFrequency {
 struct SignalViewOverload {
     std::optional<U64> clippedSamples;
     std::optional<U64> receivedSamples;
-    std::optional<U64> flags;
 
     Result read(const Tensor& input);
 };
 
 namespace detail {
 
-constexpr U64 kOverloadLargeLmt = 1 << 4;
-constexpr U64 kOverloadSmallLmt = 1 << 3;
-constexpr U64 kOverloadLargeAdc = 1 << 2;
-constexpr U64 kOverloadSmallAdc = 1 << 1;
-constexpr U64 kOverloadSaturation = 1 << 0;
-
-struct OverloadBadge {
-    std::string text;
-    bool severe = false;
-};
-
-OverloadBadge FormatOverloadBadge(bool clipped, bool rf, bool high, F64 clipRatio);
+std::string FormatOverloadBadge(bool clipped, F64 clipRatio);
 
 }  // namespace detail
 
@@ -345,8 +333,6 @@ struct SignalViewCanvas {
         F64 heldClipRatio = 0.0;
         std::optional<U64> lastClipped;
         std::chrono::steady_clock::time_point clipUntil;
-        std::chrono::steady_clock::time_point rfUntil;
-        std::chrono::steady_clock::time_point highUntil;
     };
 
     void reset(const SignalView& config);

@@ -6,7 +6,6 @@
 #include <chrono>
 #include <mutex>
 #include <optional>
-#include <string>
 #include <thread>
 
 #include "domains/io/soapy/library/soapysdr.hh"
@@ -36,7 +35,6 @@ struct Script {
     std::atomic<bool> emitSamples{false};
     std::atomic<unsigned> activeReads{0};
     std::atomic<U64> concurrentChanges{0};
-    std::atomic<int> overloadBits{-1};
 
     void reset() {
         std::lock_guard lock(mutex);
@@ -49,7 +47,6 @@ struct Script {
         sampleRateWrites = 0;
         gainModeWrites = 0;
         emitSamples = false;
-        overloadBits = -1;
         activeReads = 0;
         concurrentChanges = 0;
     }
@@ -130,19 +127,6 @@ inline SoapyApi Api() {
     api.listAntennas = [](const SoapyAbi::Device*, int, std::size_t, std::size_t* count) -> char** {
         *count = 0;
         return nullptr;
-    };
-    api.listChannelSensors = [](const SoapyAbi::Device*, int, std::size_t,
-                                std::size_t* count) -> char** {
-        static char name[] = "overload";
-        static char* names[] = {name};
-        *count = State().overloadBits >= 0 ? 1 : 0;
-        return *count ? names : nullptr;
-    };
-    api.readChannelSensor = [](const SoapyAbi::Device*, int, std::size_t,
-                               const char*) -> char* {
-        thread_local std::string value;
-        value = std::to_string(State().overloadBits.load());
-        return value.data();
     };
     api.getGainRange = [](const SoapyAbi::Device*, int, std::size_t) {
         return SoapyAbi::Range{0.0, 60.0, 0.0};

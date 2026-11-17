@@ -2,7 +2,6 @@
 #include "library/soapysdr.hh"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <exception>
 #include <new>
@@ -293,12 +292,6 @@ Result SoapyImpl::emitFrame() {
         publishedReceivedSamples = received;
     }
 
-    const U64 flags = overloadFlags.get();
-    if (publishedOverloadFlags != flags) {
-        JST_CHECK(buffer.setAttribute("overloadFlags", flags));
-        publishedOverloadFlags = flags;
-    }
-
     return Result::SUCCESS;
 }
 
@@ -312,9 +305,6 @@ Result SoapyImpl::soapyThreadLoop() {
     constexpr F32 kClipLevel = 0.9999f;
     U64 clippedTotal = 0;
     U64 receivedTotal = 0;
-    constexpr auto kOverloadPollPeriod = std::chrono::milliseconds(50);
-    auto nextOverloadPoll = std::chrono::steady_clock::now();
-    bool overloadArmed = false;
 
     while (streaming) {
         const auto lock = access.lock();
@@ -357,14 +347,6 @@ Result SoapyImpl::soapyThreadLoop() {
                                       static_cast<F32>(capacity);
                 const F32 smoothedFill = bufferFill.get() * 0.99f + newFill * 0.01f;
                 bufferFill.publish(smoothedFill);
-            }
-            const auto now = std::chrono::steady_clock::now();
-            if (receiverDevice.supportsOverloadSensor() && now >= nextOverloadPoll) {
-                nextOverloadPoll = now + kOverloadPollPeriod;
-                if (const auto bits = receiverDevice.readOverloadSensor()) {
-                    overloadArmed |= *bits == 0;
-                    overloadFlags.publish(overloadArmed ? *bits : 0);
-                }
             }
             const F32 actualMB = static_cast<F32>(stream.throughput() * sizeof(CF32)) / 1e6f;
             const F32 expectedMB = static_cast<F32>(stream.metadata().sampleRate * sizeof(CF32)) / 1e6f;

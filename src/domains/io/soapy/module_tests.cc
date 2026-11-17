@@ -379,10 +379,9 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
 }
 
 TEST_CASE_METHOD(TestSoapy::Runtime,
-                 "Soapy module publishes clipped samples and overload signals",
-                 "[modules][soapy][overload]") {
+                 "Soapy module publishes clipped and received sample counts",
+                 "[modules][soapy][clipping]") {
     TestSoapy::State().emitSamples = true;
-    TestSoapy::State().overloadBits = 0x7;
     const auto module = BuildSoapyModule();
     struct Cleanup {
         std::shared_ptr<Module> module;
@@ -418,11 +417,5 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     };
 
     REQUIRE(waitFor("clippedSamples", [](const U64 value) { return value > 0; }));
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    REQUIRE(waitFor("overloadFlags", [](const U64 value) { return value == 0; }));
-
-    TestSoapy::State().overloadBits = 0;
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    TestSoapy::State().overloadBits = 0x4;
-    REQUIRE(waitFor("overloadFlags", [](const U64 value) { return value == 0x4; }));
+    REQUIRE(waitFor("receivedSamples", [](const U64 value) { return value > 0; }));
 }

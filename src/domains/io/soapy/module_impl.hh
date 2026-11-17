@@ -49,14 +49,12 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     Radio::StreamBuffer::Metadata publishedMetadata;
     std::optional<U64> publishedClippedSamples;
     std::optional<U64> publishedReceivedSamples;
-    std::optional<U64> publishedOverloadFlags;
     U64 generation = 0;
 
     Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<U64> deviceOverflows{0};
     Tools::Snapshot<U64> clippedSamples{0};
     Tools::Snapshot<U64> receivedSamples{0};
-    Tools::Snapshot<U64> overloadFlags{0};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<std::optional<SoapyAbi::Range>> gainRange;
 

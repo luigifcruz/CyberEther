@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <future>
 #include <limits>
 #include <memory>
@@ -276,16 +275,6 @@ Result SoapyReceiver::queryCapabilities() {
     }
     api.argInfoListClear(settings, settingCount);
 
-    std::size_t sensorCount = 0;
-    overloadSensorSupported = false;
-    char** sensors = api.listChannelSensors(device, SoapyAbi::RX, 0, &sensorCount);
-    if (api.lastStatus() == 0) {
-        for (std::size_t i = 0; i < sensorCount; ++i) {
-            overloadSensorSupported |= sensors[i] && std::string(sensors[i]) == "overload";
-        }
-    }
-    api.stringsClear(&sensors, sensorCount);
-
     std::size_t antennaCount = 0;
     char** names = api.listAntennas(device, SoapyAbi::RX, 0, &antennaCount);
     if (api.lastStatus() == 0) {
@@ -532,29 +521,6 @@ Result SoapyReceiver::startStreamArgs(const SoapyKwargs& args) {
     state = State::Streaming;
 
     return Result::SUCCESS;
-}
-
-bool SoapyReceiver::supportsOverloadSensor() const {
-    return overloadSensorSupported;
-}
-
-std::optional<U64> SoapyReceiver::readOverloadSensor() const {
-    if (!overloadSensorSupported || !device) {
-        return std::nullopt;
-    }
-    const auto& api = library->api();
-    char* value = api.readChannelSensor(device, SoapyAbi::RX, 0, "overload");
-    if (!value) {
-        return std::nullopt;
-    }
-    char* end = nullptr;
-    const unsigned long long bits = std::strtoull(value, &end, 0);
-    const bool parsed = end != value;
-    api.free(value);
-    if (!parsed) {
-        return std::nullopt;
-    }
-    return static_cast<U64>(bits & 0x1F);
 }
 
 SoapyReceiver::ReadResult SoapyReceiver::read(const std::span<CF32> samples) {
