@@ -71,9 +71,8 @@ Result SoapyImpl::define() {
     Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
     bool selectionListed = config.deviceString.empty();
     for (const auto& [label, device] : Modules::SoapyDiscovery::List()) {
-        auto args = device;
-        args.erase("label");
-        const auto value = Modules::SoapyDiscovery::FormatArguments(args);
+        const auto value = Modules::SoapyDiscovery::FormatArguments(
+            Modules::SoapyDiscovery::SelectionArguments(device));
         selectionListed = selectionListed || value == config.deviceString;
         deviceOptions.emplace_back(Parser::Map{{"label", label}, {"value", value}});
     }
