@@ -370,7 +370,10 @@ std::vector<Agent::Provider::Function> AgentRuntime::Functions(bool captureSuppo
 
 std::vector<AgentMcp::Tool> AgentRuntime::McpTools(bool captureSupported) {
     std::vector<AgentMcp::Tool> tools;
-    for (const auto& [function, flags] : Agent::Tools::Available(captureSupported)) {
+    for (const auto& [function, flags] : Agent::Tools::Definitions()) {
+        if (flags.needsCapture && !captureSupported) {
+            continue;
+        }
         tools.push_back({function, !flags.editsGraph, flags.editsGraph});
     }
     for (auto& function : AgentTiles::Functions()) {

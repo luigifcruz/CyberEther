@@ -207,7 +207,6 @@ TEST_CASE("Only graph-changing agent tools lose the read-only flags", "[agent][t
     }
 
     CHECK(edits == std::set<std::string>{"apply_flowgraph_patch"});
-    CHECK(Agent::Tools::Available(true).size() == Agent::Tools::Definitions().size());
 }
 
 TEST_CASE("Removed agent tools cannot be dispatched", "[agent][tools]") {

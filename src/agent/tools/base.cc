@@ -97,20 +97,12 @@ const std::vector<Tools::Definition>& Tools::Definitions() {
     return definitions;
 }
 
-std::vector<Tools::Definition> Tools::Available(bool captureSupported) {
-    std::vector<Definition> available;
+std::vector<Provider::Function> Tools::Functions(bool captureSupported) {
+    std::vector<Provider::Function> tools;
     for (const auto& definition : Definitions()) {
         if (definition.flags.needsCapture && !captureSupported) {
             continue;
         }
-        available.push_back(definition);
-    }
-    return available;
-}
-
-std::vector<Provider::Function> Tools::Functions(bool captureSupported) {
-    std::vector<Provider::Function> tools;
-    for (const auto& definition : Available(captureSupported)) {
         tools.push_back(definition.function);
     }
     return tools;

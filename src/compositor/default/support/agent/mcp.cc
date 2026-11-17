@@ -208,7 +208,6 @@ Result AgentMcp::start(Config config) {
             {"annotations", {
                 {"readOnlyHint", readOnly},
                 {"destructiveHint", destructive},
-                {"idempotentHint", readOnly},
                 {"openWorldHint", false},
             }},
         });
