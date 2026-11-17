@@ -941,7 +941,7 @@ void SignalViewCanvas::updateLabels(const Context& context) {
                                            viewRight - viewLeft);
             if (config.amplitudeScale == "log") {
                 header.fill += jst::fmt::format("   {:g} dB/div",
-                    std::abs(config.rangeMax - config.rangeMin) / 10.0f);
+                    std::round(std::abs(config.rangeMax - config.rangeMin) * 10.0f) / 100.0f);
             }
         } else {
             header.fill = "CENTER 0.000   SPAN 1.000";
