@@ -110,8 +110,7 @@ Result SoapyImpl::create() {
     streaming = false;
     bufferFill.publish(0.0f);
     deviceOverflows.publish(0);
-    clippedSamples.publish(0);
-    receivedSamples.publish(0);
+    sampleCounts.publish({});
     throughput.publish({0.0f, 0.0f});
 
     JST_CHECK(receiverDevice.open(deviceString));
@@ -285,16 +284,15 @@ Result SoapyImpl::emitFrame() {
     JST_CHECK(result);
     JST_CHECK(publishMetadata(metadata));
 
-    const U64 clipped = clippedSamples.get();
-    if (publishedClippedSamples != clipped) {
-        JST_CHECK(buffer.setAttribute(std::string(ClippedSamplesAttribute), clipped));
-        publishedClippedSamples = clipped;
+    const SampleCounts counts = sampleCounts.get();
+    if (publishedClippedSamples != counts.clipped) {
+        JST_CHECK(buffer.setAttribute(std::string(ClippedSamplesAttribute), counts.clipped));
+        publishedClippedSamples = counts.clipped;
     }
 
-    const U64 received = receivedSamples.get();
-    if (publishedReceivedSamples != received) {
-        JST_CHECK(buffer.setAttribute(std::string(ReceivedSamplesAttribute), received));
-        publishedReceivedSamples = received;
+    if (publishedReceivedSamples != counts.received) {
+        JST_CHECK(buffer.setAttribute(std::string(ReceivedSamplesAttribute), counts.received));
+        publishedReceivedSamples = counts.received;
     }
 
     return Result::SUCCESS;
@@ -308,8 +306,7 @@ Result SoapyImpl::soapyThreadLoop() {
     SoapyReceiveStatus receiveStatus;
 
     const F32 clipLevel = receiverDevice.getClipLevel();
-    U64 clippedTotal = 0;
-    U64 receivedTotal = 0;
+    SampleCounts counts;
 
     while (streaming) {
         const auto lock = access.lock();
@@ -333,17 +330,12 @@ Result SoapyImpl::soapyThreadLoop() {
             errored = true;
             break;
         } else if (action == SoapyReceiveStatus::Action::Samples) {
-            U64 clipped = 0;
             for (std::size_t i = 0; i < received.sampleCount; ++i) {
-                clipped += std::abs(tmp[i].real()) >= clipLevel ||
-                           std::abs(tmp[i].imag()) >= clipLevel;
+                counts.clipped += std::abs(tmp[i].real()) >= clipLevel ||
+                                  std::abs(tmp[i].imag()) >= clipLevel;
             }
-            if (clipped > 0) {
-                clippedTotal += clipped;
-                clippedSamples.publish(clippedTotal);
-            }
-            receivedTotal += received.sampleCount;
-            receivedSamples.publish(receivedTotal);
+            counts.received += received.sampleCount;
+            sampleCounts.publish(counts);
             stream.push(readGeneration, tmp.data(), received.sampleCount);
             Scheduler::Context::NotifyPendingCompute();
             const U64 capacity = stream.capacity();

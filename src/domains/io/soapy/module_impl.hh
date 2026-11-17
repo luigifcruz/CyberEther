@@ -35,6 +35,11 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     Result setBiasTee(bool enabled);
 
  protected:
+    struct SampleCounts {
+        U64 clipped = 0;
+        U64 received = 0;
+    };
+
     Tensor buffer;
 
     U64 validatedOutputSizeBytes = 0;
@@ -53,8 +58,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
 
     Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<U64> deviceOverflows{0};
-    Tools::Snapshot<U64> clippedSamples{0};
-    Tools::Snapshot<U64> receivedSamples{0};
+    Tools::Snapshot<SampleCounts> sampleCounts;
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<std::optional<SoapyAbi::Range>> gainRange;
 
