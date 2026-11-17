@@ -15,6 +15,8 @@ TEST_CASE("SDR block keeps the radio interface defaults",
     Blocks::Sdr config;
     REQUIRE(config.deviceString.empty());
     REQUIRE(config.antenna.empty());
+    REQUIRE(config.channels == 1);
+    REQUIRE(config.manualGains.empty());
     REQUIRE(config.frequency == 96.9e6f);
     REQUIRE(config.frequencyStep == 1000000.0f);
     REQUIRE(config.sampleRate == 2.0e6f);
@@ -31,18 +33,23 @@ TEST_CASE("SDR block selections and settings round-trip through saved configurat
     config.deviceString = "driver=hackrf,serial=0000000000000000a06063c8234e925f";
     config.antenna = "LNAW";
     config.biasTee = true;
+    config.channels = 2;
+    config.manualGains = {30.0f, 36.0f};
     config.frequency = 433.92e6f;
 
     Parser::Map serialized;
     REQUIRE(config.serialize(serialized) == Result::SUCCESS);
     REQUIRE_FALSE(serialized.contains("modulePath"));
     REQUIRE_FALSE(serialized.contains("streamString"));
+    REQUIRE(serialized.contains("channels"));
 
     Blocks::Sdr restored;
     REQUIRE(restored.deserialize(serialized) == Result::SUCCESS);
     REQUIRE(restored.deviceString == config.deviceString);
     REQUIRE(restored.antenna == config.antenna);
     REQUIRE(restored.biasTee);
+    REQUIRE(restored.channels == 2);
+    REQUIRE(restored.manualGains == config.manualGains);
     REQUIRE(restored.frequency == config.frequency);
     REQUIRE(restored.hash() == config.hash());
 }
@@ -122,4 +129,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
             }
         }
     }
+}
+
+TEST_CASE("SDR block keeps single RX defaults for older configurations",
+          "[modules][sdr][multi-channel][block]") {
+    Blocks::Sdr config;
+    REQUIRE(config.deserialize({{"frequency", F32{100.0e6}}}) == Result::SUCCESS);
+    REQUIRE(config.channels == 1);
+    REQUIRE(config.manualGains.empty());
 }
