@@ -122,7 +122,7 @@ struct SignalViewLineplot {
     Result upload(const Tensor& signalPoints, bool& holdPending);
     Result present();
     std::optional<F32> sample(F32 position) const;
-    std::optional<F32> peak(F32 left, F32 right) const;
+    JETSTREAM_API std::optional<F32> peak(F32 left, F32 right) const;
 
     Config config;
     std::vector<F32> displayedPoints;
