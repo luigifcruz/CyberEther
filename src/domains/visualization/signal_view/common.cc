@@ -1179,13 +1179,21 @@ void SignalViewCanvas::eraseMarker(const U64 index) {
     markerPositions.erase(markerPositions.begin() + index);
     std::copy(pinned.begin() + index + 1, pinned.end(), pinned.begin() + index);
     pinned.back() = false;
+    std::copy(tagBounds.begin() + index + 1, tagBounds.end(), tagBounds.begin() + index);
+    tagBounds.back() = {};
 }
 
 void SignalViewCanvas::deleteMarker(const Context& context, const Edits& edits) {
-    if (markerPositions.empty()) {
+    if (markerPositions.empty() || markerDrag.index) {
         return;
     }
-    const auto hovered = cursor.inside ? markerAt(context, cursor.position) : std::nullopt;
+    std::optional<U64> hovered;
+    if (cursor.inside) {
+        hovered = tagAt(cursor.position);
+        if (!hovered || *hovered >= markerPositions.size()) {
+            hovered = markerAt(context, cursor.position);
+        }
+    }
     eraseMarker(hovered.value_or(markerPositions.size() - 1));
     commitMarkers(context, edits);
 }
@@ -1390,7 +1398,8 @@ Result SignalViewCanvas::updateMarkers(const Context& context) {
     const F32 lineHeight = markerText ? markerText->lineHeight(kLabelScale) : 0.0f;
     const F32 tagLineHeight = tagText ? tagText->lineHeight(kLabelScale) : 0.0f;
     const F32 headerOffset = axis->getConfig().majorTickLengthPx + 4.0f;
-    const F32 headerHeight = table ? tagLineHeight + 8.0f : 0.0f;
+    const bool header = table || (context.lineplot && context.frequency.valid);
+    const F32 headerHeight = header ? tagLineHeight + 8.0f : 0.0f;
     const F32 tagPadX = 6.0f;
     const F32 tagPadY = 2.0f;
     const F32 tagHeight = (tagPadY * 2.0f + tagLineHeight) * pixelSize.y;
