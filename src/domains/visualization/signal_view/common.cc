@@ -180,6 +180,7 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
         cfg.majorGridColor = {0.5f, 0.5f, 0.5f, 1.0f};
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
+        amplitudeGrid.reset();
     }
 
     // Text labels (header, zoom, and cursor readouts).
@@ -567,13 +568,13 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
                 context.config.rangeMin < context.config.rangeMax &&
                 edits.enabled("rangeMin") && edits.enabled("rangeMax")) {
                 const F64 division = (context.config.rangeMax - context.config.rangeMin) / 10.0;
-                const F64 shift = key->key == KeyCode::UpArrow ? division : -division;
-                const F64 top = context.config.rangeMax + shift;
-                const F64 bottom = context.config.rangeMin + shift;
-                if (top <= 0.0 && bottom >= -300.0) {
+                const F64 shift = std::clamp(key->key == KeyCode::UpArrow ? division : -division,
+                                             std::min(0.0, -300.0 - context.config.rangeMin),
+                                             std::max(0.0, -static_cast<F64>(context.config.rangeMax)));
+                if (shift != 0.0) {
                     Parser::Map edit;
-                    edit["rangeMin"] = static_cast<F32>(bottom);
-                    edit["rangeMax"] = static_cast<F32>(top);
+                    edit["rangeMin"] = static_cast<F32>(context.config.rangeMin + shift);
+                    edit["rangeMax"] = static_cast<F32>(context.config.rangeMax + shift);
                     edits.request(edit);
                 }
             } else if (key->type == KeyEventType::Press && context.lineplot && verticalArrow &&
@@ -892,14 +893,27 @@ void SignalViewCanvas::updateLabels(const Context& context) {
             axis->clearXRange();
         }
 
-        const F64 lower = std::min(config.rangeMin, config.rangeMax);
-        const F64 upper = std::max(config.rangeMin, config.rangeMax);
-        const bool logScale = config.amplitudeScale == "log";
-        if (!lineplot || axis->updateYRange(lower, upper,
-                [lower, upper, linear = context.density != nullptr || logScale](const F64 value) {
-                    const F64 position = 2.0 * (value - lower) / (upper - lower) - 1.0;
-                    return static_cast<F32>(linear ? position : std::tanh(2.0 * position));
-                }, logScale ? (upper - lower) / 10.0 : 0.0) != Result::SUCCESS) {
+        if (lineplot) {
+            const bool logScale = config.amplitudeScale == "log";
+            const F64 lower = std::min(config.rangeMin, config.rangeMax);
+            const F64 upper = std::max(config.rangeMin, config.rangeMax);
+            const AmplitudeGrid grid = {
+                .lower = lower,
+                .upper = upper,
+                .step = logScale ? (upper - lower) / 10.0 : 0.0,
+                .linear = context.density != nullptr || logScale,
+            };
+            if (amplitudeGrid != grid) {
+                amplitudeGrid = grid;
+                const auto toPosition = [grid](const F64 value) {
+                    const F64 position = 2.0 * (value - grid.lower) / (grid.upper - grid.lower) - 1.0;
+                    return static_cast<F32>(grid.linear ? position : std::tanh(2.0 * position));
+                };
+                if (axis->updateYRange(grid.lower, grid.upper, toPosition, grid.step) != Result::SUCCESS) {
+                    axis->clearYRange();
+                }
+            }
+        } else {
             axis->clearYRange();
         }
     }
@@ -933,18 +947,22 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         text->update("hold", holdLabel);
 
         auto header = text->get("header");
-        header.position = {-paddingScale.x + pixelSize.x * tickOffset,
-                           paddingScale.y - pixelSize.y * tickOffset};
-        if (frequency.valid) {
-            header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
-                                           (viewLeft + viewRight) / 2.0,
-                                           viewRight - viewLeft);
-            if (config.amplitudeScale == "log") {
-                header.fill += jst::fmt::format("   {:g} dB/div",
-                    std::round(std::abs(config.rangeMax - config.rangeMin) * 10.0f) / 100.0f);
-            }
+        if (interaction.placement == SurfacePlacementType::Attached && !frequency.valid) {
+            header.fill = " ";
         } else {
-            header.fill = "CENTER 0.000   SPAN 1.000";
+            header.position = {-paddingScale.x + pixelSize.x * tickOffset,
+                               paddingScale.y - pixelSize.y * tickOffset};
+            if (frequency.valid) {
+                header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
+                                               (viewLeft + viewRight) / 2.0,
+                                               viewRight - viewLeft);
+                if (config.amplitudeScale == "log") {
+                    header.fill += jst::fmt::format("   {:g} dB/div",
+                        std::round(std::abs(config.rangeMax - config.rangeMin) * 10.0f) / 100.0f);
+                }
+            } else {
+                header.fill = "CENTER 0.000   SPAN 1.000";
+            }
         }
         text->update("header", header);
 
@@ -1001,7 +1019,7 @@ std::optional<F32> SignalViewCanvas::cursorPoint(const Context& context) const {
 F32 SignalViewCanvas::snapToPeak(const Context& context, const F32 x) const {
     constexpr F32 kSnapPx = 6.0f;
     const F32 point = pointAtX(x);
-    if (!context.lineplot || interaction.viewSize.x == 0) {
+    if (!context.lineplot || !context.frequency.valid || interaction.viewSize.x == 0) {
         return point;
     }
     const F32 reach = kSnapPx * interaction.scale / static_cast<F32>(interaction.viewSize.x);

@@ -51,14 +51,14 @@ inline F64 NextAmplitudeDivision(const F64 current, const bool finer) {
                 return *it;
             }
         }
-        return steps.front();
+        return current;
     }
     for (const F64 step : steps) {
         if (step > current * (1.0 + 1e-6)) {
             return step;
         }
     }
-    return steps.back();
+    return current;
 }
 
 inline std::string LineplotAmplitudeLabel(const F32 position,
