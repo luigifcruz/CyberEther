@@ -75,7 +75,6 @@ class JETSTREAM_API Tools {
         bool needsGraph = false;
         bool editsGraph = false;
         bool opensGraph = false;
-        bool destructive = false;
         bool reportsLayout = false;
         bool needsCapture = false;
     };

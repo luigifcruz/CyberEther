@@ -201,7 +201,6 @@ TEST_CASE("Agent tool parameters all carry descriptions", "[agent][tools]") {
 TEST_CASE("Only graph-changing agent tools lose the read-only flags", "[agent][tools]") {
     std::set<std::string> edits;
     std::set<std::string> opens;
-    std::set<std::string> destructive;
     for (const auto& [function, flags] : Agent::Tools::Definitions()) {
         if (flags.editsGraph) {
             edits.insert(function.name);
@@ -209,14 +208,10 @@ TEST_CASE("Only graph-changing agent tools lose the read-only flags", "[agent][t
         if (flags.opensGraph) {
             opens.insert(function.name);
         }
-        if (flags.destructive) {
-            destructive.insert(function.name);
-        }
     }
 
     CHECK(edits == std::set<std::string>{"apply_flowgraph_patch"});
     CHECK(opens == std::set<std::string>{"open_example"});
-    CHECK(destructive == std::set<std::string>{"apply_flowgraph_patch"});
     CHECK(Agent::Tools::Available(true).size() == Agent::Tools::Definitions().size());
 }
 
