@@ -112,6 +112,70 @@ TEST_CASE("Soapy can load an installed system runtime without opening a radio",
     REQUIRE_FALSE(library->path().empty());
 }
 
+TEST_CASE("Soapy device selections keep only arguments SoapySDR markup can hold",
+          "[modules][soapy][discovery]") {
+    const Modules::SoapyKwargs usdr{
+        {"addr", "bus=pci,device=usdr1"},
+        {"bus", "pci"},
+        {"dev", "bus=pci,device=usdr1"},
+        {"device", "usdr1"},
+        {"driver", "usdr"},
+        {"label", "USDR: bus=pci,device=usdr1"},
+        {"serial", "012345678"},
+    };
+    REQUIRE(Modules::SoapyDiscovery::SelectionArguments(usdr) == Modules::SoapyKwargs{
+        {"bus", "pci"},
+        {"device", "usdr1"},
+        {"driver", "usdr"},
+        {"serial", "012345678"},
+    });
+
+    const Modules::SoapyKwargs edges{
+        {"driver", "scripted"},
+        {"empty", ""},
+        {"uri", "ip:radio.local"},
+        {"padded", " value"},
+        {"trailing", "value "},
+        {"key=value", "x"},
+        {"", "unnamed"},
+    };
+    REQUIRE(Modules::SoapyDiscovery::SelectionArguments(edges) == Modules::SoapyKwargs{
+        {"driver", "scripted"},
+        {"empty", ""},
+        {"uri", "ip:radio.local"},
+    });
+}
+
+TEST_CASE("Soapy device selections round-trip through the installed runtime",
+          "[modules][soapy][runtime][system]") {
+    const TestSupport::ScopedEnvironment environment("CYBERETHER_SOAPYSDR_LIBRARY");
+    REQUIRE(environment.set(std::nullopt));
+    const RuntimeReset reset;
+    const auto library = Modules::SoapyRuntime::Acquire();
+    if (!library) {
+        SKIP(Modules::SoapyRuntime::Availability().message);
+    }
+
+    const Modules::SoapyKwargs device{
+        {"addr", "bus=pci,device=usdr1"},
+        {"dev", "bus=pci,device=usdr1"},
+        {"device", "usdr1"},
+        {"driver", "usdr"},
+        {"label", "USDR: bus=pci,device=usdr1"},
+        {"uri", "ip:radio.local"},
+    };
+    const auto selection = Modules::SoapyDiscovery::SelectionArguments(device);
+    Modules::SoapyKwargs parsed;
+    REQUIRE(library->kwargsFromString(Modules::SoapyDiscovery::FormatArguments(selection),
+                                      parsed) == Result::SUCCESS);
+    REQUIRE(parsed == selection);
+    REQUIRE(parsed == Modules::SoapyKwargs{
+        {"device", "usdr1"},
+        {"driver", "usdr"},
+        {"uri", "ip:radio.local"},
+    });
+}
+
 TEST_CASE_METHOD(TestSoapy::Runtime,
                  "Soapy gain control respects device capabilities during startup and reconfiguration",
                  "[modules][soapy][devices][agc]") {

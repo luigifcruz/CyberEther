@@ -1,6 +1,7 @@
 #include "soapysdr.hh"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <future>
 #include <limits>
@@ -151,6 +152,30 @@ SoapyDiscovery::DeviceList SoapyDiscovery::BuildDeviceList(const SoapyKwargsList
         devices.emplace(std::move(uniqueLabel), entry);
     }
     return devices;
+}
+
+SoapyKwargs SoapyDiscovery::SelectionArguments(const DeviceEntry& device) {
+    // SoapySDR markup splits pairs on commas and trims surrounding whitespace, so
+    // values such as uSDR's "dev=bus=pci,device=usdr1" come back mangled once saved
+    // and parsed again, and the filter then matches no device. Leave those out:
+    // opening the device enumerates it again and takes their full values from the
+    // match.
+    const auto representable = [](const std::string& text, const bool isKey) {
+        if (text.find(',') != std::string::npos ||
+            (isKey && (text.empty() || text.find('=') != std::string::npos))) {
+            return false;
+        }
+        return text.empty() || (!std::isspace(static_cast<unsigned char>(text.front())) &&
+                                !std::isspace(static_cast<unsigned char>(text.back())));
+    };
+
+    SoapyKwargs args;
+    for (const auto& [key, value] : device) {
+        if (key != "label" && representable(key, true) && representable(value, false)) {
+            args.emplace(key, value);
+        }
+    }
+    return args;
 }
 
 std::string SoapyDiscovery::FormatArguments(const SoapyKwargs& args) {
