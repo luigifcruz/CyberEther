@@ -2410,8 +2410,9 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
                  "[modules][sdr][multi-channel][block]") {
     TestScript().receiveChannels = 2;
     TestScript().budget = 0;
+    TestScript().devices = {{.serial = "dual", .label = "Scripted Radio"}};
     Blocks::Sdr config;
-    config.deviceString = Selector;
+    config.deviceString = "driver=scripted,serial=dual";
     config.numberOfBatches = 1;
     config.numberOfTimeSamples = 8;
     REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
