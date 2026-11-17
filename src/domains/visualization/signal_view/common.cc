@@ -241,12 +241,14 @@ void SignalViewCanvas::updateOverload(const Context& context) {
     const auto badge = detail::FormatOverloadBadge(now < overload.clipUntil,
                                                    overload.heldClipRatio);
     auto element = text->get("overload");
+    const bool zoomShown = text->get("zoom").fill != " ";
+    const F32 lineOffset = zoomShown && text->getConfig().font
+        ? static_cast<F32>(text->getConfig().font->lineHeight()) * element.scale
+        : 0.0f;
     element.position = {
         axis->paddingScale().x - pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
-        axis->paddingScale().y - pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f +
-            (text->getConfig().font
-                ? static_cast<F32>(text->getConfig().font->lineHeight()) * element.scale
-                : 0.0f)),
+        axis->paddingScale().y -
+            pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f + lineOffset),
     };
     element.fill = badge.empty() ? " " : badge;
     text->update("overload", element);
