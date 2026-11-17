@@ -43,8 +43,6 @@ inline std::optional<F64> LineplotAmplitudeValue(const F32 position,
     return lower + normalized * (upper - lower);
 }
 
-// Next amplitude scale on the 1, 2, 5, 10, 20 dB/div knob of a bench
-// analyzer, finer or coarser than the current one.
 inline F64 NextAmplitudeDivision(const F64 current, const bool finer) {
     constexpr std::array<F64, 5> steps = {1.0, 2.0, 5.0, 10.0, 20.0};
     if (finer) {
@@ -124,7 +122,6 @@ struct SignalViewLineplot {
     Result upload(const Tensor& signalPoints, bool& holdPending);
     Result present();
     std::optional<F32> sample(F32 position) const;
-    // Position of the highest local peak between left and right, if any.
     std::optional<F32> peak(F32 left, F32 right) const;
 
     Config config;

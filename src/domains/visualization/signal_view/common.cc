@@ -552,7 +552,6 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
             }
             if (key->type == KeyEventType::Press &&
                 (key->key == KeyCode::LeftArrow || key->key == KeyCode::RightArrow)) {
-                // Step a tenth of the visible span, like a frequency knob.
                 const F32 step = 0.1f / interaction.zoom;
                 const F32 limit = std::max(0.0f, 0.5f * (1.0f - (1.0f / interaction.zoom)));
                 const F32 offset = std::clamp(
@@ -567,8 +566,6 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
                 key->modifiers.shift &&
                 context.config.rangeMin < context.config.rangeMax &&
                 edits.enabled("rangeMin") && edits.enabled("rangeMax")) {
-                // Move the reference level, and the whole scale with it, by
-                // one division.
                 const F64 division = (context.config.rangeMax - context.config.rangeMin) / 10.0;
                 const F64 shift = key->key == KeyCode::UpArrow ? division : -division;
                 const F64 top = context.config.rangeMax + shift;
@@ -582,8 +579,6 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
             } else if (key->type == KeyEventType::Press && context.lineplot && verticalArrow &&
                 context.config.rangeMin < context.config.rangeMax &&
                 edits.enabled("rangeMin")) {
-                // Change dB/div over ten divisions, keeping the top as the
-                // reference level.
                 const F64 top = context.config.rangeMax;
                 const F64 division = detail::NextAmplitudeDivision(
                     (top - context.config.rangeMin) / 10.0,
@@ -843,7 +838,6 @@ void SignalViewCanvas::updateLabels(const Context& context) {
     const auto& frequency = context.frequency;
     const F32 translation = PanTranslation(interaction);
 
-    // Data values at the left and right frame edges of the zoomed view.
     const F64 leftPos = -1.0 / interaction.zoom - translation;
     const F64 rightPos = 1.0 / interaction.zoom - translation;
     const auto viewValue = [&](const F64 normalizedPos) {
@@ -894,17 +888,12 @@ void SignalViewCanvas::updateLabels(const Context& context) {
 
         axis->updateTickFormatters(std::move(xFormatter), std::move(yFormatter));
 
-        // Vertical grid lines and X labels on round values of the view.
         if (axis->updateXRange(viewLeft, viewRight) != Result::SUCCESS) {
             axis->clearXRange();
         }
 
-        // Horizontal lines on round amplitudes, through the same mapping as
-        // the trace (compressed with tanh unless the plot is linear).
         const F64 lower = std::min(config.rangeMin, config.rangeMax);
         const F64 upper = std::max(config.rangeMin, config.rangeMax);
-        // In Log mode the header promises ten divisions of dB/div each, so
-        // draw exactly those lines.
         const bool logScale = config.amplitudeScale == "log";
         if (!lineplot || axis->updateYRange(lower, upper,
                 [lower, upper, linear = context.density != nullptr || logScale](const F64 value) {
@@ -943,23 +932,19 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         holdLabel.fill = displayHeld ? "HOLD" : " ";
         text->update("hold", holdLabel);
 
-        // Shown in the node too: it is the only exact reading of the band.
         auto header = text->get("header");
-        {
-            header.position = {-paddingScale.x + pixelSize.x * tickOffset,
-                               paddingScale.y - pixelSize.y * tickOffset};
-            if (frequency.valid) {
-                // Center and span of what is on screen, so they follow zoom.
-                header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
-                                               (viewLeft + viewRight) / 2.0,
-                                               viewRight - viewLeft);
-                if (config.amplitudeScale == "log") {
-                    header.fill += jst::fmt::format("   {:g} dB/div",
-                        std::abs(config.rangeMax - config.rangeMin) / 10.0f);
-                }
-            } else {
-                header.fill = "CENTER 0.000   SPAN 1.000";
+        header.position = {-paddingScale.x + pixelSize.x * tickOffset,
+                           paddingScale.y - pixelSize.y * tickOffset};
+        if (frequency.valid) {
+            header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
+                                           (viewLeft + viewRight) / 2.0,
+                                           viewRight - viewLeft);
+            if (config.amplitudeScale == "log") {
+                header.fill += jst::fmt::format("   {:g} dB/div",
+                    std::abs(config.rangeMax - config.rangeMin) / 10.0f);
             }
+        } else {
+            header.fill = "CENTER 0.000   SPAN 1.000";
         }
         text->update("header", header);
 
@@ -1014,8 +999,6 @@ std::optional<F32> SignalViewCanvas::cursorPoint(const Context& context) const {
 }
 
 F32 SignalViewCanvas::snapToPeak(const Context& context, const F32 x) const {
-    // Narrow peaks are a pixel or two wide: lock onto the highest bin a few
-    // pixels around the mouse, like a marker peak search.
     constexpr F32 kSnapPx = 6.0f;
     const F32 point = pointAtX(x);
     if (!context.lineplot || interaction.viewSize.x == 0) {
@@ -1025,7 +1008,6 @@ F32 SignalViewCanvas::snapToPeak(const Context& context, const F32 x) const {
     const auto peak = context.lineplot->peak(pointAtX(x - reach), pointAtX(x + reach));
     const auto here = context.lineplot->sample(point);
     const auto there = peak ? context.lineplot->sample(*peak) : std::nullopt;
-    // Stay under the mouse unless a bin nearby is actually higher.
     if (!peak || !here || !there || *there <= *here) {
         return point;
     }
@@ -1185,7 +1167,6 @@ void SignalViewCanvas::deleteMarker(const Context& context, const Edits& edits) 
     if (markerPositions.empty()) {
         return;
     }
-    // The marker under the mouse, otherwise the one placed last.
     const auto hovered = cursor.inside ? markerAt(context, cursor.position) : std::nullopt;
     eraseMarker(hovered.value_or(markerPositions.size() - 1));
     commitMarkers(context, edits);

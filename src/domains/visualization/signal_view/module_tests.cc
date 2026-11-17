@@ -470,8 +470,6 @@ TEST_CASE("Lineplot peak search finds the nearby local peak",
           "[modules][signal_view][cursor][peak]") {
     Modules::SignalViewLineplot lineplot;
     lineplot.config.numberOfElements = 9;
-    // Bins at x = -1, -0.75, ..., 1. A narrow peak at bin 3 (-0.25), a
-    // taller one at bin 6 (0.5), and a slope rising to the right edge.
     const std::array<F32, 9> levels = {0.0f, 0.1f, 0.2f, 0.9f, 0.2f, 0.3f, 1.0f, 0.5f, 0.8f};
     lineplot.displayedPoints.resize(levels.size() * 2);
     for (U64 i = 0; i < levels.size(); i++) {
@@ -479,15 +477,11 @@ TEST_CASE("Lineplot peak search finds the nearby local peak",
         lineplot.displayedPoints[(i * 2) + 1] = levels[i];
     }
 
-    // Only the peak inside the window counts, not the taller one elsewhere.
     REQUIRE(lineplot.peak(-0.4f, -0.1f) == Catch::Approx(-0.25f));
     REQUIRE(lineplot.peak(0.3f, 0.6f) == Catch::Approx(0.5f));
-    // Both peaks in the window: the higher wins.
     REQUIRE(lineplot.peak(-0.4f, 0.6f) == Catch::Approx(0.5f));
-    // The end of a slope is not a peak.
     REQUIRE_FALSE(lineplot.peak(0.9f, 1.0f).has_value());
     REQUIRE_FALSE(lineplot.peak(-1.0f, -0.6f).has_value());
-    // A window narrower than one bin holds no bin at all.
     REQUIRE_FALSE(lineplot.peak(-0.24f, -0.01f).has_value());
 }
 
@@ -499,7 +493,6 @@ TEST_CASE("Amplitude division steps like an analyzer knob",
     REQUIRE(NextAmplitudeDivision(1.0, true) == 1.0);
     REQUIRE(NextAmplitudeDivision(10.0, false) == 20.0);
     REQUIRE(NextAmplitudeDivision(20.0, false) == 20.0);
-    // Off-knob ranges snap to the neighbouring setting.
     REQUIRE(NextAmplitudeDivision(12.0, true) == 10.0);
     REQUIRE(NextAmplitudeDivision(12.0, false) == 20.0);
 }
@@ -588,6 +581,7 @@ TEST_CASE("Axis X range places grid lines on round values",
     for (const auto& [left, right] : std::vector<std::pair<F64, F64>>{
              {69.28, 130.72}, {84.64, 115.36}, {99.0, 101.0},
              {99.9, 100.1}, {2419.28, 2480.72}, {-1.0, 1.0}}) {
+        CAPTURE(left, right);
         REQUIRE(axis.updateXRange(left, right) == Result::SUCCESS);
         CHECK(JST_LOG_LAST_ERROR() == "");
         const auto& ticks = axis.currentXTicks();
@@ -603,7 +597,6 @@ TEST_CASE("Axis X range places grid lines on round values",
         }
     }
 
-    // Amplitudes: linear, and compressed like the default trace.
     const auto compressed = [](const F64 value) {
         return static_cast<F32>(std::tanh(2.0 * (2.0 * (value + 100.0) / 100.0 - 1.0)));
     };
@@ -625,15 +618,11 @@ TEST_CASE("Axis X range places grid lines on round values",
             }
         }
         if (linear) {
-            // Ten divisions over 100 dB, labelled or not.
             REQUIRE(ticks.step == Catch::Approx(10.0));
-            // Evenly spaced: every multiple of the step inside the range.
             REQUIRE(ticks.values.size() ==
                     static_cast<U64>(std::round(100.0 / ticks.step)) - 1);
         }
     }
-    // A requested step, such as 10 dB/div, sets every line whatever the height,
-    // even where labels must skip lines.
     for (const F32 height : {800.0f, 693.0f, 345.0f}) {
         CAPTURE(height);
         REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / height}) == Result::SUCCESS);
@@ -644,7 +633,6 @@ TEST_CASE("Axis X range places grid lines on round values",
             REQUIRE(ticks.values.size() == 9);
         }
     }
-    // Too short for ten divisions (80 px of plot): lines widen rather than merge.
     REQUIRE(axis.updatePixelSize({2.0f / 1200.0f, 2.0f / 160.0f}) == Result::SUCCESS);
     REQUIRE(axis.updateYRange(-100.0, 0.0, {}, 10.0) == Result::SUCCESS);
     REQUIRE(axis.currentYTicks().step == Catch::Approx(20.0));
@@ -1948,7 +1936,6 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owni
     present();
     REQUIRE(spanLabel(0) == "0.7500");
 
-    // Delete with no marker under the mouse removes the one placed last.
     original->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f, 0.25f},
     });
