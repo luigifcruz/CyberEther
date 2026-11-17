@@ -136,6 +136,10 @@ bool AgentTiles::Handles(const std::string& name) {
     return name == kInspect || name == kArrange;
 }
 
+bool AgentTiles::ReadOnly(const std::string& name) {
+    return name == kInspect;
+}
+
 std::vector<Agent::Provider::Function> AgentTiles::Functions() {
     return {
         {

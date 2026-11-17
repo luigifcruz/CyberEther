@@ -330,7 +330,7 @@ std::vector<Entry> Toolbox::Inspect() {
             "viewport.visible gives the visible canvas rectangle in graph "
             "coordinates. selected lists the blocks the user has selected in "
             "the editor, when any.",
-            R"({"type":"object","properties":{"detail":{"type":"string","enum":["summary","routing","full"]},"sink":{"type":"string","description":"For routing detail, the downstream block to trace, such as an audio or visualization sink."}},"additionalProperties":false})",
+            R"({"type":"object","properties":{"detail":{"type":"string","enum":["summary","routing","full"],"description":"Amount of detail to return. Default summary."},"sink":{"type":"string","description":"For routing detail, the downstream block to trace, such as an audio or visualization sink."}},"additionalProperties":false})",
             {.needsGraph = true, .reportsLayout = true},
         }, InspectFlowgraph);
     flowgraph.annotate = [](Json& body, const Json&, const Layout& layout) {

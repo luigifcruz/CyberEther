@@ -74,6 +74,8 @@ class JETSTREAM_API Tools {
     struct Flags {
         bool needsGraph = false;
         bool editsGraph = false;
+        bool opensGraph = false;
+        bool destructive = false;
         bool reportsLayout = false;
         bool needsCapture = false;
     };
@@ -93,6 +95,7 @@ class JETSTREAM_API Tools {
     };
 
     static const std::vector<Definition>& Definitions();
+    static std::vector<Definition> Available(bool captureSupported);
     static std::vector<Provider::Function> Functions(bool captureSupported);
     static Output Error(const std::string& message, bool mayHaveApplied = false);
     static void Annotate(const Call& call, Output& output, const Layout& layout);

@@ -13,11 +13,17 @@ namespace Jetstream {
 
 class AgentMcp {
  public:
+    struct Tool {
+        Agent::Provider::Function function;
+        bool readOnly = false;
+        bool destructive = false;
+    };
+
     struct Config {
         std::string address;
         U16 port = 0;
         std::string instructions;
-        std::vector<Agent::Provider::Function> tools;
+        std::vector<Tool> tools;
         Agent::Session::ToolExecutor executeTool;
     };
 

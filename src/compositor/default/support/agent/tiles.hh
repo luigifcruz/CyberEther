@@ -19,6 +19,7 @@ class AgentTiles {
     AgentTiles(DefaultCompositorState& state, const DefaultCompositorCallbacks& callbacks);
 
     static bool Handles(const std::string& name);
+    static bool ReadOnly(const std::string& name);
     static std::vector<Agent::Provider::Function> Functions();
 
     Agent::Tools::Output execute(const std::shared_ptr<Flowgraph>& flowgraph,

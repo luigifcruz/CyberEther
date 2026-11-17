@@ -6,6 +6,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -162,6 +163,61 @@ TEST_CASE("Agent exposes the consolidated tool surface", "[agent][tools]") {
     }
 
     REQUIRE(actual == expected);
+}
+
+TEST_CASE("Agent tool parameters all carry descriptions", "[agent][tools]") {
+    std::vector<std::string> undescribed;
+    const auto visit = [&](const auto& self, const nlohmann::json& schema, const std::string& path) -> void {
+        if (schema.is_array()) {
+            for (const auto& value : schema) {
+                self(self, value, path);
+            }
+            return;
+        }
+        if (!schema.is_object()) {
+            return;
+        }
+        if (schema.contains("properties")) {
+            for (const auto& property : schema.at("properties").items()) {
+                const auto& value = property.value();
+                if (!value.contains("const") && !value.contains("description")) {
+                    undescribed.push_back(path + "." + property.key());
+                }
+            }
+        }
+        for (const auto& child : schema.items()) {
+            self(self, child.value(), path);
+        }
+    };
+
+    for (const auto& definition : Agent::Tools::Definitions()) {
+        const auto& tool = definition.function;
+        visit(visit, nlohmann::json::parse(tool.parametersJson), tool.name);
+    }
+
+    CHECK(undescribed == std::vector<std::string>{});
+}
+
+TEST_CASE("Only graph-changing agent tools lose the read-only flags", "[agent][tools]") {
+    std::set<std::string> edits;
+    std::set<std::string> opens;
+    std::set<std::string> destructive;
+    for (const auto& [function, flags] : Agent::Tools::Definitions()) {
+        if (flags.editsGraph) {
+            edits.insert(function.name);
+        }
+        if (flags.opensGraph) {
+            opens.insert(function.name);
+        }
+        if (flags.destructive) {
+            destructive.insert(function.name);
+        }
+    }
+
+    CHECK(edits == std::set<std::string>{"apply_flowgraph_patch"});
+    CHECK(opens == std::set<std::string>{"open_example"});
+    CHECK(destructive == std::set<std::string>{"apply_flowgraph_patch"});
+    CHECK(Agent::Tools::Available(true).size() == Agent::Tools::Definitions().size());
 }
 
 TEST_CASE("Removed agent tools cannot be dispatched", "[agent][tools]") {
