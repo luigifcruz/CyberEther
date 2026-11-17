@@ -155,11 +155,6 @@ SoapyDiscovery::DeviceList SoapyDiscovery::BuildDeviceList(const SoapyKwargsList
 }
 
 SoapyKwargs SoapyDiscovery::SelectionArguments(const DeviceEntry& device) {
-    // SoapySDR markup splits pairs on commas and trims surrounding whitespace, so
-    // values such as uSDR's "dev=bus=pci,device=usdr1" come back mangled once saved
-    // and parsed again, and the filter then matches no device. Leave those out:
-    // opening the device enumerates it again and takes their full values from the
-    // match.
     const auto representable = [](const std::string& text, const bool isKey) {
         if (text.find(',') != std::string::npos ||
             (isKey && (text.empty() || text.find('=') != std::string::npos))) {
