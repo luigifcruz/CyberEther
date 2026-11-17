@@ -12,6 +12,7 @@ CyberEther would not be possible without the contributions and support of many i
 - **Luigi Cruz** ([@luigicruz](https://twitter.com/luigifcruz)) - Creator and maintainer of CyberEther.
 - **Paulo Dutra** ([@DutraCGI](https://twitter.com/DutraCGI)) - Feedback and Windows testing.
 - **Richard Elkins** ([@texadactyl](https://github.com/texadactyl)) - Curated issues.
+- **Chase Valentine** ([@cvalentine99](https://github.com/cvalentine99)) - SoapySDR fixes for uSDR and xMASS radios.
 
 <!-- [NEW CONTRIBUTOR HOOK] -->
 
