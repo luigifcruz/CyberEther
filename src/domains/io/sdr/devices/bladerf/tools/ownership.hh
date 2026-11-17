@@ -8,7 +8,6 @@
 
 namespace Jetstream::Radio {
 
-// Holds exclusive ownership until the associated hardware handle has closed.
 class JETSTREAM_API BladeRfOwnership {
  public:
     BladeRfOwnership() = default;
@@ -24,4 +23,4 @@ class JETSTREAM_API BladeRfOwnership {
 
 }  // namespace Jetstream::Radio
 
-#endif
+#endif  // JETSTREAM_DOMAINS_IO_SDR_DEVICES_BLADERF_TOOLS_OWNERSHIP_HH

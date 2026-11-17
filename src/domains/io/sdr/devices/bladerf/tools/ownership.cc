@@ -15,8 +15,6 @@ struct OwnershipRegistry {
 };
 
 OwnershipRegistry& Registry() {
-    // Keep the registry alive for owners released during static destruction.
-    // The static pointer is trivially destructible; the registry lives until exit.
     static auto* registry = new OwnershipRegistry;
     return *registry;
 }

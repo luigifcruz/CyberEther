@@ -35,16 +35,20 @@ Result SdrImpl::validate() {
         JST_ERROR("[MODULE_SDR] Sample rate must be finite and positive.");
         return Result::ERROR;
     }
-    if (!std::isfinite(config.manualGain) ||
-        std::ranges::any_of(config.manualGains,
-                            [](F32 gain) { return !std::isfinite(gain); })) {
+    if (!std::isfinite(config.manualGain)) {
         JST_ERROR("[MODULE_SDR] Manual gain must be finite.");
         return Result::ERROR;
     }
-    if (config.channels == 0 ||
-        std::ranges::any_of(config.automaticGains, [](U64 mode) { return mode > 1; })) {
-        JST_ERROR("[MODULE_SDR] Channels must be positive; automatic gain entries "
-                  "must be 0 (manual) or 1 (automatic).");
+    if (std::ranges::any_of(config.manualGains, [](F32 gain) { return !std::isfinite(gain); })) {
+        JST_ERROR("[MODULE_SDR] Manual gains must be finite.");
+        return Result::ERROR;
+    }
+    if (config.channels == 0) {
+        JST_ERROR("[MODULE_SDR] Channels cannot be zero.");
+        return Result::ERROR;
+    }
+    if (std::ranges::any_of(config.automaticGains, [](U64 mode) { return mode > 1; })) {
+        JST_ERROR("[MODULE_SDR] Automatic gains must be 0 (manual) or 1 (automatic).");
         return Result::ERROR;
     }
     if (config.numberOfBatches == 0) {
@@ -114,7 +118,7 @@ Result SdrImpl::create() {
     antennas = caps.antennas;
     if (channels > caps.receiveChannels) {
         JST_ERROR(
-            "[MODULE_SDR] Selected radio supports {} receive channels; requested {}.",
+            "[MODULE_SDR] Selected radio supports {} receive channels, not {}.",
             caps.receiveChannels, channels);
         radio.reset();
         return Result::ERROR;
@@ -196,8 +200,10 @@ Result SdrImpl::destroy() {
 Result SdrImpl::reconfigure() {
     const auto& config = *candidate();
 
-    if (config.channels != channels || config.deviceString != deviceString ||
-        config.antenna != antenna || config.biasTee != biasTee ||
+    if (config.deviceString != deviceString ||
+        config.antenna != antenna ||
+        config.channels != channels ||
+        config.biasTee != biasTee ||
         config.numberOfBatches != numberOfBatches ||
         config.numberOfTimeSamples != numberOfTimeSamples ||
         config.bufferMultiplier != bufferMultiplier) {

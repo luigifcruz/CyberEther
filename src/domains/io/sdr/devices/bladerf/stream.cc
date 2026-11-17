@@ -45,7 +45,6 @@ constexpr unsigned SyncBufferSize = 8192;
 constexpr unsigned SyncTransfers = 8;
 constexpr unsigned SyncTimeout = 3500;
 constexpr U64 DrainSamples = 65536;
-// Conservative upper bound across USB speeds and metadata message versions.
 constexpr U64 MessageSamples = 2048;
 constexpr F32 Q11Scale = 2048.0f;
 constexpr bladerf_channel Channel = BLADERF_CHANNEL_RX(0);
@@ -98,7 +97,7 @@ class BladeRfStream final : public Stream {
     Result setGain(F64 gain) override;
     Result setChannelGain(U64 channel, bool automaticGain, F64 gain) override;
 
-   private:
+ private:
     Result setFrequency(F64 frequency);
     Result resynchronize(U64 settle);
     Result applyGainMode(bool requested, F64 gain, U64 index = 0);
@@ -176,13 +175,11 @@ Result BladeRfStream::apply(const Settings& settings) {
                 "[SDR_BLADERF] Failed to query the FPGA version for multi-channel RX.");
             return Result::ERROR;
         }
-        // Earlier images advance the RX timestamp by 255 for 254 sample pairs,
-        // breaking capture continuity (Nuand/bladeRF issue #855).
         if (std::tuple{version.major, version.minor, version.patch} <
             std::tuple{0, 15, 3}) {
             JST_ERROR(
                 "[SDR_BLADERF] Multiple RX channels require FPGA v0.15.3 or newer "
-                "for correct timestamps; the device has v{}.{}.{}. Load a compatible "
+                "for correct timestamps, and the device has v{}.{}.{}. Load a compatible "
                 "FPGA image before enabling multiple channels.",
                 version.major, version.minor, version.patch);
             return Result::ERROR;
@@ -254,7 +251,6 @@ Result BladeRfStream::open() {
         return Result::ERROR;
     }
     for (U64 i = 0; i < requestedSettings.receiveChannels; ++i) {
-        // Also disable the attempted channel if enable fails partway through.
         enabledChannels = i + 1;
         if (bladerf_enable_module(handle, BLADERF_CHANNEL_RX(i), true) != 0) {
             JST_ERROR("[SDR_BLADERF] Failed to enable RX{}.", i + 1);

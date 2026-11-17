@@ -135,7 +135,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 }
 
-TEST_CASE("older SDR configurations retain single RX defaults",
+TEST_CASE("SDR block keeps single RX defaults for older configurations",
           "[modules][sdr][multi-channel][block]") {
     Blocks::Sdr config;
     REQUIRE(config.deserialize({{"frequency", F32{100.0e6}}}) == Result::SUCCESS);

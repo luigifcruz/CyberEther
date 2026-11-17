@@ -59,12 +59,13 @@ Result SdrImpl::configure() {
 Result SdrImpl::define() {
     const auto& config = *candidate();
     const bool gainOverrides = config.channels > 1 ||
-        !config.automaticGains.empty() || !config.manualGains.empty();
+                               !config.automaticGains.empty() ||
+                               !config.manualGains.empty();
 
-    JST_CHECK(
-        defineInterfaceOutput("signal", "Output",
-                              "Samples with channel, batch, and sample axes; "
-                              "single-channel output has batch and sample axes."));
+    JST_CHECK(defineInterfaceOutput("signal",
+                                    "Output",
+                                    "The output buffer containing samples from the radio. "
+                                    "Channels above 1 add a leading channel axis."));
 
     Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
     bool selectionListed = config.deviceString.empty();
@@ -83,15 +84,17 @@ Result SdrImpl::define() {
                                     "Select a radio to receive samples. Choose None to disconnect.",
                                     {{"type", "dropdown"}, {"options", std::move(deviceOptions)}}));
 
-    JST_CHECK(defineInterfaceConfig(
-        "channels", "Channels",
-        "Number of synchronized receive channels. More than one adds an outer "
-        "channel dimension to Output. Changes restart reception.",
-        {{"type", "uint"}, {"unit", "channels"}}));
+    JST_CHECK(defineInterfaceConfig("channels",
+                                    "Channels",
+                                    "Number of synchronized receive channels. More than one adds an "
+                                    "outer channel dimension to Output. Changes restart reception.",
+                                    {{"type", "uint"}, {"unit", "channels"}}));
+
     if (config.channels == 1) {
-        JST_CHECK(defineInterfaceConfig(
-            "antenna", "Antenna", "Receive antenna port. Changes restart the receiver.",
-            antennaFormat(config)));
+        JST_CHECK(defineInterfaceConfig("antenna",
+                                        "Antenna",
+                                        "Receive antenna port. Changes restart the receiver.",
+                                        antennaFormat(config)));
     }
 
     JST_CHECK(defineInterfaceConfig("frequency",
@@ -107,32 +110,40 @@ Result SdrImpl::define() {
                                     "Sampling rate.",
                                     sampleRateFormat(config)));
 
-    JST_CHECK(defineInterfaceConfig(
-        "automaticGain",
-        gainOverrides ? "Default Automatic Gain" : "Automatic Gain",
-        "Automatic gain used by channels without an Automatic Gains override.",
-        {{"type", "bool"}}));
+    JST_CHECK(defineInterfaceConfig("automaticGain",
+                                    gainOverrides ? "Default Automatic Gain" : "Automatic Gain",
+                                    gainOverrides
+                                        ? "Automatic gain used by channels without an Automatic Gains entry."
+                                        : "Enable automatic gain control on radios that support it.",
+                                    {{"type", "bool"}}));
 
     if (!config.automaticGain || gainOverrides) {
-        JST_CHECK(defineInterfaceConfig(
-            "manualGain", gainOverrides ? "Default Manual Gain" : "Manual Gain",
-            "Manual gain used by channels without a Manual Gains override.",
-            manualGainFormat(config)));
+        JST_CHECK(defineInterfaceConfig("manualGain",
+                                        gainOverrides ? "Default Manual Gain" : "Manual Gain",
+                                        gainOverrides
+                                            ? "Manual gain used by channels without a Manual Gains entry."
+                                            : "Receive gain applied while automatic gain is off.",
+                                        manualGainFormat(config)));
     }
+
     if (gainOverrides) {
-        JST_CHECK(defineInterfaceConfig(
-            "automaticGains", "Automatic Gains",
-            "Values in RX order: 1 for automatic gain, 0 for manual. Missing entries "
-            "use Default Automatic Gain. Lists resize when Channels changes.",
-            {{"type", "vector-inline"}, {"value_type", "uint"}}));
         const auto caps = Radio::Device::Cached(config.deviceString);
-        JST_CHECK(defineInterfaceConfig(
-            "manualGains", "Manual Gains",
-            "Gains in RX order, clamped to each receiver range. Missing entries use "
-            "Default Manual Gain. Lists resize when Channels changes.",
-            {{"type", "vector-inline"},
-             {"value_type", "float"},
-             {"unit", caps ? caps->gainUnit : "dB"}}));
+
+        JST_CHECK(defineInterfaceConfig("automaticGains",
+                                        "Automatic Gains",
+                                        "Values in RX order, with 1 for automatic gain and 0 for manual. "
+                                        "Missing entries use Default Automatic Gain, and the list "
+                                        "resizes with Channels.",
+                                        {{"type", "vector-inline"}, {"value_type", "uint"}}));
+
+        JST_CHECK(defineInterfaceConfig("manualGains",
+                                        "Manual Gains",
+                                        "Gains in RX order, clamped to each receiver range. Missing "
+                                        "entries use Default Manual Gain, and the list resizes with "
+                                        "Channels.",
+                                        {{"type", "vector-inline"},
+                                         {"value_type", "float"},
+                                         {"unit", caps ? caps->gainUnit : "dB"}}));
     }
 
     if (Radio::Device::SupportsBiasTee(config.deviceString)) {

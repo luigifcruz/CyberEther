@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <any>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -1201,6 +1202,191 @@ TEST_CASE("SDR stream buffers never complete a frame across a gap",
     }
 }
 
+TEST_CASE("SDR stream buffers discard and overwrite complete channel pairs",
+          "[modules][sdr][multi-channel][buffer]") {
+    Radio::StreamBuffer queue;
+    REQUIRE(queue.resize(6, 2) == Result::SUCCESS);
+    queue.reset({.frequency = 100.0e6, .sampleRate = 2.0e6, .generation = 1});
+    const std::array<CF32, 8> first{0, 1, 2, 3, 4, 5, 6, 7};
+    const std::array<CF32, 8> second{100, 101, 102, 103, 104, 105, 106, 107};
+    Radio::StreamBuffer::Metadata metadata;
+    std::array<CF32, 4> a;
+    std::array<CF32, 4> b;
+
+    SECTION("overflow keeps the latest pairs and counts each pair once") {
+        REQUIRE(queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()},
+                           8, 0, 1));
+        REQUIRE(queue.statistics().pushedSamples == 8);
+        REQUIRE(queue.statistics().overwrittenSamples == 2);
+        REQUIRE(queue.pop(std::array<CF32*, 2>{a.data(), b.data()}, 4, metadata) ==
+                Result::SUCCESS);
+        REQUIRE(a == std::array<CF32, 4>{2, 3, 4, 5});
+        REQUIRE(b == std::array<CF32, 4>{102, 103, 104, 105});
+    }
+    SECTION("timestamp gaps discard both partial frames together") {
+        REQUIRE(queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()},
+                           2, 0, 1));
+        REQUIRE(queue.push(
+            1, std::array<const CF32*, 2>{first.data() + 2, second.data() + 2}, 4, 10,
+            1));
+        REQUIRE(queue.pop(std::array<CF32*, 2>{a.data(), b.data()}, 4, metadata) ==
+                Result::SUCCESS);
+        REQUIRE(a == std::array<CF32, 4>{2, 3, 4, 5});
+        REQUIRE(b == std::array<CF32, 4>{102, 103, 104, 105});
+        REQUIRE(queue.statistics().discardedSamples == 2);
+    }
+    SECTION("retunes reject old captures for both channels") {
+        REQUIRE(queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()},
+                           2, 0, 1));
+        queue.reset({.frequency = 200.0e6, .sampleRate = 4.0e6, .generation = 2});
+        REQUIRE_FALSE(queue.push(
+            1, std::array<const CF32*, 2>{first.data(), second.data()}, 4, 2, 1));
+        REQUIRE(queue.size() == 0);
+        REQUIRE(queue.push(
+            2, std::array<const CF32*, 2>{first.data() + 4, second.data() + 4}, 4, 100,
+            2));
+        REQUIRE(queue.pop(std::array<CF32*, 2>{a.data(), b.data()}, 4, metadata) ==
+                Result::SUCCESS);
+        REQUIRE(a == std::array<CF32, 4>{4, 5, 6, 7});
+        REQUIRE(b == std::array<CF32, 4>{104, 105, 106, 107});
+        REQUIRE(metadata.frequency == 200.0e6);
+        REQUIRE(metadata.sampleRate == 4.0e6);
+    }
+    SECTION("explicit discontinuities cannot join partial frames") {
+        REQUIRE(
+            queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()}, 2));
+        queue.split(1);
+        REQUIRE(queue.push(
+            1, std::array<const CF32*, 2>{first.data() + 2, second.data() + 2}, 4));
+        REQUIRE(queue.pop(std::array<CF32*, 2>{a.data(), b.data()}, 4, metadata) ==
+                Result::SUCCESS);
+        REQUIRE(a == std::array<CF32, 4>{2, 3, 4, 5});
+        REQUIRE(b == std::array<CF32, 4>{102, 103, 104, 105});
+    }
+    SECTION("single-channel access cannot partially consume a pair") {
+        REQUIRE_FALSE(queue.push(1, first.data(), 4));
+        REQUIRE(
+            queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()}, 4));
+        REQUIRE(queue.pop(a.data(), 4, metadata) == Result::ERROR);
+        REQUIRE(queue.size() == 4);
+    }
+}
+
+TEST_CASE_METHOD(
+    TestRadio::ScriptedDrivers,
+    "SDR dual RX streams read one synchronized capture and apply independent gains",
+    "[modules][sdr][multi-channel][stream]") {
+    TestRadio::TestScript().receiveChannels = 2;
+    TestRadio::TestScript().counter = true;
+    TestRadio::TestScript().readLimit = 3;
+    std::unique_ptr<Radio::Stream> stream;
+    REQUIRE(Radio::Stream::Open(TestRadio::Selector, stream) == Result::SUCCESS);
+    Radio::Stream::Settings settings;
+    settings.receiveChannels = 2;
+    settings.additionalGains.resize(1);
+    settings.automaticGain = false;
+    settings.gain = 12.0;
+    settings.additionalGains[0].automatic = false;
+    settings.additionalGains[0].gain = 19.0;
+    REQUIRE(stream->start(settings) == Result::SUCCESS);
+    std::array<CF32, 8> a;
+    std::array<CF32, 8> b;
+    std::array<std::span<CF32>, 2> destinations{a, b};
+    auto capture = stream->readChannels(destinations, std::chrono::milliseconds(50));
+    REQUIRE(capture.status == Radio::Device::Status::Samples);
+    REQUIRE(capture.count == 3);
+    REQUIRE(capture.timestamp == 0);
+    for (U64 i = 0; i < capture.count; ++i) {
+        REQUIRE(a[i].real() == static_cast<F32>(i));
+        REQUIRE(b[i] == -a[i]);
+    }
+    const auto generation = stream->generation();
+    settings.additionalGains[0].gain = 25.0;
+    REQUIRE(stream->update(settings) == Result::SUCCESS);
+    REQUIRE(stream->generation() == generation);
+    REQUIRE(stream->applied().gain == 12.0);
+    REQUIRE(stream->applied().additionalGains[0].gain == 25.0);
+    settings.additionalGains[0].automatic = true;
+    REQUIRE(stream->update(settings) == Result::SUCCESS);
+    REQUIRE_FALSE(stream->applied().automaticGain);
+    REQUIRE(stream->applied().additionalGains[0].automatic);
+
+    TestRadio::TestScript().failAt = "gain2:35";
+    settings.additionalGains[0].gain = 35.0;
+    REQUIRE(stream->update(settings) == Result::ERROR);
+    REQUIRE(stream->applied().gain == 12.0);
+    REQUIRE(stream->applied().additionalGains[0].gain == 25.0);
+    REQUIRE(stream->settings().additionalGains[0].gain == 25.0);
+    REQUIRE(stream->generation() > generation);
+    capture = stream->readChannels(destinations, std::chrono::milliseconds(50));
+    REQUIRE(capture.status == Radio::Device::Status::Samples);
+    REQUIRE(capture.count == 3);
+    for (U64 i = 0; i < capture.count; ++i) {
+        REQUIRE(b[i] == -a[i]);
+    }
+}
+
+TEST_CASE_METHOD(
+    TestRadio::ScriptedDrivers,
+    "SDR single RX streams reject multi-channel settings and keep the legacy read path",
+    "[modules][sdr][multi-channel][compatibility]") {
+    std::unique_ptr<Radio::Stream> stream;
+    REQUIRE(Radio::Stream::Open(TestRadio::Selector, stream) == Result::SUCCESS);
+    Radio::Stream::Settings settings;
+    settings.receiveChannels = 2;
+    settings.additionalGains.resize(1);
+    REQUIRE(stream->start(settings) == Result::ERROR);
+    settings.receiveChannels = 1;
+    settings.additionalGains.clear();
+    REQUIRE(stream->start(settings) == Result::SUCCESS);
+    std::array<CF32, 4> a;
+    std::array<std::span<CF32>, 1> destinations{a};
+    REQUIRE(stream->readChannels(destinations, std::chrono::milliseconds(50)).count ==
+            4);
+}
+
+TEST_CASE("SDR stream buffers preserve every channel through overflow and gaps",
+          "[devices][sdr][multi-channel][buffer]") {
+    Radio::StreamBuffer queue;
+    REQUIRE(queue.resize(6, 4) == Result::SUCCESS);
+    queue.reset({.generation = 1});
+    std::array<std::array<CF32, 8>, 4> input;
+    std::array<std::array<CF32, 4>, 4> output;
+    std::array<const CF32*, 4> sources;
+    std::array<CF32*, 4> destinations;
+    for (U64 channel = 0; channel < 4; ++channel) {
+        for (U64 i = 0; i < 8; ++i) {
+            input[channel][i] = static_cast<F32>(channel * 100 + i);
+        }
+        sources[channel] = input[channel].data();
+        destinations[channel] = output[channel].data();
+    }
+    Radio::StreamBuffer::Metadata metadata;
+    REQUIRE(queue.push(1, sources, 8, 0));
+    REQUIRE(queue.statistics().pushedSamples == 8);
+    REQUIRE(queue.statistics().overwrittenSamples == 2);
+    REQUIRE(queue.pop(destinations, 4, metadata) == Result::SUCCESS);
+    for (U64 channel = 0; channel < 4; ++channel) {
+        REQUIRE(output[channel][0] == static_cast<F32>(channel * 100 + 2));
+        REQUIRE(output[channel][3] == static_cast<F32>(channel * 100 + 5));
+    }
+    REQUIRE(queue.push(1, sources, 4, 20));
+    REQUIRE(queue.pop(destinations, 4, metadata) == Result::SUCCESS);
+    REQUIRE(queue.statistics().discardedSamples == 2);
+    for (U64 channel = 0; channel < 4; ++channel) {
+        REQUIRE(output[channel][0] == static_cast<F32>(channel * 100));
+    }
+    REQUIRE(queue.push(1, sources, 4));
+    destinations[3] = nullptr;
+    REQUIRE(queue.pop(destinations, 4, metadata) == Result::ERROR);
+    REQUIRE(queue.size() == 4);
+    sources[3] = nullptr;
+    REQUIRE_FALSE(queue.push(1, sources, 2));
+    REQUIRE(queue.size() == 4);
+    REQUIRE(queue.resize(6, 0) == Result::ERROR);
+    REQUIRE(queue.size() == 4);
+}
+
 TEST_CASE("SDR timestamped streams never label queued IQ with a live retune",
           "[modules][sdr][backend][capture][retune]") {
     FifoStream stream;
@@ -2104,7 +2290,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
-                 "Multi-channel SDR tensors slice into aligned receiver streams",
+                 "SDR multi-channel tensors slice into aligned receiver streams",
                  "[modules][sdr][multi-channel]") {
     TestScript().receiveChannels = 3;
     TestScript().readLimit = 3;
@@ -2259,7 +2445,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
-                 "Multi-channel configuration fails clearly on single RX radios",
+                 "SDR multi-channel configuration fails clearly on single RX radios",
                  "[modules][sdr][multi-channel][compatibility]") {
     auto config = ScriptedConfig();
     config.channels = 2;
@@ -2272,7 +2458,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
 
 TEST_CASE_METHOD(
     ScriptedDrivers,
-    "Multi-channel startup failures release the radio and shared antenna power",
+    "SDR multi-channel startup failures release the radio and antenna power",
     "[modules][sdr][multi-channel][lifecycle]") {
     TestScript().receiveChannels = 2;
     TestScript().failAt = "gain2:30";
@@ -2289,7 +2475,7 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
-                 "Multi-channel device disconnection stops both outputs",
+                 "SDR multi-channel device disconnection stops both outputs",
                  "[modules][sdr][multi-channel][lifecycle]") {
     TestScript().receiveChannels = 2;
     TestScript().budget = 0;
@@ -2310,7 +2496,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
-                 "Multi-channel gain defaults retain their request across retunes",
+                 "SDR multi-channel gain defaults retain their request across retunes",
                  "[modules][sdr][multi-channel][gain]") {
     TestScript().receiveChannels = 2;
     TestScript().budget = 0;

@@ -15,16 +15,16 @@ namespace Jetstream::Radio {
 
 class JETSTREAM_API Stream {
  public:
-  struct GainSettings {
-      bool automatic = true;
-      F64 gain = 30.0;
-  };
+    struct GainSettings {
+        bool automatic = true;
+        F64 gain = 30.0;
+    };
 
-  struct GainApplied {
-      bool automatic = false;
-      F64 gain = 0.0;
-      std::optional<Device::Range> range;
-  };
+    struct GainApplied {
+        bool automatic = false;
+        F64 gain = 0.0;
+        std::optional<Device::Range> range;
+    };
 
     struct Settings {
         F64 frequency = 96.9e6;
@@ -35,7 +35,6 @@ class JETSTREAM_API Stream {
         F64 settlingTime = -1.0;
         F64 gain = 30.0;
         U64 receiveChannels = 1;
-        // Additional receivers, starting at RX2. RX1 retains the single-RX API.
         std::vector<GainSettings> additionalGains;
     };
 
@@ -64,8 +63,6 @@ class JETSTREAM_API Stream {
     Result start(const Settings& settings);
     Result update(const Settings& settings);
     virtual Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) = 0;
-
-    // One capture describes all destinations; counts and timestamps are per channel.
     virtual Device::Capture readChannels(std::span<std::span<CF32>> samples,
                                          std::chrono::milliseconds timeout);
 

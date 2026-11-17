@@ -38,7 +38,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     Radio::Stream::Applied getApplied() const;
     std::optional<Radio::Device::Range> getGainRange(U64 channel = 0) const;
 
-   protected:
+ protected:
     Tensor buffer;
     std::vector<CF32*> outputChannels;
 
