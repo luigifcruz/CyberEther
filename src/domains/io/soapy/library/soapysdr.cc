@@ -165,8 +165,12 @@ SoapyKwargs SoapyDiscovery::SelectionArguments(const DeviceEntry& device) {
             (isKey && (text.empty() || text.find('=') != std::string::npos))) {
             return false;
         }
-        return text.empty() || (!std::isspace(static_cast<unsigned char>(text.front())) &&
-                                !std::isspace(static_cast<unsigned char>(text.back())));
+        if (text.empty()) {
+            return true;
+        }
+        const auto front = static_cast<unsigned char>(text.front());
+        const auto back = static_cast<unsigned char>(text.back());
+        return !std::isspace(front) && !std::isspace(back);
     };
 
     SoapyKwargs args;
