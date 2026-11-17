@@ -287,6 +287,7 @@ struct SignalViewCanvas {
     struct CursorState {
         bool inside = false;
         Extent2D<F32> position = {0.0f, 0.0f};
+        bool snap = false;
         bool visible = false;
         bool marker = false;
         bool overMarker = false;
@@ -304,6 +305,15 @@ struct SignalViewCanvas {
         std::optional<U64> index;
         bool moved = false;
         Extent2D<F32> origin = {0.0f, 0.0f};
+    };
+
+    struct AmplitudeGrid {
+        F64 lower = 0.0;
+        F64 upper = 0.0;
+        F64 step = 0.0;
+        bool linear = false;
+
+        bool operator==(const AmplitudeGrid&) const = default;
     };
 
     void reset(const SignalView& config);
@@ -329,6 +339,7 @@ struct SignalViewCanvas {
     std::array<TagBounds, detail::MaxMarkers> tagBounds;
     std::array<bool, detail::MaxMarkers> pinned{};
     MarkerDrag markerDrag;
+    std::optional<AmplitudeGrid> amplitudeGrid;
 
     std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Surface> renderSurface;
@@ -363,7 +374,10 @@ struct SignalViewCanvas {
     std::optional<U64> markerAt(const Context& context, const Extent2D<F32>& position) const;
     bool insidePlot(const Extent2D<F32>& position) const;
     F32 pointAtX(F32 x) const;
+    F32 snapToPeak(const Context& context, F32 x) const;
     void toggleMarker(const Context& context, const Edits& edits);
+    void eraseMarker(U64 index);
+    void deleteMarker(const Context& context, const Edits& edits);
     void clearMarkers(const Context& context, const Edits& edits);
     void commitMarkers(const Context& context, const Edits& edits);
 };
