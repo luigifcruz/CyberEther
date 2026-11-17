@@ -268,7 +268,7 @@ struct SignalViewOverload {
     std::optional<U64> clippedSamples;
     std::optional<U64> receivedSamples;
 
-    Result read(const Tensor& input);
+    void read(const Tensor& input);
 };
 
 namespace detail {

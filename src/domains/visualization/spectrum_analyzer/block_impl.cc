@@ -153,6 +153,7 @@ Result SpectrumAnalyzerImpl::configure() {
     signalViewConfig->xLabel = xLabel;
     signalViewConfig->amplitudeLabel = amplitudeLabel;
     signalViewConfig->waterfallLabel = waterfallLabel;
+    signalViewConfig->clipIndicator = true;
 
     return Result::SUCCESS;
 }

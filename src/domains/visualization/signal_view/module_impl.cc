@@ -350,7 +350,8 @@ Result SignalViewImpl::reconfigure() {
         config.density == density &&
         config.xLabel == xLabel &&
         config.amplitudeLabel == amplitudeLabel &&
-        config.waterfallLabel == waterfallLabel) {
+        config.waterfallLabel == waterfallLabel &&
+        config.clipIndicator == clipIndicator) {
         const bool lineplotAveragingChanged = config.lineplotAveraging != lineplotAveraging;
         const bool waterfallAveragingChanged = config.waterfallAveraging != waterfallAveraging;
         const bool rangeChanged =
@@ -515,7 +516,9 @@ Result SignalViewImpl::present() {
     }
 
     SignalViewOverload overload;
-    JST_CHECK(overload.read(input));
+    if (clipIndicator) {
+        overload.read(input);
+    }
     const auto context = canvasContext(frequency, overload);
 
     JST_CHECK(canvas.processSurfaceEvents(surfaceConsumeSurfaceEvents()));

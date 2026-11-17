@@ -1,9 +1,11 @@
 #include "common.hh"
 
 #include <algorithm>
+#include <any>
 #include <array>
 #include <optional>
 #include <span>
+#include <string_view>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -145,11 +147,19 @@ Result SignalViewFrequency::read(const Tensor& input) {
     return Result::SUCCESS;
 }
 
-Result SignalViewOverload::read(const Tensor& input) {
-    *this = {};
-    JST_CHECK(ReadAttribute(input, "clippedSamples", clippedSamples));
-    JST_CHECK(ReadAttribute(input, "receivedSamples", receivedSamples));
-    return Result::SUCCESS;
+void SignalViewOverload::read(const Tensor& input) {
+    const auto count = [&](const std::string_view key) -> std::optional<U64> {
+        const std::string name(key);
+        if (!input.hasAttribute(name)) {
+            return std::nullopt;
+        }
+        const auto value = input.attribute(name);
+        const auto* typed = std::any_cast<U64>(&value);
+        return typed ? std::optional<U64>(*typed) : std::nullopt;
+    };
+
+    clippedSamples = count(ClippedSamplesAttribute);
+    receivedSamples = count(ReceivedSamplesAttribute);
 }
 
 namespace detail {
@@ -191,18 +201,24 @@ void SignalViewCanvas::updateOverload(const Context& context) {
     const auto& source = context.overload;
 
     if (source.clippedSamples) {
-        if (overload.lastClipped && *source.clippedSamples > *overload.lastClipped) {
-            overload.clipUntil = now + kHold;
+        const U64 clipped = *source.clippedSamples;
+        if (overload.lastClipped) {
+            const U64 previous = clipped < *overload.lastClipped ? 0 : *overload.lastClipped;
+            if (clipped > previous) {
+                overload.clipUntil = now + kHold;
+            }
         }
-        overload.lastClipped = source.clippedSamples;
+        overload.lastClipped = clipped;
     }
 
     if (source.clippedSamples && source.receivedSamples) {
         constexpr auto kStep = std::chrono::milliseconds(500);
         const OverloadState::Count count{now, *source.clippedSamples, *source.receivedSamples};
-        if (!overload.newer || count.received < overload.newer->received) {
+        if (!overload.newer || count.received < overload.newer->received ||
+            count.clipped < overload.newer->clipped) {
             overload.older = count;
             overload.newer = count;
+            overload.clipRatio = 0.0;
         } else if (now - overload.newer->time >= kStep) {
             overload.older = overload.newer;
             overload.newer = count;
@@ -296,11 +312,6 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
               .position = {-1.0f, 1.0f},
               .alignment = {0, 0},
               .color = kAccentColor}},
-            {"overload",
-             {.scale = kLabelScale,
-              .position = {1.0f, 1.0f},
-              .alignment = {2, 0},
-              .color = kClipColor}},
             {"amplitude-title",
              {.scale = kLabelScale,
               .position = {-1.0f, 0.5f},
@@ -312,6 +323,14 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
               .alignment = {1, 0},
               .rotationDeg = 90.0f}},
         };
+        if (config.clipIndicator) {
+            cfg.elements["overload"] = {
+                .scale = kLabelScale,
+                .position = {1.0f, 1.0f},
+                .alignment = {2, 0},
+                .color = kClipColor,
+            };
+        }
         JST_CHECK(window->build(text, cfg));
         JST_CHECK(window->bind(text));
     }

@@ -27,13 +27,15 @@ struct SignalView : public Module::Config {
     std::string xLabel = "Frequency (MHz)";
     std::string amplitudeLabel = "Amplitude (dBFS)";
     std::string waterfallLabel = "Time";
+    bool clipIndicator = false;
 
     JST_MODULE_TYPE(signal_view);
     JST_MODULE_PARAMS(mode, lineplotAveraging, waterfallAveraging,
                       maxHold, fill, rangeMin, rangeMax, waterfallHeight,
                       density, persistence,
                       colormap, splitRatio,
-                      markers, pins, xLabel, amplitudeLabel, waterfallLabel);
+                      markers, pins, xLabel, amplitudeLabel, waterfallLabel,
+                      clipIndicator);
 };
 
 }  // namespace Jetstream::Modules
