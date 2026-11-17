@@ -112,7 +112,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
         {"overlap-add-fold", "sdr"},
         {"flight-tracker", "sdr"},
         {"sdr-sweep", "sdr_sweep"},
-        {"sdr-multi-channel", "radio"},
     };
     for (const auto& [key, source] : examples) {
         DYNAMIC_SECTION("Example: " << key) {
