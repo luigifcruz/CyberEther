@@ -36,7 +36,6 @@ struct Script {
     std::atomic<bool> emitSamples{false};
     std::atomic<unsigned> activeReads{0};
     std::atomic<U64> concurrentChanges{0};
-    // RX "overload" sensor value, or -1 when the device has no such sensor.
     std::atomic<int> overloadBits{-1};
 
     void reset() {
@@ -141,7 +140,6 @@ inline SoapyApi Api() {
     };
     api.readChannelSensor = [](const SoapyAbi::Device*, int, std::size_t,
                                const char*) -> char* {
-        // api.free is a no-op here, so hand out a per-thread buffer.
         thread_local std::string value;
         value = std::to_string(State().overloadBits.load());
         return value.data();

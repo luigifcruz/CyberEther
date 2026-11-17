@@ -381,9 +381,7 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
 TEST_CASE_METHOD(TestSoapy::Runtime,
                  "Soapy module publishes clipped samples and overload signals",
                  "[modules][soapy][overload]") {
-    // The scripted device streams 1+0j, which is full scale.
     TestSoapy::State().emitSamples = true;
-    // Overload signals read set at start-up must be ignored until clear.
     TestSoapy::State().overloadBits = 0x7;
     const auto module = BuildSoapyModule();
     struct Cleanup {
@@ -406,7 +404,6 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         REQUIRE(ReadAttribute(output, key, value) == Result::SUCCESS);
         return value;
     };
-    // Run frames until the attribute matches, or give up after two seconds.
     const auto waitFor = [&](const std::string& key, const auto& accept) {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
         while (std::chrono::steady_clock::now() < deadline) {
@@ -421,7 +418,6 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
     };
 
     REQUIRE(waitFor("clippedSamples", [](const U64 value) { return value > 0; }));
-    // Stale start-up signals stay hidden.
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
     REQUIRE(waitFor("overloadFlags", [](const U64 value) { return value == 0; }));
 

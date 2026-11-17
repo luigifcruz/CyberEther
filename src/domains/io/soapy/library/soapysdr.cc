@@ -276,19 +276,17 @@ Result SoapyReceiver::queryCapabilities() {
     }
     api.argInfoListClear(settings, settingCount);
 
-    std::size_t antennaCount = 0;
+    std::size_t sensorCount = 0;
     overloadSensorSupported = false;
-    if (api.listChannelSensors && api.readChannelSensor) {
-        std::size_t sensorCount = 0;
-        char** sensors = api.listChannelSensors(device, SoapyAbi::RX, 0, &sensorCount);
-        if (api.lastStatus() == 0) {
-            for (std::size_t i = 0; i < sensorCount; ++i) {
-                overloadSensorSupported |= sensors[i] && std::string(sensors[i]) == "overload";
-            }
+    char** sensors = api.listChannelSensors(device, SoapyAbi::RX, 0, &sensorCount);
+    if (api.lastStatus() == 0) {
+        for (std::size_t i = 0; i < sensorCount; ++i) {
+            overloadSensorSupported |= sensors[i] && std::string(sensors[i]) == "overload";
         }
-        api.stringsClear(&sensors, sensorCount);
     }
+    api.stringsClear(&sensors, sensorCount);
 
+    std::size_t antennaCount = 0;
     char** names = api.listAntennas(device, SoapyAbi::RX, 0, &antennaCount);
     if (api.lastStatus() == 0) {
         for (std::size_t i = 0; i < antennaCount; ++i) {

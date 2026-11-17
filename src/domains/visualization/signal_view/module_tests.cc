@@ -466,7 +466,7 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
     }
 }
 
-TEST_CASE("Overload badge names what overloaded",
+TEST_CASE("Signal View overload badge names what overloaded",
           "[modules][signal_view][overload]") {
     using Modules::detail::FormatOverloadBadge;
     REQUIRE(FormatOverloadBadge(false, false, false, 0.0).text.empty());

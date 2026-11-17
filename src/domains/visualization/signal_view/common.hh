@@ -264,10 +264,6 @@ struct SignalViewFrequency {
     bool operator==(const SignalViewFrequency&) const = default;
 };
 
-// Overload state published by a radio source: samples clipped at full scale
-// and samples received since start, and the receiver's overload signals
-// (bit 4 large LMT, 3 small LMT, 2 large ADC, 1 small ADC, 0 digital
-// saturation), which the AD9361 keeps set until the gain changes.
 struct SignalViewOverload {
     std::optional<U64> clippedSamples;
     std::optional<U64> receivedSamples;
@@ -284,14 +280,11 @@ constexpr U64 kOverloadLargeAdc = 1 << 2;
 constexpr U64 kOverloadSmallAdc = 1 << 1;
 constexpr U64 kOverloadSaturation = 1 << 0;
 
-// Warning shown in the view, held a moment after each event so short bursts
-// stay readable. Empty when nothing happened.
 struct OverloadBadge {
     std::string text;
     bool severe = false;
 };
 
-// clipRatio is the share of samples clipped over the last second, 0 to 1.
 OverloadBadge FormatOverloadBadge(bool clipped, bool rf, bool high, F64 clipRatio);
 
 }  // namespace detail
@@ -340,6 +333,22 @@ struct SignalViewCanvas {
         Extent2D<F32> origin = {0.0f, 0.0f};
     };
 
+    struct OverloadState {
+        struct Count {
+            std::chrono::steady_clock::time_point time;
+            U64 clipped = 0;
+            U64 received = 0;
+        };
+        std::optional<Count> older;
+        std::optional<Count> newer;
+        F64 clipRatio = 0.0;
+        F64 heldClipRatio = 0.0;
+        std::optional<U64> lastClipped;
+        std::chrono::steady_clock::time_point clipUntil;
+        std::chrono::steady_clock::time_point rfUntil;
+        std::chrono::steady_clock::time_point highUntil;
+    };
+
     void reset(const SignalView& config);
     Result create(const std::shared_ptr<Render::Window>& window, const Context& context);
     Result destroy(const std::shared_ptr<Render::Window>& window);
@@ -355,26 +364,8 @@ struct SignalViewCanvas {
     SurfaceInteractionState interaction;
     detail::SignalViewSplitInteraction splitter;
     CursorState cursor;
-    bool displayHeld = false;
-
-    struct OverloadState {
-        struct Count {
-            std::chrono::steady_clock::time_point time;
-            U64 clipped = 0;
-            U64 received = 0;
-        };
-        std::optional<Count> older;
-        std::optional<Count> newer;
-        F64 clipRatio = 0.0;
-        // Last non-zero share, kept while CLIP is held on screen.
-        F64 heldClipRatio = 0.0;
-        std::optional<U64> lastClipped;
-        std::chrono::steady_clock::time_point clipUntil;
-        std::chrono::steady_clock::time_point rfUntil;
-        std::chrono::steady_clock::time_point highUntil;
-    };
     OverloadState overload;
-    void updateOverload(const Context& context);
+    bool displayHeld = false;
     Extent2D<F32> pixelSize;
 
     std::vector<F32> markerPositions;
@@ -399,6 +390,7 @@ struct SignalViewCanvas {
 
  private:
     void updateLabels(const Context& context);
+    void updateOverload(const Context& context);
     Result updateCursor(const Context& context);
     Result updateMarkers(const Context& context);
     F32 viewTranslation() const;

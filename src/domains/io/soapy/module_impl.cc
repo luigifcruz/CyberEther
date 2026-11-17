@@ -281,22 +281,24 @@ Result SoapyImpl::emitFrame() {
     JST_CHECK(result);
     JST_CHECK(publishMetadata(metadata));
 
-    // Overload state for displays downstream, such as the spectrum header.
     const U64 clipped = clippedSamples.get();
     if (publishedClippedSamples != clipped) {
         JST_CHECK(buffer.setAttribute("clippedSamples", clipped));
         publishedClippedSamples = clipped;
     }
+
     const U64 received = receivedSamples.get();
     if (publishedReceivedSamples != received) {
         JST_CHECK(buffer.setAttribute("receivedSamples", received));
         publishedReceivedSamples = received;
     }
+
     const U64 flags = overloadFlags.get();
     if (publishedOverloadFlags != flags) {
         JST_CHECK(buffer.setAttribute("overloadFlags", flags));
         publishedOverloadFlags = flags;
     }
+
     return Result::SUCCESS;
 }
 
@@ -307,13 +309,9 @@ Result SoapyImpl::soapyThreadLoop() {
     const auto readBuffer = std::span<CF32>{tmp.data(), readSize};
     SoapyReceiveStatus receiveStatus;
 
-    // A sample at full scale means the ADC clipped. SoapySDR scales sc16 by
-    // 1/32768, so full scale reads 32767/32768 or -1.
     constexpr F32 kClipLevel = 0.9999f;
     U64 clippedTotal = 0;
     U64 receivedTotal = 0;
-    // The radio reports its overload signals set until the gain first
-    // changes after start-up; trust them only once they have read clear.
     constexpr auto kOverloadPollPeriod = std::chrono::milliseconds(50);
     auto nextOverloadPoll = std::chrono::steady_clock::now();
     bool overloadArmed = false;

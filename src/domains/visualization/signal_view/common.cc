@@ -211,8 +211,6 @@ void SignalViewCanvas::updateOverload(const Context& context) {
         overload.lastClipped = source.clippedSamples;
     }
 
-    // Share of samples clipped over the last 0.5 to 1 s, from two counts
-    // taken half a second apart.
     if (source.clippedSamples && source.receivedSamples) {
         constexpr auto kStep = std::chrono::milliseconds(500);
         const OverloadState::Count count{now, *source.clippedSamples, *source.receivedSamples};
