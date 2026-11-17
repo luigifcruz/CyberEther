@@ -1,6 +1,7 @@
 #include "soapysdr.hh"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <future>
 #include <limits>
@@ -152,6 +153,29 @@ SoapyDiscovery::DeviceList SoapyDiscovery::BuildDeviceList(const SoapyKwargsList
         devices.emplace(std::move(uniqueLabel), entry);
     }
     return devices;
+}
+
+SoapyKwargs SoapyDiscovery::SelectionArguments(const DeviceEntry& device) {
+    const auto representable = [](const std::string& text, const bool isKey) {
+        if (text.find(',') != std::string::npos ||
+            (isKey && (text.empty() || text.find('=') != std::string::npos))) {
+            return false;
+        }
+        if (text.empty()) {
+            return true;
+        }
+        const auto front = static_cast<unsigned char>(text.front());
+        const auto back = static_cast<unsigned char>(text.back());
+        return !std::isspace(front) && !std::isspace(back);
+    };
+
+    SoapyKwargs args;
+    for (const auto& [key, value] : device) {
+        if (key != "label" && representable(key, true) && representable(value, false)) {
+            args.emplace(key, value);
+        }
+    }
+    return args;
 }
 
 std::string SoapyDiscovery::FormatArguments(const SoapyKwargs& args) {

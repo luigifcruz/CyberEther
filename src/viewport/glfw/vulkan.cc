@@ -54,6 +54,9 @@ Result Implementation::create() {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHintString(GLFW_WAYLAND_APP_ID, "CyberEther");
+    glfwWindowHintString(GLFW_X11_CLASS_NAME, "CyberEther");
+    glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "cyberether");
 
     auto [width, height] = config.size;
     window = glfwCreateWindow(width, height,

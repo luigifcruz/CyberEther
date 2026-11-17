@@ -1,4 +1,4 @@
-project('limesuite', ['c', 'cpp'], version: '23.11.0', default_options: ['cpp_std=c++11', 'optimization=2'])
+project('limesuite', ['c', 'cpp'], version: '23.11.0', default_options: ['c_std=gnu17,c17', 'cpp_std=c++11', 'optimization=2'])
 
 private_c_args = []
 private_cpp_args = []

@@ -49,6 +49,7 @@ struct JETSTREAM_API SoapyDiscovery {
     static void ClearCache();
     static Result LoadDriverLibrary(const std::string& path);
     static DeviceList BuildDeviceList(const SoapyKwargsList& entries);
+    static SoapyKwargs SelectionArguments(const DeviceEntry& device);
     static std::string FormatArguments(const SoapyKwargs& args);
 };
 

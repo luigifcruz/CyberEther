@@ -287,10 +287,11 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
             : config.waterfallLabel);
         cfg.yLabelOnRight = lineplot;
         cfg.gridColor = context.density ? ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 0.06f}
-                                        : ColorRGBA<F32>{0.12f, 0.12f, 0.12f, 1.0f};
+                                        : ColorRGBA<F32>{0.16f, 0.16f, 0.16f, 1.0f};
         cfg.majorGridColor = {0.5f, 0.5f, 0.5f, 1.0f};
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
+        amplitudeGrid.reset();
     }
 
     // Text labels (header, zoom, and cursor readouts).
@@ -663,10 +664,55 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
     syncMarkers(context, edits);
 
     std::vector<InputEvent> plotEvents;
+    bool keyPanned = false;
     for (const auto& input : events) {
         if (const auto* key = std::get_if<KeyEvent>(&input)) {
             if (key->type == KeyEventType::Press && key->key == KeyCode::Space && !key->repeat) {
                 displayHeld = !displayHeld;
+            }
+            if (key->type == KeyEventType::Press &&
+                (key->key == KeyCode::LeftArrow || key->key == KeyCode::RightArrow)) {
+                const F32 step = 0.1f / interaction.zoom;
+                const F32 limit = std::max(0.0f, 0.5f * (1.0f - (1.0f / interaction.zoom)));
+                const F32 offset = std::clamp(
+                    interaction.offset + (key->key == KeyCode::RightArrow ? step : -step),
+                    -limit, limit);
+                keyPanned |= offset != interaction.offset;
+                interaction.offset = offset;
+            }
+            const bool verticalArrow = key->key == KeyCode::UpArrow ||
+                                       key->key == KeyCode::DownArrow;
+            if (key->type == KeyEventType::Press && context.lineplot && verticalArrow &&
+                key->modifiers.shift &&
+                context.config.rangeMin < context.config.rangeMax &&
+                edits.enabled("rangeMin") && edits.enabled("rangeMax")) {
+                const F64 division = (context.config.rangeMax - context.config.rangeMin) / 10.0;
+                const F64 shift = std::clamp(key->key == KeyCode::UpArrow ? division : -division,
+                                             std::min(0.0, -300.0 - context.config.rangeMin),
+                                             std::max(0.0, -static_cast<F64>(context.config.rangeMax)));
+                if (shift != 0.0) {
+                    Parser::Map edit;
+                    edit["rangeMin"] = static_cast<F32>(context.config.rangeMin + shift);
+                    edit["rangeMax"] = static_cast<F32>(context.config.rangeMax + shift);
+                    edits.request(edit);
+                }
+            } else if (key->type == KeyEventType::Press && context.lineplot && verticalArrow &&
+                context.config.rangeMin < context.config.rangeMax &&
+                edits.enabled("rangeMin")) {
+                const F64 top = context.config.rangeMax;
+                const F64 division = detail::NextAmplitudeDivision(
+                    (top - context.config.rangeMin) / 10.0,
+                    key->key == KeyCode::UpArrow);
+                const F64 bottom = top - 10.0 * division;
+                if (bottom >= -300.0 && bottom != context.config.rangeMin) {
+                    Parser::Map edit;
+                    edit["rangeMin"] = static_cast<F32>(bottom);
+                    edits.request(edit);
+                }
+            }
+            if (key->type == KeyEventType::Press && !key->repeat &&
+                (key->key == KeyCode::Delete || key->key == KeyCode::Backspace)) {
+                deleteMarker(context, edits);
             }
             if (key->type == KeyEventType::Press && key->key == KeyCode::Escape &&
                 std::any_of(pinned.begin(), pinned.end(), [](const bool flag) { return flag; })) {
@@ -680,6 +726,7 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
         if (event.type == MouseEventType::Move) {
             cursor.inside = true;
             cursor.position = event.position;
+            cursor.snap = event.modifiers.alt;
         } else if (event.type == MouseEventType::Leave) {
             cursor.inside = false;
         }
@@ -706,7 +753,9 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
                                    static_cast<F32>(interaction.viewSize.x);
                 if (markerDrag.moved || travel > 3.0f * interaction.scale) {
                     markerDrag.moved = true;
-                    markerPositions[*markerDrag.index] = pointAtX(event.position.x);
+                    markerPositions[*markerDrag.index] = event.modifiers.alt
+                        ? snapToPeak(context, event.position.x)
+                        : pointAtX(event.position.x);
                 }
                 if (!released) {
                     continue;
@@ -758,7 +807,8 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
             plotEvents.push_back(event);
         }
     }
-    const bool viewChanged = interaction.viewChanged || previousRatio != splitter.ratio;
+    const bool viewChanged = interaction.viewChanged || keyPanned ||
+                             previousRatio != splitter.ratio;
     interaction = ProcessSurfaceInteraction(interaction, {}, std::move(plotEvents));
     interaction.viewChanged |= viewChanged;
 
@@ -909,6 +959,18 @@ void SignalViewCanvas::updateLabels(const Context& context) {
     const auto& frequency = context.frequency;
     const F32 translation = PanTranslation(interaction);
 
+    const F64 leftPos = -1.0 / interaction.zoom - translation;
+    const F64 rightPos = 1.0 / interaction.zoom - translation;
+    const auto viewValue = [&](const F64 normalizedPos) {
+        if (frequency.valid) {
+            return (static_cast<F64>(frequency.center) +
+                    normalizedPos * static_cast<F64>(frequency.sampleRate) / 2.0) / 1e6;
+        }
+        return lineplot ? normalizedPos : (normalizedPos + 1.0) * 0.5;
+    };
+    const F64 viewLeft = viewValue(leftPos);
+    const F64 viewRight = viewValue(rightPos);
+
     // Update tick labels via axis component.
 
     if (axis) {
@@ -940,12 +1002,40 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         if (lineplot) {
             yFormatter = [min = config.rangeMin,
                           max = config.rangeMax,
-                          linear = context.density != nullptr](const F32 position) {
+                          linear = context.density != nullptr || config.amplitudeScale == "log"](const F32 position) {
                 return detail::LineplotAmplitudeLabel(position, min, max, linear);
             };
         }
 
         axis->updateTickFormatters(std::move(xFormatter), std::move(yFormatter));
+
+        if (axis->updateXRange(viewLeft, viewRight) != Result::SUCCESS) {
+            axis->clearXRange();
+        }
+
+        if (lineplot) {
+            const bool logScale = config.amplitudeScale == "log";
+            const F64 lower = std::min(config.rangeMin, config.rangeMax);
+            const F64 upper = std::max(config.rangeMin, config.rangeMax);
+            const AmplitudeGrid grid = {
+                .lower = lower,
+                .upper = upper,
+                .step = logScale ? (upper - lower) / 10.0 : 0.0,
+                .linear = context.density != nullptr || logScale,
+            };
+            if (amplitudeGrid != grid) {
+                amplitudeGrid = grid;
+                const auto toPosition = [grid](const F64 value) {
+                    const F64 position = 2.0 * (value - grid.lower) / (grid.upper - grid.lower) - 1.0;
+                    return static_cast<F32>(grid.linear ? position : std::tanh(2.0 * position));
+                };
+                if (axis->updateYRange(grid.lower, grid.upper, toPosition, grid.step) != Result::SUCCESS) {
+                    axis->clearYRange();
+                }
+            }
+        } else {
+            axis->clearYRange();
+        }
     }
 
     if (text) {
@@ -977,15 +1067,19 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         text->update("hold", holdLabel);
 
         auto header = text->get("header");
-        if (interaction.placement == SurfacePlacementType::Attached) {
+        if (interaction.placement == SurfacePlacementType::Attached && !frequency.valid) {
             header.fill = " ";
         } else {
             header.position = {-paddingScale.x + pixelSize.x * tickOffset,
                                paddingScale.y - pixelSize.y * tickOffset};
             if (frequency.valid) {
                 header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
-                                               frequency.center / 1e6f,
-                                               frequency.sampleRate / 1e6f);
+                                               (viewLeft + viewRight) / 2.0,
+                                               viewRight - viewLeft);
+                if (config.amplitudeScale == "log") {
+                    header.fill += jst::fmt::format("   {:g} dB/div",
+                        std::round(std::abs(config.rangeMax - config.rangeMin) * 10.0f) / 100.0f);
+                }
             } else {
                 header.fill = "CENTER 0.000   SPAN 1.000";
             }
@@ -1039,7 +1133,23 @@ std::optional<F32> SignalViewCanvas::cursorPoint(const Context& context) const {
     if (!visible) {
         return std::nullopt;
     }
-    return pointAtX(cursor.position.x);
+    return cursor.snap ? snapToPeak(context, cursor.position.x) : pointAtX(cursor.position.x);
+}
+
+F32 SignalViewCanvas::snapToPeak(const Context& context, const F32 x) const {
+    constexpr F32 kSnapPx = 6.0f;
+    const F32 point = pointAtX(x);
+    if (!context.lineplot || !context.frequency.valid || interaction.viewSize.x == 0) {
+        return point;
+    }
+    const F32 reach = kSnapPx * interaction.scale / static_cast<F32>(interaction.viewSize.x);
+    const auto peak = context.lineplot->peak(pointAtX(x - reach), pointAtX(x + reach));
+    const auto here = context.lineplot->sample(point);
+    const auto there = peak ? context.lineplot->sample(*peak) : std::nullopt;
+    if (!peak || !here || !there || *there <= *here) {
+        return point;
+    }
+    return *peak;
 }
 
 F32 SignalViewCanvas::projectPointX(const F32 xPoint) const {
@@ -1081,7 +1191,8 @@ std::string SignalViewCanvas::formatSpanX(const Context& context, const F32 delt
 std::string SignalViewCanvas::formatAmplitude(const Context& context, const F32 yPoint) const {
     const auto& config = context.config;
     const auto value = detail::LineplotAmplitudeValue(yPoint, config.rangeMin, config.rangeMax,
-                                                      context.density != nullptr);
+                                                      context.density != nullptr ||
+                                                          config.amplitudeScale == "log");
     if (!value) {
         return {};
     }
@@ -1175,15 +1286,35 @@ void SignalViewCanvas::toggleMarker(const Context& context, const Edits& edits) 
     }
 
     if (const auto nearest = markerAt(context, cursor.position)) {
-        const U64 removed = *nearest;
-        markerPositions.erase(markerPositions.begin() + removed);
-        std::copy(pinned.begin() + removed + 1, pinned.end(), pinned.begin() + removed);
-        pinned.back() = false;
+        eraseMarker(*nearest);
     } else if (markerPositions.size() < detail::MaxMarkers) {
         markerPositions.push_back(*point);
     } else {
         return;
     }
+    commitMarkers(context, edits);
+}
+
+void SignalViewCanvas::eraseMarker(const U64 index) {
+    markerPositions.erase(markerPositions.begin() + index);
+    std::copy(pinned.begin() + index + 1, pinned.end(), pinned.begin() + index);
+    pinned.back() = false;
+    std::copy(tagBounds.begin() + index + 1, tagBounds.end(), tagBounds.begin() + index);
+    tagBounds.back() = {};
+}
+
+void SignalViewCanvas::deleteMarker(const Context& context, const Edits& edits) {
+    if (markerPositions.empty() || markerDrag.index) {
+        return;
+    }
+    std::optional<U64> hovered;
+    if (cursor.inside) {
+        hovered = tagAt(cursor.position);
+        if (!hovered || *hovered >= markerPositions.size()) {
+            hovered = markerAt(context, cursor.position);
+        }
+    }
+    eraseMarker(hovered.value_or(markerPositions.size() - 1));
     commitMarkers(context, edits);
 }
 
@@ -1387,7 +1518,8 @@ Result SignalViewCanvas::updateMarkers(const Context& context) {
     const F32 lineHeight = markerText ? markerText->lineHeight(kLabelScale) : 0.0f;
     const F32 tagLineHeight = tagText ? tagText->lineHeight(kLabelScale) : 0.0f;
     const F32 headerOffset = axis->getConfig().majorTickLengthPx + 4.0f;
-    const F32 headerHeight = table ? tagLineHeight + 8.0f : 0.0f;
+    const bool header = table || (context.lineplot && context.frequency.valid);
+    const F32 headerHeight = header ? tagLineHeight + 8.0f : 0.0f;
     const F32 tagPadX = 6.0f;
     const F32 tagPadY = 2.0f;
     const F32 tagHeight = (tagPadY * 2.0f + tagLineHeight) * pixelSize.y;
