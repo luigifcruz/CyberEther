@@ -19,7 +19,6 @@ class JETSTREAM_API Axis : public Generic {
  public:
     using TickFormatter = std::function<std::string(F32)>;
 
-    // Round tick values (1, 2 or 5 times a power of ten) inside a data range.
     struct TickScale {
         F64 step = 0.0;
         U64 minorDivisions = 5;
@@ -27,8 +26,6 @@ class JETSTREAM_API Axis : public Generic {
         std::vector<F64> values;
     };
 
-    // Ticks strictly inside (left, right) with the smallest round step that
-    // is at least minimumStep.
     static TickScale ComputeTicks(F64 left, F64 right, F64 minimumStep);
 
     struct Config {
@@ -76,17 +73,9 @@ class JETSTREAM_API Axis : public Generic {
     Result updateTitles(const std::string& xTitle,
                         const std::string& yTitle);
 
-    // Place the vertical grid lines and X labels on round values of the data
-    // range shown between the left and right frame edges. This replaces the
-    // evenly divided grid and the X tick formatter until cleared.
     Result updateXRange(F64 left, F64 right);
     Result clearXRange();
 
-    // Same for the horizontal lines and Y labels. toPosition maps a data
-    // value to its position in the plot band, from -1 (bottom) to 1 (top),
-    // and may be non-linear; labels too close together are skipped. A
-    // positive step places the lines exactly that far apart, such as the
-    // dB/div of an analyzer, instead of picking one from the height.
     using PositionMap = std::function<F32(F64)>;
     Result updateYRange(F64 bottom, F64 top, PositionMap toPosition = {}, F64 step = 0.0);
     Result clearYRange();

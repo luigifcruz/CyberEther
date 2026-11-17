@@ -24,7 +24,6 @@ constexpr U64 kMaxHorizontalLines = 17;
 constexpr U64 kMinorTicksPerInterval = 4;
 
 std::string FormatTickValue(F64 value, const Axis::TickScale& scale) {
-    // Avoid "-0" for a tick that lands on zero.
     if (std::abs(value) < scale.step * 1e-9) {
         value = 0.0;
     }
@@ -572,7 +571,6 @@ Result Axis::clearXRange() {
     if (!pimpl->text) {
         return Result::SUCCESS;
     }
-    // Force the evenly divided grid to be regenerated.
     pimpl->currentVerticalLines = 0;
     return pimpl->syncResponsiveGrid();
 }
@@ -605,7 +603,6 @@ Result Axis::clearYRange() {
     if (!pimpl->text) {
         return Result::SUCCESS;
     }
-    // Force the evenly divided grid to be regenerated.
     pimpl->currentHorizontalLines = 0;
     return pimpl->syncResponsiveGrid();
 }
@@ -638,8 +635,6 @@ Axis::TickScale Axis::ComputeTicks(const F64 left,
     const F64 base = std::pow(10.0, std::floor(std::log10(minimum)));
     U64 mantissa = 10;
     for (const U64 candidate : {1, 2, 5}) {
-        // Loose enough to absorb single-precision pixel sizes, so a minimum
-        // of 10.000001 still picks 10.
         if (static_cast<F64>(candidate) * base >= minimum * (1.0 - 1e-6)) {
             mantissa = candidate;
             break;
@@ -650,7 +645,6 @@ Axis::TickScale Axis::ComputeTicks(const F64 left,
     scale.decimals = static_cast<U64>(std::max(
         0.0, -std::floor(std::log10(scale.step) + 1e-9)));
 
-    // Skip ticks that would sit on the frame itself.
     const F64 margin = span * 1e-6;
     const F64 first = std::ceil((left + margin) / scale.step);
     const F64 last = std::floor((right - margin) / scale.step);
@@ -832,8 +826,6 @@ void Axis::Impl::generateGridPoints() {
         };
 
         if (xRangeEnabled) {
-            // Minor ticks on round values too. Unused reserved slots stay
-            // zero-length lines so the tick counts seen by the shader hold.
             const U64 reserved = kMinorTicksPerInterval * (numCols - 1);
             const U64 used = std::min<U64>(xMinorPositions.size(), reserved);
             for (U64 i = 0; i < used; i++) {
@@ -1043,7 +1035,6 @@ F32 Axis::Impl::yRangePosition(const F64 value) const {
     if (!std::isfinite(position)) {
         position = value > yRangeBottom ? 1.0f : -1.0f;
     }
-    // From the plot band's -1..1 to the grid's local coordinates.
     const F32 bottom = bandLocalY(0, 2);
     const F32 top = bandLocalY(1, 2);
     return bottom + (top - bottom) * (std::clamp(position, -1.0f, 1.0f) + 1.0f) * 0.5f;
@@ -1055,8 +1046,6 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
     const F64 heightPx = std::max<F64>(availableHeightPx, 1.0);
     const F64 span = yRangeTop - yRangeBottom;
     const F64 labelPx = static_cast<F64>(config.font->lineHeight()) * kTickLabelScale;
-    // Lines follow the requested spacing; labels only need to clear each
-    // other, so a dense grid can carry a label on every other line.
     constexpr F64 kMinimumLinePx = 12.0;
     const F64 neededPx = std::max<F64>(minimumSpacingPx, kMinimumLinePx);
     const F64 labelSpacingPx = labelPx + collisionPadding;
@@ -1068,8 +1057,6 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
                std::max<F64>(bandTop - bandBottom, 1e-6) * heightPx;
     };
 
-    // Pick the step where the mapping is most stretched, then drop labels
-    // that would collide where it is compressed.
     F64 pxPerUnit = 0.0;
     constexpr U64 kSamples = 64;
     for (U64 i = 0; i < kSamples; i++) {
@@ -1079,7 +1066,6 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
     }
     pxPerUnit = std::max(pxPerUnit, 1e-12);
 
-    // A requested step wins; it only widens if its lines would merge.
     F64 minimumStep = yRangeStep > 0.0
         ? std::max(yRangeStep, kMinimumLinePx / pxPerUnit)
         : neededPx / pxPerUnit;
@@ -1122,7 +1108,6 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
         yLabelVisible.push_back(visible);
     }
 
-    // Minor ticks on round sub-steps, wherever they stay a few pixels apart.
     yMinorPositions.clear();
     if (yTicks.step > 0.0) {
         const F64 minor = yTicks.step / static_cast<F64>(yTicks.minorDivisions);
@@ -1150,8 +1135,6 @@ void Axis::Impl::computeXRangeTicks(const F32 availableWidthPx,
     const F64 unitsPerPx = span / widthPx;
     const U64 maxTicks = maxVerticalLines - 2;
 
-    // Widen the step until the labels fit; the label width depends on the
-    // number of decimals, which depends on the step.
     F64 spacingPx = std::max<F64>(minimumSpacingPx, 1.0);
     TickScale ticks;
     for (U64 attempt = 0; attempt < 4; attempt++) {
@@ -1265,7 +1248,6 @@ Result Axis::Impl::syncResponsiveGrid() {
     if (yRangeEnabled) {
         const auto previousPositions = yTickPositions;
         const auto previousMinors = yMinorPositions;
-        // Aim for about ten divisions, like a bench analyzer's graticule.
         computeYRangeTicks(availableHeightPx,
                            std::min(responsiveYSpacing, availableHeightPx / 10.0f),
                            collisionPadding);
