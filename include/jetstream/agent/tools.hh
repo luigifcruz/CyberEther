@@ -74,7 +74,6 @@ class JETSTREAM_API Tools {
     struct Flags {
         bool needsGraph = false;
         bool editsGraph = false;
-        bool opensGraph = false;
         bool reportsLayout = false;
         bool needsCapture = false;
     };

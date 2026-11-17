@@ -371,7 +371,7 @@ std::vector<Agent::Provider::Function> AgentRuntime::Functions(bool captureSuppo
 std::vector<AgentMcp::Tool> AgentRuntime::McpTools(bool captureSupported) {
     std::vector<AgentMcp::Tool> tools;
     for (const auto& [function, flags] : Agent::Tools::Available(captureSupported)) {
-        tools.push_back({function, !flags.editsGraph && !flags.opensGraph, flags.editsGraph});
+        tools.push_back({function, !flags.editsGraph, flags.editsGraph});
     }
     for (auto& function : AgentTiles::Functions()) {
         const bool readOnly = AgentTiles::ReadOnly(function.name);

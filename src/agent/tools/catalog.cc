@@ -391,7 +391,6 @@ std::vector<Entry> Toolbox::Catalog() {
             "open_example",
             "Open a bundled example as a new flowgraph and select it for subsequent tools. Returns the new flowgraph name and its summary. Use only when the user wants to open or start from an example; get_example reads it without changing the graph.",
             R"({"type":"object","required":["key"],"properties":{"key":{"type":"string","description":"Exact example key from list_examples."}},"additionalProperties":false})",
-            {.opensGraph = true},
         }, OpenExample, ExampleGraph},
     };
 }
