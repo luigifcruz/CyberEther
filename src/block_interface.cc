@@ -35,7 +35,7 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
         (metric && visibility != "internal" && type != "label" && type != "progressbar" && type != "table")) {
         return invalid("unsupported type '" + type + "'.");
     }
-    for (const auto* key : {"unit", "step_config", "source"}) {
+    for (const auto* key : {"unit", "step_config", "source", "item_label"}) {
         std::string value;
         if (format.contains(key) && Parser::Deserialize(format, key, value) != Result::SUCCESS) {
             return invalid(std::string("'") + key + "' must be a string.");
@@ -50,6 +50,12 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
     if (format.contains("precision") &&
         (Parser::Deserialize(format, "precision", precision) != Result::SUCCESS || precision < 0 || precision > 16)) {
         return invalid("'precision' must be an integer between 0 and 16.");
+    }
+    if (format.contains("item_label") && type != "vector") {
+        return invalid("'item_label' is only supported on vectors.");
+    }
+    if (format.contains("item_label") && Parser::Get<std::string>(format, "item_label").empty()) {
+        return invalid("'item_label' must not be empty.");
     }
     std::string valueType = "float";
     if (format.contains("value_type")) {

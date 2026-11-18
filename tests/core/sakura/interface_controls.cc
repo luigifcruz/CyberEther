@@ -269,6 +269,7 @@ TEST_CASE("String vectors show one dropdown per entry and patch the whole list",
         .format = {
             {"type", "vector"},
             {"value_type", "string"},
+            {"item_label", "Antenna"},
             {"options", Parser::Sequence{
                 Parser::Map{{"label", "Default"}, {"value", ""}},
                 Parser::Map{{"label", "LNAH"}, {"value", "LNAH"}},

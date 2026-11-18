@@ -44,6 +44,7 @@ struct FlowgraphConfigVectorField {
         unit = Parser::Get<std::string>(config.format, "unit");
         precision = Parser::Get<I32>(config.format, "precision", 2);
         multiplier = Parser::Get<F32>(config.format, "scale", 1.0f);
+        itemLabel = Parser::Get<std::string>(config.format, "item_label");
         optionLabels.clear();
         optionValues.clear();
         for (const auto& option : Parser::Get<std::vector<Parser::Map>>(config.format, "options")) {
@@ -54,6 +55,10 @@ struct FlowgraphConfigVectorField {
         floatValues.clear();
         uintValues.clear();
         stringValues.clear();
+    }
+
+    std::string entryLabel(const U64 index) const {
+        return itemLabel.empty() ? config.label : itemLabel + " " + std::to_string(index);
     }
 
     void updateChildren() {
@@ -74,7 +79,7 @@ struct FlowgraphConfigVectorField {
             for (U64 i = 0; i < floatValues.size(); ++i) {
                 floatFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
-                    .label = config.label,
+                    .label = entryLabel(i),
                     .help = config.help,
                 });
                 items.push_back({
@@ -109,7 +114,7 @@ struct FlowgraphConfigVectorField {
             for (U64 i = 0; i < uintValues.size(); ++i) {
                 uintFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
-                    .label = config.label,
+                    .label = entryLabel(i),
                     .help = config.help,
                 });
                 items.push_back({
@@ -151,7 +156,7 @@ struct FlowgraphConfigVectorField {
                 }
                 stringFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
-                    .label = config.label,
+                    .label = entryLabel(i),
                     .help = config.help,
                 });
                 items.push_back({
@@ -190,6 +195,7 @@ struct FlowgraphConfigVectorField {
     F32 multiplier = 1.0f;
     std::string valueType = "float";
     std::string unit;
+    std::string itemLabel;
     int precision = 2;
     std::vector<F32> floatValues;
     std::vector<U64> uintValues;

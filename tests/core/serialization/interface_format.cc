@@ -86,6 +86,8 @@ TEST_CASE("Interface descriptors validate every control and internal metric",
     REQUIRE(Block::Interface::ValidateFormat({{"type", "progressbar"}, {"error_above", 0.0f}}, true) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "vector"}, {"value_type", "float"}}) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "vector"}, {"value_type", "uint"}}) == Result::SUCCESS);
+    REQUIRE(Block::Interface::ValidateFormat({{"type", "vector"}, {"value_type", "float"}, {"item_label", "Head"}}) ==
+            Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "uint"}, {"advanced", true}}) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({
         {"type", "vector"},
@@ -112,6 +114,9 @@ TEST_CASE("Malformed interface descriptors fail without throwing",
         {{"type", "range"}, {"min", -1}, {"value_type", "uint"}},
         {{"type", "vector"}, {"value_type", U64{1}}},
         {{"type", "vector"}, {"value_type", "invalid"}},
+        {{"type", "vector"}, {"item_label", U64{1}}},
+        {{"type", "vector"}, {"item_label", ""}},
+        {{"type", "vector-inline"}, {"item_label", "Gain"}},
         {{"type", "uint"}, {"advanced", "yes"}},
         {{"type", "markdown"}, {"advanced", true}},
         {{"type", "vector"}, {"value_type", "string"}},

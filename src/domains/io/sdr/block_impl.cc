@@ -354,7 +354,10 @@ Parser::Map SdrImpl::antennasFormat(const Blocks::Sdr& config) {
     for (const auto& antenna : config.antennas) {
         add(antenna);
     }
-    return {{"type", "vector"}, {"value_type", "string"}, {"options", std::move(options)}};
+    return {{"type", "vector"},
+            {"value_type", "string"},
+            {"item_label", "Antenna"},
+            {"options", std::move(options)}};
 }
 
 Parser::Map SdrImpl::sampleRateFormat(const Blocks::Sdr& config) {
