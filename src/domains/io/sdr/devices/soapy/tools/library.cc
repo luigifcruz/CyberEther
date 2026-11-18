@@ -1,7 +1,6 @@
-#include "runtime.hh"
+#include "library.hh"
 
 #include <algorithm>
-#include <cstdlib>
 #include <mutex>
 
 #include "jetstream/logger.hh"
@@ -189,7 +188,9 @@ const SoapyAbi::Kwargs* SoapyKwargsView::get() const {
 }
 
 std::vector<std::string> SoapyRuntime::Candidates() {
-    if (const char* override = std::getenv(LibraryOverride); override && *override) {
+    std::string override;
+    if (Platform::EnvironmentVariable(LibraryOverride, override) == Result::SUCCESS &&
+        !override.empty()) {
         return {override};
     }
 

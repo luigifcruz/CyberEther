@@ -260,7 +260,7 @@ void Throughput(const Device::Info& info, const F64 rate) {
             jst::fmt::format("gap count exceeds allowance of {}", allowedGaps));
     Require(std::max(delivery.lost, delivery.timestampMissing) <=
                 stream->applied().sampleRate * delivery.seconds * LostFraction,
-            "reported loss exceeds 1% of requested samples");
+            "reported loss exceeds 1% of expected samples");
 }
 
 void Controls(const Device::Info& info) {
@@ -569,7 +569,7 @@ void MultiChannelRx(const Device::Info& info) {
                     "multi-channel RX read failed");
             Require(capture.count > 0 && capture.count <= first.size(),
                     "invalid multi-channel RX count");
-            Require(info.driver != "bladerf" || capture.timestamp.has_value(),
+            Require(info.driver == "soapy" || capture.timestamp.has_value(),
                     "multi-channel RX timestamp missing");
             Require(!expected || !capture.timestamp || *expected == *capture.timestamp,
                     "multi-channel RX timestamp discontinuity");

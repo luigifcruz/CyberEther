@@ -54,6 +54,8 @@ class SoapySdrStream final : public Stream {
     Result setBiasTee(bool enabled);
     Result refreshGainRange();
     Result applyGain(F64 gain, bool force);
+    std::optional<U64> timestampOf(int flags, long long timeNs, U64 count);
+    void restartTimestamps();
 
     std::shared_ptr<SoapyLibrary> library;
     Abi::Device* device = nullptr;
@@ -66,19 +68,18 @@ class SoapySdrStream final : public Stream {
     std::vector<F64> channelGains;
     std::vector<std::vector<std::string>> channelAntennaLists;
     std::vector<std::string> openedAntennas;
+    F64 driverRate = 0.0;
+
     U64 queueGeneration = 0;
     U64 discard = 0;
+    Clock::time_point received{};
+    std::vector<void*> buffers;
+
     std::optional<U64> nextTimestamp;
     U64 anchorTimestamp = 0;
     long long anchorTimeNs = 0;
     U64 timestampEpoch = 0;
-    F64 driverRate = 0.0;
     bool abruptEnd = false;
-
-    std::optional<U64> timestampOf(int flags, long long timeNs, U64 count);
-    void restartTimestamps();
-    Clock::time_point received{};
-    std::vector<void*> buffers;
 };
 
 SoapySdrStream::~SoapySdrStream() {

@@ -7,6 +7,7 @@
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/io/sdr/block.hh"
 #include "jetstream/registry.hh"
+#include "scripted_radio.hh"
 
 using namespace Jetstream;
 
@@ -129,6 +130,52 @@ TEST_CASE_METHOD(FlowgraphFixture,
             }
         }
     }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "SDR block loads saved SoapySDR blocks",
+                 "[modules][io][sdr][block]") {
+    const TestRadio::ScriptedDrivers drivers;
+    const std::string yaml = R"(---
+version: 2
+graph:
+  - name: remote
+    module: soapy
+    config:
+      deviceString: 'driver=uhd, serial=3141592'
+      streamString: 'bufflen=8192'
+      modulePath: '/opt/soapy/modules'
+      antenna: RX2
+  - name: unnamed
+    module: soapy
+    config:
+      deviceString: 'driver=rtltcp,rtltcp=127.0.0.1:1234'
+  - name: bare
+    module: soapy
+)";
+
+    const std::vector<char> blob(yaml.begin(), yaml.end());
+    REQUIRE(flowgraph->importFromBlob(blob) == Result::SUCCESS);
+
+    for (const auto* name : {"remote", "unnamed", "bare"}) {
+        INFO(name);
+        REQUIRE(viewBlock(name).type == "sdr");
+    }
+
+    Parser::Map remote;
+    REQUIRE(flowgraph->blockConfig("remote", remote) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(remote.at("deviceString")) == "driver=soapy,serial=3141592");
+    REQUIRE(std::any_cast<std::string>(remote.at("driverArguments")) == "bufflen=8192");
+    REQUIRE(std::any_cast<std::string>(remote.at("antenna")) == "RX2");
+    REQUIRE(std::any_cast<F32>(remote.at("manualGain")) == 0.0f);
+
+    Parser::Map unnamed;
+    REQUIRE(flowgraph->blockConfig("unnamed", unnamed) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(unnamed.at("deviceString")).empty());
+
+    Parser::Map bare;
+    REQUIRE(flowgraph->blockConfig("bare", bare) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(bare.at("manualGain")) == 0.0f);
 }
 
 TEST_CASE("SDR block keeps single RX defaults for older configurations",

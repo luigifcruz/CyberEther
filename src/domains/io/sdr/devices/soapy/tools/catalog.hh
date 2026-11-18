@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "domains/io/sdr/devices/device.hh"
-#include "domains/io/sdr/devices/soapy/tools/runtime.hh"
+#include "domains/io/sdr/devices/soapy/tools/library.hh"
 
 namespace Jetstream::Radio {
 

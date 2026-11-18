@@ -61,23 +61,25 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
             return invalid("'value_type' must be float, uint, or string.");
         }
     }
-    const auto validOptions = [&]() {
+    const auto optionsError = [&](const std::string& control) -> std::string {
         std::vector<Parser::Map> options;
         if (!format.contains("options") || Parser::Deserialize(format, "options", options) != Result::SUCCESS) {
-            return false;
+            return control + " requires an 'options' sequence.";
         }
         for (const auto& option : options) {
             std::string label;
             std::string value;
             if (!option.contains("label") || Parser::Deserialize(option, "label", label) != Result::SUCCESS ||
                 !option.contains("value") || Parser::Deserialize(option, "value", value) != Result::SUCCESS) {
-                return false;
+                return "each option requires a string label and string value.";
             }
         }
-        return true;
+        return {};
     };
-    if (valueType == "string" && !validOptions()) {
-        return invalid("a string vector requires an 'options' sequence of string labels and values.");
+    if (valueType == "string") {
+        if (const auto error = optionsError("a string vector"); !error.empty()) {
+            return invalid(error);
+        }
     }
     if (type == "range") {
         F32 minimum = 0.0f;
@@ -126,8 +128,11 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
     }
     if (format.contains("advanced")) {
         bool value;
-        if (metric || Parser::Deserialize(format, "advanced", value) != Result::SUCCESS) {
-            return invalid("'advanced' must be a boolean on a config descriptor.");
+        if (metric) {
+            return invalid("'advanced' is only supported on config descriptors.");
+        }
+        if (Parser::Deserialize(format, "advanced", value) != Result::SUCCESS) {
+            return invalid("'advanced' must be a boolean.");
         }
         if (value && (type == "markdown" || type == "python" || type == "python-console")) {
             return invalid("'advanced' is not supported on editor fields.");
@@ -145,8 +150,10 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
             return invalid("'extensions' must be a sequence of strings.");
         }
     }
-    if (type == "dropdown" && !validOptions()) {
-        return invalid("a dropdown requires an 'options' sequence of string labels and values.");
+    if (type == "dropdown") {
+        if (const auto error = optionsError("a dropdown"); !error.empty()) {
+            return invalid(error);
+        }
     }
     for (const auto& [key, value] : format) {
         if (!Parser::Equal(value, value)) {

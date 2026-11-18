@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <map>
 #include <string_view>
 
 #include "jetstream/logger.hh"
@@ -93,6 +94,15 @@ std::vector<SoapyCatalog::Entry> SoapyCatalog::List(const SoapyKwargsList& devic
     for (const auto& args : devices) {
         if (auto entry = Describe(args)) {
             entries.push_back(std::move(*entry));
+        }
+    }
+    std::map<std::string, U64> serials;
+    for (const auto& entry : entries) {
+        ++serials[entry.info.serial];
+    }
+    for (auto& entry : entries) {
+        if (serials.at(entry.info.serial) > 1) {
+            entry.info.serial = Identifier(entry.args);
         }
     }
     return entries;

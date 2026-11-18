@@ -187,7 +187,6 @@ Result SdrImpl::reconfigure() {
     const auto& config = *candidate();
 
     if (config.deviceString != deviceString ||
-        config.driverArguments != driverArguments ||
         config.antenna != antenna ||
         config.channels != channels ||
         config.biasTee != biasTee ||
@@ -234,6 +233,7 @@ Result SdrImpl::reconfigure() {
         manualGain = applied.gainRange ? static_cast<F32>(applied.gain) : config.manualGain;
         manualGains = config.manualGains;
         antennas = config.antennas;
+        driverArguments = config.driverArguments;
         return Result::SUCCESS;
     });
 }

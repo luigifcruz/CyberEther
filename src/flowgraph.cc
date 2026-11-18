@@ -9,10 +9,10 @@
 #include "jetstream/registry.hh"
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <cstdlib>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -356,9 +356,27 @@ std::string TrimSoapyField(const std::string& text) {
 
 std::string MigrateSoapySelection(const std::string& arguments) {
     static const std::map<std::string, std::string> NativeDrivers{
-        {"rtlsdr", "rtlsdr"},   {"airspy", "airspy"},   {"airspyhf", "airspyhf"},
-        {"hackrf", "hackrf"},   {"lime", "limesdr"},    {"bladerf", "bladerf"},
+#ifdef JETSTREAM_LOADER_RTLSDR_AVAILABLE
+        {"rtlsdr", "rtlsdr"},
+#endif
+#ifdef JETSTREAM_LOADER_AIRSPY_AVAILABLE
+        {"airspy", "airspy"},
+#endif
+#ifdef JETSTREAM_LOADER_AIRSPYHF_AVAILABLE
+        {"airspyhf", "airspyhf"},
+#endif
+#ifdef JETSTREAM_LOADER_HACKRF_AVAILABLE
+        {"hackrf", "hackrf"},
+#endif
+#ifdef JETSTREAM_LOADER_LIMESUITE_AVAILABLE
+        {"lime", "limesdr"},
+#endif
+#ifdef JETSTREAM_LOADER_BLADERF_AVAILABLE
+        {"bladerf", "bladerf"},
+#endif
+#ifdef JETSTREAM_LOADER_PLUTOSDR_AVAILABLE
         {"plutosdr", "plutosdr"},
+#endif
     };
     std::map<std::string, std::string> fields;
     std::size_t begin = 0;

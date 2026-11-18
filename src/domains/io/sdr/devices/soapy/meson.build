@@ -3,7 +3,7 @@ src_lst += files([
     'stream.cc',
     'sweep.cc',
     'tools/catalog.cc',
-    'tools/runtime.cc',
+    'tools/library.cc',
 ])
 
 module_test_lst += files([
