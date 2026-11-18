@@ -196,7 +196,7 @@ Result AgentMcp::start(Config config) {
     auto next = std::make_unique<Impl>();
     next->config = std::move(config);
 
-    for (const auto& [function, readOnly] : next->config.tools) {
+    for (const auto& [function, flags] : next->config.tools) {
         Json schema = Json::parse(function.parametersJson, nullptr, false);
         if (schema.is_discarded() || !schema.is_object()) {
             schema = {{"type", "object"}};
@@ -205,7 +205,7 @@ Result AgentMcp::start(Config config) {
             {"name", function.name},
             {"description", function.description},
             {"inputSchema", std::move(schema)},
-            {"annotations", {{"readOnlyHint", readOnly}}},
+            {"annotations", {{"readOnlyHint", flags.permission == Agent::Tools::Permission::Read}}},
         });
         next->names.insert(function.name);
     }

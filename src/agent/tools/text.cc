@@ -42,7 +42,7 @@ std::vector<Entry> Toolbox::Text() {
             "apply_flowgraph_patch for partial edits, or reconfigure_block to "
             "replace the entire field.",
             R"({"type":"object","required":["name","field"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."},"field":{"type":"string","description":"Text config field, such as code."},"pattern":{"type":"string","description":"Text to find on a line."},"regex":{"type":"boolean","description":"Treat pattern as an ECMAScript regular expression."},"context":{"type":"integer","minimum":0,"maximum":20,"description":"Lines of context around each match. Default 2."},"offset":{"type":"integer","minimum":1,"description":"First line to return when pattern is absent. Default 1."},"limit":{"type":"integer","minimum":1,"maximum":500,"description":"Maximum lines to return. Default 200."}},"additionalProperties":false})",
-            {.needsGraph = true},
+            {.permission = Permission::Read, .graph = true},
         }, ReadBlockTextTool),
     };
 }

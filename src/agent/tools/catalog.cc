@@ -360,6 +360,7 @@ std::vector<Entry> Toolbox::Catalog() {
             "search_blocks",
             "Find block types for a task. Searches type, title, domain, summary, description, device, runtime, and provider, then returns ranked implementation options and each type's default_width in graph units for planning layout. default_width is the node width before resizing, and height grows with config fields and rendered surfaces.",
             R"({"type":"object","properties":{"query":{"type":"string","description":"Words describing the block or task."},"domain":{"type":"string","description":"Keep only domains whose name contains this text, such as dsp or visualization."},"device":{"type":"string","description":"Keep only implementations for this compute device, such as cpu or cuda."},"runtime":{"type":"string","description":"Keep only implementations for this runtime, such as native or python."},"provider":{"type":"string","description":"Keep only implementations from this provider. Most are generic."},"limit":{"type":"integer","minimum":1,"maximum":50,"description":"Maximum block types to return. Default 15."}},"additionalProperties":false})",
+            {.permission = Permission::Read},
         }, SearchBlocks),
         Entry::FromJson({
             "get_block_docs",
@@ -375,17 +376,19 @@ std::vector<Entry> Toolbox::Catalog() {
             "for tensor controls. Fields without config_key are UI-only. Discovery may "
             "enumerate devices.",
             R"({"type":"object","required":["type"],"properties":{"type":{"type":"string","description":"Exact block type from search_blocks, inspect_flowgraph, or inspect_block."}},"additionalProperties":false})",
-            {.needsGraph = true},
+            {.permission = Permission::Read, .graph = true},
         }, GetBlockDocs),
         Entry::FromJson({
             "list_examples",
             "List the bundled example flowgraphs with their key, title, and summary. Optional query words must all appear in the key, title, summary, description, or YAML content. matched_in is 'content' when some words appear only in the YAML, which get_example with pattern can locate.",
             R"({"type":"object","properties":{"query":{"type":"string","description":"Optional words to filter examples."}},"additionalProperties":false})",
+            {.permission = Permission::Read},
         }, ListExamples),
         Entry::FromJson({
             "get_example",
             "Read one bundled example flowgraph by key, useful as a reference for block choices, configuration, wiring, and layout. Without pattern, offset, or limit it returns the description and full YAML content. With pattern it returns matching YAML lines (marked match=true) plus context, and with offset or limit a range of lines, each with its line number. pattern is a literal substring unless regex is true. Does not change any graph.",
             R"({"type":"object","required":["key"],"properties":{"key":{"type":"string","description":"Exact example key from list_examples."},"pattern":{"type":"string","description":"Text to find on a YAML line."},"regex":{"type":"boolean","description":"Treat pattern as an ECMAScript regular expression."},"context":{"type":"integer","minimum":0,"maximum":20,"description":"Lines of context around each match. Default 2."},"offset":{"type":"integer","minimum":1,"description":"First line to return when pattern is absent. Default 1."},"limit":{"type":"integer","minimum":1,"maximum":500,"description":"Maximum lines to return. Default 200."}},"additionalProperties":false})",
+            {.permission = Permission::Read},
         }, GetExample),
         {{
             "open_example",

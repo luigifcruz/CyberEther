@@ -329,7 +329,7 @@ std::vector<Entry> Toolbox::Environment() {
         "inspect_environment",
         "Discover or read runtime environment data. Omit key to list entries whose values are structural outlines, not contents. Provide key and optional path to read the contents of a specific value or subtree. A truncated value reports its full_length; a narrower path or a larger max_length returns more of it.",
         R"({"type":"object","properties":{"query":{"type":"string","description":"Optional key filter when listing."},"key":{"type":"string","description":"Entry key from the listing whose value to read."},"path":{"type":"string","description":"Dot path with [n] sequence indexes."},"max_length":{"type":"integer","minimum":256,"maximum":262144,"description":"Maximum bytes of the value read by key. Default 8192."}},"additionalProperties":false})",
-        {.needsGraph = true},
+        {.permission = Permission::Read, .graph = true},
     }, InspectEnvironment)};
 }
 

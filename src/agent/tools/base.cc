@@ -97,15 +97,15 @@ const std::vector<Tools::Definition>& Tools::Definitions() {
     return definitions;
 }
 
-std::vector<Provider::Function> Tools::Functions(bool captureSupported) {
-    std::vector<Provider::Function> tools;
+std::vector<Tools::Definition> Tools::Available(bool captureSupported) {
+    std::vector<Definition> available;
     for (const auto& definition : Definitions()) {
-        if (definition.flags.needsCapture && !captureSupported) {
+        if (definition.flags.capture && !captureSupported) {
             continue;
         }
-        tools.push_back(definition.function);
+        available.push_back(definition);
     }
-    return tools;
+    return available;
 }
 
 Tools::Output Tools::Error(const std::string& message, bool mayHaveApplied) {
@@ -117,7 +117,7 @@ Tools::Output Tools::Error(const std::string& message, bool mayHaveApplied) {
 }
 
 void Tools::Annotate(const Call& call, Tools::Output& output, const Layout& layout) {
-    if (!call.definition || !call.definition->flags.reportsLayout) {
+    if (!call.definition || !call.definition->flags.layout) {
         return;
     }
 
@@ -160,7 +160,7 @@ Tools::Call Tools::prepare(const std::shared_ptr<Flowgraph>& target, const std::
     }
 
     call.definition = &entry->definition;
-    if (entry->definition.flags.needsGraph) {
+    if (entry->definition.flags.graph) {
         call.flowgraph = target;
     }
 

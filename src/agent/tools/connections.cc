@@ -64,13 +64,13 @@ std::vector<Entry> Toolbox::Connections() {
             "find_connection_options",
             "Find candidate output/input port pairs between two existing blocks before connecting them. Pairs list the active ports; confidence is high when the port names match, and semantic compatibility is only determined when connected.",
             R"({"type":"object","required":["source","destination"],"properties":{"source":{"type":"string","description":"Exact name of the upstream block."},"destination":{"type":"string","description":"Exact name of the downstream block."}},"additionalProperties":false})",
-            {.needsGraph = true},
+            {.permission = Permission::Read, .graph = true},
         }, FindConnectionOptions),
         Entry::FromJson({
             "validate_flowgraph",
             "Check the selected graph for errored or incomplete blocks and unconnected inputs. Returns every issue with its code. BLOCK_ERRORED and BLOCK_INCOMPLETE mean the block is not ready, and inspect_block shows why. Fix it by reconfiguring or connecting it with apply_flowgraph_patch. When an issue lists config_options, valid values come only from those options. INPUT_UNCONNECTED names an input with no source, and find_connection_options lists compatible sources.",
             R"({"type":"object","properties":{},"additionalProperties":false})",
-            {.needsGraph = true},
+            {.permission = Permission::Read, .graph = true},
         }, Validation::Check),
     };
 }

@@ -493,14 +493,12 @@ void SetNodeLayout(Patch& patch, const Json& operation, Json& result) {
 const std::array<Operation, 7> kOperations = {{
     {"create_block", {
         {"type", FieldKind::String, true, "Exact block type from search_blocks or get_block_docs."},
-        {"ref", FieldKind::String, false,
-         "Label that later operations in this call may use as '$ref' in place of the name."},
+        {"ref", FieldKind::String, false, "Label that later operations in this call may use as '$ref' in place of the name."},
         {"name", FieldKind::String, false, "Block name, generated from the type when omitted."},
         {"device", FieldKind::String, false, "Compute device implementation, such as cpu or cuda."},
         {"runtime", FieldKind::String, false, "Runtime implementation, such as native or python."},
         {"provider", FieldKind::String, false, "Provider implementation from search_blocks."},
-        {"config", FieldKind::Object, false,
-         "Config fields to set, in the base values shown by get_block_docs default_config."},
+        {"config", FieldKind::Object, false, "Config fields to set, in the base values shown by get_block_docs default_config."},
         {"x", FieldKind::Coordinate, false, "Initial left edge in graph coordinates."},
         {"y", FieldKind::Coordinate, false, "Initial top edge in graph coordinates."},
     }, CreateBlock},
@@ -886,7 +884,7 @@ std::vector<Entry> Toolbox::Patch() {
         "set_node_layout size that did not take effect is listed in "
         "size_not_applied.",
         PatchSchema(),
-        {.needsGraph = true, .editsGraph = true, .reportsLayout = true},
+        {.permission = Permission::Edit, .graph = true, .layout = true},
     }, ApplyPatch);
 
     entry.newGraph = PatchGraph;
