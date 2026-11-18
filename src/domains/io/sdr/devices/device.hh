@@ -90,6 +90,7 @@ struct JETSTREAM_API Device {
         bool automaticGain = false;
         bool biasTee = false;
         std::string gainUnit = "dB";
+        F64 fullScale = 0.0;
         F64 sweepSampleRate = 0.0;
         F64 usableBandwidth = 0.75;
         F64 dcExclusion = 0.0;

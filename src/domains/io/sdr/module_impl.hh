@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <thread>
 
 #include <jetstream/domains/io/sdr/module.hh>
@@ -39,6 +40,11 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     std::optional<Radio::Device::Range> getGainRange() const;
 
  protected:
+    struct SampleCounts {
+        U64 clipped = 0;
+        U64 received = 0;
+    };
+
     Tensor buffer;
     std::vector<CF32*> outputChannels;
 
@@ -53,11 +59,14 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     Radio::StreamBuffer stream;
     Radio::StreamAccess access;
     Radio::StreamBuffer::Metadata publishedMetadata;
+    std::optional<U64> publishedClippedSamples;
+    std::optional<U64> publishedReceivedSamples;
 
     Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<U64> deviceGaps{0};
     Tools::Snapshot<U64> deviceLostSamples{0};
+    Tools::Snapshot<SampleCounts> sampleCounts;
     Tools::Snapshot<Radio::Stream::Applied> published;
 
     Result receiveLoop();

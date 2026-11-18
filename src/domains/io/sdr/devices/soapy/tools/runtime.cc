@@ -1,12 +1,12 @@
-#include "soapy_runtime.hh"
+#include "runtime.hh"
 
 #include <cstdlib>
 #include <mutex>
 
-#include <jetstream/logger.hh>
-#include <jetstream/platform.hh>
+#include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 
-namespace Jetstream::Modules {
+namespace Jetstream::Radio {
 
 namespace {
 
@@ -48,11 +48,12 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.kwargsClear, "SoapySDRKwargs_clear", missing) &&
            Resolve(handle, api.kwargsListClear, "SoapySDRKwargsList_clear", missing) &&
            Resolve(handle, api.argInfoListClear, "SoapySDRArgInfoList_clear", missing) &&
-           Resolve(handle, api.loadModule, "SoapySDR_loadModule", missing) &&
            Resolve(handle, api.enumerate, "SoapySDRDevice_enumerate", missing) &&
            Resolve(handle, api.make, "SoapySDRDevice_make", missing) &&
            Resolve(handle, api.unmake, "SoapySDRDevice_unmake", missing) &&
+           Resolve(handle, api.getNumChannels, "SoapySDRDevice_getNumChannels", missing) &&
            Resolve(handle, api.getFrequencyRange, "SoapySDRDevice_getFrequencyRange", missing) &&
+           Resolve(handle, api.getSampleRateRange, "SoapySDRDevice_getSampleRateRange", missing) &&
            Resolve(handle, api.listAntennas, "SoapySDRDevice_listAntennas", missing) &&
            Resolve(handle, api.getNativeStreamFormat, "SoapySDRDevice_getNativeStreamFormat",
                    missing) &&
@@ -60,6 +61,8 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.setFrequency, "SoapySDRDevice_setFrequency", missing) &&
            Resolve(handle, api.setSampleRate, "SoapySDRDevice_setSampleRate", missing) &&
            Resolve(handle, api.getSampleRate, "SoapySDRDevice_getSampleRate", missing) &&
+           Resolve(handle, api.setBandwidth, "SoapySDRDevice_setBandwidth", missing) &&
+           Resolve(handle, api.getFrequency, "SoapySDRDevice_getFrequency", missing) &&
            Resolve(handle, api.hasGainMode, "SoapySDRDevice_hasGainMode", missing) &&
            Resolve(handle, api.setGainMode, "SoapySDRDevice_setGainMode", missing) &&
            Resolve(handle, api.getGainRange, "SoapySDRDevice_getGainRange", missing) &&
@@ -135,17 +138,6 @@ Result SoapyLibrary::enumerate(const SoapyKwargs& filter, SoapyKwargsList& devic
     }
     table.kwargsListClear(list, length);
     return Result::SUCCESS;
-}
-
-Result SoapyLibrary::loadModule(const std::string& path) const {
-    char* error = table.loadModule(path.c_str());
-    const std::string message = error ? error : "";
-    table.free(error);
-    if (message.empty() || message.ends_with(" already loaded")) {
-        return Result::SUCCESS;
-    }
-    JST_ERROR("[MODULE_SOAPY] Failed to load SoapySDR module '{}': {}", path, message);
-    return Result::ERROR;
 }
 
 std::shared_ptr<SoapyLibrary> SoapyLibrary::Open(const std::string& path, std::string& error) {
@@ -286,4 +278,4 @@ void SoapyRuntime::Override(const SoapyApi& api) {
     cache.attempted = true;
 }
 
-}  // namespace Jetstream::Modules
+}  // namespace Jetstream::Radio

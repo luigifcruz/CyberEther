@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_DOMAINS_IO_SOAPY_LIBRARY_SOAPY_RUNTIME_HH
-#define JETSTREAM_DOMAINS_IO_SOAPY_LIBRARY_SOAPY_RUNTIME_HH
+#ifndef JETSTREAM_DOMAINS_IO_SDR_DEVICES_SOAPY_TOOLS_RUNTIME_HH
+#define JETSTREAM_DOMAINS_IO_SDR_DEVICES_SOAPY_TOOLS_RUNTIME_HH
 
 #include <cstddef>
 #include <map>
@@ -7,17 +7,19 @@
 #include <string>
 #include <vector>
 
-#include <jetstream/types.hh>
+#include "jetstream/types.hh"
 
-namespace Jetstream::Modules::SoapyAbi {
+namespace Jetstream::Radio::SoapyAbi {
 
 constexpr const char* Version = "0.8";
 
 constexpr int RX = 1;
+constexpr int EndBurst = 1 << 1;
 constexpr int HasTime = 1 << 2;
 constexpr int Timeout = -1;
 constexpr int StreamError = -2;
 constexpr int Overflow = -4;
+constexpr int NotSupported = -5;
 constexpr const char* FormatCF32 = "CF32";
 
 struct Range {
@@ -48,9 +50,9 @@ struct ArgInfo {
 struct Device;
 struct Stream;
 
-}  // namespace Jetstream::Modules::SoapyAbi
+}  // namespace Jetstream::Radio::SoapyAbi
 
-namespace Jetstream::Modules {
+namespace Jetstream::Radio {
 
 using SoapyKwargs = std::map<std::string, std::string>;
 using SoapyKwargsList = std::vector<SoapyKwargs>;
@@ -68,12 +70,14 @@ struct SoapyApi {
     void (*kwargsClear)(SoapyAbi::Kwargs*) = nullptr;
     void (*kwargsListClear)(SoapyAbi::Kwargs*, std::size_t) = nullptr;
     void (*argInfoListClear)(SoapyAbi::ArgInfo*, std::size_t) = nullptr;
-    char* (*loadModule)(const char*) = nullptr;
     SoapyAbi::Kwargs* (*enumerate)(const SoapyAbi::Kwargs*, std::size_t*) = nullptr;
     SoapyAbi::Device* (*make)(const SoapyAbi::Kwargs*) = nullptr;
     int (*unmake)(SoapyAbi::Device*) = nullptr;
+    std::size_t (*getNumChannels)(const SoapyAbi::Device*, int) = nullptr;
     SoapyAbi::Range* (*getFrequencyRange)(const SoapyAbi::Device*, int, std::size_t,
                                           std::size_t*) = nullptr;
+    SoapyAbi::Range* (*getSampleRateRange)(const SoapyAbi::Device*, int, std::size_t,
+                                           std::size_t*) = nullptr;
     char** (*listAntennas)(const SoapyAbi::Device*, int, std::size_t, std::size_t*) = nullptr;
     char* (*getNativeStreamFormat)(const SoapyAbi::Device*, int, std::size_t,
                                    double*) = nullptr;
@@ -82,6 +86,8 @@ struct SoapyApi {
                         const SoapyAbi::Kwargs*) = nullptr;
     int (*setSampleRate)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
     double (*getSampleRate)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
+    int (*setBandwidth)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
+    double (*getFrequency)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     bool (*hasGainMode)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setGainMode)(SoapyAbi::Device*, int, std::size_t, bool) = nullptr;
     SoapyAbi::Range (*getGainRange)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
@@ -111,7 +117,6 @@ class JETSTREAM_API SoapyLibrary {
     Result kwargsFromString(const std::string& markup, SoapyKwargs& kwargs) const;
     std::string kwargsToString(const SoapyKwargs& kwargs) const;
     Result enumerate(const SoapyKwargs& filter, SoapyKwargsList& devices) const;
-    Result loadModule(const std::string& path) const;
 
     static std::shared_ptr<SoapyLibrary> Open(const std::string& path, std::string& error);
 
@@ -155,6 +160,6 @@ struct JETSTREAM_API SoapyRuntime {
     static void Override(const SoapyApi& api);
 };
 
-}  // namespace Jetstream::Modules
+}  // namespace Jetstream::Radio
 
-#endif  // JETSTREAM_DOMAINS_IO_SOAPY_LIBRARY_SOAPY_RUNTIME_HH
+#endif  // JETSTREAM_DOMAINS_IO_SDR_DEVICES_SOAPY_TOOLS_RUNTIME_HH

@@ -42,6 +42,7 @@ Result SdrImpl::validate() {
 
 Result SdrImpl::configure() {
     moduleConfig->deviceString = deviceString;
+    moduleConfig->driverArguments = driverArguments;
     moduleConfig->antenna = antenna;
     moduleConfig->channels = channels;
     moduleConfig->frequency = frequency;
@@ -82,7 +83,17 @@ Result SdrImpl::define() {
                                     "Select a radio to receive samples. Choose None to disconnect.",
                                     {{"type", "dropdown"}, {"options", std::move(deviceOptions)}}));
 
-    if (config.channels > 1 || Radio::Device::ReceiveChannels(config.deviceString) > 1) {
+    const auto selection = Radio::Device::Selection::Parse(config.deviceString);
+    const bool soapy = selection && selection->driver == "soapy";
+    if (soapy) {
+        JST_CHECK(defineInterfaceConfig("driverArguments",
+                                        "Driver Arguments",
+                                        "SoapySDR stream arguments as key=value pairs separated by commas. "
+                                        "Changes restart the receiver.",
+                                        {{"type", "text"}, {"advanced", true}}));
+    }
+
+    if (soapy || config.channels > 1 || Radio::Device::ReceiveChannels(config.deviceString) > 1) {
         JST_CHECK(defineInterfaceConfig("channels",
                                         "Channels",
                                         "Number of synchronized receive channels. More than one adds an "
@@ -207,6 +218,10 @@ Result SdrImpl::create() {
     moduleConfig->sampleRate = sampleRate;
     if (channels == 1) {
         JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
+    }
+    const auto selection = Radio::Device::Selection::Parse(deviceString);
+    if (selection && selection->driver == "soapy") {
+        JST_CHECK(updateInterfaceConfigFormat("channels", channelsFormat(*this)));
     }
 
     return reconfigure();

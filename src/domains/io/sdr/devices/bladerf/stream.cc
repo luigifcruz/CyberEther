@@ -157,6 +157,7 @@ Result BladeRfStream::connect(const Device::Info& info) {
     caps.sampleRateRanges = ToRanges(rate);
     caps.automaticGain = second;
     caps.biasTee = second;
+    caps.fullScale = Q11Scale;
     caps.sweepSampleRate = second ? 30.72e6 : 20.0e6;
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 20.0e3;

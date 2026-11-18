@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <ctime>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <set>
@@ -102,6 +103,9 @@ std::vector<F64> Rates(const Device::Capabilities& caps) {
     Capabilities(caps);
     std::set<F64> rates{caps.sweepSampleRate};
     for (const auto& range : caps.sampleRateRanges) {
+        if (range.maximum == std::numeric_limits<F64>::max()) {
+            continue;
+        }
         rates.insert(range.minimum);
         rates.insert(std::round((range.minimum + range.maximum) / 2.0));
         rates.insert(range.maximum);
@@ -146,7 +150,10 @@ Stream::Settings Settings(const Device::Capabilities& caps) {
 void Applied(const Stream& stream, const Stream::Settings& settings) {
     const auto& applied = stream.applied();
     Require(Near(applied.frequency, settings.frequency), "applied frequency mismatch");
-    Require(Near(applied.sampleRate, settings.sampleRate), "applied sample rate mismatch");
+    Require(std::isfinite(applied.sampleRate) && applied.sampleRate > 0.0,
+            "applied sample rate is invalid");
+    Require(stream.info().driver == "soapy" || Near(applied.sampleRate, settings.sampleRate),
+            "applied sample rate mismatch");
     Require(applied.automaticGain == settings.automaticGain, "applied AGC mismatch");
     GainRange(applied.gainRange);
     if (!settings.automaticGain) {
@@ -246,11 +253,12 @@ void Throughput(const Device::Info& info, const F64 rate) {
                     rate / 1e6, stream->applied().sampleRate / 1e6, deliveredRate / 1e6,
                     delivery.gaps, allowedGaps, delivery.timestampGaps, delivery.timestampMissing, delivery.lost,
                     delivery.samples, delivery.seconds, delivery.cpuPercent);
-    Require(std::abs(deliveredRate / rate - 1.0) <= RateTolerance,
-            "delivered throughput is outside +/-30% of requested rate");
+    Require(std::abs(deliveredRate / stream->applied().sampleRate - 1.0) <= RateTolerance,
+            "delivered throughput is outside +/-30% of applied rate");
     Require(delivery.gaps + delivery.timestampGaps <= allowedGaps,
             jst::fmt::format("gap count exceeds allowance of {}", allowedGaps));
-    Require(std::max(delivery.lost, delivery.timestampMissing) <= rate * delivery.seconds * LostFraction,
+    Require(std::max(delivery.lost, delivery.timestampMissing) <=
+                stream->applied().sampleRate * delivery.seconds * LostFraction,
             "reported loss exceeds 1% of requested samples");
 }
 
@@ -421,7 +429,9 @@ void Sweeps(const Device::Info& info, const Plan::Mode mode) {
     };
     Success(sweep->configure(settings), "configure sweep");
     GainRange(sweep->applied().gainRange);
-    Require(Near(sweep->applied().sampleRate, rate), "sweep applied rate mismatch");
+    const F64 appliedRate = sweep->applied().sampleRate;
+    Require(std::isfinite(appliedRate) && appliedRate > 0.0, "sweep applied rate is invalid");
+    Require(info.driver == "soapy" || Near(appliedRate, rate), "sweep applied rate mismatch");
     request.sampleRate = sweep->applied().sampleRate;
     Success(Plan::Create(request, caps, plan), "replan at applied sample rate");
     Require(plan.hops.size() > 1, "plan is not multi-hop");
@@ -522,11 +532,12 @@ void SweepRestarts(const Device::Info& info) {
 
 void MultiChannelRx(const Device::Info& info) {
     auto stream = OpenStream(info);
-    if (stream->capabilities().receiveChannels < 2) {
+    const auto& caps = stream->capabilities();
+    if (caps.receiveChannels < 2) {
         jst::fmt::print("[SKIP] multi-channel RX: device has one receive channel\n");
         return;
     }
-    auto settings = Settings(stream->capabilities());
+    auto settings = Settings(caps);
     settings.sampleRate = 2.0e6;
     settings.receiveChannels = 2;
     settings.automaticGain = false;
@@ -557,9 +568,9 @@ void MultiChannelRx(const Device::Info& info) {
                     "multi-channel RX read failed");
             Require(capture.count > 0 && capture.count <= first.size(),
                     "invalid multi-channel RX count");
-            Require(capture.timestamp.has_value(),
+            Require(info.driver != "bladerf" || capture.timestamp.has_value(),
                     "multi-channel RX timestamp missing");
-            Require(!expected || *expected == *capture.timestamp,
+            Require(!expected || !capture.timestamp || *expected == *capture.timestamp,
                     "multi-channel RX timestamp discontinuity");
             Require(capture.generation == stream->generation(),
                     "stale multi-channel RX generation");
@@ -573,7 +584,9 @@ void MultiChannelRx(const Device::Info& info) {
             Require(std::all_of(first.begin(), first.begin() + capture.count, finite) &&
                     std::all_of(second.begin(), second.begin() + capture.count, finite),
                     "invalid multi-channel RX IQ");
-            expected = *capture.timestamp + capture.count;
+            if (capture.timestamp) {
+                expected = *capture.timestamp + capture.count;
+            }
             count += capture.count;
         }
         const F64 seconds = std::chrono::duration<F64>(Clock::now() - begin).count();
@@ -602,12 +615,16 @@ void MultiChannelRx(const Device::Info& info) {
                     stream->resolveGain(settings.channelGains[1], stream->applied().gainRange),
             "multi-channel RX gain per receiver readback mismatch");
     receive("multi-channel RX gain per receiver");
-    settings.automaticGain = true;
-    Success(stream->update(settings), "enable multi-channel RX automatic gain");
-    Require(stream->applied().automaticGain, "multi-channel RX automatic gain not applied");
-    receive("multi-channel RX automatic gain");
-    settings.automaticGain = false;
-    Success(stream->update(settings), "restore multi-channel RX manual gain");
+    if (caps.automaticGain) {
+        settings.automaticGain = true;
+        Success(stream->update(settings), "enable multi-channel RX automatic gain");
+        Require(stream->applied().automaticGain, "multi-channel RX automatic gain not applied");
+        receive("multi-channel RX automatic gain");
+        settings.automaticGain = false;
+        Success(stream->update(settings), "restore multi-channel RX manual gain");
+    } else {
+        jst::fmt::print("  [SKIP] multi-channel RX AGC is not supported\n");
+    }
     settings.frequency += 1.0e6;
     Success(stream->update(settings), "retune multi-channel RX");
     receive("multi-channel RX retune");
@@ -616,9 +633,11 @@ void MultiChannelRx(const Device::Info& info) {
     receive("multi-channel RX sample-rate change");
     Success(stream->start(settings), "restart multi-channel RX");
     receive("multi-channel RX restart");
-    settings.sampleRate = 60.0e6;
-    Require(stream->start(settings) != Result::SUCCESS,
-            "multi-channel RX accepted a total rate above the USB budget");
+    if (info.driver == "bladerf") {
+        settings.sampleRate = 60.0e6;
+        Require(stream->start(settings) != Result::SUCCESS,
+                "multi-channel RX accepted a total rate above the USB budget");
+    }
 }
 
 void Recovery(const Device::Info& info) {
@@ -722,10 +741,7 @@ int main() {
         if (info.driver == "hackrf") {
             results.run("firmware sweep and restart", [&] { Sweeps(info, Plan::Mode::Firmware); });
         }
-        if (info.driver == "bladerf") {
-            results.run("multi-channel RX controls, timestamps, and restart",
-                        [&] { MultiChannelRx(info); });
-        }
+        results.run("multi-channel RX controls and restart", [&] { MultiChannelRx(info); });
         results.run("stream/sweep close and reopen", [&] { Recovery(info); });
     }
     jst::fmt::print("\nHardware results: {} passed, {} failed, {} devices\n",

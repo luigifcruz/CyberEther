@@ -12,6 +12,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <cstdlib>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <queue>
@@ -341,6 +343,95 @@ Result MigrateFlowgraphVersion100To200(Parser::Map& root) {
 
     root["version"] = std::string("2");
     root.erase("protocolVersion");
+    return Result::SUCCESS;
+}
+
+std::string TrimSoapyField(const std::string& text) {
+    const auto first = text.find_first_not_of(" \t");
+    if (first == std::string::npos) {
+        return {};
+    }
+    return text.substr(first, text.find_last_not_of(" \t") - first + 1);
+}
+
+std::string MigrateSoapySelection(const std::string& arguments) {
+    static const std::map<std::string, std::string> NativeDrivers{
+        {"rtlsdr", "rtlsdr"},   {"airspy", "airspy"},   {"airspyhf", "airspyhf"},
+        {"hackrf", "hackrf"},   {"lime", "limesdr"},    {"bladerf", "bladerf"},
+        {"plutosdr", "plutosdr"},
+    };
+    std::map<std::string, std::string> fields;
+    std::size_t begin = 0;
+    while (begin < arguments.size()) {
+        const auto end = std::min(arguments.find(',', begin), arguments.size());
+        const auto field = arguments.substr(begin, end - begin);
+        if (const auto split = field.find('='); split != std::string::npos) {
+            fields[TrimSoapyField(field.substr(0, split))] = TrimSoapyField(field.substr(split + 1));
+        }
+        begin = end + 1;
+    }
+    auto serial = fields["serial"];
+    if (serial.empty() || serial.find_first_of(",=") != std::string::npos) {
+        return {};
+    }
+    if (fields["driver"].empty()) {
+        return {};
+    }
+    const auto native = NativeDrivers.find(fields["driver"]);
+    const auto driver = native == NativeDrivers.end() ? std::string("soapy") : native->second;
+    if (driver == "airspy" || driver == "airspyhf") {
+        char* end = nullptr;
+        const auto value = std::strtoull(serial.c_str(), &end, 16);
+        if (end && *end == '\0') {
+            serial = jst::fmt::format("{:016X}", value);
+        }
+    }
+    return jst::fmt::format("driver={},serial={}", driver, serial);
+}
+
+Result MigrateSoapyBlocks(Parser::Map& root) {
+    if (!root.contains("graph") || root.at("graph").type() != typeid(Parser::Sequence)) {
+        return Result::SUCCESS;
+    }
+    auto& graph = std::any_cast<Parser::Sequence&>(root.at("graph"));
+    for (auto& entry : graph) {
+        if (entry.type() != typeid(Parser::Map)) {
+            continue;
+        }
+        auto& block = std::any_cast<Parser::Map&>(entry);
+        if (Parser::Get<std::string>(block, "module") != "soapy") {
+            continue;
+        }
+        block["module"] = std::string("sdr");
+        if (!block.contains("config")) {
+            block["config"] = Parser::Map{};
+        }
+        if (block.at("config").type() != typeid(Parser::Map)) {
+            continue;
+        }
+        auto& config = std::any_cast<Parser::Map&>(block.at("config"));
+        const auto deviceString = Parser::Get<std::string>(config, "deviceString");
+        config["deviceString"] = MigrateSoapySelection(deviceString);
+        const auto migrated = Parser::Get<std::string>(config, "deviceString");
+        if (!deviceString.empty() && migrated.empty()) {
+            JST_WARN("[FLOWGRAPH] SoapySDR block '{}' has no driver and serial to match. Select its radio again.",
+                     Parser::Get<std::string>(block, "name"));
+        }
+        if (!migrated.empty() && !migrated.starts_with("driver=soapy,")) {
+            config.erase("antenna");
+        }
+        if (!config.contains("manualGain")) {
+            config["manualGain"] = std::string("0");
+        }
+        if (config.contains("streamString")) {
+            auto streamString = config.at("streamString");
+            config.erase("streamString");
+            config["driverArguments"] = std::move(streamString);
+        }
+        config.erase("modulePath");
+        JST_INFO("[FLOWGRAPH] Loaded SoapySDR block '{}' as an SDR block.",
+                 Parser::Get<std::string>(block, "name"));
+    }
     return Result::SUCCESS;
 }
 
@@ -1297,6 +1388,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     JST_CHECK(Parser::YamlDecode(yamlText, root));
 
     JST_CHECK(MigrateFlowgraphVersion100To200(root));
+    JST_CHECK(MigrateSoapyBlocks(root));
 
     FlowgraphDocument document;
     JST_CHECK(document.deserialize(root));
