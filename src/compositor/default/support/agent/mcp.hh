@@ -16,7 +16,6 @@ class AgentMcp {
     struct Tool {
         Agent::Provider::Function function;
         bool readOnly = false;
-        bool destructive = false;
     };
 
     struct Config {

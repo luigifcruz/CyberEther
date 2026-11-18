@@ -506,7 +506,7 @@ const std::array<Operation, 7> kOperations = {{
     }, CreateBlock},
     {"reconfigure_block", {
         {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
-        {"config", FieldKind::Object, true, "Config fields to change, in base values. Omitted fields stay unchanged."},
+        {"config", FieldKind::Object, true, "Config fields to change, in base values."},
     }, ReconfigureBlock},
     {"patch_block_text", {
         {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},

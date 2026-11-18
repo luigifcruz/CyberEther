@@ -375,11 +375,11 @@ std::vector<AgentMcp::Tool> AgentRuntime::McpTools(bool captureSupported) {
             continue;
         }
         const bool opensGraph = function.name == "open_example";
-        tools.push_back({function, !flags.editsGraph && !opensGraph, flags.editsGraph});
+        tools.push_back({function, !flags.editsGraph && !opensGraph});
     }
     for (auto& function : AgentTiles::Functions()) {
         const bool readOnly = AgentTiles::ReadOnly(function.name);
-        tools.push_back({std::move(function), readOnly, !readOnly});
+        tools.push_back({std::move(function), readOnly});
     }
     return tools;
 }
