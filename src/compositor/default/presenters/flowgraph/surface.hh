@@ -47,6 +47,8 @@ struct FlowgraphDetachedSurfacePresenter {
         }
 
         for (const auto& [blockName, blockData] : blocks->second) {
+            ConfigMeta configMeta;
+            flowgraph->metadata().get("config", configMeta, blockName);
             for (const auto& surface : blockData.surfaces) {
                 if (!surface) {
                     continue;
@@ -59,8 +61,6 @@ struct FlowgraphDetachedSurfacePresenter {
                     const std::string surfaceMetaKey = "surface_" + manifest.id;
                     SurfaceMeta surfaceMeta;
                     flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
-                    ConfigMeta configMeta;
-                    flowgraph->metadata().get("config", configMeta, blockName);
 
                     if (!surfaceMeta.detached && !referencedSurfaces.contains({blockName, manifest.id})) {
                         continue;
@@ -83,9 +83,9 @@ struct FlowgraphDetachedSurfacePresenter {
                                                                            flowgraphId,
                                                                            blockName,
                                                                            windowId,
-                                                                           blockData,
-                                                                           configMeta.advanced),
+                                                                           blockData),
                         .configOpen = !surfaceMeta.configCollapsed,
+                        .configAdvanced = configMeta.advanced,
                         .texture = manifest.surface,
                         .onSize = [enqueue,
                                    surface,
@@ -128,6 +128,13 @@ struct FlowgraphDetachedSurfacePresenter {
                                 .block = blockName,
                                 .surface = surfaceId,
                                 .collapsed = !open,
+                            });
+                        },
+                        .onConfigAdvanced = [enqueue, flowgraphId, blockName](const bool advanced) {
+                            enqueue(MailSetConfigAdvanced{
+                                .flowgraph = flowgraphId,
+                                .block = blockName,
+                                .advanced = advanced,
                             });
                         },
                     });

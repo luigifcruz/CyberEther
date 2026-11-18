@@ -61,6 +61,7 @@ struct FlowgraphEditor {
         std::function<void(Measured)> onLayout;
         std::function<void(const std::string&, bool)> onNodeConfigCollapse;
         std::function<void(const std::string&, bool)> onNodeConfigDetach;
+        std::function<void(const std::string&, bool)> onNodeConfigAdvanced;
     };
 
     void update(Config config) {
@@ -175,14 +176,12 @@ struct FlowgraphEditor {
                 pinIdToInfo[nodeId][pinKey(FlowgraphPinId(output.port.id), false)] = {block.name, output.port.id, false};
             }
             for (auto& field : nodeBlock.configFields) {
-                if (!field.onApply) {
-                    field.onApply = [onReconfigureBlock, blockName = block.name](
-                        Parser::Map values, const bool silent, std::function<void(Result)> onComplete) {
-                        if (onReconfigureBlock) {
-                            onReconfigureBlock(blockName, std::move(values), silent, std::move(onComplete));
-                        }
-                    };
-                }
+                field.onApply = [onReconfigureBlock, blockName = block.name](
+                    Parser::Map values, const bool silent, std::function<void(Result)> onComplete) {
+                    if (onReconfigureBlock) {
+                        onReconfigureBlock(blockName, std::move(values), silent, std::move(onComplete));
+                    }
+                };
                 field.onError = this->config.onConfigError;
                 field.onBrowsePath = this->config.onBrowseConfigPath;
             }
@@ -254,6 +253,11 @@ struct FlowgraphEditor {
                 .onConfigDetach = [this, blockName = block.name](bool detached) {
                     if (this->config.onNodeConfigDetach) {
                         this->config.onNodeConfigDetach(blockName, detached);
+                    }
+                },
+                .onConfigAdvanced = [this, blockName = block.name](bool advanced) {
+                    if (this->config.onNodeConfigAdvanced) {
+                        this->config.onNodeConfigAdvanced(blockName, advanced);
                     }
                 },
             };

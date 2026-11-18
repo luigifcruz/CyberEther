@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_BASE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_BASE_HH
 
+#include "advanced.hh"
 #include "bool.hh"
 #include "console.hh"
 #include "dropdown.hh"

@@ -8,9 +8,7 @@
 #include <jetstream/flowgraph_view.hh>
 #include <jetstream/runtime_context.hh>
 
-#include <algorithm>
 #include <functional>
-#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -58,44 +56,6 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
     return fields;
 }
 
-inline void ApplyAdvancedSection(std::vector<FlowgraphConfigFieldConfig>& fields,
-                                 const std::string& viewId,
-                                 const bool shown,
-                                 std::function<void(bool)> onToggle) {
-    static const std::string Name = ":advanced";
-    std::vector<FlowgraphConfigFieldConfig> regular;
-    std::vector<FlowgraphConfigFieldConfig> advanced;
-    for (auto& field : fields) {
-        auto& target = Parser::Get<bool>(field.format, "advanced") ? advanced : regular;
-        target.push_back(std::move(field));
-    }
-    if (!advanced.empty()) {
-        regular.push_back({
-            .id = viewId + ":advanced-toggle",
-            .name = Name,
-            .label = "Advanced",
-            .help = "Show settings that most chains leave at their defaults.",
-            .format = {{"type", "bool"}},
-            .values = {{Name, shown}},
-            .onApply = [onToggle = std::move(onToggle), shown](Parser::Map patch,
-                                                               const bool,
-                                                               std::function<void(Result)> onComplete) {
-                const bool next = Parser::Get<bool>(patch, Name, !shown);
-                if (onToggle) {
-                    onToggle(next);
-                }
-                if (onComplete) {
-                    onComplete(Result::SUCCESS);
-                }
-            },
-        });
-        if (shown) {
-            std::move(advanced.begin(), advanced.end(), std::back_inserter(regular));
-        }
-    }
-    fields = std::move(regular);
-}
-
 inline void ApplyLiveMarkdown(std::vector<FlowgraphConfigFieldConfig>& fields,
                               const DefaultCompositorState::FlowgraphState& flowgraphs,
                               const std::string& flowgraphId,
@@ -118,8 +78,7 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigField
     const std::string& flowgraphId,
     const std::string& blockName,
     const std::string& viewId,
-    const Flowgraph::View::BlockData& block,
-    const bool advanced) {
+    const Flowgraph::View::BlockData& block) {
     auto fields = BuildFlowgraphConfigFields(viewId, block);
     ApplyLiveMarkdown(fields, flowgraphs, flowgraphId, blockName);
     for (auto& field : fields) {
@@ -146,9 +105,6 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigField
             });
         };
     }
-    ApplyAdvancedSection(fields, viewId, advanced, [enqueue, flowgraphId, blockName](bool shown) {
-        enqueue(MailSetConfigAdvanced{flowgraphId, blockName, shown});
-    });
     return fields;
 }
 
