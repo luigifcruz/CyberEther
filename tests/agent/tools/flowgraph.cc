@@ -180,7 +180,7 @@ TEST_CASE("Agent tool parameters all carry descriptions", "[agent][tools]") {
         if (schema.contains("properties")) {
             for (const auto& property : schema.at("properties").items()) {
                 const auto& value = property.value();
-                if (!value.contains("const") && !value.contains("description")) {
+                if (!value.contains("description")) {
                     undescribed.push_back(path + "." + property.key());
                 }
             }

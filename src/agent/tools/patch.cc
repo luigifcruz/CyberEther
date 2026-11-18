@@ -565,7 +565,7 @@ std::string ValidateOperation(const Operation& entry, const Json& operation) {
 std::string PatchSchema() {
     Json variants = Json::array();
     for (const auto& entry : kOperations) {
-        Json properties = {{"op", {{"const", entry.name}}}};
+        Json properties = {{"op", {{"const", entry.name}, {"description", "Operation to apply."}}}};
         Json required = Json::array({"op"});
 
         for (const auto& field : entry.fields) {
