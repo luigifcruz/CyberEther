@@ -75,7 +75,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
 
  private:
     std::unique_ptr<Radio::Stream> radio;
-    std::vector<std::string> antennas;
+    std::vector<std::string> availableAntennas;
 
     Radio::Stream::Settings settingsOf(const Sdr& config) const;
     void resetStream();

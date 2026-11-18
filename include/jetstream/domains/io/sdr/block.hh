@@ -11,6 +11,7 @@ struct Sdr : public Block::Config {
     std::string deviceString = "";
     std::string driverArguments = "";
     std::string antenna = "";
+    std::vector<std::string> antennas;
     U64 channels = 1;
     F32 frequency = 96.9e6;
     F32 frequencyStep = 1000000.0;
@@ -26,7 +27,7 @@ struct Sdr : public Block::Config {
     JST_BLOCK_TYPE(sdr);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
-    JST_BLOCK_PARAMS(deviceString, driverArguments, antenna, channels, frequency, frequencyStep,
+    JST_BLOCK_PARAMS(deviceString, driverArguments, antenna, antennas, channels, frequency, frequencyStep,
                      sampleRate, automaticGain, manualGain, manualGains, biasTee,
                      numberOfBatches, numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
@@ -71,6 +72,10 @@ struct Sdr : public Block::Config {
         "| **Antenna** | Default | Default and the radio's receive ports | Receive "
         "port. Only LimeSDR and SoapySDR radios list ports. Hidden when Channels is "
         "above 1. |\n"
+        "| **Antennas** | Antenna on every receiver | One per receiver, from the radio's"
+        " receive ports | Receive port of each receiver in RX order. New entries start "
+        "at Antenna. Shown instead of Antenna when Channels is above 1 on radios that "
+        "list ports. |\n"
         "| **Frequency** | 96.9 MHz | Within the radio's range | Center frequency of "
         "the output. |\n"
         "| **Sample Rate** | 2 MHz | Within the radio's range | Complex samples per "

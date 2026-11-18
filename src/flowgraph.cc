@@ -417,7 +417,8 @@ Result MigrateSoapyBlocks(Parser::Map& root) {
             JST_WARN("[FLOWGRAPH] SoapySDR block '{}' has no driver and serial to match. Select its radio again.",
                      Parser::Get<std::string>(block, "name"));
         }
-        if (!migrated.empty() && !migrated.starts_with("driver=soapy,")) {
+        if (!migrated.empty() && !migrated.starts_with("driver=soapy,") &&
+            !migrated.starts_with("driver=limesdr,")) {
             config.erase("antenna");
         }
         if (!config.contains("manualGain")) {

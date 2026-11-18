@@ -169,6 +169,8 @@ Result SoapySdrSweep::queryCapabilities() {
     caps.frequencyRanges = std::move(frequencies);
     caps.sampleRateRanges = {{std::numeric_limits<F64>::min(), std::numeric_limits<F64>::max()}};
     caps.automaticGain = api.hasGainMode(device, Abi::RX, 0) && api.lastStatus() == 0;
+    const std::size_t channels = api.getNumChannels(device, Abi::RX);
+    caps.receiveChannels = api.lastStatus() == 0 && channels > 0 ? channels : 1;
     caps.biasTee = biasTee;
     caps.sweepSampleRate = SoapyCatalog::SweepRate(reportedRates, SweepSampleRate);
     caps.usableBandwidth = 0.8;

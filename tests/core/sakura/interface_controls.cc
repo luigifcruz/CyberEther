@@ -3,6 +3,7 @@
 #include "compositor/default/presenters/flowgraph/config.hh"
 #include "compositor/default/views/flowgraph/editor/config/dropdown.hh"
 #include "compositor/default/views/flowgraph/editor/config/float.hh"
+#include "compositor/default/views/flowgraph/editor/config/vector.hh"
 #include "compositor/default/views/flowgraph/editor/config/base.hh"
 #include "compositor/default/views/flowgraph/editor/metrics/table.hh"
 #include "harness.hh"
@@ -12,7 +13,8 @@ using namespace Jetstream;
 
 namespace {
 
-void SelectOption(SakuraTest::HeadlessUi& ui, FlowgraphConfigDropdownField& field, U64 index) {
+template<typename Field>
+void SelectOption(SakuraTest::HeadlessUi& ui, Field& field, U64 index, const F32 row = 0.5f) {
     ImRect combo;
     const auto frame = [&] {
         ui.frame([&] {
@@ -21,11 +23,14 @@ void SelectOption(SakuraTest::HeadlessUi& ui, FlowgraphConfigDropdownField& fiel
         });
     };
     frame();
-    ui.setMouse(combo.GetCenter(), false);
+    const auto target = [&] {
+        return ImVec2(combo.GetCenter().x, combo.Min.y + combo.GetHeight() * row);
+    };
+    ui.setMouse(target(), false);
     frame();
-    ui.setMouse(combo.GetCenter(), true);
+    ui.setMouse(target(), true);
     frame();
-    ui.setMouse(combo.GetCenter(), false);
+    ui.setMouse(target(), false);
     frame();
     frame();
     const auto& popups = ImGui::GetCurrentContext()->OpenPopupStack;
@@ -250,6 +255,53 @@ TEST_CASE("Vector controls recover their cached values after a decoding error",
     config.values.clear();
     REQUIRE(field.update(config) == Result::SUCCESS);
     REQUIRE(height() == 0.0f);
+}
+
+TEST_CASE("String vectors show one dropdown per entry and patch the whole list",
+          "[core][sakura][interface]") {
+    SakuraTest::HeadlessUi ui(1.0f, {800.0f, 600.0f});
+    FlowgraphConfigVectorField field;
+    std::vector<Parser::Map> edits;
+    FlowgraphConfigFieldConfig config{
+        .id = "antennas",
+        .name = "antennas",
+        .label = "Antennas",
+        .format = {
+            {"type", "vector"},
+            {"value_type", "string"},
+            {"options", Parser::Sequence{
+                Parser::Map{{"label", "Default"}, {"value", ""}},
+                Parser::Map{{"label", "LNAH"}, {"value", "LNAH"}},
+                Parser::Map{{"label", "LNAW"}, {"value", "LNAW"}},
+            }},
+        },
+        .values = {{"antennas", std::vector<std::string>{"LNAH", "LNAH"}}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    };
+    REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::SUCCESS);
+    REQUIRE(Parser::Hash(std::any(config.format)) != 0);
+
+    const auto height = [&] {
+        F32 result = 0.0f;
+        ui.frame([&] {
+            const auto start = ImGui::GetCursorPosY();
+            field.render(ui.sakura());
+            result = ImGui::GetCursorPosY() - start;
+        });
+        return result;
+    };
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    const F32 twoRows = height();
+    REQUIRE(twoRows > 0.0f);
+
+    SelectOption(ui, field, 2, 0.75f);
+    REQUIRE(edits.size() == 1);
+    REQUIRE(std::any_cast<std::vector<std::string>>(edits.front().at("antennas")) ==
+            std::vector<std::string>{"LNAH", "LNAW"});
+
+    config.values["antennas"] = std::vector<std::string>{"LNAH"};
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    REQUIRE(height() < twoRows);
 }
 
 TEST_CASE("Table metrics accept structured cells containing tabs and newlines",

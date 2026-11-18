@@ -104,6 +104,7 @@ std::vector<F64> Rates(const Device::Capabilities& caps) {
     std::set<F64> rates{caps.sweepSampleRate};
     for (const auto& range : caps.sampleRateRanges) {
         if (range.maximum == std::numeric_limits<F64>::max()) {
+            rates.insert(std::round(caps.sweepSampleRate / 2.0));
             continue;
         }
         rates.insert(range.minimum);

@@ -115,7 +115,7 @@ Result SdrImpl::create() {
 
     JST_CHECK(Radio::Stream::Open(deviceString, radio));
     const auto& caps = radio->capabilities();
-    antennas = caps.antennas;
+    availableAntennas = caps.antennas;
     if (channels > caps.receiveChannels) {
         JST_ERROR("[MODULE_SDR] Channels ({}) is more than {} supports ({}).",
                   channels, radio->info().label, caps.receiveChannels);
@@ -233,6 +233,7 @@ Result SdrImpl::reconfigure() {
         automaticGain = config.automaticGain;
         manualGain = applied.gainRange ? static_cast<F32>(applied.gain) : config.manualGain;
         manualGains = config.manualGains;
+        antennas = config.antennas;
         return Result::SUCCESS;
     });
 }
@@ -252,6 +253,10 @@ Radio::Stream::Settings SdrImpl::settingsOf(const Sdr& config) const {
         for (U64 i = 0; i < config.channels; ++i) {
             settings.channelGains.push_back(i < config.manualGains.size() ? config.manualGains[i]
                                                                            : config.manualGain);
+            if (!availableAntennas.empty() || !config.antennas.empty()) {
+                settings.channelAntennas.push_back(i < config.antennas.size() ? config.antennas[i]
+                                                                              : config.antenna);
+            }
         }
     }
     return settings;
@@ -429,7 +434,7 @@ std::pair<F32, F32> SdrImpl::getThroughput() const {
 }
 
 std::vector<std::string> SdrImpl::listAntennas() const {
-    return antennas;
+    return availableAntennas;
 }
 
 Radio::Stream::Applied SdrImpl::getApplied() const {

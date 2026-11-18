@@ -87,6 +87,12 @@ TEST_CASE("Interface descriptors validate every control and internal metric",
     REQUIRE(Block::Interface::ValidateFormat({{"type", "vector"}, {"value_type", "float"}}) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "vector"}, {"value_type", "uint"}}) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "uint"}, {"advanced", true}}) == Result::SUCCESS);
+    REQUIRE(Block::Interface::ValidateFormat({
+        {"type", "vector"},
+        {"value_type", "string"},
+        {"options", Parser::Sequence{Parser::Map{{"label", "Default"}, {"value", ""}},
+                                     Parser::Map{{"label", "LNAH"}, {"value", "LNAH"}}}},
+    }) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "timing"}, {"visibility", "internal"}}, true) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "python-diagnostic"}, {"visibility", "internal"}}, true) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "float"}, {"unit", "arbitrary"}, {"scale", 42.0},
@@ -108,6 +114,11 @@ TEST_CASE("Malformed interface descriptors fail without throwing",
         {{"type", "vector"}, {"value_type", "invalid"}},
         {{"type", "uint"}, {"advanced", "yes"}},
         {{"type", "markdown"}, {"advanced", true}},
+        {{"type", "vector"}, {"value_type", "string"}},
+        {{"type", "vector"}, {"value_type", "string"},
+         {"options", Parser::Sequence{Parser::Map{{"label", "Missing value"}}}}},
+        {{"type", "vector-inline"}, {"value_type", "string"},
+         {"options", Parser::Sequence{Parser::Map{{"label", "Default"}, {"value", ""}}}}},
         {{"type", "tensor-config"}, {"index", -1}, {"source", "outputs"}},
         {{"type", "tensor-config"}},
         {{"type", "multiline"}, {"collapsible", 2}},

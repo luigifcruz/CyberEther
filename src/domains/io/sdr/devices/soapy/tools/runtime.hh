@@ -82,6 +82,7 @@ struct SoapyApi {
     char* (*getNativeStreamFormat)(const SoapyAbi::Device*, int, std::size_t,
                                    double*) = nullptr;
     int (*setAntenna)(SoapyAbi::Device*, int, std::size_t, const char*) = nullptr;
+    char* (*getAntenna)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setFrequency)(SoapyAbi::Device*, int, std::size_t, double,
                         const SoapyAbi::Kwargs*) = nullptr;
     int (*setSampleRate)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;

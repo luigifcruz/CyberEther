@@ -63,6 +63,8 @@ class SoapySdrStream final : public Stream {
     bool biasTeeEnabled = false;
     U64 receiveChannels = 1;
     std::vector<F64> channelGains;
+    std::vector<std::vector<std::string>> channelAntennaLists;
+    std::vector<std::string> openedAntennas;
     U64 queueGeneration = 0;
     U64 discard = 0;
     Clock::time_point received{};
@@ -162,16 +164,28 @@ Result SoapySdrStream::queryCapabilities() {
     const std::size_t channels = api.getNumChannels(device, Abi::RX);
     caps.receiveChannels = api.lastStatus() == 0 && channels > 0 ? channels : 1;
 
-    std::size_t antennaCount = 0;
-    char** names = api.listAntennas(device, Abi::RX, 0, &antennaCount);
-    if (api.lastStatus() == 0) {
-        for (std::size_t i = 0; i < antennaCount; ++i) {
-            if (names[i]) {
-                caps.antennas.emplace_back(names[i]);
+    channelAntennaLists.assign(caps.receiveChannels, {});
+    openedAntennas.assign(caps.receiveChannels, {});
+    for (U64 channel = 0; channel < caps.receiveChannels; ++channel) {
+        char* opened = api.getAntenna(device, Abi::RX, channel);
+        if (api.lastStatus() == 0 && opened) {
+            openedAntennas[channel] = opened;
+        }
+        api.free(opened);
+
+        std::size_t antennaCount = 0;
+        char** names = api.listAntennas(device, Abi::RX, channel, &antennaCount);
+        if (api.lastStatus() == 0) {
+            for (std::size_t i = 0; i < antennaCount; ++i) {
+                if (!names[i]) {
+                    continue;
+                }
+                channelAntennaLists[channel].emplace_back(names[i]);
             }
         }
+        api.stringsClear(&names, antennaCount);
     }
-    api.stringsClear(&names, antennaCount);
+    caps.antennas = channelAntennaLists.front();
 
     caps.automaticGain = api.hasGainMode(device, Abi::RX, 0) && api.lastStatus() == 0;
 
@@ -215,18 +229,24 @@ Result SoapySdrStream::apply(const Settings& settings) {
     receiveChannels = settings.receiveChannels;
     channelGains = settings.channelGains;
 
-    if (!settings.antenna.empty()) {
-        const auto& antennas = deviceCapabilities.antennas;
-        if (std::find(antennas.begin(), antennas.end(), settings.antenna) == antennas.end()) {
-            JST_ERROR("[SDR_SOAPY] Receive antenna '{}' is not supported.", settings.antenna);
+    for (U64 channel = 0; channel < receiveChannels; ++channel) {
+        const auto& selected = channel < settings.channelAntennas.size()
+            ? settings.channelAntennas[channel]
+            : settings.antenna;
+        const auto& antenna = selected.empty() ? openedAntennas[channel] : selected;
+        const auto& antennas = channelAntennaLists[channel];
+        const bool listed = std::find(antennas.begin(), antennas.end(), antenna) != antennas.end();
+        if (antenna.empty() || (selected.empty() && !listed)) {
+            continue;
+        }
+        if (!listed) {
+            JST_ERROR("[SDR_SOAPY] Receive antenna '{}' is not supported on RX{}.", antenna,
+                      channel + 1);
             return Result::ERROR;
         }
-        for (U64 channel = 0; channel < receiveChannels; ++channel) {
-            if (api.setAntenna(device, Abi::RX, channel, settings.antenna.c_str()) != 0) {
-                JST_ERROR("[SDR_SOAPY] Failed to select antenna '{}': {}", settings.antenna,
-                          failure());
-                return Result::ERROR;
-            }
+        if (api.setAntenna(device, Abi::RX, channel, antenna.c_str()) != 0) {
+            JST_ERROR("[SDR_SOAPY] Failed to select antenna '{}': {}", antenna, failure());
+            return Result::ERROR;
         }
     }
     if (settings.biasTee && !biasTeeSetting) {

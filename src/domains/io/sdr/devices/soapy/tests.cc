@@ -163,6 +163,7 @@ Radio::SoapyApi FakeApi() {
         }
         return 0;
     };
+    api.getNumChannels = [](const Abi::Device*, int) -> std::size_t { return 1; };
     api.listAntennas = [](const Abi::Device*, int, std::size_t, std::size_t* count) -> char** {
         *count = 0;
         return nullptr;

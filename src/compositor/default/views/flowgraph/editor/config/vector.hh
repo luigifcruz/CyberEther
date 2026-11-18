@@ -19,10 +19,13 @@ struct FlowgraphConfigVectorField {
             parsedValue.reset();
             floatValues.clear();
             uintValues.clear();
+            stringValues.clear();
             if (valueType == "float") {
                 JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, floatValues));
             } else if (valueType == "uint") {
                 JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, uintValues));
+            } else if (valueType == "string") {
+                JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, stringValues));
             }
             parsedValue = nextValue;
         }
@@ -41,9 +44,16 @@ struct FlowgraphConfigVectorField {
         unit = Parser::Get<std::string>(config.format, "unit");
         precision = Parser::Get<I32>(config.format, "precision", 2);
         multiplier = Parser::Get<F32>(config.format, "scale", 1.0f);
+        optionLabels.clear();
+        optionValues.clear();
+        for (const auto& option : Parser::Get<std::vector<Parser::Map>>(config.format, "options")) {
+            optionLabels.push_back(Parser::Get<std::string>(option, "label"));
+            optionValues.push_back(Parser::Get<std::string>(option, "value"));
+        }
         parsedValue.reset();
         floatValues.clear();
         uintValues.clear();
+        stringValues.clear();
     }
 
     void updateChildren() {
@@ -55,6 +65,8 @@ struct FlowgraphConfigVectorField {
         floatInputs.clear();
         uintFrames.clear();
         uintInputs.clear();
+        stringFrames.clear();
+        stringCombos.clear();
 
         if (valueType == "float") {
             floatFrames.resize(floatValues.size());
@@ -125,6 +137,50 @@ struct FlowgraphConfigVectorField {
                     },
                 });
             }
+        } else if (valueType == "string") {
+            stringFrames.resize(stringValues.size());
+            stringCombos.resize(stringValues.size());
+            for (U64 i = 0; i < stringValues.size(); ++i) {
+                const std::string& selected = stringValues[i];
+                std::optional<U64> selectedIndex;
+                for (U64 option = 0; option < optionValues.size(); ++option) {
+                    if (optionValues[option] == selected) {
+                        selectedIndex = option;
+                        break;
+                    }
+                }
+                stringFrames[i].update({
+                    .id = config.id + "Frame" + std::to_string(i),
+                    .label = config.label,
+                    .help = config.help,
+                });
+                items.push_back({
+                    .child = [this, i](const Sakura::Context& ctx) {
+                        stringFrames[i].render(ctx, [this, i](const Sakura::Context& ctx) {
+                            stringCombos[i].render(ctx);
+                        });
+                    },
+                    .fullWidth = true,
+                });
+                stringCombos[i].update({
+                    .id = config.id + "Combo" + std::to_string(i),
+                    .options = optionLabels,
+                    .value = selectedIndex ? optionLabels[*selectedIndex]
+                                           : std::string("Selection unavailable"),
+                    .selectedIndex = selectedIndex,
+                    .onSelect = [this, i](U64 index) {
+                        Parser::Map patch;
+                        auto nextValues = stringValues;
+                        if (i < nextValues.size() && index < optionValues.size()) {
+                            nextValues[i] = optionValues[index];
+                        }
+                        patch[config.name] = nextValues;
+                        if (config.onApply) {
+                            config.onApply(std::move(patch), false, {});
+                        }
+                    },
+                });
+            }
         }
     }
 
@@ -137,12 +193,17 @@ struct FlowgraphConfigVectorField {
     int precision = 2;
     std::vector<F32> floatValues;
     std::vector<U64> uintValues;
+    std::vector<std::string> stringValues;
+    std::vector<std::string> optionLabels;
+    std::vector<std::string> optionValues;
     Sakura::NodeFieldGrid grid;
     std::vector<Sakura::NodeFieldGrid::Item> items;
     std::vector<Sakura::NodeField> floatFrames;
     std::vector<Sakura::NodeFloatInput> floatInputs;
     std::vector<Sakura::NodeField> uintFrames;
     std::vector<Sakura::NodeUIntInput> uintInputs;
+    std::vector<Sakura::NodeField> stringFrames;
+    std::vector<Sakura::NodeCombo> stringCombos;
 };
 
 }  // namespace Jetstream

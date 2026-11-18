@@ -4,6 +4,7 @@
 #include <jetstream/domains/io/sdr/module.hh>
 #include "module_impl.hh"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -18,6 +19,7 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
     Result reconfigure() override;
 
  protected:
+    bool antennasListed = false;
     std::shared_ptr<Modules::Sdr> moduleConfig = std::make_shared<Modules::Sdr>();
     Modules::SdrImpl* moduleImpl = nullptr;
 
@@ -26,6 +28,8 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
     Parser::Map channelsFormat(const Blocks::Sdr& config);
     Parser::Map manualGainFormat(const Blocks::Sdr& config);
     Parser::Map antennaFormat(const Blocks::Sdr& config);
+    Parser::Map antennasFormat(const Blocks::Sdr& config);
+    void sizeAntennas();
     Parser::Map sampleRateFormat(const Blocks::Sdr& config);
 };
 
@@ -40,10 +44,26 @@ Result SdrImpl::validate() {
     return Result::SUCCESS;
 }
 
+void SdrImpl::sizeAntennas() {
+    if (channels <= 1) {
+        return;
+    }
+    if (antennas.size() > channels) {
+        antennas.resize(channels);
+    }
+    const U64 receivers = std::min(channels, Radio::Device::ReceiveChannels(deviceString));
+    if (antennas.size() < receivers) {
+        antennas.resize(receivers, antenna);
+    }
+}
+
 Result SdrImpl::configure() {
+    sizeAntennas();
+
     moduleConfig->deviceString = deviceString;
     moduleConfig->driverArguments = driverArguments;
     moduleConfig->antenna = antenna;
+    moduleConfig->antennas = antennas;
     moduleConfig->channels = channels;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
@@ -106,6 +126,19 @@ Result SdrImpl::define() {
                                         "Antenna",
                                         "Receive antenna port. Changes restart the receiver.",
                                         antennaFormat(config)));
+    }
+
+    const auto capabilities = Radio::Device::Cached(config.deviceString);
+    const bool antennasChosen = std::any_of(config.antennas.begin(), config.antennas.end(),
+                                            [](const auto& antenna) { return !antenna.empty(); });
+    antennasListed = config.channels > 1 &&
+                     (!capabilities || !capabilities->antennas.empty() || antennasChosen);
+    if (antennasListed) {
+        JST_CHECK(defineInterfaceConfig("antennas",
+                                        "Antennas",
+                                        "Receive antenna port of each receiver in RX order. New entries "
+                                        "start at the single-channel Antenna. Changes restart the receiver.",
+                                        antennasFormat(config)));
     }
 
     JST_CHECK(defineInterfaceConfig("frequency",
@@ -223,6 +256,11 @@ Result SdrImpl::create() {
     if (selection && selection->driver == "soapy") {
         JST_CHECK(updateInterfaceConfigFormat("channels", channelsFormat(*this)));
     }
+    if (antennasListed) {
+        sizeAntennas();
+        moduleConfig->antennas = antennas;
+        JST_CHECK(updateInterfaceConfigFormat("antennas", antennasFormat(*this)));
+    }
 
     return reconfigure();
 }
@@ -289,6 +327,27 @@ Parser::Map SdrImpl::antennaFormat(const Blocks::Sdr& config) {
         options.emplace_back(Parser::Map{{"label", config.antenna}, {"value", config.antenna}});
     }
     return {{"type", "dropdown"}, {"options", std::move(options)}};
+}
+
+Parser::Map SdrImpl::antennasFormat(const Blocks::Sdr& config) {
+    Parser::Sequence options{Parser::Map{{"label", "Default"}, {"value", ""}}};
+    std::vector<std::string> listed{""};
+    const auto add = [&](const std::string& antenna) {
+        if (std::find(listed.begin(), listed.end(), antenna) == listed.end()) {
+            listed.push_back(antenna);
+            options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
+        }
+    };
+    if (const auto capabilities = Radio::Device::Cached(config.deviceString)) {
+        for (const auto& antenna : capabilities->antennas) {
+            add(antenna);
+        }
+    }
+    add(config.antenna);
+    for (const auto& antenna : config.antennas) {
+        add(antenna);
+    }
+    return {{"type", "vector"}, {"value_type", "string"}, {"options", std::move(options)}};
 }
 
 Parser::Map SdrImpl::sampleRateFormat(const Blocks::Sdr& config) {

@@ -103,6 +103,7 @@ Result Stream::update(const Settings& settings) {
     if (settings.receiveChannels != previous.receiveChannels ||
         settings.sampleRate != previous.sampleRate || settings.antenna != previous.antenna ||
         settings.driverArguments != previous.driverArguments ||
+        settings.channelAntennas != previous.channelAntennas ||
         settings.biasTee != previous.biasTee) {
         return restart(settings, previous);
     }
