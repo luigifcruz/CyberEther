@@ -330,8 +330,8 @@ std::vector<Entry> Toolbox::Inspect() {
             "viewport.visible gives the visible canvas rectangle in graph "
             "coordinates. selected lists the blocks the user has selected in "
             "the editor, when any.",
-            R"({"type":"object","properties":{"detail":{"type":"string","enum":["summary","routing","full"]},"sink":{"type":"string","description":"For routing detail, the downstream block to trace, such as an audio or visualization sink."}},"additionalProperties":false})",
-            {.needsGraph = true, .reportsLayout = true},
+            R"({"type":"object","properties":{"detail":{"type":"string","enum":["summary","routing","full"],"description":"Amount of detail to return. Default summary."},"sink":{"type":"string","description":"For routing detail, the downstream block to trace, such as an audio or visualization sink."}},"additionalProperties":false})",
+            {.permission = Permission::Read, .graph = true, .layout = true},
         }, InspectFlowgraph);
     flowgraph.annotate = [](Json& body, const Json&, const Layout& layout) {
         Geometry::Viewport(body, layout);
@@ -366,7 +366,7 @@ std::vector<Entry> Toolbox::Inspect() {
             "with settled true has a static output and no longer runs, so it omits the "
             "average and the rate.",
             R"({"type":"object","required":["name"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."},"include_config":{"type":"boolean","description":"Include the effective config field, default true. False omits it entirely."}},"additionalProperties":false})",
-            {.needsGraph = true, .reportsLayout = true},
+            {.permission = Permission::Read, .graph = true, .layout = true},
         }, InspectBlock),
     };
 }

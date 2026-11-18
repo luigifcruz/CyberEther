@@ -69,13 +69,13 @@ std::vector<Entry> Toolbox::Docs() {
             "search_docs",
             "Search the bundled CyberEther documentation, which covers the interface, flowgraph files, remote sessions, plugins, the Python block, tensors, platforms, and installation. Returns matching pages with the section and a snippet. An empty query lists every page. Use get_block_docs for a specific block type.",
             R"({"type":"object","properties":{"query":{"type":"string","description":"Words to search for. Empty lists all pages."},"limit":{"type":"integer","minimum":1,"maximum":30,"description":"Maximum search matches, default 8. Ignored for an empty query."}},"additionalProperties":false})",
-            {},
+            {.permission = Permission::Read},
         }, SearchDocs),
         Entry::FromJson({
             "read_docs",
             "Read one bundled CyberEther documentation page as Markdown.",
             R"({"type":"object","required":["page"],"properties":{"page":{"type":"string","description":"Page id returned by search_docs."}},"additionalProperties":false})",
-            {},
+            {.permission = Permission::Read},
         }, ReadDocs),
     };
 }

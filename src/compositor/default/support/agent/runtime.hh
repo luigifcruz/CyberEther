@@ -47,6 +47,7 @@ class AgentRuntime {
     static Agent::Session::Config Call(const DefaultCompositorState::AgentState& agent,
                                        const Settings::Intelligence::Voice& voice,
                                        Agent::Session::ToolExecutor executeTool);
+    static std::vector<Agent::Tools::Definition> Definitions(bool captureSupported);
     static std::vector<Agent::Provider::Function> Functions(bool captureSupported);
     static std::string SystemPrompt();
     static std::string McpPrompt();

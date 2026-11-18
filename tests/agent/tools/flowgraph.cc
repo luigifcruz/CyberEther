@@ -6,6 +6,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -162,6 +163,55 @@ TEST_CASE("Agent exposes the consolidated tool surface", "[agent][tools]") {
     }
 
     REQUIRE(actual == expected);
+}
+
+TEST_CASE("Agent tool parameters all carry descriptions", "[agent][tools]") {
+    std::vector<std::string> undescribed;
+    const auto visit = [&](const auto& self, const nlohmann::json& schema, const std::string& path) -> void {
+        if (schema.is_array()) {
+            for (const auto& value : schema) {
+                self(self, value, path);
+            }
+            return;
+        }
+        if (!schema.is_object()) {
+            return;
+        }
+        if (schema.contains("properties")) {
+            for (const auto& property : schema.at("properties").items()) {
+                const auto& value = property.value();
+                if (!value.contains("description")) {
+                    undescribed.push_back(path + "." + property.key());
+                }
+            }
+        }
+        for (const auto& child : schema.items()) {
+            self(self, child.value(), path);
+        }
+    };
+
+    for (const auto& definition : Agent::Tools::Definitions()) {
+        const auto& tool = definition.function;
+        visit(visit, nlohmann::json::parse(tool.parametersJson), tool.name);
+    }
+
+    CHECK(undescribed == std::vector<std::string>{});
+}
+
+TEST_CASE("Only graph-changing agent tools lack read permission", "[agent][tools]") {
+    std::set<std::string> writes;
+    std::set<std::string> edits;
+    for (const auto& [function, flags] : Agent::Tools::Definitions()) {
+        if (flags.permission != Agent::Tools::Permission::Read) {
+            writes.insert(function.name);
+        }
+        if (flags.permission == Agent::Tools::Permission::Edit) {
+            edits.insert(function.name);
+        }
+    }
+
+    CHECK(writes == std::set<std::string>{"apply_flowgraph_patch", "open_example"});
+    CHECK(edits == std::set<std::string>{"apply_flowgraph_patch"});
 }
 
 TEST_CASE("Removed agent tools cannot be dispatched", "[agent][tools]") {

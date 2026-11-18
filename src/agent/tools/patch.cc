@@ -492,44 +492,44 @@ void SetNodeLayout(Patch& patch, const Json& operation, Json& result) {
 
 const std::array<Operation, 7> kOperations = {{
     {"create_block", {
-        {"type", FieldKind::String, true},
-        {"ref", FieldKind::String},
-        {"name", FieldKind::String},
-        {"device", FieldKind::String},
-        {"runtime", FieldKind::String},
-        {"provider", FieldKind::String},
-        {"config", FieldKind::Object},
-        {"x", FieldKind::Coordinate},
-        {"y", FieldKind::Coordinate},
+        {"type", FieldKind::String, true, "Exact block type from search_blocks or get_block_docs."},
+        {"ref", FieldKind::String, false, "Label that later operations in this call may use as '$ref' in place of the name."},
+        {"name", FieldKind::String, false, "Block name, generated from the type when omitted."},
+        {"device", FieldKind::String, false, "Compute device implementation, such as cpu or cuda."},
+        {"runtime", FieldKind::String, false, "Runtime implementation, such as native or python."},
+        {"provider", FieldKind::String, false, "Provider implementation from search_blocks."},
+        {"config", FieldKind::Object, false, "Config fields to set, in the base values shown by get_block_docs default_config."},
+        {"x", FieldKind::Coordinate, false, "Initial left edge in graph coordinates."},
+        {"y", FieldKind::Coordinate, false, "Initial top edge in graph coordinates."},
     }, CreateBlock},
     {"reconfigure_block", {
-        {"name", FieldKind::String, true},
-        {"config", FieldKind::Object, true},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
+        {"config", FieldKind::Object, true, "Config fields to change, in base values."},
     }, ReconfigureBlock},
     {"patch_block_text", {
-        {"name", FieldKind::String, true},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
         {"field", FieldKind::String, true, "Text config field, such as code."},
         {"patch", FieldKind::String, true, "Hunks of @@, space, -, and + lines."},
     }, PatchBlockText},
     {"connect", {
-        {"source", FieldKind::String, true},
-        {"output", FieldKind::String, true},
-        {"block", FieldKind::String, true},
-        {"input", FieldKind::String, true},
+        {"source", FieldKind::String, true, "Exact name of the upstream block."},
+        {"output", FieldKind::String, true, "Output port of the upstream block."},
+        {"block", FieldKind::String, true, "Exact name of the downstream block."},
+        {"input", FieldKind::String, true, "Input port of the downstream block."},
     }, Connect},
     {"disconnect", {
-        {"block", FieldKind::String, true},
-        {"input", FieldKind::String, true},
+        {"block", FieldKind::String, true, "Exact name of the downstream block."},
+        {"input", FieldKind::String, true, "Input port to disconnect from its source."},
     }, Disconnect},
     {"delete_block", {
-        {"name", FieldKind::String, true},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
     }, DeleteBlock},
     {"set_node_layout", {
-        {"name", FieldKind::String, true},
-        {"x", FieldKind::Coordinate},
-        {"y", FieldKind::Coordinate},
-        {"width", FieldKind::Size},
-        {"height", FieldKind::Size},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
+        {"x", FieldKind::Coordinate, false, "New left edge in graph coordinates."},
+        {"y", FieldKind::Coordinate, false, "New top edge in graph coordinates."},
+        {"width", FieldKind::Size, false, "Saved content width in graph units."},
+        {"height", FieldKind::Size, false, "Saved content height in graph units."},
     }, SetNodeLayout, CheckLayout},
 }};
 
@@ -565,7 +565,7 @@ std::string ValidateOperation(const Operation& entry, const Json& operation) {
 std::string PatchSchema() {
     Json variants = Json::array();
     for (const auto& entry : kOperations) {
-        Json properties = {{"op", {{"const", entry.name}}}};
+        Json properties = {{"op", {{"const", entry.name}, {"description", "Operation to apply."}}}};
         Json required = Json::array({"op"});
 
         for (const auto& field : entry.fields) {
@@ -596,6 +596,7 @@ std::string PatchSchema() {
         {"type", "array"},
         {"minItems", 1},
         {"items", {{"oneOf", std::move(variants)}}},
+        {"description", "Edits to apply in order, each naming its kind in op."},
     };
 
     return Json({
@@ -883,7 +884,7 @@ std::vector<Entry> Toolbox::Patch() {
         "set_node_layout size that did not take effect is listed in "
         "size_not_applied.",
         PatchSchema(),
-        {.needsGraph = true, .editsGraph = true, .reportsLayout = true},
+        {.permission = Permission::Edit, .graph = true, .layout = true},
     }, ApplyPatch);
 
     entry.newGraph = PatchGraph;

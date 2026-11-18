@@ -299,7 +299,7 @@ void AgentRuntime::serve() {
         .address = settings.mcp.address,
         .port = static_cast<U16>(settings.mcp.port),
         .instructions = McpPrompt(),
-        .tools = Functions(state.agent.captureSupported),
+        .tools = Definitions(state.agent.captureSupported),
         .executeTool = tools.focused(),
     }) : Result::ERROR;
 
@@ -360,10 +360,18 @@ Agent::Session::Config AgentRuntime::Call(const DefaultCompositorState::AgentSta
     };
 }
 
+std::vector<Agent::Tools::Definition> AgentRuntime::Definitions(bool captureSupported) {
+    auto definitions = Agent::Tools::Available(captureSupported);
+    for (auto& definition : AgentTiles::Definitions()) {
+        definitions.push_back(std::move(definition));
+    }
+    return definitions;
+}
+
 std::vector<Agent::Provider::Function> AgentRuntime::Functions(bool captureSupported) {
-    auto functions = Agent::Tools::Functions(captureSupported);
-    for (auto& function : AgentTiles::Functions()) {
-        functions.push_back(std::move(function));
+    std::vector<Agent::Provider::Function> functions;
+    for (auto& definition : Definitions(captureSupported)) {
+        functions.push_back(std::move(definition.function));
     }
     return functions;
 }

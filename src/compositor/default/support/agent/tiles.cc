@@ -136,7 +136,7 @@ bool AgentTiles::Handles(const std::string& name) {
     return name == kInspect || name == kArrange;
 }
 
-std::vector<Agent::Provider::Function> AgentTiles::Functions() {
+std::vector<Agent::Tools::Definition> AgentTiles::Definitions() {
     return {
         {
             kInspect,
@@ -146,6 +146,7 @@ std::vector<Agent::Provider::Function> AgentTiles::Functions() {
             "description, or terminal panels. Returns layout, the current tile tree in the arrange_tiles "
             "format with titles, and unplaced, the block plots and controls that can still be added.",
             R"({"type":"object","properties":{},"additionalProperties":false})",
+            {.permission = Agent::Tools::Permission::Read, .graph = true},
         },
         {
             kArrange,
@@ -162,6 +163,7 @@ std::vector<Agent::Provider::Function> AgentTiles::Functions() {
             "terminal tiles stay open when left out. Plots appear once their blocks exist, so create blocks "
             "first. Returns the tiles that opened and closed.",
             R"({"type":"object","required":["layout"],"properties":{"layout":{"type":"object","description":"Root node. A leaf is {\"tile\": id, \"size\": px, \"minimized\": bool}. A split is {\"split\": \"row\" or \"column\", \"children\": [nodes], \"size\": px}. size and minimized are optional."}},"additionalProperties":false})",
+            {.graph = true},
         },
     };
 }

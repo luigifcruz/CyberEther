@@ -24,6 +24,7 @@ using Host = Tools::Host;
 using Layout = Tools::Layout;
 using Definition = Tools::Definition;
 using Call = Tools::Call;
+using Permission = Tools::Permission;
 
 struct Invocation {
     Host& host;

@@ -208,7 +208,7 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
     }
 
     void complete(const Request& request, const Agent::Tools::Call& call, Agent::Tools::Output output) {
-        if (!call.definition || !call.definition->flags.reportsLayout) {
+        if (!call.definition || !call.definition->flags.layout) {
             request.finish(std::move(output));
             return;
         }
@@ -315,7 +315,8 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
         const auto graph = std::find_if(graphs.begin(), graphs.end(), [&](const auto& item) {
             return call.flowgraph && item.second == call.flowgraph;
         });
-        const bool edits = call.definition && call.definition->flags.editsGraph && call.create.empty();
+        const auto permission = call.definition ? call.definition->flags.permission : Agent::Tools::Permission::Write;
+        const bool edits = permission == Agent::Tools::Permission::Edit && call.create.empty();
         if (edits && graph != graphs.end()) {
             callbacks.enqueueFlowgraphEdit({.flowgraph = graph->first, .command = std::move(command), .silent = true});
         } else {

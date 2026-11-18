@@ -90,7 +90,7 @@ std::vector<Entry> Toolbox::Log() {
             "read_log",
             "Read recent CyberEther application log entries, oldest first, at or above a severity level. Covers failures that are not attached to a block, such as devices, files, sockets, and remote sessions. Only recent entries are kept.",
             R"({"type":"object","properties":{"level":{"type":"string","enum":["trace","debug","info","warn","error","fatal"],"description":"Minimum severity, default warn."},"query":{"type":"string","description":"Optional case-insensitive text filter."},"limit":{"type":"integer","minimum":1,"maximum":256,"description":"Maximum newest entries returned, default 40."}},"additionalProperties":false})",
-            {},
+            {.permission = Permission::Read},
         }, ReadLog),
     };
 }
