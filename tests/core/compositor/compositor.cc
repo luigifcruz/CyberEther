@@ -149,12 +149,18 @@ TEST_CASE("Node and config metadata preserve resized dimensions and config colla
     REQUIRE(restored.width == source.width);
     REQUIRE(restored.height == source.height);
 
-    ConfigMeta sourceConfig{.collapsed = true};
+    ConfigMeta sourceConfig{.collapsed = true, .advanced = true};
     Parser::Map configData;
     REQUIRE(sourceConfig.serialize(configData) == Result::SUCCESS);
     ConfigMeta restoredConfig;
     REQUIRE(restoredConfig.deserialize(configData) == Result::SUCCESS);
     REQUIRE(restoredConfig.collapsed);
+    REQUIRE(restoredConfig.advanced);
+
+    configData.erase("advanced");
+    ConfigMeta legacyConfig;
+    REQUIRE(legacyConfig.deserialize(configData) == Result::SUCCESS);
+    REQUIRE_FALSE(legacyConfig.advanced);
 }
 
 TEST_CASE("Compositor factory selects the supported enum and rejects other values",

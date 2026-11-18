@@ -175,12 +175,14 @@ struct FlowgraphEditor {
                 pinIdToInfo[nodeId][pinKey(FlowgraphPinId(output.port.id), false)] = {block.name, output.port.id, false};
             }
             for (auto& field : nodeBlock.configFields) {
-                field.onApply = [onReconfigureBlock, blockName = block.name](
-                    Parser::Map values, const bool silent, std::function<void(Result)> onComplete) {
-                    if (onReconfigureBlock) {
-                        onReconfigureBlock(blockName, std::move(values), silent, std::move(onComplete));
-                    }
-                };
+                if (!field.onApply) {
+                    field.onApply = [onReconfigureBlock, blockName = block.name](
+                        Parser::Map values, const bool silent, std::function<void(Result)> onComplete) {
+                        if (onReconfigureBlock) {
+                            onReconfigureBlock(blockName, std::move(values), silent, std::move(onComplete));
+                        }
+                    };
+                }
                 field.onError = this->config.onConfigError;
                 field.onBrowsePath = this->config.onBrowseConfigPath;
             }

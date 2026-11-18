@@ -100,10 +100,16 @@ struct FlowgraphNodePresenter {
                            const std::string& flowgraphId,
                            const std::string& blockName,
                            const std::string& nodeViewId,
-                           const Flowgraph::View::BlockData& blockData) const {
+                           const Flowgraph::View::BlockData& blockData,
+                           const bool advanced) const {
         block.config = blockData.config;
         block.configFields = BuildFlowgraphConfigFields(nodeViewId, blockData);
         ApplyLiveMarkdown(block.configFields, context.state.flowgraph, flowgraphId, blockName);
+        const auto enqueue = context.callbacks.enqueueMail;
+        ApplyAdvancedSection(block.configFields, nodeViewId, advanced,
+                             [enqueue, flowgraphId, blockName](bool shown) {
+                                 enqueue(MailSetConfigAdvanced{flowgraphId, blockName, shown});
+                             });
     }
 
     void buildTiming(FlowgraphNode::BlockData& block,
@@ -194,7 +200,8 @@ struct FlowgraphNodePresenter {
 
         if (blockState != Block::State::Creating) {
             buildBlockMetrics(block, nodeViewId, blockData);
-            buildConfigFields(block, flowgraphId, blockName, nodeViewId, blockData);
+            buildConfigFields(block, flowgraphId, blockName, nodeViewId, blockData,
+                              configMeta.advanced);
             buildTiming(block, blockData);
             surfaces.buildSurfaces(block, flowgraph, flowgraphId, blockName, nodeViewId, blockData);
         }

@@ -86,6 +86,7 @@ TEST_CASE("Interface descriptors validate every control and internal metric",
     REQUIRE(Block::Interface::ValidateFormat({{"type", "progressbar"}, {"error_above", 0.0f}}, true) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "vector"}, {"value_type", "float"}}) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "vector"}, {"value_type", "uint"}}) == Result::SUCCESS);
+    REQUIRE(Block::Interface::ValidateFormat({{"type", "uint"}, {"advanced", true}}) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "timing"}, {"visibility", "internal"}}, true) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "python-diagnostic"}, {"visibility", "internal"}}, true) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "float"}, {"unit", "arbitrary"}, {"scale", 42.0},
@@ -105,6 +106,8 @@ TEST_CASE("Malformed interface descriptors fail without throwing",
         {{"type", "range"}, {"min", -1}, {"value_type", "uint"}},
         {{"type", "vector"}, {"value_type", U64{1}}},
         {{"type", "vector"}, {"value_type", "invalid"}},
+        {{"type", "uint"}, {"advanced", "yes"}},
+        {{"type", "markdown"}, {"advanced", true}},
         {{"type", "tensor-config"}, {"index", -1}, {"source", "outputs"}},
         {{"type", "tensor-config"}},
         {{"type", "multiline"}, {"collapsible", 2}},
@@ -124,6 +127,7 @@ TEST_CASE("Malformed interface descriptors fail without throwing",
     }
     const std::vector<Parser::Map> metrics{
         {{"type", "label"}, {"warning_above", 0.5f}},
+        {{"type", "label"}, {"advanced", true}},
         {{"type", "progressbar"}, {"warning_above", "high"}},
         {{"type", "progressbar"}, {"error_above", std::numeric_limits<F32>::quiet_NaN()}},
         {{"type", "progressbar"}, {"warning_above", 0.75f}, {"error_above", 0.5f}},

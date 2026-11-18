@@ -103,6 +103,15 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
          thresholds["error_below"] > thresholds["warning_below"])) {
         return invalid("the error threshold must be past the warning threshold.");
     }
+    if (format.contains("advanced")) {
+        bool value;
+        if (metric || Parser::Deserialize(format, "advanced", value) != Result::SUCCESS) {
+            return invalid("'advanced' must be a boolean on a config descriptor.");
+        }
+        if (value && (type == "markdown" || type == "python" || type == "python-console")) {
+            return invalid("'advanced' is not supported on editor fields.");
+        }
+    }
     if (format.contains("collapsible")) {
         bool value;
         if (Parser::Deserialize(format, "collapsible", value) != Result::SUCCESS) {

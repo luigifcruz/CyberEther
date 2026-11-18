@@ -448,6 +448,12 @@ struct MailSetConfigCollapsed {
     bool collapsed = false;
 };
 
+struct MailSetConfigAdvanced {
+    std::string flowgraph;
+    std::string block;
+    bool advanced = false;
+};
+
 struct MailSetConfigDetached {
     std::string flowgraph;
     std::string block;
@@ -637,6 +643,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailPasteBlock,
                           MailSetNodeMeta,
                           MailSetConfigCollapsed,
+                          MailSetConfigAdvanced,
                           MailSetConfigDetached,
                           MailCreateStack,
                           MailDeleteStack,

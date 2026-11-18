@@ -66,7 +66,8 @@ struct FlowgraphDetachedConfigPresenter {
                                                          flowgraphId,
                                                          blockName,
                                                          windowId,
-                                                         blockData),
+                                                         blockData,
+                                                         configMeta.advanced),
                 .onClose = [enqueue, flowgraphId, blockName]() {
                     enqueue(MailSetConfigDetached{
                         .flowgraph = flowgraphId,

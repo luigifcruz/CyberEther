@@ -59,6 +59,8 @@ struct FlowgraphDetachedSurfacePresenter {
                     const std::string surfaceMetaKey = "surface_" + manifest.id;
                     SurfaceMeta surfaceMeta;
                     flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
+                    ConfigMeta configMeta;
+                    flowgraph->metadata().get("config", configMeta, blockName);
 
                     if (!surfaceMeta.detached && !referencedSurfaces.contains({blockName, manifest.id})) {
                         continue;
@@ -81,7 +83,8 @@ struct FlowgraphDetachedSurfacePresenter {
                                                                            flowgraphId,
                                                                            blockName,
                                                                            windowId,
-                                                                           blockData),
+                                                                           blockData,
+                                                                           configMeta.advanced),
                         .configOpen = !surfaceMeta.configCollapsed,
                         .texture = manifest.surface,
                         .onSize = [enqueue,

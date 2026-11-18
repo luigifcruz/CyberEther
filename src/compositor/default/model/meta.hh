@@ -22,9 +22,10 @@ struct NodeMeta {
 struct ConfigMeta {
     bool collapsed = false;
     bool detached = false;
+    bool advanced = false;
     std::string windowId;
 
-    JST_SERDES(collapsed, detached, windowId);
+    JST_SERDES(collapsed, detached, advanced, windowId);
 };
 
 constexpr F32 DefaultNodeWidth(Block::NodeSize size) {
