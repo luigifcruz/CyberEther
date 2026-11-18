@@ -16,6 +16,7 @@ constexpr const char* Version = "0.8";
 constexpr int RX = 1;
 constexpr int EndBurst = 1 << 1;
 constexpr int HasTime = 1 << 2;
+constexpr int EndAbrupt = 1 << 3;
 constexpr int Timeout = -1;
 constexpr int StreamError = -2;
 constexpr int Overflow = -4;

@@ -9,6 +9,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -67,6 +68,15 @@ class SoapySdrStream final : public Stream {
     std::vector<std::string> openedAntennas;
     U64 queueGeneration = 0;
     U64 discard = 0;
+    std::optional<U64> nextTimestamp;
+    U64 anchorTimestamp = 0;
+    long long anchorTimeNs = 0;
+    U64 timestampEpoch = 0;
+    F64 driverRate = 0.0;
+    bool abruptEnd = false;
+
+    std::optional<U64> timestampOf(int flags, long long timeNs, U64 count);
+    void restartTimestamps();
     Clock::time_point received{};
     std::vector<void*> buffers;
 };
@@ -295,6 +305,7 @@ Result SoapySdrStream::setSampleRate(const F64 sampleRate) {
         JST_ERROR("[SDR_SOAPY] Invalid applied sample rate: {}", applied);
         return Result::ERROR;
     }
+    driverRate = applied;
     const bool requested = std::abs(applied - sampleRate) <= sampleRate * ReadbackTolerance;
     appliedSettings.sampleRate = requested ? sampleRate : applied;
     return Result::SUCCESS;
@@ -339,6 +350,7 @@ Result SoapySdrStream::open() {
     streaming = true;
     queueGeneration = nextGeneration();
     discard = guard();
+    restartTimestamps();
     received = Clock::now();
     return Result::SUCCESS;
 }
@@ -358,12 +370,45 @@ void SoapySdrStream::close() {
     stream = nullptr;
 }
 
+void SoapySdrStream::restartTimestamps() {
+    nextTimestamp.reset();
+    abruptEnd = false;
+    ++timestampEpoch;
+}
+
+std::optional<U64> SoapySdrStream::timestampOf(const int flags, const long long timeNs,
+                                               const U64 count) {
+    const F64 rate = driverRate;
+    const bool timed = (flags & Abi::HasTime) != 0;
+    if (!(rate > 0.0) || (!nextTimestamp && !timed)) {
+        nextTimestamp.reset();
+        return std::nullopt;
+    }
+    if (!nextTimestamp) {
+        nextTimestamp = 0;
+        anchorTimestamp = 0;
+        anchorTimeNs = timeNs;
+    } else if (timed) {
+        const F64 expectedNs = static_cast<F64>(*nextTimestamp - anchorTimestamp) * 1.0e9 / rate;
+        const F64 drift = (static_cast<F64>(timeNs - anchorTimeNs) - expectedNs) * rate * 1.0e-9;
+        if (drift >= 0.5) {
+            *nextTimestamp += static_cast<U64>(std::llround(drift));
+        }
+        anchorTimestamp = *nextTimestamp;
+        anchorTimeNs = timeNs;
+    }
+    const U64 timestamp = *nextTimestamp;
+    *nextTimestamp += count;
+    return timestamp;
+}
+
 Result SoapySdrStream::tune(const F64 frequency) {
     JST_CHECK(setFrequency(frequency));
     requestedSettings.frequency = frequency;
     if (streaming) {
         queueGeneration = nextGeneration();
         discard = guard();
+        restartTimestamps();
     }
     JST_CHECK(applyGain(requestedSettings.gain, true));
     return Result::SUCCESS;
@@ -393,6 +438,11 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
         })) {
         return {.status = Status::Failure, .error = "invalid receive channel buffers"};
     }
+    if (abruptEnd) {
+        abruptEnd = false;
+        nextTimestamp.reset();
+        return finish({.status = Status::Discontinuity});
+    }
     const U64 size = samples.front().size();
 
     buffers.clear();
@@ -413,6 +463,8 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
     if (status > 0) {
         received = Clock::now();
         const U64 count = static_cast<U64>(status);
+        const auto timestamp = timestampOf(flags, timeNs, count);
+        abruptEnd = (flags & Abi::EndAbrupt) != 0;
         const U64 skip = std::min(discard, count);
         discard -= skip;
         if (skip == count) {
@@ -423,7 +475,12 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
                 std::copy(channel.begin() + skip, channel.begin() + count, channel.begin());
             }
         }
-        return finish({.status = Status::Samples, .count = count - skip});
+        return finish({
+            .status = Status::Samples,
+            .count = count - skip,
+            .timestamp = timestamp ? std::optional<U64>(*timestamp + skip) : std::nullopt,
+            .epoch = timestampEpoch,
+        });
     }
     if (status == 0 || status == Abi::Timeout) {
         if (Clock::now() - received > Device::StallTimeout) {
@@ -434,6 +491,7 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
         return finish({.status = Status::Timeout});
     }
     if (status == Abi::Overflow) {
+        nextTimestamp.reset();
         return finish({.status = Status::Discontinuity});
     }
     auto error = jst::fmt::format("{} ({})", library->errorString(status), status);
