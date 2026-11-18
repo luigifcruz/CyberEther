@@ -66,6 +66,8 @@ class SoapySdrStream final : public Stream {
     bool streaming = false;
     bool biasTeeSetting = false;
     bool biasTeeEnabled = false;
+    std::string biasTeeKey;
+    bool hardwareTime = false;
     bool hardwareTimed = false;
     U64 receiveChannels = 1;
     std::vector<F64> channelGains;
@@ -76,6 +78,7 @@ class SoapySdrStream final : public Stream {
     U64 queueGeneration = 0;
     U64 discard = 0;
     std::optional<long long> cutoffNs;
+    std::optional<long long> lastTimeNs;
     Clock::time_point cutoffSince{};
     Clock::time_point received{};
     std::vector<void*> buffers;
@@ -209,15 +212,21 @@ Result SoapySdrStream::queryCapabilities() {
     auto* settings = api.getSettingInfo(device, &settingCount);
     if (api.lastStatus() == 0) {
         for (std::size_t i = 0; i < settingCount; ++i) {
-            biasTeeSetting = biasTeeSetting ||
-                (settings[i].key && std::string(settings[i].key) == "biastee");
+            const std::string key = settings[i].key ? settings[i].key : "";
+            if (key == "biastee" || (key == "biastee_rx" && biasTeeKey.empty())) {
+                biasTeeKey = key;
+            }
         }
     }
     api.argInfoListClear(settings, settingCount);
+    if (!biasTeeKey.empty() && api.writeSetting(device, biasTeeKey.c_str(), "false") != 0) {
+        biasTeeKey.clear();
+    }
+    biasTeeSetting = !biasTeeKey.empty();
     caps.biasTee = biasTeeSetting;
     deviceInfo.biasTee = biasTeeSetting;
-    biasTeeEnabled = biasTeeSetting;
-    hardwareTimed = api.hasHardwareTime(device, "");
+    biasTeeEnabled = false;
+    hardwareTime = api.hasHardwareTime(device, "");
 
     F64 fullScale = 0.0;
     api.free(api.getNativeStreamFormat(device, Abi::RX, 0, &fullScale));
@@ -291,7 +300,7 @@ Result SoapySdrStream::apply(const Settings& settings) {
 }
 
 Result SoapySdrStream::setBiasTee(const bool enabled) {
-    if (library->api().writeSetting(device, "biastee", enabled ? "true" : "false") != 0) {
+    if (library->api().writeSetting(device, biasTeeKey.c_str(), enabled ? "true" : "false") != 0) {
         JST_ERROR("[SDR_SOAPY] Failed to set Bias-T: {}", failure());
         return Result::ERROR;
     }
@@ -334,6 +343,7 @@ Result SoapySdrStream::setFrequency(const F64 frequency) {
 
 Result SoapySdrStream::open() {
     const auto& api = library->api();
+    hardwareTimed = hardwareTime;
     SoapyKwargs arguments;
     JST_CHECK(library->kwargsFromString(requestedSettings.driverArguments, arguments));
 
@@ -380,6 +390,7 @@ void SoapySdrStream::close() {
 void SoapySdrStream::restartTimestamps() {
     nextTimestamp.reset();
     cutoffNs.reset();
+    lastTimeNs.reset();
     abruptEnd = false;
     ++timestampEpoch;
 }
@@ -511,7 +522,17 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
         const U64 count = static_cast<U64>(status);
         const auto timestamp = timestampOf(flags, timeNs, count);
         abruptEnd = (flags & Abi::EndAbrupt) != 0;
-        const U64 stale = (flags & Abi::HasTime) != 0 ? staleSamples(timeNs, count) : 0;
+        const bool timed = (flags & Abi::HasTime) != 0;
+        if (timed && cutoffNs && lastTimeNs && timeNs <= *lastTimeNs) {
+            cutoffNs.reset();
+            hardwareTimed = false;
+            JST_WARN("[SDR_SOAPY] Stream timestamps of {} do not advance. "
+                     "Settling by sample count instead.", deviceInfo.label);
+        }
+        if (timed) {
+            lastTimeNs = timeNs;
+        }
+        const U64 stale = timed ? staleSamples(timeNs, count) : 0;
         if (stale < count) {
             cutoffNs.reset();
         } else if (Clock::now() - cutoffSince > Device::StallTimeout) {

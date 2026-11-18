@@ -61,12 +61,15 @@ class SoapySdrSweep final : public Sweep::Retune {
     Abi::Stream* stream = nullptr;
     std::vector<Device::Range> reportedRates;
     bool streaming = false;
+    bool hardwareTime = false;
     bool hardwareTimed = false;
     bool biasTeeEnabled = false;
+    std::string biasTeeKey;
 
     U64 queueGeneration = 0;
     U64 discard = 0;
     std::optional<long long> cutoffNs;
+    std::optional<long long> lastTimeNs;
     Clock::time_point cutoffSince{};
     Clock::time_point received{};
 
@@ -80,7 +83,7 @@ SoapySdrSweep::~SoapySdrSweep() {
     close();
     if (device) {
         if (biasTeeEnabled) {
-            library->api().writeSetting(device, "biastee", "false");
+            library->api().writeSetting(device, biasTeeKey.c_str(), "false");
         }
         if (library->api().unmake(device) != 0) {
             JST_WARN("[SDR_SOAPY] Failed to release {}: {}", deviceInfo.label, failure());
@@ -155,14 +158,20 @@ Result SoapySdrSweep::queryCapabilities() {
     }
 
     std::size_t settingCount = 0;
-    bool biasTee = false;
     auto* settings = api.getSettingInfo(device, &settingCount);
     if (api.lastStatus() == 0) {
         for (std::size_t i = 0; i < settingCount; ++i) {
-            biasTee = biasTee || (settings[i].key && std::string(settings[i].key) == "biastee");
+            const std::string key = settings[i].key ? settings[i].key : "";
+            if (key == "biastee" || (key == "biastee_rx" && biasTeeKey.empty())) {
+                biasTeeKey = key;
+            }
         }
     }
     api.argInfoListClear(settings, settingCount);
+    if (!biasTeeKey.empty() && api.writeSetting(device, biasTeeKey.c_str(), "false") != 0) {
+        biasTeeKey.clear();
+    }
+    const bool biasTee = !biasTeeKey.empty();
 
     auto& caps = deviceCapabilities;
     reportedRates = rates;
@@ -177,8 +186,8 @@ Result SoapySdrSweep::queryCapabilities() {
     caps.dcExclusion = 20.0e3;
     defaultSettlingTime = SettlingTime;
     deviceInfo.biasTee = biasTee;
-    biasTeeEnabled = biasTee;
-    hardwareTimed = api.hasHardwareTime(device, "");
+    biasTeeEnabled = false;
+    hardwareTime = api.hasHardwareTime(device, "");
 
     std::size_t antennaCount = 0;
     char** names = api.listAntennas(device, Abi::RX, 0, &antennaCount);
@@ -227,8 +236,9 @@ Result SoapySdrSweep::apply(const Settings& settings) {
     JST_CHECK(refreshGainRange());
     JST_CHECK(applyGainMode(settings.automaticGain, settings.gain));
 
-    if (deviceCapabilities.biasTee) {
-        if (api.writeSetting(device, "biastee", settings.biasTee ? "true" : "false") != 0) {
+    if (deviceCapabilities.biasTee && (settings.biasTee || biasTeeEnabled)) {
+        const char* value = settings.biasTee ? "true" : "false";
+        if (api.writeSetting(device, biasTeeKey.c_str(), value) != 0) {
             JST_ERROR("[SDR_SOAPY] Failed to set Bias-T: {}", failure());
             return Result::ERROR;
         }
@@ -265,7 +275,7 @@ Result SoapySdrSweep::setFrequency(const F64 frequency) {
     }
     const F64 applied = api.getFrequency(device, Abi::RX, 0);
     tunedFrequency = std::isfinite(applied) && applied > 0.0 ? applied : frequency;
-    return Result::SUCCESS;
+    return refreshGainRange();
 }
 
 Result SoapySdrSweep::open() {
@@ -273,6 +283,7 @@ Result SoapySdrSweep::open() {
         JST_ERROR("[SDR_SOAPY] Invalid sweep sample rate.");
         return Result::ERROR;
     }
+    hardwareTimed = hardwareTime;
     const auto& api = library->api();
     const std::size_t channels[] = {0};
     const SoapyKwargs streamArgs;
@@ -310,7 +321,13 @@ Result SoapySdrSweep::tune(const U64 hop) {
         JST_WARN("[SDR_SOAPY] Failed to stop the receive stream: {}", failure());
     }
     streaming = false;
+    const auto previousRange = appliedSettings.gainRange;
     JST_CHECK(setFrequency(sweepRequest.frequencies[hop]));
+    const auto& range = appliedSettings.gainRange;
+    const bool rangeChanged = range.has_value() != previousRange.has_value() ||
+        (range && (range->minimum != previousRange->minimum ||
+                   range->maximum != previousRange->maximum));
+    JST_CHECK(applyGain(requestedSettings.gain, rangeChanged));
     if (const int status = api.activateStream(device, stream, 0, 0, 0); status != 0) {
         JST_ERROR("[SDR_SOAPY] Failed to start the receive stream: {}",
                   library->errorString(status));
@@ -328,6 +345,7 @@ Result SoapySdrSweep::tune(const U64 hop) {
 void SoapySdrSweep::restartTimestamps() {
     nextTimestamp.reset();
     cutoffNs.reset();
+    lastTimeNs.reset();
     abruptEnd = false;
 }
 
@@ -415,7 +433,17 @@ Device::Capture SoapySdrSweep::read(std::span<CF32> samples,
         const U64 count = static_cast<U64>(status);
         const auto timestamp = timestampOf(flags, timeNs, count);
         abruptEnd = (flags & Abi::EndAbrupt) != 0;
-        const U64 stale = (flags & Abi::HasTime) != 0 ? staleSamples(timeNs, count) : 0;
+        const bool timed = (flags & Abi::HasTime) != 0;
+        if (timed && cutoffNs && lastTimeNs && timeNs <= *lastTimeNs) {
+            cutoffNs.reset();
+            hardwareTimed = false;
+            JST_WARN("[SDR_SOAPY] Stream timestamps of {} do not advance. "
+                     "Settling by sample count instead.", deviceInfo.label);
+        }
+        if (timed) {
+            lastTimeNs = timeNs;
+        }
+        const U64 stale = timed ? staleSamples(timeNs, count) : 0;
         if (stale < count) {
             cutoffNs.reset();
         } else if (Clock::now() - cutoffSince > Device::StallTimeout) {

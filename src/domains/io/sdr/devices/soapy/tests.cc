@@ -132,6 +132,9 @@ struct FakeRadio {
     bool hardwareTime = false;
     long long hardwareLeadNs = 0;
     U64 overflows = 0;
+    bool biasTeeRx = false;
+    bool frozenTime = false;
+    bool biasTeeRejected = false;
 };
 
 FakeRadio& Fake() {
@@ -144,6 +147,7 @@ char DriverValue[] = "fake";
 char SerialKey[] = "serial";
 char SerialValue[] = "1234";
 char BiasTeeKey[] = "biastee";
+char BiasTeeRxKey[] = "biastee_rx";
 char AntennaA[] = "A";
 char AntennaB[] = "B";
 std::string ArgumentKey;
@@ -181,12 +185,15 @@ Radio::SoapyApi FakeApi() {
     };
     api.getSettingInfo = [](const Abi::Device*, std::size_t* count) {
         static Abi::ArgInfo setting{};
-        setting.key = BiasTeeKey;
+        setting.key = Fake().biasTeeRx ? BiasTeeRxKey : BiasTeeKey;
         *count = 1;
         return &setting;
     };
     api.writeSetting = [](Abi::Device*, const char* key, const char* value) {
-        if (std::string(key) == "biastee") {
+        if (std::string(key) == (Fake().biasTeeRx ? "biastee_rx" : "biastee")) {
+            if (Fake().biasTeeRejected) {
+                return -1;
+            }
             Fake().biasTee.emplace_back(value);
         }
         return 0;
@@ -279,7 +286,7 @@ Radio::SoapyApi FakeApi() {
         if (fake.timed) {
             fake.timeNs += fake.gapNs;
             fake.gapNs = 0;
-            *timeNs = fake.timeNs;
+            *timeNs = fake.frozenTime ? -250 : fake.timeNs;
             fake.timeNs += static_cast<long long>(count * 1.0e9 / fake.sampleRate);
             if (fake.untimedReads > 0) {
                 --fake.untimedReads;
@@ -390,7 +397,7 @@ TEST_CASE("SoapySDR sweep turns the Bias-T off when closed", "[devices][sdr][soa
         auto sweep = OpenSweep({.biasTee = true});
         CHECK(sweep->applied().biasTee);
         sweep.reset();
-        CHECK(Fake().biasTee == std::vector<std::string>{"true", "false"});
+        CHECK(Fake().biasTee == std::vector<std::string>{"false", "true", "false"});
     }
 
     SECTION("never enabled") {
@@ -498,6 +505,24 @@ TEST_CASE("SoapySDR stream timestamps continue across reads and jump at a time g
     CHECK(Fake().stops == 1);
 }
 
+TEST_CASE("SoapySDR stream drives Bias-T through the RX-only setting", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.biasTeeRx = true});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .biasTee = true});
+
+    CHECK(stream->capabilities().biasTee);
+    CHECK(stream->applied().biasTee);
+    REQUIRE_FALSE(Fake().biasTee.empty());
+    CHECK(Fake().biasTee.back() == "true");
+}
+
+TEST_CASE("SoapySDR stream hides a Bias-T setting the driver rejects", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.biasTeeRx = true, .biasTeeRejected = true});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .biasTee = true});
+
+    CHECK_FALSE(stream->capabilities().biasTee);
+    CHECK_FALSE(stream->applied().biasTee);
+}
+
 TEST_CASE("SoapySDR stream drops samples received before a retune", "[devices][sdr][soapy]") {
     const FakeRuntime runtime({.timed = true, .hardwareTime = true, .hardwareLeadNs = 100000});
     auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0});
@@ -511,6 +536,18 @@ TEST_CASE("SoapySDR stream drops samples received before a retune", "[devices][s
     CHECK(retuned.timestamp == 100);
     CHECK(Read(*stream).count == 256);
     CHECK(Fake().starts == 2);
+}
+
+TEST_CASE("SoapySDR stream settles by sample count when timestamps do not advance",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.timed = true, .hardwareTime = true, .frozenTime = true});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0});
+    REQUIRE(Read(*stream).count == 256);
+
+    REQUIRE(stream->update({.frequency = 200.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0}) ==
+            Result::SUCCESS);
+    CHECK(Read(*stream).status == Radio::Device::Status::Timeout);
+    CHECK(Read(*stream).count == 256);
 }
 
 TEST_CASE("SoapySDR stream reports a gap after an abrupt end", "[devices][sdr][soapy]") {
