@@ -26,7 +26,9 @@ TEST_CASE("Soapy can load an installed system runtime without opening a radio",
         SKIP(Radio::SoapyRuntime::Availability().message);
     }
     REQUIRE(Radio::SoapyRuntime::Availability().available);
-    REQUIRE(std::string(library->api().getABIVersion()) == Radio::SoapyAbi::Version);
+    const std::string version = library->api().getABIVersion();
+    REQUIRE(std::find(Radio::SoapyAbi::Versions.begin(), Radio::SoapyAbi::Versions.end(),
+                      version) != Radio::SoapyAbi::Versions.end());
     REQUIRE_FALSE(library->path().empty());
 }
 

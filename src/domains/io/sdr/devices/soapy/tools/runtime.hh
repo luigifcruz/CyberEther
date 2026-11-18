@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_DOMAINS_IO_SDR_DEVICES_SOAPY_TOOLS_RUNTIME_HH
 #define JETSTREAM_DOMAINS_IO_SDR_DEVICES_SOAPY_TOOLS_RUNTIME_HH
 
+#include <array>
 #include <cstddef>
 #include <map>
 #include <memory>
@@ -11,7 +12,7 @@
 
 namespace Jetstream::Radio::SoapyAbi {
 
-constexpr const char* Version = "0.8";
+constexpr std::array<const char*, 2> Versions = {"0.8", "0.9"};
 
 constexpr int RX = 1;
 constexpr int EndBurst = 1 << 1;

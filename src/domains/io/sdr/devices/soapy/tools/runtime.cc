@@ -1,5 +1,6 @@
 #include "runtime.hh"
 
+#include <algorithm>
 #include <cstdlib>
 #include <mutex>
 
@@ -131,7 +132,7 @@ Result SoapyLibrary::enumerate(const SoapyKwargs& filter, SoapyKwargsList& devic
     auto* list = table.enumerate(view.get(), &length);
     if (table.lastStatus() != 0) {
         table.kwargsListClear(list, length);
-        JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices: {}", lastError());
+        JST_ERROR("[SDR_SOAPY] Failed to enumerate devices: {}", lastError());
         return Result::ERROR;
     }
     for (std::size_t i = 0; i < length; ++i) {
@@ -159,9 +160,9 @@ std::shared_ptr<SoapyLibrary> SoapyLibrary::Open(const std::string& path, std::s
     }
     const char* abi = library->table.getABIVersion();
     const std::string version = abi ? abi : "";
-    if (version != SoapyAbi::Version) {
-        error = jst::fmt::format("ABI version '{}' is not the supported '{}'", version,
-                                 SoapyAbi::Version);
+    if (std::find(SoapyAbi::Versions.begin(), SoapyAbi::Versions.end(), version) ==
+        SoapyAbi::Versions.end()) {
+        error = jst::fmt::format("ABI version '{}' is not 0.8 or 0.9", version);
         return nullptr;
     }
     if (!ResolveAll(handle, library->table, missing)) {
@@ -193,11 +194,12 @@ std::vector<std::string> SoapyRuntime::Candidates() {
     }
 
 #if defined(JST_OS_MAC)
-    std::vector<std::string> names{"libSoapySDR.0.8.dylib", "libSoapySDR.dylib"};
+    std::vector<std::string> names{"libSoapySDR.0.8.dylib", "libSoapySDR.0.9.dylib",
+                                   "libSoapySDR.dylib"};
     std::vector<std::string> directories{"", "/opt/homebrew/lib/", "/usr/local/lib/",
                                          "/opt/local/lib/"};
 #elif defined(JST_OS_LINUX)
-    std::vector<std::string> names{"libSoapySDR.so.0.8", "libSoapySDR.so"};
+    std::vector<std::string> names{"libSoapySDR.so.0.8", "libSoapySDR.so.0.9", "libSoapySDR.so"};
     std::vector<std::string> directories{"", "/usr/local/lib/"};
 #elif defined(JST_OS_WINDOWS)
     std::vector<std::string> names{"SoapySDR.dll", "libSoapySDR.dll"};
@@ -241,15 +243,15 @@ std::shared_ptr<SoapyLibrary> SoapyRuntime::Acquire() {
         cache.status.path = candidate;
         const char* version = cache.library->api().getAPIVersion();
         cache.status.version = version ? version : "";
-        JST_DEBUG("[MODULE_SOAPY] Loaded SoapySDR {} from '{}'.", cache.status.version, candidate);
+        JST_DEBUG("[SDR_SOAPY] Loaded SoapySDR {} from '{}'.", cache.status.version, candidate);
         return cache.library;
     }
 
-    cache.status.message = "SoapySDR 0.8 was not found. Install SoapySDR and its device "
-                           "modules from your package manager, or use the SDR block.";
-    JST_DEBUG("[MODULE_SOAPY] {}", cache.status.message);
+    cache.status.message = "SoapySDR 0.8 or 0.9 was not found. Install SoapySDR and its "
+                           "device modules from your package manager.";
+    JST_DEBUG("[SDR_SOAPY] {}", cache.status.message);
     for (const auto& attempt : cache.status.attempts) {
-        JST_DEBUG("[MODULE_SOAPY] Tried {}", attempt);
+        JST_DEBUG("[SDR_SOAPY] Tried {}", attempt);
     }
     return nullptr;
 #endif

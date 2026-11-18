@@ -164,7 +164,7 @@ struct Sdr : public Block::Config {
         "the page has been given access to the radio. |\n"
         "| bladeRF 2 with two channels | An FPGA image of v0.15.3 or newer, for correct"
         " timestamps. |\n"
-        "| SoapySDR radios | SoapySDR 0.8 and the radio's module installed on macOS, "
+        "| SoapySDR radios | SoapySDR 0.8 or 0.9 and the radio's module installed on macOS, "
         "Linux, or Windows. Radios with a built-in driver are listed only through it. |\n"
         "| iOS, Android | Not available. |\n"
         "\n"
