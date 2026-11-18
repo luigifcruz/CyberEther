@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -263,6 +264,37 @@ struct SignalViewFrequency {
     bool operator==(const SignalViewFrequency&) const = default;
 };
 
+struct SignalViewOverload {
+    std::optional<U64> clippedSamples;
+    std::optional<U64> receivedSamples;
+
+    void read(const Tensor& input);
+};
+
+namespace detail {
+
+inline std::string FormatOverloadBadge(const bool clipped, const F64 clipRatio) {
+    if (!clipped) {
+        return "";
+    }
+    const F64 percent = clipRatio * 100.0;
+    if (percent >= 10.0) {
+        return jst::fmt::format("CLIP {:.0f}%", percent);
+    }
+    if (percent >= 1.0) {
+        return jst::fmt::format("CLIP {:.1f}%", percent);
+    }
+    if (percent >= 0.01) {
+        return jst::fmt::format("CLIP {:.2f}%", percent);
+    }
+    if (percent > 0.0) {
+        return "CLIP <0.01%";
+    }
+    return "CLIP";
+}
+
+}  // namespace detail
+
 struct SignalViewLineplot;
 struct SignalViewWaterfall;
 struct SignalViewDensity;
@@ -275,6 +307,7 @@ struct SignalViewCanvas {
         SignalViewLineplot* lineplot = nullptr;
         SignalViewWaterfall* waterfall = nullptr;
         SignalViewDensity* density = nullptr;
+        SignalViewOverload overload = {};
     };
 
     struct Edits {
@@ -287,6 +320,7 @@ struct SignalViewCanvas {
     struct CursorState {
         bool inside = false;
         Extent2D<F32> position = {0.0f, 0.0f};
+        bool snap = false;
         bool visible = false;
         bool marker = false;
         bool overMarker = false;
@@ -306,6 +340,29 @@ struct SignalViewCanvas {
         Extent2D<F32> origin = {0.0f, 0.0f};
     };
 
+    struct OverloadState {
+        struct Count {
+            std::chrono::steady_clock::time_point time;
+            U64 clipped = 0;
+            U64 received = 0;
+        };
+        std::optional<Count> older;
+        std::optional<Count> newer;
+        F64 clipRatio = 0.0;
+        F64 heldClipRatio = 0.0;
+        std::optional<U64> lastClipped;
+        std::chrono::steady_clock::time_point clipUntil;
+    };
+
+    struct AmplitudeGrid {
+        F64 lower = 0.0;
+        F64 upper = 0.0;
+        F64 step = 0.0;
+        bool linear = false;
+
+        bool operator==(const AmplitudeGrid&) const = default;
+    };
+
     void reset(const SignalView& config);
     Result create(const std::shared_ptr<Render::Window>& window, const Context& context);
     Result destroy(const std::shared_ptr<Render::Window>& window);
@@ -321,6 +378,7 @@ struct SignalViewCanvas {
     SurfaceInteractionState interaction;
     detail::SignalViewSplitInteraction splitter;
     CursorState cursor;
+    OverloadState overload;
     bool displayHeld = false;
     Extent2D<F32> pixelSize;
 
@@ -329,6 +387,7 @@ struct SignalViewCanvas {
     std::array<TagBounds, detail::MaxMarkers> tagBounds;
     std::array<bool, detail::MaxMarkers> pinned{};
     MarkerDrag markerDrag;
+    std::optional<AmplitudeGrid> amplitudeGrid;
 
     std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Surface> renderSurface;
@@ -346,6 +405,7 @@ struct SignalViewCanvas {
 
  private:
     void updateLabels(const Context& context);
+    void updateOverload(const Context& context);
     Result updateCursor(const Context& context);
     Result updateMarkers(const Context& context);
     F32 viewTranslation() const;
@@ -363,7 +423,10 @@ struct SignalViewCanvas {
     std::optional<U64> markerAt(const Context& context, const Extent2D<F32>& position) const;
     bool insidePlot(const Extent2D<F32>& position) const;
     F32 pointAtX(F32 x) const;
+    F32 snapToPeak(const Context& context, F32 x) const;
     void toggleMarker(const Context& context, const Edits& edits);
+    void eraseMarker(U64 index);
+    void deleteMarker(const Context& context, const Edits& edits);
     void clearMarkers(const Context& context, const Edits& edits);
     void commitMarkers(const Context& context, const Edits& edits);
 };

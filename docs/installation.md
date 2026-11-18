@@ -55,7 +55,7 @@ pacman -S libx11 libxcursor libxi libxinerama libxrandr \
 
 Python build modules.
 ```bash
-python -m pip install meson ninja numpy mapbox_earcut
+python -m pip install meson ninja numpy
 ```
 
 #### Optional
@@ -95,7 +95,7 @@ apt install libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev \
 
 Python build modules.
 ```bash
-python3 -m pip install meson ninja numpy mapbox_earcut
+python3 -m pip install meson ninja numpy
 ```
 
 #### Optional
@@ -130,7 +130,7 @@ brew install pkg-config glslang spirv-cross
 
 Python build modules.
 ```bash
-python3 -m pip install meson ninja numpy mapbox_earcut
+python3 -m pip install meson ninja numpy
 ```
 
 #### Optional
@@ -167,7 +167,7 @@ choco install pkgconfiglite -y
 
 Python build modules.
 ```bash
-python -m pip install meson ninja numpy mapbox_earcut
+python -m pip install meson ninja numpy
 ```
 
 #### Optional
@@ -189,7 +189,7 @@ All CyberEther runtime dependencies for the browser are included in the reposito
 On Debian or Ubuntu, the CI-equivalent packages are:
 ```bash
 apt install git build-essential pkg-config python3-pip glslang-tools spirv-cross cargo
-python3 -m pip install meson ninja numpy mapbox_earcut
+python3 -m pip install meson ninja numpy
 ```
 
 </details>
@@ -202,7 +202,7 @@ python3 -m pip install meson ninja numpy mapbox_earcut
 Build iOS from macOS with the latest [Xcode](https://developer.apple.com/xcode/) installed. You also need the same Homebrew shader tools and Python build modules used by the macOS build.
 ```bash
 brew install pkg-config glslang spirv-cross
-python3 -m pip install meson ninja numpy mapbox_earcut
+python3 -m pip install meson ninja numpy
 ```
 
 </details>

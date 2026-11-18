@@ -6,6 +6,7 @@
 #include <exception>
 #include <new>
 
+#include <jetstream/memory/attributes.hh>
 #include <jetstream/memory/axis.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/tools/numeric.hh>
@@ -109,6 +110,7 @@ Result SoapyImpl::create() {
     streaming = false;
     bufferFill.publish(0.0f);
     deviceOverflows.publish(0);
+    sampleCounts.publish({});
     throughput.publish({0.0f, 0.0f});
 
     JST_CHECK(receiverDevice.open(deviceString));
@@ -121,6 +123,8 @@ Result SoapyImpl::create() {
     generation = 0;
     resetStream(frequency, appliedSampleRate);
     publishedMetadata = {};
+    publishedClippedSamples.reset();
+    publishedReceivedSamples.reset();
     JST_CHECK(publishMetadata(stream.metadata()));
 
     JST_CHECK(startReceiver());
@@ -313,6 +317,18 @@ Result SoapyImpl::emitFrame() {
         JST_CHECK(buffer.setAttribute("deviceOverflows", overflows));
         publishedDeviceOverflows = overflows;
     }
+
+    const SampleCounts counts = sampleCounts.get();
+    if (publishedClippedSamples != counts.clipped) {
+        JST_CHECK(buffer.setAttribute(std::string(ClippedSamplesAttribute), counts.clipped));
+        publishedClippedSamples = counts.clipped;
+    }
+
+    if (publishedReceivedSamples != counts.received) {
+        JST_CHECK(buffer.setAttribute(std::string(ReceivedSamplesAttribute), counts.received));
+        publishedReceivedSamples = counts.received;
+    }
+
     return Result::SUCCESS;
 }
 
@@ -327,6 +343,8 @@ Result SoapyImpl::soapyThreadLoop() {
     // dropped samples in between.
     std::optional<I64> expectedTimeNs;
     U64 expectedGeneration = 0;
+    const F32 clipLevel = receiverDevice.getClipLevel();
+    SampleCounts counts;
 
     while (streaming) {
         const auto lock = access.lock();
@@ -369,6 +387,12 @@ Result SoapyImpl::soapyThreadLoop() {
             } else {
                 expectedTimeNs.reset();
             }
+            for (std::size_t i = 0; i < received.sampleCount; ++i) {
+                counts.clipped += std::abs(tmp[i].real()) >= clipLevel ||
+                                  std::abs(tmp[i].imag()) >= clipLevel;
+            }
+            counts.received += received.sampleCount;
+            sampleCounts.publish(counts);
             stream.push(readGeneration, tmp.data(), received.sampleCount);
             Scheduler::Context::NotifyPendingCompute();
             const U64 capacity = stream.capacity();

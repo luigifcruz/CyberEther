@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <limits>
+#include <string>
 
 namespace Jetstream::Blocks {
 
@@ -22,6 +23,7 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
 
  private:
     const Modules::SdrImpl* createdModule(const Blocks::Sdr& config);
+    Parser::Map channelsFormat(const Blocks::Sdr& config);
     Parser::Map manualGainFormat(const Blocks::Sdr& config);
     Parser::Map antennaFormat(const Blocks::Sdr& config);
     Parser::Map sampleRateFormat(const Blocks::Sdr& config);
@@ -41,10 +43,12 @@ Result SdrImpl::validate() {
 Result SdrImpl::configure() {
     moduleConfig->deviceString = deviceString;
     moduleConfig->antenna = antenna;
+    moduleConfig->channels = channels;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->automaticGain = automaticGain;
     moduleConfig->manualGain = manualGain;
+    moduleConfig->manualGains = manualGains;
     moduleConfig->biasTee = biasTee;
     moduleConfig->numberOfBatches = numberOfBatches;
     moduleConfig->numberOfTimeSamples = numberOfTimeSamples;
@@ -58,7 +62,8 @@ Result SdrImpl::define() {
 
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
-                                    "The output buffer containing samples from the radio."));
+                                    "The output buffer containing samples from the radio. "
+                                    "Channels above 1 add a leading channel axis."));
 
     Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
     bool selectionListed = config.deviceString.empty();
@@ -77,10 +82,20 @@ Result SdrImpl::define() {
                                     "Select a radio to receive samples. Choose None to disconnect.",
                                     {{"type", "dropdown"}, {"options", std::move(deviceOptions)}}));
 
-    JST_CHECK(defineInterfaceConfig("antenna",
-                                    "Antenna",
-                                    "Receive antenna port. Changes restart the receiver.",
-                                    antennaFormat(config)));
+    if (config.channels > 1 || Radio::Device::ReceiveChannels(config.deviceString) > 1) {
+        JST_CHECK(defineInterfaceConfig("channels",
+                                        "Channels",
+                                        "Number of synchronized receive channels. More than one adds an "
+                                        "outer channel dimension to Output. Changes restart reception.",
+                                        channelsFormat(config)));
+    }
+
+    if (config.channels == 1) {
+        JST_CHECK(defineInterfaceConfig("antenna",
+                                        "Antenna",
+                                        "Receive antenna port. Changes restart the receiver.",
+                                        antennaFormat(config)));
+    }
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
@@ -100,11 +115,22 @@ Result SdrImpl::define() {
                                     "Enable automatic gain control on radios that support it.",
                                     {{"type", "bool"}}));
 
-    if (!config.automaticGain) {
+    if (!config.automaticGain && config.channels == 1) {
         JST_CHECK(defineInterfaceConfig("manualGain",
                                         "Manual Gain",
                                         "Receive gain applied while automatic gain is off.",
                                         manualGainFormat(config)));
+    }
+
+    if (!config.automaticGain && config.channels > 1) {
+        const auto capabilities = Radio::Device::Cached(config.deviceString);
+        JST_CHECK(defineInterfaceConfig("manualGains",
+                                        "Manual Gains",
+                                        "Receive gain of each receiver in RX order, applied while automatic "
+                                        "gain is off. Missing entries use the single-channel Manual Gain.",
+                                        {{"type", "vector-inline"},
+                                         {"value_type", "float"},
+                                         {"unit", capabilities ? capabilities->gainUnit : "dB"}}));
     }
 
     if (Radio::Device::SupportsBiasTee(config.deviceString)) {
@@ -179,7 +205,9 @@ Result SdrImpl::create() {
     moduleImpl = moduleHandle("sdr")->getImpl<Modules::SdrImpl>();
     sampleRate = moduleImpl->sampleRate;
     moduleConfig->sampleRate = sampleRate;
-    JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
+    if (channels == 1) {
+        JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
+    }
 
     return reconfigure();
 }
@@ -190,7 +218,7 @@ Result SdrImpl::reconfigure() {
         moduleConfig->manualGain = manualGain;
     }
 
-    if (!automaticGain) {
+    if (!automaticGain && channels == 1) {
         JST_CHECK(updateInterfaceConfigFormat("manualGain", manualGainFormat(*this)));
     }
 
@@ -204,6 +232,23 @@ const Modules::SdrImpl* SdrImpl::createdModule(const Blocks::Sdr& config) {
     }
     const auto* sdr = module->getImpl<Modules::SdrImpl>();
     return sdr && sdr->deviceString == config.deviceString ? sdr : nullptr;
+}
+
+Parser::Map SdrImpl::channelsFormat(const Blocks::Sdr& config) {
+    const U64 available = Radio::Device::ReceiveChannels(config.deviceString);
+    Parser::Sequence options;
+    const auto option = [&](const U64 count) {
+        std::string value;
+        Parser::TypedToString(count, value);
+        options.emplace_back(Parser::Map{{"label", std::to_string(count)}, {"value", std::move(value)}});
+    };
+    for (U64 count = 1; count <= available; ++count) {
+        option(count);
+    }
+    if (config.channels > available) {
+        option(config.channels);
+    }
+    return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
 Parser::Map SdrImpl::manualGainFormat(const Blocks::Sdr& config) {

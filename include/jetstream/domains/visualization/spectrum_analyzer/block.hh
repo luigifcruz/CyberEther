@@ -19,6 +19,7 @@ struct SpectrumAnalyzer : public Block::Config {
     U64 waterfallHeight = 1024;
     std::string colormap = "turbo";
     bool density = false;
+    std::string amplitudeScale = "log";
     U64 persistence = 256;
     F32 splitRatio = 0.5f;
     std::vector<F32> markers;
@@ -32,7 +33,7 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(mode, lineplotAveraging, waterfallAveraging, maxHold,
                      fill, rangeMin, rangeMax, waterfallHeight, colormap,
-                     density, persistence,
+                     density, amplitudeScale, persistence,
                      splitRatio, markers, pins, xLabel, amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Analyzer",
@@ -79,6 +80,10 @@ struct SpectrumAnalyzer : public Block::Config {
         "spectra averaged into each row. Hidden for Spectrum. |\n"
         "| **Max Hold** | Off | On, Off | Adds a trace of the highest level seen. "
         "Hidden for Waterfall and 3D Waterfall. |\n"
+        "| **Amplitude Scale** | Log (dB/div) | Log (dB/div), Compressed | Compressed "
+        "squeezes the levels near Range Min and Range Max. Log spaces the axis evenly "
+        "in dB, so every grid division is the same number of dB. Hidden for Waterfall "
+        "and 3D Waterfall. |\n"
         "| **Spectral Density** | Off | On, Off | Draws how often each level occurs "
         "behind the trace, with a linear amplitude axis. Hidden for Waterfall and 3D "
         "Waterfall. |\n"
@@ -87,6 +92,17 @@ struct SpectrumAnalyzer : public Block::Config {
         "and for Waterfall and 3D Waterfall. |\n"
         "| **Waterfall Height** | 1,024 rows | 1 to 8,192, at least 2 for 3D Waterfall "
         "| Rows of history. Hidden for Spectrum. |\n"
+        "\n"
+        "## Readouts\n"
+        "\n"
+        "A warning appears under the zoom label in the top-right corner when the input "
+        "comes from a SoapySDR source. The 3D Waterfall mode shows none.\n"
+        "\n"
+        "| Readout | Shows |\n"
+        "|---|---|\n"
+        "| **CLIP** (red) | Share of samples at the ADC full scale over about the last "
+        "second, such as CLIP 0.02%. Stays for two seconds after the last clipped "
+        "sample. Lower the gain. |\n"
         "\n"
         "## Recipes\n"
         "\n"
@@ -136,6 +152,14 @@ struct SpectrumAnalyzer : public Block::Config {
         "| Show the distances to neighboring markers | Hover a marker tag, click it to "
         "pin |\n"
         "| Unpin every tag | Escape |\n"
+        "| Step the zoomed view by a tenth of its span | Left, Right |\n"
+        "| Step 1, 2, 5, 10, or 20 dB/div, keeping Range Max | Up (finer), Down "
+        "(coarser) |\n"
+        "| Move Range Min and Range Max together by one division | Shift+Up, Shift+Down"
+        " |\n"
+        "| Remove the marker under the cursor, or the last one placed | Delete or "
+        "Backspace |\n"
+        "| Lock the cursor and markers onto the nearest peak | Hold Alt |\n"
         "| Resize the trace and waterfall | Drag the border between them. Spectrum + "
         "Waterfall only. |\n"
         "| Orbit around the surface | Drag in 3D Waterfall |\n"
@@ -148,8 +172,8 @@ struct SpectrumAnalyzer : public Block::Config {
         "Each batch gets a Blackman window and an FFT centered on the tuned frequency, "
         "then the magnitude is converted to dBFS. Stitched sweeps from SDR Sweep are "
         "already windowed per hop, so they skip the window and only get the centered "
-        "FFT. Levels past the range are compressed softly, except on the trace with "
-        "Spectral Density on, where they clip.\n"
+        "FFT. Levels past the range are compressed softly, except on the trace with Log"
+        " or Spectral Density, where they clip.\n"
         "\n"
         "## See Also\n"
         "\n"

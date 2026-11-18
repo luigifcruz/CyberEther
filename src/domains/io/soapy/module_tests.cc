@@ -4,10 +4,13 @@
 #include <any>
 #include <chrono>
 #include <limits>
+#include <optional>
+#include <string>
 #include <thread>
 
 #include "environment.hh"
 #include "jetstream/domains/io/soapy/module.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
@@ -110,6 +113,70 @@ TEST_CASE("Soapy can load an installed system runtime without opening a radio",
     REQUIRE(Modules::SoapyRuntime::Availability().available);
     REQUIRE(std::string(library->api().getABIVersion()) == Modules::SoapyAbi::Version);
     REQUIRE_FALSE(library->path().empty());
+}
+
+TEST_CASE("Soapy device selections keep only arguments SoapySDR markup can hold",
+          "[modules][soapy][discovery]") {
+    const Modules::SoapyKwargs usdr{
+        {"addr", "bus=pci,device=usdr1"},
+        {"bus", "pci"},
+        {"dev", "bus=pci,device=usdr1"},
+        {"device", "usdr1"},
+        {"driver", "usdr"},
+        {"label", "USDR: bus=pci,device=usdr1"},
+        {"serial", "012345678"},
+    };
+    REQUIRE(Modules::SoapyDiscovery::SelectionArguments(usdr) == Modules::SoapyKwargs{
+        {"bus", "pci"},
+        {"device", "usdr1"},
+        {"driver", "usdr"},
+        {"serial", "012345678"},
+    });
+
+    const Modules::SoapyKwargs edges{
+        {"driver", "scripted"},
+        {"empty", ""},
+        {"uri", "ip:radio.local"},
+        {"padded", " value"},
+        {"trailing", "value "},
+        {"key=value", "x"},
+        {"", "unnamed"},
+    };
+    REQUIRE(Modules::SoapyDiscovery::SelectionArguments(edges) == Modules::SoapyKwargs{
+        {"driver", "scripted"},
+        {"empty", ""},
+        {"uri", "ip:radio.local"},
+    });
+}
+
+TEST_CASE("Soapy device selections round-trip through the installed runtime",
+          "[modules][soapy][runtime][system]") {
+    const TestSupport::ScopedEnvironment environment("CYBERETHER_SOAPYSDR_LIBRARY");
+    REQUIRE(environment.set(std::nullopt));
+    const RuntimeReset reset;
+    const auto library = Modules::SoapyRuntime::Acquire();
+    if (!library) {
+        SKIP(Modules::SoapyRuntime::Availability().message);
+    }
+
+    const Modules::SoapyKwargs device{
+        {"addr", "bus=pci,device=usdr1"},
+        {"dev", "bus=pci,device=usdr1"},
+        {"device", "usdr1"},
+        {"driver", "usdr"},
+        {"label", "USDR: bus=pci,device=usdr1"},
+        {"uri", "ip:radio.local"},
+    };
+    const auto selection = Modules::SoapyDiscovery::SelectionArguments(device);
+    Modules::SoapyKwargs parsed;
+    const auto markup = Modules::SoapyDiscovery::FormatArguments(selection);
+    REQUIRE(library->kwargsFromString(markup, parsed) == Result::SUCCESS);
+    REQUIRE(parsed == selection);
+    REQUIRE(parsed == Modules::SoapyKwargs{
+        {"device", "usdr1"},
+        {"driver", "usdr"},
+        {"uri", "ip:radio.local"},
+    });
 }
 
 TEST_CASE_METHOD(TestSoapy::Runtime,
@@ -373,4 +440,46 @@ TEST_CASE_METHOD(TestSoapy::Runtime,
         REQUIRE(static_cast<const Modules::Soapy&>(module->config()).sampleRate == 61.44e6f);
     }
     REQUIRE(TestSoapy::State().concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy module publishes clipped and received sample counts",
+                 "[modules][soapy][clipping]") {
+    TestSoapy::State().emitSamples = true;
+    const auto module = BuildSoapyModule();
+    struct Cleanup {
+        std::shared_ptr<Module> module;
+        ~Cleanup() { static_cast<void>(module->destroy()); }
+    } cleanup{module};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.sampleRate = 20.0e6f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    const auto& output = module->outputs().at("signal").tensor;
+    const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
+        module->context()->runtime());
+    REQUIRE(runtime != nullptr);
+
+    const auto read = [&](const std::string& key) {
+        std::optional<U64> value;
+        REQUIRE(ReadAttribute(output, key, value) == Result::SUCCESS);
+        return value;
+    };
+    const auto waitFor = [&](const std::string& key, const auto& accept) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline) {
+            const auto result = runtime->computeSubmit();
+            REQUIRE((result == Result::SUCCESS || result == Result::YIELD));
+            if (const auto value = read(key); value && accept(*value)) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return false;
+    };
+
+    REQUIRE(waitFor("clippedSamples", [](const U64 value) { return value > 0; }));
+    REQUIRE(waitFor("receivedSamples", [](const U64 value) { return value > 0; }));
 }

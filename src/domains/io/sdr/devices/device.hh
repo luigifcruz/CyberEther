@@ -40,6 +40,7 @@ struct JETSTREAM_API Device {
         std::string serial;
         std::string label;
         bool biasTee = true;
+        U64 receiveChannels = 1;
 
         std::string selector() const;
     };
@@ -85,6 +86,7 @@ struct JETSTREAM_API Device {
         std::vector<Range> frequencyRanges;
         std::vector<Range> sampleRateRanges;
         std::vector<std::string> antennas;
+        U64 receiveChannels = 1;
         bool automaticGain = false;
         bool biasTee = false;
         std::string gainUnit = "dB";
@@ -126,6 +128,7 @@ struct JETSTREAM_API Device {
     static Labels Label(const std::vector<Info>& devices);
     static std::optional<Capabilities> Cached(const std::string& selector);
     static bool SupportsBiasTee(const std::string& selector);
+    static U64 ReceiveChannels(const std::string& selector);
 };
 
 }  // namespace Jetstream::Radio

@@ -145,6 +145,12 @@ Result ValidateAttribute(const std::string_view key, const std::any& value) {
     if (key == ChannelPhaseIncrementsAttribute) {
         return CheckVector<F64>(key, "vector<F64>", value);
     }
+    if (key == ClippedSamplesAttribute || key == ReceivedSamplesAttribute) {
+        if (value.type() != typeid(U64)) {
+            return AttributeTypeError(key, "U64", value);
+        }
+        return Result::SUCCESS;
+    }
     return Result::SUCCESS;
 }
 

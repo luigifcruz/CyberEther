@@ -14,9 +14,12 @@
 
 namespace Jetstream::Render::Components {
 
+struct AxisTicks;
+
 class JETSTREAM_API Axis : public Generic {
  public:
     using TickFormatter = std::function<std::string(F32)>;
+    using PositionMap = std::function<F32(F64)>;
 
     struct Config {
         F32 thickness = 1.0f;
@@ -63,7 +66,15 @@ class JETSTREAM_API Axis : public Generic {
     Result updateTitles(const std::string& xTitle,
                         const std::string& yTitle);
 
+    Result updateXRange(F64 left, F64 right);
+    Result clearXRange();
+
+    Result updateYRange(F64 bottom, F64 top, PositionMap toPosition = {}, F64 step = 0.0);
+    Result clearYRange();
+
     const Extent2D<F32>& paddingScale() const;
+    const AxisTicks& currentXTicks() const;
+    const AxisTicks& currentYTicks() const;
     U64 currentVerticalLineCount() const;
     U64 currentHorizontalLineCount() const;
 
