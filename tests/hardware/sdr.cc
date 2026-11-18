@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <ctime>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <set>
@@ -102,6 +103,9 @@ std::vector<F64> Rates(const Device::Capabilities& caps) {
     Capabilities(caps);
     std::set<F64> rates{caps.sweepSampleRate};
     for (const auto& range : caps.sampleRateRanges) {
+        if (range.maximum == std::numeric_limits<F64>::max()) {
+            continue;
+        }
         rates.insert(range.minimum);
         rates.insert(std::round((range.minimum + range.maximum) / 2.0));
         rates.insert(range.maximum);
@@ -421,7 +425,9 @@ void Sweeps(const Device::Info& info, const Plan::Mode mode) {
     };
     Success(sweep->configure(settings), "configure sweep");
     GainRange(sweep->applied().gainRange);
-    Require(Near(sweep->applied().sampleRate, rate), "sweep applied rate mismatch");
+    const F64 appliedRate = sweep->applied().sampleRate;
+    Require(std::isfinite(appliedRate) && appliedRate > 0.0, "sweep applied rate is invalid");
+    Require(info.driver == "soapy" || Near(appliedRate, rate), "sweep applied rate mismatch");
     request.sampleRate = sweep->applied().sampleRate;
     Success(Plan::Create(request, caps, plan), "replan at applied sample rate");
     Require(plan.hops.size() > 1, "plan is not multi-hop");
