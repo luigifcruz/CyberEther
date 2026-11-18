@@ -74,7 +74,9 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.closeStream, "SoapySDRDevice_closeStream", missing) &&
            Resolve(handle, api.activateStream, "SoapySDRDevice_activateStream", missing) &&
            Resolve(handle, api.deactivateStream, "SoapySDRDevice_deactivateStream", missing) &&
-           Resolve(handle, api.readStream, "SoapySDRDevice_readStream", missing);
+           Resolve(handle, api.readStream, "SoapySDRDevice_readStream", missing) &&
+           Resolve(handle, api.hasHardwareTime, "SoapySDRDevice_hasHardwareTime", missing) &&
+           Resolve(handle, api.getHardwareTime, "SoapySDRDevice_getHardwareTime", missing);
 }
 
 SoapyKwargs ToMap(const SoapyAbi::Kwargs& kwargs) {

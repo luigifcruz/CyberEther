@@ -105,6 +105,8 @@ struct SoapyApi {
     int (*deactivateStream)(SoapyAbi::Device*, SoapyAbi::Stream*, int, long long) = nullptr;
     int (*readStream)(SoapyAbi::Device*, SoapyAbi::Stream*, void* const*, std::size_t, int*,
                       long long*, long) = nullptr;
+    bool (*hasHardwareTime)(const SoapyAbi::Device*, const char*) = nullptr;
+    long long (*getHardwareTime)(const SoapyAbi::Device*, const char*) = nullptr;
 };
 
 class JETSTREAM_API SoapyLibrary {

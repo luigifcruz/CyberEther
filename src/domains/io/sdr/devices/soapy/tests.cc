@@ -111,19 +111,15 @@ namespace {
 namespace Abi = Radio::SoapyAbi;
 
 struct FakeRadio {
-    bool burstSupported = true;
-    bool endsBursts = true;
-    bool flagsBurstEnd = true;
     F64 rateOffset = 0.0;
     F64 sampleRate = 0.0;
     bool bandwidthSupported = true;
     F64 bandwidth = 0.0;
     U64 zeroReads = 0;
-    U64 bursts = 0;
     U64 starts = 0;
     U64 stops = 0;
     bool streaming = false;
-    U64 remaining = 0;
+    U64 delivered = 0;
     std::vector<std::string> biasTee;
     std::size_t channels = 1;
     std::vector<std::string> antennaSets;
@@ -133,6 +129,9 @@ struct FakeRadio {
     long long gapNs = 0;
     U64 untimedReads = 0;
     bool abruptOnce = false;
+    bool hardwareTime = false;
+    long long hardwareLeadNs = 0;
+    U64 overflows = 0;
 };
 
 FakeRadio& Fake() {
@@ -256,18 +255,9 @@ Radio::SoapyApi FakeApi() {
         return reinterpret_cast<Abi::Stream*>(&Fake());
     };
     api.closeStream = [](Abi::Device*, Abi::Stream*) { return 0; };
-    api.activateStream = [](Abi::Device*, Abi::Stream*, int flags, long long, std::size_t size) {
-        auto& fake = Fake();
-        if (flags & Abi::EndBurst) {
-            if (!fake.burstSupported) {
-                return Abi::NotSupported;
-            }
-            ++fake.bursts;
-            fake.remaining = size;
-        } else {
-            ++fake.starts;
-        }
-        fake.streaming = true;
+    api.activateStream = [](Abi::Device*, Abi::Stream*, int, long long, std::size_t) {
+        ++Fake().starts;
+        Fake().streaming = true;
         return 0;
     };
     api.deactivateStream = [](Abi::Device*, Abi::Stream*, int, long long) {
@@ -281,6 +271,10 @@ Radio::SoapyApi FakeApi() {
         *flags = 0;
         if (!fake.streaming) {
             return Abi::Timeout;
+        }
+        if (fake.overflows > 0) {
+            --fake.overflows;
+            return Abi::Overflow;
         }
         if (fake.timed) {
             fake.timeNs += fake.gapNs;
@@ -301,16 +295,12 @@ Radio::SoapyApi FakeApi() {
             --fake.zeroReads;
             return 0;
         }
-        const bool burst = fake.remaining > 0 && fake.endsBursts;
-        const auto read = burst ? std::min<std::size_t>(count, fake.remaining) : count;
-        if (burst) {
-            fake.remaining -= read;
-            if (fake.remaining == 0) {
-                fake.streaming = false;
-                *flags = fake.flagsBurstEnd ? Abi::EndBurst : 0;
-            }
-        }
-        return static_cast<int>(read);
+        fake.delivered += count;
+        return static_cast<int>(count);
+    };
+    api.hasHardwareTime = [](const Abi::Device*, const char*) { return Fake().hardwareTime; };
+    api.getHardwareTime = [](const Abi::Device*, const char*) {
+        return Fake().timeNs + Fake().hardwareLeadNs;
     };
     return api;
 }
@@ -353,44 +343,36 @@ U64 RunHops(Radio::Sweep& sweep, const U64 hops) {
 
 }  // namespace
 
-TEST_CASE("SoapySDR sweep captures one burst per hop", "[devices][sdr][soapy]") {
+TEST_CASE("SoapySDR sweep restarts the stream at each hop", "[devices][sdr][soapy]") {
     const FakeRuntime runtime;
     auto sweep = OpenSweep();
 
     CHECK(RunHops(*sweep, 3) == 3);
-    CHECK(Fake().bursts == 3);
-    CHECK(Fake().starts == 0);
-}
-
-TEST_CASE("SoapySDR sweep restarts the stream when bursts are not supported",
-          "[devices][sdr][soapy]") {
-    const FakeRuntime runtime({.burstSupported = false});
-    auto sweep = OpenSweep();
-
-    CHECK(RunHops(*sweep, 3) == 3);
-    CHECK(Fake().bursts == 0);
     CHECK(Fake().starts == 3);
-    CHECK(Fake().stops == 3);
+    CHECK(Fake().stops == 2);
 }
 
-TEST_CASE("SoapySDR sweep restarts the stream when bursts never end", "[devices][sdr][soapy]") {
-    const FakeRuntime runtime({.endsBursts = false});
-    auto sweep = OpenSweep();
+TEST_CASE("SoapySDR sweep drops samples received before each retune", "[devices][sdr][soapy]") {
+    U64 plain = 0;
+    {
+        const FakeRuntime runtime({.timed = true});
+        auto sweep = OpenSweep();
+        CHECK(RunHops(*sweep, 2) == 2);
+        plain = Fake().delivered;
+    }
 
-    CHECK(RunHops(*sweep, 3) == 3);
-    CHECK(Fake().bursts == 1);
-    CHECK(Fake().starts == 2);
-    CHECK(Fake().stops == 3);
+    const FakeRuntime runtime({.timed = true, .hardwareTime = true, .hardwareLeadNs = 99900});
+    auto sweep = OpenSweep();
+    CHECK(RunHops(*sweep, 2) == 2);
+    CHECK(Fake().delivered == plain + 2 * 200);
 }
 
-TEST_CASE("SoapySDR sweep keeps bursts when the driver ends them silently",
-          "[devices][sdr][soapy]") {
-    const FakeRuntime runtime({.flagsBurstEnd = false});
+TEST_CASE("SoapySDR sweep refills the hop after an overflow", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.timed = true, .hardwareTime = true, .overflows = 1});
     auto sweep = OpenSweep();
 
-    CHECK(RunHops(*sweep, 3) == 3);
-    CHECK(Fake().bursts == 3);
-    CHECK(Fake().starts == 0);
+    CHECK(RunHops(*sweep, 2) == 2);
+    CHECK(sweep->statistics().failedHops == 0);
 }
 
 TEST_CASE("SoapySDR sweep treats empty reads as timeouts", "[devices][sdr][soapy]") {
@@ -512,6 +494,23 @@ TEST_CASE("SoapySDR stream timestamps continue across reads and jump at a time g
     const auto retuned = Read(*stream);
     CHECK(retuned.timestamp == 0);
     CHECK(retuned.epoch > first.epoch);
+    CHECK(Fake().starts == 2);
+    CHECK(Fake().stops == 1);
+}
+
+TEST_CASE("SoapySDR stream drops samples received before a retune", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.timed = true, .hardwareTime = true, .hardwareLeadNs = 100000});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0});
+    REQUIRE(Read(*stream).count == 256);
+
+    REQUIRE(stream->update({.frequency = 200.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0}) ==
+            Result::SUCCESS);
+    const auto retuned = Read(*stream);
+    REQUIRE(retuned.status == Radio::Device::Status::Samples);
+    CHECK(retuned.count == 156);
+    CHECK(retuned.timestamp == 100);
+    CHECK(Read(*stream).count == 256);
+    CHECK(Fake().starts == 2);
 }
 
 TEST_CASE("SoapySDR stream reports a gap after an abrupt end", "[devices][sdr][soapy]") {

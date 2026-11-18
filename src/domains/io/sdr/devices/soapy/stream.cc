@@ -56,6 +56,8 @@ class SoapySdrStream final : public Stream {
     Result applyGain(F64 gain, bool force);
     std::optional<U64> timestampOf(int flags, long long timeNs, U64 count);
     void restartTimestamps();
+    void markCutoff();
+    U64 staleSamples(long long timeNs, U64 count) const;
 
     std::shared_ptr<SoapyLibrary> library;
     Abi::Device* device = nullptr;
@@ -64,6 +66,7 @@ class SoapySdrStream final : public Stream {
     bool streaming = false;
     bool biasTeeSetting = false;
     bool biasTeeEnabled = false;
+    bool hardwareTimed = false;
     U64 receiveChannels = 1;
     std::vector<F64> channelGains;
     std::vector<std::vector<std::string>> channelAntennaLists;
@@ -72,6 +75,8 @@ class SoapySdrStream final : public Stream {
 
     U64 queueGeneration = 0;
     U64 discard = 0;
+    std::optional<long long> cutoffNs;
+    Clock::time_point cutoffSince{};
     Clock::time_point received{};
     std::vector<void*> buffers;
 
@@ -212,6 +217,7 @@ Result SoapySdrStream::queryCapabilities() {
     caps.biasTee = biasTeeSetting;
     deviceInfo.biasTee = biasTeeSetting;
     biasTeeEnabled = biasTeeSetting;
+    hardwareTimed = api.hasHardwareTime(device, "");
 
     F64 fullScale = 0.0;
     api.free(api.getNativeStreamFormat(device, Abi::RX, 0, &fullScale));
@@ -373,8 +379,31 @@ void SoapySdrStream::close() {
 
 void SoapySdrStream::restartTimestamps() {
     nextTimestamp.reset();
+    cutoffNs.reset();
     abruptEnd = false;
     ++timestampEpoch;
+}
+
+void SoapySdrStream::markCutoff() {
+    cutoffNs.reset();
+    if (!hardwareTimed) {
+        return;
+    }
+    const long long now = library->api().getHardwareTime(device, "");
+    if (library->api().lastStatus() == 0) {
+        cutoffNs = now;
+        cutoffSince = Clock::now();
+    }
+}
+
+U64 SoapySdrStream::staleSamples(const long long timeNs, const U64 count) const {
+    if (!cutoffNs || timeNs >= *cutoffNs || !(driverRate > 0.0)) {
+        return 0;
+    }
+    const auto distance = static_cast<unsigned long long>(*cutoffNs) -
+                          static_cast<unsigned long long>(timeNs);
+    const F64 samples = std::ceil(static_cast<F64>(distance) * 1.0e-9 * driverRate);
+    return samples >= static_cast<F64>(count) ? count : static_cast<U64>(samples);
 }
 
 std::optional<U64> SoapySdrStream::timestampOf(const int flags, const long long timeNs,
@@ -404,12 +433,28 @@ std::optional<U64> SoapySdrStream::timestampOf(const int flags, const long long 
 }
 
 Result SoapySdrStream::tune(const F64 frequency) {
+    const auto& api = library->api();
+    const bool restart = streaming;
+    if (restart && api.deactivateStream(device, stream, 0, 0) != 0) {
+        JST_WARN("[SDR_SOAPY] Failed to stop the receive stream: {}", failure());
+    }
+    streaming = false;
     JST_CHECK(setFrequency(frequency));
+    if (restart) {
+        if (const int status = api.activateStream(device, stream, 0, 0, 0); status != 0) {
+            JST_ERROR("[SDR_SOAPY] Failed to restart the receive stream: {}",
+                      library->errorString(status));
+            return Result::ERROR;
+        }
+        streaming = true;
+        received = Clock::now();
+    }
     requestedSettings.frequency = frequency;
     if (streaming) {
         queueGeneration = nextGeneration();
         discard = guard();
         restartTimestamps();
+        markCutoff();
     }
     JST_CHECK(applyGain(requestedSettings.gain, true));
     return Result::SUCCESS;
@@ -466,8 +511,18 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
         const U64 count = static_cast<U64>(status);
         const auto timestamp = timestampOf(flags, timeNs, count);
         abruptEnd = (flags & Abi::EndAbrupt) != 0;
-        const U64 skip = std::min(discard, count);
-        discard -= skip;
+        const U64 stale = (flags & Abi::HasTime) != 0 ? staleSamples(timeNs, count) : 0;
+        if (stale < count) {
+            cutoffNs.reset();
+        } else if (Clock::now() - cutoffSince > Device::StallTimeout) {
+            cutoffNs.reset();
+            hardwareTimed = false;
+            JST_WARN("[SDR_SOAPY] Stream timestamps of {} do not follow its hardware time. "
+                     "Settling by sample count instead.", deviceInfo.label);
+        }
+        const U64 settled = std::min(discard, count - stale);
+        discard -= settled;
+        const U64 skip = stale + settled;
         if (skip == count) {
             return finish({.status = Status::Timeout});
         }
