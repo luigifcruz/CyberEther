@@ -156,9 +156,15 @@ Result OpenMode(const std::string& selector, Factory Device::Driver::* factory,
         JST_ERROR("[SDR] Driver '{}' is not available in this build.", selection->driver);
         return Result::INCOMPLETE;
     }
+#ifdef JST_OS_BROWSER
+    if (WebUsbRevision() < 0) {
+        JST_ERROR("[SDR] Browser not compatible with WebUSB.");
+        return Result::INCOMPLETE;
+    }
+#endif
 
     std::vector<Device::Info> matches;
-    for (const auto& info : Device::List(true)) {
+    for (const auto& info : Enumerate({*driver})) {
         if (selection->matches(info)) {
             matches.push_back(info);
         }

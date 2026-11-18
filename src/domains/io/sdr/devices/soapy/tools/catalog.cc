@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <functional>
 #include <string_view>
 
 #include "jetstream/logger.hh"
@@ -11,7 +10,7 @@ namespace Jetstream::Radio {
 
 namespace {
 
-constexpr std::array NativeDrivers = {
+constexpr std::array SkippedDrivers = {
 #ifdef JETSTREAM_LOADER_RTLSDR_AVAILABLE
     std::string_view{"rtlsdr"},
 #endif
@@ -46,30 +45,30 @@ bool Selectable(const std::string& serial) {
 }
 
 std::string Identifier(const Modules::SoapyKwargs& args) {
-    std::string flat;
+    U64 hash = 14695981039346656037ULL;
+    const auto mix = [&](const std::string_view text) {
+        for (const char c : text) {
+            hash = (hash ^ static_cast<U8>(c)) * 1099511628211ULL;
+        }
+    };
     for (const auto& [key, value] : args) {
-        flat += key;
-        flat += '=';
-        flat += value;
-        flat += ';';
+        mix(key);
+        mix("=");
+        mix(value);
+        mix(";");
     }
-    return jst::fmt::format("args-{:016x}", std::hash<std::string>{}(flat));
+    return jst::fmt::format("args-{:016x}", hash);
 }
 
 }  // namespace
 
-bool SoapyCatalog::Native(const Modules::SoapyKwargs& args) {
-    for (const auto& key : {"driver", "remote:driver"}) {
-        const auto driver = Value(args, key);
-        if (std::find(NativeDrivers.begin(), NativeDrivers.end(), driver) != NativeDrivers.end()) {
-            return true;
-        }
-    }
-    return false;
+bool SoapyCatalog::Skipped(const Modules::SoapyKwargs& args) {
+    const auto driver = Value(args, "driver");
+    return std::find(SkippedDrivers.begin(), SkippedDrivers.end(), driver) != SkippedDrivers.end();
 }
 
 std::optional<SoapyCatalog::Entry> SoapyCatalog::Describe(const Modules::SoapyKwargs& args) {
-    if (Native(args)) {
+    if (Skipped(args)) {
         return std::nullopt;
     }
 
@@ -86,7 +85,6 @@ std::optional<SoapyCatalog::Entry> SoapyCatalog::Describe(const Modules::SoapyKw
     entry.args = args;
     entry.info.serial = Selectable(serial) ? serial : Identifier(args);
     entry.info.label = jst::fmt::format("{} (SoapySDR)", label);
-    entry.info.biasTee = false;
     return entry;
 }
 
@@ -100,19 +98,16 @@ std::vector<SoapyCatalog::Entry> SoapyCatalog::List(const Modules::SoapyKwargsLi
     return entries;
 }
 
-std::vector<Device::Range> SoapyCatalog::SampleRates(const std::vector<Device::Range>& reported,
-                                                     const F64 probed) {
-    if (reported.empty()) {
-        return probed > 0.0 ? std::vector<Device::Range>{{probed, probed}}
-                            : std::vector<Device::Range>{};
-    }
-    Device::Range span = reported.front();
+F64 SoapyCatalog::SweepRate(const std::vector<Device::Range>& reported, const F64 ceiling) {
+    F64 preferred = 0.0;
+    F64 lowest = 0.0;
     for (const auto& range : reported) {
-        span.minimum = std::min(span.minimum, range.minimum);
-        span.maximum = std::max(span.maximum, range.maximum);
+        if (range.minimum <= ceiling) {
+            preferred = std::max(preferred, std::min(range.maximum, ceiling));
+        }
+        lowest = lowest > 0.0 ? std::min(lowest, range.minimum) : range.minimum;
     }
-    span.maximum = std::max(span.maximum, probed);
-    return {span};
+    return preferred > 0.0 ? preferred : lowest;
 }
 
 }  // namespace Jetstream::Radio

@@ -4,11 +4,12 @@
 #include "../sweep.hh"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <exception>
+#include <limits>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,16 +25,11 @@ namespace Abi = Modules::SoapyAbi;
 using Clock = std::chrono::steady_clock;
 
 constexpr F64 SettlingTime = 1.0e-3;
-constexpr F64 UsableBandwidth = 0.8;
-constexpr F64 DcExclusion = 20.0e3;
+constexpr F64 SweepSampleRate = 20.0e6;
 constexpr long ReadTimeoutUs = 100000;
 constexpr U64 MaxReadChunk = 65536;
 constexpr U64 MaxDrainReads = 4096;
-constexpr F64 RateTolerance = 1.0e-3;
-
-// Rates above the reported ranges worth probing. Some drivers, such as UHD on the B200
-// family, only report the rates of the current master clock but retune it on demand.
-constexpr std::array ProbeRates = {61.44e6, 56.0e6, 50.0e6, 40.0e6, 30.72e6, 20.0e6};
+constexpr F64 ReadbackTolerance = 1.0e-9;
 
 class SoapySdrSweep final : public Sweep {
  public:
@@ -57,29 +53,38 @@ class SoapySdrSweep final : public Sweep {
 
     std::string failure() const;
     Result queryCapabilities();
-    F64 probeSampleRate(F64 reported);
     Result setSampleRate(F64 sampleRate);
     Result retune(F64 frequency);
     Result refreshGainRange();
+    Result applyGainMode(bool automatic, F64 gain);
     Result applyGain(F64 gain, bool force);
     Result activate(U64 samples);
     void deactivate();
     void drain();
+    Result checkBurstEnd();
     Result capture(std::span<CF32> samples, const Running& running);
 
     std::shared_ptr<Modules::SoapyLibrary> library;
     Abi::Device* device = nullptr;
     Abi::Stream* stream = nullptr;
+    std::vector<Device::Range> reportedRates;
+    std::vector<CF32> discard;
     Mode mode = Mode::Burst;
     bool active = false;
-    bool biasTeeSetting = false;
+    bool silentBurstEnd = false;
+    bool biasTeeEnabled = false;
     F64 tunedFrequency = 0.0;
 };
 
 SoapySdrSweep::~SoapySdrSweep() {
     close();
-    if (device && library->api().unmake(device) != 0) {
-        JST_WARN("[SDR_SOAPY] Failed to release {}: {}", deviceInfo.label, failure());
+    if (device) {
+        if (biasTeeEnabled) {
+            library->api().writeSetting(device, "biastee", "false");
+        }
+        if (library->api().unmake(device) != 0) {
+            JST_WARN("[SDR_SOAPY] Failed to release {}: {}", deviceInfo.label, failure());
+        }
     }
 }
 
@@ -104,7 +109,7 @@ Result SoapySdrSweep::connect(const Device::Info& info) {
         }
     }
     if (matches.empty()) {
-        JST_ERROR("[SDR_SOAPY] Device '{}' is no longer available.", info.label);
+        JST_ERROR("[SDR_SOAPY] Device with serial '{}' is no longer available.", info.serial);
         return Result::INCOMPLETE;
     }
     if (matches.size() != 1) {
@@ -145,19 +150,32 @@ Result SoapySdrSweep::queryCapabilities() {
     std::vector<Device::Range> rates;
     if (!readRanges(api.getFrequencyRange, frequencies) ||
         !readRanges(api.getSampleRateRange, rates)) {
-        JST_ERROR("[SDR_SOAPY] Failed to query the ranges of {}: {}", deviceInfo.label,
-                  failure());
+        JST_ERROR("[SDR_SOAPY] Failed to query device ranges: {}", failure());
         return Result::ERROR;
     }
 
+    std::size_t settingCount = 0;
+    bool biasTee = false;
+    auto* settings = api.getSettingInfo(device, &settingCount);
+    if (api.lastStatus() == 0) {
+        for (std::size_t i = 0; i < settingCount; ++i) {
+            biasTee = biasTee || (settings[i].key && std::string(settings[i].key) == "biastee");
+        }
+    }
+    api.argInfoListClear(settings, settingCount);
+
     auto& caps = deviceCapabilities;
+    reportedRates = rates;
     caps.frequencyRanges = std::move(frequencies);
-    const F64 reported = SoapyCatalog::SampleRates(rates, 0.0).front().maximum;
-    caps.sampleRateRanges = SoapyCatalog::SampleRates(rates, probeSampleRate(reported));
-    caps.sweepSampleRate = caps.sampleRateRanges.front().maximum;
-    caps.usableBandwidth = UsableBandwidth;
-    caps.dcExclusion = DcExclusion;
+    caps.sampleRateRanges = {{std::numeric_limits<F64>::min(), std::numeric_limits<F64>::max()}};
+    caps.automaticGain = api.hasGainMode(device, Abi::RX, 0) && api.lastStatus() == 0;
+    caps.biasTee = biasTee;
+    caps.sweepSampleRate = SoapyCatalog::SweepRate(reportedRates, SweepSampleRate);
+    caps.usableBandwidth = 0.8;
+    caps.dcExclusion = 20.0e3;
     defaultSettlingTime = SettlingTime;
+    deviceInfo.biasTee = biasTee;
+    biasTeeEnabled = biasTee;
 
     std::size_t antennaCount = 0;
     char** names = api.listAntennas(device, Abi::RX, 0, &antennaCount);
@@ -170,55 +188,23 @@ Result SoapySdrSweep::queryCapabilities() {
     }
     api.stringsClear(&names, antennaCount);
 
-    caps.automaticGain = api.hasGainMode(device, Abi::RX, 0) && api.lastStatus() == 0;
-
-    std::size_t settingCount = 0;
-    auto* settings = api.getSettingInfo(device, &settingCount);
-    if (api.lastStatus() == 0) {
-        for (std::size_t i = 0; i < settingCount; ++i) {
-            biasTeeSetting = biasTeeSetting ||
-                (settings[i].key && std::string(settings[i].key) == "biastee");
-        }
-    }
-    api.argInfoListClear(settings, settingCount);
-    caps.biasTee = biasTeeSetting;
-    deviceInfo.biasTee = biasTeeSetting;
-
     return refreshGainRange();
-}
-
-F64 SoapySdrSweep::probeSampleRate(const F64 reported) {
-    const auto& api = library->api();
-    for (const auto rate : ProbeRates) {
-        if (rate <= reported) {
-            break;
-        }
-        if (api.setSampleRate(device, Abi::RX, 0, rate) != 0) {
-            continue;
-        }
-        const F64 applied = api.getSampleRate(device, Abi::RX, 0);
-        if (std::abs(applied - rate) <= rate * RateTolerance) {
-            JST_DEBUG("[SDR_SOAPY] {} accepts {:.3f} MS/s above its reported rates.",
-                      deviceInfo.label, rate / 1e6);
-            return rate;
-        }
-    }
-    return 0.0;
 }
 
 Result SoapySdrSweep::apply(const Settings& settings) {
     const auto& api = library->api();
-    if (!Device::Range::Contains(deviceCapabilities.sampleRateRanges, settings.sampleRate)) {
-        JST_ERROR("[SDR_SOAPY] Sample rate ({:.3f} MHz) not supported by {}. Use {}.",
-                  settings.sampleRate / 1e6, deviceInfo.label,
-                  Device::Range::Describe(deviceCapabilities.sampleRateRanges));
+    if (!std::isfinite(settings.sampleRate) || settings.sampleRate <= 0.0) {
+        JST_ERROR("[SDR_SOAPY] Sample rate ({:.3f} MHz) is not valid.", settings.sampleRate / 1e6);
         return Result::ERROR;
+    }
+    if (!Device::Range::Contains(reportedRates, settings.sampleRate)) {
+        JST_WARN("[SDR_SOAPY] Sample rate ({:.3f} MHz) is not one that {} reports. "
+                 "Requesting it anyway.", settings.sampleRate / 1e6, deviceInfo.label);
     }
     if (!settings.antenna.empty()) {
         const auto& antennas = deviceCapabilities.antennas;
         if (std::find(antennas.begin(), antennas.end(), settings.antenna) == antennas.end()) {
-            JST_ERROR("[SDR_SOAPY] Antenna '{}' is not available on {}.", settings.antenna,
-                      deviceInfo.label);
+            JST_ERROR("[SDR_SOAPY] Receive antenna '{}' is not supported.", settings.antenna);
             return Result::ERROR;
         }
         if (api.setAntenna(device, Abi::RX, 0, settings.antenna.c_str()) != 0) {
@@ -227,31 +213,35 @@ Result SoapySdrSweep::apply(const Settings& settings) {
             return Result::ERROR;
         }
     }
-    if (settings.biasTee && !biasTeeSetting) {
+    if (settings.biasTee && !deviceCapabilities.biasTee) {
         JST_WARN("[SDR_SOAPY] Bias-T is not supported by {}.", deviceInfo.label);
-    }
-    if (biasTeeSetting &&
-        api.writeSetting(device, "biastee", settings.biasTee ? "true" : "false") != 0) {
-        JST_ERROR("[SDR_SOAPY] Failed to set the bias-T: {}", failure());
-        return Result::ERROR;
     }
 
     JST_CHECK(setSampleRate(settings.sampleRate));
+    if (api.setBandwidth(device, Abi::RX, 0, appliedSettings.sampleRate) != 0) {
+        JST_WARN("[SDR_SOAPY] Failed to set the RF bandwidth: {}", failure());
+    }
     JST_CHECK(refreshGainRange());
-    JST_CHECK(setAutomaticGain(settings.automaticGain));
-    JST_CHECK(applyGain(settings.gain, true));
+    JST_CHECK(applyGainMode(settings.automaticGain, settings.gain));
+
+    if (deviceCapabilities.biasTee) {
+        if (api.writeSetting(device, "biastee", settings.biasTee ? "true" : "false") != 0) {
+            JST_ERROR("[SDR_SOAPY] Failed to set Bias-T: {}", failure());
+            return Result::ERROR;
+        }
+        biasTeeEnabled = settings.biasTee;
+    }
 
     requestedSettings = settings;
     appliedSettings.antenna = settings.antenna;
-    appliedSettings.biasTee = settings.biasTee && biasTeeSetting;
+    appliedSettings.biasTee = settings.biasTee && deviceCapabilities.biasTee;
     return Result::SUCCESS;
 }
 
 Result SoapySdrSweep::setSampleRate(const F64 sampleRate) {
     const auto& api = library->api();
     if (api.setSampleRate(device, Abi::RX, 0, sampleRate) != 0) {
-        JST_ERROR("[SDR_SOAPY] Failed to set the sample rate to {:.3f} MS/s: {}",
-                  sampleRate / 1e6, failure());
+        JST_ERROR("[SDR_SOAPY] Failed to set the sample rate: {}", failure());
         return Result::ERROR;
     }
     const F64 applied = api.getSampleRate(device, Abi::RX, 0);
@@ -259,8 +249,7 @@ Result SoapySdrSweep::setSampleRate(const F64 sampleRate) {
         JST_ERROR("[SDR_SOAPY] Invalid applied sample rate: {}", applied);
         return Result::ERROR;
     }
-    // Drivers read back coerced rates with rounding noise; keep the requested value then.
-    const bool requested = std::abs(applied - sampleRate) <= sampleRate * 1.0e-9;
+    const bool requested = std::abs(applied - sampleRate) <= sampleRate * ReadbackTolerance;
     appliedSettings.sampleRate = requested ? sampleRate : applied;
     return Result::SUCCESS;
 }
@@ -281,6 +270,12 @@ Result SoapySdrSweep::open() {
         JST_ERROR("[SDR_SOAPY] Invalid sweep sample rate.");
         return Result::ERROR;
     }
+    try {
+        discard.resize(MaxReadChunk);
+    } catch (const std::bad_alloc&) {
+        JST_ERROR("[SDR_SOAPY] Failed to allocate the drain buffer.");
+        return Result::ERROR;
+    }
     const auto& api = library->api();
     const std::size_t channels[] = {0};
     const Modules::SoapyKwargs streamArgs;
@@ -290,7 +285,6 @@ Result SoapySdrSweep::open() {
         JST_ERROR("[SDR_SOAPY] Failed to set up the receive stream: {}", failure());
         return Result::ERROR;
     }
-    mode = Mode::Burst;
     return retune(sweepRequest.frequencies.front());
 }
 
@@ -343,13 +337,11 @@ void SoapySdrSweep::deactivate() {
 }
 
 void SoapySdrSweep::drain() {
-    // Samples left in the host buffers predate the next retune.
-    std::vector<CF32> scratch(MaxReadChunk);
-    void* buffers[] = {scratch.data()};
+    void* buffers[] = {discard.data()};
     for (U64 i = 0; i < MaxDrainReads; ++i) {
         int flags = 0;
         long long timeNs = 0;
-        const int status = library->api().readStream(device, stream, buffers, scratch.size(),
+        const int status = library->api().readStream(device, stream, buffers, discard.size(),
                                                      &flags, &timeNs, 1000);
         if (status == Abi::Timeout || (status <= 0 && status != Abi::Overflow)) {
             return;
@@ -357,13 +349,34 @@ void SoapySdrSweep::drain() {
     }
 }
 
+Result SoapySdrSweep::checkBurstEnd() {
+    void* buffers[] = {discard.data()};
+    int flags = 0;
+    long long timeNs = 0;
+    const int status = library->api().readStream(device, stream, buffers, discard.size(), &flags,
+                                                 &timeNs, ReadTimeoutUs);
+    if (status > 0 && static_cast<U64>(status) > discard.size()) {
+        JST_ERROR("[SDR_SOAPY] {} returned more samples than requested.", deviceInfo.label);
+        return Result::FATAL;
+    }
+    if (status == 0 || status == Abi::Timeout) {
+        silentBurstEnd = true;
+        return Result::SUCCESS;
+    }
+    JST_INFO("[SDR_SOAPY] {} does not end bursts. Restarting the stream at each hop.",
+             deviceInfo.label);
+    mode = Mode::Continuous;
+    return Result::SUCCESS;
+}
+
 Result SoapySdrSweep::capture(std::span<CF32> samples, const Running& running) {
     const auto& api = library->api();
     JST_CHECK(activate(samples.size()));
 
     U64 filled = 0;
+    bool ended = false;
     auto idleSince = Clock::now();
-    while (filled < samples.size()) {
+    while (filled < samples.size() && !ended) {
         if (!running()) {
             deactivate();
             return Result::YIELD;
@@ -374,15 +387,18 @@ Result SoapySdrSweep::capture(std::span<CF32> samples, const Running& running) {
         const auto chunk = std::min<U64>(samples.size() - filled, MaxReadChunk);
         const int status = api.readStream(device, stream, buffers, chunk, &flags, &timeNs,
                                           ReadTimeoutUs);
+        if (status > 0 && static_cast<U64>(status) > chunk) {
+            deactivate();
+            JST_ERROR("[SDR_SOAPY] {} returned more samples than requested.", deviceInfo.label);
+            return Result::FATAL;
+        }
         if (status > 0) {
             filled += static_cast<U64>(status);
+            ended = (flags & Abi::EndBurst) != 0;
             idleSince = Clock::now();
-            if ((flags & Abi::EndBurst) && filled < samples.size()) {
-                break;
-            }
             continue;
         }
-        if (status == Abi::Timeout) {
+        if (status == 0 || status == Abi::Timeout) {
             if (Clock::now() - idleSince > Device::StallTimeout) {
                 deactivate();
                 JST_ERROR("[SDR_SOAPY] Timed out waiting for sweep samples from {}.",
@@ -400,10 +416,16 @@ Result SoapySdrSweep::capture(std::span<CF32> samples, const Running& running) {
         return Result::FATAL;
     }
 
-    if (mode == Mode::Continuous || filled < samples.size()) {
-        deactivate();
-    } else {
+    if (mode == Mode::Burst && !ended && !silentBurstEnd) {
+        if (const auto result = checkBurstEnd(); result != Result::SUCCESS) {
+            deactivate();
+            return result;
+        }
+    }
+    if (mode == Mode::Burst) {
         active = false;
+    } else {
+        deactivate();
     }
     return filled == samples.size() ? Result::SUCCESS : Result::INCOMPLETE;
 }
@@ -453,19 +475,9 @@ Result SoapySdrSweep::run(const Running& running, const Sink& sink) {
 }
 
 Result SoapySdrSweep::setAutomaticGain(const bool automaticGain) {
-    const auto& api = library->api();
-    if (deviceCapabilities.automaticGain &&
-        api.setGainMode(device, Abi::RX, 0, automaticGain) != 0) {
-        JST_ERROR("[SDR_SOAPY] Failed to set the gain mode: {}", failure());
-        return Result::ERROR;
-    }
-    if (automaticGain && !deviceCapabilities.automaticGain) {
-        JST_WARN("[SDR_SOAPY] Automatic gain is not supported by {}.", deviceInfo.label);
-    }
+    JST_CHECK(applyGainMode(automaticGain, requestedSettings.gain));
     requestedSettings.automaticGain = automaticGain;
-    appliedSettings.automaticGain = automaticGain && deviceCapabilities.automaticGain;
-    return appliedSettings.automaticGain ? Result::SUCCESS
-                                         : applyGain(requestedSettings.gain, true);
+    return Result::SUCCESS;
 }
 
 Result SoapySdrSweep::setGain(const F64 gain) {
@@ -476,12 +488,26 @@ Result SoapySdrSweep::setGain(const F64 gain) {
 
 Result SoapySdrSweep::refreshGainRange() {
     const auto range = library->api().getGainRange(device, Abi::RX, 0);
-    if (library->api().lastStatus() != 0 || range.minimum > range.maximum) {
+    if (library->api().lastStatus() != 0 || !std::isfinite(range.minimum) ||
+        !std::isfinite(range.maximum) || range.minimum > range.maximum) {
         appliedSettings.gainRange.reset();
         return Result::SUCCESS;
     }
     appliedSettings.gainRange = Device::Range{range.minimum, range.maximum};
     return Result::SUCCESS;
+}
+
+Result SoapySdrSweep::applyGainMode(const bool automatic, const F64 gain) {
+    if (deviceCapabilities.automaticGain &&
+        library->api().setGainMode(device, Abi::RX, 0, automatic) != 0) {
+        JST_ERROR("[SDR_SOAPY] Failed to set the gain mode: {}", failure());
+        return Result::ERROR;
+    }
+    if (automatic && !deviceCapabilities.automaticGain) {
+        JST_WARN("[SDR_SOAPY] Automatic gain is not supported by {}.", deviceInfo.label);
+    }
+    appliedSettings.automaticGain = automatic && deviceCapabilities.automaticGain;
+    return applyGain(gain, true);
 }
 
 Result SoapySdrSweep::applyGain(const F64 gain, const bool force) {

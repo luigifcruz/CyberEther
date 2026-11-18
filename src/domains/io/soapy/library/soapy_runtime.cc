@@ -59,6 +59,7 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.setFrequency, "SoapySDRDevice_setFrequency", missing) &&
            Resolve(handle, api.setSampleRate, "SoapySDRDevice_setSampleRate", missing) &&
            Resolve(handle, api.getSampleRate, "SoapySDRDevice_getSampleRate", missing) &&
+           Resolve(handle, api.setBandwidth, "SoapySDRDevice_setBandwidth", missing) &&
            Resolve(handle, api.getFrequency, "SoapySDRDevice_getFrequency", missing) &&
            Resolve(handle, api.hasGainMode, "SoapySDRDevice_hasGainMode", missing) &&
            Resolve(handle, api.setGainMode, "SoapySDRDevice_setGainMode", missing) &&
