@@ -26,6 +26,7 @@
 #ifdef JETSTREAM_LOADER_BIRRIASDR_AVAILABLE
 #include "birriasdr/base.hh"
 #endif
+#include "soapy/base.hh"
 
 #include <algorithm>
 #include <chrono>
@@ -113,6 +114,9 @@ std::vector<Device::Driver> BuiltinDrivers() {
 #ifdef JETSTREAM_LOADER_BIRRIASDR_AVAILABLE
     drivers.push_back({"birriasdr", &BirriaSdr::Enumerate, &BirriaSdr::Stream, &BirriaSdr::Sweep});
 #endif
+#if !defined(JST_OS_BROWSER) && !defined(JST_OS_IOS) && !defined(JST_OS_ANDROID)
+    drivers.push_back({"soapy", &SoapySdr::Enumerate, &SoapySdr::Stream, &SoapySdr::Sweep});
+#endif
     return drivers;
 }
 
@@ -152,9 +156,15 @@ Result OpenMode(const std::string& selector, Factory Device::Driver::* factory,
         JST_ERROR("[SDR] Driver '{}' is not available in this build.", selection->driver);
         return Result::INCOMPLETE;
     }
+#ifdef JST_OS_BROWSER
+    if (WebUsbRevision() < 0) {
+        JST_ERROR("[SDR] Browser not compatible with WebUSB.");
+        return Result::INCOMPLETE;
+    }
+#endif
 
     std::vector<Device::Info> matches;
-    for (const auto& info : Device::List(true)) {
+    for (const auto& info : Enumerate({*driver})) {
         if (selection->matches(info)) {
             matches.push_back(info);
         }
@@ -333,6 +343,22 @@ bool Device::SupportsBiasTee(const std::string& selector) {
         }
     }
     return true;
+}
+
+U64 Device::ReceiveChannels(const std::string& selector) {
+    if (const auto capabilities = Cached(selector)) {
+        return capabilities->receiveChannels;
+    }
+    const auto selection = Selection::Parse(selector);
+    if (!selection) {
+        return 1;
+    }
+    for (const auto& info : List()) {
+        if (selection->matches(info)) {
+            return info.receiveChannels;
+        }
+    }
+    return 1;
 }
 
 Result Stream::Open(const std::string& selector, std::unique_ptr<Stream>& stream) {

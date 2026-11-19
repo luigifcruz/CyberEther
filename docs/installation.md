@@ -55,7 +55,7 @@ pacman -S libx11 libxcursor libxi libxinerama libxrandr \
 
 Python build modules.
 ```bash
-python -m pip install meson ninja numpy mapbox_earcut
+python -m pip install meson ninja numpy
 ```
 
 #### Optional
@@ -73,7 +73,7 @@ python -m pip install onnxruntime-gpu    # CPU+CUDA
 
 The TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
 
-No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, PlutoSDR, and BirriaSDR are built in. The optional SoapySDR block uses a SoapySDR 0.8 installation and its device modules when one is present at runtime.
+No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, PlutoSDR, and BirriaSDR are built in. The SDR and SDR Sweep blocks also use a SoapySDR 0.8 or 0.9 installation and its device modules when one is present at runtime.
 
 </details>
 
@@ -95,7 +95,7 @@ apt install libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev \
 
 Python build modules.
 ```bash
-python3 -m pip install meson ninja numpy mapbox_earcut
+python3 -m pip install meson ninja numpy
 ```
 
 #### Optional
@@ -113,7 +113,7 @@ python -m pip install onnxruntime-gpu    # CPU+CUDA
 
 The TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
 
-No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, PlutoSDR, and BirriaSDR are built in. The optional SoapySDR block uses a SoapySDR 0.8 installation and its device modules when one is present at runtime.
+No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, PlutoSDR, and BirriaSDR are built in. The SDR and SDR Sweep blocks also use a SoapySDR 0.8 or 0.9 installation and its device modules when one is present at runtime.
 
 </details>
 
@@ -130,7 +130,7 @@ brew install pkg-config glslang spirv-cross
 
 Python build modules.
 ```bash
-python3 -m pip install meson ninja numpy mapbox_earcut
+python3 -m pip install meson ninja numpy
 ```
 
 #### Optional
@@ -146,7 +146,7 @@ Machine learning inference support depends on the ONNX Runtime.
 brew install onnxruntime
 ```
 
-No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, PlutoSDR, and BirriaSDR are built in. The optional SoapySDR block uses a SoapySDR 0.8 installation and its device modules when one is present at runtime.
+No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, PlutoSDR, and BirriaSDR are built in. The SDR and SDR Sweep blocks also use a SoapySDR 0.8 or 0.9 installation and its device modules when one is present at runtime.
 
 Vulkan backend (required for Intel-based Macs).
 ```bash
@@ -167,7 +167,7 @@ choco install pkgconfiglite -y
 
 Python build modules.
 ```bash
-python -m pip install meson ninja numpy mapbox_earcut
+python -m pip install meson ninja numpy
 ```
 
 #### Optional
@@ -189,7 +189,7 @@ All CyberEther runtime dependencies for the browser are included in the reposito
 On Debian or Ubuntu, the CI-equivalent packages are:
 ```bash
 apt install git build-essential pkg-config python3-pip glslang-tools spirv-cross cargo
-python3 -m pip install meson ninja numpy mapbox_earcut
+python3 -m pip install meson ninja numpy
 ```
 
 </details>
@@ -202,7 +202,7 @@ python3 -m pip install meson ninja numpy mapbox_earcut
 Build iOS from macOS with the latest [Xcode](https://developer.apple.com/xcode/) installed. You also need the same Homebrew shader tools and Python build modules used by the macOS build.
 ```bash
 brew install pkg-config glslang spirv-cross
-python3 -m pip install meson ninja numpy mapbox_earcut
+python3 -m pip install meson ninja numpy
 ```
 
 </details>

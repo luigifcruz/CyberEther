@@ -90,6 +90,35 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "FileReader block auto format reads a file without an extension as raw",
+                 "[modules][io][file_reader][block]") {
+    const auto path = std::filesystem::temp_directory_path() /
+                      Platform::PathFromUtf8("jst_test_file_reader_block_no_extension");
+    Cleanup(path);
+    WriteRawFile(path, std::vector<F32>{0.0f, 1.0f, 2.0f, 3.0f});
+
+    Parser::Map config;
+    config["filepath"] = Platform::PathToUtf8(path);
+    config["dataType"] = std::string("F32");
+    config["batchSize"] = std::string("4");
+
+    REQUIRE(flowgraph->blockCreate("reader", "file_reader", config, {}) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("reader").state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    Tensor out = viewBlock("reader").outputs.at("signal").tensor;
+    REQUIRE(out.dtype() == DataType::F32);
+    REQUIRE(out.shape(0) == 4);
+    for (U64 i = 0; i < 4; ++i) {
+        REQUIRE(out.at<F32>(i) == static_cast<F32>(i));
+    }
+
+    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
+    Cleanup(path);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "FileReader block throughput metric updates after a read",
                  "[modules][io][file_reader][block][metrics]") {
     const auto path = TestFilePath("throughput");

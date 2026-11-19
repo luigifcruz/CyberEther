@@ -1,18 +1,24 @@
 #include "stream_buffer.hh"
 
+#include <algorithm>
+#include <array>
+#include <utility>
+
 #include "jetstream/logger.hh"
-#include "jetstream/tools/numeric.hh"
 
 namespace Jetstream::Radio {
 
-Result StreamBuffer::resize(const U64 capacity, const U64 bytes) {
-    U64 capacityBytes = 0;
-    if (bytes == 0 || !detail::CheckedMultiply(capacity, bytes, capacityBytes)) {
+Result StreamBuffer::resize(const U64 capacity, const U64 channels) {
+    std::lock_guard lock(mutex);
+    if (channels == 0) {
+        JST_ERROR("[SDR] Stream buffer requires at least one channel.");
         return Result::ERROR;
     }
-    std::lock_guard lock(mutex);
-    JST_CHECK(samples.resize(capacityBytes));
-    sampleBytes = bytes;
+    std::vector<Tools::CircularBuffer<CF32>> replacement(channels);
+    for (auto& channel : replacement) {
+        JST_CHECK(channel.resize(capacity));
+    }
+    samples = std::move(replacement);
     accumulated = {};
     written = 0;
     breaks.clear();
@@ -22,21 +28,31 @@ Result StreamBuffer::resize(const U64 capacity, const U64 bytes) {
 
 void StreamBuffer::reset(const Metadata& metadata) {
     std::lock_guard lock(mutex);
-    const auto stats = samples.statistics();
-    accumulated.pushedSamples += stats.pushedElements / sampleBytes;
-    accumulated.overwrittenSamples += stats.overwrittenElements / sampleBytes;
-    static_cast<void>(samples.clear());
+    const auto stats = samples.front().statistics();
+    accumulated.pushedSamples += stats.pushedElements;
+    accumulated.overwrittenSamples += stats.overwrittenElements;
+    for (auto& channel : samples) {
+        static_cast<void>(channel.clear());
+    }
     current = metadata;
     written = 0;
     breaks.clear();
     expected.reset();
 }
 
-bool StreamBuffer::push(const U64 generation, const void* data, const U64 count,
+bool StreamBuffer::push(const U64 generation, const CF32* data, const U64 count,
                         const std::optional<U64> timestamp, const U64 epoch) {
+    const std::array<const CF32*, 1> channels{data};
+    return push(generation, channels, count, timestamp, epoch);
+}
+
+bool StreamBuffer::push(const U64 generation, std::span<const CF32* const> data,
+                        const U64 count, const std::optional<U64> timestamp,
+                        const U64 epoch) {
     std::lock_guard lock(mutex);
-    U64 countBytes = 0;
-    if (!detail::CheckedMultiply(count, sampleBytes, countBytes)) {
+    if (data.size() != samples.size() ||
+        (count > 0 && std::ranges::find(data, nullptr) != data.end())) {
+        JST_ERROR("[SDR] Invalid stream buffer input for {} channels.", samples.size());
         return false;
     }
     if (generation != current.generation) {
@@ -50,8 +66,10 @@ bool StreamBuffer::push(const U64 generation, const void* data, const U64 count,
         expected = *timestamp + count;
         expectedEpoch = epoch;
     }
-    if (samples.push(static_cast<const U8*>(data), countBytes) != Result::SUCCESS) {
-        return false;
+    for (U64 i = 0; i < samples.size(); ++i) {
+        if (samples[i].push(data[i], count) != Result::SUCCESS) {
+            return false;
+        }
     }
     written += count;
     prune();
@@ -67,24 +85,36 @@ void StreamBuffer::split(const U64 generation) {
     expected.reset();
 }
 
-Result StreamBuffer::pop(void* data, const U64 count, Metadata& metadata) {
+Result StreamBuffer::pop(CF32* data, const U64 count, Metadata& metadata) {
+    const std::array<CF32*, 1> channels{data};
+    return pop(channels, count, metadata);
+}
+
+Result StreamBuffer::pop(std::span<CF32* const> data, const U64 count,
+                         Metadata& metadata) {
     std::lock_guard lock(mutex);
-    U64 countBytes = 0;
-    if (!detail::CheckedMultiply(count, sampleBytes, countBytes)) {
+    if (data.size() != samples.size() ||
+        (count > 0 && std::ranges::find(data, nullptr) != data.end())) {
+        JST_ERROR("[SDR] Invalid stream buffer output for {} channels.",
+                  samples.size());
         return Result::ERROR;
     }
     prune();
     while (!breaks.empty() &&
-           breaks.front() - (written - samples.size() / sampleBytes) < count) {
-        const U64 fragment = breaks.front() - (written - samples.size() / sampleBytes);
-        JST_CHECK(samples.discard(fragment * sampleBytes));
+           breaks.front() - (written - samples.front().size()) < count) {
+        const U64 fragment = breaks.front() - (written - samples.front().size());
+        for (auto& channel : samples) {
+            JST_CHECK(channel.discard(fragment));
+        }
         accumulated.discardedSamples += fragment;
         breaks.pop_front();
     }
-    if (samples.size() < countBytes) {
+    if (samples.front().size() < count) {
         return Result::INCOMPLETE;
     }
-    JST_CHECK(samples.pop(static_cast<U8*>(data), countBytes));
+    for (U64 i = 0; i < samples.size(); ++i) {
+        JST_CHECK(samples[i].pop(data[i], count));
+    }
     metadata = current;
     return Result::SUCCESS;
 }
@@ -96,39 +126,38 @@ StreamBuffer::Metadata StreamBuffer::metadata() const {
 
 U64 StreamBuffer::size() const {
     std::lock_guard lock(mutex);
-    return samples.size() / sampleBytes;
+    return samples.front().size();
 }
 
 U64 StreamBuffer::capacity() const {
     std::lock_guard lock(mutex);
-    return samples.capacity() / sampleBytes;
+    return samples.front().capacity();
 }
 
 F64 StreamBuffer::throughput() const {
     std::lock_guard lock(mutex);
-    return samples.throughput() / sampleBytes;
+    return samples.front().throughput();
 }
 
 StreamBuffer::Statistics StreamBuffer::statistics() const {
     std::lock_guard lock(mutex);
-    const auto stats = samples.statistics();
+    const auto stats = samples.front().statistics();
     return {
-        .pushedSamples = accumulated.pushedSamples + stats.pushedElements / sampleBytes,
-        .overwrittenSamples = accumulated.overwrittenSamples +
-                              stats.overwrittenElements / sampleBytes,
+        .pushedSamples = accumulated.pushedSamples + stats.pushedElements,
+        .overwrittenSamples = accumulated.overwrittenSamples + stats.overwrittenElements,
         .rejectedSamples = accumulated.rejectedSamples,
         .discardedSamples = accumulated.discardedSamples,
     };
 }
 
 void StreamBuffer::mark() {
-    if (samples.size() > 0 && (breaks.empty() || breaks.back() != written)) {
+    if (samples.front().size() > 0 && (breaks.empty() || breaks.back() != written)) {
         breaks.push_back(written);
     }
 }
 
 void StreamBuffer::prune() {
-    const U64 head = written - samples.size() / sampleBytes;
+    const U64 head = written - samples.front().size();
     while (!breaks.empty() && breaks.front() <= head) {
         breaks.pop_front();
     }

@@ -54,7 +54,7 @@ Result FileReaderImpl::define() {
                                     "File Path",
                                     "Path to the file or stream to read, such as /dev/stdin. "
                                     "SigMF takes the .sigmf-meta or .sigmf-data file.",
-                                    {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat", "sigmf-meta", "sigmf-data"})}}));
+                                    {{"type", "filepicker"}}));
 
     Parser::Sequence formats;
     for (const auto& option : Modules::FileReaderFormat::Options()) {

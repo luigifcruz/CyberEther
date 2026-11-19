@@ -22,12 +22,14 @@ struct FlowgraphDetachedSurface {
         Extent2D<F32> logicalSize = {512.0f, 512.0f};
         std::vector<FlowgraphConfigFieldConfig> configFields;
         bool configOpen = false;
+        bool configAdvanced = false;
         std::shared_ptr<const Render::Texture> texture;
         std::function<void(const Sakura::SurfaceResize&)> onSize;
         std::function<void(InputEvent)> onInput;
         std::function<SurfaceCursor()> onResolveCursor;
         std::function<void()> onClose;
         std::function<void(bool)> onToggleConfigOpen;
+        std::function<void(bool)> onConfigAdvanced;
     };
 
     void update(Config config) {
@@ -51,6 +53,10 @@ struct FlowgraphDetachedSurface {
             .onSize = this->config.onSize,
             .onInput = this->config.onInput,
         });
+        ApplyAdvancedSection(this->config.configFields,
+                             this->config.id + ":advanced",
+                             this->config.configAdvanced,
+                             this->config.onConfigAdvanced);
 
         fields.resize(this->config.configFields.size());
         for (U64 i = 0; i < fields.size(); ++i) {

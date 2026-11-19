@@ -52,7 +52,7 @@ class TestTexture final : public Render::Texture {
     }
     Result destroy() override {
         destroyCount++;
-        return Result::SUCCESS;
+        return destroyHandler ? destroyHandler() : Result::SUCCESS;
     }
     uint64_t raw() const override { return 0; }
     Result underlyingDump(uint8_t* output) const override {
@@ -62,6 +62,7 @@ class TestTexture final : public Render::Texture {
     void nextCreationResult(const Result result) { creationResult = result; }
 
     std::function<Result(uint8_t*)> dumpHandler;
+    std::function<Result()> destroyHandler;
     U64 createCount = 0;
     U64 destroyCount = 0;
 
@@ -152,7 +153,7 @@ class TestSurface final : public Render::Surface {
         while (destructionBlocked.load(std::memory_order_acquire)) {
             std::this_thread::yield();
         }
-        return Result::SUCCESS;
+        return destroyHandler ? destroyHandler() : Result::SUCCESS;
     }
     const Extent2D<U64>& size(const Extent2D<U64>&) override { return NullSize2D; }
 
@@ -166,6 +167,8 @@ class TestSurface final : public Render::Surface {
     bool hasStartedDestruction() const {
         return destructionStarted.load(std::memory_order_acquire);
     }
+
+    std::function<Result()> destroyHandler;
 
  private:
     std::atomic<bool> destructionBlocked = false;
@@ -202,6 +205,7 @@ class TestWindow final : public Render::Window {
     }
 
     std::function<Result()> synchronizeHandler;
+    std::function<Result()> submissionHandler;
 
  protected:
     Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
@@ -234,7 +238,7 @@ class TestWindow final : public Render::Window {
             surface->commitDraw();
         }
         batch.commit();
-        return Result::SUCCESS;
+        return submissionHandler ? submissionHandler() : Result::SUCCESS;
     }
     Result underlyingSynchronize() override {
         return synchronizeHandler ? synchronizeHandler() : Result::SUCCESS;
@@ -983,6 +987,111 @@ TEST_CASE("Window destruction rejects concurrent resource binding",
     REQUIRE(buffer->destroyCount == 1);
 }
 
+TEST_CASE("Attachment retirement waits for the latest submitted frame",
+          "[core][render][window][surface][retirement]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto surface = MakeFramebufferSurface(texture);
+    std::shared_ptr<Render::WindowAttachment> attachment;
+    SECTION("Standalone texture") { attachment = texture; }
+    SECTION("Surface and its leased framebuffer") { attachment = surface; }
+
+    U64 submitted = 0;
+    U64 completed = 0;
+    U64 synchronizations = 0;
+    // Simulate ImGui sampling after unbinding.
+    window.submissionHandler = [&] { ++submitted; return Result::SUCCESS; };
+    window.synchronizeHandler = [&] {
+        CHECK_FALSE(surface->hasStartedDestruction());
+        CHECK(texture->destroyCount == 0);
+        completed = submitted;
+        ++synchronizations;
+        return Result::SUCCESS;
+    };
+    const auto checkIdle = [&] {
+        CHECK(completed == submitted);
+        return Result::SUCCESS;
+    };
+    texture->destroyHandler = checkIdle;
+    surface->destroyHandler = checkIdle;
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(attachment) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.unbind(attachment) == Result::SUCCESS);
+    for (U64 i = 0; i < 5; ++i) {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+        CHECK(submitted == i + 1);
+        CHECK(synchronizations == (i == 4 ? 1 : 0));
+        CHECK(texture->destroyCount == (i == 4 ? 1 : 0));
+    }
+    REQUIRE(window.stop() == Result::SUCCESS);
+    window.synchronizeHandler = {};
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Failed attachment retirement synchronization keeps the whole batch retryable",
+          "[core][render][window][surface][retirement]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto surface = MakeFramebufferSurface(texture);
+    std::array<U32, 2> source{};
+    auto buffer = MakeBuffer(source);
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(window.bind(buffer) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+
+    window.synchronizeHandler = [] { return Result::ERROR; };
+    bool shutdown = false;
+    SECTION("Deferred destruction") {
+        REQUIRE(window.unbind(surface) == Result::SUCCESS);
+        REQUIRE(window.unbind(buffer) == Result::SUCCESS);
+        for (U64 i = 0; i < 4; ++i) {
+            REQUIRE(window.begin() == Result::SUCCESS);
+            REQUIRE(window.end() == Result::SUCCESS);
+        }
+        REQUIRE(window.begin() == Result::SUCCESS);
+        CHECK(window.end() == Result::ERROR);
+    }
+    SECTION("Shutdown with work still in flight") {
+        shutdown = true;
+        REQUIRE(window.stop() == Result::SUCCESS);
+        CHECK(window.destroy() == Result::ERROR);
+    }
+    CHECK_FALSE(surface->hasStartedDestruction());
+    CHECK(texture->destroyCount == 0);
+    CHECK(buffer->destroyCount == 0);
+    CHECK(window.destructionCount() == 0);
+
+    U64 synchronizations = 0;
+    window.synchronizeHandler = [&] {
+        CHECK_FALSE(surface->hasStartedDestruction());
+        CHECK(texture->destroyCount == 0);
+        CHECK(buffer->destroyCount == 0);
+        ++synchronizations;
+        return Result::SUCCESS;
+    };
+    if (shutdown) {
+        REQUIRE(window.destroy() == Result::SUCCESS);
+    } else {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+    }
+    CHECK(synchronizations == 1);
+    CHECK(surface->hasStartedDestruction());
+    CHECK(texture->destroyCount == 1);
+    CHECK(buffer->destroyCount == 1);
+    if (!shutdown) {
+        REQUIRE(window.stop() == Result::SUCCESS);
+        window.synchronizeHandler = {};
+        REQUIRE(window.destroy() == Result::SUCCESS);
+    }
+}
+
 TEST_CASE("Texture capture synchronizes GPU work and excludes concurrent resize",
           "[core][render][window][capture]") {
     using namespace std::chrono_literals;
@@ -1051,6 +1160,7 @@ TEST_CASE("Texture capture rejects unowned resources and failed GPU synchronizat
     CHECK(window.capture(texture, size, pixels) == Result::ERROR);
     CHECK_FALSE(dumped);
     CHECK(pixels.empty());
+    window.synchronizeHandler = {};
     REQUIRE(window.destroy() == Result::SUCCESS);
 }
 

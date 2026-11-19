@@ -52,6 +52,11 @@ Result SignalViewImpl::validate() {
         return Result::ERROR;
     }
 
+    if (config.amplitudeScale != "compressed" && config.amplitudeScale != "log") {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid amplitude scale '{}'.", config.amplitudeScale);
+        return Result::ERROR;
+    }
+
     if (config.markers.size() > detail::MaxMarkers) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] At most {} markers are supported.", detail::MaxMarkers);
         return Result::ERROR;
@@ -348,9 +353,11 @@ Result SignalViewImpl::reconfigure() {
         config.fill == fill &&
         config.waterfallHeight == waterfallHeight &&
         config.density == density &&
+        config.amplitudeScale == amplitudeScale &&
         config.xLabel == xLabel &&
         config.amplitudeLabel == amplitudeLabel &&
-        config.waterfallLabel == waterfallLabel) {
+        config.waterfallLabel == waterfallLabel &&
+        config.clipIndicator == clipIndicator) {
         const bool lineplotAveragingChanged = config.lineplotAveraging != lineplotAveraging;
         const bool waterfallAveragingChanged = config.waterfallAveraging != waterfallAveraging;
         const bool rangeChanged =
@@ -514,7 +521,11 @@ Result SignalViewImpl::present() {
         return Result::SUCCESS;
     }
 
-    const auto context = canvasContext(frequency);
+    SignalViewOverload overload;
+    if (clipIndicator) {
+        overload.read(input);
+    }
+    const auto context = canvasContext(frequency, overload);
 
     JST_CHECK(canvas.processSurfaceEvents(surfaceConsumeSurfaceEvents()));
     surfaceSetCursor(canvas.processInputEvents(surfaceConsumeInputEvents(), context, {
@@ -558,7 +569,8 @@ Result SignalViewImpl::present() {
     return canvas.present(context);
 }
 
-SignalViewCanvas::Context SignalViewImpl::canvasContext(const SignalViewFrequency& frequency) {
+SignalViewCanvas::Context SignalViewImpl::canvasContext(const SignalViewFrequency& frequency,
+                                                        const SignalViewOverload& overload) {
     return {
         .config = *this,
         .frequency = frequency,
@@ -566,6 +578,7 @@ SignalViewCanvas::Context SignalViewImpl::canvasContext(const SignalViewFrequenc
         .lineplot = lineplotEnabled ? &lineplot : nullptr,
         .waterfall = waterfallEnabled ? &waterfall : nullptr,
         .density = densityEnabled ? &densityMap : nullptr,
+        .overload = overload,
     };
 }
 

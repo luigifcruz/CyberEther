@@ -79,7 +79,6 @@ Sources and sinks: hardware, files, audio, and the network.
 | File Writer | `file_writer` | Writes raw binary signal data to a file. |
 | SDR | `sdr` | Receives samples from a USB radio. |
 | SDR Sweep | `sdr_sweep` | Sweeps a radio across a wide band. |
-| SoapySDR | `soapy` | Receives samples through an installed SoapySDR. |
 | TCP Receiver | `tcp_receiver` | Receives data streams over TCP. |
 | TCP Transmitter | `tcp_transmitter` | Sends data streams over TCP. |
 | UDP Receiver | `udp_receiver` | Receives data streams over UDP. |

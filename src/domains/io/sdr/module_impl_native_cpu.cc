@@ -39,7 +39,7 @@ Result SdrImplNativeCpu::hasPendingCompute() {
         return Result::ERROR;
     }
 
-    if (stream.size() < buffer.size()) {
+    if (stream.size() < numberOfBatches * numberOfTimeSamples) {
         return Result::TIMEOUT;
     }
 

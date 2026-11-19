@@ -39,6 +39,47 @@ struct SettingsScope {
 
 }  // namespace
 
+TEST_CASE("Provider normalization takes the request format from the matched profile",
+          "[agent][compositor][providers][normalize]") {
+    using Kind = Agent::Provider::Kind;
+
+    SECTION("a built-in endpoint overrides a stored format that cannot work there") {
+        const Settings::Intelligence::Provider stored{
+            .name = "OpenAI",
+            .host = "https://api.openai.com",
+            .api = "chat_completions",
+            .chatPath = "/v1/responses",
+        };
+        REQUIRE(AgentProviders::Identify(stored) == Kind::OpenAI);
+
+        const auto normalized = AgentProviders::Normalize(stored);
+        CHECK(normalized.api == "responses");
+        CHECK(normalized.chatPath == "/v1/responses");
+    }
+
+    SECTION("a built-in endpoint fills in a missing format") {
+        const auto normalized = AgentProviders::Normalize({
+            .name = "OpenRouter",
+            .host = "https://openrouter.ai",
+            .chatPath = "/api/v1/chat/completions",
+        });
+        CHECK(normalized.api == "chat_completions");
+        CHECK(normalized.modelsPath == "/api/v1/models");
+    }
+
+    SECTION("a custom endpoint keeps the configured format") {
+        const Settings::Intelligence::Provider stored{
+            .name = "Local",
+            .host = "http://localhost:11434",
+            .api = "responses",
+            .chatPath = "/v1/responses",
+        };
+        REQUIRE(AgentProviders::Identify(stored) == Kind::Custom);
+
+        CHECK(AgentProviders::Normalize(stored).api == "responses");
+    }
+}
+
 TEST_CASE("Failed keyring cleanup only permits removing externally managed providers",
           "[agent][compositor][providers][keyring]") {
     using Task = DefaultCompositorState::AgentState::ProviderKeyTask;

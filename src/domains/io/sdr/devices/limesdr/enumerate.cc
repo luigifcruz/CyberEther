@@ -13,6 +13,7 @@ std::vector<Device::Info> LimeSdr::Enumerate() {
             .label = jst::fmt::format("{} ({})", board.name.empty() ? "LimeSDR" : board.name,
                                       board.serial),
             .biasTee = false,
+            .receiveChannels = board.module == "FX3" ? 2u : 1u,
         });
     }
     return devices;

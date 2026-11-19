@@ -137,6 +137,7 @@ Result RtlSdrStream::connect(const Device::Info& info) {
     caps.sampleRateRanges = {{225001.0, 300000.0}, {900001.0, 3200000.0}};
     caps.automaticGain = true;
     caps.biasTee = true;
+    caps.fullScale = 128.0;
     caps.sweepSampleRate = 2.4e6;
     caps.usableBandwidth = 0.75;
     caps.dcExclusion = 5.0e3;

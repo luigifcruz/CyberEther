@@ -35,8 +35,8 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
         (metric && visibility != "internal" && type != "label" && type != "progressbar" && type != "table")) {
         return invalid("unsupported type '" + type + "'.");
     }
-    for (const auto* key : {"unit", "step_config", "source", "map", "key", "config",
-                            "hint", "hint_tone"}) {
+    for (const auto* key : {"unit", "step_config", "source", "item_label", "map", "key",
+                            "config", "hint", "hint_tone"}) {
         std::string value;
         if (format.contains(key) && Parser::Deserialize(format, key, value) != Result::SUCCESS) {
             return invalid(std::string("'") + key + "' must be a string.");
@@ -76,11 +76,40 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
         (Parser::Deserialize(format, "precision", precision) != Result::SUCCESS || precision < 0 || precision > 16)) {
         return invalid("'precision' must be an integer between 0 and 16.");
     }
+    if (format.contains("item_label") && type != "vector") {
+        return invalid("'item_label' is only supported on vectors.");
+    }
+    if (format.contains("item_label") && Parser::Get<std::string>(format, "item_label").empty()) {
+        return invalid("'item_label' must not be empty.");
+    }
     std::string valueType = "float";
     if (format.contains("value_type")) {
         JST_CHECK(Parser::Deserialize(format, "value_type", valueType));
-        if (valueType != "float" && valueType != "uint") {
-            return invalid("'value_type' must be float or uint.");
+        if (valueType == "string" && type != "vector") {
+            return invalid("'value_type' string is only supported on vectors.");
+        }
+        if (valueType != "float" && valueType != "uint" && valueType != "string") {
+            return invalid("'value_type' must be float, uint, or string.");
+        }
+    }
+    const auto optionsError = [&](const std::string& control) -> std::string {
+        std::vector<Parser::Map> options;
+        if (!format.contains("options") || Parser::Deserialize(format, "options", options) != Result::SUCCESS) {
+            return control + " requires an 'options' sequence.";
+        }
+        for (const auto& option : options) {
+            std::string label;
+            std::string value;
+            if (!option.contains("label") || Parser::Deserialize(option, "label", label) != Result::SUCCESS ||
+                !option.contains("value") || Parser::Deserialize(option, "value", value) != Result::SUCCESS) {
+                return "each option requires a string label and string value.";
+            }
+        }
+        return {};
+    };
+    if (valueType == "string") {
+        if (const auto error = optionsError("a string vector"); !error.empty()) {
+            return invalid(error);
         }
     }
     if (type == "range" || type == "float") {
@@ -129,6 +158,18 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
          thresholds["error_below"] > thresholds["warning_below"])) {
         return invalid("the error threshold must be past the warning threshold.");
     }
+    if (format.contains("advanced")) {
+        bool value;
+        if (metric) {
+            return invalid("'advanced' is only supported on config descriptors.");
+        }
+        if (Parser::Deserialize(format, "advanced", value) != Result::SUCCESS) {
+            return invalid("'advanced' must be a boolean.");
+        }
+        if (value && (type == "markdown" || type == "python" || type == "python-console")) {
+            return invalid("'advanced' is not supported on editor fields.");
+        }
+    }
     if (format.contains("collapsible")) {
         bool value;
         if (Parser::Deserialize(format, "collapsible", value) != Result::SUCCESS) {
@@ -142,17 +183,8 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
         }
     }
     if (type == "dropdown") {
-        std::vector<Parser::Map> options;
-        if (!format.contains("options") || Parser::Deserialize(format, "options", options) != Result::SUCCESS) {
-            return invalid("a dropdown requires an 'options' sequence.");
-        }
-        for (const auto& option : options) {
-            std::string label;
-            std::string value;
-            if (!option.contains("label") || Parser::Deserialize(option, "label", label) != Result::SUCCESS ||
-                !option.contains("value") || Parser::Deserialize(option, "value", value) != Result::SUCCESS) {
-                return invalid("each option requires a string label and string value.");
-            }
+        if (const auto error = optionsError("a dropdown"); !error.empty()) {
+            return invalid(error);
         }
     }
     for (const auto& [key, value] : format) {

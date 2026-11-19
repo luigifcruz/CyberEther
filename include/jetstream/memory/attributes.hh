@@ -23,6 +23,8 @@ inline constexpr std::string_view BatchAxisAttribute = "batchAxis";
 inline constexpr std::string_view ChannelAxisAttribute = "channelAxis";
 inline constexpr std::string_view ChannelOffsetsAttribute = "channelOffsets";
 inline constexpr std::string_view ChannelPhaseIncrementsAttribute = "channelPhaseIncrements";
+inline constexpr std::string_view ClippedSamplesAttribute = "clippedSamples";
+inline constexpr std::string_view ReceivedSamplesAttribute = "receivedSamples";
 
 JETSTREAM_API Result ValidateAttribute(std::string_view key, const std::any& value);
 JETSTREAM_API Result AttributeTypeError(std::string_view key,

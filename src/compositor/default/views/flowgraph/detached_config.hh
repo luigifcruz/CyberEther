@@ -19,7 +19,9 @@ struct FlowgraphDetachedConfig {
         std::string id;
         std::string title;
         std::vector<FlowgraphConfigFieldConfig> configFields;
+        bool configAdvanced = false;
         std::function<void()> onClose;
+        std::function<void(bool)> onConfigAdvanced;
     };
 
     void update(Config config) {
@@ -31,6 +33,10 @@ struct FlowgraphDetachedConfig {
             .padding = Extent2D<F32>{8.0f, 8.0f},
             .onClose = this->config.onClose,
         });
+        ApplyAdvancedSection(this->config.configFields,
+                             this->config.id + ":advanced",
+                             this->config.configAdvanced,
+                             this->config.onConfigAdvanced);
 
         fields.resize(this->config.configFields.size());
         for (U64 i = 0; i < fields.size(); ++i) {

@@ -64,6 +64,7 @@ Result UdpReceiverImpl::define() {
         interfaceDropdown = {{"type", "dropdown"}, {"options", std::move(interfaceOptions)}};
     }
 
+    interfaceDropdown["advanced"] = true;
     JST_CHECK(defineInterfaceConfig("networkInterface",
                                     "Interface",
                                     "Network interface for multicast groups.",
@@ -72,13 +73,13 @@ Result UdpReceiverImpl::define() {
     JST_CHECK(defineInterfaceConfig("filterSource",
                                     "Filter Source",
                                     "Accept packets from one sender only.",
-                                    {{"type", "bool"}}));
+                                    {{"type", "bool"}, {"advanced", true}}));
 
     if (config.filterSource) {
         JST_CHECK(defineInterfaceConfig("sourceAddress",
                                         "Source Address",
                                         "Address of the only sender to accept.",
-                                        {{"type", "text"}}));
+                                        {{"type", "text"}, {"advanced", true}}));
     }
 
     Parser::Sequence dataTypes;
@@ -103,7 +104,7 @@ Result UdpReceiverImpl::define() {
     JST_CHECK(defineInterfaceConfig("bufferMultiplier",
                                     "Buffer Multiplier",
                                     "Internal buffer size multiplier.",
-                                    {{"type", "uint"}, {"unit", "x"}}));
+                                    {{"type", "uint"}, {"unit", "x"}, {"advanced", true}}));
 
     JST_CHECK(defineInterfaceMetric("bufferFill",
                                     "Buffer Fill",

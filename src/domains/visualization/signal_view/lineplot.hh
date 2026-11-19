@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_LINEPLOT_HH
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -40,6 +41,24 @@ inline std::optional<F64> LineplotAmplitudeValue(const F32 position,
     const F64 normalized = linear ? 0.5 + 0.5 * static_cast<F64>(position)
                                   : 0.5 + 0.25 * std::atanh(static_cast<F64>(position));
     return lower + normalized * (upper - lower);
+}
+
+inline F64 NextAmplitudeDivision(const F64 current, const bool finer) {
+    constexpr std::array<F64, 5> steps = {1.0, 2.0, 5.0, 10.0, 20.0};
+    if (finer) {
+        for (auto it = steps.rbegin(); it != steps.rend(); ++it) {
+            if (*it < current * (1.0 - 1e-6)) {
+                return *it;
+            }
+        }
+        return current;
+    }
+    for (const F64 step : steps) {
+        if (step > current * (1.0 + 1e-6)) {
+            return step;
+        }
+    }
+    return current;
 }
 
 inline std::string LineplotAmplitudeLabel(const F32 position,
@@ -103,6 +122,7 @@ struct SignalViewLineplot {
     Result upload(const Tensor& signalPoints, bool& holdPending);
     Result present();
     std::optional<F32> sample(F32 position) const;
+    JETSTREAM_API std::optional<F32> peak(F32 left, F32 right) const;
 
     Config config;
     std::vector<F32> displayedPoints;
