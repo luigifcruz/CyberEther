@@ -9,6 +9,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <vector>
@@ -27,6 +28,10 @@ using Clock = std::chrono::steady_clock;
 constexpr F64 SettlingTime = 1.0e-3;
 constexpr F64 SweepSampleRate = 20.0e6;
 constexpr F64 ReadbackTolerance = 1.0e-9;
+constexpr U64 DrainSamples = 16384;
+constexpr long DrainTimeoutUs = 1000;
+constexpr auto DrainLimit = std::chrono::milliseconds(100);
+constexpr long long TimedStartNs = 100000000;
 
 class SoapySdrStream final : public Stream {
  public:
@@ -36,6 +41,7 @@ class SoapySdrStream final : public Stream {
     Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
     Device::Capture readChannels(std::span<std::span<CF32>> samples,
                                  std::chrono::milliseconds timeout) override;
+    F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -57,15 +63,19 @@ class SoapySdrStream final : public Stream {
     std::optional<U64> timestampOf(int flags, long long timeNs, U64 count);
     void restartTimestamps();
     void markCutoff();
+    void drain();
+    int activate();
     U64 staleSamples(long long timeNs, U64 count) const;
 
     std::shared_ptr<SoapyLibrary> library;
+    std::vector<CF32> drainBuffer;
     Abi::Device* device = nullptr;
     Abi::Stream* stream = nullptr;
     std::vector<Device::Range> reportedRates;
     bool streaming = false;
     bool biasTeeSetting = false;
     bool biasTeeEnabled = false;
+    F64 gainStep = 0.0;
     std::string biasTeeKey;
     bool hardwareTime = false;
     bool hardwareTimed = false;
@@ -73,12 +83,15 @@ class SoapySdrStream final : public Stream {
     std::vector<F64> channelGains;
     std::vector<std::vector<std::string>> channelAntennaLists;
     std::vector<std::string> openedAntennas;
+    std::vector<bool> antennasOverridden;
     F64 driverRate = 0.0;
 
     U64 queueGeneration = 0;
     U64 discard = 0;
     std::optional<long long> cutoffNs;
     std::optional<long long> lastTimeNs;
+    std::optional<F64> expectedNs;
+    bool timestamped = false;
     Clock::time_point cutoffSince{};
     Clock::time_point received{};
     std::vector<void*> buffers;
@@ -182,9 +195,25 @@ Result SoapySdrStream::queryCapabilities() {
 
     const std::size_t channels = api.getNumChannels(device, Abi::RX);
     caps.receiveChannels = api.lastStatus() == 0 && channels > 0 ? channels : 1;
+    if (caps.receiveChannels > 1) {
+        std::vector<std::size_t> indices(caps.receiveChannels);
+        for (U64 channel = 0; channel < caps.receiveChannels; ++channel) {
+            indices[channel] = channel;
+        }
+        const SoapyKwargs none;
+        const SoapyKwargsView view(none);
+        auto* probe = api.setupStream(device, Abi::RX, Abi::FormatCF32, indices.data(),
+                                      indices.size(), view.get());
+        if (probe) {
+            api.closeStream(device, probe);
+        } else {
+            caps.receiveChannels = 1;
+        }
+    }
 
     channelAntennaLists.assign(caps.receiveChannels, {});
     openedAntennas.assign(caps.receiveChannels, {});
+    antennasOverridden.assign(caps.receiveChannels, false);
     for (U64 channel = 0; channel < caps.receiveChannels; ++channel) {
         char* opened = api.getAntenna(device, Abi::RX, channel);
         if (api.lastStatus() == 0 && opened) {
@@ -259,6 +288,9 @@ Result SoapySdrStream::apply(const Settings& settings) {
         const auto& selected = channel < settings.channelAntennas.size()
             ? settings.channelAntennas[channel]
             : settings.antenna;
+        if (selected.empty() && !antennasOverridden[channel]) {
+            continue;
+        }
         const auto& antenna = selected.empty() ? openedAntennas[channel] : selected;
         const auto& antennas = channelAntennaLists[channel];
         const bool listed = std::find(antennas.begin(), antennas.end(), antenna) != antennas.end();
@@ -274,6 +306,7 @@ Result SoapySdrStream::apply(const Settings& settings) {
             JST_ERROR("[SDR_SOAPY] Failed to select antenna '{}': {}", antenna, failure());
             return Result::ERROR;
         }
+        antennasOverridden[channel] = !selected.empty();
     }
     if (settings.biasTee && !biasTeeSetting) {
         JST_WARN("[SDR_SOAPY] Bias-T is not supported by {}.", deviceInfo.label);
@@ -344,6 +377,13 @@ Result SoapySdrStream::setFrequency(const F64 frequency) {
 Result SoapySdrStream::open() {
     const auto& api = library->api();
     hardwareTimed = hardwareTime;
+    timestamped = false;
+    try {
+        drainBuffer.resize(DrainSamples * receiveChannels);
+    } catch (const std::bad_alloc&) {
+        JST_ERROR("[SDR_SOAPY] Failed to allocate the drain buffer.");
+        return Result::ERROR;
+    }
     SoapyKwargs arguments;
     JST_CHECK(library->kwargsFromString(requestedSettings.driverArguments, arguments));
 
@@ -358,7 +398,7 @@ Result SoapySdrStream::open() {
         JST_ERROR("[SDR_SOAPY] Failed to set up the receive stream: {}", failure());
         return Result::ERROR;
     }
-    if (const int status = api.activateStream(device, stream, 0, 0, 0); status != 0) {
+    if (const int status = activate(); status != 0) {
         JST_ERROR("[SDR_SOAPY] Failed to start the receive stream: {}",
                   library->errorString(status));
         close();
@@ -391,8 +431,39 @@ void SoapySdrStream::restartTimestamps() {
     nextTimestamp.reset();
     cutoffNs.reset();
     lastTimeNs.reset();
+    expectedNs.reset();
     abruptEnd = false;
     ++timestampEpoch;
+}
+
+int SoapySdrStream::activate() {
+    const auto& api = library->api();
+    const int status = api.activateStream(device, stream, 0, 0, 0);
+    if (status == 0 || receiveChannels < 2 || !hardwareTime) {
+        return status;
+    }
+    const long long now = api.getHardwareTime(device, "");
+    if (api.lastStatus() != 0) {
+        return status;
+    }
+    return api.activateStream(device, stream, Abi::HasTime, now + TimedStartNs, 0);
+}
+
+void SoapySdrStream::drain() {
+    std::vector<void*> targets(receiveChannels);
+    for (U64 channel = 0; channel < receiveChannels; ++channel) {
+        targets[channel] = drainBuffer.data() + channel * DrainSamples;
+    }
+    const auto deadline = Clock::now() + DrainLimit;
+    while (Clock::now() < deadline) {
+        int flags = 0;
+        long long timeNs = 0;
+        const int status = library->api().readStream(device, stream, targets.data(), DrainSamples,
+                                                     &flags, &timeNs, DrainTimeoutUs);
+        if (status == Abi::Timeout || (status <= 0 && status != Abi::Overflow)) {
+            return;
+        }
+    }
 }
 
 void SoapySdrStream::markCutoff() {
@@ -446,13 +517,16 @@ std::optional<U64> SoapySdrStream::timestampOf(const int flags, const long long 
 Result SoapySdrStream::tune(const F64 frequency) {
     const auto& api = library->api();
     const bool restart = streaming;
-    if (restart && api.deactivateStream(device, stream, 0, 0) != 0) {
-        JST_WARN("[SDR_SOAPY] Failed to stop the receive stream: {}", failure());
+    if (restart) {
+        if (api.deactivateStream(device, stream, 0, 0) != 0) {
+            JST_WARN("[SDR_SOAPY] Failed to stop the receive stream: {}", failure());
+        }
+        drain();
     }
     streaming = false;
     JST_CHECK(setFrequency(frequency));
     if (restart) {
-        if (const int status = api.activateStream(device, stream, 0, 0, 0); status != 0) {
+        if (const int status = activate(); status != 0) {
             JST_ERROR("[SDR_SOAPY] Failed to restart the receive stream: {}",
                       library->errorString(status));
             return Result::ERROR;
@@ -531,8 +605,19 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
         }
         if (timed) {
             lastTimeNs = timeNs;
+            timestamped = true;
         }
-        const U64 stale = timed ? staleSamples(timeNs, count) : 0;
+        std::optional<long long> readNs;
+        if (timed) {
+            readNs = timeNs;
+        } else if (expectedNs) {
+            readNs = std::llround(*expectedNs);
+        }
+        if (readNs && driverRate > 0.0) {
+            expectedNs = static_cast<F64>(*readNs) + static_cast<F64>(count) * 1.0e9 / driverRate;
+        }
+        const U64 stale = !cutoffNs || (!readNs && !timestamped) ? 0
+            : readNs ? staleSamples(*readNs, count) : count;
         if (stale < count) {
             cutoffNs.reset();
         } else if (Clock::now() - cutoffSince > Device::StallTimeout) {
@@ -618,7 +703,17 @@ Result SoapySdrStream::refreshGainRange() {
         return Result::SUCCESS;
     }
     appliedSettings.gainRange = Device::Range{range.minimum, range.maximum};
+    gainStep = std::isfinite(range.step) && range.step > 0.0 ? range.step : 0.0;
     return Result::SUCCESS;
+}
+
+F64 SoapySdrStream::resolveGain(const F64 gain, const std::optional<Device::Range>& range) const {
+    const F64 clamped = Stream::resolveGain(gain, range);
+    if (!range || !(gainStep > 0.0)) {
+        return clamped;
+    }
+    const F64 steps = std::round((clamped - range->minimum) / gainStep);
+    return std::min(range->maximum, range->minimum + steps * gainStep);
 }
 
 Result SoapySdrStream::applyGain(const F64 gain, const bool force) {

@@ -152,6 +152,22 @@ graph:
       deviceString: 'driver=rtltcp,rtltcp=127.0.0.1:1234'
   - name: bare
     module: soapy
+  - name: lime
+    module: soapy
+    config:
+      deviceString: 'driver=lime,serial=1D4C2F'
+      automaticGain: false
+      manualGain: 30
+      antenna: NONE
+  - name: limedefault
+    module: soapy
+    config:
+      deviceString: 'driver=lime,serial=1D4C30'
+  - name: kept
+    module: soapy
+    config:
+      deviceString: 'driver=uhd,serial=2718281'
+      manualGain: 49.5
 )";
 
     const std::vector<char> blob(yaml.begin(), yaml.end());
@@ -167,7 +183,7 @@ graph:
     REQUIRE(std::any_cast<std::string>(remote.at("deviceString")) == "driver=soapy,serial=3141592");
     REQUIRE(std::any_cast<std::string>(remote.at("driverArguments")) == "bufflen=8192");
     REQUIRE(std::any_cast<std::string>(remote.at("antenna")) == "RX2");
-    REQUIRE(std::any_cast<F32>(remote.at("manualGain")) == 0.0f);
+    REQUIRE(std::any_cast<F32>(remote.at("manualGain")) == Blocks::Sdr{}.manualGain);
 
     Parser::Map unnamed;
     REQUIRE(flowgraph->blockConfig("unnamed", unnamed) == Result::SUCCESS);
@@ -175,7 +191,23 @@ graph:
 
     Parser::Map bare;
     REQUIRE(flowgraph->blockConfig("bare", bare) == Result::SUCCESS);
-    REQUIRE(std::any_cast<F32>(bare.at("manualGain")) == 0.0f);
+    REQUIRE(std::any_cast<F32>(bare.at("manualGain")) == Blocks::Sdr{}.manualGain);
+
+#ifdef JETSTREAM_LOADER_LIMESUITE_AVAILABLE
+    Parser::Map lime;
+    REQUIRE(flowgraph->blockConfig("lime", lime) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(lime.at("deviceString")) == "driver=limesdr,serial=1D4C2F");
+    REQUIRE(std::any_cast<F32>(lime.at("manualGain")) == 42.0f);
+    REQUIRE(std::any_cast<std::string>(lime.at("antenna")).empty());
+
+    Parser::Map limeDefault;
+    REQUIRE(flowgraph->blockConfig("limedefault", limeDefault) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(limeDefault.at("manualGain")) == 44.0f);
+#endif
+
+    Parser::Map kept;
+    REQUIRE(flowgraph->blockConfig("kept", kept) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(kept.at("manualGain")) == 49.5f);
 }
 
 TEST_CASE("SDR block keeps single RX defaults for older configurations",

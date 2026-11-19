@@ -262,6 +262,7 @@ TEST_CASE("String vectors show one dropdown per entry and patch the whole list",
     SakuraTest::HeadlessUi ui(1.0f, {800.0f, 600.0f});
     FlowgraphConfigVectorField field;
     std::vector<Parser::Map> edits;
+    std::vector<std::function<void(Result)>> completions;
     FlowgraphConfigFieldConfig config{
         .id = "antennas",
         .name = "antennas",
@@ -277,7 +278,10 @@ TEST_CASE("String vectors show one dropdown per entry and patch the whole list",
             }},
         },
         .values = {{"antennas", std::vector<std::string>{"LNAH", "LNAH"}}},
-        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)> complete) {
+            edits.push_back(std::move(patch));
+            completions.push_back(std::move(complete));
+        },
     };
     REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::SUCCESS);
     REQUIRE(Parser::Hash(std::any(config.format)) != 0);
@@ -299,6 +303,15 @@ TEST_CASE("String vectors show one dropdown per entry and patch the whole list",
     REQUIRE(edits.size() == 1);
     REQUIRE(std::any_cast<std::vector<std::string>>(edits.front().at("antennas")) ==
             std::vector<std::string>{"LNAH", "LNAW"});
+
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    SelectOption(ui, field, 0, 0.25f);
+    REQUIRE(edits.size() == 2);
+    REQUIRE(std::any_cast<std::vector<std::string>>(edits.back().at("antennas")) ==
+            std::vector<std::string>{"", "LNAW"});
+    for (const auto& complete : completions) {
+        complete(Result::SUCCESS);
+    }
 
     config.values["antennas"] = std::vector<std::string>{"LNAH"};
     REQUIRE(field.update(config) == Result::SUCCESS);

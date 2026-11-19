@@ -9,6 +9,7 @@
 #include "jetstream/registry.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -435,17 +436,41 @@ Result MigrateSoapyBlocks(Parser::Map& root) {
             JST_WARN("[FLOWGRAPH] SoapySDR block '{}' has no driver and serial to match. Select its radio again.",
                      Parser::Get<std::string>(block, "name"));
         }
-        if (!migrated.empty() && !migrated.starts_with("driver=soapy,") &&
-            !migrated.starts_with("driver=limesdr,")) {
+        const bool lime = migrated.starts_with("driver=limesdr,");
+        if (!migrated.starts_with("driver=soapy,") && !lime) {
             config.erase("antenna");
         }
-        if (!config.contains("manualGain")) {
-            config["manualGain"] = std::string("0");
+        if (lime && Parser::Get<std::string>(config, "antenna") == "NONE") {
+            config.erase("antenna");
+        }
+        bool automaticGain = true;
+        if (config.contains("automaticGain") &&
+            Parser::Deserialize(config, "automaticGain", automaticGain) != Result::SUCCESS) {
+            automaticGain = true;
+        }
+        F32 gain = 0.0f;
+        if (!config.contains("manualGain") || Parser::Deserialize(config, "manualGain", gain) != Result::SUCCESS ||
+            !std::isfinite(gain)) {
+            gain = 0.0f;
+        }
+        const bool defaultGain = automaticGain && gain == 0.0f;
+        if (defaultGain && lime) {
+            config["manualGain"] = std::string("44");
+        } else if (defaultGain) {
+            config.erase("manualGain");
+        } else if (lime) {
+            config["manualGain"] = jst::fmt::format("{}", std::clamp(gain + 12.0f, 0.0f, 73.0f));
+        } else {
+            config["manualGain"] = jst::fmt::format("{}", gain);
         }
         if (config.contains("streamString")) {
             auto streamString = config.at("streamString");
             config.erase("streamString");
             config["driverArguments"] = std::move(streamString);
+        }
+        if (const auto modulePath = Parser::Get<std::string>(config, "modulePath"); !modulePath.empty()) {
+            JST_WARN("[FLOWGRAPH] SoapySDR block '{}' loaded the SoapySDR module '{}'. Add its folder to "
+                     "SOAPY_SDR_PLUGIN_PATH to keep using it.", Parser::Get<std::string>(block, "name"), modulePath);
         }
         config.erase("modulePath");
         JST_INFO("[FLOWGRAPH] Loaded SoapySDR block '{}' as an SDR block.",

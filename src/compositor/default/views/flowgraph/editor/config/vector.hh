@@ -3,19 +3,31 @@
 
 #include "types.hh"
 
+#include <atomic>
+#include <memory>
+#include <type_traits>
+
 namespace Jetstream {
 
 struct FlowgraphConfigVectorField {
     using Config = FlowgraphConfigFieldConfig;
 
     Result update(Config config) {
+        if (this->config.id != config.id) {
+            pending.reset();
+        }
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
             parseFormat();
         }
+        bool settled = false;
+        if (pending && pending->complete) {
+            pending.reset();
+            settled = true;
+        }
         const std::any nextValue = this->config.values.contains(this->config.name)
             ? this->config.values.at(this->config.name) : std::any{};
-        if (!Parser::Equal(nextValue, parsedValue)) {
+        if (settled || !Parser::Equal(nextValue, parsedValue)) {
             parsedValue.reset();
             floatValues.clear();
             uintValues.clear();
@@ -29,6 +41,11 @@ struct FlowgraphConfigVectorField {
             }
             parsedValue = nextValue;
         }
+        if (pending) {
+            floatValues = pending->floatValues;
+            uintValues = pending->uintValues;
+            stringValues = pending->stringValues;
+        }
         updateChildren();
         return Result::SUCCESS;
     }
@@ -38,6 +55,33 @@ struct FlowgraphConfigVectorField {
     }
 
  private:
+    struct Pending {
+        std::vector<F32> floatValues;
+        std::vector<U64> uintValues;
+        std::vector<std::string> stringValues;
+        std::atomic<bool> complete{false};
+    };
+
+    template<typename T>
+    void submit(Parser::Map patch, std::vector<T> values) {
+        if (!config.onApply) {
+            return;
+        }
+        auto submission = std::make_shared<Pending>();
+        submission->floatValues = floatValues;
+        submission->uintValues = uintValues;
+        submission->stringValues = stringValues;
+        if constexpr (std::is_same_v<T, F32>) {
+            submission->floatValues = std::move(values);
+        } else if constexpr (std::is_same_v<T, U64>) {
+            submission->uintValues = std::move(values);
+        } else {
+            submission->stringValues = std::move(values);
+        }
+        pending = submission;
+        config.onApply(std::move(patch), false, [submission](Result) { submission->complete = true; });
+    }
+
     void parseFormat() {
         parsedFormat = config.format;
         valueType = Parser::Get<std::string>(config.format, "value_type", "float");
@@ -102,9 +146,7 @@ struct FlowgraphConfigVectorField {
                             nextValues[i] = value * multiplier;
                         }
                         patch[config.name] = nextValues;
-                        if (config.onApply) {
-                            config.onApply(std::move(patch), false, {});
-                        }
+                        submit(std::move(patch), std::move(nextValues));
                     },
                 });
             }
@@ -136,9 +178,7 @@ struct FlowgraphConfigVectorField {
                             nextValues[i] = value;
                         }
                         patch[config.name] = nextValues;
-                        if (config.onApply) {
-                            config.onApply(std::move(patch), false, {});
-                        }
+                        submit(std::move(patch), std::move(nextValues));
                     },
                 });
             }
@@ -180,9 +220,7 @@ struct FlowgraphConfigVectorField {
                             nextValues[i] = optionValues[index];
                         }
                         patch[config.name] = nextValues;
-                        if (config.onApply) {
-                            config.onApply(std::move(patch), false, {});
-                        }
+                        submit(std::move(patch), std::move(nextValues));
                     },
                 });
             }
@@ -190,6 +228,7 @@ struct FlowgraphConfigVectorField {
     }
 
     Config config;
+    std::shared_ptr<Pending> pending;
     Parser::Map parsedFormat;
     std::any parsedValue;
     F32 multiplier = 1.0f;

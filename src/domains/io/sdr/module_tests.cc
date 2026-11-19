@@ -2321,6 +2321,22 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR multi-channel radios without antennas ignore the single-channel antenna",
+                 "[modules][sdr][multi-channel]") {
+    TestScript().receiveChannels = 2;
+    TestScript().antennas = false;
+    auto config = ScriptedConfig();
+    config.channels = 2;
+    config.antenna = "LNAW";
+    config.antennas = {"LNAW", "LNAW"};
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("multi", config, {}) == Result::SUCCESS);
+    const auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "antennas") == calls.end());
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
                  "SDR multi-channel tensors slice into aligned receiver streams",
                  "[modules][sdr][multi-channel]") {
     TestScript().receiveChannels = 3;

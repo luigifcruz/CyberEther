@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <vector>
@@ -27,12 +28,16 @@ using Clock = std::chrono::steady_clock;
 constexpr F64 SettlingTime = 1.0e-3;
 constexpr F64 SweepSampleRate = 20.0e6;
 constexpr F64 ReadbackTolerance = 1.0e-9;
+constexpr U64 DrainSamples = 16384;
+constexpr long DrainTimeoutUs = 1000;
+constexpr auto DrainLimit = std::chrono::milliseconds(100);
 
 class SoapySdrSweep final : public Sweep::Retune {
  public:
     ~SoapySdrSweep() override;
 
     Result connect(const Device::Info& info);
+    F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -54,9 +59,11 @@ class SoapySdrSweep final : public Sweep::Retune {
     std::optional<U64> timestampOf(int flags, long long timeNs, U64 count);
     void restartTimestamps();
     void markCutoff();
+    void drain();
     U64 staleSamples(long long timeNs, U64 count) const;
 
     std::shared_ptr<SoapyLibrary> library;
+    std::vector<CF32> drainBuffer;
     Abi::Device* device = nullptr;
     Abi::Stream* stream = nullptr;
     std::vector<Device::Range> reportedRates;
@@ -64,12 +71,15 @@ class SoapySdrSweep final : public Sweep::Retune {
     bool hardwareTime = false;
     bool hardwareTimed = false;
     bool biasTeeEnabled = false;
+    F64 gainStep = 0.0;
     std::string biasTeeKey;
 
     U64 queueGeneration = 0;
     U64 discard = 0;
     std::optional<long long> cutoffNs;
     std::optional<long long> lastTimeNs;
+    std::optional<F64> expectedNs;
+    bool timestamped = false;
     Clock::time_point cutoffSince{};
     Clock::time_point received{};
 
@@ -284,6 +294,13 @@ Result SoapySdrSweep::open() {
         return Result::ERROR;
     }
     hardwareTimed = hardwareTime;
+    timestamped = false;
+    try {
+        drainBuffer.resize(DrainSamples);
+    } catch (const std::bad_alloc&) {
+        JST_ERROR("[SDR_SOAPY] Failed to allocate the drain buffer.");
+        return Result::ERROR;
+    }
     const auto& api = library->api();
     const std::size_t channels[] = {0};
     const SoapyKwargs streamArgs;
@@ -317,8 +334,11 @@ Result SoapySdrSweep::tune(const U64 hop) {
         return Result::ERROR;
     }
     const auto& api = library->api();
-    if (streaming && api.deactivateStream(device, stream, 0, 0) != 0) {
-        JST_WARN("[SDR_SOAPY] Failed to stop the receive stream: {}", failure());
+    if (streaming) {
+        if (api.deactivateStream(device, stream, 0, 0) != 0) {
+            JST_WARN("[SDR_SOAPY] Failed to stop the receive stream: {}", failure());
+        }
+        drain();
     }
     streaming = false;
     const auto previousRange = appliedSettings.gainRange;
@@ -346,7 +366,22 @@ void SoapySdrSweep::restartTimestamps() {
     nextTimestamp.reset();
     cutoffNs.reset();
     lastTimeNs.reset();
+    expectedNs.reset();
     abruptEnd = false;
+}
+
+void SoapySdrSweep::drain() {
+    void* buffers[] = {drainBuffer.data()};
+    const auto deadline = Clock::now() + DrainLimit;
+    while (Clock::now() < deadline) {
+        int flags = 0;
+        long long timeNs = 0;
+        const int status = library->api().readStream(device, stream, buffers, drainBuffer.size(),
+                                                     &flags, &timeNs, DrainTimeoutUs);
+        if (status == Abi::Timeout || (status <= 0 && status != Abi::Overflow)) {
+            return;
+        }
+    }
 }
 
 void SoapySdrSweep::markCutoff() {
@@ -431,6 +466,7 @@ Device::Capture SoapySdrSweep::read(std::span<CF32> samples,
     if (status > 0) {
         received = Clock::now();
         const U64 count = static_cast<U64>(status);
+        const auto expected = nextTimestamp;
         const auto timestamp = timestampOf(flags, timeNs, count);
         abruptEnd = (flags & Abi::EndAbrupt) != 0;
         const bool timed = (flags & Abi::HasTime) != 0;
@@ -442,8 +478,22 @@ Device::Capture SoapySdrSweep::read(std::span<CF32> samples,
         }
         if (timed) {
             lastTimeNs = timeNs;
+            timestamped = true;
         }
-        const U64 stale = timed ? staleSamples(timeNs, count) : 0;
+        if (hardwareTimed && expected && timestamp && *timestamp != *expected) {
+            return finish({.status = Status::Discontinuity, .lost = *timestamp - *expected});
+        }
+        std::optional<long long> readNs;
+        if (timed) {
+            readNs = timeNs;
+        } else if (expectedNs) {
+            readNs = std::llround(*expectedNs);
+        }
+        if (readNs && appliedSettings.sampleRate > 0.0) {
+            expectedNs = static_cast<F64>(*readNs) + static_cast<F64>(count) * 1.0e9 / appliedSettings.sampleRate;
+        }
+        const U64 stale = !cutoffNs || (!readNs && !timestamped) ? 0
+            : readNs ? staleSamples(*readNs, count) : count;
         if (stale < count) {
             cutoffNs.reset();
         } else if (Clock::now() - cutoffSince > Device::StallTimeout) {
@@ -507,7 +557,17 @@ Result SoapySdrSweep::refreshGainRange() {
         return Result::SUCCESS;
     }
     appliedSettings.gainRange = Device::Range{range.minimum, range.maximum};
+    gainStep = std::isfinite(range.step) && range.step > 0.0 ? range.step : 0.0;
     return Result::SUCCESS;
+}
+
+F64 SoapySdrSweep::resolveGain(const F64 gain, const std::optional<Device::Range>& range) const {
+    const F64 clamped = Sweep::resolveGain(gain, range);
+    if (!range || !(gainStep > 0.0)) {
+        return clamped;
+    }
+    const F64 steps = std::round((clamped - range->minimum) / gainStep);
+    return std::min(range->maximum, range->minimum + steps * gainStep);
 }
 
 Result SoapySdrSweep::applyGainMode(const bool automatic, const F64 gain) {

@@ -253,7 +253,7 @@ Radio::Stream::Settings SdrImpl::settingsOf(const Sdr& config) const {
         for (U64 i = 0; i < config.channels; ++i) {
             settings.channelGains.push_back(i < config.manualGains.size() ? config.manualGains[i]
                                                                            : config.manualGain);
-            if (!availableAntennas.empty() || !config.antennas.empty()) {
+            if (!availableAntennas.empty()) {
                 settings.channelAntennas.push_back(i < config.antennas.size() ? config.antennas[i]
                                                                               : config.antenna);
             }
@@ -348,9 +348,12 @@ Result SdrImpl::receiveLoop() {
     U64 lost = 0;
 
     const F64 fullScale = radio->capabilities().fullScale;
-    const F32 clipLevel = static_cast<F32>(fullScale >= 2.0
-        ? std::min(DefaultClipLevel, (fullScale - 1.0) / fullScale)
-        : DefaultClipLevel);
+    const bool integer = fullScale >= 2.0;
+    const F32 upperClip = static_cast<F32>(integer ? (fullScale - 1.0) / fullScale : DefaultClipLevel);
+    const F32 lowerClip = integer ? -1.0f : -static_cast<F32>(DefaultClipLevel);
+    const auto clipped = [&](const F32 value) {
+        return value >= upperClip || value <= lowerClip;
+    };
     SampleCounts counts;
 
     while (streaming) {
@@ -376,8 +379,7 @@ Result SdrImpl::receiveLoop() {
                 }
                 for (const CF32* channel : pointers) {
                     for (U64 i = 0; i < capture.count; ++i) {
-                        counts.clipped += std::abs(channel[i].real()) >= clipLevel ||
-                                          std::abs(channel[i].imag()) >= clipLevel;
+                        counts.clipped += clipped(channel[i].real()) || clipped(channel[i].imag());
                     }
                 }
                 counts.received += capture.count * channels;

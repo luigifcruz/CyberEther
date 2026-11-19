@@ -33,6 +33,9 @@ constexpr std::array SkippedDrivers = {
 #ifdef JETSTREAM_LOADER_PLUTOSDR_AVAILABLE
     std::string_view{"plutosdr"},
 #endif
+#ifdef JETSTREAM_LOADER_BIRRIASDR_AVAILABLE
+    std::string_view{"birria"},
+#endif
     std::string_view{"audio"},
 };
 
@@ -65,6 +68,13 @@ std::string Identifier(const SoapyKwargs& args) {
 
 bool SoapyCatalog::Skipped(const SoapyKwargs& args) {
     const auto driver = Value(args, "driver");
+    if (driver == "plutosdr" && !Value(args, "uri").starts_with("usb:")) {
+        return false;
+    }
+    if (driver == "lime" && !Value(args, "media").empty() &&
+        Value(args, "media").find("USB") == std::string::npos) {
+        return false;
+    }
     return std::find(SkippedDrivers.begin(), SkippedDrivers.end(), driver) != SkippedDrivers.end();
 }
 

@@ -331,9 +331,7 @@ bool SdrImpl::antennasListed(const Blocks::Sdr& config) {
         return false;
     }
     const auto capabilities = Radio::Device::Cached(config.deviceString);
-    return !capabilities || !capabilities->antennas.empty() ||
-           std::any_of(config.antennas.begin(), config.antennas.end(),
-                       [](const auto& antenna) { return !antenna.empty(); });
+    return !capabilities || !capabilities->antennas.empty();
 }
 
 Parser::Map SdrImpl::antennasFormat(const Blocks::Sdr& config) {
