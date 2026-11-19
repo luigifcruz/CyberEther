@@ -293,9 +293,8 @@ Result SdrImpl::emitFrame() {
     JST_CHECK(result);
     JST_CHECK(publishMetadata(metadata));
 
-    // Position of this frame in the received stream, so a recorder can tell
-    // whether frames are contiguous, and the samples the radio dropped.
     JST_CHECK(buffer.setAttribute("streamPosition", position));
+
     const U64 frameEnd = position + numberOfBatches * numberOfTimeSamples;
     std::optional<U64> radioGapPosition;
     {
@@ -313,14 +312,15 @@ Result SdrImpl::emitFrame() {
             radioGaps.pop_front();
         }
     }
+
     if (publishedRadioLostSamples != radioLostSamples) {
         JST_CHECK(buffer.setAttribute("radioLostSamples", radioLostSamples));
         publishedRadioLostSamples = radioLostSamples;
     }
     if (radioGapPosition) {
-        // First sample after the latest gap, in streamPosition terms.
         JST_CHECK(buffer.setAttribute("radioGapPosition", *radioGapPosition));
     }
+
     const U64 gaps = deviceGaps.get();
     if (publishedDeviceGaps != gaps) {
         JST_CHECK(buffer.setAttribute("deviceOverflows", gaps));
@@ -382,8 +382,6 @@ Result SdrImpl::receiveLoop() {
     }
     U64 gaps = 0;
     U64 lost = 0;
-    // Expected timestamp of the next read; a later one means the radio
-    // dropped samples in between.
     std::optional<U64> expectedTimestamp;
     U64 expectedEpoch = 0;
     U64 expectedGeneration = 0;

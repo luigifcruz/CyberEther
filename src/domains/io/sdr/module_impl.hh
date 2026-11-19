@@ -63,9 +63,6 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     Radio::StreamBuffer::Metadata publishedMetadata;
     std::optional<U64> publishedClippedSamples;
     std::optional<U64> publishedReceivedSamples;
-    // Samples the radio dropped before the host read them, from gaps in
-    // its timestamps or reported losses, kept with their place in the
-    // stream so each frame reports only the gaps that come before its end.
     struct RadioGap {
         U64 generation = 0;
         U64 position = 0;

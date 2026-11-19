@@ -60,9 +60,6 @@ class FileWriterFormat::Sigmf : public FileWriterFormat {
         std::string datetime;
     };
 
-    // Losses while recording, from the attributes a radio source publishes:
-    // the position of each frame in its received stream, and its running
-    // counts of samples the radio dropped and of overflows.
     struct Losses {
         bool tracked = false;
         std::optional<U64> nextPosition;

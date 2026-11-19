@@ -7,10 +7,9 @@
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/io/file_writer/module.hh"
+#include "formats/format.hh"
 
 #include <nlohmann/json.hpp>
-
-#include "formats/format.hh"
 
 using namespace Jetstream;
 
@@ -366,7 +365,6 @@ TEST_CASE("FileWriter SigMF - records samples lost between frames",
     REQUIRE(frame.create(DeviceType::CPU, DataType::CI16, {kFrame}) == Result::SUCCESS);
     REQUIRE(frame.setAttribute("sampleRate", 61.44e6f) == Result::SUCCESS);
     REQUIRE(frame.setAttribute("frequency", 915.0e6f) == Result::SUCCESS);
-    // The radio gap of the frame at 140 ends 3 samples into it.
     REQUIRE(frame.setAttribute("radioGapPosition", U64{143}) == Result::SUCCESS);
     const auto tag = [&](const U64 position, const U64 radioLost, const U64 overflows) {
         REQUIRE(frame.setAttribute("streamPosition", position) == Result::SUCCESS);
@@ -377,7 +375,6 @@ TEST_CASE("FileWriter SigMF - records samples lost between frames",
     std::ofstream file(dataPath, std::ios::binary);
     tag(100, 7, 2);
     REQUIRE(format->start(file, frame) == Result::SUCCESS);
-    // Contiguous, then 24 samples missing, then a restart from zero (retune).
     U64 written = 0;
     for (const auto& [position, radioLost, overflows] :
          std::vector<std::tuple<U64, U64, U64>>{
@@ -410,18 +407,23 @@ TEST_CASE("FileWriter SigMF - no loss fields without a radio source",
     const auto base = std::filesystem::temp_directory_path() /
                       Platform::PathFromUtf8("jst_test_file_writer_plain");
     auto format = Modules::FileWriterFormat::Create("sigmf");
+    REQUIRE(format);
     const auto dataPath = format->resolve(base);
     const auto metaPath = format->companions().front();
+
     Tensor frame;
     REQUIRE(frame.create(DeviceType::CPU, DataType::CF32, {4}) == Result::SUCCESS);
+
     std::ofstream file(dataPath, std::ios::binary);
     REQUIRE(format->start(file, frame) == Result::SUCCESS);
     REQUIRE(format->track(frame, 0) == Result::SUCCESS);
     REQUIRE(format->finish(file, 32) == Result::SUCCESS);
     file.close();
+
     std::ifstream metaFile(metaPath);
     const auto meta = nlohmann::json::parse(metaFile);
     REQUIRE_FALSE(meta["global"].contains("cyberether:lost_samples"));
+
     cleanupTestFile(dataPath);
     cleanupTestFile(metaPath);
 }
@@ -449,20 +451,17 @@ TEST_CASE("FileWriter Module - recording toggles without a rebuild",
             REQUIRE(ctx.compute() == Result::SUCCESS);
             REQUIRE_FALSE(std::filesystem::exists(testPath));
 
-            // Starting opens the file in place and the next frames land in it.
             config.recording = true;
             REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
             REQUIRE(ctx.compute() == Result::SUCCESS);
             REQUIRE(ctx.compute() == Result::SUCCESS);
 
-            // Stopping closes it; later frames are not written.
             config.recording = false;
             REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
             REQUIRE(std::filesystem::file_size(testPath) == 2 * 4 * sizeof(F32));
             REQUIRE(ctx.compute() == Result::SUCCESS);
             REQUIRE(std::filesystem::file_size(testPath) == 2 * 4 * sizeof(F32));
 
-            // Another path still needs a rebuild.
             config.filepath = Platform::PathToUtf8(getTestFilePath("toggle_other"));
             REQUIRE(ctx.reconfigure(config) == Result::RECREATE);
 

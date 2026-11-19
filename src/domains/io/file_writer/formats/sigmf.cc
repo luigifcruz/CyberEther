@@ -33,7 +33,6 @@ std::string CurrentDatetime() {
     return jst::fmt::format("{:%Y-%m-%dT%H:%M:%S}Z", now);
 }
 
-// Running counts published by sources as U64 attributes.
 std::optional<U64> CountAttribute(const Tensor& tensor, const std::string& key) {
     if (!tensor.hasAttribute(key)) {
         return std::nullopt;
@@ -94,9 +93,6 @@ Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex
 
     bool changed = false;
 
-    // A frame that does not start where the previous one ended means samples
-    // were lost in between. A smaller position means the stream restarted,
-    // for example after a retune, which is not a loss.
     const auto position = CountAttribute(input, "streamPosition");
     if (position) {
         losses.tracked = true;
@@ -108,8 +104,7 @@ Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex
         }
         losses.nextPosition = *position + input.size();
     }
-    // Samples the radio dropped inside this frame, placed on the first
-    // sample after the latest gap when the source gives its position.
+
     if (const auto radioLost = CountAttribute(input, "radioLostSamples")) {
         if (losses.radioLostLast && *radioLost > *losses.radioLostLast) {
             U64 offset = 0;
@@ -123,10 +118,12 @@ Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex
         losses.radioLostFirst = losses.radioLostFirst.value_or(*radioLost);
         losses.radioLostLast = *radioLost;
     }
+
     if (const auto overflows = CountAttribute(input, "deviceOverflows")) {
         losses.overflowsFirst = losses.overflowsFirst.value_or(*overflows);
         losses.overflowsLast = *overflows;
     }
+
     if (!sampleRate) {
         sampleRate = NumericAttribute(input, "sampleRate");
         changed = sampleRate.has_value();

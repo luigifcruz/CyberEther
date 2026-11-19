@@ -97,11 +97,9 @@ Result FileWriterImpl::destroy() {
     return Result::SUCCESS;
 }
 
-// Starting or stopping a recording only opens or closes the file, so the
-// stream keeps flowing while the toggle changes. Any other change rebuilds
-// the module.
 Result FileWriterImpl::reconfigure() {
     const auto& config = *candidate();
+
     if (config.filepath != filepath ||
         config.fileFormat != fileFormat ||
         config.overwrite != overwrite) {
@@ -111,6 +109,7 @@ Result FileWriterImpl::reconfigure() {
     if (config.recording == recording) {
         return Result::SUCCESS;
     }
+
     recording = config.recording;
 
     if (!recording) {
@@ -122,7 +121,7 @@ Result FileWriterImpl::reconfigure() {
     filePath = format->resolve(Platform::PathFromUtf8(filepath));
     bytesSinceLastMeasurement = 0;
     lastMeasurementTime = std::chrono::steady_clock::now();
-    // Let a rebuild report a path that cannot be opened.
+
     return openRecording() == Result::SUCCESS ? Result::SUCCESS : Result::RECREATE;
 }
 

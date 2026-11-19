@@ -1955,7 +1955,6 @@ TEST_CASE_METHOD(ScriptedDrivers,
     }
     REQUIRE(stream.statistics().discardedSamples == 4);
 
-    // The recorder sees where the frame sits and what the radio dropped.
     const auto count = [&](const std::string& key) {
         return std::any_cast<U64>(output.attribute(key));
     };
