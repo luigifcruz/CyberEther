@@ -77,6 +77,7 @@ class JETSTREAM_API Axis : public Generic {
     const AxisTicks& currentYTicks() const;
     U64 currentVerticalLineCount() const;
     U64 currentHorizontalLineCount() const;
+    F32 yLabelWidth() const;
 
     constexpr const Config& getConfig() const {
         return config;
