@@ -46,8 +46,10 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     };
 
     Tensor buffer;
-    std::vector<CF32*> outputChannels;
+    DataType format = DataType::CF32;
+    std::vector<void*> outputChannels;
 
+    DataType validatedFormat = DataType::CF32;
     U64 validatedOutputSizeBytes = 0;
     U64 validatedInternalElements = 0;
     U64 validatedInternalSizeBytes = 0;

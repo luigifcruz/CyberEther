@@ -7,6 +7,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <new>
@@ -33,13 +34,36 @@ constexpr long DrainTimeoutUs = 1000;
 constexpr auto DrainLimit = std::chrono::milliseconds(100);
 constexpr long long TimedStartNs = 100000000;
 
+struct SoapyFormat {
+    DataType type;
+    const char* name;
+    F64 fullScale;
+};
+
+constexpr std::array<SoapyFormat, 5> SoapyFormats = {{
+    {DataType::CF32, "CF32", 1.0},
+    {DataType::CF64, "CF64", 1.0},
+    {DataType::CI16, "CS16", 32768.0},
+    {DataType::CI8, "CS8", 128.0},
+    {DataType::CU8, "CU8", 128.0},
+}};
+
+const char* SoapyFormatName(const DataType type) {
+    for (const auto& format : SoapyFormats) {
+        if (format.type == type) {
+            return format.name;
+        }
+    }
+    return Abi::FormatCF32;
+}
+
 class SoapySdrStream final : public Stream {
  public:
     ~SoapySdrStream() override;
 
     Result connect(const Device::Info& info);
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
-    Device::Capture readChannels(std::span<std::span<CF32>> samples,
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture readChannels(std::span<std::span<std::byte>> samples,
                                  std::chrono::milliseconds timeout) override;
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
 
@@ -68,7 +92,7 @@ class SoapySdrStream final : public Stream {
     U64 staleSamples(long long timeNs, U64 count) const;
 
     std::shared_ptr<SoapyLibrary> library;
-    std::vector<CF32> drainBuffer;
+    std::vector<std::byte> drainBuffer;
     Abi::Device* device = nullptr;
     Abi::Stream* stream = nullptr;
     std::vector<Device::Range> reportedRates;
@@ -268,8 +292,29 @@ Result SoapySdrStream::queryCapabilities() {
     hardwareTime = api.hasHardwareTime(device, "");
 
     F64 fullScale = 0.0;
-    api.free(api.getNativeStreamFormat(device, Abi::RX, 0, &fullScale));
+    char* native = api.getNativeStreamFormat(device, Abi::RX, 0, &fullScale);
+    const std::string nativeFormat = native ? native : "";
+    api.free(native);
     caps.fullScale = fullScale;
+
+    std::size_t formatCount = 0;
+    char** formats = api.getStreamFormats(device, Abi::RX, 0, &formatCount);
+    caps.formats = {{}};
+    if (api.lastStatus() == 0 && formats) {
+        for (const auto& format : SoapyFormats) {
+            const bool listed = std::any_of(formats, formats + formatCount, [&](const char* name) {
+                return name && std::string(name) == format.name;
+            });
+            if (format.type == DataType::CF32 || !listed) {
+                continue;
+            }
+            const bool scaled = format.name == nativeFormat && fullScale > 0.0;
+            caps.formats.push_back({format.type, scaled ? fullScale : format.fullScale});
+        }
+    }
+    if (formats) {
+        api.stringsClear(&formats, formatCount);
+    }
 
     return refreshGainRange();
 }
@@ -398,7 +443,7 @@ Result SoapySdrStream::open() {
     hardwareTimed = hardwareTime;
     timestamped = false;
     try {
-        drainBuffer.resize(DrainSamples * receiveChannels);
+        drainBuffer.resize(DrainSamples * receiveChannels * sampleBytes());
     } catch (const std::bad_alloc&) {
         JST_ERROR("[SDR_SOAPY] Failed to allocate the drain buffer.");
         return Result::ERROR;
@@ -411,8 +456,8 @@ Result SoapySdrStream::open() {
         channels[channel] = channel;
     }
     const SoapyKwargsView view(arguments);
-    stream = api.setupStream(device, Abi::RX, Abi::FormatCF32, channels.data(),
-                             channels.size(), view.get());
+    stream = api.setupStream(device, Abi::RX, SoapyFormatName(requestedSettings.format),
+                             channels.data(), channels.size(), view.get());
     if (!stream) {
         JST_ERROR("[SDR_SOAPY] Failed to set up the receive stream: {}", failure());
         return Result::ERROR;
@@ -471,7 +516,7 @@ int SoapySdrStream::activate() {
 void SoapySdrStream::drain() {
     std::vector<void*> targets(receiveChannels);
     for (U64 channel = 0; channel < receiveChannels; ++channel) {
-        targets[channel] = drainBuffer.data() + channel * DrainSamples;
+        targets[channel] = drainBuffer.data() + channel * DrainSamples * sampleBytes();
     }
     const auto deadline = Clock::now() + DrainLimit;
     while (Clock::now() < deadline) {
@@ -564,13 +609,13 @@ Result SoapySdrStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Device::Capture SoapySdrStream::read(std::span<CF32> samples,
+Device::Capture SoapySdrStream::read(std::span<std::byte> samples,
                                      const std::chrono::milliseconds timeout) {
     std::array destinations{samples};
     return readChannels(destinations, timeout);
 }
 
-Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
+Device::Capture SoapySdrStream::readChannels(std::span<std::span<std::byte>> samples,
                                              const std::chrono::milliseconds timeout) {
     const auto finish = [&](Device::Capture capture) {
         capture.generation = queueGeneration;
@@ -582,7 +627,7 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
     if (!streaming) {
         return {.status = Status::Failure, .error = "stream is not running"};
     }
-    if (samples.size() != receiveChannels || samples.front().empty() ||
+    if (samples.size() != receiveChannels || samples.front().size() < sampleBytes() ||
         std::any_of(samples.begin(), samples.end(), [&](const auto channel) {
             return channel.size() != samples.front().size();
         })) {
@@ -593,7 +638,7 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
         nextTimestamp.reset();
         return finish({.status = Status::Discontinuity});
     }
-    const U64 size = samples.front().size();
+    const U64 size = samples.front().size() / sampleBytes();
 
     buffers.clear();
     for (const auto channel : samples) {
@@ -653,7 +698,8 @@ Device::Capture SoapySdrStream::readChannels(std::span<std::span<CF32>> samples,
         }
         if (skip > 0) {
             for (const auto channel : samples) {
-                std::copy(channel.begin() + skip, channel.begin() + count, channel.begin());
+                std::memmove(channel.data(), channel.data() + skip * sampleBytes(),
+                             (count - skip) * sampleBytes());
             }
         }
         return finish({

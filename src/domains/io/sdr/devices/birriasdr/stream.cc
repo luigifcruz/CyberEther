@@ -50,7 +50,7 @@ class BirriaSdrStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -112,6 +112,7 @@ Result BirriaSdrStream::connect(const Device::Info& info) {
             return birriasdr_get_tuning_band(handle, index, &minimum, &maximum);
         }, birriasdr_get_sample_rate(handle), deviceCapabilities));
     deviceCapabilities.fullScale = SampleScale;
+    deviceCapabilities.formats = {{}, {DataType::CI16, SampleScale}};
     defaultSettlingTime = SettlingTime;
     appliedSettings.gainRange = Device::Range{0.0, static_cast<F64>(BirriaSdrSettings::MaxGain)};
     return Result::SUCCESS;
@@ -160,6 +161,10 @@ void BirriaSdrStream::Callback(const int16_t* iq, const uint32_t count, uint64_t
     if (stream->stopping) {
         return;
     }
+    if (stream->requestedSettings.format == DataType::CI16) {
+        stream->queue.push(stream->queueGeneration, count, reinterpret_cast<const std::byte*>(iq));
+        return;
+    }
     stream->queue.push(stream->queueGeneration, count,
                        [iq](CF32* output, const U64 offset, const U64 length) {
                            ConvertI16(iq + offset * 2, output, length, SampleScale);
@@ -188,7 +193,7 @@ Result BirriaSdrStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 4.0),
                                        static_cast<U64>(TransferSamples) * InFlightTransfers);
-    JST_CHECK(queue.resize(capacity));
+    JST_CHECK(queue.resize(capacity, sampleBytes()));
     queueGeneration = nextGeneration();
     queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
@@ -256,7 +261,7 @@ Result BirriaSdrStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Device::Capture BirriaSdrStream::read(std::span<CF32> samples,
+Device::Capture BirriaSdrStream::read(std::span<std::byte> samples,
                                       const std::chrono::milliseconds timeout) {
     return queue.pop(samples, timeout);
 }

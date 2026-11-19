@@ -174,8 +174,41 @@ struct Delivery {
     F64 firstSampleSeconds = 0.0;
 };
 
+bool InRange(const Stream& stream, const std::byte* sample) {
+    const auto format = stream.settings().format;
+    const F64 limit = stream.capabilities().format(format)->fullScale;
+    const auto within = [&](const F64 value, const F64 offset) {
+        return std::abs(value - offset) <= limit;
+    };
+    switch (format) {
+        case DataType::CF32: {
+            const auto value = *reinterpret_cast<const CF32*>(sample);
+            return std::isfinite(value.real()) && std::isfinite(value.imag());
+        }
+        case DataType::CF64: {
+            const auto value = *reinterpret_cast<const CF64*>(sample);
+            return std::isfinite(value.real()) && std::isfinite(value.imag());
+        }
+        case DataType::CI16: {
+            const auto* value = reinterpret_cast<const I16*>(sample);
+            return within(value[0], 0.0) && within(value[1], 0.0);
+        }
+        case DataType::CI8: {
+            const auto* value = reinterpret_cast<const I8*>(sample);
+            return within(value[0], 0.0) && within(value[1], 0.0);
+        }
+        case DataType::CU8: {
+            const auto* value = reinterpret_cast<const U8*>(sample);
+            return within(value[0], 128.0) && within(value[1], 128.0);
+        }
+        default:
+            return false;
+    }
+}
+
 Delivery Receive(Stream& stream, const Clock::duration duration) {
-    std::vector<CF32> buffer(65536);
+    const U64 bytes = stream.sampleBytes();
+    std::vector<std::byte> buffer(65536 * bytes);
     Delivery delivery;
     std::optional<U64> expected;
     U64 epoch = 0;
@@ -193,7 +226,7 @@ Delivery Receive(Stream& stream, const Clock::duration duration) {
             expected.reset();
         }
         if (capture.status == Device::Status::Samples && capture.count > 0) {
-            Require(capture.count <= buffer.size(), "capture exceeds receive buffer");
+            Require(capture.count <= buffer.size() / bytes, "capture exceeds receive buffer");
             Require(capture.generation == stream.generation(), "stale capture generation");
             Require(Near(capture.frequency, stream.applied().frequency), "capture frequency mismatch");
             Require(Near(capture.sampleRate, stream.applied().sampleRate), "capture rate mismatch");
@@ -210,8 +243,7 @@ Delivery Receive(Stream& stream, const Clock::duration duration) {
                 expected.reset();
             }
             for (U64 i = 0; i < capture.count; i += 257) {
-                Require(std::isfinite(buffer[i].real()) && std::isfinite(buffer[i].imag()),
-                        "nonfinite IQ sample");
+                Require(InRange(stream, buffer.data() + i * bytes), "IQ sample out of range");
             }
             if (delivery.samples == 0) {
                 delivery.firstSampleSeconds = std::chrono::duration<F64>(Clock::now() - begin).count();
@@ -311,6 +343,15 @@ void Controls(const Device::Info& info) {
     } else {
         jst::fmt::print("  [SKIP] filter bandwidth is not adjustable\n");
     }
+    for (const auto& format : caps.formats) {
+        if (format.type == DataType::CF32) {
+            continue;
+        }
+        settings.format = format.type;
+        change(jst::fmt::format("sample format {}", format.type));
+    }
+    settings.format = DataType::CF32;
+    change("sample format back to CF32");
     settings.sampleRate = Rates(caps).front();
     change("lowest-rate restart preparation");
     Success(stream->start(settings), "stop/restart at lowest rate");
@@ -555,7 +596,8 @@ void MultiChannelRx(const Device::Info& info) {
     Success(stream->start(settings), "start multi-channel RX");
     std::array<CF32, 16384> first;
     std::array<CF32, 16384> second;
-    std::array<std::span<CF32>, 2> destinations{first, second};
+    std::array<std::span<std::byte>, 2> destinations{std::as_writable_bytes(std::span(first)),
+                                                     std::as_writable_bytes(std::span(second))};
     const auto receive = [&](const std::string& stage) {
         U64 count = 0;
         U64 gaps = 0;

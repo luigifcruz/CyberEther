@@ -17,6 +17,7 @@ struct Sdr : public Block::Config {
     F32 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
     F32 bandwidth = 0.0f;
+    std::string sampleFormat = "CF32";
     bool automaticGain = true;
     F32 manualGain = 30.0f;
     std::vector<F32> manualGains;
@@ -29,8 +30,8 @@ struct Sdr : public Block::Config {
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(deviceString, driverArguments, antenna, antennas, channels, frequency, frequencyStep,
-                     sampleRate, bandwidth, automaticGain, manualGain, manualGains, biasTee,
-                     numberOfBatches, numberOfTimeSamples, bufferMultiplier);
+                     sampleRate, bandwidth, sampleFormat, automaticGain, manualGain, manualGains,
+                     biasTee, numberOfBatches, numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "SDR",
         "Receives samples from a USB radio.",
@@ -53,9 +54,10 @@ struct Sdr : public Block::Config {
         "\n"
         "| Port | Type | Shape |\n"
         "|---|---|---|\n"
-        "| **Output** (out) | CF32 | Batches x Samples, on a `batchAxis` then a "
+        "| **Output** (out) | Sample Format | Batches x Samples, on a `batchAxis` then a "
         "`sampleAxis`. Channels above 1 add a leading `channelAxis`. Sets `frequency` "
-        "and `sampleRate` to the values the radio applied to these samples. |\n"
+        "and `sampleRate` to the values the radio applied to these samples, and integer "
+        "formats also set `sampleScale`. |\n"
         "\n"
         "## Settings\n"
         "\n"
@@ -84,6 +86,11 @@ struct Sdr : public Block::Config {
         "| **Filter Bandwidth** | Auto | Auto, or a width the radio supports | Width of"
         " the analog receive filter. Auto lets the radio pick it for the Sample Rate. "
         "Shown on radios with an adjustable filter. |\n"
+        "| **Sample Format** | CF32 | CF32 and the types the radio delivers | Type of "
+        "the output, converted to floating point on CF32. Integer types pass the "
+        "radio's own samples through and set `sampleScale` to one over its full scale. "
+        "HackRF offers CI8, RTL-SDR CU8, bladeRF, LimeSDR, PlutoSDR, BirriaSDR, and "
+        "Airspy CI16, and SoapySDR radios the formats their module lists. |\n"
         "| **Automatic Gain** | On | On, Off | Lets the radio set its gain. HackRF, "
         "LimeSDR, and bladeRF 1 have none and always use Manual Gain. Applies to every "
         "channel. |\n"
@@ -116,7 +123,7 @@ struct Sdr : public Block::Config {
         "| **Buffer Loss** | Share of samples overwritten before the chain read them "
         "since the stream started. Gaps the radio reported show next to it as GAP. |\n"
         "| **Throughput** | Rate the chain reads in MB/s, next to the rate the radio "
-        "sends at 8 bytes per sample, summed over every channel. |\n"
+        "sends at the size of the Sample Format, summed over every channel. |\n"
         "\n"
         "## Recipes\n"
         "\n"

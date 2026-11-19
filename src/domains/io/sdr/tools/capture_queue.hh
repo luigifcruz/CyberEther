@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_IO_SDR_TOOLS_CAPTURE_QUEUE_HH
 
 #include <condition_variable>
+#include <cstddef>
 #include <deque>
 #include <functional>
 #include <mutex>
@@ -17,13 +18,15 @@ class JETSTREAM_API CaptureQueue {
  public:
     using Converter = std::function<void(CF32* output, U64 offset, U64 count)>;
 
-    Result resize(U64 capacity);
+    Result resize(U64 capacity, U64 sampleBytes = sizeof(CF32));
     void reset(U64 generation, U64 discard, F64 frequency, F64 sampleRate);
     void retune(U64 generation, U64 transfers, U64 discard, F64 frequency);
     void close();
     void push(U64 generation, U64 count, const Converter& convert, U64 deviceLost = 0);
+    void push(U64 generation, U64 count, const std::byte* samples, U64 deviceLost = 0);
     void fail(Device::Status status, const std::string& error);
     Device::Capture pop(std::span<CF32> samples, std::chrono::milliseconds timeout);
+    Device::Capture pop(std::span<std::byte> samples, std::chrono::milliseconds timeout);
 
  private:
     struct Gap {
@@ -33,7 +36,11 @@ class JETSTREAM_API CaptureQueue {
 
     std::mutex mutex;
     std::condition_variable available;
-    std::vector<CF32> storage;
+    void write(U64 generation, U64 count, U64 deviceLost,
+               const std::function<void(U64 tail, U64 offset, U64 count)>& copy);
+
+    std::vector<std::byte> storage;
+    U64 sampleBytes = sizeof(CF32);
     U64 head = 0;
     U64 occupancy = 0;
     U64 pushed = 0;

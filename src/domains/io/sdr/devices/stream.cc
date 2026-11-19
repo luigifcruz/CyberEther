@@ -45,7 +45,11 @@ U64 Stream::guard() const {
     return GuardSamples(seconds, appliedSettings.sampleRate);
 }
 
-Device::Capture Stream::readChannels(std::span<std::span<CF32>> samples,
+U64 Stream::sampleBytes() const {
+    return DataTypeSize(requestedSettings.format);
+}
+
+Device::Capture Stream::readChannels(std::span<std::span<std::byte>> samples,
                                     const std::chrono::milliseconds timeout) {
     if (samples.size() != 1) {
         return {.status = Device::Status::Failure,
@@ -75,6 +79,11 @@ Result Stream::configure(const Settings& settings) {
     }
     if (!std::isfinite(settings.bandwidth) || settings.bandwidth < 0.0) {
         JST_ERROR("[SDR] Filter bandwidth must be zero or positive.");
+        return Result::ERROR;
+    }
+    if (!deviceCapabilities.format(settings.format)) {
+        JST_ERROR("[SDR] Sample format {} is not supported by {}.", settings.format,
+                  deviceInfo.label);
         return Result::ERROR;
     }
     if (settings.receiveChannels > deviceCapabilities.receiveChannels) {
@@ -109,7 +118,7 @@ Result Stream::update(const Settings& settings) {
         settings.sampleRate != previous.sampleRate || settings.antenna != previous.antenna ||
         settings.driverArguments != previous.driverArguments ||
         settings.channelAntennas != previous.channelAntennas ||
-        settings.bandwidth != previous.bandwidth ||
+        settings.bandwidth != previous.bandwidth || settings.format != previous.format ||
         settings.biasTee != previous.biasTee) {
         return restart(settings, previous);
     }

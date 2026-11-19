@@ -36,4 +36,13 @@ std::vector<F64> Device::Capabilities::fixedSampleRates() const {
     return rates;
 }
 
+std::optional<Device::Format> Device::Capabilities::format(const DataType type) const {
+    for (const auto& candidate : formats) {
+        if (candidate.type == type) {
+            return candidate;
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace Jetstream::Radio

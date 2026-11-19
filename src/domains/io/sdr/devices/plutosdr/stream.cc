@@ -108,7 +108,7 @@ class PlutoSdrStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -220,6 +220,7 @@ Result PlutoSdrStream::connect(const Device::Info& info) {
     caps.automaticGain = true;
     caps.biasTee = false;
     caps.fullScale = Q11Scale;
+    caps.formats = {{}, {DataType::CI16, Q11Scale}};
     caps.sweepSampleRate = std::min(rate->maximum, SweepSampleRate);
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 20.0e3;
@@ -312,7 +313,7 @@ Result PlutoSdrStream::open() {
     const U64 transferSamples = TransferSamples(sampleRate);
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 2.0),
                                        transferSamples * (KernelBuffers + 1));
-    JST_CHECK(queue.resize(capacity));
+    JST_CHECK(queue.resize(capacity, sampleBytes()));
 
     if (const int status = iio_device_set_kernel_buffers_count(receiver, KernelBuffers);
         status < 0) {
@@ -335,7 +336,7 @@ Result PlutoSdrStream::open() {
     queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
     try {
-        worker = std::thread([this] {
+        worker = std::thread([this, raw = requestedSettings.format == DataType::CI16] {
             while (!stopping) {
                 const auto bytes = iio_buffer_refill(buffer);
                 if (bytes < 0) {
@@ -347,6 +348,10 @@ Result PlutoSdrStream::open() {
                 }
                 const auto* data = static_cast<const I16*>(iio_buffer_start(buffer));
                 const U64 samples = static_cast<U64>(bytes) / (2 * sizeof(I16));
+                if (raw) {
+                    queue.push(queueGeneration, samples, reinterpret_cast<const std::byte*>(data));
+                    continue;
+                }
                 queue.push(queueGeneration, samples,
                            [data](CF32* output, const U64 offset, const U64 count) {
                                ConvertI16(data + offset * 2, output, count, Q11Scale);
@@ -387,7 +392,7 @@ Result PlutoSdrStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Device::Capture PlutoSdrStream::read(std::span<CF32> samples,
+Device::Capture PlutoSdrStream::read(std::span<std::byte> samples,
                                      const std::chrono::milliseconds timeout) {
     return queue.pop(samples, timeout);
 }

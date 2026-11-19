@@ -74,7 +74,7 @@ class RtlSdrStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -151,6 +151,7 @@ Result RtlSdrStream::connect(const Device::Info& info) {
     caps.automaticGain = true;
     caps.biasTee = true;
     caps.fullScale = 128.0;
+    caps.formats = {{}, {DataType::CU8, 128.0}};
     caps.sweepSampleRate = 2.4e6;
     caps.usableBandwidth = 0.75;
     caps.dcExclusion = 5.0e3;
@@ -227,6 +228,11 @@ void RtlSdrStream::Callback(unsigned char* buffer, const uint32_t length, void* 
     if (stream->stopping) {
         return;
     }
+    if (stream->requestedSettings.format == DataType::CU8) {
+        stream->queue.push(stream->queueGeneration, length / 2,
+                           reinterpret_cast<const std::byte*>(buffer));
+        return;
+    }
     const U8* data = buffer;
     stream->queue.push(stream->queueGeneration, length / 2,
                        [data](CF32* output, const U64 offset, const U64 count) {
@@ -244,7 +250,7 @@ Result RtlSdrStream::open() {
     const U32 transferBytes = TransferBytes(sampleRate);
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 2.0),
                                        static_cast<U64>(transferBytes) * InFlightTransfers);
-    JST_CHECK(queue.resize(capacity));
+    JST_CHECK(queue.resize(capacity, sampleBytes()));
     queueGeneration = nextGeneration();
     queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
@@ -311,7 +317,7 @@ Result RtlSdrStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Device::Capture RtlSdrStream::read(std::span<CF32> samples,
+Device::Capture RtlSdrStream::read(std::span<std::byte> samples,
                                    const std::chrono::milliseconds timeout) {
     return queue.pop(samples, timeout);
 }

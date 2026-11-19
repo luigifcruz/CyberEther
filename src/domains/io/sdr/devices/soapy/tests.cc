@@ -127,6 +127,7 @@ struct FakeRadio {
     std::size_t channels = 1;
     std::vector<std::string> antennaSets;
     std::string streamArguments;
+    std::string streamFormat;
     bool timed = false;
     long long timeNs = 1000;
     long long gapNs = 0;
@@ -241,8 +242,18 @@ Radio::SoapyApi FakeApi() {
     };
     api.getNativeStreamFormat = [](const Abi::Device*, int, std::size_t, double* fullScale)
         -> char* {
+        static char native[] = "CS16";
         *fullScale = 2048.0;
-        return nullptr;
+        return native;
+    };
+    api.getStreamFormats = [](const Abi::Device*, int, std::size_t, std::size_t* count)
+        -> char** {
+        static char cf32[] = "CF32";
+        static char cs16[] = "CS16";
+        static char cs8[] = "CS8";
+        static char* names[] = {cf32, cs16, cs8};
+        *count = 3;
+        return names;
     };
     api.hasGainMode = [](const Abi::Device*, int, std::size_t) { return true; };
     api.setGainMode = [](Abi::Device*, int, std::size_t, bool) { return 0; };
@@ -266,11 +277,12 @@ Radio::SoapyApi FakeApi() {
         return 0;
     };
     api.getFrequency = [](const Abi::Device*, int, std::size_t) { return 0.0; };
-    api.setupStream = [](Abi::Device*, int, const char*, const std::size_t*, std::size_t count,
-                         const Abi::Kwargs* arguments) -> Abi::Stream* {
+    api.setupStream = [](Abi::Device*, int, const char* format, const std::size_t*,
+                         std::size_t count, const Abi::Kwargs* arguments) -> Abi::Stream* {
         if (Fake().singleChannelStreams && count > 1) {
             return nullptr;
         }
+        Fake().streamFormat = format;
         Fake().streamChannels = count;
         Fake().streamArguments.clear();
         for (std::size_t i = 0; arguments && i < arguments->size; ++i) {
@@ -475,7 +487,7 @@ std::unique_ptr<Radio::Stream> StartStream(const Radio::Stream::Settings& settin
 
 Radio::Device::Capture Read(Radio::Stream& stream) {
     std::vector<CF32> samples(256);
-    return stream.read(samples, std::chrono::milliseconds(10));
+    return stream.read(std::as_writable_bytes(std::span(samples)), std::chrono::milliseconds(10));
 }
 
 }  // namespace
@@ -536,6 +548,30 @@ TEST_CASE("SoapySDR stream sets a manual filter bandwidth or follows the sample 
     REQUIRE(stream->update({.frequency = 100.0e6, .sampleRate = 1.0e6, .bandwidth = 0.6e6}) ==
             Result::SUCCESS);
     CHECK(Fake().bandwidth == 0.6e6);
+}
+
+TEST_CASE("SoapySDR stream offers the module's integer formats and opens the selected one",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime;
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6});
+    CHECK(Fake().streamFormat == "CF32");
+    const auto& caps = stream->capabilities();
+    REQUIRE(caps.formats.size() == 3);
+    CHECK(caps.format(DataType::CI16)->fullScale == 2048.0);
+    CHECK(caps.format(DataType::CI8)->fullScale == 128.0);
+    CHECK_FALSE(caps.format(DataType::CU8));
+
+    REQUIRE(stream->update({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0,
+                            .format = DataType::CI16}) == Result::SUCCESS);
+    CHECK(Fake().streamFormat == "CS16");
+    std::vector<CI16> samples(256);
+    const auto capture = stream->read(std::as_writable_bytes(std::span(samples)),
+                                      std::chrono::milliseconds(10));
+    CHECK(capture.status == Radio::Device::Status::Samples);
+    CHECK(capture.count == samples.size());
+
+    CHECK(stream->update({.frequency = 100.0e6, .sampleRate = 1.0e6,
+                          .format = DataType::CU8}) != Result::SUCCESS);
 }
 
 TEST_CASE("SoapySDR stream drives Bias-T through the RX-only setting", "[devices][sdr][soapy]") {

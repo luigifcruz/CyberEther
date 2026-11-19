@@ -88,8 +88,8 @@ class BladeRfStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
-    Device::Capture readChannels(std::span<std::span<CF32>> samples,
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture readChannels(std::span<std::span<std::byte>> samples,
                                  std::chrono::milliseconds timeout) override;
 
  protected:
@@ -121,6 +121,7 @@ class BladeRfStream final : public Stream {
     std::vector<I16> raw;
     std::vector<I16> drain;
     std::vector<CF32*> outputs;
+    std::vector<I16*> words;
 };
 
 BladeRfStream::~BladeRfStream() {
@@ -172,6 +173,7 @@ Result BladeRfStream::connect(const Device::Info& info) {
     caps.automaticGain = second;
     caps.biasTee = second;
     caps.fullScale = Q11Scale;
+    caps.formats = {{}, {DataType::CI16, Q11Scale}};
     caps.sweepSampleRate = second ? 30.72e6 : 20.0e6;
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 20.0e3;
@@ -334,23 +336,24 @@ Result BladeRfStream::resynchronize(const U64 settle) {
     return Result::SUCCESS;
 }
 
-Device::Capture BladeRfStream::read(std::span<CF32> samples,
+Device::Capture BladeRfStream::read(std::span<std::byte> samples,
                                    const std::chrono::milliseconds timeout) {
     std::array destinations{samples};
     return readChannels(destinations, timeout);
 }
 
-Device::Capture BladeRfStream::readChannels(std::span<std::span<CF32>> samples,
+Device::Capture BladeRfStream::readChannels(std::span<std::span<std::byte>> samples,
                                            const std::chrono::milliseconds timeout) {
     const U64 channels = requestedSettings.receiveChannels;
-    if (samples.size() != channels || samples.empty() || samples.front().empty() ||
-        samples.front().size() > std::numeric_limits<unsigned>::max() / channels ||
+    if (samples.size() != channels || samples.empty() ||
+        samples.front().size() < sampleBytes() ||
+        samples.front().size() / sampleBytes() > std::numeric_limits<unsigned>::max() / channels ||
         std::any_of(samples.begin(), samples.end(), [&](const auto channel) {
             return channel.size() != samples.front().size();
         })) {
         return {.status = Status::Failure, .error = "invalid receive channel buffers"};
     }
-    const U64 size = samples.front().size();
+    const U64 size = samples.front().size() / sampleBytes();
     const auto finish = [&](Device::Capture capture) {
         capture.generation = queueGeneration;
         capture.frequency = appliedSettings.frequency;
@@ -428,12 +431,20 @@ Device::Capture BladeRfStream::readChannels(std::span<std::span<CF32>> samples,
     if (decision.status != Status::Samples) {
         return finish(capture);
     }
-    outputs.clear();
-    for (const auto channel : samples) {
-        outputs.push_back(channel.data());
+    const I16* input = raw.data() + decision.skip * 2 * channels;
+    if (requestedSettings.format == DataType::CI16) {
+        words.clear();
+        for (const auto channel : samples) {
+            words.push_back(reinterpret_cast<I16*>(channel.data()));
+        }
+        SplitI16Channels(input, words, count - decision.skip);
+    } else {
+        outputs.clear();
+        for (const auto channel : samples) {
+            outputs.push_back(reinterpret_cast<CF32*>(channel.data()));
+        }
+        ConvertI16Channels(input, outputs, count - decision.skip, Q11Scale);
     }
-    ConvertI16Channels(raw.data() + decision.skip * 2 * channels, outputs,
-                       count - decision.skip, Q11Scale);
     capture.count = count - decision.skip;
     capture.timestamp = meta.timestamp + decision.skip;
     return finish(capture);

@@ -50,8 +50,8 @@ class LimeSdrStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
-    Device::Capture readChannels(std::span<std::span<CF32>> samples,
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture readChannels(std::span<std::span<std::byte>> samples,
                                  std::chrono::milliseconds timeout) override;
 
  protected:
@@ -78,9 +78,9 @@ class LimeSdrStream final : public Stream {
     Result tuneOscillator(F64 frequency, bool useCache);
     bool poll();
     Result applyGain(F64 gain, bool force);
-    int receive(U64 channel, CF32* data, U64 count, lms_stream_meta_t& meta,
+    int receive(U64 channel, std::byte* data, U64 count, lms_stream_meta_t& meta,
                 std::chrono::milliseconds wait);
-    Delivery receiveAll(std::span<CF32* const> data, U64 count, lms_stream_meta_t& meta,
+    Delivery receiveAll(std::span<std::byte* const> data, U64 count, lms_stream_meta_t& meta,
                         Clock::time_point deadline, U64& delivered);
     Delivery align(Clock::time_point deadline);
 
@@ -88,6 +88,7 @@ class LimeSdrStream final : public Stream {
     std::vector<int> antennaIndices;
     Device::Range tunableRange;
     std::vector<lms_stream_t> streams;
+    DataType streamFormat = DataType::CF32;
     U64 streamBatch = 1;
     bool streaming = false;
     bool aligned = false;
@@ -96,9 +97,9 @@ class LimeSdrStream final : public Stream {
     U64 queueGeneration = 0;
     Clock::time_point received{};
     TimestampFilter timestamps;
-    std::vector<std::vector<CF32>> drains;
-    std::vector<CF32*> drainPointers;
-    std::vector<CF32*> outputs;
+    std::vector<std::vector<std::byte>> drains;
+    std::vector<std::byte*> drainPointers;
+    std::vector<std::byte*> outputs;
 };
 
 LimeSdrStream::~LimeSdrStream() {
@@ -172,6 +173,7 @@ Result LimeSdrStream::connect(const Device::Info& info) {
     if (lms_range_t filter = {}; LMS_GetLPFBWRange(handle, LMS_CH_RX, &filter) == 0) {
         caps.bandwidthRanges = {{filter.min, filter.max}};
     }
+    caps.formats = {{}, {DataType::CI16, 2048.0}};
     caps.antennas.clear();
     antennaIndices.clear();
     const int antennaCount = LMS_GetAntennaList(handle, LMS_CH_RX, 0, nullptr);
@@ -363,7 +365,7 @@ Result LimeSdrStream::tuneOscillator(const F64 frequency, const bool useCache) {
 Result LimeSdrStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
     try {
-        drains.assign(receiveChannels, std::vector<CF32>(DrainSamples));
+        drains.assign(receiveChannels, std::vector<std::byte>(DrainSamples * sampleBytes()));
     } catch (const std::bad_alloc&) {
         JST_ERROR("[SDR_LIMESDR] Failed to allocate the drain buffer.");
         return Result::ERROR;
@@ -372,7 +374,11 @@ Result LimeSdrStream::open() {
     for (auto& drain : drains) {
         drainPointers.push_back(drain.data());
     }
+    if (!streams.empty() && streamFormat != requestedSettings.format) {
+        destroyStreams();
+    }
     if (streams.empty()) {
+        streamFormat = requestedSettings.format;
         streams.reserve(receiveChannels);
         for (U64 i = 0; i < receiveChannels; ++i) {
             lms_stream_t stream = {};
@@ -380,7 +386,8 @@ Result LimeSdrStream::open() {
             stream.channel = static_cast<uint32_t>(i);
             stream.fifoSize = FifoSamples;
             stream.throughputVsLatency = Latency;
-            stream.dataFmt = lms_stream_t::LMS_FMT_F32;
+            stream.dataFmt = streamFormat == DataType::CI16 ? lms_stream_t::LMS_FMT_I12
+                                                            : lms_stream_t::LMS_FMT_F32;
             if (LMS_SetupStream(handle, &stream) != 0) {
                 JST_ERROR("[SDR_LIMESDR] Failed to set up the stream: {}",
                           LMS_GetLastErrorMessage());
@@ -474,13 +481,13 @@ bool LimeSdrStream::poll() {
     return true;
 }
 
-int LimeSdrStream::receive(const U64 channel, CF32* data, const U64 count,
+int LimeSdrStream::receive(const U64 channel, std::byte* data, const U64 count,
                            lms_stream_meta_t& meta, const std::chrono::milliseconds wait) {
     return LMS_RecvStream(&streams[channel], data, count, &meta,
                           static_cast<unsigned>(wait.count()));
 }
 
-LimeSdrStream::Delivery LimeSdrStream::receiveAll(std::span<CF32* const> data, const U64 count,
+LimeSdrStream::Delivery LimeSdrStream::receiveAll(std::span<std::byte* const> data, const U64 count,
                                                   lms_stream_meta_t& meta,
                                                   const Clock::time_point deadline,
                                                   U64& delivered) {
@@ -497,8 +504,8 @@ LimeSdrStream::Delivery LimeSdrStream::receiveAll(std::span<CF32* const> data, c
         U64 matched = 0;
         while (matched < delivered) {
             lms_stream_meta_t other = {};
-            const int read = receive(channel, data[channel] + matched, delivered - matched, other,
-                                     Remaining(deadline));
+            const int read = receive(channel, data[channel] + matched * sampleBytes(),
+                                     delivered - matched, other, Remaining(deadline));
             if (read < 0) {
                 return Delivery::Failed;
             }
@@ -545,7 +552,8 @@ LimeSdrStream::Delivery LimeSdrStream::align(const Clock::time_point deadline) {
             if (next[channel] == target) {
                 continue;
             }
-            const U64 count = std::min<U64>(target - next[channel], drains[channel].size());
+            const U64 count = std::min<U64>(target - next[channel],
+                                            drains[channel].size() / sampleBytes());
             lms_stream_meta_t meta = {};
             const int delivered = receive(channel, drains[channel].data(), count, meta,
                                           Remaining(deadline));
@@ -560,13 +568,13 @@ LimeSdrStream::Delivery LimeSdrStream::align(const Clock::time_point deadline) {
     }
 }
 
-Device::Capture LimeSdrStream::read(std::span<CF32> samples,
+Device::Capture LimeSdrStream::read(std::span<std::byte> samples,
                                     const std::chrono::milliseconds timeout) {
     std::array destinations{samples};
     return readChannels(destinations, timeout);
 }
 
-Device::Capture LimeSdrStream::readChannels(std::span<std::span<CF32>> samples,
+Device::Capture LimeSdrStream::readChannels(std::span<std::span<std::byte>> samples,
                                             const std::chrono::milliseconds timeout) {
     const auto finish = [&](Device::Capture capture) {
         capture.generation = queueGeneration;
@@ -592,13 +600,13 @@ Device::Capture LimeSdrStream::readChannels(std::span<std::span<CF32>> samples,
     if (!streaming) {
         return {.status = Status::Failure, .error = "stream is not running"};
     }
-    if (samples.size() != streams.size() || samples.front().empty() ||
+    if (samples.size() != streams.size() || samples.front().size() < sampleBytes() ||
         std::any_of(samples.begin(), samples.end(), [&](const auto channel) {
             return channel.size() != samples.front().size();
         })) {
         return {.status = Status::Failure, .error = "invalid receive channel buffers"};
     }
-    const U64 size = samples.front().size();
+    const U64 size = samples.front().size() / sampleBytes();
 
     const auto deadline = Clock::now() + timeout;
     if (!aligned) {
@@ -612,7 +620,7 @@ Device::Capture LimeSdrStream::readChannels(std::span<std::span<CF32>> samples,
     }
 
     while (const U64 pending = timestamps.pending()) {
-        const U64 count = std::min<U64>(pending, drains.front().size());
+        const U64 count = std::min<U64>(pending, drains.front().size() / sampleBytes());
         lms_stream_meta_t meta = {};
         U64 delivered = 0;
         const auto delivery = receiveAll(drainPointers, count, meta, deadline, delivered);
@@ -666,7 +674,8 @@ Device::Capture LimeSdrStream::readChannels(std::span<std::span<CF32>> samples,
     }
     if (decision.skip > 0) {
         for (const auto channel : samples) {
-            std::copy(channel.begin() + decision.skip, channel.begin() + count, channel.begin());
+            std::memmove(channel.data(), channel.data() + decision.skip * sampleBytes(),
+                         (count - decision.skip) * sampleBytes());
         }
     }
     capture.count = count - decision.skip;

@@ -56,7 +56,7 @@ class HackRfStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -119,6 +119,7 @@ Result HackRfStream::connect(const Device::Info& info) {
     caps.automaticGain = false;
     caps.biasTee = true;
     caps.fullScale = 128.0;
+    caps.formats = {{}, {DataType::CI8, 128.0}};
     caps.sweepSampleRate = 20.0e6;
     caps.usableBandwidth = 0.75;
     caps.dcExclusion = 50.0e3;
@@ -171,8 +172,14 @@ Result HackRfStream::apply(const Settings& settings) {
 
 int HackRfStream::Callback(hackrf_transfer* transfer) {
     auto* stream = static_cast<HackRfStream*>(transfer->rx_ctx);
+    const U64 count = static_cast<U64>(transfer->valid_length) / 2;
+    if (stream->requestedSettings.format == DataType::CI8) {
+        stream->queue.push(stream->queueGeneration, count,
+                           reinterpret_cast<const std::byte*>(transfer->buffer));
+        return 0;
+    }
     const auto* data = reinterpret_cast<const I8*>(transfer->buffer);
-    stream->queue.push(stream->queueGeneration, static_cast<U64>(transfer->valid_length) / 2,
+    stream->queue.push(stream->queueGeneration, count,
                        [data](CF32* output, const U64 offset, const U64 count) {
                            ConvertI8(data + offset * 2, output, count);
                        });
@@ -181,7 +188,8 @@ int HackRfStream::Callback(hackrf_transfer* transfer) {
 
 Result HackRfStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
-    JST_CHECK(queue.resize(std::max<U64>(static_cast<U64>(sampleRate / 2.0), 1 << 18)));
+    JST_CHECK(queue.resize(std::max<U64>(static_cast<U64>(sampleRate / 2.0), 1 << 18),
+                           sampleBytes()));
     queueGeneration = nextGeneration();
     queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
     if (hackrf_start_rx(handle, &HackRfStream::Callback, this) != HACKRF_SUCCESS) {
@@ -223,7 +231,7 @@ Result HackRfStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Device::Capture HackRfStream::read(std::span<CF32> samples,
+Device::Capture HackRfStream::read(std::span<std::byte> samples,
                                    const std::chrono::milliseconds timeout) {
     auto capture = queue.pop(samples, timeout);
     if (capture.status == Device::Status::Timeout && streaming &&

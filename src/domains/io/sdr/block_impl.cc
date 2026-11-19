@@ -34,6 +34,7 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
     bool antennasListed(const Blocks::Sdr& config);
     void sizeAntennas();
     Parser::Map bandwidthFormat(const Blocks::Sdr& config);
+    Parser::Map sampleFormatFormat(const Blocks::Sdr& config);
     Parser::Map sampleRateFormat(const Blocks::Sdr& config);
 };
 
@@ -76,6 +77,7 @@ Result SdrImpl::configure() {
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->bandwidth = bandwidth;
+    moduleConfig->sampleFormat = sampleFormat;
     moduleConfig->automaticGain = automaticGain;
     moduleConfig->manualGain = manualGain;
     moduleConfig->manualGains = manualGains;
@@ -168,6 +170,13 @@ Result SdrImpl::define() {
                                         bandwidthFormat(config)));
     }
 
+    JST_CHECK(defineInterfaceConfig("sampleFormat",
+                                    "Sample Format",
+                                    "Type of the output samples. CF32 converts them to floating "
+                                    "point. Integer types keep the samples the radio delivers. "
+                                    "Changes restart the receiver.",
+                                    sampleFormatFormat(config)));
+
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
                                     "Enable automatic gain control on radios that support it.",
@@ -257,6 +266,10 @@ Result SdrImpl::define() {
 Result SdrImpl::create() {
     const auto result = moduleCreate("sdr", moduleConfig, {});
     JST_CHECK(updateInterfaceConfigFormat("sampleRate", sampleRateFormat(*this)));
+    JST_CHECK(updateInterfaceConfigFormat("sampleFormat", sampleFormatFormat(*this)));
+    if (bandwidthDefined) {
+        JST_CHECK(updateInterfaceConfigFormat("bandwidth", bandwidthFormat(*this)));
+    }
     JST_CHECK(result);
     JST_CHECK(moduleExposeOutput("signal", {"sdr", "signal"}));
 
@@ -274,9 +287,6 @@ Result SdrImpl::create() {
         sizeAntennas();
         moduleConfig->antennas = antennas;
         JST_CHECK(updateInterfaceConfigFormat("antennas", antennasFormat(*this)));
-    }
-    if (bandwidthDefined) {
-        JST_CHECK(updateInterfaceConfigFormat("bandwidth", bandwidthFormat(*this)));
     }
 
     return reconfigure();
@@ -410,6 +420,30 @@ Parser::Map SdrImpl::bandwidthFormat(const Blocks::Sdr& config) {
         Parser::TypedToString(static_cast<F32>(width), value);
         auto label = width < 1e6 ? jst::fmt::format("{:g} kHz", width / 1e3)
                                  : jst::fmt::format("{:g} MHz", width / 1e6);
+        options.emplace_back(Parser::Map{{"label", std::move(label)}, {"value", std::move(value)}});
+    }
+    return {{"type", "dropdown"}, {"options", std::move(options)}};
+}
+
+Parser::Map SdrImpl::sampleFormatFormat(const Blocks::Sdr& config) {
+    std::vector<Radio::Device::Format> formats{{}};
+    if (const auto capabilities = Radio::Device::Cached(config.deviceString)) {
+        formats = capabilities->formats;
+    }
+    const auto saved = NameToDataType(config.sampleFormat);
+    if (std::ranges::none_of(formats, [&](const auto& format) { return format.type == saved; })) {
+        formats.push_back({saved, 0.0});
+    }
+
+    Parser::Sequence options;
+    for (const auto& format : formats) {
+        std::string value(format.type == DataType::None ? config.sampleFormat
+                                                        : DataTypeToName(format.type));
+        auto label = value;
+        if (format.type != DataType::CF32 && format.type != DataType::CF64 &&
+            format.fullScale >= 2.0) {
+            label = jst::fmt::format("{} ({:g}-bit)", value, std::log2(format.fullScale) + 1.0);
+        }
         options.emplace_back(Parser::Map{{"label", std::move(label)}, {"value", std::move(value)}});
     }
     return {{"type", "dropdown"}, {"options", std::move(options)}};
