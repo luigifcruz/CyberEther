@@ -139,6 +139,10 @@ Result LimeSdrSweep::connect(const Device::Info& info) {
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = {{frequency.min, frequency.max}};
     caps.sampleRateRanges = {{rate.min, rate.max}};
+    caps.bandwidthRanges.clear();
+    if (lms_range_t filter = {}; LMS_GetLPFBWRange(handle, LMS_CH_RX, &filter) == 0) {
+        caps.bandwidthRanges = {{filter.min, filter.max}};
+    }
     caps.antennas.clear();
     antennaIndices.clear();
     const int antennaCount = LMS_GetAntennaList(handle, LMS_CH_RX, 0, nullptr);

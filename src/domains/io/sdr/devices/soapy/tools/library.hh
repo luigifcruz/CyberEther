@@ -23,6 +23,10 @@ constexpr int StreamError = -2;
 constexpr int Overflow = -4;
 constexpr int NotSupported = -5;
 constexpr const char* FormatCF32 = "CF32";
+constexpr const char* FormatCF64 = "CF64";
+constexpr const char* FormatCS16 = "CS16";
+constexpr const char* FormatCS8 = "CS8";
+constexpr const char* FormatCU8 = "CU8";
 
 struct Range {
     double minimum;
@@ -83,6 +87,7 @@ struct SoapyApi {
     char** (*listAntennas)(const SoapyAbi::Device*, int, std::size_t, std::size_t*) = nullptr;
     char* (*getNativeStreamFormat)(const SoapyAbi::Device*, int, std::size_t,
                                    double*) = nullptr;
+    char** (*getStreamFormats)(const SoapyAbi::Device*, int, std::size_t, std::size_t*) = nullptr;
     int (*setAntenna)(SoapyAbi::Device*, int, std::size_t, const char*) = nullptr;
     char* (*getAntenna)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setFrequency)(SoapyAbi::Device*, int, std::size_t, double,
@@ -90,6 +95,8 @@ struct SoapyApi {
     int (*setSampleRate)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
     double (*getSampleRate)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setBandwidth)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
+    SoapyAbi::Range* (*getBandwidthRange)(const SoapyAbi::Device*, int, std::size_t,
+                                          std::size_t*) = nullptr;
     double (*getFrequency)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     bool (*hasGainMode)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setGainMode)(SoapyAbi::Device*, int, std::size_t, bool) = nullptr;

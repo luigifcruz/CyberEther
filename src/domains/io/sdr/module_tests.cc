@@ -43,6 +43,11 @@ namespace {
 
 using namespace TestRadio;
 
+template <typename T>
+std::span<std::byte> Bytes(T&& samples) {
+    return std::as_writable_bytes(std::span(samples));
+}
+
 struct ScriptedFlowgraph : ScriptedDrivers, FlowgraphFixture {};
 
 // A hop sweep with trivial hardware, so the shared hop loop and settling run
@@ -96,7 +101,10 @@ class RestartStream final : public Radio::Stream {
         deviceCapabilities.sampleRateRanges = {{1.0e6, 20.0e6}};
     }
 
-    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+    Radio::Device::Capture read(std::span<std::byte> bytes,
+                                const std::chrono::milliseconds) override {
+        const std::span<CF32> samples{reinterpret_cast<CF32*>(bytes.data()),
+                                      bytes.size() / sizeof(CF32)};
         if (!streaming) {
             return {.status = Radio::Device::Status::Failure};
         }
@@ -329,7 +337,10 @@ class FifoStream final : public Radio::Stream {
         deviceCapabilities.sampleRateRanges = {{1.0e6, 20.0e6}};
     }
 
-    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+    Radio::Device::Capture read(std::span<std::byte> bytes,
+                                const std::chrono::milliseconds) override {
+        const std::span<CF32> samples{reinterpret_cast<CF32*>(bytes.data()),
+                                      bytes.size() / sizeof(CF32)};
         const auto finish = [&](Radio::Device::Capture capture) {
             capture.generation = generation();
             capture.frequency = appliedSettings.frequency;
@@ -467,7 +478,8 @@ class CallbackStream final : public Radio::Stream {
         deliver(complete(lost));
     }
 
-    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds timeout) override {
+    Radio::Device::Capture read(std::span<std::byte> samples,
+                                const std::chrono::milliseconds timeout) override {
         return queue.pop(samples, timeout);
     }
 
@@ -868,7 +880,8 @@ TEST_CASE("SDR stream updates restore setter and receive-start failures",
     if (restored) {
         REQUIRE(stream.generation() > generation);
         std::vector<CF32> samples(16);
-        REQUIRE(stream.read(samples, std::chrono::milliseconds(100)).status == Radio::Device::Status::Samples);
+        REQUIRE(stream.read(Bytes(samples), std::chrono::milliseconds(100)).status ==
+                Radio::Device::Status::Samples);
     }
 }
 
@@ -1230,38 +1243,38 @@ TEST_CASE("SDR stream buffers discard and overwrite complete channel pairs",
     std::array<CF32, 4> b;
 
     SECTION("overflow keeps the latest pairs and counts each pair once") {
-        REQUIRE(queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()},
+        REQUIRE(queue.push(1, std::array<const void*, 2>{first.data(), second.data()},
                            8, 0, 1));
         REQUIRE(queue.statistics().pushedSamples == 8);
         REQUIRE(queue.statistics().overwrittenSamples == 2);
-        REQUIRE(queue.pop(std::array<CF32*, 2>{a.data(), b.data()}, 4, metadata) ==
+        REQUIRE(queue.pop(std::array<void*, 2>{a.data(), b.data()}, 4, metadata) ==
                 Result::SUCCESS);
         REQUIRE(a == std::array<CF32, 4>{2, 3, 4, 5});
         REQUIRE(b == std::array<CF32, 4>{102, 103, 104, 105});
     }
     SECTION("timestamp gaps discard both partial frames together") {
-        REQUIRE(queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()},
+        REQUIRE(queue.push(1, std::array<const void*, 2>{first.data(), second.data()},
                            2, 0, 1));
         REQUIRE(queue.push(
-            1, std::array<const CF32*, 2>{first.data() + 2, second.data() + 2}, 4, 10,
+            1, std::array<const void*, 2>{first.data() + 2, second.data() + 2}, 4, 10,
             1));
-        REQUIRE(queue.pop(std::array<CF32*, 2>{a.data(), b.data()}, 4, metadata) ==
+        REQUIRE(queue.pop(std::array<void*, 2>{a.data(), b.data()}, 4, metadata) ==
                 Result::SUCCESS);
         REQUIRE(a == std::array<CF32, 4>{2, 3, 4, 5});
         REQUIRE(b == std::array<CF32, 4>{102, 103, 104, 105});
         REQUIRE(queue.statistics().discardedSamples == 2);
     }
     SECTION("retunes reject old captures for both channels") {
-        REQUIRE(queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()},
+        REQUIRE(queue.push(1, std::array<const void*, 2>{first.data(), second.data()},
                            2, 0, 1));
         queue.reset({.frequency = 200.0e6, .sampleRate = 4.0e6, .generation = 2});
         REQUIRE_FALSE(queue.push(
-            1, std::array<const CF32*, 2>{first.data(), second.data()}, 4, 2, 1));
+            1, std::array<const void*, 2>{first.data(), second.data()}, 4, 2, 1));
         REQUIRE(queue.size() == 0);
         REQUIRE(queue.push(
-            2, std::array<const CF32*, 2>{first.data() + 4, second.data() + 4}, 4, 100,
+            2, std::array<const void*, 2>{first.data() + 4, second.data() + 4}, 4, 100,
             2));
-        REQUIRE(queue.pop(std::array<CF32*, 2>{a.data(), b.data()}, 4, metadata) ==
+        REQUIRE(queue.pop(std::array<void*, 2>{a.data(), b.data()}, 4, metadata) ==
                 Result::SUCCESS);
         REQUIRE(a == std::array<CF32, 4>{4, 5, 6, 7});
         REQUIRE(b == std::array<CF32, 4>{104, 105, 106, 107});
@@ -1270,11 +1283,11 @@ TEST_CASE("SDR stream buffers discard and overwrite complete channel pairs",
     }
     SECTION("explicit discontinuities cannot join partial frames") {
         REQUIRE(
-            queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()}, 2));
+            queue.push(1, std::array<const void*, 2>{first.data(), second.data()}, 2));
         queue.split(1);
         REQUIRE(queue.push(
-            1, std::array<const CF32*, 2>{first.data() + 2, second.data() + 2}, 4));
-        REQUIRE(queue.pop(std::array<CF32*, 2>{a.data(), b.data()}, 4, metadata) ==
+            1, std::array<const void*, 2>{first.data() + 2, second.data() + 2}, 4));
+        REQUIRE(queue.pop(std::array<void*, 2>{a.data(), b.data()}, 4, metadata) ==
                 Result::SUCCESS);
         REQUIRE(a == std::array<CF32, 4>{2, 3, 4, 5});
         REQUIRE(b == std::array<CF32, 4>{102, 103, 104, 105});
@@ -1282,7 +1295,7 @@ TEST_CASE("SDR stream buffers discard and overwrite complete channel pairs",
     SECTION("single-channel access cannot partially consume a pair") {
         REQUIRE_FALSE(queue.push(1, first.data(), 4));
         REQUIRE(
-            queue.push(1, std::array<const CF32*, 2>{first.data(), second.data()}, 4));
+            queue.push(1, std::array<const void*, 2>{first.data(), second.data()}, 4));
         REQUIRE(queue.pop(a.data(), 4, metadata) == Result::ERROR);
         REQUIRE(queue.size() == 4);
     }
@@ -1304,7 +1317,7 @@ TEST_CASE_METHOD(
     REQUIRE(stream->start(settings) == Result::SUCCESS);
     std::array<CF32, 8> a;
     std::array<CF32, 8> b;
-    std::array<std::span<CF32>, 2> destinations{a, b};
+    std::array destinations{Bytes(a), Bytes(b)};
     auto capture = stream->readChannels(destinations, std::chrono::milliseconds(50));
     REQUIRE(capture.status == Radio::Device::Status::Samples);
     REQUIRE(capture.count == 3);
@@ -1364,7 +1377,7 @@ TEST_CASE_METHOD(
     settings.receiveChannels = 1;
     REQUIRE(stream->start(settings) == Result::SUCCESS);
     std::array<CF32, 4> a;
-    std::array<std::span<CF32>, 1> destinations{a};
+    std::array destinations{Bytes(a)};
     REQUIRE(stream->readChannels(destinations, std::chrono::milliseconds(50)).count ==
             4);
 }
@@ -1376,8 +1389,8 @@ TEST_CASE("SDR stream buffers preserve every channel through overflow and gaps",
     queue.reset({.generation = 1});
     std::array<std::array<CF32, 8>, 4> input;
     std::array<std::array<CF32, 4>, 4> output;
-    std::array<const CF32*, 4> sources;
-    std::array<CF32*, 4> destinations;
+    std::array<const void*, 4> sources;
+    std::array<void*, 4> destinations;
     for (U64 channel = 0; channel < 4; ++channel) {
         for (U64 i = 0; i < 8; ++i) {
             input[channel][i] = static_cast<F32>(channel * 100 + i);
@@ -1419,7 +1432,7 @@ TEST_CASE("SDR timestamped streams never label queued IQ with a live retune",
     std::vector<CF32> samples(32);
     U64 cursor = 0;
     for (U64 i = 0; i < 8; ++i) {
-        const auto capture = stream.read(samples, std::chrono::milliseconds(10));
+        const auto capture = stream.read(Bytes(samples), std::chrono::milliseconds(10));
         if (capture.status == Radio::Device::Status::Samples) {
             REQUIRE(samples[0].real() == 100.0f);
             cursor = *capture.timestamp + capture.count;
@@ -1434,7 +1447,7 @@ TEST_CASE("SDR timestamped streams never label queued IQ with a live retune",
     U64 kept = 0;
     std::optional<U64> first;
     for (U64 i = 0; i < 64; ++i) {
-        const auto capture = stream.read(samples, std::chrono::milliseconds(10));
+        const auto capture = stream.read(Bytes(samples), std::chrono::milliseconds(10));
         if (capture.status != Radio::Device::Status::Samples) {
             continue;
         }
@@ -1470,7 +1483,7 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
     REQUIRE(buffer.resize(256) == Result::SUCCESS);
     const auto collect = [&] {
         while (true) {
-            const auto capture = stream.read(samples, Now);
+            const auto capture = stream.read(Bytes(samples), Now);
             if (capture.status == Radio::Device::Status::Timeout) {
                 return;
             }
@@ -1498,7 +1511,7 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
         for (U64 i = 0; i < 4; ++i) {
             stream.callback();
         }
-        const auto capture = stream.read(std::span(samples).first(10), Now);
+        const auto capture = stream.read(Bytes(std::span(samples).first(10)), Now);
         REQUIRE(capture.status == Radio::Device::Status::Samples);
         REQUIRE(capture.frequency == 100.0e6);
         REQUIRE(samples[0] == CF32{100.0f, static_cast<F32>(Guard)});
@@ -1509,13 +1522,13 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
         REQUIRE(stream.update(after) == Result::SUCCESS);
         REQUIRE(stream.generation() == generation + 1);
         REQUIRE(stream.applied().frequency == 250.0e6);
-        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+        REQUIRE(stream.read(Bytes(samples), Now).status == Radio::Device::Status::Timeout);
 
         stream.deliver(late);
         for (U64 i = 0; i < CallbackStream::InFlightTransfers; ++i) {
             stream.callback();
         }
-        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+        REQUIRE(stream.read(Bytes(samples), Now).status == Radio::Device::Status::Timeout);
 
         buffer.reset({.frequency = 250.0e6, .sampleRate = 2.0e6,
                       .generation = stream.generation()});
@@ -1559,7 +1572,7 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
         };
         REQUIRE(stream.update(after) == Result::SUCCESS);
         stream.between = nullptr;
-        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+        REQUIRE(stream.read(Bytes(samples), Now).status == Radio::Device::Status::Timeout);
 
         buffer.reset({.frequency = 250.0e6, .sampleRate = 2.0e6,
                       .generation = stream.generation()});
@@ -1580,12 +1593,12 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
         REQUIRE(stream.update(after) == Result::ERROR);
         REQUIRE(stream.generation() > generation);
         REQUIRE(stream.applied().frequency == 100.0e6);
-        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+        REQUIRE(stream.read(Bytes(samples), Now).status == Radio::Device::Status::Timeout);
 
         for (U64 i = 0; i < 3; ++i) {
             stream.callback();
         }
-        const auto capture = stream.read(samples, Now);
+        const auto capture = stream.read(Bytes(samples), Now);
         REQUIRE(capture.status == Radio::Device::Status::Samples);
         REQUIRE(capture.generation == stream.generation());
         REQUIRE(capture.frequency == 100.0e6);
@@ -1848,6 +1861,68 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(AttributeOf(output, "sampleRate") == static_cast<F32>(2.0e6 + 125.0));
     REQUIRE(module->getImpl<Modules::SdrImpl>()->listAntennas() ==
             std::vector<std::string>{"RX1", "RX2"});
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR module applies a manual filter bandwidth and restarts on changes",
+                 "[modules][sdr][lifecycle][bandwidth]") {
+    auto config = ScriptedConfig();
+    config.bandwidth = 1.5e6f;
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "bandwidth:1500") != calls.end());
+
+    const auto opens = TestScript().opens.load();
+    REQUIRE(module->reconfigure({{"bandwidth", 0.0f}}) == Result::SUCCESS);
+    REQUIRE(module->reconfigure({{"bandwidth", 0.5e6f}}) == Result::SUCCESS);
+    REQUIRE(TestScript().opens == opens);
+    calls = TestScript().calls();
+    REQUIRE(std::count(calls.begin(), calls.end(), "start") >= 3);
+    REQUIRE(std::find(calls.begin(), calls.end(), "bandwidth:500") != calls.end());
+
+    REQUIRE(module->reconfigure({{"bandwidth", -1.0f}}) == Result::ERROR);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR module outputs the radio's raw integers with their sample scale",
+                 "[modules][sdr][format]") {
+    TestScript().budget = 8;
+    auto config = ScriptedConfig();
+    config.sampleFormat = "CI16";
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    auto* sdr = module->getImpl<Modules::SdrImpl>();
+    const auto& stream = sdr->*SdrImplAccess::streamMember();
+    const auto& output = module->outputs().at("signal").tensor;
+    REQUIRE(output.dtype() == DataType::CI16);
+    REQUIRE(AttributeOf(output, "sampleScale") == 1.0f / 2048.0f);
+
+    REQUIRE(WaitFor([&] { return stream.size() == 8; }));
+    REQUIRE(RuntimeOf(module)->computeSubmit() == Result::SUCCESS);
+    for (U64 i = 0; i < output.size(); ++i) {
+        REQUIRE(output.data<CI16>()[i].real() == 100);
+    }
+    REQUIRE(module->reconfigure({{"sampleFormat", std::string("CF32")}}) == Result::RECREATE);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR module rejects sample formats the radio does not deliver",
+                 "[modules][sdr][format]") {
+    auto config = ScriptedConfig();
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    SECTION("not a sample format") {
+        config.sampleFormat = "F32";
+        REQUIRE(module->create("test", config, {}) == Result::ERROR);
+    }
+    SECTION("not delivered by the radio") {
+        config.sampleFormat = "CU8";
+        REQUIRE(module->create("test", config, {}) == Result::ERROR);
+        REQUIRE(TestScript().opens == 1);
+    }
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
@@ -2220,6 +2295,71 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(WaitFor([&] { return metric("bufferLoss").second > 0.0f; }));
     REQUIRE(metric("bufferLoss") == std::pair<std::string, F32>{"60.00% (1 GAP)", 0.6f});
     REQUIRE(metric("throughput").first.ends_with("/ 16.0 MB/s"));
+}
+
+TEST_CASE_METHOD(ScriptedFlowgraph,
+                 "SDR blocks offer Auto and the radio's filter widths in one dropdown",
+                 "[modules][sdr][block][bandwidth]") {
+    TestScript().budget = 0;
+    Blocks::Sdr config;
+    config.deviceString = Selector;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+
+    const auto field = [&] {
+        const auto view = viewBlock("radio");
+        const auto entry = std::find_if(view.interfaceConfigs.begin(), view.interfaceConfigs.end(),
+                                        [](const auto& item) { return item.name == "bandwidth"; });
+        REQUIRE(entry != view.interfaceConfigs.end());
+        return entry->format;
+    };
+    const auto format = field();
+    REQUIRE(Parser::Get<std::string>(format, "type") == "dropdown");
+    REQUIRE_FALSE(format.contains("advanced"));
+    const auto options = Parser::Get<std::vector<Parser::Map>>(format, "options");
+    REQUIRE(Parser::Get<std::string>(options.front(), "label") == "Auto");
+    REQUIRE(Parser::Get<std::string>(options.front(), "value") == "0");
+    REQUIRE(std::any_of(options.begin(), options.end(), [](const auto& option) {
+        return Parser::Get<std::string>(option, "label") == "1.5 MHz";
+    }));
+    REQUIRE(std::none_of(options.begin(), options.end(), [](const auto& option) {
+        return Parser::Get<std::string>(option, "label") == "28 MHz";
+    }));
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"bandwidth", 1.5e6f}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    const auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "bandwidth:1500") != calls.end());
+}
+
+TEST_CASE_METHOD(ScriptedFlowgraph,
+                 "SDR blocks offer CF32 and the radio's integer formats",
+                 "[modules][sdr][block][format]") {
+    TestScript().budget = 0;
+    Blocks::Sdr config;
+    config.deviceString = Selector;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+
+    const auto view = viewBlock("radio");
+    const auto entry = std::find_if(view.interfaceConfigs.begin(), view.interfaceConfigs.end(),
+                                    [](const auto& item) { return item.name == "sampleFormat"; });
+    REQUIRE(entry != view.interfaceConfigs.end());
+    REQUIRE(Parser::Get<std::string>(entry->format, "type") == "dropdown");
+    REQUIRE_FALSE(entry->format.contains("advanced"));
+    const auto options = Parser::Get<std::vector<Parser::Map>>(entry->format, "options");
+    REQUIRE(options.size() == 2);
+    REQUIRE(Parser::Get<std::string>(options[0], "value") == "CF32");
+    REQUIRE(Parser::Get<std::string>(options[1], "value") == "CI16");
+    REQUIRE(Parser::Get<std::string>(options[1], "label") == "CI16 (12-bit)");
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"sampleFormat", std::string("CI16")}}) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
 }
 
 TEST_CASE_METHOD(ScriptedFlowgraph,

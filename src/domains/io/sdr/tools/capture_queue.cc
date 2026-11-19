@@ -1,17 +1,24 @@
 #include "capture_queue.hh"
 
 #include <algorithm>
+#include <cstring>
+#include <limits>
 
 #include "jetstream/logger.hh"
 
 namespace Jetstream::Radio {
 
-Result CaptureQueue::resize(const U64 capacity) {
+Result CaptureQueue::resize(const U64 capacity, const U64 bytes) {
     try {
         std::lock_guard lock(mutex);
-        if (storage.size() != capacity) {
-            storage.assign(capacity, CF32{});
+        if (bytes == 0 || capacity > std::numeric_limits<U64>::max() / bytes) {
+            JST_ERROR("[SDR] Capture queue size is too large.");
+            return Result::ERROR;
         }
+        if (storage.size() != capacity * bytes) {
+            storage.assign(capacity * bytes, std::byte{});
+        }
+        sampleBytes = bytes;
         head = 0;
         occupancy = 0;
     } catch (const std::exception&) {
@@ -70,8 +77,9 @@ void CaptureQueue::close() {
     available.notify_all();
 }
 
-void CaptureQueue::push(const U64 sourceGeneration, U64 count, const Converter& convert,
-                        const U64 deviceLost) {
+template <typename Copy>
+void CaptureQueue::write(const U64 sourceGeneration, U64 count, const U64 deviceLost,
+                         const Copy& copy) {
     {
         std::lock_guard lock(mutex);
         if (!open || sourceGeneration != generation || failure != Device::Status::Samples) {
@@ -106,7 +114,7 @@ void CaptureQueue::push(const U64 sourceGeneration, U64 count, const Converter& 
             return;
         }
 
-        const U64 capacity = storage.size();
+        const U64 capacity = storage.size() / sampleBytes;
         if (capacity == 0 || count > capacity - occupancy) {
             addGap(count);
             return;
@@ -116,7 +124,7 @@ void CaptureQueue::push(const U64 sourceGeneration, U64 count, const Converter& 
         U64 written = 0;
         while (written < count) {
             const U64 chunk = std::min(count - written, capacity - tail);
-            convert(storage.data() + tail, offset + written, chunk);
+            copy(tail, offset + written, chunk);
             written += chunk;
             tail = (tail + chunk) % capacity;
         }
@@ -124,6 +132,23 @@ void CaptureQueue::push(const U64 sourceGeneration, U64 count, const Converter& 
         pushed += count;
     }
     available.notify_all();
+}
+
+void CaptureQueue::push(const U64 sourceGeneration, const U64 count, const Converter& convert,
+                        const U64 deviceLost) {
+    write(sourceGeneration, count, deviceLost, [&](const U64 tail, const U64 offset,
+                                                   const U64 chunk) {
+        convert(reinterpret_cast<CF32*>(storage.data()) + tail, offset, chunk);
+    });
+}
+
+void CaptureQueue::push(const U64 sourceGeneration, const U64 count, const std::byte* samples,
+                        const U64 deviceLost) {
+    write(sourceGeneration, count, deviceLost, [&](const U64 tail, const U64 offset,
+                                                   const U64 chunk) {
+        std::memcpy(storage.data() + tail * sampleBytes, samples + offset * sampleBytes,
+                    chunk * sampleBytes);
+    });
 }
 
 void CaptureQueue::fail(const Device::Status status, const std::string& error) {
@@ -138,6 +163,11 @@ void CaptureQueue::fail(const Device::Status status, const std::string& error) {
 }
 
 Device::Capture CaptureQueue::pop(std::span<CF32> samples, const std::chrono::milliseconds timeout) {
+    return pop(std::as_writable_bytes(samples), timeout);
+}
+
+Device::Capture CaptureQueue::pop(std::span<std::byte> samples,
+                                  const std::chrono::milliseconds timeout) {
     std::unique_lock lock(mutex);
     const auto ready = [&] {
         return occupancy > 0 || !gaps.empty() || failure != Device::Status::Samples || !open;
@@ -169,14 +199,15 @@ Device::Capture CaptureQueue::pop(std::span<CF32> samples, const std::chrono::mi
         return {.status = Device::Status::Timeout, .generation = generation};
     }
 
-    U64 count = std::min<U64>(occupancy, samples.size());
+    U64 count = std::min<U64>(occupancy, samples.size() / sampleBytes);
     if (!gaps.empty()) {
         count = std::min(count, gaps.front().position - popped);
     }
-    const U64 capacity = storage.size();
-    for (U64 i = 0; i < count; ++i) {
-        samples[i] = storage[(head + i) % capacity];
-    }
+    const U64 capacity = storage.size() / sampleBytes;
+    const U64 first = std::min(count, capacity - head);
+    std::memcpy(samples.data(), storage.data() + head * sampleBytes, first * sampleBytes);
+    std::memcpy(samples.data() + first * sampleBytes, storage.data(),
+                (count - first) * sampleBytes);
     head = (head + count) % capacity;
     occupancy -= count;
     popped += count;

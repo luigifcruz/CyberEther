@@ -55,6 +55,7 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.getFrequencyRange, "SoapySDRDevice_getFrequencyRange", missing) &&
            Resolve(handle, api.getSampleRateRange, "SoapySDRDevice_getSampleRateRange", missing) &&
            Resolve(handle, api.listAntennas, "SoapySDRDevice_listAntennas", missing) &&
+           Resolve(handle, api.getStreamFormats, "SoapySDRDevice_getStreamFormats", missing) &&
            Resolve(handle, api.getNativeStreamFormat, "SoapySDRDevice_getNativeStreamFormat",
                    missing) &&
            Resolve(handle, api.setAntenna, "SoapySDRDevice_setAntenna", missing) &&
@@ -63,6 +64,7 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.setSampleRate, "SoapySDRDevice_setSampleRate", missing) &&
            Resolve(handle, api.getSampleRate, "SoapySDRDevice_getSampleRate", missing) &&
            Resolve(handle, api.setBandwidth, "SoapySDRDevice_setBandwidth", missing) &&
+           Resolve(handle, api.getBandwidthRange, "SoapySDRDevice_getBandwidthRange", missing) &&
            Resolve(handle, api.getFrequency, "SoapySDRDevice_getFrequency", missing) &&
            Resolve(handle, api.hasGainMode, "SoapySDRDevice_hasGainMode", missing) &&
            Resolve(handle, api.setGainMode, "SoapySDRDevice_setGainMode", missing) &&

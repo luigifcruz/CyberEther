@@ -330,6 +330,13 @@ std::optional<Device::Capabilities> Device::Cached(const std::string& selector) 
     return entry->second;
 }
 
+bool Device::SupportsBandwidth(const std::string& selector) {
+    if (const auto capabilities = Cached(selector)) {
+        return !capabilities->bandwidthRanges.empty();
+    }
+    return true;
+}
+
 bool Device::SupportsBiasTee(const std::string& selector) {
     if (selector.empty()) {
         return true;

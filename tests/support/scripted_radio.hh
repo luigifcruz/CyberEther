@@ -110,6 +110,8 @@ inline Radio::Device::Capabilities ScriptedCapabilities() {
     if (TestScript().antennas) {
         caps.antennas = {"RX1", "RX2"};
     }
+    caps.bandwidthRanges = {{0.2e6, 20.0e6}};
+    caps.formats = {{}, {DataType::CI16, 2048.0}};
     caps.automaticGain = true;
     caps.biasTee = true;
     caps.sweepSampleRate = 2.0e6;
@@ -236,13 +238,27 @@ class ScriptedStream final : public Radio::Stream {
         TestScript().record("close");
     }
 
-    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
-        return scene.produce(samples, generation(), running, appliedSettings.frequency,
-                             appliedSettings.sampleRate);
+    Radio::Device::Capture read(std::span<std::byte> samples,
+                                const std::chrono::milliseconds) override {
+        if (requestedSettings.format != DataType::CI16) {
+            return scene.produce({reinterpret_cast<CF32*>(samples.data()),
+                                  samples.size() / sizeof(CF32)},
+                                 generation(), running, appliedSettings.frequency,
+                                 appliedSettings.sampleRate);
+        }
+        scratch.resize(samples.size() / sizeof(CI16));
+        const auto capture = scene.produce(scratch, generation(), running,
+                                           appliedSettings.frequency, appliedSettings.sampleRate);
+        auto* words = reinterpret_cast<I16*>(samples.data());
+        for (U64 i = 0; i < capture.count; ++i) {
+            words[2 * i] = static_cast<I16>(std::lround(scratch[i].real()));
+            words[2 * i + 1] = static_cast<I16>(std::lround(scratch[i].imag()));
+        }
+        return capture;
     }
 
     Radio::Device::Capture readChannels(
-        std::span<std::span<CF32>> samples,
+        std::span<std::span<std::byte>> samples,
         const std::chrono::milliseconds timeout) override {
         if (samples.size() == 1) {
             return read(samples.front(), timeout);
@@ -256,9 +272,11 @@ class ScriptedStream final : public Radio::Stream {
         }
         auto capture = read(samples[0], timeout);
         if (capture.status == Radio::Device::Status::Samples) {
+            const auto* first = reinterpret_cast<const CF32*>(samples[0].data());
             for (U64 channel = 1; channel < samples.size(); ++channel) {
+                auto* output = reinterpret_cast<CF32*>(samples[channel].data());
                 for (U64 i = 0; i < capture.count; ++i) {
-                    samples[channel][i] = -static_cast<F32>(channel) * samples[0][i];
+                    output[i] = -static_cast<F32>(channel) * first[i];
                 }
             }
         }
@@ -283,6 +301,9 @@ class ScriptedStream final : public Radio::Stream {
         appliedSettings.automaticGain = settings.automaticGain;
         appliedSettings.gain = resolveGain(settings.gain, appliedSettings.gainRange);
         appliedSettings.biasTee = settings.biasTee;
+        if (settings.bandwidth > 0.0) {
+            TestScript().record(jst::fmt::format("bandwidth:{:.0f}", settings.bandwidth / 1e3));
+        }
         if (!settings.channelAntennas.empty()) {
             TestScript().record("antennas");
         }
@@ -369,6 +390,7 @@ class ScriptedStream final : public Radio::Stream {
     }
 
     ScriptedScene scene;
+    std::vector<CF32> scratch;
     bool running = false;
     bool biasTeeEnabled = false;
 };

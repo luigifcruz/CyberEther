@@ -16,6 +16,8 @@ struct Sdr : public Module::Config {
     U64 channels = 1;
     F32 frequency = 96.9e6;
     F32 sampleRate = 2.0e6;
+    F32 bandwidth = 0.0f;
+    std::string sampleFormat = "CF32";
     bool automaticGain = true;
     F32 manualGain = 30.0f;
     std::vector<F32> manualGains;
@@ -26,8 +28,8 @@ struct Sdr : public Module::Config {
 
     JST_MODULE_TYPE(sdr);
     JST_MODULE_PARAMS(deviceString, driverArguments, antenna, antennas, channels, frequency, sampleRate,
-                      automaticGain, manualGain, manualGains, biasTee, numberOfBatches,
-                      numberOfTimeSamples, bufferMultiplier);
+                      bandwidth, sampleFormat, automaticGain, manualGain, manualGains, biasTee,
+                      numberOfBatches, numberOfTimeSamples, bufferMultiplier);
 };
 
 }  // namespace Jetstream::Modules

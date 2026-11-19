@@ -14,6 +14,7 @@ JETSTREAM_API void ConvertI16(const I16* input, CF32* output, U64 count, F32 sca
 
 JETSTREAM_API void ConvertI16Channels(const I16* input, std::span<CF32* const> outputs,
                                       U64 count, F32 scale);
+JETSTREAM_API void SplitI16Channels(const I16* input, std::span<I16* const> outputs, U64 count);
 
 JETSTREAM_API U64 GuardSamples(F64 seconds, F64 sampleRate);
 

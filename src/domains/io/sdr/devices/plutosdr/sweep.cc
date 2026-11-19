@@ -204,6 +204,8 @@ Result PlutoSdrSweep::connect(const Device::Info& info) {
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = {*frequency};
     caps.sampleRateRanges = {{std::ceil(rate->minimum / FirDecimation), rate->maximum}};
+    const auto bandwidth = ReadRange(control, "rf_bandwidth_available");
+    caps.bandwidthRanges = {bandwidth ? *bandwidth : Device::Range{MinBandwidth, MaxBandwidth}};
     caps.automaticGain = true;
     caps.biasTee = false;
     caps.sweepSampleRate = std::min(rate->maximum, SweepSampleRate);

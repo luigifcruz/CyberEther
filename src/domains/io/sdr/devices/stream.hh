@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <span>
@@ -27,6 +28,8 @@ class JETSTREAM_API Stream {
         std::vector<F64> channelGains;
         std::string driverArguments;
         std::vector<std::string> channelAntennas;
+        F64 bandwidth = 0.0;
+        DataType format = DataType::CF32;
     };
 
     struct Applied {
@@ -53,8 +56,10 @@ class JETSTREAM_API Stream {
 
     Result start(const Settings& settings);
     Result update(const Settings& settings);
-    virtual Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) = 0;
-    virtual Device::Capture readChannels(std::span<std::span<CF32>> samples,
+    U64 sampleBytes() const;
+    virtual Device::Capture read(std::span<std::byte> samples,
+                                 std::chrono::milliseconds timeout) = 0;
+    virtual Device::Capture readChannels(std::span<std::span<std::byte>> samples,
                                          std::chrono::milliseconds timeout);
 
  protected:

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 
+#include <jetstream/memory/attributes.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -64,12 +65,21 @@ Result CastImpl::validate() {
     }
 
     bool candidateBypass = false;
+    std::optional<F32> candidateSampleScale;
+    std::optional<F32> candidateOutputSampleScale;
     U64 candidateOutputElementCount = 0;
     U64 candidateOutputSizeBytes = 0;
 
     if (inputs().contains("buffer")) {
         const Tensor& candidateInput = inputs().at("buffer").tensor;
         candidateBypass = candidateInput.dtype() == candidateOutputDtype;
+        JST_CHECK(ReadAttribute(candidateInput, "sampleScale", candidateSampleScale));
+        if (candidateSampleScale &&
+            (!std::isfinite(*candidateSampleScale) || *candidateSampleScale <= 0.0f)) {
+            JST_ERROR("[MODULE_CAST] Input sampleScale ({}) must be finite and positive.",
+                      *candidateSampleScale);
+            return Result::ERROR;
+        }
 
         if (candidateInput.validShape() && candidateInput.size() != 0 &&
             !candidateBypass) {
@@ -104,10 +114,28 @@ Result CastImpl::validate() {
                       candidateInput.dtype(), candidateOutputDtype);
             return Result::ERROR;
         }
+
+        if (candidateSampleScale && !candidateBypass) {
+            const Scale inputScale = ScaleOf(candidateInput.dtype());
+            const Scale outputScale = ScaleOf(candidateOutputDtype);
+            const F64 fullScale = inputScale.integer
+                ? *candidateSampleScale * inputScale.fullScale
+                : 1.0;
+            const F64 scale = outputScale.integer ? fullScale / outputScale.fullScale : 1.0;
+            if (!(scale > 0.0) || scale > std::numeric_limits<F32>::max() ||
+                static_cast<F32>(scale) <= 0.0f) {
+                JST_ERROR("[MODULE_CAST] Output sampleScale for '{}' is out of range.",
+                          candidateOutputDtype);
+                return Result::ERROR;
+            }
+            candidateOutputSampleScale = static_cast<F32>(scale);
+        }
     }
 
     validatedOutputDtype = candidateOutputDtype;
     validatedBypass = candidateBypass;
+    validatedSampleScale = candidateSampleScale;
+    validatedOutputSampleScale = candidateOutputSampleScale;
     validatedOutputElementCount = candidateOutputElementCount;
     validatedOutputSizeBytes = candidateOutputSizeBytes;
     return Result::SUCCESS;
@@ -138,6 +166,13 @@ Result CastImpl::create() {
 
     JST_CHECK(output.create(input.device(), outputDtype, input.shape()));
     JST_CHECK(output.propagateAttributes(input));
+
+    if (validatedSampleScale && inputScale.integer && !outputScale.integer) {
+        inputScale.fullScale = 1.0 / *validatedSampleScale;
+    }
+    if (validatedOutputSampleScale) {
+        JST_CHECK(output.setAttribute("sampleScale", *validatedOutputSampleScale));
+    }
 
     outputs()["buffer"].produced(name(), "buffer", output);
 

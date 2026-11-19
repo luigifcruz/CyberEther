@@ -17,6 +17,44 @@ constexpr auto ReadTimeout = std::chrono::milliseconds(50);
 constexpr U64 ReadChunk = 16384;
 constexpr F64 DefaultClipLevel = 0.999;
 
+bool IsSampleFormat(const DataType type) {
+    return type == DataType::CF32 || type == DataType::CF64 || type == DataType::CI16 ||
+           type == DataType::CI8 || type == DataType::CU8;
+}
+
+bool IsIntegerFormat(const DataType type) {
+    return type == DataType::CI16 || type == DataType::CI8 || type == DataType::CU8;
+}
+
+struct ClipCounter {
+    F64 offset = 0.0;
+    F64 scale = 1.0;
+    F64 lower = -DefaultClipLevel;
+    F64 upper = DefaultClipLevel;
+
+    template <typename T>
+    U64 count(const void* data, const U64 samples) const {
+        const auto* values = static_cast<const T*>(data);
+        U64 clipped = 0;
+        for (U64 i = 0; i < 2 * samples; i += 2) {
+            const F64 real = (static_cast<F64>(values[i]) - offset) * scale;
+            const F64 imag = (static_cast<F64>(values[i + 1]) - offset) * scale;
+            clipped += real >= upper || real <= lower || imag >= upper || imag <= lower;
+        }
+        return clipped;
+    }
+
+    U64 operator()(const DataType type, const void* data, const U64 samples) const {
+        switch (type) {
+            case DataType::CF64: return count<F64>(data, samples);
+            case DataType::CI16: return count<I16>(data, samples);
+            case DataType::CI8:  return count<I8>(data, samples);
+            case DataType::CU8:  return count<U8>(data, samples);
+            default:             return count<F32>(data, samples);
+        }
+    }
+};
+
 }  // namespace
 
 SdrImpl::~SdrImpl() {
@@ -25,6 +63,7 @@ SdrImpl::~SdrImpl() {
 
 Result SdrImpl::validate() {
     const auto& config = *candidate();
+    validatedFormat = DataType::CF32;
     validatedOutputSizeBytes = 0;
     validatedInternalElements = 0;
     validatedInternalSizeBytes = 0;
@@ -37,6 +76,17 @@ Result SdrImpl::validate() {
         JST_ERROR("[MODULE_SDR] Sample rate must be finite and positive.");
         return Result::ERROR;
     }
+    if (!std::isfinite(config.bandwidth) || config.bandwidth < 0.0f) {
+        JST_ERROR("[MODULE_SDR] Filter bandwidth must be zero or positive.");
+        return Result::ERROR;
+    }
+    const DataType candidateFormat = NameToDataType(config.sampleFormat);
+    if (!IsSampleFormat(candidateFormat)) {
+        JST_ERROR("[MODULE_SDR] Sample format '{}' is not one of CF32, CF64, CI16, CI8, or CU8.",
+                  config.sampleFormat);
+        return Result::ERROR;
+    }
+    const U64 sampleBytes = DataTypeSize(candidateFormat);
     if (!std::isfinite(config.manualGain)) {
         JST_ERROR("[MODULE_SDR] Manual gain must be finite.");
         return Result::ERROR;
@@ -67,8 +117,7 @@ Result SdrImpl::validate() {
     U64 outputSizeBytes = 0;
     if (!detail::CheckedMultiply(config.numberOfBatches, config.numberOfTimeSamples,
                                  outputElements) ||
-        !detail::CheckedMultiply(outputElements, static_cast<U64>(sizeof(CF32)),
-                                 outputSizeBytes)) {
+        !detail::CheckedMultiply(outputElements, sampleBytes, outputSizeBytes)) {
         JST_ERROR("[MODULE_SDR] Output buffer dimensions are too large.");
         return Result::ERROR;
     }
@@ -76,8 +125,7 @@ Result SdrImpl::validate() {
     U64 internalElements = 0;
     U64 internalSizeBytes = 0;
     if (!detail::CheckedMultiply(outputElements, config.bufferMultiplier, internalElements) ||
-        !detail::CheckedMultiply(internalElements, static_cast<U64>(sizeof(CF32)),
-                                 internalSizeBytes)) {
+        !detail::CheckedMultiply(internalElements, sampleBytes, internalSizeBytes)) {
         JST_ERROR("[MODULE_SDR] Internal buffer layout is too large.");
         return Result::ERROR;
     }
@@ -88,6 +136,7 @@ Result SdrImpl::validate() {
         return Result::ERROR;
     }
 
+    validatedFormat = candidateFormat;
     validatedOutputSizeBytes = outputSizeBytes;
     validatedInternalElements = internalElements;
     validatedInternalSizeBytes = internalSizeBytes;
@@ -122,6 +171,18 @@ Result SdrImpl::create() {
         radio.reset();
         return Result::ERROR;
     }
+    format = validatedFormat;
+    const auto selected = caps.format(format);
+    if (!selected) {
+        std::vector<std::string> supported;
+        for (const auto& candidate : caps.formats) {
+            supported.emplace_back(DataTypeToName(candidate.type));
+        }
+        JST_ERROR("[MODULE_SDR] Sample format {} is not supported by {}. Use {}.", format,
+                  radio->info().label, jst::fmt::join(supported, ", "));
+        radio.reset();
+        return Result::ERROR;
+    }
     if (const auto rates = caps.fixedSampleRates();
         !rates.empty() && !Radio::Device::Range::Contains(caps.sampleRateRanges, sampleRate)) {
         JST_INFO("[MODULE_SDR] {:.3f} MHz is not a rate of {}. Using {:.3f} MHz.",
@@ -135,18 +196,22 @@ Result SdrImpl::create() {
         if (channels > 1) {
             shape.insert(shape.begin(), channels);
         }
-        JST_CHECK(buffer.create(device(), DataType::CF32, shape));
+        JST_CHECK(buffer.create(device(), format, shape));
         JST_CHECK(SetSignalAxes(buffer, {
             .sample = Index{shape.size() - 1},
             .batch = Index{shape.size() - 2},
             .channel = channels > 1 ? std::optional<Index>{0} : std::nullopt,
         }));
-        outputChannels.resize(channels);
-        const U64 channelElements = numberOfBatches * numberOfTimeSamples;
-        for (U64 i = 0; i < channels; ++i) {
-            outputChannels[i] = buffer.data<CF32>() + i * channelElements;
+        if (IsIntegerFormat(format)) {
+            JST_CHECK(buffer.setAttribute("sampleScale",
+                                          static_cast<F32>(1.0 / selected->fullScale)));
         }
-        JST_CHECK(stream.resize(validatedInternalElements, channels));
+        outputChannels.resize(channels);
+        const U64 channelBytes = numberOfBatches * numberOfTimeSamples * DataTypeSize(format);
+        for (U64 i = 0; i < channels; ++i) {
+            outputChannels[i] = static_cast<std::byte*>(buffer.data()) + i * channelBytes;
+        }
+        JST_CHECK(stream.resize(validatedInternalElements, channels, DataTypeSize(format)));
     } catch (const std::bad_alloc&) {
         JST_ERROR("[MODULE_SDR] Failed to allocate the internal buffer.");
         radio.reset();
@@ -189,6 +254,7 @@ Result SdrImpl::reconfigure() {
     if (config.deviceString != deviceString ||
         config.antenna != antenna ||
         config.channels != channels ||
+        config.sampleFormat != sampleFormat ||
         config.biasTee != biasTee ||
         config.numberOfBatches != numberOfBatches ||
         config.numberOfTimeSamples != numberOfTimeSamples ||
@@ -229,6 +295,7 @@ Result SdrImpl::reconfigure() {
 
         frequency = config.frequency;
         sampleRate = config.sampleRate;
+        bandwidth = config.bandwidth;
         automaticGain = config.automaticGain;
         manualGain = applied.gainRange ? static_cast<F32>(applied.gain) : config.manualGain;
         manualGains = config.manualGains;
@@ -248,6 +315,8 @@ Radio::Stream::Settings SdrImpl::settingsOf(const Sdr& config) const {
         .gain = config.manualGain,
         .receiveChannels = config.channels,
         .driverArguments = config.driverArguments,
+        .bandwidth = config.bandwidth,
+        .format = NameToDataType(config.sampleFormat),
     };
     if (config.channels > 1) {
         for (U64 i = 0; i < config.channels; ++i) {
@@ -337,9 +406,11 @@ void SdrImpl::stopReceiver() {
 
 Result SdrImpl::receiveLoop() {
     const U64 chunk = std::min<U64>(ReadChunk, std::max<U64>(stream.capacity(), 1));
-    std::vector<std::vector<CF32>> scratch(channels, std::vector<CF32>(chunk));
-    std::vector<std::span<CF32>> destinations;
-    std::vector<const CF32*> pointers;
+    const U64 sampleBytes = DataTypeSize(format);
+    std::vector<std::vector<std::byte>> scratch(channels,
+                                                std::vector<std::byte>(chunk * sampleBytes));
+    std::vector<std::span<std::byte>> destinations;
+    std::vector<const void*> pointers;
     for (auto& channel : scratch) {
         destinations.emplace_back(channel);
         pointers.push_back(channel.data());
@@ -347,13 +418,22 @@ Result SdrImpl::receiveLoop() {
     U64 gaps = 0;
     U64 lost = 0;
 
-    const F64 fullScale = radio->capabilities().fullScale;
-    const bool integer = fullScale >= 2.0;
-    const F32 upperClip = static_cast<F32>(integer ? (fullScale - 1.0) / fullScale : DefaultClipLevel);
-    const F32 lowerClip = integer ? -1.0f : -static_cast<F32>(DefaultClipLevel);
-    const auto clipped = [&](const F32 value) {
-        return value >= upperClip || value <= lowerClip;
-    };
+    const auto& caps = radio->capabilities();
+    const bool integer = IsIntegerFormat(format);
+    const F64 formatScale = caps.format(format)->fullScale;
+    F64 fullScale = caps.fullScale >= 2.0 ? caps.fullScale : 0.0;
+    if (integer) {
+        fullScale = fullScale >= 2.0 ? std::min(fullScale, formatScale) : formatScale;
+    }
+    ClipCounter clipped;
+    if (integer) {
+        clipped.offset = format == DataType::CU8 ? 128.0 : 0.0;
+        clipped.scale = 1.0 / formatScale;
+    }
+    if (fullScale >= 2.0) {
+        clipped.upper = (fullScale - 1.0) / fullScale;
+        clipped.lower = -1.0;
+    }
     SampleCounts counts;
 
     while (streaming) {
@@ -377,10 +457,8 @@ Result SdrImpl::receiveLoop() {
                     JST_ERROR("[MODULE_SDR] Radio returned more samples than requested.");
                     return Result::ERROR;
                 }
-                for (const CF32* channel : pointers) {
-                    for (U64 i = 0; i < capture.count; ++i) {
-                        counts.clipped += clipped(channel[i].real()) || clipped(channel[i].imag());
-                    }
+                for (const void* channel : pointers) {
+                    counts.clipped += clipped(format, channel, capture.count);
                 }
                 counts.received += capture.count * channels;
                 sampleCounts.publish(counts);
@@ -394,8 +472,8 @@ Result SdrImpl::receiveLoop() {
                 }
                 const auto current = stream.metadata();
                 throughput.publish({
-                    static_cast<F32>(stream.throughput() * sizeof(CF32) * channels / 1e6),
-                    static_cast<F32>(current.sampleRate * sizeof(CF32) * channels / 1e6),
+                    static_cast<F32>(stream.throughput() * sampleBytes * channels / 1e6),
+                    static_cast<F32>(current.sampleRate * sampleBytes * channels / 1e6),
                 });
                 break;
             }

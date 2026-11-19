@@ -5,6 +5,7 @@
 #include "../../tools/samples.hh"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
@@ -24,6 +25,11 @@ constexpr F64 SettlingTime = 5.0e-3;
 constexpr U32 InFlightTransfers = 12;
 constexpr F64 TransferDuration = 10.0e-3;
 constexpr U32 MinTransferBytes = 16384;
+constexpr std::array<F64, 22> R82xxFilterWidths = {
+    350.0e3, 450.0e3, 550.0e3, 700.0e3, 900.0e3, 1200.0e3, 1450.0e3, 1550.0e3,
+    1600.0e3, 1700.0e3, 1800.0e3, 1900.0e3, 1950.0e3, 2050.0e3, 2080.0e3, 2180.0e3,
+    2280.0e3, 2330.0e3, 2430.0e3, 6.0e6, 7.0e6, 8.0e6,
+};
 
 const char* TunerName(const rtlsdr_tuner tuner) {
     switch (tuner) {
@@ -68,7 +74,7 @@ class RtlSdrStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -88,6 +94,8 @@ class RtlSdrStream final : public Stream {
     rtlsdr_dev_t* handle = nullptr;
     std::vector<int> gains;
     bool biasTeeEnabled = false;
+    bool tunerBandwidthSet = false;
+    DataType streamFormat = DataType::CF32;
     CaptureQueue queue;
     std::thread worker;
     std::atomic<bool> stopping{false};
@@ -135,9 +143,16 @@ Result RtlSdrStream::connect(const Device::Info& info) {
         return Result::ERROR;
     }
     caps.sampleRateRanges = {{225001.0, 300000.0}, {900001.0, 3200000.0}};
+    caps.bandwidthRanges.clear();
+    if (tuner == RTLSDR_TUNER_R820T || tuner == RTLSDR_TUNER_R828D) {
+        for (const F64 width : R82xxFilterWidths) {
+            caps.bandwidthRanges.push_back({width, width});
+        }
+    }
     caps.automaticGain = true;
     caps.biasTee = true;
     caps.fullScale = 128.0;
+    caps.formats = {{}, {DataType::CU8, 128.0}};
     caps.sweepSampleRate = 2.4e6;
     caps.usableBandwidth = 0.75;
     caps.dcExclusion = 5.0e3;
@@ -180,6 +195,18 @@ Result RtlSdrStream::apply(const Settings& settings) {
     }
     JST_CHECK(setFrequency(settings.frequency));
 
+    const bool manualBandwidth = settings.bandwidth > 0.0 &&
+                                 !deviceCapabilities.bandwidthRanges.empty();
+    const U32 bandwidth = manualBandwidth ? static_cast<U32>(std::lround(settings.bandwidth)) : 0;
+    if (manualBandwidth || tunerBandwidthSet) {
+        if (rtlsdr_set_tuner_bandwidth(handle, bandwidth) < 0) {
+            JST_ERROR("[SDR_RTLSDR] Failed to set the filter bandwidth to {:.3f} MHz.",
+                      static_cast<F64>(bandwidth) / 1e6);
+            return Result::ERROR;
+        }
+        tunerBandwidthSet = manualBandwidth;
+    }
+
     JST_CHECK(applyGainMode(settings.automaticGain, settings.gain));
 
     if (settings.biasTee || biasTeeEnabled) {
@@ -203,6 +230,11 @@ void RtlSdrStream::Callback(unsigned char* buffer, const uint32_t length, void* 
     if (stream->stopping) {
         return;
     }
+    if (stream->streamFormat == DataType::CU8) {
+        stream->queue.push(stream->queueGeneration, length / 2,
+                           reinterpret_cast<const std::byte*>(buffer));
+        return;
+    }
     const U8* data = buffer;
     stream->queue.push(stream->queueGeneration, length / 2,
                        [data](CF32* output, const U64 offset, const U64 count) {
@@ -211,6 +243,7 @@ void RtlSdrStream::Callback(unsigned char* buffer, const uint32_t length, void* 
 }
 
 Result RtlSdrStream::open() {
+    streamFormat = requestedSettings.format;
     if (rtlsdr_reset_buffer(handle) < 0) {
         JST_ERROR("[SDR_RTLSDR] Failed to reset the endpoint FIFO.");
         return Result::ERROR;
@@ -220,7 +253,7 @@ Result RtlSdrStream::open() {
     const U32 transferBytes = TransferBytes(sampleRate);
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 2.0),
                                        static_cast<U64>(transferBytes) * InFlightTransfers);
-    JST_CHECK(queue.resize(capacity));
+    JST_CHECK(queue.resize(capacity, sampleBytes()));
     queueGeneration = nextGeneration();
     queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
@@ -287,7 +320,7 @@ Result RtlSdrStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Device::Capture RtlSdrStream::read(std::span<CF32> samples,
+Device::Capture RtlSdrStream::read(std::span<std::byte> samples,
                                    const std::chrono::milliseconds timeout) {
     return queue.pop(samples, timeout);
 }
