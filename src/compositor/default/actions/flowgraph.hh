@@ -51,6 +51,7 @@ struct FlowgraphActions {
                               MailPasteBlock,
                               MailSetNodeMeta,
                               MailSetConfigCollapsed,
+                              MailSetConfigAdvanced,
                               MailSurfaceInput,
                               MailResizeSurface>;
 
@@ -600,6 +601,19 @@ struct FlowgraphActions {
         ConfigMeta existing;
         flowgraph->metadata().get("config", existing, msg.block);
         existing.collapsed = msg.collapsed;
+        flowgraph->metadata().set("config", existing, msg.block);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetConfigAdvanced& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            return Result::SUCCESS;
+        }
+
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        ConfigMeta existing;
+        flowgraph->metadata().get("config", existing, msg.block);
+        existing.advanced = msg.advanced;
         flowgraph->metadata().set("config", existing, msg.block);
         return Result::SUCCESS;
     }

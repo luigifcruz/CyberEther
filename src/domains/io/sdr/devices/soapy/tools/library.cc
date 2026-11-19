@@ -1,12 +1,12 @@
-#include "soapy_runtime.hh"
+#include "library.hh"
 
-#include <cstdlib>
+#include <algorithm>
 #include <mutex>
 
-#include <jetstream/logger.hh>
-#include <jetstream/platform.hh>
+#include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 
-namespace Jetstream::Modules {
+namespace Jetstream::Radio {
 
 namespace {
 
@@ -48,16 +48,17 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.kwargsClear, "SoapySDRKwargs_clear", missing) &&
            Resolve(handle, api.kwargsListClear, "SoapySDRKwargsList_clear", missing) &&
            Resolve(handle, api.argInfoListClear, "SoapySDRArgInfoList_clear", missing) &&
-           Resolve(handle, api.loadModule, "SoapySDR_loadModule", missing) &&
            Resolve(handle, api.enumerate, "SoapySDRDevice_enumerate", missing) &&
            Resolve(handle, api.make, "SoapySDRDevice_make", missing) &&
            Resolve(handle, api.unmake, "SoapySDRDevice_unmake", missing) &&
+           Resolve(handle, api.getNumChannels, "SoapySDRDevice_getNumChannels", missing) &&
            Resolve(handle, api.getFrequencyRange, "SoapySDRDevice_getFrequencyRange", missing) &&
            Resolve(handle, api.getSampleRateRange, "SoapySDRDevice_getSampleRateRange", missing) &&
            Resolve(handle, api.listAntennas, "SoapySDRDevice_listAntennas", missing) &&
            Resolve(handle, api.getNativeStreamFormat, "SoapySDRDevice_getNativeStreamFormat",
                    missing) &&
            Resolve(handle, api.setAntenna, "SoapySDRDevice_setAntenna", missing) &&
+           Resolve(handle, api.getAntenna, "SoapySDRDevice_getAntenna", missing) &&
            Resolve(handle, api.setFrequency, "SoapySDRDevice_setFrequency", missing) &&
            Resolve(handle, api.setSampleRate, "SoapySDRDevice_setSampleRate", missing) &&
            Resolve(handle, api.getSampleRate, "SoapySDRDevice_getSampleRate", missing) &&
@@ -73,7 +74,9 @@ bool ResolveAll(void* handle, SoapyApi& api, std::string& missing) {
            Resolve(handle, api.closeStream, "SoapySDRDevice_closeStream", missing) &&
            Resolve(handle, api.activateStream, "SoapySDRDevice_activateStream", missing) &&
            Resolve(handle, api.deactivateStream, "SoapySDRDevice_deactivateStream", missing) &&
-           Resolve(handle, api.readStream, "SoapySDRDevice_readStream", missing);
+           Resolve(handle, api.readStream, "SoapySDRDevice_readStream", missing) &&
+           Resolve(handle, api.hasHardwareTime, "SoapySDRDevice_hasHardwareTime", missing) &&
+           Resolve(handle, api.getHardwareTime, "SoapySDRDevice_getHardwareTime", missing);
 }
 
 SoapyKwargs ToMap(const SoapyAbi::Kwargs& kwargs) {
@@ -130,7 +133,7 @@ Result SoapyLibrary::enumerate(const SoapyKwargs& filter, SoapyKwargsList& devic
     auto* list = table.enumerate(view.get(), &length);
     if (table.lastStatus() != 0) {
         table.kwargsListClear(list, length);
-        JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices: {}", lastError());
+        JST_ERROR("[SDR_SOAPY] Failed to enumerate devices: {}", lastError());
         return Result::ERROR;
     }
     for (std::size_t i = 0; i < length; ++i) {
@@ -138,17 +141,6 @@ Result SoapyLibrary::enumerate(const SoapyKwargs& filter, SoapyKwargsList& devic
     }
     table.kwargsListClear(list, length);
     return Result::SUCCESS;
-}
-
-Result SoapyLibrary::loadModule(const std::string& path) const {
-    char* error = table.loadModule(path.c_str());
-    const std::string message = error ? error : "";
-    table.free(error);
-    if (message.empty() || message.ends_with(" already loaded")) {
-        return Result::SUCCESS;
-    }
-    JST_ERROR("[MODULE_SOAPY] Failed to load SoapySDR module '{}': {}", path, message);
-    return Result::ERROR;
 }
 
 std::shared_ptr<SoapyLibrary> SoapyLibrary::Open(const std::string& path, std::string& error) {
@@ -169,9 +161,9 @@ std::shared_ptr<SoapyLibrary> SoapyLibrary::Open(const std::string& path, std::s
     }
     const char* abi = library->table.getABIVersion();
     const std::string version = abi ? abi : "";
-    if (version != SoapyAbi::Version) {
-        error = jst::fmt::format("ABI version '{}' is not the supported '{}'", version,
-                                 SoapyAbi::Version);
+    if (std::find(SoapyAbi::Versions.begin(), SoapyAbi::Versions.end(), version) ==
+        SoapyAbi::Versions.end()) {
+        error = jst::fmt::format("ABI version '{}' is not 0.8 or 0.9", version);
         return nullptr;
     }
     if (!ResolveAll(handle, library->table, missing)) {
@@ -198,16 +190,19 @@ const SoapyAbi::Kwargs* SoapyKwargsView::get() const {
 }
 
 std::vector<std::string> SoapyRuntime::Candidates() {
-    if (const char* override = std::getenv(LibraryOverride); override && *override) {
+    std::string override;
+    if (Platform::EnvironmentVariable(LibraryOverride, override) == Result::SUCCESS &&
+        !override.empty()) {
         return {override};
     }
 
 #if defined(JST_OS_MAC)
-    std::vector<std::string> names{"libSoapySDR.0.8.dylib", "libSoapySDR.dylib"};
+    std::vector<std::string> names{"libSoapySDR.0.8.dylib", "libSoapySDR.0.9.dylib",
+                                   "libSoapySDR.dylib"};
     std::vector<std::string> directories{"", "/opt/homebrew/lib/", "/usr/local/lib/",
                                          "/opt/local/lib/"};
 #elif defined(JST_OS_LINUX)
-    std::vector<std::string> names{"libSoapySDR.so.0.8", "libSoapySDR.so"};
+    std::vector<std::string> names{"libSoapySDR.so.0.8", "libSoapySDR.so.0.9", "libSoapySDR.so"};
     std::vector<std::string> directories{"", "/usr/local/lib/"};
 #elif defined(JST_OS_WINDOWS)
     std::vector<std::string> names{"SoapySDR.dll", "libSoapySDR.dll"};
@@ -251,15 +246,15 @@ std::shared_ptr<SoapyLibrary> SoapyRuntime::Acquire() {
         cache.status.path = candidate;
         const char* version = cache.library->api().getAPIVersion();
         cache.status.version = version ? version : "";
-        JST_DEBUG("[MODULE_SOAPY] Loaded SoapySDR {} from '{}'.", cache.status.version, candidate);
+        JST_DEBUG("[SDR_SOAPY] Loaded SoapySDR {} from '{}'.", cache.status.version, candidate);
         return cache.library;
     }
 
-    cache.status.message = "SoapySDR 0.8 was not found. Install SoapySDR and its device "
-                           "modules from your package manager, or use the SDR block.";
-    JST_DEBUG("[MODULE_SOAPY] {}", cache.status.message);
+    cache.status.message = "SoapySDR 0.8 or 0.9 was not found. Install SoapySDR and its "
+                           "device modules from your package manager.";
+    JST_DEBUG("[SDR_SOAPY] {}", cache.status.message);
     for (const auto& attempt : cache.status.attempts) {
-        JST_DEBUG("[MODULE_SOAPY] Tried {}", attempt);
+        JST_DEBUG("[SDR_SOAPY] Tried {}", attempt);
     }
     return nullptr;
 #endif
@@ -289,4 +284,4 @@ void SoapyRuntime::Override(const SoapyApi& api) {
     cache.attempted = true;
 }
 
-}  // namespace Jetstream::Modules
+}  // namespace Jetstream::Radio

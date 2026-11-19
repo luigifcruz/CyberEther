@@ -61,6 +61,7 @@ struct FlowgraphEditor {
         std::function<void(Measured)> onLayout;
         std::function<void(const std::string&, bool)> onNodeConfigCollapse;
         std::function<void(const std::string&, bool)> onNodeConfigDetach;
+        std::function<void(const std::string&, bool)> onNodeConfigAdvanced;
     };
 
     void update(Config config) {
@@ -252,6 +253,11 @@ struct FlowgraphEditor {
                 .onConfigDetach = [this, blockName = block.name](bool detached) {
                     if (this->config.onNodeConfigDetach) {
                         this->config.onNodeConfigDetach(blockName, detached);
+                    }
+                },
+                .onConfigAdvanced = [this, blockName = block.name](bool advanced) {
+                    if (this->config.onNodeConfigAdvanced) {
+                        this->config.onNodeConfigAdvanced(blockName, advanced);
                     }
                 },
             };

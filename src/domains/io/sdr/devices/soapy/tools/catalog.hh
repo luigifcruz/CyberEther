@@ -6,21 +6,21 @@
 #include <vector>
 
 #include "domains/io/sdr/devices/device.hh"
-#include "domains/io/soapy/library/soapy_runtime.hh"
+#include "domains/io/sdr/devices/soapy/tools/library.hh"
 
 namespace Jetstream::Radio {
 
 struct JETSTREAM_API SoapyCatalog {
     struct Entry {
         Device::Info info;
-        Modules::SoapyKwargs args;
+        SoapyKwargs args;
     };
 
-    static bool Skipped(const Modules::SoapyKwargs& args);
+    static bool Skipped(const SoapyKwargs& args);
 
-    static std::optional<Entry> Describe(const Modules::SoapyKwargs& args);
+    static std::optional<Entry> Describe(const SoapyKwargs& args);
 
-    static std::vector<Entry> List(const Modules::SoapyKwargsList& devices);
+    static std::vector<Entry> List(const SoapyKwargsList& devices);
 
     static F64 SweepRate(const std::vector<Device::Range>& reported, F64 ceiling);
 };

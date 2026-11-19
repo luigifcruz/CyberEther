@@ -67,11 +67,19 @@ struct FlowgraphDetachedConfigPresenter {
                                                          blockName,
                                                          windowId,
                                                          blockData),
+                .configAdvanced = configMeta.advanced,
                 .onClose = [enqueue, flowgraphId, blockName]() {
                     enqueue(MailSetConfigDetached{
                         .flowgraph = flowgraphId,
                         .block = blockName,
                         .detached = false,
+                    });
+                },
+                .onConfigAdvanced = [enqueue, flowgraphId, blockName](const bool advanced) {
+                    enqueue(MailSetConfigAdvanced{
+                        .flowgraph = flowgraphId,
+                        .block = blockName,
+                        .advanced = advanced,
                     });
                 },
             });

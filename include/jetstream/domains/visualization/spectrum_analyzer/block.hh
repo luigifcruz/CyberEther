@@ -96,7 +96,7 @@ struct SpectrumAnalyzer : public Block::Config {
         "## Readouts\n"
         "\n"
         "A warning appears under the zoom label in the top-right corner when the input "
-        "comes from a SoapySDR source. The 3D Waterfall mode shows none.\n"
+        "comes from an SDR source. The 3D Waterfall mode shows none.\n"
         "\n"
         "| Readout | Shows |\n"
         "|---|---|\n"

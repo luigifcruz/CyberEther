@@ -103,6 +103,7 @@ struct FlowgraphNode {
         std::vector<DeviceOption> deviceOptions;
         bool configCollapsed = false;
         bool configDetached = false;
+        bool configAdvanced = false;
     };
 
     struct Config {
@@ -122,6 +123,7 @@ struct FlowgraphNode {
         std::function<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
         std::function<void(bool)> onConfigCollapse;
         std::function<void(bool)> onConfigDetach;
+        std::function<void(bool)> onConfigAdvanced;
     };
 
     struct Geometry {
@@ -143,6 +145,10 @@ struct FlowgraphNode {
 
     void update(Config config) {
         this->config = std::move(config);
+        ApplyAdvancedSection(this->config.block.configFields,
+                             this->config.id + ":advanced",
+                             this->config.block.configAdvanced,
+                             this->config.onConfigAdvanced);
         const auto& block = this->config.block;
         const U64 surfaceCount = block.surfaces.size();
         const bool hasSurfaces = surfaceCount > 0;

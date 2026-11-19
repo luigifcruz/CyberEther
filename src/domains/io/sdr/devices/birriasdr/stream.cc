@@ -111,6 +111,7 @@ Result BirriaSdrStream::connect(const Device::Info& info) {
         [this](const U32 index, uint64_t& minimum, uint64_t& maximum) {
             return birriasdr_get_tuning_band(handle, index, &minimum, &maximum);
         }, birriasdr_get_sample_rate(handle), deviceCapabilities));
+    deviceCapabilities.fullScale = SampleScale;
     defaultSettlingTime = SettlingTime;
     appliedSettings.gainRange = Device::Range{0.0, static_cast<F64>(BirriaSdrSettings::MaxGain)};
     return Result::SUCCESS;

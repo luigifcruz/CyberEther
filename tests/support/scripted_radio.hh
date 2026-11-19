@@ -46,6 +46,7 @@ struct Script {
     std::optional<Radio::Device::Firmware> firmware;
     std::vector<Radio::Device::Range> sampleRates;
     U64 receiveChannels = 1;
+    bool antennas = true;
     U64 readLimit = 0;
     std::chrono::milliseconds readDelay{0};
     std::atomic<U64> largestRead{0};
@@ -68,6 +69,7 @@ struct Script {
         firmware.reset();
         sampleRates.clear();
         receiveChannels = 1;
+        antennas = true;
         readLimit = 0;
         readDelay = std::chrono::milliseconds(0);
         largestRead = 0;
@@ -105,7 +107,9 @@ inline Radio::Device::Capabilities ScriptedCapabilities() {
     Radio::Device::Capabilities caps;
     caps.frequencyRanges = {{10.0e6, 2000.0e6}};
     caps.sampleRateRanges = {{1.0e6, 10.0e6}};
-    caps.antennas = {"RX1", "RX2"};
+    if (TestScript().antennas) {
+        caps.antennas = {"RX1", "RX2"};
+    }
     caps.automaticGain = true;
     caps.biasTee = true;
     caps.sweepSampleRate = 2.0e6;
@@ -279,6 +283,9 @@ class ScriptedStream final : public Radio::Stream {
         appliedSettings.automaticGain = settings.automaticGain;
         appliedSettings.gain = resolveGain(settings.gain, appliedSettings.gainRange);
         appliedSettings.biasTee = settings.biasTee;
+        if (!settings.channelAntennas.empty()) {
+            TestScript().record("antennas");
+        }
         if (settings.receiveChannels > 1) {
             const auto call = jst::fmt::format("channels:{}", settings.receiveChannels);
             TestScript().record(call);

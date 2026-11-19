@@ -1695,6 +1695,17 @@ TEST_CASE("SDR timestamp filter live retunes skip the queued FIFO before their b
     REQUIRE(tracker.accept(2600, 64).status == Radio::Device::Status::Samples);
 }
 
+TEST_CASE("SDR timestamp filter keeps a reported loss across repeated loss reports",
+          "[modules][sdr][backend][lime]") {
+    Radio::TimestampFilter tracker;
+    tracker.restart(0, 1000);
+    REQUIRE(tracker.accept(0, 100).status == Radio::Device::Status::Samples);
+
+    tracker.lose(500);
+    tracker.lose(600);
+    REQUIRE(tracker.accept(200, 100).status == Radio::Device::Status::Discontinuity);
+}
+
 TEST_CASE("SDR timestamp filter guards reject overflow without accepting earlier samples",
           "[modules][sdr][backend][limits]") {
     const U64 maximum = std::numeric_limits<U64>::max();
@@ -2307,6 +2318,22 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", ""}}) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
     REQUIRE(TestScript().opens == 1);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR multi-channel radios without antennas ignore the single-channel antenna",
+                 "[modules][sdr][multi-channel]") {
+    TestScript().receiveChannels = 2;
+    TestScript().antennas = false;
+    auto config = ScriptedConfig();
+    config.channels = 2;
+    config.antenna = "LNAW";
+    config.antennas = {"LNAW", "LNAW"};
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("multi", config, {}) == Result::SUCCESS);
+    const auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "antennas") == calls.end());
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,

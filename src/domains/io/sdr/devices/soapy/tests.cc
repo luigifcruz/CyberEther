@@ -1,14 +1,38 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "domains/io/sdr/devices/soapy/tools/catalog.hh"
+#include "domains/io/sdr/devices/soapy/tools/library.hh"
+#include "domains/io/sdr/devices/stream.hh"
 #include "domains/io/sdr/devices/sweep.hh"
+#include "environment.hh"
 
 using namespace Jetstream;
+
+TEST_CASE("SoapySDR can load an installed system runtime without opening a radio",
+          "[devices][sdr][soapy][runtime][system]") {
+    const TestSupport::ScopedEnvironment environment("CYBERETHER_SOAPYSDR_LIBRARY");
+    REQUIRE(environment.set(std::nullopt));
+    struct Reset {
+        Reset() { Radio::SoapyRuntime::Reset(); }
+        ~Reset() { Radio::SoapyRuntime::Reset(); }
+    } reset;
+    const auto library = Radio::SoapyRuntime::Acquire();
+    if (!library) {
+        SKIP(Radio::SoapyRuntime::Availability().message);
+    }
+    REQUIRE(Radio::SoapyRuntime::Availability().available);
+    const std::string version = library->api().getABIVersion();
+    REQUIRE(std::find(Radio::SoapyAbi::Versions.begin(), Radio::SoapyAbi::Versions.end(),
+                      version) != Radio::SoapyAbi::Versions.end());
+    REQUIRE_FALSE(library->path().empty());
+}
 
 TEST_CASE("SoapySDR catalog keeps the device serial when it fits a selector",
           "[devices][sdr][soapy]") {
@@ -26,7 +50,7 @@ TEST_CASE("SoapySDR catalog keeps the device serial when it fits a selector",
 }
 
 TEST_CASE("SoapySDR catalog derives a stable serial when none fits", "[devices][sdr][soapy]") {
-    const Modules::SoapyKwargs args{{"driver", "fake"}, {"serial", "a,b=c"}};
+    const Radio::SoapyKwargs args{{"driver", "fake"}, {"serial", "a,b=c"}};
     const auto first = Radio::SoapyCatalog::Describe(args);
     const auto second = Radio::SoapyCatalog::Describe(args);
     const auto other = Radio::SoapyCatalog::Describe({{"driver", "fake"}, {"serial", "x,y"}});
@@ -49,6 +73,9 @@ TEST_CASE("SoapySDR catalog derives a stable serial when none fits", "[devices][
 TEST_CASE("SoapySDR catalog skips devices that are not radios", "[devices][sdr][soapy]") {
     CHECK(Radio::SoapyCatalog::Skipped({{"driver", "audio"}}));
     CHECK_FALSE(Radio::SoapyCatalog::Skipped({{"driver", "uhd"}}));
+    CHECK_FALSE(Radio::SoapyCatalog::Skipped({{"driver", "plutosdr"}, {"uri", "ip:192.168.2.1"}}));
+    CHECK_FALSE(Radio::SoapyCatalog::Skipped({{"driver", "plutosdr"}, {"uri", "local:"}}));
+    CHECK_FALSE(Radio::SoapyCatalog::Skipped({{"driver", "lime"}, {"media", "PCI-E"}}));
     CHECK_FALSE(Radio::SoapyCatalog::Skipped({{"driver", "remote"}, {"remote:driver", "audio"}}));
     const auto entries = Radio::SoapyCatalog::List({
         {{"driver", "audio"}, {"label", "Speakers"}},
@@ -56,6 +83,19 @@ TEST_CASE("SoapySDR catalog skips devices that are not radios", "[devices][sdr][
     });
     REQUIRE(entries.size() == 1);
     CHECK(entries.front().info.serial == "1");
+}
+
+TEST_CASE("SoapySDR catalog tells apart devices that share a serial", "[devices][sdr][soapy]") {
+    const auto entries = Radio::SoapyCatalog::List({
+        {{"driver", "usdr"}, {"serial", "0001"}, {"bus", "pci:0"}},
+        {{"driver", "usdr"}, {"serial", "0001"}, {"bus", "pci:1"}},
+        {{"driver", "uhd"}, {"serial", "3141592"}},
+    });
+    REQUIRE(entries.size() == 3);
+    CHECK(entries[0].info.serial.starts_with("args-"));
+    CHECK(entries[1].info.serial.starts_with("args-"));
+    CHECK(entries[0].info.serial != entries[1].info.serial);
+    CHECK(entries[2].info.serial == "3141592");
 }
 
 TEST_CASE("SoapySDR catalog picks the highest reported rate under the ceiling",
@@ -71,23 +111,38 @@ TEST_CASE("SoapySDR catalog picks the highest reported rate under the ceiling",
 
 namespace {
 
-namespace Abi = Modules::SoapyAbi;
+namespace Abi = Radio::SoapyAbi;
 
 struct FakeRadio {
-    bool burstSupported = true;
-    bool endsBursts = true;
-    bool flagsBurstEnd = true;
     F64 rateOffset = 0.0;
     F64 sampleRate = 0.0;
     bool bandwidthSupported = true;
     F64 bandwidth = 0.0;
     U64 zeroReads = 0;
-    U64 bursts = 0;
     U64 starts = 0;
     U64 stops = 0;
     bool streaming = false;
-    U64 remaining = 0;
+    U64 delivered = 0;
     std::vector<std::string> biasTee;
+    std::size_t channels = 1;
+    std::vector<std::string> antennaSets;
+    std::string streamArguments;
+    bool timed = false;
+    long long timeNs = 1000;
+    long long gapNs = 0;
+    U64 untimedReads = 0;
+    bool abruptOnce = false;
+    bool hardwareTime = false;
+    long long hardwareLeadNs = 0;
+    U64 overflows = 0;
+    bool biasTeeRx = false;
+    bool frozenTime = false;
+    bool biasTeeRejected = false;
+    bool singleChannelStreams = false;
+    bool timedStartOnly = false;
+    std::size_t streamChannels = 0;
+    int startFlags = 0;
+    F64 gainStep = 0.0;
 };
 
 FakeRadio& Fake() {
@@ -100,9 +155,14 @@ char DriverValue[] = "fake";
 char SerialKey[] = "serial";
 char SerialValue[] = "1234";
 char BiasTeeKey[] = "biastee";
+char BiasTeeRxKey[] = "biastee_rx";
+char AntennaA[] = "A";
+char AntennaB[] = "B";
+std::string ArgumentKey;
+std::string ArgumentValue;
 
-Modules::SoapyApi FakeApi() {
-    Modules::SoapyApi api;
+Radio::SoapyApi FakeApi() {
+    Radio::SoapyApi api;
     api.lastError = [] { return ""; };
     api.lastStatus = [] { return 0; };
     api.errToStr = [](int) { return "fake error"; };
@@ -133,24 +193,56 @@ Modules::SoapyApi FakeApi() {
     };
     api.getSettingInfo = [](const Abi::Device*, std::size_t* count) {
         static Abi::ArgInfo setting{};
-        setting.key = BiasTeeKey;
+        setting.key = Fake().biasTeeRx ? BiasTeeRxKey : BiasTeeKey;
         *count = 1;
         return &setting;
     };
     api.writeSetting = [](Abi::Device*, const char* key, const char* value) {
-        if (std::string(key) == "biastee") {
+        if (std::string(key) == (Fake().biasTeeRx ? "biastee_rx" : "biastee")) {
+            if (Fake().biasTeeRejected) {
+                return -1;
+            }
             Fake().biasTee.emplace_back(value);
         }
         return 0;
     };
+    api.kwargsFromString = [](const char* markup) {
+        static char* keys[1];
+        static char* values[1];
+        const std::string text(markup ? markup : "");
+        const auto split = text.find('=');
+        if (split == std::string::npos) {
+            return Abi::Kwargs{0, nullptr, nullptr};
+        }
+        ArgumentKey = text.substr(0, split);
+        ArgumentValue = text.substr(split + 1);
+        keys[0] = ArgumentKey.data();
+        values[0] = ArgumentValue.data();
+        return Abi::Kwargs{1, keys, values};
+    };
+    api.kwargsClear = [](Abi::Kwargs*) {};
+    api.getNumChannels = [](const Abi::Device*, int) { return Fake().channels; };
     api.listAntennas = [](const Abi::Device*, int, std::size_t, std::size_t* count) -> char** {
-        *count = 0;
+        static char* names[] = {AntennaA, AntennaB};
+        *count = Fake().channels > 1 ? 2 : 0;
+        return *count > 0 ? names : nullptr;
+    };
+    api.getAntenna = [](const Abi::Device*, int, std::size_t) -> char* {
+        return Fake().channels > 1 ? AntennaA : nullptr;
+    };
+    api.setAntenna = [](Abi::Device*, int, std::size_t channel, const char* name) {
+        Fake().antennaSets.push_back(std::to_string(channel) + ":" + name);
+        return 0;
+    };
+    api.getNativeStreamFormat = [](const Abi::Device*, int, std::size_t, double* fullScale)
+        -> char* {
+        *fullScale = 2048.0;
         return nullptr;
     };
     api.hasGainMode = [](const Abi::Device*, int, std::size_t) { return true; };
     api.setGainMode = [](Abi::Device*, int, std::size_t, bool) { return 0; };
     api.getGainRange = [](const Abi::Device*, int, std::size_t) {
-        return Abi::Range{0.0, 60.0, 0.0};
+        return Abi::Range{0.0, 60.0, Fake().gainStep};
     };
     api.setGain = [](Abi::Device*, int, std::size_t, double) { return 0; };
     api.setSampleRate = [](Abi::Device*, int, std::size_t, double value) {
@@ -169,23 +261,26 @@ Modules::SoapyApi FakeApi() {
         return 0;
     };
     api.getFrequency = [](const Abi::Device*, int, std::size_t) { return 0.0; };
-    api.setupStream = [](Abi::Device*, int, const char*, const std::size_t*, std::size_t,
-                         const Abi::Kwargs*) {
+    api.setupStream = [](Abi::Device*, int, const char*, const std::size_t*, std::size_t count,
+                         const Abi::Kwargs* arguments) -> Abi::Stream* {
+        if (Fake().singleChannelStreams && count > 1) {
+            return nullptr;
+        }
+        Fake().streamChannels = count;
+        Fake().streamArguments.clear();
+        for (std::size_t i = 0; arguments && i < arguments->size; ++i) {
+            Fake().streamArguments += std::string(arguments->keys[i]) + "=" + arguments->vals[i];
+        }
         return reinterpret_cast<Abi::Stream*>(&Fake());
     };
     api.closeStream = [](Abi::Device*, Abi::Stream*) { return 0; };
-    api.activateStream = [](Abi::Device*, Abi::Stream*, int flags, long long, std::size_t size) {
-        auto& fake = Fake();
-        if (flags & Abi::EndBurst) {
-            if (!fake.burstSupported) {
-                return Abi::NotSupported;
-            }
-            ++fake.bursts;
-            fake.remaining = size;
-        } else {
-            ++fake.starts;
+    api.activateStream = [](Abi::Device*, Abi::Stream*, int flags, long long, std::size_t) {
+        if (Fake().timedStartOnly && Fake().streamChannels > 1 && !(flags & Abi::HasTime)) {
+            return -1;
         }
-        fake.streaming = true;
+        Fake().startFlags = flags;
+        ++Fake().starts;
+        Fake().streaming = true;
         return 0;
     };
     api.deactivateStream = [](Abi::Device*, Abi::Stream*, int, long long) {
@@ -194,26 +289,41 @@ Modules::SoapyApi FakeApi() {
         return 0;
     };
     api.readStream = [](Abi::Device*, Abi::Stream*, void* const*, std::size_t count, int* flags,
-                        long long*, long) {
+                        long long* timeNs, long) {
         auto& fake = Fake();
         *flags = 0;
         if (!fake.streaming) {
             return Abi::Timeout;
         }
+        if (fake.overflows > 0) {
+            --fake.overflows;
+            return Abi::Overflow;
+        }
+        if (fake.timed) {
+            fake.timeNs += fake.gapNs;
+            fake.gapNs = 0;
+            *timeNs = fake.frozenTime ? -250 : fake.timeNs;
+            fake.timeNs += static_cast<long long>(count * 1.0e9 / fake.sampleRate);
+            if (fake.untimedReads > 0) {
+                --fake.untimedReads;
+            } else {
+                *flags |= Abi::HasTime;
+            }
+        }
+        if (fake.abruptOnce) {
+            fake.abruptOnce = false;
+            *flags |= Abi::EndAbrupt;
+        }
         if (fake.zeroReads > 0) {
             --fake.zeroReads;
             return 0;
         }
-        const bool burst = fake.remaining > 0 && fake.endsBursts;
-        const auto read = burst ? std::min<std::size_t>(count, fake.remaining) : count;
-        if (burst) {
-            fake.remaining -= read;
-            if (fake.remaining == 0) {
-                fake.streaming = false;
-                *flags = fake.flagsBurstEnd ? Abi::EndBurst : 0;
-            }
-        }
-        return static_cast<int>(read);
+        fake.delivered += count;
+        return static_cast<int>(count);
+    };
+    api.hasHardwareTime = [](const Abi::Device*, const char*) { return Fake().hardwareTime; };
+    api.getHardwareTime = [](const Abi::Device*, const char*) {
+        return Fake().timeNs + Fake().hardwareLeadNs;
     };
     return api;
 }
@@ -221,12 +331,12 @@ Modules::SoapyApi FakeApi() {
 struct FakeRuntime {
     explicit FakeRuntime(const FakeRadio& radio = {}) {
         Fake() = radio;
-        Modules::SoapyRuntime::Override(FakeApi());
+        Radio::SoapyRuntime::Override(FakeApi());
         Radio::Device::ClearCache();
     }
 
     ~FakeRuntime() {
-        Modules::SoapyRuntime::Reset();
+        Radio::SoapyRuntime::Reset();
         Radio::Device::ClearCache();
     }
 };
@@ -256,44 +366,36 @@ U64 RunHops(Radio::Sweep& sweep, const U64 hops) {
 
 }  // namespace
 
-TEST_CASE("SoapySDR sweep captures one burst per hop", "[devices][sdr][soapy]") {
+TEST_CASE("SoapySDR sweep restarts the stream at each hop", "[devices][sdr][soapy]") {
     const FakeRuntime runtime;
     auto sweep = OpenSweep();
 
     CHECK(RunHops(*sweep, 3) == 3);
-    CHECK(Fake().bursts == 3);
-    CHECK(Fake().starts == 0);
-}
-
-TEST_CASE("SoapySDR sweep restarts the stream when bursts are not supported",
-          "[devices][sdr][soapy]") {
-    const FakeRuntime runtime({.burstSupported = false});
-    auto sweep = OpenSweep();
-
-    CHECK(RunHops(*sweep, 3) == 3);
-    CHECK(Fake().bursts == 0);
     CHECK(Fake().starts == 3);
-    CHECK(Fake().stops == 3);
+    CHECK(Fake().stops == 2);
 }
 
-TEST_CASE("SoapySDR sweep restarts the stream when bursts never end", "[devices][sdr][soapy]") {
-    const FakeRuntime runtime({.endsBursts = false});
-    auto sweep = OpenSweep();
+TEST_CASE("SoapySDR sweep drops samples received before each retune", "[devices][sdr][soapy]") {
+    U64 plain = 0;
+    {
+        const FakeRuntime runtime({.timed = true});
+        auto sweep = OpenSweep();
+        CHECK(RunHops(*sweep, 2) == 2);
+        plain = Fake().delivered;
+    }
 
-    CHECK(RunHops(*sweep, 3) == 3);
-    CHECK(Fake().bursts == 1);
-    CHECK(Fake().starts == 2);
-    CHECK(Fake().stops == 3);
+    const FakeRuntime runtime({.timed = true, .hardwareTime = true, .hardwareLeadNs = 99900});
+    auto sweep = OpenSweep();
+    CHECK(RunHops(*sweep, 2) == 2);
+    CHECK(Fake().delivered == plain + 2 * 200);
 }
 
-TEST_CASE("SoapySDR sweep keeps bursts when the driver ends them silently",
-          "[devices][sdr][soapy]") {
-    const FakeRuntime runtime({.flagsBurstEnd = false});
+TEST_CASE("SoapySDR sweep refills the hop after an overflow", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.timed = true, .hardwareTime = true, .overflows = 1});
     auto sweep = OpenSweep();
 
-    CHECK(RunHops(*sweep, 3) == 3);
-    CHECK(Fake().bursts == 3);
-    CHECK(Fake().starts == 0);
+    CHECK(RunHops(*sweep, 2) == 2);
+    CHECK(sweep->statistics().failedHops == 0);
 }
 
 TEST_CASE("SoapySDR sweep treats empty reads as timeouts", "[devices][sdr][soapy]") {
@@ -311,7 +413,7 @@ TEST_CASE("SoapySDR sweep turns the Bias-T off when closed", "[devices][sdr][soa
         auto sweep = OpenSweep({.biasTee = true});
         CHECK(sweep->applied().biasTee);
         sweep.reset();
-        CHECK(Fake().biasTee == std::vector<std::string>{"true", "false"});
+        CHECK(Fake().biasTee == std::vector<std::string>{"false", "true", "false"});
     }
 
     SECTION("never enabled") {
@@ -355,6 +457,215 @@ TEST_CASE("SoapySDR sweep sets the RF bandwidth to the applied rate", "[devices]
         CHECK(Fake().bandwidth == 0.0);
         CHECK(sweep->applied().sampleRate == 2.0e6);
     }
+}
+
+namespace {
+
+std::unique_ptr<Radio::Stream> StartStream(const Radio::Stream::Settings& settings) {
+    std::unique_ptr<Radio::Stream> stream;
+    REQUIRE(Radio::Stream::Open("driver=soapy,serial=1234", stream) == Result::SUCCESS);
+    REQUIRE(stream->start(settings) == Result::SUCCESS);
+    return stream;
+}
+
+Radio::Device::Capture Read(Radio::Stream& stream) {
+    std::vector<CF32> samples(256);
+    return stream.read(samples, std::chrono::milliseconds(10));
+}
+
+}  // namespace
+
+TEST_CASE("SoapySDR stream passes driver arguments and switches Bias-T off on close",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime;
+    auto stream = StartStream({
+        .frequency = 100.0e6,
+        .sampleRate = 1.0e6,
+        .biasTee = true,
+        .driverArguments = "bufflen=8192",
+    });
+
+    CHECK(Fake().streamArguments == "bufflen=8192");
+    REQUIRE_FALSE(Fake().biasTee.empty());
+    CHECK(Fake().biasTee.back() == "true");
+
+    stream.reset();
+    CHECK(Fake().biasTee.back() == "false");
+}
+
+TEST_CASE("SoapySDR stream timestamps continue across reads and jump at a time gap",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.timed = true});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0});
+
+    const auto first = Read(*stream);
+    REQUIRE(first.status == Radio::Device::Status::Samples);
+    REQUIRE(first.timestamp == 0);
+
+    Fake().untimedReads = 1;
+    const auto untimed = Read(*stream);
+    REQUIRE(untimed.timestamp == 256);
+    CHECK(untimed.epoch == first.epoch);
+
+    Fake().gapNs = 5000;
+    const auto gap = Read(*stream);
+    CHECK(gap.timestamp == 517);
+    CHECK(gap.epoch == first.epoch);
+
+    REQUIRE(stream->update({.frequency = 200.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0}) ==
+            Result::SUCCESS);
+    const auto retuned = Read(*stream);
+    CHECK(retuned.timestamp == 0);
+    CHECK(retuned.epoch > first.epoch);
+    CHECK(Fake().starts == 2);
+    CHECK(Fake().stops == 1);
+}
+
+TEST_CASE("SoapySDR stream drives Bias-T through the RX-only setting", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.biasTeeRx = true});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .biasTee = true});
+
+    CHECK(stream->capabilities().biasTee);
+    CHECK(stream->applied().biasTee);
+    REQUIRE_FALSE(Fake().biasTee.empty());
+    CHECK(Fake().biasTee.back() == "true");
+}
+
+TEST_CASE("SoapySDR stream hides a Bias-T setting the driver rejects", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.biasTeeRx = true, .biasTeeRejected = true});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .biasTee = true});
+
+    CHECK_FALSE(stream->capabilities().biasTee);
+    CHECK_FALSE(stream->applied().biasTee);
+}
+
+TEST_CASE("SoapySDR stream drops samples received before a retune", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.timed = true, .hardwareTime = true, .hardwareLeadNs = 100000});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0});
+    REQUIRE(Read(*stream).count == 256);
+
+    REQUIRE(stream->update({.frequency = 200.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0}) ==
+            Result::SUCCESS);
+    const auto retuned = Read(*stream);
+    REQUIRE(retuned.status == Radio::Device::Status::Samples);
+    CHECK(retuned.count == 156);
+    CHECK(retuned.timestamp == 100);
+    CHECK(Read(*stream).count == 256);
+    CHECK(Fake().starts == 2);
+}
+
+TEST_CASE("SoapySDR stream settles by sample count when reads never carry timestamps",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.hardwareTime = true, .hardwareLeadNs = 599500});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0});
+    REQUIRE(Read(*stream).count == 256);
+
+    REQUIRE(stream->update({.frequency = 200.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0}) ==
+            Result::SUCCESS);
+    CHECK(Read(*stream).count == 256);
+}
+
+TEST_CASE("SoapySDR stream keeps the retune cutoff across untimed reads", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.timed = true, .hardwareTime = true, .hardwareLeadNs = 599500});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0});
+    REQUIRE(Read(*stream).count == 256);
+
+    REQUIRE(stream->update({.frequency = 200.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0}) ==
+            Result::SUCCESS);
+    CHECK(Read(*stream).status == Radio::Device::Status::Timeout);
+    Fake().untimedReads = 1;
+    CHECK(Read(*stream).status == Radio::Device::Status::Timeout);
+    CHECK(Read(*stream).count == 168);
+}
+
+TEST_CASE("SoapySDR stream settles by sample count when timestamps do not advance",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.timed = true, .hardwareTime = true, .frozenTime = true});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0});
+    REQUIRE(Read(*stream).count == 256);
+
+    REQUIRE(stream->update({.frequency = 200.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0}) ==
+            Result::SUCCESS);
+    CHECK(Read(*stream).status == Radio::Device::Status::Timeout);
+    CHECK(Read(*stream).count == 256);
+}
+
+TEST_CASE("SoapySDR stream reports a gap after an abrupt end", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.abruptOnce = true});
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6, .settlingTime = 0.0});
+
+    CHECK(Read(*stream).status == Radio::Device::Status::Samples);
+    CHECK(Read(*stream).status == Radio::Device::Status::Discontinuity);
+    CHECK(Read(*stream).status == Radio::Device::Status::Samples);
+}
+
+TEST_CASE("SoapySDR stream sets the antenna of each receiver", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.channels = 2});
+    auto stream = StartStream({
+        .frequency = 100.0e6,
+        .sampleRate = 1.0e6,
+        .automaticGain = false,
+        .receiveChannels = 2,
+        .channelGains = {30.0, 30.0},
+        .channelAntennas = {"B", "A"},
+    });
+    CHECK(Fake().antennaSets == std::vector<std::string>{"0:B", "1:A"});
+
+    Fake().antennaSets.clear();
+    REQUIRE(stream->update({
+        .frequency = 100.0e6,
+        .sampleRate = 1.0e6,
+        .automaticGain = false,
+        .receiveChannels = 2,
+        .channelGains = {30.0, 30.0},
+        .channelAntennas = {"", "A"},
+    }) == Result::SUCCESS);
+    CHECK(Fake().antennaSets == std::vector<std::string>{"0:A", "1:A"});
+}
+
+TEST_CASE("SoapySDR stream offers one receiver when the driver streams one at a time",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.channels = 2, .singleChannelStreams = true});
+    std::unique_ptr<Radio::Stream> stream;
+    REQUIRE(Radio::Stream::Open("driver=soapy,serial=1234", stream) == Result::SUCCESS);
+    CHECK(stream->capabilities().receiveChannels == 1);
+}
+
+TEST_CASE("SoapySDR stream starts several receivers at a hardware time when required",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.channels = 2, .hardwareTime = true, .timedStartOnly = true});
+    auto stream = StartStream({
+        .frequency = 100.0e6,
+        .sampleRate = 1.0e6,
+        .automaticGain = false,
+        .receiveChannels = 2,
+        .channelGains = {30.0, 30.0},
+    });
+    CHECK((Fake().startFlags & Abi::HasTime) != 0);
+}
+
+TEST_CASE("SoapySDR stream applies manual gain on the driver gain step", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.gainStep = 1.0});
+    auto stream = StartStream({
+        .frequency = 100.0e6,
+        .sampleRate = 1.0e6,
+        .automaticGain = false,
+        .gain = 30.4,
+    });
+    CHECK(stream->applied().gain == 30.0);
+}
+
+TEST_CASE("SoapySDR stream leaves the driver antenna alone on Default", "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.channels = 2});
+    auto stream = StartStream({
+        .frequency = 100.0e6,
+        .sampleRate = 1.0e6,
+        .automaticGain = false,
+        .receiveChannels = 2,
+        .channelGains = {30.0, 30.0},
+        .channelAntennas = {"", ""},
+    });
+    CHECK(Fake().antennaSets.empty());
 }
 
 #endif
