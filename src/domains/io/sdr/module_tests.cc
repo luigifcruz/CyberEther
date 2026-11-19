@@ -1699,6 +1699,17 @@ TEST_CASE("SDR timestamp filter live retunes skip the queued FIFO before their b
     REQUIRE(tracker.accept(2600, 64).status == Radio::Device::Status::Samples);
 }
 
+TEST_CASE("SDR timestamp filter keeps a reported loss across repeated loss reports",
+          "[modules][sdr][backend][lime]") {
+    Radio::TimestampFilter tracker;
+    tracker.restart(0, 1000);
+    REQUIRE(tracker.accept(0, 100).status == Radio::Device::Status::Samples);
+
+    tracker.lose(500);
+    tracker.lose(600);
+    REQUIRE(tracker.accept(200, 100).status == Radio::Device::Status::Discontinuity);
+}
+
 TEST_CASE("SDR timestamp filter guards reject overflow without accepting earlier samples",
           "[modules][sdr][backend][limits]") {
     const U64 maximum = std::numeric_limits<U64>::max();
@@ -1919,6 +1930,8 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(WaitFor([&] { return stream.size() == 4; }));
 
     F32 first = 4.0f;
+    U64 radioLost = 0;
+    U64 deviceGaps = 0;
     SECTION("reported gap") {
         {
             std::lock_guard lock(TestScript().mutex);
@@ -1926,10 +1939,13 @@ TEST_CASE_METHOD(ScriptedDrivers,
                 .status = Radio::Device::Status::Discontinuity, .lost = 64};
         }
         REQUIRE(WaitFor([&] { return sdr->getLoss().deviceGaps == 1; }));
+        radioLost = 64;
+        deviceGaps = 1;
     }
     SECTION("timestamp jump") {
         TestScript().jump = 100;
         first = 104.0f;
+        radioLost = 100;
     }
     TestScript().budget = 8;
     REQUIRE(WaitFor([&] { return stream.size() == 12; }));
@@ -1938,6 +1954,15 @@ TEST_CASE_METHOD(ScriptedDrivers,
         REQUIRE(output.data<CF32>()[i].real() == first + static_cast<F32>(i));
     }
     REQUIRE(stream.statistics().discardedSamples == 4);
+
+    // The recorder sees where the frame sits and what the radio dropped.
+    const auto count = [&](const std::string& key) {
+        return std::any_cast<U64>(output.attribute(key));
+    };
+    REQUIRE(count("streamPosition") == 4);
+    REQUIRE(count("radioLostSamples") == radioLost);
+    REQUIRE(count("radioGapPosition") == 4);
+    REQUIRE(count("deviceOverflows") == deviceGaps);
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
@@ -2311,6 +2336,22 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", ""}}) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
     REQUIRE(TestScript().opens == 1);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR multi-channel radios without antennas ignore the single-channel antenna",
+                 "[modules][sdr][multi-channel]") {
+    TestScript().receiveChannels = 2;
+    TestScript().antennas = false;
+    auto config = ScriptedConfig();
+    config.channels = 2;
+    config.antenna = "LNAW";
+    config.antennas = {"LNAW", "LNAW"};
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("multi", config, {}) == Result::SUCCESS);
+    const auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "antennas") == calls.end());
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,

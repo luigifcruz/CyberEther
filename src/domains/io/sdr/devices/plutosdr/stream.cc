@@ -217,6 +217,7 @@ Result PlutoSdrStream::connect(const Device::Info& info) {
     caps.sampleRateRanges = {{std::ceil(rate->minimum / FirDecimation), rate->maximum}};
     caps.automaticGain = true;
     caps.biasTee = false;
+    caps.fullScale = Q11Scale;
     caps.sweepSampleRate = std::min(rate->maximum, SweepSampleRate);
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 20.0e3;

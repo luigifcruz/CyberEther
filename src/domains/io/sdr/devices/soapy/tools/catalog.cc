@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <map>
 #include <string_view>
 
 #include "jetstream/logger.hh"
@@ -32,10 +33,13 @@ constexpr std::array SkippedDrivers = {
 #ifdef JETSTREAM_LOADER_PLUTOSDR_AVAILABLE
     std::string_view{"plutosdr"},
 #endif
+#ifdef JETSTREAM_LOADER_BIRRIASDR_AVAILABLE
+    std::string_view{"birria"},
+#endif
     std::string_view{"audio"},
 };
 
-std::string Value(const Modules::SoapyKwargs& args, const std::string& key) {
+std::string Value(const SoapyKwargs& args, const std::string& key) {
     const auto it = args.find(key);
     return it == args.end() ? std::string{} : it->second;
 }
@@ -44,7 +48,7 @@ bool Selectable(const std::string& serial) {
     return !serial.empty() && serial.find_first_of(",=") == std::string::npos;
 }
 
-std::string Identifier(const Modules::SoapyKwargs& args) {
+std::string Identifier(const SoapyKwargs& args) {
     U64 hash = 14695981039346656037ULL;
     const auto mix = [&](const std::string_view text) {
         for (const char c : text) {
@@ -62,12 +66,19 @@ std::string Identifier(const Modules::SoapyKwargs& args) {
 
 }  // namespace
 
-bool SoapyCatalog::Skipped(const Modules::SoapyKwargs& args) {
+bool SoapyCatalog::Skipped(const SoapyKwargs& args) {
     const auto driver = Value(args, "driver");
+    if (driver == "plutosdr" && !Value(args, "uri").starts_with("usb:")) {
+        return false;
+    }
+    if (driver == "lime" && !Value(args, "media").empty() &&
+        Value(args, "media").find("USB") == std::string::npos) {
+        return false;
+    }
     return std::find(SkippedDrivers.begin(), SkippedDrivers.end(), driver) != SkippedDrivers.end();
 }
 
-std::optional<SoapyCatalog::Entry> SoapyCatalog::Describe(const Modules::SoapyKwargs& args) {
+std::optional<SoapyCatalog::Entry> SoapyCatalog::Describe(const SoapyKwargs& args) {
     if (Skipped(args)) {
         return std::nullopt;
     }
@@ -88,11 +99,20 @@ std::optional<SoapyCatalog::Entry> SoapyCatalog::Describe(const Modules::SoapyKw
     return entry;
 }
 
-std::vector<SoapyCatalog::Entry> SoapyCatalog::List(const Modules::SoapyKwargsList& devices) {
+std::vector<SoapyCatalog::Entry> SoapyCatalog::List(const SoapyKwargsList& devices) {
     std::vector<Entry> entries;
     for (const auto& args : devices) {
         if (auto entry = Describe(args)) {
             entries.push_back(std::move(*entry));
+        }
+    }
+    std::map<std::string, U64> serials;
+    for (const auto& entry : entries) {
+        ++serials[entry.info.serial];
+    }
+    for (auto& entry : entries) {
+        if (serials.at(entry.info.serial) > 1) {
+            entry.info.serial = Identifier(entry.args);
         }
     }
     return entries;

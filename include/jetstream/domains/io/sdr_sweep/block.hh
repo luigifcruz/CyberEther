@@ -139,7 +139,7 @@ struct SdrSweep : public Block::Config {
         "then replug the dongle. Each hop takes up to about 0.75 s. |\n"
         "| HackRF firmware | Firmware sweeps need USB API 0x0104 or newer. |\n"
         "| SoapySDR | Other radios on macOS, Linux, and Windows, through SoapySDR 0.8 "
-        "and its device modules, marked (SoapySDR). Sweeps are slower and less "
+        "or 0.9 and its device modules, marked (SoapySDR). Sweeps are slower and less "
         "reliable than with a built-in driver, and depend on the module. |\n"
         "| Browser | The built-in drivers except PlutoSDR and BirriaSDR, over WebUSB, "
         "once the page has access to the radio. |\n"

@@ -105,6 +105,7 @@ Result HackRfStream::connect(const Device::Info& info) {
     caps.sampleRateRanges = {{2.0e6, 20.0e6}};
     caps.automaticGain = false;
     caps.biasTee = true;
+    caps.fullScale = 128.0;
     caps.sweepSampleRate = 20.0e6;
     caps.usableBandwidth = 0.75;
     caps.dcExclusion = 50.0e3;

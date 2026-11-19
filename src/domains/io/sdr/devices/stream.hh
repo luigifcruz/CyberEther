@@ -25,6 +25,8 @@ class JETSTREAM_API Stream {
         F64 gain = 30.0;
         U64 receiveChannels = 1;
         std::vector<F64> channelGains;
+        std::string driverArguments;
+        std::vector<std::string> channelAntennas;
     };
 
     struct Applied {

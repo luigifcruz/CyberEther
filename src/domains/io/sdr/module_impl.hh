@@ -2,7 +2,10 @@
 #define JETSTREAM_DOMAINS_IO_SDR_MODULE_IMPL_HH
 
 #include <atomic>
+#include <deque>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <thread>
 
 #include <jetstream/domains/io/sdr/module.hh>
@@ -39,6 +42,11 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     std::optional<Radio::Device::Range> getGainRange() const;
 
  protected:
+    struct SampleCounts {
+        U64 clipped = 0;
+        U64 received = 0;
+    };
+
     Tensor buffer;
     std::vector<CF32*> outputChannels;
 
@@ -53,11 +61,27 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     Radio::StreamBuffer stream;
     Radio::StreamAccess access;
     Radio::StreamBuffer::Metadata publishedMetadata;
+    std::optional<U64> publishedClippedSamples;
+    std::optional<U64> publishedReceivedSamples;
+    // Samples the radio dropped before the host read them, from gaps in
+    // its timestamps or reported losses, kept with their place in the
+    // stream so each frame reports only the gaps that come before its end.
+    struct RadioGap {
+        U64 generation = 0;
+        U64 position = 0;
+        U64 lost = 0;
+    };
+    std::mutex radioGapsMutex;
+    std::deque<RadioGap> radioGaps;
+    U64 radioLostSamples = 0;
+    std::optional<U64> publishedRadioLostSamples;
+    std::optional<U64> publishedDeviceGaps;
 
     Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<U64> deviceGaps{0};
     Tools::Snapshot<U64> deviceLostSamples{0};
+    Tools::Snapshot<SampleCounts> sampleCounts;
     Tools::Snapshot<Radio::Stream::Applied> published;
 
     Result receiveLoop();
@@ -66,7 +90,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
 
  private:
     std::unique_ptr<Radio::Stream> radio;
-    std::vector<std::string> antennas;
+    std::vector<std::string> availableAntennas;
 
     Radio::Stream::Settings settingsOf(const Sdr& config) const;
     void resetStream();

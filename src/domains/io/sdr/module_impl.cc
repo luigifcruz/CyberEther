@@ -4,6 +4,7 @@
 #include <cmath>
 #include <new>
 
+#include <jetstream/memory/attributes.hh>
 #include <jetstream/memory/axis.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/tools/numeric.hh>
@@ -14,6 +15,7 @@ namespace {
 
 constexpr auto ReadTimeout = std::chrono::milliseconds(50);
 constexpr U64 ReadChunk = 16384;
+constexpr F64 DefaultClipLevel = 0.999;
 
 }  // namespace
 
@@ -109,10 +111,11 @@ Result SdrImpl::create() {
     throughput.publish({0.0f, 0.0f});
     deviceGaps.publish(0);
     deviceLostSamples.publish(0);
+    sampleCounts.publish({});
 
     JST_CHECK(Radio::Stream::Open(deviceString, radio));
     const auto& caps = radio->capabilities();
-    antennas = caps.antennas;
+    availableAntennas = caps.antennas;
     if (channels > caps.receiveChannels) {
         JST_ERROR("[MODULE_SDR] Channels ({}) is more than {} supports ({}).",
                   channels, radio->info().label, caps.receiveChannels);
@@ -161,6 +164,8 @@ Result SdrImpl::create() {
 
     outputs()["signal"].produced(name(), "signal", buffer);
     publishedMetadata = {};
+    publishedClippedSamples.reset();
+    publishedReceivedSamples.reset();
     JST_CHECK(publishMetadata(stream.metadata()));
 
     if (const auto result = startReceiver(); result != Result::SUCCESS) {
@@ -227,6 +232,8 @@ Result SdrImpl::reconfigure() {
         automaticGain = config.automaticGain;
         manualGain = applied.gainRange ? static_cast<F32>(applied.gain) : config.manualGain;
         manualGains = config.manualGains;
+        antennas = config.antennas;
+        driverArguments = config.driverArguments;
         return Result::SUCCESS;
     });
 }
@@ -240,11 +247,16 @@ Radio::Stream::Settings SdrImpl::settingsOf(const Sdr& config) const {
         .biasTee = config.biasTee,
         .gain = config.manualGain,
         .receiveChannels = config.channels,
+        .driverArguments = config.driverArguments,
     };
     if (config.channels > 1) {
         for (U64 i = 0; i < config.channels; ++i) {
             settings.channelGains.push_back(i < config.manualGains.size() ? config.manualGains[i]
                                                                            : config.manualGain);
+            if (!availableAntennas.empty()) {
+                settings.channelAntennas.push_back(i < config.antennas.size() ? config.antennas[i]
+                                                                              : config.antenna);
+            }
         }
     }
     return settings;
@@ -272,12 +284,61 @@ Result SdrImpl::publishMetadata(const Radio::StreamBuffer::Metadata& metadata) {
 
 Result SdrImpl::emitFrame() {
     Radio::StreamBuffer::Metadata metadata;
-    const auto result = stream.pop(outputChannels, numberOfBatches * numberOfTimeSamples, metadata);
+    U64 position = 0;
+    const auto result = stream.pop(outputChannels, numberOfBatches * numberOfTimeSamples,
+                                   metadata, &position);
     if (result == Result::INCOMPLETE) {
         return Result::YIELD;
     }
     JST_CHECK(result);
-    return publishMetadata(metadata);
+    JST_CHECK(publishMetadata(metadata));
+
+    // Position of this frame in the received stream, so a recorder can tell
+    // whether frames are contiguous, and the samples the radio dropped.
+    JST_CHECK(buffer.setAttribute("streamPosition", position));
+    const U64 frameEnd = position + numberOfBatches * numberOfTimeSamples;
+    std::optional<U64> radioGapPosition;
+    {
+        std::lock_guard lock(radioGapsMutex);
+        while (!radioGaps.empty()) {
+            const auto& gap = radioGaps.front();
+            if (gap.generation > metadata.generation ||
+                (gap.generation == metadata.generation && gap.position >= frameEnd)) {
+                break;
+            }
+            if (gap.generation == metadata.generation) {
+                radioLostSamples += gap.lost;
+                radioGapPosition = gap.position;
+            }
+            radioGaps.pop_front();
+        }
+    }
+    if (publishedRadioLostSamples != radioLostSamples) {
+        JST_CHECK(buffer.setAttribute("radioLostSamples", radioLostSamples));
+        publishedRadioLostSamples = radioLostSamples;
+    }
+    if (radioGapPosition) {
+        // First sample after the latest gap, in streamPosition terms.
+        JST_CHECK(buffer.setAttribute("radioGapPosition", *radioGapPosition));
+    }
+    const U64 gaps = deviceGaps.get();
+    if (publishedDeviceGaps != gaps) {
+        JST_CHECK(buffer.setAttribute("deviceOverflows", gaps));
+        publishedDeviceGaps = gaps;
+    }
+
+    const SampleCounts counts = sampleCounts.get();
+    if (publishedClippedSamples != counts.clipped) {
+        JST_CHECK(buffer.setAttribute(std::string(ClippedSamplesAttribute), counts.clipped));
+        publishedClippedSamples = counts.clipped;
+    }
+
+    if (publishedReceivedSamples != counts.received) {
+        JST_CHECK(buffer.setAttribute(std::string(ReceivedSamplesAttribute), counts.received));
+        publishedReceivedSamples = counts.received;
+    }
+
+    return Result::SUCCESS;
 }
 
 Result SdrImpl::startReceiver() {
@@ -321,6 +382,24 @@ Result SdrImpl::receiveLoop() {
     }
     U64 gaps = 0;
     U64 lost = 0;
+    // Expected timestamp of the next read; a later one means the radio
+    // dropped samples in between.
+    std::optional<U64> expectedTimestamp;
+    U64 expectedEpoch = 0;
+    U64 expectedGeneration = 0;
+    const auto recordGap = [&](const U64 generation, const U64 count) {
+        std::lock_guard lock(radioGapsMutex);
+        radioGaps.push_back({generation, stream.pushed(), count});
+    };
+
+    const F64 fullScale = radio->capabilities().fullScale;
+    const bool integer = fullScale >= 2.0;
+    const F32 upperClip = static_cast<F32>(integer ? (fullScale - 1.0) / fullScale : DefaultClipLevel);
+    const F32 lowerClip = integer ? -1.0f : -static_cast<F32>(DefaultClipLevel);
+    const auto clipped = [&](const F32 value) {
+        return value >= upperClip || value <= lowerClip;
+    };
+    SampleCounts counts;
 
     while (streaming) {
         const auto lock = access.lock();
@@ -343,6 +422,26 @@ Result SdrImpl::receiveLoop() {
                     JST_ERROR("[MODULE_SDR] Radio returned more samples than requested.");
                     return Result::ERROR;
                 }
+                for (const CF32* channel : pointers) {
+                    for (U64 i = 0; i < capture.count; ++i) {
+                        counts.clipped += clipped(channel[i].real()) || clipped(channel[i].imag());
+                    }
+                }
+                counts.received += capture.count * channels;
+                sampleCounts.publish(counts);
+                if (capture.generation != expectedGeneration || capture.epoch != expectedEpoch) {
+                    expectedTimestamp.reset();
+                    expectedGeneration = capture.generation;
+                    expectedEpoch = capture.epoch;
+                }
+                if (capture.timestamp) {
+                    if (expectedTimestamp && *capture.timestamp > *expectedTimestamp) {
+                        recordGap(capture.generation, *capture.timestamp - *expectedTimestamp);
+                    }
+                    expectedTimestamp = *capture.timestamp + capture.count;
+                } else {
+                    expectedTimestamp.reset();
+                }
                 stream.push(capture.generation, pointers, capture.count, capture.timestamp,
                             capture.epoch);
                 Scheduler::Context::NotifyPendingCompute();
@@ -363,6 +462,10 @@ Result SdrImpl::receiveLoop() {
             case Radio::Device::Status::Discontinuity:
                 stream.split(capture.generation);
                 deviceGaps.publish(++gaps);
+                if (capture.lost > 0) {
+                    recordGap(capture.generation, capture.lost);
+                }
+                expectedTimestamp.reset();
                 lost += capture.lost;
                 deviceLostSamples.publish(lost);
                 break;
@@ -395,7 +498,7 @@ std::pair<F32, F32> SdrImpl::getThroughput() const {
 }
 
 std::vector<std::string> SdrImpl::listAntennas() const {
-    return antennas;
+    return availableAntennas;
 }
 
 Radio::Stream::Applied SdrImpl::getApplied() const {

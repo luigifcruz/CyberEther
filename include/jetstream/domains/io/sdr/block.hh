@@ -9,7 +9,9 @@ namespace Jetstream::Blocks {
 
 struct Sdr : public Block::Config {
     std::string deviceString = "";
+    std::string driverArguments = "";
     std::string antenna = "";
+    std::vector<std::string> antennas;
     U64 channels = 1;
     F32 frequency = 96.9e6;
     F32 frequencyStep = 1000000.0;
@@ -25,7 +27,7 @@ struct Sdr : public Block::Config {
     JST_BLOCK_TYPE(sdr);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
-    JST_BLOCK_PARAMS(deviceString, antenna, channels, frequency, frequencyStep,
+    JST_BLOCK_PARAMS(deviceString, driverArguments, antenna, antennas, channels, frequency, frequencyStep,
                      sampleRate, automaticGain, manualGain, manualGains, biasTee,
                      numberOfBatches, numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
@@ -34,8 +36,8 @@ struct Sdr : public Block::Config {
         "# SDR\n"
         "\n"
         "Streams complex samples from a radio plugged in over USB, using drivers built "
-        "into CyberEther. It usually starts a chain, feeding a Spectrum Analyzer to "
-        "watch the band or a Filter that isolates one station.\n"
+        "into CyberEther or an installed SoapySDR. It usually starts a chain, feeding a "
+        "Spectrum Analyzer to watch the band or a Filter that isolates one station.\n"
         "\n"
         "- **The radio paces the chain.** Each buffer comes out only once the radio has"
         " delivered all of its samples.\n"
@@ -59,18 +61,26 @@ struct Sdr : public Block::Config {
         "| Setting | Default | Range | Effect |\n"
         "|---|---|---|---|\n"
         "| **Device** | None | None and the radios found | Radio to open, saved by "
-        "driver and serial number. A saved radio that is missing shows as Configured "
-        "device. |\n"
+        "driver and serial number. Radios found through SoapySDR end in (SoapySDR). A "
+        "saved radio that is missing shows as Configured device. |\n"
         "| **Channels** | 1 | 1 to the radio's receivers | Receivers captured together "
-        "in hardware order. Only bladeRF 2 has two, and other radios hide it. |\n"
+        "in hardware order. Shown for bladeRF 2, LimeSDR-USB, and SoapySDR radios, "
+        "and hidden on other radios. |\n"
         "| **Antenna** | Default | Default and the radio's receive ports | Receive "
-        "port. Only LimeSDR lists ports. Hidden when Channels is above 1. |\n"
+        "port. Only LimeSDR and SoapySDR radios list ports. Hidden when Channels is "
+        "above 1. |\n"
+        "| **Antennas** | Antenna on every receiver | One per receiver, from the radio's"
+        " receive ports | Receive port of each receiver in RX order, listed as Antenna "
+        "0, Antenna 1, and so on. New entries start "
+        "at Antenna. Shown instead of Antenna when Channels is above 1 on radios that "
+        "list ports. |\n"
         "| **Frequency** | 96.9 MHz | Within the radio's range | Center frequency of "
         "the output. |\n"
         "| **Sample Rate** | 2 MHz | Within the radio's range | Complex samples per "
         "second, which is also the bandwidth captured. Airspy, Airspy HF+, and "
         "BirriaSDR show a list of their rates, and a rate missing from the list "
-        "switches to the first. |\n"
+        "switches to the first. SoapySDR radios request any rate and the output records "
+        "the rate the driver applied. |\n"
         "| **Automatic Gain** | On | On, Off | Lets the radio set its gain. HackRF, "
         "LimeSDR, and bladeRF 1 have none and always use Manual Gain. Applies to every "
         "channel. |\n"
@@ -83,12 +93,16 @@ struct Sdr : public Block::Config {
         "Shown instead of Manual Gain when Channels is above 1 and Automatic Gain is "
         "off. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable on "
-        "RTL-SDR, Airspy, HackRF, and bladeRF 2. Hidden on other radios. |\n"
+        "RTL-SDR, Airspy, HackRF, bladeRF 2, and SoapySDR radios whose module offers it. "
+        "Hidden on other radios. |\n"
         "| **Batches** | 8 batches | 1 or more | Batches per output buffer. |\n"
         "| **Samples** | 8,192 samples | 1 or more | Samples per batch, and the FFT "
         "size downstream. |\n"
         "| **Buffer Multiplier** | 4x | 1 or more | Output buffers the internal buffer "
         "holds before old samples are overwritten. |\n"
+        "| **Driver Arguments** | Empty | Pairs of `key=value` separated by commas | "
+        "SoapySDR stream arguments, such as `bufflen=8192`. Shown for SoapySDR radios, "
+        "under Advanced. |\n"
         "\n"
         "## Readouts\n"
         "\n"
@@ -117,6 +131,10 @@ struct Sdr : public Block::Config {
         "MS/s, 153 buffers per second |\n"
         "| Two receivers | Channels 2 | 2 channels x 8 batches x 8,192 complex samples "
         "at 2 MS/s, 30.5 buffers per second |\n"
+        "| Record at 61.44 MS/s to disk | Sample Rate 61.44 MHz, Batches 16, Buffer "
+        "Multiplier 64 | 16 batches x 8,192 complex samples, with 136 ms held in the "
+        "internal buffer while the disk flushes; see File Writer for the write rates "
+        "|\n"
         "\n"
         "## Troubleshooting\n"
         "\n"
@@ -130,9 +148,11 @@ struct Sdr : public Block::Config {
         "| The log warns that the frequency or sample rate is not supported | The value"
         " is outside the range of the radio | Pick a value the radio supports. The old "
         "value stays while running. |\n"
-        "| The block reports that the channels exceed the total rate USB can carry | On"
-        " bladeRF 2, Sample Rate times Channels is above 80 MS/s | Lower Sample Rate to"
-        " 40 MHz or less with Channels 2. |\n"
+        "| The block reports that Channels 2 cannot run | On bladeRF 2, Sample Rate "
+        "times Channels is above the 80 MS/s USB can carry. On LimeSDR-USB, Frequency "
+        "is below 30 MHz | "
+        "On bladeRF 2, lower Sample Rate to 40 MHz or less. On LimeSDR-USB, raise "
+        "Frequency to 30 MHz or more, or use Channels 1. |\n"
         "| Buffer Loss rises above 0% | The chain reads slower than the radio sends | "
         "Lower Sample Rate or lighten the chain. Raise Buffer Multiplier for short "
         "stalls. |\n"
@@ -150,6 +170,8 @@ struct Sdr : public Block::Config {
         "the page has been given access to the radio. |\n"
         "| bladeRF 2 with two channels | An FPGA image of v0.15.3 or newer, for correct"
         " timestamps. |\n"
+        "| SoapySDR radios | SoapySDR 0.8 or 0.9 and the radio's module installed on macOS, "
+        "Linux, or Windows. Radios with a built-in driver are listed only through it. |\n"
         "| iOS, Android | Not available. |\n"
         "\n"
         "## Under the Hood\n"
@@ -162,7 +184,6 @@ struct Sdr : public Block::Config {
         "## See Also\n"
         "\n"
         "- Bands wider than the sample rate need **SDR Sweep**.\n"
-        "- Radios with only a SoapySDR driver work through **SoapySDR**.\n"
         "- **Slice** picks one receiver out of several channels.\n"
         "- **Spectrum Analyzer** shows the band it receives."
     );

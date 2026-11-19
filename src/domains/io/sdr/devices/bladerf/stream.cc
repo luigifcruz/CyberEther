@@ -157,6 +157,7 @@ Result BladeRfStream::connect(const Device::Info& info) {
     caps.sampleRateRanges = ToRanges(rate);
     caps.automaticGain = second;
     caps.biasTee = second;
+    caps.fullScale = Q11Scale;
     caps.sweepSampleRate = second ? 30.72e6 : 20.0e6;
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 20.0e3;
@@ -197,7 +198,9 @@ Result BladeRfStream::apply(const Settings& settings) {
                   Device::Range::Describe(deviceCapabilities.frequencyRanges));
         return Result::ERROR;
     }
-    if (!settings.antenna.empty()) {
+    if (!settings.antenna.empty() ||
+        std::any_of(settings.channelAntennas.begin(), settings.channelAntennas.end(),
+                    [](const auto& antenna) { return !antenna.empty(); })) {
         JST_ERROR("[SDR_BLADERF] Antenna selection is not supported.");
         return Result::ERROR;
     }

@@ -10,7 +10,9 @@ namespace Jetstream::Modules {
 
 struct Sdr : public Module::Config {
     std::string deviceString = "";
+    std::string driverArguments = "";
     std::string antenna = "";
+    std::vector<std::string> antennas;
     U64 channels = 1;
     F32 frequency = 96.9e6;
     F32 sampleRate = 2.0e6;
@@ -23,7 +25,7 @@ struct Sdr : public Module::Config {
     U64 bufferMultiplier = 4;
 
     JST_MODULE_TYPE(sdr);
-    JST_MODULE_PARAMS(deviceString, antenna, channels, frequency, sampleRate,
+    JST_MODULE_PARAMS(deviceString, driverArguments, antenna, antennas, channels, frequency, sampleRate,
                       automaticGain, manualGain, manualGains, biasTee, numberOfBatches,
                       numberOfTimeSamples, bufferMultiplier);
 };

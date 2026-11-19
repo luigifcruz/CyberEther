@@ -135,6 +135,11 @@ struct FlowgraphEditorPresenter {
                 enqueue(MailSetConfigDetached{
                     flowgraphId, blockName, detached});
             },
+            .onNodeConfigAdvanced = [enqueue, flowgraphId](const std::string& blockName,
+                                                           bool advanced) {
+                enqueue(MailSetConfigAdvanced{
+                    flowgraphId, blockName, advanced});
+            },
         };
 
         const auto& agent = context.state.agent;

@@ -25,7 +25,7 @@ void TimestampFilter::retune(const U64 validFrom) {
 
 void TimestampFilter::lose(const U64 validFrom) {
     boundary = std::max(boundary, validFrom);
-    gap = next.has_value();
+    gap = gap || next.has_value();
     next.reset();
 }
 
