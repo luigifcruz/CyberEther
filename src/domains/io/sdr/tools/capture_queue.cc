@@ -77,25 +77,9 @@ void CaptureQueue::close() {
     available.notify_all();
 }
 
-void CaptureQueue::push(const U64 sourceGeneration, const U64 count, const Converter& convert,
-                        const U64 deviceLost) {
-    write(sourceGeneration, count, deviceLost, [&](const U64 tail, const U64 offset,
-                                                   const U64 chunk) {
-        convert(reinterpret_cast<CF32*>(storage.data()) + tail, offset, chunk);
-    });
-}
-
-void CaptureQueue::push(const U64 sourceGeneration, const U64 count, const std::byte* samples,
-                        const U64 deviceLost) {
-    write(sourceGeneration, count, deviceLost, [&](const U64 tail, const U64 offset,
-                                                   const U64 chunk) {
-        std::memcpy(storage.data() + tail * sampleBytes, samples + offset * sampleBytes,
-                    chunk * sampleBytes);
-    });
-}
-
+template <typename Copy>
 void CaptureQueue::write(const U64 sourceGeneration, U64 count, const U64 deviceLost,
-                         const std::function<void(U64 tail, U64 offset, U64 count)>& copy) {
+                         const Copy& copy) {
     {
         std::lock_guard lock(mutex);
         if (!open || sourceGeneration != generation || failure != Device::Status::Samples) {
@@ -148,6 +132,23 @@ void CaptureQueue::write(const U64 sourceGeneration, U64 count, const U64 device
         pushed += count;
     }
     available.notify_all();
+}
+
+void CaptureQueue::push(const U64 sourceGeneration, const U64 count, const Converter& convert,
+                        const U64 deviceLost) {
+    write(sourceGeneration, count, deviceLost, [&](const U64 tail, const U64 offset,
+                                                   const U64 chunk) {
+        convert(reinterpret_cast<CF32*>(storage.data()) + tail, offset, chunk);
+    });
+}
+
+void CaptureQueue::push(const U64 sourceGeneration, const U64 count, const std::byte* samples,
+                        const U64 deviceLost) {
+    write(sourceGeneration, count, deviceLost, [&](const U64 tail, const U64 offset,
+                                                   const U64 chunk) {
+        std::memcpy(storage.data() + tail * sampleBytes, samples + offset * sampleBytes,
+                    chunk * sampleBytes);
+    });
 }
 
 void CaptureQueue::fail(const Device::Status status, const std::string& error) {

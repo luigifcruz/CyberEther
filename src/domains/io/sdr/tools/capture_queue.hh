@@ -34,11 +34,11 @@ class JETSTREAM_API CaptureQueue {
         U64 lost = 0;
     };
 
+    template <typename Copy>
+    void write(U64 generation, U64 count, U64 deviceLost, const Copy& copy);
+
     std::mutex mutex;
     std::condition_variable available;
-    void write(U64 generation, U64 count, U64 deviceLost,
-               const std::function<void(U64 tail, U64 offset, U64 count)>& copy);
-
     std::vector<std::byte> storage;
     U64 sampleBytes = sizeof(CF32);
     U64 head = 0;

@@ -69,6 +69,7 @@ class BirriaSdrStream final : public Stream {
     Result applyGain(F64 gain, bool force);
 
     birriasdr_dev_t* handle = nullptr;
+    DataType streamFormat = DataType::CF32;
     CaptureQueue queue;
     std::thread worker;
     std::atomic<bool> stopping{false};
@@ -161,7 +162,7 @@ void BirriaSdrStream::Callback(const int16_t* iq, const uint32_t count, uint64_t
     if (stream->stopping) {
         return;
     }
-    if (stream->requestedSettings.format == DataType::CI16) {
+    if (stream->streamFormat == DataType::CI16) {
         stream->queue.push(stream->queueGeneration, count, reinterpret_cast<const std::byte*>(iq));
         return;
     }
@@ -182,6 +183,7 @@ void BirriaSdrStream::Recovery(const birriasdr_recovery_event* event, void* cont
 }
 
 Result BirriaSdrStream::open() {
+    streamFormat = requestedSettings.format;
     if (const int status = birriasdr_set_recovery(handle, MaxRestarts,
                                                   &BirriaSdrStream::Recovery, this);
         status != BIRRIASDR_OK) {

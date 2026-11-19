@@ -12,6 +12,15 @@
 
 namespace Jetstream::Blocks {
 
+namespace {
+
+std::string FrequencyLabel(const F64 frequency) {
+    return frequency < 1e6 ? jst::fmt::format("{:g} kHz", frequency / 1e3)
+                           : jst::fmt::format("{:g} MHz", frequency / 1e6);
+}
+
+}  // namespace
+
 struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
     Result validate() override;
     Result configure() override;
@@ -45,11 +54,6 @@ Result SdrImpl::validate() {
         JST_ERROR("[BLOCK_SDR] Frequency step must be finite and positive.");
         return Result::ERROR;
     }
-    if (!std::isfinite(config.bandwidth) || config.bandwidth < 0.0f) {
-        JST_ERROR("[BLOCK_SDR] Filter Bandwidth must be Auto or a positive width.");
-        return Result::ERROR;
-    }
-
     return Result::SUCCESS;
 }
 
@@ -418,9 +422,8 @@ Parser::Map SdrImpl::bandwidthFormat(const Blocks::Sdr& config) {
     for (const auto width : widths) {
         std::string value;
         Parser::TypedToString(static_cast<F32>(width), value);
-        auto label = width < 1e6 ? jst::fmt::format("{:g} kHz", width / 1e3)
-                                 : jst::fmt::format("{:g} MHz", width / 1e6);
-        options.emplace_back(Parser::Map{{"label", std::move(label)}, {"value", std::move(value)}});
+        options.emplace_back(Parser::Map{{"label", FrequencyLabel(width)},
+                                         {"value", std::move(value)}});
     }
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
@@ -459,9 +462,8 @@ Parser::Map SdrImpl::sampleRateFormat(const Blocks::Sdr& config) {
     for (const auto rate : rates) {
         std::string value;
         Parser::TypedToString(static_cast<F32>(rate), value);
-        auto label = rate < 1e6 ? jst::fmt::format("{:g} kHz", rate / 1e3)
-                                : jst::fmt::format("{:g} MHz", rate / 1e6);
-        options.emplace_back(Parser::Map{{"label", std::move(label)}, {"value", std::move(value)}});
+        options.emplace_back(Parser::Map{{"label", FrequencyLabel(rate)},
+                                         {"value", std::move(value)}});
     }
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }

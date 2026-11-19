@@ -65,6 +65,7 @@ class AirspyStream final : public Stream {
     airspy_device* handle = nullptr;
     bool biasTeeEnabled = false;
     bool streaming = false;
+    DataType streamFormat = DataType::CF32;
     CaptureQueue queue;
     std::atomic<U64> queueGeneration{0};
 };
@@ -174,7 +175,7 @@ Result AirspyStream::apply(const Settings& settings) {
 
 int AirspyStream::Callback(airspy_transfer* transfer) {
     auto* stream = static_cast<AirspyStream*>(transfer->ctx);
-    if (stream->requestedSettings.format == DataType::CI16) {
+    if (stream->streamFormat == DataType::CI16) {
         stream->queue.push(stream->queueGeneration, static_cast<U64>(transfer->sample_count),
                            static_cast<const std::byte*>(transfer->samples),
                            transfer->dropped_samples);
@@ -193,6 +194,7 @@ int AirspyStream::Callback(airspy_transfer* transfer) {
 
 Result AirspyStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
+    streamFormat = requestedSettings.format;
     JST_CHECK(queue.resize(std::max<U64>(static_cast<U64>(sampleRate / 2.0), 1 << 18),
                            sampleBytes()));
     queueGeneration = nextGeneration();

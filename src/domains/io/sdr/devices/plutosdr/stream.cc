@@ -134,6 +134,7 @@ class PlutoSdrStream final : public Stream {
     iio_channel* oscillator = nullptr;
     iio_channel* inPhase = nullptr;
     iio_buffer* buffer = nullptr;
+    DataType streamFormat = DataType::CF32;
     CaptureQueue queue;
     std::thread worker;
     std::atomic<bool> stopping{false};
@@ -310,6 +311,7 @@ Result PlutoSdrStream::retune(const F64 frequency) {
 
 Result PlutoSdrStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
+    streamFormat = requestedSettings.format;
     const U64 transferSamples = TransferSamples(sampleRate);
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 2.0),
                                        transferSamples * (KernelBuffers + 1));
@@ -336,7 +338,7 @@ Result PlutoSdrStream::open() {
     queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
     try {
-        worker = std::thread([this, raw = requestedSettings.format == DataType::CI16] {
+        worker = std::thread([this] {
             while (!stopping) {
                 const auto bytes = iio_buffer_refill(buffer);
                 if (bytes < 0) {
@@ -348,7 +350,7 @@ Result PlutoSdrStream::open() {
                 }
                 const auto* data = static_cast<const I16*>(iio_buffer_start(buffer));
                 const U64 samples = static_cast<U64>(bytes) / (2 * sizeof(I16));
-                if (raw) {
+                if (streamFormat == DataType::CI16) {
                     queue.push(queueGeneration, samples, reinterpret_cast<const std::byte*>(data));
                     continue;
                 }

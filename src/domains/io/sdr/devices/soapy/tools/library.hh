@@ -23,6 +23,10 @@ constexpr int StreamError = -2;
 constexpr int Overflow = -4;
 constexpr int NotSupported = -5;
 constexpr const char* FormatCF32 = "CF32";
+constexpr const char* FormatCF64 = "CF64";
+constexpr const char* FormatCS16 = "CS16";
+constexpr const char* FormatCS8 = "CS8";
+constexpr const char* FormatCU8 = "CU8";
 
 struct Range {
     double minimum;

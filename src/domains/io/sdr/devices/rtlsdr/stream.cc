@@ -95,6 +95,7 @@ class RtlSdrStream final : public Stream {
     std::vector<int> gains;
     bool biasTeeEnabled = false;
     bool tunerBandwidthSet = false;
+    DataType streamFormat = DataType::CF32;
     CaptureQueue queue;
     std::thread worker;
     std::atomic<bool> stopping{false};
@@ -144,8 +145,8 @@ Result RtlSdrStream::connect(const Device::Info& info) {
     caps.sampleRateRanges = {{225001.0, 300000.0}, {900001.0, 3200000.0}};
     caps.bandwidthRanges.clear();
     if (tuner == RTLSDR_TUNER_R820T || tuner == RTLSDR_TUNER_R828D) {
-        for (const F64 bandwidth : R82xxFilterWidths) {
-            caps.bandwidthRanges.push_back({bandwidth, bandwidth});
+        for (const F64 width : R82xxFilterWidths) {
+            caps.bandwidthRanges.push_back({width, width});
         }
     }
     caps.automaticGain = true;
@@ -199,7 +200,8 @@ Result RtlSdrStream::apply(const Settings& settings) {
     const U32 bandwidth = manualBandwidth ? static_cast<U32>(std::lround(settings.bandwidth)) : 0;
     if (manualBandwidth || tunerBandwidthSet) {
         if (rtlsdr_set_tuner_bandwidth(handle, bandwidth) < 0) {
-            JST_ERROR("[SDR_RTLSDR] Failed to set the tuner bandwidth.");
+            JST_ERROR("[SDR_RTLSDR] Failed to set the filter bandwidth to {:.3f} MHz.",
+                      static_cast<F64>(bandwidth) / 1e6);
             return Result::ERROR;
         }
         tunerBandwidthSet = manualBandwidth;
@@ -228,7 +230,7 @@ void RtlSdrStream::Callback(unsigned char* buffer, const uint32_t length, void* 
     if (stream->stopping) {
         return;
     }
-    if (stream->requestedSettings.format == DataType::CU8) {
+    if (stream->streamFormat == DataType::CU8) {
         stream->queue.push(stream->queueGeneration, length / 2,
                            reinterpret_cast<const std::byte*>(buffer));
         return;
@@ -241,6 +243,7 @@ void RtlSdrStream::Callback(unsigned char* buffer, const uint32_t length, void* 
 }
 
 Result RtlSdrStream::open() {
+    streamFormat = requestedSettings.format;
     if (rtlsdr_reset_buffer(handle) < 0) {
         JST_ERROR("[SDR_RTLSDR] Failed to reset the endpoint FIFO.");
         return Result::ERROR;

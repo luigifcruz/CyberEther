@@ -82,7 +82,7 @@ Result SdrImpl::validate() {
     }
     const DataType candidateFormat = NameToDataType(config.sampleFormat);
     if (!IsSampleFormat(candidateFormat)) {
-        JST_ERROR("[MODULE_SDR] Sample format '{}' is not one of CF32, CF64, CI16, CI8 or CU8.",
+        JST_ERROR("[MODULE_SDR] Sample format '{}' is not one of CF32, CF64, CI16, CI8, or CU8.",
                   config.sampleFormat);
         return Result::ERROR;
     }

@@ -41,11 +41,11 @@ struct SoapyFormat {
 };
 
 constexpr std::array<SoapyFormat, 5> SoapyFormats = {{
-    {DataType::CF32, "CF32", 1.0},
-    {DataType::CF64, "CF64", 1.0},
-    {DataType::CI16, "CS16", 32768.0},
-    {DataType::CI8, "CS8", 128.0},
-    {DataType::CU8, "CU8", 128.0},
+    {DataType::CF32, Abi::FormatCF32, 1.0},
+    {DataType::CF64, Abi::FormatCF64, 1.0},
+    {DataType::CI16, Abi::FormatCS16, 32768.0},
+    {DataType::CI8, Abi::FormatCS8, 128.0},
+    {DataType::CU8, Abi::FormatCU8, 128.0},
 }};
 
 const char* SoapyFormatName(const DataType type) {

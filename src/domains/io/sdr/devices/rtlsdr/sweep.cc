@@ -135,8 +135,8 @@ Result RtlSdrSweep::connect(const Device::Info& info) {
     caps.sampleRateRanges = {{225001.0, 300000.0}, {900001.0, 3200000.0}};
     caps.bandwidthRanges.clear();
     if (tuner == RTLSDR_TUNER_R820T || tuner == RTLSDR_TUNER_R828D) {
-        for (const F64 bandwidth : R82xxFilterWidths) {
-            caps.bandwidthRanges.push_back({bandwidth, bandwidth});
+        for (const F64 width : R82xxFilterWidths) {
+            caps.bandwidthRanges.push_back({width, width});
         }
     }
     caps.automaticGain = true;

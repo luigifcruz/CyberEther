@@ -50,10 +50,9 @@ class JETSTREAM_API StreamBuffer {
  private:
     void mark();
     void prune();
-
-    mutable std::mutex mutex;
     U64 stored() const;
 
+    mutable std::mutex mutex;
     std::vector<Tools::CircularBuffer<U8>> samples{1};
     U64 sampleBytes = sizeof(CF32);
     Metadata current;
