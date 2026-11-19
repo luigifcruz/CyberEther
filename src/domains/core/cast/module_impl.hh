@@ -27,6 +27,7 @@ struct CastImpl : public Module::Impl, public DynamicConfig<Cast> {
     DataType validatedOutputDtype = DataType::None;
     bool validatedBypass = false;
     std::optional<F32> validatedSampleScale;
+    std::optional<F32> validatedOutputSampleScale;
     U64 validatedOutputElementCount = 0;
     U64 validatedOutputSizeBytes = 0;
 

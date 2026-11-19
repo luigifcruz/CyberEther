@@ -779,6 +779,23 @@ TEST_CASE("Cast Module validation rejects invalid sample scales",
     }
 }
 
+TEST_CASE("Cast Module validation rejects a sample scale the output type cannot hold",
+          "[modules][cast][validation][scale]") {
+    const auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Cast config;
+            config.outputType = "CI8";
+            auto input = MakeCastTensor(impl, DataType::CI16, {4});
+            REQUIRE(input.setAttribute("sampleScale", std::numeric_limits<F32>::max()) ==
+                    Result::SUCCESS);
+            RequireCastValidationError(impl, config, input);
+        }
+    }
+}
+
 TEST_CASE("Cast Module CPU validation rejects unsupported allocation size",
           "[modules][cast][validation][allocation]") {
     const auto implementations = CastImplementations();
@@ -1271,6 +1288,66 @@ TEST_CASE("Cast Module - Sample scale sets the level and follows the output type
                 REQUIRE(normalized.run() == Result::SUCCESS);
                 REQUIRE(normalized.output("buffer").at<CF32>(0) == CF32(0.5f, -1.0f));
             }
+        }
+    }
+}
+
+TEST_CASE("Cast Module - Sample scale on float input only sets the output scale",
+          "[modules][cast][CF32][scale]") {
+    const auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            config.outputType = "CI8";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<CF32>({1});
+            input.at(0) = {0.5f, -0.25f};
+            REQUIRE(input.setAttribute("sampleScale", 0.5f) == Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& output = ctx.output("buffer");
+            REQUIRE(output.dtype() == DataType::CI8);
+            REQUIRE(output.at<CI8>(0) == CI8(64, -32));
+            REQUIRE(std::any_cast<F32>(output.attribute("sampleScale")) == 1.0f / 128.0f);
+
+            TestContext bypass("cast", impl.device, impl.runtime, impl.provider);
+            bypass.setConfig(Modules::Cast{});
+            bypass.setInput("buffer", input);
+
+            REQUIRE(bypass.run() == Result::SUCCESS);
+            REQUIRE(std::any_cast<F32>(bypass.output("buffer").attribute("sampleScale")) == 0.5f);
+        }
+    }
+}
+
+TEST_CASE("Cast Module - Sample scale on unsigned input removes the midpoint first",
+          "[modules][cast][CU8][scale]") {
+    const auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(Modules::Cast{});
+
+            auto input = ctx.createTensor<CU8>({1});
+            input.at(0) = {192, 64};
+            REQUIRE(input.setAttribute("sampleScale", 1.0f / 64.0f) == Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& output = ctx.output("buffer");
+            REQUIRE(output.dtype() == DataType::CF32);
+            REQUIRE(output.at<CF32>(0) == CF32(1.0f, -1.0f));
+            REQUIRE(std::any_cast<F32>(output.attribute("sampleScale")) == 1.0f);
         }
     }
 }
