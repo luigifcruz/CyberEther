@@ -23,6 +23,7 @@ Result StreamBuffer::resize(const U64 capacity, const U64 channels) {
     written = 0;
     breaks.clear();
     expected.reset();
+    timed = false;
     return Result::SUCCESS;
 }
 
@@ -38,6 +39,7 @@ void StreamBuffer::reset(const Metadata& metadata) {
     written = 0;
     breaks.clear();
     expected.reset();
+    timed = false;
 }
 
 bool StreamBuffer::push(const U64 generation, const CF32* data, const U64 count,

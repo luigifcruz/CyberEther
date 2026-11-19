@@ -6,6 +6,20 @@
 
 namespace Jetstream::Modules {
 
+namespace {
+
+bool PathExists(const std::filesystem::path& path) {
+    std::error_code ec;
+    return std::filesystem::exists(path, ec) && !ec;
+}
+
+bool EntryExists(const std::filesystem::path& path) {
+    std::error_code ec;
+    return std::filesystem::exists(std::filesystem::symlink_status(path, ec)) && !ec;
+}
+
+}  // namespace
+
 Result FileWriterImpl::validate() {
     const auto& config = *candidate();
 
@@ -59,25 +73,24 @@ Result FileWriterImpl::openRecording() {
 
     const std::string dataPath = Platform::PathToUtf8(filePath);
 
-    std::error_code ec;
     auto parentPath = filePath.parent_path();
-    if (!parentPath.empty() && !std::filesystem::exists(parentPath, ec)) {
+    if (!parentPath.empty() && !PathExists(parentPath)) {
         JST_WARN("[MODULE_FILE_WRITER] Parent directory for '{}' does not exist.", dataPath);
         return Result::INCOMPLETE;
     }
 
     const auto companions = format->companions();
-    const bool companionExists = std::any_of(companions.begin(), companions.end(), [&](const auto& path) {
-        return std::filesystem::exists(path, ec);
+    const bool companionExists = std::any_of(companions.begin(), companions.end(), [](const auto& path) {
+        return PathExists(path);
     });
-    if ((std::filesystem::exists(filePath, ec) || companionExists) && !overwrite) {
+    if ((PathExists(filePath) || companionExists) && !overwrite) {
         JST_ERROR("[MODULE_FILE_WRITER] File '{}' already exists.", dataPath);
         return Result::ERROR;
     }
 
     JST_CHECK(format->check(inputs().at("buffer").tensor));
 
-    const bool existed = std::filesystem::exists(std::filesystem::symlink_status(filePath, ec));
+    const bool existed = EntryExists(filePath);
     dataFile.open(filePath, std::ios::out | std::ios::binary);
     if (!dataFile.is_open()) {
         JST_ERROR("[MODULE_FILE_WRITER] Failed to open '{}' for writing.", dataPath);
@@ -90,6 +103,7 @@ Result FileWriterImpl::openRecording() {
         result != Result::SUCCESS) {
         dataFile.close();
         if (!existed) {
+            std::error_code ec;
             std::filesystem::remove(filePath, ec);
         }
         return result;
@@ -119,19 +133,26 @@ Result FileWriterImpl::reconfigure() {
         return Result::SUCCESS;
     }
 
-    recording = config.recording;
-
-    if (!recording) {
+    if (!config.recording) {
+        recording = false;
         closeRecording();
         return Result::SUCCESS;
+    }
+
+    const auto parentPath = filePath.parent_path();
+    if (filepath.empty() || (!parentPath.empty() && !PathExists(parentPath))) {
+        return Result::RECREATE;
     }
 
     format = FileWriterFormat::Create(fileFormat);
     filePath = format->resolve(Platform::PathFromUtf8(filepath));
     bytesSinceLastMeasurement = 0;
     lastMeasurementTime = std::chrono::steady_clock::now();
+    JST_CHECK(openRecording());
 
-    return openRecording() == Result::SUCCESS ? Result::SUCCESS : Result::RECREATE;
+    recording = true;
+
+    return Result::SUCCESS;
 }
 
 void FileWriterImpl::closeRecording() {

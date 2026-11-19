@@ -1,5 +1,6 @@
 #include "format.hh"
 
+#include <array>
 #include <chrono>
 #include <unordered_map>
 
@@ -61,8 +62,7 @@ Result FileWriterFormat::Sigmf::check(const Tensor& input) const {
     return Result::SUCCESS;
 }
 
-Result FileWriterFormat::Sigmf::Counter::reset(const Tensor& input,
-                                               const std::string_view key) {
+Result FileWriterFormat::Sigmf::Counter::reset(const Tensor& input) {
     std::optional<U64> value;
     JST_CHECK(ReadAttribute(input, std::string(key), value));
 
@@ -73,9 +73,7 @@ Result FileWriterFormat::Sigmf::Counter::reset(const Tensor& input,
     return Result::SUCCESS;
 }
 
-Result FileWriterFormat::Sigmf::Counter::update(const Tensor& input,
-                                                const std::string_view key,
-                                                U64& increase) {
+Result FileWriterFormat::Sigmf::Counter::update(const Tensor& input, U64& increase) {
     increase = 0;
 
     std::optional<U64> value;
@@ -94,16 +92,15 @@ Result FileWriterFormat::Sigmf::Counter::update(const Tensor& input,
     return Result::SUCCESS;
 }
 
-U64 FileWriterFormat::Sigmf::Losses::tracked() const {
-    return static_cast<U64>(bufferLostSamples.seen) + static_cast<U64>(radioLostSamples.seen) +
-           static_cast<U64>(radioGaps.seen);
+bool FileWriterFormat::Sigmf::Losses::tracked() const {
+    return bufferLostSamples.seen || radioLostSamples.seen || radioGaps.seen;
 }
 
 Result FileWriterFormat::Sigmf::start(std::ofstream&, const Tensor& input) {
     losses = {};
-    JST_CHECK(losses.bufferLostSamples.reset(input, BufferLostSamplesAttribute));
-    JST_CHECK(losses.radioLostSamples.reset(input, RadioLostSamplesAttribute));
-    JST_CHECK(losses.radioGaps.reset(input, RadioGapsAttribute));
+    JST_CHECK(losses.bufferLostSamples.reset(input));
+    JST_CHECK(losses.radioLostSamples.reset(input));
+    JST_CHECK(losses.radioGaps.reset(input));
 
     datatype = kSigmfDataTypes.at(input.dtype());
     sampleRate = NumericAttribute(input, "sampleRate");
@@ -122,29 +119,36 @@ Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex
     }
 
     bool changed = false;
-    const U64 tracked = losses.tracked();
+    const auto seen = [&] {
+        return std::array{losses.bufferLostSamples.seen,
+                          losses.radioLostSamples.seen,
+                          losses.radioGaps.seen};
+    };
+    const auto seenBefore = seen();
 
     U64 bufferLost = 0;
-    JST_CHECK(losses.bufferLostSamples.update(input, BufferLostSamplesAttribute, bufferLost));
+    JST_CHECK(losses.bufferLostSamples.update(input, bufferLost));
     if (bufferLost > 0) {
-        losses.gaps.push_back({.sampleStart = sampleIndex, .lost = bufferLost, .radio = false});
-        changed = true;
+        losses.annotations.push_back({
+            .sampleStart = sampleIndex,
+            .lost = bufferLost,
+            .radio = false,
+        });
     }
 
     U64 radioLost = 0;
-    JST_CHECK(losses.radioLostSamples.update(input, RadioLostSamplesAttribute, radioLost));
+    JST_CHECK(losses.radioLostSamples.update(input, radioLost));
     U64 radioGaps = 0;
-    JST_CHECK(losses.radioGaps.update(input, RadioGapsAttribute, radioGaps));
+    JST_CHECK(losses.radioGaps.update(input, radioGaps));
     if (radioLost > 0 || radioGaps > 0) {
-        losses.gaps.push_back({
+        losses.annotations.push_back({
             .sampleStart = sampleIndex,
             .lost = radioLost,
             .breaks = radioGaps,
             .radio = true,
         });
-        changed = true;
     }
-    changed = changed || losses.tracked() != tracked;
+    changed = seen() != seenBefore;
 
     if (!sampleRate) {
         sampleRate = NumericAttribute(input, "sampleRate");
@@ -191,7 +195,7 @@ Result FileWriterFormat::Sigmf::write() const {
     if (losses.radioGaps.seen) {
         global["cyberether:radio_gaps"] = losses.radioGaps.total;
     }
-    if (losses.tracked() > 0) {
+    if (losses.tracked()) {
         global["core:extensions"] = nlohmann::json::array({{
             {"name", "cyberether"},
             {"version", "1.0.0"},
@@ -200,23 +204,25 @@ Result FileWriterFormat::Sigmf::write() const {
     }
 
     nlohmann::json annotations = nlohmann::json::array();
-    for (const auto& gap : losses.gaps) {
+    for (const auto& annotation : losses.annotations) {
         std::string comment;
-        if (!gap.radio) {
-            comment = jst::fmt::format("{} samples lost in the source buffer near this sample", gap.lost);
-        } else if (gap.breaks == 0) {
-            comment = jst::fmt::format("{} samples lost by the radio at or after this sample", gap.lost);
+        if (!annotation.radio) {
+            comment = jst::fmt::format("{} samples lost in the source buffer near this sample",
+                                       annotation.lost);
+        } else if (annotation.breaks == 0) {
+            comment = jst::fmt::format("{} samples lost from the radio stream at or after this sample",
+                                       annotation.lost);
         } else {
-            const auto breaks = gap.breaks == 1
+            const auto breaks = annotation.breaks == 1
                 ? std::string("1 stream break")
-                : jst::fmt::format("{} stream breaks", gap.breaks);
-            comment = gap.lost == 0
+                : jst::fmt::format("{} stream breaks", annotation.breaks);
+            comment = annotation.lost == 0
                 ? jst::fmt::format("{} from the radio at or after this sample", breaks)
-                : jst::fmt::format("{} samples lost by the radio and {} at or after this sample",
-                                   gap.lost, breaks);
+                : jst::fmt::format("{} samples lost from the radio stream and {} at or after this sample",
+                                   annotation.lost, breaks);
         }
         annotations.push_back({
-            {"core:sample_start", gap.sampleStart},
+            {"core:sample_start", annotation.sampleStart},
             {"core:sample_count", 1},
             {"core:comment", comment},
         });

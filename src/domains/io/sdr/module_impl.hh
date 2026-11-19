@@ -45,7 +45,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
         U64 received = 0;
     };
 
-    struct DeviceLoss {
+    struct RadioLoss {
         U64 gaps = 0;
         U64 lostSamples = 0;
     };
@@ -72,7 +72,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
 
     Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
-    Tools::Snapshot<DeviceLoss> deviceLoss;
+    Tools::Snapshot<RadioLoss> radioLoss;
     Tools::Snapshot<SampleCounts> sampleCounts;
     Tools::Snapshot<Radio::Stream::Applied> published;
 

@@ -1,16 +1,16 @@
 #include <catch2/catch_test_macros.hpp>
-#include <filesystem>
 
-#include "jetstream/platform.hh"
+#include <filesystem>
 #include <fstream>
 
-#include "jetstream/testing.hh"
-#include "jetstream/registry.hh"
+#include <nlohmann/json.hpp>
+
 #include "jetstream/domains/io/file_writer/module.hh"
 #include "jetstream/memory/attributes.hh"
+#include "jetstream/platform.hh"
+#include "jetstream/registry.hh"
+#include "jetstream/testing.hh"
 #include "formats/format.hh"
-
-#include <nlohmann/json.hpp>
 
 using namespace Jetstream;
 
@@ -405,7 +405,7 @@ TEST_CASE("FileWriter SigMF - records samples lost between frames",
             "24 samples lost in the source buffer near this sample");
     REQUIRE(meta["annotations"][1]["core:sample_start"] == 16);
     REQUIRE(meta["annotations"][1]["core:comment"] ==
-            "12 samples lost by the radio and 1 stream break at or after this sample");
+            "12 samples lost from the radio stream and 1 stream break at or after this sample");
     REQUIRE(meta["annotations"][2]["core:sample_start"] == 32);
 
     cleanupTestFile(dataPath);

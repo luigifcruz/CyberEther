@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <jetstream/macros.hh>
+#include <jetstream/memory/attributes.hh>
 #include <jetstream/memory/tensor.hh>
 #include <jetstream/types.hh>
 
@@ -62,15 +63,16 @@ class FileWriterFormat::Sigmf : public FileWriterFormat {
     };
 
     struct Counter {
-        Result reset(const Tensor& input, std::string_view key);
-        Result update(const Tensor& input, std::string_view key, U64& increase);
+        Result reset(const Tensor& input);
+        Result update(const Tensor& input, U64& increase);
 
+        std::string_view key;
         bool seen = false;
         U64 last = 0;
         U64 total = 0;
     };
 
-    struct Gap {
+    struct Annotation {
         U64 sampleStart = 0;
         U64 lost = 0;
         U64 breaks = 0;
@@ -78,12 +80,12 @@ class FileWriterFormat::Sigmf : public FileWriterFormat {
     };
 
     struct Losses {
-        U64 tracked() const;
+        bool tracked() const;
 
-        Counter bufferLostSamples;
-        Counter radioLostSamples;
-        Counter radioGaps;
-        std::vector<Gap> gaps;
+        Counter bufferLostSamples{.key = BufferLostSamplesAttribute};
+        Counter radioLostSamples{.key = RadioLostSamplesAttribute};
+        Counter radioGaps{.key = RadioGapsAttribute};
+        std::vector<Annotation> annotations;
     };
 
     Result write() const;

@@ -18,6 +18,8 @@
 #include <thread>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "domains/io/sdr/devices/device.hh"
 #include "domains/io/sdr/devices/stream.hh"
 #include "domains/io/sdr/devices/sweep.hh"
@@ -35,14 +37,12 @@
 #include "jetstream/domains/io/sdr/module.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/module_context.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime_context_native_cpu.hh"
 #include "jetstream/scheduler_context.hh"
-#include "jetstream/platform.hh"
 #include "module_impl.hh"
 #include "scripted_radio.hh"
-
-#include <nlohmann/json.hpp>
 
 using namespace Jetstream;
 
@@ -1956,13 +1956,13 @@ TEST_CASE_METHOD(ScriptedDrivers,
                 .status = Radio::Device::Status::Discontinuity, .lost = 64};
         }
         REQUIRE(WaitFor([&] { return sdr->getLoss().deviceGaps == 1; }));
-        radioLost = 64;
+        radioLost = 68;
         radioGaps = 1;
     }
     SECTION("timestamp jump") {
         TestScript().jump = 100;
         first = 104.0f;
-        radioLost = 100;
+        radioLost = 104;
     }
     TestScript().budget = 8;
     REQUIRE(WaitFor([&] { return stream.size() == 12; }));
@@ -1977,7 +1977,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     };
     REQUIRE(count(RadioLostSamplesAttribute) == radioLost);
     REQUIRE(count(RadioGapsAttribute) == radioGaps);
-    REQUIRE(count(BufferLostSamplesAttribute) == 4);
+    REQUIRE(count(BufferLostSamplesAttribute) == 0);
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
