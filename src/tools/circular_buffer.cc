@@ -364,7 +364,6 @@ typename CircularBuffer<T>::Statistics CircularBuffer<T>::statistics() const {
 }
 
 template class CircularBuffer<I8>;
-template class CircularBuffer<U8>;
 template class CircularBuffer<CI8>;
 template class CircularBuffer<F32>;
 template class CircularBuffer<CF32>;

@@ -70,7 +70,6 @@ struct JETSTREAM_API Block::Impl {
                                  const Parser::Map& format);
     Result updateInterfaceConfigFormat(const std::string& key,
                                        const Parser::Map& format);
-    Result removeInterfaceConfig(const std::string& key);
     Result defineInterfaceMetric(const std::string& key,
                                  const std::string& label,
                                  const std::string& help,
