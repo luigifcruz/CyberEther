@@ -59,23 +59,25 @@ Result FileWriterImpl::openRecording() {
 
     const std::string dataPath = Platform::PathToUtf8(filePath);
 
+    std::error_code ec;
     auto parentPath = filePath.parent_path();
-    if (!parentPath.empty() && !std::filesystem::exists(parentPath)) {
+    if (!parentPath.empty() && !std::filesystem::exists(parentPath, ec)) {
         JST_WARN("[MODULE_FILE_WRITER] Parent directory for '{}' does not exist.", dataPath);
         return Result::INCOMPLETE;
     }
 
     const auto companions = format->companions();
-    const bool companionExists = std::any_of(companions.begin(), companions.end(), [](const auto& path) {
-        return std::filesystem::exists(path);
+    const bool companionExists = std::any_of(companions.begin(), companions.end(), [&](const auto& path) {
+        return std::filesystem::exists(path, ec);
     });
-    if ((std::filesystem::exists(filePath) || companionExists) && !overwrite) {
+    if ((std::filesystem::exists(filePath, ec) || companionExists) && !overwrite) {
         JST_ERROR("[MODULE_FILE_WRITER] File '{}' already exists.", dataPath);
         return Result::ERROR;
     }
 
     JST_CHECK(format->check(inputs().at("buffer").tensor));
 
+    const bool existed = std::filesystem::exists(std::filesystem::symlink_status(filePath, ec));
     dataFile.open(filePath, std::ios::out | std::ios::binary);
     if (!dataFile.is_open()) {
         JST_ERROR("[MODULE_FILE_WRITER] Failed to open '{}' for writing.", dataPath);
@@ -84,7 +86,14 @@ Result FileWriterImpl::openRecording() {
 
     bytesWritten.publish(0);
 
-    JST_CHECK(format->start(dataFile, inputs().at("buffer").tensor));
+    if (const auto result = format->start(dataFile, inputs().at("buffer").tensor);
+        result != Result::SUCCESS) {
+        dataFile.close();
+        if (!existed) {
+            std::filesystem::remove(filePath, ec);
+        }
+        return result;
+    }
 
     JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", dataPath);
 
@@ -131,6 +140,12 @@ void FileWriterImpl::closeRecording() {
         dataFile.close();
         JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).",
                  Platform::PathToUtf8(filePath), bytesWritten.get());
+
+        std::error_code ec;
+        const U64 size = std::filesystem::file_size(filePath, ec);
+        if (!ec) {
+            bytesWritten.publish(size);
+        }
     }
 
     throughputMBs.publish(0.0f);

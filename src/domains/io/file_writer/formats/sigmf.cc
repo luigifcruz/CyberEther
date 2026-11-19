@@ -1,7 +1,5 @@
 #include "format.hh"
 
-#include <algorithm>
-#include <any>
 #include <chrono>
 #include <unordered_map>
 
@@ -9,6 +7,7 @@
 
 #include "jetstream/fmt/chrono.h"
 #include "jetstream/logger.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/platform.hh"
 
 namespace Jetstream::Modules {
@@ -31,17 +30,6 @@ const std::unordered_map<DataType, std::string> kSigmfDataTypes = {
 std::string CurrentDatetime() {
     const auto now = std::chrono::floor<std::chrono::milliseconds>(std::chrono::system_clock::now());
     return jst::fmt::format("{:%Y-%m-%dT%H:%M:%S}Z", now);
-}
-
-std::optional<U64> CountAttribute(const Tensor& tensor, const std::string& key) {
-    if (!tensor.hasAttribute(key)) {
-        return std::nullopt;
-    }
-    const auto value = tensor.attribute(key);
-    if (const auto* count = std::any_cast<U64>(&value)) {
-        return *count;
-    }
-    return std::nullopt;
 }
 
 }  // namespace
@@ -73,8 +61,50 @@ Result FileWriterFormat::Sigmf::check(const Tensor& input) const {
     return Result::SUCCESS;
 }
 
+Result FileWriterFormat::Sigmf::Counter::reset(const Tensor& input,
+                                               const std::string_view key) {
+    std::optional<U64> value;
+    JST_CHECK(ReadAttribute(input, std::string(key), value));
+
+    seen = value.has_value();
+    last = value.value_or(0);
+    total = 0;
+
+    return Result::SUCCESS;
+}
+
+Result FileWriterFormat::Sigmf::Counter::update(const Tensor& input,
+                                                const std::string_view key,
+                                                U64& increase) {
+    increase = 0;
+
+    std::optional<U64> value;
+    JST_CHECK(ReadAttribute(input, std::string(key), value));
+    if (!value) {
+        return Result::SUCCESS;
+    }
+
+    if (*value > last) {
+        increase = *value - last;
+        total += increase;
+    }
+    seen = true;
+    last = *value;
+
+    return Result::SUCCESS;
+}
+
+U64 FileWriterFormat::Sigmf::Losses::tracked() const {
+    return static_cast<U64>(bufferLostSamples.seen) + static_cast<U64>(radioLostSamples.seen) +
+           static_cast<U64>(radioGaps.seen);
+}
+
 Result FileWriterFormat::Sigmf::start(std::ofstream&, const Tensor& input) {
     losses = {};
+    JST_CHECK(losses.bufferLostSamples.reset(input, BufferLostSamplesAttribute));
+    JST_CHECK(losses.radioLostSamples.reset(input, RadioLostSamplesAttribute));
+    JST_CHECK(losses.radioGaps.reset(input, RadioGapsAttribute));
+
     datatype = kSigmfDataTypes.at(input.dtype());
     sampleRate = NumericAttribute(input, "sampleRate");
     captures.push_back({
@@ -92,41 +122,33 @@ Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex
     }
 
     bool changed = false;
+    const U64 tracked = losses.tracked();
 
-    const auto position = CountAttribute(input, "streamPosition");
-    if (position) {
-        losses.tracked = true;
-        if (losses.nextPosition && *position > *losses.nextPosition) {
-            const U64 lost = *position - *losses.nextPosition;
-            losses.lostSamples += lost;
-            losses.gaps.emplace_back(sampleIndex, lost);
-            changed = true;
-        }
-        losses.nextPosition = *position + input.size();
+    U64 bufferLost = 0;
+    JST_CHECK(losses.bufferLostSamples.update(input, BufferLostSamplesAttribute, bufferLost));
+    if (bufferLost > 0) {
+        losses.gaps.push_back({.sampleStart = sampleIndex, .lost = bufferLost, .radio = false});
+        changed = true;
     }
 
-    if (const auto radioLost = CountAttribute(input, "radioLostSamples")) {
-        if (losses.radioLostLast && *radioLost > *losses.radioLostLast) {
-            U64 offset = 0;
-            const auto gapPosition = CountAttribute(input, "radioGapPosition");
-            if (position && gapPosition && *gapPosition > *position) {
-                offset = std::min<U64>(*gapPosition - *position, input.size());
-            }
-            losses.radioGaps.emplace_back(sampleIndex + offset, *radioLost - *losses.radioLostLast);
-            changed = true;
-        }
-        losses.radioLostFirst = losses.radioLostFirst.value_or(*radioLost);
-        losses.radioLostLast = *radioLost;
+    U64 radioLost = 0;
+    JST_CHECK(losses.radioLostSamples.update(input, RadioLostSamplesAttribute, radioLost));
+    U64 radioGaps = 0;
+    JST_CHECK(losses.radioGaps.update(input, RadioGapsAttribute, radioGaps));
+    if (radioLost > 0 || radioGaps > 0) {
+        losses.gaps.push_back({
+            .sampleStart = sampleIndex,
+            .lost = radioLost,
+            .breaks = radioGaps,
+            .radio = true,
+        });
+        changed = true;
     }
-
-    if (const auto overflows = CountAttribute(input, "deviceOverflows")) {
-        losses.overflowsFirst = losses.overflowsFirst.value_or(*overflows);
-        losses.overflowsLast = *overflows;
-    }
+    changed = changed || losses.tracked() != tracked;
 
     if (!sampleRate) {
         sampleRate = NumericAttribute(input, "sampleRate");
-        changed = sampleRate.has_value();
+        changed = changed || sampleRate.has_value();
     }
 
     const auto frequency = NumericAttribute(input, "frequency");
@@ -160,29 +182,44 @@ Result FileWriterFormat::Sigmf::write() const {
         global["core:sample_rate"] = *sampleRate;
     }
 
+    if (losses.bufferLostSamples.seen) {
+        global["cyberether:buffer_lost_samples"] = losses.bufferLostSamples.total;
+    }
+    if (losses.radioLostSamples.seen) {
+        global["cyberether:radio_lost_samples"] = losses.radioLostSamples.total;
+    }
+    if (losses.radioGaps.seen) {
+        global["cyberether:radio_gaps"] = losses.radioGaps.total;
+    }
+    if (losses.tracked() > 0) {
+        global["core:extensions"] = nlohmann::json::array({{
+            {"name", "cyberether"},
+            {"version", "1.0.0"},
+            {"optional", true},
+        }});
+    }
+
     nlohmann::json annotations = nlohmann::json::array();
-    if (losses.tracked) {
-        global["cyberether:lost_samples"] = losses.lostSamples;
-        if (losses.radioLostFirst && losses.radioLostLast) {
-            global["cyberether:radio_lost_samples"] = *losses.radioLostLast - *losses.radioLostFirst;
+    for (const auto& gap : losses.gaps) {
+        std::string comment;
+        if (!gap.radio) {
+            comment = jst::fmt::format("{} samples lost in the source buffer near this sample", gap.lost);
+        } else if (gap.breaks == 0) {
+            comment = jst::fmt::format("{} samples lost by the radio at or after this sample", gap.lost);
+        } else {
+            const auto breaks = gap.breaks == 1
+                ? std::string("1 stream break")
+                : jst::fmt::format("{} stream breaks", gap.breaks);
+            comment = gap.lost == 0
+                ? jst::fmt::format("{} from the radio at or after this sample", breaks)
+                : jst::fmt::format("{} samples lost by the radio and {} at or after this sample",
+                                   gap.lost, breaks);
         }
-        if (losses.overflowsFirst && losses.overflowsLast) {
-            global["cyberether:overflows"] = *losses.overflowsLast - *losses.overflowsFirst;
-        }
-        for (const auto& [sampleStart, lost] : losses.gaps) {
-            annotations.push_back({
-                {"core:sample_start", sampleStart},
-                {"core:sample_count", 0},
-                {"core:comment", jst::fmt::format("{} samples lost before this sample", lost)},
-            });
-        }
-        for (const auto& [sampleStart, lost] : losses.radioGaps) {
-            annotations.push_back({
-                {"core:sample_start", sampleStart},
-                {"core:sample_count", 0},
-                {"core:comment", jst::fmt::format("{} samples lost by the radio before this sample", lost)},
-            });
-        }
+        annotations.push_back({
+            {"core:sample_start", gap.sampleStart},
+            {"core:sample_count", 1},
+            {"core:comment", comment},
+        });
     }
 
     nlohmann::json entries = nlohmann::json::array();

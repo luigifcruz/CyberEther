@@ -63,9 +63,13 @@ bool StreamBuffer::push(const U64 generation, std::span<const CF32* const> data,
         if (expected && (epoch != expectedEpoch || *timestamp != *expected)) {
             mark();
         }
+        if (expected && timed && epoch == expectedEpoch && *timestamp > *expected) {
+            accumulated.skippedSamples += *timestamp - *expected;
+        }
         expected = *timestamp + count;
         expectedEpoch = epoch;
     }
+    timed = timestamp.has_value();
     for (U64 i = 0; i < samples.size(); ++i) {
         if (samples[i].push(data[i], count) != Result::SUCCESS) {
             return false;
@@ -85,13 +89,13 @@ void StreamBuffer::split(const U64 generation) {
     expected.reset();
 }
 
-Result StreamBuffer::pop(CF32* data, const U64 count, Metadata& metadata, U64* position) {
+Result StreamBuffer::pop(CF32* data, const U64 count, Metadata& metadata) {
     const std::array<CF32*, 1> channels{data};
-    return pop(channels, count, metadata, position);
+    return pop(channels, count, metadata);
 }
 
 Result StreamBuffer::pop(std::span<CF32* const> data, const U64 count,
-                         Metadata& metadata, U64* position) {
+                         Metadata& metadata) {
     std::lock_guard lock(mutex);
     if (data.size() != samples.size() ||
         (count > 0 && std::ranges::find(data, nullptr) != data.end())) {
@@ -112,19 +116,11 @@ Result StreamBuffer::pop(std::span<CF32* const> data, const U64 count,
     if (samples.front().size() < count) {
         return Result::INCOMPLETE;
     }
-    if (position) {
-        *position = written - samples.front().size();
-    }
     for (U64 i = 0; i < samples.size(); ++i) {
         JST_CHECK(samples[i].pop(data[i], count));
     }
     metadata = current;
     return Result::SUCCESS;
-}
-
-U64 StreamBuffer::pushed() const {
-    std::lock_guard lock(mutex);
-    return written;
 }
 
 StreamBuffer::Metadata StreamBuffer::metadata() const {
@@ -155,6 +151,7 @@ StreamBuffer::Statistics StreamBuffer::statistics() const {
         .overwrittenSamples = accumulated.overwrittenSamples + stats.overwrittenElements,
         .rejectedSamples = accumulated.rejectedSamples,
         .discardedSamples = accumulated.discardedSamples,
+        .skippedSamples = accumulated.skippedSamples,
     };
 }
 

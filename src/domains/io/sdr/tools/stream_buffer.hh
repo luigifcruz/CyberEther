@@ -29,6 +29,7 @@ class JETSTREAM_API StreamBuffer {
         U64 overwrittenSamples = 0;
         U64 rejectedSamples = 0;
         U64 discardedSamples = 0;
+        U64 skippedSamples = 0;
     };
 
     Result resize(U64 capacity, U64 channels = 1);
@@ -38,12 +39,10 @@ class JETSTREAM_API StreamBuffer {
     bool push(U64 generation, std::span<const CF32* const> data, U64 count,
               std::optional<U64> timestamp = std::nullopt, U64 epoch = 0);
     void split(U64 generation);
-    Result pop(CF32* data, U64 count, Metadata& metadata, U64* position = nullptr);
-    Result pop(std::span<CF32* const> data, U64 count, Metadata& metadata,
-               U64* position = nullptr);
+    Result pop(CF32* data, U64 count, Metadata& metadata);
+    Result pop(std::span<CF32* const> data, U64 count, Metadata& metadata);
 
     Metadata metadata() const;
-    U64 pushed() const;
     U64 size() const;
     U64 capacity() const;
     F64 throughput() const;
@@ -61,6 +60,7 @@ class JETSTREAM_API StreamBuffer {
     std::deque<U64> breaks;
     std::optional<U64> expected;
     U64 expectedEpoch = 0;
+    bool timed = false;
 };
 
 }  // namespace Jetstream::Radio

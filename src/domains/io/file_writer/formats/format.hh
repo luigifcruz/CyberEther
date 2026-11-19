@@ -7,15 +7,16 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
+#include <string_view>
 #include <vector>
 
+#include <jetstream/macros.hh>
 #include <jetstream/memory/tensor.hh>
 #include <jetstream/types.hh>
 
 namespace Jetstream::Modules {
 
-class FileWriterFormat {
+class JETSTREAM_API FileWriterFormat {
  public:
     struct Option {
         std::string value;
@@ -60,16 +61,29 @@ class FileWriterFormat::Sigmf : public FileWriterFormat {
         std::string datetime;
     };
 
+    struct Counter {
+        Result reset(const Tensor& input, std::string_view key);
+        Result update(const Tensor& input, std::string_view key, U64& increase);
+
+        bool seen = false;
+        U64 last = 0;
+        U64 total = 0;
+    };
+
+    struct Gap {
+        U64 sampleStart = 0;
+        U64 lost = 0;
+        U64 breaks = 0;
+        bool radio = false;
+    };
+
     struct Losses {
-        bool tracked = false;
-        std::optional<U64> nextPosition;
-        U64 lostSamples = 0;
-        std::vector<std::pair<U64, U64>> gaps;
-        std::optional<U64> radioLostFirst;
-        std::optional<U64> radioLostLast;
-        std::vector<std::pair<U64, U64>> radioGaps;
-        std::optional<U64> overflowsFirst;
-        std::optional<U64> overflowsLast;
+        U64 tracked() const;
+
+        Counter bufferLostSamples;
+        Counter radioLostSamples;
+        Counter radioGaps;
+        std::vector<Gap> gaps;
     };
 
     Result write() const;

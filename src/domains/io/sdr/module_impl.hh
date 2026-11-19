@@ -2,9 +2,7 @@
 #define JETSTREAM_DOMAINS_IO_SDR_MODULE_IMPL_HH
 
 #include <atomic>
-#include <deque>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <thread>
 
@@ -47,6 +45,11 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
         U64 received = 0;
     };
 
+    struct DeviceLoss {
+        U64 gaps = 0;
+        U64 lostSamples = 0;
+    };
+
     Tensor buffer;
     std::vector<CF32*> outputChannels;
 
@@ -63,21 +66,13 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     Radio::StreamBuffer::Metadata publishedMetadata;
     std::optional<U64> publishedClippedSamples;
     std::optional<U64> publishedReceivedSamples;
-    struct RadioGap {
-        U64 generation = 0;
-        U64 position = 0;
-        U64 lost = 0;
-    };
-    std::mutex radioGapsMutex;
-    std::deque<RadioGap> radioGaps;
-    U64 radioLostSamples = 0;
     std::optional<U64> publishedRadioLostSamples;
-    std::optional<U64> publishedDeviceGaps;
+    std::optional<U64> publishedRadioGaps;
+    std::optional<U64> publishedBufferLostSamples;
 
     Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
-    Tools::Snapshot<U64> deviceGaps{0};
-    Tools::Snapshot<U64> deviceLostSamples{0};
+    Tools::Snapshot<DeviceLoss> deviceLoss;
     Tools::Snapshot<SampleCounts> sampleCounts;
     Tools::Snapshot<Radio::Stream::Applied> published;
 
