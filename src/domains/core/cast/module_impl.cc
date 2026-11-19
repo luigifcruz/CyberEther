@@ -57,7 +57,6 @@ CastImpl::Scale CastImpl::ScaleOf(const DataType& dtype) {
 
 Result CastImpl::validate() {
     const auto& config = *candidate();
-    validatedSampleScale.reset();
 
     const DataType candidateOutputDtype = NameToDataType(config.outputType);
     if (candidateOutputDtype == DataType::None) {
@@ -66,16 +65,18 @@ Result CastImpl::validate() {
     }
 
     bool candidateBypass = false;
+    std::optional<F32> candidateSampleScale;
     U64 candidateOutputElementCount = 0;
     U64 candidateOutputSizeBytes = 0;
 
     if (inputs().contains("buffer")) {
         const Tensor& candidateInput = inputs().at("buffer").tensor;
         candidateBypass = candidateInput.dtype() == candidateOutputDtype;
-        JST_CHECK(ReadAttribute(candidateInput, "sampleScale", validatedSampleScale));
-        if (validatedSampleScale &&
-            (!std::isfinite(*validatedSampleScale) || *validatedSampleScale <= 0.0f)) {
-            JST_ERROR("[MODULE_CAST] Sample scale must be finite and positive.");
+        JST_CHECK(ReadAttribute(candidateInput, "sampleScale", candidateSampleScale));
+        if (candidateSampleScale &&
+            (!std::isfinite(*candidateSampleScale) || *candidateSampleScale <= 0.0f)) {
+            JST_ERROR("[MODULE_CAST] Input sampleScale ({}) must be finite and positive.",
+                      *candidateSampleScale);
             return Result::ERROR;
         }
 
@@ -116,6 +117,7 @@ Result CastImpl::validate() {
 
     validatedOutputDtype = candidateOutputDtype;
     validatedBypass = candidateBypass;
+    validatedSampleScale = candidateSampleScale;
     validatedOutputElementCount = candidateOutputElementCount;
     validatedOutputSizeBytes = candidateOutputSizeBytes;
     return Result::SUCCESS;

@@ -123,17 +123,9 @@ Attributes do not propagate through a block automatically. A block that transfor
 
 ### Sample Scale
 
-`sampleScale` is an optional positive, finite `F32` multiplier for converting integer
-samples to normalized floating point. Signed samples are multiplied directly; unsigned
-samples first subtract the midpoint of their storage type (128 for CU8). Floating-point
-samples are already normalized and use a scale of 1.
+The `sampleScale` attribute tells consumers how to read integer samples as normalized floating point. It is a finite, positive `F32` factor, applied after unsigned samples drop the midpoint of their storage type, such as 128 for CU8. A producer of raw integer samples sets it to one over the real full scale of the data, such as 1/2048 for 12-bit samples stored in CI16, and keeps it fixed for the life of the stream.
 
-SoapySDR publishes this attribute for the selected output type. For a native integer
-format it uses the driver's valid full-scale value; otherwise it uses the storage
-format's full scale. The samples themselves stay in the selected type. Cast applies
-the factor when converting integers to floats, sets it to 1 on floating output, and
-adjusts it for integer width changes. Without the attribute, Cast uses its usual
-storage-width normalization.
+Cast multiplies integer input by the factor when converting to a float type and writes a factor of 1 on the float output. When the input carries the attribute, an integer output gets the factor that keeps the same level in the new type, and a float input cast to an integer type gets one over the full scale of that type. Without the attribute, Cast uses the full scale of the storage type.
 
 ### Signal Axes
 
