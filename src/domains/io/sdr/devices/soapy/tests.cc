@@ -191,6 +191,11 @@ Radio::SoapyApi FakeApi() {
         *count = 2;
         return ranges;
     };
+    api.getBandwidthRange = [](const Abi::Device*, int, std::size_t, std::size_t* count) {
+        static Abi::Range range{0.2e6, 56.0e6, 0.0};
+        *count = 1;
+        return &range;
+    };
     api.getSettingInfo = [](const Abi::Device*, std::size_t* count) {
         static Abi::ArgInfo setting{};
         setting.key = Fake().biasTeeRx ? BiasTeeRxKey : BiasTeeKey;
@@ -519,6 +524,18 @@ TEST_CASE("SoapySDR stream timestamps continue across reads and jump at a time g
     CHECK(retuned.epoch > first.epoch);
     CHECK(Fake().starts == 2);
     CHECK(Fake().stops == 1);
+}
+
+TEST_CASE("SoapySDR stream sets a manual filter bandwidth or follows the sample rate",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime;
+    auto stream = StartStream({.frequency = 100.0e6, .sampleRate = 1.0e6});
+    CHECK(stream->capabilities().bandwidthRanges.size() == 1);
+    CHECK(Fake().bandwidth == 1.0e6);
+
+    REQUIRE(stream->update({.frequency = 100.0e6, .sampleRate = 1.0e6, .bandwidth = 0.6e6}) ==
+            Result::SUCCESS);
+    CHECK(Fake().bandwidth == 0.6e6);
 }
 
 TEST_CASE("SoapySDR stream drives Bias-T through the RX-only setting", "[devices][sdr][soapy]") {

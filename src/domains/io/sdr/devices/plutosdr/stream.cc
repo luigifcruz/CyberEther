@@ -215,6 +215,8 @@ Result PlutoSdrStream::connect(const Device::Info& info) {
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = {*frequency};
     caps.sampleRateRanges = {{std::ceil(rate->minimum / FirDecimation), rate->maximum}};
+    const auto bandwidth = ReadRange(control, "rf_bandwidth_available");
+    caps.bandwidthRanges = {bandwidth ? *bandwidth : Device::Range{MinBandwidth, MaxBandwidth}};
     caps.automaticGain = true;
     caps.biasTee = false;
     caps.fullScale = Q11Scale;
@@ -253,7 +255,9 @@ Result PlutoSdrStream::apply(const Settings& settings) {
         JST_ERROR("[SDR_PLUTOSDR] Failed to set the sample rate: {}", ErrorText(status));
         return Result::ERROR;
     }
-    const F64 bandwidth = std::clamp(settings.sampleRate, MinBandwidth, MaxBandwidth);
+    const F64 bandwidth = std::clamp(settings.bandwidth > 0.0 ? settings.bandwidth
+                                                              : settings.sampleRate,
+                                     MinBandwidth, MaxBandwidth);
     JST_CHECK(write("rf_bandwidth", std::llround(bandwidth), "the RF bandwidth"));
     JST_CHECK(tuneOscillator(settings.frequency));
     JST_CHECK(refreshGainRange());

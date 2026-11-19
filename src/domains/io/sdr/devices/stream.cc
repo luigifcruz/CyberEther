@@ -3,6 +3,7 @@
 #include "../tools/samples.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 #include "jetstream/logger.hh"
@@ -72,6 +73,10 @@ Result Stream::configure(const Settings& settings) {
         JST_ERROR("[SDR] Receive channels cannot be zero.");
         return Result::ERROR;
     }
+    if (!std::isfinite(settings.bandwidth) || settings.bandwidth < 0.0) {
+        JST_ERROR("[SDR] Filter bandwidth must be zero or positive.");
+        return Result::ERROR;
+    }
     if (settings.receiveChannels > deviceCapabilities.receiveChannels) {
         JST_ERROR("[SDR] Channels ({}) is more than {} supports ({}).",
                   settings.receiveChannels, deviceInfo.label,
@@ -104,6 +109,7 @@ Result Stream::update(const Settings& settings) {
         settings.sampleRate != previous.sampleRate || settings.antenna != previous.antenna ||
         settings.driverArguments != previous.driverArguments ||
         settings.channelAntennas != previous.channelAntennas ||
+        settings.bandwidth != previous.bandwidth ||
         settings.biasTee != previous.biasTee) {
         return restart(settings, previous);
     }

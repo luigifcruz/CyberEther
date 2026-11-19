@@ -5,6 +5,7 @@
 #include "module_impl.hh"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -20,6 +21,7 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
 
  protected:
     bool antennasDefined = false;
+    bool bandwidthDefined = false;
     std::shared_ptr<Modules::Sdr> moduleConfig = std::make_shared<Modules::Sdr>();
     Modules::SdrImpl* moduleImpl = nullptr;
 
@@ -31,6 +33,7 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
     Parser::Map antennasFormat(const Blocks::Sdr& config);
     bool antennasListed(const Blocks::Sdr& config);
     void sizeAntennas();
+    Parser::Map bandwidthFormat(const Blocks::Sdr& config);
     Parser::Map sampleRateFormat(const Blocks::Sdr& config);
 };
 
@@ -39,6 +42,10 @@ Result SdrImpl::validate() {
 
     if (!std::isfinite(config.frequencyStep) || config.frequencyStep <= 0.0f) {
         JST_ERROR("[BLOCK_SDR] Frequency step must be finite and positive.");
+        return Result::ERROR;
+    }
+    if (!std::isfinite(config.bandwidth) || config.bandwidth < 0.0f) {
+        JST_ERROR("[BLOCK_SDR] Filter Bandwidth must be Auto or a positive width.");
         return Result::ERROR;
     }
 
@@ -68,6 +75,7 @@ Result SdrImpl::configure() {
     moduleConfig->channels = channels;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
+    moduleConfig->bandwidth = bandwidth;
     moduleConfig->automaticGain = automaticGain;
     moduleConfig->manualGain = manualGain;
     moduleConfig->manualGains = manualGains;
@@ -150,6 +158,15 @@ Result SdrImpl::define() {
                                     "Sample Rate",
                                     "Sampling rate.",
                                     sampleRateFormat(config)));
+
+    bandwidthDefined = Radio::Device::SupportsBandwidth(config.deviceString);
+    if (bandwidthDefined) {
+        JST_CHECK(defineInterfaceConfig("bandwidth",
+                                        "Filter Bandwidth",
+                                        "Width of the analog receive filter. Auto lets the radio pick "
+                                        "it for the sample rate. Changes restart the receiver.",
+                                        bandwidthFormat(config)));
+    }
 
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
@@ -258,6 +275,9 @@ Result SdrImpl::create() {
         moduleConfig->antennas = antennas;
         JST_CHECK(updateInterfaceConfigFormat("antennas", antennasFormat(*this)));
     }
+    if (bandwidthDefined) {
+        JST_CHECK(updateInterfaceConfigFormat("bandwidth", bandwidthFormat(*this)));
+    }
 
     return reconfigure();
 }
@@ -356,6 +376,43 @@ Parser::Map SdrImpl::antennasFormat(const Blocks::Sdr& config) {
             {"value_type", "string"},
             {"item_label", "Antenna"},
             {"options", std::move(options)}};
+}
+
+Parser::Map SdrImpl::bandwidthFormat(const Blocks::Sdr& config) {
+    static constexpr std::array<F64, 20> StandardWidths = {
+        0.2e6, 0.3e6, 0.6e6, 1.0e6, 1.5e6, 1.75e6, 2.0e6, 2.5e6, 3.0e6, 5.0e6,
+        6.0e6, 7.0e6, 8.0e6, 10.0e6, 14.0e6, 20.0e6, 28.0e6, 40.0e6, 56.0e6, 80.0e6,
+    };
+    std::vector<F64> widths;
+    if (const auto capabilities = Radio::Device::Cached(config.deviceString)) {
+        for (const auto& range : capabilities->bandwidthRanges) {
+            if (range.minimum == range.maximum) {
+                widths.push_back(range.minimum);
+            }
+        }
+        for (const auto width : StandardWidths) {
+            if (Radio::Device::Range::Contains(capabilities->bandwidthRanges, width)) {
+                widths.push_back(width);
+            }
+        }
+    }
+    if (config.bandwidth > 0.0f) {
+        widths.push_back(config.bandwidth);
+    }
+    std::sort(widths.begin(), widths.end());
+    widths.erase(std::unique(widths.begin(), widths.end(), [](const F64 a, const F64 b) {
+        return static_cast<F32>(a) == static_cast<F32>(b);
+    }), widths.end());
+
+    Parser::Sequence options{Parser::Map{{"label", "Auto"}, {"value", "0"}}};
+    for (const auto width : widths) {
+        std::string value;
+        Parser::TypedToString(static_cast<F32>(width), value);
+        auto label = width < 1e6 ? jst::fmt::format("{:g} kHz", width / 1e3)
+                                 : jst::fmt::format("{:g} MHz", width / 1e6);
+        options.emplace_back(Parser::Map{{"label", std::move(label)}, {"value", std::move(value)}});
+    }
+    return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
 Parser::Map SdrImpl::sampleRateFormat(const Blocks::Sdr& config) {

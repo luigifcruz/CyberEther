@@ -90,6 +90,8 @@ struct SoapyApi {
     int (*setSampleRate)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
     double (*getSampleRate)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setBandwidth)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
+    SoapyAbi::Range* (*getBandwidthRange)(const SoapyAbi::Device*, int, std::size_t,
+                                          std::size_t*) = nullptr;
     double (*getFrequency)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     bool (*hasGainMode)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
     int (*setGainMode)(SoapyAbi::Device*, int, std::size_t, bool) = nullptr;

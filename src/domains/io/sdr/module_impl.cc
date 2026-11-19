@@ -37,6 +37,10 @@ Result SdrImpl::validate() {
         JST_ERROR("[MODULE_SDR] Sample rate must be finite and positive.");
         return Result::ERROR;
     }
+    if (!std::isfinite(config.bandwidth) || config.bandwidth < 0.0f) {
+        JST_ERROR("[MODULE_SDR] Filter bandwidth must be zero or positive.");
+        return Result::ERROR;
+    }
     if (!std::isfinite(config.manualGain)) {
         JST_ERROR("[MODULE_SDR] Manual gain must be finite.");
         return Result::ERROR;
@@ -229,6 +233,7 @@ Result SdrImpl::reconfigure() {
 
         frequency = config.frequency;
         sampleRate = config.sampleRate;
+        bandwidth = config.bandwidth;
         automaticGain = config.automaticGain;
         manualGain = applied.gainRange ? static_cast<F32>(applied.gain) : config.manualGain;
         manualGains = config.manualGains;
@@ -248,6 +253,7 @@ Radio::Stream::Settings SdrImpl::settingsOf(const Sdr& config) const {
         .gain = config.manualGain,
         .receiveChannels = config.channels,
         .driverArguments = config.driverArguments,
+        .bandwidth = config.bandwidth,
     };
     if (config.channels > 1) {
         for (U64 i = 0; i < config.channels; ++i) {

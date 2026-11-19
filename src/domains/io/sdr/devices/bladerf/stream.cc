@@ -39,6 +39,10 @@ using Status = Device::Status;
 using Clock = std::chrono::steady_clock;
 
 constexpr F64 SettlingTime = 1.0e-3;
+constexpr std::array<F64, 16> Bladerf1FilterWidths = {
+    1.5e6, 1.75e6, 2.5e6, 2.75e6, 3.0e6, 3.84e6, 5.0e6, 5.5e6,
+    6.0e6, 7.0e6, 8.75e6, 10.0e6, 12.0e6, 14.0e6, 20.0e6, 28.0e6,
+};
 constexpr unsigned SyncBuffers = 16;
 constexpr unsigned SyncBufferSize = 8192;
 constexpr unsigned SyncTransfers = 8;
@@ -144,8 +148,10 @@ Result BladeRfStream::connect(const Device::Info& info) {
 
     const bladerf_range* frequency = nullptr;
     const bladerf_range* rate = nullptr;
+    const bladerf_range* bandwidth = nullptr;
     if (bladerf_get_frequency_range(handle, Channel, &frequency) != 0 ||
-        bladerf_get_sample_rate_range(handle, Channel, &rate) != 0) {
+        bladerf_get_sample_rate_range(handle, Channel, &rate) != 0 ||
+        bladerf_get_bandwidth_range(handle, Channel, &bandwidth) != 0) {
         JST_ERROR("[SDR_BLADERF] Failed to query device ranges.");
         return Result::ERROR;
     }
@@ -155,6 +161,14 @@ Result BladeRfStream::connect(const Device::Info& info) {
     caps.receiveChannels = bladerf_get_channel_count(handle, BLADERF_RX);
     caps.frequencyRanges = ToRanges(frequency);
     caps.sampleRateRanges = ToRanges(rate);
+    caps.bandwidthRanges.clear();
+    if (second) {
+        caps.bandwidthRanges = ToRanges(bandwidth);
+    } else {
+        for (const F64 width : Bladerf1FilterWidths) {
+            caps.bandwidthRanges.push_back({width, width});
+        }
+    }
     caps.automaticGain = second;
     caps.biasTee = second;
     caps.fullScale = Q11Scale;
@@ -211,10 +225,15 @@ Result BladeRfStream::apply(const Settings& settings) {
     bladerf_sample_rate actualRate = 0;
     bladerf_bandwidth actualBandwidth = 0;
     const auto rate = static_cast<bladerf_sample_rate>(std::lround(settings.sampleRate));
-    if (bladerf_set_sample_rate(handle, Channel, rate, &actualRate) != 0 ||
-        bladerf_set_bandwidth(handle, Channel, static_cast<bladerf_bandwidth>(rate * 0.8),
-                              &actualBandwidth) != 0) {
+    const auto bandwidth = static_cast<bladerf_bandwidth>(
+        settings.bandwidth > 0.0 ? std::lround(settings.bandwidth) : rate * 0.8);
+    if (bladerf_set_sample_rate(handle, Channel, rate, &actualRate) != 0) {
         JST_ERROR("[SDR_BLADERF] Failed to set the sample rate.");
+        return Result::ERROR;
+    }
+    if (bladerf_set_bandwidth(handle, Channel, bandwidth, &actualBandwidth) != 0) {
+        JST_ERROR("[SDR_BLADERF] Failed to set the filter bandwidth to {:.3f} MHz.",
+                  static_cast<F64>(bandwidth) / 1e6);
         return Result::ERROR;
     }
 

@@ -75,6 +75,7 @@ class SoapySdrStream final : public Stream {
     bool streaming = false;
     bool biasTeeSetting = false;
     bool biasTeeEnabled = false;
+    bool manualBandwidthSet = false;
     F64 gainStep = 0.0;
     std::string biasTeeKey;
     bool hardwareTime = false;
@@ -182,8 +183,17 @@ Result SoapySdrStream::queryCapabilities() {
         return Result::ERROR;
     }
 
+    std::vector<Device::Range> bandwidths;
+    if (!readRanges(api.getBandwidthRange, bandwidths)) {
+        bandwidths.clear();
+    }
+    std::erase_if(bandwidths, [](const auto& range) {
+        return !(range.maximum > 0.0) || range.minimum > range.maximum;
+    });
+
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = std::move(frequencies);
+    caps.bandwidthRanges = std::move(bandwidths);
     reportedRates = rates;
     caps.sampleRateRanges = {{std::numeric_limits<F64>::min(), std::numeric_limits<F64>::max()}};
     caps.sweepSampleRate = reportedRates.empty()
@@ -316,12 +326,21 @@ Result SoapySdrStream::apply(const Settings& settings) {
     }
 
     JST_CHECK(setSampleRate(settings.sampleRate));
+    const bool manualBandwidth = settings.bandwidth > 0.0 &&
+                                 !deviceCapabilities.bandwidthRanges.empty();
+    const F64 bandwidth = manualBandwidth ? settings.bandwidth : appliedSettings.sampleRate;
     for (U64 channel = 0; channel < receiveChannels; ++channel) {
-        if (api.setBandwidth(device, Abi::RX, channel, appliedSettings.sampleRate) != 0) {
+        if (api.setBandwidth(device, Abi::RX, channel, bandwidth) != 0) {
+            if (manualBandwidth || manualBandwidthSet) {
+                JST_ERROR("[SDR_SOAPY] Failed to set the filter bandwidth to {:.3f} MHz: {}",
+                          bandwidth / 1e6, failure());
+                return Result::ERROR;
+            }
             JST_WARN("[SDR_SOAPY] Failed to set the RF bandwidth: {}", failure());
             break;
         }
     }
+    manualBandwidthSet = manualBandwidth;
     JST_CHECK(setFrequency(settings.frequency));
     requestedSettings = settings;
     JST_CHECK(setAutomaticGain(settings.automaticGain));

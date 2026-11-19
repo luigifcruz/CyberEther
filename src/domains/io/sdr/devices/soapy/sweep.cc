@@ -167,6 +167,14 @@ Result SoapySdrSweep::queryCapabilities() {
         return Result::ERROR;
     }
 
+    std::vector<Device::Range> bandwidths;
+    if (!readRanges(api.getBandwidthRange, bandwidths)) {
+        bandwidths.clear();
+    }
+    std::erase_if(bandwidths, [](const auto& range) {
+        return !(range.maximum > 0.0) || range.minimum > range.maximum;
+    });
+
     std::size_t settingCount = 0;
     auto* settings = api.getSettingInfo(device, &settingCount);
     if (api.lastStatus() == 0) {
@@ -186,6 +194,7 @@ Result SoapySdrSweep::queryCapabilities() {
     auto& caps = deviceCapabilities;
     reportedRates = rates;
     caps.frequencyRanges = std::move(frequencies);
+    caps.bandwidthRanges = std::move(bandwidths);
     caps.sampleRateRanges = {{std::numeric_limits<F64>::min(), std::numeric_limits<F64>::max()}};
     caps.automaticGain = api.hasGainMode(device, Abi::RX, 0) && api.lastStatus() == 0;
     const std::size_t channels = api.getNumChannels(device, Abi::RX);

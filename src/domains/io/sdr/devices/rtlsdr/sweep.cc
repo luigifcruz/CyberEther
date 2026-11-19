@@ -5,6 +5,7 @@
 #include "../../tools/samples.hh"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
@@ -23,6 +24,11 @@ namespace {
 constexpr F64 SettlingTime = 5.0e-3;
 constexpr U32 InFlightTransfers = 2;
 constexpr U32 TransferBytes = 16384;
+constexpr std::array<F64, 22> R82xxFilterWidths = {
+    350.0e3, 450.0e3, 550.0e3, 700.0e3, 900.0e3, 1200.0e3, 1450.0e3, 1550.0e3,
+    1600.0e3, 1700.0e3, 1800.0e3, 1900.0e3, 1950.0e3, 2050.0e3, 2080.0e3, 2180.0e3,
+    2280.0e3, 2330.0e3, 2430.0e3, 6.0e6, 7.0e6, 8.0e6,
+};
 
 const char* TunerName(const rtlsdr_tuner tuner) {
     switch (tuner) {
@@ -127,6 +133,12 @@ Result RtlSdrSweep::connect(const Device::Info& info) {
         return Result::ERROR;
     }
     caps.sampleRateRanges = {{225001.0, 300000.0}, {900001.0, 3200000.0}};
+    caps.bandwidthRanges.clear();
+    if (tuner == RTLSDR_TUNER_R820T || tuner == RTLSDR_TUNER_R828D) {
+        for (const F64 bandwidth : R82xxFilterWidths) {
+            caps.bandwidthRanges.push_back({bandwidth, bandwidth});
+        }
+    }
     caps.automaticGain = true;
     caps.biasTee = true;
     caps.sweepSampleRate = 2.4e6;

@@ -27,6 +27,7 @@ class JETSTREAM_API Stream {
         std::vector<F64> channelGains;
         std::string driverArguments;
         std::vector<std::string> channelAntennas;
+        F64 bandwidth = 0.0;
     };
 
     struct Applied {

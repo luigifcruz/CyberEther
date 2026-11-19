@@ -16,6 +16,7 @@ struct Sdr : public Block::Config {
     F32 frequency = 96.9e6;
     F32 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
+    F32 bandwidth = 0.0f;
     bool automaticGain = true;
     F32 manualGain = 30.0f;
     std::vector<F32> manualGains;
@@ -28,7 +29,7 @@ struct Sdr : public Block::Config {
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(deviceString, driverArguments, antenna, antennas, channels, frequency, frequencyStep,
-                     sampleRate, automaticGain, manualGain, manualGains, biasTee,
+                     sampleRate, bandwidth, automaticGain, manualGain, manualGains, biasTee,
                      numberOfBatches, numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "SDR",
@@ -36,8 +37,8 @@ struct Sdr : public Block::Config {
         "# SDR\n"
         "\n"
         "Streams complex samples from a radio plugged in over USB, using drivers built "
-        "into CyberEther or an installed SoapySDR. It usually starts a chain, feeding a "
-        "Spectrum Analyzer to watch the band or a Filter that isolates one station.\n"
+        "into CyberEther or an installed SoapySDR. It usually starts a chain, feeding a"
+        " Spectrum Analyzer to watch the band or a Filter that isolates one station.\n"
         "\n"
         "- **The radio paces the chain.** Each buffer comes out only once the radio has"
         " delivered all of its samples.\n"
@@ -64,23 +65,25 @@ struct Sdr : public Block::Config {
         "driver and serial number. Radios found through SoapySDR end in (SoapySDR). A "
         "saved radio that is missing shows as Configured device. |\n"
         "| **Channels** | 1 | 1 to the radio's receivers | Receivers captured together "
-        "in hardware order. Shown for bladeRF 2, LimeSDR-USB, and SoapySDR radios, "
-        "and hidden on other radios. |\n"
+        "in hardware order. Shown for bladeRF 2, LimeSDR-USB, and SoapySDR radios, and "
+        "hidden on other radios. |\n"
         "| **Antenna** | Default | Default and the radio's receive ports | Receive "
         "port. Only LimeSDR and SoapySDR radios list ports. Hidden when Channels is "
         "above 1. |\n"
-        "| **Antennas** | Antenna on every receiver | One per receiver, from the radio's"
-        " receive ports | Receive port of each receiver in RX order, listed as Antenna "
-        "0, Antenna 1, and so on. New entries start "
-        "at Antenna. Shown instead of Antenna when Channels is above 1 on radios that "
-        "list ports. |\n"
+        "| **Antennas** | Antenna on every receiver | One per receiver, from the "
+        "radio's receive ports | Receive port of each receiver in RX order, listed as "
+        "Antenna 0, Antenna 1, and so on. New entries start at Antenna. Shown instead "
+        "of Antenna when Channels is above 1 on radios that list ports. |\n"
         "| **Frequency** | 96.9 MHz | Within the radio's range | Center frequency of "
         "the output. |\n"
         "| **Sample Rate** | 2 MHz | Within the radio's range | Complex samples per "
         "second, which is also the bandwidth captured. Airspy, Airspy HF+, and "
         "BirriaSDR show a list of their rates, and a rate missing from the list "
-        "switches to the first. SoapySDR radios request any rate and the output records "
-        "the rate the driver applied. |\n"
+        "switches to the first. SoapySDR radios request any rate and the output records"
+        " the rate the driver applied. |\n"
+        "| **Filter Bandwidth** | Auto | Auto, or a width the radio supports | Width of"
+        " the analog receive filter. Auto lets the radio pick it for the Sample Rate. "
+        "Shown on radios with an adjustable filter. |\n"
         "| **Automatic Gain** | On | On, Off | Lets the radio set its gain. HackRF, "
         "LimeSDR, and bladeRF 1 have none and always use Manual Gain. Applies to every "
         "channel. |\n"
@@ -93,8 +96,8 @@ struct Sdr : public Block::Config {
         "Shown instead of Manual Gain when Channels is above 1 and Automatic Gain is "
         "off. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable on "
-        "RTL-SDR, Airspy, HackRF, bladeRF 2, and SoapySDR radios whose module offers it. "
-        "Hidden on other radios. |\n"
+        "RTL-SDR, Airspy, HackRF, bladeRF 2, and SoapySDR radios whose module offers "
+        "it. Hidden on other radios. |\n"
         "| **Batches** | 8 batches | 1 or more | Batches per output buffer. |\n"
         "| **Samples** | 8,192 samples | 1 or more | Samples per batch, and the FFT "
         "size downstream. |\n"
@@ -146,9 +149,8 @@ struct Sdr : public Block::Config {
         "value stays while running. |\n"
         "| The block reports that Channels 2 cannot run | On bladeRF 2, Sample Rate "
         "times Channels is above the 80 MS/s USB can carry. On LimeSDR-USB, Frequency "
-        "is below 30 MHz | "
-        "On bladeRF 2, lower Sample Rate to 40 MHz or less. On LimeSDR-USB, raise "
-        "Frequency to 30 MHz or more, or use Channels 1. |\n"
+        "is below 30 MHz | On bladeRF 2, lower Sample Rate to 40 MHz or less. On "
+        "LimeSDR-USB, raise Frequency to 30 MHz or more, or use Channels 1. |\n"
         "| Buffer Loss rises above 0% | The chain reads slower than the radio sends | "
         "Lower Sample Rate or lighten the chain. Raise Buffer Multiplier for short "
         "stalls. |\n"
@@ -166,8 +168,9 @@ struct Sdr : public Block::Config {
         "the page has been given access to the radio. |\n"
         "| bladeRF 2 with two channels | An FPGA image of v0.15.3 or newer, for correct"
         " timestamps. |\n"
-        "| SoapySDR radios | SoapySDR 0.8 or 0.9 and the radio's module installed on macOS, "
-        "Linux, or Windows. Radios with a built-in driver are listed only through it. |\n"
+        "| SoapySDR radios | SoapySDR 0.8 or 0.9 and the radio's module installed on "
+        "macOS, Linux, or Windows. Radios with a built-in driver are listed only "
+        "through it. |\n"
         "| iOS, Android | Not available. |\n"
         "\n"
         "## Under the Hood\n"

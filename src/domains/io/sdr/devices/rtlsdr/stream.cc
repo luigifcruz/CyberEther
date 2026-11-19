@@ -5,6 +5,7 @@
 #include "../../tools/samples.hh"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
@@ -24,6 +25,11 @@ constexpr F64 SettlingTime = 5.0e-3;
 constexpr U32 InFlightTransfers = 12;
 constexpr F64 TransferDuration = 10.0e-3;
 constexpr U32 MinTransferBytes = 16384;
+constexpr std::array<F64, 22> R82xxFilterWidths = {
+    350.0e3, 450.0e3, 550.0e3, 700.0e3, 900.0e3, 1200.0e3, 1450.0e3, 1550.0e3,
+    1600.0e3, 1700.0e3, 1800.0e3, 1900.0e3, 1950.0e3, 2050.0e3, 2080.0e3, 2180.0e3,
+    2280.0e3, 2330.0e3, 2430.0e3, 6.0e6, 7.0e6, 8.0e6,
+};
 
 const char* TunerName(const rtlsdr_tuner tuner) {
     switch (tuner) {
@@ -88,6 +94,7 @@ class RtlSdrStream final : public Stream {
     rtlsdr_dev_t* handle = nullptr;
     std::vector<int> gains;
     bool biasTeeEnabled = false;
+    bool tunerBandwidthSet = false;
     CaptureQueue queue;
     std::thread worker;
     std::atomic<bool> stopping{false};
@@ -135,6 +142,12 @@ Result RtlSdrStream::connect(const Device::Info& info) {
         return Result::ERROR;
     }
     caps.sampleRateRanges = {{225001.0, 300000.0}, {900001.0, 3200000.0}};
+    caps.bandwidthRanges.clear();
+    if (tuner == RTLSDR_TUNER_R820T || tuner == RTLSDR_TUNER_R828D) {
+        for (const F64 bandwidth : R82xxFilterWidths) {
+            caps.bandwidthRanges.push_back({bandwidth, bandwidth});
+        }
+    }
     caps.automaticGain = true;
     caps.biasTee = true;
     caps.fullScale = 128.0;
@@ -179,6 +192,17 @@ Result RtlSdrStream::apply(const Settings& settings) {
         return Result::ERROR;
     }
     JST_CHECK(setFrequency(settings.frequency));
+
+    const bool manualBandwidth = settings.bandwidth > 0.0 &&
+                                 !deviceCapabilities.bandwidthRanges.empty();
+    const U32 bandwidth = manualBandwidth ? static_cast<U32>(std::lround(settings.bandwidth)) : 0;
+    if (manualBandwidth || tunerBandwidthSet) {
+        if (rtlsdr_set_tuner_bandwidth(handle, bandwidth) < 0) {
+            JST_ERROR("[SDR_RTLSDR] Failed to set the tuner bandwidth.");
+            return Result::ERROR;
+        }
+        tunerBandwidthSet = manualBandwidth;
+    }
 
     JST_CHECK(applyGainMode(settings.automaticGain, settings.gain));
 

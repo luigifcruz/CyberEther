@@ -168,6 +168,10 @@ Result LimeSdrStream::connect(const Device::Info& info) {
     tunableRange = {frequency.min, frequency.max};
     caps.frequencyRanges = {tunableRange};
     caps.sampleRateRanges = {{rate.min, rate.max}};
+    caps.bandwidthRanges.clear();
+    if (lms_range_t filter = {}; LMS_GetLPFBWRange(handle, LMS_CH_RX, &filter) == 0) {
+        caps.bandwidthRanges = {{filter.min, filter.max}};
+    }
     caps.antennas.clear();
     antennaIndices.clear();
     const int antennaCount = LMS_GetAntennaList(handle, LMS_CH_RX, 0, nullptr);
@@ -288,10 +292,12 @@ Result LimeSdrStream::apply(const Settings& settings) {
                       LMS_GetLastErrorMessage());
             return Result::ERROR;
         }
-        const F64 bandwidth = std::max(settings.sampleRate, MinCalibrationBandwidth);
+        const F64 width = std::clamp(settings.bandwidth > 0.0 ? settings.bandwidth
+                                                              : settings.sampleRate,
+                                     filter.min, filter.max);
+        const F64 bandwidth = std::max(width, MinCalibrationBandwidth);
         for (U64 i = 0; i < receiveChannels; ++i) {
-            if (LMS_SetLPFBW(handle, LMS_CH_RX, i,
-                             std::clamp(settings.sampleRate, filter.min, filter.max)) != 0) {
+            if (LMS_SetLPFBW(handle, LMS_CH_RX, i, width) != 0) {
                 JST_ERROR("[SDR_LIMESDR] Failed to set the receive filter: {}",
                           LMS_GetLastErrorMessage());
                 return Result::ERROR;

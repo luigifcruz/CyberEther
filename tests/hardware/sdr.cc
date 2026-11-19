@@ -302,6 +302,15 @@ void Controls(const Device::Info& info) {
             change(jst::fmt::format("sample-rate update to {:.3f} MS/s", rate / 1e6));
         }
     }
+    if (!caps.bandwidthRanges.empty()) {
+        const auto& filter = caps.bandwidthRanges.front();
+        settings.bandwidth = std::clamp(settings.sampleRate * 0.5, filter.minimum, filter.maximum);
+        change(jst::fmt::format("filter bandwidth {:.3f} MHz", settings.bandwidth / 1e6));
+        settings.bandwidth = 0.0;
+        change("filter bandwidth back to automatic");
+    } else {
+        jst::fmt::print("  [SKIP] filter bandwidth is not adjustable\n");
+    }
     settings.sampleRate = Rates(caps).front();
     change("lowest-rate restart preparation");
     Success(stream->start(settings), "stop/restart at lowest rate");

@@ -6,6 +6,7 @@
 #include "../../tools/samples.hh"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <chrono>
@@ -28,6 +29,10 @@ constexpr U32 MaxVgaGain = 62;
 constexpr U32 VgaGainStep = 2;
 constexpr U16 SweepApiVersion = 0x0104;
 constexpr U64 InFlightTransfers = 4;
+constexpr std::array<F64, 16> FilterBandwidths = {
+    1.75e6, 2.5e6, 3.5e6, 5.0e6, 5.5e6, 6.0e6, 7.0e6, 8.0e6,
+    9.0e6, 10.0e6, 12.0e6, 14.0e6, 15.0e6, 20.0e6, 24.0e6, 28.0e6,
+};
 
 bool InitLibrary() {
     static std::once_flag flag;
@@ -65,7 +70,7 @@ class HackRfStream final : public Stream {
     static int Callback(hackrf_transfer* transfer);
 
     Result setFrequency(F64 frequency);
-    Result setSampleRate(F64 sampleRate);
+    Result setSampleRate(F64 sampleRate, F64 bandwidth);
     Result applyGain(F64 gain, bool force);
 
     hackrf_device* handle = nullptr;
@@ -99,10 +104,18 @@ Result HackRfStream::connect(const Device::Info& info) {
 
     U16 version = 0;
     hackrf_usb_api_version_read(handle, &version);
+    uint8_t board = BOARD_ID_UNDETECTED;
+    hackrf_board_id_read(handle, &board);
 
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = {{1.0e6, 6000.0e6}};
     caps.sampleRateRanges = {{2.0e6, 20.0e6}};
+    caps.bandwidthRanges.clear();
+    if (board != BOARD_ID_PRALINE) {
+        for (const F64 bandwidth : FilterBandwidths) {
+            caps.bandwidthRanges.push_back({bandwidth, bandwidth});
+        }
+    }
     caps.automaticGain = false;
     caps.biasTee = true;
     caps.fullScale = 128.0;
@@ -137,7 +150,7 @@ Result HackRfStream::apply(const Settings& settings) {
         JST_WARN("[SDR_HACKRF] HackRF has no automatic gain control. Using the manual gain.");
     }
 
-    JST_CHECK(setSampleRate(settings.sampleRate));
+    JST_CHECK(setSampleRate(settings.sampleRate, settings.bandwidth));
     JST_CHECK(applyGain(settings.gain, true));
     JST_CHECK(setFrequency(settings.frequency));
     if (settings.biasTee || biasTeeEnabled) {
@@ -240,11 +253,17 @@ F64 HackRfStream::resolveGain(const F64 gain, const std::optional<Device::Range>
     return static_cast<F64>(lna + vga);
 }
 
-Result HackRfStream::setSampleRate(const F64 sampleRate) {
-    const auto filter = hackrf_compute_baseband_filter_bw(static_cast<U32>(sampleRate * 0.75));
-    if (hackrf_set_sample_rate(handle, sampleRate) != HACKRF_SUCCESS ||
-        hackrf_set_baseband_filter_bandwidth(handle, filter) != HACKRF_SUCCESS) {
+Result HackRfStream::setSampleRate(const F64 sampleRate, const F64 bandwidth) {
+    const F64 request = std::clamp(bandwidth > 0.0 ? bandwidth : sampleRate * 0.75,
+                                   FilterBandwidths.front(), FilterBandwidths.back());
+    const auto filter = hackrf_compute_baseband_filter_bw(static_cast<U32>(std::llround(request)));
+    if (hackrf_set_sample_rate(handle, sampleRate) != HACKRF_SUCCESS) {
         JST_ERROR("[SDR_HACKRF] Failed to set the sample rate.");
+        return Result::ERROR;
+    }
+    if (hackrf_set_baseband_filter_bandwidth(handle, filter) != HACKRF_SUCCESS) {
+        JST_ERROR("[SDR_HACKRF] Failed to set the filter bandwidth to {:.3f} MHz.",
+                  static_cast<F64>(filter) / 1e6);
         return Result::ERROR;
     }
     if (hackrf_set_amp_enable(handle, 0) != HACKRF_SUCCESS) {

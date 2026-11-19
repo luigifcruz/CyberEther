@@ -1851,6 +1851,28 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR module applies a manual filter bandwidth and restarts on changes",
+                 "[modules][sdr][lifecycle][bandwidth]") {
+    auto config = ScriptedConfig();
+    config.bandwidth = 1.5e6f;
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "bandwidth:1500") != calls.end());
+
+    const auto opens = TestScript().opens.load();
+    REQUIRE(module->reconfigure({{"bandwidth", 0.0f}}) == Result::SUCCESS);
+    REQUIRE(module->reconfigure({{"bandwidth", 0.5e6f}}) == Result::SUCCESS);
+    REQUIRE(TestScript().opens == opens);
+    calls = TestScript().calls();
+    REQUIRE(std::count(calls.begin(), calls.end(), "start") >= 3);
+    REQUIRE(std::find(calls.begin(), calls.end(), "bandwidth:500") != calls.end());
+
+    REQUIRE(module->reconfigure({{"bandwidth", -1.0f}}) == Result::ERROR);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
                  "SDR retuning never relabels samples captured before the change",
                  "[modules][sdr][metadata][retune]") {
     TestScript().budget = 12;
@@ -2220,6 +2242,43 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(WaitFor([&] { return metric("bufferLoss").second > 0.0f; }));
     REQUIRE(metric("bufferLoss") == std::pair<std::string, F32>{"60.00% (1 GAP)", 0.6f});
     REQUIRE(metric("throughput").first.ends_with("/ 16.0 MB/s"));
+}
+
+TEST_CASE_METHOD(ScriptedFlowgraph,
+                 "SDR blocks offer Auto and the radio's filter widths in one dropdown",
+                 "[modules][sdr][block][bandwidth]") {
+    TestScript().budget = 0;
+    Blocks::Sdr config;
+    config.deviceString = Selector;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+
+    const auto field = [&] {
+        const auto view = viewBlock("radio");
+        const auto entry = std::find_if(view.interfaceConfigs.begin(), view.interfaceConfigs.end(),
+                                        [](const auto& item) { return item.name == "bandwidth"; });
+        REQUIRE(entry != view.interfaceConfigs.end());
+        return entry->format;
+    };
+    const auto format = field();
+    REQUIRE(Parser::Get<std::string>(format, "type") == "dropdown");
+    REQUIRE_FALSE(format.contains("advanced"));
+    const auto options = Parser::Get<std::vector<Parser::Map>>(format, "options");
+    REQUIRE(Parser::Get<std::string>(options.front(), "label") == "Auto");
+    REQUIRE(Parser::Get<std::string>(options.front(), "value") == "0");
+    REQUIRE(std::any_of(options.begin(), options.end(), [](const auto& option) {
+        return Parser::Get<std::string>(option, "label") == "1.5 MHz";
+    }));
+    REQUIRE(std::none_of(options.begin(), options.end(), [](const auto& option) {
+        return Parser::Get<std::string>(option, "label") == "28 MHz";
+    }));
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"bandwidth", 1.5e6f}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    const auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "bandwidth:1500") != calls.end());
 }
 
 TEST_CASE_METHOD(ScriptedFlowgraph,

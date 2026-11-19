@@ -110,6 +110,7 @@ inline Radio::Device::Capabilities ScriptedCapabilities() {
     if (TestScript().antennas) {
         caps.antennas = {"RX1", "RX2"};
     }
+    caps.bandwidthRanges = {{0.2e6, 20.0e6}};
     caps.automaticGain = true;
     caps.biasTee = true;
     caps.sweepSampleRate = 2.0e6;
@@ -283,6 +284,9 @@ class ScriptedStream final : public Radio::Stream {
         appliedSettings.automaticGain = settings.automaticGain;
         appliedSettings.gain = resolveGain(settings.gain, appliedSettings.gainRange);
         appliedSettings.biasTee = settings.biasTee;
+        if (settings.bandwidth > 0.0) {
+            TestScript().record(jst::fmt::format("bandwidth:{:.0f}", settings.bandwidth / 1e3));
+        }
         if (!settings.channelAntennas.empty()) {
             TestScript().record("antennas");
         }
