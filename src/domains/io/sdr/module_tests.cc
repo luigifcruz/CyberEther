@@ -7,6 +7,8 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <future>
 #include <limits>
@@ -15,6 +17,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include "domains/io/sdr/devices/device.hh"
 #include "domains/io/sdr/devices/stream.hh"
@@ -27,10 +31,13 @@
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/core/slice/module.hh"
 #include "jetstream/domains/core/slice/block.hh"
+#include "jetstream/domains/dsp/rational_resampler/module.hh"
+#include "jetstream/domains/io/file_writer/module.hh"
 #include "jetstream/domains/io/sdr/block.hh"
 #include "jetstream/domains/io/sdr/module.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/module_context.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime_context_native_cpu.hh"
 #include "jetstream/scheduler_context.hh"
@@ -1209,7 +1216,21 @@ TEST_CASE("SDR stream buffers never complete a frame across a gap",
         pops(0.0f);
         pops(14.0f);
         REQUIRE(buffer.statistics().discardedSamples == 4);
+        REQUIRE(buffer.statistics().skippedSamples == 2);
         REQUIRE(buffer.pop(frame.data(), 8, metadata) == Result::INCOMPLETE);
+    }
+    SECTION("reads without a timestamp never count as skipped") {
+        REQUIRE(buffer.push(1, ramp.data(), 8, 0, 1));
+        REQUIRE(buffer.push(1, ramp.data() + 8, 8));
+        REQUIRE(buffer.push(1, ramp.data() + 16, 8, 16, 1));
+        REQUIRE(buffer.statistics().skippedSamples == 0);
+    }
+    SECTION("reads without a timestamp keep epoch changes as breaks") {
+        REQUIRE(buffer.push(1, ramp.data(), 4, 0, 7));
+        REQUIRE(buffer.push(1, ramp.data() + 4, 2));
+        REQUIRE(buffer.push(1, ramp.data() + 6, 8, 0, 8));
+        pops(6.0f);
+        REQUIRE(buffer.statistics().skippedSamples == 0);
     }
     SECTION("overwrites never realign a frame across a gap") {
         REQUIRE(buffer.resize(16) == Result::SUCCESS);
@@ -2001,6 +2022,8 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(WaitFor([&] { return stream.size() == 4; }));
 
     F32 first = 4.0f;
+    U64 radioLost = 0;
+    U64 radioGaps = 0;
     SECTION("reported gap") {
         {
             std::lock_guard lock(TestScript().mutex);
@@ -2008,10 +2031,13 @@ TEST_CASE_METHOD(ScriptedDrivers,
                 .status = Radio::Device::Status::Discontinuity, .lost = 64};
         }
         REQUIRE(WaitFor([&] { return sdr->getLoss().deviceGaps == 1; }));
+        radioLost = 68;
+        radioGaps = 1;
     }
     SECTION("timestamp jump") {
         TestScript().jump = 100;
         first = 104.0f;
+        radioLost = 104;
     }
     TestScript().budget = 8;
     REQUIRE(WaitFor([&] { return stream.size() == 12; }));
@@ -2020,6 +2046,90 @@ TEST_CASE_METHOD(ScriptedDrivers,
         REQUIRE(output.data<CF32>()[i].real() == first + static_cast<F32>(i));
     }
     REQUIRE(stream.statistics().discardedSamples == 4);
+
+    const auto count = [&](const std::string_view key) {
+        return std::any_cast<U64>(output.attribute(std::string(key)));
+    };
+    REQUIRE(count(RadioLostSamplesAttribute) == radioLost);
+    REQUIRE(count(RadioGapsAttribute) == radioGaps);
+    REQUIRE(count(BufferLostSamplesAttribute) == 0);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR recordings report no loss through a resampler or across channels",
+                 "[modules][sdr][capture][recording]") {
+    TestScript().counter = true;
+    TestScript().budget = 0;
+    auto config = ScriptedConfig();
+    bool resample = false;
+    SECTION("rational resampler") {
+        resample = true;
+    }
+    SECTION("two channels") {
+        TestScript().receiveChannels = 2;
+        config.channels = 2;
+    }
+
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("radio", config, {}) == Result::SUCCESS);
+    const auto& stream = module->getImpl<Modules::SdrImpl>()->*SdrImplAccess::streamMember();
+
+    std::vector<std::shared_ptr<Module>> chain{module};
+    if (resample) {
+        std::shared_ptr<Module> resampler;
+        REQUIRE(Registry::BuildModule("rational_resampler", DeviceType::CPU, RuntimeType::NATIVE,
+                                      "generic", resampler) == Result::SUCCESS);
+        Modules::RationalResampler resamplerConfig;
+        resamplerConfig.decimation = 4;
+        REQUIRE(resampler->create("resampler", resamplerConfig,
+                                  {{"buffer", module->outputs().at("signal")}}) ==
+                Result::SUCCESS);
+        chain.push_back(resampler);
+    }
+
+    const auto base = std::filesystem::temp_directory_path() /
+                      Platform::PathFromUtf8(resample ? "jst_test_sdr_recording_resampled"
+                                                      : "jst_test_sdr_recording_channels");
+    Modules::FileWriter writerConfig;
+    writerConfig.filepath = Platform::PathToUtf8(base);
+    writerConfig.fileFormat = "sigmf";
+    writerConfig.overwrite = true;
+    writerConfig.recording = true;
+    std::shared_ptr<Module> writer;
+    REQUIRE(Registry::BuildModule("file_writer", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", writer) == Result::SUCCESS);
+    REQUIRE(writer->create("writer", writerConfig,
+                           {{"buffer", chain.back()->outputs().begin()->second}}) ==
+            Result::SUCCESS);
+    chain.push_back(writer);
+
+    for (U64 frame = 0; frame < 6; ++frame) {
+        TestScript().budget = 8;
+        REQUIRE(WaitFor([&] { return stream.size() == 8; }));
+        for (const auto& step : chain) {
+            REQUIRE(RuntimeOf(step)->computeSubmit() == Result::SUCCESS);
+        }
+    }
+
+    for (auto it = chain.rbegin(); it != chain.rend() - 1; ++it) {
+        REQUIRE((*it)->destroy() == Result::SUCCESS);
+    }
+
+    auto metaPath = base;
+    metaPath += ".sigmf-meta";
+    std::ifstream metaFile(metaPath);
+    const auto meta = nlohmann::json::parse(metaFile);
+    REQUIRE(meta["global"]["cyberether:buffer_lost_samples"] == 0);
+    REQUIRE(meta["global"]["cyberether:radio_lost_samples"] == 0);
+    REQUIRE(meta["global"]["cyberether:radio_gaps"] == 0);
+    REQUIRE(meta["annotations"].empty());
+
+    metaFile.close();
+    std::filesystem::remove(metaPath);
+    auto dataPath = base;
+    dataPath += ".sigmf-data";
+    std::filesystem::remove(dataPath);
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,

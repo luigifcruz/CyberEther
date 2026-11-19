@@ -30,6 +30,7 @@ Result StreamBuffer::resize(const U64 capacity, const U64 channels, const U64 by
     written = 0;
     breaks.clear();
     expected.reset();
+    timed = false;
     return Result::SUCCESS;
 }
 
@@ -45,6 +46,7 @@ void StreamBuffer::reset(const Metadata& metadata) {
     written = 0;
     breaks.clear();
     expected.reset();
+    timed = false;
 }
 
 bool StreamBuffer::push(const U64 generation, const void* data, const U64 count,
@@ -70,9 +72,13 @@ bool StreamBuffer::push(const U64 generation, std::span<const void* const> data,
         if (expected && (epoch != expectedEpoch || *timestamp != *expected)) {
             mark();
         }
+        if (expected && timed && epoch == expectedEpoch && *timestamp > *expected) {
+            accumulated.skippedSamples += *timestamp - *expected;
+        }
         expected = *timestamp + count;
         expectedEpoch = epoch;
     }
+    timed = timestamp.has_value();
     for (U64 i = 0; i < samples.size(); ++i) {
         if (samples[i].push(static_cast<const U8*>(data[i]), count * sampleBytes) !=
             Result::SUCCESS) {
@@ -155,6 +161,7 @@ StreamBuffer::Statistics StreamBuffer::statistics() const {
                               stats.overwrittenElements / sampleBytes,
         .rejectedSamples = accumulated.rejectedSamples,
         .discardedSamples = accumulated.discardedSamples,
+        .skippedSamples = accumulated.skippedSamples,
     };
 }
 

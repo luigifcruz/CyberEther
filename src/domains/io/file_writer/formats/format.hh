@@ -7,14 +7,17 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include <jetstream/macros.hh>
+#include <jetstream/memory/attributes.hh>
 #include <jetstream/memory/tensor.hh>
 #include <jetstream/types.hh>
 
 namespace Jetstream::Modules {
 
-class FileWriterFormat {
+class JETSTREAM_API FileWriterFormat {
  public:
     struct Option {
         std::string value;
@@ -59,12 +62,39 @@ class FileWriterFormat::Sigmf : public FileWriterFormat {
         std::string datetime;
     };
 
+    struct Counter {
+        Result reset(const Tensor& input);
+        Result update(const Tensor& input, U64& increase);
+
+        std::string_view key;
+        bool seen = false;
+        U64 last = 0;
+        U64 total = 0;
+    };
+
+    struct Annotation {
+        U64 sampleStart = 0;
+        U64 lost = 0;
+        U64 breaks = 0;
+        bool radio = false;
+    };
+
+    struct Losses {
+        bool tracked() const;
+
+        Counter bufferLostSamples{.key = BufferLostSamplesAttribute};
+        Counter radioLostSamples{.key = RadioLostSamplesAttribute};
+        Counter radioGaps{.key = RadioGapsAttribute};
+        std::vector<Annotation> annotations;
+    };
+
     Result write() const;
 
     std::filesystem::path metaPath;
     std::string datatype;
     std::optional<F64> sampleRate;
     std::vector<Capture> captures;
+    Losses losses;
 };
 
 class FileWriterFormat::Wav : public FileWriterFormat {

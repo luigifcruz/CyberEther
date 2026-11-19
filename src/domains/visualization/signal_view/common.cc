@@ -209,14 +209,16 @@ void SignalViewCanvas::updateOverload(const Context& context) {
     const auto badge = detail::FormatOverloadBadge(now < overload.clipUntil,
                                                    overload.heldClipRatio);
     auto element = text->get("overload");
-    const bool zoomShown = text->get("zoom").fill != " ";
-    const F32 lineOffset = zoomShown && text->getConfig().font
+    const F32 tickOffset = axis->getConfig().majorTickLengthPx + 4.0f;
+    const F32 labelOffset = axis->getConfig().yLabelOnRight
+        ? axis->yLabelWidth() + tickOffset
+        : 0.0f;
+    const F32 lineOffset = text->get("zoom").fill != " " && text->getConfig().font
         ? static_cast<F32>(text->getConfig().font->lineHeight()) * element.scale
         : 0.0f;
     element.position = {
-        axis->paddingScale().x - pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
-        axis->paddingScale().y -
-            pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f + lineOffset),
+        axis->paddingScale().x - pixelSize.x * (tickOffset + labelOffset),
+        axis->paddingScale().y - pixelSize.y * (tickOffset + lineOffset),
     };
     element.fill = badge.empty() ? " " : badge;
     text->update("overload", element);
@@ -1055,17 +1057,16 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         text->update("header", header);
 
         auto zoomLabel = text->get("zoom");
+        const F32 labelOffset = axis->getConfig().yLabelOnRight
+            ? axis->yLabelWidth() + tickOffset
+            : 0.0f;
         zoomLabel.position = {
-            paddingScale.x -
-                pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
-            paddingScale.y -
-                pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f),
+            paddingScale.x - pixelSize.x * (tickOffset + labelOffset),
+            paddingScale.y - pixelSize.y * tickOffset,
         };
         zoomLabel.alignment = {2, 0};
         if (splitter.dragging) {
             zoomLabel.fill = jst::fmt::format("SPLIT {:.0f}%", splitter.ratio * 100.0f);
-        } else if (interaction.placement == SurfacePlacementType::Attached) {
-            zoomLabel.fill = " ";
         } else if (std::abs(interaction.zoom - 1.0f) > 0.01f) {
             zoomLabel.fill = jst::fmt::format("ZOOM {:.1f}x", interaction.zoom);
         } else {

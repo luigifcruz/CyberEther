@@ -158,8 +158,7 @@ Result SdrImpl::create() {
     streaming = false;
     bufferFill.publish(0.0f);
     throughput.publish({0.0f, 0.0f});
-    deviceGaps.publish(0);
-    deviceLostSamples.publish(0);
+    radioLoss.publish({});
     sampleCounts.publish({});
 
     JST_CHECK(Radio::Stream::Open(deviceString, radio));
@@ -231,6 +230,12 @@ Result SdrImpl::create() {
     publishedMetadata = {};
     publishedClippedSamples.reset();
     publishedReceivedSamples.reset();
+    JST_CHECK(buffer.setAttribute(std::string(RadioLostSamplesAttribute), U64{0}));
+    JST_CHECK(buffer.setAttribute(std::string(RadioGapsAttribute), U64{0}));
+    JST_CHECK(buffer.setAttribute(std::string(BufferLostSamplesAttribute), U64{0}));
+    publishedRadioLostSamples = 0;
+    publishedRadioGaps = 0;
+    publishedBufferLostSamples = 0;
     JST_CHECK(publishMetadata(stream.metadata()));
 
     if (const auto result = startReceiver(); result != Result::SUCCESS) {
@@ -371,6 +376,25 @@ Result SdrImpl::emitFrame() {
         publishedReceivedSamples = counts.received;
     }
 
+    const RadioLoss loss = radioLoss.get();
+    if (publishedRadioGaps != loss.gaps) {
+        JST_CHECK(buffer.setAttribute(std::string(RadioGapsAttribute), loss.gaps));
+        publishedRadioGaps = loss.gaps;
+    }
+
+    const auto stats = stream.statistics();
+    const U64 radioLost = loss.lostSamples + stats.skippedSamples + stats.discardedSamples;
+    if (publishedRadioLostSamples != radioLost) {
+        JST_CHECK(buffer.setAttribute(std::string(RadioLostSamplesAttribute), radioLost));
+        publishedRadioLostSamples = radioLost;
+    }
+
+    const U64 bufferLost = stats.overwrittenSamples;
+    if (publishedBufferLostSamples != bufferLost) {
+        JST_CHECK(buffer.setAttribute(std::string(BufferLostSamplesAttribute), bufferLost));
+        publishedBufferLostSamples = bufferLost;
+    }
+
     return Result::SUCCESS;
 }
 
@@ -415,8 +439,7 @@ Result SdrImpl::receiveLoop() {
         destinations.emplace_back(channel);
         pointers.push_back(channel.data());
     }
-    U64 gaps = 0;
-    U64 lost = 0;
+    RadioLoss loss;
 
     const auto& caps = radio->capabilities();
     const bool integer = IsIntegerFormat(format);
@@ -481,9 +504,9 @@ Result SdrImpl::receiveLoop() {
                 break;
             case Radio::Device::Status::Discontinuity:
                 stream.split(capture.generation);
-                deviceGaps.publish(++gaps);
-                lost += capture.lost;
-                deviceLostSamples.publish(lost);
+                loss.gaps += 1;
+                loss.lostSamples += capture.lost;
+                radioLoss.publish(loss);
                 break;
             case Radio::Device::Status::Disconnected:
             case Radio::Device::Status::Failure:
@@ -500,12 +523,13 @@ F32 SdrImpl::getBufferFill() const {
 
 SdrImpl::LossSnapshot SdrImpl::getLoss() const {
     const auto stats = stream.statistics();
+    const RadioLoss loss = radioLoss.get();
     return {
         .bufferLoss = stats.pushedSamples > 0
             ? static_cast<F64>(stats.overwrittenSamples) / static_cast<F64>(stats.pushedSamples)
             : 0.0,
-        .deviceGaps = deviceGaps.get(),
-        .deviceLostSamples = deviceLostSamples.get(),
+        .deviceGaps = loss.gaps,
+        .deviceLostSamples = loss.lostSamples,
     };
 }
 

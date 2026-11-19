@@ -126,6 +126,7 @@ struct Axis::Impl {
     std::vector<F32> yTickPositions;
     std::vector<bool> yLabelVisible;
     std::vector<F32> yMinorPositions;
+    F32 yLabelWidth = 0.0f;
 
     void generateGridPoints();
     void computePaddingScale();
@@ -649,6 +650,10 @@ U64 Axis::currentVerticalLineCount() const {
 
 U64 Axis::currentHorizontalLineCount() const {
     return pimpl->currentHorizontalLines;
+}
+
+F32 Axis::yLabelWidth() const {
+    return pimpl->yLabelWidth;
 }
 
 void Axis::Impl::computeTickCount(U64 numCols, U64 numRows,
@@ -1305,6 +1310,7 @@ Result Axis::Impl::syncTickLabels() {
         JST_CHECK(text->update(id, element));
     }
 
+    yLabelWidth = 0.0f;
     for (U64 i = 0; i < maxHorizontalLines - 2; ++i) {
         const auto id = jst::fmt::format("y{:02d}", i + 1);
         auto element = text->get(id);
@@ -1319,6 +1325,9 @@ Result Axis::Impl::syncTickLabels() {
             element.fill = yTickFormatter(position);
         } else {
             element.fill = " ";
+        }
+        if (element.fill != " ") {
+            yLabelWidth = std::max(yLabelWidth, text->advance(element.fill, element.scale));
         }
         JST_CHECK(text->update(id, element));
     }

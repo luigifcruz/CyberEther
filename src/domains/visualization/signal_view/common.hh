@@ -288,7 +288,7 @@ inline std::string FormatOverloadBadge(const bool clipped, const F64 clipRatio) 
         return jst::fmt::format("CLIP {:.2f}%", percent);
     }
     if (percent > 0.0) {
-        return "CLIP <0.01%";
+        return "";
     }
     return "CLIP";
 }

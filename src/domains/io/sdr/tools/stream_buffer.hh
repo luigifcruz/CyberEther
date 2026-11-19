@@ -29,6 +29,7 @@ class JETSTREAM_API StreamBuffer {
         U64 overwrittenSamples = 0;
         U64 rejectedSamples = 0;
         U64 discardedSamples = 0;
+        U64 skippedSamples = 0;
     };
 
     Result resize(U64 capacity, U64 channels = 1, U64 sampleBytes = sizeof(CF32));
@@ -61,6 +62,7 @@ class JETSTREAM_API StreamBuffer {
     std::deque<U64> breaks;
     std::optional<U64> expected;
     U64 expectedEpoch = 0;
+    bool timed = false;
 };
 
 }  // namespace Jetstream::Radio
