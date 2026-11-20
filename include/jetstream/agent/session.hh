@@ -37,7 +37,6 @@ class JETSTREAM_API Session {
         std::string model;
         std::string reasoningEffort;
         std::string reasoningContext;
-        std::string extraBody;
         std::string systemContext;
         std::vector<Provider::Function> tools;
         ToolExecutor executeTool;
@@ -46,7 +45,6 @@ class JETSTREAM_API Session {
         U64 modelOutputTokens = 0;
         U64 maxToolResultChars = 32768;
         U64 maxImages = 4;
-        bool toolResultImages = false;
         U64 maxToolTurns = 40;
         Voice voice;
     };

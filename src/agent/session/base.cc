@@ -101,8 +101,6 @@ void Session::Impl::publish(const Target target, const Turn& turn) {
     }
 }
 
-// A limit learned from one endpoint and model says nothing about another, so it is
-// kept only while the conversation stays on the same one.
 U64 Session::Impl::imageCap(const Target target, const U64 configured, const std::string& key) const {
     std::lock_guard<std::mutex> lock(mutex);
     if (generation != target.generation || !imageLimit || imageLimitKey != key) {

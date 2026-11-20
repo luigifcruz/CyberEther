@@ -14,23 +14,18 @@ constexpr U64 kFallbackOutputTokens = 32768;
 constexpr U64 kIdenticalFailureLimit = 3;
 
 constexpr const char* kToolsDisabledNudge =
-    "[Tool-step budget reached. Tools are now disabled; do not emit tool calls. "
-    "Reply in plain text: summarize what was done and what remains.]";
+    "[Tool-step budget reached. Tools are now disabled, so do not emit tool calls. "
+    "Reply in plain text with a summary of what was done and what remains.]";
 constexpr const char* kEmptyReplyNudge =
-    "[Your previous reply was empty. Continue the task: call a tool, or answer in plain text.]";
+    "[Your previous reply was empty. Continue the task by calling a tool or answering in plain text.]";
 constexpr const char* kSummaryNudge =
-    "\n\n[End of transcript chunk. Tools are disabled; do not emit tool calls. "
+    "\n\n[End of transcript chunk. Tools are disabled, so do not emit tool calls. "
     "Write the checkpoint summary now in plain text.]";
 constexpr const char* kRepeatedCallNote =
-    "\n[Repeated failing call: the tool received exactly the same arguments as an earlier call "
-    "in this turn and failed again. Resending it unchanged cannot succeed, and one more identical "
-    "failure ends the turn. Use different arguments or another tool, or stop and tell the user "
-    "what is blocking you.]";
+    "\n[Repeated failing call. These exact arguments already failed earlier in this turn, and one "
+    "more identical failure ends the turn.]";
 constexpr const char* kStoppedCallNote =
-    "\n[Repeated failing call: third identical failure. The turn was stopped.]";
-constexpr const char* kDetachedImageNote =
-    "\n[Image omitted from context: this provider does not accept images in tool results; "
-    "capture the view again if needed.]";
+    "\n[Repeated failing call. The same arguments failed again and the turn was stopped.]";
 
 bool Blank(const Provider::Response& response) {
     return response.toolCalls.empty() && Text::IsBlank(response.text);
@@ -94,18 +89,7 @@ void Session::Impl::Turn::run(std::shared_ptr<const std::vector<Provider::Messag
         if (config.provider) {
             const auto& endpoint = config.provider->config();
             imageKey = endpoint.host + '\n' + endpoint.path + '\n' + config.model;
-        }
-        config.maxImages = session.imageCap(target, config.maxImages, imageKey);
-        if (!config.toolResultImages) {
-            for (auto& message : messages) {
-                if (message.role == "tool" && !message.images.empty()) {
-                    message.images.clear();
-                    message.content += kDetachedImageNote;
-                }
-            }
-        }
-
-        if (config.provider) {
+            config.maxImages = session.imageCap(target, config.maxImages, imageKey);
             loop();
         } else {
             fail(Provider::Error::Kind::Configuration, "No chat provider is configured.");
@@ -177,10 +161,7 @@ std::string Session::Impl::Turn::errorText() const {
     const U64 limit = outputLimit();
     const auto tokens = std::to_string(limit);
 
-    U64 ceiling = (bounded() ? config.contextLength : kFallbackOutputTokens) / 2;
-    if (config.modelOutputTokens) {
-        ceiling = std::min(ceiling, config.modelOutputTokens);
-    }
+    const U64 window = bounded() ? config.contextLength : kFallbackOutputTokens;
 
     const bool reasoningOnly = finalText.empty() && usage.reasoningTokens != 0 &&
                                usage.reasoningTokens >= usage.outputTokens;
@@ -188,7 +169,7 @@ std::string Session::Impl::Turn::errorText() const {
     std::string text = error.message;
     if (reasoningOnly) {
         text += " All " + std::to_string(usage.outputTokens) +
-                " output tokens went to reasoning and no answer was produced; lower the "
+                " output tokens went to reasoning and no answer was produced. Lower the "
                 "reasoning effort or turn thinking off if this model allows it.";
     } else {
         text += " Reasoning and the answer share this budget.";
@@ -198,12 +179,13 @@ std::string Session::Impl::Turn::errorText() const {
         return text + " Increase maxOutputTokens or set it to 0 for the automatic model "
                       "allowance, then continue the task.";
     }
-    if (limit < ceiling) {
-        return text + " maxOutputTokens is 0 (automatic), which allowed " + tokens +
-               " tokens; set it above " + tokens + " to allow more, then continue the task.";
+    if (!config.modelOutputTokens && limit < window / 2) {
+        return text + " With maxOutputTokens at 0 (automatic), the model was allowed " + tokens +
+               " tokens. Set it above " + tokens + " to allow more, then continue the task.";
     }
-    return text + " maxOutputTokens is 0 (automatic) and " + tokens +
-           " tokens is the most this model allows; ask for a smaller step, then continue the task.";
+    return text + " With maxOutputTokens at 0 (automatic), the model was allowed " + tokens +
+           " tokens, the most this model and context window allow. Ask for a smaller step, then continue "
+           "the task.";
 }
 
 void Session::Impl::Turn::finish(Provider::Response& response) {
@@ -295,7 +277,6 @@ Provider::Response Session::Impl::Turn::request(const std::vector<Provider::Mess
         .reasoningEffort = config.reasoningEffort,
         .reasoningContext = config.reasoningContext,
         .sessionId = sessionId,
-        .extraBody = config.extraBody,
     };
     result = config.provider->stream(payload, sink, response);
     error = response.error;
@@ -340,7 +321,7 @@ std::optional<std::string> Session::Impl::Turn::summarize(std::string_view sourc
         if (Text::IsBlank(response.text)) {
             fail(Provider::Error::Kind::Protocol,
                  "The provider returned an empty conversation summary twice. "
-                 "History was preserved; try again or use a different model.");
+                 "History was preserved, so try again or use a different model.");
             return std::nullopt;
         }
 
@@ -401,6 +382,9 @@ Provider::Response Session::Impl::Turn::stream(bool allowTools) {
     if (contextRejected && nothingStreamed && !aborted()) {
         if (compact(budget() / 2)) {
             response = request(messages, allowTools);
+            if (lowerImageCap(response)) {
+                response = request(messages, allowTools);
+            }
         }
     }
 
@@ -418,7 +402,7 @@ bool Session::Impl::Turn::lowerImageCap(const Provider::Response& response) {
     session.limitImages(target, *limit, imageKey);
     Detail::Context::Trim(messages, config.maxImages);
     write(Segment::Kind::Status, "This provider accepts at most " + std::to_string(*limit) +
-                                 " image(s) per request; older images were removed from context.\n");
+                                 " image(s) per request. Older images were removed from context.\n");
     return true;
 }
 
@@ -428,19 +412,24 @@ Provider::Response Session::Impl::Turn::respond(bool allowTools) {
         return response;
     }
 
-    write(Segment::Kind::Status, "The model returned an empty reply; asking again.\n");
+    write(Segment::Kind::Status, "The model returned an empty reply. Asking again.\n");
 
+    const std::string nudge = allowTools ? kEmptyReplyNudge : kToolsDisabledNudge;
     auto retry = messages;
-    retry.push_back({"user", allowTools ? kEmptyReplyNudge : kToolsDisabledNudge});
+    if (!retry.empty() && retry.back().role == "user") {
+        retry.back().content += "\n\n" + nudge;
+    } else {
+        retry.push_back({"user", nudge});
+    }
     response = request(retry, allowTools);
 
     if (result == Result::SUCCESS && !aborted() && Blank(response)) {
         fail(Provider::Error::Kind::Protocol,
-             allowTools ? "The model returned an empty reply twice. Nothing was lost; "
+             allowTools ? "The model returned an empty reply twice. Nothing was lost, so "
                           "send the request again or rephrase it."
                         : "The tool-step budget was reached and the model returned an empty reply "
                           "instead of a summary, even after being asked again. The completed tool "
-                          "work is kept in the conversation; send a follow-up message to continue.");
+                          "work is kept in the conversation. Send a follow-up message to continue.");
         response = {};
     }
     return response;
@@ -464,19 +453,21 @@ void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& cal
 
         Tools::Output output = tools.run(call, resultLimit(), lastRound, aborted);
         if (output.error && !lastRound && !aborted()) {
-            // Duplicates inside one reply cost no extra round, so a key counts once per round.
             auto key = call.name + '\n' + call.arguments;
             U64& seen = failures[key];
             const U64 count = counted.insert(std::move(key)).second ? ++seen : seen;
             if (count == 2) {
                 output.content += kRepeatedCallNote;
             } else if (count >= kIdenticalFailureLimit && stall.empty()) {
-                stall = "The model sent the same failing '" + call.name + "' tool call 3 times, so the turn "
-                        "was stopped to avoid a loop. Tool error: " +
+                stall = "The model sent the same failing '" + call.name + "' tool call " +
+                        std::to_string(kIdenticalFailureLimit) + " times, so the turn was stopped to avoid a "
+                        "loop. Tool error: " +
                         std::string(Text::Utf8Prefix(output.content, 300)) +
                         " Rephrase the request or make the change by hand, then continue.";
                 output.content += kStoppedCallNote;
             }
+        } else if (!output.error) {
+            failures.erase(call.name + '\n' + call.arguments);
         }
         note({Segment::Kind::ToolResult, output.content, 1, call.name, output.images.size()});
 
@@ -484,13 +475,10 @@ void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& cal
             .role = "tool",
             .content = output.content,
             .toolCallId = call.id,
-            .images = config.toolResultImages ? output.images : std::vector<std::string>{},
             .error = output.error,
         });
-        if (!config.toolResultImages) {
-            if (auto image = Detail::ToolRunner::Attachment(call, output)) {
-                imageMessages.push_back(std::move(*image));
-            }
+        if (auto image = Detail::ToolRunner::Attachment(call, output)) {
+            imageMessages.push_back(std::move(*image));
         }
     }
 

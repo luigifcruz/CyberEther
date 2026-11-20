@@ -97,11 +97,8 @@ struct JETSTREAM_API Settings {
             std::string apiKeyId;
             std::string apiKeyEnv;
             bool requestReasoning = false;
-            U64 maxImages = 4;
-            bool toolResultImages = false;
 
-            JST_SERDES(name, host, api, chatPath, modelsPath, apiKeyId, apiKeyEnv, requestReasoning, maxImages,
-                       toolResultImages);
+            JST_SERDES(name, host, api, chatPath, modelsPath, apiKeyId, apiKeyEnv, requestReasoning);
         };
 
         struct Model {
@@ -114,12 +111,9 @@ struct JETSTREAM_API Settings {
             std::string reasoningContext;
             U64 outputLength = 0;
             std::vector<std::string> reasoningEfforts;
-            U64 maxContextTokens = 0;
-            std::string extraBody;
-            std::string effortBodies;
 
             JST_SERDES(provider, id, name, contextLength, maxOutputTokens, reasoningEffort, reasoningContext, outputLength,
-                       reasoningEfforts, maxContextTokens, extraBody, effortBodies);
+                       reasoningEfforts);
         };
 
         struct Voice {

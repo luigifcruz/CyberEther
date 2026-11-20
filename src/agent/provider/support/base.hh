@@ -131,8 +131,7 @@ class Responses {
     static std::unique_ptr<EventStream> Decoder();
 
     static nlohmann::json Function(const Provider::Function& tool);
-    static nlohmann::json FunctionOutput(const std::string& callId, const std::string& output,
-                                         const std::vector<std::string>& images = {});
+    static nlohmann::json FunctionOutput(const std::string& callId, const std::string& output);
     static nlohmann::json InputContent(const std::string& text, const std::vector<std::string>& images);
     static std::optional<Provider::FunctionCall> FunctionCall(const nlohmann::json& item);
     static const nlohmann::json* Failed(const nlohmann::json& event);

@@ -60,7 +60,7 @@ struct AgentChatPresenter {
             selector.options.push_back({key, AgentLabels::Model(model), model.id.empty() ? "" : model.provider});
             if (AgentProviders::Same(model, settings.provider, settings.model)) {
                 selector.value = key;
-                contextWindow = AgentProviders::ContextWindow(model);
+                contextWindow = model.contextLength;
                 selector.effort = AgentProviders::Effort(model);
                 for (const auto& effort : model.reasoningEfforts) {
                     selector.efforts.push_back({effort, AgentLabels::Effort(effort), ""});

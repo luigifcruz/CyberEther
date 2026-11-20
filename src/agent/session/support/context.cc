@@ -166,7 +166,6 @@ U64 Context::Estimate(const std::vector<Provider::Message>& messages, std::span<
 }
 
 void Context::Trim(std::vector<Provider::Message>& messages, U64 keep) {
-    const U64 limit = keep;
     for (auto it = messages.rbegin(); it != messages.rend(); ++it) {
         if (it->images.size() <= keep) {
             keep -= it->images.size();
@@ -175,14 +174,7 @@ void Context::Trim(std::vector<Provider::Message>& messages, U64 keep) {
 
         const auto firstKept = it->images.end() - static_cast<std::ptrdiff_t>(keep);
         it->images.erase(it->images.begin(), firstKept);
-        if (limit == 0) {
-            it->content += "\n[Image omitted from context: this provider is configured to receive no "
-                           "images. Do not capture views; use inspect_block metrics instead.]";
-        } else {
-            it->content += "\n[Older image omitted from context: only the newest " + std::to_string(limit) +
-                           " image(s) are kept. Note what you need from a view in text before capturing "
-                           "another; capture it again if needed.]";
-        }
+        it->content += "\n[Older image omitted from context; capture the view again if needed.]";
         keep = 0;
     }
 }

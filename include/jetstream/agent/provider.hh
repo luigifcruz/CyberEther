@@ -172,7 +172,6 @@ class JETSTREAM_API Provider {
         std::string reasoningEffort;
         std::string reasoningContext;
         std::string sessionId;
-        std::string extraBody;
     };
 
     struct Callbacks {

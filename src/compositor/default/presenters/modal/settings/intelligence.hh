@@ -42,7 +42,7 @@ struct IntelligenceSettingsPresenter {
                 .provider = model.provider,
                 .id = model.id,
                 .label = AgentLabels::Model(model),
-                .context = AgentLabels::Context(AgentProviders::ContextWindow(model)),
+                .context = AgentLabels::Context(model.contextLength),
             });
         }
 

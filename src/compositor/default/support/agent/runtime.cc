@@ -219,31 +219,27 @@ Agent::Session::Config AgentRuntime::Chat(const DefaultCompositorState::AgentSta
                                           Agent::Session::ToolExecutor executeTool) {
     const AgentProviders providers(agent);
     const auto& settings = agent.settings;
-    const auto provider = providers.find(settings.provider);
 
     Agent::Session::Config config{
-        .provider = AgentProviders::Client(provider),
+        .provider = AgentProviders::Client(providers.find(settings.provider)),
         .model = settings.model,
         .systemContext = SystemPrompt(),
-        .tools = Agent::Tools::Functions(agent.captureSupported && provider.maxImages != 0),
+        .tools = Agent::Tools::Functions(agent.captureSupported),
         .executeTool = std::move(executeTool),
     };
-    config.maxImages = provider.maxImages;
-    config.toolResultImages = provider.toolResultImages;
 
     for (const auto& model : settings.models) {
         if (!AgentProviders::Same(model, settings.provider, settings.model)) {
             continue;
         }
 
-        if (const U64 window = AgentProviders::ContextWindow(model)) {
-            config.contextLength = window;
+        if (model.contextLength) {
+            config.contextLength = model.contextLength;
         }
         config.maxOutputTokens = model.maxOutputTokens;
         config.modelOutputTokens = model.outputLength;
         config.reasoningEffort = AgentProviders::Effort(model);
         config.reasoningContext = model.reasoningContext;
-        config.extraBody = AgentProviders::ExtraBody(model);
         break;
     }
 
@@ -253,13 +249,11 @@ Agent::Session::Config AgentRuntime::Chat(const DefaultCompositorState::AgentSta
 Agent::Session::Config AgentRuntime::Call(const DefaultCompositorState::AgentState& agent,
                                           const Settings::Intelligence::Voice& voice,
                                           Agent::Session::ToolExecutor executeTool) {
-    const auto provider = AgentProviders(agent).find(voice.backend.provider);
-
-    Agent::Session::Config config{
-        .provider = AgentProviders::Client(provider),
+    return {
+        .provider = AgentProviders::Client(AgentProviders(agent).find(voice.backend.provider)),
         .model = voice.backend.id,
         .systemContext = SystemPrompt(),
-        .tools = Agent::Tools::Functions(agent.captureSupported && provider.maxImages != 0),
+        .tools = Agent::Tools::Functions(agent.captureSupported),
         .executeTool = std::move(executeTool),
         .voice = {
             .model = voice.model,
@@ -267,9 +261,6 @@ Agent::Session::Config AgentRuntime::Call(const DefaultCompositorState::AgentSta
             .instructions = VoicePrompt(),
         },
     };
-    config.maxImages = provider.maxImages;
-    config.toolResultImages = provider.toolResultImages;
-    return config;
 }
 
 std::string AgentRuntime::SystemPrompt() {

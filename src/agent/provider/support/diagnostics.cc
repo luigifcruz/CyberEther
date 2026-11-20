@@ -240,10 +240,7 @@ Provider::Error Diagnostics::Payload(const nlohmann::json& payload, I32 status, 
         error.message += " The request exceeds the model's context window.";
     }
     if (error.kind == Provider::Error::Kind::InvalidRequest) {
-        if (const auto limit = ImageLimit(detail)) {
-            error.imageLimit = *limit;
-            error.message += " Lower this provider's image limit in Settings.";
-        }
+        error.imageLimit = ImageLimit(detail);
     }
     return error;
 }

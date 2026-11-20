@@ -5,9 +5,6 @@
 #include "environment.hh"
 #include "tools/random.hh"
 
-#include <nlohmann/json.hpp>
-
-#include <algorithm>
 #include <filesystem>
 #include <future>
 #include <string>
@@ -178,121 +175,6 @@ TEST_CASE("Failed keyring cleanup only permits removing externally managed provi
     if (!removed) {
         REQUIRE(persisted.intelligence.customProviders.size() == 1);
         CHECK(persisted.intelligence.customProviders.front().apiKeyId == provider.apiKeyId);
-    }
-}
-
-TEST_CASE("Provider image options and model request fields reach the session config",
-          "[agent][compositor][providers][images]") {
-    DefaultCompositorState state;
-    auto& settings = state.agent.settings;
-    settings.customProviders.push_back({
-        .name = "Local",
-        .host = "http://localhost:8000",
-        .maxImages = 1,
-        .toolResultImages = true,
-    });
-    settings.models.push_back({
-        .provider = "Local",
-        .id = "m",
-        .contextLength = 1048576,
-        .reasoningEfforts = {"none", "medium", "high"},
-        .maxContextTokens = 262144,
-        .extraBody = R"({"temperature":0.6})",
-        .effortBodies = R"({"medium":{"chat_template_kwargs":{"medium_effort":true}}})",
-    });
-    settings.provider = "Local";
-    settings.model = "m";
-
-    const auto chat = AgentRuntime::Chat(state.agent, {});
-    CHECK(chat.maxImages == 1);
-    CHECK(chat.toolResultImages);
-    CHECK(chat.contextLength == 262144);
-    CHECK(chat.reasoningEffort == "medium");
-    CHECK(nlohmann::json::parse(chat.extraBody) ==
-          nlohmann::json({{"temperature", 0.6}, {"chat_template_kwargs", {{"medium_effort", true}}}}));
-
-    const auto call = AgentRuntime::Call(state.agent, {.backend = {.provider = "Local", .id = "m"}}, {});
-    CHECK(call.maxImages == 1);
-    CHECK(call.toolResultImages);
-
-    SECTION("an unknown provider keeps the session defaults") {
-        settings.provider = "Missing";
-        const auto fallback = AgentRuntime::Chat(state.agent, {});
-        CHECK(fallback.maxImages == Agent::Session::Config{}.maxImages);
-        CHECK_FALSE(fallback.toolResultImages);
-        CHECK(fallback.extraBody.empty());
-    }
-
-    SECTION("defaults match the session and normalization leaves the options alone") {
-        CHECK(Settings::Intelligence::Provider{}.maxImages == Agent::Session::Config{}.maxImages);
-        CHECK_FALSE(Settings::Intelligence::Provider{}.toolResultImages);
-
-        const auto normalized = AgentProviders::Normalize(settings.customProviders.front());
-        CHECK(normalized.maxImages == 1);
-        CHECK(normalized.toolResultImages);
-    }
-
-    SECTION("a context cap never raises the discovered window") {
-        settings.models.front().maxContextTokens = 4194304;
-        CHECK(AgentRuntime::Chat(state.agent, {}).contextLength == 1048576);
-        CHECK(AgentProviders::ContextWindow(settings.models.front()) == 1048576);
-    }
-
-    SECTION("the cap alone bounds a model with no discovered window") {
-        settings.models.front().contextLength = 0;
-        settings.models.front().maxContextTokens = 262144;
-        CHECK(AgentRuntime::Chat(state.agent, {}).contextLength == 262144);
-        CHECK(AgentProviders::ContextWindow(settings.models.front()) == 262144);
-    }
-
-    SECTION("a provider that takes no images is not offered the capture tool") {
-        state.agent.captureSupported = true;
-        const auto offers = [](const Agent::Session::Config& config) {
-            return std::any_of(config.tools.begin(), config.tools.end(), [](const auto& tool) {
-                return tool.name == "inspect_block_view";
-            });
-        };
-        CHECK(offers(AgentRuntime::Chat(state.agent, {})));
-
-        settings.customProviders.front().maxImages = 0;
-        CHECK_FALSE(offers(AgentRuntime::Chat(state.agent, {})));
-    }
-}
-
-TEST_CASE("Model request fields combine the always-on object with the selected effort",
-          "[agent][compositor][models][extra]") {
-    using Json = nlohmann::json;
-    Settings::Intelligence::Model model{.provider = "Local", .id = "m"};
-
-    CHECK(AgentProviders::ExtraBody(model).empty());
-
-    model.extraBody = R"({"temperature":0.6,"a":{"x":1}})";
-    CHECK(AgentProviders::ExtraBody(model) == model.extraBody);
-
-    model.reasoningEfforts = {"none", "medium", "high"};
-    model.effortBodies = R"({"medium":{"a":{"y":2},"temperature":null}})";
-    CHECK(Json::parse(AgentProviders::ExtraBody(model)) ==
-          Json({{"a", {{"x", 1}, {"y", 2}}}, {"temperature", nullptr}}));
-
-    SECTION("an effort entry can remove a field the always-on object never mentions") {
-        auto variant = model;
-        variant.effortBodies = R"({"medium":{"reasoning_effort":null,"a":{"y":2}}})";
-        CHECK(Json::parse(AgentProviders::ExtraBody(variant)) ==
-              Json({{"a", {{"x", 1}, {"y", 2}}}, {"temperature", 0.6}, {"reasoning_effort", nullptr}}));
-    }
-
-    model.reasoningEffort = "high";
-    CHECK(AgentProviders::ExtraBody(model) == model.extraBody);
-
-    model.reasoningEffort = "medium";
-    model.extraBody.clear();
-    CHECK(Json::parse(AgentProviders::ExtraBody(model)) == Json({{"a", {{"y", 2}}}, {"temperature", nullptr}}));
-
-    SECTION("malformed text is passed through for the provider to reject") {
-        model.effortBodies = "nope";
-        CHECK(AgentProviders::ExtraBody(model) == "nope");
-        model.effortBodies = R"({"medium":5})";
-        CHECK(AgentProviders::ExtraBody(model) == "5");
     }
 }
 

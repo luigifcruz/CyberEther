@@ -645,87 +645,6 @@ TEST_CASE("Compaction reserves reasoning output instead of capping the summary g
     CHECK_FALSE(Failed(session));
 }
 
-TEST_CASE("Tool images ride on the tool message when enabled", "[agent][conversation][images]") {
-    int calls = 0;
-    std::vector<std::vector<Agent::Provider::Message>> requests;
-
-    auto config = Config([&](const auto& request, const auto&, auto& response) {
-        requests.push_back(request.messages);
-        if (++calls == 1) {
-            response.toolCalls = {{"capture", "inspect", "{}"}};
-        } else {
-            response.text = "Inspected";
-        }
-        return Result::SUCCESS;
-    });
-    config.toolResultImages = true;
-    config.executeTool = [](const auto&, const auto&, const auto&) {
-        return Agent::Tools::Output{R"({"value":42})", {kImage}};
-    };
-
-    Agent::Session session;
-    REQUIRE(session.submit("Inspect", config));
-    REQUIRE(Wait(session));
-
-    REQUIRE(requests.size() == 2);
-    REQUIRE(requests[1].size() == 4);
-    const auto& tool = requests[1][3];
-    CHECK(tool.role == "tool");
-    CHECK(tool.toolCallId == "capture");
-    CHECK(tool.content == R"({"value":42})");
-    REQUIRE(tool.images.size() == 1);
-    CHECK(tool.images.front() == kImage);
-    CHECK(Images(requests[1]) == 1);
-    CHECK(Paired(requests[1]));
-
-    REQUIRE(session.submit("Again", config));
-    REQUIRE(Wait(session));
-    REQUIRE(requests.size() == 3);
-    CHECK(requests[2][3].images.size() == 1);
-
-    SECTION("a provider without the option receives no tool-message images") {
-        config.toolResultImages = false;
-        REQUIRE(session.submit("Once more", config));
-        REQUIRE(Wait(session));
-
-        for (const auto& message : requests.back()) {
-            CHECK((message.role != "tool" || message.images.empty()));
-        }
-        CHECK(Mentions(requests.back(), "does not accept images in tool results"));
-    }
-}
-
-TEST_CASE("A cap of one image holds for two captures in one round", "[agent][conversation][images]") {
-    const bool toolImages = GENERATE(false, true);
-    int calls = 0;
-    std::vector<Agent::Provider::Message> latest;
-
-    auto config = Config([&](const auto& request, const auto&, auto& response) {
-        latest = request.messages;
-        if (++calls == 1) {
-            response.toolCalls = {{"first", "inspect", "{}"}, {"second", "inspect", "{}"}};
-        } else {
-            response.text = "Compared";
-        }
-        return Result::SUCCESS;
-    });
-    config.maxImages = 1;
-    config.toolResultImages = toolImages;
-    config.executeTool = [](const auto&, const auto&, const auto&) {
-        return Agent::Tools::Output{"{}", {kImage}};
-    };
-
-    Agent::Session session;
-    REQUIRE(session.submit("Compare both views", config));
-    REQUIRE(Wait(session));
-
-    CHECK(Images(latest) == 1);
-    CHECK(latest.back().images.size() == 1);
-    CHECK(Mentions(latest, "only the newest 1 image(s) are kept"));
-    CHECK(Paired(latest));
-    CHECK_FALSE(Failed(session));
-}
-
 TEST_CASE("An image-limit rejection lowers the cap, retries once, and sticks for the conversation",
           "[agent][conversation][images]") {
     int rejections = 0;
@@ -882,6 +801,8 @@ TEST_CASE("A blank reply in an ordinary round is retried once", "[agent][convers
 
     REQUIRE(requests.size() >= 2);
     CHECK(requests[1].back().content.find("Your previous reply was empty") != std::string::npos);
+    CHECK(requests[1].size() == requests[0].size());
+    CHECK(requests[1].back().content.starts_with("Inspect"));
 
     if (recovers) {
         REQUIRE(requests.size() == 3);
@@ -991,7 +912,7 @@ TEST_CASE("Repeated identical failing tool calls are flagged and then stop the t
     REQUIRE(requests.size() == 3);
     CHECK(requests[1].back().content == R"({"error":"nope"})");
     CHECK(requests[2].back().content.starts_with(R"({"error":"nope"})"));
-    CHECK(requests[2].back().content.find("[Repeated failing call: the tool received exactly the same arguments") !=
+    CHECK(requests[2].back().content.find("[Repeated failing call. These exact arguments already failed") !=
           std::string::npos);
     CHECK(Failed(session));
     CHECK(LastError(session).find("same failing 'inspect' tool call 3 times") != std::string::npos);
@@ -1005,7 +926,7 @@ TEST_CASE("Repeated identical failing tool calls are flagged and then stop the t
     REQUIRE(session.submit("Continue", config));
     REQUIRE(Wait(session));
     CHECK(Paired(requests[3]));
-    CHECK(Mentions(requests[3], "third identical failure"));
+    CHECK(Mentions(requests[3], "The same arguments failed again and the turn was stopped."));
 }
 
 TEST_CASE("Repeats that succeed, differ, or hit the budget are not flagged", "[agent][conversation][tools]") {
@@ -1040,6 +961,36 @@ TEST_CASE("Repeats that succeed, differ, or hit the budget are not flagged", "[a
     CHECK_FALSE(Failed(session));
 }
 
+TEST_CASE("A success clears the failure count of an identical call", "[agent][conversation][tools]") {
+    int calls = 0;
+    int executions = 0;
+    std::vector<Agent::Provider::Message> latest;
+
+    auto config = Config([&](const auto& request, const auto&, auto& response) {
+        latest = request.messages;
+        if (++calls <= 4) {
+            response.toolCalls = {{"call-" + std::to_string(calls), "inspect", R"({"a":1})"}};
+        } else {
+            response.text = "Done";
+        }
+        return Result::SUCCESS;
+    });
+    config.executeTool = [&](const auto&, const auto&, const auto&) {
+        return ++executions == 2 ? Agent::Tools::Output{"{}"}
+                                 : Agent::Tools::Output{R"({"error":"nope"})", {}, true};
+    };
+
+    Agent::Session session;
+    REQUIRE(session.submit("Inspect", config));
+    REQUIRE(Wait(session));
+
+    CHECK(calls == 5);
+    CHECK(executions == 4);
+    CHECK(Mentions(latest, "one more identical failure ends the turn"));
+    CHECK_FALSE(Mentions(latest, "The same arguments failed again and the turn was stopped."));
+    CHECK_FALSE(Failed(session));
+}
+
 TEST_CASE("Output-limit advice matches the configured allowance", "[agent][conversation][budget]") {
     const std::string cutoff = "The response reached the output token limit and was cut off.";
     Agent::Provider::Usage usage;
@@ -1061,9 +1012,9 @@ TEST_CASE("Output-limit advice matches the configured allowance", "[agent][conve
     SECTION("the automatic allowance is never suggested when it is already in use") {
         REQUIRE(session.submit("Go", config));
         REQUIRE(Wait(session));
-        CHECK(LastError(session) == cutoff + " Reasoning and the answer share this budget. maxOutputTokens is 0 "
-                                             "(automatic), which allowed 32768 tokens; set it above 32768 to "
-                                             "allow more, then continue the task.");
+        CHECK(LastError(session) == cutoff + " Reasoning and the answer share this budget. With maxOutputTokens at "
+                                             "0 (automatic), the model was allowed 32768 tokens. Set it above "
+                                             "32768 to allow more, then continue the task.");
     }
 
     SECTION("a budget spent entirely on reasoning is reported") {
@@ -1073,7 +1024,7 @@ TEST_CASE("Output-limit advice matches the configured allowance", "[agent][conve
         REQUIRE(Wait(session));
         CHECK(LastError(session).find("All 32768 output tokens went to reasoning and no answer was produced") !=
               std::string::npos);
-        CHECK(LastError(session).find("set it above 32768") != std::string::npos);
+        CHECK(LastError(session).find("Set it above 32768") != std::string::npos);
     }
 
     SECTION("partial text is not reported as reasoning-only") {
@@ -1091,8 +1042,9 @@ TEST_CASE("Output-limit advice matches the configured allowance", "[agent][conve
         config.modelOutputTokens = 16384;
         REQUIRE(session.submit("Go", config));
         REQUIRE(Wait(session));
-        CHECK(LastError(session).ends_with("maxOutputTokens is 0 (automatic) and 16384 tokens is the most this "
-                                           "model allows; ask for a smaller step, then continue the task."));
+        CHECK(LastError(session).ends_with("With maxOutputTokens at 0 (automatic), the model was allowed 16384 "
+                                           "tokens, the most this model and context window allow. Ask for a "
+                                           "smaller step, then continue the task."));
     }
 
     SECTION("an explicit limit keeps the existing advice") {
@@ -1138,7 +1090,7 @@ TEST_CASE("Identical failing calls in one reply count once and the stopping roun
 
     REQUIRE(requests.size() == 3);
     CHECK_FALSE(Mentions(requests[1], "Repeated failing call"));
-    CHECK(Mentions(requests[2], "Resending it unchanged cannot succeed"));
+    CHECK(Mentions(requests[2], "one more identical failure ends the turn"));
     CHECK(Failed(session));
     REQUIRE(executed.size() == 6);
     CHECK(executed.back() == R"({"good":true})");
@@ -1148,42 +1100,8 @@ TEST_CASE("Identical failing calls in one reply count once and the stopping roun
     REQUIRE(Wait(session));
     CHECK(Paired(requests.back()));
     CHECK(Mentions(requests.back(), R"({"ok":true})"));
-    CHECK(Mentions(requests.back(), "third identical failure"));
+    CHECK(Mentions(requests.back(), "The same arguments failed again and the turn was stopped."));
     CHECK_FALSE(Mentions(requests.back(), "did not complete"));
-}
-
-TEST_CASE("The model's extra request fields reach ordinary and summary requests",
-          "[agent][conversation][compaction]") {
-    int calls = 0;
-    std::vector<std::string> normal;
-    std::vector<std::string> summary;
-
-    auto config = Config([&](const auto& request, const auto&, auto& response) {
-        if (!request.allowTools) {
-            summary.push_back(request.extraBody);
-            response.text = "Keep sample rate 24000 Hz.";
-            return Result::SUCCESS;
-        }
-
-        normal.push_back(request.extraBody);
-        response.text = ++calls == 1 ? std::string(30000, 'a') : "Done";
-        return Result::SUCCESS;
-    });
-    config.contextLength = 65536;
-    config.modelOutputTokens = 16384;
-    config.extraBody = R"({"chat_template_kwargs":{"enable_thinking":false}})";
-
-    Agent::Session session;
-    REQUIRE(session.submit("Keep 24000 Hz. " + std::string(35000, 'b'), config));
-    REQUIRE(Wait(session));
-    REQUIRE(session.submit(std::string(65000, 'c'), config));
-    REQUIRE(Wait(session));
-
-    REQUIRE(normal.size() == 2);
-    REQUIRE(summary.size() == 1);
-    CHECK(normal[0] == config.extraBody);
-    CHECK(normal[1] == config.extraBody);
-    CHECK(summary[0] == config.extraBody);
 }
 
 TEST_CASE("A learned image cap applies only to the endpoint and model it came from",
@@ -1223,32 +1141,4 @@ TEST_CASE("A learned image cap applies only to the endpoint and model it came fr
     REQUIRE(Wait(session));
     CHECK(sent == std::vector<U64>{1, 3});
     CHECK_FALSE(Failed(session));
-}
-
-TEST_CASE("A provider configured for no images gets a note that does not invite recapture",
-          "[agent][conversation][images]") {
-    int calls = 0;
-    std::vector<Agent::Provider::Message> latest;
-
-    auto config = Config([&](const auto& request, const auto&, auto& response) {
-        latest = request.messages;
-        if (++calls == 1) {
-            response.toolCalls = {{"capture", "inspect", "{}"}};
-        } else {
-            response.text = "Done";
-        }
-        return Result::SUCCESS;
-    });
-    config.maxImages = 0;
-    config.executeTool = [](const auto&, const auto&, const auto&) {
-        return Agent::Tools::Output{"{}", {kImage}};
-    };
-
-    Agent::Session session;
-    REQUIRE(session.submit("Inspect", config));
-    REQUIRE(Wait(session));
-
-    CHECK(Images(latest) == 0);
-    CHECK(Mentions(latest, "configured to receive no images"));
-    CHECK_FALSE(Mentions(latest, "capture it again"));
 }

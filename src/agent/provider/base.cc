@@ -125,9 +125,6 @@ U32 MessageOptions(std::string message, U32 requested) {
         return 0;
     }
 
-    // When the request carries the top-level effort, a message that names it must not also
-    // count as a mention of the generic reasoning and thinking options, so the field name is
-    // consumed first. Requests that carry the effort elsewhere keep the generic matching.
     U32 mentioned = 0;
     if (requested & kReasoningEffort) {
         constexpr std::string_view effortField = "reasoning_effort";
@@ -189,8 +186,7 @@ class Capabilities {
 
         const std::string visibility = config.requestReasoning ? "visible" : "hidden";
         const auto key = config.host + '\n' + config.path + '\n' + request.model + '\n' +
-                         request.reasoningEffort + '\n' + request.reasoningContext + '\n' + visibility +
-                         '\n' + request.extraBody;
+                         request.reasoningEffort + '\n' + request.reasoningContext + '\n' + visibility;
 
         auto& entry = known[key];
         if (!entry) {
@@ -226,32 +222,6 @@ nlohmann::json RequestBody(const Config& config, const Provider::Request& reques
         return Detail::Messages::Encode(config, request, reasoning);
     }
     return Detail::ChatCompletions::Encode(config, request, reasoning);
-}
-
-constexpr std::array kReservedFields{
-    "model", "messages", "input", "system", "stream", "tools", "tool_choice",
-};
-
-Provider::Error MergeExtraBody(nlohmann::json& body, const std::string& text) {
-    using Kind = Provider::Error::Kind;
-
-    if (text.empty()) {
-        return {};
-    }
-
-    const auto extra = nlohmann::json::parse(text, nullptr, false);
-    if (!extra.is_object()) {
-        return {Kind::Configuration, 0, "The model's extra request fields must be a JSON object."};
-    }
-    for (const char* field : kReservedFields) {
-        if (extra.contains(field)) {
-            return {Kind::Configuration, 0,
-                    jst::fmt::format("The model's extra request fields cannot set '{}'.", field)};
-        }
-    }
-
-    body.merge_patch(extra);
-    return {};
 }
 
 std::unique_ptr<Detail::EventStream> ResponseStream(const Config& config) {
@@ -344,9 +314,6 @@ class ChatCall {
 
         try {
             body = RequestBody(config, request, static_cast<bool>(callbacks.onReasoning));
-            if (auto failure = MergeExtraBody(body, request.extraBody)) {
-                return fail(failure);
-            }
             capabilities->strip(body);
             return attempts();
         } catch (const std::exception& exception) {
@@ -610,10 +577,8 @@ Result Provider::models(std::vector<Model>& models, Provider::Error* error,
             if (item.contains("name") && item["name"].is_string()) {
                 model.name = item["name"].get<std::string>();
             }
-            for (const char* label : {"context_length", "max_model_len"}) {
-                if (model.contextLength == 0 && item.contains(label) && item[label].is_number_unsigned()) {
-                    model.contextLength = item[label].get<U64>();
-                }
+            if (item.contains("context_length") && item["context_length"].is_number_unsigned()) {
+                model.contextLength = item["context_length"].get<U64>();
             }
 
             const bool hasOutputLimit = item.contains("max_output_tokens") &&
