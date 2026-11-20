@@ -248,6 +248,30 @@ TEST_CASE("Flowgraph patches only create a graph when none is focused", "[agent]
     REQUIRE(FlowgraphNameToCreate(focused, patch).empty());
 }
 
+TEST_CASE("Flowgraph patches create a new graph on request even when one is focused",
+          "[agent][tools][flowgraph]") {
+    const auto focused = std::make_shared<Flowgraph>();
+
+    const std::string named = R"({
+        "new_flowgraph": true,
+        "flowgraph_name": "dashboard",
+        "operations": [{"op": "delete_block", "name": "old"}]
+    })";
+    CHECK(FlowgraphNameToCreate(focused, named) == "dashboard");
+    CHECK(FlowgraphNameToCreate(nullptr, named) == "dashboard");
+
+    const std::string unnamed = R"({"new_flowgraph": true, "operations": [{"op": "delete_block", "name": "old"}]})";
+    CHECK(FlowgraphNameToCreate(focused, unnamed) == "flowgraph");
+
+    const std::string declined = R"({"new_flowgraph": false, "operations": [{"op": "delete_block", "name": "old"}]})";
+    CHECK(FlowgraphNameToCreate(focused, declined).empty());
+
+    const std::string malformed = R"({"new_flowgraph": "yes", "operations": [{"op": "delete_block", "name": "old"}]})";
+    CHECK(FlowgraphNameToCreate(focused, malformed).empty());
+    const auto body = nlohmann::json::parse(ExecuteTool(nullptr, "apply_flowgraph_patch", malformed).content);
+    CHECK(body["error"] == "'new_flowgraph' must be a boolean.");
+}
+
 TEST_CASE("Every optional patch field is validated before any graph mutation", "[agent][tools][validation]") {
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
 

@@ -164,11 +164,15 @@ Tools::Call Tools::prepare(const std::shared_ptr<Flowgraph>& target, const std::
         call.flowgraph = target;
     }
 
-    if (call.flowgraph || !entry->newGraph) {
+    if (!entry->newGraph) {
         return call;
     }
 
     const auto graph = entry->newGraph(Detail::Json::parse(args, nullptr, false));
+    if (call.flowgraph && !graph.requested) {
+        return call;
+    }
+
     if (!graph.error.empty()) {
         call.output = Detail::Response::Failure(graph.error);
     } else if (!graph.name.empty()) {

@@ -37,6 +37,7 @@ struct Entry {
     struct NewGraph {
         std::string name;
         std::string error;
+        bool requested = false;
     };
 
     Definition definition;

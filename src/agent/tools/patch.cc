@@ -590,7 +590,11 @@ std::string PatchSchema() {
 
     const Json flowgraphName = {
         {"type", "string"},
-        {"description", "Name used only when no graph is selected and one must be created."},
+        {"description", "Name for a graph this call creates. Ignored when the call edits the selected graph."},
+    };
+    const Json newFlowgraph = {
+        {"type", "boolean"},
+        {"description", "Create a new graph for these operations even when one is selected. Default false."},
     };
     const Json operations = {
         {"type", "array"},
@@ -604,6 +608,7 @@ std::string PatchSchema() {
         {"required", Json::array({"operations"})},
         {"properties", {
             {"flowgraph_name", flowgraphName},
+            {"new_flowgraph", newFlowgraph},
             {"operations", operations},
         }},
         {"additionalProperties", false},
@@ -700,8 +705,11 @@ std::string ValidateRequest(const Json& args) {
     if (args.contains("flowgraph_name") && !args["flowgraph_name"].is_string()) {
         return "'flowgraph_name' must be a string.";
     }
+    if (args.contains("new_flowgraph") && !args["new_flowgraph"].is_boolean()) {
+        return "'new_flowgraph' must be a boolean.";
+    }
     for (const auto& [key, value] : args.items()) {
-        if (key != "operations" && key != "flowgraph_name") {
+        if (key != "operations" && key != "flowgraph_name" && key != "new_flowgraph") {
             return jst::fmt::format("Unknown patch field '{}'.", key);
         }
     }
@@ -829,10 +837,8 @@ Entry::NewGraph PatchGraph(const Json& args) {
     }
 
     const auto name = args.value("flowgraph_name", std::string("flowgraph"));
-    if (name.empty()) {
-        return {"flowgraph", {}};
-    }
-    return {name, {}};
+    const bool requested = args.value("new_flowgraph", false);
+    return {name.empty() ? "flowgraph" : name, {}, requested};
 }
 
 }  // namespace
@@ -840,9 +846,11 @@ Entry::NewGraph PatchGraph(const Json& args) {
 std::vector<Entry> Toolbox::Patch() {
     auto entry = Entry::FromJson({
         "apply_flowgraph_patch",
-        "Apply an ordered edit to the selected graph. Only when none is selected, "
-        "a graph is created automatically; flowgraph_name names that new graph and "
-        "is ignored otherwise. Operations execute sequentially and stop on failure "
+        "Apply an ordered edit to the selected graph. A new graph is created when "
+        "none is selected, or when new_flowgraph is true, and is selected for "
+        "subsequent calls. Set new_flowgraph when the user asks for a new graph "
+        "while one is open, which stays open and unchanged. flowgraph_name names a "
+        "created graph and is ignored otherwise. Operations execute sequentially and stop on failure "
         "without rolling back earlier changes, returning status='partial'. A failed "
         "result with may_have_applied=true may have changed the graph before failing, "
         "so inspect it before retrying. "
