@@ -7,7 +7,8 @@ cpp = meson.get_compiler('cpp')
 system = host_machine.system()
 
 if system.startswith('windows')
-  private_cpp_args += ['-D_CRT_SECURE_NO_WARNINGS', '-DNOMINMAX']
+  private_c_args += ['-D_USE_MATH_DEFINES']
+  private_cpp_args += ['-D_CRT_SECURE_NO_WARNINGS', '-DNOMINMAX', '-D_USE_MATH_DEFINES']
   usb_transport_cpp_args += ['-D__unix__=1']
 
   if cpp.get_id() == 'msvc' or cpp.get_id() == 'clang-cl'
