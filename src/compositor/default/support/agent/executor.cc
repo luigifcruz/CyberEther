@@ -294,7 +294,7 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
                     }
                     request.finish(std::move(output));
                 };
-                AgentFlowgraphs(state, callbacks).execute(request.name, request.args, done);
+                AgentFlowgraphs(state, callbacks).execute(target, request.name, request.args, done);
             }
             return;
         }

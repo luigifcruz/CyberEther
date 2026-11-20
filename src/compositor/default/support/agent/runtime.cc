@@ -90,14 +90,15 @@ constexpr const char* kWorking =
 constexpr const char* kTurnBinding =
     "- The selected graph is bound when this turn or voice session starts; "
     "UI focus changes do not redirect tools. A graph created by "
-    "apply_flowgraph_patch, open_example, or open_flowgraph is selected for "
-    "subsequent calls. If the bound graph closes, report the blocker.\n";
+    "apply_flowgraph_patch, open_example, or open_flowgraph, or chosen with "
+    "focus_flowgraph, is selected for subsequent calls. If the bound graph "
+    "closes, report the blocker.\n";
 
 constexpr const char* kFocusBinding =
     "- Each call acts on the graph focused in the CyberEther window when the "
     "call runs, so the user can redirect calls by switching graphs. A graph "
-    "created by apply_flowgraph_patch, open_example, or open_flowgraph is "
-    "focused for subsequent calls.\n";
+    "created by apply_flowgraph_patch, open_example, or open_flowgraph, or "
+    "chosen with focus_flowgraph, is focused for subsequent calls.\n";
 
 constexpr const char* kGuidance =
     "- Base edits on current tool evidence. Inspect only the relevant blocks or "
