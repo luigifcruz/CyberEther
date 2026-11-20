@@ -206,6 +206,11 @@ void WorkbenchView::update(Config config) {
         }
     }
     docsTabRequests = this->config.docsTabRequests;
+    if (this->config.flowgraphRequests != flowgraphRequests && this->config.flowgraphRequested.has_value() &&
+        this->config.flowgraphFocused) {
+        activate = this->config.flowgraphRequested;
+    }
+    flowgraphRequests = this->config.flowgraphRequests;
     if (this->config.terminalRequests != terminalRequests && this->config.terminalRequested.has_value() &&
         this->config.terminalFocused) {
         activate = this->config.terminalRequested;

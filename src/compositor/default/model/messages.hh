@@ -182,6 +182,7 @@ struct MailSaveFlowgraph {
 
 struct MailOpenFlowgraphPath {
     std::string path;
+    Sakura::Callback<void(Result, std::shared_ptr<Flowgraph>)> onComplete;
 };
 
 struct MailToggleFavoriteFlowgraph {
@@ -211,6 +212,7 @@ struct MailOpenFlowgraphExample {
 
 struct MailFocusFlowgraph {
     std::string flowgraph;
+    bool reveal = false;
 };
 
 struct MailSetFlowgraphPaused {

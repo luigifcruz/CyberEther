@@ -219,6 +219,14 @@ TEST_CASE("Removed agent tools cannot be dispatched", "[agent][tools]") {
     const auto body = nlohmann::json::parse(result.content);
 
     REQUIRE(body["error"] == "Unknown tool 'create_block'.");
+
+    const auto phantom = nlohmann::json::parse(ExecuteTool(nullptr, "%s", R"({"%s":"%s"})").content);
+    const auto error = phantom["error"].get<std::string>();
+    REQUIRE(error.starts_with("Unknown tool '%s'."));
+    REQUIRE(error.find("tool-call delimiter") != std::string::npos);
+
+    const auto namespaced = nlohmann::json::parse(ExecuteTool(nullptr, "functions.read_block_text", "{}").content);
+    REQUIRE(namespaced["error"] == "Unknown tool 'functions.read_block_text'.");
 }
 
 TEST_CASE("Agent tools reject malformed argument roots", "[agent][tools]") {
@@ -246,6 +254,35 @@ TEST_CASE("Flowgraph patches only create a graph when none is focused", "[agent]
 
     const auto focused = std::make_shared<Flowgraph>();
     REQUIRE(FlowgraphNameToCreate(focused, patch).empty());
+}
+
+TEST_CASE("Flowgraph patches create a new graph on request even when one is focused",
+          "[agent][tools][flowgraph]") {
+    const auto focused = std::make_shared<Flowgraph>();
+
+    const std::string named = R"({
+        "new_flowgraph": true,
+        "flowgraph_name": "dashboard",
+        "operations": [{"op": "delete_block", "name": "old"}]
+    })";
+    CHECK(FlowgraphNameToCreate(focused, named) == "dashboard");
+    CHECK(FlowgraphNameToCreate(nullptr, named) == "dashboard");
+
+    GraphHost host(focused);
+    auto call = Agent::Tools(host).prepare(focused, "apply_flowgraph_patch", named);
+    CHECK(call.flowgraph == nullptr);
+    CHECK(Agent::Tools(host).run(call).error);
+
+    const std::string unnamed = R"({"new_flowgraph": true, "operations": [{"op": "delete_block", "name": "old"}]})";
+    CHECK(FlowgraphNameToCreate(focused, unnamed) == "flowgraph");
+
+    const std::string declined = R"({"new_flowgraph": false, "operations": [{"op": "delete_block", "name": "old"}]})";
+    CHECK(FlowgraphNameToCreate(focused, declined).empty());
+
+    const std::string malformed = R"({"new_flowgraph": "yes", "operations": [{"op": "delete_block", "name": "old"}]})";
+    CHECK(FlowgraphNameToCreate(focused, malformed).empty());
+    const auto body = nlohmann::json::parse(ExecuteTool(nullptr, "apply_flowgraph_patch", malformed).content);
+    CHECK(body["error"] == "'new_flowgraph' must be a boolean.");
 }
 
 TEST_CASE("Every optional patch field is validated before any graph mutation", "[agent][tools][validation]") {
@@ -1288,6 +1325,180 @@ TEST_CASE("Block inspection keeps lookup errors with the config toggle", "[agent
     sameFailure(graph, {{"name", ""}});
     sameFailure(graph, {{"name", "absent"}});
     sameFailure(graph, {{"name", 7}});
+
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Patch refs are checked before any mutation", "[agent][tools][validation]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    const auto apply = [&](const nlohmann::json& operations) {
+        const nlohmann::json args = {{"operations", operations}};
+        return nlohmann::json::parse(ExecuteTool(graph, "apply_flowgraph_patch", args.dump()).content);
+    };
+
+    SECTION("an undefined ref rejects the whole patch before anything runs") {
+        for (const std::string bad : {"$ref:src", "$soapy"}) {
+            CAPTURE(bad);
+            const nlohmann::json operations = nlohmann::json::array({
+                {{"op", "create_block"}, {"type", "note"}, {"name", "must_not_exist"}},
+                {{"op", "create_block"}, {"type", "note"}, {"name", "other"}, {"ref", "src"}},
+                {{"op", "connect"}, {"source", bad}, {"output", "signal"}, {"block", "$src"}, {"input", "signal"}},
+            });
+            const auto body = apply(operations);
+
+            REQUIRE(body.contains("error"));
+            const auto error = body["error"].get<std::string>();
+            CHECK(error.find("uses ref '" + bad + "'") != std::string::npos);
+            CHECK(error.find("$src") != std::string::npos);
+            CHECK(error.ends_with("Nothing was changed."));
+            CHECK_FALSE(graph->view().has("must_not_exist"));
+            CHECK_FALSE(graph->view().has("other"));
+            CHECK(FlowgraphNameToCreate(nullptr, nlohmann::json({{"operations", operations}}).dump()).empty());
+        }
+    }
+
+    SECTION("a ref used before its create_block is rejected") {
+        const auto body = apply(nlohmann::json::array({
+            {{"op", "set_node_layout"}, {"name", "$late"}, {"x", 1}, {"y", 1}},
+            {{"op", "create_block"}, {"type", "note"}, {"name", "late_block"}, {"ref", "late"}},
+        }));
+        REQUIRE(body.contains("error"));
+        CHECK(body["error"].get<std::string>().find("No earlier create_block sets a ref") != std::string::npos);
+        CHECK_FALSE(graph->view().has("late_block"));
+    }
+
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Flowgraph patches accept operations sent as JSON text", "[agent][tools][validation]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    const auto run = [&](const nlohmann::json& operations) {
+        const nlohmann::json args = {{"operations", operations}};
+        return ExecuteTool(graph, "apply_flowgraph_patch", args.dump());
+    };
+
+    SECTION("a complete array sent as text is applied") {
+        const std::string text = R"([{"op":"create_block","type":"note","name":"from_text"}])";
+        const auto result = run(text);
+        REQUIRE_FALSE(result.error);
+        CHECK(graph->view().has("from_text"));
+
+        const nlohmann::json create = {{"flowgraph_name", "new_graph"}, {"operations", text}};
+        CHECK(FlowgraphNameToCreate(nullptr, create.dump()) == "new_graph");
+    }
+
+    SECTION("a missing closing bracket is repaired") {
+        const auto result = run(R"([{"op":"create_block","type":"note","name":"repaired"})");
+        REQUIRE_FALSE(result.error);
+        CHECK(graph->view().has("repaired"));
+    }
+
+    SECTION("a call cut off inside a string explains the likely cause") {
+        const std::string text =
+            R"([{"op":"create_block","type":"note","name":"cut","config":{"content":"closes with )";
+        const auto result = run(text);
+        REQUIRE(result.error);
+
+        const auto error = nlohmann::json::parse(result.content)["error"].get<std::string>();
+        CHECK(error.find("not a valid JSON array") != std::string::npos);
+        CHECK(error.find("tool-call delimiter") != std::string::npos);
+        CHECK_FALSE(graph->view().has("cut"));
+        CHECK(FlowgraphNameToCreate(nullptr, nlohmann::json({{"operations", text}}).dump()).empty());
+    }
+
+    SECTION("an empty array and other types keep the plain message") {
+        for (const nlohmann::json operations : {nlohmann::json("[]"), nlohmann::json(5)}) {
+            const auto body = nlohmann::json::parse(run(operations).content);
+            CHECK(body["error"] == "'operations' must be a non-empty array.");
+        }
+    }
+
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Text patches tolerate missing prefixes without guessing", "[agent][tools][text]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    const std::string base = "def process(samples):\n    gain = 2.0\n    print(\"gain is\", gain)\n"
+                             "    return samples * gain\n";
+    const std::string halved = "def process(samples):\n    gain = 0.5\n    print(\"gain is\", gain)\n"
+                               "    return samples * gain\n";
+
+    const struct {
+        std::string text;
+        std::string patch;
+        std::string expected;
+        std::string note;
+        std::string error;
+    } cases[] = {
+        {base, "def process(samples):\n-    gain = 2.0\n+    gain = 0.5", halved, "Patch line 1", ""},
+        {base, "@@\ndef process(samples):\n-    gain = 2.0\n+    gain = 0.5\n    print(\"gain is\", gain)\n@@",
+         halved, "Patch line 2", ""},
+        {base, "@@\n    gain = 2.0\n+    print(\"x\")\n    print(\"gain is\", gain)",
+         "def process(samples):\n    gain = 2.0\n    print(\"x\")\n    print(\"gain is\", gain)\n"
+         "    return samples * gain\n", "", ""},
+        {base, "@@\n-    gain = 2.0\n+    gain = 0.5\n@@\n", halved, "", ""},
+        {base, "@@ def process(samples):\n-gain = 2.0\n+gain = 0.5", halved, "", ""},
+        {base, "def process(samples):\n    return samples\n", base, "", "changes nothing"},
+        {"def f():\n    value = 1\n    value = 1\n", "value = 1\n+    other = 2",
+         "def f():\n    value = 1\n    value = 1\n", "", "matches 2 places"},
+        {base, "@@\n    gain = 2.0\n+   scale = 3\n    print(\"gain is\", gain)",
+         "def process(samples):\n    gain = 2.0\n    scale = 3\n    print(\"gain is\", gain)\n"
+         "    return samples * gain\n", "", ""},
+        {base, "@@\n    gain = 2.0\n-   print(\"gain is\", gain)\n+   print(\"g\")",
+         "def process(samples):\n    gain = 2.0\n    print(\"g\")\n    return samples * gain\n", "", ""},
+        {"def f(x):\n    if x:\n        y = 1\n        z = 2\n",
+         "@@\n    if x:\n-       y = 1\n+       y = 3\n        z = 2",
+         "def f(x):\n    if x:\n        y = 3\n        z = 2\n", "", ""},
+        {"/*\n * first\n * second\n */\n", "@@\n * first\n+* inserted\n * second",
+         "/*\n * first\n * inserted\n * second\n */\n", "", ""},
+        {"Title\nIntro\n+ plus item\nTail\n", "@@\nTitle\n-Intro\n+Summary\n+ plus item",
+         "Title\nIntro\n+ plus item\nTail\n", "", "is already in the text next to this hunk"},
+    };
+
+    for (const auto& test : cases) {
+        CAPTURE(test.text, test.patch);
+
+        const nlohmann::json create = {{"operations", nlohmann::json::array({
+            {{"op", "create_block"}, {"type", "note"}, {"name", "note"}, {"config", {{"content", test.text}}}},
+        })}};
+        REQUIRE_FALSE(ExecuteTool(graph, "apply_flowgraph_patch", create.dump()).error);
+
+        const nlohmann::json edit = {{"operations", nlohmann::json::array({
+            {{"op", "patch_block_text"}, {"name", "note"}, {"field", "content"}, {"patch", test.patch}},
+        })}};
+        const auto body = nlohmann::json::parse(ExecuteTool(graph, "apply_flowgraph_patch", edit.dump()).content);
+        REQUIRE(body["results"].size() == 1);
+        const auto& result = body["results"][0];
+
+        CHECK(result.contains("error") == !test.error.empty());
+        if (test.error.empty()) {
+            CHECK(result.contains("note") == !test.note.empty());
+            if (!test.note.empty()) {
+                CHECK(result["note"].get<std::string>().find(test.note) != std::string::npos);
+                CHECK(result["note"].get<std::string>().find("read as an unchanged line") != std::string::npos);
+            }
+        } else {
+            CHECK(result["error"].get<std::string>().find(test.error) != std::string::npos);
+        }
+
+        const auto note = nlohmann::json::parse(
+            ExecuteTool(graph, "inspect_block", R"({"name":"note"})").content);
+        CHECK(note["config"]["content"] == test.expected);
+
+        REQUIRE(graph->blockDestroy("note", false) == Result::SUCCESS);
+    }
 
     REQUIRE(graph->destroy() == Result::SUCCESS);
 }

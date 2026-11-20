@@ -69,6 +69,9 @@ struct WorkbenchView {
         std::optional<FlowgraphClosePromptView::Config> closePrompt;
         ModalView::Config modal;
         std::vector<FlowgraphPane::Config> flowgraphs;
+        std::optional<std::string> flowgraphRequested;
+        U64 flowgraphRequests = 0;
+        bool flowgraphFocused = false;
         std::vector<TerminalView::Config> terminals;
         std::vector<TerminalTabView::Config> terminalTabs;
         std::optional<std::string> terminalRequested;
@@ -107,6 +110,7 @@ struct WorkbenchView {
     WorkspaceShellView workspaceShell;
     std::vector<std::string> flowgraphOrder;
     std::unordered_map<std::string, FlowgraphPane> flowgraphPanes;
+    U64 flowgraphRequests = 0;
     std::vector<std::string> terminalOrder;
     std::unordered_map<std::string, TerminalView> terminalViews;
     std::unordered_map<std::string, TerminalTabView> terminalTabViews;

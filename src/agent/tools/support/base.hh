@@ -37,6 +37,7 @@ struct Entry {
     struct NewGraph {
         std::string name;
         std::string error;
+        bool requested = false;
     };
 
     Definition definition;
@@ -67,6 +68,9 @@ class Toolbox {
 
 class Response {
  public:
+    static constexpr const char* CutShort = "A call in this reply may have been cut short by a literal tool-call "
+                                            "delimiter in one of its arguments.";
+
     static std::string Dump(const Json& body);
     static Json Error(const std::string& message);
     static bool Failed(const Json& body);
@@ -84,6 +88,7 @@ class BlockText {
     struct Patch {
         std::string text;
         std::string error;
+        std::string note;
         Json changes = Json::array();
         U64 lineCount = 0;
     };

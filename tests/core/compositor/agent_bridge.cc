@@ -2,6 +2,7 @@
 
 #include "jetstream/agent/tools.hh"
 #include "compositor/default/actions/agent.hh"
+#include "compositor/default/actions/flowgraph.hh"
 #include "compositor/default/support/agent/providers.hh"
 #include "compositor/default/support/agent/runtime.hh"
 #include "compositor/default/support/agent/executor.hh"
@@ -470,6 +471,190 @@ TEST_CASE("Tile tools list placeable tiles and arrange them through layout mail"
     bridge.shutdown();
     REQUIRE(graph->blockDestroy("source", false) == Result::SUCCESS);
     REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Flowgraph tools list favorite and recent files and open them through the open mail",
+          "[agent][compositor][flowgraphs]") {
+    auto focused = std::make_shared<Flowgraph>();
+    auto opened = std::make_shared<Flowgraph>();
+    auto blank = std::make_shared<Flowgraph>();
+
+    DefaultCompositorState state;
+    state.flowgraph.items["focused"] = focused;
+    state.interface.focusedFlowgraph = "focused";
+    state.interface.favoriteFlowgraphs = {{.path = "/flowgraphs/hf.yml", .title = "HF Dashboard"}};
+    state.interface.recentFlowgraphs = {
+        {.path = "/flowgraphs/ism.yml", .title = "ISM"},
+        {.path = "/flowgraphs/hf.yml", .title = "HF Dashboard"},
+        {.path = "/flowgraphs/untitled.yml"},
+    };
+
+    std::vector<Mail> mails;
+    DefaultCompositorCallbacks callbacks;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+
+    AgentExecutor bridge(state, callbacks);
+    auto executor = bridge.bind();
+    const auto invoke = [&](const std::string& name, const std::string& args, const auto& respond) {
+        auto future = std::async(std::launch::async, [&] {
+            return executor(name, args, {});
+        });
+        PollBridge(bridge, [&] {
+            respond();
+            return future.wait_for(0ms) == std::future_status::ready;
+        });
+        if (future.wait_for(0ms) != std::future_status::ready) {
+            bridge.shutdown();
+        }
+        return nlohmann::json::parse(future.get().content);
+    };
+    const auto idle = [] {};
+    const auto variant = [](Mail& mail) -> Mail::variant& {
+        return mail;
+    };
+    const auto complete = [&](Result result, std::shared_ptr<Flowgraph> flowgraph) {
+        return [&, result, flowgraph] {
+            for (auto& mail : mails) {
+                auto* open = std::get_if<MailOpenFlowgraphPath>(&variant(mail));
+                if (open && open->onComplete) {
+                    std::exchange(open->onComplete, {})(result, flowgraph);
+                }
+            }
+        };
+    };
+
+    const auto listed = invoke("list_flowgraphs", "{}", idle);
+    REQUIRE(listed["flowgraphs"].size() == 3);
+    CHECK(listed["flowgraphs"][0] == nlohmann::json({
+        {"path", "/flowgraphs/hf.yml"}, {"title", "HF Dashboard"}, {"favorite", true}, {"recent", true}}));
+    CHECK(listed["flowgraphs"][1] == nlohmann::json({
+        {"path", "/flowgraphs/ism.yml"}, {"title", "ISM"}, {"favorite", false}, {"recent", true}}));
+    CHECK(listed["flowgraphs"][2] == nlohmann::json({
+        {"path", "/flowgraphs/untitled.yml"}, {"favorite", false}, {"recent", true}}));
+
+    CHECK(invoke("open_flowgraph", R"({"path":"/elsewhere/other.yml"})", idle).contains("error"));
+    CHECK(invoke("open_flowgraph", R"({"path":42})", idle).contains("error"));
+    CHECK(invoke("open_flowgraph", R"({"path":"/flowgraphs/ism.yml","extra":1})", idle).contains("error"));
+    CHECK(mails.empty());
+
+    const auto missing = invoke("open_flowgraph", R"({"path":"/flowgraphs/ism.yml"})",
+                                complete(Result::ERROR, nullptr));
+    CHECK(missing["error"] == "Could not open flowgraph '/flowgraphs/ism.yml'.");
+    REQUIRE(mails.size() == 1);
+    CHECK(std::get<MailOpenFlowgraphPath>(variant(mails[0])).path == "/flowgraphs/ism.yml");
+
+    mails.clear();
+    const auto empty = invoke("open_flowgraph", R"({"path":"/flowgraphs/ism.yml"})",
+                              complete(Result::ERROR, blank));
+    CHECK(empty["error"] == "Could not load flowgraph '/flowgraphs/ism.yml'. An empty graph was opened in "
+                           "its place and is now selected.");
+    CHECK(invoke("inspect_tiles", "{}", idle)["error"] == "The graph selected for this turn was closed.");
+    state.flowgraph.items["blank"] = blank;
+
+    mails.clear();
+    const auto success = invoke("open_flowgraph", R"({"path":"/flowgraphs/hf.yml"})",
+                                complete(Result::SUCCESS, opened));
+    CHECK(success == nlohmann::json({{"opened", "/flowgraphs/hf.yml"}}));
+    REQUIRE(mails.size() == 1);
+
+    const auto bound = invoke("inspect_tiles", "{}", idle);
+    CHECK(bound["error"] == "The graph selected for this turn was closed.");
+
+    bridge.shutdown();
+}
+
+TEST_CASE("Flowgraph tools list open graphs and focus one through the focus mail",
+          "[agent][compositor][flowgraphs]") {
+    auto first = std::make_shared<Flowgraph>();
+    auto second = std::make_shared<Flowgraph>();
+    REQUIRE(first->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(second->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    DefaultCompositorState state;
+    state.flowgraph.items["first"] = first;
+    state.flowgraph.items["second"] = second;
+    state.interface.focusedFlowgraph = "first";
+
+    std::vector<Mail> mails;
+    DefaultCompositorCallbacks callbacks;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+
+    AgentExecutor bridge(state, callbacks);
+    auto executor = bridge.bind();
+    const auto invoke = [&](const std::string& name, const std::string& args) {
+        auto future = std::async(std::launch::async, [&] {
+            return executor(name, args, {});
+        });
+        PollBridge(bridge, [&] {
+            return future.wait_for(0ms) == std::future_status::ready;
+        });
+        if (future.wait_for(0ms) != std::future_status::ready) {
+            bridge.shutdown();
+        }
+        return nlohmann::json::parse(future.get().content);
+    };
+    const auto variant = [](const Mail& mail) -> const Mail::variant& {
+        return mail;
+    };
+
+    const auto listed = invoke("list_open_flowgraphs", "{}");
+    CHECK(listed["selected"] == "first");
+    REQUIRE(listed["flowgraphs"].size() == 2);
+    CHECK(listed["flowgraphs"][0]["flowgraph"] == "first");
+    CHECK(listed["flowgraphs"][1]["flowgraph"] == "second");
+    CHECK_FALSE(listed["flowgraphs"][0].contains("path"));
+
+    const auto unknown = invoke("focus_flowgraph", R"({"flowgraph":"missing"})");
+    CHECK(unknown["error"] == "Flowgraph 'missing' is not open. Use an exact identifier from list_open_flowgraphs.");
+    CHECK(invoke("focus_flowgraph", R"({"flowgraph":5})").contains("error"));
+    CHECK(invoke("focus_flowgraph", R"({"graph":"second"})").contains("error"));
+    CHECK(mails.empty());
+
+    const auto focused = [&](const std::string& flowgraph) {
+        mails.clear();
+        const auto reply = invoke("focus_flowgraph", nlohmann::json({{"flowgraph", flowgraph}}).dump());
+        REQUIRE(mails.size() == 1);
+        const auto* focus = std::get_if<MailFocusFlowgraph>(&variant(mails[0]));
+        REQUIRE(focus != nullptr);
+        CHECK(focus->flowgraph == flowgraph);
+        CHECK(focus->reveal);
+        return reply;
+    };
+
+    CHECK(focused("first") == nlohmann::json({{"focused", "first"}}));
+    CHECK(invoke("list_open_flowgraphs", "{}")["selected"] == "first");
+
+    CHECK(focused("second") == nlohmann::json({{"focused", "second"}}));
+    CHECK(invoke("list_open_flowgraphs", "{}")["selected"] == "second");
+
+    FlowgraphActions actions(state, callbacks);
+    REQUIRE(actions.handle(std::get<MailFocusFlowgraph>(variant(mails[0]))) == Result::SUCCESS);
+    CHECK(state.interface.focusedFlowgraph == "second");
+    CHECK(state.interface.requestedFlowgraph == "second");
+    CHECK(state.interface.flowgraphRequests == 1);
+    REQUIRE(actions.handle(MailFocusFlowgraph{.flowgraph = "first"}) == Result::SUCCESS);
+    CHECK(state.interface.focusedFlowgraph == "first");
+    CHECK(state.interface.requestedFlowgraph == "second");
+    CHECK(state.interface.flowgraphRequests == 1);
+
+    mails.clear();
+    auto followed = bridge.focused();
+    auto mcp = std::async(std::launch::async, [&] {
+        return followed("list_open_flowgraphs", "{}", {});
+    });
+    PollBridge(bridge, [&] {
+        return mcp.wait_for(0ms) == std::future_status::ready;
+    });
+    REQUIRE(mcp.wait_for(0ms) == std::future_status::ready);
+    CHECK(nlohmann::json::parse(mcp.get().content)["selected"] == "first");
+
+    bridge.shutdown();
+    REQUIRE(first->destroy() == Result::SUCCESS);
+    REQUIRE(second->destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Agent tools return fresh rendered bounds without changing automatic sizing",

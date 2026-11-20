@@ -39,11 +39,17 @@ Result FlowgraphActions::handle(const MailOpenFlowgraph&) {
 Result FlowgraphActions::handle(const MailOpenFlowgraphPath& msg) {
     if (msg.path.empty()) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot open flowgraph due to empty path.");
+        if (msg.onComplete) {
+            msg.onComplete(Result::ERROR, nullptr);
+        }
         return Result::SUCCESS;
     }
 
     if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "The selected file does not exist.");
+        if (msg.onComplete) {
+            msg.onComplete(Result::ERROR, nullptr);
+        }
         return Result::SUCCESS;
     }
 
@@ -51,17 +57,20 @@ Result FlowgraphActions::handle(const MailOpenFlowgraphPath& msg) {
     auto name = GenerateRandomFlowgraphName();
     auto path = msg.path;
     auto title = std::make_shared<std::string>();
+    auto created = std::make_shared<std::shared_ptr<Flowgraph>>();
     auto enqueueMail = callbacks.enqueueMail;
 
-    callbacks.enqueueCommandWithCompletion([inst, name, path, title]() -> Result {
-        std::shared_ptr<Flowgraph> flowgraph;
-        JST_CHECK(inst->flowgraphCreate(name, {}, flowgraph));
-        JST_CHECK(flowgraph->importFromFile(path));
-        *title = flowgraph->title();
+    callbacks.enqueueCommandWithCompletion([inst, name, path, title, created]() -> Result {
+        JST_CHECK(inst->flowgraphCreate(name, {}, *created));
+        JST_CHECK((*created)->importFromFile(path));
+        *title = (*created)->title();
         return Result::SUCCESS;
-    }, false, [enqueueMail, path, title](Result result) {
+    }, false, [enqueueMail, path, title, created, onComplete = msg.onComplete](Result result) {
         if (result == Result::SUCCESS) {
             enqueueMail(MailRememberFlowgraph{.path = path, .title = *title});
+        }
+        if (onComplete) {
+            onComplete(result, *created);
         }
     });
 
@@ -130,6 +139,10 @@ Result FlowgraphActions::handle(const MailFocusFlowgraph& msg) {
     if (state.flowgraph.items.contains(msg.flowgraph)) {
         state.interface.focusedFlowgraph = msg.flowgraph;
         WorkbenchActions::Focus(state, std::nullopt);
+        if (msg.reveal) {
+            state.interface.requestedFlowgraph = msg.flowgraph;
+            ++state.interface.flowgraphRequests;
+        }
     }
 
     return Result::SUCCESS;
