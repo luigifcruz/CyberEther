@@ -30,9 +30,10 @@ struct EditorMeta {
 struct ConfigMeta {
     bool collapsed = false;
     bool detached = false;
+    bool advanced = false;
     bool tileMetricsCollapsed = false;
 
-    JST_SERDES(collapsed, detached, tileMetricsCollapsed);
+    JST_SERDES(collapsed, detached, advanced, tileMetricsCollapsed);
 };
 
 constexpr F32 DefaultNodeWidth(Block::NodeSize size) {

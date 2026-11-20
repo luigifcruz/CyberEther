@@ -74,6 +74,7 @@ struct FlowgraphActions {
                               MailSetEditorMeta,
                               MailSetConfigCollapsed,
                               MailSetMetricsCollapsed,
+                              MailSetConfigAdvanced,
                               MailSurfaceInput,
                               MailResizeSurface>;
 
@@ -121,6 +122,7 @@ struct FlowgraphActions {
     Result handle(const MailSetEditorMeta& msg);
     Result handle(const MailSetConfigCollapsed& msg);
     Result handle(const MailSetMetricsCollapsed& msg);
+    Result handle(const MailSetConfigAdvanced& msg);
     Result handle(const MailSurfaceInput& msg);
     Result handle(const MailResizeSurface& msg);
     static std::string GenerateRandomFlowgraphName();

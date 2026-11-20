@@ -3,9 +3,12 @@
 
 #include <algorithm>
 #include <any>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <future>
 #include <limits>
@@ -14,6 +17,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include "domains/io/sdr/devices/device.hh"
 #include "domains/io/sdr/devices/stream.hh"
@@ -24,10 +29,15 @@
 #include "domains/io/sdr/tools/stream_buffer.hh"
 #include "domains/io/sdr/tools/timestamp_filter.hh"
 #include "flowgraph_fixture.hh"
+#include "jetstream/domains/core/slice/module.hh"
+#include "jetstream/domains/core/slice/block.hh"
+#include "jetstream/domains/dsp/rational_resampler/module.hh"
+#include "jetstream/domains/io/file_writer/module.hh"
 #include "jetstream/domains/io/sdr/block.hh"
 #include "jetstream/domains/io/sdr/module.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/module_context.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime_context_native_cpu.hh"
 #include "jetstream/scheduler_context.hh"
@@ -39,6 +49,11 @@ using namespace Jetstream;
 namespace {
 
 using namespace TestRadio;
+
+template <typename T>
+std::span<std::byte> Bytes(T&& samples) {
+    return std::as_writable_bytes(std::span(samples));
+}
 
 struct ScriptedFlowgraph : ScriptedDrivers, FlowgraphFixture {};
 
@@ -93,7 +108,10 @@ class RestartStream final : public Radio::Stream {
         deviceCapabilities.sampleRateRanges = {{1.0e6, 20.0e6}};
     }
 
-    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+    Radio::Device::Capture read(std::span<std::byte> bytes,
+                                const std::chrono::milliseconds) override {
+        const std::span<CF32> samples{reinterpret_cast<CF32*>(bytes.data()),
+                                      bytes.size() / sizeof(CF32)};
         if (!streaming) {
             return {.status = Radio::Device::Status::Failure};
         }
@@ -326,7 +344,10 @@ class FifoStream final : public Radio::Stream {
         deviceCapabilities.sampleRateRanges = {{1.0e6, 20.0e6}};
     }
 
-    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+    Radio::Device::Capture read(std::span<std::byte> bytes,
+                                const std::chrono::milliseconds) override {
+        const std::span<CF32> samples{reinterpret_cast<CF32*>(bytes.data()),
+                                      bytes.size() / sizeof(CF32)};
         const auto finish = [&](Radio::Device::Capture capture) {
             capture.generation = generation();
             capture.frequency = appliedSettings.frequency;
@@ -464,7 +485,8 @@ class CallbackStream final : public Radio::Stream {
         deliver(complete(lost));
     }
 
-    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds timeout) override {
+    Radio::Device::Capture read(std::span<std::byte> samples,
+                                const std::chrono::milliseconds timeout) override {
         return queue.pop(samples, timeout);
     }
 
@@ -786,6 +808,22 @@ TEST_CASE("SDR sample conversions normalize vendor formats",
     REQUIRE(output[1] == CF32{0.5f, -1.0f / 2048.0f});
 }
 
+TEST_CASE("SDR sample conversions split interleaved channels in order",
+          "[modules][sdr][backend][conversion][multi-channel]") {
+    const std::array<I16, 12> raw{2047, -2048, 1024, -1024, 0, 204, -100, 512,
+                                 -512, 256, 2048, 0};
+    std::array<CF32, 3> first;
+    std::array<CF32, 3> second;
+    const std::array<CF32*, 2> outputs{first.data(), second.data()};
+    Radio::ConvertI16Channels(raw.data(), outputs, 3, 2048.0f);
+    REQUIRE(first[0] == CF32{2047.0f / 2048.0f, -1.0f});
+    REQUIRE(second[0] == CF32{0.5f, -0.5f});
+    REQUIRE(first[1] == CF32{0.0f, 204.0f / 2048.0f});
+    REQUIRE(second[1] == CF32{-100.0f / 2048.0f, 0.25f});
+    REQUIRE(first[2] == CF32{-0.25f, 0.125f});
+    REQUIRE(second[2] == CF32{1.0f, 0.0f});
+}
+
 TEST_CASE("SDR settling guards round up at the actual capture rate",
           "[modules][sdr][backend][timing]") {
     REQUIRE(Radio::GuardSamples(5.0e-3, 2.0e6) == 10000);
@@ -849,7 +887,8 @@ TEST_CASE("SDR stream updates restore setter and receive-start failures",
     if (restored) {
         REQUIRE(stream.generation() > generation);
         std::vector<CF32> samples(16);
-        REQUIRE(stream.read(samples, std::chrono::milliseconds(100)).status == Radio::Device::Status::Samples);
+        REQUIRE(stream.read(Bytes(samples), std::chrono::milliseconds(100)).status ==
+                Radio::Device::Status::Samples);
     }
 }
 
@@ -1177,7 +1216,21 @@ TEST_CASE("SDR stream buffers never complete a frame across a gap",
         pops(0.0f);
         pops(14.0f);
         REQUIRE(buffer.statistics().discardedSamples == 4);
+        REQUIRE(buffer.statistics().skippedSamples == 2);
         REQUIRE(buffer.pop(frame.data(), 8, metadata) == Result::INCOMPLETE);
+    }
+    SECTION("reads without a timestamp never count as skipped") {
+        REQUIRE(buffer.push(1, ramp.data(), 8, 0, 1));
+        REQUIRE(buffer.push(1, ramp.data() + 8, 8));
+        REQUIRE(buffer.push(1, ramp.data() + 16, 8, 16, 1));
+        REQUIRE(buffer.statistics().skippedSamples == 0);
+    }
+    SECTION("reads without a timestamp keep epoch changes as breaks") {
+        REQUIRE(buffer.push(1, ramp.data(), 4, 0, 7));
+        REQUIRE(buffer.push(1, ramp.data() + 4, 2));
+        REQUIRE(buffer.push(1, ramp.data() + 6, 8, 0, 8));
+        pops(6.0f);
+        REQUIRE(buffer.statistics().skippedSamples == 0);
     }
     SECTION("overwrites never realign a frame across a gap") {
         REQUIRE(buffer.resize(16) == Result::SUCCESS);
@@ -1199,6 +1252,199 @@ TEST_CASE("SDR stream buffers never complete a frame across a gap",
     }
 }
 
+TEST_CASE("SDR stream buffers discard and overwrite complete channel pairs",
+          "[modules][sdr][multi-channel][buffer]") {
+    Radio::StreamBuffer queue;
+    REQUIRE(queue.resize(6, 2) == Result::SUCCESS);
+    queue.reset({.frequency = 100.0e6, .sampleRate = 2.0e6, .generation = 1});
+    const std::array<CF32, 8> first{0, 1, 2, 3, 4, 5, 6, 7};
+    const std::array<CF32, 8> second{100, 101, 102, 103, 104, 105, 106, 107};
+    Radio::StreamBuffer::Metadata metadata;
+    std::array<CF32, 4> a;
+    std::array<CF32, 4> b;
+
+    SECTION("overflow keeps the latest pairs and counts each pair once") {
+        REQUIRE(queue.push(1, std::array<const void*, 2>{first.data(), second.data()},
+                           8, 0, 1));
+        REQUIRE(queue.statistics().pushedSamples == 8);
+        REQUIRE(queue.statistics().overwrittenSamples == 2);
+        REQUIRE(queue.pop(std::array<void*, 2>{a.data(), b.data()}, 4, metadata) ==
+                Result::SUCCESS);
+        REQUIRE(a == std::array<CF32, 4>{2, 3, 4, 5});
+        REQUIRE(b == std::array<CF32, 4>{102, 103, 104, 105});
+    }
+    SECTION("timestamp gaps discard both partial frames together") {
+        REQUIRE(queue.push(1, std::array<const void*, 2>{first.data(), second.data()},
+                           2, 0, 1));
+        REQUIRE(queue.push(
+            1, std::array<const void*, 2>{first.data() + 2, second.data() + 2}, 4, 10,
+            1));
+        REQUIRE(queue.pop(std::array<void*, 2>{a.data(), b.data()}, 4, metadata) ==
+                Result::SUCCESS);
+        REQUIRE(a == std::array<CF32, 4>{2, 3, 4, 5});
+        REQUIRE(b == std::array<CF32, 4>{102, 103, 104, 105});
+        REQUIRE(queue.statistics().discardedSamples == 2);
+    }
+    SECTION("retunes reject old captures for both channels") {
+        REQUIRE(queue.push(1, std::array<const void*, 2>{first.data(), second.data()},
+                           2, 0, 1));
+        queue.reset({.frequency = 200.0e6, .sampleRate = 4.0e6, .generation = 2});
+        REQUIRE_FALSE(queue.push(
+            1, std::array<const void*, 2>{first.data(), second.data()}, 4, 2, 1));
+        REQUIRE(queue.size() == 0);
+        REQUIRE(queue.push(
+            2, std::array<const void*, 2>{first.data() + 4, second.data() + 4}, 4, 100,
+            2));
+        REQUIRE(queue.pop(std::array<void*, 2>{a.data(), b.data()}, 4, metadata) ==
+                Result::SUCCESS);
+        REQUIRE(a == std::array<CF32, 4>{4, 5, 6, 7});
+        REQUIRE(b == std::array<CF32, 4>{104, 105, 106, 107});
+        REQUIRE(metadata.frequency == 200.0e6);
+        REQUIRE(metadata.sampleRate == 4.0e6);
+    }
+    SECTION("explicit discontinuities cannot join partial frames") {
+        REQUIRE(
+            queue.push(1, std::array<const void*, 2>{first.data(), second.data()}, 2));
+        queue.split(1);
+        REQUIRE(queue.push(
+            1, std::array<const void*, 2>{first.data() + 2, second.data() + 2}, 4));
+        REQUIRE(queue.pop(std::array<void*, 2>{a.data(), b.data()}, 4, metadata) ==
+                Result::SUCCESS);
+        REQUIRE(a == std::array<CF32, 4>{2, 3, 4, 5});
+        REQUIRE(b == std::array<CF32, 4>{102, 103, 104, 105});
+    }
+    SECTION("single-channel access cannot partially consume a pair") {
+        REQUIRE_FALSE(queue.push(1, first.data(), 4));
+        REQUIRE(
+            queue.push(1, std::array<const void*, 2>{first.data(), second.data()}, 4));
+        REQUIRE(queue.pop(a.data(), 4, metadata) == Result::ERROR);
+        REQUIRE(queue.size() == 4);
+    }
+}
+
+TEST_CASE_METHOD(
+    TestRadio::ScriptedDrivers,
+    "SDR dual RX streams read one synchronized capture and share one gain",
+    "[modules][sdr][multi-channel][stream]") {
+    TestRadio::TestScript().receiveChannels = 2;
+    TestRadio::TestScript().counter = true;
+    TestRadio::TestScript().readLimit = 3;
+    std::unique_ptr<Radio::Stream> stream;
+    REQUIRE(Radio::Stream::Open(TestRadio::Selector, stream) == Result::SUCCESS);
+    Radio::Stream::Settings settings;
+    settings.receiveChannels = 2;
+    settings.automaticGain = false;
+    settings.gain = 12.0;
+    REQUIRE(stream->start(settings) == Result::SUCCESS);
+    std::array<CF32, 8> a;
+    std::array<CF32, 8> b;
+    std::array destinations{Bytes(a), Bytes(b)};
+    auto capture = stream->readChannels(destinations, std::chrono::milliseconds(50));
+    REQUIRE(capture.status == Radio::Device::Status::Samples);
+    REQUIRE(capture.count == 3);
+    REQUIRE(capture.timestamp == 0);
+    for (U64 i = 0; i < capture.count; ++i) {
+        REQUIRE(a[i].real() == static_cast<F32>(i));
+        REQUIRE(b[i] == -a[i]);
+    }
+    const auto generation = stream->generation();
+    settings.gain = 25.0;
+    REQUIRE(stream->update(settings) == Result::SUCCESS);
+    REQUIRE(stream->generation() == generation);
+    REQUIRE(stream->applied().gain == 25.0);
+    settings.automaticGain = true;
+    REQUIRE(stream->update(settings) == Result::SUCCESS);
+    REQUIRE(stream->applied().automaticGain);
+    settings.automaticGain = false;
+    REQUIRE(stream->update(settings) == Result::SUCCESS);
+
+    settings.channelGains = {25.0, 35.0};
+    REQUIRE(stream->update(settings) == Result::SUCCESS);
+    REQUIRE(stream->generation() == generation);
+    REQUIRE(stream->applied().gain == 25.0);
+    REQUIRE(stream->applied().channelGains == std::vector<F64>{25.0, 35.0});
+
+    TestRadio::TestScript().failAt = "gains:1";
+    settings.channelGains = {5.0};
+    REQUIRE(stream->update(settings) == Result::ERROR);
+    REQUIRE(stream->settings().channelGains == std::vector<F64>{25.0, 35.0});
+    REQUIRE(stream->applied().channelGains == std::vector<F64>{25.0, 35.0});
+    settings.channelGains = {25.0, 35.0};
+
+    TestRadio::TestScript().failAt = "gain:35";
+    settings.gain = 35.0;
+    REQUIRE(stream->update(settings) == Result::ERROR);
+    REQUIRE(stream->applied().gain == 25.0);
+    REQUIRE(stream->settings().gain == 25.0);
+    REQUIRE(stream->settings().receiveChannels == 2);
+    REQUIRE(stream->generation() > generation);
+    capture = stream->readChannels(destinations, std::chrono::milliseconds(50));
+    REQUIRE(capture.status == Radio::Device::Status::Samples);
+    REQUIRE(capture.count == 3);
+    for (U64 i = 0; i < capture.count; ++i) {
+        REQUIRE(b[i] == -a[i]);
+    }
+}
+
+TEST_CASE_METHOD(
+    TestRadio::ScriptedDrivers,
+    "SDR single RX streams reject multi-channel settings and keep the legacy read path",
+    "[modules][sdr][multi-channel][compatibility]") {
+    std::unique_ptr<Radio::Stream> stream;
+    REQUIRE(Radio::Stream::Open(TestRadio::Selector, stream) == Result::SUCCESS);
+    Radio::Stream::Settings settings;
+    settings.receiveChannels = 2;
+    REQUIRE(stream->start(settings) == Result::ERROR);
+    settings.receiveChannels = 1;
+    REQUIRE(stream->start(settings) == Result::SUCCESS);
+    std::array<CF32, 4> a;
+    std::array destinations{Bytes(a)};
+    REQUIRE(stream->readChannels(destinations, std::chrono::milliseconds(50)).count ==
+            4);
+}
+
+TEST_CASE("SDR stream buffers preserve every channel through overflow and gaps",
+          "[devices][sdr][multi-channel][buffer]") {
+    Radio::StreamBuffer queue;
+    REQUIRE(queue.resize(6, 4) == Result::SUCCESS);
+    queue.reset({.generation = 1});
+    std::array<std::array<CF32, 8>, 4> input;
+    std::array<std::array<CF32, 4>, 4> output;
+    std::array<const void*, 4> sources;
+    std::array<void*, 4> destinations;
+    for (U64 channel = 0; channel < 4; ++channel) {
+        for (U64 i = 0; i < 8; ++i) {
+            input[channel][i] = static_cast<F32>(channel * 100 + i);
+        }
+        sources[channel] = input[channel].data();
+        destinations[channel] = output[channel].data();
+    }
+    Radio::StreamBuffer::Metadata metadata;
+    REQUIRE(queue.push(1, sources, 8, 0));
+    REQUIRE(queue.statistics().pushedSamples == 8);
+    REQUIRE(queue.statistics().overwrittenSamples == 2);
+    REQUIRE(queue.pop(destinations, 4, metadata) == Result::SUCCESS);
+    for (U64 channel = 0; channel < 4; ++channel) {
+        REQUIRE(output[channel][0] == static_cast<F32>(channel * 100 + 2));
+        REQUIRE(output[channel][3] == static_cast<F32>(channel * 100 + 5));
+    }
+    REQUIRE(queue.push(1, sources, 4, 20));
+    REQUIRE(queue.pop(destinations, 4, metadata) == Result::SUCCESS);
+    REQUIRE(queue.statistics().discardedSamples == 2);
+    for (U64 channel = 0; channel < 4; ++channel) {
+        REQUIRE(output[channel][0] == static_cast<F32>(channel * 100));
+    }
+    REQUIRE(queue.push(1, sources, 4));
+    destinations[3] = nullptr;
+    REQUIRE(queue.pop(destinations, 4, metadata) == Result::ERROR);
+    REQUIRE(queue.size() == 4);
+    sources[3] = nullptr;
+    REQUIRE_FALSE(queue.push(1, sources, 2));
+    REQUIRE(queue.size() == 4);
+    REQUIRE(queue.resize(6, 0) == Result::ERROR);
+    REQUIRE(queue.size() == 4);
+}
+
 TEST_CASE("SDR timestamped streams never label queued IQ with a live retune",
           "[modules][sdr][backend][capture][retune]") {
     FifoStream stream;
@@ -1207,7 +1453,7 @@ TEST_CASE("SDR timestamped streams never label queued IQ with a live retune",
     std::vector<CF32> samples(32);
     U64 cursor = 0;
     for (U64 i = 0; i < 8; ++i) {
-        const auto capture = stream.read(samples, std::chrono::milliseconds(10));
+        const auto capture = stream.read(Bytes(samples), std::chrono::milliseconds(10));
         if (capture.status == Radio::Device::Status::Samples) {
             REQUIRE(samples[0].real() == 100.0f);
             cursor = *capture.timestamp + capture.count;
@@ -1222,7 +1468,7 @@ TEST_CASE("SDR timestamped streams never label queued IQ with a live retune",
     U64 kept = 0;
     std::optional<U64> first;
     for (U64 i = 0; i < 64; ++i) {
-        const auto capture = stream.read(samples, std::chrono::milliseconds(10));
+        const auto capture = stream.read(Bytes(samples), std::chrono::milliseconds(10));
         if (capture.status != Radio::Device::Status::Samples) {
             continue;
         }
@@ -1258,7 +1504,7 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
     REQUIRE(buffer.resize(256) == Result::SUCCESS);
     const auto collect = [&] {
         while (true) {
-            const auto capture = stream.read(samples, Now);
+            const auto capture = stream.read(Bytes(samples), Now);
             if (capture.status == Radio::Device::Status::Timeout) {
                 return;
             }
@@ -1286,7 +1532,7 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
         for (U64 i = 0; i < 4; ++i) {
             stream.callback();
         }
-        const auto capture = stream.read(std::span(samples).first(10), Now);
+        const auto capture = stream.read(Bytes(std::span(samples).first(10)), Now);
         REQUIRE(capture.status == Radio::Device::Status::Samples);
         REQUIRE(capture.frequency == 100.0e6);
         REQUIRE(samples[0] == CF32{100.0f, static_cast<F32>(Guard)});
@@ -1297,13 +1543,13 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
         REQUIRE(stream.update(after) == Result::SUCCESS);
         REQUIRE(stream.generation() == generation + 1);
         REQUIRE(stream.applied().frequency == 250.0e6);
-        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+        REQUIRE(stream.read(Bytes(samples), Now).status == Radio::Device::Status::Timeout);
 
         stream.deliver(late);
         for (U64 i = 0; i < CallbackStream::InFlightTransfers; ++i) {
             stream.callback();
         }
-        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+        REQUIRE(stream.read(Bytes(samples), Now).status == Radio::Device::Status::Timeout);
 
         buffer.reset({.frequency = 250.0e6, .sampleRate = 2.0e6,
                       .generation = stream.generation()});
@@ -1347,7 +1593,7 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
         };
         REQUIRE(stream.update(after) == Result::SUCCESS);
         stream.between = nullptr;
-        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+        REQUIRE(stream.read(Bytes(samples), Now).status == Radio::Device::Status::Timeout);
 
         buffer.reset({.frequency = 250.0e6, .sampleRate = 2.0e6,
                       .generation = stream.generation()});
@@ -1368,12 +1614,12 @@ TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live r
         REQUIRE(stream.update(after) == Result::ERROR);
         REQUIRE(stream.generation() > generation);
         REQUIRE(stream.applied().frequency == 100.0e6);
-        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+        REQUIRE(stream.read(Bytes(samples), Now).status == Radio::Device::Status::Timeout);
 
         for (U64 i = 0; i < 3; ++i) {
             stream.callback();
         }
-        const auto capture = stream.read(samples, Now);
+        const auto capture = stream.read(Bytes(samples), Now);
         REQUIRE(capture.status == Radio::Device::Status::Samples);
         REQUIRE(capture.generation == stream.generation());
         REQUIRE(capture.frequency == 100.0e6);
@@ -1483,6 +1729,17 @@ TEST_CASE("SDR timestamp filter live retunes skip the queued FIFO before their b
     REQUIRE(tracker.accept(2600, 64).status == Radio::Device::Status::Samples);
 }
 
+TEST_CASE("SDR timestamp filter keeps a reported loss across repeated loss reports",
+          "[modules][sdr][backend][lime]") {
+    Radio::TimestampFilter tracker;
+    tracker.restart(0, 1000);
+    REQUIRE(tracker.accept(0, 100).status == Radio::Device::Status::Samples);
+
+    tracker.lose(500);
+    tracker.lose(600);
+    REQUIRE(tracker.accept(200, 100).status == Radio::Device::Status::Discontinuity);
+}
+
 TEST_CASE("SDR timestamp filter guards reject overflow without accepting earlier samples",
           "[modules][sdr][backend][limits]") {
     const U64 maximum = std::numeric_limits<U64>::max();
@@ -1574,6 +1831,15 @@ TEST_CASE_METHOD(ScriptedDrivers,
     config = ScriptedConfig();
     config.bufferMultiplier = std::numeric_limits<U64>::max();
     check(config);
+    config = ScriptedConfig();
+    config.channels = 0;
+    check(config);
+    config = ScriptedConfig();
+    config.manualGains = {10.0f, std::numeric_limits<F32>::quiet_NaN()};
+    check(config);
+    config = ScriptedConfig();
+    config.channels = std::numeric_limits<U64>::max();
+    check(config);
     REQUIRE(TestScript().opens == 0);
 }
 
@@ -1611,10 +1877,73 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(ResolveSignalAxes(output, axes) == Result::SUCCESS);
     REQUIRE(axes.sample == Index{1});
     REQUIRE(axes.batch == Index{0});
+    REQUIRE_FALSE(axes.channel.has_value());
     REQUIRE(AttributeOf(output, "frequency") == 100.0e6f);
     REQUIRE(AttributeOf(output, "sampleRate") == static_cast<F32>(2.0e6 + 125.0));
     REQUIRE(module->getImpl<Modules::SdrImpl>()->listAntennas() ==
             std::vector<std::string>{"RX1", "RX2"});
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR module applies a manual filter bandwidth and restarts on changes",
+                 "[modules][sdr][lifecycle][bandwidth]") {
+    auto config = ScriptedConfig();
+    config.bandwidth = 1.5e6f;
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "bandwidth:1500") != calls.end());
+
+    const auto opens = TestScript().opens.load();
+    REQUIRE(module->reconfigure({{"bandwidth", 0.0f}}) == Result::SUCCESS);
+    REQUIRE(module->reconfigure({{"bandwidth", 0.5e6f}}) == Result::SUCCESS);
+    REQUIRE(TestScript().opens == opens);
+    calls = TestScript().calls();
+    REQUIRE(std::count(calls.begin(), calls.end(), "start") >= 3);
+    REQUIRE(std::find(calls.begin(), calls.end(), "bandwidth:500") != calls.end());
+
+    REQUIRE(module->reconfigure({{"bandwidth", -1.0f}}) == Result::ERROR);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR module outputs the radio's raw integers with their sample scale",
+                 "[modules][sdr][format]") {
+    TestScript().budget = 8;
+    auto config = ScriptedConfig();
+    config.sampleFormat = "CI16";
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    auto* sdr = module->getImpl<Modules::SdrImpl>();
+    const auto& stream = sdr->*SdrImplAccess::streamMember();
+    const auto& output = module->outputs().at("signal").tensor;
+    REQUIRE(output.dtype() == DataType::CI16);
+    REQUIRE(AttributeOf(output, "sampleScale") == 1.0f / 2048.0f);
+
+    REQUIRE(WaitFor([&] { return stream.size() == 8; }));
+    REQUIRE(RuntimeOf(module)->computeSubmit() == Result::SUCCESS);
+    for (U64 i = 0; i < output.size(); ++i) {
+        REQUIRE(output.data<CI16>()[i].real() == 100);
+    }
+    REQUIRE(module->reconfigure({{"sampleFormat", std::string("CF32")}}) == Result::RECREATE);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR module rejects sample formats the radio does not deliver",
+                 "[modules][sdr][format]") {
+    auto config = ScriptedConfig();
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    SECTION("not a sample format") {
+        config.sampleFormat = "F32";
+        REQUIRE(module->create("test", config, {}) == Result::ERROR);
+    }
+    SECTION("not delivered by the radio") {
+        config.sampleFormat = "CU8";
+        REQUIRE(module->create("test", config, {}) == Result::ERROR);
+        REQUIRE(TestScript().opens == 1);
+    }
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
@@ -1693,6 +2022,8 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(WaitFor([&] { return stream.size() == 4; }));
 
     F32 first = 4.0f;
+    U64 radioLost = 0;
+    U64 radioGaps = 0;
     SECTION("reported gap") {
         {
             std::lock_guard lock(TestScript().mutex);
@@ -1700,10 +2031,13 @@ TEST_CASE_METHOD(ScriptedDrivers,
                 .status = Radio::Device::Status::Discontinuity, .lost = 64};
         }
         REQUIRE(WaitFor([&] { return sdr->getLoss().deviceGaps == 1; }));
+        radioLost = 68;
+        radioGaps = 1;
     }
     SECTION("timestamp jump") {
         TestScript().jump = 100;
         first = 104.0f;
+        radioLost = 104;
     }
     TestScript().budget = 8;
     REQUIRE(WaitFor([&] { return stream.size() == 12; }));
@@ -1712,6 +2046,90 @@ TEST_CASE_METHOD(ScriptedDrivers,
         REQUIRE(output.data<CF32>()[i].real() == first + static_cast<F32>(i));
     }
     REQUIRE(stream.statistics().discardedSamples == 4);
+
+    const auto count = [&](const std::string_view key) {
+        return std::any_cast<U64>(output.attribute(std::string(key)));
+    };
+    REQUIRE(count(RadioLostSamplesAttribute) == radioLost);
+    REQUIRE(count(RadioGapsAttribute) == radioGaps);
+    REQUIRE(count(BufferLostSamplesAttribute) == 0);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR recordings report no loss through a resampler or across channels",
+                 "[modules][sdr][capture][recording]") {
+    TestScript().counter = true;
+    TestScript().budget = 0;
+    auto config = ScriptedConfig();
+    bool resample = false;
+    SECTION("rational resampler") {
+        resample = true;
+    }
+    SECTION("two channels") {
+        TestScript().receiveChannels = 2;
+        config.channels = 2;
+    }
+
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("radio", config, {}) == Result::SUCCESS);
+    const auto& stream = module->getImpl<Modules::SdrImpl>()->*SdrImplAccess::streamMember();
+
+    std::vector<std::shared_ptr<Module>> chain{module};
+    if (resample) {
+        std::shared_ptr<Module> resampler;
+        REQUIRE(Registry::BuildModule("rational_resampler", DeviceType::CPU, RuntimeType::NATIVE,
+                                      "generic", resampler) == Result::SUCCESS);
+        Modules::RationalResampler resamplerConfig;
+        resamplerConfig.decimation = 4;
+        REQUIRE(resampler->create("resampler", resamplerConfig,
+                                  {{"buffer", module->outputs().at("signal")}}) ==
+                Result::SUCCESS);
+        chain.push_back(resampler);
+    }
+
+    const auto base = std::filesystem::temp_directory_path() /
+                      Platform::PathFromUtf8(resample ? "jst_test_sdr_recording_resampled"
+                                                      : "jst_test_sdr_recording_channels");
+    Modules::FileWriter writerConfig;
+    writerConfig.filepath = Platform::PathToUtf8(base);
+    writerConfig.fileFormat = "sigmf";
+    writerConfig.overwrite = true;
+    writerConfig.recording = true;
+    std::shared_ptr<Module> writer;
+    REQUIRE(Registry::BuildModule("file_writer", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", writer) == Result::SUCCESS);
+    REQUIRE(writer->create("writer", writerConfig,
+                           {{"buffer", chain.back()->outputs().begin()->second}}) ==
+            Result::SUCCESS);
+    chain.push_back(writer);
+
+    for (U64 frame = 0; frame < 6; ++frame) {
+        TestScript().budget = 8;
+        REQUIRE(WaitFor([&] { return stream.size() == 8; }));
+        for (const auto& step : chain) {
+            REQUIRE(RuntimeOf(step)->computeSubmit() == Result::SUCCESS);
+        }
+    }
+
+    for (auto it = chain.rbegin(); it != chain.rend() - 1; ++it) {
+        REQUIRE((*it)->destroy() == Result::SUCCESS);
+    }
+
+    auto metaPath = base;
+    metaPath += ".sigmf-meta";
+    std::ifstream metaFile(metaPath);
+    const auto meta = nlohmann::json::parse(metaFile);
+    REQUIRE(meta["global"]["cyberether:buffer_lost_samples"] == 0);
+    REQUIRE(meta["global"]["cyberether:radio_lost_samples"] == 0);
+    REQUIRE(meta["global"]["cyberether:radio_gaps"] == 0);
+    REQUIRE(meta["annotations"].empty());
+
+    metaFile.close();
+    std::filesystem::remove(metaPath);
+    auto dataPath = base;
+    dataPath += ".sigmf-data";
+    std::filesystem::remove(dataPath);
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
@@ -1990,6 +2408,71 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
 }
 
 TEST_CASE_METHOD(ScriptedFlowgraph,
+                 "SDR blocks offer Auto and the radio's filter widths in one dropdown",
+                 "[modules][sdr][block][bandwidth]") {
+    TestScript().budget = 0;
+    Blocks::Sdr config;
+    config.deviceString = Selector;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+
+    const auto field = [&] {
+        const auto view = viewBlock("radio");
+        const auto entry = std::find_if(view.interfaceConfigs.begin(), view.interfaceConfigs.end(),
+                                        [](const auto& item) { return item.name == "bandwidth"; });
+        REQUIRE(entry != view.interfaceConfigs.end());
+        return entry->format;
+    };
+    const auto format = field();
+    REQUIRE(Parser::Get<std::string>(format, "type") == "dropdown");
+    REQUIRE_FALSE(format.contains("advanced"));
+    const auto options = Parser::Get<std::vector<Parser::Map>>(format, "options");
+    REQUIRE(Parser::Get<std::string>(options.front(), "label") == "Auto");
+    REQUIRE(Parser::Get<std::string>(options.front(), "value") == "0");
+    REQUIRE(std::any_of(options.begin(), options.end(), [](const auto& option) {
+        return Parser::Get<std::string>(option, "label") == "1.5 MHz";
+    }));
+    REQUIRE(std::none_of(options.begin(), options.end(), [](const auto& option) {
+        return Parser::Get<std::string>(option, "label") == "28 MHz";
+    }));
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"bandwidth", 1.5e6f}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    const auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "bandwidth:1500") != calls.end());
+}
+
+TEST_CASE_METHOD(ScriptedFlowgraph,
+                 "SDR blocks offer CF32 and the radio's integer formats",
+                 "[modules][sdr][block][format]") {
+    TestScript().budget = 0;
+    Blocks::Sdr config;
+    config.deviceString = Selector;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+
+    const auto view = viewBlock("radio");
+    const auto entry = std::find_if(view.interfaceConfigs.begin(), view.interfaceConfigs.end(),
+                                    [](const auto& item) { return item.name == "sampleFormat"; });
+    REQUIRE(entry != view.interfaceConfigs.end());
+    REQUIRE(Parser::Get<std::string>(entry->format, "type") == "dropdown");
+    REQUIRE_FALSE(entry->format.contains("advanced"));
+    const auto options = Parser::Get<std::vector<Parser::Map>>(entry->format, "options");
+    REQUIRE(options.size() == 2);
+    REQUIRE(Parser::Get<std::string>(options[0], "value") == "CF32");
+    REQUIRE(Parser::Get<std::string>(options[1], "value") == "CI16");
+    REQUIRE(Parser::Get<std::string>(options[1], "label") == "CI16 (12-bit)");
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"sampleFormat", std::string("CI16")}}) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+}
+
+TEST_CASE_METHOD(ScriptedFlowgraph,
                  "SDR blocks list fixed sample rates even when the radio rejects the rate",
                  "[modules][sdr][block][selection]") {
     TestScript().budget = 0;
@@ -2085,4 +2568,320 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", ""}}) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
     REQUIRE(TestScript().opens == 1);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR multi-channel radios without antennas ignore the single-channel antenna",
+                 "[modules][sdr][multi-channel]") {
+    TestScript().receiveChannels = 2;
+    TestScript().antennas = false;
+    auto config = ScriptedConfig();
+    config.channels = 2;
+    config.antenna = "LNAW";
+    config.antennas = {"LNAW", "LNAW"};
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("multi", config, {}) == Result::SUCCESS);
+    const auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "antennas") == calls.end());
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR multi-channel tensors slice into aligned receiver streams",
+                 "[modules][sdr][multi-channel]") {
+    TestScript().receiveChannels = 3;
+    TestScript().readLimit = 3;
+    TestScript().counter = true;
+    TestScript().budget = 12;
+    auto config = ScriptedConfig();
+    config.channels = 3;
+    config.automaticGain = false;
+    config.manualGain = 19.0f;
+    config.manualGains = {19.0f, 25.0f, 15.0f};
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("multi", config, {}) == Result::SUCCESS);
+    auto* sdr = module->getImpl<Modules::SdrImpl>();
+    const auto& queue = sdr->*SdrImplAccess::streamMember();
+    const auto runtime = RuntimeOf(module);
+    const auto& output = module->outputs().at("signal").tensor;
+    REQUIRE(module->outputs().size() == 1);
+    REQUIRE(output.shape() == Shape{3, 1, 8});
+    SignalAxes axes;
+    REQUIRE(ResolveSignalAxes(output, axes) == Result::SUCCESS);
+    REQUIRE(axes.channel == 0);
+    REQUIRE(axes.batch == 1);
+    REQUIRE(axes.sample == 2);
+    REQUIRE(sdr->getApplied().gain == 19.0);
+    REQUIRE(sdr->getApplied().channelGains == std::vector<F64>{19.0, 25.0, 15.0});
+
+    std::vector<std::shared_ptr<Module>> slices;
+    for (U64 channel = 0; channel < config.channels; ++channel) {
+        std::shared_ptr<Module> slice;
+        REQUIRE(Registry::BuildModule("slice", DeviceType::CPU, RuntimeType::NATIVE,
+                                      "generic", slice) == Result::SUCCESS);
+        Modules::Slice selection;
+        selection.slice = jst::fmt::format("[{}, ...]", channel);
+        REQUIRE(slice->create("rx", selection,
+                              {{"buffer", module->outputs().at("signal")}}) ==
+                Result::SUCCESS);
+        const auto& selected = slice->outputs().at("buffer").tensor;
+        REQUIRE(selected.shape() == Shape{1, 8});
+        REQUIRE(selected.contiguous());
+        REQUIRE(selected.data<CF32>() == output.data<CF32>() + channel * 8);
+        REQUIRE(ResolveSignalAxes(selected, axes) == Result::SUCCESS);
+        REQUIRE_FALSE(axes.channel.has_value());
+        REQUIRE(axes.batch == 0);
+        REQUIRE(axes.sample == 1);
+        slices.push_back(slice);
+    }
+    const auto checkFrame = [&] {
+        REQUIRE(WaitFor([&] { return queue.size() >= 8; }));
+        auto* scheduler = dynamic_cast<Scheduler::Context*>(sdr);
+        REQUIRE(scheduler->hasPendingCompute() == Result::SUCCESS);
+        REQUIRE(runtime->computeSubmit() == Result::SUCCESS);
+        for (U64 channel = 1; channel < config.channels; ++channel) {
+            const auto& selected = slices[channel]->outputs().at("buffer").tensor;
+            for (U64 i = 0; i < 8; ++i) {
+                REQUIRE(selected.data<CF32>()[i] ==
+                        -static_cast<F32>(channel) * output.data<CF32>()[i]);
+            }
+            REQUIRE(AttributeOf(selected, "frequency") ==
+                    AttributeOf(output, "frequency"));
+            REQUIRE(AttributeOf(selected, "sampleRate") ==
+                    AttributeOf(output, "sampleRate"));
+        }
+    };
+    checkFrame();
+    REQUIRE(WaitFor([&] { return sdr->getThroughput().second == 48.0f; }));
+    REQUIRE(WaitFor([&] { return queue.size() == 4; }));
+    REQUIRE(module->reconfigure({{"frequency", F32{250.0e6}}}) == Result::SUCCESS);
+    REQUIRE(queue.size() == 0);
+    TestScript().budget = 8;
+    checkFrame();
+    REQUIRE(AttributeOf(output, "frequency") == 250.0e6f);
+    REQUIRE(module->reconfigure({{"sampleRate", F32{4.0e6}}}) == Result::SUCCESS);
+    TestScript().budget = 8;
+    checkFrame();
+    REQUIRE(AttributeOf(output, "sampleRate") == 4.0e6f);
+    REQUIRE(module->reconfigure({{"manualGain", F32{25.0f}}}) == Result::SUCCESS);
+    REQUIRE(sdr->getApplied().gain == 25.0);
+    REQUIRE(sdr->getApplied().channelGains == std::vector<F64>{19.0, 25.0, 15.0});
+    const auto generation = queue.metadata().generation;
+    REQUIRE(module->reconfigure({{"manualGains", std::vector<F32>{19.0f, 70.0f}}}) ==
+            Result::SUCCESS);
+    REQUIRE(queue.metadata().generation == generation);
+    REQUIRE(sdr->manualGain == 25.0f);
+    REQUIRE(sdr->manualGains == std::vector<F32>{19.0f, 70.0f});
+    REQUIRE(sdr->getApplied().channelGains == std::vector<F64>{19.0, 60.0, 25.0});
+    REQUIRE(module->reconfigure({{"automaticGain", true}}) == Result::SUCCESS);
+    REQUIRE(queue.metadata().generation == generation);
+    REQUIRE(sdr->getApplied().automaticGain);
+    for (const auto& slice : slices) {
+        REQUIRE(slice->destroy() == Result::SUCCESS);
+    }
+}
+
+TEST_CASE_METHOD(ScriptedFlowgraph,
+                 "SDR channel count changes preserve the single output connection",
+                 "[modules][sdr][multi-channel][block]") {
+    TestScript().receiveChannels = 2;
+    TestScript().budget = 0;
+    TestScript().devices = {{.serial = "dual", .label = "Scripted Radio"}};
+    Blocks::Sdr config;
+    config.deviceString = "driver=scripted,serial=dual";
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(viewBlock("radio").outputs.at("signal").tensor.shape() == Shape{1, 8});
+    const auto created = viewBlock("radio");
+    REQUIRE(std::any_of(created.interfaceConfigs.begin(), created.interfaceConfigs.end(),
+                        [](const auto& field) { return field.name == "channels"; }));
+    REQUIRE(flowgraph->blockCreate("consumer", "flowgraph_test_pass", {}, {}) ==
+            Result::SUCCESS);
+    REQUIRE(flowgraph->blockConnect("consumer", "buffer", "radio", "signal") ==
+            Result::SUCCESS);
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"channels", U64{2}}}) ==
+            Result::SUCCESS);
+    auto block = viewBlock("radio");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "manualGains"; }));
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"automaticGain", false}}) ==
+            Result::SUCCESS);
+    block = viewBlock("radio");
+    REQUIRE(std::any_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                        [](const auto& field) { return field.name == "manualGains"; }));
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "manualGain"; }));
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(block.outputs.size() == 1);
+    REQUIRE(block.outputs.at("signal").tensor.shape() == Shape{2, 1, 8});
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "antenna"; }));
+    REQUIRE(viewBlock("consumer").state == Block::State::Created);
+    REQUIRE(viewBlock("consumer").inputs.at("buffer").tensor.shape() == Shape{2, 1, 8});
+    Blocks::Slice selection;
+    selection.slice = "[1, ...]";
+    REQUIRE(flowgraph->blockCreate("select_rx2", selection, {}) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockConnect("select_rx2", "buffer", "radio", "signal") ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("select_rx2").state == Block::State::Created);
+    REQUIRE(viewBlock("select_rx2").outputs.at("buffer").tensor.shape() == Shape{1, 8});
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"channels", U64{1}}}) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("radio").outputs.at("signal").tensor.shape() == Shape{1, 8});
+    REQUIRE(viewBlock("consumer").state == Block::State::Created);
+    REQUIRE(viewBlock("consumer").inputs.at("buffer").tensor.shape() == Shape{1, 8});
+    REQUIRE(viewBlock("select_rx2").state != Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"channels", U64{2}}}) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("select_rx2").state == Block::State::Created);
+    REQUIRE(viewBlock("select_rx2").outputs.at("buffer").tensor.shape() == Shape{1, 8});
+}
+
+TEST_CASE_METHOD(ScriptedFlowgraph,
+                 "SDR block hides Channels on single RX radios",
+                 "[modules][sdr][multi-channel][block]") {
+    TestScript().budget = 0;
+    TestScript().devices = {{.serial = "single", .label = "Scripted Radio"}};
+    Blocks::Sdr config;
+    config.deviceString = "driver=scripted,serial=single";
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto block = viewBlock("radio");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "channels"; }));
+    REQUIRE(std::any_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                        [](const auto& field) { return field.name == "antenna"; }));
+}
+
+TEST_CASE_METHOD(ScriptedFlowgraph,
+                 "SDR block offers Channels for reordered device selections",
+                 "[modules][sdr][multi-channel][block]") {
+    TestScript().receiveChannels = 2;
+    TestScript().budget = 0;
+    TestScript().devices = {{.serial = "reordered", .label = "Scripted Radio"}};
+    Blocks::Sdr config;
+    config.deviceString = "serial=reordered,driver=scripted";
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto block = viewBlock("radio");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(std::any_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                        [](const auto& field) { return field.name == "channels"; }));
+}
+
+TEST_CASE_METHOD(ScriptedFlowgraph,
+                 "SDR block bounds the Channels options for oversized saved values",
+                 "[modules][sdr][multi-channel][block]") {
+    TestScript().receiveChannels = 2;
+    TestScript().budget = 0;
+    TestScript().devices = {{.serial = "oversized", .label = "Scripted Radio"}};
+    Blocks::Sdr config;
+    config.deviceString = "driver=scripted,serial=oversized";
+    config.channels = 1000000000;
+    static_cast<void>(flowgraph->blockCreate("radio", config, {}));
+    const auto block = viewBlock("radio");
+    REQUIRE(block.state != Block::State::Created);
+    const auto field = std::find_if(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                                    [](const auto& entry) { return entry.name == "channels"; });
+    REQUIRE(field != block.interfaceConfigs.end());
+    REQUIRE(Parser::Get<std::vector<Parser::Map>>(field->format, "options").size() == 3);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR multi-channel configuration fails clearly on single RX radios",
+                 "[modules][sdr][multi-channel][compatibility]") {
+    auto config = ScriptedConfig();
+    config.channels = 2;
+    const auto module = BuildSdrModule();
+    REQUIRE(module->create("dual", config, {}) == Result::ERROR);
+    REQUIRE(JST_LOG_LAST_ERROR().find("more than Scripted Radio supports (1)") !=
+            std::string::npos);
+    REQUIRE(module->state() == Module::State::DESTROYED);
+}
+
+TEST_CASE_METHOD(
+    ScriptedDrivers,
+    "SDR multi-channel startup failures release the radio and shared antenna power",
+    "[modules][sdr][multi-channel][lifecycle]") {
+    TestScript().receiveChannels = 2;
+    TestScript().failAt = "channels:2";
+    auto config = ScriptedConfig();
+    config.channels = 2;
+    config.biasTee = true;
+    const auto module = BuildSdrModule();
+    REQUIRE(module->create("dual", config, {}) == Result::ERROR);
+    const auto calls = TestScript().calls();
+    REQUIRE(std::find(calls.begin(), calls.end(), "channels:2") != calls.end());
+    REQUIRE(std::find(calls.begin(), calls.end(), "biastee:false") != calls.end());
+    REQUIRE(calls.back() == "close");
+    REQUIRE(module->state() == Module::State::DESTROYED);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR multi-channel device disconnection stops both outputs",
+                 "[modules][sdr][multi-channel][lifecycle]") {
+    TestScript().receiveChannels = 2;
+    TestScript().budget = 0;
+    auto config = ScriptedConfig();
+    config.channels = 2;
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("dual", config, {}) == Result::SUCCESS);
+    {
+        std::lock_guard lock(TestScript().mutex);
+        TestScript().nextRead = Radio::Device::Capture{
+            .status = Radio::Device::Status::Disconnected, .error = "unplugged"};
+    }
+    const auto runtime = RuntimeOf(module);
+    REQUIRE(WaitFor([&] { return runtime->computeSubmit() == Result::ERROR; }));
+    REQUIRE(module->outputs().contains("signal"));
+    REQUIRE(module->outputs().size() == 1);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR multi-channel gains clamp per receiver without drifting across retunes",
+                 "[modules][sdr][multi-channel][gain]") {
+    TestScript().receiveChannels = 2;
+    TestScript().budget = 0;
+    auto config = ScriptedConfig();
+    config.channels = 2;
+    config.automaticGain = false;
+    config.manualGain = 100.0f;
+    config.manualGains = {40.0f, 100.0f};
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("multi", config, {}) == Result::SUCCESS);
+    auto* sdr = module->getImpl<Modules::SdrImpl>();
+    REQUIRE(sdr->manualGain == 60.0f);
+    REQUIRE(sdr->getApplied().gain == 60.0);
+    REQUIRE(sdr->getApplied().channelGains == std::vector<F64>{40.0, 60.0});
+    REQUIRE(module->reconfigure({{"frequency", F32{250.0e6}}}) == Result::SUCCESS);
+    REQUIRE(sdr->manualGain == 60.0f);
+    REQUIRE(sdr->getApplied().gain == 60.0);
+    REQUIRE(sdr->getApplied().channelGains == std::vector<F64>{40.0, 60.0});
+    REQUIRE(sdr->manualGains == std::vector<F32>{40.0f, 100.0f});
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR single-channel streams ignore Manual Gains",
+                 "[modules][sdr][multi-channel][gain]") {
+    TestScript().budget = 0;
+    auto config = ScriptedConfig();
+    config.automaticGain = false;
+    config.manualGain = 20.0f;
+    config.manualGains = {5.0f};
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("single", config, {}) == Result::SUCCESS);
+    auto* sdr = module->getImpl<Modules::SdrImpl>();
+    REQUIRE(sdr->getApplied().gain == 20.0);
+    REQUIRE(sdr->getApplied().channelGains == std::vector<F64>{20.0});
+    REQUIRE(module->reconfigure({{"manualGains", std::vector<F32>{9.0f}}}) == Result::SUCCESS);
+    REQUIRE(sdr->getApplied().channelGains == std::vector<F64>{20.0});
+    const auto calls = TestScript().calls();
+    REQUIRE(std::none_of(calls.begin(), calls.end(),
+                         [](const auto& call) { return call.starts_with("gains:"); }));
 }

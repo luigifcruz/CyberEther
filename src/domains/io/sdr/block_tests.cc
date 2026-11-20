@@ -7,6 +7,7 @@
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/io/sdr/block.hh"
 #include "jetstream/registry.hh"
+#include "scripted_radio.hh"
 
 using namespace Jetstream;
 
@@ -15,6 +16,8 @@ TEST_CASE("SDR block keeps the radio interface defaults",
     Blocks::Sdr config;
     REQUIRE(config.deviceString.empty());
     REQUIRE(config.antenna.empty());
+    REQUIRE(config.channels == 1);
+    REQUIRE(config.manualGains.empty());
     REQUIRE(config.frequency == 96.9e6f);
     REQUIRE(config.frequencyStep == 1000000.0f);
     REQUIRE(config.sampleRate == 2.0e6f);
@@ -31,18 +34,23 @@ TEST_CASE("SDR block selections and settings round-trip through saved configurat
     config.deviceString = "driver=hackrf,serial=0000000000000000a06063c8234e925f";
     config.antenna = "LNAW";
     config.biasTee = true;
+    config.channels = 2;
+    config.manualGains = {30.0f, 36.0f};
     config.frequency = 433.92e6f;
 
     Parser::Map serialized;
     REQUIRE(config.serialize(serialized) == Result::SUCCESS);
     REQUIRE_FALSE(serialized.contains("modulePath"));
     REQUIRE_FALSE(serialized.contains("streamString"));
+    REQUIRE(serialized.contains("channels"));
 
     Blocks::Sdr restored;
     REQUIRE(restored.deserialize(serialized) == Result::SUCCESS);
     REQUIRE(restored.deviceString == config.deviceString);
     REQUIRE(restored.antenna == config.antenna);
     REQUIRE(restored.biasTee);
+    REQUIRE(restored.channels == 2);
+    REQUIRE(restored.manualGains == config.manualGains);
     REQUIRE(restored.frequency == config.frequency);
     REQUIRE(restored.hash() == config.hash());
 }
@@ -117,4 +125,90 @@ TEST_CASE_METHOD(FlowgraphFixture,
             }
         }
     }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "SDR block loads saved SoapySDR blocks",
+                 "[modules][io][sdr][block]") {
+    const TestRadio::ScriptedDrivers drivers;
+    const std::string yaml = R"(---
+version: 2
+graph:
+  - name: remote
+    module: soapy
+    config:
+      deviceString: 'driver=uhd, serial=3141592'
+      streamString: 'bufflen=8192'
+      modulePath: '/opt/soapy/modules'
+      antenna: RX2
+  - name: unnamed
+    module: soapy
+    config:
+      deviceString: 'driver=rtltcp,rtltcp=127.0.0.1:1234'
+  - name: bare
+    module: soapy
+  - name: lime
+    module: soapy
+    config:
+      deviceString: 'driver=lime,serial=1D4C2F'
+      automaticGain: false
+      manualGain: 30
+      antenna: NONE
+  - name: limedefault
+    module: soapy
+    config:
+      deviceString: 'driver=lime,serial=1D4C30'
+  - name: kept
+    module: soapy
+    config:
+      deviceString: 'driver=uhd,serial=2718281'
+      manualGain: 49.5
+)";
+
+    const std::vector<char> blob(yaml.begin(), yaml.end());
+    REQUIRE(flowgraph->importFromBlob(blob) == Result::SUCCESS);
+
+    for (const auto* name : {"remote", "unnamed", "bare"}) {
+        INFO(name);
+        REQUIRE(viewBlock(name).type == "sdr");
+    }
+
+    Parser::Map remote;
+    REQUIRE(flowgraph->blockConfig("remote", remote) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(remote.at("deviceString")) == "driver=soapy,serial=3141592");
+    REQUIRE(std::any_cast<std::string>(remote.at("driverArguments")) == "bufflen=8192");
+    REQUIRE(std::any_cast<std::string>(remote.at("antenna")) == "RX2");
+    REQUIRE(std::any_cast<F32>(remote.at("manualGain")) == Blocks::Sdr{}.manualGain);
+
+    Parser::Map unnamed;
+    REQUIRE(flowgraph->blockConfig("unnamed", unnamed) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(unnamed.at("deviceString")).empty());
+
+    Parser::Map bare;
+    REQUIRE(flowgraph->blockConfig("bare", bare) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(bare.at("manualGain")) == Blocks::Sdr{}.manualGain);
+
+#ifdef JETSTREAM_LOADER_LIMESUITE_AVAILABLE
+    Parser::Map lime;
+    REQUIRE(flowgraph->blockConfig("lime", lime) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(lime.at("deviceString")) == "driver=limesdr,serial=1D4C2F");
+    REQUIRE(std::any_cast<F32>(lime.at("manualGain")) == 42.0f);
+    REQUIRE(std::any_cast<std::string>(lime.at("antenna")).empty());
+
+    Parser::Map limeDefault;
+    REQUIRE(flowgraph->blockConfig("limedefault", limeDefault) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(limeDefault.at("manualGain")) == 44.0f);
+#endif
+
+    Parser::Map kept;
+    REQUIRE(flowgraph->blockConfig("kept", kept) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(kept.at("manualGain")) == 49.5f);
+}
+
+TEST_CASE("SDR block keeps single RX defaults for older configurations",
+          "[modules][sdr][multi-channel][block]") {
+    Blocks::Sdr config;
+    REQUIRE(config.deserialize({{"frequency", F32{100.0e6}}}) == Result::SUCCESS);
+    REQUIRE(config.channels == 1);
+    REQUIRE(config.manualGains.empty());
 }

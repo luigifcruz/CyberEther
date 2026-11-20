@@ -138,6 +138,7 @@ FlowgraphNode::BlockData FlowgraphNodePresenter::build(const std::string& flowgr
     flowgraph->metadata().get("config", configMeta, blockName);
     block.configCollapsed = configMeta.collapsed;
     block.configDetached = configMeta.detached;
+    block.configAdvanced = configMeta.advanced;
 
     buildInputs(block, blockData);
     buildOutputs(block, blockData);

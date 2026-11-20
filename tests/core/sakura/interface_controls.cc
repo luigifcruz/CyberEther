@@ -103,6 +103,62 @@ TEST_CASE("Vector controls recover their cached values after a decoding error", 
     REQUIRE(field.update(config) == Result::SUCCESS);
 }
 
+TEST_CASE("String vectors show one dropdown per entry and patch the whole list",
+          "[core][sakura][interface]") {
+    FlowgraphConfigVectorField field;
+    std::vector<Parser::Map> edits;
+    std::vector<std::function<void(Result)>> completions;
+    FlowgraphConfigFieldConfig config{
+        .id = "antennas",
+        .name = "antennas",
+        .label = "Antennas",
+        .format = {
+            {"type", "vector"},
+            {"value_type", "string"},
+            {"item_label", "Antenna"},
+            {"options", Parser::Sequence{
+                Parser::Map{{"label", "Default"}, {"value", ""}},
+                Parser::Map{{"label", "LNAH"}, {"value", "LNAH"}},
+                Parser::Map{{"label", "LNAW"}, {"value", "LNAW"}},
+            }},
+        },
+        .values = {{"antennas", std::vector<std::string>{"LNAH", "LNAH"}}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)> complete) {
+            edits.push_back(std::move(patch));
+            completions.push_back(std::move(complete));
+        },
+    };
+    REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::SUCCESS);
+    REQUIRE(Parser::Hash(std::any(config.format)) != 0);
+
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    auto combos = SakuraTest::Find<Sakura::NodeCombo>(field.component());
+    REQUIRE(combos.size() == 2);
+    CHECK(combos[0]->config().selectedIndex == std::optional<U64>{1});
+    CHECK(combos[1]->config().selectedIndex == std::optional<U64>{1});
+
+    combos[1]->config().onSelect(2);
+    REQUIRE(edits.size() == 1);
+    REQUIRE(std::any_cast<std::vector<std::string>>(edits.front().at("antennas")) ==
+            std::vector<std::string>{"LNAH", "LNAW"});
+
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    combos = SakuraTest::Find<Sakura::NodeCombo>(field.component());
+    REQUIRE(combos.size() == 2);
+    CHECK(combos[1]->config().selectedIndex == std::optional<U64>{2});
+    combos[0]->config().onSelect(0);
+    REQUIRE(edits.size() == 2);
+    REQUIRE(std::any_cast<std::vector<std::string>>(edits.back().at("antennas")) ==
+            std::vector<std::string>{"", "LNAW"});
+    for (const auto& complete : completions) {
+        complete(Result::SUCCESS);
+    }
+
+    config.values["antennas"] = std::vector<std::string>{"LNAH"};
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    CHECK(SakuraTest::Find<Sakura::NodeCombo>(field.component()).size() == 1);
+}
+
 TEST_CASE("Retained unsigned range edits reject unsafe conversions and recover on the next edit",
           "[core][sakura][interface][range-input]") {
     const auto [text, valid, expected] = GENERATE(

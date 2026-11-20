@@ -678,6 +678,12 @@ struct MailSetMetricsCollapsed {
     bool collapsed = false;
 };
 
+struct MailSetConfigAdvanced {
+    std::string flowgraph;
+    std::string block;
+    bool advanced = false;
+};
+
 struct MailSetConfigDetached {
     std::string flowgraph;
     std::string block;
@@ -908,6 +914,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSetEditorMeta,
                            MailSetConfigCollapsed,
                            MailSetMetricsCollapsed,
+                           MailSetConfigAdvanced,
                            MailSetConfigDetached,
                            MailSetFlowgraphLayout,
                            MailRemoveLayoutBlock,

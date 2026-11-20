@@ -171,6 +171,10 @@ void FlowgraphNode::update(Config config) {
         emittedLayout = Layout{geometry->gridPosition.x, geometry->gridPosition.y, dimensions.x, dimensions.y};
         emit(emittedLayout->x, emittedLayout->y, emittedLayout->width, emittedLayout->height);
     }
+    ApplyAdvancedSection(this->config.block.configFields,
+                         this->config.id + ":advanced",
+                         this->config.block.configAdvanced,
+                         this->config.onConfigAdvanced);
     auto& block = this->config.block;
     const U64 surfaceCount = block.surfaces.size();
     const bool hasSurfaces = surfaceCount > 0;

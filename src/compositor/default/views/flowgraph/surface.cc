@@ -14,6 +14,10 @@ void FlowgraphDetachedSurface::update(Config config) {
         .onInput = this->config.onInput,
         .resolveCursor = this->config.resolveCursor,
     });
+    ApplyAdvancedSection(this->config.configFields,
+                         this->config.id + ":advanced",
+                         this->config.configAdvanced,
+                         this->config.onConfigAdvanced);
 
     while (fields.size() > this->config.configFields.size()) {
         fields.pop_back();

@@ -20,12 +20,15 @@ struct FileWriterImpl : public Module::Impl, public DynamicConfig<FileWriter> {
     Result define() override;
     Result create() override;
     Result destroy() override;
+    Result reconfigure() override;
 
     U64 getBytesWritten() const;
     F32 getThroughput() const;
 
  protected:
     void updateThroughput(const U64 deltaBytes);
+    Result openRecording();
+    void closeRecording();
 
     std::unique_ptr<FileWriterFormat> format;
 

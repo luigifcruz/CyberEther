@@ -161,9 +161,10 @@ AgentProviders::Provider AgentProviders::Preset(Agent::Provider::Kind kind) {
 }
 
 AgentProviders::Provider AgentProviders::Normalize(Provider provider) {
-    const auto& defaults = Agent::Provider::Profile::Find(Identify(provider));
+    const auto kind = Identify(provider);
+    const auto& defaults = Agent::Provider::Profile::Find(kind);
 
-    if (provider.api.empty()) {
+    if (provider.api.empty() || kind != Agent::Provider::Kind::Custom) {
         provider.api = Agent::Provider::Name(defaults.api);
     }
     if (provider.chatPath.empty()) {

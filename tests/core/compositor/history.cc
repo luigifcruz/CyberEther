@@ -766,6 +766,17 @@ TEST_CASE_METHOD(HistoryFixture, "Collapsing a block panel marks the flowgraph u
             Result::SUCCESS);
     CHECK(graphHistory().unsaved());
 
+    save(path);
+    drain();
+    CHECK_FALSE(graphHistory().unsaved());
+
+    REQUIRE(flowgraphActions.handle(MailSetConfigAdvanced{.flowgraph = "graph", .block = "leaf", .advanced = false}) ==
+            Result::SUCCESS);
+    CHECK_FALSE(graphHistory().unsaved());
+    REQUIRE(flowgraphActions.handle(MailSetConfigAdvanced{.flowgraph = "graph", .block = "leaf", .advanced = true}) ==
+            Result::SUCCESS);
+    CHECK(graphHistory().unsaved());
+
     std::filesystem::remove(path);
 }
 

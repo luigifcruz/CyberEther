@@ -6,6 +6,7 @@
 #include "../../tools/timestamp_filter.hh"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -38,6 +39,10 @@ using Status = Device::Status;
 using Clock = std::chrono::steady_clock;
 
 constexpr F64 SettlingTime = 1.0e-3;
+constexpr std::array<F64, 16> Bladerf1FilterWidths = {
+    1.5e6, 1.75e6, 2.5e6, 2.75e6, 3.0e6, 3.84e6, 5.0e6, 5.5e6,
+    6.0e6, 7.0e6, 8.75e6, 10.0e6, 12.0e6, 14.0e6, 20.0e6, 28.0e6,
+};
 constexpr U64 MaxQuickTuneProfiles = 256;
 constexpr unsigned SyncBuffers = 16;
 constexpr unsigned SyncBufferSize = 8192;
@@ -142,8 +147,10 @@ Result BladeRfSweep::connect(const Device::Info& info) {
 
     const bladerf_range* frequency = nullptr;
     const bladerf_range* rate = nullptr;
+    const bladerf_range* bandwidth = nullptr;
     if (bladerf_get_frequency_range(handle, Channel, &frequency) != 0 ||
-        bladerf_get_sample_rate_range(handle, Channel, &rate) != 0) {
+        bladerf_get_sample_rate_range(handle, Channel, &rate) != 0 ||
+        bladerf_get_bandwidth_range(handle, Channel, &bandwidth) != 0) {
         JST_ERROR("[SDR_BLADERF] Failed to query device ranges.");
         return Result::ERROR;
     }
@@ -152,8 +159,17 @@ Result BladeRfSweep::connect(const Device::Info& info) {
     budget = BladeRfQuickTuneBudget(second ? std::optional<U64>(MaxQuickTuneProfiles)
                                            : std::nullopt);
     auto& caps = deviceCapabilities;
+    caps.receiveChannels = bladerf_get_channel_count(handle, BLADERF_RX);
     caps.frequencyRanges = ToRanges(frequency);
     caps.sampleRateRanges = ToRanges(rate);
+    caps.bandwidthRanges.clear();
+    if (second) {
+        caps.bandwidthRanges = ToRanges(bandwidth);
+    } else {
+        for (const F64 width : Bladerf1FilterWidths) {
+            caps.bandwidthRanges.push_back({width, width});
+        }
+    }
     caps.automaticGain = second;
     caps.biasTee = second;
     caps.sweepSampleRate = second ? 30.72e6 : 20.0e6;

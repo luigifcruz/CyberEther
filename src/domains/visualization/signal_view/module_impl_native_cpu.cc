@@ -127,6 +127,7 @@ Result SignalViewImplNativeCpu::computeSubmit() {
             maxHold && detail::LineplotMaxHoldReady(maxHoldWarmupBlocks, lineplotAveraging);
         F32* maxData =
             updateMaxHold ? static_cast<F32*>(maxHoldPoints.data()) : nullptr;
+        const bool linearAmplitude = densityEnabled || amplitudeScale == "log";
 
         for (U64 i = 0; i < numberOfElements; i++) {
             F32 amplitude = (sumsData[i] * normalizationFactor) - 1.0f;
@@ -143,7 +144,7 @@ Result SignalViewImplNativeCpu::computeSubmit() {
             }
 
             F32 displayed;
-            if (densityEnabled) {
+            if (linearAmplitude) {
                 displayed = std::clamp(average, -1.0f, 1.0f);
             } else {
                 const F32 x = 2.0f * average;

@@ -64,6 +64,7 @@ struct SignalViewImpl : public Module::Impl,
     WaterfallHistory densityHistory;
 
     SignalViewFrequency inputFrequency;
+    SignalViewOverload inputOverload;
 
     SignalViewCanvas canvas;
     SignalViewLineplot lineplot;

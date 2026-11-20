@@ -35,11 +35,17 @@ struct JETSTREAM_API Device {
         static std::string Describe(const std::vector<Range>& ranges);
     };
 
+    struct Format {
+        DataType type = DataType::CF32;
+        F64 fullScale = 1.0;
+    };
+
     struct JETSTREAM_API Info {
         std::string driver;
         std::string serial;
         std::string label;
         bool biasTee = true;
+        U64 receiveChannels = 1;
 
         std::string selector() const;
     };
@@ -84,16 +90,21 @@ struct JETSTREAM_API Device {
     struct JETSTREAM_API Capabilities {
         std::vector<Range> frequencyRanges;
         std::vector<Range> sampleRateRanges;
+        std::vector<Range> bandwidthRanges;
+        std::vector<Format> formats = {{}};
         std::vector<std::string> antennas;
+        U64 receiveChannels = 1;
         bool automaticGain = false;
         bool biasTee = false;
         std::string gainUnit = "dB";
+        F64 fullScale = 0.0;
         F64 sweepSampleRate = 0.0;
         F64 usableBandwidth = 0.75;
         F64 dcExclusion = 0.0;
         std::optional<Firmware> firmwareSweep;
 
         std::vector<F64> fixedSampleRates() const;
+        std::optional<Format> format(DataType type) const;
     };
 
     struct Capture {
@@ -126,6 +137,8 @@ struct JETSTREAM_API Device {
     static Labels Label(const std::vector<Info>& devices);
     static std::optional<Capabilities> Cached(const std::string& selector);
     static bool SupportsBiasTee(const std::string& selector);
+    static bool SupportsBandwidth(const std::string& selector);
+    static U64 ReceiveChannels(const std::string& selector);
 };
 
 }  // namespace Jetstream::Radio

@@ -22,9 +22,11 @@ struct FlowgraphDetachedConfig {
         std::string title;
         std::vector<FlowgraphMetricConfig> metrics;
         std::vector<FlowgraphConfigFieldConfig> configFields;
+        bool configAdvanced = false;
         bool metricsOpen = true;
         Sakura::Callback<void()> onClose;
         Sakura::Callback<void(bool)> onToggleMetricsOpen;
+        Sakura::Callback<void(bool)> onConfigAdvanced;
     };
 
     void update(Config config);

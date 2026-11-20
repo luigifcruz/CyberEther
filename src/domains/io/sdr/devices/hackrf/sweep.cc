@@ -8,6 +8,7 @@
 #include "../../tools/samples.hh"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <chrono>
@@ -32,6 +33,10 @@ constexpr U32 VgaGainStep = 2;
 constexpr U16 SweepApiVersion = 0x0104;
 constexpr U64 BlockQueueDepth = 64;
 constexpr U64 InFlightTransfers = 4;
+constexpr std::array<F64, 16> FilterWidths = {
+    1.75e6, 2.5e6, 3.5e6, 5.0e6, 5.5e6, 6.0e6, 7.0e6, 8.0e6,
+    9.0e6, 10.0e6, 12.0e6, 14.0e6, 15.0e6, 20.0e6, 24.0e6, 28.0e6,
+};
 
 static_assert(HackRfFirmware::BlockBytes == BYTES_PER_BLOCK);
 
@@ -112,10 +117,18 @@ Result HackRfSweep::connect(const Device::Info& info) {
 
     U16 version = 0;
     hackrf_usb_api_version_read(handle, &version);
+    uint8_t board = BOARD_ID_UNDETECTED;
+    hackrf_board_id_read(handle, &board);
 
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = {{1.0e6, 6000.0e6}};
     caps.sampleRateRanges = {{2.0e6, 20.0e6}};
+    caps.bandwidthRanges.clear();
+    if (board != BOARD_ID_PRALINE) {
+        for (const F64 width : FilterWidths) {
+            caps.bandwidthRanges.push_back({width, width});
+        }
+    }
     caps.automaticGain = false;
     caps.biasTee = true;
     caps.sweepSampleRate = 20.0e6;

@@ -26,10 +26,12 @@ std::vector<Device::Info> BladeRf::Enumerate() {
     const int count = bladerf_get_device_list(&list);
     for (int i = 0; i < count; ++i) {
         const std::string serial = list[i].serial;
+        const bool second = std::string(list[i].product).find("2.0") != std::string::npos;
         devices.push_back({
             .serial = serial,
             .label = jst::fmt::format("bladeRF ({})", serial.substr(0, 8)),
-            .biasTee = std::string(list[i].product).find("2.0") != std::string::npos,
+            .biasTee = second,
+            .receiveChannels = second ? 2u : 1u,
         });
     }
     if (list) {

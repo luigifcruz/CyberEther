@@ -21,6 +21,10 @@ void FlowgraphDetachedConfig::update(Config config) {
         metrics[i]->update(std::move(this->config.metrics[i]));
     }
 
+    ApplyAdvancedSection(this->config.configFields,
+                         this->config.id + ":advanced",
+                         this->config.configAdvanced,
+                         this->config.onConfigAdvanced);
     fields.update(std::move(this->config.configFields));
     std::vector<Stack::Item> items;
     if (metricsVisible) {

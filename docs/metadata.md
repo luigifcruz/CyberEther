@@ -121,6 +121,12 @@ if (signal.hasAttribute("sampleRate")) {
 
 Attributes do not propagate through a block automatically. A block that transforms a stream and wants to preserve its description copies what applies, either selectively with `setAttribute` or wholesale with `propagateAttributes(source)`, and then overrides what it changed. A decimator, for example, propagates the input attributes and rewrites `sampleRate`.
 
+### Sample Scale
+
+The `sampleScale` attribute tells consumers how to read integer samples as normalized floating point. It is a finite, positive `F32` factor, applied after unsigned samples drop the midpoint of their storage type, such as 128 for CU8. A producer of raw integer samples sets it to one over the real full scale of the data, such as 1/2048 for 12-bit samples stored in CI16, and keeps it fixed for the life of the stream.
+
+Cast multiplies integer input by the factor when converting to a float type and writes a factor of 1 on the float output. When the input carries the attribute, an integer output gets the factor that keeps the same level in the new type, and a float input cast to an integer type gets one over the full scale of that type. Without the attribute, Cast uses the full scale of the storage type.
+
 ### Signal Axes
 
 Signal tensors describe their layout with three standard attributes. The `sampleAxis` attribute identifies the dimension processed as signal samples and is required by consumers that operate on sample sequences. A rank-one tensor with no signal-axis attributes implicitly uses axis `0` as its sample axis. The `batchAxis` attribute optionally identifies ordered element windows processed together, while `channelAxis` identifies independent channels. A tensor containing channel values but no sample dimension may set only `channelAxis`, with an optional `batchAxis`; consumers explicitly declare whether they support this channel-only layout. No other axis meaning is inferred from tensor shape.

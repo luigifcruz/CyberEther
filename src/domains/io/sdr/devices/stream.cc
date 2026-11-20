@@ -3,6 +3,7 @@
 #include "../tools/samples.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 #include "jetstream/logger.hh"
@@ -44,12 +45,53 @@ U64 Stream::guard() const {
     return GuardSamples(seconds, appliedSettings.sampleRate);
 }
 
+U64 Stream::sampleBytes() const {
+    return DataTypeSize(requestedSettings.format);
+}
+
+Device::Capture Stream::readChannels(std::span<std::span<std::byte>> samples,
+                                    const std::chrono::milliseconds timeout) {
+    if (samples.size() != 1) {
+        return {.status = Device::Status::Failure,
+                .error = "this radio supports only single-channel reads"};
+    }
+    return read(samples.front(), timeout);
+}
+
+Result Stream::setChannelGains(const std::vector<F64>& gains) {
+    if (!gains.empty()) {
+        JST_ERROR("[SDR] A gain per receiver is not supported by {}.", deviceInfo.label);
+        return Result::ERROR;
+    }
+    requestedSettings.channelGains = gains;
+    return Result::SUCCESS;
+}
+
 Result Stream::start(const Settings& settings) {
     JST_CHECK(configure(settings));
     return open();
 }
 
 Result Stream::configure(const Settings& settings) {
+    if (settings.receiveChannels == 0) {
+        JST_ERROR("[SDR] Receive channels cannot be zero.");
+        return Result::ERROR;
+    }
+    if (!std::isfinite(settings.bandwidth) || settings.bandwidth < 0.0) {
+        JST_ERROR("[SDR] Filter bandwidth must be zero or positive.");
+        return Result::ERROR;
+    }
+    if (!deviceCapabilities.format(settings.format)) {
+        JST_ERROR("[SDR] Sample format {} is not supported by {}.", settings.format,
+                  deviceInfo.label);
+        return Result::ERROR;
+    }
+    if (settings.receiveChannels > deviceCapabilities.receiveChannels) {
+        JST_ERROR("[SDR] Channels ({}) is more than {} supports ({}).",
+                  settings.receiveChannels, deviceInfo.label,
+                  deviceCapabilities.receiveChannels);
+        return Result::ERROR;
+    }
     close();
     JST_CHECK(apply(settings));
     if (guard() == std::numeric_limits<U64>::max()) {
@@ -72,7 +114,11 @@ Result Stream::setSettlingTime(const F64 settlingTime) {
 
 Result Stream::update(const Settings& settings) {
     const auto previous = requestedSettings;
-    if (settings.sampleRate != previous.sampleRate || settings.antenna != previous.antenna ||
+    if (settings.receiveChannels != previous.receiveChannels ||
+        settings.sampleRate != previous.sampleRate || settings.antenna != previous.antenna ||
+        settings.driverArguments != previous.driverArguments ||
+        settings.channelAntennas != previous.channelAntennas ||
+        settings.bandwidth != previous.bandwidth || settings.format != previous.format ||
         settings.biasTee != previous.biasTee) {
         return restart(settings, previous);
     }
@@ -93,6 +139,9 @@ Result Stream::update(const Settings& settings) {
         if (target.gain != previous.gain ||
             resolveGain(target.gain, appliedSettings.gainRange) != appliedSettings.gain) {
             JST_CHECK(setGain(target.gain));
+        }
+        if (target.channelGains != previous.channelGains) {
+            JST_CHECK(setChannelGains(target.channelGains));
         }
         if (target.settlingTime != previous.settlingTime) {
             JST_CHECK(setSettlingTime(target.settlingTime));

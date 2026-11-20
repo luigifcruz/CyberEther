@@ -33,6 +33,7 @@ constexpr U64 UsbTransfers = 16;
 constexpr U32 FifoSamples = 1 << 20;
 constexpr F64 SweepSampleRate = 20.0e6;
 constexpr F64 MinCalibrationBandwidth = 2.5e6;
+constexpr int MaxReceiveChannels = 2;
 
 std::chrono::milliseconds Remaining(const Clock::time_point deadline) {
     const auto left =
@@ -138,6 +139,10 @@ Result LimeSdrSweep::connect(const Device::Info& info) {
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = {{frequency.min, frequency.max}};
     caps.sampleRateRanges = {{rate.min, rate.max}};
+    caps.bandwidthRanges.clear();
+    if (lms_range_t filter = {}; LMS_GetLPFBWRange(handle, LMS_CH_RX, &filter) == 0) {
+        caps.bandwidthRanges = {{filter.min, filter.max}};
+    }
     caps.antennas.clear();
     antennaIndices.clear();
     const int antennaCount = LMS_GetAntennaList(handle, LMS_CH_RX, 0, nullptr);
@@ -152,6 +157,8 @@ Result LimeSdrSweep::connect(const Device::Info& info) {
             antennaIndices.push_back(i);
         }
     }
+    caps.receiveChannels = static_cast<U64>(
+        std::clamp(LMS_GetNumChannels(handle, LMS_CH_RX), 1, MaxReceiveChannels));
     caps.automaticGain = false;
     caps.biasTee = false;
     caps.sweepSampleRate = std::min(rate.max, SweepSampleRate);

@@ -26,6 +26,29 @@ void ConvertI16(const I16* input, CF32* output, const U64 count, const F32 scale
     }
 }
 
+void ConvertI16Channels(const I16* input, std::span<CF32* const> outputs, const U64 count,
+                        const F32 scale) {
+    const U64 channels = outputs.size();
+    for (U64 i = 0; i < count; ++i) {
+        for (U64 channel = 0; channel < channels; ++channel) {
+            const I16* word = input + 2 * (i * channels + channel);
+            outputs[channel][i] = {static_cast<F32>(word[0]) / scale,
+                                   static_cast<F32>(word[1]) / scale};
+        }
+    }
+}
+
+void SplitI16Channels(const I16* input, std::span<I16* const> outputs, const U64 count) {
+    const U64 channels = outputs.size();
+    for (U64 i = 0; i < count; ++i) {
+        for (U64 channel = 0; channel < channels; ++channel) {
+            const I16* word = input + 2 * (i * channels + channel);
+            outputs[channel][2 * i] = word[0];
+            outputs[channel][2 * i + 1] = word[1];
+        }
+    }
+}
+
 U64 GuardSamples(const F64 seconds, const F64 sampleRate) {
     if (!std::isfinite(seconds) || !std::isfinite(sampleRate) ||
         seconds < 0.0 || sampleRate <= 0.0) {

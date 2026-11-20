@@ -138,6 +138,7 @@ struct FlowgraphNode {
         std::vector<DeviceOption> deviceOptions;
         bool configCollapsed = false;
         bool configDetached = false;
+        bool configAdvanced = false;
     };
 
     struct Config {
@@ -161,6 +162,7 @@ struct FlowgraphNode {
         Sakura::Callback<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
         Sakura::Callback<void(bool)> onConfigCollapse;
         Sakura::Callback<void(bool)> onConfigDetach;
+        Sakura::Callback<void(bool)> onConfigAdvanced;
     };
 
     static constexpr F32 MinimumNodeWidth = 120.0f;

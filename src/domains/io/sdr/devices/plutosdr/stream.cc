@@ -108,7 +108,7 @@ class PlutoSdrStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -134,6 +134,7 @@ class PlutoSdrStream final : public Stream {
     iio_channel* oscillator = nullptr;
     iio_channel* inPhase = nullptr;
     iio_buffer* buffer = nullptr;
+    DataType streamFormat = DataType::CF32;
     CaptureQueue queue;
     std::thread worker;
     std::atomic<bool> stopping{false};
@@ -215,8 +216,12 @@ Result PlutoSdrStream::connect(const Device::Info& info) {
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = {*frequency};
     caps.sampleRateRanges = {{std::ceil(rate->minimum / FirDecimation), rate->maximum}};
+    const auto bandwidth = ReadRange(control, "rf_bandwidth_available");
+    caps.bandwidthRanges = {bandwidth ? *bandwidth : Device::Range{MinBandwidth, MaxBandwidth}};
     caps.automaticGain = true;
     caps.biasTee = false;
+    caps.fullScale = Q11Scale;
+    caps.formats = {{}, {DataType::CI16, Q11Scale}};
     caps.sweepSampleRate = std::min(rate->maximum, SweepSampleRate);
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 20.0e3;
@@ -252,7 +257,9 @@ Result PlutoSdrStream::apply(const Settings& settings) {
         JST_ERROR("[SDR_PLUTOSDR] Failed to set the sample rate: {}", ErrorText(status));
         return Result::ERROR;
     }
-    const F64 bandwidth = std::clamp(settings.sampleRate, MinBandwidth, MaxBandwidth);
+    const F64 bandwidth = std::clamp(settings.bandwidth > 0.0 ? settings.bandwidth
+                                                              : settings.sampleRate,
+                                     MinBandwidth, MaxBandwidth);
     JST_CHECK(write("rf_bandwidth", std::llround(bandwidth), "the RF bandwidth"));
     JST_CHECK(tuneOscillator(settings.frequency));
     JST_CHECK(refreshGainRange());
@@ -304,10 +311,11 @@ Result PlutoSdrStream::retune(const F64 frequency) {
 
 Result PlutoSdrStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
+    streamFormat = requestedSettings.format;
     const U64 transferSamples = TransferSamples(sampleRate);
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 2.0),
                                        transferSamples * (KernelBuffers + 1));
-    JST_CHECK(queue.resize(capacity));
+    JST_CHECK(queue.resize(capacity, sampleBytes()));
 
     if (const int status = iio_device_set_kernel_buffers_count(receiver, KernelBuffers);
         status < 0) {
@@ -342,6 +350,10 @@ Result PlutoSdrStream::open() {
                 }
                 const auto* data = static_cast<const I16*>(iio_buffer_start(buffer));
                 const U64 samples = static_cast<U64>(bytes) / (2 * sizeof(I16));
+                if (streamFormat == DataType::CI16) {
+                    queue.push(queueGeneration, samples, reinterpret_cast<const std::byte*>(data));
+                    continue;
+                }
                 queue.push(queueGeneration, samples,
                            [data](CF32* output, const U64 offset, const U64 count) {
                                ConvertI16(data + offset * 2, output, count, Q11Scale);
@@ -382,7 +394,7 @@ Result PlutoSdrStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Device::Capture PlutoSdrStream::read(std::span<CF32> samples,
+Device::Capture PlutoSdrStream::read(std::span<std::byte> samples,
                                      const std::chrono::milliseconds timeout) {
     return queue.pop(samples, timeout);
 }

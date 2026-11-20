@@ -6,6 +6,20 @@
 
 namespace Jetstream::Modules {
 
+namespace {
+
+bool PathExists(const std::filesystem::path& path) {
+    std::error_code ec;
+    return std::filesystem::exists(path, ec) && !ec;
+}
+
+bool EntryExists(const std::filesystem::path& path) {
+    std::error_code ec;
+    return std::filesystem::exists(std::filesystem::symlink_status(path, ec)) && !ec;
+}
+
+}  // namespace
+
 Result FileWriterImpl::validate() {
     const auto& config = *candidate();
 
@@ -48,6 +62,10 @@ Result FileWriterImpl::create() {
         return Result::SUCCESS;
     }
 
+    return openRecording();
+}
+
+Result FileWriterImpl::openRecording() {
     if (filepath.empty()) {
         JST_WARN("[MODULE_FILE_WRITER] File path is empty.");
         return Result::INCOMPLETE;
@@ -56,22 +74,23 @@ Result FileWriterImpl::create() {
     const std::string dataPath = Platform::PathToUtf8(filePath);
 
     auto parentPath = filePath.parent_path();
-    if (!parentPath.empty() && !std::filesystem::exists(parentPath)) {
+    if (!parentPath.empty() && !PathExists(parentPath)) {
         JST_WARN("[MODULE_FILE_WRITER] Parent directory for '{}' does not exist.", dataPath);
         return Result::INCOMPLETE;
     }
 
     const auto companions = format->companions();
     const bool companionExists = std::any_of(companions.begin(), companions.end(), [](const auto& path) {
-        return std::filesystem::exists(path);
+        return PathExists(path);
     });
-    if ((std::filesystem::exists(filePath) || companionExists) && !overwrite) {
+    if ((PathExists(filePath) || companionExists) && !overwrite) {
         JST_ERROR("[MODULE_FILE_WRITER] File '{}' already exists.", dataPath);
         return Result::ERROR;
     }
 
     JST_CHECK(format->check(inputs().at("buffer").tensor));
 
+    const bool existed = EntryExists(filePath);
     dataFile.open(filePath, std::ios::out | std::ios::binary);
     if (!dataFile.is_open()) {
         JST_ERROR("[MODULE_FILE_WRITER] Failed to open '{}' for writing.", dataPath);
@@ -80,7 +99,15 @@ Result FileWriterImpl::create() {
 
     bytesWritten.publish(0);
 
-    JST_CHECK(format->start(dataFile, inputs().at("buffer").tensor));
+    if (const auto result = format->start(dataFile, inputs().at("buffer").tensor);
+        result != Result::SUCCESS) {
+        dataFile.close();
+        if (!existed) {
+            std::error_code ec;
+            std::filesystem::remove(filePath, ec);
+        }
+        return result;
+    }
 
     JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", dataPath);
 
@@ -88,17 +115,62 @@ Result FileWriterImpl::create() {
 }
 
 Result FileWriterImpl::destroy() {
+    closeRecording();
+
+    return Result::SUCCESS;
+}
+
+Result FileWriterImpl::reconfigure() {
+    const auto& config = *candidate();
+
+    if (config.filepath != filepath ||
+        config.fileFormat != fileFormat ||
+        config.overwrite != overwrite) {
+        return Result::RECREATE;
+    }
+
+    if (config.recording == recording) {
+        return Result::SUCCESS;
+    }
+
+    if (!config.recording) {
+        recording = false;
+        closeRecording();
+        return Result::SUCCESS;
+    }
+
+    const auto parentPath = filePath.parent_path();
+    if (filepath.empty() || (!parentPath.empty() && !PathExists(parentPath))) {
+        return Result::RECREATE;
+    }
+
+    format = FileWriterFormat::Create(fileFormat);
+    filePath = format->resolve(Platform::PathFromUtf8(filepath));
+    bytesSinceLastMeasurement = 0;
+    lastMeasurementTime = std::chrono::steady_clock::now();
+    JST_CHECK(openRecording());
+
+    recording = true;
+
+    return Result::SUCCESS;
+}
+
+void FileWriterImpl::closeRecording() {
     if (dataFile.is_open()) {
         format->finish(dataFile, bytesWritten.get());
         dataFile.close();
         JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).",
                  Platform::PathToUtf8(filePath), bytesWritten.get());
+
+        std::error_code ec;
+        const U64 size = std::filesystem::file_size(filePath, ec);
+        if (!ec) {
+            bytesWritten.publish(size);
+        }
     }
 
     throughputMBs.publish(0.0f);
     bytesSinceLastMeasurement = 0;
-
-    return Result::SUCCESS;
 }
 
 U64 FileWriterImpl::getBytesWritten() const {

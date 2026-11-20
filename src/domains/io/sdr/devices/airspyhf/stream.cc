@@ -27,7 +27,7 @@ class AirspyHfStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -193,7 +193,7 @@ Result AirspyHfStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Device::Capture AirspyHfStream::read(std::span<CF32> samples,
+Device::Capture AirspyHfStream::read(std::span<std::byte> samples,
                                      const std::chrono::milliseconds timeout) {
     auto capture = queue.pop(samples, timeout);
     if (capture.status == Device::Status::Timeout && streaming &&

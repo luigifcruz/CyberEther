@@ -21,12 +21,14 @@ struct FlowgraphDetachedSurface {
         std::string title;
         std::vector<FlowgraphConfigFieldConfig> configFields;
         bool configOpen = false;
+        bool configAdvanced = false;
         std::shared_ptr<const Render::Texture> texture;
         Sakura::Callback<void(const Sakura::SurfaceResize&)> onSize;
         Sakura::Callback<void(InputEvent)> onInput;
         Sakura::Callback<SurfaceCursor()> resolveCursor;
         Sakura::Callback<void()> onClose;
         Sakura::Callback<void(bool)> onToggleConfigOpen;
+        Sakura::Callback<void(bool)> onConfigAdvanced;
     };
 
     void update(Config config);

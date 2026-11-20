@@ -120,6 +120,11 @@ FlowgraphEditor::Config FlowgraphEditorPresenter::build(const std::string& flowg
             enqueue(MailSetConfigDetached{
                 flowgraphId, blockName, detached});
         },
+        .onNodeConfigAdvanced = [enqueue, flowgraphId](const std::string& blockName,
+                                                       bool advanced) {
+            enqueue(MailSetConfigAdvanced{
+                flowgraphId, blockName, advanced});
+        },
     };
 
     if (const auto selection = context.state.flowgraph.selections.find(flowgraphId);

@@ -1,5 +1,6 @@
 #include "format.hh"
 
+#include <array>
 #include <chrono>
 #include <unordered_map>
 
@@ -7,6 +8,7 @@
 
 #include "jetstream/fmt/chrono.h"
 #include "jetstream/logger.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/platform.hh"
 
 namespace Jetstream::Modules {
@@ -60,7 +62,46 @@ Result FileWriterFormat::Sigmf::check(const Tensor& input) const {
     return Result::SUCCESS;
 }
 
+Result FileWriterFormat::Sigmf::Counter::reset(const Tensor& input) {
+    std::optional<U64> value;
+    JST_CHECK(ReadAttribute(input, std::string(key), value));
+
+    seen = value.has_value();
+    last = value.value_or(0);
+    total = 0;
+
+    return Result::SUCCESS;
+}
+
+Result FileWriterFormat::Sigmf::Counter::update(const Tensor& input, U64& increase) {
+    increase = 0;
+
+    std::optional<U64> value;
+    JST_CHECK(ReadAttribute(input, std::string(key), value));
+    if (!value) {
+        return Result::SUCCESS;
+    }
+
+    if (*value > last) {
+        increase = *value - last;
+        total += increase;
+    }
+    seen = true;
+    last = *value;
+
+    return Result::SUCCESS;
+}
+
+bool FileWriterFormat::Sigmf::Losses::tracked() const {
+    return bufferLostSamples.seen || radioLostSamples.seen || radioGaps.seen;
+}
+
 Result FileWriterFormat::Sigmf::start(std::ofstream&, const Tensor& input) {
+    losses = {};
+    JST_CHECK(losses.bufferLostSamples.reset(input));
+    JST_CHECK(losses.radioLostSamples.reset(input));
+    JST_CHECK(losses.radioGaps.reset(input));
+
     datatype = kSigmfDataTypes.at(input.dtype());
     sampleRate = NumericAttribute(input, "sampleRate");
     captures.push_back({
@@ -78,9 +119,40 @@ Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex
     }
 
     bool changed = false;
+    const auto seen = [&] {
+        return std::array{losses.bufferLostSamples.seen,
+                          losses.radioLostSamples.seen,
+                          losses.radioGaps.seen};
+    };
+    const auto seenBefore = seen();
+
+    U64 bufferLost = 0;
+    JST_CHECK(losses.bufferLostSamples.update(input, bufferLost));
+    if (bufferLost > 0) {
+        losses.annotations.push_back({
+            .sampleStart = sampleIndex,
+            .lost = bufferLost,
+            .radio = false,
+        });
+    }
+
+    U64 radioLost = 0;
+    JST_CHECK(losses.radioLostSamples.update(input, radioLost));
+    U64 radioGaps = 0;
+    JST_CHECK(losses.radioGaps.update(input, radioGaps));
+    if (radioLost > 0 || radioGaps > 0) {
+        losses.annotations.push_back({
+            .sampleStart = sampleIndex,
+            .lost = radioLost,
+            .breaks = radioGaps,
+            .radio = true,
+        });
+    }
+    changed = seen() != seenBefore;
+
     if (!sampleRate) {
         sampleRate = NumericAttribute(input, "sampleRate");
-        changed = sampleRate.has_value();
+        changed = changed || sampleRate.has_value();
     }
 
     const auto frequency = NumericAttribute(input, "frequency");
@@ -114,6 +186,48 @@ Result FileWriterFormat::Sigmf::write() const {
         global["core:sample_rate"] = *sampleRate;
     }
 
+    if (losses.bufferLostSamples.seen) {
+        global["cyberether:buffer_lost_samples"] = losses.bufferLostSamples.total;
+    }
+    if (losses.radioLostSamples.seen) {
+        global["cyberether:radio_lost_samples"] = losses.radioLostSamples.total;
+    }
+    if (losses.radioGaps.seen) {
+        global["cyberether:radio_gaps"] = losses.radioGaps.total;
+    }
+    if (losses.tracked()) {
+        global["core:extensions"] = nlohmann::json::array({{
+            {"name", "cyberether"},
+            {"version", "1.0.0"},
+            {"optional", true},
+        }});
+    }
+
+    nlohmann::json annotations = nlohmann::json::array();
+    for (const auto& annotation : losses.annotations) {
+        std::string comment;
+        if (!annotation.radio) {
+            comment = jst::fmt::format("{} samples lost in the source buffer near this sample",
+                                       annotation.lost);
+        } else if (annotation.breaks == 0) {
+            comment = jst::fmt::format("{} samples lost from the radio stream at or after this sample",
+                                       annotation.lost);
+        } else {
+            const auto breaks = annotation.breaks == 1
+                ? std::string("1 stream break")
+                : jst::fmt::format("{} stream breaks", annotation.breaks);
+            comment = annotation.lost == 0
+                ? jst::fmt::format("{} from the radio at or after this sample", breaks)
+                : jst::fmt::format("{} samples lost from the radio stream and {} at or after this sample",
+                                   annotation.lost, breaks);
+        }
+        annotations.push_back({
+            {"core:sample_start", annotation.sampleStart},
+            {"core:sample_count", 1},
+            {"core:comment", comment},
+        });
+    }
+
     nlohmann::json entries = nlohmann::json::array();
     for (const auto& capture : captures) {
         nlohmann::json entry = {
@@ -129,7 +243,7 @@ Result FileWriterFormat::Sigmf::write() const {
     const nlohmann::json json = {
         {"global", std::move(global)},
         {"captures", std::move(entries)},
-        {"annotations", nlohmann::json::array()},
+        {"annotations", std::move(annotations)},
     };
 
     const std::string meta = Platform::PathToUtf8(metaPath);

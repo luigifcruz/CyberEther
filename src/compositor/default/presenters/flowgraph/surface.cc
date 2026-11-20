@@ -19,6 +19,8 @@ std::vector<FlowgraphDetachedSurface::Config> FlowgraphDetachedSurfacePresenter:
     }
 
     for (const auto& [blockName, blockData] : blocks->second) {
+        ConfigMeta configMeta;
+        flowgraph->metadata().get("config", configMeta, blockName);
         for (const auto& surface : blockData.surfaces) {
             if (!surface) {
                 continue;
@@ -54,6 +56,7 @@ std::vector<FlowgraphDetachedSurface::Config> FlowgraphDetachedSurfacePresenter:
                                                                        key,
                                                                        blockData),
                     .configOpen = !surfaceMeta.configCollapsed,
+                    .configAdvanced = configMeta.advanced,
                     .texture = manifest.surface,
                     .onSize = std::move(callbacks.onSize),
                     .onInput = std::move(callbacks.onInput),
@@ -72,6 +75,13 @@ std::vector<FlowgraphDetachedSurface::Config> FlowgraphDetachedSurfacePresenter:
                             .block = blockName,
                             .surface = surfaceId,
                             .collapsed = !open,
+                        });
+                    },
+                    .onConfigAdvanced = [enqueue, flowgraphId, blockName](const bool advanced) {
+                        enqueue(MailSetConfigAdvanced{
+                            .flowgraph = flowgraphId,
+                            .block = blockName,
+                            .advanced = advanced,
                         });
                     },
                 });

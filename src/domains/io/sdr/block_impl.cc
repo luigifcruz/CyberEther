@@ -4,10 +4,22 @@
 #include <jetstream/domains/io/sdr/module.hh>
 #include "module_impl.hh"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <string>
 
 namespace Jetstream::Blocks {
+
+namespace {
+
+std::string FrequencyLabel(const F64 frequency) {
+    return frequency < 1e6 ? jst::fmt::format("{:g} kHz", frequency / 1e3)
+                           : jst::fmt::format("{:g} MHz", frequency / 1e6);
+}
+
+}  // namespace
 
 struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
     Result validate() override;
@@ -17,13 +29,21 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
     Result reconfigure() override;
 
  protected:
+    bool antennasDefined = false;
+    bool bandwidthDefined = false;
     std::shared_ptr<Modules::Sdr> moduleConfig = std::make_shared<Modules::Sdr>();
     Modules::SdrImpl* moduleImpl = nullptr;
 
  private:
     const Modules::SdrImpl* createdModule(const Blocks::Sdr& config);
+    Parser::Map channelsFormat(const Blocks::Sdr& config);
     Parser::Map manualGainFormat(const Blocks::Sdr& config);
     Parser::Map antennaFormat(const Blocks::Sdr& config);
+    Parser::Map antennasFormat(const Blocks::Sdr& config);
+    bool antennasListed(const Blocks::Sdr& config);
+    void sizeAntennas();
+    Parser::Map bandwidthFormat(const Blocks::Sdr& config);
+    Parser::Map sampleFormatFormat(const Blocks::Sdr& config);
     Parser::Map sampleRateFormat(const Blocks::Sdr& config);
 };
 
@@ -34,17 +54,37 @@ Result SdrImpl::validate() {
         JST_ERROR("[BLOCK_SDR] Frequency step must be finite and positive.");
         return Result::ERROR;
     }
-
     return Result::SUCCESS;
 }
 
+void SdrImpl::sizeAntennas() {
+    if (channels <= 1) {
+        return;
+    }
+    if (antennas.size() > channels) {
+        antennas.resize(channels);
+    }
+    const U64 receivers = std::min(channels, Radio::Device::ReceiveChannels(deviceString));
+    if (antennas.size() < receivers) {
+        antennas.resize(receivers, antenna);
+    }
+}
+
 Result SdrImpl::configure() {
+    sizeAntennas();
+
     moduleConfig->deviceString = deviceString;
+    moduleConfig->driverArguments = driverArguments;
     moduleConfig->antenna = antenna;
+    moduleConfig->antennas = antennas;
+    moduleConfig->channels = channels;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
+    moduleConfig->bandwidth = bandwidth;
+    moduleConfig->sampleFormat = sampleFormat;
     moduleConfig->automaticGain = automaticGain;
     moduleConfig->manualGain = manualGain;
+    moduleConfig->manualGains = manualGains;
     moduleConfig->biasTee = biasTee;
     moduleConfig->numberOfBatches = numberOfBatches;
     moduleConfig->numberOfTimeSamples = numberOfTimeSamples;
@@ -58,7 +98,8 @@ Result SdrImpl::define() {
 
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
-                                    "The output buffer containing samples from the radio."));
+                                    "The output buffer containing samples from the radio. "
+                                    "Channels above 1 add a leading channel axis."));
 
     Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
     bool selectionListed = config.deviceString.empty();
@@ -77,10 +118,39 @@ Result SdrImpl::define() {
                                     "Select a radio to receive samples. Choose None to disconnect.",
                                     {{"type", "dropdown"}, {"options", std::move(deviceOptions)}}));
 
-    JST_CHECK(defineInterfaceConfig("antenna",
-                                    "Antenna",
-                                    "Receive antenna port. Changes restart the receiver.",
-                                    antennaFormat(config)));
+    const auto selection = Radio::Device::Selection::Parse(config.deviceString);
+    const bool soapy = selection && selection->driver == "soapy";
+    if (soapy) {
+        JST_CHECK(defineInterfaceConfig("driverArguments",
+                                        "Driver Arguments",
+                                        "SoapySDR stream arguments as key=value pairs separated by commas. "
+                                        "Changes restart the receiver.",
+                                        {{"type", "text"}, {"advanced", true}}));
+    }
+
+    if (soapy || config.channels > 1 || Radio::Device::ReceiveChannels(config.deviceString) > 1) {
+        JST_CHECK(defineInterfaceConfig("channels",
+                                        "Channels",
+                                        "Number of synchronized receive channels. More than one adds an "
+                                        "outer channel dimension to Output. Changes restart reception.",
+                                        channelsFormat(config)));
+    }
+
+    if (config.channels == 1) {
+        JST_CHECK(defineInterfaceConfig("antenna",
+                                        "Antenna",
+                                        "Receive antenna port. Changes restart the receiver.",
+                                        antennaFormat(config)));
+    }
+
+    antennasDefined = antennasListed(config);
+    if (antennasDefined) {
+        JST_CHECK(defineInterfaceConfig("antennas",
+                                        "Antennas",
+                                        "Receive antenna port of each receiver in RX order. New entries "
+                                        "start at the single-channel Antenna. Changes restart the receiver.",
+                                        antennasFormat(config)));
+    }
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
@@ -95,16 +165,43 @@ Result SdrImpl::define() {
                                     "Sampling rate.",
                                     sampleRateFormat(config)));
 
+    bandwidthDefined = Radio::Device::SupportsBandwidth(config.deviceString);
+    if (bandwidthDefined) {
+        JST_CHECK(defineInterfaceConfig("bandwidth",
+                                        "Filter Bandwidth",
+                                        "Width of the analog receive filter. Auto lets the radio pick "
+                                        "it for the sample rate. Changes restart the receiver.",
+                                        bandwidthFormat(config)));
+    }
+
+    JST_CHECK(defineInterfaceConfig("sampleFormat",
+                                    "Sample Format",
+                                    "Type of the output samples. CF32 converts them to floating "
+                                    "point. Integer types keep the samples the radio delivers. "
+                                    "Changes restart the receiver.",
+                                    sampleFormatFormat(config)));
+
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
                                     "Enable automatic gain control on radios that support it.",
                                     {{"type", "bool"}}));
 
-    if (!config.automaticGain) {
+    if (!config.automaticGain && config.channels == 1) {
         JST_CHECK(defineInterfaceConfig("manualGain",
                                         "Manual Gain",
                                         "Receive gain applied while automatic gain is off.",
                                         manualGainFormat(config)));
+    }
+
+    if (!config.automaticGain && config.channels > 1) {
+        const auto capabilities = Radio::Device::Cached(config.deviceString);
+        JST_CHECK(defineInterfaceConfig("manualGains",
+                                        "Manual Gains",
+                                        "Receive gain of each receiver in RX order, applied while automatic "
+                                        "gain is off. Missing entries use the single-channel Manual Gain.",
+                                        {{"type", "vector-inline"},
+                                         {"value_type", "float"},
+                                         {"unit", capabilities ? capabilities->gainUnit : "dB"}}));
     }
 
     if (Radio::Device::SupportsBiasTee(config.deviceString)) {
@@ -173,13 +270,28 @@ Result SdrImpl::define() {
 Result SdrImpl::create() {
     const auto result = moduleCreate("sdr", moduleConfig, {});
     JST_CHECK(updateInterfaceConfigFormat("sampleRate", sampleRateFormat(*this)));
+    JST_CHECK(updateInterfaceConfigFormat("sampleFormat", sampleFormatFormat(*this)));
+    if (bandwidthDefined) {
+        JST_CHECK(updateInterfaceConfigFormat("bandwidth", bandwidthFormat(*this)));
+    }
     JST_CHECK(result);
     JST_CHECK(moduleExposeOutput("signal", {"sdr", "signal"}));
 
     moduleImpl = moduleHandle("sdr")->getImpl<Modules::SdrImpl>();
     sampleRate = moduleImpl->sampleRate;
     moduleConfig->sampleRate = sampleRate;
-    JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
+    if (channels == 1) {
+        JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
+    }
+    const auto selection = Radio::Device::Selection::Parse(deviceString);
+    if (selection && selection->driver == "soapy") {
+        JST_CHECK(updateInterfaceConfigFormat("channels", channelsFormat(*this)));
+    }
+    if (antennasDefined) {
+        sizeAntennas();
+        moduleConfig->antennas = antennas;
+        JST_CHECK(updateInterfaceConfigFormat("antennas", antennasFormat(*this)));
+    }
 
     return reconfigure();
 }
@@ -190,7 +302,7 @@ Result SdrImpl::reconfigure() {
         moduleConfig->manualGain = manualGain;
     }
 
-    if (!automaticGain) {
+    if (!automaticGain && channels == 1) {
         JST_CHECK(updateInterfaceConfigFormat("manualGain", manualGainFormat(*this)));
     }
 
@@ -204,6 +316,23 @@ const Modules::SdrImpl* SdrImpl::createdModule(const Blocks::Sdr& config) {
     }
     const auto* sdr = module->getImpl<Modules::SdrImpl>();
     return sdr && sdr->deviceString == config.deviceString ? sdr : nullptr;
+}
+
+Parser::Map SdrImpl::channelsFormat(const Blocks::Sdr& config) {
+    const U64 available = Radio::Device::ReceiveChannels(config.deviceString);
+    Parser::Sequence options;
+    const auto option = [&](const U64 count) {
+        std::string value;
+        Parser::TypedToString(count, value);
+        options.emplace_back(Parser::Map{{"label", std::to_string(count)}, {"value", std::move(value)}});
+    };
+    for (U64 count = 1; count <= available; ++count) {
+        option(count);
+    }
+    if (config.channels > available) {
+        option(config.channels);
+    }
+    return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
 Parser::Map SdrImpl::manualGainFormat(const Blocks::Sdr& config) {
@@ -231,6 +360,98 @@ Parser::Map SdrImpl::antennaFormat(const Blocks::Sdr& config) {
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
+bool SdrImpl::antennasListed(const Blocks::Sdr& config) {
+    if (config.channels <= 1) {
+        return false;
+    }
+    const auto capabilities = Radio::Device::Cached(config.deviceString);
+    return !capabilities || !capabilities->antennas.empty();
+}
+
+Parser::Map SdrImpl::antennasFormat(const Blocks::Sdr& config) {
+    Parser::Sequence options{Parser::Map{{"label", "Default"}, {"value", ""}}};
+    std::vector<std::string> listed{""};
+    const auto add = [&](const std::string& antenna) {
+        if (std::find(listed.begin(), listed.end(), antenna) == listed.end()) {
+            listed.push_back(antenna);
+            options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
+        }
+    };
+    if (const auto capabilities = Radio::Device::Cached(config.deviceString)) {
+        for (const auto& antenna : capabilities->antennas) {
+            add(antenna);
+        }
+    }
+    add(config.antenna);
+    for (const auto& antenna : config.antennas) {
+        add(antenna);
+    }
+    return {{"type", "vector"},
+            {"value_type", "string"},
+            {"item_label", "Antenna"},
+            {"options", std::move(options)}};
+}
+
+Parser::Map SdrImpl::bandwidthFormat(const Blocks::Sdr& config) {
+    static constexpr std::array<F64, 20> StandardWidths = {
+        0.2e6, 0.3e6, 0.6e6, 1.0e6, 1.5e6, 1.75e6, 2.0e6, 2.5e6, 3.0e6, 5.0e6,
+        6.0e6, 7.0e6, 8.0e6, 10.0e6, 14.0e6, 20.0e6, 28.0e6, 40.0e6, 56.0e6, 80.0e6,
+    };
+    std::vector<F64> widths;
+    if (const auto capabilities = Radio::Device::Cached(config.deviceString)) {
+        for (const auto& range : capabilities->bandwidthRanges) {
+            if (range.minimum == range.maximum) {
+                widths.push_back(range.minimum);
+            }
+        }
+        for (const auto width : StandardWidths) {
+            if (Radio::Device::Range::Contains(capabilities->bandwidthRanges, width)) {
+                widths.push_back(width);
+            }
+        }
+    }
+    if (config.bandwidth > 0.0f) {
+        widths.push_back(config.bandwidth);
+    }
+    std::sort(widths.begin(), widths.end());
+    widths.erase(std::unique(widths.begin(), widths.end(), [](const F64 a, const F64 b) {
+        return static_cast<F32>(a) == static_cast<F32>(b);
+    }), widths.end());
+
+    Parser::Sequence options{Parser::Map{{"label", "Auto"}, {"value", "0"}}};
+    for (const auto width : widths) {
+        std::string value;
+        Parser::TypedToString(static_cast<F32>(width), value);
+        options.emplace_back(Parser::Map{{"label", FrequencyLabel(width)},
+                                         {"value", std::move(value)}});
+    }
+    return {{"type", "dropdown"}, {"options", std::move(options)}};
+}
+
+Parser::Map SdrImpl::sampleFormatFormat(const Blocks::Sdr& config) {
+    std::vector<Radio::Device::Format> formats{{}};
+    if (const auto capabilities = Radio::Device::Cached(config.deviceString)) {
+        formats = capabilities->formats;
+    }
+    const auto saved = NameToDataType(config.sampleFormat);
+    if (std::ranges::none_of(formats, [&](const auto& format) { return format.type == saved; })) {
+        formats.push_back({saved, 0.0});
+    }
+
+    Parser::Sequence options;
+    for (const auto& format : formats) {
+        std::string value(format.type == DataType::None ? config.sampleFormat
+                                                        : DataTypeToName(format.type));
+        auto label = value;
+        if (format.type != DataType::CF32 && format.type != DataType::CF64 &&
+            format.fullScale >= 2.0) {
+            label = jst::fmt::format("{} ({:g}-bit)", value, std::log2(format.fullScale) + 1.0);
+        }
+        options.emplace_back(Parser::Map{{"label", std::move(label)}, {"value", std::move(value)}});
+    }
+    return {{"type", "dropdown"}, {"options", std::move(options)}};
+}
+
 Parser::Map SdrImpl::sampleRateFormat(const Blocks::Sdr& config) {
     const auto capabilities = Radio::Device::Cached(config.deviceString);
     const auto rates = capabilities ? capabilities->fixedSampleRates() : std::vector<F64>{};
@@ -241,9 +462,8 @@ Parser::Map SdrImpl::sampleRateFormat(const Blocks::Sdr& config) {
     for (const auto rate : rates) {
         std::string value;
         Parser::TypedToString(static_cast<F32>(rate), value);
-        auto label = rate < 1e6 ? jst::fmt::format("{:g} kHz", rate / 1e3)
-                                : jst::fmt::format("{:g} MHz", rate / 1e6);
-        options.emplace_back(Parser::Map{{"label", std::move(label)}, {"value", std::move(value)}});
+        options.emplace_back(Parser::Map{{"label", FrequencyLabel(rate)},
+                                         {"value", std::move(value)}});
     }
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }

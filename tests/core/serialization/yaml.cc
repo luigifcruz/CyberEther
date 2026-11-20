@@ -66,6 +66,14 @@ TEST_CASE("Parser::YamlDecode handles empty and quoted input", "[core][serializa
         REQUIRE(Parser::YamlDecode("label: 'quoted value'\n", data) == Result::SUCCESS);
         REQUIRE(std::any_cast<std::string>(data.at("label")) == "quoted value");
     }
+
+    SECTION("single quotes inside a scalar are kept") {
+        Parser::Map data;
+        REQUIRE(Parser::YamlDecode("label: \"'quoted value'\"\n"
+                                   "raw: 'it''s'\n", data) == Result::SUCCESS);
+        REQUIRE(std::any_cast<std::string>(data.at("label")) == "'quoted value'");
+        REQUIRE(std::any_cast<std::string>(data.at("raw")) == "it's");
+    }
 }
 
 TEST_CASE("Parser YAML preserves multiline scalars", "[core][serialization][yaml]") {

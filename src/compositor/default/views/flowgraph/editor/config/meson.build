@@ -1,4 +1,5 @@
 src_lst += files([
+    'advanced.cc',
     'base.cc',
     'bool.cc',
     'console.cc',

@@ -873,6 +873,22 @@ Result FlowgraphActions::handle(const MailSetMetricsCollapsed& msg) {
     return Result::SUCCESS;
 }
 
+Result FlowgraphActions::handle(const MailSetConfigAdvanced& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        return Result::SUCCESS;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    ConfigMeta existing;
+    flowgraph->metadata().get("config", existing, msg.block);
+    if (existing.advanced != msg.advanced) {
+        markUntracked(msg.flowgraph);
+    }
+    existing.advanced = msg.advanced;
+    flowgraph->metadata().set("config", existing, msg.block);
+    return Result::SUCCESS;
+}
+
 Result FlowgraphActions::handle(const MailSurfaceInput& msg) {
     if (msg.surface) {
         msg.surface->pushInputEvent(msg.event);

@@ -177,6 +177,11 @@ void FlowgraphEditor::update(Config config) {
                     this->config.onNodeConfigDetach(blockName, detached);
                 }
             },
+            .onConfigAdvanced = [this, blockName](bool advanced) {
+                if (this->config.onNodeConfigAdvanced) {
+                    this->config.onNodeConfigAdvanced(blockName, advanced);
+                }
+            },
         };
 
         nodeViews[blockName].update(std::move(nodeConfig));

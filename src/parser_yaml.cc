@@ -1,4 +1,3 @@
-// TODO: Stop stripping single quotes in NormalizeScalar, rapidyaml already unquotes scalars.
 // TODO: Reject anchors, aliases, duplicate keys, and multi-document streams instead of accepting them silently.
 // TODO: Emit scalars in a style that reads back identically, such as "!tag", "...", and control characters.
 
@@ -34,14 +33,6 @@ std::string NormalizeLineBreaks(const std::string& yaml) {
     }
 
     return normalized;
-}
-
-std::string NormalizeScalar(const std::string& value) {
-    if (value.size() >= 2 && value.front() == '\'' && value.back() == '\'') {
-        return value.substr(1, value.size() - 2);
-    }
-
-    return value;
 }
 
 [[noreturn]] void ThrowBasicError(ryml::csubstr msg, const ryml::ErrorDataBasic&, void*) {
@@ -114,7 +105,7 @@ Result DeserializeValue(ryml::ConstNodeRef node, std::any& value, U64 depth) {
 
     std::string scalar;
     node >> scalar;
-    value = NormalizeScalar(scalar);
+    value = std::move(scalar);
     return Result::SUCCESS;
 }
 

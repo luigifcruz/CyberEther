@@ -46,7 +46,7 @@ class AirspyStream final : public Stream {
 
     Result connect(const Device::Info& info);
     F64 resolveGain(F64 gain, const std::optional<Device::Range>& range) const override;
-    Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
+    Device::Capture read(std::span<std::byte> samples, std::chrono::milliseconds timeout) override;
 
  protected:
     Result apply(const Settings& settings) override;
@@ -65,6 +65,7 @@ class AirspyStream final : public Stream {
     airspy_device* handle = nullptr;
     bool biasTeeEnabled = false;
     bool streaming = false;
+    DataType streamFormat = DataType::CF32;
     CaptureQueue queue;
     std::atomic<U64> queueGeneration{0};
 };
@@ -94,10 +95,6 @@ Result AirspyStream::connect(const Device::Info& info) {
     }
     deviceInfo = info;
 
-    if (airspy_set_sample_type(handle, AIRSPY_SAMPLE_FLOAT32_IQ) != AIRSPY_SUCCESS) {
-        JST_ERROR("[SDR_AIRSPY] Failed to select IQ samples.");
-        return Result::ERROR;
-    }
     U32 count = 0;
     airspy_get_samplerates(handle, &count, 0);
     std::vector<U32> rates(count);
@@ -114,6 +111,7 @@ Result AirspyStream::connect(const Device::Info& info) {
     }
     caps.automaticGain = true;
     caps.biasTee = true;
+    caps.formats = {{}, {DataType::CI16, 32768.0}};
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 0.0;
     defaultSettlingTime = SettlingTime;
@@ -139,6 +137,12 @@ Result AirspyStream::apply(const Settings& settings) {
         return Result::ERROR;
     }
 
+    const auto type = settings.format == DataType::CI16 ? AIRSPY_SAMPLE_INT16_IQ
+                                                        : AIRSPY_SAMPLE_FLOAT32_IQ;
+    if (airspy_set_sample_type(handle, type) != AIRSPY_SUCCESS) {
+        JST_ERROR("[SDR_AIRSPY] Failed to select IQ samples.");
+        return Result::ERROR;
+    }
     if (airspy_set_samplerate(handle, static_cast<U32>(std::lround(settings.sampleRate))) !=
         AIRSPY_SUCCESS) {
         JST_ERROR("[SDR_AIRSPY] Failed to set the sample rate.");
@@ -171,6 +175,12 @@ Result AirspyStream::apply(const Settings& settings) {
 
 int AirspyStream::Callback(airspy_transfer* transfer) {
     auto* stream = static_cast<AirspyStream*>(transfer->ctx);
+    if (stream->streamFormat == DataType::CI16) {
+        stream->queue.push(stream->queueGeneration, static_cast<U64>(transfer->sample_count),
+                           static_cast<const std::byte*>(transfer->samples),
+                           transfer->dropped_samples);
+        return 0;
+    }
     const auto* data = static_cast<const F32*>(transfer->samples);
     stream->queue.push(stream->queueGeneration, static_cast<U64>(transfer->sample_count),
                        [data](CF32* output, const U64 offset, const U64 count) {
@@ -184,7 +194,9 @@ int AirspyStream::Callback(airspy_transfer* transfer) {
 
 Result AirspyStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
-    JST_CHECK(queue.resize(std::max<U64>(static_cast<U64>(sampleRate / 2.0), 1 << 18)));
+    streamFormat = requestedSettings.format;
+    JST_CHECK(queue.resize(std::max<U64>(static_cast<U64>(sampleRate / 2.0), 1 << 18),
+                           sampleBytes()));
     queueGeneration = nextGeneration();
     queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
@@ -222,7 +234,7 @@ Result AirspyStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Device::Capture AirspyStream::read(std::span<CF32> samples,
+Device::Capture AirspyStream::read(std::span<std::byte> samples,
                                    const std::chrono::milliseconds timeout) {
     auto capture = queue.pop(samples, timeout);
     if (capture.status == Device::Status::Timeout && streaming &&

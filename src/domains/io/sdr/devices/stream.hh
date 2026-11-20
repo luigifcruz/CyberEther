@@ -3,10 +3,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 #include "device.hh"
 
@@ -22,6 +24,12 @@ class JETSTREAM_API Stream {
         bool biasTee = false;
         F64 settlingTime = -1.0;
         F64 gain = 30.0;
+        U64 receiveChannels = 1;
+        std::vector<F64> channelGains;
+        std::string driverArguments;
+        std::vector<std::string> channelAntennas;
+        F64 bandwidth = 0.0;
+        DataType format = DataType::CF32;
     };
 
     struct Applied {
@@ -32,6 +40,7 @@ class JETSTREAM_API Stream {
         bool biasTee = false;
         F64 gain = 0.0;
         std::optional<Device::Range> gainRange;
+        std::vector<F64> channelGains;
     };
 
     virtual ~Stream() = default;
@@ -47,7 +56,11 @@ class JETSTREAM_API Stream {
 
     Result start(const Settings& settings);
     Result update(const Settings& settings);
-    virtual Device::Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) = 0;
+    U64 sampleBytes() const;
+    virtual Device::Capture read(std::span<std::byte> samples,
+                                 std::chrono::milliseconds timeout) = 0;
+    virtual Device::Capture readChannels(std::span<std::span<std::byte>> samples,
+                                         std::chrono::milliseconds timeout);
 
  protected:
     virtual Result apply(const Settings& settings) = 0;
@@ -56,6 +69,7 @@ class JETSTREAM_API Stream {
     virtual Result tune(F64 frequency) = 0;
     virtual Result setAutomaticGain(bool automaticGain) = 0;
     virtual Result setGain(F64 gain) = 0;
+    virtual Result setChannelGains(const std::vector<F64>& gains);
 
     U64 guard() const;
     U64 nextGeneration();

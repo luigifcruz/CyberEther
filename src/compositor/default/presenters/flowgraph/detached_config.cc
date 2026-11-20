@@ -45,6 +45,7 @@ std::vector<FlowgraphDetachedConfig::Config> FlowgraphDetachedConfigPresenter::b
                                                      blockName,
                                                      key,
                                                      blockData),
+            .configAdvanced = configMeta.advanced,
             .metricsOpen = !configMeta.tileMetricsCollapsed,
             .onClose = [enqueue, flowgraphId, blockName]() {
                 enqueue(MailSetConfigDetached{
@@ -58,6 +59,13 @@ std::vector<FlowgraphDetachedConfig::Config> FlowgraphDetachedConfigPresenter::b
                     .flowgraph = flowgraphId,
                     .block = blockName,
                     .collapsed = !open,
+                });
+            },
+            .onConfigAdvanced = [enqueue, flowgraphId, blockName](const bool advanced) {
+                enqueue(MailSetConfigAdvanced{
+                    .flowgraph = flowgraphId,
+                    .block = blockName,
+                    .advanced = advanced,
                 });
             },
         });
