@@ -5,14 +5,14 @@
 #include <mutex>
 #include <vector>
 
-#include <ConnectionRegistry.h>
+#include <limesuiteng/DeviceHandle.h>
 
 #include "jetstream/types.hh"
 
 namespace Jetstream::Radio {
 
 struct LimeSdrLibrary {
-    static std::vector<lime::ConnectionHandle> Boards();
+    static std::vector<lime::DeviceHandle> Boards();
     static std::atomic<U64>& OpenDevices();
     static std::mutex& TuningMutex();
 };

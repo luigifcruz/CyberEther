@@ -9,13 +9,20 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <optional>
 #include <vector>
 
-#include <LimeSuite.h>
+#include <limesuiteng/DeviceRegistry.h>
+#include <limesuiteng/Logger.h>
+#include <limesuiteng/RFStream.h>
+#include <limesuiteng/SDRDescriptor.h>
+#include <limesuiteng/SDRDevice.h>
+#include <limesuiteng/StreamConfig.h>
 
 #include "jetstream/logger.hh"
 
@@ -28,7 +35,6 @@ using Clock = std::chrono::steady_clock;
 
 constexpr F32 Latency = 0.5f;
 constexpr F64 SettlingTime = 2.0e-3;
-constexpr unsigned MaxGain = 73;
 constexpr U64 PacketSamples = 1360;
 constexpr U64 DrainSamples = 65536;
 constexpr U64 UsbTransfers = 16;
@@ -36,6 +42,9 @@ constexpr U32 FifoSamples = 1 << 20;
 constexpr F64 SweepSampleRate = 20.0e6;
 constexpr F64 MinCalibrationBandwidth = 2.5e6;
 constexpr F64 MinMultiChannelFrequency = 30.0e6;
+constexpr F64 MinOscillatorFrequency = 30.0e6;
+constexpr F64 AutoAntennaSplit = 1.7e9;
+constexpr U8 AutoAntenna = std::numeric_limits<U8>::max();
 constexpr int MaxReceiveChannels = 2;
 
 std::chrono::milliseconds Remaining(const Clock::time_point deadline) {
@@ -64,34 +73,30 @@ class LimeSdrStream final : public Stream {
     Result setChannelGains(const std::vector<F64>& gains) override;
 
  private:
-    enum class Delivery {
-        Samples,
-        Empty,
-        Misaligned,
-        Failed,
-    };
-
     void disconnect();
-    void destroyStreams();
     static Result CheckFrequency(U64 channels, F64 frequency);
+    Result setCarrier(F64 frequency);
     Result setOscillator(F64 frequency, bool useCache);
     Result tuneOscillator(F64 frequency, bool useCache);
-    bool poll();
+    void poll();
     Result applyGain(F64 gain, bool force);
-    int receive(U64 channel, std::byte* data, U64 count, lms_stream_meta_t& meta,
+    U64 receive(std::span<std::byte* const> data, U64 count, lime::StreamMeta& meta,
                 std::chrono::milliseconds wait);
-    Delivery receiveAll(std::span<std::byte* const> data, U64 count, lms_stream_meta_t& meta,
-                        Clock::time_point deadline, U64& delivered);
-    Delivery align(Clock::time_point deadline);
 
-    lms_device_t* handle = nullptr;
-    std::vector<int> antennaIndices;
+    lime::SDRDevice* device = nullptr;
+    std::vector<U8> antennaIndices;
+    std::vector<std::optional<U8>> channelAntennas;
+    std::optional<U8> autoLowAntenna;
+    std::optional<U8> autoHighAntenna;
+    bool sharedAntenna = false;
+    F64 mixerOffset = std::numeric_limits<F64>::quiet_NaN();
     Device::Range tunableRange;
-    std::vector<lms_stream_t> streams;
+    std::unique_ptr<lime::RFStream> stream;
     DataType streamFormat = DataType::CF32;
+    F64 gainOffset = 0.0;
     U64 streamBatch = 1;
+    U64 streamLoss = 0;
     bool streaming = false;
-    bool aligned = false;
     U64 receiveChannels = 1;
     std::vector<F64> channelGains;
     U64 queueGeneration = 0;
@@ -106,28 +111,21 @@ LimeSdrStream::~LimeSdrStream() {
     disconnect();
 }
 
-void LimeSdrStream::destroyStreams() {
-    for (auto& stream : streams) {
-        LMS_DestroyStream(handle, &stream);
-    }
-    streams.clear();
-}
-
 void LimeSdrStream::disconnect() {
     close();
-    if (handle) {
-        destroyStreams();
-        LMS_Close(handle);
-        handle = nullptr;
+    if (device) {
+        stream.reset();
+        lime::DeviceRegistry::freeDevice(device);
+        device = nullptr;
         --LimeSdrLibrary::OpenDevices();
     }
 }
 
 Result LimeSdrStream::connect(const Device::Info& info) {
-    std::vector<std::string> matches;
+    std::vector<lime::DeviceHandle> matches;
     for (const auto& board : LimeSdrLibrary::Boards()) {
-        if (board.serial == info.serial) {
-            matches.push_back(board.serialize());
+        if (!board.serial.empty() && board.serial == info.serial) {
+            matches.push_back(board);
         }
     }
     if (matches.empty()) {
@@ -139,64 +137,99 @@ Result LimeSdrStream::connect(const Device::Info& info) {
         return Result::INCOMPLETE;
     }
     const auto& match = matches.front();
-    lms_info_str_t selected = {};
-    std::strncpy(selected, match.c_str(), sizeof(selected) - 1);
-    if (LMS_Open(&handle, selected, nullptr) != 0) {
-        handle = nullptr;
+    try {
+        device = lime::DeviceRegistry::makeDevice(match);
+    } catch (const std::exception& e) {
+        JST_ERROR("[SDR_LIMESDR] Failed to open device '{}': {}", info.label, e.what());
+        return Result::ERROR;
+    }
+    if (!device) {
         JST_ERROR("[SDR_LIMESDR] Failed to open device '{}': {}", info.label,
-                  LMS_GetLastErrorMessage());
+                  lime::GetLastErrorMessage());
         return Result::ERROR;
     }
     ++LimeSdrLibrary::OpenDevices();
     deviceInfo = info;
 
-    if (LMS_Init(handle) != 0 || LMS_EnableChannel(handle, LMS_CH_RX, 0, true) != 0) {
-        JST_ERROR("[SDR_LIMESDR] Failed to initialize the device: {}", LMS_GetLastErrorMessage());
+    try {
+        if (device->Init() != lime::OpStatus::Success ||
+            device->EnableChannel(0, lime::TRXDir::Rx, 0, true) != lime::OpStatus::Success) {
+            JST_ERROR("[SDR_LIMESDR] Failed to initialize the device: {}",
+                      lime::GetLastErrorMessage());
+            return Result::ERROR;
+        }
+    } catch (const std::exception& e) {
+        JST_ERROR("[SDR_LIMESDR] Failed to initialize the device: {}", e.what());
         return Result::ERROR;
     }
 
-    lms_range_t frequency = {};
-    lms_range_t rate = {};
-    if (LMS_GetLOFrequencyRange(handle, LMS_CH_RX, &frequency) != 0 ||
-        LMS_GetSampleRateRange(handle, LMS_CH_RX, &rate) != 0) {
+    const auto& descriptor = device->GetDescriptor();
+    if (descriptor.rfSOC.empty()) {
         JST_ERROR("[SDR_LIMESDR] Failed to query device ranges.");
         return Result::ERROR;
     }
+    const auto& chip = descriptor.rfSOC.front();
+    const auto& rate = chip.samplingRateRange;
+    const auto gains = chip.gainRange.find(lime::TRXDir::Rx);
+    if (gains == chip.gainRange.end() || !gains->second.contains(lime::eGainTypes::GENERIC)) {
+        JST_ERROR("[SDR_LIMESDR] Failed to query the receive gain range.");
+        return Result::ERROR;
+    }
+    const auto& gain = gains->second.at(lime::eGainTypes::GENERIC);
+    gainOffset = gain.min;
 
     auto& caps = deviceCapabilities;
     caps.receiveChannels = static_cast<U64>(
-        std::clamp(LMS_GetNumChannels(handle, LMS_CH_RX), 1, MaxReceiveChannels));
-    tunableRange = {frequency.min, frequency.max};
+        std::clamp(static_cast<int>(chip.channelCount), 1, MaxReceiveChannels));
+    tunableRange = {chip.frequencyRange.min, chip.frequencyRange.max};
     caps.frequencyRanges = {tunableRange};
     caps.sampleRateRanges = {{rate.min, rate.max}};
     caps.bandwidthRanges.clear();
-    if (lms_range_t filter = {}; LMS_GetLPFBWRange(handle, LMS_CH_RX, &filter) == 0) {
-        caps.bandwidthRanges = {{filter.min, filter.max}};
+    if (const auto filter = chip.lowPassFilterRange.find(lime::TRXDir::Rx);
+        filter != chip.lowPassFilterRange.end()) {
+        caps.bandwidthRanges = {{filter->second.min, filter->second.max}};
     }
     caps.formats = {{}, {DataType::CI16, 2048.0}};
     caps.antennas.clear();
     antennaIndices.clear();
-    const int antennaCount = LMS_GetAntennaList(handle, LMS_CH_RX, 0, nullptr);
-    if (antennaCount > 0) {
-        auto names = std::make_unique<lms_name_t[]>(static_cast<std::size_t>(antennaCount));
-        LMS_GetAntennaList(handle, LMS_CH_RX, 0, names.get());
-        for (int i = 0; i < antennaCount; ++i) {
-            if (std::string(names[i]) == "NONE") {
+    autoLowAntenna.reset();
+    autoHighAntenna.reset();
+    bool autoAntenna = false;
+    if (const auto paths = chip.pathNames.find(lime::TRXDir::Rx); paths != chip.pathNames.end()) {
+        for (U64 i = 0; i < paths->second.size(); ++i) {
+            const auto& name = paths->second[i];
+            if (name == "NONE" || name == "None") {
                 continue;
             }
-            caps.antennas.emplace_back(names[i]);
-            antennaIndices.push_back(i);
+            if (name == "LNAH") {
+                autoHighAntenna = static_cast<U8>(i);
+            } else if (name == "LNAW" || name == "LNAL") {
+                autoLowAntenna = autoLowAntenna.value_or(static_cast<U8>(i));
+            } else if (name.ends_with("_NC")) {
+                autoAntenna = true;
+            }
+            caps.antennas.push_back(name);
+            antennaIndices.push_back(static_cast<U8>(i));
         }
     }
+    if (autoAntenna && autoLowAntenna && autoHighAntenna) {
+        caps.antennas.push_back("Auto");
+        antennaIndices.push_back(AutoAntenna);
+    } else {
+        autoLowAntenna.reset();
+        autoHighAntenna.reset();
+    }
+    sharedAntenna = descriptor.name.find("XTRX") != std::string::npos;
+    mixerOffset = std::numeric_limits<F64>::quiet_NaN();
     caps.automaticGain = false;
     caps.biasTee = false;
     caps.sweepSampleRate = std::min(rate.max, SweepSampleRate);
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 20.0e3;
     defaultSettlingTime = SettlingTime;
-    appliedSettings.gainRange = Device::Range{0.0, static_cast<F64>(MaxGain)};
+    appliedSettings.gainRange = Device::Range{0.0, gain.max - gain.min};
 
-    JST_DEBUG("[SDR_LIMESDR] Opened '{}' at {}.", info.label, match);
+    JST_DEBUG("[SDR_LIMESDR] Opened '{}' at {}.", info.label, match.Serialize());
     return Result::SUCCESS;
 }
 
@@ -212,10 +245,10 @@ Result LimeSdrStream::CheckFrequency(const U64 channels, const F64 frequency) {
 }
 
 Result LimeSdrStream::apply(const Settings& settings) {
-    if (!streams.empty()) {
+    if (stream) {
         disconnect();
     }
-    if (!handle) {
+    if (!device) {
         const auto info = deviceInfo;
         if (const auto result = connect(info); result != Result::SUCCESS) {
             disconnect();
@@ -240,11 +273,14 @@ Result LimeSdrStream::apply(const Settings& settings) {
         return Result::ERROR;
     }
     const auto& antennas = deviceCapabilities.antennas;
-    std::vector<std::optional<int>> antennaPaths(settings.receiveChannels);
+    std::vector<std::optional<U8>> antennaPaths(settings.receiveChannels);
     for (U64 i = 0; i < settings.receiveChannels; ++i) {
         const auto& name = i < settings.channelAntennas.size() ? settings.channelAntennas[i]
                                                                : settings.antenna;
         if (name.empty()) {
+            if (autoLowAntenna) {
+                antennaPaths[i] = AutoAntenna;
+            }
             continue;
         }
         const auto antenna = std::find(antennas.begin(), antennas.end(), name);
@@ -253,6 +289,25 @@ Result LimeSdrStream::apply(const Settings& settings) {
             return Result::ERROR;
         }
         antennaPaths[i] = antennaIndices[antenna - antennas.begin()];
+    }
+    std::optional<U8> switchPath;
+    bool switchConflict = false;
+    for (const auto& path : antennaPaths) {
+        if (path) {
+            switchConflict = switchConflict || (switchPath && *switchPath != *path);
+            switchPath = path;
+        }
+    }
+    if (sharedAntenna && switchConflict) {
+        JST_ERROR("[SDR_LIMESDR] LimeSDR XTRX routes every receiver through one antenna "
+                  "switch. Select the same Antenna on each receiver.");
+        return Result::ERROR;
+    }
+    if (sharedAntenna) {
+        if (!switchPath) {
+            switchPath = device->GetAntenna(0, lime::TRXDir::Rx, 0);
+        }
+        std::fill(antennaPaths.begin(), antennaPaths.end(), switchPath);
     }
     if (settings.automaticGain) {
         JST_WARN("[SDR_LIMESDR] LimeSDR has no automatic gain control. Using the manual gain.");
@@ -263,59 +318,64 @@ Result LimeSdrStream::apply(const Settings& settings) {
 
     receiveChannels = settings.receiveChannels;
     channelGains = settings.channelGains;
+    channelAntennas.clear();
     for (U64 i = 0; i < deviceCapabilities.receiveChannels; ++i) {
-        if (LMS_EnableChannel(handle, LMS_CH_RX, i, i < receiveChannels) != 0) {
+        if (device->EnableChannel(0, lime::TRXDir::Rx, static_cast<U8>(i), i < receiveChannels) !=
+            lime::OpStatus::Success) {
             JST_ERROR("[SDR_LIMESDR] Failed to {} RX{}: {}", i < receiveChannels ? "enable"
                                                                                 : "disable",
-                      i + 1, LMS_GetLastErrorMessage());
+                      i + 1, lime::GetLastErrorMessage());
             return Result::ERROR;
         }
     }
 
     {
         std::lock_guard lock(LimeSdrLibrary::TuningMutex());
-        if (LMS_SetSampleRate(handle, settings.sampleRate, 0) != 0 ||
-            LMS_SetLOFrequency(handle, LMS_CH_RX, 0, settings.frequency) != 0) {
-            JST_ERROR("[SDR_LIMESDR] Failed to configure device: {}", LMS_GetLastErrorMessage());
+        if (device->SetSampleRate(0, lime::TRXDir::Rx, 0, settings.sampleRate, 0) !=
+            lime::OpStatus::Success) {
+            JST_ERROR("[SDR_LIMESDR] Failed to configure device: {}",
+                      lime::GetLastErrorMessage());
             return Result::ERROR;
         }
         for (U64 i = 0; i < antennaPaths.size(); ++i) {
-            if (antennaPaths[i] &&
-                LMS_SetAntenna(handle, LMS_CH_RX, i, static_cast<size_t>(*antennaPaths[i])) != 0) {
+            if (antennaPaths[i] && *antennaPaths[i] != AutoAntenna &&
+                device->SetAntenna(0, lime::TRXDir::Rx, static_cast<U8>(i), *antennaPaths[i]) !=
+                    lime::OpStatus::Success) {
                 JST_ERROR("[SDR_LIMESDR] Failed to select the RX{} antenna: {}", i + 1,
-                          LMS_GetLastErrorMessage());
+                          lime::GetLastErrorMessage());
                 return Result::ERROR;
+            }
+        }
+        channelAntennas = antennaPaths;
+        mixerOffset = std::numeric_limits<F64>::quiet_NaN();
+        JST_CHECK(setCarrier(settings.frequency));
+        JST_CHECK(applyGain(settings.gain, true));
+        const F64 requested = settings.bandwidth > 0.0 ? settings.bandwidth : settings.sampleRate;
+        const auto& filter = deviceCapabilities.bandwidthRanges;
+        const F64 width = filter.empty()
+            ? requested
+            : std::clamp(requested, filter.front().minimum, filter.front().maximum);
+        const F64 bandwidth = std::max(width, MinCalibrationBandwidth);
+        for (U64 i = 0; i < receiveChannels; ++i) {
+            const auto channel = static_cast<U8>(i);
+            if (device->SetLowPassFilter(0, lime::TRXDir::Rx, channel, width) !=
+                lime::OpStatus::Success) {
+                JST_ERROR("[SDR_LIMESDR] Failed to set the receive filter: {}",
+                          lime::GetLastErrorMessage());
+                return Result::ERROR;
+            }
+            if (device->Calibrate(0, lime::TRXDir::Rx, channel, bandwidth) !=
+                lime::OpStatus::Success) {
+                JST_WARN("[SDR_LIMESDR] Failed to calibrate RX{}: {}", i + 1,
+                         lime::GetLastErrorMessage());
             }
         }
         JST_CHECK(applyGain(settings.gain, true));
-        lms_range_t filter = {};
-        if (LMS_GetLPFBWRange(handle, LMS_CH_RX, &filter) != 0) {
-            JST_ERROR("[SDR_LIMESDR] Failed to set the receive filter: {}",
-                      LMS_GetLastErrorMessage());
-            return Result::ERROR;
-        }
-        const F64 width = std::clamp(settings.bandwidth > 0.0 ? settings.bandwidth
-                                                              : settings.sampleRate,
-                                     filter.min, filter.max);
-        const F64 bandwidth = std::max(width, MinCalibrationBandwidth);
-        for (U64 i = 0; i < receiveChannels; ++i) {
-            if (LMS_SetLPFBW(handle, LMS_CH_RX, i, width) != 0) {
-                JST_ERROR("[SDR_LIMESDR] Failed to set the receive filter: {}",
-                          LMS_GetLastErrorMessage());
-                return Result::ERROR;
-            }
-            if (LMS_Calibrate(handle, LMS_CH_RX, i, bandwidth, 0) != 0) {
-                JST_WARN("[SDR_LIMESDR] Failed to calibrate RX{}: {}", i + 1,
-                         LMS_GetLastErrorMessage());
-            }
-        }
     }
 
-    F64 hostRate = 0.0;
-    F64 rfRate = 0.0;
-    F64 frequency = 0.0;
-    if (LMS_GetSampleRate(handle, LMS_CH_RX, 0, &hostRate, &rfRate) != 0 ||
-        LMS_GetLOFrequency(handle, LMS_CH_RX, 0, &frequency) != 0) {
+    const F64 hostRate = device->GetSampleRate(0, lime::TRXDir::Rx, 0);
+    const F64 frequency = device->GetFrequency(0, lime::TRXDir::Rx, 0) - mixerOffset;
+    if (hostRate <= 0.0) {
         JST_ERROR("[SDR_LIMESDR] Failed to read back the applied settings.");
         return Result::ERROR;
     }
@@ -329,36 +389,67 @@ Result LimeSdrStream::apply(const Settings& settings) {
     return Result::SUCCESS;
 }
 
-Result LimeSdrStream::setOscillator(const F64 frequency, const bool useCache) {
-    bool tuned = false;
-    {
-        std::lock_guard lock(LimeSdrLibrary::TuningMutex());
-        if (useCache) {
-            LMS_EnableCache(handle, true);
-        }
-        tuned = LMS_SetLOFrequency(handle, LMS_CH_RX, 0, frequency) == 0;
-        if (useCache) {
-            LMS_EnableCache(handle, false);
+Result LimeSdrStream::setCarrier(const F64 frequency) {
+    const F64 oscillator = std::max(frequency, MinOscillatorFrequency);
+    const F64 offset = oscillator - frequency;
+    if (device->SetFrequency(0, lime::TRXDir::Rx, 0, oscillator) != lime::OpStatus::Success) {
+        JST_ERROR("[SDR_LIMESDR] Failed to tune to {:.3f} MHz: {}", frequency / 1e6,
+                  lime::GetLastErrorMessage());
+        return Result::ERROR;
+    }
+    if (offset > 0.0) {
+        U32 rfRate = 0;
+        const F64 hostRate = device->GetSampleRate(0, lime::TRXDir::Rx, 0, &rfRate);
+        if (offset + hostRate / 2.0 >= rfRate / 2.0) {
+            JST_ERROR("[SDR_LIMESDR] Frequency ({:.3f} MHz) is out of reach of the receive mixer "
+                      "at {:.3f} MS/s. Raise the frequency or lower the sample rate.",
+                      frequency / 1e6, hostRate / 1e6);
+            return Result::ERROR;
         }
     }
-    if (!tuned) {
-        JST_ERROR("[SDR_LIMESDR] Failed to tune to {:.3f} MHz: {}", frequency / 1e6,
-                  LMS_GetLastErrorMessage());
-        return Result::ERROR;
+    if (offset != mixerOffset) {
+        for (U64 i = 0; i < receiveChannels; ++i) {
+            if (device->SetNCOFrequency(0, lime::TRXDir::Rx, static_cast<U8>(i), 0, offset) !=
+                lime::OpStatus::Success) {
+                JST_ERROR("[SDR_LIMESDR] Failed to tune to {:.3f} MHz: {}", frequency / 1e6,
+                          lime::GetLastErrorMessage());
+                return Result::ERROR;
+            }
+        }
+        mixerOffset = offset;
+    }
+    for (U64 i = 0; i < channelAntennas.size(); ++i) {
+        if (channelAntennas[i] != AutoAntenna) {
+            continue;
+        }
+        const U8 path = frequency < AutoAntennaSplit ? *autoLowAntenna : *autoHighAntenna;
+        if (device->GetAntenna(0, lime::TRXDir::Rx, static_cast<U8>(i)) != path &&
+            device->SetAntenna(0, lime::TRXDir::Rx, static_cast<U8>(i), path) !=
+                lime::OpStatus::Success) {
+            JST_ERROR("[SDR_LIMESDR] Failed to select the RX{} antenna: {}", i + 1,
+                      lime::GetLastErrorMessage());
+            return Result::ERROR;
+        }
     }
     return Result::SUCCESS;
 }
 
+Result LimeSdrStream::setOscillator(const F64 frequency, const bool useCache) {
+    std::lock_guard lock(LimeSdrLibrary::TuningMutex());
+    if (useCache) {
+        device->EnableCache(true);
+    }
+    const auto result = setCarrier(frequency);
+    if (useCache) {
+        device->EnableCache(false);
+    }
+    return result;
+}
+
 Result LimeSdrStream::tuneOscillator(const F64 frequency, const bool useCache) {
     JST_CHECK(setOscillator(frequency, useCache));
-    F64 actual = 0.0;
-    if (LMS_GetLOFrequency(handle, LMS_CH_RX, 0, &actual) != 0) {
-        JST_ERROR("[SDR_LIMESDR] Failed to read back the tuned frequency: {}",
-                  LMS_GetLastErrorMessage());
-        return Result::ERROR;
-    }
     requestedSettings.frequency = frequency;
-    appliedSettings.frequency = actual;
+    appliedSettings.frequency = device->GetFrequency(0, lime::TRXDir::Rx, 0) - mixerOffset;
     return Result::SUCCESS;
 }
 
@@ -374,63 +465,53 @@ Result LimeSdrStream::open() {
     for (auto& drain : drains) {
         drainPointers.push_back(drain.data());
     }
-    if (!streams.empty() && streamFormat != requestedSettings.format) {
-        destroyStreams();
+    if (stream && streamFormat != requestedSettings.format) {
+        stream.reset();
     }
-    if (streams.empty()) {
+    if (!stream) {
         streamFormat = requestedSettings.format;
-        streams.reserve(receiveChannels);
+        const bool integer = streamFormat == DataType::CI16;
+        lime::StreamConfig config;
         for (U64 i = 0; i < receiveChannels; ++i) {
-            lms_stream_t stream = {};
-            stream.isTx = false;
-            stream.channel = static_cast<uint32_t>(i);
-            stream.fifoSize = FifoSamples;
-            stream.throughputVsLatency = Latency;
-            stream.dataFmt = streamFormat == DataType::CI16 ? lms_stream_t::LMS_FMT_I12
-                                                            : lms_stream_t::LMS_FMT_F32;
-            if (LMS_SetupStream(handle, &stream) != 0) {
-                JST_ERROR("[SDR_LIMESDR] Failed to set up the stream: {}",
-                          LMS_GetLastErrorMessage());
-                destroyStreams();
-                return Result::ERROR;
-            }
-            streams.push_back(stream);
+            config.channels[lime::TRXDir::Rx].push_back(static_cast<U8>(i));
+        }
+        config.format = integer ? lime::DataFormat::I12 : lime::DataFormat::F32;
+        config.linkFormat = integer ? lime::DataFormat::I12 : lime::DataFormat::I16;
+        config.bufferSize = FifoSamples;
+        config.hintSampleRate = static_cast<float>(sampleRate);
+        try {
+            stream = device->StreamCreate(config, 0);
+        } catch (const std::exception& e) {
+            JST_ERROR("[SDR_LIMESDR] Failed to set up the stream: {}", e.what());
+            return Result::ERROR;
+        }
+        if (!stream) {
+            JST_ERROR("[SDR_LIMESDR] Failed to set up the stream: {}",
+                      lime::GetLastErrorMessage());
+            return Result::ERROR;
         }
         const F64 limit = (sampleRate / 1.0e6 + 5.0) * Latency;
         for (U64 batch = 1; static_cast<F64>(batch) < limit; batch *= 2) {
             streamBatch = batch;
         }
     }
-    for (U64 i = 0; i < streams.size(); ++i) {
-        if (LMS_StartStream(&streams[i]) != 0) {
-            while (i > 0) {
-                LMS_StopStream(&streams[--i]);
-            }
-            JST_ERROR("[SDR_LIMESDR] Failed to start the stream: {}", LMS_GetLastErrorMessage());
-            return Result::ERROR;
-        }
-    }
-    lms_stream_status_t status = {};
-    if (LMS_GetStreamStatus(&streams.front(), &status) != 0) {
-        for (auto& stream : streams) {
-            LMS_StopStream(&stream);
-        }
-        JST_ERROR("[SDR_LIMESDR] Failed to read the stream status.");
+    if (stream->Start() != lime::OpStatus::Success) {
+        JST_ERROR("[SDR_LIMESDR] Failed to start the stream: {}", lime::GetLastErrorMessage());
         return Result::ERROR;
     }
+    lime::StreamStats status;
+    stream->StreamStatus(&status, nullptr);
+    streamLoss = static_cast<U64>(status.loss) + status.overrun;
     queueGeneration = nextGeneration();
     received = Clock::now();
     timestamps.restart(guard(), static_cast<U64>(sampleRate));
-    aligned = streams.size() == 1;
     streaming = true;
     return Result::SUCCESS;
 }
 
 void LimeSdrStream::close() {
     if (streaming) {
-        for (auto& stream : streams) {
-            LMS_StopStream(&stream);
-        }
+        stream->Stop();
     }
     streaming = false;
 }
@@ -442,11 +523,8 @@ Result LimeSdrStream::tune(const F64 frequency) {
     }
     queueGeneration = nextGeneration();
 
-    lms_stream_status_t status = {};
-    if (LMS_GetStreamStatus(&streams.front(), &status) != 0) {
-        JST_ERROR("[SDR_LIMESDR] Failed to read the stream position after retuning.");
-        return Result::ERROR;
-    }
+    lime::StreamStats status;
+    stream->StreamStatus(&status, nullptr);
     const U64 settle = guard();
     const U64 margin = PacketSamples * (streamBatch * UsbTransfers + 2);
     if (settle > std::numeric_limits<U64>::max() - margin ||
@@ -458,114 +536,42 @@ Result LimeSdrStream::tune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-bool LimeSdrStream::poll() {
-    bool lost = false;
-    U64 latest = 0;
-    for (auto& stream : streams) {
-        lms_stream_status_t status = {};
-        if (LMS_GetStreamStatus(&stream, &status) != 0) {
-            return false;
-        }
-        if (status.droppedPackets != 0 || status.overrun != 0) {
-            lost = true;
-            latest = std::max<U64>(latest, status.timestamp);
-        }
+void LimeSdrStream::poll() {
+    lime::StreamStats status;
+    stream->StreamStatus(&status, nullptr);
+    const U64 loss = static_cast<U64>(status.loss) + status.overrun;
+    if (loss == streamLoss) {
+        return;
     }
-    if (!lost) {
-        return true;
-    }
+    streamLoss = loss;
     const U64 margin = 2 * PacketSamples;
-    timestamps.lose(latest > std::numeric_limits<U64>::max() - margin
+    timestamps.lose(status.timestamp > std::numeric_limits<U64>::max() - margin
         ? std::numeric_limits<U64>::max()
-        : latest + margin);
-    return true;
+        : status.timestamp + margin);
 }
 
-int LimeSdrStream::receive(const U64 channel, std::byte* data, const U64 count,
-                           lms_stream_meta_t& meta, const std::chrono::milliseconds wait) {
-    return LMS_RecvStream(&streams[channel], data, count, &meta,
-                          static_cast<unsigned>(wait.count()));
-}
-
-LimeSdrStream::Delivery LimeSdrStream::receiveAll(std::span<std::byte* const> data, const U64 count,
-                                                  lms_stream_meta_t& meta,
-                                                  const Clock::time_point deadline,
-                                                  U64& delivered) {
-    delivered = 0;
-    const int first = receive(0, data[0], count, meta, Remaining(deadline));
-    if (first < 0) {
-        return Delivery::Failed;
+U64 LimeSdrStream::receive(std::span<std::byte* const> data, const U64 count,
+                           lime::StreamMeta& meta, const std::chrono::milliseconds wait) {
+    U64 delivered = 0;
+    if (streamFormat == DataType::CI16) {
+        std::array<lime::complex12_t*, MaxReceiveChannels> destinations{};
+        for (U64 i = 0; i < data.size(); ++i) {
+            destinations[i] = reinterpret_cast<lime::complex12_t*>(data[i]);
+        }
+        delivered = stream->StreamRx(destinations.data(), static_cast<uint32_t>(count), &meta,
+                                     wait);
+    } else {
+        std::array<lime::complex32f_t*, MaxReceiveChannels> destinations{};
+        for (U64 i = 0; i < data.size(); ++i) {
+            destinations[i] = reinterpret_cast<lime::complex32f_t*>(data[i]);
+        }
+        delivered = stream->StreamRx(destinations.data(), static_cast<uint32_t>(count), &meta,
+                                     wait);
     }
-    if (first == 0) {
-        return Delivery::Empty;
+    if (delivered > 0) {
+        received = Clock::now();
     }
-    delivered = static_cast<U64>(first);
-    for (U64 channel = 1; channel < streams.size(); ++channel) {
-        U64 matched = 0;
-        while (matched < delivered) {
-            lms_stream_meta_t other = {};
-            const int read = receive(channel, data[channel] + matched * sampleBytes(),
-                                     delivered - matched, other, Remaining(deadline));
-            if (read < 0) {
-                return Delivery::Failed;
-            }
-            if (read == 0 && Clock::now() < deadline) {
-                continue;
-            }
-            if (read == 0 || other.timestamp != meta.timestamp + matched) {
-                aligned = false;
-                return Delivery::Misaligned;
-            }
-            matched += static_cast<U64>(read);
-        }
-    }
-    received = Clock::now();
-    return Delivery::Samples;
-}
-
-LimeSdrStream::Delivery LimeSdrStream::align(const Clock::time_point deadline) {
-    std::vector<U64> next(streams.size());
-    for (U64 channel = 0; channel < streams.size(); ++channel) {
-        lms_stream_meta_t meta = {};
-        const int delivered = receive(channel, drains[channel].data(), PacketSamples, meta,
-                                      Remaining(deadline));
-        if (delivered < 0) {
-            return Delivery::Failed;
-        }
-        if (delivered == 0) {
-            return Delivery::Empty;
-        }
-        next[channel] = meta.timestamp + static_cast<U64>(delivered);
-    }
-    while (true) {
-        const U64 target = *std::max_element(next.begin(), next.end());
-        if (std::all_of(next.begin(), next.end(), [&](const U64 value) {
-                return value == target;
-            })) {
-            aligned = true;
-            return Delivery::Samples;
-        }
-        if (Clock::now() >= deadline) {
-            return Delivery::Empty;
-        }
-        for (U64 channel = 0; channel < streams.size(); ++channel) {
-            if (next[channel] == target) {
-                continue;
-            }
-            const U64 count = std::min<U64>(target - next[channel],
-                                            drains[channel].size() / sampleBytes());
-            lms_stream_meta_t meta = {};
-            const int delivered = receive(channel, drains[channel].data(), count, meta,
-                                          Remaining(deadline));
-            if (delivered < 0) {
-                return Delivery::Failed;
-            }
-            if (delivered == 0) {
-                return Delivery::Empty;
-            }
-            next[channel] = meta.timestamp + static_cast<U64>(delivered);
-        }
-    }
+    return delivered;
 }
 
 Device::Capture LimeSdrStream::read(std::span<std::byte> samples,
@@ -583,9 +589,6 @@ Device::Capture LimeSdrStream::readChannels(std::span<std::span<std::byte>> samp
         capture.epoch = timestamps.epoch();
         return capture;
     };
-    const auto blind = [&] {
-        return finish({.status = Status::Failure, .error = "failed to read the stream status"});
-    };
     const auto idle = [&] {
         if (Clock::now() - received > Device::StallTimeout) {
             return finish({.status = Status::Disconnected,
@@ -593,14 +596,11 @@ Device::Capture LimeSdrStream::readChannels(std::span<std::span<std::byte>> samp
         }
         return finish({.status = Status::Timeout});
     };
-    const auto failed = [&] {
-        return finish({.status = Status::Disconnected, .error = LMS_GetLastErrorMessage()});
-    };
 
     if (!streaming) {
         return {.status = Status::Failure, .error = "stream is not running"};
     }
-    if (samples.size() != streams.size() || samples.front().size() < sampleBytes() ||
+    if (samples.size() != receiveChannels || samples.front().size() < sampleBytes() ||
         std::any_of(samples.begin(), samples.end(), [&](const auto channel) {
             return channel.size() != samples.front().size();
         })) {
@@ -609,31 +609,12 @@ Device::Capture LimeSdrStream::readChannels(std::span<std::span<std::byte>> samp
     const U64 size = samples.front().size() / sampleBytes();
 
     const auto deadline = Clock::now() + timeout;
-    if (!aligned) {
-        const auto delivery = align(deadline);
-        if (delivery == Delivery::Failed) {
-            return failed();
-        }
-        if (delivery == Delivery::Empty) {
-            return idle();
-        }
-    }
-
     while (const U64 pending = timestamps.pending()) {
         const U64 count = std::min<U64>(pending, drains.front().size() / sampleBytes());
-        lms_stream_meta_t meta = {};
-        U64 delivered = 0;
-        const auto delivery = receiveAll(drainPointers, count, meta, deadline, delivered);
-        if (delivery == Delivery::Failed) {
-            return failed();
-        }
-        if (!poll()) {
-            return blind();
-        }
-        if (delivery == Delivery::Empty) {
-            return idle();
-        }
-        if (delivery == Delivery::Misaligned) {
+        lime::StreamMeta meta = {};
+        const U64 delivered = receive(drainPointers, count, meta, Remaining(deadline));
+        poll();
+        if (delivered == 0) {
             return idle();
         }
         const auto decision = timestamps.accept(meta.timestamp, delivered);
@@ -650,19 +631,10 @@ Device::Capture LimeSdrStream::readChannels(std::span<std::span<std::byte>> samp
     for (const auto channel : samples) {
         outputs.push_back(channel.data());
     }
-    lms_stream_meta_t meta = {};
-    U64 count = 0;
-    const auto delivery = receiveAll(outputs, size, meta, deadline, count);
-    if (delivery == Delivery::Failed) {
-        return failed();
-    }
-    if (!poll()) {
-        return blind();
-    }
-    if (delivery == Delivery::Empty) {
-        return idle();
-    }
-    if (delivery == Delivery::Misaligned) {
+    lime::StreamMeta meta = {};
+    const U64 count = receive(outputs, size, meta, Remaining(deadline));
+    poll();
+    if (count == 0) {
         return idle();
     }
 
@@ -722,9 +694,10 @@ Result LimeSdrStream::applyGain(const F64 gain, const bool force) {
         if (!force && target == appliedSettings.channelGains[i]) {
             continue;
         }
-        if (LMS_SetGaindB(handle, LMS_CH_RX, i, static_cast<unsigned>(target)) != 0) {
+        if (device->SetGain(0, lime::TRXDir::Rx, static_cast<U8>(i), lime::eGainTypes::GENERIC,
+                            target + gainOffset) != lime::OpStatus::Success) {
             JST_ERROR("[SDR_LIMESDR] Failed to set the RX{} gain to {:.0f} dB: {}", i + 1,
-                      target, LMS_GetLastErrorMessage());
+                      target, lime::GetLastErrorMessage());
             appliedSettings.gain = std::numeric_limits<F64>::quiet_NaN();
             appliedSettings.channelGains[i] = std::numeric_limits<F64>::quiet_NaN();
             return Result::ERROR;
