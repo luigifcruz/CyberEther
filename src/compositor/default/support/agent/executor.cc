@@ -286,16 +286,16 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
         }
 
         if (AgentFlowgraphs::Handles(request.name)) {
-            if (!request.start()) {
-                return;
+            if (request.start()) {
+                const auto done = [request](Agent::Tools::Output output, std::shared_ptr<Flowgraph> opened) {
+                    if (request.binding && opened) {
+                        std::lock_guard lock(request.binding->mutex);
+                        request.binding->graph = std::move(opened);
+                    }
+                    request.finish(std::move(output));
+                };
+                AgentFlowgraphs(state, callbacks).execute(request.name, request.args, done);
             }
-            AgentFlowgraphs(state, callbacks).execute(request.name, request.args, [request](auto output, auto opened) {
-                if (request.binding && opened) {
-                    std::lock_guard lock(request.binding->mutex);
-                    request.binding->graph = std::move(opened);
-                }
-                request.finish(std::move(output));
-            });
             return;
         }
 

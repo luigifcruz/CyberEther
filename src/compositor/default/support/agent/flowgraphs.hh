@@ -2,8 +2,8 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_SUPPORT_AGENT_FLOWGRAPHS_HH
 
 #include "jetstream/agent/tools.hh"
+#include "jetstream/render/sakura/callback.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -16,7 +16,7 @@ class Flowgraph;
 
 class AgentFlowgraphs {
  public:
-    using Completion = std::function<void(Agent::Tools::Output, std::shared_ptr<Flowgraph>)>;
+    using Completion = Sakura::Callback<void(Agent::Tools::Output, std::shared_ptr<Flowgraph>)>;
 
     AgentFlowgraphs(DefaultCompositorState& state, const DefaultCompositorCallbacks& callbacks);
 

@@ -476,6 +476,7 @@ TEST_CASE("Flowgraph tools list favorite and recent files and open them through 
           "[agent][compositor][flowgraphs]") {
     auto focused = std::make_shared<Flowgraph>();
     auto opened = std::make_shared<Flowgraph>();
+    auto blank = std::make_shared<Flowgraph>();
 
     DefaultCompositorState state;
     state.flowgraph.items["focused"] = focused;
@@ -509,10 +510,13 @@ TEST_CASE("Flowgraph tools list favorite and recent files and open them through 
         return nlohmann::json::parse(future.get().content);
     };
     const auto idle = [] {};
+    const auto variant = [](Mail& mail) -> Mail::variant& {
+        return mail;
+    };
     const auto complete = [&](Result result, std::shared_ptr<Flowgraph> flowgraph) {
         return [&, result, flowgraph] {
             for (auto& mail : mails) {
-                auto* open = std::get_if<MailOpenFlowgraphPath>(&static_cast<Mail::variant&>(mail));
+                auto* open = std::get_if<MailOpenFlowgraphPath>(&variant(mail));
                 if (open && open->onComplete) {
                     std::exchange(open->onComplete, {})(result, flowgraph);
                 }
@@ -538,7 +542,15 @@ TEST_CASE("Flowgraph tools list favorite and recent files and open them through 
                                 complete(Result::ERROR, nullptr));
     CHECK(missing["error"] == "Could not open flowgraph '/flowgraphs/ism.yml'.");
     REQUIRE(mails.size() == 1);
-    CHECK(std::get<MailOpenFlowgraphPath>(static_cast<Mail::variant&>(mails[0])).path == "/flowgraphs/ism.yml");
+    CHECK(std::get<MailOpenFlowgraphPath>(variant(mails[0])).path == "/flowgraphs/ism.yml");
+
+    mails.clear();
+    const auto empty = invoke("open_flowgraph", R"({"path":"/flowgraphs/ism.yml"})",
+                              complete(Result::ERROR, blank));
+    CHECK(empty["error"] == "Could not load flowgraph '/flowgraphs/ism.yml'. An empty graph was opened in "
+                           "its place and is now selected.");
+    CHECK(invoke("inspect_tiles", "{}", idle)["error"] == "The graph selected for this turn was closed.");
+    state.flowgraph.items["blank"] = blank;
 
     mails.clear();
     const auto success = invoke("open_flowgraph", R"({"path":"/flowgraphs/hf.yml"})",

@@ -17,15 +17,6 @@ namespace {
 constexpr F32 kAppliedTolerance = 2.0f;
 constexpr std::array<const char*, 3> kRefFields = {"name", "source", "block"};
 
-constexpr const char* kOperationsText =
-    "'operations' arrived as text that is not a valid JSON array, so nothing was changed. "
-    "If a closing bracket or quote was left out, send the complete array again. If an "
-    "argument contains a literal </parameter>, </function> or <function= sequence, the call "
-    "was cut off there. No tool can receive such a sequence, and no "
-    "escaping helps. In code, build it from pieces such as '</' + 'parameter>'. Where the "
-    "exact text is required, as in a comment or note, leave that line out, make the rest of "
-    "the edit, and tell the user to type that line by hand.";
-
 bool IsRef(const std::string& value) {
     return value.size() > 1 && value.front() == '$';
 }
@@ -719,8 +710,7 @@ Json PatchResponse(const Graph& flowgraph, Json results, const char* status, con
 
 std::string RefHelp(const std::set<std::string>& refs) {
     if (refs.empty()) {
-        return " No earlier create_block sets a ref; give one a ref such as 'src' and write '$src', "
-               "or use the exact block name.";
+        return " No earlier create_block sets a ref.";
     }
 
     std::string list;
@@ -730,8 +720,6 @@ std::string RefHelp(const std::set<std::string>& refs) {
     return jst::fmt::format(" Refs defined before this operation: {}.", list);
 }
 
-// Some servers hand a nested array over as text when they cannot decode it. A complete
-// array, or one missing only its closing bracket, is recovered; anything else stays text.
 Json DecodeOperations(Json args) {
     if (!args.is_object() || !args.contains("operations") || !args["operations"].is_string()) {
         return args;
@@ -750,7 +738,9 @@ Json DecodeOperations(Json args) {
 
 std::string ValidateRequest(const Json& args) {
     if (args.contains("operations") && args["operations"].is_string()) {
-        return kOperationsText;
+        return jst::fmt::format("'operations' arrived as text that is not a valid JSON array, so nothing "
+                                "was changed. The text may be missing a closing bracket or quote. {}",
+                                Response::CutShort);
     }
     if (!args.contains("operations") || !args["operations"].is_array() || args["operations"].empty()) {
         return "'operations' must be a non-empty array.";
@@ -916,11 +906,11 @@ std::vector<Entry> Toolbox::Patch() {
         "Apply an ordered edit to the selected graph. A new graph is created when "
         "none is selected, or when new_flowgraph is true, and is selected for "
         "subsequent calls. Set new_flowgraph when the user asks for a new graph "
-        "while one is open, which stays open and unchanged. flowgraph_name names a "
-        "created graph and is ignored otherwise. Operations execute sequentially and stop on failure "
-        "without rolling back earlier changes, returning status='partial'. A failed "
-        "result with may_have_applied=true may have changed the graph before failing, "
-        "so inspect it before retrying. "
+        "while one is open. The open graph stays unchanged. flowgraph_name names a "
+        "created graph and is ignored otherwise. Operations execute sequentially "
+        "and stop on failure without rolling back earlier changes, returning "
+        "status='partial'. A failed result with may_have_applied=true may have "
+        "changed the graph before failing, so inspect it before retrying. "
         "create_block may set ref to a label. Later operations in the same call "
         "name that block as '$' plus the label, so a block created with ref 'src' "
         "is written '$src'. Without a ref, use the exact block name. A ref that no "

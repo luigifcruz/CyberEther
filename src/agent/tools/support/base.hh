@@ -68,6 +68,9 @@ class Toolbox {
 
 class Response {
  public:
+    static constexpr const char* CutShort = "A call in this reply may have been cut short by a literal tool-call "
+                                            "delimiter in one of its arguments.";
+
     static std::string Dump(const Json& body);
     static Json Error(const std::string& message);
     static bool Failed(const Json& body);

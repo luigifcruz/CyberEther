@@ -125,7 +125,8 @@ void AgentFlowgraphs::open(const std::string& args, Completion done) const {
                 done(Reply({{"opened", path}}), std::move(flowgraph));
             } else if (flowgraph) {
                 done(Agent::Tools::Error(jst::fmt::format("Could not load flowgraph '{}'. An empty graph was "
-                                                           "opened in its place.", path)), nullptr);
+                                                           "opened in its place and is now selected.", path)),
+                     std::move(flowgraph));
             } else {
                 done(Agent::Tools::Error(jst::fmt::format("Could not open flowgraph '{}'.", path)), nullptr);
             }

@@ -19,10 +19,7 @@ std::string UnknownTool(const std::string& name) {
         return jst::fmt::format("Unknown tool '{}'.", name);
     }
 
-    return jst::fmt::format("Unknown tool '{}'. This is not a tool name. An earlier call in the same reply "
-                            "was probably cut apart by a literal </parameter>, </function> or <function= "
-                            "sequence in one of its arguments, so check that call's result before "
-                            "continuing.", name);
+    return jst::fmt::format("Unknown tool '{}'. This is not a tool name. {}", name, Response::CutShort);
 }
 
 Tools::Output Dispatch(Host& host, const Call& call) {
@@ -190,6 +187,7 @@ Tools::Call Tools::prepare(const std::shared_ptr<Flowgraph>& target, const std::
         return call;
     }
 
+    call.flowgraph.reset();
     if (!graph.error.empty()) {
         call.output = Detail::Response::Failure(graph.error);
     } else if (!graph.name.empty()) {

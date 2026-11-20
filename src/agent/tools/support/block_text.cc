@@ -159,9 +159,6 @@ std::string HunkAnchor(const std::string& line) {
     return anchor;
 }
 
-// Lenient where a relaxed reading cannot alter text: a line with no prefix is read as an
-// unchanged line, which only helps locate the hunk, and a bare hunk with no lines is
-// dropped. `unprefixed` reports the first line read that way, or 0.
 std::string ParsePatch(const std::string& patch, std::vector<Hunk>& hunks, U64& unprefixed) {
     std::string normalized;
     normalized.reserve(patch.size());
@@ -328,10 +325,6 @@ Indent Shift(const std::string& original, const std::string& written) {
     return {};
 }
 
-// An unchanged line written exactly one space short of the original lost its one-space
-// prefix, not its indentation, so added lines keep the indentation they were written with.
-// A changed line written at that same short column shows the whole hunk is under-indented
-// instead, and the shift is kept.
 Indent StepShift(const std::string& original, const Step& step, const Hunk& hunk) {
     const Indent indent = Shift(original, step.text);
     if (step.kind != ' ' || indent.add != " ") {
@@ -346,6 +339,7 @@ Indent StepShift(const std::string& original, const Step& step, const Hunk& hunk
 }
 
 Indent IndentShift(const Lines& lines, U64 start, const Hunk& hunk) {
+    std::optional<Indent> context;
     U64 index = start;
     for (const auto& step : hunk.steps) {
         if (step.kind == '+') {
@@ -356,9 +350,14 @@ Indent IndentShift(const Lines& lines, U64 start, const Hunk& hunk) {
         if (Trim(step.text).empty() || Trim(original).empty()) {
             continue;
         }
-        return StepShift(original, step, hunk);
+        if (step.kind == '-') {
+            return Shift(original, step.text);
+        }
+        if (!context.has_value()) {
+            context = StepShift(original, step, hunk);
+        }
     }
-    return {};
+    return context.value_or(Indent{});
 }
 
 std::string Reindent(const std::string& line, const Indent& indent) {
@@ -650,6 +649,80 @@ Json SearchLines(const Lines& lines, const std::string& pattern, bool regex, U64
     return result;
 }
 
+std::string PlusCollision(const Lines& lines, const Hunk& hunk, U64 number, const Replacement& at) {
+    if (hunk.steps.empty()) {
+        return {};
+    }
+
+    const Step& head = hunk.steps.front();
+    const Step& tail = hunk.steps.back();
+    const U64 end = at.start + at.count;
+    const bool before = head.kind == '+' && at.start > 0 && lines[at.start - 1] == "+" + head.text;
+    const bool after = tail.kind == '+' && end < lines.size() && lines[end] == "+" + tail.text;
+    if (!before && !after) {
+        return {};
+    }
+
+    return jst::fmt::format("Hunk {}: the line '+{}' is already in the text next to this hunk, so it is "
+                            "unclear whether it is an unchanged line written without its one-space prefix "
+                            "or an addition. Start unchanged lines with one space.",
+                            number, before ? head.text : tail.text);
+}
+
+BlockText::Patch ApplyHunks(const std::string& text, const std::string& patch) {
+    BlockText::Patch result;
+
+    std::vector<Hunk> hunks;
+    U64 unprefixed = 0;
+    result.error = ParsePatch(patch, hunks, unprefixed);
+    if (unprefixed != 0) {
+        result.note = jst::fmt::format("Patch line {} does not start with a space, '-', '+', or '@@', so "
+                                       "it was read as an unchanged line.", unprefixed);
+    }
+    if (!result.error.empty()) {
+        return result;
+    }
+
+    Lines lines = text.empty() ? Lines{} : Text::SplitLines(text);
+    std::vector<Replacement> replacements(hunks.size());
+    U64 cursor = 0;
+    for (U64 index = 0; index < hunks.size(); ++index) {
+        result.error = LocateHunk(lines, hunks[index], index + 1, cursor, replacements[index]);
+        if (result.error.empty() && unprefixed != 0) {
+            result.error = PlusCollision(lines, hunks[index], index + 1, replacements[index]);
+        }
+        if (!result.error.empty()) {
+            return result;
+        }
+    }
+
+    for (auto it = replacements.rbegin(); it != replacements.rend(); ++it) {
+        const auto begin = lines.begin() + static_cast<I64>(it->start);
+        lines.erase(begin, begin + static_cast<I64>(it->count));
+        lines.insert(lines.begin() + static_cast<I64>(it->start), it->after.begin(), it->after.end());
+    }
+
+    I64 shift = 0;
+    for (const auto& replacement : replacements) {
+        const U64 start = static_cast<U64>(static_cast<I64>(replacement.start) + shift);
+        const U64 begin = start > 0 ? start - 1 : 0;
+        const U64 end = start + replacement.after.size() + 1;
+
+        result.changes.push_back({
+            {"line", start + 1},
+            {"removed", replacement.removed},
+            {"added", replacement.added},
+            {"excerpt", Excerpt(lines, begin, end)},
+        });
+
+        shift += static_cast<I64>(replacement.after.size()) - static_cast<I64>(replacement.count);
+    }
+
+    result.lineCount = VisibleLineCount(lines);
+    result.text = Text::JoinLines(lines);
+    return result;
+}
+
 }  // namespace
 
 Json BlockText::Range(const std::string& text, const Json& args, std::string& error) {
@@ -703,89 +776,8 @@ std::string BlockText::Read(const Graph& flowgraph, const std::string& name, con
     return {};
 }
 
-namespace {
-
-// With unprefixed lines in play, a '+' line at the edge of a hunk that repeats the text
-// line beside it may be an unchanged line that lost its prefix. Refuse instead of guessing.
-std::string PlusCollision(const Lines& lines, const Hunk& hunk, U64 number, const Replacement& at) {
-    if (hunk.steps.empty()) {
-        return {};
-    }
-
-    const Step& head = hunk.steps.front();
-    const Step& tail = hunk.steps.back();
-    const U64 end = at.start + at.count;
-    const bool before = head.kind == '+' && at.start > 0 && lines[at.start - 1] == "+" + head.text;
-    const bool after = tail.kind == '+' && end < lines.size() && lines[end] == "+" + tail.text;
-    if (!before && !after) {
-        return {};
-    }
-
-    return jst::fmt::format("Hunk {}: the line '+{}' is already in the text next to this hunk, so it is "
-                            "unclear whether it is an unchanged line written without its one-space prefix "
-                            "or an addition. Start unchanged lines with one space.",
-                            number, before ? head.text : tail.text);
-}
-
-BlockText::Patch Attempt(const std::string& text, const std::string& patch) {
-    BlockText::Patch result;
-
-    std::vector<Hunk> hunks;
-    U64 unprefixed = 0;
-    result.error = ParsePatch(patch, hunks, unprefixed);
-    if (unprefixed != 0) {
-        result.note = jst::fmt::format("Patch line {} does not start with a space, '-', '+', or '@@', so "
-                                       "it was read as an unchanged line. Unchanged lines start with "
-                                       "one space.", unprefixed);
-    }
-    if (!result.error.empty()) {
-        return result;
-    }
-
-    Lines lines = text.empty() ? Lines{} : Text::SplitLines(text);
-    std::vector<Replacement> replacements(hunks.size());
-    U64 cursor = 0;
-    for (U64 index = 0; index < hunks.size(); ++index) {
-        result.error = LocateHunk(lines, hunks[index], index + 1, cursor, replacements[index]);
-        if (result.error.empty() && unprefixed != 0) {
-            result.error = PlusCollision(lines, hunks[index], index + 1, replacements[index]);
-        }
-        if (!result.error.empty()) {
-            return result;
-        }
-    }
-
-    for (auto it = replacements.rbegin(); it != replacements.rend(); ++it) {
-        const auto begin = lines.begin() + static_cast<I64>(it->start);
-        lines.erase(begin, begin + static_cast<I64>(it->count));
-        lines.insert(lines.begin() + static_cast<I64>(it->start), it->after.begin(), it->after.end());
-    }
-
-    I64 shift = 0;
-    for (const auto& replacement : replacements) {
-        const U64 start = static_cast<U64>(static_cast<I64>(replacement.start) + shift);
-        const U64 begin = start > 0 ? start - 1 : 0;
-        const U64 end = start + replacement.after.size() + 1;
-
-        result.changes.push_back({
-            {"line", start + 1},
-            {"removed", replacement.removed},
-            {"added", replacement.added},
-            {"excerpt", Excerpt(lines, begin, end)},
-        });
-
-        shift += static_cast<I64>(replacement.after.size()) - static_cast<I64>(replacement.count);
-    }
-
-    result.lineCount = VisibleLineCount(lines);
-    result.text = Text::JoinLines(lines);
-    return result;
-}
-
-}  // namespace
-
 BlockText::Patch BlockText::Apply(const std::string& text, const std::string& patch) {
-    auto result = Attempt(text, patch);
+    auto result = ApplyHunks(text, patch);
     if (!result.error.empty() && !result.note.empty()) {
         result.error += " " + result.note;
         result.note.clear();

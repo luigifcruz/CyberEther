@@ -223,7 +223,7 @@ TEST_CASE("Removed agent tools cannot be dispatched", "[agent][tools]") {
     const auto phantom = nlohmann::json::parse(ExecuteTool(nullptr, "%s", R"({"%s":"%s"})").content);
     const auto error = phantom["error"].get<std::string>();
     REQUIRE(error.starts_with("Unknown tool '%s'."));
-    REQUIRE(error.find("cut apart") != std::string::npos);
+    REQUIRE(error.find("tool-call delimiter") != std::string::npos);
 
     const auto namespaced = nlohmann::json::parse(ExecuteTool(nullptr, "functions.read_block_text", "{}").content);
     REQUIRE(namespaced["error"] == "Unknown tool 'functions.read_block_text'.");
@@ -267,6 +267,11 @@ TEST_CASE("Flowgraph patches create a new graph on request even when one is focu
     })";
     CHECK(FlowgraphNameToCreate(focused, named) == "dashboard");
     CHECK(FlowgraphNameToCreate(nullptr, named) == "dashboard");
+
+    GraphHost host(focused);
+    auto call = Agent::Tools(host).prepare(focused, "apply_flowgraph_patch", named);
+    CHECK(call.flowgraph == nullptr);
+    CHECK(Agent::Tools(host).run(call).error);
 
     const std::string unnamed = R"({"new_flowgraph": true, "operations": [{"op": "delete_block", "name": "old"}]})";
     CHECK(FlowgraphNameToCreate(focused, unnamed) == "flowgraph");
@@ -1397,13 +1402,14 @@ TEST_CASE("Flowgraph patches accept operations sent as JSON text", "[agent][tool
     }
 
     SECTION("a call cut off inside a string explains the likely cause") {
-        const std::string text = R"([{"op":"create_block","type":"note","name":"cut","config":{"content":"closes with )";
+        const std::string text =
+            R"([{"op":"create_block","type":"note","name":"cut","config":{"content":"closes with )";
         const auto result = run(text);
         REQUIRE(result.error);
 
         const auto error = nlohmann::json::parse(result.content)["error"].get<std::string>();
         CHECK(error.find("not a valid JSON array") != std::string::npos);
-        CHECK(error.find("</parameter>") != std::string::npos);
+        CHECK(error.find("tool-call delimiter") != std::string::npos);
         CHECK_FALSE(graph->view().has("cut"));
         CHECK(FlowgraphNameToCreate(nullptr, nlohmann::json({{"operations", text}}).dump()).empty());
     }
@@ -1452,6 +1458,9 @@ TEST_CASE("Text patches tolerate missing prefixes without guessing", "[agent][to
          "    return samples * gain\n", "", ""},
         {base, "@@\n    gain = 2.0\n-   print(\"gain is\", gain)\n+   print(\"g\")",
          "def process(samples):\n    gain = 2.0\n    print(\"g\")\n    return samples * gain\n", "", ""},
+        {"def f(x):\n    if x:\n        y = 1\n        z = 2\n",
+         "@@\n    if x:\n-       y = 1\n+       y = 3\n        z = 2",
+         "def f(x):\n    if x:\n        y = 3\n        z = 2\n", "", ""},
         {"/*\n * first\n * second\n */\n", "@@\n * first\n+* inserted\n * second",
          "/*\n * first\n * inserted\n * second\n */\n", "", ""},
         {"Title\nIntro\n+ plus item\nTail\n", "@@\nTitle\n-Intro\n+Summary\n+ plus item",
