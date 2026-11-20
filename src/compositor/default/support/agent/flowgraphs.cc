@@ -214,7 +214,7 @@ void AgentFlowgraphs::focus(const std::shared_ptr<Flowgraph>& flowgraph, const s
         return;
     }
 
-    callbacks.enqueueMail(MailFocusFlowgraph{id});
+    callbacks.enqueueMail(MailFocusFlowgraph{.flowgraph = id, .reveal = true});
     done(Reply({{"focused", id}}), item->second);
 }
 

@@ -2,6 +2,7 @@
 
 #include "jetstream/agent/tools.hh"
 #include "compositor/default/actions/agent.hh"
+#include "compositor/default/actions/flowgraph.hh"
 #include "compositor/default/support/agent/providers.hh"
 #include "compositor/default/support/agent/runtime.hh"
 #include "compositor/default/support/agent/executor.hh"
@@ -620,6 +621,7 @@ TEST_CASE("Flowgraph tools list open graphs and focus one through the focus mail
         const auto* focus = std::get_if<MailFocusFlowgraph>(&variant(mails[0]));
         REQUIRE(focus != nullptr);
         CHECK(focus->flowgraph == flowgraph);
+        CHECK(focus->reveal);
         return reply;
     };
 
@@ -628,6 +630,16 @@ TEST_CASE("Flowgraph tools list open graphs and focus one through the focus mail
 
     CHECK(focused("second") == nlohmann::json({{"focused", "second"}}));
     CHECK(invoke("list_open_flowgraphs", "{}")["selected"] == "second");
+
+    FlowgraphActions actions(state, callbacks);
+    REQUIRE(actions.handle(std::get<MailFocusFlowgraph>(variant(mails[0]))) == Result::SUCCESS);
+    CHECK(state.interface.focusedFlowgraph == "second");
+    CHECK(state.interface.requestedFlowgraph == "second");
+    CHECK(state.interface.flowgraphRequests == 1);
+    REQUIRE(actions.handle(MailFocusFlowgraph{.flowgraph = "first"}) == Result::SUCCESS);
+    CHECK(state.interface.focusedFlowgraph == "first");
+    CHECK(state.interface.requestedFlowgraph == "second");
+    CHECK(state.interface.flowgraphRequests == 1);
 
     mails.clear();
     auto followed = bridge.focused();

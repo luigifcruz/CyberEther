@@ -5278,6 +5278,72 @@ TEST_CASE("Workbench shows a terminal tab as a main tab and a tiled terminal ins
     CHECK_FALSE(grid(1).has_value());
 }
 
+TEST_CASE("Workbench reveals a requested flowgraph tab once per request",
+          "[core][sakura][views][flowgraph]") {
+    Mailbox mailbox;
+    auto& ui = mailbox.state.interface;
+    ui.focusedFlowgraph = "b";
+    ui.requestedFlowgraph = "b";
+    ui.flowgraphRequests = 1;
+
+    const auto presented = WorkbenchPresenter(mailbox.context()).build();
+    CHECK(presented.flowgraphRequested == std::optional<std::string>("b"));
+    CHECK(presented.flowgraphRequests == 1);
+    CHECK(presented.flowgraphFocused);
+
+    FakeWindow window(1.0f, {1200.0f, 600.0f});
+    Sakura::Runtime runtime;
+    runtime.update({.render = &window});
+    WorkbenchView view;
+    std::vector<std::string> focused;
+    const auto show = [&] {
+        WorkbenchView::Config config;
+        config.backgroundParticles = false;
+        for (const char* id : {"a", "b"}) {
+            config.flowgraphs.push_back({
+                .id = id,
+                .title = id,
+                .layoutGroup = std::string("layout:") + id,
+                .editorPane = std::string("editor:") + id,
+                .layout = Leaf(std::string("editor:") + id),
+                .onFocus = [&focused, id] {
+                    focused.push_back(id);
+                },
+            });
+        }
+        config.flowgraphRequested = ui.requestedFlowgraph;
+        config.flowgraphRequests = ui.flowgraphRequests;
+        config.flowgraphFocused = ui.focusedFlowgraph == ui.requestedFlowgraph;
+        view.update(std::move(config));
+        for (U64 frame = 0; frame < 3; ++frame) {
+            REQUIRE(window.begin() == Result::SUCCESS);
+            view.render(runtime.context());
+            REQUIRE(window.end() == Result::SUCCESS);
+        }
+    };
+
+    show();
+    REQUIRE_FALSE(focused.empty());
+    CHECK(focused.back() == "b");
+
+    focused.clear();
+    show();
+    CHECK(focused.empty());
+
+    ui.focusedFlowgraph = "a";
+    ui.requestedFlowgraph = "a";
+    ui.flowgraphRequests = 2;
+    show();
+    REQUIRE_FALSE(focused.empty());
+    CHECK(focused.back() == "a");
+
+    focused.clear();
+    ui.requestedFlowgraph = "b";
+    ui.flowgraphRequests = 3;
+    show();
+    CHECK(focused.empty());
+}
+
 TEST_CASE("Flowgraph info view settles under identical updates",
           "[core][sakura][views]") {
     Scene scene{kWide};

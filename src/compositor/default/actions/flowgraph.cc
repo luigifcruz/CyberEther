@@ -139,6 +139,10 @@ Result FlowgraphActions::handle(const MailFocusFlowgraph& msg) {
     if (state.flowgraph.items.contains(msg.flowgraph)) {
         state.interface.focusedFlowgraph = msg.flowgraph;
         WorkbenchActions::Focus(state, std::nullopt);
+        if (msg.reveal) {
+            state.interface.requestedFlowgraph = msg.flowgraph;
+            ++state.interface.flowgraphRequests;
+        }
     }
 
     return Result::SUCCESS;

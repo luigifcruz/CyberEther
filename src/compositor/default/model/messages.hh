@@ -212,6 +212,7 @@ struct MailOpenFlowgraphExample {
 
 struct MailFocusFlowgraph {
     std::string flowgraph;
+    bool reveal = false;
 };
 
 struct MailSetFlowgraphPaused {
