@@ -22,7 +22,7 @@ Result FlowgraphActions::handle(const MailNewFlowgraph&) {
 }
 
 Result FlowgraphActions::handle(const MailOpenFlowgraph&) {
-    std::string path;
+    std::string path = startFolder();
     auto enqueueMail = callbacks.enqueueMail;
     callbacks.requestFile({
         .mode = FilePickerMode::Open,
@@ -73,9 +73,10 @@ Result FlowgraphActions::handle(const MailDropFlowgraphPath& msg) {
     const auto extension = Text::ToLower(Platform::PathToUtf8(
         Platform::PathFromUtf8(msg.path).extension()));
 
-    if (extension != ".yml" && extension != ".yaml") {
+    const bool named = extension == ".yml" || extension == ".yaml";
+    if (!named && !(extension.empty() && LooksLikeFlowgraph(msg.path))) {
         callbacks.notify(Sakura::ToastType::Warning, 5000,
-                         "Only flowgraph files (.yml or .yaml) can be opened by dropping them here.");
+                         "Only flowgraph files can be opened by dropping them here.");
         return Result::SUCCESS;
     }
 
@@ -146,11 +147,18 @@ Result FlowgraphActions::handle(const MailSaveFlowgraph& msg) {
     const std::string currentPath = state.flowgraph.items.at(msg.flowgraph)->path();
     std::string path = msg.path.empty() ? currentPath : msg.path;
     if (path.empty() || msg.pick) {
+        std::string pickedPath = currentPath;
+        if (pickedPath.empty()) {
+            pickedPath = startFolder();
+            if (!pickedPath.empty()) {
+                pickedPath += "untitled.yml";
+            }
+        }
         auto enqueueMail = callbacks.enqueueMail;
         callbacks.requestFile({
             .mode = FilePickerMode::Save,
-            .initialPath = currentPath,
-            .extensions = {"yaml", "yml"},
+            .initialPath = pickedPath,
+            .extensions = {"yml", "yaml"},
             .callback = [enqueueMail, flowgraph = msg.flowgraph](std::string p) mutable {
                 enqueueMail(MailSaveFlowgraph{.flowgraph = flowgraph, .path = std::move(p)});
             },
@@ -934,6 +942,34 @@ std::string FlowgraphActions::GenerateRandomFlowgraphName() {
         result += chars[rand() % chars.length()];
     }
     return result;
+}
+
+// Flowgraphs saved before the save dialog added an extension have none, so such a
+// file is recognised by the keys every flowgraph document starts with.
+bool FlowgraphActions::LooksLikeFlowgraph(const std::string& path) {
+    std::ifstream file(Platform::PathFromUtf8(path));
+    bool versioned = false;
+    bool graph = false;
+    std::string line;
+    for (U64 count = 0; count < 64 && std::getline(file, line); ++count) {
+        versioned = versioned || line.starts_with("version:");
+        graph = graph || line.starts_with("graph:");
+    }
+    return versioned && graph;
+}
+
+// File dialogs start where the user last opened or saved a flowgraph, so they do not
+// have to navigate there from the home directory every time.
+std::string FlowgraphActions::startFolder() const {
+    for (const auto& entry : state.interface.recentFlowgraphs) {
+        std::error_code error;
+        const auto folder = Platform::PathFromUtf8(entry.path).parent_path();
+        if (std::filesystem::is_directory(folder, error)) {
+            const auto name = Platform::PathToUtf8(folder);
+            return name.ends_with('/') ? name : name + "/";
+        }
+    }
+    return {};
 }
 
 void FlowgraphActions::markUntracked(const std::string& flowgraph) {

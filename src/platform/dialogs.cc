@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -126,16 +127,35 @@ std::string ExtensionJson(const std::vector<std::string>& extensions) {
 #elif defined(JST_OS_LINUX)
 namespace {
 
+// The filter is named after its patterns, so it is obvious which files a dialog is hiding.
 std::string ZenityFilter(const std::vector<std::string>& extensions) {
-    std::string filter = "Selected files |";
+    std::string patterns;
     for (const auto& extension : extensions) {
-        filter += " *." + extension;
+        patterns += (patterns.empty() ? "*." : " *.") + extension;
     }
-    return filter;
+    return patterns + " | " + patterns;
 }
+
+constexpr const char* kZenityAllFiles = "--file-filter=All files | *";
 
 }  // namespace
 #endif
+
+std::string WithDefaultExtension(std::string path, const std::vector<std::string>& extensions) {
+    if (path.empty() || extensions.empty()) {
+        return path;
+    }
+
+    std::string current = PathToUtf8(PathFromUtf8(path).extension());
+    std::transform(current.begin(), current.end(), current.begin(), [](const unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+
+    const bool known = std::any_of(extensions.begin(), extensions.end(), [&](const std::string& extension) {
+        return current == "." + extension;
+    });
+    return known ? path : path + "." + extensions.front();
+}
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
@@ -162,7 +182,18 @@ Result PickFile(std::string& path,
                 const std::vector<std::string>& extensions,
                 std::function<void(std::string)> callback) {
     std::vector<std::string> arguments = {"--file-selection"};
+    if (!path.empty()) {
+        // Given a directory, the dialog opens its parent with the directory selected.
+        // Naming an entry inside it, even one that does not exist, opens the directory.
+        std::error_code error;
+        const auto start = PathFromUtf8(path);
+        const bool directory = std::filesystem::is_directory(start, error);
+        arguments.push_back("--filename=" + (directory ? PathToUtf8(start / "_") : path));
+    }
     if (!extensions.empty()) {
+        // Everything is listed by default when opening: a folder whose files do not match
+        // the typed filter would otherwise look empty.
+        arguments.push_back(kZenityAllFiles);
         arguments.push_back("--file-filter=" + ZenityFilter(extensions));
     }
 
@@ -291,12 +322,34 @@ Result SaveFile(std::string& path,
     }
     if (!extensions.empty()) {
         arguments.push_back("--file-filter=" + ZenityFilter(extensions));
+        arguments.push_back(kZenityAllFiles);
     }
     if (RunProcess("zenity", arguments, path) != Result::SUCCESS || path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
     }
     if (path.back() == '\n') path.pop_back();
+
+    // The dialog does not add an extension, and it only confirmed overwriting the name as
+    // typed, so a name completed here is confirmed again when that file already exists.
+    const std::string completed = WithDefaultExtension(path, extensions);
+    if (completed != path) {
+        std::error_code error;
+        if (std::filesystem::exists(PathFromUtf8(completed), error)) {
+            std::string answer;
+            const std::vector<std::string> question = {
+                "--question",
+                "--title=Replace file?",
+                "--text=" + PathToUtf8(PathFromUtf8(completed).filename()) + " already exists. Replace it?",
+            };
+            if (RunProcess("zenity", question, answer) != Result::SUCCESS) {
+                JST_ERROR("No file selected or operation cancelled.");
+                return Result::ERROR;
+            }
+        }
+        path = completed;
+    }
+
     if (callback) callback(path);
     return Result::SUCCESS;
 }

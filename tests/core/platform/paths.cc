@@ -1247,3 +1247,17 @@ TEST_CASE("Platform config and cache paths follow platform conventions",
     }
 #endif
 }
+
+TEST_CASE("Saved file names gain the default extension only when they lack a known one", "[core][platform][dialogs]") {
+    const std::vector<std::string> extensions = {"yml", "yaml"};
+
+    CHECK(Platform::WithDefaultExtension("/tmp/Valentine RF Cellops", extensions) == "/tmp/Valentine RF Cellops.yml");
+    CHECK(Platform::WithDefaultExtension("/tmp/scan.yml", extensions) == "/tmp/scan.yml");
+    CHECK(Platform::WithDefaultExtension("/tmp/scan.YAML", extensions) == "/tmp/scan.YAML");
+    CHECK(Platform::WithDefaultExtension("/tmp/band v1.2", extensions) == "/tmp/band v1.2.yml");
+    CHECK(Platform::WithDefaultExtension("/tmp/notes.txt", extensions) == "/tmp/notes.txt.yml");
+    CHECK(Platform::WithDefaultExtension("/tmp/dir.d/plain", extensions) == "/tmp/dir.d/plain.yml");
+    CHECK(Platform::WithDefaultExtension("/tmp/plain", {}) == "/tmp/plain");
+    CHECK(Platform::WithDefaultExtension("", extensions).empty());
+}
+

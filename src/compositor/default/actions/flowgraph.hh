@@ -25,6 +25,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -130,6 +131,8 @@ struct FlowgraphActions {
  private:
     std::shared_ptr<std::string> pendingCopy;
 
+    static bool LooksLikeFlowgraph(const std::string& path);
+    std::string startFolder() const;
     void markUntracked(const std::string& flowgraph);
     static std::string ReconfigureMergeKey(const std::string& block, const Parser::Map& config);
     Sakura::Callback<void(Result)> selectOnComplete(const std::string& flowgraphId,

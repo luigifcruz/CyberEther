@@ -515,6 +515,9 @@ JETSTREAM_API Result SaveFile(std::string& path,
                               const std::vector<std::string>& extensions = {},
                               std::function<void(std::string)> callback = nullptr);
 
+// Returns the path with the first extension appended unless it already ends in one of them.
+JETSTREAM_API std::string WithDefaultExtension(std::string path, const std::vector<std::string>& extensions);
+
 JETSTREAM_API bool IsFilePending();
 
 }  // namespace Jetstream::Platform
