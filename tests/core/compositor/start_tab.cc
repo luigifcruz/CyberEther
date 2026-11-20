@@ -7,6 +7,7 @@
 #include "flowgraph_fixture.hh"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -14,6 +15,10 @@
 #include <string>
 #include <variant>
 #include <vector>
+
+#if !defined(JST_OS_WINDOWS) && !defined(JST_OS_BROWSER)
+#include <sys/stat.h>
+#endif
 
 using namespace Jetstream;
 
@@ -265,6 +270,13 @@ TEST_CASE("Welcome filter mails store the search text, category and page and res
 }
 
 namespace {
+
+std::filesystem::path UniqueFolder(const std::string& name) {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto folder = std::filesystem::temp_directory_path() / (name + "-" + std::to_string(nonce));
+    REQUIRE(std::filesystem::create_directories(folder));
+    return folder;
+}
 
 FlowgraphHistory UnsavedHistory() {
     FlowgraphHistory history;
@@ -568,4 +580,76 @@ TEST_CASE("Recent flowgraph history records a path only after its open or save s
     Settings settings;
     REQUIRE(Settings::Get(settings) == Result::SUCCESS);
     CHECK(settings.interface.recentFlowgraphs.size() == 2);
+}
+
+TEST_CASE("Flowgraph file dialogs start in the folder of the most recent flowgraph",
+          "[core][compositor][flowgraph-actions]") {
+    const auto folder = UniqueFolder("cyberether-dialog-start");
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<FilePickerRequest> requests;
+    callbacks.requestFile = [&](FilePickerRequest request) {
+        requests.push_back(std::move(request));
+        return Result::SUCCESS;
+    };
+    FlowgraphActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailOpenFlowgraph{}) == Result::SUCCESS);
+    REQUIRE(requests.size() == 1);
+    CHECK(requests[0].initialPath.empty());
+
+    FlowgraphActions::Remember(state.interface, Platform::PathToUtf8(folder / "older.yml"), "Older", 10);
+    REQUIRE(actions.handle(MailOpenFlowgraph{}) == Result::SUCCESS);
+    REQUIRE(requests.size() == 2);
+    CHECK(requests[1].initialPath == Platform::PathToUtf8(folder / ""));
+
+    FlowgraphActions::Remember(state.interface, "relative.yml", "Relative", 20);
+    REQUIRE(actions.handle(MailOpenFlowgraph{}) == Result::SUCCESS);
+    REQUIRE(requests.size() == 3);
+    CHECK(requests[2].initialPath == Platform::PathToUtf8(std::filesystem::current_path() / ""));
+
+    std::error_code error;
+    std::filesystem::remove_all(folder, error);
+}
+
+TEST_CASE("Dropped files without an extension open only when they are flowgraph documents",
+          "[core][compositor][flowgraph-actions]") {
+    const auto folder = UniqueFolder("cyberether-dialog-drop");
+    std::ofstream(folder / "graph") << "---\nversion: 2\ntitle: Graph\ngraph:\n  {}\n";
+    std::ofstream(folder / "notes") << "version: 2\n";
+    std::ofstream(folder / "large") << "version: 2\n" << std::string(2 << 20, 'x') << "\ngraph:\n";
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    U64 warnings = 0;
+    U64 opened = 0;
+    callbacks.notify = [&](Sakura::ToastType, I32, const std::string&) {
+        ++warnings;
+    };
+    callbacks.enqueueCommandWithCompletion = [&](Sakura::Callback<Result()>, bool, Sakura::Callback<void(Result)>) {
+        ++opened;
+    };
+    FlowgraphActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailDropFlowgraphPath{.path = Platform::PathToUtf8(folder / "graph")}) == Result::SUCCESS);
+    CHECK(opened == 1);
+    CHECK(warnings == 0);
+
+    REQUIRE(actions.handle(MailDropFlowgraphPath{.path = Platform::PathToUtf8(folder / "notes")}) == Result::SUCCESS);
+    CHECK(opened == 1);
+    CHECK(warnings == 1);
+
+    REQUIRE(actions.handle(MailDropFlowgraphPath{.path = Platform::PathToUtf8(folder / "large")}) == Result::SUCCESS);
+    CHECK(opened == 1);
+    CHECK(warnings == 2);
+
+#if !defined(JST_OS_WINDOWS) && !defined(JST_OS_BROWSER)
+    const auto pipe = folder / "pipe";
+    REQUIRE(mkfifo(pipe.c_str(), 0600) == 0);
+    REQUIRE(actions.handle(MailDropFlowgraphPath{.path = Platform::PathToUtf8(pipe)}) == Result::SUCCESS);
+    CHECK(opened == 1);
+    CHECK(warnings == 3);
+#endif
+
+    std::error_code error;
+    std::filesystem::remove_all(folder, error);
 }

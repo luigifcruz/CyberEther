@@ -27,7 +27,7 @@ Result FlowgraphActions::handle(const MailOpenFlowgraph&) {
     callbacks.requestFile({
         .mode = FilePickerMode::Open,
         .initialPath = path,
-        .extensions = {"yaml", "yml"},
+        .extensions = {"yml", "yaml"},
         .callback = [enqueueMail](std::string p) mutable {
             enqueueMail(MailOpenFlowgraphPath{std::move(p)});
         },
@@ -939,21 +939,24 @@ std::string FlowgraphActions::GenerateRandomFlowgraphName() {
 }
 
 bool FlowgraphActions::LooksLikeFlowgraph(const std::string& path) {
-    std::ifstream file(Platform::PathFromUtf8(path));
-    bool versioned = false;
-    bool graph = false;
-    std::string line;
-    while (!(versioned && graph) && std::getline(file, line)) {
-        versioned = versioned || line.starts_with("version:");
-        graph = graph || line.starts_with("graph:");
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(Platform::PathFromUtf8(path), error)) {
+        return false;
     }
-    return versioned && graph;
+    std::ifstream file(Platform::PathFromUtf8(path), std::ios::binary);
+    std::string head(1 << 20, '\0');
+    file.read(head.data(), static_cast<std::streamsize>(head.size()));
+    head.resize(static_cast<U64>(file.gcount()));
+    const auto hasKey = [&](const std::string& key) {
+        return head.starts_with(key) || head.find("\n" + key) != std::string::npos;
+    };
+    return hasKey("version:") && hasKey("graph:");
 }
 
 std::string FlowgraphActions::startFolder(const std::string& name) const {
     for (const auto& entry : state.interface.recentFlowgraphs) {
         std::error_code error;
-        const auto folder = Platform::PathFromUtf8(entry.path).parent_path();
+        const auto folder = std::filesystem::absolute(Platform::PathFromUtf8(entry.path), error).parent_path();
         if (!folder.empty() && std::filesystem::is_directory(folder, error)) {
             return Platform::PathToUtf8(folder / Platform::PathFromUtf8(name));
         }

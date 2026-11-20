@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <cctype>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -138,19 +137,10 @@ std::string ZenityFilter(const std::vector<std::string>& extensions) {
 constexpr const char* ZenityAllFiles = "--file-filter=All files | *";
 
 std::string WithDefaultExtension(std::string path, const std::vector<std::string>& extensions) {
-    if (path.empty() || extensions.empty()) {
+    if (path.empty() || extensions.empty() || PathFromUtf8(path).has_extension()) {
         return path;
     }
-
-    std::string current = PathToUtf8(PathFromUtf8(path).extension());
-    std::transform(current.begin(), current.end(), current.begin(), [](const unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-
-    const bool known = std::any_of(extensions.begin(), extensions.end(), [&](const std::string& extension) {
-        return current == "." + extension;
-    });
-    return known ? path : path + "." + extensions.front();
+    return path + "." + extensions.front();
 }
 
 }  // namespace
@@ -325,7 +315,12 @@ Result SaveFile(std::string& path,
     const std::string completed = WithDefaultExtension(path, extensions);
     if (completed != path) {
         std::error_code error;
-        if (std::filesystem::exists(PathFromUtf8(completed), error)) {
+        const auto status = std::filesystem::status(PathFromUtf8(completed), error);
+        if (std::filesystem::exists(status) && !std::filesystem::is_regular_file(status)) {
+            JST_ERROR("Cannot save over '{}' because it is not a regular file.", completed);
+            return Result::ERROR;
+        }
+        if (std::filesystem::exists(status)) {
             std::string answer;
             const std::vector<std::string> question = {
                 "--question",
