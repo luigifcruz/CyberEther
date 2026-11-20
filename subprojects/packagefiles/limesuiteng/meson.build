@@ -9,6 +9,10 @@ system = host_machine.system()
 if system.startswith('windows')
   private_cpp_args += ['-D_CRT_SECURE_NO_WARNINGS', '-DNOMINMAX']
   usb_transport_cpp_args += ['-D__unix__=1']
+
+  if cpp.get_id() == 'msvc' or cpp.get_id() == 'clang-cl'
+    private_cpp_args += ['/FIchrono']
+  endif
 elif system == 'darwin' or system == 'emscripten'
   # Force the libusb-backed transport paths for cross-platform static builds.
   private_c_args += ['-D__unix__=1']
