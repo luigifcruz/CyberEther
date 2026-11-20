@@ -22,7 +22,7 @@ Result FlowgraphActions::handle(const MailNewFlowgraph&) {
 }
 
 Result FlowgraphActions::handle(const MailOpenFlowgraph&) {
-    std::string path = startFolder();
+    std::string path = startFolder("");
     auto enqueueMail = callbacks.enqueueMail;
     callbacks.requestFile({
         .mode = FilePickerMode::Open,
@@ -147,13 +147,7 @@ Result FlowgraphActions::handle(const MailSaveFlowgraph& msg) {
     const std::string currentPath = state.flowgraph.items.at(msg.flowgraph)->path();
     std::string path = msg.path.empty() ? currentPath : msg.path;
     if (path.empty() || msg.pick) {
-        std::string pickedPath = currentPath;
-        if (pickedPath.empty()) {
-            pickedPath = startFolder();
-            if (!pickedPath.empty()) {
-                pickedPath += "untitled.yml";
-            }
-        }
+        const std::string pickedPath = currentPath.empty() ? startFolder("untitled.yml") : currentPath;
         auto enqueueMail = callbacks.enqueueMail;
         callbacks.requestFile({
             .mode = FilePickerMode::Save,
@@ -944,29 +938,24 @@ std::string FlowgraphActions::GenerateRandomFlowgraphName() {
     return result;
 }
 
-// Flowgraphs saved before the save dialog added an extension have none, so such a
-// file is recognised by the keys every flowgraph document starts with.
 bool FlowgraphActions::LooksLikeFlowgraph(const std::string& path) {
     std::ifstream file(Platform::PathFromUtf8(path));
     bool versioned = false;
     bool graph = false;
     std::string line;
-    for (U64 count = 0; count < 64 && std::getline(file, line); ++count) {
+    while (!(versioned && graph) && std::getline(file, line)) {
         versioned = versioned || line.starts_with("version:");
         graph = graph || line.starts_with("graph:");
     }
     return versioned && graph;
 }
 
-// File dialogs start where the user last opened or saved a flowgraph, so they do not
-// have to navigate there from the home directory every time.
-std::string FlowgraphActions::startFolder() const {
+std::string FlowgraphActions::startFolder(const std::string& name) const {
     for (const auto& entry : state.interface.recentFlowgraphs) {
         std::error_code error;
         const auto folder = Platform::PathFromUtf8(entry.path).parent_path();
-        if (std::filesystem::is_directory(folder, error)) {
-            const auto name = Platform::PathToUtf8(folder);
-            return name.ends_with('/') ? name : name + "/";
+        if (!folder.empty() && std::filesystem::is_directory(folder, error)) {
+            return Platform::PathToUtf8(folder / Platform::PathFromUtf8(name));
         }
     }
     return {};
