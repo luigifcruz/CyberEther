@@ -658,4 +658,49 @@ TEST_CASE("Connection failures and request timeouts are different diagnostics", 
     CHECK(error.message.find("API key") == std::string::npos);
 }
 
+TEST_CASE("An image-count rejection reports the server's limit and is not retried",
+          "[agent][providers][errors][images]") {
+    struct Case {
+        int status;
+        const char* message;
+        std::optional<U64> limit;
+        Kind kind;
+    };
+    const auto example = GENERATE(
+        Case{400, "At most 1 image(s) may be provided in one prompt. (parameter=image)", 1, Kind::InvalidRequest},
+        Case{400, "At most 4 image(s) may be provided in one request.", 4, Kind::InvalidRequest},
+        Case{400, "At most 0 image(s) may be provided in one prompt.", 0, Kind::InvalidRequest},
+        Case{400, "At most 5 tools may be provided.", std::nullopt, Kind::InvalidRequest},
+        Case{400, "Provide at most one image.", std::nullopt, Kind::InvalidRequest},
+        Case{500, "At most 1 image(s) may be provided in one prompt.", std::nullopt, Kind::Server});
+    CAPTURE(example.message, example.status);
+
+    AgentTest::ProviderServer provider;
+    int count = 0;
+    provider.server.Post("/chat", [&](const auto&, auto& response) {
+        ++count;
+        const nlohmann::json body = {{"error", {{"message", example.message},
+                                                {"type", "BadRequestError"},
+                                                {"param", "image"},
+                                                {"code", example.status}}}};
+        response.status = example.status;
+        response.set_content(body.dump(), "application/json");
+    });
+    provider.start();
+
+    auto config = provider.config();
+    config.retries = example.status == 400 ? 3 : 0;
+
+    Agent::Provider::Error error;
+    REQUIRE(Chat(Agent::Provider(config), error) == Result::ERROR);
+
+    CHECK(error.kind == example.kind);
+    CHECK(error.imageLimit == example.limit);
+    CHECK(error.status == example.status);
+    CHECK(count == 1);
+    if (example.limit) {
+        CHECK(error.message.find("image(s)") != std::string::npos);
+    }
+}
+
 #endif

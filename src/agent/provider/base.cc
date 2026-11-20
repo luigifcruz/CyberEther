@@ -42,6 +42,7 @@ std::string ReadKey(const Config& config) {
 constexpr U32 kReasoningSetting = 1;
 constexpr U32 kEncryptedContent = 2;
 constexpr U32 kThinking = 4;
+constexpr U32 kReasoningEffort = 8;
 
 void Remove(nlohmann::json& request, U32 rejected) {
     if (rejected & kReasoningSetting) {
@@ -54,6 +55,9 @@ void Remove(nlohmann::json& request, U32 rejected) {
         request.erase("thinking");
         request.erase("output_config");
     }
+    if (rejected & kReasoningEffort) {
+        request.erase("reasoning_effort");
+    }
 }
 
 std::string RejectedParam(const std::string& response) {
@@ -65,7 +69,15 @@ std::string RejectedParam(const std::string& response) {
     return {};
 }
 
-U32 ParamOptions(const std::string& param, U32 requested) {
+U32 ParamOptions(std::string_view param, U32 requested) {
+    constexpr std::string_view bodyPrefix = "body.";
+    if (param.starts_with(bodyPrefix)) {
+        param.remove_prefix(bodyPrefix.size());
+    }
+
+    if (param == "reasoning_effort") {
+        return requested & kReasoningEffort;
+    }
     if (param == "reasoning" || param.starts_with("reasoning.")) {
         return requested & kReasoningSetting;
     }
@@ -100,7 +112,7 @@ U32 ThinkingOptions(const std::string& message) {
     return named && rejected ? kThinking : 0;
 }
 
-U32 MessageOptions(const std::string& message) {
+U32 MessageOptions(std::string message, U32 requested) {
     const auto mentions = [&](const char* phrase) {
         return message.find(phrase) != std::string::npos;
     };
@@ -113,9 +125,17 @@ U32 MessageOptions(const std::string& message) {
         return 0;
     }
 
+    U32 mentioned = 0;
+    if (requested & kReasoningEffort) {
+        constexpr std::string_view effortField = "reasoning_effort";
+        for (auto at = message.find(effortField); at != std::string::npos; at = message.find(effortField)) {
+            message.erase(at, effortField.size());
+            mentioned |= kReasoningEffort;
+        }
+    }
+
     const bool encrypted = mentions("reasoning.encrypted_content");
 
-    U32 mentioned = 0;
     if (encrypted || mentions("include")) {
         mentioned |= kEncryptedContent;
     }
@@ -136,6 +156,9 @@ U32 Rejected(const Provider::Error& failure, const std::string& response, const 
     if (request.contains("thinking") || request.contains("output_config")) {
         requested |= kThinking;
     }
+    if (request.contains("reasoning_effort")) {
+        requested |= kReasoningEffort;
+    }
 
     const bool invalidRequest = failure.kind == Provider::Error::Kind::InvalidRequest;
     const bool badRequestStatus = failure.status == 400 || failure.status == 422;
@@ -147,7 +170,7 @@ U32 Rejected(const Provider::Error& failure, const std::string& response, const 
         return ParamOptions(param, requested);
     }
     const auto message = Lowercase(failure.message);
-    U32 mentioned = MessageOptions(message);
+    U32 mentioned = MessageOptions(message, requested);
     if (requested & kThinking) {
         mentioned |= ThinkingOptions(message);
     }

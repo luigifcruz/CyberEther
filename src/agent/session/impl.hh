@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace Jetstream::Agent {
@@ -72,6 +73,8 @@ struct Session::Impl {
     std::optional<Mode> mode;
     std::shared_ptr<const std::vector<Provider::Message>> context;
     std::shared_ptr<Detail::OutputStore> outputs = std::make_shared<Detail::OutputStore>();
+    std::optional<U64> imageLimit;
+    std::string imageLimitKey;
 
     LiveFactory liveFactory;
     AudioFactory audioFactory;
@@ -93,6 +96,8 @@ struct Session::Impl {
     void add(Target target, Segment segment);
     void record(Target target, const Provider::Usage& usage);
     void publish(Target target, const Turn& turn);
+    U64 imageCap(Target target, U64 configured, const std::string& key) const;
+    void limitImages(Target target, U64 limit, const std::string& key);
 
     std::optional<U64> beginVoice(std::shared_ptr<std::atomic<bool>> cancelled);
     void appendVoiceTranscript(U64 id, bool user, const std::string& delta);
@@ -127,6 +132,7 @@ class Session::Impl::Turn {
  private:
     void loop();
     void fail(Provider::Error::Kind kind, std::string message);
+    std::string errorText() const;
     void finish(Provider::Response& response);
     void cancel();
     void append(Provider::Message message);
@@ -141,6 +147,8 @@ class Session::Impl::Turn {
     std::optional<std::string> summarize(std::string_view source, U64 targetBudget);
     bool compact(U64 targetBudget);
     Provider::Response stream(bool allowTools = true);
+    Provider::Response respond(bool allowTools = true);
+    bool lowerImageCap(const Provider::Response& response);
     void execute(const std::vector<Provider::FunctionCall>& calls, bool lastRound);
 
     void write(Segment::Kind kind, const std::string& text);
@@ -157,13 +165,16 @@ class Session::Impl::Turn {
     U64 announced = 0;
     bool streamed = false;
     bool prepared = false;
+    std::unordered_map<std::string, U64> failures;
 
     std::vector<Provider::Message> messages;
     std::string sessionId;
+    std::string imageKey;
     std::string finalText;
     std::shared_ptr<const Provider::State> finalState;
     Result result = Result::SUCCESS;
     Provider::Error error;
+    Provider::Usage usage;
 };
 
 }  // namespace Jetstream::Agent
