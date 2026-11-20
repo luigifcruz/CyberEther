@@ -85,6 +85,7 @@ class BlockText {
     struct Patch {
         std::string text;
         std::string error;
+        std::string note;
         Json changes = Json::array();
         U64 lineCount = 0;
     };
