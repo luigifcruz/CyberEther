@@ -21,7 +21,14 @@ EM_JS_DEPS(jst_secret_deps, "$UTF8ToString,$stringToNewUTF8");
 #undef ERROR
 #undef FATAL
 #elif defined(JST_OS_LINUX)
-#include <dlfcn.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #endif
 
 namespace Jetstream::Platform {
@@ -418,66 +425,128 @@ Result DeleteSecret(const std::string& service, const std::string& account) {
 
 namespace {
 
-struct SecretSchemaAttribute {
+struct DBusConnection;
+struct DBusMessage;
+
+struct DBusError {
     const char* name;
-    int type;
+    const char* message;
+    unsigned int dummy1 : 1;
+    unsigned int dummy2 : 1;
+    unsigned int dummy3 : 1;
+    unsigned int dummy4 : 1;
+    unsigned int dummy5 : 1;
+    void* padding1;
 };
 
-struct SecretSchema {
-    const char* name;
-    int flags;
-    SecretSchemaAttribute attributes[32];
-    int reserved;
-    void* reserved1;
-    void* reserved2;
-    void* reserved3;
-    void* reserved4;
-    void* reserved5;
-    void* reserved6;
-    void* reserved7;
+struct DBusMessageIter {
+    void* dummy1;
+    void* dummy2;
+    std::uint32_t dummy3;
+    int dummy4;
+    int dummy5;
+    int dummy6;
+    int dummy7;
+    int dummy8;
+    int dummy9;
+    int dummy10;
+    int dummy11;
+    int pad1;
+    void* pad2;
+    void* pad3;
 };
 
-struct GError {
-    unsigned int domain;
-    int code;
-    char* message;
-};
+using DBusBool = std::uint32_t;
 
-struct GList {
-    void* data;
-    GList* next;
-    GList* prev;
-};
+constexpr int DBusBusSession = 0;
+constexpr int DBusTypeInvalid = 0;
+constexpr int DBusTypeArray = 'a';
+constexpr int DBusTypeBoolean = 'b';
+constexpr int DBusTypeByte = 'y';
+constexpr int DBusTypeDictEntry = 'e';
+constexpr int DBusTypeObjectPath = 'o';
+constexpr int DBusTypeString = 's';
+constexpr int DBusTypeStruct = 'r';
+constexpr int DBusTypeUint32 = 'u';
+constexpr int DBusTypeVariant = 'v';
 
-constexpr int SecretSearchAll = 1 << 1;
+constexpr std::size_t DBusMaximumArrayBytes = 64 * 1024 * 1024;
+constexpr std::size_t SecretMaximumKeyBytes = 16 * 1024 * 1024;
 
+constexpr int CallTimeoutMilliseconds = 25000;
+constexpr auto PromptTimeout = std::chrono::seconds(120);
+constexpr int PromptPollMilliseconds = 250;
+
+constexpr const char* SecretBusName = "org.freedesktop.secrets";
+constexpr const char* SecretServicePath = "/org/freedesktop/secrets";
+constexpr const char* SecretDefaultCollectionPath = "/org/freedesktop/secrets/aliases/default";
+constexpr const char* SecretServiceInterface = "org.freedesktop.Secret.Service";
+constexpr const char* SecretCollectionInterface = "org.freedesktop.Secret.Collection";
+constexpr const char* SecretItemInterface = "org.freedesktop.Secret.Item";
+constexpr const char* SecretPromptInterface = "org.freedesktop.Secret.Prompt";
+constexpr const char* PropertiesInterface = "org.freedesktop.DBus.Properties";
+constexpr const char* SecretNoObject = "/";
+constexpr const char* SecretSessionAlgorithm = "plain";
+constexpr const char* SecretContentType = "text/plain";
+constexpr const char* SecretLegacyContentType = "application/octet-stream";
+constexpr const char* SecretCollectionDefault = "default";
+constexpr const char* SecretCollectionLabel = "Default keyring";
+
+constexpr const char* SecretSchemaAttribute = "xdg:schema";
 constexpr const char* SecretSchemaName = "ltd.luigi.CyberEther.Secret";
 constexpr const char* SecretServiceAttribute = "service";
 constexpr const char* SecretAccountAttribute = "account";
-constexpr const char* SecretCollectionDefault = "default";
 
-const SecretSchema LibsecretSchema = {
-    SecretSchemaName,
-    0,
-    {
-        {SecretServiceAttribute, 0},
-        {SecretAccountAttribute, 0},
-        {nullptr, 0},
-    },
-    0,
-    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+constexpr const char* MissingObjectErrors[] = {
+    "org.freedesktop.Secret.Error.NoSuchObject",
+    "org.freedesktop.DBus.Error.UnknownObject",
+    "org.freedesktop.DBus.Error.UnknownMethod",
 };
 
-struct Libsecret {
+enum class PromptResult {
+    Any,
+    Object,
+    Objects,
+};
+
+struct Libdbus {
     void* handle = nullptr;
-    int (*store)(const SecretSchema*, const char*, const char*, const char*, void*, GError**, ...) = nullptr;
-    char* (*lookup)(const SecretSchema*, void*, GError**, ...) = nullptr;
-    int (*clear)(const SecretSchema*, void*, GError**, ...) = nullptr;
-    void (*free)(char*) = nullptr;
-    GList* (*search)(const SecretSchema*, int, void*, GError**, ...) = nullptr;
-    void (*listFreeFull)(GList*, void (*)(void*)) = nullptr;
-    void (*objectUnref)(void*) = nullptr;
-    void (*errorFree)(GError*) = nullptr;
+    DBusBool (*threadsInitDefault)() = nullptr;
+    void (*errorInit)(DBusError*) = nullptr;
+    void (*errorFree)(DBusError*) = nullptr;
+    DBusBool (*errorIsSet)(const DBusError*) = nullptr;
+    DBusBool (*validateUtf8)(const char*, DBusError*) = nullptr;
+    DBusConnection* (*busGetPrivate)(int, DBusError*) = nullptr;
+    DBusBool (*busNameHasOwner)(DBusConnection*, const char*, DBusError*) = nullptr;
+    void (*busAddMatch)(DBusConnection*, const char*, DBusError*) = nullptr;
+    void (*busRemoveMatch)(DBusConnection*, const char*, DBusError*) = nullptr;
+    void (*connectionSetExitOnDisconnect)(DBusConnection*, DBusBool) = nullptr;
+    void (*connectionClose)(DBusConnection*) = nullptr;
+    void (*connectionUnref)(DBusConnection*) = nullptr;
+    DBusBool (*connectionGetIsConnected)(DBusConnection*) = nullptr;
+    DBusMessage* (*connectionSendWithReplyAndBlock)(DBusConnection*, DBusMessage*, int, DBusError*) = nullptr;
+    DBusBool (*connectionReadWrite)(DBusConnection*, int) = nullptr;
+    DBusMessage* (*connectionPopMessage)(DBusConnection*) = nullptr;
+    DBusMessage* (*messageNewMethodCall)(const char*, const char*, const char*, const char*) = nullptr;
+    void (*messageUnref)(DBusMessage*) = nullptr;
+    void (*messageSetAutoStart)(DBusMessage*, DBusBool) = nullptr;
+    DBusBool (*messageIsSignal)(DBusMessage*, const char*, const char*) = nullptr;
+    DBusBool (*messageHasSignature)(DBusMessage*, const char*) = nullptr;
+    const char* (*messageGetPath)(DBusMessage*) = nullptr;
+    const char* (*messageGetSender)(DBusMessage*) = nullptr;
+    DBusBool (*iterInit)(DBusMessage*, DBusMessageIter*) = nullptr;
+    void (*iterInitAppend)(DBusMessage*, DBusMessageIter*) = nullptr;
+    DBusBool (*iterAppendBasic)(DBusMessageIter*, int, const void*) = nullptr;
+    DBusBool (*iterAppendFixedArray)(DBusMessageIter*, int, const void*, int) = nullptr;
+    DBusBool (*iterOpenContainer)(DBusMessageIter*, int, const char*, DBusMessageIter*) = nullptr;
+    DBusBool (*iterCloseContainer)(DBusMessageIter*, DBusMessageIter*) = nullptr;
+    void (*iterAbandonContainerIfOpen)(DBusMessageIter*, DBusMessageIter*) = nullptr;
+    int (*iterGetArgType)(DBusMessageIter*) = nullptr;
+    int (*iterGetElementType)(DBusMessageIter*) = nullptr;
+    void (*iterGetBasic)(DBusMessageIter*, void*) = nullptr;
+    void (*iterGetFixedArray)(DBusMessageIter*, void*, int*) = nullptr;
+    void (*iterRecurse)(DBusMessageIter*, DBusMessageIter*) = nullptr;
+    DBusBool (*iterNext)(DBusMessageIter*) = nullptr;
 };
 
 template<typename F>
@@ -487,87 +556,1011 @@ bool LoadSymbol(void* handle, const char* name, F& target) {
     return target != nullptr;
 }
 
-template<typename F>
-bool LoadGlibSymbol(void* handle, const char* name, F& target) {
-#if defined(__GLIBC__)
-    return LoadSymbol(handle, name, target);
-#else
-    return LoadSymbol(RTLD_DEFAULT, name, target) || LoadSymbol(handle, name, target);
-#endif
-}
-
-const Libsecret& GetLibsecret() {
-    static Libsecret library;
+const Libdbus& GetLibdbus() {
+    static Libdbus library;
     static std::once_flag flag;
     std::call_once(flag, [] {
-#if defined(__GLIBC__)
-        constexpr auto visibility = DynamicLibraryVisibility::Isolated;
-#else
-        constexpr auto visibility = DynamicLibraryVisibility::Local;
-#endif
         std::string error;
-        library.handle = OpenDynamicLibrary("libsecret-1.so.0", visibility, error);
+        library.handle = OpenDynamicLibrary("libdbus-1.so.3", DynamicLibraryVisibility::Local, error);
         if (!library.handle) {
             return;
         }
 
-        const bool loaded = LoadSymbol(library.handle, "secret_password_store_sync", library.store) &&
-                            LoadSymbol(library.handle, "secret_password_lookup_sync", library.lookup) &&
-                            LoadSymbol(library.handle, "secret_password_clear_sync", library.clear) &&
-                            LoadSymbol(library.handle, "secret_password_free", library.free) &&
-                            LoadSymbol(library.handle, "secret_password_search_sync", library.search) &&
-                            LoadGlibSymbol(library.handle, "g_list_free_full", library.listFreeFull) &&
-                            LoadGlibSymbol(library.handle, "g_object_unref", library.objectUnref) &&
-                            LoadGlibSymbol(library.handle, "g_error_free", library.errorFree);
-        if (!loaded) {
+        const bool loaded = LoadSymbol(library.handle, "dbus_threads_init_default", library.threadsInitDefault) &&
+                            LoadSymbol(library.handle, "dbus_error_init", library.errorInit) &&
+                            LoadSymbol(library.handle, "dbus_error_free", library.errorFree) &&
+                            LoadSymbol(library.handle, "dbus_error_is_set", library.errorIsSet) &&
+                            LoadSymbol(library.handle, "dbus_validate_utf8", library.validateUtf8) &&
+                            LoadSymbol(library.handle, "dbus_bus_get_private", library.busGetPrivate) &&
+                            LoadSymbol(library.handle, "dbus_bus_name_has_owner", library.busNameHasOwner) &&
+                            LoadSymbol(library.handle, "dbus_bus_add_match", library.busAddMatch) &&
+                            LoadSymbol(library.handle, "dbus_bus_remove_match", library.busRemoveMatch) &&
+                            LoadSymbol(library.handle, "dbus_connection_set_exit_on_disconnect",
+                                       library.connectionSetExitOnDisconnect) &&
+                            LoadSymbol(library.handle, "dbus_connection_close", library.connectionClose) &&
+                            LoadSymbol(library.handle, "dbus_connection_unref", library.connectionUnref) &&
+                            LoadSymbol(library.handle, "dbus_connection_get_is_connected",
+                                       library.connectionGetIsConnected) &&
+                            LoadSymbol(library.handle, "dbus_connection_send_with_reply_and_block",
+                                       library.connectionSendWithReplyAndBlock) &&
+                            LoadSymbol(library.handle, "dbus_connection_read_write", library.connectionReadWrite) &&
+                            LoadSymbol(library.handle, "dbus_connection_pop_message", library.connectionPopMessage) &&
+                            LoadSymbol(library.handle, "dbus_message_new_method_call", library.messageNewMethodCall) &&
+                            LoadSymbol(library.handle, "dbus_message_unref", library.messageUnref) &&
+                            LoadSymbol(library.handle, "dbus_message_set_auto_start", library.messageSetAutoStart) &&
+                            LoadSymbol(library.handle, "dbus_message_is_signal", library.messageIsSignal) &&
+                            LoadSymbol(library.handle, "dbus_message_has_signature", library.messageHasSignature) &&
+                            LoadSymbol(library.handle, "dbus_message_get_path", library.messageGetPath) &&
+                            LoadSymbol(library.handle, "dbus_message_get_sender", library.messageGetSender) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_init", library.iterInit) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_init_append", library.iterInitAppend) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_append_basic", library.iterAppendBasic) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_append_fixed_array",
+                                       library.iterAppendFixedArray) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_open_container", library.iterOpenContainer) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_close_container",
+                                       library.iterCloseContainer) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_abandon_container_if_open",
+                                       library.iterAbandonContainerIfOpen) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_get_arg_type", library.iterGetArgType) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_get_element_type",
+                                       library.iterGetElementType) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_get_basic", library.iterGetBasic) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_get_fixed_array", library.iterGetFixedArray) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_recurse", library.iterRecurse) &&
+                            LoadSymbol(library.handle, "dbus_message_iter_next", library.iterNext);
+        if (!loaded || !library.threadsInitDefault()) {
             CloseDynamicLibrary(library.handle);
-            library = Libsecret{};
+            library = Libdbus{};
         }
     });
     return library;
 }
 
-void ReportSecretError(const char* action, const Libsecret& library, GError* error) {
-    if (!error) {
-        return;
-    }
-    JST_ERROR("Failed to {} secret: {} ({}).", action, error->message ? error->message : "unknown error", error->code);
-    library.errorFree(error);
+std::mutex& SecretMutex() {
+    static std::mutex mutex;
+    return mutex;
 }
 
-bool SecretExists(const Libsecret& library, const std::string& service, const std::string& account, GError** error) {
-    GList* matches = library.search(&LibsecretSchema, SecretSearchAll, nullptr, error,
-                                    SecretServiceAttribute, service.c_str(),
-                                    SecretAccountAttribute, account.c_str(),
-                                    nullptr);
-    if (!matches) {
+DBusConnection*& SharedConnection() {
+    static DBusConnection* connection = nullptr;
+    return connection;
+}
+
+std::atomic<pid_t>& SharedConnectionPid() {
+    static std::atomic<pid_t> pid{0};
+    return pid;
+}
+
+bool InheritedConnection() {
+    const pid_t pid = SharedConnectionPid().load();
+    return pid != 0 && pid != getpid();
+}
+
+bool RejectInheritedConnection(const char* action) {
+    if (!InheritedConnection()) {
         return false;
     }
-    library.listFreeFull(matches, library.objectUnref);
+    JST_ERROR("Failed to {} secret: the Secret Service connection belongs to the parent process.", action);
+    return true;
+}
+
+void RetireSharedConnection(const Libdbus& library) {
+    auto& shared = SharedConnection();
+    if (shared) {
+        library.connectionClose(shared);
+        library.connectionUnref(shared);
+        shared = nullptr;
+    }
+    SharedConnectionPid().store(0);
+}
+
+struct MessageDeleter {
+    void operator()(DBusMessage* message) const {
+        GetLibdbus().messageUnref(message);
+    }
+};
+
+using MessagePtr = std::unique_ptr<DBusMessage, MessageDeleter>;
+
+class ScopedError {
+ public:
+    explicit ScopedError(const Libdbus& library) : library(library) {
+        library.errorInit(&error);
+    }
+    ~ScopedError() {
+        library.errorFree(&error);
+    }
+
+    ScopedError(const ScopedError&) = delete;
+    ScopedError& operator=(const ScopedError&) = delete;
+
+    DBusError* get() {
+        return &error;
+    }
+
+    bool set() const {
+        return library.errorIsSet(&error);
+    }
+
+    const char* name() const {
+        return error.name ? error.name : "unknown";
+    }
+
+    const char* message() const {
+        return error.message ? error.message : "unknown error";
+    }
+
+ private:
+    const Libdbus& library;
+    DBusError error = {};
+};
+
+class ScopedContainer {
+ public:
+    ScopedContainer(const Libdbus& library, DBusMessageIter* parent, int type, const char* signature)
+        : library(library), parent(parent) {
+        opened = library.iterOpenContainer(parent, type, signature, &iter) != 0;
+    }
+    ~ScopedContainer() {
+        library.iterAbandonContainerIfOpen(parent, &iter);
+    }
+
+    ScopedContainer(const ScopedContainer&) = delete;
+    ScopedContainer& operator=(const ScopedContainer&) = delete;
+
+    bool ok() const {
+        return opened;
+    }
+
+    DBusMessageIter* get() {
+        return &iter;
+    }
+
+    bool close() {
+        return opened && library.iterCloseContainer(parent, &iter) != 0;
+    }
+
+ private:
+    const Libdbus& library;
+    DBusMessageIter* parent;
+    DBusMessageIter iter = {};
+    bool opened = false;
+};
+
+struct SecretItems {
+    std::vector<std::string> unlocked;
+    std::vector<std::string> locked;
+};
+
+bool ContainsPath(const std::vector<std::string>& paths, const std::string& path) {
+    return std::find(paths.begin(), paths.end(), path) != paths.end();
+}
+
+class SecretService {
+ public:
+    SecretService(const Libdbus& library, const char* action) : library(library), action(action) {}
+    ~SecretService() {
+        if (connection && !session.empty() && session != SecretNoObject) {
+            closeSession();
+        }
+    }
+
+    SecretService(const SecretService&) = delete;
+    SecretService& operator=(const SecretService&) = delete;
+
+    bool connect(bool report = true) {
+        auto& shared = SharedConnection();
+        if (shared) {
+            library.connectionReadWrite(shared, 0);
+            if (!library.connectionGetIsConnected(shared)) {
+                RetireSharedConnection(library);
+            }
+        }
+
+        if (!shared) {
+            ScopedError error(library);
+            shared = library.busGetPrivate(DBusBusSession, error.get());
+            if (!shared) {
+                if (report) {
+                    fail(error);
+                }
+                return false;
+            }
+            library.connectionSetExitOnDisconnect(shared, 0);
+            SharedConnectionPid().store(getpid());
+        }
+
+        while (MessagePtr stale{library.connectionPopMessage(shared)}) {
+        }
+        connection = shared;
+        return true;
+    }
+
+    bool resolveOwner() {
+        if (!serviceOwned() && !activate()) {
+            return false;
+        }
+
+        MessagePtr message(library.messageNewMethodCall("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                                        "org.freedesktop.DBus", "GetNameOwner"));
+        if (!message) {
+            return outOfMemory();
+        }
+
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendBasic(&args, DBusTypeString, SecretBusName)) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        const char* name = nullptr;
+        if (!library.messageHasSignature(reply.get(), "s") || !library.iterInit(reply.get(), &iter)) {
+            return unexpectedReply();
+        }
+        library.iterGetBasic(&iter, &name);
+        if (!name || name[0] != ':') {
+            return unexpectedReply();
+        }
+        owner = name;
+        return true;
+    }
+
+    bool serviceOwned() {
+        ScopedError error(library);
+        const bool owned = library.busNameHasOwner(connection, SecretBusName, error.get()) != 0;
+        return owned && !error.set();
+    }
+
+    bool openSession() {
+        auto message = call(SecretServicePath, SecretServiceInterface, "OpenSession");
+        if (!message) {
+            return false;
+        }
+
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendBasic(&args, DBusTypeString, SecretSessionAlgorithm) || !appendStringVariant(&args, "")) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        DBusMessageIter output;
+        if (!library.messageHasSignature(reply.get(), "vo") || !library.iterInit(reply.get(), &iter)) {
+            retire();
+            return unexpectedReply();
+        }
+        library.iterRecurse(&iter, &output);
+        std::string path;
+        library.iterNext(&iter);
+        if (!emptySessionOutput(&output) || !readObjectPath(&iter, path) || path.empty() ||
+            path == SecretNoObject) {
+            retire();
+            return unexpectedReply();
+        }
+        session = path;
+        return true;
+    }
+
+    bool search(const std::string& service, const std::string& account, SecretItems& items) {
+        auto message = call(SecretServicePath, SecretServiceInterface, "SearchItems");
+        if (!message) {
+            return false;
+        }
+
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendAttributes(&args, service, account)) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        if (!library.messageHasSignature(reply.get(), "aoao") || !library.iterInit(reply.get(), &iter) ||
+            !readObjectPaths(&iter, items.unlocked) || !library.iterNext(&iter) ||
+            !readObjectPaths(&iter, items.locked)) {
+            return unexpectedReply();
+        }
+        return true;
+    }
+
+    bool unlock(const std::vector<std::string>& objects, std::vector<std::string>& unlocked) {
+        auto message = call(SecretServicePath, SecretServiceInterface, "Unlock");
+        if (!message) {
+            return false;
+        }
+
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendObjectPaths(&args, objects)) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        std::string promptPath;
+        if (!library.messageHasSignature(reply.get(), "aoo") || !library.iterInit(reply.get(), &iter) ||
+            !readObjectPaths(&iter, unlocked) || !library.iterNext(&iter) ||
+            !readObjectPath(&iter, promptPath)) {
+            return unexpectedReply();
+        }
+
+        return prompt(promptPath, PromptResult::Objects, unlocked);
+    }
+
+    bool getSecret(const std::string& item, std::string& value) {
+        auto message = call(item.c_str(), SecretItemInterface, "GetSecret");
+        if (!message) {
+            return false;
+        }
+
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendBasic(&args, DBusTypeObjectPath, session.c_str())) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        DBusMessageIter secret;
+        DBusMessageIter parameters;
+        DBusMessageIter bytes;
+        if (!library.messageHasSignature(reply.get(), "(oayays)") || !library.iterInit(reply.get(), &iter)) {
+            return unexpectedReply();
+        }
+        library.iterRecurse(&iter, &secret);
+        std::string secretSession;
+        readObjectPath(&secret, secretSession);
+        library.iterNext(&secret);
+        library.iterRecurse(&secret, &parameters);
+        if (secretSession != session || library.iterGetArgType(&parameters) != DBusTypeInvalid) {
+            return unexpectedReply();
+        }
+        library.iterNext(&secret);
+        library.iterRecurse(&secret, &bytes);
+
+        const unsigned char* data = nullptr;
+        int size = 0;
+        if (library.iterGetArgType(&bytes) == DBusTypeByte) {
+            library.iterGetFixedArray(&bytes, &data, &size);
+        }
+        if (size < 0 || (size > 0 && !data)) {
+            return unexpectedReply();
+        }
+
+        const char* contentType = nullptr;
+        library.iterNext(&secret);
+        library.iterGetBasic(&secret, &contentType);
+
+        const std::string secretValue = size > 0 ? std::string(reinterpret_cast<const char*>(data),
+                                                               static_cast<std::size_t>(size))
+                                                 : std::string();
+        if (!ValidSecretText(secretValue)) {
+            JST_ERROR("Failed to {} secret: the stored value contains a null byte.", action);
+            return false;
+        }
+
+        const std::string type = contentType ? contentType : "";
+        const bool text = type == SecretContentType ||
+                          (type == SecretLegacyContentType && library.validateUtf8(secretValue.c_str(), nullptr));
+        if (!text) {
+            JST_ERROR("Failed to {} secret: the stored value is not text.", action);
+            return false;
+        }
+        value = secretValue;
+        return true;
+    }
+
+    bool ensureDefaultCollection() {
+        std::string collection;
+        if (!readAlias(collection)) {
+            return false;
+        }
+        if (collection != SecretNoObject) {
+            return true;
+        }
+
+        auto message = call(SecretServicePath, SecretServiceInterface, "CreateCollection");
+        if (!message) {
+            return false;
+        }
+
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendCollectionProperties(&args) || !appendBasic(&args, DBusTypeString, SecretCollectionDefault)) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        std::string promptPath;
+        if (!library.messageHasSignature(reply.get(), "oo") || !library.iterInit(reply.get(), &iter) ||
+            !readObjectPath(&iter, collection) || !library.iterNext(&iter) ||
+            !readObjectPath(&iter, promptPath)) {
+            return unexpectedReply();
+        }
+
+        if (promptPath == SecretNoObject) {
+            if (collection == SecretNoObject) {
+                return unexpectedReply();
+            }
+        } else {
+            std::vector<std::string> created;
+            if (!prompt(promptPath, PromptResult::Object, created)) {
+                return false;
+            }
+        }
+
+        if (!readAlias(collection)) {
+            return false;
+        }
+        if (collection == SecretNoObject) {
+            JST_ERROR("Failed to {} secret: the default collection could not be created.", action);
+            return false;
+        }
+        return true;
+    }
+
+    bool unlockDefaultCollection() {
+        bool locked = false;
+        if (!collectionLocked(locked)) {
+            return false;
+        }
+        if (!locked) {
+            return true;
+        }
+
+        std::vector<std::string> unlocked;
+        if (!unlock({SecretDefaultCollectionPath}, unlocked) || !collectionLocked(locked)) {
+            return false;
+        }
+        if (locked) {
+            JST_ERROR("Failed to {} secret: the default collection is still locked.", action);
+            return false;
+        }
+        return true;
+    }
+
+    bool createItem(const std::string& service, const std::string& account, const std::string& value) {
+        auto message = call(SecretDefaultCollectionPath, SecretCollectionInterface, "CreateItem");
+        if (!message) {
+            return false;
+        }
+
+        const DBusBool replace = 1;
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendItemProperties(&args, service, account) || !appendSecret(&args, value) ||
+            !library.iterAppendBasic(&args, DBusTypeBoolean, &replace)) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        std::string item;
+        std::string promptPath;
+        if (!library.messageHasSignature(reply.get(), "oo") || !library.iterInit(reply.get(), &iter) ||
+            !readObjectPath(&iter, item) || !library.iterNext(&iter) || !readObjectPath(&iter, promptPath)) {
+            return unexpectedReply();
+        }
+
+        if (promptPath == SecretNoObject) {
+            return item != SecretNoObject || unexpectedReply();
+        }
+
+        std::vector<std::string> created;
+        return prompt(promptPath, PromptResult::Object, created);
+    }
+
+    bool deleteItem(const std::string& item) {
+        auto message = call(item.c_str(), SecretItemInterface, "Delete");
+        if (!message) {
+            return false;
+        }
+
+        bool missing = false;
+        const auto reply = send(std::move(message), &missing);
+        if (!reply) {
+            return missing;
+        }
+
+        DBusMessageIter iter;
+        std::string promptPath;
+        if (!library.messageHasSignature(reply.get(), "o") || !library.iterInit(reply.get(), &iter) ||
+            !readObjectPath(&iter, promptPath)) {
+            return unexpectedReply();
+        }
+
+        std::vector<std::string> results;
+        return prompt(promptPath, PromptResult::Any, results);
+    }
+
+ private:
+    const Libdbus& library;
+    const char* action;
+    DBusConnection* connection = nullptr;
+    std::string owner;
+    std::string session;
+
+    bool activate() {
+        MessagePtr message(library.messageNewMethodCall("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                                        "org.freedesktop.DBus", "StartServiceByName"));
+        if (!message) {
+            return outOfMemory();
+        }
+
+        const std::uint32_t flags = 0;
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendBasic(&args, DBusTypeString, SecretBusName) ||
+            !library.iterAppendBasic(&args, DBusTypeUint32, &flags)) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+        if (!library.messageHasSignature(reply.get(), "u")) {
+            return unexpectedReply();
+        }
+        return true;
+    }
+
+    bool emptySessionOutput(DBusMessageIter* output) {
+        if (library.iterGetArgType(output) == DBusTypeString) {
+            const char* value = nullptr;
+            library.iterGetBasic(output, &value);
+            return value && value[0] == '\0';
+        }
+        if (library.iterGetArgType(output) == DBusTypeArray && library.iterGetElementType(output) == DBusTypeByte) {
+            DBusMessageIter bytes;
+            library.iterRecurse(output, &bytes);
+            return library.iterGetArgType(&bytes) == DBusTypeInvalid;
+        }
+        return false;
+    }
+
+    void retire() {
+        RetireSharedConnection(library);
+        connection = nullptr;
+    }
+
+    bool fail(const ScopedError& error) {
+        JST_ERROR("Failed to {} secret: {} ({}).", action, error.message(), error.name());
+        return false;
+    }
+
+    bool outOfMemory() {
+        JST_ERROR("Failed to {} secret: out of memory while building a D-Bus message.", action);
+        return false;
+    }
+
+    bool unexpectedReply() {
+        JST_ERROR("Failed to {} secret: unexpected reply from the Secret Service.", action);
+        return false;
+    }
+
+    MessagePtr call(const char* path, const char* interface, const char* method) {
+        MessagePtr message(library.messageNewMethodCall(owner.c_str(), path, interface, method));
+        if (!message) {
+            outOfMemory();
+            return message;
+        }
+        library.messageSetAutoStart(message.get(), 0);
+        return message;
+    }
+
+    MessagePtr send(MessagePtr message, bool* missing = nullptr) {
+        if (!connection) {
+            JST_ERROR("Failed to {} secret: the Secret Service connection was closed.", action);
+            return nullptr;
+        }
+        ScopedError error(library);
+        MessagePtr reply(library.connectionSendWithReplyAndBlock(connection, message.get(),
+                                                                 CallTimeoutMilliseconds, error.get()));
+        if (!reply) {
+            if (missing && error.set()) {
+                for (const char* name : MissingObjectErrors) {
+                    if (std::string(error.name()) == name) {
+                        *missing = true;
+                        return reply;
+                    }
+                }
+            }
+            fail(error);
+        }
+        return reply;
+    }
+
+    bool appendBasic(DBusMessageIter* iter, int type, const char* value) {
+        return library.iterAppendBasic(iter, type, &value) != 0;
+    }
+
+    bool appendStringVariant(DBusMessageIter* iter, const char* value) {
+        ScopedContainer variant(library, iter, DBusTypeVariant, "s");
+        return variant.ok() && appendBasic(variant.get(), DBusTypeString, value) && variant.close();
+    }
+
+    bool appendStringPair(DBusMessageIter* dict, const char* key, const char* value) {
+        ScopedContainer entry(library, dict, DBusTypeDictEntry, nullptr);
+        return entry.ok() && appendBasic(entry.get(), DBusTypeString, key) &&
+               appendBasic(entry.get(), DBusTypeString, value) && entry.close();
+    }
+
+    bool appendAttributes(DBusMessageIter* iter, const std::string& service, const std::string& account) {
+        ScopedContainer dict(library, iter, DBusTypeArray, "{ss}");
+        return dict.ok() && appendStringPair(dict.get(), SecretSchemaAttribute, SecretSchemaName) &&
+               appendStringPair(dict.get(), SecretServiceAttribute, service.c_str()) &&
+               appendStringPair(dict.get(), SecretAccountAttribute, account.c_str()) && dict.close();
+    }
+
+    bool appendStringProperty(DBusMessageIter* dict, const char* key, const char* value) {
+        ScopedContainer entry(library, dict, DBusTypeDictEntry, nullptr);
+        return entry.ok() && appendBasic(entry.get(), DBusTypeString, key) &&
+               appendStringVariant(entry.get(), value) && entry.close();
+    }
+
+    bool appendAttributesProperty(DBusMessageIter* dict, const std::string& service, const std::string& account) {
+        ScopedContainer entry(library, dict, DBusTypeDictEntry, nullptr);
+        if (!entry.ok() || !appendBasic(entry.get(), DBusTypeString, "org.freedesktop.Secret.Item.Attributes")) {
+            return false;
+        }
+        ScopedContainer variant(library, entry.get(), DBusTypeVariant, "a{ss}");
+        return variant.ok() && appendAttributes(variant.get(), service, account) && variant.close() &&
+               entry.close();
+    }
+
+    bool appendCollectionProperties(DBusMessageIter* iter) {
+        ScopedContainer properties(library, iter, DBusTypeArray, "{sv}");
+        return properties.ok() &&
+               appendStringProperty(properties.get(), "org.freedesktop.Secret.Collection.Label",
+                                    SecretCollectionLabel) &&
+               properties.close();
+    }
+
+    bool appendItemProperties(DBusMessageIter* iter, const std::string& service, const std::string& account) {
+        const std::string label = service + " (" + account + ")";
+        ScopedContainer properties(library, iter, DBusTypeArray, "{sv}");
+        return properties.ok() &&
+               appendStringProperty(properties.get(), "org.freedesktop.Secret.Item.Label", label.c_str()) &&
+               appendAttributesProperty(properties.get(), service, account) && properties.close();
+    }
+
+    bool appendBytes(DBusMessageIter* iter, const std::string& value) {
+        const auto* data = reinterpret_cast<const unsigned char*>(value.data());
+        ScopedContainer bytes(library, iter, DBusTypeArray, "y");
+        return bytes.ok() &&
+               (value.empty() ||
+                library.iterAppendFixedArray(bytes.get(), DBusTypeByte, &data, static_cast<int>(value.size()))) &&
+               bytes.close();
+    }
+
+    bool appendSecret(DBusMessageIter* iter, const std::string& value) {
+        ScopedContainer secret(library, iter, DBusTypeStruct, nullptr);
+        return secret.ok() && appendBasic(secret.get(), DBusTypeObjectPath, session.c_str()) &&
+               appendBytes(secret.get(), "") && appendBytes(secret.get(), value) &&
+               appendBasic(secret.get(), DBusTypeString, SecretContentType) && secret.close();
+    }
+
+    bool appendObjectPaths(DBusMessageIter* iter, const std::vector<std::string>& paths) {
+        ScopedContainer array(library, iter, DBusTypeArray, "o");
+        if (!array.ok()) {
+            return false;
+        }
+        for (const auto& path : paths) {
+            if (!appendBasic(array.get(), DBusTypeObjectPath, path.c_str())) {
+                return false;
+            }
+        }
+        return array.close();
+    }
+
+    bool readObjectPath(DBusMessageIter* iter, std::string& path) {
+        if (library.iterGetArgType(iter) != DBusTypeObjectPath) {
+            return false;
+        }
+        const char* value = nullptr;
+        library.iterGetBasic(iter, &value);
+        path = value ? value : "";
+        return true;
+    }
+
+    bool readObjectPaths(DBusMessageIter* iter, std::vector<std::string>& paths) {
+        if (library.iterGetArgType(iter) != DBusTypeArray ||
+            library.iterGetElementType(iter) != DBusTypeObjectPath) {
+            return false;
+        }
+        DBusMessageIter array;
+        library.iterRecurse(iter, &array);
+        while (library.iterGetArgType(&array) == DBusTypeObjectPath) {
+            std::string path;
+            readObjectPath(&array, path);
+            paths.push_back(std::move(path));
+            library.iterNext(&array);
+        }
+        return library.iterGetArgType(&array) == DBusTypeInvalid;
+    }
+
+    bool readAlias(std::string& collection) {
+        auto message = call(SecretServicePath, SecretServiceInterface, "ReadAlias");
+        if (!message) {
+            return false;
+        }
+
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendBasic(&args, DBusTypeString, SecretCollectionDefault)) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        if (!library.messageHasSignature(reply.get(), "o") || !library.iterInit(reply.get(), &iter) ||
+            !readObjectPath(&iter, collection)) {
+            return unexpectedReply();
+        }
+        return true;
+    }
+
+    bool collectionLocked(bool& locked) {
+        auto message = call(SecretDefaultCollectionPath, PropertiesInterface, "Get");
+        if (!message) {
+            return false;
+        }
+
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendBasic(&args, DBusTypeString, SecretCollectionInterface) ||
+            !appendBasic(&args, DBusTypeString, "Locked")) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        DBusMessageIter variant;
+        if (!library.messageHasSignature(reply.get(), "v") || !library.iterInit(reply.get(), &iter)) {
+            return unexpectedReply();
+        }
+        library.iterRecurse(&iter, &variant);
+        if (library.iterGetArgType(&variant) != DBusTypeBoolean) {
+            return unexpectedReply();
+        }
+        DBusBool value = 0;
+        library.iterGetBasic(&variant, &value);
+        locked = value != 0;
+        return true;
+    }
+
+    bool prompt(const std::string& path, PromptResult kind, std::vector<std::string>& results) {
+        if (path == SecretNoObject) {
+            return true;
+        }
+
+        if (!connection) {
+            JST_ERROR("Failed to {} secret: the Secret Service connection was closed.", action);
+            return false;
+        }
+
+        const std::string sender = owner;
+
+        const std::vector<std::string> rules = {
+            "type='signal',sender='" + sender + "',interface='" + std::string(SecretPromptInterface) +
+                "',member='Completed',path='" + path + "'",
+            "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',"
+            "member='NameOwnerChanged',arg0='" + sender + "'",
+        };
+
+        std::size_t added = 0;
+        bool completed = false;
+        for (; added < rules.size(); ++added) {
+            ScopedError error(library);
+            library.busAddMatch(connection, rules[added].c_str(), error.get());
+            if (error.set()) {
+                fail(error);
+                break;
+            }
+        }
+        if (added == rules.size()) {
+            completed = runPrompt(path, sender, kind, results);
+        }
+
+        for (std::size_t index = 0; connection && index < added; ++index) {
+            ScopedError error(library);
+            library.busRemoveMatch(connection, rules[index].c_str(), error.get());
+        }
+        return completed;
+    }
+
+    bool runPrompt(const std::string& path,
+                   const std::string& sender,
+                   PromptResult kind,
+                   std::vector<std::string>& results) {
+        auto message = call(path.c_str(), SecretPromptInterface, "Prompt");
+        if (!message) {
+            return false;
+        }
+
+        DBusMessageIter args;
+        library.iterInitAppend(message.get(), &args);
+        if (!appendBasic(&args, DBusTypeString, "")) {
+            return outOfMemory();
+        }
+
+        const auto reply = send(std::move(message));
+        if (!reply || !library.messageHasSignature(reply.get(), "")) {
+            dismissPrompt(path);
+            retire();
+            return reply ? unexpectedReply() : false;
+        }
+
+        const auto deadline = std::chrono::steady_clock::now() + PromptTimeout;
+        while (std::chrono::steady_clock::now() < deadline) {
+            while (MessagePtr signal{library.connectionPopMessage(connection)}) {
+                const char* signalPath = library.messageGetPath(signal.get());
+                const char* signalSender = library.messageGetSender(signal.get());
+                if (ownerVanished(signal.get(), sender)) {
+                    JST_ERROR("Failed to {} secret: the Secret Service exited during a prompt.", action);
+                    return false;
+                }
+                if (!library.messageIsSignal(signal.get(), SecretPromptInterface, "Completed") ||
+                    !signalPath || path != signalPath || !signalSender || sender != signalSender) {
+                    continue;
+                }
+                return promptCompleted(signal.get(), kind, results);
+            }
+            if (!library.connectionReadWrite(connection, PromptPollMilliseconds)) {
+                JST_ERROR("Failed to {} secret: the session bus disconnected during a prompt.", action);
+                return false;
+            }
+        }
+
+        dismissPrompt(path);
+        JST_ERROR("Failed to {} secret: the prompt timed out.", action);
+        return false;
+    }
+
+    bool ownerVanished(DBusMessage* signal, const std::string& sender) {
+        const char* signalSender = library.messageGetSender(signal);
+        if (!library.messageIsSignal(signal, "org.freedesktop.DBus", "NameOwnerChanged") || !signalSender ||
+            std::string(signalSender) != "org.freedesktop.DBus" || !library.messageHasSignature(signal, "sss")) {
+            return false;
+        }
+
+        DBusMessageIter iter;
+        const char* name = nullptr;
+        const char* newOwner = nullptr;
+        library.iterInit(signal, &iter);
+        library.iterGetBasic(&iter, &name);
+        library.iterNext(&iter);
+        library.iterNext(&iter);
+        library.iterGetBasic(&iter, &newOwner);
+        return name && newOwner && sender == name && newOwner[0] == '\0';
+    }
+
+    bool promptCompleted(DBusMessage* signal, PromptResult kind, std::vector<std::string>& results) {
+        DBusMessageIter iter;
+        if (!library.messageHasSignature(signal, "bv") || !library.iterInit(signal, &iter)) {
+            return unexpectedReply();
+        }
+        DBusBool dismissed = 0;
+        library.iterGetBasic(&iter, &dismissed);
+        if (dismissed) {
+            JST_ERROR("Failed to {} secret: the prompt was dismissed.", action);
+            return false;
+        }
+
+        DBusMessageIter variant;
+        library.iterNext(&iter);
+        library.iterRecurse(&iter, &variant);
+        switch (kind) {
+            case PromptResult::Any:
+                return true;
+            case PromptResult::Object: {
+                std::string object;
+                if (!readObjectPath(&variant, object) || object == SecretNoObject) {
+                    return unexpectedReply();
+                }
+                results.push_back(std::move(object));
+                return true;
+            }
+            case PromptResult::Objects:
+                return readObjectPaths(&variant, results) || unexpectedReply();
+        }
+        return unexpectedReply();
+    }
+
+    void closeSession() {
+        auto message = call(session.c_str(), "org.freedesktop.Secret.Session", "Close");
+        if (!message) {
+            retire();
+            return;
+        }
+        ScopedError error(library);
+        MessagePtr reply(library.connectionSendWithReplyAndBlock(connection, message.get(),
+                                                                 CallTimeoutMilliseconds, error.get()));
+        if (!reply || !library.messageHasSignature(reply.get(), "")) {
+            retire();
+        }
+    }
+
+    void dismissPrompt(const std::string& path) {
+        auto message = call(path.c_str(), SecretPromptInterface, "Dismiss");
+        if (!message) {
+            return;
+        }
+        ScopedError error(library);
+        MessagePtr reply(library.connectionSendWithReplyAndBlock(connection, message.get(),
+                                                                 CallTimeoutMilliseconds, error.get()));
+    }
+};
+
+bool ValidBusKey(const Libdbus& library, const char* action, const std::string& service, const std::string& account) {
+    if (service.size() + account.size() > SecretMaximumKeyBytes) {
+        JST_ERROR("Failed to {} secret: the service and account exceed the D-Bus size limit.", action);
+        return false;
+    }
+    if (!library.validateUtf8(service.c_str(), nullptr) || !library.validateUtf8(account.c_str(), nullptr)) {
+        JST_ERROR("Failed to {} secret: the service and account must be valid UTF-8.", action);
+        return false;
+    }
     return true;
 }
 
 }  // namespace
 
 bool SecretStoreAvailable() {
-    const auto& library = GetLibsecret();
+    const auto& library = GetLibdbus();
     if (!library.handle) {
         return false;
     }
 
-    GError* error = nullptr;
-    char* probe = library.lookup(&LibsecretSchema, nullptr, &error,
-                                 SecretServiceAttribute, "probe",
-                                 SecretAccountAttribute, "probe",
-                                 nullptr);
-    if (probe) {
-        library.free(probe);
-    }
-    if (error) {
-        library.errorFree(error);
+    if (InheritedConnection()) {
         return false;
     }
-    return true;
+
+    std::lock_guard<std::mutex> lock(SecretMutex());
+    SecretService bus(library, "probe");
+    return bus.connect(false) && bus.serviceOwned();
 }
 
 Result ReadSecret(const std::string& service, const std::string& account, std::string& value) {
@@ -575,27 +1568,40 @@ Result ReadSecret(const std::string& service, const std::string& account, std::s
         return Result::ERROR;
     }
 
-    const auto& library = GetLibsecret();
-    if (!library.handle) {
+    const auto& library = GetLibdbus();
+    if (!library.handle || !ValidBusKey(library, "read", service, account)) {
         return Result::ERROR;
     }
 
-    GError* error = nullptr;
-    char* secret = library.lookup(&LibsecretSchema, nullptr, &error,
-                                  SecretServiceAttribute, service.c_str(),
-                                  SecretAccountAttribute, account.c_str(),
-                                  nullptr);
-    if (error) {
-        ReportSecretError("read", library, error);
-        return Result::ERROR;
-    }
-    if (!secret) {
+    if (RejectInheritedConnection("read")) {
         return Result::ERROR;
     }
 
-    value = secret;
-    library.free(secret);
-    return Result::SUCCESS;
+    std::lock_guard<std::mutex> lock(SecretMutex());
+    SecretService bus(library, "read");
+    SecretItems items;
+    if (!bus.connect() || !bus.resolveOwner() || !bus.openSession() || !bus.search(service, account, items)) {
+        return Result::ERROR;
+    }
+
+    std::string item;
+    if (!items.unlocked.empty()) {
+        item = items.unlocked.front();
+    } else if (!items.locked.empty()) {
+        item = items.locked.front();
+        std::vector<std::string> unlocked;
+        if (!bus.unlock({item}, unlocked)) {
+            return Result::ERROR;
+        }
+        if (!ContainsPath(unlocked, item)) {
+            JST_ERROR("Failed to read secret: the item is still locked.");
+            return Result::ERROR;
+        }
+    } else {
+        return Result::ERROR;
+    }
+
+    return bus.getSecret(item, value) ? Result::SUCCESS : Result::ERROR;
 }
 
 Result WriteSecret(const std::string& service, const std::string& account, const std::string& value) {
@@ -603,23 +1609,28 @@ Result WriteSecret(const std::string& service, const std::string& account, const
         return Result::ERROR;
     }
 
-    const auto& library = GetLibsecret();
-    if (!library.handle) {
+    const auto& library = GetLibdbus();
+    if (!library.handle || !ValidBusKey(library, "write", service, account)) {
         return Result::ERROR;
     }
 
-    const std::string label = service + " (" + account + ")";
-    GError* error = nullptr;
-    const int stored = library.store(&LibsecretSchema, SecretCollectionDefault, label.c_str(), value.c_str(),
-                                     nullptr, &error,
-                                     SecretServiceAttribute, service.c_str(),
-                                     SecretAccountAttribute, account.c_str(),
-                                     nullptr);
-    if (error) {
-        ReportSecretError("write", library, error);
+    if (value.size() > DBusMaximumArrayBytes) {
+        JST_ERROR("Failed to write secret: the value exceeds the D-Bus size limit.");
         return Result::ERROR;
     }
 
+    if (RejectInheritedConnection("write")) {
+        return Result::ERROR;
+    }
+
+    std::lock_guard<std::mutex> lock(SecretMutex());
+    SecretService bus(library, "write");
+    const bool stored = bus.connect() &&
+                        bus.resolveOwner() &&
+                        bus.openSession() &&
+                        bus.ensureDefaultCollection() &&
+                        bus.unlockDefaultCollection() &&
+                        bus.createItem(service, account, value);
     return stored ? Result::SUCCESS : Result::ERROR;
 }
 
@@ -628,41 +1639,53 @@ Result DeleteSecret(const std::string& service, const std::string& account) {
         return Result::ERROR;
     }
 
-    const auto& library = GetLibsecret();
-    if (!library.handle) {
+    const auto& library = GetLibdbus();
+    if (!library.handle || !ValidBusKey(library, "delete", service, account)) {
         return Result::ERROR;
     }
 
-    GError* error = nullptr;
-    const bool existed = SecretExists(library, service, account, &error);
-    if (error) {
-        ReportSecretError("delete", library, error);
+    if (RejectInheritedConnection("delete")) {
         return Result::ERROR;
     }
-    if (!existed) {
+
+    std::lock_guard<std::mutex> lock(SecretMutex());
+    SecretService bus(library, "delete");
+    SecretItems items;
+    if (!bus.connect() || !bus.resolveOwner() || !bus.search(service, account, items)) {
+        return Result::ERROR;
+    }
+    if (items.unlocked.empty() && items.locked.empty()) {
         return Result::SUCCESS;
     }
 
-    library.clear(&LibsecretSchema, nullptr, &error,
-                  SecretServiceAttribute, service.c_str(),
-                  SecretAccountAttribute, account.c_str(),
-                  nullptr);
-    if (error) {
-        ReportSecretError("delete", library, error);
-        return Result::ERROR;
+    bool deleted = true;
+    std::vector<std::string> targets = items.unlocked;
+    if (!items.locked.empty()) {
+        std::vector<std::string> unlocked;
+        if (!bus.unlock(items.locked, unlocked)) {
+            return Result::ERROR;
+        }
+        for (const auto& item : items.locked) {
+            if (ContainsPath(unlocked, item)) {
+                targets.push_back(item);
+            }
+        }
     }
 
-    const bool remaining = SecretExists(library, service, account, &error);
-    if (error) {
-        ReportSecretError("delete", library, error);
+    for (const auto& item : targets) {
+        deleted = bus.deleteItem(item) && deleted;
+    }
+
+    SecretItems remaining;
+    if (!bus.search(service, account, remaining)) {
         return Result::ERROR;
     }
-    if (remaining) {
+    if (!remaining.unlocked.empty() || !remaining.locked.empty()) {
         JST_ERROR("Failed to delete secret: the item is still present, it may be locked.");
         return Result::ERROR;
     }
 
-    return Result::SUCCESS;
+    return deleted ? Result::SUCCESS : Result::ERROR;
 }
 
 #else
