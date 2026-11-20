@@ -127,7 +127,6 @@ void SurfaceView::render(const Context& ctx) const {
     const ImVec2 surfaceSize = Private::ToImVec2(displaySize);
     const ImVec2 cursorPos = Private::ToImVec2(
         SnapToFramebuffer(ctx, Private::ToExtent2D(ImGui::GetCursorScreenPos())));
-    ImGui::SetCursorScreenPos(cursorPos);
     const ImVec2 cursorEnd(cursorPos.x + surfaceSize.x, cursorPos.y + surfaceSize.y);
     auto* drawList = ImGui::GetWindowDrawList();
     ImRect imageRect(cursorPos, cursorEnd);
