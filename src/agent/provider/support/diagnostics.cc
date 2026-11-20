@@ -22,26 +22,27 @@ struct Rule {
     I32 status;
     I32 alternateStatus;
     std::string_view code;
+    std::string_view alternateCode;
     Classification classification;
 };
 
 constexpr std::array kRules{
-    Rule{402, 0, "insufficient_quota",
+    Rule{402, 0, "insufficient_quota", "billing_error",
          {Kind::Quota, "Quota or credits exhausted", "Check billing and usage limits."}},
-    Rule{401, 0, "invalid_api_key",
+    Rule{401, 0, "invalid_api_key", "authentication_error",
          {Kind::Authentication, "Authentication failed", "Check the configured API key."}},
-    Rule{403, 0, "",
+    Rule{403, 0, "", "permission_error",
          {Kind::Permission, "Access denied", "Check account permissions and model access."}},
-    Rule{404, 0, "model_not_found",
+    Rule{404, 0, "model_not_found", "not_found_error",
          {Kind::NotFound, "Endpoint or model not found", "Check the API path and model id."}},
-    Rule{429, 0, "rate_limit_exceeded",
+    Rule{429, 0, "rate_limit_exceeded", "rate_limit_error",
          {Kind::RateLimit, "Rate limit exceeded", "Try again later."}},
-    Rule{408, 504, "",
+    Rule{408, 504, "", "timeout_error",
          {Kind::Timeout, "The provider timed out", "Try again later."}},
 };
 
-constexpr std::array<std::string_view, 4> kServerCodes{
-    "server_error", "internal_server_error", "overloaded_error", "service_unavailable",
+constexpr std::array<std::string_view, 5> kServerCodes{
+    "server_error", "internal_server_error", "overloaded_error", "service_unavailable", "api_error",
 };
 
 void ReadErrorCode(const nlohmann::json& payload, Provider::Error& error) {
@@ -69,7 +70,8 @@ void ReadErrorCode(const nlohmann::json& payload, Provider::Error& error) {
 bool Matches(const Rule& rule, const Provider::Error& error) {
     return error.status == rule.status ||
            (rule.alternateStatus != 0 && error.status == rule.alternateStatus) ||
-           (!rule.code.empty() && error.code == rule.code);
+           (!rule.code.empty() && error.code == rule.code) ||
+           (!rule.alternateCode.empty() && error.code == rule.alternateCode);
 }
 
 Classification Classify(const Provider::Error& error) {
@@ -130,7 +132,7 @@ std::string Describe(const Provider::Error& error, const std::string& detail,
 }
 
 bool ContextOverflow(const Provider::Error& error, std::string detail) {
-    if (error.code == "context_length_exceeded") {
+    if (error.code == "context_length_exceeded" || error.code == "request_too_large" || error.status == 413) {
         return true;
     }
     std::transform(detail.begin(), detail.end(), detail.begin(), [](unsigned char value) {

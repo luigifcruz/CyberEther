@@ -137,6 +137,19 @@ class Responses {
     static const nlohmann::json* Failed(const nlohmann::json& event);
 };
 
+class Messages {
+ public:
+    static constexpr const char* Version = "2026-10-21";
+    static constexpr U64 DefaultMaxTokens = 32000;
+
+    static nlohmann::json Encode(const Provider::Config& config, const Provider::Request& request, bool reasoning);
+    static std::unique_ptr<EventStream> Decoder();
+
+    static std::string Effort(const std::string& effort);
+    static nlohmann::json Image(const std::string& url);
+    static bool DropThinking(nlohmann::json& body);
+};
+
 }  // namespace Jetstream::Agent::Detail
 
 #endif  // JETSTREAM_AGENT_PROVIDER_SUPPORT_BASE_HH

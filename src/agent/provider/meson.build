@@ -5,6 +5,7 @@ src_lst += files([
     'live.cc',
     'chat_completions.cc',
     'responses.cc',
+    'messages.cc',
 ])
 
 subdir('support')
