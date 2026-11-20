@@ -1,0 +1,12 @@
+diff --git a/src/comms/USB/UnixUsb.cpp b/src/comms/USB/UnixUsb.cpp
+--- a/src/comms/USB/UnixUsb.cpp
++++ b/src/comms/USB/UnixUsb.cpp
+@@ -244,6 +244,8 @@
+             lime::error("Expected device has been disconnected");
+             continue;
+         }
++        if (openStatus != LIBUSB_SUCCESS)
++            continue;
+ 
+         std::string foundSerial;
+         if (desc.iSerialNumber > 0)

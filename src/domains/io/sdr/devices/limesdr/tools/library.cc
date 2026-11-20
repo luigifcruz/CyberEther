@@ -2,7 +2,8 @@
 
 #include <string_view>
 
-#include <LimeSuite.h>
+#include <limesuiteng/DeviceRegistry.h>
+#include <limesuiteng/Logger.h>
 
 #include "jetstream/logger.hh"
 
@@ -10,20 +11,20 @@ namespace Jetstream::Radio {
 
 namespace {
 
-void LogMessage(const int level, const char* message) {
+void LogMessage(const lime::LogLevel level, const char* message) {
     std::string_view text = message ? message : "";
     while (text.ends_with('\n') || text.ends_with('\r')) {
         text.remove_suffix(1);
     }
     switch (level) {
-        case LMS_LOG_CRITICAL:
-        case LMS_LOG_ERROR:
+        case lime::LogLevel::Critical:
+        case lime::LogLevel::Error:
             JST_ERROR("[SDR_LIMESDR] {}", text);
             break;
-        case LMS_LOG_WARNING:
+        case lime::LogLevel::Warning:
             JST_WARN("[SDR_LIMESDR] {}", text);
             break;
-        case LMS_LOG_INFO:
+        case lime::LogLevel::Info:
             JST_DEBUG("[SDR_LIMESDR] {}", text);
             break;
         default:
@@ -34,11 +35,11 @@ void LogMessage(const int level, const char* message) {
 
 }  // namespace
 
-std::vector<lime::ConnectionHandle> LimeSdrLibrary::Boards() {
+std::vector<lime::DeviceHandle> LimeSdrLibrary::Boards() {
     static std::once_flag logging;
-    std::call_once(logging, [] { LMS_RegisterLogHandler(&LogMessage); });
+    std::call_once(logging, [] { lime::registerLogHandler(&LogMessage); });
     try {
-        return lime::ConnectionRegistry::findConnections();
+        return lime::DeviceRegistry::enumerate();
     } catch (const std::exception& e) {
         JST_ERROR("[SDR_LIMESDR] Failed to enumerate devices: {}", e.what());
     } catch (...) {

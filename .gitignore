@@ -38,7 +38,7 @@ subprojects/*
 !subprojects/libusb-browser.wrap
 !subprojects/libusb.wrap
 !subprojects/libxml2.wrap
-!subprojects/limesuite.wrap
+!subprojects/limesuiteng.wrap
 !subprojects/libsrtp2.wrap
 !subprojects/libzmq.wrap
 !subprojects/naga.wrap
