@@ -19,6 +19,7 @@ namespace Jetstream {
 struct IntelligenceProviderView {
     static constexpr const char* ChatCompletionsLabel = "Chat Completions";
     static constexpr const char* ResponsesLabel = "Responses";
+    static constexpr const char* MessagesLabel = "Messages";
     static constexpr const char* KeychainLabel = "System Keychain";
     static constexpr const char* EnvironmentLabel = "Environment Variable";
 
@@ -67,7 +68,7 @@ struct IntelligenceProviderView {
             .id = "IntelligenceProviderHeader",
             .title = this->config.editMode ? ICON_FA_ROBOT " Edit Provider"
                                            : ICON_FA_ROBOT " Add Provider",
-            .description = "Connect an OpenAI-compatible endpoint for agent chat.",
+            .description = "Connect a model provider endpoint for agent chat.",
         });
 
         typeField.update({
@@ -133,13 +134,16 @@ struct IntelligenceProviderView {
 
         apiCombo.update({
             .id = "##intelligence-provider-api",
-            .options = {ChatCompletionsLabel, ResponsesLabel},
-            .value = api == "responses" ? ResponsesLabel : ChatCompletionsLabel,
+            .options = {ChatCompletionsLabel, ResponsesLabel, MessagesLabel},
+            .value = apiLabel(),
             .disabled = this->config.saving,
             .onChange = [this](const std::string& value) {
-                const std::string next = value == ResponsesLabel ? "responses" : "chat_completions";
+                const std::string next = apiName(value);
                 if (api == next) {
                     return;
+                }
+                if (chatPath.empty() || chatPath == defaultChatPath(api)) {
+                    chatPath = defaultChatPath(next);
                 }
                 api = next;
                 markDirty();
@@ -328,9 +332,7 @@ struct IntelligenceProviderView {
         provider.name = name;
         provider.host = host;
         provider.api = api;
-        if (!chatPath.empty()) {
-            provider.chatPath = chatPath;
-        }
+        provider.chatPath = chatPath.empty() ? defaultChatPath(api) : chatPath;
         if (!modelsPath.empty()) {
             provider.modelsPath = modelsPath;
         }
@@ -344,6 +346,36 @@ struct IntelligenceProviderView {
     void applyKeySource(const Settings::Intelligence::Provider& provider) {
         apiKeyEnv = provider.apiKeyEnv;
         keySource = !apiKeyEnv.empty() ? KeySource::Environment : KeySource::Keychain;
+    }
+
+    std::string apiLabel() const {
+        if (api == "responses") {
+            return ResponsesLabel;
+        }
+        if (api == "messages") {
+            return MessagesLabel;
+        }
+        return ChatCompletionsLabel;
+    }
+
+    static std::string defaultChatPath(const std::string& name) {
+        if (name == "responses") {
+            return "/v1/responses";
+        }
+        if (name == "messages") {
+            return "/v1/messages";
+        }
+        return "/v1/chat/completions";
+    }
+
+    static std::string apiName(const std::string& label) {
+        if (label == ResponsesLabel) {
+            return "responses";
+        }
+        if (label == MessagesLabel) {
+            return "messages";
+        }
+        return "chat_completions";
     }
 
     std::string keySourceLabel() const {

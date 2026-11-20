@@ -114,18 +114,30 @@ TEST_CASE("Provider headers are limited to the selected integration", "[agent][p
                                Agent::Provider::Kind::OpenRouter,
                                Agent::Provider::Kind::OpenCodeGo,
                                Agent::Provider::Kind::Fireworks,
+                               Agent::Provider::Kind::Anthropic,
                                Agent::Provider::Kind::Custom);
+    const bool anthropic = kind == Agent::Provider::Kind::Anthropic;
 
     AgentTest::ProviderServer provider;
     std::promise<httplib::Headers> captured;
     auto headersFuture = captured.get_future();
     provider.server.Post("/chat", [&](const auto& request, auto& response) {
         captured.set_value(request.headers);
+        if (anthropic) {
+            response.set_content(Event({{"type", "message_start"}, {"message", nlohmann::json::object()}}) +
+                                 Event({{"type", "message_stop"}}),
+                                 "text/event-stream");
+            return;
+        }
         response.set_content(Delta({{"content", "Hello"}}) + Done(), "text/event-stream");
     });
     provider.start();
 
-    const Agent::Provider client(provider.config(kind));
+    auto config = provider.config(kind);
+    if (anthropic) {
+        config.api = Agent::Provider::Api::Messages;
+    }
+    const Agent::Provider client(config);
     Agent::Provider::Error error;
     REQUIRE(Chat(client, error) == Result::SUCCESS);
 
@@ -136,7 +148,9 @@ TEST_CASE("Provider headers are limited to the selected integration", "[agent][p
     const bool openRouter = kind == Agent::Provider::Kind::OpenRouter;
     const bool openCodeGo = kind == Agent::Provider::Kind::OpenCodeGo;
 
-    REQUIRE(contains("Authorization"));
+    CHECK(contains("Authorization") == !anthropic);
+    CHECK(contains("x-api-key") == anthropic);
+    CHECK(contains("anthropic-version") == anthropic);
     CHECK(contains("HTTP-Referer") == openRouter);
     CHECK(contains("X-Title") == openRouter);
     CHECK(contains("x-session-id") == openRouter);

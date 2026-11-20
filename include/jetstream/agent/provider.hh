@@ -24,11 +24,13 @@ class JETSTREAM_API Provider {
         OpenCodeGo,
         Fireworks,
         Custom,
+        Anthropic,
     };
 
     enum class Api {
         ChatCompletions,
         Responses,
+        Messages,
     };
 
     enum class Scope {

@@ -11,6 +11,7 @@
 #include "jetstream/config.hh"
 #include "jetstream/types.hh"
 #include "tools/random.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <chrono>
@@ -253,6 +254,7 @@ struct AgentActions {
             callbacks.notify(Sakura::ToastType::Error, 5000, "Providers need a name and a base URL.");
             return Result::SUCCESS;
         }
+        const auto apiKey = Text::TrimBlank(msg.apiKey);
 
         const auto previousName = msg.replaceName.value_or(provider.name);
         const bool renamed = previousName != provider.name;
@@ -270,7 +272,7 @@ struct AgentActions {
 
         if (AgentProviders::External(provider)) {
             provider.apiKeyId = previous.apiKeyId;
-        } else if (!msg.apiKey.empty()) {
+        } else if (!apiKey.empty()) {
             if (previous.apiKeyId.empty()) {
                 provider.apiKeyId = Random::HexToken();
             } else {
@@ -280,7 +282,7 @@ struct AgentActions {
                                      AgentProviders::Store,
                                      provider.apiKeyId,
                                      provider.host,
-                                     msg.apiKey);
+                                     apiKey);
         } else if (AgentProviders::Transferable(previous, provider)) {
             provider.apiKeyId = previous.apiKeyId;
         } else if (!previous.apiKeyId.empty()) {
@@ -333,8 +335,9 @@ struct AgentActions {
             return Result::SUCCESS;
         }
 
+        const auto apiKey = Text::TrimBlank(msg.apiKey);
         std::optional<Settings::Intelligence::Provider> stored;
-        if (msg.apiKey.empty()) {
+        if (apiKey.empty()) {
             const auto& target = state.agent.providers.editTarget;
             const std::string& sourceName = target ? target->name : provider.name;
             auto source = AgentProviders(state.agent).find(sourceName);
@@ -351,7 +354,7 @@ struct AgentActions {
         test.future = std::async(std::launch::async,
                                  AgentProviders::Test,
                                  std::move(provider),
-                                 msg.apiKey,
+                                 apiKey,
                                  std::move(stored),
                                  Cancelled(test.cancel));
         return Result::SUCCESS;

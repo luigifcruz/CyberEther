@@ -98,7 +98,7 @@ struct IntelligenceSettingsPanel {
         providersSection.update({
             .id = "IntelligenceProvidersSection",
             .title = "Providers",
-            .description = "OpenAI-compatible endpoints the agent can use.",
+            .description = "Model provider endpoints the agent can use.",
         });
         modelsSection.update({
             .id = "IntelligenceModelsSection",

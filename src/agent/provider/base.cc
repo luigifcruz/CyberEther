@@ -41,6 +41,7 @@ std::string ReadKey(const Config& config) {
 
 constexpr U32 kReasoningSetting = 1;
 constexpr U32 kEncryptedContent = 2;
+constexpr U32 kThinking = 4;
 
 void Remove(nlohmann::json& request, U32 rejected) {
     if (rejected & kReasoningSetting) {
@@ -48,6 +49,10 @@ void Remove(nlohmann::json& request, U32 rejected) {
     }
     if (rejected & kEncryptedContent) {
         request.erase("include");
+    }
+    if (rejected & kThinking) {
+        request.erase("thinking");
+        request.erase("output_config");
     }
 }
 
@@ -67,14 +72,35 @@ U32 ParamOptions(const std::string& param, U32 requested) {
     if (param == "include" || param.starts_with("include[")) {
         return requested & kEncryptedContent;
     }
+    if (param.starts_with("thinking") || param.starts_with("output_config")) {
+        return requested & kThinking;
+    }
     return 0;
 }
 
-U32 MessageOptions(std::string message) {
+std::string Lowercase(std::string message) {
     std::transform(message.begin(), message.end(), message.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
+    return message;
+}
 
+U32 ThinkingOptions(const std::string& message) {
+    const auto mentions = [&](const char* phrase) {
+        return message.find(phrase) != std::string::npos;
+    };
+
+    const bool named = mentions("thinking") || mentions("output_config") || mentions("effort");
+    const bool rejected = mentions("not supported") ||
+                          mentions("unsupported") ||
+                          mentions("does not support") ||
+                          mentions("extra inputs") ||
+                          mentions("input should be") ||
+                          mentions("between_tools");
+    return named && rejected ? kThinking : 0;
+}
+
+U32 MessageOptions(const std::string& message) {
     const auto mentions = [&](const char* phrase) {
         return message.find(phrase) != std::string::npos;
     };
@@ -107,6 +133,9 @@ U32 Rejected(const Provider::Error& failure, const std::string& response, const 
     if (request.contains("include")) {
         requested |= kEncryptedContent;
     }
+    if (request.contains("thinking") || request.contains("output_config")) {
+        requested |= kThinking;
+    }
 
     const bool invalidRequest = failure.kind == Provider::Error::Kind::InvalidRequest;
     const bool badRequestStatus = failure.status == 400 || failure.status == 422;
@@ -117,7 +146,12 @@ U32 Rejected(const Provider::Error& failure, const std::string& response, const 
     if (const auto param = RejectedParam(response); !param.empty()) {
         return ParamOptions(param, requested);
     }
-    return requested & MessageOptions(failure.message);
+    const auto message = Lowercase(failure.message);
+    U32 mentioned = MessageOptions(message);
+    if (requested & kThinking) {
+        mentioned |= ThinkingOptions(message);
+    }
+    return requested & mentioned;
 }
 
 class Capabilities {
@@ -161,12 +195,18 @@ nlohmann::json RequestBody(const Config& config, const Provider::Request& reques
     if (config.api == Provider::Api::Responses) {
         return Detail::Responses::Encode(config, request, reasoning);
     }
+    if (config.api == Provider::Api::Messages) {
+        return Detail::Messages::Encode(config, request, reasoning);
+    }
     return Detail::ChatCompletions::Encode(config, request, reasoning);
 }
 
 std::unique_ptr<Detail::EventStream> ResponseStream(const Config& config) {
     if (config.api == Provider::Api::Responses) {
         return Detail::Responses::Decoder();
+    }
+    if (config.api == Provider::Api::Messages) {
+        return Detail::Messages::Decoder();
     }
     return Detail::ChatCompletions::Decoder();
 }
@@ -210,6 +250,14 @@ Platform::Http::Headers Headers(const Config& config, const std::string& key, co
     }
     if (!profile.sessionHeader.empty() && !sessionId.empty()) {
         headers.emplace_back(profile.sessionHeader, sessionId);
+    }
+
+    if (config.api == Provider::Api::Messages) {
+        headers.emplace_back("anthropic-version", Detail::Messages::Version);
+        if (!key.empty()) {
+            headers.emplace_back("x-api-key", key);
+        }
+        return headers;
     }
 
     if (!key.empty()) {
@@ -367,7 +415,7 @@ class ChatCall {
         }
         Detail::Diagnostics::Sanitize(failure, key);
 
-        if (dropRejectedOptions(failure, attempt)) {
+        if (dropRejectedOptions(failure, attempt) || dropUnboundThinking(failure, attempt)) {
             return std::nullopt;
         }
 
@@ -403,6 +451,23 @@ class ChatCall {
         return true;
     }
 
+    bool dropUnboundThinking(const Provider::Error& failure, const Attempt& attempt) {
+        const bool rejected = failure.kind == Provider::Error::Kind::InvalidRequest && failure.status == 400;
+        if (config.api != Provider::Api::Messages || droppedThinking || !rejected || attempt.stream->outputStarted) {
+            return false;
+        }
+        if (Lowercase(failure.message).find("bound to a different conversation") == std::string::npos) {
+            return false;
+        }
+        if (!Detail::Messages::DropThinking(body)) {
+            return false;
+        }
+
+        droppedThinking = true;
+        JST_WARN("[AGENT_CLIENT] Provider rejected replayed thinking ({}). Retrying without it.", failure.message);
+        return true;
+    }
+
     Result succeed(Attempt& attempt) const {
         auto& stream = *attempt.stream;
         response.toolCalls = std::move(stream.toolCalls);
@@ -428,6 +493,7 @@ class ChatCall {
     std::string key;
     nlohmann::json body;
     U32 retries = 0;
+    bool droppedThinking = false;
 };
 
 }  // namespace

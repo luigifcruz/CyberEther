@@ -78,6 +78,35 @@ TEST_CASE("Provider normalization takes the request format from the matched prof
 
         CHECK(AgentProviders::Normalize(stored).api == "responses");
     }
+
+    SECTION("the Anthropic endpoint uses the Messages format") {
+        const Settings::Intelligence::Provider stored{
+            .name = "Anthropic",
+            .host = "https://api.anthropic.com",
+            .api = "chat_completions",
+            .chatPath = "/v1/messages",
+        };
+        REQUIRE(AgentProviders::Identify(stored) == Kind::Anthropic);
+
+        const auto normalized = AgentProviders::Normalize(stored);
+        CHECK(normalized.api == "messages");
+        CHECK(normalized.modelsPath == "/v1/models");
+        CHECK(AgentProviders::Client(normalized)->config().api == Agent::Provider::Api::Messages);
+        CHECK(AgentProviders::Preset(Kind::Anthropic).api == "messages");
+    }
+
+    SECTION("a custom endpoint can use the Messages format") {
+        const Settings::Intelligence::Provider stored{
+            .name = "Proxy",
+            .host = "http://localhost:8080",
+            .api = "messages",
+            .chatPath = "/v1/messages",
+        };
+        REQUIRE(AgentProviders::Identify(stored) == Kind::Custom);
+
+        CHECK(AgentProviders::Normalize(stored).api == "messages");
+        CHECK(AgentProviders::Client(stored)->config().api == Agent::Provider::Api::Messages);
+    }
 }
 
 TEST_CASE("Failed keyring cleanup only permits removing externally managed providers",
