@@ -1043,8 +1043,8 @@ TEST_CASE("Output-limit advice matches the configured allowance", "[agent][conve
         REQUIRE(session.submit("Go", config));
         REQUIRE(Wait(session));
         CHECK(LastError(session).ends_with("With maxOutputTokens at 0 (automatic), the model was allowed 16384 "
-                                           "tokens, the most this model and context window allow. Ask for a "
-                                           "smaller step, then continue the task."));
+                                           "tokens, the current maximum. Ask for a smaller step, then continue "
+                                           "the task."));
     }
 
     SECTION("an explicit limit keeps the existing advice") {

@@ -163,7 +163,7 @@ std::string Session::Impl::Turn::errorText() const {
 
     const U64 window = bounded() ? config.contextLength : kFallbackOutputTokens;
 
-    const bool reasoningOnly = finalText.empty() && usage.reasoningTokens != 0 &&
+    const bool reasoningOnly = finalText.empty() && usage.outputTokens != 0 &&
                                usage.reasoningTokens >= usage.outputTokens;
 
     std::string text = error.message;
@@ -184,8 +184,7 @@ std::string Session::Impl::Turn::errorText() const {
                " tokens. Set it above " + tokens + " to allow more, then continue the task.";
     }
     return text + " With maxOutputTokens at 0 (automatic), the model was allowed " + tokens +
-           " tokens, the most this model and context window allow. Ask for a smaller step, then continue "
-           "the task.";
+           " tokens, the current maximum. Ask for a smaller step, then continue the task.";
 }
 
 void Session::Impl::Turn::finish(Provider::Response& response) {
