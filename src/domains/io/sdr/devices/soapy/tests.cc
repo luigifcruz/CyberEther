@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "domains/io/sdr/devices/soapy/tools/catalog.hh"
@@ -114,6 +115,9 @@ namespace {
 namespace Abi = Radio::SoapyAbi;
 
 struct FakeRadio {
+    F64 frequencyMinimum = 10.0e6;
+    F64 frequencyMaximum = 6000.0e6;
+    F64 lastFrequency = 0.0;
     F64 rateOffset = 0.0;
     F64 sampleRate = 0.0;
     bool bandwidthSupported = true;
@@ -181,7 +185,8 @@ Radio::SoapyApi FakeApi() {
     api.make = [](const Abi::Kwargs*) { return reinterpret_cast<Abi::Device*>(&Fake()); };
     api.unmake = [](Abi::Device*) { return 0; };
     api.getFrequencyRange = [](const Abi::Device*, int, std::size_t, std::size_t* count) {
-        static Abi::Range range{10.0e6, 6000.0e6, 0.0};
+        static Abi::Range range{};
+        range = {Fake().frequencyMinimum, Fake().frequencyMaximum, 0.0};
         *count = 1;
         return &range;
     };
@@ -273,7 +278,8 @@ Radio::SoapyApi FakeApi() {
         Fake().bandwidth = value;
         return 0;
     };
-    api.setFrequency = [](Abi::Device*, int, std::size_t, double, const Abi::Kwargs*) {
+    api.setFrequency = [](Abi::Device*, int, std::size_t, double frequency, const Abi::Kwargs*) {
+        Fake().lastFrequency = frequency;
         return 0;
     };
     api.getFrequency = [](const Abi::Device*, int, std::size_t) { return 0.0; };
@@ -508,6 +514,28 @@ TEST_CASE("SoapySDR stream passes driver arguments and switches Bias-T off on cl
 
     stream.reset();
     CHECK(Fake().biasTee.back() == "false");
+}
+
+TEST_CASE("SoapySDR stream tunes exact frequency endpoints and rejects values past them",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.frequencyMinimum = 2250.0e6, .frequencyMaximum = 2750.0e6});
+
+    for (const auto& [endpoint, outside] : {std::pair{2250.0e6, 2250.0e6 - 1.0},
+                                            std::pair{2750.0e6, 2750.0e6 + 1.0}}) {
+        DYNAMIC_SECTION("endpoint " << endpoint) {
+            std::unique_ptr<Radio::Stream> stream;
+            REQUIRE(Radio::Stream::Open("driver=soapy,serial=1234", stream) == Result::SUCCESS);
+            REQUIRE(stream->start({.frequency = endpoint, .sampleRate = 1.0e6}) == Result::SUCCESS);
+            CHECK(Fake().lastFrequency == endpoint);
+            CHECK(stream->applied().frequency == endpoint);
+            stream.reset();
+
+            Fake().lastFrequency = 0.0;
+            REQUIRE(Radio::Stream::Open("driver=soapy,serial=1234", stream) == Result::SUCCESS);
+            CHECK(stream->start({.frequency = outside, .sampleRate = 1.0e6}) != Result::SUCCESS);
+            CHECK(Fake().lastFrequency == 0.0);
+        }
+    }
 }
 
 TEST_CASE("SoapySDR stream timestamps continue across reads and jump at a time gap",

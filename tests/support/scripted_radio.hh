@@ -45,6 +45,7 @@ struct Script {
     F64 frequencyOffset = 0.0;
     std::optional<Radio::Device::Firmware> firmware;
     std::vector<Radio::Device::Range> sampleRates;
+    std::vector<Radio::Device::Range> frequencies;
     U64 receiveChannels = 1;
     bool antennas = true;
     U64 readLimit = 0;
@@ -68,6 +69,7 @@ struct Script {
         frequencyOffset = 0.0;
         firmware.reset();
         sampleRates.clear();
+        frequencies.clear();
         receiveChannels = 1;
         antennas = true;
         readLimit = 0;
@@ -125,6 +127,9 @@ inline Radio::Device::Capabilities ScriptedCapabilities() {
     }
     if (!TestScript().sampleRates.empty()) {
         caps.sampleRateRanges = TestScript().sampleRates;
+    }
+    if (!TestScript().frequencies.empty()) {
+        caps.frequencyRanges = TestScript().frequencies;
     }
     return caps;
 }

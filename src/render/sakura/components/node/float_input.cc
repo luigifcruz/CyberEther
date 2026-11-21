@@ -2,7 +2,43 @@
 
 #include "base.hh"
 
+#include <cerrno>
+#include <cmath>
+#include <cstdlib>
+#include <string>
+#include <utility>
+
 namespace Jetstream::Sakura {
+
+namespace {
+
+F64 Unscale(const F64 shown, const F64 scale) {
+    const F64 decimals = std::round(std::log10(scale));
+    if (!std::isfinite(shown) || !std::isfinite(scale) || scale <= 0.0 || std::pow(10.0, decimals) != scale) {
+        return shown * scale;
+    }
+
+    std::string number = jst::fmt::format("{}", shown);
+    long exponent = 0;
+    if (const auto mark = number.find_first_of("eE"); mark != std::string::npos) {
+        errno = 0;
+        exponent = std::strtol(number.c_str() + mark + 1, nullptr, 10);
+        if (errno == ERANGE || !std::in_range<I32>(exponent)) {
+            return shown * scale;
+        }
+        number.resize(mark);
+    }
+    exponent += static_cast<long>(decimals);
+
+    errno = 0;
+    const F64 value = std::strtod((number + "e" + std::to_string(exponent)).c_str(), nullptr);
+    if (errno == ERANGE || !std::isfinite(value)) {
+        return shown * scale;
+    }
+    return value;
+}
+
+}  // namespace
 
 struct NodeFloatInput::Impl {
     Config config;
@@ -24,8 +60,14 @@ bool NodeFloatInput::update(Config config) {
 void NodeFloatInput::render(const Context& ctx) const {
     const auto& config = this->impl->config;
 
-    F32 value = config.value;
-    F32 step = config.step.value_or(0.0f);
+    F64 shown = config.value / config.scale;
+    F64 shownStep = config.step.value_or(0.0) / config.scale;
+    const auto commit = [&]() {
+        const F64 next = Unscale(shown, config.scale);
+        if (next != config.value && config.onChange) {
+            config.onChange(next);
+        }
+    };
 
     char fmt[16];
     snprintf(fmt, sizeof(fmt), "%%.%df", config.precision);
@@ -34,10 +76,8 @@ void NodeFloatInput::render(const Context& ctx) const {
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
     if (!config.step.has_value()) {
         ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::InputFloat("##float", &value, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
-            if (config.onChange) {
-                config.onChange(value);
-            }
+        if (ImGui::InputDouble("##float", &shown, 0.0, 0.0, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
+            commit();
         }
         if (!config.unit.empty()) {
             const ImVec2 inputPos = ImGui::GetItemRectMin();
@@ -73,17 +113,14 @@ void NodeFloatInput::render(const Context& ctx) const {
                                             hovered ? btnActiveColor : btnColor,
                                             label);
     };
-    const auto renderStepButton = [&](const char* id, const char* label, const F32 delta) {
+    const auto renderStepButton = [&](const char* id, const char* label, const F64 delta) {
         ImGui::InvisibleButton(id, ImVec2(btnWidth, btnHeight));
         const bool hovered = ImGui::IsItemHovered();
         if (hovered) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         }
-        if (ImGui::IsItemDeactivated()) {
-            value += delta;
-            if (config.onChange) {
-                config.onChange(value);
-            }
+        if (ImGui::IsItemDeactivated() && config.onChange) {
+            config.onChange(config.value + delta);
         }
         drawCenteredLabel(label, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
     };
@@ -97,10 +134,8 @@ void NodeFloatInput::render(const Context& ctx) const {
                                               rounding);
 
     ImGui::SetNextItemWidth(availWidth);
-    if (ImGui::InputFloat("##float", &value, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
-        if (config.onChange) {
-            config.onChange(value);
-        }
+    if (ImGui::InputDouble("##float", &shown, 0.0, 0.0, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
+        commit();
     }
     if (!config.unit.empty()) {
         const ImVec2 inputPos = ImGui::GetItemRectMin();
@@ -117,7 +152,7 @@ void NodeFloatInput::render(const Context& ctx) const {
     const ImVec2 btnRowPos(cellPos.x, inputMax.y);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
     ImGui::SetCursorScreenPos(btnRowPos);
-    renderStepButton("-##float_step_minus", "-", -step);
+    renderStepButton("-##float_step_minus", "-", -config.step.value_or(0.0));
 
     ImGui::SameLine(0.0f, 0.0f);
     const ImGuiID stepEditId = ImGui::GetID("##step_editing");
@@ -144,9 +179,9 @@ void NodeFloatInput::render(const Context& ctx) const {
             ImGui::SetKeyboardFocusHere();
             storage->SetBool(stepFocusId, false);
         }
-        if (ImGui::InputFloat("##float_step", &step, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputDouble("##float_step", &shownStep, 0.0, 0.0, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
             if (config.onStepChange) {
-                config.onStepChange(step);
+                config.onStepChange(Unscale(shownStep, config.scale));
             }
         }
         if (ImGui::IsItemDeactivated()) {
@@ -158,7 +193,7 @@ void NodeFloatInput::render(const Context& ctx) const {
     }
 
     ImGui::SameLine(0.0f, 0.0f);
-    renderStepButton("+##float_step_plus", "+", step);
+    renderStepButton("+##float_step_plus", "+", config.step.value_or(0.0));
     ImGui::PopStyleVar();
 
     ImGui::SetCursorScreenPos(ImVec2(cellPos.x, cellPos.y + totalHeight));

@@ -1982,6 +1982,35 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR module tunes and adjusts at a range endpoint that F32 cannot hold",
+                 "[modules][sdr][retune]") {
+    constexpr F64 Maximum = 2750.0e6;
+    REQUIRE(static_cast<F64>(static_cast<F32>(Maximum)) != Maximum);
+    TestScript().frequencies = {{10.0e6, Maximum}};
+    auto config = ScriptedConfig();
+    config.frequency = Maximum;
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    auto* sdr = module->getImpl<Modules::SdrImpl>();
+    REQUIRE(sdr->getApplied().frequency == Maximum);
+
+    REQUIRE(module->reconfigure({{"manualGain", F32{25.0f}}}) == Result::SUCCESS);
+    REQUIRE(sdr->getApplied().gain == 25.0);
+
+    REQUIRE(module->reconfigure({{"frequency", F64{250.0e6}}}) == Result::SUCCESS);
+    REQUIRE(sdr->getApplied().frequency == 250.0e6);
+    REQUIRE(module->reconfigure({{"frequency", Maximum}}) == Result::SUCCESS);
+    REQUIRE(sdr->getApplied().frequency == Maximum);
+    REQUIRE(static_cast<const Modules::Sdr&>(module->config()).frequency == Maximum);
+
+    const auto calls = TestScript().calls();
+    REQUIRE(module->reconfigure({{"frequency", Maximum + 1.0}}) == Result::WARNING);
+    REQUIRE(TestScript().calls() == calls);
+    REQUIRE(sdr->getApplied().frequency == Maximum);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
                  "SDR failed retunes keep the previous labels",
                  "[modules][sdr][metadata][retune]") {
     TestScript().budget = 0;

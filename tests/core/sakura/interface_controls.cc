@@ -1,5 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "compositor/default/presenters/flowgraph/config.hh"
 #include "compositor/default/views/flowgraph/editor/config/dropdown.hh"
 #include "compositor/default/views/flowgraph/editor/config/float.hh"
@@ -44,6 +48,43 @@ void SelectOption(SakuraTest::HeadlessUi& ui, Field& field, U64 index, const F32
     ui.setMouse(position, true);
     frame();
     ui.setMouse(position, false);
+    frame();
+}
+
+template<typename Field>
+ImRect LastItem(SakuraTest::HeadlessUi& ui, Field& field) {
+    ImRect rect;
+    ui.frame([&] {
+        field.render(ui.sakura());
+        rect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    });
+    return rect;
+}
+
+template<typename Field>
+void Click(SakuraTest::HeadlessUi& ui, Field& field, const ImVec2 point) {
+    const auto frame = [&] { ui.frame([&] { field.render(ui.sakura()); }); };
+    frame();
+    ui.setMouse(point, false);
+    frame();
+    ui.setMouse(point, true);
+    frame();
+    ui.setMouse(point, false);
+    frame();
+}
+
+template<typename Field>
+void Commit(SakuraTest::HeadlessUi& ui, Field& field, const ImVec2 point, const std::string& text) {
+    const auto frame = [&] { ui.frame([&] { field.render(ui.sakura()); }); };
+    Click(ui, field, point);
+    auto* input = ImGui::GetInputTextState(ImGui::GetActiveID());
+    REQUIRE(input != nullptr);
+    input->SelectAll();
+    ImGui::GetIO().AddInputCharactersUTF8(text.c_str());
+    frame();
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+    frame();
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
     frame();
 }
 
@@ -222,6 +263,89 @@ TEST_CASE("Numeric fields apply explicit scale independently of their unit label
     frame();
     REQUIRE(edits.size() == 1);
     REQUIRE(std::any_cast<F32>(edits.front().at("value")) == 32.5f);
+}
+
+TEST_CASE("Numeric fields keep F64 values exact through scaled edits and steps",
+          "[core][sakura][interface]") {
+    constexpr F64 Frequency = 2750.0e6;
+    REQUIRE(static_cast<F64>(static_cast<F32>(Frequency)) != Frequency);
+    SakuraTest::HeadlessUi ui;
+    FlowgraphConfigFloatField field;
+    std::vector<Parser::Map> edits;
+    FlowgraphConfigFloatField::Config config{
+        .id = "frequency",
+        .name = "frequency",
+        .format = {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3},
+                   {"step_config", std::string("frequencyStep")}},
+        .values = {{"frequency", F64{100.0e6}}, {"frequencyStep", F64{1.0e3}}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    };
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    const ImRect cell = LastItem(ui, field);
+    const F32 font = ImGui::GetFontSize();
+    const ImVec2 inputPoint(cell.Min.x + 30.0f, cell.Min.y - (font + 4.0f) - (font + 6.0f) * 0.5f);
+    const ImVec2 plusPoint(ImGui::GetIO().DisplaySize.x - 10.0f, cell.Min.y - (font + 4.0f) * 0.5f);
+
+    for (const auto& [text, expected] : {std::pair{"2750", Frequency},
+                                         std::pair{"1024.016", 1024016000.0},
+                                         std::pair{"1.024016e3", 1024016000.0}}) {
+        DYNAMIC_SECTION("text " << text) {
+            Commit(ui, field, inputPoint, text);
+            REQUIRE(edits.size() == 1);
+            REQUIRE(edits.front().at("frequency").type() == typeid(F64));
+            CHECK(std::any_cast<F64>(edits.front().at("frequency")) == expected);
+        }
+    }
+
+    edits.clear();
+    config.values["frequency"] = Frequency - 2.0e3;
+    for (int click = 0; click < 2; ++click) {
+        REQUIRE(field.update(config) == Result::SUCCESS);
+        Click(ui, field, plusPoint);
+        REQUIRE(edits.size() == static_cast<U64>(click + 1));
+        REQUIRE(edits.back().at("frequency").type() == typeid(F64));
+        config.values["frequency"] = edits.back().at("frequency");
+    }
+    CHECK(std::any_cast<F64>(edits.back().at("frequency")) == Frequency);
+}
+
+TEST_CASE("F32 numeric fields skip edits that narrow to the stored value",
+          "[core][sakura][interface]") {
+    SakuraTest::HeadlessUi ui;
+    FlowgraphConfigFloatField field;
+    std::vector<Parser::Map> edits;
+    REQUIRE(field.update({
+        .id = "duration",
+        .name = "value",
+        .format = {{"type", "float"}, {"precision", 3}},
+        .values = {{"value", 0.1f}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    }) == Result::SUCCESS);
+    const ImVec2 point = LastItem(ui, field).GetCenter();
+
+    Commit(ui, field, point, "0.10");
+    CHECK(edits.empty());
+
+    Commit(ui, field, point, "0.25");
+    REQUIRE(edits.size() == 1);
+    CHECK(std::any_cast<F32>(edits.front().at("value")) == 0.25f);
+}
+
+TEST_CASE("F32 vector entries skip edits that narrow to the stored value",
+          "[core][sakura][interface]") {
+    SakuraTest::HeadlessUi ui;
+    FlowgraphConfigVectorField field;
+    std::vector<Parser::Map> edits;
+    REQUIRE(field.update({
+        .id = "taps",
+        .name = "values",
+        .format = {{"type", "vector"}, {"value_type", "float"}, {"precision", 3}},
+        .values = {{"values", std::vector<F32>{0.1f}}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    }) == Result::SUCCESS);
+
+    Commit(ui, field, LastItem(ui, field).GetCenter(), "0.10");
+    CHECK(edits.empty());
 }
 
 TEST_CASE("Vector controls recover their cached values after a decoding error",

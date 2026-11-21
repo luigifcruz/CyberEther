@@ -18,8 +18,8 @@ TEST_CASE("SDR block keeps the radio interface defaults",
     REQUIRE(config.antenna.empty());
     REQUIRE(config.channels == 1);
     REQUIRE(config.manualGains.empty());
-    REQUIRE(config.frequency == 96.9e6f);
-    REQUIRE(config.frequencyStep == 1000000.0f);
+    REQUIRE(config.frequency == 96.9e6);
+    REQUIRE(config.frequencyStep == 1000000.0);
     REQUIRE(config.sampleRate == 2.0e6f);
     REQUIRE(config.automaticGain);
     REQUIRE_FALSE(config.biasTee);
@@ -36,7 +36,7 @@ TEST_CASE("SDR block selections and settings round-trip through saved configurat
     config.biasTee = true;
     config.channels = 2;
     config.manualGains = {30.0f, 36.0f};
-    config.frequency = 433.92e6f;
+    config.frequency = 433.92e6;
 
     Parser::Map serialized;
     REQUIRE(config.serialize(serialized) == Result::SUCCESS);
@@ -53,6 +53,30 @@ TEST_CASE("SDR block selections and settings round-trip through saved configurat
     REQUIRE(restored.manualGains == config.manualGains);
     REQUIRE(restored.frequency == config.frequency);
     REQUIRE(restored.hash() == config.hash());
+}
+
+TEST_CASE("SDR block keeps tuning values F32 cannot hold through saved YAML",
+          "[modules][io][sdr][block]") {
+    constexpr F64 Frequency = 2750.0e6;
+    REQUIRE(static_cast<F64>(static_cast<F32>(Frequency)) != Frequency);
+    Blocks::Sdr config;
+    config.frequency = Frequency;
+    config.frequencyStep = 12.5e3;
+
+    Parser::Map serialized;
+    REQUIRE(config.serialize(serialized) == Result::SUCCESS);
+    REQUIRE(serialized.at("frequency").type() == typeid(F64));
+    REQUIRE(serialized.at("frequencyStep").type() == typeid(F64));
+
+    std::string yaml;
+    REQUIRE(Parser::YamlEncode(serialized, yaml) == Result::SUCCESS);
+    Parser::Map decoded;
+    REQUIRE(Parser::YamlDecode(yaml, decoded) == Result::SUCCESS);
+
+    Blocks::Sdr restored;
+    REQUIRE(restored.deserialize(decoded) == Result::SUCCESS);
+    REQUIRE(restored.frequency == Frequency);
+    REQUIRE(restored.frequencyStep == 12.5e3);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
