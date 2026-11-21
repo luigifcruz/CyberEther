@@ -120,7 +120,7 @@ Result Font::create(Window* window) {
     addRange(0x20A0, 0x20BF);
     addRange(0x2100, 0x214F);
     addRange(0x2190, 0x23FF);
-    addRange(0x25A0, 0x27FF);
+    addRange(0x2500, 0x27FF);
     addRange(0x2900, 0x297F);
     addRange(0x2B00, 0x2BFF);
     if (config.icons) {
