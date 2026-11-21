@@ -349,9 +349,7 @@ Result DefaultCompositor::present() {
     // Offer dropped files to the component under the pointer, one frame after their pointer event.
 
     if (!droppedFiles.empty() && !workbench.dropFiles(droppedFiles)) {
-        for (auto& path : droppedFiles) {
-            enqueue(MailDropFlowgraphPath{std::move(path)});
-        }
+        enqueue(MailDropFlowgraphFiles{.paths = std::move(droppedFiles)});
     }
     droppedFiles.clear();
     if (state.system.viewport) {

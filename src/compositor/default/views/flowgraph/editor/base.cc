@@ -258,6 +258,11 @@ void FlowgraphEditor::update(Config config) {
                 this->config.onPasteBlock(gridPosition);
             }
         },
+        .onFileDrop = this->config.onDropFiles ? FileDrop([this](const std::vector<std::string>& paths,
+                                                                  Extent2D<F32> gridPosition) {
+            nodeEditor.stopFraming();
+            this->config.onDropFiles(paths, gridPosition);
+        }) : FileDrop{},
         .onViewportGridChange = [this](Rect viewport) {
             viewportGridCenter = {viewport.x + viewport.width * 0.5f, viewport.y + viewport.height * 0.5f};
             measured.viewport = viewport;

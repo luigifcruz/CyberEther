@@ -204,8 +204,10 @@ struct MailRememberFlowgraph {
     std::string title;
 };
 
-struct MailDropFlowgraphPath {
-    std::string path;
+struct MailDropFlowgraphFiles {
+    std::vector<std::string> paths;
+    std::optional<std::string> flowgraph;
+    std::optional<Extent2D<F32>> gridPosition;
 };
 
 struct MailOpenFlowgraphBlob {
@@ -806,7 +808,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailToggleFavoriteFlowgraph,
                            MailForgetRecentFlowgraph,
                            MailRememberFlowgraph,
-                           MailDropFlowgraphPath,
+                           MailDropFlowgraphFiles,
                            MailOpenFlowgraphBlob,
                            MailOpenFlowgraphExample,
                            MailFocusFlowgraph,
