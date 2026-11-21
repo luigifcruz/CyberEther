@@ -127,7 +127,7 @@ The `settings.yaml` file organizes persisted settings into top-level sections:
 - **`maps`:** High-resolution map toggle and map rendering preferences.
 - **`developer`:** Log level, compute timing overlay, and render stats flags.
 - **`registry`:** Registered `.cep` plugin paths.
-- **`intelligence`:** Optional Assistant providers, model selection, voice settings, and the local MCP server (disabled by default, listening on `127.0.0.1:7373` when enabled).
+- **`intelligence`:** Optional Assistant providers, model selection, voice settings, and the built-in MCP server (see [Intelligence](/docs/intelligence)).
 
 ## Troubleshooting
 

@@ -34,7 +34,7 @@ CyberEther is organized as a clean chain of ownership surrounded by shared low-l
 - **Blocks and Modules** form the two halves of every node. Blocks are the user-facing nodes stored in a flowgraph, while modules are the device-specific kernels executed by the scheduler. See [Blocks And Modules](/docs/blocks-and-modules) for the full design.
 - **Backend, Render, and Viewport** stay deliberately decoupled:
   - **Backend** supplies compute device contexts under `src/backend/devices` (`cpu`, `cuda`, `metal`, `vulkan`, `webgpu`).
-  - **Render** manages windows, surfaces, and the Sakura UI toolkit across `metal`, `vulkan`, and `webgpu`.
+  - **Render** manages windows, surfaces, and the [Sakura](/docs/sakura) UI toolkit across `metal`, `vulkan`, and `webgpu`.
   - **Viewport** abstracts platform windowing and input (`glfw`, `headless`, `ios`, and a capture viewport for remote streaming).
   Keeping these three apart lets headless deployments run compute backends without a real window, and lets your compute device differ from your rendering GPU.
 - **Memory** provides the tensor layer: typed multidimensional buffers with shapes, strides, device residency, and attached attributes. Tensors pass between modules by reference through link objects, so wiring blocks never copies sample data.
@@ -105,5 +105,6 @@ Loading a `.yml` file parses the YAML document, migrates older schema versions w
 | Zero-copy multi-device buffers and views | [Tensors](/docs/tensors) |
 | Environment keys, tensor attributes, and metrics | [Metadata](/docs/metadata) |
 | Embedded C++ and Python plotting windows | [Superluminal](/docs/superluminal) |
+| Retained GPU UI components, layouts, and themes | [Sakura UI](/docs/sakura) |
 | Out-of-tree `.cep` plugin bundles | [Creating Plugins](/docs/plugins) |
 | Quick custom processing without C++ | [Python Block](/docs/python-block) |
