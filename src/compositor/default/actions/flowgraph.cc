@@ -69,17 +69,63 @@ Result FlowgraphActions::handle(const MailOpenFlowgraphPath& msg) {
     return Result::SUCCESS;
 }
 
-Result FlowgraphActions::handle(const MailDropFlowgraphPath& msg) {
-    const auto extension = Text::ToLower(Platform::PathToUtf8(
-        Platform::PathFromUtf8(msg.path).extension()));
+Result FlowgraphActions::handle(const MailDropFlowgraphFiles& msg) {
+    const auto found = msg.flowgraph.has_value() ? state.flowgraph.items.find(*msg.flowgraph)
+                                                 : state.flowgraph.items.end();
+    const auto flowgraph = found != state.flowgraph.items.end() ? found->second : nullptr;
 
-    if (extension != ".yml" && extension != ".yaml") {
-        callbacks.notify(Sakura::ToastType::Warning, 5000,
-                         "Only flowgraph files (.yml or .yaml) can be opened by dropping them here.");
-        return Result::SUCCESS;
+    std::vector<Parser::Map> readers;
+    bool unsupported = false;
+    bool unplaced = false;
+    for (const auto& path : msg.paths) {
+        const auto extension = Text::ToLower(Platform::PathToUtf8(Platform::PathFromUtf8(path).extension()));
+        if (extension == ".yml" || extension == ".yaml") {
+            JST_CHECK(handle(MailOpenFlowgraphPath{path}));
+            continue;
+        }
+
+        auto config = FileReaderConfig(path);
+        if (!config.has_value()) {
+            unsupported = true;
+        } else if (!flowgraph || !msg.gridPosition.has_value()) {
+            unplaced = true;
+        } else {
+            readers.push_back(std::move(*config));
+        }
     }
 
-    return handle(MailOpenFlowgraphPath{msg.path});
+    if (!readers.empty()) {
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = *msg.flowgraph,
+            .command = [flowgraph, origin = *msg.gridPosition, readers = std::move(readers)]() -> Result {
+                constexpr Extent2D<F32> offset = {40.0f, 40.0f};
+                for (U64 i = 0; i < readers.size(); ++i) {
+                    const auto name = Naming::UniqueName("file_reader", [&](const std::string& candidate) {
+                        return flowgraph->view().has(candidate);
+                    });
+                    const F32 step = static_cast<F32>(i);
+                    const NodeMeta nodeMeta = {origin.x + offset.x * step, origin.y + offset.y * step, 0.0f, 0.0f};
+                    flowgraph->metadata().set("node", nodeMeta, name);
+                    JST_CHECK_ALLOW(flowgraph->blockCreate(name, "file_reader", readers[i], {}, DeviceType::CPU,
+                                                          RuntimeType::NATIVE, "generic"),
+                                    Result::INCOMPLETE);
+                }
+                return Result::SUCCESS;
+            },
+        });
+    }
+
+    if (unsupported) {
+        callbacks.notify(Sakura::ToastType::Warning, 5000,
+                         "Only flowgraph files (.yml or .yaml) and SigMF, WAV, or raw I/Q recordings can be "
+                         "dropped here.");
+    }
+    if (unplaced) {
+        callbacks.notify(Sakura::ToastType::Info, 5000,
+                         "Drop recordings onto a flowgraph to add them as File Readers.");
+    }
+
+    return Result::SUCCESS;
 }
 
 Result FlowgraphActions::handle(const MailOpenFlowgraphBlob& msg) {
@@ -940,6 +986,56 @@ void FlowgraphActions::markUntracked(const std::string& flowgraph) {
     if (const auto history = state.flowgraph.history.find(flowgraph); history != state.flowgraph.history.end()) {
         history->second.untracked = true;
     }
+}
+
+std::optional<Parser::Map> FlowgraphActions::FileReaderConfig(const std::string& path) {
+    struct Recording {
+        std::string_view extension;
+        std::string_view format;
+        std::string_view dataType;
+    };
+
+    static constexpr std::array<Recording, 23> kRecordings = {{
+        {".sigmf-meta", "sigmf", ""},
+        {".sigmf-data", "sigmf", ""},
+        {".wav", "wav", ""},
+        {".raw", "raw", "CF32"},
+        {".iq", "raw", "CF32"},
+        {".bin", "raw", "CF32"},
+        {".dat", "raw", "CF32"},
+        {".cfile", "raw", "CF32"},
+        {".cf32", "raw", "CF32"},
+        {".fc32", "raw", "CF32"},
+        {".cf64", "raw", "CF64"},
+        {".fc64", "raw", "CF64"},
+        {".cs16", "raw", "CI16"},
+        {".sc16", "raw", "CI16"},
+        {".cs8", "raw", "CI8"},
+        {".sc8", "raw", "CI8"},
+        {".cu16", "raw", "CU16"},
+        {".cu8", "raw", "CU8"},
+        {".f32", "raw", "F32"},
+        {".f64", "raw", "F64"},
+        {".s16", "raw", "I16"},
+        {".s8", "raw", "I8"},
+        {".u8", "raw", "U8"},
+    }};
+
+    const auto extension = Platform::PathToUtf8(Platform::PathFromUtf8(path).extension());
+    const auto match = std::ranges::find(kRecordings, std::string_view(Text::ToLower(extension)),
+                                         &Recording::extension);
+    if (match == kRecordings.end() || (match->format == "sigmf" && extension != match->extension)) {
+        return std::nullopt;
+    }
+
+    Parser::Map config = {
+        {"filepath", path},
+        {"fileFormat", std::string(match->format)},
+    };
+    if (!match->dataType.empty()) {
+        config["dataType"] = std::string(match->dataType);
+    }
+    return config;
 }
 
 std::string FlowgraphActions::ReconfigureMergeKey(const std::string& block, const Parser::Map& config) {

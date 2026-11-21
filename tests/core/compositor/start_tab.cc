@@ -7,6 +7,7 @@
 #include "flowgraph_fixture.hh"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -568,4 +569,101 @@ TEST_CASE("Recent flowgraph history records a path only after its open or save s
     Settings settings;
     REQUIRE(Settings::Get(settings) == Result::SUCCESS);
     CHECK(settings.interface.recentFlowgraphs.size() == 2);
+}
+
+TEST_CASE("Dropping recordings on a flowgraph adds a File Reader for each recognized file",
+          "[core][compositor][flowgraph-actions]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = std::filesystem::temp_directory_path() / ("cyberether-drop-" + std::to_string(nonce));
+    std::filesystem::create_directories(root);
+    const auto write = [&](const std::string& name) {
+        const auto path = root / name;
+        std::ofstream(path, std::ios::binary) << std::string(64, '\0');
+        return Platform::PathToUtf8(path);
+    };
+    const auto capture = write("capture.cu8");
+    const auto upper = write("RECORDING.CF32");
+    const auto notes = write("notes.txt");
+
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<FlowgraphEdit> edits;
+    std::vector<Sakura::ToastType> toasts;
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        edits.push_back(std::move(edit));
+    };
+    callbacks.notify = [&](Sakura::ToastType type, I32, const std::string&) {
+        toasts.push_back(type);
+    };
+    FlowgraphActions actions(state, callbacks);
+    auto flowgraph = std::make_shared<Flowgraph>();
+    REQUIRE(flowgraph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    state.flowgraph.items["graph"] = flowgraph;
+
+    const auto config = [&](const std::string& name) {
+        Parser::Map map;
+        REQUIRE(flowgraph->view().config(name, map) == Result::SUCCESS);
+        return map;
+    };
+    const auto position = [&](const std::string& name) {
+        NodeMeta meta;
+        REQUIRE(flowgraph->metadata().get("node", meta, name) == Result::SUCCESS);
+        return Extent2D<F32>{meta.x, meta.y};
+    };
+
+    REQUIRE(actions.handle(MailDropFlowgraphFiles{
+        .paths = {capture, upper, notes},
+        .flowgraph = "graph",
+        .gridPosition = Extent2D<F32>{100.0f, 200.0f},
+    }) == Result::SUCCESS);
+    REQUIRE(edits.size() == 1);
+    CHECK(edits[0].flowgraph == "graph");
+    REQUIRE(edits[0].command() == Result::SUCCESS);
+    CHECK(toasts == std::vector<Sakura::ToastType>{Sakura::ToastType::Warning});
+
+    const auto first = config("file_reader");
+    CHECK(Parser::Get<std::string>(first, "filepath") == capture);
+    CHECK(Parser::Get<std::string>(first, "fileFormat") == "raw");
+    CHECK(Parser::Get<std::string>(first, "dataType") == "CU8");
+    CHECK(position("file_reader") == Extent2D<F32>{100.0f, 200.0f});
+    const auto second = config("file_reader_1");
+    CHECK(Parser::Get<std::string>(second, "filepath") == upper);
+    CHECK(Parser::Get<std::string>(second, "dataType") == "CF32");
+    CHECK(position("file_reader_1") == Extent2D<F32>{140.0f, 240.0f});
+
+    const auto iq = write("capture.iq");
+    const auto shouting = write("capture.SIGMF-DATA");
+    REQUIRE(actions.handle(MailDropFlowgraphFiles{
+        .paths = {iq, shouting},
+        .flowgraph = "graph",
+        .gridPosition = Extent2D<F32>{0.0f, 0.0f},
+    }) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailDropFlowgraphFiles{
+        .paths = {capture},
+        .flowgraph = "graph",
+        .gridPosition = Extent2D<F32>{10.0f, 20.0f},
+    }) == Result::SUCCESS);
+    REQUIRE(edits.size() == 3);
+    CHECK(toasts.back() == Sakura::ToastType::Warning);
+    REQUIRE(edits[1].command() == Result::SUCCESS);
+    REQUIRE(edits[2].command() == Result::SUCCESS);
+    CHECK(Parser::Get<std::string>(config("file_reader_2"), "filepath") == iq);
+    CHECK(Parser::Get<std::string>(config("file_reader_2"), "dataType") == "CF32");
+    CHECK(Parser::Get<std::string>(config("file_reader_3"), "filepath") == capture);
+    CHECK(position("file_reader_3") == Extent2D<F32>{10.0f, 20.0f});
+
+    state.interface.focusedFlowgraph = "graph";
+    REQUIRE(state.activeFlowgraph() == std::optional<std::string>("graph"));
+    REQUIRE(actions.handle(MailDropFlowgraphFiles{.paths = {capture}}) == Result::SUCCESS);
+    CHECK(edits.size() == 3);
+    CHECK(toasts.back() == Sakura::ToastType::Info);
+
+    std::vector<std::string> names;
+    REQUIRE(flowgraph->view().keys(names) == Result::SUCCESS);
+    for (const auto& name : names) {
+        REQUIRE(flowgraph->blockDestroy(name, false) == Result::SUCCESS);
+    }
+    REQUIRE(flowgraph->destroy() == Result::SUCCESS);
+    std::filesystem::remove_all(root);
 }
