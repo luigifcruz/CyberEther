@@ -38,6 +38,10 @@ WorkbenchView::Config WorkbenchPresenter::build() const {
     for (const auto& [flowgraphId, flowgraph] : context.state.flowgraph.items) {
         config.flowgraphs.push_back(flowgraphPane.build(flowgraphId, flowgraph));
     }
+    config.flowgraphRequested = context.state.interface.requestedFlowgraph;
+    config.flowgraphRequests = context.state.interface.flowgraphRequests;
+    config.flowgraphFocused = context.state.interface.requestedFlowgraph.has_value() &&
+                              context.state.interface.focusedFlowgraph == context.state.interface.requestedFlowgraph;
     config.terminals = terminals.build();
     config.terminalTabs = terminals.tabs();
     if (context.state.terminal.requested.has_value()) {

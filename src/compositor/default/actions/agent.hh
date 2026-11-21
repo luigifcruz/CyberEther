@@ -35,6 +35,8 @@ struct AgentActions {
                               MailSubmitAgentChat,
                               MailCancelAgentChat,
                               MailClearAgentChat,
+                              MailWithdrawAgentChat,
+                              MailResumeAgentChat,
                               MailSelectAgentModel,
                               MailSetAgentReasoningEffort,
                               MailOpenAgentModelPicker,
@@ -63,6 +65,8 @@ struct AgentActions {
     Result handle(const MailSubmitAgentChat& msg);
     Result handle(const MailCancelAgentChat&);
     Result handle(const MailClearAgentChat&);
+    Result handle(const MailWithdrawAgentChat& msg);
+    Result handle(const MailResumeAgentChat&);
     Result handle(const MailSelectAgentModel& msg);
     Result handle(const MailSetAgentReasoningEffort& msg);
     Result handle(const MailOpenAgentModelPicker&);

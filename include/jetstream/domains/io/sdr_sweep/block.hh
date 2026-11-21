@@ -137,6 +137,7 @@ struct SdrSweep : public Block::Config {
         "HackRF, LimeSDR, bladeRF, and PlutoSDR. Windows needs the WinUSB driver. |\n"
         "| BirriaSDR | macOS and Linux only, on a USB 3 port. Unbind the Wi-Fi driver, "
         "then replug the dongle. Each hop takes up to about 0.75 s. |\n"
+        "| LimeSDR XTRX | Linux only. Load the limepcie kernel driver from LimeSuiteNG. |\n"
         "| HackRF firmware | Firmware sweeps need USB API 0x0104 or newer. |\n"
         "| SoapySDR | Other radios on macOS, Linux, and Windows, through SoapySDR 0.8 "
         "or 0.9 and its device modules, marked (SoapySDR). Sweeps are slower and less "

@@ -105,6 +105,7 @@ struct DefaultCompositorState {
             bool streaming = false;
             U64 contextTokens = 0;
             std::vector<std::shared_ptr<const Agent::Session::Entry>> messages;
+            std::vector<Agent::Session::Pending> pending;
         };
 
         struct ChatState {
@@ -170,6 +171,8 @@ struct DefaultCompositorState {
 
         std::optional<std::string> focusedFlowgraph;
         std::optional<std::string> pendingFocusedFlowgraph;
+        std::optional<std::string> requestedFlowgraph;
+        U64 flowgraphRequests = 0;
         std::optional<std::string> closingFlowgraph;
         bool quitting = false;
         std::unordered_set<std::string> discardedFlowgraphs;

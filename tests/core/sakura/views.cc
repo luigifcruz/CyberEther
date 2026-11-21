@@ -27,9 +27,11 @@
 #include "compositor/default/views/start_tab/base.hh"
 #include "compositor/default/views/titlebar.hh"
 #include "compositor/default/views/workbench.hh"
+#include "render/sakura/detail/chat_transcript.hh"
 #include "render/sakura/runtime.hh"
 #include "scene.hh"
 
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <string>
@@ -5278,6 +5280,72 @@ TEST_CASE("Workbench shows a terminal tab as a main tab and a tiled terminal ins
     CHECK_FALSE(grid(1).has_value());
 }
 
+TEST_CASE("Workbench reveals a requested flowgraph tab once per request",
+          "[core][sakura][views][flowgraph]") {
+    Mailbox mailbox;
+    auto& ui = mailbox.state.interface;
+    ui.focusedFlowgraph = "b";
+    ui.requestedFlowgraph = "b";
+    ui.flowgraphRequests = 1;
+
+    const auto presented = WorkbenchPresenter(mailbox.context()).build();
+    CHECK(presented.flowgraphRequested == std::optional<std::string>("b"));
+    CHECK(presented.flowgraphRequests == 1);
+    CHECK(presented.flowgraphFocused);
+
+    FakeWindow window(1.0f, {1200.0f, 600.0f});
+    Sakura::Runtime runtime;
+    runtime.update({.render = &window});
+    WorkbenchView view;
+    std::vector<std::string> focused;
+    const auto show = [&] {
+        WorkbenchView::Config config;
+        config.backgroundParticles = false;
+        for (const char* id : {"a", "b"}) {
+            config.flowgraphs.push_back({
+                .id = id,
+                .title = id,
+                .layoutGroup = std::string("layout:") + id,
+                .editorPane = std::string("editor:") + id,
+                .layout = Leaf(std::string("editor:") + id),
+                .onFocus = [&focused, id] {
+                    focused.push_back(id);
+                },
+            });
+        }
+        config.flowgraphRequested = ui.requestedFlowgraph;
+        config.flowgraphRequests = ui.flowgraphRequests;
+        config.flowgraphFocused = ui.focusedFlowgraph == ui.requestedFlowgraph;
+        view.update(std::move(config));
+        for (U64 frame = 0; frame < 3; ++frame) {
+            REQUIRE(window.begin() == Result::SUCCESS);
+            view.render(runtime.context());
+            REQUIRE(window.end() == Result::SUCCESS);
+        }
+    };
+
+    show();
+    REQUIRE_FALSE(focused.empty());
+    CHECK(focused.back() == "b");
+
+    focused.clear();
+    show();
+    CHECK(focused.empty());
+
+    ui.focusedFlowgraph = "a";
+    ui.requestedFlowgraph = "a";
+    ui.flowgraphRequests = 2;
+    show();
+    REQUIRE_FALSE(focused.empty());
+    CHECK(focused.back() == "a");
+
+    focused.clear();
+    ui.requestedFlowgraph = "b";
+    ui.flowgraphRequests = 3;
+    show();
+    CHECK(focused.empty());
+}
+
 TEST_CASE("Flowgraph info view settles under identical updates",
           "[core][sakura][views]") {
     Scene scene{kWide};
@@ -5542,6 +5610,53 @@ TEST_CASE("The assistant placeholder suggests prompts for the focused flowgraph 
     CHECK(LabeledButton(rig.view.component(), "Make this flowgraph run faster.") != nullptr);
     CHECK(Press(rig.host, *explain));
     CHECK(rig.mailbox.last<MailSubmitAgentChat>()->text == "Explain how this flowgraph works.");
+}
+
+TEST_CASE("Pending assistant steers show in the dock and post withdraw and resume mail",
+          "[core][sakura][views][agent]") {
+    AgentChatRig rig;
+    rig.configureModel();
+    auto& chat = rig.mailbox.state.agent.chat;
+    chat.conversation.generation = 1;
+    chat.conversation.messages.push_back(
+        std::make_shared<const Agent::Session::Entry>(Agent::Session::Entry{.user = true, .text = "Build a radio."}));
+    chat.conversation.pending = {{.key = 3, .text = "Add a waterfall."}, {.key = 5, .text = "Tune to 96.9 MHz."}};
+    rig.show();
+
+    const auto glyph = [&](const std::string& icon) {
+        std::vector<Jetstream::Rect> rects;
+        const auto transcripts = Find<Sakura::ChatTranscript>(rig.view.component());
+        REQUIRE(transcripts.size() == 1);
+        for (auto* label : Find<Sakura::Label>(*transcripts.front())) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.visible && instance.str == icon) {
+                    rects.push_back(instance.rect);
+                }
+            }
+        }
+        std::sort(rects.begin(), rects.end(), [](const auto& a, const auto& b) {
+            return a.y < b.y;
+        });
+        return rects;
+    };
+    const auto removes = glyph(ICON_LC_X);
+    const auto resumes = glyph(ICON_LC_PLAY);
+    REQUIRE(removes.size() == 2);
+    REQUIRE(resumes.size() == 1);
+
+    const auto second = removes[1].center();
+    rig.host.click(second.x, second.y);
+    const auto* withdraw = rig.mailbox.last<MailWithdrawAgentChat>();
+    REQUIRE(withdraw != nullptr);
+    CHECK(withdraw->key == 5);
+
+    const auto resume = resumes[0].center();
+    rig.host.click(resume.x, resume.y);
+    CHECK(rig.mailbox.last<MailResumeAgentChat>() != nullptr);
+
+    chat.conversation.streaming = true;
+    rig.show();
+    CHECK(glyph(ICON_LC_PLAY).empty());
 }
 
 TEST_CASE("The assistant placeholder settles and repaints once per suggestion hover", "[core][sakura][views][agent]") {

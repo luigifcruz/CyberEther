@@ -40,7 +40,7 @@ std::optional<FlowgraphInfoView::Config> FlowgraphInfoModalPresenter::build() co
             enqueue(MailBrowseConfigPath{
                 .path = currentPath,
                 .save = true,
-                .extensions = {"yaml", "yml"},
+                .extensions = {"yml", "yaml"},
                 .onSelect = std::move(onSelect),
             });
         },

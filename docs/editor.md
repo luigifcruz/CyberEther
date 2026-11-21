@@ -14,6 +14,7 @@ Every flowgraph opens in its own tab. Use these controls to move around the canv
 | Action | Control |
 |---|---|
 | Open the block browser | Double-click empty canvas, or click **Add block** in the bottom-right toolbar |
+| Add a recording as a File Reader | Drag and drop a recording file directly onto the canvas |
 | Pause or resume flowgraph | **Space** (or the play and pause button in the toolbar) |
 | Select a block | Click the block |
 | Add blocks to selection | **Shift + Click** additional blocks |

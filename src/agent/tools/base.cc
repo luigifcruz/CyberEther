@@ -2,11 +2,25 @@
 
 #include "tools/naming.hh"
 
+#include <algorithm>
+#include <cctype>
+
 namespace Jetstream::Agent {
 
 namespace Detail {
 
 namespace {
+
+std::string UnknownTool(const std::string& name) {
+    const bool identifier = !name.empty() && std::all_of(name.begin(), name.end(), [](const unsigned char c) {
+        return std::isalnum(c) || c == '_' || c == '-' || c == '.' || c == ':' || c == '/';
+    });
+    if (identifier) {
+        return jst::fmt::format("Unknown tool '{}'.", name);
+    }
+
+    return jst::fmt::format("Unknown tool '{}'. This is not a tool name. {}", name, Response::CutShort);
+}
 
 Tools::Output Dispatch(Host& host, const Call& call) {
     try {
@@ -17,7 +31,7 @@ Tools::Output Dispatch(Host& host, const Call& call) {
 
         const auto* entry = Toolbox::Find(call.tool);
         if (!entry) {
-            return Response::Failure(jst::fmt::format("Unknown tool '{}'.", call.tool));
+            return Response::Failure(UnknownTool(call.tool));
         }
 
         return entry->execute({host, call.flowgraph, call.create, args});
@@ -164,11 +178,16 @@ Tools::Call Tools::prepare(const std::shared_ptr<Flowgraph>& target, const std::
         call.flowgraph = target;
     }
 
-    if (call.flowgraph || !entry->newGraph) {
+    if (!entry->newGraph) {
         return call;
     }
 
     const auto graph = entry->newGraph(Detail::Json::parse(args, nullptr, false));
+    if (call.flowgraph && !graph.requested) {
+        return call;
+    }
+
+    call.flowgraph.reset();
     if (!graph.error.empty()) {
         call.output = Detail::Response::Failure(graph.error);
     } else if (!graph.name.empty()) {

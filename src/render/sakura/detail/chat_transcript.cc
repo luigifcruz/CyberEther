@@ -7,6 +7,7 @@
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 #include <jetstream/logger.hh>
 
 #include "../context.hh"
@@ -39,6 +40,7 @@ constexpr F32 kBubbleGap = 10.0f;
 constexpr F32 kTurnGap = 16.0f;
 constexpr F32 kPartGap = 6.0f;
 constexpr F32 kBubbleMaxWidthRatio = 0.72f;
+constexpr F32 kTrailingMarginCharacters = 0.5f;
 constexpr F32 kBubbleBorder = 1.0f;
 constexpr F32 kTextPad = 9.0f;
 constexpr F32 kScrollbarReserve = 14.0f;
@@ -61,9 +63,11 @@ constexpr F32 kShimmerBandRatio = 0.35f;
 constexpr F32 kShimmerDim = 0.55f;
 constexpr const char* kToggleFont = Typography::BodyBoldFont;
 constexpr const char* kSummaryFont = Typography::BodyItalicFont;
+constexpr U64 kGlyphCharacters = 4;
 constexpr F32 kUnbounded = std::numeric_limits<F32>::infinity();
 
-TextView::Config UserText(std::string id, std::string value, F32 font, std::optional<Padding> padding) {
+TextView::Config UserText(std::string id, std::string value, F32 font, std::optional<Padding> padding,
+                          std::string colorKey = "action_btn_text") {
     return {
         .id = std::move(id),
         .value = std::move(value),
@@ -73,7 +77,7 @@ TextView::Config UserText(std::string id, std::string value, F32 font, std::opti
         .scrollbar = false,
         .wrap = TextGrid::Wrap::Word,
         .padding = padding,
-        .textColorKey = "action_btn_text",
+        .textColorKey = std::move(colorKey),
     };
 }
 
@@ -152,6 +156,9 @@ struct ChatTranscript::Impl {
         User,
         Markdown,
         Disclosure,
+        Pending,
+        Withdraw,
+        Resume,
     };
 
     struct Key {
@@ -174,7 +181,6 @@ struct ChatTranscript::Impl {
         F32 reserve = 0.0f;
         F32 contentWidth = 0.0f;
         F32 maxBubbleWidth = 0.0f;
-        F32 maxUserTextWidth = 0.0f;
         F32 partGap = 0.0f;
         F32 summaryInset = 0.0f;
         F32 summaryGap = 0.0f;
@@ -183,6 +189,8 @@ struct ChatTranscript::Impl {
         F32 caretDepth = 0.0f;
         F32 labelInset = 0.0f;
         Extent2D<F32> togglePadding = {0.0f, 0.0f};
+        F32 controlSide = 0.0f;
+        F32 controlStep = 0.0f;
         F32 visibleTop = 0.0f;
         F32 visibleBottom = 0.0f;
         const Render::Window* window = nullptr;
@@ -293,6 +301,11 @@ struct ChatTranscript::Impl {
         Rect rect;
     };
 
+    struct Waiting {
+        U64 key = 0;
+        std::shared_ptr<const Message> message;
+    };
+
     Config config;
     Box bubbles;
     Scroller scroll;
@@ -300,6 +313,7 @@ struct ChatTranscript::Impl {
     std::vector<std::unique_ptr<Slot<TextMarkdown>>> markdowns;
     Box highlights;
     Label labels;
+    Label glyphs;
     Box shimmer;
     Polyline carets;
     std::vector<std::unique_ptr<Slot<TextView>>> summaries;
@@ -314,6 +328,7 @@ struct ChatTranscript::Impl {
     std::vector<F32> rowWidth;
     std::vector<F32> rowHeight;
     std::vector<std::shared_ptr<const Message>> rowMessages;
+    std::vector<Waiting> waiting;
     RowContext rowContext;
     std::map<std::pair<U64, U64>, bool> expansions;
     std::map<Key, std::vector<bool>> markdownDetails;
@@ -448,6 +463,25 @@ struct ChatTranscript::Impl {
         Allocate(summaries, DisclosureSlots);
     }
 
+    void track(const std::vector<Chat::Pending>& entries) {
+        std::vector<Waiting> next;
+        next.reserve(entries.size());
+        for (const auto& entry : entries) {
+            const auto kept = std::find_if(waiting.begin(), waiting.end(), [&](const auto& item) {
+                return item.key == entry.key && item.message->text == entry.text;
+            });
+            if (kept != waiting.end()) {
+                next.push_back(*kept);
+            } else {
+                next.push_back({
+                    .key = entry.key,
+                    .message = std::make_shared<const Message>(Message{.text = entry.text}),
+                });
+            }
+        }
+        waiting = std::move(next);
+    }
+
     void reset() {
         scrollY = 0.0f;
         overscrollY = 0.0f;
@@ -499,6 +533,22 @@ struct ChatTranscript::Impl {
         self.invalidate(Dirty::Layout);
     }
 
+    void activate(ChatTranscript& self, const Key& key) {
+        if (key.kind == Kind::Withdraw) {
+            if (config.onWithdraw) {
+                config.onWithdraw(key.message);
+            }
+            return;
+        }
+        if (key.kind == Kind::Resume) {
+            if (config.onResume) {
+                config.onResume();
+            }
+            return;
+        }
+        toggle(self, key);
+    }
+
     Metrics metrics(const ChatTranscript& self, const Context& ctx) const {
         const Rect bounds = self.frame();
         const F32 unit = Px(ctx, config.fontSize / Typography::FontSize);
@@ -509,6 +559,8 @@ struct ChatTranscript::Impl {
         const F32 contentWidth = std::max(1.0f, bounds.width - reserve);
         const F32 maxBubbleWidth = std::max(1.0f, contentWidth * kBubbleMaxWidthRatio);
         const F32 overscan = kOverscanLines * lineHeight;
+        const Extent2D<F32> togglePadding = {Px(ctx, kTogglePadX), Px(ctx, kTogglePadY)};
+        const F32 controlSide = font + 2.0f * togglePadding.y;
         return {
             .bounds = bounds,
             .visible = !bounds.empty(),
@@ -520,7 +572,6 @@ struct ChatTranscript::Impl {
             .reserve = reserve,
             .contentWidth = contentWidth,
             .maxBubbleWidth = maxBubbleWidth,
-            .maxUserTextWidth = std::max(1.0f, maxBubbleWidth - 2.0f * textPad),
             .partGap = kPartGap * unit,
             .summaryInset = kSummaryInset * unit,
             .summaryGap = kSummaryGap * unit,
@@ -528,7 +579,9 @@ struct ChatTranscript::Impl {
             .caretLength = kCaretLength * unit,
             .caretDepth = kCaretDepth * unit,
             .labelInset = kLabelInset * unit,
-            .togglePadding = {Px(ctx, kTogglePadX), Px(ctx, kTogglePadY)},
+            .togglePadding = togglePadding,
+            .controlSide = controlSide,
+            .controlStep = controlSide + kPartGap * unit,
             .visibleTop = bounds.y - overscan,
             .visibleBottom = bounds.bottom() + overscan,
             .window = ctx.render,
@@ -560,7 +613,7 @@ struct ChatTranscript::Impl {
             rowMessages.clear();
             rowContext = next;
         }
-        const U64 count = config.snapshot.messages.size();
+        const U64 count = config.snapshot.messages.size() + waiting.size();
         rows.resize(count);
         rowWidth.resize(count, 0.0f);
         rowHeight.resize(count, 0.0f);
@@ -569,8 +622,9 @@ struct ChatTranscript::Impl {
 
     void buildRows(ChatTranscript& self, const Context& ctx, const Metrics& m) {
         const auto& messages = config.snapshot.messages;
-        for (U64 i = 0; i < messages.size(); ++i) {
-            const auto& message = messages.at(i);
+        const U64 sent = messages.size();
+        for (U64 i = 0; i < rows.size(); ++i) {
+            const auto& message = i < sent ? messages.at(i) : waiting[i - sent].message;
             if (message && rowMessages[i] == message) {
                 continue;
             }
@@ -581,24 +635,30 @@ struct ChatTranscript::Impl {
             if (!message) {
                 continue;
             }
-            if (message->role == Role::User) {
-                buildUser(self, ctx, m, i, *message);
+            if (i >= sent) {
+                buildUser(self, ctx, m, i, *message, makeBlock(waiting[i - sent].key, 0, Kind::Pending));
+            } else if (message->role == Role::User) {
+                buildUser(self, ctx, m, i, *message, makeBlock(i, 0, Kind::User));
             } else {
                 buildAssistant(self, ctx, m, i, *message);
             }
         }
     }
 
-    void buildUser(ChatTranscript& self, const Context& ctx, const Metrics& m, U64 index, const Message& message) {
-        Block block = makeBlock(index, 0, Kind::User);
+    void buildUser(ChatTranscript& self, const Context& ctx, const Metrics& m, U64 index, const Message& message,
+                   Block block) {
         block.text = &message.text;
         block.revision = std::hash<std::string>{}(message.text);
+        const F32 bubbleWidth = block.key.kind == Kind::Pending
+                                    ? std::max(1.0f, std::min(m.maxBubbleWidth, m.contentWidth - 2.0f * m.controlStep))
+                                    : m.maxBubbleWidth;
+        const F32 textWidth = std::max(1.0f, bubbleWidth - 2.0f * m.textPad);
         auto& cached = measurements[block.key];
-        if (!cached.matches(block, m.maxUserTextWidth, m)) {
+        if (!cached.matches(block, textWidth, m)) {
             userMeasurer.update(UserText(config.id + ":measure-user", message.text, m.font, std::nullopt));
-            const auto measured = self.measureChild(userMeasurer, ctx, {m.maxUserTextWidth, kUnbounded});
-            cached.store(block, m.maxUserTextWidth, m);
-            cached.measuredWidth = std::min(m.maxBubbleWidth, measured.x + 2.0f * m.textPad);
+            const auto measured = self.measureChild(userMeasurer, ctx, {textWidth, kUnbounded});
+            cached.store(block, textWidth, m);
+            cached.measuredWidth = std::min(bubbleWidth, measured.x + 2.0f * m.textPad);
             cached.height = std::max(m.lineHeight, measured.y) + 2.0f * m.textPad;
         }
         block.width = cached.measuredWidth;
@@ -812,11 +872,45 @@ struct ChatTranscript::Impl {
         self.layoutChild(ctx, scroll, m.bounds);
     }
 
-    void layoutUsers(ChatTranscript& self, const Context& ctx, const Metrics& m,
-                     const std::vector<const UserPlacement*>& bySlot) {
+    Rect control(const Metrics& m, const Rect& bubble, U64 index) const {
+        const F32 line = std::min(bubble.height, m.lineHeight + 2.0f * m.textPad);
+        return {bubble.x - m.controlStep * static_cast<F32>(index + 1),
+                bubble.y + std::round((line - m.controlSide) * 0.5f), m.controlSide, m.controlSide};
+    }
+
+    void addControl(const Context& ctx, const Metrics& m, const Key& key, const Rect& rect, const char* icon,
+                    std::vector<Label::Instance>& marks, std::vector<Box::Instance>& fills) {
+        const Rect hit = Intersect(rect, m.bounds);
+        toggles.push_back({.key = key, .rect = hit});
+        const bool active = hovered == key;
+        if (active) {
+            fills.push_back({
+                .rect = hit,
+                .visible = m.visible && !hit.empty(),
+                .backgroundColor = ctx.color(pressed == key ? "button_active" : "button_hovered"),
+            });
+        }
+        marks.push_back({
+            .rect = rect,
+            .str = icon,
+            .visible = m.visible && m.inBounds(rect),
+            .color = ctx.color(active ? "text_primary" : "text_secondary"),
+            .fontSize = m.font,
+            .alignment = {1, 1},
+        });
+    }
+
+    std::vector<Box::Instance> layoutUsers(ChatTranscript& self, const Context& ctx, const Metrics& m,
+                                           const std::vector<const UserPlacement*>& bySlot) {
         std::vector<Box::Instance> fills;
+        std::vector<Box::Instance> hovers;
+        std::vector<Label::Instance> marks;
         const auto fill = ctx.color("chat_user_bubble");
-        const Padding padding = {m.textPad + m.textInset, m.textPad, m.textInset, m.textPad};
+        const auto outline = ctx.color(config.surfaceColorKey);
+        const F32 shift = 0.5f * kTrailingMarginCharacters * textMetrics.measure(Typography::BodyFont, "0", m.font);
+        const Padding padding = {m.textPad + m.textInset + shift, m.textPad, m.textInset - shift, m.textPad};
+        const std::optional<U64> head = config.pending.empty() ? std::nullopt
+                                                             : std::optional<U64>(config.pending.front().key);
         for (U64 i = 0; i < users.size(); ++i) {
             auto& slot = *users[i];
             const auto* placement = bySlot[i];
@@ -824,12 +918,39 @@ struct ChatTranscript::Impl {
                 Park(self, slot);
                 continue;
             }
+            const Key& key = placement->block->key;
+            const bool held = key.kind == Kind::Pending;
             Bind(self, slot, placement->block->revision, *placement->block->text, m.font, [&](std::string value) {
-                return UserText(slotId("user", i), std::move(value), m.font, padding);
+                return UserText(slotId("user", i), std::move(value), m.font, padding,
+                                held ? "text_secondary" : "action_btn_text");
             });
             self.layoutChild(ctx, slot.view, placement->bubble);
-            fills.push_back({.rect = placement->bubble, .visible = m.visible, .backgroundColor = fill});
+            fills.push_back({
+                .rect = placement->bubble,
+                .visible = m.visible,
+                .backgroundColor = held ? outline : fill,
+            });
+            if (!held) {
+                continue;
+            }
+            U64 index = 0;
+            if (config.onWithdraw) {
+                const Key withdraw = {key.generation, key.message, 0, Kind::Withdraw};
+                addControl(ctx, m, withdraw, control(m, placement->bubble, index++), ICON_LC_X, marks, hovers);
+            }
+            if (config.onResume && config.pendingPaused && head == key.message) {
+                const Key resume = {key.generation, key.message, 0, Kind::Resume};
+                addControl(ctx, m, resume, control(m, placement->bubble, index), ICON_LC_PLAY, marks, hovers);
+            }
         }
+        glyphs.update({
+            .instances = std::move(marks),
+            .clip = m.bounds,
+            .fontName = Typography::IconFont,
+            .maxCharacters = kGlyphCharacters,
+            .capacity = UserSlots + 1,
+        });
+        self.layoutChild(ctx, glyphs, m.bounds);
         bubbles.update({
             .instances = std::move(fills),
             .clip = m.bounds,
@@ -840,6 +961,7 @@ struct ChatTranscript::Impl {
             .capacity = UserSlots,
         });
         self.layoutChild(ctx, bubbles, m.bounds);
+        return hovers;
     }
 
     const std::vector<bool>& detailsFor(const Key& key) const {
@@ -897,8 +1019,7 @@ struct ChatTranscript::Impl {
     }
 
     void layoutDisclosures(ChatTranscript& self, const Context& ctx, const Metrics& m,
-                           const std::vector<const DisclosurePlacement*>& bySlot) {
-        std::vector<Box::Instance> fills;
+                           const std::vector<const DisclosurePlacement*>& bySlot, std::vector<Box::Instance> fills) {
         std::vector<Label::Instance> texts;
         std::vector<Box::Instance> strips;
         std::vector<Polyline::Instance> marks;
@@ -906,7 +1027,6 @@ struct ChatTranscript::Impl {
         const auto caretColor = ctx.color("text_secondary");
         const auto surface = ctx.color(config.surfaceColorKey);
         bool animating = false;
-        toggles.clear();
         for (U64 i = 0; i < summaries.size(); ++i) {
             auto& slot = *summaries[i];
             const auto* placement = bySlot[i];
@@ -1031,7 +1151,7 @@ struct ChatTranscript::Impl {
                 pressed.reset();
                 self.invalidate(Dirty::Layout);
                 if (hit && hit->key == key) {
-                    toggle(self, key);
+                    activate(self, key);
                 }
                 return true;
             }
@@ -1055,6 +1175,7 @@ ChatTranscript::ChatTranscript() {
     }
     addChild(impl->highlights);
     addChild(impl->labels);
+    addChild(impl->glyphs);
     addChild(impl->shimmer);
     addChild(impl->carets);
     for (auto& slot : impl->summaries) {
@@ -1073,6 +1194,9 @@ void ChatTranscript::update(Config config) {
     }
     if (config.tailRequest != impl->config.tailRequest) {
         impl->followTail = true;
+    }
+    if (config.pending != impl->config.pending) {
+        impl->track(config.pending);
     }
     impl->config = std::move(config);
 }
@@ -1096,9 +1220,10 @@ void ChatTranscript::layout(const Context& ctx) {
     const auto markdown = Impl::Assign(state.markdowns, placements.markdown);
     const auto disclosures = Impl::Assign(state.summaries, placements.disclosures);
 
-    state.layoutUsers(*this, ctx, m, users);
+    state.toggles.clear();
+    auto hovers = state.layoutUsers(*this, ctx, m, users);
     state.layoutMarkdown(*this, ctx, m, markdown);
-    state.layoutDisclosures(*this, ctx, m, disclosures);
+    state.layoutDisclosures(*this, ctx, m, disclosures, std::move(hovers));
 }
 
 bool ChatTranscript::mouseEvent(const MouseEvent& event) {

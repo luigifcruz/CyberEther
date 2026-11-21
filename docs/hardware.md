@@ -18,7 +18,7 @@ CyberEther compiles eight hardware drivers directly into the binary and detects 
 | **Airspy** | Yes | Yes | Built-in driver, Bias-T supported. |
 | **Airspy HF+** | Yes | Yes | Built-in driver. |
 | **HackRF** | Yes | Yes | Built-in driver, Bias-T supported, firmware sweeps require USB API `0x0104` or newer. |
-| **LimeSDR** | Yes | Yes | Built-in driver, dual-channel requires frequency at or above 30 MHz on LimeSDR-USB. |
+| **LimeSDR** | Yes | Yes | Built-in LimeSuiteNG driver. Dual-channel requires frequency at or above 30 MHz on LimeSDR-USB. LimeSDR XTRX is supported on Linux with the `limepcie` kernel driver loaded. |
 | **bladeRF** | Yes | Yes | Built-in driver, Bias-T on bladeRF 2, dual-channel timestamps require FPGA `v0.15.3` or newer. |
 | **PlutoSDR** | Yes | No | Built-in driver (desktop only). |
 | **BirriaSDR** | Linux and macOS | No | Built-in driver, USB 3 port required. Unbind the Wi-Fi driver and replug the dongle. |

@@ -10,6 +10,7 @@
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "render/sakura/detail/chat_transcript.hh"
 
@@ -125,6 +126,32 @@ const Sakura::Box& Shimmer(Sakura::Component& transcript) {
 
 const Sakura::Label& Toggles(Sakura::Component& transcript) {
     return *Direct<Sakura::Label>(transcript).at(0);
+}
+
+const Sakura::Label& Glyphs(Sakura::Component& transcript) {
+    return *Direct<Sakura::Label>(transcript).at(1);
+}
+
+std::vector<Sakura::Label::Instance> Marks(Sakura::Component& transcript, const std::string& str) {
+    std::vector<Sakura::Label::Instance> marks;
+    for (const auto& instance : Glyphs(transcript).config().instances) {
+        if (instance.str == str && instance.visible) {
+            marks.push_back(instance);
+        }
+    }
+    std::sort(marks.begin(), marks.end(), [](const auto& a, const auto& b) {
+        return a.rect.y < b.rect.y;
+    });
+    return marks;
+}
+
+ColorRGBA<F32> BubbleFill(Sakura::Component& transcript, const Rect& rect) {
+    const auto& instances = Bubbles(transcript).config().instances;
+    const auto found = std::find_if(instances.begin(), instances.end(), [&](const auto& instance) {
+        return instance.rect == rect;
+    });
+    REQUIRE(found != instances.end());
+    return found->backgroundColor;
 }
 
 const Sakura::Polyline& Carets(Sakura::Component& transcript) {
@@ -912,6 +939,158 @@ TEST_CASE("Chat transcript toggles ignore releases outside and cancelled presses
     CHECK(Visible<Sakura::TextMarkdown>(twin.live).empty());
 }
 
+TEST_CASE("Chat transcripts show pending messages as outlined bubbles after the conversation",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    auto snapshot = Questions(1);
+    snapshot.streaming = true;
+    std::vector<Chat::Pending> pending = {{.key = 4, .text = "Next"}, {.key = 9, .text = "Later"}};
+    bool paused = false;
+    const auto update = [&] {
+        transcript.update({
+            .id = "chat",
+            .snapshot = snapshot,
+            .pending = pending,
+            .pendingPaused = paused,
+            .onWithdraw = [](U64) {},
+            .onResume = [] {},
+        });
+    };
+    REQUIRE(frames.settle(update));
+
+    const auto& palette = frames.ctx.palette.get();
+    const auto views = Visible<Sakura::TextView>(transcript);
+    REQUIRE(views.size() == 3);
+    CHECK(views[1].y > views[0].bottom());
+    CHECK(views[2].y > views[1].bottom());
+    CHECK(views[1].right() == Approx(views[0].right()));
+    CHECK(BubbleFill(transcript, views[0]) == palette.at("chat_user_bubble"));
+    CHECK(BubbleFill(transcript, views[1]) == palette.at("background"));
+    CHECK(BubbleFill(transcript, views[2]) == palette.at("background"));
+
+    auto removes = Marks(transcript, ICON_LC_X);
+    REQUIRE(removes.size() == 2);
+    CHECK(Marks(transcript, ICON_LC_PLAY).empty());
+    for (U64 i = 0; i < removes.size(); ++i) {
+        const auto& bubble = views[i + 1];
+        CHECK(removes[i].rect.right() < bubble.x);
+        CHECK(removes[i].rect.y >= bubble.y);
+        CHECK(removes[i].rect.bottom() <= bubble.bottom());
+    }
+
+    paused = true;
+    CHECK(Kept(frames.run(update)));
+    REQUIRE(frames.settle(update));
+    auto resumes = Marks(transcript, ICON_LC_PLAY);
+    REQUIRE(resumes.size() == 1);
+    CHECK(resumes[0].rect.y == removes[0].rect.y);
+    CHECK(resumes[0].rect.right() < removes[0].rect.x);
+
+    pending.erase(pending.begin());
+    REQUIRE(frames.settle(update));
+    REQUIRE(Visible<Sakura::TextView>(transcript).size() == 2);
+    removes = Marks(transcript, ICON_LC_X);
+    resumes = Marks(transcript, ICON_LC_PLAY);
+    REQUIRE(removes.size() == 1);
+    REQUIRE(resumes.size() == 1);
+    CHECK(resumes[0].rect.y == removes[0].rect.y);
+
+    pending.clear();
+    REQUIRE(frames.settle(update));
+    CHECK(Visible<Sakura::TextView>(transcript).size() == 1);
+    CHECK(Glyphs(transcript).config().instances.empty());
+}
+
+TEST_CASE("Chat transcript pending controls report their message on release and highlight while hovered",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    std::vector<U64> removed;
+    U64 resumed = 0;
+    const auto snapshot = Questions(1);
+    const auto update = [&] {
+        transcript.update({
+            .id = "chat",
+            .snapshot = snapshot,
+            .pending = {{.key = 4, .text = "Next"}, {.key = 9, .text = "Later"}},
+            .pendingPaused = true,
+            .onWithdraw = [&](U64 key) { removed.push_back(key); },
+            .onResume = [&] { ++resumed; },
+        });
+    };
+    REQUIRE(frames.settle(update));
+    const auto removes = Marks(transcript, ICON_LC_X);
+    const auto resumes = Marks(transcript, ICON_LC_PLAY);
+    REQUIRE(removes.size() == 2);
+    REQUIRE(resumes.size() == 1);
+    const auto first = removes[0].rect.center();
+    const auto second = removes[1].rect.center();
+    const auto resume = resumes[0].rect.center();
+    const Extent2D<F32> outside = {kRect.x + 20.0f, kRect.y + 5.0f};
+
+    place.send(Mouse(MouseEventType::Move, first.x, first.y));
+    CHECK(RepaintOnly(frames.run(update)));
+    const auto& highlights = Highlights(transcript).config();
+    REQUIRE(highlights.instances.size() == 1);
+    CHECK(highlights.instances[0].rect == removes[0].rect);
+    CHECK(highlights.instances[0].backgroundColor == frames.ctx.palette.get().at("button_hovered"));
+    CHECK(Marks(transcript, ICON_LC_X)[0].color == frames.ctx.palette.get().at("text_primary"));
+    CHECK(Sakura::Access::cursor(place, first) == SurfaceCursor::Hand);
+    place.send(Mouse(MouseEventType::Move, outside.x, outside.y));
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Highlights(transcript).config().instances.empty());
+
+    place.send(Mouse(MouseEventType::Click, first.x, first.y));
+    place.send(Mouse(MouseEventType::Cancel, first.x, first.y));
+    CHECK_FALSE(place.send(Mouse(MouseEventType::Release, first.x, first.y)));
+    place.send(Mouse(MouseEventType::Click, first.x, first.y));
+    place.send(Mouse(MouseEventType::Release, outside.x, outside.y));
+    REQUIRE(frames.settle(update));
+    CHECK(removed.empty());
+
+    place.send(Mouse(MouseEventType::Click, first.x, first.y));
+    place.send(Mouse(MouseEventType::Release, first.x, first.y));
+    place.send(Mouse(MouseEventType::Click, second.x, second.y));
+    place.send(Mouse(MouseEventType::Release, second.x, second.y));
+    place.send(Mouse(MouseEventType::Click, resume.x, resume.y));
+    place.send(Mouse(MouseEventType::Release, resume.x, resume.y));
+    REQUIRE(frames.settle(update));
+    CHECK(removed == std::vector<U64>{4, 9});
+    CHECK(resumed == 1);
+}
+
+TEST_CASE("Narrow chat transcripts keep pending controls inside the transcript", "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    const Rect narrow = {kRect.x, kRect.y, 160.0f, kRect.height};
+    Place place(transcript, narrow);
+    Frames frames(place, kScreen, scene.context());
+    const auto update = [&] {
+        transcript.update({
+            .id = "chat",
+            .pending = {{.key = 1, .text = "Add a gain block after the filter and wire it up"}},
+            .pendingPaused = true,
+            .onWithdraw = [](U64) {},
+            .onResume = [] {},
+        });
+    };
+    REQUIRE(frames.settle(update));
+    const auto removes = Marks(transcript, ICON_LC_X);
+    const auto resumes = Marks(transcript, ICON_LC_PLAY);
+    REQUIRE(removes.size() == 1);
+    REQUIRE(resumes.size() == 1);
+    for (const auto& mark : {removes[0], resumes[0]}) {
+        CHECK(mark.visible);
+        CHECK(mark.rect.x >= narrow.x);
+        CHECK(mark.rect.right() <= narrow.right());
+    }
+}
+
 TEST_CASE("Chat transcripts settle under a persistent snapshot and repaint as the conversation changes",
           "[core][sakura][chat][retention]") {
     Scene scene;
@@ -1150,6 +1329,7 @@ TEST_CASE("Chat transcripts keep fixed drawable capacities and pool sizes", "[co
             Toggles(transcript).config().capacity,
             Toggles(transcript).config().maxCharacters,
             Carets(transcript).config().capacity,
+            Glyphs(transcript).config().capacity,
         };
     };
     const auto pools = [&] {

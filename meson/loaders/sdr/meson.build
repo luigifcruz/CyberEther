@@ -7,7 +7,7 @@ if jst_is_macos or jst_is_linux or jst_is_windows or jst_is_browser
         'AIRSPY': ['libairspy', 'libairspy_dep'],
         'AIRSPYHF': ['libairspyhf', 'libairspyhf_dep'],
         'HACKRF': ['libhackrf', 'libhackrf_dep'],
-        'LIMESUITE': ['limesuite', 'limesuite_dep'],
+        'LIMESUITE': ['limesuiteng', 'limesuiteng_dep'],
         'BLADERF': ['libbladerf', 'libbladerf_dep'],
     }
     if not jst_is_browser
@@ -35,14 +35,15 @@ if jst_is_macos or jst_is_linux or jst_is_windows or jst_is_browser
     if jst_is_linux and not jst_is_static
         lib_link_args += [
             '-Wl,--exclude-libs,liblibrtlsdr.a:liblibairspy.a:liblibairspyhf.a:libhackrf.a:' +
-            'libLimeSuite.a:' +
+            'liblimesuiteng.a:liblimesuiteng_embedded.a:' +
             'libbladeRF.a:libiio.a:libad9361.a:libxml2.a:libbirriasdr.a:libusb-1.0.a',
         ]
     endif
 
     if jst_is_macos and not jst_is_static
-        foreach symbols : ['_rtlsdr_*', '_airspy_*', '_airspyhf_*', '_hackrf_*', '_bladerf_*', '_LMS_*',
-                           '_birriasdr_*', '_iio_*', '_ad9361_*', '_xml*', '___xml*', '_libusb_*', '__ZN4lime*']
+        foreach symbols : ['_rtlsdr_*', '_airspy_*', '_airspyhf_*', '_hackrf_*', '_bladerf_*',
+                           '_lms7002m_*', '_kiss_fft*', '_birriasdr_*', '_iio_*', '_ad9361_*', '_xml*',
+                           '___xml*', '_libusb_*', '__ZN4lime*']
             lib_link_args += '-Wl,-unexported_symbol,' + symbols
         endforeach
     endif

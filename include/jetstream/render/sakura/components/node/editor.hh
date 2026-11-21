@@ -119,6 +119,7 @@ struct NodeEditor : public Component {
         Callback<void(const std::vector<std::string>&)> onFreezeShortcut;
         Callback<void(const std::vector<std::string>&)> onSelectionChange;
         Callback<void(Extent2D<F32>)> onPasteShortcut;
+        Callback<void(const std::vector<std::string>&, Extent2D<F32>)> onFileDrop;
         Callback<void(Rect)> onViewportGridChange;
         std::optional<View> view;
         Callback<void(View)> onViewChange;
@@ -144,6 +145,7 @@ struct NodeEditor : public Component {
     void wentOnscreen(U64 frame) override;
     void wentOffscreen(U64 frame) override;
     bool keyEvent(const KeyEvent& event) override;
+    bool fileDrop(const std::vector<std::string>& paths) override;
     bool focusesOnClick() const override;
     bool occludes(const Extent2D<F32>& point) const override;
 

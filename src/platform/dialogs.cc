@@ -127,11 +127,20 @@ std::string ExtensionJson(const std::vector<std::string>& extensions) {
 namespace {
 
 std::string ZenityFilter(const std::vector<std::string>& extensions) {
-    std::string filter = "Selected files |";
+    std::string patterns;
     for (const auto& extension : extensions) {
-        filter += " *." + extension;
+        patterns += (patterns.empty() ? "*." : " *.") + extension;
     }
-    return filter;
+    return patterns + " | " + patterns;
+}
+
+constexpr const char* ZenityAllFiles = "--file-filter=All files | *";
+
+std::string WithDefaultExtension(std::string path, const std::vector<std::string>& extensions) {
+    if (path.empty() || extensions.empty() || PathFromUtf8(path).has_extension()) {
+        return path;
+    }
+    return path + "." + extensions.front();
 }
 
 }  // namespace
@@ -162,7 +171,11 @@ Result PickFile(std::string& path,
                 const std::vector<std::string>& extensions,
                 std::function<void(std::string)> callback) {
     std::vector<std::string> arguments = {"--file-selection"};
+    if (!path.empty()) {
+        arguments.push_back("--filename=" + path);
+    }
     if (!extensions.empty()) {
+        arguments.push_back(ZenityAllFiles);
         arguments.push_back("--file-filter=" + ZenityFilter(extensions));
     }
 
@@ -291,12 +304,38 @@ Result SaveFile(std::string& path,
     }
     if (!extensions.empty()) {
         arguments.push_back("--file-filter=" + ZenityFilter(extensions));
+        arguments.push_back(ZenityAllFiles);
     }
     if (RunProcess("zenity", arguments, path) != Result::SUCCESS || path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
     }
     if (path.back() == '\n') path.pop_back();
+
+    const std::string completed = WithDefaultExtension(path, extensions);
+    if (completed != path) {
+        std::error_code error;
+        const auto status = std::filesystem::status(PathFromUtf8(completed), error);
+        if (std::filesystem::exists(status) && !std::filesystem::is_regular_file(status)) {
+            JST_ERROR("Cannot save over '{}' because it is not a regular file.", completed);
+            return Result::ERROR;
+        }
+        if (std::filesystem::exists(status)) {
+            std::string answer;
+            const std::vector<std::string> question = {
+                "--question",
+                "--no-markup",
+                "--title=Replace file?",
+                "--text=" + PathToUtf8(PathFromUtf8(completed).filename()) + " already exists. Replace it?",
+            };
+            if (RunProcess("zenity", question, answer) != Result::SUCCESS) {
+                JST_ERROR("No file selected or operation cancelled.");
+                return Result::ERROR;
+            }
+        }
+        path = completed;
+    }
+
     if (callback) callback(path);
     return Result::SUCCESS;
 }

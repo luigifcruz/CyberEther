@@ -1,5 +1,6 @@
 #include "runtime.hh"
 
+#include "flowgraphs.hh"
 #include "providers.hh"
 #include "tiles.hh"
 
@@ -88,15 +89,16 @@ constexpr const char* kWorking =
 
 constexpr const char* kTurnBinding =
     "- The selected graph is bound when this turn or voice session starts; "
-    "UI focus changes do not redirect tools. Automatic creation when no graph "
-    "is selected, or open_example, selects the new graph for subsequent calls. "
-    "If the bound graph closes, report the blocker.\n";
+    "UI focus changes do not redirect tools. A graph created by "
+    "apply_flowgraph_patch, open_example, or open_flowgraph, or chosen with "
+    "focus_flowgraph, is selected for subsequent calls. If the bound graph "
+    "closes, report the blocker.\n";
 
 constexpr const char* kFocusBinding =
     "- Each call acts on the graph focused in the CyberEther window when the "
-    "call runs, so the user can redirect calls by switching graphs. Automatic "
-    "creation when no graph is focused, or open_example, focuses the new graph "
-    "for subsequent calls.\n";
+    "call runs, so the user can redirect calls by switching graphs. A graph "
+    "created by apply_flowgraph_patch, open_example, or open_flowgraph, or "
+    "chosen with focus_flowgraph, is focused for subsequent calls.\n";
 
 constexpr const char* kGuidance =
     "- Base edits on current tool evidence. Inspect only the relevant blocks or "
@@ -269,6 +271,7 @@ void AgentRuntime::publish() {
     published.generation = update->generation;
     published.streaming = update->streaming;
     published.contextTokens = update->contextTokens;
+    published.pending = std::move(update->pending);
     published.messages.resize(std::min<U64>(update->firstMessage, published.messages.size()));
     for (auto& message : update->messages) {
         published.messages.push_back(std::make_shared<const Agent::Session::Entry>(std::move(message)));
@@ -363,6 +366,9 @@ Agent::Session::Config AgentRuntime::Call(const DefaultCompositorState::AgentSta
 std::vector<Agent::Tools::Definition> AgentRuntime::Definitions(bool captureSupported) {
     auto definitions = Agent::Tools::Available(captureSupported);
     for (auto& definition : AgentTiles::Definitions()) {
+        definitions.push_back(std::move(definition));
+    }
+    for (auto& definition : AgentFlowgraphs::Definitions()) {
         definitions.push_back(std::move(definition));
     }
     return definitions;

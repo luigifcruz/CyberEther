@@ -22,12 +22,12 @@ Result FlowgraphActions::handle(const MailNewFlowgraph&) {
 }
 
 Result FlowgraphActions::handle(const MailOpenFlowgraph&) {
-    std::string path;
+    std::string path = startFolder("");
     auto enqueueMail = callbacks.enqueueMail;
     callbacks.requestFile({
         .mode = FilePickerMode::Open,
         .initialPath = path,
-        .extensions = {"yaml", "yml"},
+        .extensions = {"yml", "yaml"},
         .callback = [enqueueMail](std::string p) mutable {
             enqueueMail(MailOpenFlowgraphPath{std::move(p)});
         },
@@ -39,11 +39,17 @@ Result FlowgraphActions::handle(const MailOpenFlowgraph&) {
 Result FlowgraphActions::handle(const MailOpenFlowgraphPath& msg) {
     if (msg.path.empty()) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot open flowgraph due to empty path.");
+        if (msg.onComplete) {
+            msg.onComplete(Result::ERROR, nullptr);
+        }
         return Result::SUCCESS;
     }
 
     if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "The selected file does not exist.");
+        if (msg.onComplete) {
+            msg.onComplete(Result::ERROR, nullptr);
+        }
         return Result::SUCCESS;
     }
 
@@ -51,17 +57,20 @@ Result FlowgraphActions::handle(const MailOpenFlowgraphPath& msg) {
     auto name = GenerateRandomFlowgraphName();
     auto path = msg.path;
     auto title = std::make_shared<std::string>();
+    auto created = std::make_shared<std::shared_ptr<Flowgraph>>();
     auto enqueueMail = callbacks.enqueueMail;
 
-    callbacks.enqueueCommandWithCompletion([inst, name, path, title]() -> Result {
-        std::shared_ptr<Flowgraph> flowgraph;
-        JST_CHECK(inst->flowgraphCreate(name, {}, flowgraph));
-        JST_CHECK(flowgraph->importFromFile(path));
-        *title = flowgraph->title();
+    callbacks.enqueueCommandWithCompletion([inst, name, path, title, created]() -> Result {
+        JST_CHECK(inst->flowgraphCreate(name, {}, *created));
+        JST_CHECK((*created)->importFromFile(path));
+        *title = (*created)->title();
         return Result::SUCCESS;
-    }, false, [enqueueMail, path, title](Result result) {
+    }, false, [enqueueMail, path, title, created, onComplete = msg.onComplete](Result result) {
         if (result == Result::SUCCESS) {
             enqueueMail(MailRememberFlowgraph{.path = path, .title = *title});
+        }
+        if (onComplete) {
+            onComplete(result, *created);
         }
     });
 
@@ -69,17 +78,64 @@ Result FlowgraphActions::handle(const MailOpenFlowgraphPath& msg) {
     return Result::SUCCESS;
 }
 
-Result FlowgraphActions::handle(const MailDropFlowgraphPath& msg) {
-    const auto extension = Text::ToLower(Platform::PathToUtf8(
-        Platform::PathFromUtf8(msg.path).extension()));
+Result FlowgraphActions::handle(const MailDropFlowgraphFiles& msg) {
+    const auto found = msg.flowgraph.has_value() ? state.flowgraph.items.find(*msg.flowgraph)
+                                                 : state.flowgraph.items.end();
+    const auto flowgraph = found != state.flowgraph.items.end() ? found->second : nullptr;
 
-    if (extension != ".yml" && extension != ".yaml") {
-        callbacks.notify(Sakura::ToastType::Warning, 5000,
-                         "Only flowgraph files (.yml or .yaml) can be opened by dropping them here.");
-        return Result::SUCCESS;
+    std::vector<Parser::Map> readers;
+    bool unsupported = false;
+    bool unplaced = false;
+    for (const auto& path : msg.paths) {
+        const auto extension = Text::ToLower(Platform::PathToUtf8(Platform::PathFromUtf8(path).extension()));
+        const bool named = extension == ".yml" || extension == ".yaml";
+        if (named || (extension.empty() && LooksLikeFlowgraph(path))) {
+            JST_CHECK(handle(MailOpenFlowgraphPath{path}));
+            continue;
+        }
+
+        auto config = FileReaderConfig(path);
+        if (!config.has_value()) {
+            unsupported = true;
+        } else if (!flowgraph || !msg.gridPosition.has_value()) {
+            unplaced = true;
+        } else {
+            readers.push_back(std::move(*config));
+        }
     }
 
-    return handle(MailOpenFlowgraphPath{msg.path});
+    if (!readers.empty()) {
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = *msg.flowgraph,
+            .command = [flowgraph, origin = *msg.gridPosition, readers = std::move(readers)]() -> Result {
+                constexpr Extent2D<F32> offset = {40.0f, 40.0f};
+                for (U64 i = 0; i < readers.size(); ++i) {
+                    const auto name = Naming::UniqueName("file_reader", [&](const std::string& candidate) {
+                        return flowgraph->view().has(candidate);
+                    });
+                    const F32 step = static_cast<F32>(i);
+                    const NodeMeta nodeMeta = {origin.x + offset.x * step, origin.y + offset.y * step, 0.0f, 0.0f};
+                    flowgraph->metadata().set("node", nodeMeta, name);
+                    JST_CHECK_ALLOW(flowgraph->blockCreate(name, "file_reader", readers[i], {}, DeviceType::CPU,
+                                                          RuntimeType::NATIVE, "generic"),
+                                    Result::INCOMPLETE);
+                }
+                return Result::SUCCESS;
+            },
+        });
+    }
+
+    if (unsupported) {
+        callbacks.notify(Sakura::ToastType::Warning, 5000,
+                         "Only flowgraph files (.yml or .yaml) and SigMF, WAV, or raw I/Q recordings can be "
+                         "dropped here.");
+    }
+    if (unplaced) {
+        callbacks.notify(Sakura::ToastType::Info, 5000,
+                         "Drop recordings onto a flowgraph to add them as File Readers.");
+    }
+
+    return Result::SUCCESS;
 }
 
 Result FlowgraphActions::handle(const MailOpenFlowgraphBlob& msg) {
@@ -130,6 +186,10 @@ Result FlowgraphActions::handle(const MailFocusFlowgraph& msg) {
     if (state.flowgraph.items.contains(msg.flowgraph)) {
         state.interface.focusedFlowgraph = msg.flowgraph;
         WorkbenchActions::Focus(state, std::nullopt);
+        if (msg.reveal) {
+            state.interface.requestedFlowgraph = msg.flowgraph;
+            ++state.interface.flowgraphRequests;
+        }
     }
 
     return Result::SUCCESS;
@@ -146,11 +206,12 @@ Result FlowgraphActions::handle(const MailSaveFlowgraph& msg) {
     const std::string currentPath = state.flowgraph.items.at(msg.flowgraph)->path();
     std::string path = msg.path.empty() ? currentPath : msg.path;
     if (path.empty() || msg.pick) {
+        const std::string pickedPath = currentPath.empty() ? startFolder("untitled.yml") : currentPath;
         auto enqueueMail = callbacks.enqueueMail;
         callbacks.requestFile({
             .mode = FilePickerMode::Save,
-            .initialPath = currentPath,
-            .extensions = {"yaml", "yml"},
+            .initialPath = pickedPath,
+            .extensions = {"yml", "yaml"},
             .callback = [enqueueMail, flowgraph = msg.flowgraph](std::string p) mutable {
                 enqueueMail(MailSaveFlowgraph{.flowgraph = flowgraph, .path = std::move(p)});
             },
@@ -936,10 +997,86 @@ std::string FlowgraphActions::GenerateRandomFlowgraphName() {
     return result;
 }
 
+bool FlowgraphActions::LooksLikeFlowgraph(const std::string& path) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(Platform::PathFromUtf8(path), error)) {
+        return false;
+    }
+    std::ifstream file(Platform::PathFromUtf8(path), std::ios::binary);
+    std::string head(1 << 20, '\0');
+    file.read(head.data(), static_cast<std::streamsize>(head.size()));
+    head.resize(static_cast<U64>(file.gcount()));
+    const auto hasKey = [&](const std::string& key) {
+        return head.starts_with(key) || head.find("\n" + key) != std::string::npos;
+    };
+    return hasKey("version:") && hasKey("graph:");
+}
+
+std::string FlowgraphActions::startFolder(const std::string& name) const {
+    for (const auto& entry : state.interface.recentFlowgraphs) {
+        std::error_code error;
+        const auto folder = std::filesystem::absolute(Platform::PathFromUtf8(entry.path), error).parent_path();
+        if (!folder.empty() && std::filesystem::is_directory(folder, error)) {
+            return Platform::PathToUtf8(folder / Platform::PathFromUtf8(name));
+        }
+    }
+    return {};
+}
+
 void FlowgraphActions::markUntracked(const std::string& flowgraph) {
     if (const auto history = state.flowgraph.history.find(flowgraph); history != state.flowgraph.history.end()) {
         history->second.untracked = true;
     }
+}
+
+std::optional<Parser::Map> FlowgraphActions::FileReaderConfig(const std::string& path) {
+    struct Recording {
+        std::string_view extension;
+        std::string_view format;
+        std::string_view dataType;
+    };
+
+    static constexpr std::array<Recording, 23> kRecordings = {{
+        {".sigmf-meta", "sigmf", ""},
+        {".sigmf-data", "sigmf", ""},
+        {".wav", "wav", ""},
+        {".raw", "raw", "CF32"},
+        {".iq", "raw", "CF32"},
+        {".bin", "raw", "CF32"},
+        {".dat", "raw", "CF32"},
+        {".cfile", "raw", "CF32"},
+        {".cf32", "raw", "CF32"},
+        {".fc32", "raw", "CF32"},
+        {".cf64", "raw", "CF64"},
+        {".fc64", "raw", "CF64"},
+        {".cs16", "raw", "CI16"},
+        {".sc16", "raw", "CI16"},
+        {".cs8", "raw", "CI8"},
+        {".sc8", "raw", "CI8"},
+        {".cu16", "raw", "CU16"},
+        {".cu8", "raw", "CU8"},
+        {".f32", "raw", "F32"},
+        {".f64", "raw", "F64"},
+        {".s16", "raw", "I16"},
+        {".s8", "raw", "I8"},
+        {".u8", "raw", "U8"},
+    }};
+
+    const auto extension = Platform::PathToUtf8(Platform::PathFromUtf8(path).extension());
+    const auto match = std::ranges::find(kRecordings, std::string_view(Text::ToLower(extension)),
+                                         &Recording::extension);
+    if (match == kRecordings.end() || (match->format == "sigmf" && extension != match->extension)) {
+        return std::nullopt;
+    }
+
+    Parser::Map config = {
+        {"filepath", path},
+        {"fileFormat", std::string(match->format)},
+    };
+    if (!match->dataType.empty()) {
+        config["dataType"] = std::string(match->dataType);
+    }
+    return config;
 }
 
 std::string FlowgraphActions::ReconfigureMergeKey(const std::string& block, const Parser::Map& config) {

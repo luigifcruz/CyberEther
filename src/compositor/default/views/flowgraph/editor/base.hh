@@ -26,6 +26,8 @@ struct FlowgraphEditor {
     static constexpr F32 ZoomPillWidth = 116.0f;
     static constexpr F32 ZoomScale = Sakura::Typography::Scale::Caption;
 
+    using FileDrop = Sakura::Callback<void(const std::vector<std::string>&, Extent2D<F32>)>;
+
     struct Measured {
         struct Node {
             Rect bounds;
@@ -60,6 +62,7 @@ struct FlowgraphEditor {
         Sakura::Callback<void(const std::vector<std::string>&)> onCopyBlocks;
         Sakura::Callback<void(const std::vector<std::string>&)> onCutBlocks;
         Sakura::Callback<void(std::optional<Extent2D<F32>>)> onPasteBlock;
+        FileDrop onDropFiles;
         Sakura::Callback<void(const std::vector<std::string>&)> onDuplicateBlocks;
         Sakura::Callback<void(const std::vector<std::string>&)> onSelectBlocks;
         Sakura::Callback<void(const std::string&)> onRenameBlock;

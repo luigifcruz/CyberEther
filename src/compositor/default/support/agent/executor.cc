@@ -1,4 +1,5 @@
 #include "executor.hh"
+#include "flowgraphs.hh"
 #include "tiles.hh"
 
 #include "../../model/callbacks.hh"
@@ -280,6 +281,20 @@ struct AgentExecutor::Shared final : Agent::Tools::Host {
         if (AgentTiles::Handles(request.name)) {
             if (request.start()) {
                 request.finish(AgentTiles(state, callbacks).execute(target, request.name, request.args));
+            }
+            return;
+        }
+
+        if (AgentFlowgraphs::Handles(request.name)) {
+            if (request.start()) {
+                const auto done = [request](Agent::Tools::Output output, std::shared_ptr<Flowgraph> opened) {
+                    if (request.binding && opened) {
+                        std::lock_guard lock(request.binding->mutex);
+                        request.binding->graph = std::move(opened);
+                    }
+                    request.finish(std::move(output));
+                };
+                AgentFlowgraphs(state, callbacks).execute(target, request.name, request.args, done);
             }
             return;
         }
