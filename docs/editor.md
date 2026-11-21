@@ -54,7 +54,7 @@ Detached plots, configuration panes, and workbench tools live in dockable tiles 
 - **Environment tile:** Open the **Environment** tile to inspect live key-value pairs shared across the flowgraph by C++ and Python blocks. See [Metadata](/docs/metadata) for how blocks publish environment data.
 - **In-app documentation viewer:** Press **F1** to browse this full documentation set offline inside CyberEther, or press **Cmd/Ctrl + K** inside the viewer to search headings and body text across every page.
 - **Integrated terminal:** Native builds with terminal support enabled include a built-in terminal tile powered by `libghostty-vt` (**Ctrl + Backtick**), letting you run scripts or inspect devices without leaving the app.
-- **Assistant panel:** Opt in under **Settings** > **Intelligence** to open the **Assistant** tile (**Cmd/Ctrl + L**), configure AI providers and voice options, or toggle the local MCP server.
+- **Assistant panel:** Opt in under **Settings** > **Intelligence** to open the **Assistant** tile (**Cmd/Ctrl + L**) or enable the built-in MCP server. See [Intelligence](/docs/intelligence).
 
 ## Settings
 
@@ -65,7 +65,7 @@ Open **Settings** from the titlebar (or press **Cmd/Ctrl + Comma**) to configure
 - **Maps:** High-resolution map rendering options for blocks such as **ADS-B Decoder**.
 - **Runtime:** Choose which Python interpreter runs **Python** blocks and configure PEP 723 dependency installation policies. See [Python Runtime And Dependencies](/docs/python-runtime).
 - **Registry:** Register, inspect, reload, and remove `.cep` plugin bundles. See [Installing Plugins](/docs/installing-plugins).
-- **Intelligence:** Optional Assistant providers, voice input, and the built-in MCP server toggle.
+- **Intelligence:** Optional Assistant providers, models, voice mode, and the built-in MCP server. See [Intelligence](/docs/intelligence).
 - **Developer:** Show Timing, Show Render Stats, Log Level, Benchmarks, and Plugins reload controls.
 - **About:** Build version and application details.
 - **Legal:** License terms and third-party acknowledgments.
