@@ -13,12 +13,13 @@ namespace Jetstream::Sakura {
 struct NodeFloatInput : public Component {
     struct Config {
         std::string id;
-        F32 value = 0.0f;
+        F64 value = 0.0;
+        F64 scale = 1.0;
         std::string unit;
         I32 precision = 2;
-        std::optional<F32> step;
-        Callback<void(F32)> onChange;
-        Callback<void(F32)> onStepChange;
+        std::optional<F64> step;
+        Callback<void(F64)> onChange;
+        Callback<void(F64)> onStepChange;
 
         bool operator==(const Config&) const = default;
     };

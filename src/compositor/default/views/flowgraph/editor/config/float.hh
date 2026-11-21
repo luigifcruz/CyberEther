@@ -15,15 +15,17 @@ struct FlowgraphConfigFloatField {
 
  private:
     void parseFormat();
+    bool wide(const std::string& name) const;
+    std::any patchValue(const std::string& name, F64 next) const;
 
     Config config;
     Parser::Map parsedFormat;
-    F32 multiplier = 1.0f;
+    F64 multiplier = 1.0;
     std::string unit;
     std::string stepConfig;
     int precision = 2;
-    F32 value = 0.0f;
-    F32 step = 0.0f;
+    F64 value = 0.0;
+    F64 step = 0.0;
     bool hasStep = false;
     FlowgraphFieldTooltip help;
     Sakura::NodeField frame;

@@ -35,7 +35,7 @@ struct FlowgraphConfigVectorField {
     std::shared_ptr<Pending> pending;
     Parser::Map parsedFormat;
     std::any parsedValue;
-    F32 multiplier = 1.0f;
+    F64 multiplier = 1.0;
     std::string valueType = "float";
     std::string unit;
     std::string itemLabel;

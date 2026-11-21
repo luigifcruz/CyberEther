@@ -16,7 +16,7 @@ namespace Jetstream::Sakura {
 
 namespace {
 
-std::string FormatFloat(F32 value, I32 precision) {
+std::string FormatFloat(F64 value, I32 precision) {
     return jst::fmt::format("{:.{}f}", value, std::clamp(precision, 0, 12));
 }
 
@@ -58,34 +58,33 @@ void NodeFloatInput::update(Config config) {
     const auto& current = impl->config;
     impl->input.update({
         .id = current.id + ":value",
-        .value = FormatFloat(current.value, current.precision),
+        .value = FormatFloat(current.value / current.scale, current.precision),
         .unit = current.unit,
         .submit = NodeTextInput::Submit::OnEnter,
         .selectAllOnFocus = true,
         .characterFilter = ScientificCharacter,
         .onChange = [this](const std::string& text) {
-            const auto parsed = ParseFloat(text);
+            const auto parsed = ParseScaledFloat(text, impl->config.scale);
             if (!parsed.has_value()) {
                 return;
             }
-            const F32 next = static_cast<F32>(*parsed);
-            if (next != impl->config.value && impl->config.onChange) {
-                impl->config.onChange(next);
+            if (*parsed != impl->config.value && impl->config.onChange) {
+                impl->config.onChange(*parsed);
             }
         },
     });
     if (impl->stepped()) {
         impl->stepInput.update({
             .id = current.id + ":step",
-            .value = FormatFloat(current.step.value_or(0.0f), current.precision),
+            .value = FormatFloat(current.step.value_or(0.0) / current.scale, current.precision),
             .submit = NodeTextInput::Submit::OnEnter,
             .selectAllOnFocus = true,
             .characterFilter = ScientificCharacter,
             .textColorKey = "text_secondary",
             .onChange = [this](const std::string& text) {
-                const auto parsed = ParseFloat(text);
+                const auto parsed = ParseScaledFloat(text, impl->config.scale);
                 if (parsed.has_value() && impl->config.onStepChange) {
-                    impl->config.onStepChange(static_cast<F32>(*parsed));
+                    impl->config.onStepChange(*parsed);
                 }
             },
             .onDeactivate = [this]() {
@@ -214,7 +213,7 @@ bool NodeFloatInput::mouseEvent(const MouseEvent& event) {
             impl->toggle.release(event, impl->toggleRect);
             return false;
         case MouseEventType::Release: {
-            const F32 step = config.step.value_or(0.0f);
+            const F64 step = config.step.value_or(0.0);
             if (impl->minus.release(event, impl->minusRect, false)) {
                 if (config.onChange) {
                     config.onChange(config.value - step);

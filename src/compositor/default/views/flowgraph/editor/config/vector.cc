@@ -69,7 +69,7 @@ void FlowgraphConfigVectorField::parseFormat() {
     valueType = Parser::Get<std::string>(config.format, "value_type", "float");
     unit = Parser::Get<std::string>(config.format, "unit");
     precision = Parser::Get<I32>(config.format, "precision", 2);
-    multiplier = Parser::Get<F32>(config.format, "scale", 1.0f);
+    multiplier = Parser::Get<F64>(config.format, "scale", 1.0);
     itemLabel = Parser::Get<std::string>(config.format, "item_label");
     optionLabels.clear();
     optionValues.clear();
@@ -138,14 +138,18 @@ void FlowgraphConfigVectorField::updateChildren() {
         for (U64 i = 0; i < count; ++i) {
             floatInputs[i]->update({
                 .id = jst::fmt::format("{}Float{}", config.id, i),
-                .value = floatValues[i] / multiplier,
+                .value = floatValues[i],
+                .scale = multiplier,
                 .unit = unit,
                 .precision = precision,
-                .onChange = [this, i](F32 value) {
+                .onChange = [this, i](F64 value) {
+                    if (i < floatValues.size() && static_cast<F32>(value) == floatValues[i]) {
+                        return;
+                    }
                     Parser::Map patch;
                     auto nextValues = floatValues;
                     if (i < nextValues.size()) {
-                        nextValues[i] = value * multiplier;
+                        nextValues[i] = static_cast<F32>(value);
                     }
                     patch[config.name] = nextValues;
                     submit(std::move(patch), std::move(nextValues));

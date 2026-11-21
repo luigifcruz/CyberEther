@@ -13,8 +13,8 @@ struct Sdr : public Block::Config {
     std::string antenna = "";
     std::vector<std::string> antennas;
     U64 channels = 1;
-    F32 frequency = 96.9e6;
-    F32 frequencyStep = 1000000.0;
+    F64 frequency = 96.9e6;
+    F64 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
     F32 bandwidth = 0.0f;
     std::string sampleFormat = "CF32";
