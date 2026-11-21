@@ -3,6 +3,7 @@
 #include <toml++/toml.hpp>
 
 #include <exception>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -78,33 +79,28 @@ Result ExtractScriptBlock(const std::string& source, std::string& scriptBlock) {
             continue;
         }
 
-        std::string content;
-        bool complete = false;
-        std::size_t end = i + 1;
-        for (; end < lines.size(); ++end) {
-            const auto line = lines[end];
-            const bool nextLineIsContent = end + 1 < lines.size() &&
-                                           IsEmbeddedContentLine(lines[end + 1]);
-            if (line == "# ///" && !nextLineIsContent) {
-                complete = true;
-                break;
+        std::optional<std::size_t> end;
+        for (std::size_t index = i + 1; index < lines.size() && IsEmbeddedContentLine(lines[index]); ++index) {
+            if (lines[index] == "# ///") {
+                end = index;
             }
-            if (!IsEmbeddedContentLine(line)) {
-                break;
-            }
+        }
 
+        if (!end) {
+            ++i;
+            continue;
+        }
+
+        std::string content;
+        for (std::size_t index = i + 1; index < *end; ++index) {
+            const auto line = lines[index];
             if (line.size() > 1) {
                 content.append(line.substr(2));
             }
             content.push_back('\n');
         }
 
-        if (!complete) {
-            ++i;
-            continue;
-        }
-
-        i = end + 1;
+        i = *end + 1;
         if (type != "script") {
             continue;
         }

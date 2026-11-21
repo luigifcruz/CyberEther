@@ -248,6 +248,21 @@ TEST_CASE("Python runtime follows PEP 723 block boundaries",
         CHECK(metadata.requirements == std::vector<std::string>{"numpy"});
     }
 
+    SECTION("the block can be followed directly by other comments") {
+        const std::string source =
+            "# /// script\n"
+            "# dependencies = [\"numpy>=2.0\", \"av>=19\"]\n"
+            "# ///\n"
+            "# SPDX-License-Identifier: GPL-3.0-or-later\n"
+            "# Generated from atsc1/.\n"
+            "\n"
+            "def compute(ctx):\n"
+            "    pass\n";
+
+        REQUIRE(ParsePythonDependencyMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.requirements == std::vector<std::string>{"numpy>=2.0", "av>=19"});
+    }
+
     SECTION("duplicate script blocks are rejected") {
         const std::string source =
             "# /// script\n# dependencies = [\"numpy\"]\n# ///\n\n"
