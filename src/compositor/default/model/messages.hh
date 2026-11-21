@@ -55,6 +55,12 @@ struct MailSubmitAgentChat {
 struct MailCancelAgentChat {};
 struct MailClearAgentChat {};
 
+struct MailWithdrawAgentChat {
+    U64 key = 0;
+};
+
+struct MailResumeAgentChat {};
+
 struct MailSelectAgentModel {
     std::string provider;
     std::string model;
@@ -843,6 +849,8 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSubmitAgentChat,
                            MailCancelAgentChat,
                            MailClearAgentChat,
+                           MailWithdrawAgentChat,
+                           MailResumeAgentChat,
                            MailSelectAgentModel,
                            MailSetAgentReasoningEffort,
                            MailOpenAgentModelPicker,

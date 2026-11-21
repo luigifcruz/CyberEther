@@ -269,6 +269,7 @@ void AgentRuntime::publish() {
     published.generation = update->generation;
     published.streaming = update->streaming;
     published.contextTokens = update->contextTokens;
+    published.pending = std::move(update->pending);
     published.messages.resize(std::min<U64>(update->firstMessage, published.messages.size()));
     for (auto& message : update->messages) {
         published.messages.push_back(std::make_shared<const Agent::Session::Entry>(std::move(message)));

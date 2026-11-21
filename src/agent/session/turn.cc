@@ -100,6 +100,10 @@ const std::vector<Provider::Message>& Session::Impl::Turn::history() const {
     return messages;
 }
 
+bool Session::Impl::Turn::succeeded() const {
+    return result == Result::SUCCESS && !aborted();
+}
+
 void Session::Impl::Turn::loop() {
     while (true) {
         if (aborted()) {
@@ -107,6 +111,7 @@ void Session::Impl::Turn::loop() {
             return;
         }
 
+        steer();
         auto response = stream();
         if (result != Result::SUCCESS || response.toolCalls.empty()) {
             finish(response);
@@ -120,6 +125,17 @@ void Session::Impl::Turn::loop() {
             .state = std::move(response.state),
         });
         execute(response.toolCalls);
+    }
+}
+
+void Session::Impl::Turn::steer() {
+    if (auto text = session.absorb(target)) {
+        auto& last = messages.back();
+        if (last.role == "user" && !last.images.empty()) {
+            last.content += "\n\n" + *text;
+            return;
+        }
+        append({.role = "user", .content = std::move(*text)});
     }
 }
 

@@ -105,6 +105,7 @@ struct DefaultCompositorState {
             bool streaming = false;
             U64 contextTokens = 0;
             std::vector<std::shared_ptr<const Agent::Session::Entry>> messages;
+            std::vector<Agent::Session::Pending> pending;
         };
 
         struct ChatState {

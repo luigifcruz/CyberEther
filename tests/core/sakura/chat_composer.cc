@@ -1305,6 +1305,42 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
     CHECK(rig.cancels == 1);
 }
 
+TEST_CASE("Steering chat composers submit a typed draft while busy and stop with an empty one", kComposerTags) {
+    ComposerRig rig;
+    rig.config.busy = true;
+    rig.config.steering = true;
+    rig.config.focusRequest = 1;
+    rig.place();
+    CHECK(Squares(rig.host, kStopMark).size() == 1);
+    CHECK_FALSE(Shows(rig.host, ICON_LC_ARROW_UP));
+    rig.host.click(rig.points().send.x, rig.points().send.y);
+    CHECK(rig.cancels == 1);
+    CHECK(rig.submits.empty());
+
+    Type(rig.host, "next");
+    rig.place();
+    CHECK(Squares(rig.host, kStopMark).empty());
+    CHECK(Shows(rig.host, ICON_LC_CORNER_DOWN_RIGHT));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_ARROW_UP));
+    rig.host.click(rig.points().send.x, rig.points().send.y);
+    CHECK(rig.submits == std::vector<std::string>{"next"});
+    CHECK(rig.cancels == 1);
+
+    Tap(rig.host, KeyCode::Enter);
+    rig.place();
+    CHECK(rig.submits == std::vector<std::string>{"next", "next"});
+
+    rig.config.steering = false;
+    rig.place();
+    CHECK(Squares(rig.host, kStopMark).size() == 1);
+    Tap(rig.host, KeyCode::Enter);
+    rig.place();
+    CHECK(rig.submits.size() == 2);
+    rig.host.click(rig.points().send.x, rig.points().send.y);
+    CHECK(rig.cancels == 2);
+    CHECK(rig.submits.size() == 2);
+}
+
 TEST_CASE("Chat composers submit on Enter and keep their draft until cleared", kComposerTags) {
     ComposerRig rig;
     rig.config.focusRequest = 1;

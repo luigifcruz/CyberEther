@@ -61,6 +61,7 @@ struct ChatComposer : public Component {
         std::string id;
         Style style;
         bool busy = false;
+        bool steering = false;
         std::optional<Selector> selector;
         std::optional<Usage> usage;
         Callback<void(const std::string&)> onSubmit;
