@@ -38,7 +38,7 @@ CyberEther can run in virtually any modern device with a graphics card. The buil
 
 The development of compute for CUDA, Vulkan, and WebGPU is currently in progress.
 
-See the current compatibility table in the [Overview](https://cyberether.org/docs/overview).
+See the current platform comparison in [Platforms](https://cyberether.org/docs/platforms).
 
 ## Installation
 
@@ -46,7 +46,7 @@ CyberEther runs on macOS, Linux, Windows, iOS/iPadOS, Android, Raspberry Pi, and
 
 - [**Pre-built Binaries**](https://github.com/luigifcruz/CyberEther/releases): Download official releases for Linux (AppImage & tar.gz), Windows (MSI), and macOS (PKG).
 - [**Try Online**](https://cyberether.org/web): Run the browser build powered by **WebAssembly** and **WebGPU**.
-- [**Build From Source**](https://cyberether.org/docs/installation): Follow the dependency and build guide for custom builds or unsupported platforms.
+- [**Build From Source**](https://cyberether.org/docs/building): Follow the dependency and build guide for custom builds or unsupported platforms.
 
 ## FAQ
 

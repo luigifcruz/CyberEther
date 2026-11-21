@@ -1,20 +1,20 @@
 ---
 title: License
 description: CyberEther licensing terms and commercial use guidelines.
-order: 120
+order: 910
 category: Resources
 ---
 
-CyberEther is distributed under the [MIT License](https://github.com/luigifcruz/CyberEther/blob/main/LICENSE). All contributions are considered to be licensed under the same terms. The use of the "CyberEther" name requires prior authorization. A list of third-party software and their licenses can be found on the [Acknowledgments](/docs/acknowledgments) page.
+CyberEther is open-source software distributed under the [MIT License](https://github.com/luigifcruz/CyberEther/blob/main/LICENSE). All contributions to the project are released under the same terms. For third-party libraries bundled with CyberEther and their individual licenses, see the [Acknowledgments](/docs/acknowledgments) page.
 
-### Key Points
+## Summary of Terms
 
-- CyberEther is free to use, modify, and distribute.
-- The software is provided without warranty.
-- Attribution to the original authors is appreciated.
-- Contributions to the project are welcome.
-- The name "CyberEther" should not be used without permission.
+- **Free to use and share:** You can use, modify, and distribute CyberEther freely in personal and commercial projects.
+- **No warranty:** The software is provided as-is without warranty of any kind.
+- **Copyright and permission notice required:** The MIT License requires keeping the original copyright notice and permission notice in all copies or substantial portions of the software.
+- **Contributions welcome:** Pull requests and improvements are encouraged under the same MIT License.
+- **Name usage:** Using the "CyberEther" name in derivative branding or products requires prior authorization.
 
-## Commercial Use
+## Commercial Use and Sponsorship
 
-Companies using CyberEther in their products are encouraged to contribute back to the project. Your support ensures continued development and improvement. For more details on how your company can contribute, please [contact me](https://luigi.ltd/contact).
+Companies building products or services on top of CyberEther are warmly encouraged to give back to the project. Commercial support helps sustain ongoing development, testing, and hardware support. To discuss how your organization can contribute, please [get in touch](https://luigi.ltd/contact).

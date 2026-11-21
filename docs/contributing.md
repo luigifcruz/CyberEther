@@ -1,119 +1,86 @@
 ---
 title: Contributing
-description: Guidelines for contributing to CyberEther.
-order: 83
+description: Guidelines, code style, logging conventions, and hooks for contributing to CyberEther.
+order: 370
 category: Development
 ---
 
-Contributions are welcome! Pull requests are the best way to propose changes to the codebase. We actively welcome your pull requests and invite you to submit pull requests directly in this repository.
+Contributions of all sizes are welcome! Pull requests are the best way to propose improvements, bug fixes, new blocks, and documentation updates directly in the repository.
 
 > [!WARNING]
->
-> Keep in mind that since this project is still in its early stages, the API is not stable and it is subject to change.
+> CyberEther is still evolving rapidly. Internal APIs are not yet frozen and may change between releases.
 
-## Getting Started
+## Before You Start
 
-The code is riddled with `// TODO:` comments. These are things that need to be done and are a good place to start if you want to help out.
+1. **Open an issue first** before investing significant time in a new feature or architectural fix. A quick discussion ensures your work aligns with the project's direction.
+2. **Look for `// TODO:` comments** if you want a concrete place to jump in. The codebase has plenty of well-scoped tasks waiting to be picked up.
+3. **Set up your build and read the core guides** first: [Building From Source](/docs/building), [Architecture](/docs/architecture), and [Blocks And Modules](/docs/blocks-and-modules) will help you get oriented quickly.
 
-Before starting work on a new feature or bug fix, please create an issue first. This allows us to discuss the change and ensure it aligns with the project's direction.
+### Finding Integration Points With Code Hooks
 
-### Code Hooks
+When adding a new module, block, dependency, serialization type, or contributor entry, search the repository for these hook comments to find every place that needs an `include`, `define`, or entry:
 
-When adding new modules, blocks, dependencies, or serializations, look for the appropriate hook comments in the codebase. These indicate where to add new `includes` and `defines`.
-
-| Hook | Purpose |
-|------|---------|
-| `[NEW MODULE HOOK]` | Adding a new module |
-| `[NEW BLOCK HOOK]` | Adding a new block |
-| `[NEW DEPENDENCY HOOK]` | Adding a new dependency |
-| `[NEW SERIALIZATION HOOK]` | Adding a new serialization |
-| `[NEW CONTRIBUTOR HOOK]` | Adding yourself as a contributor |
+| Hook Comment | When to Search for It |
+|---|---|
+| `[NEW MODULE HOOK]` | Adding a new compute module |
+| `[NEW BLOCK HOOK]` | Adding a new flowgraph block |
+| `[NEW DEPENDENCY HOOK]` | Adding a new third-party dependency |
+| `[NEW SERIALIZATION HOOK]` | Adding a new serializable type |
+| `[NEW CONTRIBUTOR HOOK]` | Adding yourself to the Acknowledgments page |
 
 ## Code Style
 
-The library follows the [Google C++ Code Style Guide](https://google.github.io/styleguide/cppguide.html) with the following modifications:
+CyberEther follows the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html) with two local rules:
 
-- Default line length is 88 characters (can be overridden if necessary).
-- Default indentation is 4 spaces. No exceptions.
+- **Line length:** 88 characters by default (may be exceeded when breaking hurts readability).
+- **Indentation:** 4 spaces strictly, with no exceptions.
 
-## API Reference
+## Core Conventions
 
 ### Return Values
 
-All functions should return a `Result` type. This is an enum with the following values:
+Functions that can fail should return `Result`, an enum representing the outcome:
 
-| Result | Description |
-|--------|-------------|
-| <span style="color: #22c55e; font-weight: 600">Result::SUCCESS</span> | Completed successfully. |
-| <span style="color: #eab308; font-weight: 600">Result::WARNING</span> | Recoverable warning. |
-| <span style="color: #f97316; font-weight: 600">Result::ERROR</span> | Recoverable error. |
-| <span style="color: #ef4444; font-weight: 600">Result::FATAL</span> | Unrecoverable error. |
+| Value | Meaning |
+|---|---|
+| `Result::SUCCESS` | Completed without issues. |
+| `Result::WARNING` | Completed with a recoverable warning. |
+| `Result::ERROR` | Recoverable failure. |
+| `Result::FATAL` | Unrecoverable failure. |
 
-### Logger
+### Logging
 
-We use our own logging system. It's a simple wrapper around `fmtlib` with a few extra features. The logging system is thread-safe and can be used in a multithreaded environment.
+CyberEther uses a thread-safe logging wrapper built around `fmtlib`. Set the `JST_DEBUG` environment variable at runtime to control verbosity. The default level is `DEBUG` when `JST_DEBUG_MODE` is defined (such as `debug` and `debugoptimized` builds) and `INFO` in `release` builds.
 
-The verbose level can be selected at runtime using the `JST_DEBUG` environment variable. The default level for `debugrelease` builds is `DEBUG`, otherwise it's `INFO`.
+| Setting | Level | When It Is Used |
+|---|---|---|
+| `JST_DEBUG=4` | **TRACE** | High-volume diagnostic output such as protocol payloads. Compiled out in release builds. |
+| `JST_DEBUG=3` | **DEBUG** | Detailed debugging messages, off by default in release builds unless enabled with `JST_DEBUG=3` or `-v`. |
+| `JST_DEBUG=2` | **INFO** | Routine informational logs enabled in release builds. |
+| `JST_DEBUG=1` | **WARN** | Non-critical, recoverable issues or temporary failures. |
+| `JST_DEBUG=0` | **ERROR & FATAL** | Serious errors and fatal conditions logged before aborting. |
 
-| Level | Name | Description |
-|-------|------|-------------|
-| `JST_DEBUG=4` | <span style="color: #888; font-weight: 600">TRACE</span> | Very detailed logs, which may include high-volume information such as protocol payloads. *Compiled out in release builds.* |
-| `JST_DEBUG=3` | <span style="color: #3b82f6; font-weight: 600">DEBUG</span> | Debugging information, less detailed than trace, typically not enabled in release builds. |
-| `JST_DEBUG=2` | <span style="color: #22c55e; font-weight: 600">INFO</span> | Informational messages, which are normally enabled in release builds. |
-| `JST_DEBUG=1` | <span style="color: #eab308; font-weight: 600">WARN</span> | Warning messages, typically for non-critical issues, which can be recovered or which are temporary failures. |
-| `JST_DEBUG=0` | <span style="color: #ef4444; font-weight: 600">ERROR & FATAL</span> | Error or fatal messages - most of the time these are (hopefully) logged before the application crashes. |
+Colors turn off automatically when standard output is not a compatible terminal. You can also disable colored logs explicitly via `NO_COLOR`:
 
-Log colors are automatically disabled when standard output is not attached to a compatible terminal. Users can also disable colors by setting the standard `NO_COLOR` environment variable to a non-empty value:
-
-```sh
+```bash
 NO_COLOR=1 cyberether
 ```
 
 Applications embedding Jetstream can disable log colors programmatically by calling `JST_LOG_COLOR(false)`.
 
-If you are writing a new module or block, use the logger to communicate problems or warnings to the user. If you print something to the console and return a `Result::ERROR`, `Result::WARNING`, or `Result::FATAL`, the compositor will display a notification to the user with the last message you printed.
+> [!TIP]
+> When writing a block or module, log a clear message right before returning `Result::WARNING`, `Result::ERROR`, or `Result::FATAL`. The compositor automatically surfaces your last log message as a user-facing notification.
 
-### Testing
+### Running Tests and Build Macros
 
-To enable building the tests, make sure `catch2` is installed on your system.
-
-## Global Defines
-
-Global defines are preprocessor macros defined in the `jetstream_config.hh` file. These are automatically generated during the build process and provide information about the build configuration and target platform.
-
-### Build Configuration
-
-These defines provide information about the current build setup.
-
-| Define | Description |
-|--------|-------------|
-| `JETSTREAM_VERSION_STR` | Current version of the library. |
-| `JETSTREAM_BUILD_TYPE` | Build type: `debug`, `release`, or `debugrelease`. |
-| `JETSTREAM_BUILD_OPTIMIZATION` | Optimization level: `0`, `1`, `2`, or `3`. |
-| `JST_IS_STATIC` | Defined if the build is static. |
-| `JST_IS_SHARED` | Defined if the build is shared. |
-| `JST_DEBUG_MODE` | Defined if the build is debug. |
-| `JST_RELEASE_MODE` | Defined if the build is release. |
-
-### Platform Flags
-
-One of the following `JST_OS_*` flags will be defined based on the target platform.
-
-| Flag | Platform |
-|------|----------|
-| `JST_OS_WINDOWS` | Windows (64-bit) |
-| `JST_OS_MAC` | macOS |
-| `JST_OS_LINUX` | Linux |
-| `JST_OS_ANDROID` | Android |
-| `JST_OS_IOS` | iOS (iPhone, iPad, tvOS) |
-| `JST_OS_BROWSER` | Browser (Emscripten) |
+For full instructions on running Catch2, shader parser, browser, and opt-in SDR hardware tests, plus the list of generated `jetstream/config.hh` macros, see [Building From Source](/docs/building#running-tests).
 
 ## Licensing and Attribution
 
-CyberEther is licensed under the [MIT License](/docs/license). All contributions to this project will be released under the MIT License. By submitting a pull request, you are agreeing to comply with this license and for any contributions to be released under it.
+CyberEther is released under the [MIT License](/docs/license). By submitting a pull request, you agree that your contributions are licensed under the same MIT terms.
 
-Don't forget to add yourself to the [Acknowledgments](/docs/acknowledgments) page!
+Remember to add your name under the `[NEW CONTRIBUTOR HOOK]` on the [Acknowledgments](/docs/acknowledgments) page!
 
 ## Code of Conduct
 
-Don't be a jerk. Otherwise, you will be banned from contributing to this project. You will be warned once and then banned if you continue to be a jerk. Please report if you see someone being a jerk on project grounds.
+Don't be a jerk. Anyone behaving abusively receives one warning and will be banned from contributing if it continues. Please report any unacceptable behavior you witness in project spaces.

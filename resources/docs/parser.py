@@ -23,8 +23,12 @@ def md_to_source(output, inputs):
         f.write("namespace Jetstream::Resources {\n\n")
         f.write("namespace {\n\n")
 
+        seen_slugs = set()
         for index, path in enumerate(inputs):
             slug = os.path.splitext(os.path.basename(path))[0]
+            if slug in seen_slugs:
+                raise ValueError(f"Duplicate documentation slug: '{slug}' ({path})")
+            seen_slugs.add(slug)
             with open(path, "rb") as source:
                 data = source.read()
             name = f"kDoc{index}"

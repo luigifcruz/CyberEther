@@ -1,25 +1,29 @@
 ---
 title: Tensors
 description: The typed, multi-device buffers that carry data through a flowgraph.
-order: 80
+order: 330
 category: Development
 ---
 
-Every sample that moves through a flowgraph lives in a tensor: a typed n-dimensional buffer with a shape, strides, a device, and attached metadata. Tensors are what block outputs produce, what module kernels read and write, and what crosses into Python as NumPy and CuPy arrays. This page covers their anatomy, the zero-copy view operations, and the part that makes CyberEther graphs composable across hardware, namely how one tensor interoperates across devices and languages without copying samples.
+Every sample flowing through a CyberEther pipeline lives inside a **tensor**, a typed multidimensional buffer with a shape, strides, a home device, and attached metadata. Tensors are what blocks emit, what compute kernels process, and what appear inside Python blocks as zero-copy NumPy and CuPy arrays.
 
-## Anatomy
+This guide covers tensor anatomy, zero-copy view operations, and how CyberEther shares one buffer across CPUs, GPUs, graphics surfaces, and Python without copying samples.
 
-A tensor is described by five things:
+## Anatomy of a Tensor
 
-- A **data type** from the numeric ladder: `I8` to `I64`, `U8` to `U64`, `F32`, `F64`, the complex floats `CF32` and `CF64`, and the complex integers `CI8` to `CI64` and `CU8` to `CU64`.
-- A **device** where its native buffer lives: `CPU`, `CUDA`, `Metal`, or `Vulkan`. WebGPU is a graphics-only backend and does not host tensor storage.
-- A **shape** and **strides** describing the n-dimensional layout. The storage is sized once at creation. Reshaping, slicing, and broadcasting change how a handle presents that storage, never how much of it there is. A freshly created tensor is contiguous, and `contiguous()` reports whether it still is after view operations.
-- An **offset** for views that start inside a parent buffer.
-- **Attributes**, the named metadata such as `sampleRate` that travels with the tensor, covered in [Metadata](/docs/metadata#tensor-attributes).
+Every `Tensor` combines five pieces of information:
 
-Tensors are cheap handles over shared storage. Copying a `Tensor` object copies a reference, not samples, which is why connecting blocks and passing tensors through links never duplicates data. The underlying storage is freed when the last handle drops.
+- **Data type:** Signed integers (`I8` to `I64`), unsigned integers (`U8` to `U64`), floats (`F32`, `F64`), complex floats (`CF32`, `CF64`), and complex integers (`CI8` to `CI64`, `CU8` to `CU64`).
+- **Device:** Where the underlying native buffer lives (`CPU`, `CUDA`, `Metal`, or `Vulkan`). WebGPU is a graphics-only backend and does not host tensor storage.
+- **Shape and strides:** The multidimensional layout of the handle. Storage is allocated once at creation. Reshaping, slicing, and broadcasting only adjust how a handle views that storage. Fresh tensors are contiguous, and `contiguous()` reports whether a tensor remains contiguous after view operations.
+- **Offset:** The starting element offset for views carved out of a larger parent buffer.
+- **Attributes:** Named metadata such as `sampleRate` and `frequency` that ride alongside the tensor (see [Tensor Attributes](/docs/metadata#tensor-attributes)).
 
-## Creating And Accessing
+Tensors are lightweight handles over reference-counted storage. Copying a `Tensor` copies a handle rather than the underlying samples, which is why wiring blocks together never duplicates sample buffers. Storage is freed automatically when the last handle goes away.
+
+## Creating and Accessing Tensors
+
+Allocate a tensor with `create()`, tag its signal axes, and access elements via `at<T>()` or raw pointers via `data<T>()`:
 
 ```cpp
 Tensor buffer;
@@ -33,9 +37,11 @@ buffer.at<CF32>(0, 5) = CF32{1.0f, -1.0f};
 CF32* raw = buffer.data<CF32>();
 ```
 
-Element access with `at<T>()` takes one index per dimension and honors strides, so it stays correct on sliced and permuted views. Raw access with `data<T>()` returns the base pointer, which is only safe to walk linearly when `contiguous()` holds.
+Element access with `at<T>()` accepts one index per dimension and respects strides, so it stays safe on sliced or permuted views. Pointer access via `data<T>()` returns the base pointer and is only safe for linear iteration when `contiguous()` is true.
 
-For code that works with one element type throughout, `TypedTensor<T>` fixes the dtype at compile time and drops the template argument from every access:
+### Compile-Time Typed Wrappers
+
+When your code works with a single element type throughout, `TypedTensor<T>` locks the type at compile time so you can drop the template argument on every access:
 
 ```cpp
 TypedTensor<F32> window(DeviceType::CPU, {taps});
@@ -44,7 +50,7 @@ for (U64 i = 0; i < window.size(); ++i) {
 }
 ```
 
-The same wrapper also stores arbitrary trivially copyable structs. When the element type is not a framework dtype, the storage falls back to bytes with the last axis scaled by the element size, which is how the render components keep vertex and instance data in tensors:
+The same wrapper also stores any trivially copyable C++ struct. When `T` is not a built-in numeric dtype, storage falls back to bytes with the final dimension scaled by `sizeof(T)`, which is how render components store vertex and instance buffers:
 
 ```cpp
 struct Vertex {
@@ -56,7 +62,9 @@ TypedTensor<Vertex> vertices(DeviceType::CPU, {count});
 vertices.at(0) = {0.0f, 1.0f};
 ```
 
-A tensor can also wrap pre-allocated memory it does not own by creating from an existing pointer:
+### Wrapping External Memory
+
+You can wrap pre-allocated memory owned by an external library or hardware driver without copying it:
 
 ```cpp
 std::vector<CF32> samples(2048);
@@ -65,51 +73,56 @@ Tensor wrapped;
 JST_CHECK(wrapped.create(samples.data(), DeviceType::CPU, DataType::CF32, {2048}));
 ```
 
-The tensor borrows the memory rather than taking ownership, so the allocation must outlive every handle and every downstream consumer. This is the bridge for feeding buffers owned by external libraries or drivers into a flowgraph without a copy.
+The tensor borrows that pointer without taking ownership, so the backing allocation must outlive every handle and downstream consumer.
 
-One method deserves a warning label: `clone()` does **not** copy data. It produces a new handle with its own shape, strides, and attributes over the **same storage**, which is exactly what you want before applying view operations without disturbing the original. A true deep copy is the explicit two-step of creating a fresh tensor and transferring into it with `copyFrom`.
+> [!WARNING]
+> Calling `clone()` does **not** copy sample data. It creates a new handle with independent shape, strides, and attributes pointing to the **same underlying storage**. Use `clone()` before reshaping a view without mutating the original handle. When you need an independent deep copy, allocate a new tensor and call `copyFrom()`.
 
-## Views
+## Zero-Copy Views
 
-The reshaping operations never copy data. Each one mutates the handle it is called on, returning a `Result`, so the tensor becomes a view over the same storage with a new layout. To keep the original layout around, `clone()` a handle first (cheap, shares storage) and reshape the clone:
+Every structural transformation mutates the handle in place and returns a `Result` without touching the underlying sample bytes. To preserve the original layout, call `clone()` first and transform the clone:
 
-- Rank changes with `expandDims(axis)` and `squeezeDims(axis)`.
-- Layout changes with `reshape(shape)` and `permute(axes)`.
-- Size changes with `broadcastTo(shape)`, which repeats data virtually through zero strides.
-- Sub-ranges with `slice(tokens)`, where each token is an index, a `{start, stop}` pair, or a `{start, stop, step}` triple per axis, mirroring Python slicing.
+| Operation | Method | What It Does |
+|---|---|---|
+| Add or remove unit axis | `expandDims(axis)`, `squeezeDims(axis)` | Changes tensor rank without moving data. |
+| Change layout | `reshape(shape)`, `permute(axes)` | Reinterprets dimensions or reorders axes. |
+| Virtual repeat | `broadcastTo(shape)` | Repeats data virtually using zero strides. |
+| Extract sub-range | `slice(tokens)` | Slices per axis using an index, `{start, stop}`, or `{start, stop, step}` (mirroring Python slicing). |
 
-Views are how the slice and permutation blocks work, and they are the reason strides exist in the module contract: a downstream module receives whatever layout the view produced. Structural blocks remap positional metadata such as `sampleAxis`, `batchAxis`, and `channelAxis`, or remove roles when a reshape makes their correspondence ambiguous. The framework enforces the layout contract at module creation. A module that has not declared the `DISCONTIGUOUS` taint described in [Module Lifecycle](/docs/blocks-and-modules#module-lifecycle) rejects non-contiguous input with an error rather than silently misreading it, so kernels only ever see layouts they claimed to handle.
+Blocks like Slice and Permutation rely on these views, which means downstream modules can receive strided, non-contiguous inputs. Structural blocks remap positional metadata (`sampleAxis`, `batchAxis`, and `channelAxis`) or drop roles when a reshape makes them ambiguous.
+
+To prevent silent corruption, the framework enforces contiguity at module creation: any module that has not declared the `DISCONTIGUOUS` taint (see [Module Lifecycle](/docs/module-contract#module-lifecycle)) rejects non-contiguous inputs automatically.
 
 ## One Tensor, Many Devices
 
-This is the interoperability core. A tensor's storage is not a single buffer but a table of per-device buffers grown on demand. Asking `hasDevice(device)`, or constructing `Tensor(device, source)`, maps the existing storage onto another device, and the mapping is **zero-copy whenever the platform allows**. The `device()` accessor reports the buffer a consumer is using, and `nativeDevice()` reports where the storage originally lived.
+A tensor's backing storage is not locked to one device. Instead, it holds an on-demand table of per-device buffers. Querying `hasDevice(device)` or constructing `Tensor(device, source)` maps existing storage onto another device with **zero copies whenever the hardware and drivers allow**. Call `device()` to inspect the active view's device and `nativeDevice()` to check where the buffer was originally allocated.
 
-### Direction Matrix
+### Device Mapping Matrix
 
-Mappings are directional. The row is where the storage natively lives, the column is the device a view is requested on, and `hasDevice()` answers exactly this table at runtime:
+Mappings are directional. Rows indicate where the storage lives natively, columns indicate the requested view device, and `hasDevice()` reflects this exact table at runtime:
 
-| Native storage | CPU view | CUDA view | Metal view | Vulkan view |
-|----------------|-------------------|--------------------|-----------------|--------------------|
-| **CPU**        | native            | ✅ pinned pages    | ✅ shared wrap  | ❌                 |
-| **CUDA**       | ⚠️ unified only   | native             | ❌              | ⚠️ external memory |
-| **Metal**      | ✅ always         | ❌                 | native          | ❌                 |
-| **Vulkan**     | ⚠️ host-visible only | ✅ external memory | ❌           | native             |
+| Native Storage | CPU View | CUDA View | Metal View | Vulkan View |
+|---|---|---|---|---|
+| **CPU** | Native | Yes (pinned pages) | Yes (shared wrap) | No |
+| **CUDA** | Conditional (unified only) | Native | No | Conditional (external memory) |
+| **Metal** | Yes (always) | No | Native | No |
+| **Vulkan** | Conditional (host-visible only) | Yes (external memory) | No | Native |
 
-The conditional cells depend on how the buffer was allocated and what the drivers support:
+How each conditional mapping behaves:
 
-- **CPU to CUDA** registers the host pages with the driver and requires page-aligned memory. Tensors allocated by the framework always qualify, but memory wrapped from an external pointer may not.
-- **CPU to Metal** wraps the same pages as a shared-mode buffer, with the same page-alignment requirement.
-- **CUDA to CPU** only works when the allocation requested `{.hostAccessible = true}`, which lands in managed memory. A default CUDA allocation is device-only and the CPU view fails.
-- **CUDA to Vulkan** exports the allocation through an external memory handle. This requires the default device allocation, so a `hostAccessible` CUDA buffer cannot be exported, and both drivers must support the handle exchange. The CUDA and Vulkan external memory paths are unavailable on Windows.
-- **Vulkan to CUDA** imports the Vulkan allocation the same way, subject to the same driver support and the same Windows exclusion.
-- **Vulkan to CPU** uses the mapped pointer, so the buffer must be host-visible. That holds on unified-memory hardware and for `hostAccessible` allocations, but a device-local buffer on a discrete GPU has no CPU view.
-- **Metal to CPU** always works because Metal storage is allocated in shared mode.
+- **From CPU to CUDA:** Pins the host pages with the CUDA driver. Requires page-aligned memory (framework allocations always qualify, while wrapped external pointers may not).
+- **From CPU to Metal:** Wraps the same page-aligned memory as a Metal shared-mode buffer.
+- **From CUDA to CPU:** Succeeds only when the CUDA tensor was allocated with `{.hostAccessible = true}` (managed memory). Standard device-only CUDA allocations have no CPU view.
+- **From CUDA to Vulkan:** Exports the buffer via an external memory handle. Requires a default device-local CUDA allocation (not `hostAccessible`) and driver support on both sides. Unavailable on Windows.
+- **From Vulkan to CUDA:** Imports the Vulkan buffer via external memory, with the same driver requirements and Windows exclusion.
+- **From Vulkan to CPU:** Uses the mapped host pointer, requiring a host-visible buffer (true on unified-memory hardware and `hostAccessible` allocations, false for discrete device-local GPU buffers).
+- **From Metal to CPU:** Always available because Metal buffers allocate in shared mode.
 
-WebGPU is a graphics backend only. It has no tensor buffer backend, so no row or column exists for it, and the render layer feeds it through explicit uploads. Pairs marked ❌ bridge by staging through a device both sides can map, in practice the CPU, using the explicit `copyFrom` transfer described below.
+Because WebGPU is graphics-only and has no tensor buffer backend, the render layer feeds it through explicit uploads. Pairs marked No bridge by staging through a mutually mappable device (typically CPU) using `copyFrom()`.
 
-### Sharing With The Host
+### Sharing With the Host
 
-Mapping a tensor onto another device is one constructor call, and both views alias the same bytes from then on. A CUDA view of a CPU tensor pins the host pages with the driver and computes against them directly:
+Mapping a tensor to another device takes one constructor call, and both handles alias the same bytes immediately:
 
 ```cpp
 Tensor host;
@@ -118,11 +131,11 @@ JST_CHECK(host.create(DeviceType::CPU, DataType::CF32, {2048}));
 Tensor device(DeviceType::CUDA, host);
 ```
 
-A kernel writing through `device` is writing the memory `host` reads, so a CPU consumer sees the results without any transfer. The reverse direction is conditional, as the matrix shows: a CPU view of a CUDA tensor only exists when the allocation was host accessible. In both directions, `hasDevice(device)` performs the identical mapping as a query, returning false when the platform cannot share the memory.
+A CUDA kernel writing to `device` writes straight into the memory `host` reads, with no transfer step. In the reverse direction, a CPU view of a CUDA tensor requires a host-accessible allocation. Calling `hasDevice(device)` tests whether a zero-copy mapping is supported before you commit to it.
 
-### Sharing With Graphics
+### Sharing Compute With Graphics
 
-The same one-liner bridges compute and graphics. A CUDA view of a Vulkan tensor goes through external memory handles, so a kernel can fill the exact buffer a render surface draws, with no readback and no staging:
+The same constructor bridges compute kernels and GPU rendering. A CUDA view over a Vulkan tensor uses external memory handles so a compute kernel can populate a render surface directly with no readback or staging copy:
 
 ```cpp
 Tensor surface;
@@ -131,20 +144,20 @@ JST_CHECK(surface.create(DeviceType::Vulkan, DataType::F32, {height, width}));
 Tensor compute(DeviceType::CUDA, surface);
 ```
 
-Availability follows the drivers: the import requires external memory support from both sides, and `hasDevice(DeviceType::CUDA)` on the Vulkan tensor is the portable way to test for it before committing to the zero-copy path.
+Always check `surface.hasDevice(DeviceType::CUDA)` first to handle platforms or drivers without external memory support gracefully.
 
-### Unified Memory
+### Unified Memory Allocations
 
-Device allocations can also request CPU visibility up front through the buffer configuration, which is the natural shape on unified-memory hardware:
+On unified-memory hardware, you can request CPU visibility up front during allocation:
 
 ```cpp
 Tensor unified;
 JST_CHECK(unified.create(DeviceType::CUDA, DataType::CF32, {2048}, {.hostAccessible = true}));
 ```
 
-### Explicit Transfers
+### Explicit Copies
 
-When an independent copy of the data is genuinely wanted, rather than another view of it, the transfer is explicit:
+When you genuinely want an independent copy of the samples, transfer them explicitly with `copyFrom()`:
 
 ```cpp
 Tensor upload;
@@ -152,41 +165,41 @@ JST_CHECK(upload.create(DeviceType::CUDA, DataType::CF32, host.shape()));
 JST_CHECK(upload.copyFrom(host));
 ```
 
-Note that `copyFrom` rides the same mapping machinery as everything else: the destination must be contiguous, the sizes must match, and the destination storage must be able to materialize a buffer on the source's device, where the actual copy then happens. On platforms where that mapping does not exist for a given device pair, `copyFrom` fails cleanly too, and bridging requires staging through a device both sides can map, in practice the CPU. Since mappings either succeed as aliases or fail cleanly, every actual transfer in a flowgraph is a visible `copyFrom` in somebody's code.
+Note that `copyFrom()` uses the same mapping layer underneath: the destination must be contiguous, shapes and sizes must match, and the destination must be able to materialize a view on the source's device where the copy executes. When a direct mapping does not exist for a device pair, `copyFrom()` fails cleanly, and you stage through a common device such as the CPU. Because mappings either alias directly or fail cleanly, every real data copy in a flowgraph is visible as an explicit `copyFrom()`.
 
-### Crossing Devices In Modules
+### Crossing Devices Inside Modules
 
-For module authors the practical rule is: declare the `CROSS_DEVICE` taint when the kernel can consume input living on another device. Without it, input on a different device is rejected at module creation, and the block is responsible for bridging explicitly by constructing a device view of the source tensor. A single block can produce CPU and CUDA outputs side by side, and mixed graphs work without staging copies through the CPU.
+Declare the `CROSS_DEVICE` taint whenever your module kernel can consume inputs living on another device. Without `CROSS_DEVICE`, the framework rejects cross-device inputs at module creation, and the owning block must bridge explicitly by creating a device view of the source tensor. A single block can emit CPU and CUDA outputs side by side, letting heterogeneous graphs run without hidden CPU staging copies.
 
-## Python Without Copies
+## Zero-Copy Python Interop
 
-The same buffers cross into the Python block with zero copies in both directions:
+Tensors cross into the [Python Block](/docs/python-block) with zero copies in both directions:
 
-- A CPU tensor appears in `compute(ctx)` as a NumPy array built over a memoryview of the tensor's own memory, strides included, so non-contiguous views arrive as properly strided arrays.
-- A CUDA tensor appears as a CuPy array wrapping the raw device pointer through unowned memory, again with strides intact.
-- Inputs arrive read-only (enforced by NumPy for CPU tensors and by a read-only array wrapper for CuPy), while outputs are writable in place.
-
-The consequence is that Python participates in the same aliasing as everything else:
+- Each **CPU tensor** arrives in `compute(ctx)` as a NumPy array backed by a memoryview over the tensor's memory, preserving strides for non-contiguous views.
+- Each **CUDA tensor** arrives as a CuPy array wrapping the raw unowned device pointer with strides intact.
+- Inputs are read-only (enforced by NumPy on CPU and by a read-only wrapper on CuPy), while outputs are writable in place.
 
 ```python
 import cupy as cp
 
 def compute(ctx):
     x = ctx.inputs[0]                    # cupy.ndarray over the tensor's device memory
-    ctx.outputs[0][...] = cp.fft.fft(x)  # lands directly in the downstream tensor
+    ctx.outputs[0][...] = cp.fft.fft(x)  # writes straight into the downstream tensor
     cp.cuda.Stream.null.synchronize()
 ```
 
-The write on the second line goes straight into the buffer the next block computes on. There is no serialization boundary between C++ and Python for sample data, only for the small typed metadata described in [Type Conversion](/docs/python-block#type-conversion).
+There is no serialization boundary between C++ and Python for bulk sample data, only for the lightweight metadata documented in [Type Conversion](/docs/metadata#type-conversion).
 
 ## Attributes Ride Along
 
-Attributes attach to the tensor and can be carried through links, views, and devices. Producers set them with `setAttribute`, pass-through blocks forward them with `propagateAttributes`, and `setDerivedAttribute` registers a callable evaluated on read for values computed from live state. Axis-changing structural operations must remap `sampleAxis`, `batchAxis`, and `channelAxis` to the new axis numbering or drop them when they no longer apply. Forwarding an old role unchanged does not make it valid for the new shape. See the [signal-axis contract](/docs/metadata#signal-axes) and the other conventions in [Metadata](/docs/metadata#tensor-attributes).
+Attributes attach directly to tensors and follow them across links, views, and devices. Producers attach values with `setAttribute()`, pass-through modules copy them with `propagateAttributes()`, and `setDerivedAttribute()` registers a callback evaluated on read for values derived from live state.
 
-## Hints
+Any structural operation that changes axes must remap `sampleAxis`, `batchAxis`, and `channelAxis` to the new numbering or drop roles that no longer apply. Never forward stale axis indices onto a reshaped tensor. See [Signal Axes](/docs/metadata#signal-axes) and [Tensor Attributes](/docs/metadata#tensor-attributes) for the full contract.
 
-- **Allocate in `create()`, reuse across cycles.** Output tensors are created once when the module is created and rewritten every cycle. Allocating inside the compute path is both slow and invisible to consumers holding the old buffer.
-- **Publish before returning.** A module output only exists for downstream blocks once `produced()` registered the tensor, and the shape and dtype are fixed from that point. Geometry changes go through `RECREATE`.
-- **Let views do the work.** Selecting a channel, dropping a dimension, or transposing is a view, and chaining views costs nothing per cycle. Remember that `clone()` only forks the layout, so reach for a fresh tensor plus `copyFrom()` when downstream genuinely needs independent or contiguous storage.
-- **Check `contiguous()` before pointer arithmetic.** Any code that walks `data<T>()` linearly is a latent bug the first time a slice block lands upstream. Iterate with `at<T>()` or handle strides explicitly.
-- **Mind the widths at the edges.** The dtype ladder matches NumPy exactly (`CF32` is `complex64`), so keeping tensors, attributes, and environment values at consistent widths avoids conversions everywhere. The reasoning is laid out in [Type Conversion](/docs/python-block#type-conversion).
+## Best Practices
+
+- **Allocate in `create()`, reuse every cycle.** Output tensors are created once and overwritten each cycle. Allocating inside `computeSubmit()` hurts performance and leaves downstream consumers holding the old buffer.
+- **Publish outputs before returning from `create()`.** Downstream blocks only see an output after `produced()` registers it, locking its shape and dtype until a `RECREATE`.
+- **Lean on views.** Slicing a channel, squeezing an axis, or permuting dimensions costs zero copies per cycle. Remember that `clone()` shares storage, so pair a fresh tensor with `copyFrom()` whenever downstream needs independent or contiguous memory.
+- **Check `contiguous()` before walking `data<T>()`.** Linear pointer arithmetic breaks as soon as an upstream Slice block appears. Use `at<T>()` or respect strides explicitly.
+- **Keep numeric widths consistent.** CyberEther's dtype ladder mirrors NumPy (`CF32` matches `complex64`), so sticking to consistent widths across tensors, attributes, and environment values avoids unnecessary conversions (see [Type Conversion](/docs/metadata#type-conversion)).

@@ -1,53 +1,52 @@
 ---
 title: Platforms
 description: The three ways to run CyberEther, how they differ, and how to pick one.
-order: 39
+order: 240
 category: Usage
 ---
 
-The same CyberEther runs in three shapes: as a native application on your machine, as a web application inside a browser tab, and as a remote instance that streams its interface to a browser from somewhere else. The flowgraphs are identical across all three. What changes is where the work happens, which hardware is in reach, and how much setup it takes.
+CyberEther runs in three distinct modes: as a **native desktop application**, as a **web application** inside your browser, and as a **remote host** that streams its interface over the network. Your flowgraphs stay identical across all three. The only things that change are where compute runs, which hardware you can reach, and how much setup is involved.
 
-## How It Works
+## One Core, Three Shells
 
-Every platform runs the same core. The flowgraph, the scheduler, the blocks, and the interface are shared code, so a flowgraph saved on one platform opens unchanged on another. Each platform wraps that core in a different shell that decides four things:
+Every mode runs the exact same engine, scheduler, blocks, and UI code. A flowgraph saved on one platform opens unchanged on any other. What differs is the thin shell around that core:
 
-| | Native | Web | Remote |
+```text
+  Native     Your Machine [ Compute + GPU Render + Local Files + Attached Hardware ]
+
+  Web        Browser Tab  [ WebAssembly CPU + WebGPU Render + WebUSB + Browser Storage ]
+
+  Remote     Host Machine [ Compute + Hardware + Render ] ── WebRTC ──▶ Any Browser
+```
+
+## Side-by-Side Comparison
+
+| Capability | [Native](/docs/native) | [Web](/docs/web) | [Remote](/docs/remote) |
 |---|---|---|---|
-| Where compute runs | Your machine | Your browser tab | The host machine |
-| How the interface is drawn | Metal or Vulkan on your GPU | WebGPU in the browser | On the host, streamed as video to your browser |
-| How input arrives | Directly from the window | From the browser tab | From your browser, sent back to the host |
-| Where files live | Your disk | Browser storage | The host's disk |
+| **Where compute runs** | Your local machine (all backends) | Your browser tab (CPU via WebAssembly) | The host machine (all native backends) |
+| **How UI is drawn** | Metal or Vulkan on your GPU | WebGPU inside the browser | Rendered on the host, streamed as video |
+| **How input arrives** | Directly from the window | Directly from the browser tab | Sent from your browser back to the host |
+| **Where files live** | Your local disk | Private browser storage | The host's disk |
+| **Install required** | Yes | No | On the host only |
+| **Setup effort** | Install and launch | Open a link | Install on the host and share a link |
+| **Hardware access** | Full (all built-in SDRs, SoapySDR, audio, GPUs) | Built-in USB SDRs via WebUSB (except PlutoSDR and BirriaSDR) | Full, on the host |
+| **Python blocks** | Yes (local Python) | Yes (in-browser CPython) | Yes (host Python) |
+| **Interface latency** | Lowest | Low | Depends on network quality |
+| **Best for** | Daily work, development, deployment | Trying it out, demos, sharing | Headless servers and remote rigs |
 
-Native and Web both run on the device in front of you. Remote is the native application running somewhere else, with only its picture and your input traveling over the network.
+## Choosing Your Setup
 
-## Native
+### Native
 
-The native application is the primary way to run CyberEther. It has direct access to the GPU, every compute backend the platform provides, and any hardware attached to the machine. Use it for daily work, development, and unattended deployments.
+Choose [Native](/docs/native) for everyday use, heavy workloads, development, and unattended deployments. It runs directly on your machine with full access to your GPU, every supported compute backend, and attached peripherals like SDRs and audio interfaces.
 
-See [Native](/docs/native) for the command line, settings, and troubleshooting.
+### Web
 
-## Web
+Choose [Web](/docs/web) when you want zero setup. The entire framework compiles to WebAssembly and runs locally inside a browser tab with no server behind it. It is perfect for quick experiments, classroom demos, or sharing a flowgraph link with a colleague.
 
-The web application is the same CyberEther compiled to WebAssembly, running entirely inside a browser tab with nothing to install. Compute runs on the CPU, and hardware access is limited to what the browser exposes. Use it to try CyberEther, give a demo, or share a flowgraph.
+### Remote Streaming
 
-See [Web](/docs/web) for requirements, storage, and self-hosting.
+Choose [Remote Streaming](/docs/remote) when your compute or radio hardware lives somewhere else. The native application runs on the host (often headless) and streams its full interactive UI straight to a browser on your laptop, tablet, or phone.
 
-## Remote
-
-A remote instance is the native application, usually headless on a server, that streams its interface to a browser on another device and takes input back. The flowgraph runs at the full capacity of the host, with all of its backends and hardware. Use it to drive a headless server, a radio in another room, or a powerful machine from a laptop or a phone.
-
-See [Remote Streaming](/docs/remote) for setup, network requirements, security, and SSH tunneling.
-
-## Picking One
-
-| | Native | Web | Remote |
-|---|---|---|---|
-| Install required | Yes | No | On the host only |
-| Setup effort | Install and run | Open a link | Install on the host, share a link |
-| Compute | Local, all backends | CPU via WebAssembly | Host, all native backends |
-| Hardware access | Full | Browser APIs only | Full, on the host |
-| Python blocks | Yes | Yes, in the browser | Yes, on the host |
-| Interface latency | Lowest | Low | Depends on the network |
-| Best for | Daily use, development, deployment | Trying it, demos, sharing | Headless and high-performance systems |
-
-The rule of thumb: develop and deploy native, share via web, and use Remote Streaming to work with larger or unattended systems from anywhere on your network.
+> [!TIP]
+> As a simple rule of thumb: build and deploy with **Native**, share quick demos with **Web**, and control remote or headless machines with **Remote Streaming**.
