@@ -40,6 +40,7 @@ constexpr F32 kBubbleGap = 10.0f;
 constexpr F32 kTurnGap = 16.0f;
 constexpr F32 kPartGap = 6.0f;
 constexpr F32 kBubbleMaxWidthRatio = 0.72f;
+constexpr F32 kTrailingMarginCharacters = 0.5f;
 constexpr F32 kBubbleBorder = 1.0f;
 constexpr F32 kTextPad = 9.0f;
 constexpr F32 kScrollbarReserve = 14.0f;
@@ -906,7 +907,8 @@ struct ChatTranscript::Impl {
         std::vector<Label::Instance> marks;
         const auto fill = ctx.color("chat_user_bubble");
         const auto outline = ctx.color(config.surfaceColorKey);
-        const Padding padding = {m.textPad + m.textInset, m.textPad, m.textInset, m.textPad};
+        const F32 shift = 0.5f * kTrailingMarginCharacters * textMetrics.measure(Typography::BodyFont, "0", m.font);
+        const Padding padding = {m.textPad + m.textInset + shift, m.textPad, m.textInset - shift, m.textPad};
         const std::optional<U64> head = config.pending.empty() ? std::nullopt
                                                              : std::optional<U64>(config.pending.front().key);
         for (U64 i = 0; i < users.size(); ++i) {
