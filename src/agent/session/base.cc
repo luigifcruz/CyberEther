@@ -1,6 +1,7 @@
 #include "impl.hh"
 
 #include "tools/random.hh"
+#include "tools/text.hh"
 
 #include <utility>
 
@@ -33,6 +34,8 @@ void Session::Impl::setMode(const Mode next) {
 void Session::Impl::reset() {
     ++generation;
     messages.clear();
+    pending.clear();
+    steerable = false;
     context.reset();
     outputs = std::make_shared<Detail::OutputStore>();
     contextTokens = 0;
@@ -47,6 +50,37 @@ void Session::Impl::retire() {
 
 bool Session::Impl::owns(const Target target) const {
     return generation == target.generation && target.assistantIndex < messages.size();
+}
+
+std::string Session::Impl::drain(const std::string& prompt) {
+    std::string text;
+    for (const auto& entry : pending) {
+        text += (text.empty() ? "" : "\n\n") + entry.text;
+    }
+    if (!Text::IsBlank(prompt)) {
+        text += (text.empty() ? "" : "\n\n") + prompt;
+    }
+    pending.clear();
+    return text;
+}
+
+std::optional<std::string> Session::Impl::absorb(Target& target) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!steerable || pending.empty() || !owns(target)) {
+        return std::nullopt;
+    }
+
+    auto text = drain({});
+    auto user = std::make_shared<Entry>(Entry{true, text, {}});
+    if (messages[target.assistantIndex]->segments.empty()) {
+        messages.insert(messages.begin() + static_cast<I64>(target.assistantIndex), std::move(user));
+    } else {
+        messages.push_back(std::move(user));
+        messages.push_back(std::make_shared<Entry>());
+    }
+    target.assistantIndex = messages.size() - 1;
+    ++revision;
+    return text;
 }
 
 void Session::Impl::append(const Target target, const Segment::Kind kind, const std::string& chunk) {
@@ -106,33 +140,42 @@ Session::~Session() {
 }
 
 bool Session::submit(const std::string& prompt, const Config& config) {
-    if (prompt.find_first_not_of(" \t\r\n") == std::string::npos) {
-        return false;
-    }
     if (impl->streaming.load()) {
         return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(impl->mutex);
+        if (Text::IsBlank(prompt) && impl->pending.empty()) {
+            return false;
+        }
     }
 
     setMode(Mode::Text);
 
+    Impl::Target target;
+    std::shared_ptr<const std::vector<Provider::Message>> context;
+    std::string sessionId;
+    std::string text;
     {
         std::lock_guard<std::mutex> lock(impl->mutex);
         if (impl->streaming.load() || impl->callLog) {
             return false;
         }
+        text = impl->drain(prompt);
+        if (Text::IsBlank(text)) {
+            return false;
+        }
         impl->streaming.store(true);
+        impl->steerable = true;
     }
 
     if (impl->worker.joinable()) {
         impl->worker.join();
     }
 
-    Impl::Target target;
-    std::shared_ptr<const std::vector<Provider::Message>> context;
-    std::string sessionId;
     {
         std::lock_guard<std::mutex> lock(impl->mutex);
-        impl->messages.push_back(std::make_shared<Entry>(Entry{true, prompt, {}}));
+        impl->messages.push_back(std::make_shared<Entry>(Entry{true, text, {}}));
         context = impl->context;
         sessionId = impl->sessionId;
         impl->messages.push_back(std::make_shared<Entry>());
@@ -144,28 +187,73 @@ bool Session::submit(const std::string& prompt, const Config& config) {
     impl->worker = std::thread([this,
                                 target,
                                 context = std::move(context),
-                                prompt,
+                                text = std::move(text),
                                 sessionId = std::move(sessionId),
                                 config = config,
                                 abort = impl->abortRequested,
                                 outputs = impl->outputs]() mutable {
-        {
-            Impl::Turn turn(*impl, target, std::move(config), std::move(abort), std::move(outputs));
-            turn.run(std::move(context), prompt, sessionId);
-        }
+        while (true) {
+            bool succeeded = false;
+            {
+                Impl::Turn turn(*impl, target, config, abort, outputs);
+                turn.run(std::move(context), text, sessionId);
+                succeeded = turn.succeeded();
+            }
 
-        std::lock_guard lock(impl->mutex);
-        impl->streaming.store(false);
-        ++impl->revision;
+            std::unique_lock lock(impl->mutex);
+            if (!succeeded || abort->load() || impl->pending.empty() || !impl->owns(target)) {
+                impl->steerable = false;
+                lock.unlock();
+                config = {};
+                lock.lock();
+                impl->streaming.store(false);
+                ++impl->revision;
+                return;
+            }
+
+            text = impl->drain({});
+            impl->messages.push_back(std::make_shared<Entry>(Entry{true, text, {}}));
+            impl->messages.push_back(std::make_shared<Entry>());
+            target.assistantIndex = impl->messages.size() - 1;
+            context = impl->context;
+            sessionId = impl->sessionId;
+            ++impl->revision;
+        }
     });
 
     return true;
+}
+
+bool Session::steer(const std::string& text) {
+    if (Text::IsBlank(text)) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(impl->mutex);
+    if (!impl->steerable || impl->callLog) {
+        return false;
+    }
+    impl->pending.push_back({impl->nextPending++, text});
+    ++impl->revision;
+    return true;
+}
+
+bool Session::withdraw(U64 key) {
+    std::lock_guard<std::mutex> lock(impl->mutex);
+    const auto removed = std::erase_if(impl->pending, [key](const auto& entry) {
+        return entry.key == key;
+    });
+    if (removed > 0) {
+        ++impl->revision;
+    }
+    return removed > 0;
 }
 
 void Session::cancel() {
     impl->abortRequested->store(true);
 
     std::lock_guard<std::mutex> lock(impl->mutex);
+    impl->steerable = false;
     if (impl->callLog) {
         impl->callLog->cancelled->store(true);
     }
@@ -200,6 +288,7 @@ Session::Snapshot Session::snapshot() const {
     Snapshot snapshot{
         .generation = impl->generation,
         .streaming = impl->streaming.load(),
+        .pending = impl->pending,
         .contextTokens = impl->contextTokens,
     };
 
@@ -223,6 +312,7 @@ std::optional<Session::Update> Session::updates(Cursor& cursor) const {
     update.generation = impl->generation;
     update.streaming = impl->streaming.load();
     update.contextTokens = impl->contextTokens;
+    update.pending = impl->pending;
     update.firstMessage = resume ? cursor.count - 1 : 0;
 
     update.messages.reserve(impl->messages.size() - update.firstMessage);

@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
@@ -21,9 +22,13 @@ struct ChatTranscript : public Component {
     struct Config {
         std::string id;
         Chat::Snapshot snapshot;
+        std::vector<Chat::Pending> pending;
+        bool pendingPaused = false;
         F32 fontSize = Typography::FontSize;
         std::string surfaceColorKey = "background";
         U64 tailRequest = 0;
+        Callback<void(U64)> onWithdraw;
+        Callback<void()> onResume;
 
         bool operator==(const Config&) const = default;
     };

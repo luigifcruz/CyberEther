@@ -32,7 +32,7 @@ struct Chat::Impl {
     std::vector<Component*> mounted;
 
     bool empty() const {
-        return config.snapshot.messages.empty() && !config.snapshot.streaming;
+        return config.snapshot.messages.empty() && !config.snapshot.streaming && config.pending.empty();
     }
 
     F32 padding(const Context& ctx) const {
@@ -91,14 +91,19 @@ void Chat::update(Config config) {
     impl->transcript.update({
         .id = current.id + ":transcript",
         .snapshot = current.snapshot,
+        .pending = current.pending,
+        .pendingPaused = current.pendingPaused,
         .fontSize = current.fontSize,
         .surfaceColorKey = current.surfaceColorKey,
         .tailRequest = current.clearRequest,
+        .onWithdraw = current.onWithdraw,
+        .onResume = current.onResume,
     });
     impl->composer.update({
         .id = current.id + ":composer",
         .style = current.composer,
         .busy = current.snapshot.streaming,
+        .steering = current.steering,
         .selector = current.selector,
         .usage = current.usage,
         .onSubmit = current.onSubmit,

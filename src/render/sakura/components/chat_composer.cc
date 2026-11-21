@@ -390,6 +390,10 @@ struct ChatComposer::Impl {
         return !config.busy && config.onVoice && Jetstream::Text::IsBlank(text);
     }
 
+    bool stoppable() const {
+        return config.busy && (!config.steering || Jetstream::Text::IsBlank(text));
+    }
+
     bool hintReady() const {
         return voiceReady() && !config.voiceHint.empty();
     }
@@ -463,7 +467,7 @@ struct ChatComposer::Impl {
     }
 
     void submit() {
-        if (config.busy || Jetstream::Text::IsBlank(text)) {
+        if ((config.busy && !config.steering) || Jetstream::Text::IsBlank(text)) {
             return;
         }
         if (config.onSubmit) {
@@ -472,7 +476,7 @@ struct ChatComposer::Impl {
     }
 
     void press() {
-        if (config.busy) {
+        if (stoppable()) {
             if (config.onCancel) {
                 config.onCancel();
             }
@@ -878,7 +882,7 @@ void ChatComposer::layout(const Context& ctx) {
 
     const bool voice = state.voiceReady();
     state.send.update({
-        .str = config.busy || voice ? "" : ICON_LC_ARROW_UP,
+        .str = state.stoppable() || voice ? "" : (config.busy ? ICON_LC_CORNER_DOWN_RIGHT : ICON_LC_ARROW_UP),
         .fontSize = style.fontSize,
         .rounding = state.controlRounding(),
         .disabled = !config.busy && !voice && Jetstream::Text::IsBlank(state.text),
@@ -936,7 +940,7 @@ void ChatComposer::layout(const Context& ctx) {
         .instances = {{
             .rect = {std::round(rects.send.x + (rects.send.width - stopSide) * 0.5f),
                      std::round(rects.send.y + (rects.send.height - stopSide) * 0.5f), stopSide, stopSide},
-            .visible = visible && config.busy,
+            .visible = visible && state.stoppable(),
             .backgroundColor = ctx.color("contrast_btn_text"),
         }},
         .clip = rects.send,

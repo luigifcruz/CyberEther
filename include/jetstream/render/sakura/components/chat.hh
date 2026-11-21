@@ -85,11 +85,21 @@ struct Chat : public Component {
         bool operator==(const Snapshot&) const = default;
     };
 
+    struct Pending {
+        U64 key = 0;
+        std::string text;
+
+        bool operator==(const Pending&) const = default;
+    };
+
     using ComposerStyle = ChatComposer::Style;
 
     struct Config {
         std::string id;
         Snapshot snapshot;
+        std::vector<Pending> pending;
+        bool pendingPaused = false;
+        bool steering = false;
         std::optional<ChatComposer::Selector> selector;
         std::optional<ChatComposer::Usage> usage;
         F32 fontSize = Typography::FontSize;
@@ -103,6 +113,8 @@ struct Chat : public Component {
         Callback<void()> onCancel;
         Callback<void()> onClear;
         Callback<void()> onVoice;
+        Callback<void(U64)> onWithdraw;
+        Callback<void()> onResume;
         std::string voiceHint;
         Callback<void(bool)> onFocusChange;
         U64 focusRequest = 0;

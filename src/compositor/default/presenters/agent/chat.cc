@@ -66,6 +66,11 @@ AgentChatView::Config AgentChatPresenter::build() const {
     auto& chat = config.chat;
     chat.snapshot = formatter.format(conversation);
     chat.clearRequest = agent.chat.dockAccepted;
+    for (const auto& pending : conversation.pending) {
+        chat.pending.push_back({.key = pending.key, .text = pending.text});
+    }
+    chat.pendingPaused = !conversation.streaming && !conversation.pending.empty();
+    chat.steering = !agent.ui.voiceVisible;
     config.open = agent.ui.visible;
     config.focusRequest = agent.ui.chatFocusRequests;
     config.hidden = !settings.enabled;
@@ -89,6 +94,12 @@ AgentChatView::Config AgentChatPresenter::build() const {
     };
     chat.onClear = [enqueue]() {
         enqueue(MailClearAgentChat{});
+    };
+    chat.onWithdraw = [enqueue](U64 key) {
+        enqueue(MailWithdrawAgentChat{.key = key});
+    };
+    chat.onResume = [enqueue]() {
+        enqueue(MailResumeAgentChat{});
     };
     chat.onVoice = [enqueue]() {
         enqueue(MailSetAgentVoiceVisible{.value = true});
