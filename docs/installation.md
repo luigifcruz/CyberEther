@@ -43,6 +43,8 @@ The CUDA images bundle the CUDA 13 user-space libraries, though your host still 
 docker run --gpus all ghcr.io/luigifcruz/cyberether:ubuntu24-x86_64-cuda
 ```
 
+The container images do not include ONNX Runtime or the **Infer** block. To use the block, [build from source](/docs/building) with ONNX Runtime installed and `-Dinference=enabled`.
+
 ## Building From Source
 
 If your platform is not listed or you want to enable custom Meson build options, cross-compile for WebAssembly or iOS, or run the test suite, follow the [Building From Source](/docs/building) guide.
