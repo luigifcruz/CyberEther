@@ -209,7 +209,6 @@ struct ComposerPoints {
     Rect grid;
     F32 controlsY = 0.0f;
     Extent2D<F32> send;
-    Extent2D<F32> attach;
 };
 
 ComposerPoints PointsOf(Sakura::Component& root, const Rect& bounds) {
@@ -221,7 +220,6 @@ ComposerPoints PointsOf(Sakura::Component& root, const Rect& bounds) {
         .grid = grid,
         .controlsY = top,
         .send = {bounds.right() - kPad - 0.5f * kControl, top + 0.5f * kControl},
-        .attach = {bounds.x + kPad + 0.5f * kControl, top + 0.5f * kControl},
     };
 }
 
@@ -233,7 +231,6 @@ struct ComposerRig {
     std::vector<std::string> submits;
     U64 cancels = 0;
     U64 voices = 0;
-    U64 attaches = 0;
     U64 clears = 0;
     Rect bounds;
 
@@ -242,7 +239,6 @@ struct ComposerRig {
         config.style.placeholder = "Ask";
         config.onSubmit = [this](const std::string& text) { submits.push_back(text); };
         config.onCancel = [this] { ++cancels; };
-        config.onAttach = [this] { ++attaches; };
     }
 
     ComposerRig(const ComposerRig&) = delete;
@@ -1584,7 +1580,7 @@ TEST_CASE("Chat composer focus requests take focus from another text editor", kC
     CHECK(FocusOwner(host) == inputs.front());
 }
 
-TEST_CASE("Chat composer controls place attach, clear, the model picker, and the usage ring", kComposerTags) {
+TEST_CASE("Chat composer controls place clear, the model picker, and the usage ring", kComposerTags) {
     ComposerRig rig;
     rig.config.onClear = [&rig] { ++rig.clears; };
     rig.config.selector = Sakura::ChatComposer::Selector{.options = {{.id = "m", .label = "Model"}}, .value = "m"};
@@ -1614,13 +1610,11 @@ TEST_CASE("Chat composer controls place attach, clear, the model picker, and the
     REQUIRE(ring.clip.has_value());
     CHECK(*ring.clip == Rect{picker.x - kControl, points.controlsY, kControl, kControl});
 
-    rig.host.click(points.attach.x, points.attach.y);
-    CHECK(rig.attaches == 1);
     const F32 clearWidth = std::ceil(TextWidth(ctx, "Clear") + kControl);
     const auto clear = Texts(rig.host, "Clear");
     REQUIRE(clear.size() == 1);
-    CHECK(clear.front().rect == Rect{kPad + kControl, points.controlsY, clearWidth, kControl});
-    rig.host.click(kPad + kControl + 0.5f * clearWidth, points.send.y);
+    CHECK(clear.front().rect == Rect{kPad, points.controlsY, clearWidth, kControl});
+    rig.host.click(kPad + 0.5f * clearWidth, points.send.y);
     CHECK(rig.clears == 1);
     CHECK(rig.cancels == 0);
     CHECK(rig.submits.empty());
@@ -1636,7 +1630,6 @@ TEST_CASE("Chat composer controls place attach, clear, the model picker, and the
     rig.config.style.compact = true;
     rig.place();
     CHECK(Find<Sakura::ModelPicker>(rig.host).empty());
-    CHECK_FALSE(Shows(rig.host, ICON_LC_PLUS));
     CHECK(VisibleInstances(*BoxesWithCapacity(rig.host, 48).front()) == 0);
 }
 
@@ -1710,7 +1703,6 @@ TEST_CASE("Chat composers settle and repaint only for visual changes", kComposer
             .usage = Sakura::ChatComposer::Usage{.value = usage, .title = "Context"},
             .onSubmit = [](const std::string&) {},
             .onCancel = [] {},
-            .onAttach = [] {},
         });
     };
     const auto send = [&](const MouseEvent& event) {
@@ -1741,24 +1733,20 @@ TEST_CASE("Chat composers settle and repaint only for visual changes", kComposer
     CHECK(frames.restructures == 0);
 }
 
-TEST_CASE("Chat composer buttons repaint once per hover transition", kComposerRetentionTags) {
+TEST_CASE("Chat composer send button repaints once per hover transition", kComposerRetentionTags) {
     Scene scene;
     Sakura::ChatComposer composer;
     const Rect bounds = {10.0f, 10.0f, kComposerWidth, 100.0f};
     Place place(composer, bounds);
     Frames frames(place, kScreen, scene.context());
     const auto update = [&] {
-        composer.update({.id = "composer", .busy = true, .onCancel = [] {}, .onAttach = [] {}});
+        composer.update({.id = "composer", .busy = true, .onCancel = [] {}});
     };
     REQUIRE(frames.settle(update));
     const auto points = PointsOf(place, bounds);
     CheckHoverRepaintsOnce(frames, place, update, points.send, {600.0f, 400.0f});
     CheckLeaveRepaintsOnce(frames, place, update, points.send);
-    place.send(Mouse(MouseEventType::Leave, points.send.x, points.send.y));
-    CheckHoverRepaintsOnce(frames, place, update, points.attach, {600.0f, 400.0f});
-    CheckLeaveRepaintsOnce(frames, place, update, points.attach);
     CHECK(Sakura::Access::cursor(place, points.send) == SurfaceCursor::Hand);
-    CHECK(Sakura::Access::cursor(place, points.attach) == SurfaceCursor::Hand);
 }
 
 TEST_CASE("Chat composer buttons drop a cancelled press and ignore releases outside", kComposerTags) {

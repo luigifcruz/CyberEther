@@ -67,7 +67,6 @@ struct ChatComposer : public Component {
         Callback<void(const std::string&)> onSubmit;
         Callback<void()> onCancel;
         Callback<void()> onClear;
-        Callback<void()> onAttach;
         Callback<void()> onVoice;
         std::string voiceHint;
         Callback<void(bool)> onFocusChange;

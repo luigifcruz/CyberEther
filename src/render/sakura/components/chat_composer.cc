@@ -56,7 +56,6 @@ constexpr F32 kKeycapGap = 0.3f;
 constexpr F32 kKeycapWordWidth = 1.75f;
 constexpr F32 kKeycapFill = 0.06f;
 constexpr F32 kKeycapEdge = 0.14f;
-constexpr F32 kAttachScale = 0.9f;
 constexpr F32 kInlinePickerShare = 0.45f;
 constexpr F32 kPickerRounding = 15.0f;
 constexpr U64 kMaxCharacters = 128;
@@ -313,7 +312,6 @@ struct ChatComposer::Impl {
     RoundButton send;
     Box voiceBars;
     Box stopMark;
-    RoundButton attach;
     RoundButton clear;
     ModelPicker picker;
     Box usageRing;
@@ -546,9 +544,6 @@ struct ChatComposer::Impl {
         std::vector<Component*> list = {config.style.chrome ? static_cast<Component*>(&chrome) : &background,
                                         &placeholder, &keycap, &keycapLabel, &keycapGlyph, &icon, &input, &send, &voiceBars,
                                         &stopMark};
-        if (showsControls()) {
-            list.push_back(&attach);
-        }
         if (showsClear()) {
             list.push_back(&clear);
         }
@@ -564,16 +559,6 @@ struct ChatComposer::Impl {
 
     void configure() {
         const F32 control = controlSize();
-        attach.update({
-            .str = ICON_LC_PLUS,
-            .fontSize = config.style.fontSize * kAttachScale,
-            .rounding = controlRounding(),
-            .onClick = [this]() {
-                if (config.onAttach) {
-                    config.onAttach();
-                }
-            },
-        });
         clear.update({
             .str = "Clear",
             .fontName = Typography::BodyFont,
@@ -622,11 +607,8 @@ struct ChatComposer::Impl {
     void layoutControls(ChatComposer& self, const Context& ctx, const Metrics& m, const Rect& outer,
                         const Rect& bounds, const Rect& sendRect) {
         const F32 y = sendRect.y;
-        const Rect attachRect = {bounds.x + m.pad, y, m.control, m.control};
-        self.layoutChild(ctx, attach, attachRect);
-
         const F32 clearWidth = showsClear() ? self.measureChild(clear, ctx, {bounds.width, m.control}).x : 0.0f;
-        const Rect clearRect = {attachRect.right(), y, clearWidth, m.control};
+        const Rect clearRect = {bounds.x + m.pad, y, clearWidth, m.control};
         if (showsClear()) {
             self.layoutChild(ctx, clear, clearRect);
         }
@@ -696,7 +678,6 @@ ChatComposer::ChatComposer() {
     addChild(impl->send);
     addChild(impl->voiceBars);
     addChild(impl->stopMark);
-    addChild(impl->attach);
     addChild(impl->clear);
     addChild(impl->picker);
     addChild(impl->usageRing);
