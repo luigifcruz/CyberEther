@@ -9,7 +9,7 @@ project(
     ]
 )
 
-minimum_jetstream_version = '1.20.0'
+minimum_jetstream_version = '1.20.1'
 jst_is_browser = host_machine.system().startswith('emscripten')
 
 cyberether_dep = dependency(
