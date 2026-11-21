@@ -28,6 +28,8 @@ docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-aarch64-cuda
 
 The CUDA container images include the CUDA 13 user-space libraries, but still require a compatible NVIDIA driver and NVIDIA Container Toolkit on the host. Run them with GPU access enabled, for example `docker run --gpus all ...`.
 
+The container build does not include the ONNX Runtime or the **Infer** block. To use the block, [build from source](#build-from-source) with ONNX Runtime installed and `-Dinference=enabled`.
+
 ## Build From Source
 
 CyberEther requires a C++20 compiler (GCC 11+ or Clang 14+), [Meson](https://mesonbuild.com) 1.11+, and [Ninja](https://ninja-build.org). Most third-party libraries are bundled as Meson subprojects, so the packages below focus on the platform toolchain, graphics headers or SDKs, shader tools, and Python modules used during resource generation.
