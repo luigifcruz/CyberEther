@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -114,6 +116,9 @@ namespace {
 namespace Abi = Radio::SoapyAbi;
 
 struct FakeRadio {
+    F64 frequencyMinimum = 10.0e6;
+    F64 frequencyMaximum = 6000.0e6;
+    F64 lastFrequency = 0.0;
     F64 rateOffset = 0.0;
     F64 sampleRate = 0.0;
     bool bandwidthSupported = true;
@@ -181,7 +186,8 @@ Radio::SoapyApi FakeApi() {
     api.make = [](const Abi::Kwargs*) { return reinterpret_cast<Abi::Device*>(&Fake()); };
     api.unmake = [](Abi::Device*) { return 0; };
     api.getFrequencyRange = [](const Abi::Device*, int, std::size_t, std::size_t* count) {
-        static Abi::Range range{10.0e6, 6000.0e6, 0.0};
+        static Abi::Range range{};
+        range = {Fake().frequencyMinimum, Fake().frequencyMaximum, 0.0};
         *count = 1;
         return &range;
     };
@@ -273,7 +279,8 @@ Radio::SoapyApi FakeApi() {
         Fake().bandwidth = value;
         return 0;
     };
-    api.setFrequency = [](Abi::Device*, int, std::size_t, double, const Abi::Kwargs*) {
+    api.setFrequency = [](Abi::Device*, int, std::size_t, double frequency, const Abi::Kwargs*) {
+        Fake().lastFrequency = frequency;
         return 0;
     };
     api.getFrequency = [](const Abi::Device*, int, std::size_t) { return 0.0; };
@@ -491,6 +498,23 @@ Radio::Device::Capture Read(Radio::Stream& stream) {
 }
 
 }  // namespace
+
+TEST_CASE("SoapySDR accepts F32-rounded exact frequency endpoints without widening ranges",
+          "[devices][sdr][soapy][frequency]") {
+    for (const F64 exact : {2250000000.0, 2750000000.0}) {
+        const FakeRuntime runtime({.frequencyMinimum = exact, .frequencyMaximum = exact});
+        const F64 rounded = static_cast<F64>(static_cast<F32>(exact));
+        REQUIRE(rounded != exact);
+        std::unique_ptr<Radio::Stream> stream;
+        REQUIRE(Radio::Stream::Open("driver=soapy,serial=1234", stream) == Result::SUCCESS);
+        REQUIRE(stream->start({.frequency = rounded, .sampleRate = 1.0e6}) == Result::SUCCESS);
+        CHECK(Fake().lastFrequency == exact);
+        CHECK(stream->applied().frequency == exact);
+        const F64 outside = static_cast<F64>(std::nextafter(static_cast<F32>(rounded),
+                                                              std::numeric_limits<F32>::infinity()));
+        CHECK(stream->update({.frequency = outside, .sampleRate = 1.0e6}) != Result::SUCCESS);
+    }
+}
 
 TEST_CASE("SoapySDR stream passes driver arguments and switches Bias-T off on close",
           "[devices][sdr][soapy]") {
