@@ -1,111 +1,138 @@
 ---
 title: Native
 description: Run CyberEther as a native application with direct access to the GPU and local hardware.
-order: 40
+order: 241
 category: Usage
 parent: platforms
 ---
 
-The native application is the primary way to run CyberEther. It is a plain binary with direct access to the GPU, every compute backend the platform provides, and any hardware attached to the machine, such as SDRs and audio devices. It is the right choice for daily use, development, and unattended deployments.
+The native application is the primary way to run CyberEther. Shipped as a standalone binary, it talks directly to your GPU, every compute backend enabled in your build, and local hardware such as SDRs and audio devices. Use it for daily work, development, and unattended deployments.
 
 ## Quick Start
 
 After [installing CyberEther](/docs/installation), launch it from a terminal:
 
-```
+```bash
+# Open the Start tab with an empty workspace
 cyberether
-```
 
-This opens the main window with an empty workspace. To load a flowgraph at startup, pass its path as the only positional argument:
-
-```
+# Launch directly into a specific flowgraph
 cyberether flowgraph.yml
-```
 
-To run without a window, for example on a server, add `--headless`:
-
-```
+# Run without opening a window (ideal for headless servers)
 cyberether --headless flowgraph.yml
 ```
 
-## How It Works
+## Under the Hood
 
-CyberEther draws its own interface directly on the GPU and runs the flowgraph on the compute backends the build supports. Nothing sits between the application and the operating system, which is what keeps latency low and lets the same binary scale from a Raspberry Pi to a workstation.
+Nothing sits between the native binary and your operating system. That direct path keeps latency low and lets the same codebase scale from a Raspberry Pi to a multi-GPU workstation.
 
-- **Rendering** uses Metal on macOS and Vulkan elsewhere. Pick one explicitly with `--renderer`. When the preferred renderer is unavailable, CyberEther falls back to one that works.
-- **Compute** runs on the CPU everywhere, and on CUDA where the hardware and the build allow it. The [installation guide](/docs/installation) covers what each build enables.
-- **Headless mode** still runs the full present loop against a windowless viewport, so blocks with visual surfaces keep working and can be captured or streamed with [Remote Streaming](/docs/remote).
+- **Graphics rendering** uses Metal on macOS and Vulkan on Linux and Windows. Pass `--renderer` to choose one explicitly. If your requested backend is unavailable, CyberEther automatically falls back to a working one.
+- **Compute execution** runs on the CPU everywhere, and on CUDA wherever your hardware and build support it. Check [Building From Source](/docs/building) for build options.
+- **Headless execution** still drives the full presentation loop against a windowless viewport. Visual blocks continue rendering surfaces that can be captured or streamed over [Remote Streaming](/docs/remote).
 
 ## Requirements
 
-- A GPU with Metal or Vulkan support. The [overview](/docs/overview) lists the supported devices.
-- For Python blocks, a Python installation on the machine. See [Choosing a Python Runtime](/docs/python-block#choosing-a-python-runtime).
+- A GPU supporting Metal or Vulkan (see [Building From Source](/docs/building) for platform requirements).
+- A local Python installation if you use Python blocks (see [Choosing a Python Runtime](/docs/python-runtime#choosing-a-python-runtime)).
 
-## Command Line
+## Command-Line Reference
 
-```
+```bash
 cyberether [options] [flowgraph]
 cyberether run [options] [flowgraph]
 cyberether benchmark [options] [block]
 cyberether update [--install]
 ```
 
-The default command launches the full application. The `benchmark` command runs the benchmark suite, and `update` checks for a newer release. Run `cyberether --help`, or the help of a specific command, for the complete option list with the current values.
+Running `cyberether` (or `cyberether run`) opens the application. Use `benchmark` to run the performance suite and `update` to check for or install newer releases. Run `cyberether --help`, or pass `--help` to any subcommand, for the complete list of flags and defaults.
 
-Long options with values accept either `--option value` or `--option=value`. Use `--` to treat every following argument as positional, such as for a flowgraph path beginning with a dash.
+Long options that take a value accept both `--option value` and `--option=value`. Insert `--` to treat every argument after it as positional, which is useful when a flowgraph filename begins with a dash.
 
-### Graphics
+### Global Options
 
-| Option | Meaning |
+| Option | Purpose |
 |---|---|
-| `--renderer <renderer>` | Preferred graphics backend, metal or vulkan. |
-| `--device-index <index>` | Zero based Vulkan and CUDA device index. |
-| `--headless` | Run without a window. |
-| `--size <WxH>` | Viewport size. |
-| `--scale <factor>` | Interface scale factor. |
-| `--theme <name>` | Interface color theme. |
-| `--framerate <fps>` | Target frame rate. |
+| `-h`, `--help` | Show usage help for CyberEther or a specific subcommand. |
+| `-v`, `-vv` | Increase log verbosity (`-v` for debug logs, `-vv` for trace logs). |
+| `-V`, `--version` | Print the installed CyberEther version and exit. |
 
-Vulkan and CUDA enumerate devices independently, so the same index is not guaranteed to identify the same physical GPU in both APIs.
+### Graphics Options
 
-### Runtime
-
-| Option | Meaning |
+| Option | Purpose |
 |---|---|
-| `--python-runtime <path>` | Python executable or library for this run. |
-| `--dependency-policy <policy>` | Dependency installation policy, prompt, allow, or deny. |
-| `--plugin <path>` | Load a plugin. Repeat to load several. |
+| `--renderer <renderer>` | Select the preferred graphics backend (`metal` or `vulkan`). |
+| `--device-index <index>` | Zero-based device index for Vulkan and CUDA. |
+| `--headless` | Run without creating a desktop window. |
+| `--size <WxH>` | Set the viewport width and height. |
+| `--scale <factor>` | Set the UI scaling factor. |
+| `--theme <name>` | Choose the interface color theme. |
+| `--framerate <fps>` | Set the target presentation frame rate. |
 
-### Benchmark
+> [!NOTE]
+> Vulkan and CUDA enumerate devices independently. On machines with multiple GPUs, the same `--device-index` number may refer to different physical cards in each API.
 
-The benchmark command accepts `--format markdown`, `--format json`, or `--format csv`. Pass a block type to run only its benchmarks:
+### Runtime Options
 
-```
+| Option | Purpose |
+|---|---|
+| `--python-runtime <path>` | Override the Python executable or library for this session. |
+| `--dependency-policy <policy>` | Set the Python dependency installation policy (`prompt`, `allow`, or `deny`). |
+| `--plugin <path>` | Load a `.cep` plugin bundle for this run. Repeat the flag to load multiple plugins. |
+
+### Benchmarking
+
+The `benchmark` subcommand supports `--format markdown`, `--format json`, and `--format csv`. Pass a block type to benchmark a single block:
+
+```bash
 cyberether benchmark fft --format json
 ```
 
-The CUDA benchmarks honor the global `--device-index` selection.
+All CUDA benchmarks respect the global `--device-index` flag.
 
-### Remote
+### Updating CyberEther
 
-The `--remote` option and its `--remote-*` settings stream the interface to a browser on another device. They are covered in [Remote Streaming](/docs/remote).
+Official desktop packages built with Velopack support checking for and installing updates from the terminal:
 
-## Settings
+```bash
+# Check whether a newer release is available
+cyberether update
 
-CyberEther saves its settings in a `settings.yaml` file:
+# Download and install the update
+cyberether update --install
+```
 
-| System | Location |
+### Remote Streaming
+
+Pass `--remote` along with any `--remote-*` flags to stream the interface to another device. See the [Remote Streaming guide](/docs/remote) for every available flag and configuration recipe.
+
+## Configuration File
+
+CyberEther ships with sensible defaults for every setting and saves changes to `settings.yaml` only when you edit them in **Settings** (or create the file manually). To inspect all command-line defaults for your installed build, run `cyberether --help` or `cyberether <subcommand> --help`.
+
+| Operating System | Directory |
 |---|---|
 | Linux | `~/.config/cyberether/` |
 | macOS | `~/Library/Application Support/CyberEther/` |
 | Windows | `%APPDATA%\CyberEther\` |
 
-On Linux, `XDG_CONFIG_HOME` replaces `~/.config` when it is set. Most settings are easier to change in the **Settings** tab. Command line options override the saved values for one run only and never modify the file.
+On Linux, setting the `XDG_CONFIG_HOME` environment variable overrides `~/.config`. Most preferences are easiest to change in the **Settings** tab. Command-line flags override saved settings for that run only and never modify `settings.yaml`.
+
+The `settings.yaml` file organizes persisted settings into top-level sections:
+
+- **`graphics`:** Preferred graphics device, window size, UI scale, and frame rate. Session flags such as `--device-index` and `--headless` are not persisted.
+- **`remote`:** Access approval mode, video codec and encoder, broker address, port, TLS paths, and media transport settings.
+- **`runtime`:** Selected Python runtime path and PEP 723 dependency policy.
+- **`interface`:** Active theme, background particles, tips, touchpad scroll speed, and recent or favorite flowgraphs.
+- **`maps`:** High-resolution map toggle and map rendering preferences.
+- **`developer`:** Log level, compute timing overlay, and render stats flags.
+- **`registry`:** Registered `.cep` plugin paths.
+- **`intelligence`:** Optional Assistant providers, model selection, voice settings, and the local MCP server (disabled by default, listening on `127.0.0.1:7373` when enabled).
 
 ## Troubleshooting
 
-**The window does not open.** Try the other renderer with `--renderer vulkan` or `--renderer metal`, and check that the GPU driver is up to date.
-
-**The wrong GPU is used.** Pick another device with `--device-index`. On machines with several GPUs, the index can point to a different card in Vulkan and in CUDA.
-
-**Python blocks report an invalid runtime.** Select a working installation in **Settings** under **Runtime**, or pass one with `--python-runtime`.
+| Symptom | What to Try |
+|---|---|
+| **The window fails to open** | Switch renderers with `--renderer vulkan` or `--renderer metal`, and confirm your GPU drivers are up to date. |
+| **The wrong GPU is active** | Pass a different `--device-index`. Remember that Vulkan and CUDA can number GPUs differently on multi-GPU systems. |
+| **Python blocks report an invalid runtime** | Select a working interpreter under **Settings** > **Runtime**, or pass one explicitly with `--python-runtime`. |

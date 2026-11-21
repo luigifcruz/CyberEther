@@ -1,31 +1,39 @@
 ---
 title: Metadata
-description: Sharing values between blocks with the environment, tensor attributes, and metrics.
-order: 81
+description: Sharing values between blocks with the environment, tensor attributes, metrics, and C++/Python type conversion.
+order: 340
 category: Development
 ---
 
-Tensors move the bulk data through a flowgraph, but most blocks also need to share small typed values: the sample rate attached to a stream, a calibration table delivered by a server, or a progress figure shown in the UI. CyberEther has three metadata channels for this, each with a different scope and direction. This page covers how to produce and consume each one from a native block, with pointers to the [Python Block](/docs/python-block) guide for the `compute(ctx)` view of the same data.
+Tensors carry bulk sample streams through a flowgraph, while most real-world blocks also need to exchange lightweight typed values: a stream's sample rate, a calibration table fetched from a server, or a live throughput readout for the UI.
+
+CyberEther provides three distinct metadata channels, each tailored to a different scope and direction. This guide covers how native C++ blocks produce and consume all three, how Note blocks interpolate live environment values, and how metadata converts between C++ and Python.
 
 ## Choosing a Channel
 
-| | Environment | Tensor Attributes | Metrics |
+| Property | [Environment](#flowgraph-environment) | [Tensor Attributes](#tensor-attributes) | [Metrics](#block-metrics) |
 |---|---|---|---|
-| Scope | Whole flowgraph | One tensor, follows its connections | One block |
-| Direction | Any block or host code, read and write | Producer writes, downstream reads | Owner publishes, anyone reads |
-| Lifetime | Persists with the flowgraph | Lives with the tensor | Computed on demand |
-| Typical use | Shared state, server-provided values, calibration | Signal description such as `sampleRate` and `frequency` | Progress, throughput, diagnostics |
-| UI surface | Environment tile | Pin tooltips | Node body |
+| **Scope** | Whole flowgraph | One tensor, following its wires | One block |
+| **Direction** | Any block or host code (read/write) | Producer writes, downstream reads | Owner publishes, anyone reads |
+| **Lifetime** | Persists for the flowgraph's lifetime | Travels with the tensor | Computed lazily on demand |
+| **Best for** | Shared state, server values, calibration | Stream properties (`sampleRate`, `frequency`) | Progress, throughput, diagnostics |
+| **Where it shows in UI** | Environment tile | Wire and pin tooltips | Block node body |
 
-A useful rule of thumb follows the data. If the value describes a specific stream, attach it to the tensor as an attribute so it travels with the connection. If it describes the state of one block and is only interesting to observers, publish it as a metric. If it is genuinely global, or must exist before blocks can start, put it in the environment.
+Let the data guide your choice:
 
-All three channels carry the same value types. See [Type Conversion](/docs/python-block#type-conversion) for the full table: scalars up to 64 bits including complex, strings, typed vectors, and nested maps and sequences. None of them are meant for bulk data. A filter kernel of a few thousand taps is fine, a sample stream is not.
+- If a value describes a specific signal stream, attach it as a **tensor attribute** so it follows the wire.
+- If a value reports one block's internal status for observers, publish it as a **metric**.
+- If a value is global across the graph or must arrive before blocks start, store it in the **environment**.
+
+All three channels share the same typed value system (see [Type Conversion](#type-conversion)): scalars up to 64 bits including complex numbers, strings, typed vectors, and nested maps and sequences. None of these channels are meant for high-rate bulk data. A filter kernel of a few thousand taps is fine, while a live sample stream belongs in a tensor.
 
 ## Flowgraph Environment
 
-The environment is a graph-wide, timestamped key-value store owned by the flowgraph. Every top-level key holds a map. Blocks reach it through `environment()` (available in `Block::Impl` and through the module context), host code through `flowgraph->environment()`, and Python code through `ctx.env`.
+The environment is a graph-wide, timestamped key-value store owned by the flowgraph where every top-level key holds a map. Access it via `environment()` inside `Block::Impl` or a module context, `flowgraph->environment()` from host code, and `ctx.env` from Python.
 
-Typed access works through any `JST_SERDES` struct, which serializes to a nested map:
+### Typed Reads and the `INCOMPLETE` Gating Pattern
+
+Any struct annotated with `JST_SERDES` serializes directly to and from a nested map:
 
 ```cpp
 struct StationInfo {
@@ -48,9 +56,11 @@ Result create() override {
 }
 ```
 
-The `INCOMPLETE` return in this example is the intended pattern for blocks that depend on values delivered after the flowgraph opens, for example by a block that maintains a connection to a central server. The block sits in the incomplete state, and the flowgraph automatically destroys and recreates it when a new environment key becomes visible. Retries are triggered by key visibility changes only. In-place updates to an existing key do not recreate anything, so blocks that publish status values every cycle stay cheap.
+Returning `Result::INCOMPLETE` here is the standard gating pattern for blocks that wait on values delivered after startup (such as configuration arriving from a server). The block rests cleanly in the incomplete state, and the flowgraph automatically destroys and recreates it the moment a new environment key becomes visible. Updating an existing key in place never triggers recreation, keeping per-cycle status updates cheap.
 
-Writing works symmetrically, and raw `Parser::Map` access is available when a struct is overkill:
+### Writing Environment Entries
+
+Writing works symmetrically with typed structs, or with a raw `Parser::Map` when defining a struct is unnecessary:
 
 ```cpp
 Parser::Map status;
@@ -59,26 +69,26 @@ status["snr"] = F32{23.4f};
 JST_CHECK(environment()->set("receiver_status", status));
 ```
 
-Points worth knowing:
+Key details to keep in mind:
 
-- **Values are timestamped.** The full signature is `set(key, value, start, end)`, and `get(key, value, timestamp)` returns the newest entry whose range covers the timestamp. The defaults cover all time, which is the right choice unless you are recording values that change over a run.
-- **The epoch tracks changes.** Every write increments `environment()->epoch()`. Poll it to refresh cached reads cheaply instead of deserializing keys every cycle. The Python bridge uses the same mechanism internally.
-- **Keys persist and are visible.** Environment values are saved with the flowgraph and shown in the Environment tile, so treat key names as a small public schema rather than scratch space.
-- **Writers define the schema.** Python writes coerce to the type already stored, so a key seeded with exact widths, for example `F32` gain or a `vector<CF32>` of taps, keeps those widths across Python edits. Native `set()` calls replace the stored value verbatim, so C++ writers are responsible for publishing consistent types themselves.
+- **Entries are timestamped.** The full API is `set(key, value, start, end)` and `get(key, value, timestamp)`, returning the newest entry covering that timestamp. The defaults span all time, which is right for most use cases unless you record time-varying history.
+- **Poll `epoch()` for cheap change detection.** Every write increments `environment()->epoch()`, letting you refresh cached values only when something changed instead of deserializing every cycle. The Python bridge uses the same mechanism.
+- **Treat keys as a public schema.** Environment values are visible in the **Environment** tile, so choose clear, stable names rather than using the environment as scratch space.
+- **Keep types consistent.** Python writes coerce to whatever type is already stored, so seeding a key with exact C++ widths (such as `F32` gain or `std::vector<CF32>` taps) preserves those widths across Python edits. Native `set()` calls overwrite the stored value verbatim, so C++ writers are responsible for maintaining consistent types.
 
-The Python view of the environment, including the write tracking and rollback semantics, is covered in [Flowgraph Environment](/docs/python-block#flowgraph-environment).
+For Python write tracking and rollback details, see [Flowgraph Environment](/docs/python-context#flowgraph-environment) in the Python Context API guide.
 
-### Live Markdown
+### Live Markdown in Note Blocks
 
-Note blocks can display environment values while the flowgraph runs. Write a placeholder with the key path and an optional format specification:
+Note blocks can interpolate live environment values directly into formatted Markdown using `${env.<path>}` placeholders with optional Python-style format specifiers:
 
 ```markdown
 The SNR is **${env.receiver_status.snr:.1f} dB** and the lock state is ${env.receiver_status.locked}.
 ```
 
-Paths use dots for nested fields and brackets for indices, with negative indices counting from the end. The format specification follows the Python syntax. Values that are not available yet render as `--`.
+Paths navigate nested fields with dots and sequence elements with brackets (including negative indices counting from the end). Unavailable values display as `--`.
 
-A `[*]` wildcard repeats the line once per entry, which builds a table from a list:
+Use a `[*]` wildcard to repeat a line once per element, turning a list into a live table:
 
 ```markdown
 | Station | Freq (MHz) |
@@ -86,7 +96,7 @@ A `[*]` wildcard repeats the line once per entry, which builds a table from a li
 | ${env.stations.list[*].name} | ${env.stations.list[*].freq:.3f} |
 ```
 
-A fenced block tagged `stats` renders one tile per line, with a label, a value, and an optional tone such as green or red:
+Use a fenced `stats` block to render dashboard tiles (one per line: `Label | Value | Optional Tone` such as `green` or `red`):
 
 ````markdown
 ```stats
@@ -97,7 +107,7 @@ Uptime | ${env.receiver.uptime:.0f} s
 
 ## Tensor Attributes
 
-Attributes are named values attached to a tensor, and they travel wherever the tensor is connected. Producers set them when the tensor is created or when the described property changes, and every downstream consumer reads them from its input:
+Attributes are named values attached to a tensor that travel along every wire connected to it. Producers set them during `create()` (or whenever a stream property changes), and downstream blocks read them from their input tensors:
 
 ```cpp
 Result create() override {
@@ -110,7 +120,7 @@ Result create() override {
 }
 ```
 
-Consumers read with `attribute()` and friends:
+Consumers inspect attributes with `hasAttribute()` and `attribute()`:
 
 ```cpp
 const auto& signal = inputs().at("signal").tensor;
@@ -119,38 +129,59 @@ if (signal.hasAttribute("sampleRate")) {
 }
 ```
 
-Attributes do not propagate through a block automatically. A block that transforms a stream and wants to preserve its description copies what applies, either selectively with `setAttribute` or wholesale with `propagateAttributes(source)`, and then overrides what it changed. A decimator, for example, propagates the input attributes and rewrites `sampleRate`.
+Attributes do not propagate across blocks automatically. A processing block that wants to preserve upstream metadata copies what still applies, either selectively with `setAttribute()` or wholesale with `propagateAttributes(source)`, and then updates anything it changed. A decimator, for instance, propagates input attributes and divides `sampleRate`.
 
 ### Sample Scale
 
-The `sampleScale` attribute tells consumers how to read integer samples as normalized floating point. It is a finite, positive `F32` factor, applied after unsigned samples drop the midpoint of their storage type, such as 128 for CU8. A producer of raw integer samples sets it to one over the real full scale of the data, such as 1/2048 for 12-bit samples stored in CI16, and keeps it fixed for the life of the stream.
+The `sampleScale` attribute tells downstream consumers how to interpret integer samples as normalized floating-point values. It is a finite, positive `F32` multiplier applied after unsigned integer types subtract their midpoint (such as `128` for `CU8`).
 
-Cast multiplies integer input by the factor when converting to a float type and writes a factor of 1 on the float output. When the input carries the attribute, an integer output gets the factor that keeps the same level in the new type, and a float input cast to an integer type gets one over the full scale of that type. Without the attribute, Cast uses the full scale of the storage type.
+A producer of raw integer samples sets `sampleScale` to `1 / fullScale` (for example, `1/2048` for 12-bit samples stored in `CI16`) and keeps it constant for the lifetime of the stream.
+
+The **Cast** block honors `sampleScale` automatically:
+
+- **Integer to float:** Multiplies samples by `sampleScale` and writes `sampleScale = 1` on the float output.
+- **Integer to integer:** Adjusts `sampleScale` on the output to preserve the same normalized signal level in the new integer type.
+- **Float to integer:** Sets `sampleScale` to one over the full scale of the destination integer type.
+- **Missing attribute:** Falls back to the full scale of the storage type.
 
 ### Signal Axes
 
-Signal tensors describe their layout with three standard attributes. The `sampleAxis` attribute identifies the dimension processed as signal samples and is required by consumers that operate on sample sequences. A rank-one tensor with no signal-axis attributes implicitly uses axis `0` as its sample axis. The `batchAxis` attribute optionally identifies ordered element windows processed together, while `channelAxis` identifies independent channels. A tensor containing channel values but no sample dimension may set only `channelAxis`, with an optional `batchAxis`; consumers explicitly declare whether they support this channel-only layout. No other axis meaning is inferred from tensor shape.
+Signal tensors describe the meaning of their dimensions through three standard attributes:
 
-Each value is a zero-based axis index stored as exactly `Index` (the `U64` index type). Values must be in range and two roles cannot refer to the same axis. For example, `[batch, channels, samples]` uses `batchAxis=Index{0}`, `channelAxis=Index{1}`, and `sampleAxis=Index{2}`. A rank-one producer may still publish `sampleAxis=Index{0}` explicitly. Other integer types, including `I64`, do not satisfy the contract.
+- The `sampleAxis` attribute identifies the sample dimension processed by sequence-oriented DSP blocks. A rank-one tensor with no axis attributes implicitly treats axis `0` as its sample axis.
+- The `batchAxis` attribute optionally identifies ordered frames processed together.
+- The `channelAxis` attribute optionally identifies independent channels. A channel-only tensor without samples may set only `channelAxis` (plus an optional `batchAxis`), and consumers explicitly declare whether they accept channel-only layouts.
 
-Sample-oriented signal-processing modules resolve this metadata with `ResolveSignalAxes` instead of guessing from rank or position. They process `sampleAxis` independently across other dimensions unless they explicitly sequence batches or consume channels. Consumers that support channel-only tensors validate the optional roles with `MapSignalAxes`. Producers and shape-preserving modules use `SetSignalAxes` to publish or preserve the roles.
+No other axis semantics are inferred from tensor shape. Every axis index must be stored as an exact zero-based `Index` (`U64`, never `I64`), within the tensor's rank, with no two roles pointing to the same dimension. For example, a `[batch, channels, samples]` tensor sets `batchAxis=Index{0}`, `channelAxis=Index{1}`, and `sampleAxis=Index{2}`. Rank-one producers may still publish `sampleAxis=Index{0}` explicitly.
 
-The Signal Axes block assigns these roles to an existing tensor without copying or reordering its data. Its positional transform notation is `[B, C, S, _, *]`: `B`, `C`, and `S` assign batch, channel, and sample; `_` leaves a dimension without an explicit role; and `*` preserves the valid input role currently assigned to that dimension. Each resulting role may appear once, omitted trailing dimensions have no explicit role, and a layout containing only `_` entries clears all three stored roles. A conflict such as assigning a role on one axis while inheriting the same role from another is rejected. An untagged rank-one result remains implicitly sampled under the rule above. Leaving the layout blank validates and preserves all input metadata unchanged, while an explicit layout without `*` can replace malformed input roles. Use structural blocks such as Slice, Squeeze Dims, or Permutation separately when the tensor shape or dimension order must also change.
+Use the framework helpers instead of guessing from tensor rank:
 
-Structural tensor operators remain explicitly axis-configured because selecting, inserting, removing, or reordering dimensions is their operation. Built-in structural blocks remap `sampleAxis`, `batchAxis`, and `channelAxis` to the output axes, or remove a role when its dimension no longer exists or a reshape makes the correspondence ambiguous. Custom blocks must do the same rather than copying positional attributes unchanged.
+- **Sample-oriented consumers** call `ResolveSignalAxes()` and process `sampleAxis` independently across other dimensions unless they explicitly sequence batches or combine channels.
+- **Channel-only consumers** validate optional roles with `MapSignalAxes()`.
+- **Producers and shape-preserving modules** publish or preserve roles with `SetSignalAxes()`.
 
-Hints:
+#### The Signal Axes Block
 
-- **Stick to the established names.** Blocks across the tree already use `sampleRate` and `frequency`, and the UI pin tooltips display whatever is attached. Inventing a second spelling for an existing concept breaks interoperability silently.
-- **Attributes are per tensor, not per cycle.** They describe the stream, not the current buffer. Update them when the property changes, such as after a retune, and leave them alone otherwise. Change detection downstream can then key off the value cheaply.
-- **Mind the stored width when reading.** An attribute holds exactly the type the producer stored, and `std::any_cast` throws on a mismatch, so an `F32` sample rate cannot be read as `F64`. Check the type or agree on widths for shared names. Blocks in the tree store `sampleRate` and `frequency` at different widths today, so defensive reads are the safe habit.
-- **Python assignments use their concrete type.** Writing `np.float32` to `ctx.output_attrs` stores `F32`, just as passing `F32` to C++ `setAttribute` does. Reassignment replaces the previous type rather than coercing to it; plain Python `float` stores `F64`.
+Users can assign or fix axis roles in a flowgraph without copying or reordering data using the **Signal Axes** block with positional `[B, C, S, _, *]` notation:
 
-Python code sees the same values through `ctx.input_attrs` and `ctx.output_attrs`, described in [Tensor Attributes](/docs/python-block#tensor-attributes).
+- Letters `B`, `C`, and `S` assign batch, channel, and sample roles.
+- An underscore (`_`) leaves a dimension unlabeled.
+- An asterisk (`*`) preserves the valid input role already on that dimension.
+
+Each role may appear at most once, omitted trailing dimensions carry no explicit role, and a layout containing only `_` clears all three roles. Conflicting assignments (such as assigning a role on one axis while inheriting the same role via `*` on another) are rejected. An untagged rank-one output still remains implicitly sampled. Leaving the layout empty validates and preserves all input metadata unchanged, whereas an explicit layout without `*` can replace malformed input roles. To change tensor shape or dimension order, pair it with structural blocks like Slice, Squeeze Dims, or Permutation.
+
+Structural tensor blocks remain explicitly axis-configured because modifying dimensions is their job. Built-in structural blocks remap `sampleAxis`, `batchAxis`, and `channelAxis` to the output layout (or drop a role when its dimension disappears or becomes ambiguous). Custom structural blocks must do the same rather than copying stale axis indices.
+
+### Attribute Best Practices
+
+- **Reuse established names.** Built-in blocks and UI pin tooltips expect standard names like `sampleRate` and `frequency`. Inventing alternate spellings silently breaks interoperability.
+- **Update only on stream changes.** Attributes describe the stream, not individual frames. Update them when a property actually changes (such as retuning a radio) so downstream change detection stays fast.
+- **Guard against width mismatches.** Because `std::any_cast` throws if types differ, an `F32` attribute cannot be read as `F64`. Agree on widths for shared names and read defensively, as some blocks in the tree currently store `sampleRate` and `frequency` at different widths.
+- **Remember concrete Python types.** Assigning `np.float32` to `ctx.output_attrs` stores `F32`, while plain Python `float` stores `F64`, replacing the previous type rather than coercing to it (see [Tensor Attributes](/docs/python-context#tensor-attributes)).
 
 ## Block Metrics
 
-Metrics are read-only values a block publishes about itself. They are defined in `define()` alongside the block's inputs and outputs, and each metric is a callable evaluated when somebody looks:
+Metrics are read-only status values a block publishes about itself. Register them in `define()` alongside ports and config fields, providing a callback that computes the current value on demand:
 
 ```cpp
 Result define() override {
@@ -175,18 +206,49 @@ Result define() override {
 }
 ```
 
-Choose a display format based on what you want to show:
+### Supported Display Formats
 
-- **Text labels** are useful for readings such as "12.3 MB/s" or "Connected". Set the format's `type` to `label` and return a string containing the text you want to display. Convert numeric values to text first.
-- **Progress bars** work well for file positions, buffer usage, and similar measurements. Set the type to `progressbar` and return a pair containing the display text and a fraction between 0 and 1. To turn the bar amber or red when a reading needs attention, add `warning_above` and `error_above` for readings where higher is worse, or `warning_below` and `error_below` for readings where lower is worse. Return NaN as the fraction while there is no reading yet, which leaves the bar empty and uncolored.
-- **Tables** let you show several related values in rows and columns. Set the type to `table` and return a map with `columns` for the column names and `rows` for the cell text. Each row needs one cell per column. You can build both from vectors using `Parser::Serialize`, and the cell text can include tabs and line breaks.
+| Format `type` | Expected Return Value | Options and Behavior |
+|---|---|---|
+| `label` | `std::string` | Displays formatted text such as `"12.3 MB/s"` or `"Connected"`. Convert numbers to strings first. |
+| `progressbar` | `std::pair<std::string, F32>` | Displays a label and a fill fraction from `0` to `1`. Add `warning_above` or `error_above` (higher is worse), or `warning_below` or `error_below` (lower is worse) to color the bar amber or red. Return `NaN` when no reading is available yet to keep the bar empty and uncolored. |
+| `table` | `Parser::Map` with `columns` and `rows` | Renders tabular readings with one cell per column per row. Build vectors with `Parser::Serialize`, and note that cell strings may include tabs and line breaks. |
 
-Metrics appear in the node by default. Set `visibility` to `internal` when a metric is intended for a dedicated view, as with runtime timing and Python diagnostics. This hides it from the node body but keeps it available to code. You can still read it from C++, or from Python when its value can be converted. The visibility setting is only available for metrics.
+Metrics render inside the block node by default. Set `visibility` to `internal` for metrics meant for dedicated views (such as runtime timing or Python diagnostics). Internal metrics stay hidden from the node body while remaining readable from C++ and from Python (when convertible). The `visibility` property applies to metrics only.
 
-Consumers read metrics through `Flowgraph::View::metrics(blockName, entries)`. From Python, use the `ctx.metrics` mapping described in [Block Metrics](/docs/python-block#block-metrics).
+Other C++ code reads metrics via `Flowgraph::View::metrics(blockName, entries)`. Python scripts read them through `ctx.metrics` (see [Block Metrics](/docs/python-context#block-metrics)).
 
-Hints:
+### Metric Best Practices
 
-- **Keep the lambdas cheap and safe.** They run outside your compute path, potentially every UI frame, and on a different thread than compute. Return cached values updated by compute rather than computing on demand, and guard any shared state accordingly.
-- **Displayed metrics are strings, programmatic values may deserve another channel.** A formatted string such as `"12.3 MB/s"` reads well in the node but forces every programmatic consumer to parse it, while a raw numeric metric reaches Python with its native type but renders as invalid in the label view. When a value matters to both audiences, publish the display string as the metric and mirror the raw number into the environment.
-- **Metrics are pull, not push.** Nothing is stored or timestamped, and a metric that nobody reads costs nothing. If a value needs history or must outlive the block, it belongs in the environment instead.
+- **Keep callbacks fast and thread-safe.** Metric lambdas run outside the compute path on the UI thread, potentially every frame. Return cached values updated by compute and guard shared state appropriately.
+- **Separate human display from machine data.** Formatted strings like `"12.3 MB/s"` look great in nodes though they force code consumers to parse text, whereas raw numbers reach Python cleanly though they fail in a `label` widget. When both audiences need a value, publish the formatted string as a metric and mirror the raw number into the environment.
+- **Metrics are pull-only.** Nothing is stored or timestamped, and an unread metric costs nothing. If a value needs history or must outlive the block, store it in the environment instead.
+
+## Type Conversion
+
+Metadata crossing between C++ and Python (in `ctx.env`, `ctx.input_attrs`, `ctx.output_attrs`, and metric `"value"` fields) converts using the rules below. When NumPy is importable, numeric types keep their exact bit widths across round trips. Without NumPy, reads fall back to plain Python types.
+
+### C++ to Python (Reading)
+
+| C++ Type | Python (With NumPy) | Python (Fallback) |
+|---|---|---|
+| `F32`, `F64` | `np.float32`, `np.float64` | `float` |
+| `I8` to `I64`, `U8` to `U64` | `np.int8` to `np.uint64` | `int` |
+| `CF32`, `CF64` | `np.complex64`, `np.complex128` | `complex` |
+| `bool` | `bool` | `bool` |
+| `std::string` | `str` | `str` |
+| `std::vector<U64/F32/F64/CF32/CF64>` | Read-only `np.ndarray` of matching dtype | `tuple` |
+| `Parser::Map` | `dict` (recursive) | `dict` (recursive) |
+| `Parser::Sequence` | `tuple` (recursive) | `tuple` (recursive) |
+| null | `None` | `None` |
+
+Typed vectors transfer as contiguous raw buffers in both directions (one buffer copy, zero per-element Python objects). Because returned arrays are read-only, copy them before modifying.
+
+### Python to C++ (Writing)
+
+- **Existing environment entries keep their schema.** Writing a number onto an existing environment entry coerces it to the stored width: an `F32` stays `F32`, integers are range-checked strictly, floats only fit integer slots when integral, and complex values with non-zero imaginary parts are rejected for real slots. Rejected writes roll back with a console warning rather than silently truncating. Writing a different category (such as a number over a string or a dict over a scalar) replaces the entry.
+- **Output attributes adopt the assigned type.** Just like C++ `setAttribute`, assigning to `ctx.output_attrs` replaces both value and type (`np.float32` stores `F32`, plain `float` stores `F64`).
+- **New environment entries use native widths.** Plain Python values map to `bool`, `I64` (`U64` above signed range), `F64`, `CF64`, and `str`. NumPy scalars keep their exact width (`np.float32` to `F32`, `np.int16` to `I16`, `np.complex64` to `CF32`). Homogeneous lists or 1D arrays of floats and complex numbers become typed vectors of the matching width. Non-negative integer collections become `std::vector<U64>` (no narrower integer vector exists), while mixed collections become generic sequences.
+- **Writing `None` always stores null**, whether at the top level of a value, inside a dict, or inside a sequence.
+
+Multi-dimensional arrays, half-precision floats (use tensors for bulk data), and framework types (`Range`, `Extent2D`, `Tensor`, and device enums) are not supported in metadata. They are skipped on read and rejected with a console warning on write.

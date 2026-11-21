@@ -1,31 +1,31 @@
 ---
 title: Acknowledgments
 description: Contributors and third-party software used by CyberEther.
-order: 121
+order: 920
 category: Resources
 ---
 
-CyberEther would not be possible without the contributions and support of many individuals and open source projects.
+CyberEther is made possible by the people who contribute to it and the open-source projects it builds upon.
 
 ## Contributors
 
-- **Luigi Cruz** ([@luigicruz](https://twitter.com/luigifcruz)) - Creator and maintainer of CyberEther.
-- **Paulo Dutra** ([@DutraCGI](https://twitter.com/DutraCGI)) - Feedback and Windows testing.
-- **Richard Elkins** ([@texadactyl](https://github.com/texadactyl)) - Curated issues.
-- **Chase Valentine** ([@cvalentine99](https://github.com/cvalentine99)) - SoapySDR fixes for uSDR and xMASS radios.
+- **Luigi Cruz** ([@luigicruz](https://twitter.com/luigifcruz)): Creator and maintainer of CyberEther.
+- **Paulo Dutra** ([@DutraCGI](https://twitter.com/DutraCGI)): Feedback and Windows testing.
+- **Richard Elkins** ([@texadactyl](https://github.com/texadactyl)): Curated issues.
+- **Chase Valentine** ([@cvalentine99](https://github.com/cvalentine99)): SoapySDR fixes for uSDR and xMASS radios.
 
 <!-- [NEW CONTRIBUTOR HOOK] -->
 
 ## Third-Party Software
 
-CyberEther uses the following open-source libraries.
+CyberEther incorporates the following open-source libraries, fonts, and datasets. Expand any entry below the summary table to read its full license text.
 
 | Library | Purpose | License |
 |---------|---------|---------|
 | [Miniaudio](https://miniaud.io/) | Audio playback and capture. | MIT |
 | [PocketFFT](https://gitlab.mpcdf.mpg.de/mtr/pocketfft) | Fast Fourier Transform on CPU. | BSD-3-Clause |
-| [RapidYAML](https://github.com/biojppm/rapidyaml) | YAML file parser. | MIT |
-| [toml++](https://github.com/marzer/tomlplusplus) | TOML file parser. | MIT |
+| [RapidYAML](https://github.com/biojppm/rapidyaml) | Fast YAML file parser. | MIT |
+| [toml++](https://github.com/marzer/tomlplusplus) | Lightweight TOML file parser. | MIT |
 | [vkFFT](https://github.com/DTolm/VkFFT) | Fast Fourier Transform on GPU. | MIT |
 | [stb](https://github.com/nothings/stb) | Image loading, font rasterization, and font decompression. | MIT |
 | [fmtlib](https://github.com/fmtlib/fmt) | Text formatting and logging. | MIT |
@@ -38,23 +38,23 @@ CyberEther uses the following open-source libraries.
 | [KISS FFT](https://github.com/mborgerding/kissfft) | Fast Fourier Transform used inside LimeSuiteNG. | BSD-3-Clause |
 | [rang](https://github.com/agauniyal/rang) | Terminal colors used inside LimeSuiteNG. | Unlicense |
 | [cpp-feather-ini-parser](https://github.com/Turbine1991/cpp-feather-ini-parser) | INI parser used inside LimeSuiteNG. | MIT |
-| [Analog Devices no-OS](https://github.com/analogdevicesinc/no-OS) | AD936x transceiver driver for bladeRF 2.0 micro. | Analog Devices BSD-style license |
+| [Analog Devices no-OS](https://github.com/analogdevicesinc/no-OS) | Transceiver driver (AD936x) for bladeRF 2.0 micro. | Analog Devices BSD-style license |
 | [libiio](https://github.com/analogdevicesinc/libiio) | Communication with PlutoSDR devices. | LGPL-2.1-or-later |
-| [libad9361-iio](https://github.com/analogdevicesinc/libad9361-iio) | AD9361 sample rate and filter setup for PlutoSDR. | LGPL-2.1-or-later |
-| [libxml2](https://gitlab.gnome.org/GNOME/libxml2) | XML parsing for libiio device descriptions. | MIT |
+| [libad9361-iio](https://github.com/analogdevicesinc/libad9361-iio) | Sample rate and filter setup (AD9361) for PlutoSDR. | LGPL-2.1-or-later |
+| [libxml2](https://gitlab.gnome.org/GNOME/libxml2) | Parsing of XML device descriptions for libiio. | MIT |
 | [BirriaSDR](https://github.com/luigifcruz/BirriaSDR) | Communication with MT7921AU Wi-Fi dongles used as receivers. | MIT, BSD-3-Clause-Clear |
-| [libmodes](https://github.com/watson/libmodes) | ADS-B and Mode S message decoding. | BSD-2-Clause |
+| [libmodes](https://github.com/watson/libmodes) | Decoding of ADS-B and Mode S messages. | BSD-2-Clause |
 | [tree-sitter](https://github.com/tree-sitter/tree-sitter) | Incremental source code parsing. | MIT |
 | [tree-sitter-python](https://github.com/tree-sitter/tree-sitter-python) | Python grammar for tree-sitter. | MIT |
 | [tree-sitter-markdown](https://github.com/tree-sitter-grammars/tree-sitter-markdown) | Markdown grammar for tree-sitter. | MIT |
-| [tree-sitter-yaml](https://github.com/tree-sitter-grammars/tree-sitter-yaml) | YAML grammar for tree-sitter. | MIT |
+| [tree-sitter-yaml](https://github.com/tree-sitter-grammars/tree-sitter-yaml) | Grammar for YAML syntax in tree-sitter. | MIT |
 | [tree-sitter-bash](https://github.com/tree-sitter/tree-sitter-bash) | Bash grammar for tree-sitter. | MIT |
-| [tree-sitter-cpp](https://github.com/tree-sitter/tree-sitter-cpp) | C++ grammar for tree-sitter. | MIT |
-| [tree-sitter-json](https://github.com/tree-sitter/tree-sitter-json) | JSON grammar for tree-sitter. | MIT |
+| [tree-sitter-cpp](https://github.com/tree-sitter/tree-sitter-cpp) | Grammar for C++ syntax in tree-sitter. | MIT |
+| [tree-sitter-json](https://github.com/tree-sitter/tree-sitter-json) | Grammar for JSON syntax in tree-sitter. | MIT |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) | Machine learning inference runtime. | MIT |
 | [GLFW](https://www.glfw.org/) | Window and input handling. | zlib/libpng |
 | [spirv-cross](https://github.com/KhronosGroup/SPIRV-Cross) | Shader conversion to Metal. | Apache-2.0 |
-| [Apple metal-cpp](https://developer.apple.com/metal/cpp/) | C++ bindings for the Metal backend. | Apache-2.0 |
+| [Apple metal-cpp](https://developer.apple.com/metal/cpp/) | Bindings in C++ for the Metal backend. | Apache-2.0 |
 | [Nanobench](https://nanobench.ankerl.com/) | Performance benchmarking tools. | MIT |
 | [glslang](https://github.com/KhronosGroup/glslang) | Shader compilation to SPIR-V. | BSD-3-Clause |
 | [naga](https://github.com/gfx-rs/naga) | Shader conversion to WGSL. | Apache-2.0 |
@@ -63,23 +63,23 @@ CyberEther uses the following open-source libraries.
 | [libffi](https://sourceware.org/libffi/) | Foreign function interface support for GLib. | MIT |
 | [GLib](https://gitlab.gnome.org/GNOME/glib) | Low-level utility library used by GStreamer. | LGPL-2.1-or-later |
 | [libsrtp2](https://github.com/cisco/libsrtp) | Secure RTP support for GStreamer WebRTC. | BSD-3-Clause |
-| [libvpx](https://chromium.googlesource.com/webm/libvpx) | VP8/VP9 codec support for GStreamer. | BSD-3-Clause |
-| [libnice](https://libnice.freedesktop.org/) | ICE networking support for GStreamer WebRTC. | LGPL-2.1-or-later |
+| [libvpx](https://chromium.googlesource.com/webm/libvpx) | Codec support for VP8 and VP9 in GStreamer. | BSD-3-Clause |
+| [libnice](https://libnice.freedesktop.org/) | Networking support for ICE in GStreamer WebRTC. | LGPL-2.1-or-later |
 | [libgudev](https://gitlab.gnome.org/GNOME/libgudev/) | GObject bindings for libudev used by GStreamer. | LGPL-2.1-or-later |
 | [gl-headers](https://gitlab.freedesktop.org/gstreamer/meson-ports/gl-headers) | OpenGL and EGL headers for GStreamer GL support. | MIT/Apache-2.0 |
 | [libusb](https://libusb.info/) | Communication with USB devices. | LGPL-2.1 |
-| [libqrencode](https://fukuchi.org/works/qrencode/) | QR code generation for remote sessions. | LGPL-2.1-or-later |
+| [libqrencode](https://fukuchi.org/works/qrencode/) | Generation of QR codes for remote sessions. | LGPL-2.1-or-later |
 | [zlib](https://zlib.net/) | Gzip decompression for geodata. | zlib |
-| [OpenSSL](https://www.openssl.org/) | TLS and cryptography support. | Apache-2.0 |
+| [OpenSSL](https://www.openssl.org/) | Cryptography and TLS support. | Apache-2.0 |
 | [Catch2](https://github.com/catchorg/Catch2) | Unit testing framework. | Boost |
-| [Lucide](https://lucide.dev/) | Icon font used in the GUI. | ISC |
+| [Lucide](https://lucide.dev/) | Icon font used in the interface. | ISC |
 | [Font Awesome](https://fontawesome.com/) | Node icons used in the flowgraph editor. | Font Awesome Free License |
-| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | Monospace font for the GUI. | OFL-1.1 |
-| [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | UI font for the GUI. | OFL-1.1 |
-| [Inter](https://github.com/rsms/inter) | Sans-serif UI font for the GUI. | OFL-1.1 |
+| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | Monospace font for the interface. | OFL-1.1 |
+| [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | Primary interface font. | OFL-1.1 |
+| [Inter](https://github.com/rsms/inter) | Sans-serif interface font. | OFL-1.1 |
 | [GLM](https://github.com/g-truc/glm) | Vector and matrix math. | Happy Bunny/MIT |
-| [cpp-httplib](https://github.com/yhirose/cpp-httplib) | Server for REST API. | MIT |
-| [nlohmann/json](https://github.com/nlohmann/json) | JSON file parser. | MIT |
+| [cpp-httplib](https://github.com/yhirose/cpp-httplib) | Server for REST endpoints. | MIT |
+| [nlohmann/json](https://github.com/nlohmann/json) | Modern JSON file parser. | MIT |
 | [nanobind](https://github.com/wjakob/nanobind) | Python bindings support. | BSD-3-Clause |
 | [robin-map](https://github.com/Tessil/robin-map) | Hash map used internally by nanobind. | MIT |
 | [Google Turbo colormap](https://research.google/blog/turbo-an-improved-rainbow-colormap-for-visualization/) | Colormap used by visualization modules. | Apache-2.0 |
@@ -185,7 +185,7 @@ DEALINGS IN THE SOFTWARE.
 </details>
 
 ### toml++
-TOML parser and serializer. Licensed under MIT. [GitHub](https://github.com/marzer/tomlplusplus)
+A TOML parser and serializer. Licensed under MIT. [GitHub](https://github.com/marzer/tomlplusplus)
 
 <details>
   <summary>View License</summary>
@@ -1607,7 +1607,7 @@ That's all there is to it!
 </details>
 
 ### Analog Devices no-OS
-AD936x transceiver driver used for bladeRF 2.0 micro support, with Nuand's adaptations from the bladeRF release. Licensed under the Analog Devices BSD-style license. [GitHub](https://github.com/analogdevicesinc/no-OS/tree/0bba46e6f6f75785a65d425ece37d0a04daf6157)
+Transceiver driver (AD936x) used for bladeRF 2.0 micro support, with Nuand's adaptations from the bladeRF release. Licensed under the Analog Devices BSD-style license. [GitHub](https://github.com/analogdevicesinc/no-OS/tree/0bba46e6f6f75785a65d425ece37d0a04daf6157)
 
 <details>
   <summary>View License</summary>
@@ -2629,7 +2629,7 @@ That's all there is to it!
 </details>
 
 ### libxml2
-XML parser. Used by libiio to read PlutoSDR device descriptions. Licensed under MIT. [GitLab](https://gitlab.gnome.org/GNOME/libxml2)
+An XML parser used by libiio to read PlutoSDR device descriptions. Licensed under MIT. [GitLab](https://gitlab.gnome.org/GNOME/libxml2)
 
 <details>
   <summary>View License</summary>
@@ -2732,7 +2732,7 @@ POSSIBILITY OF SUCH DAMAGE.
 </details>
 
 ### libmodes
-C library for decoding ADS-B and Mode S aircraft messages. Used by the ADS-B domain. Licensed under BSD-2-Clause. [GitHub](https://github.com/watson/libmodes)
+Library in C for decoding ADS-B and Mode S aircraft messages. Used by the ADS-B domain. Licensed under BSD-2-Clause. [GitHub](https://github.com/watson/libmodes)
 
 <details>
   <summary>View License</summary>
@@ -2861,7 +2861,7 @@ SOFTWARE.
 </details>
 
 ### tree-sitter-yaml
-YAML grammar for tree-sitter. Used for YAML code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter-grammars/tree-sitter-yaml)
+Grammar for YAML in tree-sitter. Used for YAML code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter-grammars/tree-sitter-yaml)
 
 <details>
   <summary>View License</summary>
@@ -2922,7 +2922,7 @@ SOFTWARE.
 </details>
 
 ### tree-sitter-cpp
-C++ grammar for tree-sitter. Used for C and C++ code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter/tree-sitter-cpp)
+Grammar for C++ in tree-sitter. Used for C and C++ code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter/tree-sitter-cpp)
 
 <details>
   <summary>View License</summary>
@@ -2953,7 +2953,7 @@ SOFTWARE.
 </details>
 
 ### tree-sitter-json
-JSON grammar for tree-sitter. Used for JSON code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter/tree-sitter-json)
+Grammar for JSON in tree-sitter. Used for JSON code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter/tree-sitter-json)
 
 <details>
   <summary>View License</summary>
@@ -5714,7 +5714,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 </details>
 
 ### libvpx
-VP8/VP9 codec library. Used by GStreamer video support. Licensed under BSD-3-Clause. [GitHub](https://github.com/webmproject/libvpx)
+Codec library for VP8 and VP9. Used by GStreamer video support. Licensed under BSD-3-Clause. [GitHub](https://github.com/webmproject/libvpx)
 
 <details>
   <summary>View License</summary>
@@ -5754,7 +5754,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 </details>
 
 ### libnice
-ICE networking library. Used by GStreamer WebRTC support. Licensed under LGPL-2.1-or-later. [Website](https://libnice.freedesktop.org/)
+Networking library for ICE. Used by GStreamer WebRTC support. Licensed under LGPL-2.1-or-later. [Website](https://libnice.freedesktop.org/)
 
 <details>
   <summary>View License</summary>
@@ -7299,7 +7299,7 @@ Copyright notice:
 </details>
 
 ### OpenSSL
-TLS and cryptography toolkit. Used for TLS and cryptography support. Licensed under Apache-2.0. [Website](https://www.openssl.org/) [GitHub](https://github.com/openssl/openssl)
+Cryptography and TLS toolkit. Used for TLS and cryptography support. Licensed under Apache-2.0. [Website](https://www.openssl.org/) [GitHub](https://github.com/openssl/openssl)
 
 <details>
   <summary>View License</summary>

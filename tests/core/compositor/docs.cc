@@ -203,3 +203,93 @@ TEST_CASE("Docs search keeps inline code text verbatim", "[core][compositor][doc
     CHECK(hits[0].snippet == "Wrap it in TypedTensor<T> or [a](b) before use.");
     CHECK(docs.search("[a](b)", 10).size() == 1);
 }
+
+TEST_CASE("Bundled docs internal links resolve to valid pages and heading anchors", "[core][compositor][docs]") {
+    const auto& docs = Docs::Bundled();
+
+    auto forEachNonCodeLine = [](const std::string& body, auto&& fn) {
+        size_t fenceLen = 0;
+        size_t pos = 0;
+        while (pos < body.size()) {
+            const size_t end = body.find('\n', pos);
+            const std::string_view line = (end == std::string::npos)
+                ? std::string_view(body).substr(pos)
+                : std::string_view(body).substr(pos, end - pos);
+            size_t ticks = 0;
+            while (ticks < line.size() && line[ticks] == '`') {
+                ++ticks;
+            }
+            if (ticks >= 3) {
+                if (fenceLen == 0) {
+                    fenceLen = ticks;
+                } else if (ticks >= fenceLen) {
+                    fenceLen = 0;
+                }
+            } else if (fenceLen == 0) {
+                fn(line);
+            }
+            if (end == std::string::npos) {
+                break;
+            }
+            pos = end + 1;
+        }
+    };
+
+    auto pageAnchors = [&](const std::string& body) {
+        std::vector<std::string> anchors;
+        forEachNonCodeLine(body, [&](const std::string_view line) {
+            if (!line.empty() && line[0] == '#') {
+                size_t hashes = 0;
+                while (hashes < line.size() && line[hashes] == '#') {
+                    ++hashes;
+                }
+                if (hashes > 0 && hashes < line.size() && line[hashes] == ' ') {
+                    anchors.push_back(Docs::Anchor(std::string(line.substr(hashes + 1))));
+                }
+            }
+        });
+        return anchors;
+    };
+
+    for (const auto& page : docs.pages()) {
+        forEachNonCodeLine(page.body, [&](const std::string_view line) {
+            size_t search = 0;
+            while ((search = line.find("](", search)) != std::string_view::npos) {
+                const size_t urlStart = search + 2;
+                const size_t urlEnd = line.find(')', urlStart);
+                if (urlEnd == std::string_view::npos) {
+                    break;
+                }
+                const std::string url(line.substr(urlStart, urlEnd - urlStart));
+                search = urlEnd + 1;
+
+                std::string targetSlug;
+                std::string targetAnchor;
+                if (!url.empty() && url[0] == '#') {
+                    targetSlug = page.slug;
+                    targetAnchor = url.substr(1);
+                } else if (const auto resolved = Docs::Resolve(url); resolved.has_value()) {
+                    targetSlug = resolved->slug;
+                    targetAnchor = resolved->anchor;
+                } else {
+                    continue;
+                }
+
+                INFO("Broken link in " << page.slug << ": " << url);
+                const auto targetIdx = docs.find(targetSlug);
+                REQUIRE(targetIdx.has_value());
+                if (!targetAnchor.empty()) {
+                    const auto anchors = pageAnchors(docs.pages()[*targetIdx].body);
+                    bool found = false;
+                    for (const auto& anchor : anchors) {
+                        if (anchor == targetAnchor) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    CHECK(found);
+                }
+            }
+        });
+    }
+}
