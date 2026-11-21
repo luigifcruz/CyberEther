@@ -93,7 +93,7 @@ A `.cep` file is a standard `tar.gz` archive with a `.cep` extension containing 
 metadata:
   name: cyberether-blueprint-plugin
   version: 0.1.0
-  minimumJetstreamVersion: 1.19.2
+  minimumJetstreamVersion: 1.20.0
 
 targets:
   - path: targets/macos-arm64-cpu/cyberether_blueprint_plugin.dylib
@@ -167,7 +167,7 @@ Run `tools/bundler.py` from your plugin directory to assemble a `.cep` file manu
   --output build/cyberether_blueprint_plugin.cep \
   --name cyberether-blueprint-plugin \
   --version 0.1.0 \
-  --minimum-jetstream-version 1.19.2 \
+  --minimum-jetstream-version 1.20.0 \
   --target path=build/cyberether_blueprint_plugin.dylib,system=macos,device=cpu,arch=arm64 \
   --example examples/blueprint_gain.yml
 ```

@@ -24,7 +24,7 @@ void IntelligenceProviderView::update(Config config) {
     });
     header.update({
         .title = title,
-        .description = "Connect an OpenAI-compatible endpoint for agent chat.",
+        .description = "Connect a model provider endpoint for agent chat.",
     });
 
     std::vector<std::string> presetLabels;
@@ -91,14 +91,17 @@ void IntelligenceProviderView::update(Config config) {
     });
 
     apiTabs.update({
-        .items = {{.label = ChatCompletionsLabel}, {.label = ResponsesLabel}},
-        .selected = api == "responses" ? 1u : 0u,
+        .items = {{.label = ChatCompletionsLabel}, {.label = ResponsesLabel}, {.label = MessagesLabel}},
+        .selected = apiIndex(),
         .compact = true,
         .track = true,
         .onSelect = [this](U64 index) {
-            const std::string next = index == 1 ? "responses" : "chat_completions";
+            const std::string next = apiName(index);
             if (this->config.saving || api == next) {
                 return;
+            }
+            if (chatPath.empty() || chatPath == defaultChatPath(api)) {
+                chatPath = defaultChatPath(next);
             }
             api = next;
             markDirty();
@@ -296,9 +299,7 @@ Settings::Intelligence::Provider IntelligenceProviderView::buildProvider() const
     provider.name = name;
     provider.host = host;
     provider.api = api;
-    if (!chatPath.empty()) {
-        provider.chatPath = chatPath;
-    }
+    provider.chatPath = chatPath.empty() ? defaultChatPath(api) : chatPath;
     if (!modelsPath.empty()) {
         provider.modelsPath = modelsPath;
     }
@@ -312,6 +313,36 @@ Settings::Intelligence::Provider IntelligenceProviderView::buildProvider() const
 void IntelligenceProviderView::applyKeySource(const Settings::Intelligence::Provider& provider) {
     apiKeyEnv = provider.apiKeyEnv;
     keySource = !apiKeyEnv.empty() ? KeySource::Environment : KeySource::Keychain;
+}
+
+U64 IntelligenceProviderView::apiIndex() const {
+    if (api == "responses") {
+        return 1;
+    }
+    if (api == "messages") {
+        return 2;
+    }
+    return 0;
+}
+
+std::string IntelligenceProviderView::defaultChatPath(const std::string& name) {
+    if (name == "responses") {
+        return "/v1/responses";
+    }
+    if (name == "messages") {
+        return "/v1/messages";
+    }
+    return "/v1/chat/completions";
+}
+
+std::string IntelligenceProviderView::apiName(const U64 index) {
+    if (index == 1) {
+        return "responses";
+    }
+    if (index == 2) {
+        return "messages";
+    }
+    return "chat_completions";
 }
 
 std::string IntelligenceProviderView::keychainKey() const {

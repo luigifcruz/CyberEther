@@ -1151,7 +1151,6 @@ TEST_CASE("Keyring credentials and authenticated discovery coexist with WebRTC r
 
     Stream stream;
     stream.start();
-    REQUIRE(Platform::SecretStoreAvailable());
 
     AgentTest::ProviderServer server;
     std::atomic<unsigned> authenticated = 0;

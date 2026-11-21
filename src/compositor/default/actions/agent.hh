@@ -12,6 +12,7 @@
 #include "jetstream/config.hh"
 #include "jetstream/types.hh"
 #include "tools/random.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <chrono>

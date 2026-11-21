@@ -3,6 +3,7 @@
 #include "tools/random.hh"
 #include "tools/text.hh"
 
+#include <algorithm>
 #include <utility>
 
 namespace Jetstream::Agent {
@@ -39,6 +40,8 @@ void Session::Impl::reset() {
     context.reset();
     outputs = std::make_shared<Detail::OutputStore>();
     contextTokens = 0;
+    imageLimit.reset();
+    imageLimitKey.clear();
     sessionId = Random::HexToken();
     ++revision;
 }
@@ -130,6 +133,23 @@ void Session::Impl::publish(const Target target, const Turn& turn) {
     if (owns(target)) {
         context = std::move(retained);
     }
+}
+
+U64 Session::Impl::imageCap(const Target target, const U64 configured, const std::string& key) const {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (generation != target.generation || !imageLimit || imageLimitKey != key) {
+        return configured;
+    }
+    return std::min(configured, *imageLimit);
+}
+
+void Session::Impl::limitImages(const Target target, const U64 limit, const std::string& key) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (generation != target.generation) {
+        return;
+    }
+    imageLimit = imageLimitKey == key ? std::min(limit, imageLimit.value_or(limit)) : limit;
+    imageLimitKey = key;
 }
 
 Session::Session(LiveFactory live, AudioFactory audio)

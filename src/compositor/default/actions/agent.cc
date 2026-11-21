@@ -225,6 +225,7 @@ Result AgentActions::handle(const MailSaveAgentProvider& msg) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "Providers need a name and a base URL.");
         return Result::SUCCESS;
     }
+    const auto apiKey = Text::TrimBlank(msg.apiKey);
 
     const auto previousName = msg.replaceName.value_or(provider.name);
     const bool renamed = previousName != provider.name;
@@ -242,7 +243,7 @@ Result AgentActions::handle(const MailSaveAgentProvider& msg) {
 
     if (AgentProviders::External(provider)) {
         provider.apiKeyId = previous.apiKeyId;
-    } else if (!msg.apiKey.empty()) {
+    } else if (!apiKey.empty()) {
         if (previous.apiKeyId.empty()) {
             provider.apiKeyId = Random::HexToken();
         } else {
@@ -252,7 +253,7 @@ Result AgentActions::handle(const MailSaveAgentProvider& msg) {
                                  AgentProviders::Store,
                                  provider.apiKeyId,
                                  provider.host,
-                                 msg.apiKey);
+                                 apiKey);
     } else if (AgentProviders::Transferable(previous, provider)) {
         provider.apiKeyId = previous.apiKeyId;
     } else if (!previous.apiKeyId.empty()) {
@@ -305,8 +306,9 @@ Result AgentActions::handle(const MailTestAgentProvider& msg) {
         return Result::SUCCESS;
     }
 
+    const auto apiKey = Text::TrimBlank(msg.apiKey);
     std::optional<Settings::Intelligence::Provider> stored;
-    if (msg.apiKey.empty()) {
+    if (apiKey.empty()) {
         const auto& target = state.agent.providers.editTarget;
         const std::string& sourceName = target ? target->name : provider.name;
         auto source = AgentProviders(state.agent).find(sourceName);
@@ -323,7 +325,7 @@ Result AgentActions::handle(const MailTestAgentProvider& msg) {
     test.future = std::async(std::launch::async,
                              AgentProviders::Test,
                              std::move(provider),
-                             msg.apiKey,
+                             apiKey,
                              std::move(stored),
                              Cancelled(test.cancel));
     return Result::SUCCESS;

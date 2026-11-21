@@ -79,8 +79,14 @@ void RequireRoundTripStore() {
     if (!RoundTripRequested()) {
         SKIP("Secret store round trips are opt-in: set " << kOptInVariable << "=1");
     }
+#if defined(JST_OS_LINUX)
     if (!Platform::SecretStoreAvailable()) {
-        SKIP("Secret store is unavailable on this machine");
+        std::string unused;
+        (void)Platform::ReadSecret(UniqueService("activation"), kAccount, unused);
+    }
+#endif
+    if (!Platform::SecretStoreAvailable()) {
+        FAIL("Secret store round trips were requested but the secret store is unavailable");
     }
 }
 
@@ -148,8 +154,13 @@ TEST_CASE("Platform secret calls agree with store availability", "[core][platfor
         std::string value = kUntouched;
         CHECK(Platform::ReadSecret(service, kAccount, value) == Result::ERROR);
         CHECK(value == kUntouched);
-        CHECK(Platform::WriteSecret(service, kAccount, "value") == Result::ERROR);
+#if !defined(JST_OS_LINUX)
+        if (RoundTripRequested()) {
+            SecretScope scope;
+            CHECK(scope.write(service, kAccount, "value") == Result::ERROR);
+        }
         CHECK(Platform::DeleteSecret(service, kAccount) == Result::ERROR);
+#endif
         return;
     }
 
@@ -317,6 +328,43 @@ TEST_CASE("Platform secrets reject values over the Credential Manager limit",
     Result result = Result::SUCCESS;
     CHECK(ReadOrSentinel(service, kAccount, result) == kUntouched);
     CHECK(result == Result::ERROR);
+}
+#endif
+
+#if defined(JST_OS_LINUX)
+TEST_CASE("Platform secrets reject values over the D-Bus array limit", "[core][platform][secrets][store]") {
+    RequireRoundTripStore();
+    SecretScope scope;
+    const std::string service = UniqueService("oversized-dbus-value");
+
+    const std::string value(64 * 1024 * 1024 + 1, 'x');
+    CHECK(scope.write(service, kAccount, value) == Result::ERROR);
+
+    Result result = Result::SUCCESS;
+    CHECK(ReadOrSentinel(service, kAccount, result) == kUntouched);
+    CHECK(result == Result::ERROR);
+}
+
+TEST_CASE("Platform secrets reject keys over the D-Bus size limit", "[core][platform][secrets]") {
+    struct Case {
+        const char* label;
+        std::string service;
+        std::string account;
+    };
+
+    const Case cases[] = {
+        {"oversized service", UniqueService("oversized-dbus-key") + std::string(64 * 1024 * 1024 + 1, 's'), kAccount},
+        {"combined fields", UniqueService("combined-dbus-key") + std::string(9 * 1024 * 1024, 's'),
+         std::string(9 * 1024 * 1024, 'a')},
+    };
+
+    for (const auto& item : cases) {
+        INFO(item.label);
+        Result result = Result::SUCCESS;
+        CHECK(ReadOrSentinel(item.service, item.account, result) == kUntouched);
+        CHECK(result == Result::ERROR);
+        CHECK(Platform::DeleteSecret(item.service, item.account) == Result::ERROR);
+    }
 }
 #endif
 

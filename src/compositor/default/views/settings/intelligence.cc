@@ -125,7 +125,7 @@ void IntelligenceSettingsView::updateProviders() {
     });
     providersGroup.update({
         .title = "Providers",
-        .description = "OpenAI-compatible endpoints the agent can use.",
+        .description = "Model provider endpoints the agent can use.",
         .rows = std::move(rows),
         .empty = "No providers configured. Add one to enable the agent.",
         .action = &addProviderButton,

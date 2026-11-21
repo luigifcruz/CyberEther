@@ -22,6 +22,7 @@ namespace Jetstream {
 struct IntelligenceProviderView {
     static constexpr const char* ChatCompletionsLabel = "Chat Completions";
     static constexpr const char* ResponsesLabel = "Responses";
+    static constexpr const char* MessagesLabel = "Messages";
     static constexpr const char* KeychainLabel = "Keychain";
     static constexpr const char* EnvironmentLabel = "Environment";
 
@@ -63,6 +64,9 @@ struct IntelligenceProviderView {
     void reset();
     Settings::Intelligence::Provider buildProvider() const;
     void applyKeySource(const Settings::Intelligence::Provider& provider);
+    U64 apiIndex() const;
+    static std::string defaultChatPath(const std::string& name);
+    static std::string apiName(U64 index);
     std::string keychainKey() const;
     bool keySourceValid() const;
     std::string keyDescription() const;

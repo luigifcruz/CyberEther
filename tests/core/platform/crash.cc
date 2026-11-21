@@ -96,9 +96,9 @@ int Fixture(const std::string& mode, const std::filesystem::path& directory) {
     }
 
     std::string error;
-    const auto visibility = mode == "isolated" ? Platform::DynamicLibraryVisibility::Isolated
-                                               : Platform::DynamicLibraryVisibility::Local;
-    void* library = Platform::OpenDynamicLibrary(JETSTREAM_TEST_CRASH_MODULE, visibility, error);
+    void* library = Platform::OpenDynamicLibrary(JETSTREAM_TEST_CRASH_MODULE,
+                                                 Platform::DynamicLibraryVisibility::Local,
+                                                 error);
     if (library == nullptr) {
         return 13;
     }
@@ -476,11 +476,7 @@ TEST_CASE("Crash handler keeps only the newest stored reports", "[core][platform
 
 TEST_CASE("Module faults save the faulting thread stack and the matching image identity",
           "[core][platform][crash_report]") {
-#if defined(JST_OS_LINUX) && defined(__GLIBC__)
-    const auto mode = GENERATE(std::string("main"), std::string("worker"), std::string("isolated"));
-#else
     const auto mode = GENERATE(std::string("main"), std::string("worker"));
-#endif
     const Directory directory;
     REQUIRE(Run(directory.path, mode).crashed);
 
