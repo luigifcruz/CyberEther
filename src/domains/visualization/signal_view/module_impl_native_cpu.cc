@@ -18,6 +18,7 @@ struct SignalViewImplNativeCpu : public SignalViewImpl,
     Result create() final;
 
     Result presentInitialize() override;
+    Result presentCapture() override;
     Result presentSubmit() override;
     Result computeSubmit() override;
 
@@ -82,6 +83,10 @@ Result SignalViewImplNativeCpu::presentInitialize() {
 
 Buffer::Config SignalViewImplNativeCpu::renderStateBufferConfig() const {
     return {};
+}
+
+Result SignalViewImplNativeCpu::presentCapture() {
+    return capture();
 }
 
 Result SignalViewImplNativeCpu::presentSubmit() {

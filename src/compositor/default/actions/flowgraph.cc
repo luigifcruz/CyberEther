@@ -1,0 +1,1112 @@
+#include "flowgraph.hh"
+
+namespace Jetstream {
+
+FlowgraphActions::FlowgraphActions(DefaultCompositorState& state,
+                                   DefaultCompositorCallbacks& callbacks) :
+    state(state),
+    callbacks(callbacks) {}
+
+Result FlowgraphActions::handle(const MailNewFlowgraph&) {
+    auto inst = state.system.instance;
+    auto name = GenerateRandomFlowgraphName();
+
+    callbacks.enqueueCommand([inst, name]() -> Result {
+        std::shared_ptr<Flowgraph> flowgraph;
+        JST_CHECK(inst->flowgraphCreate(name, {}, flowgraph));
+        return Result::SUCCESS;
+    }, false);
+
+    state.interface.pendingFocusedFlowgraph = name;
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailOpenFlowgraph&) {
+    std::string path = startFolder("");
+    auto enqueueMail = callbacks.enqueueMail;
+    callbacks.requestFile({
+        .mode = FilePickerMode::Open,
+        .initialPath = path,
+        .extensions = {"yml", "yaml"},
+        .callback = [enqueueMail](std::string p) mutable {
+            enqueueMail(MailOpenFlowgraphPath{std::move(p)});
+        },
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailOpenFlowgraphPath& msg) {
+    if (msg.path.empty()) {
+        callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot open flowgraph due to empty path.");
+        if (msg.onComplete) {
+            msg.onComplete(Result::ERROR, nullptr);
+        }
+        return Result::SUCCESS;
+    }
+
+    if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
+        callbacks.notify(Sakura::ToastType::Error, 5000, "The selected file does not exist.");
+        if (msg.onComplete) {
+            msg.onComplete(Result::ERROR, nullptr);
+        }
+        return Result::SUCCESS;
+    }
+
+    auto inst = state.system.instance;
+    auto name = GenerateRandomFlowgraphName();
+    auto path = msg.path;
+    auto title = std::make_shared<std::string>();
+    auto created = std::make_shared<std::shared_ptr<Flowgraph>>();
+    auto enqueueMail = callbacks.enqueueMail;
+
+    callbacks.enqueueCommandWithCompletion([inst, name, path, title, created]() -> Result {
+        JST_CHECK(inst->flowgraphCreate(name, {}, *created));
+        JST_CHECK((*created)->importFromFile(path));
+        *title = (*created)->title();
+        return Result::SUCCESS;
+    }, false, [enqueueMail, path, title, created, onComplete = msg.onComplete](Result result) {
+        if (result == Result::SUCCESS) {
+            enqueueMail(MailRememberFlowgraph{.path = path, .title = *title});
+        }
+        if (onComplete) {
+            onComplete(result, *created);
+        }
+    });
+
+    state.interface.pendingFocusedFlowgraph = name;
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailDropFlowgraphFiles& msg) {
+    const auto found = msg.flowgraph.has_value() ? state.flowgraph.items.find(*msg.flowgraph)
+                                                 : state.flowgraph.items.end();
+    const auto flowgraph = found != state.flowgraph.items.end() ? found->second : nullptr;
+
+    std::vector<Parser::Map> readers;
+    bool unsupported = false;
+    bool unplaced = false;
+    for (const auto& path : msg.paths) {
+        const auto extension = Text::ToLower(Platform::PathToUtf8(Platform::PathFromUtf8(path).extension()));
+        const bool named = extension == ".yml" || extension == ".yaml";
+        if (named || (extension.empty() && LooksLikeFlowgraph(path))) {
+            JST_CHECK(handle(MailOpenFlowgraphPath{path}));
+            continue;
+        }
+
+        auto config = FileReaderConfig(path);
+        if (!config.has_value()) {
+            unsupported = true;
+        } else if (!flowgraph || !msg.gridPosition.has_value()) {
+            unplaced = true;
+        } else {
+            readers.push_back(std::move(*config));
+        }
+    }
+
+    if (!readers.empty()) {
+        callbacks.enqueueFlowgraphEdit({
+            .flowgraph = *msg.flowgraph,
+            .command = [flowgraph, origin = *msg.gridPosition, readers = std::move(readers)]() -> Result {
+                constexpr Extent2D<F32> offset = {40.0f, 40.0f};
+                for (U64 i = 0; i < readers.size(); ++i) {
+                    const auto name = Naming::UniqueName("file_reader", [&](const std::string& candidate) {
+                        return flowgraph->view().has(candidate);
+                    });
+                    const F32 step = static_cast<F32>(i);
+                    const NodeMeta nodeMeta = {origin.x + offset.x * step, origin.y + offset.y * step, 0.0f, 0.0f};
+                    flowgraph->metadata().set("node", nodeMeta, name);
+                    JST_CHECK_ALLOW(flowgraph->blockCreate(name, "file_reader", readers[i], {}, DeviceType::CPU,
+                                                          RuntimeType::NATIVE, "generic"),
+                                    Result::INCOMPLETE);
+                }
+                return Result::SUCCESS;
+            },
+        });
+    }
+
+    if (unsupported) {
+        callbacks.notify(Sakura::ToastType::Warning, 5000,
+                         "Only flowgraph files (.yml or .yaml) and SigMF, WAV, or raw I/Q recordings can be "
+                         "dropped here.");
+    }
+    if (unplaced) {
+        callbacks.notify(Sakura::ToastType::Info, 5000,
+                         "Drop recordings onto a flowgraph to add them as File Readers.");
+    }
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailOpenFlowgraphBlob& msg) {
+    return openBlob(msg.blob).has_value() ? Result::SUCCESS : Result::ERROR;
+}
+
+std::optional<std::string> FlowgraphActions::openBlob(std::vector<char> blob) {
+    if (blob.empty()) {
+        JST_ERROR("Failed to open flowgraph from blob due to invalid blob data.");
+        return std::nullopt;
+    }
+
+    auto inst = state.system.instance;
+    auto name = GenerateRandomFlowgraphName();
+
+    callbacks.enqueueCommandWithCompletion([inst, name, blob = std::move(blob)]() -> Result {
+        std::shared_ptr<Flowgraph> flowgraph;
+        JST_CHECK(inst->flowgraphCreate(name, {}, flowgraph));
+        JST_CHECK(flowgraph->importFromBlob(blob));
+        return Result::SUCCESS;
+    }, false, [this, name](Result result) {
+        if (result != Result::SUCCESS) {
+            WorkbenchActions::Forget(state, name);
+        }
+    });
+
+    state.interface.pendingFocusedFlowgraph = name;
+    return name;
+}
+
+Result FlowgraphActions::handle(const MailOpenFlowgraphExample& msg) {
+    const auto& flowgraphs = state.registry.flowgraphs;
+    const auto example = std::find_if(flowgraphs.begin(), flowgraphs.end(), [&](const auto& entry) {
+        return entry.key == msg.key;
+    });
+    if (example == flowgraphs.end()) {
+        callbacks.notify(Sakura::ToastType::Error, 5000, "The selected example is no longer available.");
+        return Result::SUCCESS;
+    }
+    const auto name = openBlob({example->content.begin(), example->content.end()});
+    if (!name.has_value()) {
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailFocusFlowgraph& msg) {
+    if (state.flowgraph.items.contains(msg.flowgraph)) {
+        state.interface.focusedFlowgraph = msg.flowgraph;
+        WorkbenchActions::Focus(state, std::nullopt);
+        if (msg.reveal) {
+            state.interface.requestedFlowgraph = msg.flowgraph;
+            ++state.interface.flowgraphRequests;
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSaveFlowgraph& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         "Cannot save flowgraph because it doesn't exist.");
+        return Result::SUCCESS;
+    }
+
+    const std::string currentPath = state.flowgraph.items.at(msg.flowgraph)->path();
+    std::string path = msg.path.empty() ? currentPath : msg.path;
+    if (path.empty() || msg.pick) {
+        const std::string pickedPath = currentPath.empty() ? startFolder("untitled.yml") : currentPath;
+        auto enqueueMail = callbacks.enqueueMail;
+        callbacks.requestFile({
+            .mode = FilePickerMode::Save,
+            .initialPath = pickedPath,
+            .extensions = {"yml", "yaml"},
+            .callback = [enqueueMail, flowgraph = msg.flowgraph](std::string p) mutable {
+                enqueueMail(MailSaveFlowgraph{.flowgraph = flowgraph, .path = std::move(p)});
+            },
+        });
+
+        return Result::SUCCESS;
+    }
+
+    auto flowgraph = state.flowgraph.items[msg.flowgraph];
+
+    JST_CHECK(LayoutActions(state.flowgraph).prepareSave(msg.flowgraph));
+    bool untracked = false;
+    if (const auto entry = state.flowgraph.history.find(msg.flowgraph); entry != state.flowgraph.history.end()) {
+        untracked = std::exchange(entry->second.untracked, false);
+    }
+    auto exported = std::make_shared<FlowgraphHistory::Entry>();
+    callbacks.enqueueCommandWithCompletion([flowgraph, path, exported]() -> Result {
+        *exported = CaptureFlowgraphSnapshot(*flowgraph);
+        JST_CHECK(flowgraph->exportToFile(path));
+        return Result::SUCCESS;
+    }, false, [this, name = msg.flowgraph, path, title = flowgraph->title(), exported, untracked](Result result) {
+        const auto entry = state.flowgraph.history.find(name);
+        if (result != Result::SUCCESS) {
+            if (untracked && entry != state.flowgraph.history.end()) {
+                entry->second.untracked = true;
+            }
+            return;
+        }
+        if (entry != state.flowgraph.history.end() && *exported) {
+            auto& history = entry->second;
+            const auto change = history.entries.empty() ? FlowgraphChange::Content
+                                                        : ClassifyFlowgraphChange(history.current(), **exported);
+            history.markSaved(*exported, change == FlowgraphChange::None ||
+                                             (change == FlowgraphChange::Layout && !history.restoring));
+        }
+        callbacks.enqueueMail(MailRememberFlowgraph{.path = path, .title = title});
+    });
+
+    return Result::SUCCESS;
+}
+
+std::string FlowgraphActions::TitleFromFile(const std::string& path) {
+    std::string title;
+    if (Flowgraph::ReadTitle(path, title) != Result::SUCCESS) {
+        return "";
+    }
+    return title;
+}
+
+void FlowgraphActions::Remember(DefaultCompositorState::InterfaceState& ui, const std::string& path, std::string title,
+                                U64 accessed) {
+    auto& recent = ui.recentFlowgraphs;
+    std::erase_if(recent, [&](const auto& entry) {
+        return entry.path == path;
+    });
+    recent.insert(recent.begin(), {.path = path, .title = std::move(title), .accessed = accessed});
+    if (recent.size() > DefaultCompositorState::InterfaceState::MaxRecentFlowgraphs) {
+        recent.resize(DefaultCompositorState::InterfaceState::MaxRecentFlowgraphs);
+    }
+    for (auto& favorite : ui.favoriteFlowgraphs) {
+        if (favorite.path == path) {
+            favorite = recent.front();
+        }
+    }
+}
+
+void FlowgraphActions::ToggleFavorite(DefaultCompositorState::InterfaceState& ui, const std::string& path) {
+    auto& favorites = ui.favoriteFlowgraphs;
+    if (std::erase_if(favorites, [&](const auto& entry) { return entry.path == path; }) > 0) {
+        return;
+    }
+    const auto& recent = ui.recentFlowgraphs;
+    const auto entry = std::find_if(recent.begin(), recent.end(), [&](const auto& item) {
+        return item.path == path;
+    });
+    favorites.push_back(entry != recent.end() ? *entry
+                                              : Settings::Interface::FlowgraphEntry{
+                                                    .path = path,
+                                                    .title = TitleFromFile(path),
+                                                });
+}
+
+Result FlowgraphActions::handle(const MailRememberFlowgraph& msg) {
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    Remember(state.interface, msg.path, msg.title,
+             static_cast<U64>(std::chrono::duration_cast<std::chrono::seconds>(now).count()));
+    const auto result = PersistSettings([&](Settings& settings) {
+        settings.interface.recentFlowgraphs = state.interface.recentFlowgraphs;
+        settings.interface.favoriteFlowgraphs = state.interface.favoriteFlowgraphs;
+    });
+    if (result != Result::SUCCESS) {
+        JST_WARN("[COMPOSITOR] Failed to save the recent flowgraph list.");
+    }
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailToggleFavoriteFlowgraph& msg) {
+    ToggleFavorite(state.interface, msg.path);
+    return PersistSettings([&](Settings& settings) {
+        settings.interface.favoriteFlowgraphs = state.interface.favoriteFlowgraphs;
+    });
+}
+
+Result FlowgraphActions::handle(const MailForgetRecentFlowgraph& msg) {
+    std::erase_if(state.interface.recentFlowgraphs, [&](const auto& entry) {
+        return entry.path == msg.path;
+    });
+    return PersistSettings([&](Settings& settings) {
+        settings.interface.recentFlowgraphs = state.interface.recentFlowgraphs;
+    });
+}
+
+Result FlowgraphActions::handle(const MailCloseFlowgraph& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         "Cannot close flowgraph because it doesn't exist.");
+        return Result::SUCCESS;
+    }
+
+    auto& ui = state.interface;
+    if (!msg.force && state.flowgraphMayLoseChanges(msg.flowgraph)) {
+        ui.closingFlowgraph = msg.flowgraph;
+        ui.quitting = false;
+        return Result::SUCCESS;
+    }
+    if (ui.quitting && ui.closingFlowgraph == msg.flowgraph) {
+        ui.discardedFlowgraphs.insert(msg.flowgraph);
+        return WorkbenchActions::Quit(state);
+    }
+    ui.closingFlowgraph.reset();
+
+    auto inst = state.system.instance;
+    auto name = msg.flowgraph;
+
+    callbacks.enqueueCommand([inst, name]() -> Result {
+        JST_CHECK(inst->flowgraphDestroy(name));
+        return Result::SUCCESS;
+    }, false);
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailCancelCloseFlowgraph&) {
+    state.interface.closingFlowgraph.reset();
+    state.interface.quitting = false;
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSaveFlowgraphPath& msg) {
+    bool validFile = true;
+    if (msg.path.empty()) {
+        JST_ERROR("[FLOWGRAPH] Filename is empty.");
+        callbacks.notifyResult(Result::ERROR, "");
+        validFile = false;
+    } else {
+        const std::regex filenamePattern("^.+\\.ya?ml$");
+        if (!std::regex_match(msg.path, filenamePattern)) {
+            JST_ERROR("[FLOWGRAPH] Invalid filename '{}'.", msg.path);
+            callbacks.notifyResult(Result::ERROR, "");
+            validFile = false;
+        }
+    }
+
+    if (validFile) {
+        callbacks.enqueueMail(MailSaveFlowgraph{.flowgraph = msg.flowgraph, .path = msg.path});
+        state.modal.content.reset();
+        state.modal.flowgraph.reset();
+    }
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSetFlowgraphPaused& msg) {
+    const auto entry = state.flowgraph.items.find(msg.flowgraph);
+    if (entry == state.flowgraph.items.end()) {
+        return Result::SUCCESS;
+    }
+
+    const auto& flowgraph = entry->second;
+    const Result result = msg.paused ? flowgraph->pause() : flowgraph->resume();
+    if (result != Result::SUCCESS) {
+        callbacks.notifyResult(result, msg.paused ? "Cannot pause the flowgraph." : "Cannot resume the flowgraph.");
+    }
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSetFlowgraphInfo& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to update flowgraph info because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    if (msg.title.has_value()) {
+        JST_CHECK(flowgraph->setTitle(*msg.title));
+    }
+    if (msg.summary.has_value()) {
+        JST_CHECK(flowgraph->setSummary(*msg.summary));
+    }
+    if (msg.author.has_value()) {
+        JST_CHECK(flowgraph->setAuthor(*msg.author));
+    }
+    if (msg.license.has_value()) {
+        JST_CHECK(flowgraph->setLicense(*msg.license));
+    }
+    if (msg.description.has_value()) {
+        JST_CHECK(flowgraph->setDescription(*msg.description));
+        if (const auto layout = state.flowgraph.layouts.find(msg.flowgraph); layout != state.flowgraph.layouts.end()) {
+            JST_CHECK(LayoutActions(state.flowgraph).handle(MailSetFlowgraphLayout{msg.flowgraph, layout->second}));
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailCreateBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to create block because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items[msg.flowgraph];
+
+    const std::string blockName = Naming::UniqueName(msg.moduleId, [&](const std::string& candidate) {
+        return flowgraph->view().has(candidate);
+    });
+
+    if (msg.gridPosition.has_value()) {
+        const auto& pos = msg.gridPosition.value();
+        const NodeMeta nodeMeta = {pos.x, pos.y, 0.0f, 0.0f};
+        flowgraph->metadata().set("node", nodeMeta, blockName);
+    }
+
+    const auto moduleId = msg.moduleId;
+    const auto device = msg.device;
+    const auto runtime = msg.runtime;
+    const auto provider = msg.provider;
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, blockName, moduleId, device, runtime, provider]() -> Result {
+            JST_CHECK_ALLOW(flowgraph->blockCreate(blockName,
+                                                  moduleId,
+                                                  {},
+                                                  {},
+                                                  device,
+                                                  runtime,
+                                                  provider),
+                            Result::INCOMPLETE);
+
+            return Result::SUCCESS;
+        },
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailOpenRenameBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         "Cannot rename block because the flowgraph doesn't exist.");
+        return Result::SUCCESS;
+    }
+
+    if (!state.flowgraph.items.at(msg.flowgraph)->view().has(msg.blockId)) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         "Cannot rename block because it doesn't exist.");
+        return Result::SUCCESS;
+    }
+
+    state.modal.flowgraph = msg.flowgraph;
+    state.modal.renameBlockOldName = msg.blockId;
+    state.modal.content = ModalContent::RenameBlock;
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailRenameBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         "Cannot rename block because the flowgraph doesn't exist.");
+        return Result::SUCCESS;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    const auto oldId = msg.oldId;
+    const auto newId = msg.newId;
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, oldId, newId]() -> Result {
+            return flowgraph->blockRename(oldId, newId);
+        },
+        .onComplete = mailOnSuccess(MailRenameLayoutBlock{
+            .flowgraph = msg.flowgraph,
+            .oldId = oldId,
+            .newId = newId,
+        }),
+    });
+    callbacks.enqueueMail(MailCloseModal{});
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailDeleteBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to delete block because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    std::vector<std::string> blockIds;
+    for (const auto& blockId : msg.blockIds) {
+        if (!blockId.empty() && std::find(blockIds.begin(), blockIds.end(), blockId) == blockIds.end()) {
+            blockIds.push_back(blockId);
+        }
+    }
+    if (blockIds.empty()) {
+        JST_ERROR("Failed to delete blocks due to empty block IDs.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items[msg.flowgraph];
+    auto destroyed = std::make_shared<std::vector<std::string>>();
+
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, blockIds, destroyed]() -> Result {
+            for (const auto& blockId : blockIds) {
+                JST_CHECK(flowgraph->blockDestroy(blockId));
+                destroyed->push_back(blockId);
+            }
+            return Result::SUCCESS;
+        },
+        .onComplete = [enqueueMail = callbacks.enqueueMail, flowgraphId = msg.flowgraph, destroyed](Result) {
+            for (const auto& blockId : *destroyed) {
+                enqueueMail(MailRemoveLayoutBlock{.flowgraph = flowgraphId, .block = blockId});
+            }
+        },
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailToggleBlockFrozen& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to toggle block freeze because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    std::vector<std::string> blockIds;
+    for (const auto& blockId : msg.blockIds) {
+        if (!blockId.empty() && std::find(blockIds.begin(), blockIds.end(), blockId) == blockIds.end()) {
+            blockIds.push_back(blockId);
+        }
+    }
+    if (blockIds.empty()) {
+        JST_ERROR("Failed to toggle block freeze due to empty block IDs.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items[msg.flowgraph];
+
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, blockIds]() -> Result {
+            bool freeze = false;
+            for (const auto& blockId : blockIds) {
+                Flowgraph::View::BlockInfo block;
+                if (flowgraph->view().info(blockId, block) == Result::SUCCESS && !block.frozen) {
+                    freeze = true;
+                }
+            }
+
+            for (const auto& blockId : blockIds) {
+                JST_CHECK(flowgraph->blockFreeze(blockId, freeze));
+            }
+            return Result::SUCCESS;
+        },
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailReloadBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to reload block because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    if (msg.blockId.empty()) {
+        JST_ERROR("Failed to reload block due to empty block ID.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items[msg.flowgraph];
+    auto blockId = msg.blockId;
+
+    callbacks.enqueueCommand([flowgraph, blockId]() -> Result {
+        Parser::Map config;
+        JST_CHECK(flowgraph->blockConfig(blockId, config));
+        return flowgraph->blockRecreate(blockId, config);
+    }, false);
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailChangeBlockDevice& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to change block device because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    if (msg.blockId.empty()) {
+        JST_ERROR("Failed to change block device due to empty block ID.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items[msg.flowgraph];
+    Flowgraph::View::BlockData block;
+    if (flowgraph->view().block(msg.blockId, block) != Result::SUCCESS) {
+        JST_ERROR("Failed to change block device because block was not found.");
+        return Result::ERROR;
+    }
+
+    if (block.device == msg.device &&
+        block.runtime == msg.runtime &&
+        block.provider == msg.provider) {
+        return Result::SUCCESS;
+    }
+
+    auto blockId = msg.blockId;
+    auto device = msg.device;
+    auto runtime = msg.runtime;
+    auto provider = msg.provider;
+
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, blockId, device, runtime, provider]() -> Result {
+            Parser::Map config;
+            JST_CHECK(flowgraph->blockConfig(blockId, config));
+            return flowgraph->blockRecreate(blockId, config, device, runtime, provider);
+        },
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailConnectBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to connect block because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items[msg.flowgraph];
+    auto blockName = msg.blockName;
+    auto inputPort = msg.inputPort;
+    auto sourceBlock = msg.sourceBlock;
+    auto sourcePort = msg.sourcePort;
+
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, blockName, inputPort, sourceBlock, sourcePort]() -> Result {
+            return flowgraph->blockConnect(blockName, inputPort, sourceBlock, sourcePort);
+        },
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailDisconnectBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to disconnect block because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items[msg.flowgraph];
+    auto blockName = msg.blockName;
+    auto inputPort = msg.inputPort;
+
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, blockName, inputPort]() -> Result {
+            return flowgraph->blockDisconnect(blockName, inputPort);
+        },
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailReconfigureBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        if (msg.onComplete) {
+            msg.onComplete(Result::ERROR);
+        }
+        JST_ERROR("Failed to reconfigure block because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items[msg.flowgraph];
+    auto blockId = msg.blockId;
+    auto config = msg.config;
+
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .mergeKey = ReconfigureMergeKey(blockId, config),
+        .command = [flowgraph, blockId, config]() -> Result {
+            return flowgraph->blockReconfigure(blockId, config);
+        },
+        .silent = msg.silent,
+        .onComplete = msg.onComplete,
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailCopyBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to copy blocks because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    if (msg.blockIds.empty()) {
+        JST_ERROR("Failed to copy blocks due to empty block IDs.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    auto copied = std::make_shared<FlowgraphSnapshot>();
+    auto destroyed = std::make_shared<std::vector<std::string>>();
+    auto yaml = std::make_shared<std::string>();
+    auto previous = std::exchange(pendingCopy, yaml);
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, blockIds = msg.blockIds, cut = msg.cut, copied, destroyed, yaml,
+                    previous]() -> Result {
+            if (previous) {
+                *yaml = *previous;
+            }
+            const auto snapshot = CaptureFlowgraphSnapshot(*flowgraph);
+            if (!snapshot) {
+                return Result::ERROR;
+            }
+            *copied = CopyFlowgraphBlocks(*snapshot, blockIds);
+            if (copied->blocks.empty()) {
+                return Result::SUCCESS;
+            }
+            JST_CHECK(EncodeFlowgraphBlocks(*copied, *yaml));
+            if (cut) {
+                const auto order = FlowgraphDependencyOrder(*copied);
+                for (const auto* block : order | std::views::reverse) {
+                    JST_CHECK(flowgraph->blockDestroy(block->name));
+                    destroyed->push_back(block->name);
+                }
+            }
+            return Result::SUCCESS;
+        },
+        .silent = !msg.cut,
+        .onComplete = [this, flowgraphId = msg.flowgraph, cut = msg.cut, copied, destroyed, yaml](Result result) {
+            if (pendingCopy == yaml) {
+                pendingCopy.reset();
+            }
+            if (copied->blocks.empty()) {
+                callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot copy blocks because they no longer exist.");
+                return;
+            }
+
+            if (!yaml->empty()) {
+                callbacks.setClipboardText(*yaml);
+            }
+            for (const auto& block : *destroyed) {
+                callbacks.enqueueMail(MailRemoveLayoutBlock{.flowgraph = flowgraphId, .block = block});
+            }
+            if (result != Result::SUCCESS) {
+                return;
+            }
+
+            const U64 count = copied->blocks.size();
+            callbacks.notify(Sakura::ToastType::Info,
+                             3000,
+                             jst::fmt::format("{} {} to clipboard.",
+                                              count == 1 ? std::string("Block") : jst::fmt::format("{} blocks", count),
+                                              cut ? "cut" : "copied"));
+        },
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailPasteBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to paste blocks because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    auto created = std::make_shared<std::vector<std::string>>();
+    auto empty = std::make_shared<bool>(false);
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, pending = pendingCopy, text = callbacks.getClipboardText(),
+                    point = msg.gridPosition, created, empty]() -> Result {
+            const auto blocks = DecodeFlowgraphBlocks(pending && !pending->empty() ? *pending : text);
+            if (!blocks.has_value()) {
+                *empty = true;
+                return Result::SUCCESS;
+            }
+            return PasteFlowgraphBlocks(*flowgraph, *blocks, point, *created);
+        },
+        .onComplete = [this, select = selectOnComplete(msg.flowgraph, created), empty](Result result) {
+            if (*empty) {
+                callbacks.notify(Sakura::ToastType::Warning, 3000, "Clipboard has no blocks to paste.");
+            }
+            select(result);
+        },
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailDuplicateBlock& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        JST_ERROR("Failed to duplicate blocks because flowgraph was not found.");
+        return Result::ERROR;
+    }
+
+    if (msg.blockIds.empty()) {
+        JST_ERROR("Failed to duplicate blocks due to empty block IDs.");
+        return Result::ERROR;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    auto created = std::make_shared<std::vector<std::string>>();
+    callbacks.enqueueFlowgraphEdit({
+        .flowgraph = msg.flowgraph,
+        .command = [flowgraph, blockIds = msg.blockIds, created]() -> Result {
+            const auto snapshot = CaptureFlowgraphSnapshot(*flowgraph);
+            if (!snapshot) {
+                return Result::ERROR;
+            }
+            return PasteFlowgraphBlocks(*flowgraph, CopyFlowgraphBlocks(*snapshot, blockIds), {}, *created);
+        },
+        .onComplete = selectOnComplete(msg.flowgraph, created),
+    });
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSelectBlocks& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        return Result::SUCCESS;
+    }
+
+    auto& selection = state.flowgraph.selections[msg.flowgraph];
+    selection.requests += 1;
+    selection.blocks = msg.blockIds;
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSetNodeMeta& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        return Result::SUCCESS;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    NodeMeta existing;
+    flowgraph->metadata().get("node", existing, msg.block);
+    NodeMeta merged = msg.meta;
+    if (msg.base.has_value()) {
+        for (const auto field : {&NodeMeta::x, &NodeMeta::y, &NodeMeta::width, &NodeMeta::height}) {
+            if (existing.*field != (*msg.base).*field) {
+                merged.*field = existing.*field;
+            }
+        }
+    }
+    flowgraph->metadata().set("node", merged, msg.block);
+    if (const auto history = state.flowgraph.history.find(msg.flowgraph);
+        history != state.flowgraph.history.end()) {
+        history->second.place(msg.block, merged);
+    }
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSetEditorMeta& msg) {
+    if (const auto graph = state.flowgraph.items.find(msg.flowgraph); graph != state.flowgraph.items.end()) {
+        return graph->second->metadata().set("editor", msg.meta);
+    }
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSetConfigCollapsed& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        return Result::SUCCESS;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    ConfigMeta existing;
+    flowgraph->metadata().get("config", existing, msg.block);
+    if (existing.collapsed != msg.collapsed) {
+        markUntracked(msg.flowgraph);
+    }
+    existing.collapsed = msg.collapsed;
+    flowgraph->metadata().set("config", existing, msg.block);
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSetMetricsCollapsed& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        return Result::SUCCESS;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    ConfigMeta existing;
+    flowgraph->metadata().get("config", existing, msg.block);
+    if (existing.tileMetricsCollapsed != msg.collapsed) {
+        markUntracked(msg.flowgraph);
+    }
+    existing.tileMetricsCollapsed = msg.collapsed;
+    flowgraph->metadata().set("config", existing, msg.block);
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSetConfigAdvanced& msg) {
+    if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        return Result::SUCCESS;
+    }
+
+    auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+    ConfigMeta existing;
+    flowgraph->metadata().get("config", existing, msg.block);
+    if (existing.advanced != msg.advanced) {
+        markUntracked(msg.flowgraph);
+    }
+    existing.advanced = msg.advanced;
+    flowgraph->metadata().set("config", existing, msg.block);
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailSurfaceInput& msg) {
+    if (msg.surface) {
+        msg.surface->pushInputEvent(msg.event);
+    }
+
+    return Result::SUCCESS;
+}
+
+Result FlowgraphActions::handle(const MailResizeSurface& msg) {
+    if (!msg.surface) {
+        return Result::SUCCESS;
+    }
+
+    if (!msg.flowgraph.empty() && !msg.block.empty() && !msg.metaKey.empty() &&
+        state.flowgraph.items.contains(msg.flowgraph)) {
+        SurfaceMeta surfaceMeta;
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        flowgraph->metadata().get(msg.metaKey, surfaceMeta, msg.block);
+        if (msg.placement == SurfacePlacement::Attached && surfaceMeta.attachedHeight != msg.resize.logicalSize.y) {
+            surfaceMeta.attachedHeight = msg.resize.logicalSize.y;
+            flowgraph->metadata().set(msg.metaKey, surfaceMeta, msg.block);
+        }
+    }
+
+    SurfaceEvent event;
+    event.type = SurfaceEventType::Resize;
+    event.size = msg.resize.framebufferSize;
+    event.scale = msg.resize.scale;
+    event.placement = (msg.placement == SurfacePlacement::Attached)
+                          ? SurfacePlacementType::Attached
+                          : SurfacePlacementType::Detached;
+    event.theme = Sakura::MakeSurfaceTheme(state.sakura.colorMap, event.placement);
+    msg.surface->pushSurfaceEvent(event);
+    state.flowgraph.surfaces[msg.surface.get()] = {.surface = msg.surface, .event = event};
+
+    return Result::SUCCESS;
+}
+
+std::string FlowgraphActions::GenerateRandomFlowgraphName() {
+    static const std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    std::string result = "f_";
+    for (int i = 0; i < 8; ++i) {
+        result += chars[rand() % chars.length()];
+    }
+    return result;
+}
+
+bool FlowgraphActions::LooksLikeFlowgraph(const std::string& path) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(Platform::PathFromUtf8(path), error)) {
+        return false;
+    }
+    std::ifstream file(Platform::PathFromUtf8(path), std::ios::binary);
+    std::string head(1 << 20, '\0');
+    file.read(head.data(), static_cast<std::streamsize>(head.size()));
+    head.resize(static_cast<U64>(file.gcount()));
+    const auto hasKey = [&](const std::string& key) {
+        return head.starts_with(key) || head.find("\n" + key) != std::string::npos;
+    };
+    return hasKey("version:") && hasKey("graph:");
+}
+
+std::string FlowgraphActions::startFolder(const std::string& name) const {
+    for (const auto& entry : state.interface.recentFlowgraphs) {
+        std::error_code error;
+        const auto folder = std::filesystem::absolute(Platform::PathFromUtf8(entry.path), error).parent_path();
+        if (!folder.empty() && std::filesystem::is_directory(folder, error)) {
+            return Platform::PathToUtf8(folder / Platform::PathFromUtf8(name));
+        }
+    }
+    return {};
+}
+
+void FlowgraphActions::markUntracked(const std::string& flowgraph) {
+    if (const auto history = state.flowgraph.history.find(flowgraph); history != state.flowgraph.history.end()) {
+        history->second.untracked = true;
+    }
+}
+
+std::optional<Parser::Map> FlowgraphActions::FileReaderConfig(const std::string& path) {
+    struct Recording {
+        std::string_view extension;
+        std::string_view format;
+        std::string_view dataType;
+    };
+
+    static constexpr std::array<Recording, 23> kRecordings = {{
+        {".sigmf-meta", "sigmf", ""},
+        {".sigmf-data", "sigmf", ""},
+        {".wav", "wav", ""},
+        {".raw", "raw", "CF32"},
+        {".iq", "raw", "CF32"},
+        {".bin", "raw", "CF32"},
+        {".dat", "raw", "CF32"},
+        {".cfile", "raw", "CF32"},
+        {".cf32", "raw", "CF32"},
+        {".fc32", "raw", "CF32"},
+        {".cf64", "raw", "CF64"},
+        {".fc64", "raw", "CF64"},
+        {".cs16", "raw", "CI16"},
+        {".sc16", "raw", "CI16"},
+        {".cs8", "raw", "CI8"},
+        {".sc8", "raw", "CI8"},
+        {".cu16", "raw", "CU16"},
+        {".cu8", "raw", "CU8"},
+        {".f32", "raw", "F32"},
+        {".f64", "raw", "F64"},
+        {".s16", "raw", "I16"},
+        {".s8", "raw", "I8"},
+        {".u8", "raw", "U8"},
+    }};
+
+    const auto extension = Platform::PathToUtf8(Platform::PathFromUtf8(path).extension());
+    const auto match = std::ranges::find(kRecordings, std::string_view(Text::ToLower(extension)),
+                                         &Recording::extension);
+    if (match == kRecordings.end() || (match->format == "sigmf" && extension != match->extension)) {
+        return std::nullopt;
+    }
+
+    Parser::Map config = {
+        {"filepath", path},
+        {"fileFormat", std::string(match->format)},
+    };
+    if (!match->dataType.empty()) {
+        config["dataType"] = std::string(match->dataType);
+    }
+    return config;
+}
+
+std::string FlowgraphActions::ReconfigureMergeKey(const std::string& block, const Parser::Map& config) {
+    std::vector<std::string> keys;
+    for (const auto& [key, _] : config) {
+        keys.push_back(key);
+    }
+    std::sort(keys.begin(), keys.end());
+    std::string mergeKey = block;
+    for (const auto& key : keys) {
+        mergeKey += "\n" + key;
+    }
+    return mergeKey;
+}
+
+Sakura::Callback<void(Result)> FlowgraphActions::selectOnComplete(const std::string& flowgraphId,
+                                                                  std::shared_ptr<std::vector<std::string>> created) {
+    return [enqueueMail = callbacks.enqueueMail, flowgraphId, created](Result) {
+        if (!created->empty()) {
+            enqueueMail(MailSelectBlocks{.flowgraph = flowgraphId, .blockIds = std::move(*created)});
+        }
+    };
+}
+
+Sakura::Callback<void(Result)> FlowgraphActions::mailOnSuccess(Mail mail) const {
+    return [enqueueMail = callbacks.enqueueMail, mail = std::move(mail)](Result result) {
+        if (result == Result::SUCCESS) {
+            enqueueMail(Mail(mail));
+        }
+    };
+}
+
+}  // namespace Jetstream

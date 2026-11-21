@@ -17,7 +17,7 @@ struct Python : public Block::Config {
     std::string file;
     U64 inputCount = 1;
     U64 outputCount = 1;
-    std::vector<Modules::Python::TensorSpec> outputTensorSpecs;
+    std::vector<Modules::Python::TensorSpec> outputTensorSpecs = {Modules::Python::TensorSpec{}};
     bool throttled = false;
 
     JST_BLOCK_TYPE(python);

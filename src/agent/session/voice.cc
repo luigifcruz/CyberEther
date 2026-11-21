@@ -158,10 +158,7 @@ Live::Callbacks Session::Impl::callbacks(const std::shared_ptr<Call>& owner) {
         appendVoiceTranscript(id, false, delta);
     };
 
-    callbacks.onInputTranscriptDone = [this, id, weak]() {
-        if (const auto call = weak.lock()) {
-            call->tools->reset();
-        }
+    callbacks.onInputTranscriptDone = [this, id]() {
         finishVoiceTranscript(id, true);
     };
 
@@ -237,14 +234,13 @@ void Session::Impl::runTools(Call& call) {
         }
 
         call.delegating.store(true);
-        const bool lastRound = call.tools->advance();
 
         try {
             Live::ToolOutputs results;
             for (const auto& request : batch) {
                 Tools::Output result;
                 try {
-                    result = call.tools->run(request, call.resultLimit, lastRound, call.aborted);
+                    result = call.tools->run(request, call.resultLimit, call.aborted);
                 } catch (const std::exception& error) {
                     result = Tools::Error(std::string("The tool failed: ") + error.what(), true);
                 } catch (...) {
@@ -258,7 +254,7 @@ void Session::Impl::runTools(Call& call) {
                 results.emplace_back(request, std::move(result));
             }
 
-            call.live->reply(results, call.tools->exhausted());
+            call.live->reply(results);
         } catch (const std::exception& error) {
             call.callbacks.onError(std::string("The voice tool call failed: ") + error.what());
         } catch (...) {
@@ -412,8 +408,7 @@ bool Session::listen(const Config& config) {
 
     call->id = *id;
     call->tools = std::make_unique<Detail::ToolRunner>(config.executeTool,
-                                                       std::make_shared<Detail::OutputStore>(),
-                                                       config.maxToolTurns);
+                                                       std::make_shared<Detail::OutputStore>());
     call->resultLimit = config.maxToolResultChars;
     call->callbacks = impl->callbacks(call);
     impl->call = call;

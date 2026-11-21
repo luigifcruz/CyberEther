@@ -143,6 +143,47 @@ Result Flowgraph::View::outputs(const std::string& block, TensorMap& outputs) co
     return Result::SUCCESS;
 }
 
+Result Flowgraph::View::readTensor(const std::string& block,
+                                   const std::string& port,
+                                   const bool output,
+                                   const std::function<Result(const TensorLink&)>& read) const {
+    const auto graph = impl.lock();
+    if (!graph || !read) {
+        JST_ERROR("[FLOWGRAPH] View is no longer attached to a flowgraph.");
+        return Result::ERROR;
+    }
+
+    std::unique_lock<std::recursive_mutex> mutationLock(graph->mutationMutex, std::try_to_lock);
+    if (!mutationLock.owns_lock()) {
+        return Result::TIMEOUT;
+    }
+
+    if (!graph->scheduler) {
+        JST_ERROR("[FLOWGRAPH] Cannot read tensors before the flowgraph is created.");
+        return Result::ERROR;
+    }
+
+    TensorLink link;
+    {
+        std::lock_guard<std::recursive_mutex> lock(graph->blockMutex);
+
+        const auto entry = graph->blocks.find(block);
+        if (entry == graph->blocks.end()) {
+            return Result::ERROR;
+        }
+
+        const auto& links = output ? entry->second->outputs() : entry->second->inputs();
+        const auto found = links.find(port);
+        if (found != links.end()) {
+            link = found->second;
+        }
+    }
+
+    return graph->scheduler->read([&]() -> Result {
+        return read(link);
+    });
+}
+
 Result Flowgraph::View::interfaceInputs(const std::string& block,
                                         std::vector<InterfaceEntry>& inputs) const {
     BlockData data;
@@ -238,6 +279,7 @@ Result Flowgraph::View::snapshot(const std::string& block,
     data.runtime = blockPtr->runtime();
     data.provider = blockPtr->provider();
     data.state = blockPtr->state();
+    data.frozen = blockPtr->frozen();
     data.nodeSize = blockPtr->config().nodeSize();
     data.diagnostic = blockPtr->diagnostic();
     data.inputs = blockPtr->inputs();

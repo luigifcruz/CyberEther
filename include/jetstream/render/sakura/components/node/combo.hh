@@ -2,8 +2,8 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_COMBO_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -11,28 +11,28 @@
 
 namespace Jetstream::Sakura {
 
-struct NodeCombo {
+struct NodeCombo : public Component {
     struct Config {
         std::string id;
         std::vector<std::string> options;
         std::string value;
-        F32 width = 0.0f;
-        std::function<void(const std::string&)> onChange;
         std::optional<U64> selectedIndex;
-        std::function<void(U64)> onSelect;
+        Callback<void(const std::string&)> onChange;
+        Callback<void(U64)> onSelect;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeCombo();
     ~NodeCombo();
 
-    NodeCombo(NodeCombo&&) noexcept;
-    NodeCombo& operator=(NodeCombo&&) noexcept;
+    void update(Config config);
+    const Config& config() const;
 
-    NodeCombo(const NodeCombo&) = delete;
-    NodeCombo& operator=(const NodeCombo&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
 
  private:
     struct Impl;

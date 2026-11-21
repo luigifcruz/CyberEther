@@ -77,11 +77,10 @@ Result Implementation::create(WGPURenderPipelineDescriptor& renderDescriptor) {
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying draw.");
 
-    if (buffer->isBuffered()) {
-        indexedDrawCommands.clear();
-    } else {
-        drawCommands.clear();
-    }
+    indexedDrawCommands.clear();
+    drawCommands.clear();
+    attributeDescription.clear();
+    vertexLayouts.clear();
 
     JST_CHECK(buffer->destroy());
 
@@ -112,6 +111,33 @@ Result Implementation::encode(WGPURenderPassEncoder& renderPassEncoder) {
                                       cmd.firstVertex,
                                       cmd.firstInstance);
         }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::encode(WGPURenderPassEncoder& renderPassEncoder, const Range& range, bool bind) {
+    if (bind) {
+        JST_CHECK(buffer->encode(renderPassEncoder));
+    }
+
+    if (range.count == 0 || range.instanceCount == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (buffer->isBuffered()) {
+        wgpuRenderPassEncoderDrawIndexed(renderPassEncoder,
+                                         static_cast<U32>(range.count),
+                                         static_cast<U32>(range.instanceCount),
+                                         static_cast<U32>(range.first),
+                                         static_cast<I32>(range.baseVertex),
+                                         static_cast<U32>(range.firstInstance));
+    } else {
+        wgpuRenderPassEncoderDraw(renderPassEncoder,
+                                  static_cast<U32>(range.count),
+                                  static_cast<U32>(range.instanceCount),
+                                  static_cast<U32>(range.first),
+                                  static_cast<U32>(range.firstInstance));
     }
 
     return Result::SUCCESS;

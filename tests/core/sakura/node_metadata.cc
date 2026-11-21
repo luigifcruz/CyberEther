@@ -55,8 +55,7 @@ TEST_CASE("Node layout and collapse messages preserve each other in either order
     }
 }
 
-TEST_CASE("Queued node metadata is harmless after its flowgraph closes",
-          "[core][sakura][node_metadata][lifecycle]") {
+TEST_CASE("Queued node metadata is harmless after its flowgraph closes", "[core][sakura][node_metadata][lifecycle]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
     FlowgraphActions actions(state, callbacks);

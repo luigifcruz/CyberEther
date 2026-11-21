@@ -1,103 +1,108 @@
 ---
 title: Quick Start
-description: Launch CyberEther, run your first flowgraph, and explore the built-in examples.
-order: 3
+description: Launch CyberEther and build your first live spectrum analyzer in five minutes.
+order: 120
 category: Getting Started
 ---
 
-This guide gets you from installation to a running flowgraph in a few minutes.
+This guide walks you from a fresh installation to a live spectrum analyzer in just a few minutes, with no radio hardware required.
 
 ## Launching CyberEther
 
-After [installing CyberEther](/docs/installation), launch it from a terminal:
+After [installing CyberEther](/docs/installation), start it from your terminal:
 
 ```bash
 cyberether
 ```
 
-This opens the main window with an empty workspace. From there you can build a flowgraph visually or load an existing one.
+The application opens on the **Start** tab. From there, you can create a blank flowgraph, reopen a recent file, or open a hardware-free gallery example such as **Signal Generator** or **CyberEther First Steps** to see a live signal immediately.
 
-To load a flowgraph directly at startup, pass its path as the single positional argument:
+To open a saved flowgraph file directly on startup, pass its path as a positional argument:
 
 ```bash
-cyberether examples/flowgraphs/signal-generator.yml
+cyberether path/to/flowgraph.yml
 ```
 
-## Key ideas
+## Five Core Concepts
 
-Before building your first flowgraph, it helps to know a few terms that appear throughout CyberEther.
+Before dropping blocks onto the canvas, keep these five ideas in mind:
 
-- **Blocks** are the nodes on the canvas. Each one performs one operation, such as generating a signal, running an FFT, or drawing a plot.
-- **Ports** are the small connection points on the edges of a block. Output ports feed data into input ports.
-- **Wires** carry data from one block to the next. A block cannot run until its required inputs are connected.
-- **Shapes** are fixed. Every block runs on tensors of a fixed shape that flows downstream from the source, so the sample count you set on a source block sets the size of everything downstream until a block reshapes it. The [FAQ](/docs/faq#why-are-buffer-sizes-stricter-than-in-other-sdr-software) explains why.
-- **Properties** let you change how a block behaves. They appear inline inside each block; click a field to edit it.
+- **Blocks** are the nodes on your canvas. Each block performs one focused job, such as generating a waveform, running an FFT, or drawing a plot.
+- **Ports** are the small connection points along a block's edges. Output ports send data into input ports.
+- **Wires** connect ports and carry data downstream. A block waits to run until every required input is wired up.
+- **Fixed shapes** keep the pipeline fast and predictable. Every block processes tensors of a fixed shape determined by its upstream source until another block explicitly reshapes them. The [FAQ](/docs/faq#why-are-buffer-sizes-stricter-than-in-other-sdr-software) explains why CyberEther uses fixed shapes.
+- **Inline properties** live directly inside each block node. Click any field to edit it while the flowgraph is running.
 
-## Creating a simple flowgraph
+## Build Your First Flowgraph
 
-The CyberEther editor is a node-based flowgraph editor. You build a pipeline by adding blocks, wiring their ports together, and tuning each block's parameters. The flowgraph is always running as you edit it. There is no start or stop button. As soon as a block has everything it needs, it begins processing live data.
+CyberEther runs your flowgraph live as you build it. The moment a block has valid inputs and settings, it starts processing data. You can pause execution anytime using the play and pause button (the first button in the editor toolbar), which freezes every view on its latest frame.
 
-### 1. Add a source block
+In this walkthrough, you will build a five-block spectrum analyzer by connecting **Signal Generator**, **FFT**, **Amplitude**, **Range**, and **Lineplot**.
 
-Open the block browser in one of two ways:
+### Step 1: Add a Source Block
 
-- Click the **Blocks** button in the toolbar at the top of the flowgraph window.
-- Double-click anywhere on the empty canvas.
+Open the block browser in whichever way feels more natural:
 
-Find and add a **Signal Generator** block. This block produces a synthetic signal so you do not need any hardware to get started. If you have an RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, PlutoSDR, or BirriaSDR, use an **SDR** block instead to work with a real radio signal.
+- Click the **Add block** button (the box with a plus) in the bottom-right toolbar. The new block appears at the center of your view.
+- Double-click any empty spot on the canvas. The new block appears right where you clicked.
 
-### 2. Add processing blocks
+In both cases, the block browser pops up in the center of the editor. Search for **Signal Generator** and add it to the canvas. It produces synthetic waveforms so you can experiment without external hardware.
 
-Open the block browser again and add one block at a time. Type the block name in the search box to find it quickly, then add it to the canvas. Add these four blocks:
+> [!TIP]
+> If you have a supported radio plugged in, you can drop in an **SDR** block instead to analyze live over-the-air signals. See [Hardware And Devices](/docs/hardware) for supported radios and setup notes.
 
-- **FFT**: converts the signal to the frequency domain.
-- **Amplitude**: converts the complex FFT output to a magnitude trace.
-- **Range**: adjusts the vertical scale of the trace.
-- **Line Plot**: draws the trace on screen.
+### Step 2: Add Processing and Display Blocks
 
-After each block appears on the canvas, drag it into a left-to-right chain: **Signal Generator**, then **FFT**, **Amplitude**, **Range**, and finally **Line Plot**. Leave some space between blocks so the wires are easy to see.
+Open the block browser again and add these four blocks one at a time using the search box:
 
-### 3. Connect the blocks
+1. The **FFT** block converts time-domain samples into the frequency domain.
+2. The **Amplitude** block turns complex FFT bins into a magnitude trace.
+3. The **Range** block rescales the vertical axis so the signal fits cleanly on screen.
+4. The **Lineplot** block renders the trace live.
 
-Hover over the output port of the **Signal Generator** block, then drag a wire to the input port of the **FFT** block. Do the same between:
+Drag the blocks into a left-to-right chain in that order, leaving a little space between nodes so the wires stay readable.
 
-- **FFT** output → **Amplitude** input
-- **Amplitude** output → **Range** input
-- **Range** output → **Line Plot** input
+### Step 3: Wire the Chain Together
 
-The wires show how data flows through the pipeline. Hover over a wire or an output label to see the tensor shape and data type carried by that link.
+Hover over the output port on **Signal Generator** and drag a wire to the input port on **FFT**. Repeat to link the rest of the pipeline:
 
-### 4. Configure the blocks
+- Connect **FFT** output to **Amplitude** input
+- Connect **Amplitude** output to **Range** input
+- Connect **Range** output to **Lineplot** input
 
-Each block shows its configurable fields directly inside the node on the canvas. Click a field to change its value. Hover over a field label to see a tooltip describing what it does. For example:
+Hover over any wire or output label at any time to inspect the tensor shape and data type moving across that link.
 
-- **Signal Generator**
-  - Signal type: `cosine`
-  - Sample rate: `1e6`
-  - Frequency: `1e5`
-  - Amplitude: `1`
-- **FFT**
-  - Direction: `forward`
+### Step 4: Configure the Parameters
 
-You can leave the other blocks at their defaults for now. For the complete reference on any block, right-click the block and select **Documentation**.
+Click inside **Signal Generator** and **FFT** to set these values (hover over any field label to read its tooltip):
 
-### 5. Watch it run
+| Block | Field | Value |
+|---|---|---|
+| **Signal Generator** | Data type | `CF32` |
+| **Signal Generator** | Signal type | `cosine` |
+| **Signal Generator** | Sample rate | `1` MHz |
+| **Signal Generator** | Frequency | `0.1` MHz |
+| **Signal Generator** | Amplitude | `1` |
+| **FFT** | Direction | `forward` |
 
-Because the flowgraph is always running, the **Line Plot** block starts showing a live spectrum of the generated tone as soon as the blocks are wired and configured. If the trace looks too small or clipped, adjust the **Range** block until the signal is clearly visible. If you change a property or add another block, the pipeline updates in real time.
+Leave **Amplitude**, **Range**, and **Lineplot** at their defaults for now (or adjust **Range** to roughly `-100` to `0` dB if the peak looks clipped).
 
-## Ready-to-go example flowgraphs
+To read the full reference for any block, right-click it and select **Documentation**. The reference opens in a single tile beside the editor.
 
-Open the built-in examples from **Flowgraph** → **Open Examples**. Each opens in a fresh tab and starts processing once its inputs and devices are ready.
+### Step 5: Watch It Live
 
-| Flowgraph | What it demonstrates |
-|-----------|----------------------|
-| CyberEther First Steps | Finish a spectrum analyzer from a lone Signal Generator. Add a display, wire it, edit live settings, read block documentation, and save. |
-| Signal Generator | Adds noise to a generated tone and displays the result in a spectrum plot and waterfall. |
-| Simple FM Receiver | Receives an FM broadcast station with an RTL-SDR, demodulates the signal, and plays the audio. |
-| Multi-FM Receiver | Uses the `Filter` block to separate two FM stations from one RTL-SDR input. Displays both spectra and plays audio from one station. |
-| Python Block | Generates noisy QPSK signals in a Python block and displays their spectrum, waterfall, and constellation. Requires [Python with NumPy](/docs/python-block#choosing-a-python-runtime). |
-| Overlap-Add-Fold | Explains FFT filtering and resampling in an RTL-SDR FM receiver, with notes on zero padding, spectral folding, and overlap-add reconstruction. |
-| Spectrum Analyzer | Applies a window and FFT to RTL-SDR samples and displays the spectrum in a line plot and waterfall. |
-| ADS-B Flight Tracker | Receives ADS-B signals at 1090 MHz from an SDR and decodes aircraft positions and flight data. |
+Because the pipeline runs continuously, **Lineplot** immediately draws a live spectrum peak for your generated tone at `0.1` MHz. Every parameter tweak or new block updates in real time.
 
-Start with **CyberEther First Steps** to turn a lone Signal Generator into a spectrum analyzer in about ten minutes. It needs no radio hardware or Python installation.
+If the plot stays blank or flat, check three things:
+
+- **Confirm the graph is running:** Make sure the play and pause button in the toolbar is active (or press **Space**).
+- **Check block states:** Verify that no block shows an **Incomplete** or **Errored** banner, and that **Signal Generator** has **Data type** set to `CF32`.
+- **Adjust the vertical range:** Tune the **Range** block (for example `-100` to `0` dB) if the peak sits above or below the visible window.
+
+## Next Steps
+
+- Learn canvas shortcuts, dock tiles, and the built-in example gallery in [The Editor](/docs/editor).
+- Understand `.yml` flowgraph files and how data moves along wires in [Flowgraphs](/docs/flowgraphs).
+- Explore every built-in node in the [Blocks Catalog](/docs/blocks).
+- Learn how to script custom logic in the [Python Block guide](/docs/python-block).
+- Stream a headless workstation to your laptop or phone with [Remote Streaming](/docs/remote).

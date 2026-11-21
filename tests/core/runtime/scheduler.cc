@@ -6,7 +6,9 @@
 #include <functional>
 #include <future>
 #include <initializer_list>
+#include <latch>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -44,13 +46,16 @@ struct SyntheticSpec {
     Module::Taint taint = Module::Taint::CLEAN;
     std::chrono::milliseconds computeDelay{0};
     std::function<void()> computeAction;
+    std::function<void()> captureAction;
     std::vector<Result> initializeResults;
     std::vector<Result> deinitializeResults;
     std::vector<Result> pendingComputeResults;
     std::vector<Result> computeResults;
     std::vector<Result> presentInitializeResults;
+    std::vector<Result> presentCaptureResults;
     std::vector<Result> presentResults;
     std::function<void()> pendingAction;
+    std::function<void()> pollAction;
     std::function<Result()> pendingCompute;
 };
 
@@ -60,6 +65,7 @@ struct SyntheticState {
     std::unordered_map<std::string, U64> counts;
     std::unordered_map<std::string, std::vector<std::vector<F32>>> reads;
     std::vector<std::string> events;
+    std::mutex invokeMutex;
 
     void reset() {
         specs.clear();
@@ -104,6 +110,7 @@ struct SyntheticState {
     Result invoke(const std::string& operation,
                   const std::string& name,
                   const std::vector<Result>& results) {
+        std::lock_guard lock(invokeMutex);
         const std::string key = operation + ":" + name;
         events.push_back(key);
         counts[key] += 1;
@@ -201,12 +208,11 @@ struct SyntheticModuleBase : Module::Impl,
 
     Result computeSubmit() override {
         const auto& spec = syntheticState().spec(name());
-        if (spec.computeDelay.count() > 0) {
-            std::this_thread::sleep_for(spec.computeDelay);
-        }
-
         if (spec.computeAction) {
             spec.computeAction();
+        }
+        if (spec.computeDelay.count() > 0) {
+            std::this_thread::sleep_for(spec.computeDelay);
         }
 
         auto& values = syntheticState().reads[name()].emplace_back();
@@ -261,6 +267,14 @@ struct SyntheticModuleBase : Module::Impl,
         return syntheticState().invoke("present_initialize", name(), spec.presentInitializeResults);
     }
 
+    Result presentCapture() override {
+        const auto& spec = syntheticState().spec(name());
+        if (spec.captureAction) {
+            spec.captureAction();
+        }
+        return syntheticState().invoke("capture", name(), spec.presentCaptureResults);
+    }
+
     Result presentSubmit() override {
         const auto& spec = syntheticState().spec(name());
         return syntheticState().invoke("present", name(), spec.presentResults);
@@ -274,6 +288,11 @@ struct SyntheticModuleBase : Module::Impl,
             syntheticState().invoke("pending_compute", name(), {});
             action();
             return Result::YIELD;
+        }
+        if (spec.pollAction) {
+            auto action = std::move(spec.pollAction);
+            spec.pollAction = {};
+            action();
         }
 
         if (spec.pendingCompute) {
@@ -411,7 +430,10 @@ TEST_CASE("Scheduler executes CPU modules in topological order",
           "[core][runtime][scheduler]") {
     auto& state = syntheticState();
     state.reset();
-    state.configure("topology_source");
+    std::vector<std::string> submitted;
+    for (const auto& name : {"topology_source", "topology_middle", "topology_sink"}) {
+        state.configure(name).computeAction = [&, name] { submitted.emplace_back(name); };
+    }
     state.configure("topology_middle").inputs = {"in"};
     state.configure("topology_sink").inputs = {"in"};
 
@@ -431,6 +453,7 @@ TEST_CASE("Scheduler executes CPU modules in topological order",
     REQUIRE(failedModules.empty());
     REQUIRE(state.calls("compute") ==
              std::vector<std::string>{"topology_source", "topology_middle", "topology_sink"});
+    REQUIRE(submitted == state.calls("compute"));
 }
 
 TEST_CASE("Scheduler preserves insertion order for independent CPU modules",
@@ -677,6 +700,327 @@ TEST_CASE("Scheduler stop cancels source polling before compute submission",
     REQUIRE(state.count("compute", "cancel_source") == 0);
 }
 
+TEST_CASE("Scheduler pause returns at once without polling sources until resume",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("paused_source");
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("paused_source");
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+
+    REQUIRE_FALSE(fixture.scheduler.paused());
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.paused());
+
+    state.clearEvents();
+    std::unordered_set<std::string> failedModules;
+    const auto begin = std::chrono::steady_clock::now();
+    for (U64 call = 0; call < 200; ++call) {
+        REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    }
+    const auto elapsed = std::chrono::steady_clock::now() - begin;
+
+    REQUIRE(failedModules.empty());
+    REQUIRE(elapsed < std::chrono::milliseconds(100));
+    REQUIRE(state.count("pending_compute", "paused_source") == 0);
+    REQUIRE(state.count("compute", "paused_source") == 0);
+
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    REQUIRE_FALSE(fixture.scheduler.paused());
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.count("compute", "paused_source") == 1);
+}
+
+TEST_CASE("Scheduler resume restarts a compute thread polling while paused",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    std::atomic<bool> computed{false};
+    state.configure("wake_source").computeAction = [&] {
+        computed.store(true);
+    };
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("wake_source");
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+
+    std::atomic<U64> loops{0};
+    struct ComputeWorker {
+        std::atomic<bool> stopRequested{false};
+        std::thread thread;
+
+        ~ComputeWorker() {
+            stopRequested.store(true);
+            if (thread.joinable()) {
+                thread.join();
+            }
+        }
+    } worker;
+
+    worker.thread = std::thread([&] {
+        std::unordered_set<std::string> computeFailures;
+        while (!worker.stopRequested.load()) {
+            (void)fixture.scheduler.compute(computeFailures);
+            loops.fetch_add(1);
+            if (fixture.scheduler.paused()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    CHECK(loops.load() > 0);
+    CHECK_FALSE(computed.load());
+
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!computed.load() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(computed.load());
+
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
+}
+
+TEST_CASE("Scheduler pause cancels source polling before compute submission",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("pause_polling_source");
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("pause_polling_source");
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+
+    state.clearEvents();
+    state.configure("pause_polling_source").pendingAction = [&] {
+        REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    };
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(state.count("pending_compute", "pause_polling_source") == 1);
+    REQUIRE(state.count("compute", "pause_polling_source") == 0);
+}
+
+TEST_CASE("Scheduler pause stops source polling after a ready source",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("pause_ready_first");
+    state.configure("pause_ready_second");
+
+    SchedulerFixture fixture;
+    auto first = fixture.module("pause_ready_first");
+    auto second = fixture.module("pause_ready_second");
+    REQUIRE(fixture.scheduler.add(first) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(second) == Result::SUCCESS);
+
+    state.clearEvents();
+    const auto pause = [&] {
+        REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    };
+    state.configure("pause_ready_first").pollAction = pause;
+    state.configure("pause_ready_second").pollAction = pause;
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(state.calls("pending_compute").size() == 1);
+    REQUIRE(state.calls("compute").empty());
+
+    state.configure("pause_ready_first").pollAction = {};
+    state.configure("pause_ready_second").pollAction = {};
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute").size() == 2);
+}
+
+TEST_CASE("Scheduler pause finishes a started cycle and holds the next one",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("pause_segment_source");
+    state.configure("pause_segment_python").inputs = {"in"};
+    state.configure("pause_segment_sink").inputs = {"in"};
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("pause_segment_source");
+    auto python = fixture.module(
+        "pause_segment_python",
+        makeInputs({{"in", "pause_segment_source"}}),
+        RuntimeType::PYTHON);
+    auto sink = fixture.module(
+        "pause_segment_sink",
+        makeInputs({{"in", "pause_segment_python"}}));
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(python) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(sink) == Result::SUCCESS);
+
+    state.clearEvents();
+    state.configure("pause_segment_source").computeAction = [&] {
+        REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    };
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(fixture.scheduler.paused());
+    const std::vector<std::string> cycle = {
+        "pause_segment_source",
+        "pause_segment_python",
+        "pause_segment_sink",
+    };
+    REQUIRE(state.calls("compute") == cycle);
+
+    state.configure("pause_segment_source").computeAction = {};
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute") == cycle);
+
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute") == std::vector<std::string>{
+        "pause_segment_source",
+        "pause_segment_python",
+        "pause_segment_sink",
+        "pause_segment_source",
+        "pause_segment_python",
+        "pause_segment_sink",
+    });
+
+    REQUIRE(fixture.shutdown() == Result::SUCCESS);
+}
+
+TEST_CASE("Scheduler mutates and stops cleanly while paused",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("paused_mutation_source");
+    state.configure("paused_mutation_sink").inputs = {"in"};
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("paused_mutation_source");
+    auto sink = fixture.module("paused_mutation_sink", makeInputs({{"in", "paused_mutation_source"}}));
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+
+    REQUIRE(fixture.scheduler.add(sink) == Result::SUCCESS);
+    bool synchronized = false;
+    REQUIRE(fixture.scheduler.synchronize([&] {
+        synchronized = true;
+        return Result::SUCCESS;
+    }) == Result::SUCCESS);
+    REQUIRE(synchronized);
+    REQUIRE(fixture.scheduler.paused());
+
+    state.clearEvents();
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute").empty());
+
+    REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute").empty());
+
+    REQUIRE(fixture.scheduler.start() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.paused());
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute").empty());
+
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute") ==
+            std::vector<std::string>{"paused_mutation_source", "paused_mutation_sink"});
+
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
+    REQUIRE(fixture.shutdown() == Result::SUCCESS);
+}
+
+TEST_CASE("Scheduler pause releases a compute parked for a delayed presentation",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("parked_surface").surface = true;
+
+    SchedulerFixture fixture;
+    auto surface = fixture.module("parked_surface");
+    REQUIRE(fixture.scheduler.add(surface) == Result::SUCCESS);
+
+    const auto attempt = [&] {
+        std::latch polled(1);
+        state.configure("parked_surface").pollAction = [&] {
+            polled.count_down();
+        };
+
+        std::latch captureEntered(1);
+        std::latch captureRelease(1);
+        std::atomic<bool> captureHeld{true};
+        state.configure("parked_surface").captureAction = [&] {
+            if (captureHeld.exchange(false)) {
+                captureEntered.count_down();
+                captureRelease.wait();
+            }
+        };
+
+        std::thread delayedPresenter([&] {
+            std::unordered_set<std::string> presentFailures;
+            (void)fixture.scheduler.present(presentFailures);
+        });
+        captureEntered.wait();
+
+        std::atomic<bool> requesting{true};
+        std::atomic<U64> requests{0};
+        std::thread requestingPresenter([&] {
+            std::unordered_set<std::string> presentFailures;
+            while (requesting.load()) {
+                (void)fixture.scheduler.present(presentFailures);
+                requests.fetch_add(1);
+            }
+        });
+        while (requests.load() == 0) {
+            std::this_thread::yield();
+        }
+
+        auto computed = std::async(std::launch::async, [&fixture] {
+            std::unordered_set<std::string> computeFailures;
+            return fixture.scheduler.compute(computeFailures);
+        });
+        polled.wait();
+        const bool parked = computed.wait_for(std::chrono::milliseconds(20)) == std::future_status::timeout;
+
+        const auto pauseResult = fixture.scheduler.pause();
+        captureRelease.count_down();
+        const bool released = computed.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
+
+        requesting.store(false);
+        requestingPresenter.join();
+        delayedPresenter.join();
+        state.configure("parked_surface").captureAction = {};
+
+        CHECK(parked);
+        CHECK(pauseResult == Result::SUCCESS);
+        CHECK(computed.get() == Result::SUCCESS);
+        CHECK(fixture.scheduler.resume() == Result::SUCCESS);
+
+        return released;
+    };
+
+    REQUIRE(attempt());
+    REQUIRE(state.count("compute", "parked_surface") == 0);
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(state.count("compute", "parked_surface") == 1);
+    REQUIRE(fixture.shutdown() == Result::SUCCESS);
+}
+
 TEST_CASE("Scheduler rolls back a failed CPU Runtime addition",
           "[core][runtime][scheduler]") {
     auto& state = syntheticState();
@@ -867,7 +1211,7 @@ TEST_CASE("Scheduler compute does not wait for a later frame after a skipped pre
 
     REQUIRE(presentResult == Result::SUCCESS);
     REQUIRE(presentTime < std::chrono::milliseconds(50));
-    REQUIRE(state.count("present", "handoff_surface") == 0);
+    REQUIRE(state.count("capture", "handoff_surface") == 0);
 
     auto next = std::async(std::launch::async, [&fixture] {
         std::unordered_set<std::string> nextFailedModules;
@@ -923,6 +1267,24 @@ TEST_CASE("Scheduler reports presentation initialization and submission failures
         REQUIRE(state.count("present", "present_submit_failure") == 1);
     }
 
+    SECTION("capture failure names the surface and skips submission") {
+        state.reset();
+        auto& spec = state.configure("present_capture_failure");
+        spec.surface = true;
+        spec.presentCaptureResults = {Result::ERROR};
+
+        SchedulerFixture fixture;
+        auto surface = fixture.module("present_capture_failure");
+        REQUIRE(fixture.scheduler.add(surface) == Result::SUCCESS);
+
+        state.clearEvents();
+        std::unordered_set<std::string> failedModules = {"stale"};
+        REQUIRE(fixture.scheduler.present(failedModules) == Result::ERROR);
+        REQUIRE(failedModules == std::unordered_set<std::string>{"present_capture_failure"});
+        REQUIRE(state.count("capture", "present_capture_failure") == 1);
+        REQUIRE(state.count("present", "present_capture_failure") == 0);
+    }
+
     SECTION("RELOAD is successful presentation progress") {
         state.reset();
         auto& spec = state.configure("present_reload");
@@ -939,6 +1301,51 @@ TEST_CASE("Scheduler reports presentation initialization and submission failures
         REQUIRE(failedModules.empty());
         REQUIRE(state.count("present", "present_reload") == 1);
     }
+}
+
+TEST_CASE("Scheduler submits presentation while compute holds the data lock",
+          "[core][runtime][scheduler]") {
+    auto& state = syntheticState();
+    state.reset();
+    std::latch entered(1);
+    std::latch release(1);
+    state.configure("busy_source").computeAction = [&] {
+        entered.count_down();
+        release.wait();
+    };
+    state.configure("live_surface").surface = true;
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("busy_source");
+    auto surface = fixture.module("live_surface");
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(surface) == Result::SUCCESS);
+
+    Result computeResult = Result::ERROR;
+    std::thread computeThread([&] {
+        std::unordered_set<std::string> computeFailures;
+        computeResult = fixture.scheduler.compute(computeFailures);
+    });
+    entered.wait();
+
+    state.clearEvents();
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(state.count("capture", "live_surface") == 0);
+    REQUIRE(state.count("present", "live_surface") == 2);
+
+    release.count_down();
+    computeThread.join();
+    REQUIRE(computeResult == Result::SUCCESS);
+
+    state.clearEvents();
+    REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
+    REQUIRE(state.events == std::vector<std::string>{
+                                "capture:live_surface",
+                                "present:live_surface",
+                            });
 }
 
 TEST_CASE("Scheduler presentation follows add stop remove and re-add lifecycle",
@@ -961,7 +1368,10 @@ TEST_CASE("Scheduler presentation follows add stop remove and re-add lifecycle",
     std::unordered_set<std::string> failedModules;
     REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
     REQUIRE(failedModules.empty());
-    REQUIRE(state.events == std::vector<std::string>{"present:present_lifecycle"});
+    REQUIRE(state.events == std::vector<std::string>{
+                                "capture:present_lifecycle",
+                                "present:present_lifecycle",
+                            });
 
     state.clearEvents();
     REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
@@ -969,7 +1379,10 @@ TEST_CASE("Scheduler presentation follows add stop remove and re-add lifecycle",
     REQUIRE(state.events.empty());
     REQUIRE(fixture.scheduler.start() == Result::SUCCESS);
     REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
-    REQUIRE(state.events == std::vector<std::string>{"present:present_lifecycle"});
+    REQUIRE(state.events == std::vector<std::string>{
+                                "capture:present_lifecycle",
+                                "present:present_lifecycle",
+                            });
 
     state.clearEvents();
     REQUIRE(fixture.scheduler.remove(surface) == Result::SUCCESS);
@@ -1085,6 +1498,11 @@ TEST_CASE("Scheduler settles fully static branches without stopping mixed inputs
     REQUIRE(staticLeft->timing().computeTime == 0.0f);
     REQUIRE(staticTransform->timing().computeTime == 0.0f);
     REQUIRE(staticMerge->timing().computeTime == 0.0f);
+    REQUIRE(staticLeft->timing().settled);
+    REQUIRE(staticTransform->timing().settled);
+    REQUIRE(staticMerge->timing().settled);
+    REQUIRE(staticLeft->timing().lastCycle != std::chrono::steady_clock::time_point{});
+    REQUIRE_FALSE(liveSource->timing().settled);
 
     REQUIRE(fixture.shutdown() == Result::SUCCESS);
 }
@@ -3153,6 +3571,36 @@ TEST_CASE("Scheduler recomputes static outputs that were waiting unread when set
     }
 
     REQUIRE(fixture.shutdown() == Result::SUCCESS);
+}
+
+TEST_CASE("Scheduler deadline waits remain interruptible",
+          "[core][runtime][scheduler][deadline]") {
+    using Clock = std::chrono::steady_clock;
+
+    SECTION("deadline expires without returning early") {
+        const auto epoch = Scheduler::Impl::BeginComputeRound();
+        const auto deadline = Clock::now() + std::chrono::milliseconds(5);
+        Scheduler::Context::NotifyPendingComputeAt(deadline);
+        Scheduler::Impl::WaitComputeRound(epoch, std::chrono::seconds(5));
+        REQUIRE(Clock::now() >= deadline);
+    }
+
+    SECTION("notification interrupts an armed deadline") {
+        std::promise<void> starting;
+        auto started = starting.get_future();
+        auto waiter = std::async(std::launch::async, [&] {
+            const auto epoch = Scheduler::Impl::BeginComputeRound();
+            Scheduler::Context::NotifyPendingComputeAt(Clock::now() + std::chrono::seconds(5));
+            starting.set_value();
+            Scheduler::Impl::WaitComputeRound(epoch, std::chrono::seconds(5));
+        });
+        started.wait();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        Scheduler::Context::NotifyPendingCompute();
+        const bool woke = waiter.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+        waiter.get();
+        REQUIRE(woke);
+    }
 }
 
 TEST_CASE("Scheduler start wakes an idle compute round",

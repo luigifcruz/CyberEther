@@ -639,6 +639,46 @@ TEST_CASE("Registry lists and unregisters flowgraphs and benchmarks", "[core][re
     REQUIRE(Registry::UnregisterBenchmark(benchmarkType, &ownerA) == Result::ERROR);
 }
 
+TEST_CASE("Flowgraph registrations read gallery metadata from the root and default without it",
+          "[core][registry][metadata]") {
+    const std::string yaml = R"(---
+version: 2
+revision: 1
+title: Gallery Example
+summary: Short summary.
+category: Receivers
+accent: '#5fd1b4'
+featured: true
+diagram: |-
+  sdr[SDR] --> fm[FM]
+  fm --> audio[Audio]
+compatibility: '>=1.16.0'
+graph: []
+meta:
+  layout:
+    order: 1
+)";
+    Registry::FlowgraphRegistration record;
+    Parser::Map data;
+    REQUIRE(Parser::YamlDecode(yaml, data) == Result::SUCCESS);
+    REQUIRE(record.deserialize(data) == Result::SUCCESS);
+    CHECK(record.title == "Gallery Example");
+    CHECK(record.summary == "Short summary.");
+    CHECK(record.category == "Receivers");
+    CHECK(record.accent == "#5fd1b4");
+    CHECK(record.featured);
+    CHECK(record.diagram == "sdr[SDR] --> fm[FM]\nfm --> audio[Audio]");
+
+    Registry::FlowgraphRegistration plain;
+    Parser::Map plainData;
+    REQUIRE(Parser::YamlDecode("---\nversion: 2\ntitle: Plain\ngraph: []\n", plainData) == Result::SUCCESS);
+    REQUIRE(plain.deserialize(plainData) == Result::SUCCESS);
+    CHECK(plain.category.empty());
+    CHECK(plain.accent.empty());
+    CHECK(plain.diagram.empty());
+    CHECK_FALSE(plain.featured);
+}
+
 TEST_CASE("Registry defers every registration kind until lookup", "[core][registry][deferred]") {
     PrepareRegistry();
 

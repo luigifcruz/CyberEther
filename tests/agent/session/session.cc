@@ -11,11 +11,16 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
+#include <functional>
 #include <future>
+#include <map>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
+#include <vector>
 
 using namespace Jetstream;
 using namespace std::chrono_literals;
@@ -528,6 +533,244 @@ TEST_CASE("Cancelled tool batches replay completed results and close pending cal
     CHECK(history[3]["tool_call_id"] == "two");
     CHECK(nlohmann::json::parse(history[3]["content"].get<std::string>()).contains("error"));
     CHECK(history[4]["content"] == "Continue");
+}
+
+namespace {
+
+class SteeringProvider : public AgentTest::ProviderServer {
+ public:
+    std::function<std::string(size_t)> body;
+
+    SteeringProvider() {
+        server.Post("/chat", [this](const httplib::Request& request, httplib::Response& response) {
+            std::unique_lock lock(mutex);
+            const size_t index = requests.size();
+            requests.push_back(nlohmann::json::parse(request.body));
+            changed.notify_all();
+            changed.wait_for(lock, 5s, [&] {
+                return closing || statuses.contains(index);
+            });
+            const int status = statuses.contains(index) ? statuses.at(index) : 500;
+            lock.unlock();
+
+            if (status != 200) {
+                response.status = status;
+                response.set_content(R"({"error":{"message":"Rejected"}})", "application/json");
+                return;
+            }
+            response.set_content(body(index), "text/event-stream");
+        });
+        start();
+    }
+
+    ~SteeringProvider() {
+        {
+            std::lock_guard lock(mutex);
+            closing = true;
+        }
+        changed.notify_all();
+        stop();
+    }
+
+    void release(size_t index, int status = 200) {
+        {
+            std::lock_guard lock(mutex);
+            statuses[index] = status;
+        }
+        changed.notify_all();
+    }
+
+    bool reached(size_t count) {
+        std::unique_lock lock(mutex);
+        return changed.wait_for(lock, 5s, [&] {
+            return requests.size() >= count;
+        });
+    }
+
+    nlohmann::json messages(size_t index) {
+        std::lock_guard lock(mutex);
+        return requests.at(index)["messages"];
+    }
+
+    size_t count() {
+        std::lock_guard lock(mutex);
+        return requests.size();
+    }
+
+    Agent::Session::Config config() const {
+        return {
+            .provider = std::make_shared<Agent::Provider>(ProviderServer::config(Agent::Provider::Kind::OpenCodeGo)),
+            .model = modelValue,
+            .tools = {{"inspect_tool", "Inspect a test value", R"({"type":"object"})"}},
+        };
+    }
+
+    static std::string Text(const std::string& text) {
+        return AgentTest::Sse::Delta({{"content", text}}) + AgentTest::Sse::Done();
+    }
+
+    static std::string Tool() {
+        return AgentTest::Sse::Delta({{"tool_calls",
+                                       {{{"index", 0},
+                                         {"id", "call-one"},
+                                         {"function", {{"name", "inspect_tool"}, {"arguments", "{}"}}}}}}}) +
+               AgentTest::Sse::Done();
+    }
+
+ private:
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::vector<nlohmann::json> requests;
+    std::map<size_t, int> statuses;
+    bool closing = false;
+};
+
+std::vector<std::string> Texts(const Agent::Session::Snapshot& snapshot) {
+    std::vector<std::string> texts;
+    for (const auto& entry : snapshot.pending) {
+        texts.push_back(entry.text);
+    }
+    return texts;
+}
+
+}  // namespace
+
+TEST_CASE("Steering messages join the running turn after its tool results", "[agent][conversation][steer]") {
+    SteeringProvider provider;
+    provider.body = [](size_t index) {
+        return index == 0 ? SteeringProvider::Tool() : SteeringProvider::Text("Done.");
+    };
+
+    Agent::Session session;
+    auto config = provider.config();
+    std::atomic<bool> steered{false};
+    config.executeTool = [&](const std::string&, const std::string&, const Agent::Cancellation&) {
+        steered.store(session.steer("Use the blue one."));
+        return Agent::Tools::Output{R"({"value":42})", {"data:image/png;base64,dGVzdA=="}};
+    };
+
+    REQUIRE_FALSE(session.steer("Too early."));
+    REQUIRE(session.submit("Inspect this.", config));
+    REQUIRE_FALSE(session.steer(" \n"));
+    provider.release(0);
+    provider.release(1);
+    REQUIRE(WaitForCompletion(session));
+    REQUIRE(steered.load());
+
+    const auto request = provider.messages(1);
+    REQUIRE(request.size() == 4);
+    CHECK(request[2]["role"] == "tool");
+    CHECK(request[3]["role"] == "user");
+    CHECK(request[3]["content"][0]["text"].get<std::string>().ends_with("\n\nUse the blue one."));
+    CHECK(request[3]["content"][1]["image_url"]["url"] == "data:image/png;base64,dGVzdA==");
+    CHECK(provider.count() == 2);
+
+    const auto snapshot = session.snapshot();
+    REQUIRE(snapshot.messages.size() == 4);
+    CHECK(snapshot.messages[2].user);
+    CHECK(snapshot.messages[2].text == "Use the blue one.");
+    CHECK(snapshot.messages[1].segments.back().kind == Agent::Session::Segment::Kind::ToolResult);
+    CHECK(snapshot.messages[3].segments.back().text == "Done.");
+    CHECK(snapshot.pending.empty());
+}
+
+TEST_CASE("Steering messages that arrive during a final answer continue the conversation",
+          "[agent][conversation][steer]") {
+    SteeringProvider provider;
+    provider.body = [](size_t index) {
+        return SteeringProvider::Text(index == 0 ? "First." : "Second.");
+    };
+
+    Agent::Session session;
+    REQUIRE(session.submit("Start.", provider.config()));
+    REQUIRE(provider.reached(1));
+    REQUIRE(session.steer("Also this."));
+    REQUIRE(session.steer("And that."));
+    CHECK(Texts(session.snapshot()) == std::vector<std::string>{"Also this.", "And that."});
+    CHECK(session.snapshot().streaming);
+
+    provider.release(0);
+    REQUIRE(provider.reached(2));
+    CHECK(session.snapshot().streaming);
+    CHECK(session.snapshot().pending.empty());
+    provider.release(1);
+    REQUIRE(WaitForCompletion(session));
+
+    const auto messages = provider.messages(1);
+    REQUIRE(messages.size() == 3);
+    CHECK(messages[1]["content"] == "First.");
+    CHECK(messages[2]["content"] == "Also this.\n\nAnd that.");
+
+    const auto snapshot = session.snapshot();
+    REQUIRE(snapshot.messages.size() == 4);
+    CHECK(snapshot.messages[2].text == "Also this.\n\nAnd that.");
+    CHECK(snapshot.messages[3].segments.back().text == "Second.");
+}
+
+TEST_CASE("Failed turns keep pending steers until the next submit sends them first",
+          "[agent][conversation][steer]") {
+    SteeringProvider provider;
+    provider.body = [](size_t) {
+        return SteeringProvider::Text("Done.");
+    };
+
+    Agent::Session session;
+    const auto config = provider.config();
+    REQUIRE(session.submit("Start.", config));
+    REQUIRE(provider.reached(1));
+    REQUIRE(session.steer("Keep me."));
+    REQUIRE(session.steer("Drop me."));
+    const auto dropped = session.snapshot().pending.back().key;
+    REQUIRE(session.withdraw(dropped));
+    REQUIRE_FALSE(session.withdraw(dropped));
+
+    provider.release(0, 500);
+    REQUIRE(WaitForCompletion(session));
+    CHECK(provider.count() == 1);
+    CHECK(Texts(session.snapshot()) == std::vector<std::string>{"Keep me."});
+    CHECK(session.snapshot().messages.back().segments.back().kind == Agent::Session::Segment::Kind::Error);
+
+    REQUIRE(session.submit("Then this.", config));
+    CHECK(session.snapshot().pending.empty());
+    REQUIRE(provider.reached(2));
+    provider.release(1);
+    REQUIRE(WaitForCompletion(session));
+    CHECK(provider.messages(1).back()["content"] == "Keep me.\n\nThen this.");
+}
+
+TEST_CASE("Cancelled turns keep pending steers and a blank submit sends them", "[agent][conversation][steer]") {
+    SteeringProvider provider;
+    provider.body = [](size_t) {
+        return SteeringProvider::Text("Done.");
+    };
+
+    Agent::Session session;
+    const auto config = provider.config();
+    REQUIRE(session.submit("Start.", config));
+    REQUIRE(provider.reached(1));
+    REQUIRE(session.steer("Later."));
+    session.cancel();
+    CHECK_FALSE(session.steer("Too late."));
+    REQUIRE(WaitForCompletion(session));
+    CHECK(provider.count() == 1);
+    CHECK(Texts(session.snapshot()) == std::vector<std::string>{"Later."});
+
+    REQUIRE(session.submit("", config));
+    REQUIRE(provider.reached(2));
+    provider.release(1);
+    REQUIRE(WaitForCompletion(session));
+    CHECK(provider.messages(1).back()["content"] == "Later.");
+    CHECK_FALSE(session.submit("", config));
+
+    REQUIRE(session.submit("Again.", config));
+    REQUIRE(provider.reached(3));
+    REQUIRE(session.steer("Gone."));
+    session.clear();
+    CHECK(session.snapshot().pending.empty());
+    CHECK_FALSE(session.steer("Into the old turn."));
+    provider.release(2);
+    REQUIRE(WaitForCompletion(session));
+    CHECK(session.snapshot().pending.empty());
 }
 
 #endif

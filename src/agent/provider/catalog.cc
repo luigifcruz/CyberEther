@@ -47,6 +47,21 @@ void ParseLimits(const nlohmann::json& model, auto& entry) {
     }
 }
 
+void ParseCost(const nlohmann::json& model, auto& entry) {
+    const auto cost = model.find("cost");
+    if (cost == model.end() || !cost->is_object()) {
+        return;
+    }
+
+    const auto input = cost->find("input");
+    const auto output = cost->find("output");
+    if (input == cost->end() || output == cost->end() || !input->is_number() || !output->is_number()) {
+        return;
+    }
+    entry.inputCost = input->get<F64>();
+    entry.outputCost = output->get<F64>();
+}
+
 void ParseModel(const nlohmann::json& model, auto& entry) {
     const auto name = model.find("name");
     if (name != model.end() && name->is_string()) {
@@ -55,6 +70,7 @@ void ParseModel(const nlohmann::json& model, auto& entry) {
 
     ParseReasoningEfforts(model, entry);
     ParseLimits(model, entry);
+    ParseCost(model, entry);
 }
 
 }  // namespace

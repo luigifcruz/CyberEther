@@ -61,9 +61,12 @@ struct Session::Impl {
 
     mutable std::mutex mutex;
     std::vector<std::shared_ptr<Entry>> messages;
+    std::vector<Pending> pending;
+    U64 nextPending = 0;
     U64 revision = 1;
     std::thread worker;
     std::atomic<bool> streaming{false};
+    bool steerable = false;
     std::optional<CallLog> callLog;
     U64 nextVoiceId = 0;
     std::shared_ptr<std::atomic<bool>> abortRequested = std::make_shared<std::atomic<bool>>(false);
@@ -92,6 +95,8 @@ struct Session::Impl {
     void retire();
 
     bool owns(Target target) const;
+    std::string drain(const std::string& prompt);
+    std::optional<std::string> absorb(Target& target);
     void append(Target target, Segment::Kind kind, const std::string& chunk);
     void add(Target target, Segment segment);
     void record(Target target, const Provider::Usage& usage);
@@ -128,9 +133,11 @@ class Session::Impl::Turn {
              const std::string& sessionId);
 
     const std::vector<Provider::Message>& history() const;
+    bool succeeded() const;
 
  private:
     void loop();
+    void steer();
     void fail(Provider::Error::Kind kind, std::string message);
     std::string errorText() const;
     void finish(Provider::Response& response);
@@ -146,10 +153,10 @@ class Session::Impl::Turn {
     Provider::Response request(const std::vector<Provider::Message>& messages, bool allowTools, bool summary = false);
     std::optional<std::string> summarize(std::string_view source, U64 targetBudget);
     bool compact(U64 targetBudget);
-    Provider::Response stream(bool allowTools = true);
-    Provider::Response respond(bool allowTools = true);
+    Provider::Response stream();
+    Provider::Response respond();
     bool lowerImageCap(const Provider::Response& response);
-    void execute(const std::vector<Provider::FunctionCall>& calls, bool lastRound);
+    void execute(const std::vector<Provider::FunctionCall>& calls);
 
     void write(Segment::Kind kind, const std::string& text);
     void note(Segment segment);

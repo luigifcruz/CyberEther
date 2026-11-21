@@ -5,6 +5,7 @@
 
 #include "updater.hh"
 #include "support/feedback.hh"
+#include "support/crash_report.hh"
 
 #include "actions/base.hh"
 #include "support/agent/runtime.hh"
@@ -14,12 +15,16 @@
 #include "views/workbench.hh"
 
 #include <deque>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace Jetstream {
 
 class DefaultCompositor : public Compositor::Impl {
  public:
     DefaultCompositor();
+    ~DefaultCompositor();
 
     Result create();
     Result destroy();
@@ -31,6 +36,7 @@ class DefaultCompositor : public Compositor::Impl {
     DefaultCompositorState state;
     Updater updater;
     Feedback feedback;
+    CrashReport crashReport;
     DefaultCompositorCallbacks callbacks;
     AgentRuntime agent;
     DefaultActions actions;
@@ -38,6 +44,9 @@ class DefaultCompositor : public Compositor::Impl {
 
     std::deque<Mail> pendingMail;
     WorkbenchView workbench;
+    std::vector<std::string> droppedFiles;
+    std::optional<bool> previousIntegratedTitlebar;
+    bool crashReportChecked = false;
 
     void enqueue(Mail&& mail);
 
@@ -51,6 +60,7 @@ class DefaultCompositor : public Compositor::Impl {
     void updateRemoteState();
     void updateUpdaterState();
     void updateFeedbackState();
+    void updateCrashReportState();
 };
 
 }  // namespace Jetstream

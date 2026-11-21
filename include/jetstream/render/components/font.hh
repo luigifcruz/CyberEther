@@ -35,6 +35,8 @@ class JETSTREAM_API Font : public Generic {
     I32 lineHeight() const;
     F32 atlasScale() const;
     F32 atlasPixelRange() const;
+    bool hasGlyph(I32 code) const;
+    const std::shared_ptr<Render::Texture>& atlas() const;
 
  protected:
     struct Glyph {
@@ -49,7 +51,6 @@ class JETSTREAM_API Font : public Generic {
 
     const Glyph& glyph(const I32& code) const;
     const Extent2D<I32>& atlasSize() const;
-    const std::shared_ptr<Render::Texture>& atlas() const;
 
  private:
     Config config;

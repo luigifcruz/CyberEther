@@ -2,11 +2,25 @@
 
 #include "tools/naming.hh"
 
+#include <algorithm>
+#include <cctype>
+
 namespace Jetstream::Agent {
 
 namespace Detail {
 
 namespace {
+
+std::string UnknownTool(const std::string& name) {
+    const bool identifier = !name.empty() && std::all_of(name.begin(), name.end(), [](const unsigned char c) {
+        return std::isalnum(c) || c == '_' || c == '-' || c == '.' || c == ':' || c == '/';
+    });
+    if (identifier) {
+        return jst::fmt::format("Unknown tool '{}'.", name);
+    }
+
+    return jst::fmt::format("Unknown tool '{}'. This is not a tool name. {}", name, Response::CutShort);
+}
 
 Tools::Output Dispatch(Host& host, const Call& call) {
     try {
@@ -17,7 +31,7 @@ Tools::Output Dispatch(Host& host, const Call& call) {
 
         const auto* entry = Toolbox::Find(call.tool);
         if (!entry) {
-            return Response::Failure(jst::fmt::format("Unknown tool '{}'.", call.tool));
+            return Response::Failure(UnknownTool(call.tool));
         }
 
         return entry->execute({host, call.flowgraph, call.create, args});
@@ -54,11 +68,14 @@ const std::vector<Entry>& Toolbox::All() {
         const auto factories = {
             Catalog,
             Inspect,
+            Tensors,
             Patch,
             Text,
             Connections,
             Environment,
             Capture,
+            Docs,
+            Log,
         };
 
         std::vector<Entry> result;
@@ -94,15 +111,15 @@ const std::vector<Tools::Definition>& Tools::Definitions() {
     return definitions;
 }
 
-std::vector<Provider::Function> Tools::Functions(bool captureSupported) {
-    std::vector<Provider::Function> tools;
+std::vector<Tools::Definition> Tools::Available(bool captureSupported) {
+    std::vector<Definition> available;
     for (const auto& definition : Definitions()) {
-        if (definition.flags.needsCapture && !captureSupported) {
+        if (definition.flags.capture && !captureSupported) {
             continue;
         }
-        tools.push_back(definition.function);
+        available.push_back(definition);
     }
-    return tools;
+    return available;
 }
 
 Tools::Output Tools::Error(const std::string& message, bool mayHaveApplied) {
@@ -114,7 +131,7 @@ Tools::Output Tools::Error(const std::string& message, bool mayHaveApplied) {
 }
 
 void Tools::Annotate(const Call& call, Tools::Output& output, const Layout& layout) {
-    if (!call.definition || !call.definition->flags.reportsLayout) {
+    if (!call.definition || !call.definition->flags.layout) {
         return;
     }
 
@@ -130,7 +147,19 @@ void Tools::Annotate(const Call& call, Tools::Output& output, const Layout& layo
         entry->annotate(body, Detail::Json::parse(call.args, nullptr, false), layout);
     }
 
-    output.content = body.dump();
+    output.content = Detail::Response::Dump(body);
+}
+
+std::optional<F32> Tools::Host::width(Block::NodeSize) {
+    return std::nullopt;
+}
+
+std::optional<std::vector<Tools::Host::DocMatch>> Tools::Host::searchDocs(const std::string&, U64) {
+    return std::nullopt;
+}
+
+std::optional<Tools::Host::DocPage> Tools::Host::readDocs(const std::string&) {
+    return std::nullopt;
 }
 
 Tools::Tools(Host& host) : host(host) {}
@@ -145,15 +174,20 @@ Tools::Call Tools::prepare(const std::shared_ptr<Flowgraph>& target, const std::
     }
 
     call.definition = &entry->definition;
-    if (entry->definition.flags.needsGraph) {
+    if (entry->definition.flags.graph) {
         call.flowgraph = target;
     }
 
-    if (call.flowgraph || !entry->newGraph) {
+    if (!entry->newGraph) {
         return call;
     }
 
     const auto graph = entry->newGraph(Detail::Json::parse(args, nullptr, false));
+    if (call.flowgraph && !graph.requested) {
+        return call;
+    }
+
+    call.flowgraph.reset();
     if (!graph.error.empty()) {
         call.output = Detail::Response::Failure(graph.error);
     } else if (!graph.name.empty()) {

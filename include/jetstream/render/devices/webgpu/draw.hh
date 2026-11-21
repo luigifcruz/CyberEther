@@ -15,6 +15,7 @@ class JETSTREAM_API DrawImp<DeviceType::WebGPU> : public Draw {
     Result create(WGPURenderPipelineDescriptor& renderDescriptor);
     Result destroy();
     Result encode(WGPURenderPassEncoder& renderPassEncoder);
+    Result encode(WGPURenderPassEncoder& renderPassEncoder, const Range& range, bool bind);
     Result updateVertexCount(U64 vertexCount) override;
     Result updateInstanceCount(U64 instanceCount) override;
 

@@ -12,27 +12,12 @@ Tools::Output Failure(const char* json) {
 
 }  // namespace
 
-ToolRunner::ToolRunner(Session::ToolExecutor execute, std::shared_ptr<OutputStore> outputs, U64 maxRounds)
-    : execute(std::move(execute)), outputs(std::move(outputs)), maxRounds(maxRounds) {}
+ToolRunner::ToolRunner(Session::ToolExecutor execute, std::shared_ptr<OutputStore> outputs)
+    : execute(std::move(execute)), outputs(std::move(outputs)) {}
 
-bool ToolRunner::advance() {
-    return rounds.fetch_add(1) + 1 >= maxRounds;
-}
-
-bool ToolRunner::exhausted() const {
-    return rounds.load() >= maxRounds;
-}
-
-void ToolRunner::reset() {
-    rounds.store(0);
-}
-
-Tools::Output ToolRunner::run(const Provider::FunctionCall& call, U64 resultLimit, bool lastRound,
-                              const Cancellation& cancel) const {
+Tools::Output ToolRunner::run(const Provider::FunctionCall& call, U64 resultLimit, const Cancellation& cancel) const {
     Tools::Output result;
-    if (lastRound) {
-        result = Failure(R"({"error":"tool-step budget reached; summarize what remains"})");
-    } else if (call.name == OutputStore::Schema().name) {
+    if (call.name == OutputStore::Schema().name) {
         result = outputs->read(call.arguments, resultLimit);
     } else if (!execute) {
         result = Failure(R"({"error":"tools are unavailable"})");

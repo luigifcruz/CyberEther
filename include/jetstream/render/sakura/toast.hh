@@ -15,7 +15,7 @@ enum class ToastType {
 };
 
 std::string CleanUserMessage(std::string message);
-void PushToast(ToastType type, I32 durationMs, const std::string& message);
+void PushToast(ToastType type, I32 durationMs, const std::string& message, const std::string& title = "");
 void PushToastResult(Result value, const std::string& message = "");
 
 }  // namespace Jetstream::Sakura

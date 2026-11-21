@@ -1,61 +1,116 @@
 #include <jetstream/render/sakura/components/node/bool_input.hh>
 
-#include "base.hh"
+#include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/tools/icons_fa.hh>
+
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+#include "pointer.hh"
+
+#include <algorithm>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
 struct NodeBoolInput::Impl {
     Config config;
+    Box background;
+    Label text;
+    Label icon;
+    TextMetrics metrics;
+    Pressable press;
+    Rect rect;
 };
 
 NodeBoolInput::NodeBoolInput() {
     this->impl = std::make_unique<Impl>();
+    addChild(impl->background);
+    addChild(impl->text);
+    addChild(impl->icon);
 }
 
 NodeBoolInput::~NodeBoolInput() = default;
-NodeBoolInput::NodeBoolInput(NodeBoolInput&&) noexcept = default;
-NodeBoolInput& NodeBoolInput::operator=(NodeBoolInput&&) noexcept = default;
 
-bool NodeBoolInput::update(Config config) {
-    this->impl->config = std::move(config);
-    return true;
+void NodeBoolInput::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
+    impl->config = std::move(config);
 }
 
-void NodeBoolInput::render(const Context& ctx) const {
-    const auto& config = this->impl->config;
+Extent2D<F32> NodeBoolInput::measure(const Context& ctx, Extent2D<F32> available) {
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
+}
 
-    const std::string displayText = config.value ? "Enabled" : "Disabled";
-    const char* icon = config.value ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF;
-    const F32 height = ImGui::GetTextLineHeight() + Scale(ctx, 6.0f);
-    const F32 pad = Scale(ctx, 6.0f);
-    const F32 iconFontSize = ImGui::GetFontSize() * 0.8f;
-    const F32 iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, icon).x;
+void NodeBoolInput::layout(const Context& ctx) {
+    const auto& config = impl->config;
+    const Rect bounds = frame();
+    impl->rect = bounds;
+    impl->metrics.setWindow(ctx.render);
 
-    ImGui::PushID(config.id.c_str());
-    const bool changed = ImGui::InvisibleButton("##bool", ImVec2(ImGui::GetContentRegionAvail().x, height));
-    if (changed && config.onChange) {
-        config.onChange(!config.value);
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
+    const F32 pad = Px(ctx, kNodeFramePadX);
+    const F32 iconSize = fontSize * 0.8f;
+    const char* glyph = config.value ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF;
+    const F32 iconWidth = impl->metrics.measure(Typography::NodeIconFont, glyph, iconSize);
+
+    impl->background.update({
+        .instances = {{.rect = Snap(bounds), .visible = !bounds.empty(), .backgroundColor = ctx.color("card")}},
+        .clip = bounds,
+        .cornerRadius = Px(ctx, kFrameRounding),
+    });
+    impl->text.update({
+        .instances = {{
+            .rect = {bounds.x + pad, bounds.y, std::max(0.0f, bounds.width - pad), bounds.height},
+            .str = config.value ? "Enabled" : "Disabled",
+            .visible = !bounds.empty(),
+            .color = ctx.color("text_primary"),
+            .fontSize = fontSize,
+            .alignment = {0, 1},
+        }},
+        .clip = bounds,
+        .fontName = Typography::MonoFont,
+        .maxCharacters = 16,
+    });
+    impl->icon.update({
+        .instances = {{
+            .rect = {bounds.right() - pad - iconWidth, bounds.y, iconWidth, bounds.height},
+            .str = glyph,
+            .visible = !bounds.empty(),
+            .color = ctx.color(config.value ? "node_toggle_on" : "text_secondary"),
+            .fontSize = iconSize,
+            .alignment = {0, 1},
+        }},
+        .clip = bounds,
+        .fontName = Typography::NodeIconFont,
+        .maxCharacters = 4,
+    });
+
+    layoutChild(ctx, impl->background, bounds);
+    layoutChild(ctx, impl->text, bounds);
+    layoutChild(ctx, impl->icon, bounds);
+}
+
+std::optional<SurfaceCursor> NodeBoolInput::cursorAt(const Extent2D<F32>& point) const {
+    if (!Intersect(Intersect(impl->rect, frame()), clip()).contains(point.x, point.y)) {
+        return std::nullopt;
     }
+    return SurfaceCursor::Hand;
+}
 
-    const ImVec2 rectMin = ImGui::GetItemRectMin();
-    const ImVec2 rectMax = ImGui::GetItemRectMax();
-    const ImVec2 textSize = ImGui::CalcTextSize(displayText.c_str());
-    const ImVec2 textPos(rectMin.x + pad, rectMin.y + (height - textSize.y) * 0.5f);
-    const F32 iconX = rectMax.x - pad - iconWidth;
-    const F32 iconY = rectMin.y + (height - iconFontSize) * 0.5f;
-
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+bool NodeBoolInput::mouseEvent(const MouseEvent& event) {
+    if (impl->press.click(event, impl->rect)) {
+        return true;
     }
-    ImGui::GetWindowDrawList()->AddRectFilled(rectMin,
-                                              rectMax,
-                                              ImGui::GetColorU32(ImGuiCol_FrameBg),
-                                              ImGui::GetStyle().FrameRounding);
-    ImGui::GetWindowDrawList()->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), displayText.c_str());
-    const ImU32 iconColor = config.value ? ImGui::GetColorU32(ImVec4(0.4f, 0.8f, 0.4f, 1.0f))
-                                         : ImGui::GetColorU32(ImGuiCol_TextDisabled);
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), iconFontSize, ImVec2(iconX, iconY), iconColor, icon);
-    ImGui::PopID();
+    if (impl->press.release(event, impl->rect)) {
+        if (impl->config.onChange) {
+            impl->config.onChange(!impl->config.value);
+        }
+        return true;
+    }
+    return false;
 }
 
 }  // namespace Jetstream::Sakura

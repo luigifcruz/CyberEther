@@ -1,60 +1,60 @@
 ---
 title: Acknowledgments
 description: Contributors and third-party software used by CyberEther.
-order: 121
+order: 920
 category: Resources
 ---
 
-CyberEther would not be possible without the contributions and support of many individuals and open source projects.
+CyberEther is made possible by the people who contribute to it and the open-source projects it builds upon.
 
 ## Contributors
 
-- **Luigi Cruz** ([@luigicruz](https://twitter.com/luigifcruz)) - Creator and maintainer of CyberEther.
-- **Paulo Dutra** ([@DutraCGI](https://twitter.com/DutraCGI)) - Feedback and Windows testing.
-- **Richard Elkins** ([@texadactyl](https://github.com/texadactyl)) - Curated issues.
-- **Chase Valentine** ([@cvalentine99](https://github.com/cvalentine99)) - SoapySDR fixes for uSDR and xMASS radios.
+- **Luigi Cruz** ([@luigicruz](https://twitter.com/luigifcruz)): Creator and maintainer of CyberEther.
+- **Paulo Dutra** ([@DutraCGI](https://twitter.com/DutraCGI)): Feedback and Windows testing.
+- **Richard Elkins** ([@texadactyl](https://github.com/texadactyl)): Curated issues.
+- **Chase Valentine** ([@cvalentine99](https://github.com/cvalentine99)): SoapySDR fixes for uSDR and xMASS radios.
 
 <!-- [NEW CONTRIBUTOR HOOK] -->
 
 ## Third-Party Software
 
-CyberEther uses the following open-source libraries.
+CyberEther incorporates the following open-source libraries, fonts, and datasets. Expand any entry below the summary table to read its full license text.
 
 | Library | Purpose | License |
 |---------|---------|---------|
 | [Miniaudio](https://miniaud.io/) | Audio playback and capture. | MIT |
-| [Dear ImGui](https://github.com/ocornut/imgui) | Immediate mode graphical interface. | MIT |
-| [ImNodes](https://github.com/Nelarius/imnodes) | Node editor for flowgraphs. | MIT |
 | [PocketFFT](https://gitlab.mpcdf.mpg.de/mtr/pocketfft) | Fast Fourier Transform on CPU. | BSD-3-Clause |
-| [RapidYAML](https://github.com/biojppm/rapidyaml) | YAML file parser. | MIT |
-| [toml++](https://github.com/marzer/tomlplusplus) | TOML file parser. | MIT |
+| [RapidYAML](https://github.com/biojppm/rapidyaml) | Fast YAML file parser. | MIT |
+| [toml++](https://github.com/marzer/tomlplusplus) | Lightweight TOML file parser. | MIT |
 | [vkFFT](https://github.com/DTolm/VkFFT) | Fast Fourier Transform on GPU. | MIT |
-| [stb](https://github.com/nothings/stb) | An image file loader. | MIT |
+| [stb](https://github.com/nothings/stb) | Image loading, font rasterization, and font decompression. | MIT |
 | [fmtlib](https://github.com/fmtlib/fmt) | Text formatting and logging. | MIT |
 | [librtlsdr](https://github.com/steve-m/librtlsdr) | Communication with RTL-SDR devices. | GPL-2.0-or-later |
 | [libairspy](https://github.com/airspy/airspyone_host) | Communication with Airspy devices. | BSD-3-Clause |
 | [libairspyhf](https://github.com/airspy/airspyhf) | Communication with Airspy HF+ devices. | BSD-3-Clause |
 | [libhackrf](https://github.com/greatscottgadgets/hackrf) | Communication with HackRF devices. | BSD-3-Clause |
 | [libbladeRF](https://github.com/Nuand/bladeRF) | Communication with bladeRF devices. | LGPL-2.1-or-later |
-| [LimeSuite](https://github.com/myriadrf/LimeSuite) | Communication with LimeSDR devices. | Apache-2.0 |
-| [Analog Devices no-OS](https://github.com/analogdevicesinc/no-OS) | AD936x transceiver driver for bladeRF 2.0 micro. | Analog Devices BSD-style license |
+| [LimeSuiteNG](https://github.com/myriadrf/LimeSuiteNG) | Communication with LimeSDR devices. | Apache-2.0 |
+| [KISS FFT](https://github.com/mborgerding/kissfft) | Fast Fourier Transform used inside LimeSuiteNG. | BSD-3-Clause |
+| [rang](https://github.com/agauniyal/rang) | Terminal colors used inside LimeSuiteNG. | Unlicense |
+| [cpp-feather-ini-parser](https://github.com/Turbine1991/cpp-feather-ini-parser) | INI parser used inside LimeSuiteNG. | MIT |
+| [Analog Devices no-OS](https://github.com/analogdevicesinc/no-OS) | Transceiver driver (AD936x) for bladeRF 2.0 micro. | Analog Devices BSD-style license |
 | [libiio](https://github.com/analogdevicesinc/libiio) | Communication with PlutoSDR devices. | LGPL-2.1-or-later |
-| [libad9361-iio](https://github.com/analogdevicesinc/libad9361-iio) | AD9361 sample rate and filter setup for PlutoSDR. | LGPL-2.1-or-later |
-| [libxml2](https://gitlab.gnome.org/GNOME/libxml2) | XML parsing for libiio device descriptions. | MIT |
+| [libad9361-iio](https://github.com/analogdevicesinc/libad9361-iio) | Sample rate and filter setup (AD9361) for PlutoSDR. | LGPL-2.1-or-later |
+| [libxml2](https://gitlab.gnome.org/GNOME/libxml2) | Parsing of XML device descriptions for libiio. | MIT |
 | [BirriaSDR](https://github.com/luigifcruz/BirriaSDR) | Communication with MT7921AU Wi-Fi dongles used as receivers. | MIT, BSD-3-Clause-Clear |
-| [libmodes](https://github.com/watson/libmodes) | ADS-B and Mode S message decoding. | BSD-2-Clause |
+| [libmodes](https://github.com/watson/libmodes) | Decoding of ADS-B and Mode S messages. | BSD-2-Clause |
 | [tree-sitter](https://github.com/tree-sitter/tree-sitter) | Incremental source code parsing. | MIT |
 | [tree-sitter-python](https://github.com/tree-sitter/tree-sitter-python) | Python grammar for tree-sitter. | MIT |
 | [tree-sitter-markdown](https://github.com/tree-sitter-grammars/tree-sitter-markdown) | Markdown grammar for tree-sitter. | MIT |
-| [tree-sitter-yaml](https://github.com/tree-sitter-grammars/tree-sitter-yaml) | YAML grammar for tree-sitter. | MIT |
+| [tree-sitter-yaml](https://github.com/tree-sitter-grammars/tree-sitter-yaml) | Grammar for YAML syntax in tree-sitter. | MIT |
 | [tree-sitter-bash](https://github.com/tree-sitter/tree-sitter-bash) | Bash grammar for tree-sitter. | MIT |
-| [tree-sitter-cpp](https://github.com/tree-sitter/tree-sitter-cpp) | C++ grammar for tree-sitter. | MIT |
-| [tree-sitter-json](https://github.com/tree-sitter/tree-sitter-json) | JSON grammar for tree-sitter. | MIT |
+| [tree-sitter-cpp](https://github.com/tree-sitter/tree-sitter-cpp) | Grammar for C++ syntax in tree-sitter. | MIT |
+| [tree-sitter-json](https://github.com/tree-sitter/tree-sitter-json) | Grammar for JSON syntax in tree-sitter. | MIT |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) | Machine learning inference runtime. | MIT |
 | [GLFW](https://www.glfw.org/) | Window and input handling. | zlib/libpng |
-| [imgui-notify](https://github.com/patrickcjk/imgui-notify) | Toast notification system. | MIT |
 | [spirv-cross](https://github.com/KhronosGroup/SPIRV-Cross) | Shader conversion to Metal. | Apache-2.0 |
-| [Apple metal-cpp](https://developer.apple.com/metal/cpp/) | C++ bindings for the Metal backend. | Apache-2.0 |
+| [Apple metal-cpp](https://developer.apple.com/metal/cpp/) | Bindings in C++ for the Metal backend. | Apache-2.0 |
 | [Nanobench](https://nanobench.ankerl.com/) | Performance benchmarking tools. | MIT |
 | [glslang](https://github.com/KhronosGroup/glslang) | Shader compilation to SPIR-V. | BSD-3-Clause |
 | [naga](https://github.com/gfx-rs/naga) | Shader conversion to WGSL. | Apache-2.0 |
@@ -63,22 +63,23 @@ CyberEther uses the following open-source libraries.
 | [libffi](https://sourceware.org/libffi/) | Foreign function interface support for GLib. | MIT |
 | [GLib](https://gitlab.gnome.org/GNOME/glib) | Low-level utility library used by GStreamer. | LGPL-2.1-or-later |
 | [libsrtp2](https://github.com/cisco/libsrtp) | Secure RTP support for GStreamer WebRTC. | BSD-3-Clause |
-| [libvpx](https://chromium.googlesource.com/webm/libvpx) | VP8/VP9 codec support for GStreamer. | BSD-3-Clause |
-| [libnice](https://libnice.freedesktop.org/) | ICE networking support for GStreamer WebRTC. | LGPL-2.1-or-later |
+| [libvpx](https://chromium.googlesource.com/webm/libvpx) | Codec support for VP8 and VP9 in GStreamer. | BSD-3-Clause |
+| [libnice](https://libnice.freedesktop.org/) | Networking support for ICE in GStreamer WebRTC. | LGPL-2.1-or-later |
 | [libgudev](https://gitlab.gnome.org/GNOME/libgudev/) | GObject bindings for libudev used by GStreamer. | LGPL-2.1-or-later |
 | [gl-headers](https://gitlab.freedesktop.org/gstreamer/meson-ports/gl-headers) | OpenGL and EGL headers for GStreamer GL support. | MIT/Apache-2.0 |
 | [libusb](https://libusb.info/) | Communication with USB devices. | LGPL-2.1 |
-| [libqrencode](https://fukuchi.org/works/qrencode/) | QR code generation for remote sessions. | LGPL-2.1-or-later |
+| [libqrencode](https://fukuchi.org/works/qrencode/) | Generation of QR codes for remote sessions. | LGPL-2.1-or-later |
 | [zlib](https://zlib.net/) | Gzip decompression for geodata. | zlib |
-| [OpenSSL](https://www.openssl.org/) | TLS and cryptography support. | Apache-2.0 |
+| [OpenSSL](https://www.openssl.org/) | Cryptography and TLS support. | Apache-2.0 |
 | [Catch2](https://github.com/catchorg/Catch2) | Unit testing framework. | Boost |
-| [Font Awesome](https://fontawesome.com/) | Icon font used in the GUI. | Font Awesome Free License |
-| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | Monospace font for the GUI. | OFL-1.1 |
-| [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | UI font for the GUI. | OFL-1.1 |
-| [Inter](https://github.com/rsms/inter) | Sans-serif UI font for the GUI. | OFL-1.1 |
+| [Lucide](https://lucide.dev/) | Icon font used in the interface. | ISC |
+| [Font Awesome](https://fontawesome.com/) | Node icons used in the flowgraph editor. | Font Awesome Free License |
+| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | Monospace font for the interface. | OFL-1.1 |
+| [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | Primary interface font. | OFL-1.1 |
+| [Inter](https://github.com/rsms/inter) | Sans-serif interface font. | OFL-1.1 |
 | [GLM](https://github.com/g-truc/glm) | Vector and matrix math. | Happy Bunny/MIT |
-| [cpp-httplib](https://github.com/yhirose/cpp-httplib) | Server for REST API. | MIT |
-| [nlohmann/json](https://github.com/nlohmann/json) | JSON file parser. | MIT |
+| [cpp-httplib](https://github.com/yhirose/cpp-httplib) | Server for REST endpoints. | MIT |
+| [nlohmann/json](https://github.com/nlohmann/json) | Modern JSON file parser. | MIT |
 | [nanobind](https://github.com/wjakob/nanobind) | Python bindings support. | BSD-3-Clause |
 | [robin-map](https://github.com/Tessil/robin-map) | Hash map used internally by nanobind. | MIT |
 | [Google Turbo colormap](https://research.google/blog/turbo-an-improved-rainbow-colormap-for-visualization/) | Colormap used by visualization modules. | Apache-2.0 |
@@ -108,56 +109,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-</details>
-
-### Dear ImGui
-Immediate mode GUI library by Omar Cornut. Used for the CyberEther GUI. Licensed under MIT. [GitHub](https://github.com/ocornut/imgui)
-
-<details>
-  <summary>View License</summary>
-
-```
-The MIT License (MIT)
-
-Copyright (c) 2014-2023 Omar Cornut
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-</details>
-
-### ImNodes
-Node editor for Dear ImGui. Used for the flowgraph editor. Licensed under MIT. [GitHub](https://github.com/Nelarius/imnodes)
-
-<details>
-  <summary>View License</summary>
-
-```
-MIT License
-
-Copyright (c) 2019 Johann Muszynski
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 </details>
 
@@ -234,7 +185,7 @@ DEALINGS IN THE SOFTWARE.
 </details>
 
 ### toml++
-TOML parser and serializer. Licensed under MIT. [GitHub](https://github.com/marzer/tomlplusplus)
+A TOML parser and serializer. Licensed under MIT. [GitHub](https://github.com/marzer/tomlplusplus)
 
 <details>
   <summary>View License</summary>
@@ -291,7 +242,7 @@ SOFTWARE.
 </details>
 
 ### stb
-Single-file public domain libraries for C/C++. Used for image loading. Licensed under MIT. [GitHub](https://github.com/nothings/stb)
+Single-file public domain libraries for C/C++. Used for image loading, font rasterization, and font decompression. Licensed under MIT. [GitHub](https://github.com/nothings/stb)
 
 <details>
   <summary>View License</summary>
@@ -734,8 +685,8 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 ```
 </details>
 
-### LimeSuite
-Driver and support library for LMS7002M based boards. Used by the SDR and SDR Sweep blocks for LimeSDR devices. Licensed under Apache-2.0. [GitHub](https://github.com/myriadrf/LimeSuite)
+### LimeSuiteNG
+Driver and support library for LMS7002M based boards. Used by the SDR and SDR Sweep blocks for LimeSDR devices. Licensed under Apache-2.0. [GitHub](https://github.com/myriadrf/LimeSuiteNG)
 
 <details>
   <summary>View License</summary>
@@ -942,6 +893,127 @@ Driver and support library for LMS7002M based boards. Used by the SDR and SDR Sw
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+```
+</details>
+
+### KISS FFT
+Fast Fourier Transform library bundled with LimeSuiteNG. Used by the SDR and SDR Sweep blocks for LimeSDR devices. Licensed under BSD-3-Clause. [GitHub](https://github.com/mborgerding/kissfft)
+
+<details>
+  <summary>View License</summary>
+
+```
+Copyright (c) 2003-2010 Mark Borgerding . All rights reserved.
+
+KISS FFT is provided under:
+
+  SPDX-License-Identifier: BSD-3-Clause
+
+Being under the terms of the BSD 3-clause "New" or "Revised" License,
+according with:
+
+  LICENSES/BSD-3-Clause
+
+Valid-License-Identifier: BSD-3-Clause
+SPDX-URL: https://spdx.org/licenses/BSD-3-Clause.html
+Usage-Guide:
+  To use the BSD 3-clause "New" or "Revised" License put the following SPDX
+  tag/value pair into a comment according to the placement guidelines in
+  the licensing rules documentation:
+    SPDX-License-Identifier: BSD-3-Clause
+License-Text:
+
+Copyright (c) <year> <owner> . All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation
+and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+</details>
+
+### rang
+Terminal color library bundled with LimeSuiteNG. Used by the SDR and SDR Sweep blocks for LimeSDR devices. Released under the Unlicense. [GitHub](https://github.com/agauniyal/rang)
+
+<details>
+  <summary>View License</summary>
+
+```
+This is free and unencumbered software released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any
+means.
+
+In jurisdictions that recognize copyright laws, the author or authors
+of this software dedicate any and all copyright interest in the
+software to the public domain. We make this dedication for the benefit
+of the public at large and to the detriment of our heirs and
+successors. We intend this dedication to be an overt act of
+relinquishment in perpetuity of all present and future rights to this
+software under copyright law.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+For more information, please refer to <http://unlicense.org>
+```
+</details>
+
+### cpp-feather-ini-parser
+INI parser bundled with LimeSuiteNG. Used by the SDR and SDR Sweep blocks for LimeSDR devices. Licensed under MIT. [GitHub](https://github.com/Turbine1991/cpp-feather-ini-parser)
+
+<details>
+  <summary>View License</summary>
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2014 Turbine1991
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 </details>
 
@@ -1535,7 +1607,7 @@ That's all there is to it!
 </details>
 
 ### Analog Devices no-OS
-AD936x transceiver driver used for bladeRF 2.0 micro support, with Nuand's adaptations from the bladeRF release. Licensed under the Analog Devices BSD-style license. [GitHub](https://github.com/analogdevicesinc/no-OS/tree/0bba46e6f6f75785a65d425ece37d0a04daf6157)
+Transceiver driver (AD936x) used for bladeRF 2.0 micro support, with Nuand's adaptations from the bladeRF release. Licensed under the Analog Devices BSD-style license. [GitHub](https://github.com/analogdevicesinc/no-OS/tree/0bba46e6f6f75785a65d425ece37d0a04daf6157)
 
 <details>
   <summary>View License</summary>
@@ -2557,7 +2629,7 @@ That's all there is to it!
 </details>
 
 ### libxml2
-XML parser. Used by libiio to read PlutoSDR device descriptions. Licensed under MIT. [GitLab](https://gitlab.gnome.org/GNOME/libxml2)
+An XML parser used by libiio to read PlutoSDR device descriptions. Licensed under MIT. [GitLab](https://gitlab.gnome.org/GNOME/libxml2)
 
 <details>
   <summary>View License</summary>
@@ -2660,7 +2732,7 @@ POSSIBILITY OF SUCH DAMAGE.
 </details>
 
 ### libmodes
-C library for decoding ADS-B and Mode S aircraft messages. Used by the ADS-B domain. Licensed under BSD-2-Clause. [GitHub](https://github.com/watson/libmodes)
+Library in C for decoding ADS-B and Mode S aircraft messages. Used by the ADS-B domain. Licensed under BSD-2-Clause. [GitHub](https://github.com/watson/libmodes)
 
 <details>
   <summary>View License</summary>
@@ -2789,7 +2861,7 @@ SOFTWARE.
 </details>
 
 ### tree-sitter-yaml
-YAML grammar for tree-sitter. Used for YAML code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter-grammars/tree-sitter-yaml)
+Grammar for YAML in tree-sitter. Used for YAML code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter-grammars/tree-sitter-yaml)
 
 <details>
   <summary>View License</summary>
@@ -2850,7 +2922,7 @@ SOFTWARE.
 </details>
 
 ### tree-sitter-cpp
-C++ grammar for tree-sitter. Used for C and C++ code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter/tree-sitter-cpp)
+Grammar for C++ in tree-sitter. Used for C and C++ code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter/tree-sitter-cpp)
 
 <details>
   <summary>View License</summary>
@@ -2881,7 +2953,7 @@ SOFTWARE.
 </details>
 
 ### tree-sitter-json
-JSON grammar for tree-sitter. Used for JSON code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter/tree-sitter-json)
+Grammar for JSON in tree-sitter. Used for JSON code highlighting. Licensed under MIT. [GitHub](https://github.com/tree-sitter/tree-sitter-json)
 
 <details>
   <summary>View License</summary>
@@ -2965,35 +3037,36 @@ This notice may not be removed or altered from any source distribution.
 ```
 </details>
 
-### imgui-notify
-Notification system for Dear ImGui. Used for notifications. Licensed under MIT. [GitHub](https://github.com/patrickcjk/imgui-notify)
-
+### Wayland
+Display server protocol and client library. Used for touchpad scrolling and gestures on Linux. Licensed under MIT. [Website](https://wayland.freedesktop.org/) [GitLab](https://gitlab.freedesktop.org/wayland/wayland)
 
 <details>
   <summary>View License</summary>
 
 ```
-MIT License
+Copyright © 2008-2012 Kristian Høgsberg
+Copyright © 2010-2012 Intel Corporation
+Copyright © 2011 Benjamin Franzke
+Copyright © 2012 Collabora, Ltd.
 
-Copyright (c) 2021 Patrick
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The above copyright notice and this permission notice (including the next
+paragraph) shall be included in all copies or substantial portions of the
+Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 ```
 </details>
 
@@ -5641,7 +5714,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 </details>
 
 ### libvpx
-VP8/VP9 codec library. Used by GStreamer video support. Licensed under BSD-3-Clause. [GitHub](https://github.com/webmproject/libvpx)
+Codec library for VP8 and VP9. Used by GStreamer video support. Licensed under BSD-3-Clause. [GitHub](https://github.com/webmproject/libvpx)
 
 <details>
   <summary>View License</summary>
@@ -5681,7 +5754,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 </details>
 
 ### libnice
-ICE networking library. Used by GStreamer WebRTC support. Licensed under LGPL-2.1-or-later. [Website](https://libnice.freedesktop.org/)
+Networking library for ICE. Used by GStreamer WebRTC support. Licensed under LGPL-2.1-or-later. [Website](https://libnice.freedesktop.org/)
 
 <details>
   <summary>View License</summary>
@@ -7226,7 +7299,7 @@ Copyright notice:
 </details>
 
 ### OpenSSL
-TLS and cryptography toolkit. Used for TLS and cryptography support. Licensed under Apache-2.0. [Website](https://www.openssl.org/) [GitHub](https://github.com/openssl/openssl)
+Cryptography and TLS toolkit. Used for TLS and cryptography support. Licensed under Apache-2.0. [Website](https://www.openssl.org/) [GitHub](https://github.com/openssl/openssl)
 
 <details>
   <summary>View License</summary>
@@ -7448,8 +7521,61 @@ DEALINGS IN THE SOFTWARE.
 ```
 </details>
 
+### Lucide
+Icon font used in the GUI. Licensed under the ISC License. [Website](https://lucide.dev/) [GitHub](https://github.com/lucide-icons/lucide)
+
+<details>
+  <summary>View License</summary>
+
+```
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+---
+
+The following Lucide icons are derived from the Feather project:
+
+airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
+
+The MIT License (MIT) (for the icons listed above)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+</details>
+
 ### Font Awesome
-Icon font used in the GUI. Licensed under the Font Awesome Free License. [Website](https://fontawesome.com/) [GitHub](https://github.com/FortAwesome/Font-Awesome)
+Node icons used in the flowgraph editor. Licensed under the Font Awesome Free License. [Website](https://fontawesome.com/) [GitHub](https://github.com/FortAwesome/Font-Awesome)
 
 <details>
   <summary>View License</summary>

@@ -53,6 +53,7 @@ struct SignalViewWaterfall {
 
     Config config;
     Uniforms uniforms{};
+    Uniforms uploadedUniforms{};
     FilterUniforms filterUniforms{};
     std::vector<F32> upload;
     std::vector<std::array<U32, 2>> filterState;

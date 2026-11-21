@@ -10,26 +10,24 @@
 
 namespace Jetstream::Sakura {
 
-struct NodeTable {
+struct NodeTable : public Component {
     struct Config {
         std::string id;
         std::vector<std::string> columns;
         std::vector<std::vector<std::string>> rows;
-        std::vector<F32> fixedColumnWidths;
         bool showHeaders = true;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeTable();
     ~NodeTable();
 
-    NodeTable(NodeTable&&) noexcept;
-    NodeTable& operator=(NodeTable&&) noexcept;
+    void update(Config config);
 
-    NodeTable(const NodeTable&) = delete;
-    NodeTable& operator=(const NodeTable&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <set>
 #include <unordered_map>
@@ -14,6 +15,11 @@ namespace Jetstream::Agent::Detail {
 namespace {
 
 constexpr F32 kAppliedTolerance = 2.0f;
+constexpr std::array<const char*, 3> kRefFields = {"name", "source", "block"};
+
+bool IsRef(const std::string& value) {
+    return value.size() > 1 && value.front() == '$';
+}
 
 struct Patch {
     const Graph& flowgraph;
@@ -21,7 +27,7 @@ struct Patch {
 
     std::string resolve(const Json& operation, const char* key) const {
         std::string value = operation.value(key, std::string{});
-        if (value.size() <= 1 || value.front() != '$') {
+        if (!IsRef(value)) {
             return value;
         }
 
@@ -34,8 +40,7 @@ struct Patch {
 
     std::string unresolved(const Json& operation, const char* key, const std::string& label) const {
         const std::string value = operation.value(key, std::string{});
-        const bool isRef = value.size() > 1 && value.front() == '$';
-        if (isRef && !refs.contains(value.substr(1))) {
+        if (IsRef(value) && !refs.contains(value.substr(1))) {
             return jst::fmt::format("Ref '{}' is not defined by an earlier create_block in this patch.", value);
         }
         return Lookup::Missing(flowgraph, value, label);
@@ -161,6 +166,32 @@ bool SelectImplementation(const std::string& type, const Json& operation, Implem
     return false;
 }
 
+bool ValidateConfigKeys(const Parser::Map& config, const Parser::Map& available, Json& result) {
+    Json unknownKeys = Json::array();
+    for (const auto& field : config) {
+        if (!available.contains(field.key)) {
+            unknownKeys.push_back(field.key);
+        }
+    }
+    if (unknownKeys.empty()) {
+        return true;
+    }
+
+    std::vector<std::string> availableKeys;
+    for (const auto& field : available) {
+        availableKeys.push_back(field.key);
+    }
+
+    const auto key = unknownKeys.front().get<std::string>();
+    result.update({
+        {"error", jst::fmt::format("Unknown config key '{}'.{}", key,
+                                   Lookup::Similar(key, availableKeys, "config keys"))},
+        {"unknown_config_keys", std::move(unknownKeys)},
+        {"available_config_keys", std::move(availableKeys)},
+    });
+    return false;
+}
+
 void PlaceNode(const Graph& flowgraph, const Json& operation, const std::string& name, Json& result) {
     if (!operation.contains("x") && !operation.contains("y")) {
         return;
@@ -230,6 +261,18 @@ void CreateBlock(Patch& patch, const Json& operation, Json& result) {
         result["error"] = jst::fmt::format("Could not decode 'config' for block type '{}'.", type);
         return;
     }
+    if (!config.empty()) {
+        std::shared_ptr<Block> prototype;
+        Parser::Map available;
+        if (Registry::BuildBlock(type, prototype) != Result::SUCCESS ||
+            prototype->config().serialize(available) != Result::SUCCESS) {
+            result["error"] = jst::fmt::format("Could not inspect config keys for block type '{}'.", type);
+            return;
+        }
+        if (!ValidateConfigKeys(config, available, result)) {
+            return;
+        }
+    }
 
     const Result created = flowgraph->blockCreate(name, type, config, {},
                                                   selected.device, selected.runtime, selected.provider);
@@ -260,8 +303,12 @@ void ReconfigureBlock(Patch& patch, const Json& operation, Json& result) {
         result["error"] = jst::fmt::format("Could not decode 'config' for block '{}'.", name);
         return;
     }
+    if (!ValidateConfigKeys(config, current.config, result)) {
+        return;
+    }
 
-    const Result changed = flowgraph->blockReconfigure(name, config);
+    bool recreated = false;
+    const Result changed = flowgraph->blockReconfigure(name, config, recreated);
     if (!Applied(changed)) {
         result["error"] = jst::fmt::format("Could not reconfigure block '{}'.", name);
         return;
@@ -278,7 +325,7 @@ void ReconfigureBlock(Patch& patch, const Json& operation, Json& result) {
     }
 
     result.update({
-        {"status", ResultName(changed)},
+        {"status", ResultName(recreated ? Result::RECREATE : changed)},
         {"name", name},
         {"config", Serialize::CompactMap(applied)},
         {"state", GetBlockStateName(after.state)},
@@ -309,7 +356,8 @@ void PatchBlockText(Patch& patch, const Json& operation, Json& result) {
     Parser::Map config;
     config[field] = patched.text;
 
-    const Result changed = flowgraph->blockReconfigure(name, config);
+    bool recreated = false;
+    const Result changed = flowgraph->blockReconfigure(name, config, recreated);
     if (!Applied(changed)) {
         result["error"] = jst::fmt::format("Could not apply the patched '{}' to block '{}'.", field, name);
         return;
@@ -319,7 +367,7 @@ void PatchBlockText(Patch& patch, const Json& operation, Json& result) {
     flowgraph->view().block(name, after);
 
     result.update({
-        {"status", ResultName(changed)},
+        {"status", ResultName(recreated ? Result::RECREATE : changed)},
         {"name", name},
         {"field", field},
         {"line_count", patched.lineCount},
@@ -329,6 +377,9 @@ void PatchBlockText(Patch& patch, const Json& operation, Json& result) {
 
     if (!after.diagnostic.empty()) {
         result["diagnostic"] = after.diagnostic;
+    }
+    if (!patched.note.empty()) {
+        result["note"] = patched.note;
     }
 }
 
@@ -449,44 +500,45 @@ void SetNodeLayout(Patch& patch, const Json& operation, Json& result) {
 
 const std::array<Operation, 7> kOperations = {{
     {"create_block", {
-        {"type", FieldKind::String, true},
-        {"ref", FieldKind::String},
-        {"name", FieldKind::String},
-        {"device", FieldKind::String},
-        {"runtime", FieldKind::String},
-        {"provider", FieldKind::String},
-        {"config", FieldKind::Object},
-        {"x", FieldKind::Coordinate},
-        {"y", FieldKind::Coordinate},
+        {"type", FieldKind::String, true, "Exact block type from search_blocks or get_block_docs."},
+        {"ref", FieldKind::String, false, "Label of your choice for this new block. Later operations in this call "
+                                          "name the block as '$' plus the label, so ref 'src' is written '$src'."},
+        {"name", FieldKind::String, false, "Block name, generated from the type when omitted."},
+        {"device", FieldKind::String, false, "Compute device implementation, such as cpu or cuda."},
+        {"runtime", FieldKind::String, false, "Runtime implementation, such as native or python."},
+        {"provider", FieldKind::String, false, "Provider implementation from search_blocks."},
+        {"config", FieldKind::Object, false, "Config fields to set, in the base values shown by get_block_docs default_config."},
+        {"x", FieldKind::Coordinate, false, "Initial left edge in graph coordinates."},
+        {"y", FieldKind::Coordinate, false, "Initial top edge in graph coordinates."},
     }, CreateBlock},
     {"reconfigure_block", {
-        {"name", FieldKind::String, true},
-        {"config", FieldKind::Object, true},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
+        {"config", FieldKind::Object, true, "Config fields to change, in base values."},
     }, ReconfigureBlock},
     {"patch_block_text", {
-        {"name", FieldKind::String, true},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
         {"field", FieldKind::String, true, "Text config field, such as code."},
         {"patch", FieldKind::String, true, "Hunks of @@, space, -, and + lines."},
     }, PatchBlockText},
     {"connect", {
-        {"source", FieldKind::String, true},
-        {"output", FieldKind::String, true},
-        {"block", FieldKind::String, true},
-        {"input", FieldKind::String, true},
+        {"source", FieldKind::String, true, "Exact name of the upstream block, or '$' plus a ref from this call."},
+        {"output", FieldKind::String, true, "Output port of the upstream block."},
+        {"block", FieldKind::String, true, "Exact name of the downstream block, or '$' plus a ref from this call."},
+        {"input", FieldKind::String, true, "Input port of the downstream block."},
     }, Connect},
     {"disconnect", {
-        {"block", FieldKind::String, true},
-        {"input", FieldKind::String, true},
+        {"block", FieldKind::String, true, "Exact name of the downstream block."},
+        {"input", FieldKind::String, true, "Input port to disconnect from its source."},
     }, Disconnect},
     {"delete_block", {
-        {"name", FieldKind::String, true},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
     }, DeleteBlock},
     {"set_node_layout", {
-        {"name", FieldKind::String, true},
-        {"x", FieldKind::Coordinate},
-        {"y", FieldKind::Coordinate},
-        {"width", FieldKind::Size},
-        {"height", FieldKind::Size},
+        {"name", FieldKind::String, true, "Exact block name from inspect_flowgraph."},
+        {"x", FieldKind::Coordinate, false, "New left edge in graph coordinates."},
+        {"y", FieldKind::Coordinate, false, "New top edge in graph coordinates."},
+        {"width", FieldKind::Size, false, "Saved content width in graph units."},
+        {"height", FieldKind::Size, false, "Saved content height in graph units."},
     }, SetNodeLayout, CheckLayout},
 }};
 
@@ -522,7 +574,7 @@ std::string ValidateOperation(const Operation& entry, const Json& operation) {
 std::string PatchSchema() {
     Json variants = Json::array();
     for (const auto& entry : kOperations) {
-        Json properties = {{"op", {{"const", entry.name}}}};
+        Json properties = {{"op", {{"const", entry.name}, {"description", "Operation to apply."}}}};
         Json required = Json::array({"op"});
 
         for (const auto& field : entry.fields) {
@@ -547,12 +599,18 @@ std::string PatchSchema() {
 
     const Json flowgraphName = {
         {"type", "string"},
-        {"description", "Name used only when no graph is selected and one must be created."},
+        {"description", "Name for a graph this call creates. Ignored when the call edits the selected graph."},
+    };
+    const Json newFlowgraph = {
+        {"type", "boolean"},
+        {"description", "Create a new graph for these operations even when one is selected. Default false."},
     };
     const Json operations = {
         {"type", "array"},
         {"minItems", 1},
         {"items", {{"oneOf", std::move(variants)}}},
+        {"description", "Edits to apply in order, as a JSON array of objects and never a string, each "
+                        "naming its kind in op."},
     };
 
     return Json({
@@ -560,6 +618,7 @@ std::string PatchSchema() {
         {"required", Json::array({"operations"})},
         {"properties", {
             {"flowgraph_name", flowgraphName},
+            {"new_flowgraph", newFlowgraph},
             {"operations", operations},
         }},
         {"additionalProperties", false},
@@ -649,15 +708,51 @@ Json PatchResponse(const Graph& flowgraph, Json results, const char* status, con
     });
 }
 
+std::string RefHelp(const std::set<std::string>& refs) {
+    if (refs.empty()) {
+        return " No earlier create_block sets a ref.";
+    }
+
+    std::string list;
+    for (const auto& ref : refs) {
+        jst::fmt::format_to(std::back_inserter(list), "{}${}", list.empty() ? "" : ", ", ref);
+    }
+    return jst::fmt::format(" Refs defined before this operation: {}.", list);
+}
+
+Json DecodeOperations(Json args) {
+    if (!args.is_object() || !args.contains("operations") || !args["operations"].is_string()) {
+        return args;
+    }
+
+    const std::string text = args["operations"].get<std::string>();
+    for (const char* closing : {"", "]"}) {
+        auto decoded = Json::parse(text + closing, nullptr, false);
+        if (decoded.is_array()) {
+            args["operations"] = std::move(decoded);
+            break;
+        }
+    }
+    return args;
+}
+
 std::string ValidateRequest(const Json& args) {
+    if (args.contains("operations") && args["operations"].is_string()) {
+        return jst::fmt::format("'operations' arrived as text that is not a valid JSON array, so nothing "
+                                "was changed. The text may be missing a closing bracket or quote. {}",
+                                Response::CutShort);
+    }
     if (!args.contains("operations") || !args["operations"].is_array() || args["operations"].empty()) {
         return "'operations' must be a non-empty array.";
     }
     if (args.contains("flowgraph_name") && !args["flowgraph_name"].is_string()) {
         return "'flowgraph_name' must be a string.";
     }
+    if (args.contains("new_flowgraph") && !args["new_flowgraph"].is_boolean()) {
+        return "'new_flowgraph' must be a boolean.";
+    }
     for (const auto& [key, value] : args.items()) {
-        if (key != "operations" && key != "flowgraph_name") {
+        if (key != "operations" && key != "flowgraph_name" && key != "new_flowgraph") {
             return jst::fmt::format("Unknown patch field '{}'.", key);
         }
     }
@@ -680,19 +775,31 @@ std::string ValidateRequest(const Json& args) {
             return jst::fmt::format("{} {}", prefix, error);
         }
 
-        if (!operation.contains("ref")) {
+        if (operation.contains("ref")) {
+            const auto ref = operation["ref"].get<std::string>();
+            if (!ref.empty() && !refs.insert(ref).second) {
+                return jst::fmt::format("{} repeats ref '{}'.", prefix, ref);
+            }
+        }
+        if (op == "create_block") {
             continue;
         }
-        const auto ref = operation["ref"].get<std::string>();
-        if (!ref.empty() && !refs.insert(ref).second) {
-            return jst::fmt::format("{} repeats ref '{}'.", prefix, ref);
+
+        for (const char* key : kRefFields) {
+            const std::string value = operation.value(key, std::string{});
+            if (IsRef(value) && !refs.contains(value.substr(1))) {
+                return jst::fmt::format("{} field '{}' uses ref '{}', which no earlier create_block in "
+                                        "this patch defines.{} Nothing was changed.",
+                                        prefix, key, value, RefHelp(refs));
+            }
         }
     }
 
     return {};
 }
 
-Json ApplyPatch(const Graph& flowgraph, const Json& args) {
+Json ApplyPatch(const Graph& flowgraph, const Json& raw) {
+    const Json args = DecodeOperations(raw);
     const std::string validationError = ValidateRequest(args);
     if (!validationError.empty()) {
         return Response::Error(validationError);
@@ -760,7 +867,8 @@ void AnnotateSize(const Json& operation, const Layout& layout, Json& result) {
     }
 }
 
-void AnnotatePatch(Json& body, const Json& args, const Layout& layout) {
+void AnnotatePatch(Json& body, const Json& raw, const Layout& layout) {
+    const Json args = DecodeOperations(raw);
     Geometry::Viewport(body, layout);
 
     if (!body.contains("results") || !body["results"].is_array()) {
@@ -779,16 +887,15 @@ void AnnotatePatch(Json& body, const Json& args, const Layout& layout) {
     }
 }
 
-Entry::NewGraph PatchGraph(const Json& args) {
+Entry::NewGraph PatchGraph(const Json& raw) {
+    const Json args = DecodeOperations(raw);
     if (!args.is_object() || !ValidateRequest(args).empty()) {
         return {};
     }
 
     const auto name = args.value("flowgraph_name", std::string("flowgraph"));
-    if (name.empty()) {
-        return {"flowgraph", {}};
-    }
-    return {name, {}};
+    const bool requested = args.value("new_flowgraph", false);
+    return {name.empty() ? "flowgraph" : name, {}, requested};
 }
 
 }  // namespace
@@ -796,18 +903,27 @@ Entry::NewGraph PatchGraph(const Json& args) {
 std::vector<Entry> Toolbox::Patch() {
     auto entry = Entry::FromJson({
         "apply_flowgraph_patch",
-        "Apply an ordered edit to the selected graph. Only when none is selected, "
-        "a graph is created automatically; flowgraph_name names that new graph and "
-        "is ignored otherwise. Operations execute sequentially and stop on failure "
-        "without rolling back earlier changes, returning status='partial'. A failed "
-        "result with may_have_applied=true may have changed the graph before failing, "
-        "so inspect it before retrying. "
-        "Create operations may define a ref; later block names in the same call "
-        "can use '$ref'. Refs do not persist across calls. Config is a JSON object. "
+        "Apply an ordered edit to the selected graph. A new graph is created when "
+        "none is selected, or when new_flowgraph is true, and is selected for "
+        "subsequent calls. Set new_flowgraph when the user asks for a new graph "
+        "while one is open. The open graph stays unchanged. flowgraph_name names a "
+        "created graph and is ignored otherwise. Operations execute sequentially "
+        "and stop on failure without rolling back earlier changes, returning "
+        "status='partial'. A failed result with may_have_applied=true may have "
+        "changed the graph before failing, so inspect it before retrying. "
+        "create_block may set ref to a label. Later operations in the same call "
+        "name that block as '$' plus the label, so a block created with ref 'src' "
+        "is written '$src'. Without a ref, use the exact block name. A ref that no "
+        "earlier create_block defines rejects the whole call before anything runs. "
+        "Refs do not persist across calls. Config is a JSON object. "
         "create_block accepts optional x and y graph coordinates for initial "
         "placement with automatic sizing. Its result includes effective config "
         "with defaults and runtime-defined ports; wiring may require a later patch. "
-        "reconfigure_block results echo only the supplied config fields. Both "
+        "reconfigure_block results echo only the supplied config fields. A status "
+        "of recreated on reconfigure_block or patch_block_text means the block and "
+        "everything downstream was rebuilt, which clears their plot history. A status "
+        "of success means no rebuild, though a view can still clear its own history "
+        "when a setting changes how that history is scaled. Both "
         "config readbacks shorten long strings and arrays; inspect_block returns "
         "complete values. "
         "patch_block_text edits part of one text config field, such as python code; "
@@ -836,7 +952,7 @@ std::vector<Entry> Toolbox::Patch() {
         "set_node_layout size that did not take effect is listed in "
         "size_not_applied.",
         PatchSchema(),
-        {.needsGraph = true, .reportsLayout = true},
+        {.permission = Permission::Edit, .graph = true, .layout = true},
     }, ApplyPatch);
 
     entry.newGraph = PatchGraph;

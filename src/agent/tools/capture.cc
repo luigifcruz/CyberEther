@@ -116,7 +116,7 @@ Tools::Output CaptureView(const Invocation& call) {
             return Response::Failure(jst::fmt::format("Block '{}' has no rendered view to capture.", name));
         }
         return Response::Failure(jst::fmt::format("Block '{}' has no surface '{}'. Available surfaces: {}",
-                                                  name, surfaceId, Json(availableIds).dump()));
+                                                  name, surfaceId, Response::Dump(availableIds)));
     }
 
     const auto& config = texture->getConfig();
@@ -176,7 +176,7 @@ std::vector<Entry> Toolbox::Capture() {
             "inspect_block_view",
             "Capture one rendered surface from a visual block and return its surface id and dimensions. The image itself is attached to the conversation as the next user message.",
             R"({"type":"object","required":["name"],"properties":{"name":{"type":"string","description":"Exact block name from inspect_flowgraph."},"surface":{"type":"string","description":"Optional surface id from inspect_block."}},"additionalProperties":false})",
-            {.needsGraph = true, .needsCapture = true},
+            {.permission = Permission::Read, .graph = true, .capture = true},
         },
         CaptureView,
     }};

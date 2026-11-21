@@ -6,7 +6,6 @@
 #include "jetstream/parser.hh"
 #include "jetstream/types.hh"
 
-#include <functional>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -33,15 +32,18 @@ struct FlowgraphConfigFieldConfig {
     std::string help;
     Parser::Map format;
     std::string status;
-    Sakura::NodeCodeEditor::StatusTone statusTone = Sakura::NodeCodeEditor::StatusTone::Info;
+    Sakura::StatusTone statusTone = Sakura::StatusTone::Info;
     std::vector<std::string> consoleOutput;
     bool consoleVisible = false;
     Parser::Map values;
-    std::function<void(Parser::Map, bool, std::function<void(Result)>)> onApply;
-    std::function<void(Result, std::string)> onError;
-    std::function<void(bool, std::vector<std::string>, std::function<void(std::string)>)> onBrowsePath;
+    Sakura::Callback<void(Parser::Map, bool, Sakura::Callback<void(Result)>)> onApply;
+    Sakura::Callback<void(Result, std::string)> onError;
+    Sakura::Callback<void(bool, std::vector<std::string>, Sakura::Callback<void(std::string)>)> onBrowsePath;
     std::optional<std::string> preview;
-    std::function<void(Extent2D<F32>)> onContentOverflow;
+    std::optional<std::string> draft;
+    Sakura::Callback<void(std::optional<std::string>, std::string)> onDraft;
+    Sakura::Callback<void(Extent2D<F32>)> onContentOverflow;
+    Sakura::Callback<void(const std::string&)> onOpenUrl;
 };
 
 }  // namespace Jetstream

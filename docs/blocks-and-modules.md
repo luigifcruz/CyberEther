@@ -1,113 +1,63 @@
 ---
 title: Blocks And Modules
-description: How to write native processing blocks and their compute modules.
-order: 79
+description: How native blocks and compute modules split responsibilities, organize files, and register for dispatch.
+order: 320
 category: Development
 ---
 
-Everything a user drops into a flowgraph is a block, and every block that computes something owns one or more modules. This page explains the split, the lifecycle of each half, the contract with the scheduler, and how implementations are registered and dispatched. It is the companion to [Metadata](/docs/metadata), which covers how blocks communicate, and [Creating Plugins](/docs/plugins), which covers packaging blocks into loadable libraries. If you want custom processing without writing C++ at all, see the [Python Block](/docs/python-block).
+Every node a user drops into a CyberEther flowgraph is a **block**, and every block that processes data owns one or more **modules**. This guide introduces how those two halves split responsibilities, how built-in files are laid out, how a minimal block-and-module pair fits together, and how registrations dispatch across devices.
 
-## The Split
+- For block lifecycle hooks, states, validation rules, and UI control descriptors, see [Block Lifecycle And UI](/docs/block-lifecycle).
+- For module hooks, `computeSubmit()` codes, taints, static settlement, and interactive surface input, see [Module Contract](/docs/module-contract).
+- Read this alongside [Metadata](/docs/metadata) (environment keys, tensor attributes, and metrics) and [Creating Plugins](/docs/plugins) (shipping blocks outside the main tree). If you want custom processing without writing C++, see the [Python Block](/docs/python-block).
 
-A **block** is the user-facing graph node. It carries the identity (type, domain, title, description), the configuration fields, the declared inputs and outputs, and the orchestration logic that decides which modules to instantiate. A **module** is a compute kernel implemented for a specific device, runtime, and provider. The block is what the user sees and serializes, the module is what the scheduler runs.
+## The Block and Module Split
 
-The split exists because one logical operation often needs several implementations or several stages. A block can pick a different module depending on its configuration, chain multiple modules internally and wire them together, or own no module at all when it only orchestrates. The file reader block, for example, defines the user-facing configuration and metrics while a file reader module does the I/O.
-
-Both halves follow the same structural pattern: a `Config` struct that describes and serializes the parameters, and an `Impl` struct that implements lifecycle hooks. The `DynamicConfig<Config>` mixin gives each a staged copy (the applied configuration) and a candidate copy (the pending edit), which is how reconfiguration validates changes before committing them.
-
-## File Layout
-
-Every shipped block follows the same layout, split between the public headers and the implementation tree. Using the AGC block as the example:
-
+```text
+  Block (User-Facing Node)
+   ├── Identity, ports, UI controls, metrics, YAML config
+   └── Orchestrates one or more Modules
+         └── Module (Device Kernel)
+              └── Implements compute (or rendering) for one Device + Runtime + Provider
 ```
+
+- A **block** is the graph node users interact with and serialize. It defines the type string, domain, title, description, editable fields, declared ports, and orchestration logic.
+- A **module** is a concrete compute or surface kernel built for a specific device, runtime, and provider. The block is what users see, while the module is what the scheduler executes.
+
+Keeping the two separate lets a single logical block select different kernels based on its configuration, wire multiple internal modules together, or own no modules at all when it only orchestrates. In the File Reader, for example, the block exposes settings and progress metrics while the module handles file I/O.
+
+Both halves share the same configuration pattern: a `Config` struct describing serializable fields, and an `Impl` struct implementing lifecycle hooks. Inheriting `DynamicConfig<Config>` gives each half both a staged copy (the currently applied configuration) and a `candidate()` copy (the pending edit), allowing validation to inspect changes before committing them.
+
+## Standard File Layout
+
+Built-in blocks follow one consistent layout split between public headers and implementation files. Here is the **AGC** block as a template:
+
+```text
 include/jetstream/domains/dsp/agc/
 ├── block.hh                    Block Config: type, domain, description, fields
-└── module.hh                   Module Config: the parameters the kernel takes
+└── module.hh                   Module Config: parameters passed to the kernel
 
 src/domains/dsp/agc/
 ├── block_impl.cc               Block Impl: define(), create(), registration
-├── module_impl.hh              Module Impl base shared by the device variants
+├── module_impl.hh              Shared Module Impl base across device variants
 ├── module_impl.cc              Device-agnostic module logic
-├── module_impl_native_cpu.cc   CPU kernel and its JST_REGISTER_MODULE
+├── module_impl_native_cpu.cc   CPU kernel and JST_REGISTER_MODULE
 ├── block_tests.cc              Block lifecycle and behavior tests
 ├── module_tests.cc             Module-level numeric tests
-└── meson.build                 Adds the sources and tests to the build
+└── meson.build                 Registers sources and tests with Meson
 ```
 
-The headers hold only the `Config` structs, since that is all other code needs to create the block programmatically. Everything else, including the `Impl` structs and the registrations, stays in the implementation files. Adding a backend means adding one file next to the CPU variant, for example `module_impl_native_cuda.cc`, with its own registration under `DeviceType::CUDA`. The suffix names the runtime and the device, which is how the Python runtime's `module_impl_python.cc` fits the same scheme. New blocks should copy this shape, and the plugin blueprint described in [Creating Plugins](/docs/plugins) mirrors it for out-of-tree development.
+Public headers contain only `Config` structs so external code can construct blocks programmatically without pulling in implementation details. Everything else stays under `src/`.
 
-## Block Lifecycle
+Adding a new device backend means adding a sibling file, such as `module_impl_native_cuda.cc`, registered under `DeviceType::CUDA`. The filename suffix identifies both runtime and device (for example, `module_impl_python.cc` for the Python runtime). Out-of-tree plugins mirror this exact layout (see [Creating Plugins](/docs/plugins)).
 
-A block implementation derives from `Block::Impl` and overrides these optional hooks:
+## Minimal Gain Walkthrough
 
-| Hook | Purpose |
-|---|---|
-| `validate()` | Check block-specific candidate semantics that affect its interface or orchestration. Do not duplicate child module validation. Returning `RECREATE` is also accepted here. |
-| `configure()` | Derive internal state from the validated configuration. |
-| `define()` | Declare the candidate interface: inputs, outputs, configuration fields, and metrics. |
-| `create()` | Build the modules and wire them to the block ports. |
-| `reconfigure()` | Finish an in-place edit after the child modules have applied it. |
+A minimal processing node consists of a block config and implementation paired with a module config and device kernel.
 
-Block creation follows this order:
+### Block Side
 
-```text
-Block::create
-├── Deserialize the candidate configuration
-├── define() the candidate interface
-├── validate() candidate semantics
-├── Commit the candidate configuration
-├── configure() derived block state
-├── Verify declared input links
-├── create() child modules and wiring
-└── Verify declared outputs
-```
-
-There is no block-level destroy hook in practice. Destruction tears down the child modules automatically in reverse creation order, so anything that needs cleanup belongs in a module's own `destroy()`.
-
-Defining before validation keeps a best-effort interface available even when the candidate is invalid. A configuration-dependent `define()` must therefore read `candidate()`, remain side-effect-free, and bound any candidate-controlled work or number of ports.
-
-| Block structure | Validation placement |
-|---|---|
-| One block wrapping one module | Keep configuration and input validation in the module. The block should define ports, translate configuration, create the module, and expose its outputs. |
-| One block orchestrating multiple modules | Let each module validate its own configuration and inputs. Add block validation only for interface choices, module selection, topology, or constraints that span modules. |
-| The same rule is visible to both layers | Implement it once in the module and allow module creation or validate-only reconfiguration to report the failure through the block. |
-
-A one-to-one block/module pair must not repeat the same range, dtype, shape, or axis checks in both layers. Duplicate validation can drift as implementations evolve and can produce different diagnostics depending on which path runs first. The module is the authoritative boundary because it can also be built directly, selected through another block, or implemented by multiple providers. Block validation remains appropriate when the block owns behavior that no individual module can see, especially when it chooses or coordinates several child modules.
-
-| State | Meaning |
-|---|---|
-| **Created** | Everything succeeded and the block participates in compute. |
-| **Incomplete** | The block is valid but cannot run yet. A declared input may be unconnected or unresolved, or `create()` may deliberately return `Result::INCOMPLETE`. This is a waiting state, not an error. |
-| **Errored** | A hook failed, an undeclared input arrived, an expected output was missing, or a module later failed during compute. The last failure is retained as the block diagnostic. |
-
-Validation errors retain the candidate configuration and declared interface so the node remains editable. When a module fails at runtime, its block becomes errored and downstream blocks are recreated into the incomplete state.
-
-The deliberate `INCOMPLETE` return is the gating pattern: a block whose `create()` needs a value that arrives later, such as an environment key delivered by a server connection, returns incomplete and is automatically destroyed and recreated when a new environment key becomes visible. The full pattern, with example code, is in [Flowgraph Environment](/docs/metadata#flowgraph-environment).
-
-Configuration edits go through `Block::reconfigure()`, which follows this order:
-
-```text
-Block::reconfigure
-├── Deserialize the candidate configuration
-├── define() the candidate interface
-├── validate() candidate semantics
-├── Commit the candidate configuration
-├── configure() derived block state
-├── Validate the edit in every child module
-├── Apply the edit in every child module
-├── reconfigure() the block, if it is Created
-└── Publish the updated interface
-```
-
-A semantic validation error is accepted as a graph edit: the flowgraph rebuilds the affected blocks with the candidate configuration, publishes the edited block as errored, and keeps downstream connections as unresolved links until the candidate is repaired. Failures while applying an already validated edit are different: the flowgraph restores the previous working state and returns the error. When a valid change cannot be applied in place, for example a buffer size that shaped an allocation, return `Result::RECREATE` and let the flowgraph rebuild the affected blocks.
-
-The block's own `reconfigure()` hook runs last, and only when the block is Created and every child module has applied the edit. It finishes work that depends on the updated modules, and the candidate interface is still open for updates because the UI receives it only after the hook returns. Child module settings are prepared earlier, in `configure()`, since the modules have already applied the edit by the time the hook runs. Returning `RECREATE` requests reconstruction of the block. Structural changes that can be detected up front belong in `validate()`, before any module applies the edit.
-
-Blocks that are incomplete or invalid never reach the hook, so `define()` remains responsible for their editable interface. The framework also does not call the hook during `create()`. The default implementation returns `SUCCESS`.
-
-## Defining The Block
-
-The `Config` struct describes the block through macros and serializes its fields:
+Describe the block's metadata and serializable fields in `block.hh`, then implement `define()` and `create()` in `block_impl.cc`:
 
 ```cpp
 struct GainConfig : Block::Config {
@@ -121,17 +71,7 @@ struct GainConfig : Block::Config {
                           "Multiplies the signal by a constant.",
                           "Longer text shown in the documentation pane.");
 };
-```
 
-- `JST_BLOCK_TYPE` sets the string used in flowgraph files and for registry lookup.
-- `JST_BLOCK_DOMAIN` places the block in a picker category. The shipped blocks use `Core`, `DSP`, `IO`, and `Visualization`.
-- `JST_BLOCK_PARAMS` generates `serialize`, `deserialize`, and `hash` for the listed fields. The hash is what change detection uses, so every field that affects behavior belongs in the list. Field types follow the parser type system described in [Type Conversion](/docs/python-block#type-conversion).
-- `JST_BLOCK_NODE_SIZE` picks the default node footprint in the editor from `XS`, `S`, `M`, `L`, and `XL`. Blocks that omit it default to `S`.
-- `JST_BLOCK_DESCRIPTION` sets the title shown on the node, the one-line summary shown in the picker, and the long text shown in the documentation pane.
-
-The `Impl` declares the interface in `define()` and builds modules in `create()`:
-
-```cpp
 struct GainBlock : Block::Impl, DynamicConfig<GainConfig> {
     Result define() override {
         JST_CHECK(defineInterfaceInput("signal", "Signal", "Input tensor."));
@@ -151,122 +91,9 @@ struct GainBlock : Block::Impl, DynamicConfig<GainConfig> {
 JST_REGISTER_BLOCK(GainBlock, {"gain"});
 ```
 
-Use `moduleCreate(name, config, inputs)` to create a child module with the block's device, runtime, and provider. Connect its output to a block port with `moduleExposeOutput(blockPort, {module, modulePort})`. Every output you declare in `define()` needs a connection. To chain modules together, use `moduleGetOutput({module, modulePort})` to pass one module's output to the next.
+### Module Side
 
-Add editable controls with `defineInterfaceConfig` and status readouts with `defineInterfaceMetric`. See [Block Metrics](/docs/metadata#block-metrics) for examples.
-
-A control's format can also depend on state that only exists at runtime, such as a value reported by a child module. Declare such a control in `define()` with a format that needs no runtime state, then refine it with `updateInterfaceConfigFormat(key, format)`, which replaces the format of a previously declared config control. The update can run in `create()` once the modules exist, and again in the block's `reconfigure()` hook after a successful edit. When both hooks need the same update, move it into a shared function and call it from each.
-
-Use `environment()`, `view()`, `scheduler()`, and `render()` to access the flowgraph environment, view, scheduler, and render window.
-
-## Interface Descriptions
-
-The registration methods `defineInterfaceConfig` and `defineInterfaceMetric` take a
-`Parser::Map` as their fourth argument. Each description has a required `type` string and
-named properties. String literals in map initializers become owned `std::string` values.
-For sequences containing string literals, use `Parser::MakeSequence({"bin", "raw", "iq"})`.
-The helper returns a regular sequence with owned strings and preserves the types of other values.
-
-```cpp
-JST_CHECK(defineInterfaceConfig("frequency", "Frequency", "Tuner frequency.", {
-    {"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f},
-    {"precision", 3}, {"step_config", "frequencyStep"},
-}));
-
-JST_CHECK(defineInterfaceConfig("mode", "Mode", "Select a processing mode.", {
-    {"type", "dropdown"},
-    {"options", Parser::Sequence{
-        Parser::Map{{"label", "Fast"}, {"value", "fast"}},
-        Parser::Map{{"label", "Accurate"}, {"value", "accurate"}},
-    }},
-}));
-```
-
-Options retain their order. Display labels and values are independent. Selecting an option
-returns its string value. The receiving config's deserializer converts strings to numeric or
-boolean values when needed. The dropdown compares the current value's string representation
-with its option values. Duplicate labels are distinguished by option index. A value absent
-from the current options is displayed as unavailable and remains saved until explicitly
-changed. Dropdown descriptions and values are never delimiter-split.
-
-| Type | Properties and defaults |
-|---|---|
-| Basic controls (`bool`, `text`, `markdown`, `python`) | No additional properties are required. |
-| Integer controls (`int`, `uint`) | The display suffix `unit` defaults to an empty string. |
-| Floating-point control (`float`) | The defaults are an empty `unit`, a `scale` of 1, and a `precision` of 2. The optional `step_config` identifies a linked config key. Displayed values and steps are divided by `scale`. Edits are multiplied by it. Units are labels and imply no conversion. |
-| Range control (`range`) | The defaults are a `min` of 0, a `max` of 1, an empty `unit`, and a `value_type` of `float`. Setting `value_type` to `uint` changes the default maximum to 100. Bounds describe the slider. Block and module validation govern allowed input. |
-| Dropdown control (`dropdown`) | The required `options` sequence contains entries with a string `label` and a string `value`. |
-| Vector controls (`vector`, `vector-inline`) | The defaults are a `value_type` of `float`, an empty `unit`, a `scale` of 1, and a `precision` of 2. The element type can also be `uint`. Scaling and precision apply to float elements. |
-| File controls (`filepicker`, `filesave`) | The optional `extensions` sequence contains strings and defaults to an empty sequence. |
-| Multiline editor (`multiline`) | The `collapsible` property defaults to false. |
-| Tensor control (`tensor-config`) | The required `source` identifies the config key containing tensor specifications. The `index` property defaults to 0. |
-
-Descriptions are validated at registration. Invalid types, malformed options, non-positive
-or non-finite scales, invalid bounds, and precision outside the integer range from 0 to 16
-return `Result::ERROR`. Descriptor payloads must support the Parser equality checks used for
-change detection. Unsupported payload types and non-reflexive values, such as a not-a-number
-value, are rejected during registration. Controls cache decoded settings when descriptions change and read
-named entries directly from the config map. Value decoding uses `Parser::Deserialize` and
-propagates failures as `Result`. A field emits a decode-error notification when it enters
-the error state. Repeated updates in that state do not emit more notifications. Successful
-decoding resets the notification state.
-
-The accessor `Parser::Get` reads validated descriptor properties through `Deserialize`.
-It returns its fallback when a property is absent or cannot be decoded. Central validation
-uses `Deserialize` directly so malformed properties are reported. Checked numeric conversions
-live in the existing Parser decoder. Boolean values are excluded from numeric cross-conversion.
-The same decoding rules apply to optional values and sequence elements.
-
-Node and detached surface views share the same field construction path. Rendering does not
-encode or decode serialized documents. Use `Parser::YamlEncode` and `Parser::YamlDecode` at
-serialization boundaries. The document decoder reconstructs maps and sequences and initially
-stores scalar values as strings. Subsequent deserialization converts those strings to the
-receiving property's type.
-
-## Module Lifecycle
-
-A module implementation derives from `Module::Impl`, a runtime context that carries the compute hooks for its runtime, and `Scheduler::Context` for the scheduling hooks:
-
-| Hook | Purpose |
-|---|---|
-| `validate()` | Check candidate configuration semantics and implementation-specific compatibility of available inputs before side effects. |
-| `define()` | Declare taints and the input/output interface. |
-| `create()` | Allocate resources, initialize external state, and publish output tensors. |
-| `destroy()` | Release resources and external state created by the module. |
-| `reconfigure()` | Apply a validated candidate in place or return `RECREATE`. |
-
-Module creation follows a different order from block creation:
-
-```text
-Module::create
-├── Store the provided inputs
-├── Deserialize the candidate configuration
-├── validate()
-├── Commit the candidate configuration
-├── define() taints and ports
-├── Run framework input checks
-│   ├── Every declared input is present
-│   ├── Device matches unless CROSS_DEVICE
-│   ├── Tensor shape is initialized and non-empty
-│   └── Storage is contiguous unless DISCONTIGUOUS
-├── create()
-└── Verify every declared output was produced
-```
-
-Validation ownership is split deliberately:
-
-| Owner | Checks |
-|---|---|
-| Shared implementation `validate()` | Candidate ranges and relationships, signal axes, rank, dimensions, derived sizes, and other backend-independent semantics. |
-| Provider `validate()` | Supported dtypes, backend limits, allocation representability, and other device/runtime capabilities. Provider overrides should call the shared implementation first. |
-| Framework input checks | Missing declared inputs, device mismatch, invalid or empty tensors, and contiguity. Taints opt into the supported exceptions. |
-| `create()` | No deterministic validation. It consumes validated values while allocating resources, initializing devices, and publishing outputs. |
-
-The `validate()` hook runs before the framework input checks in the tree above. An implementation must therefore tolerate a missing input or a tensor whose shape is invalid or empty, return success for that case, and let the framework report the common lifecycle error. Candidate configuration checks still run even when an input is unavailable. This preserves consistent diagnostics and keeps framework-owned failures independent of a provider.
-
-Implementation-specific input semantics do belong in `validate()`. Examples include supported dtypes, accepted ranks, required signal-axis metadata, channel limits, backend grid limits, and whether derived allocation sizes are representable. These checks read pending fields through `candidate()` rather than the currently applied configuration.
-
-Validation may calculate and retain bounded derived values for `create()` to consume, but it must not allocate module resources, initialize hardware, or cause other external side effects. This boundary allows initial creation and validate-only reconfiguration to reject a candidate without disturbing live state.
+Describe the kernel parameters in `module.hh`, allocate and publish the output tensor in `create()`, and run the kernel in `computeSubmit()`:
 
 ```cpp
 struct GainModuleConfig : Module::Config {
@@ -308,195 +135,24 @@ struct GainModuleNativeCpu : Module::Impl,
 JST_REGISTER_MODULE(GainModuleNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");
 ```
 
-Outputs are real tensors owned by the module and published with `produced()`. The `reconfigure` hook can apply cheap changes in place or return `RECREATE` to force a rebuild.
-
-### Reconfiguring In Place
-
-An in-place reconfigure reads the pending edit from `candidate()`, decides which changes it can absorb, and commits them by assigning the live fields. The RRC filter module is the reference example: a change to the tap count reshapes an allocation, so it recreates, while every other parameter only requires regenerating coefficients into the existing buffer:
-
-```cpp
-Result RrcFilterImpl::reconfigure() {
-    const auto& config = *candidate();
-
-    if (config.taps != taps) {
-        return Result::RECREATE;
-    }
-
-    symbolRate = config.symbolRate;
-    sampleRate = config.sampleRate;
-    rollOff = config.rollOff;
-
-    JST_CHECK(generateCoefficients());
-
-    return Result::SUCCESS;
-}
-```
-
-Two details make this work. The implementation inherits its config fields through `DynamicConfig`, so the members being assigned are the applied configuration itself, and `candidate()` holds the not-yet-applied edit to compare against. And returning `SUCCESS` means the module took full responsibility for the change, so everything the changed fields influence, such as the coefficient table here, must be refreshed before returning. When in doubt about whether an in-place path covers a field, return `RECREATE` and let the flowgraph rebuild.
-
-The Module snapshots its serialized applied configuration before invoking the hook and attempts to restore that configuration if the hook fails. If restoration fails, the Module enters `ERRORED` and requires recreation. This rollback covers configuration fields only; implementations remain responsible for any runtime, hardware, or other external side effects.
-
-### Module-Originated Configuration Edits
-
-A surface can act as a configuration editor without directly mutating its module's
-applied fields. The owning block opts in after creating a child module:
-
-```cpp
-JST_CHECK(moduleCreate("detector", detectorConfig, inputs));
-JST_CHECK(moduleBindConfigEdit("detector", "threshold", "threshold"));
-```
-
-The first field name belongs to the module, the second to the block. Both must
-exist in their serialized configurations. The module can then submit a patch:
-
-```cpp
-Parser::Map edit;
-edit["threshold"] = newThreshold;
-JST_CHECK(requestConfigChange(edit));
-```
-
-Requests are queued rather than applied immediately. The flowgraph applies them
-through normal block reconfiguration before a compute cycle or export. Unbound
-fields reject the entire patch, and pending edits to the same field keep the
-latest value.
-
-The module can check `configChangeEnabled(key)` before offering a control, track
-outstanding edits with `configChangePending()`, and read `configChangeResult()`
-after completion. Keep interaction previews separate from applied configuration.
-Emit requests in response to user input, not when receiving an accepted edit.
-
-The Spectrum Analyzer demonstrates this with `splitRatio`: dragging previews a
-layout, releasing queues one edit, and the accepted ratio persists in block
-configuration. The in-place path preserves trace averaging and waterfall history.
-
-### Compute Contract
-
-The compute hooks come from the runtime context, for example `computeInitialize`, `computeSubmit`, and `computeDeinitialize` on `NativeCpuRuntimeContext`. The scheduler executes modules in topological order, running each one at most once per cycle and only when every input carries a frame it has not read yet. What `computeSubmit` returns matters:
-
-| Return | Meaning |
-|---|---|
-| `SUCCESS` | Normal completion. The output is a new frame for every consumer. |
-| `RELOAD` | Accepted as successful progress by the runtime. |
-| `SKIP` | Nothing to emit for this frame, for example a decimator still collecting input. The module emits an empty frame instead, and every module that receives it drops the frames it holds for that step without computing. Writing partial results to the output before skipping is fine, since an empty frame is never read. |
-| `YIELD` | Not ready yet. The module keeps its inputs unread, the modules that depend on it wait, and the scheduler retries it on a later cycle. The rest of the flowgraph keeps running. |
-| `TIMEOUT` | Same as `YIELD`. Sources return it from `hasPendingCompute()` when no full buffer is ready. |
-| `ERROR` | The module failed. Its block becomes errored with the last log message as the diagnostic, and downstream blocks are recreated as incomplete. The rest of the flowgraph keeps running. |
-
-Four rules govern the whole design:
-
-- **Compute must not wait on someone else's clock.** Every branch runs on one compute thread, so a stalled `computeSubmit` stalls every block in every flowgraph. Data that arrives on its own schedule, from a radio, a socket, or a sound device, is read by a background thread into a ring buffer that `computeSubmit` drains, because data read late is lost. Sending a buffer or reading and writing a file works on data the module already holds, so it runs inline with bounded timeouts, and a slow sink paces the chain instead of losing data.
-- **Sources answer right away.** A module with no inputs is a source. Each cycle the scheduler asks every source's `hasPendingCompute()` from `Scheduler::Context` whether a full buffer is ready, and it must return immediately, with `SUCCESS` when ready and `TIMEOUT` when not. The default returns `SUCCESS`, which makes the source free-running. An ingest source fills a ring buffer from a background thread and calls `Scheduler::Context::NotifyPendingCompute()` after every push, so an idle scheduler wakes as soon as data arrives. A slow source only paces the modules that depend on it.
-- **Frames stay aligned.** Every module consumes exactly one frame from each input per step, by computing, by dropping it because an input was skipped, or by dropping it because a throttled module was not due. Each output records the source frames it derives from, and a module with several inputs only runs when they come from the same source frames. A producer reuses one output buffer, so it waits until every consumer has read it, and a slow consumer paces its producer. A module whose output is a view of its input, inherits its attributes, or computes derived attributes counts as part of that buffer, so the producer also waits until that module's output has been read, and a held frame never sees newer samples or metadata. Joining sources that run at different rates paces the fast one to the slow one until the fast one overflows its buffer, so resample to a common rate or share a clock before such a join. The scheduler reads attribute links when the graph is built, so call `propagateAttributes` and `setDerivedAttribute` from `create()`, never from `computeSubmit`.
-- **Shapes are fixed at creation.** A module publishes its outputs in `create()` and their shape holds for as long as it lives, so a shape-changing edit goes through `RECREATE` as described in [Block Lifecycle](/docs/blocks-and-modules#block-lifecycle).
-
-### Module Taints
-
-Taints are opt-in capability and behavior contracts declared from the module's `define()` hook with `defineTaint`. The framework uses them while validating inputs, constructing the runtime plan, scheduling compute, and presenting surfaces.
-
-| Taint | Module contract | Framework behavior |
-|---|---|---|
-| `CLEAN` | No special capabilities or scheduling guarantees. | Applies the default validation and executes the module every eligible cycle. It is represented by zero, so it does not need to be declared. |
-| `IN_PLACE` | The module may overwrite storage belonging to one or more input tensors. It must not write into storage that another module still reads, because the scheduler does not hold back those other readers while it runs. | Static settlement is conservatively disabled for a graph containing the module because retained or aliased static buffers could otherwise be mutated. |
-| `DISCONTIGUOUS` | The implementation correctly handles input tensor shapes, strides, and offsets instead of assuming tightly packed storage. | Allows non-contiguous input tensors during module creation. Without it, non-contiguous inputs are rejected. |
-| `SURFACE` | The module owns a renderable surface and implements the presentation lifecycle. | Initializes the presentation context and includes the module in scheduler `present()` submissions. Compute settlement does not stop presentation. |
-| `BROWSER_MAIN_THREAD` | Browser-side creation and destruction must execute on the browser's main runtime thread. | Proxies the module's create and destroy hooks to the main thread in browser builds. It has no effect on native builds. |
-| `CROSS_DEVICE` | The implementation can directly consume input tensors whose device differs from the module's device. | Allows cross-device input during module creation. Without it, device mismatch is rejected and the block must provide an explicit bridge. |
-| `THROTTLED` | Compute should run at the scheduler's slower fixed cadence rather than every loop cycle. | Runs the module at most once per throttle interval. While it is not due, the module consumes and drops each incoming frame like a skip, so its producers keep flowing and its consumers receive an empty frame. |
-| `STATIC_OUTPUT` | After one successful compute, every output remains valid and unchanged for the current scheduler state epoch, and omitting later compute calls has no observable side effects. | Treats the module as an explicit static root. After successful materialization, the scheduler omits it without adding it to the skipped set and stops polling it as a source. |
-| `STATELESS` | For fixed configuration and logical input values, compute has the same outputs and return behavior and has no externally observable side effects. | Allows staticness to propagate from static inputs. A stateless module settles only when every input has a known static producer. The `STATELESS` trait alone does not make a zero-input module a static root. |
-
-Multiple traits can be combined in one declaration:
-
-```cpp
-Result MultiplyImpl::define() {
-    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS |
-                          Module::Taint::STATELESS));
-    // Define ports...
-    return Result::SUCCESS;
-}
-```
-
-Traits belong to the concrete module implementation. A declaration in a shared implementation base applies to every CPU, CUDA, or other backend implementation that inherits that `define()` hook, so the contract must hold for all of them.
-
-#### Static Settlement
-
-The `STATIC_OUTPUT` and `STATELESS` traits avoid redundant compute without changing the meaning of `SKIP`. Staticness is derived from explicit static roots through stateless transformations. For example, a static Window can feed stateless Invert and Reshape modules before the result is combined with a live signal by a stateless Multiply and passed to a stateless FFT. Window, Invert, and Reshape settle after their first successful cycle. Multiply remains dynamic because one input comes from the live signal, and FFT remains dynamic because its Multiply input is dynamic.
-
-The scheduler applies these rules:
-
-- The `STATIC_OUTPUT` trait starts a static branch regardless of whether the module has inputs.
-- The `STATELESS` trait propagates staticness only when the module has inputs and every input producer is known and static.
-- Missing producers, producerless inputs, live producers, and unannotated modules stop propagation. Resolved cross-block links retain their module producer and can propagate staticness.
-- A static candidate settles only after its runtime segment completes successfully and the module was not skipped.
-- The `SKIP`, `YIELD`, `TIMEOUT`, and failure results do not settle a module. The scheduler retries it on a later cycle.
-- Settled modules are omitted from runtime submission and source polling, but are never added to `skippedModules`. Their retained output remains available to dynamic consumers and across runtime or device segment boundaries.
-- A settled module carries no source frame numbers, so it never holds back a module that also reads a live input.
-- Timing presentation reports zero current compute cost for settled modules. Before invalidation, the scheduler restores its pre-settlement timing snapshot. A runtime rebuild that follows initializes fresh timing.
-- If every module is settled, the cycle reports no progress and the instance sleeps instead of spinning at full speed.
-
-Settlement lasts for a scheduler state epoch:
-
-| Event | Settlement behavior |
-|---|---|
-| Successful compute followed by another cycle | Preserved because settled modules are omitted. |
-| Scheduler `stop()` followed by `start()` | Preserved because runtime and module state remain initialized. |
-| Synchronized state mutation | Cleared so static roots and descendants can refresh. Every unread frame in the graph is dropped at the same time, so all branches restart from the same step. |
-| Module add, remove, or scheduler reload | Cleared while the runtime plan is rebuilt. |
-| Block recreation or configuration change requiring recreation | Cleared through module removal and re-addition. |
-| Presentation of a settled `SURFACE` module | Presentation continues while only compute submission is settled. |
-
-The `STATIC_OUTPUT` contract is stronger than "usually does not change." The annotation is incorrect if output can change because of time, randomness, mutable external memory, input changes, or retained history. A static module may use internal caches, compiled kernels, plans, or scratch resources, but those implementation details cannot make its observable output vary after materialization.
-
-Static-root examples include Window, FilterTaps, and OnesTensor. These modules derive their output from configuration and retain it after the first successful compute.
-
-#### Stateless Contract
-
-A module may declare `STATELESS` only when all of the following are true:
-
-- Output values and compute return behavior depend only on the current configuration and input values.
-- Compute does not depend on previous invocations, wall-clock time, random state, files, devices, queues, environment state, or externally mutable memory.
-- Compute does not publish metrics, write files, render, perform I/O, mutate inputs, or cause other observable side effects.
-- Repeating compute with the same inputs is semantically equivalent even if the implementation reuses internal plans, kernels, or scratch buffers.
-
-Stateless transform examples include Invert, Reshape, Multiply, FFT, Duplicate, Cast, MultiplyConstant, Pad, Unpad, Arithmetic, Range, AGC, Amplitude, and Fold. They can still execute every cycle when connected to live input. The trait only makes them eligible to inherit staticness.
-
-Examples that must not declare `STATELESS` include SignalGenerator because it advances sample state and may use randomness, FileReader because it advances an external stream, RrcFilter and OverlapAdd because they retain history, Throttle because it depends on time, Squelch because it publishes metrics and controls downstream scheduling, and Python because user code may perform arbitrary stateful operations.
-
-The `STATELESS` and `IN_PLACE` traits are conceptually incompatible because mutating an input is an observable side effect. The scheduler currently disables static settlement whenever `IN_PLACE` appears in the graph because tensor views can alias storage across more than one module.
-
-Most importantly, settlement is not `SKIP`. A `SKIP` result means output is unavailable for that frame, so downstream modules drop the frame too. Settlement means a previously computed output is still valid, so downstream modules continue normally.
-
-### Surface Input
-
-Interactive surfaces receive an ordered `InputEvent` stream from `surfaceConsumeInputEvents()`. Each event is a `std::variant` containing a `MouseEvent`, `KeyEvent`, or `FocusEvent`, declared in `jetstream/surface.hh`. Resize and placement notifications remain available through `surfaceConsumeSurfaceEvents()`.
-
-- Mouse positions are surface-normalized, with `(0, 0)` at the top left. Captured drags and their releases can have coordinates outside `[0, 1]`.
-- Keyboard events carry a Jetstream `KeyCode`, a `Press` or `Release` type, and a `repeat` flag. They identify keys rather than input text.
-- Both mouse and keyboard events carry a snapshot of Control, Shift, Alt, and Super/Command modifiers. Control and Command retain their native meanings on macOS.
-- Clicking an interactive surface gives it keyboard focus. Moving the pointer outside does not remove focus. Clicking elsewhere, focusing another widget, or hiding the surface releases its held keys and emits `FocusEvent{false}`. Hidden surfaces are cleaned up at the end of the frame, even when their content is skipped. Consumers should cancel captures and other held-input state on focus loss.
-
-Inspect each payload with `std::get_if<KeyEvent>(&event)` or `std::get_if<MouseEvent>(&event)`. Mouse-only consumers can use `SurfaceMouseEvent(event)`, which returns an optional mouse event and translates focus loss into `MouseEventType::Leave`. The `ProcessSurfaceInteraction()` helper accepts the input stream directly and keeps its existing cursor, zoom, and pan behavior.
-
-Interface components use `SurfaceView::Config::onInput` and `Module::Surface::pushInputEvent()`. Consume the input queue once per presentation and dispatch the returned events in order.
+Outputs are real `Tensor` objects owned by the module and published through `produced()`.
 
 ## Registration And Dispatch
 
-Registration is static. Placing the macros at namespace scope in a translation unit queues the registration, and both the main binary and loaded plugins drain into the same registry:
+Registrations happen statically at namespace scope, draining into the same global registry from both the main binary and loaded plugins:
 
 ```cpp
 JST_REGISTER_BLOCK(GainBlock, {"gain"});
 JST_REGISTER_MODULE(GainModuleNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");
 ```
 
-A block registration lists every module type its implementation may create. Requirements used only by a configuration-dependent path are marked conditional, for example `{"agc", true}`. Blocks with no child modules use `JST_REGISTER_BLOCK_NO_MODULES`. The picker advertises targets that provide every unconditional requirement, while module resolution during block creation remains authoritative.
+- List every module type a block may instantiate in `JST_REGISTER_BLOCK`. Mark configuration-dependent modules as conditional, such as `{"agc", true}`. Use `JST_REGISTER_BLOCK_NO_MODULES` for blocks with no child modules. The block picker advertises targets satisfying all unconditional requirements, while creation-time module lookup remains authoritative.
+- Blocks look up by type string alone. Modules look up by four keys: **module type**, **device**, **runtime**, and **provider**. Adding a `DeviceType::CUDA` module under the same type string immediately enables CUDA support for the existing block with zero block changes.
+- The **provider** string distinguishes competing implementations on the same device and runtime. Most modules register under `"generic"` (the default), while plugins can register specialized vendor-backed providers.
 
-A block is looked up by its type string alone. A module is looked up by four keys: its config type string plus the device, runtime, and provider of the block that is creating it. This is the dispatch mechanism, and it is why one block works across backends: registering a second module under the same type with `DeviceType::CUDA` makes the same block work on a CUDA device with no block changes.
+## Practical Guidelines
 
-The provider string distinguishes alternative implementations of the same module on the same device and runtime. Most modules register as `generic`, which is also the default a block is created with. A plugin can register a specialized provider, for example one backed by a vendor library, and blocks created with that provider pick it up.
-
-Practical hints:
-
-- **Keep blocks thin.** Configuration handling, interface definition, and wiring belong in the block. Anything that touches samples belongs in a module, where it can be reimplemented per device without touching the block.
-- **Prefer `RECREATE` over clever in-place reconfiguration.** The flowgraph already knows how to tear down and rebuild a block and its downstream correctly. In-place reconfiguration is an optimization for cheap changes, not the default.
-- **Return `INCOMPLETE` instead of faking readiness.** A block that cannot run yet should say so and let the retry machinery bring it up when its dependency appears. Blocks that pretend to be created and internally idle are invisible to the user and to the tooling.
-- **Test the lifecycle, not just the math.** The block test suites under `src/domains` cover creation, incomplete transitions, reconfiguration, and recreation alongside numeric results, and new blocks should do the same.
+- **Keep blocks thin.** Keep config handling, UI definitions, and wiring in the block, and put all sample processing in modules so new device backends never touch block code.
+- **Default to `RECREATE`.** The flowgraph already tears down and rebuilds subgraphs cleanly. Reserve in-place reconfiguration for genuinely cheap updates.
+- **Return `INCOMPLETE` instead of idling.** A block that lacks prerequisites should report `INCOMPLETE` so retry logic brings it online automatically rather than hiding in an idle "created" state.
+- **Test the full lifecycle.** Mirror the test suites under `src/domains`, covering creation, incomplete transitions, reconfiguration, recreation, and numeric accuracy.

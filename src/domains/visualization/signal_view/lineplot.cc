@@ -5,6 +5,13 @@
 
 namespace Jetstream::Modules {
 
+namespace {
+
+constexpr F32 kTraceFillAlpha = 0.25f;
+constexpr ColorRGBA<F32> kHoldColor = {0.85f, 0.12f, 0.1f, 0.75f};
+
+}  // namespace
+
 void SignalViewLineplot::configure(const Config& nextConfig) {
     config = nextConfig;
     displayedPoints.clear();
@@ -170,17 +177,22 @@ Result SignalViewLineplot::create(const std::shared_ptr<Render::Window>& window,
                          maxHoldKernel, maxHoldVertex,
                          drawMaxHoldVertex, maxHoldProgram));
 
-    signalUniforms.traceColor[0] = 1.0f;
-    signalUniforms.traceColor[1] = 0.85f;
-    signalUniforms.traceColor[2] = 0.0f;
-    signalUniforms.traceColor[3] = 0.25f;
-
-    holdUniforms.traceColor[0] = 0.85f;
-    holdUniforms.traceColor[1] = 0.12f;
-    holdUniforms.traceColor[2] = 0.1f;
-    holdUniforms.traceColor[3] = 0.75f;
-
     return Result::SUCCESS;
+}
+
+void SignalViewLineplot::applyTheme(const SurfaceTheme& theme) {
+    const auto& accent = theme.accent;
+    signalUniforms.traceColor[0] = accent.r;
+    signalUniforms.traceColor[1] = accent.g;
+    signalUniforms.traceColor[2] = accent.b;
+    signalUniforms.traceColor[3] = kTraceFillAlpha;
+
+    holdUniforms.traceColor[0] = kHoldColor.r;
+    holdUniforms.traceColor[1] = kHoldColor.g;
+    holdUniforms.traceColor[2] = kHoldColor.b;
+    holdUniforms.traceColor[3] = kHoldColor.a;
+
+    uniformsDirty = true;
 }
 
 void SignalViewLineplot::attach(Render::Surface::Config& surface) const {

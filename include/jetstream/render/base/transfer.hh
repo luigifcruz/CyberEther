@@ -1,9 +1,10 @@
 #ifndef JETSTREAM_RENDER_BASE_TRANSFER_HH
 #define JETSTREAM_RENDER_BASE_TRANSFER_HH
 
+#include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
-#include <unordered_set>
 #include <vector>
 
 #include "jetstream/types.hh"
@@ -44,9 +45,14 @@ class JETSTREAM_API Transfer {
                            const U8* source,
                            const U64& byteSize,
                            const U64& generation);
+        void watch(std::function<void()> callback);
 
         mutable std::mutex mutex;
         std::vector<PendingUpload> uploads;
+        std::atomic_bool uploadsPending = false;
+        std::function<void()> listener;
+
+        friend class Window;
     };
 
     struct JETSTREAM_API BufferTransfer {
@@ -75,7 +81,7 @@ class JETSTREAM_API Transfer {
 
         bool empty() const;
         bool contains(const std::shared_ptr<Buffer>& buffer) const;
-        bool contains(const std::shared_ptr<Texture>& texture) const;
+        bool contains(const std::shared_ptr<const Texture>& texture) const;
         void collect(const std::shared_ptr<Buffer>& buffer);
         void collect(const std::shared_ptr<Texture>& texture);
         void commit();
@@ -84,12 +90,13 @@ class JETSTREAM_API Transfer {
         const std::vector<TextureTransfer>& textures() const;
 
      private:
+        struct State;
+
         std::vector<BufferTransfer> bufferTransfers;
         std::vector<TextureTransfer> textureTransfers;
-        std::unordered_set<const Buffer*> collectedBuffers;
-        std::unordered_set<const Texture*> collectedTextures;
-        std::unordered_set<const Buffer*> pendingBuffers;
-        std::unordered_set<const Texture*> pendingTextures;
+        std::unique_ptr<State> state;
+
+        friend class Window;
     };
 
     Transfer();

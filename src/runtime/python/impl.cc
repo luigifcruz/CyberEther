@@ -144,10 +144,7 @@ Result PythonRuntime::compute(const std::vector<std::string>& modules,
 
         const F32 elapsedMs = std::chrono::duration<F32, std::milli>(end - start).count();
 
-        auto timing = module->timing();
-        timing.cycles += 1;
-        timing.computeTime += elapsedMs;
-        module->timing(timing);
+        module->recordCycle(elapsedMs, result == Result::SKIP);
 
         if (result == Result::SKIP) {
             skippedModules.insert(name);

@@ -61,6 +61,11 @@ jobs:
           set -euo pipefail
           python3 -m pip install --break-system-packages meson ninja numpy
 
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.17.0'
+
       - name: Build binary
         run: |
           set -euo pipefail
@@ -70,6 +75,7 @@ jobs:
             -Dbuildtype=release \
             -Dexamples=false \
             -Dremote=enabled \
+            -Dterminal=enabled \
             -Dgstreamer-full:build-tools-source=system
           meson compile -C build cyberether jetstream-core-tests jetstream-modules-tests
 
@@ -93,7 +99,9 @@ jobs:
       - name: Package binary
         run: |
           set -euo pipefail
-          mkdir -p .dist/artifacts .dist/bin
+          mkdir -p .dist/artifacts .dist/bin .dist/symbols
+          dsymutil build/cyberether -o .dist/symbols/cyberether.dSYM
+          dsymutil build/libjetstream.dylib -o .dist/symbols/libjetstream.dylib.dSYM
           cp build/cyberether .dist/bin/
           cp build/libjetstream.dylib .dist/bin/
           chmod 755 .dist/bin/cyberether .dist/bin/libjetstream.dylib
@@ -107,8 +115,11 @@ jobs:
           fi
 
           install_name_tool -add_rpath "@executable_path" .dist/bin/cyberether
+          strip -S .dist/bin/cyberether .dist/bin/libjetstream.dylib
 
           tar -C .dist/bin -czf .dist/artifacts/cyberether-macos-arm64.tar.gz cyberether libjetstream.dylib
+          tar -C .dist/symbols -czf .dist/artifacts/cyberether-macos-arm64-symbols.tar.gz \
+            cyberether.dSYM libjetstream.dylib.dSYM
 
       - name: Check binary dynamic dependencies
         uses: ./.github/actions/check-dynamic-deps
@@ -125,6 +136,11 @@ jobs:
         with:
           name: cyberether-bin-macos-arm64
           path: .dist/artifacts/cyberether-macos-arm64.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cyberether-symbols-macos-arm64
+          path: .dist/artifacts/cyberether-macos-arm64-symbols.tar.gz
 
   package:
     if: ${{ inputs.package_desktop }}

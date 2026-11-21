@@ -15,6 +15,8 @@ class JETSTREAM_API DrawImp<DeviceType::Metal> : public Draw {
     Result create(MTL::VertexDescriptor* vertDesc, const U64& offset);
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encode);
+    Result encode(MTL::RenderCommandEncoder* encoder, const Range& range, bool bind);
+    MTL::PrimitiveType primitive() const;
     Result updateVertexCount(U64 vertexCount) override;
     Result updateInstanceCount(U64 instanceCount) override;
 

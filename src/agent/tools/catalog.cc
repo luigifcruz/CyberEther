@@ -6,6 +6,15 @@
 namespace Jetstream::Agent::Detail {
 namespace {
 
+std::vector<Flowgraph::View::InterfaceEntry> InterfaceEntries(const Block::Interface::EntryList& source) {
+    std::vector<Flowgraph::View::InterfaceEntry> result;
+    result.reserve(source.size());
+    for (const auto& [name, entry] : source) {
+        result.push_back({name, entry.label, entry.format, entry.help});
+    }
+    return result;
+}
+
 std::optional<Registry::FlowgraphRegistration> FindExample(const std::string& key, std::string& error) {
     if (!key.empty()) {
         const auto examples = Registry::ListAvailableFlowgraphs(key);
@@ -166,6 +175,16 @@ Json GetBlockDocs(const Invocation& call) {
     const auto prototype = AddDefaultWidth(call.host, type, j);
     if (prototype && prototype->config().serialize(defaultConfig) == Result::SUCCESS) {
         j["default_config"] = Serialize::CompactMap(defaultConfig);
+        j["config_keys"] = Json::array();
+        for (const auto& field : defaultConfig) {
+            j["config_keys"].push_back(field.key);
+        }
+    }
+    if (prototype && prototype->describe() == Result::SUCCESS) {
+        j["config_fields"] = Serialize::ConfigFields(InterfaceEntries(prototype->interface()->configs()), defaultConfig);
+        j["input_ports"] = Serialize::Interface(InterfaceEntries(prototype->interface()->inputs()));
+        j["output_ports"] = Serialize::Interface(InterfaceEntries(prototype->interface()->outputs()));
+        j["interface_scope"] = "default_config";
     }
     j["implementations"] = Serialize::Implementations(block.type);
 
@@ -178,7 +197,11 @@ Json GetBlockDocs(const Invocation& call) {
             }
 
             if (observed.empty()) {
-                j["config_fields"] = Serialize::Interface(data.interfaceConfigs);
+                j["config_fields"] = Serialize::ConfigFields(data.interfaceConfigs, data.config);
+                j["input_ports"] = Serialize::Interface(data.interfaceInputs);
+                j["output_ports"] = Serialize::Interface(data.interfaceOutputs);
+                j["interface_scope"] = "observed";
+                j["interface_block"] = data.name;
             }
 
             observed.push_back({
@@ -336,23 +359,36 @@ std::vector<Entry> Toolbox::Catalog() {
         Entry::FromJson({
             "search_blocks",
             "Find block types for a task. Searches type, title, domain, summary, description, device, runtime, and provider, then returns ranked implementation options and each type's default_width in graph units for planning layout. default_width is the node width before resizing, and height grows with config fields and rendered surfaces.",
-            R"({"type":"object","properties":{"query":{"type":"string","description":"Words describing the block or task."},"domain":{"type":"string"},"device":{"type":"string"},"runtime":{"type":"string"},"provider":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false})",
+            R"({"type":"object","properties":{"query":{"type":"string","description":"Words describing the block or task."},"domain":{"type":"string","description":"Keep only domains whose name contains this text, such as dsp or visualization."},"device":{"type":"string","description":"Keep only implementations for this compute device, such as cpu or cuda."},"runtime":{"type":"string","description":"Keep only implementations for this runtime, such as native or python."},"provider":{"type":"string","description":"Keep only implementations from this provider. Most are generic."},"limit":{"type":"integer","minimum":1,"maximum":50,"description":"Maximum block types to return. Default 15."}},"additionalProperties":false})",
+            {.permission = Permission::Read},
         }, SearchBlocks),
         Entry::FromJson({
             "get_block_docs",
-            "Inspect one registered block type. Returns documentation, supported implementations, default_width, and default_config in the base values expected by apply_flowgraph_patch, with long strings and arrays shortened. Consult the documentation for units. observed_interfaces lists existing instances of the type with their compact config and port names, and config_fields gives the first instance's config fields with help and options. Interfaces are runtime-defined, so when no instance exists, create or inspect one to see its active config fields and ports.",
+            "Inspect a registered block type without creating an instance. Returns "
+            "documentation, implementations, default_width, compact default_config and "
+            "serialized config_keys. Config values use apply_flowgraph_patch base units. Consult "
+            "the block documentation for units. input_ports, output_ports and config_fields "
+            "describe defaults (interface_scope='default_config'), or the first existing "
+            "instance (interface_scope='observed', identified by interface_block). "
+            "Conditional interfaces may change with config. observed_interfaces lists "
+            "all instances with compact configs and port names. config_fields includes "
+            "help/options; config_key names the writable serialized key, with config_index "
+            "for tensor controls. Fields without config_key are UI-only. Discovery may "
+            "enumerate devices.",
             R"({"type":"object","required":["type"],"properties":{"type":{"type":"string","description":"Exact block type from search_blocks, inspect_flowgraph, or inspect_block."}},"additionalProperties":false})",
-            {.needsGraph = true},
+            {.permission = Permission::Read, .graph = true},
         }, GetBlockDocs),
         Entry::FromJson({
             "list_examples",
             "List the bundled example flowgraphs with their key, title, and summary. Optional query words must all appear in the key, title, summary, description, or YAML content. matched_in is 'content' when some words appear only in the YAML, which get_example with pattern can locate.",
             R"({"type":"object","properties":{"query":{"type":"string","description":"Optional words to filter examples."}},"additionalProperties":false})",
+            {.permission = Permission::Read},
         }, ListExamples),
         Entry::FromJson({
             "get_example",
             "Read one bundled example flowgraph by key, useful as a reference for block choices, configuration, wiring, and layout. Without pattern, offset, or limit it returns the description and full YAML content. With pattern it returns matching YAML lines (marked match=true) plus context, and with offset or limit a range of lines, each with its line number. pattern is a literal substring unless regex is true. Does not change any graph.",
             R"({"type":"object","required":["key"],"properties":{"key":{"type":"string","description":"Exact example key from list_examples."},"pattern":{"type":"string","description":"Text to find on a YAML line."},"regex":{"type":"boolean","description":"Treat pattern as an ECMAScript regular expression."},"context":{"type":"integer","minimum":0,"maximum":20,"description":"Lines of context around each match. Default 2."},"offset":{"type":"integer","minimum":1,"description":"First line to return when pattern is absent. Default 1."},"limit":{"type":"integer","minimum":1,"maximum":500,"description":"Maximum lines to return. Default 200."}},"additionalProperties":false})",
+            {.permission = Permission::Read},
         }, GetExample),
         {{
             "open_example",

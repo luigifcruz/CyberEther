@@ -10,21 +10,6 @@
 namespace Jetstream::Sakura {
 
 struct Runtime {
-    struct FontData {
-        const unsigned int* data = nullptr;
-        unsigned int size = 0;
-
-        bool valid() const;
-    };
-
-    struct FontConfig {
-        FontData body;
-        FontData bold;
-        FontData iconRegular;
-        FontData iconSolid;
-        FontData display;
-    };
-
     struct Config {
         const Palette* palette = nullptr;
         Render::Window* render = nullptr;
@@ -39,7 +24,6 @@ struct Runtime {
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
 
-    void create(FontConfig fontConfig);
     void update(Config config);
     Context context();
 

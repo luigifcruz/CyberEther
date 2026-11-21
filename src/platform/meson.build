@@ -1,4 +1,5 @@
 src_lst += files([
+    'deadline_waiter.cc',
     'dialogs.cc',
     'dynamic_library.cc',
     'file.cc',
@@ -6,6 +7,7 @@ src_lst += files([
     'http.cc',
     'paths.cc',
     'process.cc',
+    'pseudo_terminal.cc',
     'secret.cc',
     'storage.cc',
     'terminal.cc',
@@ -36,6 +38,11 @@ if jst_is_macos
     dep_lst += [
         dependency('appleframeworks', modules: ['Foundation', 'AppKit', 'UniformTypeIdentifiers', 'Security']),
     ]
+endif
+
+if jst_is_macos or jst_is_windows or target_machine.system().startswith('linux')
+    cfg_lst.set('JETSTREAM_PLATFORM_CRASH_AVAILABLE', true)
+    src_lst += files('crash.cc')
 endif
 
 if jst_is_ios or jst_is_macos

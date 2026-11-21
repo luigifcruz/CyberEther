@@ -3,12 +3,20 @@
 
 #include <jetstream/types.hh>
 
+#include <cmath>
+
 namespace Jetstream::Sakura {
 
 struct SurfaceResize {
     Extent2D<U64> logicalSize = {0, 0};
     Extent2D<U64> framebufferSize = {0, 0};
     F32 scale = 1.0f;
+
+    bool operator==(const SurfaceResize& other) const {
+        return logicalSize == other.logicalSize &&
+               framebufferSize == other.framebufferSize &&
+               std::abs(scale - other.scale) <= 1e-6f;
+    }
 };
 
 }  // namespace Jetstream::Sakura

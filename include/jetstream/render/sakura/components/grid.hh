@@ -4,36 +4,31 @@
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
-#include <string>
 #include <vector>
 
 namespace Jetstream::Sakura {
 
-struct Grid {
-    using Child = std::function<void(const Context&)>;
-    using Children = std::vector<Child>;
-
+struct Grid : public Component {
     struct Config {
-        std::string id;
         U64 columns = 2;
-        Extent2D<F32> size = {0.0f, 0.0f};
+        F32 minCellWidth = 0.0f;
+        Extent2D<F32> size = {Fill, 0.0f};
         Extent2D<F32> cellPadding = {4.0f, 2.0f};
         bool outerPadding = true;
+        std::vector<Component*> items;
+
+        bool operator==(const Config&) const = default;
     };
 
     Grid();
     ~Grid();
 
-    Grid(Grid&&) noexcept;
-    Grid& operator=(Grid&&) noexcept;
+    void update(Config config);
 
-    Grid(const Grid&) = delete;
-    Grid& operator=(const Grid&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx, Children children) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

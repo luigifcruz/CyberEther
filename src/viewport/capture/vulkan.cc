@@ -165,7 +165,7 @@ Result FrameCaptureVulkan::captureFrame() {
     }
 
     if (pimpl->frameEvents[pimpl->currentCaptureIndex].test()) {
-        return Result::SUCCESS;
+        return Result::SKIP;
     }
     pimpl->frameEvents[pimpl->currentCaptureIndex].test_and_set();
 

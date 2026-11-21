@@ -1,55 +1,73 @@
 #include <jetstream/render/sakura/components/node/uint_input.hh>
 
-#include "base.hh"
+#include <jetstream/render/sakura/components/node/text_input.hh>
+
+#include "../../metrics.hh"
+#include "parse.hh"
+
+#include <cerrno>
+#include <cstdlib>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
+namespace {
+
+std::optional<U64> ParseUInt(const std::string& text) {
+    const std::string trimmed = Jetstream::Text::TrimBlank(text);
+    if (trimmed.empty() || trimmed.front() == '-') {
+        return std::nullopt;
+    }
+    char* end = nullptr;
+    errno = 0;
+    const unsigned long long value = std::strtoull(trimmed.c_str(), &end, 10);
+    if (end == trimmed.c_str() || errno == ERANGE) {
+        return std::nullopt;
+    }
+    return static_cast<U64>(value);
+}
+
+}  // namespace
+
 struct NodeUIntInput::Impl {
     Config config;
+    NodeTextInput input;
 };
 
 NodeUIntInput::NodeUIntInput() {
     this->impl = std::make_unique<Impl>();
+    addChild(impl->input);
 }
 
 NodeUIntInput::~NodeUIntInput() = default;
-NodeUIntInput::NodeUIntInput(NodeUIntInput&&) noexcept = default;
-NodeUIntInput& NodeUIntInput::operator=(NodeUIntInput&&) noexcept = default;
 
-bool NodeUIntInput::update(Config config) {
-    this->impl->config = std::move(config);
-    return true;
+void NodeUIntInput::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
+    impl->config = std::move(config);
+    impl->input.update({
+        .id = impl->config.id + ":value",
+        .value = jst::fmt::format("{}", impl->config.value),
+        .unit = impl->config.unit,
+        .submit = NodeTextInput::Submit::OnEnter,
+        .selectAllOnFocus = true,
+        .characterFilter = DecimalCharacter,
+        .onChange = [this](const std::string& text) {
+            const auto parsed = ParseUInt(text);
+            if (parsed.has_value() && *parsed != impl->config.value && impl->config.onChange) {
+                impl->config.onChange(*parsed);
+            }
+        },
+    });
 }
 
-void NodeUIntInput::render(const Context& ctx) const {
-    const auto& config = this->impl->config;
+Extent2D<F32> NodeUIntInput::measure(const Context& ctx, Extent2D<F32> available) {
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
+}
 
-    U64 value = config.value;
-    ImGui::PushID(config.id.c_str());
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    const bool changed = ImGui::InputScalar("##uint",
-                                            ImGuiDataType_U64,
-                                            &value,
-                                            nullptr,
-                                            nullptr,
-                                            nullptr,
-                                            ImGuiInputTextFlags_EnterReturnsTrue);
-    if (!config.unit.empty()) {
-        const ImVec2 inputPos = ImGui::GetItemRectMin();
-        const ImVec2 inputSize = ImGui::GetItemRectSize();
-        const ImVec2 textSize = ImGui::CalcTextSize(config.unit.c_str());
-        const ImVec2 textPos(inputPos.x + inputSize.x - textSize.x - Scale(ctx, 3.0f),
-                             inputPos.y + (inputSize.y - textSize.y) * 0.5f);
-        ImGui::GetWindowDrawList()->AddText(textPos,
-                                            ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "text_secondary")),
-                                            config.unit.c_str());
-    }
-    if (changed && config.onChange) {
-        config.onChange(value);
-    }
-    ImGui::PopStyleVar();
-    ImGui::PopID();
+void NodeUIntInput::layout(const Context& ctx) {
+    layoutChild(ctx, impl->input, frame());
 }
 
 }  // namespace Jetstream::Sakura

@@ -1,197 +1,247 @@
 #include <jetstream/render/sakura/components/button.hh>
 
-#include <algorithm>
+#include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
+#include <jetstream/render/sakura/components/text.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
+#include "../metrics.hh"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <optional>
+#include <string>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
 namespace {
 
-constexpr const char* kButtonColorKey = "button";
-constexpr const char* kButtonHoveredColorKey = "button_hovered";
-constexpr const char* kButtonActiveColorKey = "button_active";
-constexpr const char* kButtonTextColorKey = "button_text";
-constexpr const char* kButtonBorderColorKey = "button_outline";
+struct ButtonKeys {
+    const char* color;
+    const char* hovered;
+    const char* active;
+    const char* text;
+    const char* border;
+};
+
+ButtonKeys VariantKeys(Button::Variant variant) {
+    switch (variant) {
+        case Button::Variant::Action:
+            return {"action_btn", "action_btn_hovered", "action_btn_active", "action_btn_text", "action_btn_outline"};
+        case Button::Variant::Destructive:
+            return {"destructive_btn", "destructive_btn_hovered", "destructive_btn_active", "destructive_btn_text",
+                    "destructive_btn_outline"};
+        case Button::Variant::Default:
+        case Button::Variant::Text:
+            break;
+    }
+    return {"button", "button_hovered", "button_active", "button_text", "button_outline"};
+}
+
+std::string Pick(const std::string& custom, const char* fallback) {
+    return custom.empty() ? std::string(fallback) : custom;
+}
 
 }  // namespace
 
 struct Button::Impl {
     Config config;
+    Box frame;
+    Card card;
+    Box underline;
+    Text label;
+    bool hovered = false;
+    bool pressed = false;
+
+    bool textual() const {
+        return config.variant == Variant::Text;
+    }
+
+    void pushLabel() {
+        label.update({
+            .str = config.str,
+            .font = config.font,
+            .colorKey = textKey(),
+            .scale = config.textScale,
+            .opacity = config.disabled && !textual() ? kDisabledAlpha : 1.0f,
+        });
+    }
+
+    std::string textKey() const {
+        if (hovered && !config.disabled && !config.hoveredTextColorKey.empty()) {
+            return config.hoveredTextColorKey;
+        }
+        return textual() ? Pick(config.textColorKey, config.disabled ? "text_disabled" : "text_primary")
+                         : Pick(config.textColorKey, VariantKeys(config.variant).text);
+    }
+
+    Extent2D<F32> padding(const Context& ctx) const {
+        if (textual()) {
+            return {0.0f, 0.0f};
+        }
+        return {Px(ctx, config.padding.x), Px(ctx, config.padding.y)};
+    }
 };
 
 Button::Button() {
-    this->impl = std::make_unique<Impl>();
+    impl = std::make_unique<Impl>();
+    addChild(impl->frame);
+    addChild(impl->card);
+    addChild(impl->underline);
+    addChild(impl->label);
 }
 
 Button::~Button() = default;
-Button::Button(Button&&) noexcept = default;
-Button& Button::operator=(Button&&) noexcept = default;
 
-bool Button::update(Config config) {
-    this->impl->config = std::move(config);
-    return true;
+void Button::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
+    impl->config = std::move(config);
+    if (impl->config.disabled) {
+        impl->hovered = false;
+        impl->pressed = false;
+    }
+    impl->pushLabel();
 }
 
-void Button::render(const Context& ctx) const {
-    const auto& config = this->impl->config;
+Extent2D<F32> Button::measure(const Context& ctx, Extent2D<F32> available) {
+    const auto& config = impl->config;
+    const auto text = measureChild(impl->label, ctx, {std::numeric_limits<F32>::infinity(), available.y});
+    const auto pad = impl->padding(ctx);
+    return {ResolveLength(ctx, config.size.x, text.x + 2.0f * pad.x, available.x),
+            ResolveLength(ctx, config.size.y, text.y + 2.0f * pad.y, available.y)};
+}
 
-    ImGui::PushID(config.id.c_str());
+void Button::layout(const Context& ctx) {
+    const auto& config = impl->config;
+    const Rect bounds = frame();
+    const auto keys = VariantKeys(config.variant);
+    const F32 alpha = config.disabled ? kDisabledAlpha : 1.0f;
 
-    if (config.variant == Variant::Text) {
-        if (config.disabled) {
-            ImGui::BeginDisabled();
+    const std::string background = impl->pressed && impl->hovered ? Pick(config.activeColorKey, keys.active)
+                                   : impl->hovered                 ? Pick(config.hoveredColorKey, keys.hovered)
+                                                                   : Pick(config.colorKey, keys.color);
+    const auto textColor = WithAlpha(ctx.color(impl->textKey()), alpha);
+
+    const bool chrome = config.chrome && !impl->textual();
+    impl->frame.setVisible(!chrome);
+    impl->frame.update({
+        .instances = {{.rect = bounds, .visible = !impl->textual() && !bounds.empty(),
+                       .backgroundColor = WithAlpha(ctx.color(background), alpha)}},
+        .clip = bounds,
+        .cornerRadius = Px(ctx, config.rounding),
+        .borderWidth = Px(ctx, 1.0f),
+        .borderColor = WithAlpha(ctx.color(Pick(config.borderColorKey, keys.border)), alpha),
+        .strokeFringe = true,
+    });
+    impl->card.setVisible(chrome);
+    impl->card.update({
+        .rects = {bounds},
+        .clip = clip(),
+        .cornerRadius = Px(ctx, config.rounding),
+        .borderWidth = Px(ctx, 1.0f),
+        .lineWidth = Px(ctx, 1.0f),
+        .fillKey = background,
+        .opacity = alpha,
+        .capacity = 1,
+    });
+
+    const auto text = measureChild(impl->label, ctx, {std::numeric_limits<F32>::infinity(), bounds.height});
+    const Rect textRect = impl->textual()
+        ? Rect{bounds.x, bounds.y, text.x, text.y}
+        : Rect{bounds.x + impl->padding(ctx).x +
+                   std::floor(std::max(0.0f, bounds.width - 2.0f * impl->padding(ctx).x - text.x) * config.textAlign),
+               bounds.y + std::floor((bounds.height - text.y) * 0.5f), text.x, text.y};
+    layoutChild(ctx, impl->frame, bounds);
+    layoutChild(ctx, impl->card, bounds);
+    layoutChild(ctx, impl->label, textRect, bounds);
+
+    const F32 line = Hairline(ctx);
+    impl->underline.update({
+        .instances = {{.rect = {textRect.x, textRect.bottom(), textRect.width, line},
+                       .visible = impl->textual() && impl->hovered && !config.disabled,
+                       .backgroundColor = textColor}},
+        .clip = bounds,
+    });
+    layoutChild(ctx, impl->underline, bounds);
+}
+
+bool Button::mouseEvent(const MouseEvent& event) {
+    if (impl->config.disabled) {
+        return false;
+    }
+    const bool inside = frame().contains(event.position.x, event.position.y);
+    switch (event.type) {
+        case MouseEventType::Move:
+            if (inside != impl->hovered) {
+                impl->hovered = inside;
+                impl->pushLabel();
+                invalidate(Dirty::Layout);
+            }
+            return false;
+        case MouseEventType::Leave:
+        case MouseEventType::Cancel:
+            if (impl->hovered || impl->pressed) {
+                impl->hovered = false;
+                impl->pressed = false;
+                impl->pushLabel();
+                invalidate(Dirty::Layout);
+            }
+            return false;
+        case MouseEventType::Click:
+            if (!inside || event.button != MouseButton::Left) {
+                return false;
+            }
+            if (event.clicks >= 2 && impl->config.onDoubleClick) {
+                impl->pressed = false;
+                invalidate(Dirty::Layout);
+                impl->config.onDoubleClick();
+                return true;
+            }
+            impl->pressed = true;
+            invalidate(Dirty::Layout);
+            return true;
+        case MouseEventType::Release: {
+            if (event.button != MouseButton::Left || !impl->pressed) {
+                return false;
+            }
+            impl->pressed = false;
+            invalidate(Dirty::Layout);
+            if (inside && impl->config.onClick) {
+                impl->config.onClick();
+            }
+            return true;
         }
-
-        if (config.textScale != 1.0f) {
-            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * config.textScale);
-        }
-
-        const bool customTextColor = config.textColorKey != kButtonTextColorKey;
-        const std::string textColorKey = customTextColor
-            ? config.textColorKey
-            : (config.disabled ? "text_disabled" : "text_primary");
-        const ImVec4 textColor = Private::ImColor(ctx, textColorKey);
-        const ImU32 textColorU32 = ImGui::GetColorU32(textColor);
-        const ImVec2 cursor = ImGui::GetCursorScreenPos();
-        const ImVec2 textSize = ImGui::CalcTextSize(config.str.c_str());
-        ImVec2 buttonSize = Private::ToImVec2(Scale(ctx, config.size));
-        if (buttonSize.x <= 0.0f) {
-            buttonSize.x = textSize.x;
-        }
-        if (buttonSize.y <= 0.0f) {
-            buttonSize.y = textSize.y;
-        }
-
-        const bool pressed = ImGui::InvisibleButton("##text-button", buttonSize);
-        const bool hovered = !config.disabled && ImGui::IsItemHovered();
-        if (hovered) {
-            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        }
-
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        drawList->AddText(cursor, textColorU32, config.str.c_str());
-        if (hovered) {
-            const F32 underlineY = cursor.y + textSize.y;
-            drawList->AddLine(ImVec2(cursor.x, underlineY),
-                              ImVec2(cursor.x + textSize.x, underlineY),
-                              textColorU32,
-                              Scale(ctx, 1.0f));
-        }
-
-        if (pressed && config.onClick) {
-            config.onClick();
-        }
-
-        if (config.textScale != 1.0f) {
-            ImGui::PopFont();
-        }
-
-        if (config.disabled) {
-            ImGui::EndDisabled();
-        }
-
-        ImGui::PopID();
-        return;
+        default:
+            return false;
     }
+}
 
-    I32 styleColorCount = 0;
-    const char* defaultColorKey = kButtonColorKey;
-    const char* defaultHoveredColorKey = kButtonHoveredColorKey;
-    const char* defaultActiveColorKey = kButtonActiveColorKey;
-    const char* defaultTextColorKey = kButtonTextColorKey;
-    const char* defaultBorderColorKey = kButtonBorderColorKey;
-    if (config.variant == Variant::Action) {
-        defaultColorKey = "action_btn";
-        defaultHoveredColorKey = "action_btn_hovered";
-        defaultActiveColorKey = "action_btn_active";
-        defaultTextColorKey = "action_btn_text";
-        defaultBorderColorKey = "action_btn_outline";
-    } else if (config.variant == Variant::Destructive) {
-        defaultColorKey = "destructive_btn";
-        defaultHoveredColorKey = "destructive_btn_hovered";
-        defaultActiveColorKey = "destructive_btn_active";
-        defaultTextColorKey = "destructive_btn_text";
-        defaultBorderColorKey = "destructive_btn_outline";
+std::optional<SurfaceCursor> Button::cursorAt(const Extent2D<F32>& point) const {
+    if (impl->config.disabled || !frame().contains(point.x, point.y)) {
+        return std::nullopt;
     }
+    return SurfaceCursor::Hand;
+}
 
-    const bool customColor = config.colorKey != kButtonColorKey;
-    const bool customHoveredColor = config.hoveredColorKey != kButtonHoveredColorKey;
-    const bool customActiveColor = config.activeColorKey != kButtonActiveColorKey;
-    const bool customTextColor = config.textColorKey != kButtonTextColorKey;
-    const bool customBorderColor = config.borderColorKey != kButtonBorderColorKey;
-    const bool customColors = customColor || customHoveredColor || customActiveColor;
-    const std::string colorKey = customColor ? config.colorKey : defaultColorKey;
-    const std::string hoveredColorKey = customHoveredColor ? config.hoveredColorKey : defaultHoveredColorKey;
-    const std::string activeColorKey = customActiveColor ? config.activeColorKey : defaultActiveColorKey;
-    const std::string textColorKey = customTextColor ? config.textColorKey : defaultTextColorKey;
-    const std::string borderColorKey = customBorderColor ? config.borderColorKey : defaultBorderColorKey;
-
-    if (config.variant != Variant::Default || customColors) {
-        ImGui::PushStyleColor(ImGuiCol_Button, Private::ImColor(ctx, colorKey));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Private::ImColor(ctx, hoveredColorKey));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, Private::ImColor(ctx, activeColorKey));
-        styleColorCount += 3;
-    }
-
-    ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, textColorKey));
-    styleColorCount += 1;
-
-    ImGui::PushStyleColor(ImGuiCol_Border, Private::ImColor(ctx, borderColorKey));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, Scale(ctx, 1.0f));
-    styleColorCount += 1;
-
-    I32 styleVarCount = 1;
-    if (config.rounding >= 0.0f) {
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Scale(ctx, config.rounding));
-        styleVarCount += 1;
-    }
-
-    if (config.disabled) {
-        ImGui::BeginDisabled();
-    }
-
-    if (config.textScale != 1.0f) {
-        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * config.textScale);
-    }
-
-    if (config.size.y > 0.0f) {
-        const F32 buttonHeight = Scale(ctx, config.size.y);
-        const F32 labelHeight = ImGui::CalcTextSize(config.str.c_str(), nullptr, true).y;
-        const F32 maxPaddingY = std::max((buttonHeight - labelHeight) * 0.5f, 0.0f);
-        const F32 paddingY = std::min(ImGui::GetStyle().FramePadding.y, maxPaddingY);
-        if (paddingY < ImGui::GetStyle().FramePadding.y) {
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                                ImVec2(ImGui::GetStyle().FramePadding.x, paddingY));
-            styleVarCount += 1;
-        }
-    }
-
-    const bool pressed = ImGui::Button(config.str.c_str(), Private::ToImVec2(Scale(ctx, config.size)));
-    if (!config.disabled && ImGui::IsItemHovered()) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-    if (pressed) {
-        if (config.onClick) {
-            config.onClick();
-        }
-    }
-
-    if (config.textScale != 1.0f) {
-        ImGui::PopFont();
-    }
-
-    if (config.disabled) {
-        ImGui::EndDisabled();
-    }
-
-    ImGui::PopStyleVar(styleVarCount);
-
-    if (styleColorCount > 0) {
-        ImGui::PopStyleColor(styleColorCount);
-    }
-
-    ImGui::PopID();
+void NavigationItem::update(Config config) {
+    Button::update({
+        .str = std::move(config.label),
+        .size = {Fill, 0.0f},
+        .colorKey = config.selected ? "header_active" : "card",
+        .hoveredColorKey = config.selected ? "header_active" : "header_hovered",
+        .activeColorKey = "header_active",
+        .borderColorKey = config.selected ? "accent_color" : "border",
+        .textColorKey = config.selected ? "text_primary" : "text_secondary",
+        .rounding = 10.0f,
+        .padding = Extent2D<F32>{12.0f, 10.0f},
+        .textAlign = 0.0f,
+        .onClick = std::move(config.onSelect),
+        .onDoubleClick = std::move(config.onDoubleClick),
+    });
 }
 
 }  // namespace Jetstream::Sakura

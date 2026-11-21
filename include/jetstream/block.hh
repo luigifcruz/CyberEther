@@ -82,6 +82,7 @@ class JETSTREAM_API Block {
 
     // Configuration
 
+    Result describe();
     Result reconfigure(const Parser::Map& config);
     Result config(Parser::Map& config) const;
     const Block::Config& config() const;
@@ -94,6 +95,7 @@ class JETSTREAM_API Block {
     const ProviderType& provider() const;
     const State& state() const;
     const std::string& diagnostic() const;
+    bool frozen() const;
 
     // I/O
 

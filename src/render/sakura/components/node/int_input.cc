@@ -1,55 +1,83 @@
 #include <jetstream/render/sakura/components/node/int_input.hh>
 
-#include "base.hh"
+#include <jetstream/render/sakura/components/node/text_input.hh>
+
+#include "../../metrics.hh"
+#include "parse.hh"
+
+#include <cerrno>
+#include <cstdlib>
+#include <limits>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
+namespace {
+
+std::optional<I64> ParseInt(const std::string& text) {
+    const std::string trimmed = Jetstream::Text::TrimBlank(text);
+    if (trimmed.empty()) {
+        return std::nullopt;
+    }
+    char* end = nullptr;
+    errno = 0;
+    const long long value = std::strtoll(trimmed.c_str(), &end, 10);
+    if (errno == ERANGE) {
+        return std::nullopt;
+    }
+    if (end == trimmed.c_str()) {
+        const auto asFloat = ParseFloat(trimmed);
+        constexpr F64 lowest = static_cast<F64>(std::numeric_limits<I64>::min());
+        constexpr F64 highest = static_cast<F64>(std::numeric_limits<I64>::max());
+        if (!asFloat.has_value() || *asFloat < lowest || *asFloat >= highest) {
+            return std::nullopt;
+        }
+        return static_cast<I64>(*asFloat);
+    }
+    return static_cast<I64>(value);
+}
+
+}  // namespace
+
 struct NodeIntInput::Impl {
     Config config;
+    NodeTextInput input;
 };
 
 NodeIntInput::NodeIntInput() {
     this->impl = std::make_unique<Impl>();
+    addChild(impl->input);
 }
 
 NodeIntInput::~NodeIntInput() = default;
-NodeIntInput::NodeIntInput(NodeIntInput&&) noexcept = default;
-NodeIntInput& NodeIntInput::operator=(NodeIntInput&&) noexcept = default;
 
-bool NodeIntInput::update(Config config) {
-    this->impl->config = std::move(config);
-    return true;
+void NodeIntInput::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
+    impl->config = std::move(config);
+    impl->input.update({
+        .id = impl->config.id + ":value",
+        .value = jst::fmt::format("{}", impl->config.value),
+        .unit = impl->config.unit,
+        .submit = NodeTextInput::Submit::OnEnter,
+        .selectAllOnFocus = true,
+        .characterFilter = DecimalCharacter,
+        .onChange = [this](const std::string& text) {
+            const auto parsed = ParseInt(text);
+            if (parsed.has_value() && *parsed != impl->config.value && impl->config.onChange) {
+                impl->config.onChange(*parsed);
+            }
+        },
+    });
 }
 
-void NodeIntInput::render(const Context& ctx) const {
-    const auto& config = this->impl->config;
+Extent2D<F32> NodeIntInput::measure(const Context& ctx, Extent2D<F32> available) {
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
+}
 
-    I64 value = config.value;
-    ImGui::PushID(config.id.c_str());
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    const bool changed = ImGui::InputScalar("##int",
-                                            ImGuiDataType_S64,
-                                            &value,
-                                            nullptr,
-                                            nullptr,
-                                            nullptr,
-                                            ImGuiInputTextFlags_EnterReturnsTrue);
-    if (!config.unit.empty()) {
-        const ImVec2 inputPos = ImGui::GetItemRectMin();
-        const ImVec2 inputSize = ImGui::GetItemRectSize();
-        const ImVec2 textSize = ImGui::CalcTextSize(config.unit.c_str());
-        const ImVec2 textPos(inputPos.x + inputSize.x - textSize.x - Scale(ctx, 3.0f),
-                             inputPos.y + (inputSize.y - textSize.y) * 0.5f);
-        ImGui::GetWindowDrawList()->AddText(textPos,
-                                            ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "text_secondary")),
-                                            config.unit.c_str());
-    }
-    if (changed && config.onChange) {
-        config.onChange(value);
-    }
-    ImGui::PopStyleVar();
-    ImGui::PopID();
+void NodeIntInput::layout(const Context& ctx) {
+    layoutChild(ctx, impl->input, frame());
 }
 
 }  // namespace Jetstream::Sakura

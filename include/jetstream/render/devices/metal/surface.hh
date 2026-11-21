@@ -14,19 +14,29 @@ class JETSTREAM_API SurfaceImp<DeviceType::Metal> : public Surface {
     Result create() override;
     Result destroy() override;
 
-    const Extent2D<U64>& size(const Extent2D<U64>& size) override;
-
  protected:
-    Result prepare();
+    Result sequenceSteps(const std::vector<Step>& steps) override;
+    bool appendable() const override;
+    Result validateAppend(const std::vector<std::shared_ptr<Program>>& programs,
+                          const std::vector<std::shared_ptr<Kernel>>& kernels) const override;
+    Result createAppended(const std::vector<std::shared_ptr<Program>>& programs,
+                          const std::vector<std::shared_ptr<Kernel>>& kernels) override;
+    bool created() const override;
+    Result rebuildFramebuffer() override;
     Result draw(MTL::CommandBuffer* commandBuffer, bool visible = true);
 
  private:
-    Extent2D<U64> requestedSize;
-    bool framebufferChanged = false;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
     std::shared_ptr<TextureImp<DeviceType::Metal>> framebuffer;
     std::shared_ptr<TextureImp<DeviceType::Metal>> framebufferResolve;
+    struct Ordered {
+        std::shared_ptr<ProgramImp<DeviceType::Metal>> program;
+        std::optional<Draw::Range> range;
+        std::optional<ScissorRect> scissor;
+    };
+
     std::vector<std::shared_ptr<ProgramImp<DeviceType::Metal>>> programs;
+    std::vector<Ordered> ordered;
     std::vector<std::shared_ptr<KernelImp<DeviceType::Metal>>> kernels;
     std::vector<std::shared_ptr<BufferImp<DeviceType::Metal>>> buffers;
 

@@ -4,7 +4,8 @@
 
 #include "jetstream/instance_remote.hh"
 #include "jetstream/viewport/capture.hh"
-#include "jetstream/render/tools/imgui.h"
+#include "jetstream/render/base/input.hh"
+#include "jetstream/surface.hh"
 
 #include <atomic>
 #include <chrono>
@@ -40,8 +41,11 @@ struct Instance::Remote::Impl {
     Result destroy();
     Result rollbackCreate();
     Result processInput();
-    Result captureFrame(std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
-    Result approveClient(const std::string& code);
+    void requestKeyframe();
+    Result captureFrame(bool presented,
+                        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
+    Result approveClient(const std::string& sessionId);
+    Result removeClient(const std::string& sessionId);
 
     Config config;
     Viewport::Generic* viewport = nullptr;
@@ -119,6 +123,7 @@ struct Instance::Remote::Impl {
         gulong iceHandler = 0;
         gulong channelHandler = 0;
         gulong negotiationHandler = 0;
+        gulong connectionHandler = 0;
         bool negotiationReady = false;
         bool offerPending = false;
     };
@@ -181,8 +186,8 @@ struct Instance::Remote::Impl {
     };
 
     struct RemoteInputState {
-        std::unordered_set<ImGuiKey> keys;
-        std::unordered_set<int> mouseButtons;
+        std::unordered_set<KeyCode> keys;
+        std::unordered_set<MouseButton> mouseButtons;
         bool alt = false;
         bool ctrl = false;
         bool shift = false;
@@ -193,19 +198,22 @@ struct Instance::Remote::Impl {
     std::deque<std::string> inputSessionOrder;
     std::deque<QueuedInput> inputQueue;
     std::unordered_map<std::string, RemoteInputState> remoteInputStates;
-    std::unordered_set<ImGuiKey> appliedRemoteKeys;
+    std::unordered_set<KeyCode> appliedRemoteKeys;
 
     void enqueueInput(std::string sessionId, nlohmann::json payload);
     void enqueueInputReset(const std::string& sessionId);
     void handleInput(const std::string& sessionId, const std::string& kind, const nlohmann::json& j);
     void resetInput(const std::string& sessionId);
     void synchronizeKeyboardState();
+    void pushInput(Render::InputQueue::Event event);
+    Extent2D<F32> framebufferScale() const;
     void createControlChannel(const std::string& sessionId);
     static void onMessageCallback(GstWebRTCDataChannel* self, gchar* data, gpointer user_data);
     static void onChannelClosedCallback(GstWebRTCDataChannel* self, gpointer user_data);
     static void onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data);
     static void onIceCandidateCallback(GstElement* self, guint mlineIndex, gchar* candidate, gpointer user_data);
     static void onNegotiationNeededCallback(GstElement* self, gpointer user_data);
+    static void onConnectionStateCallback(GstElement* self, GParamSpec* pspec, gpointer user_data);
     static void onOfferCreatedCallback(GstPromise* promise, gpointer user_data);
     static void onAnswerCreatedCallback(GstPromise* promise, gpointer user_data);
 
@@ -216,6 +224,8 @@ struct Instance::Remote::Impl {
 
     std::unique_ptr<Viewport::FrameCapture> frameCapture;
     std::chrono::steady_clock::time_point nextCaptureTime{};
+    bool capturePending = false;
+    std::atomic<bool> captureRequested = false;
     std::thread frameSubmissionThread;
     std::atomic<bool> frameSubmissionRunning = false;
 

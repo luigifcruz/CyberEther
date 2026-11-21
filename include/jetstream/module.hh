@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_MODULE_HH
 #define JETSTREAM_MODULE_HH
 
+#include <chrono>
 #include <memory>
 
 #include "jetstream/types.hh"
@@ -28,7 +29,14 @@ class JETSTREAM_API Module {
         std::string device;
         std::string backend;
         U64 cycles = 0;
-        F32 computeTime = 0.0f;
+        U64 skippedCycles = 0;
+        F64 computeTime = 0.0;
+        F32 lastComputeTime = 0.0f;
+        F64 cyclesPerSecond = 0.0;
+        std::chrono::steady_clock::time_point lastCycle;
+        std::chrono::steady_clock::time_point rateWindowStart;
+        U64 rateWindowCycles = 0;
+        bool settled = false;
     };
 
     struct Config {
@@ -104,6 +112,7 @@ class JETSTREAM_API Module {
 
     Timing timing() const;
     void timing(const Timing& timing);
+    void recordCycle(const F32& elapsedMs, const bool& skipped);
 
     // I/O
 

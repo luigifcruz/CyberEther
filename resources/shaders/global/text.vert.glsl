@@ -2,9 +2,13 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 layout(set = 0, binding = 0) uniform ShaderUniforms {
-    vec3 color;
+    vec2 translation;
     float sharpness;
     float atlasPixelRange;
+    float weight;
+    float emboss;
+    float em;
+    float backdrop;
 } uniforms;
 
 layout(location = 0) in vec2 inPosition;
@@ -19,10 +23,13 @@ layout(location = 6) in vec4 inColor;
 
 layout(location = 0) out vec2 outTexcoord;
 layout(location = 1) out vec4 outColor;
+layout(location = 2) out float outLineY;
 
 void main() {
     mat4 inTransform = mat4(inTransform0, inTransform1, inTransform2, inTransform3);
     gl_Position = inTransform * vec4(inPosition, 1.0, 1.0);
+    gl_Position.xy += uniforms.translation * gl_Position.w;
     outTexcoord = inTexcoord;
     outColor = inColor;
+    outLineY = -inPosition.y;
 }

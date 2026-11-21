@@ -7,6 +7,8 @@
 #include "table.hh"
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 #include "jetstream/parser.hh"
 
 #include <string>
@@ -15,47 +17,15 @@
 namespace Jetstream {
 
 struct FlowgraphMetricInstance {
-    void update(FlowgraphMetricConfig config) {
-        kind = Parser::Get<std::string>(config.format, "type");
-
-        if (kind == "progressbar") {
-            progress.update(std::move(config));
-        } else if (kind == "label") {
-            label.update(std::move(config));
-        } else if (kind == "table") {
-            table.update(std::move(config));
-        } else {
-            unknownFrame.update({
-                .id = config.id,
-                .label = config.label,
-                .help = config.help,
-            });
-            unknownText.update({
-                .id = config.id + "Unsupported",
-                .str = "Unsupported metric: " + kind,
-            });
-        }
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        if (kind == "progressbar") {
-            progress.render(ctx);
-        } else if (kind == "label") {
-            label.render(ctx);
-        } else if (kind == "table") {
-            table.render(ctx);
-        } else {
-            unknownFrame.render(ctx, [this](const Sakura::Context& ctx) {
-                unknownText.render(ctx);
-            });
-        }
-    }
+    void update(FlowgraphMetricConfig config);
+    Sakura::Component& component();
 
  private:
     std::string kind;
     FlowgraphMetricProgressBar progress;
     FlowgraphMetricLabel label;
     FlowgraphMetricTable table;
+    FlowgraphFieldTooltip unknownHelp;
     Sakura::NodeField unknownFrame;
     FlowgraphMetricError unknownText;
 };

@@ -2,18 +2,23 @@
 
 #include "jetstream/agent/tools.hh"
 #include "compositor/default/actions/agent.hh"
+#include "compositor/default/actions/flowgraph.hh"
 #include "compositor/default/support/agent/providers.hh"
 #include "compositor/default/support/agent/runtime.hh"
 #include "compositor/default/support/agent/executor.hh"
 #include "compositor/default/model/callbacks.hh"
 #include "compositor/default/model/state.hh"
-#include "compositor/default/presenters/modal/intelligence_model.hh"
+#include "compositor/default/model/tiles.hh"
+#include "compositor/default/presenters/settings/intelligence_model.hh"
 #include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/registry.hh"
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <future>
+#include <map>
+#include <mutex>
 #include <thread>
 
 #include <nlohmann/json.hpp>
@@ -109,6 +114,9 @@ TEST_CASE("Cancelled compositor commands cannot apply queued graph mutations",
     callbacks.enqueueCommand = [&](std::function<Result()> command, bool) {
         commands.push_back(std::move(command));
     };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
+    };
 
     AgentExecutor bridge(state, callbacks);
     auto cancelled = std::make_shared<std::atomic<bool>>(false);
@@ -191,9 +199,14 @@ TEST_CASE("A tool executor retains its graph across focus changes and rejects cl
     state.flowgraph.items = {{"first", first}, {"second", second}};
     state.interface.focusedFlowgraph = "first";
 
+    std::vector<std::string> edited;
     DefaultCompositorCallbacks callbacks;
     callbacks.enqueueCommand = [](std::function<Result()> command, bool) {
         command();
+    };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        edited.push_back(edit.flowgraph);
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
     };
 
     AgentExecutor bridge(state, callbacks);
@@ -218,6 +231,7 @@ TEST_CASE("A tool executor retains its graph across focus changes and rejects cl
     };
 
     CHECK(invoke()["status"] == "success");
+    CHECK(edited == std::vector<std::string>{"first"});
 
     Flowgraph::Metadata::NodeLayout layout;
     REQUIRE(first->metadata().get("node", layout, "source") == Result::SUCCESS);
@@ -227,12 +241,85 @@ TEST_CASE("A tool executor retains its graph across focus changes and rejects cl
     state.flowgraph.items.erase("first");
     CHECK(invoke().contains("error"));
     CHECK_FALSE(second->metadata().has("node", "source"));
+    CHECK(edited == std::vector<std::string>{"first"});
 
     bridge.shutdown();
     for (const auto& graph : {first, second}) {
         REQUIRE(graph->blockDestroy("source", false) == Result::SUCCESS);
         REQUIRE(graph->destroy() == Result::SUCCESS);
     }
+}
+
+TEST_CASE("Tools bound while the Start, Settings or Docs tab is active never touch the hidden flowgraph",
+          "[agent][compositor][target]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("source", "signal_generator", {}, {}, DeviceType::CPU,
+                              RuntimeType::NATIVE, "generic") == Result::SUCCESS);
+
+    DefaultCompositorState state;
+    state.flowgraph.items = {{"hidden", graph}};
+    state.interface.focusedFlowgraph = "hidden";
+
+    DefaultCompositorCallbacks callbacks;
+    callbacks.enqueueCommand = [](std::function<Result()> command, bool) {
+        command();
+    };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
+    };
+
+    AgentExecutor bridge(state, callbacks);
+
+    const auto invoke = [&](F32 x) {
+        auto executor = bridge.bind();
+        const auto args = jst::fmt::format(
+            R"({{"operations":[{{"op":"set_node_layout","name":"source","x":{}}}]}})", x);
+        auto future = std::async(std::launch::async, [&] {
+            return executor("apply_flowgraph_patch", args, {});
+        });
+
+        PollBridge(bridge, [&] {
+            return future.wait_for(0ms) == std::future_status::ready;
+        });
+        if (future.wait_for(0ms) != std::future_status::ready) {
+            bridge.shutdown();
+        }
+
+        return nlohmann::json::parse(future.get().content);
+    };
+
+    state.interface.settingsTab = true;
+    state.interface.focusedTab = WorkspaceTab::Settings;
+    REQUIRE_FALSE(state.activeFlowgraph().has_value());
+    CHECK(invoke(111).contains("error"));
+    CHECK_FALSE(graph->metadata().has("node", "source"));
+
+    state.interface.startTab = true;
+    state.interface.focusedTab = WorkspaceTab::Start;
+    REQUIRE_FALSE(state.activeFlowgraph().has_value());
+    CHECK(invoke(222).contains("error"));
+    CHECK_FALSE(graph->metadata().has("node", "source"));
+
+    state.interface.docsTab = true;
+    state.interface.focusedTab = WorkspaceTab::Docs;
+    REQUIRE_FALSE(state.activeFlowgraph().has_value());
+    CHECK(invoke(444).contains("error"));
+    CHECK_FALSE(graph->metadata().has("node", "source"));
+
+    state.interface.focusedTab.reset();
+    REQUIRE(state.activeFlowgraph() == "hidden");
+    CHECK(invoke(333)["status"] == "success");
+
+    Flowgraph::Metadata::NodeLayout layout;
+    REQUIRE(graph->metadata().get("node", layout, "source") == Result::SUCCESS);
+    CHECK(layout.x == 333);
+
+    bridge.shutdown();
+    REQUIRE(graph->blockDestroy("source", false) == Result::SUCCESS);
+    REQUIRE(graph->destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Malformed open_example arguments return errors from the UI poll",
@@ -242,6 +329,9 @@ TEST_CASE("Malformed open_example arguments return errors from the UI poll",
     DefaultCompositorCallbacks callbacks;
     callbacks.enqueueCommand = [&](std::function<Result()>, bool) {
         ++queuedCommands;
+    };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
     };
 
     AgentExecutor bridge(state, callbacks);
@@ -289,6 +379,287 @@ TEST_CASE("Malformed open_example arguments return errors from the UI poll",
     }
 }
 
+TEST_CASE("Tile tools list placeable tiles and arrange them through layout mail",
+          "[agent][compositor][tiles]") {
+    REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
+
+    auto graph = std::make_shared<Flowgraph>();
+    REQUIRE(graph->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(graph->blockCreate("source", "signal_generator", {}, {}, DeviceType::CPU,
+                                RuntimeType::NATIVE, "generic") == Result::SUCCESS);
+
+    DefaultCompositorState state;
+    state.flowgraph.items["graph"] = graph;
+    state.flowgraph.layouts["graph"] = TileMeta{.pane = "flowgraph"};
+    state.interface.focusedFlowgraph = "graph";
+
+    std::vector<Mail> mails;
+    DefaultCompositorCallbacks callbacks;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+    callbacks.enqueueCommand = [](std::function<Result()> command, bool) {
+        command();
+    };
+
+    AgentExecutor bridge(state, callbacks);
+    auto executor = bridge.bind();
+    const auto invoke = [&](const std::string& name, const std::string& args) {
+        auto future = std::async(std::launch::async, [&] {
+            return executor(name, args, {});
+        });
+        PollBridge(bridge, [&] {
+            return future.wait_for(0ms) == std::future_status::ready;
+        });
+        if (future.wait_for(0ms) != std::future_status::ready) {
+            bridge.shutdown();
+        }
+        return nlohmann::json::parse(future.get().content);
+    };
+    const auto variant = [](const Mail& mail) -> const Mail::variant& {
+        return mail;
+    };
+
+    const auto listed = invoke("inspect_tiles", "{}");
+    CHECK(listed["layout"]["tile"] == "flowgraph");
+    REQUIRE(listed["unplaced"].size() == 1);
+    CHECK(listed["unplaced"][0]["tile"] == "config:source");
+
+    const auto arranged = invoke("arrange_tiles", R"({"layout":{"split":"row","children":[
+        {"tile":"flowgraph","minimized":true},
+        {"split":"column","size":300,"children":[{"tile":"config:source"}]}]}})");
+    CHECK(arranged["opened"] == nlohmann::json::array({"config:source"}));
+    CHECK(arranged["closed"].empty());
+    REQUIRE(mails.size() == 2);
+
+    const auto* detach = std::get_if<MailSetConfigDetached>(&variant(mails[0]));
+    REQUIRE(detach != nullptr);
+    CHECK(detach->block == "source");
+    CHECK(detach->detached);
+
+    const auto* layout = std::get_if<MailSetFlowgraphLayout>(&variant(mails[1]));
+    REQUIRE(layout != nullptr);
+    CHECK(layout->track);
+    REQUIRE(layout->tiles.has_value());
+    CHECK(IsTileLayout(*layout->tiles));
+    REQUIRE(layout->tiles->children.has_value());
+    REQUIRE(layout->tiles->children->size() == 2);
+    CHECK(layout->tiles->children->at(0).minimized == true);
+    CHECK(layout->tiles->children->at(1).pane == "config:source");
+    CHECK(layout->tiles->children->at(1).size == 300.0f);
+
+    mails.clear();
+    CHECK(invoke("arrange_tiles", R"({"layout":{"tile":"surface:source:missing"}})").contains("error"));
+    CHECK(invoke("arrange_tiles", R"({"layout":{"tile":"config:source"}})").contains("error"));
+    CHECK(invoke("arrange_tiles", R"({"layout":{"split":"row","children":[
+        {"tile":"flowgraph"},{"tile":"flowgraph"}]}})").contains("error"));
+    CHECK(mails.empty());
+
+    ConfigMeta config;
+    config.detached = true;
+    REQUIRE(graph->metadata().set("config", config, "source") == Result::SUCCESS);
+    const auto closed = invoke("arrange_tiles", R"({"layout":{"tile":"flowgraph"}})");
+    CHECK(closed["closed"] == nlohmann::json::array({"config:source"}));
+    REQUIRE(mails.size() == 2);
+    const auto* attach = std::get_if<MailSetConfigDetached>(&variant(mails[0]));
+    REQUIRE(attach != nullptr);
+    CHECK_FALSE(attach->detached);
+
+    invoke("arrange_tiles", R"({"layout":{"split":"row","children":[{"tile":"flowgraph"},{"tile":"config:source"}]}})");
+    REQUIRE(mails.size() == 4);
+    const auto* reopen = std::get_if<MailSetConfigDetached>(&variant(mails[2]));
+    REQUIRE(reopen != nullptr);
+    CHECK(reopen->detached);
+
+    bridge.shutdown();
+    REQUIRE(graph->blockDestroy("source", false) == Result::SUCCESS);
+    REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Flowgraph tools list favorite and recent files and open them through the open mail",
+          "[agent][compositor][flowgraphs]") {
+    auto focused = std::make_shared<Flowgraph>();
+    auto opened = std::make_shared<Flowgraph>();
+    auto blank = std::make_shared<Flowgraph>();
+
+    DefaultCompositorState state;
+    state.flowgraph.items["focused"] = focused;
+    state.interface.focusedFlowgraph = "focused";
+    state.interface.favoriteFlowgraphs = {{.path = "/flowgraphs/hf.yml", .title = "HF Dashboard"}};
+    state.interface.recentFlowgraphs = {
+        {.path = "/flowgraphs/ism.yml", .title = "ISM"},
+        {.path = "/flowgraphs/hf.yml", .title = "HF Dashboard"},
+        {.path = "/flowgraphs/untitled.yml"},
+    };
+
+    std::vector<Mail> mails;
+    DefaultCompositorCallbacks callbacks;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+
+    AgentExecutor bridge(state, callbacks);
+    auto executor = bridge.bind();
+    const auto invoke = [&](const std::string& name, const std::string& args, const auto& respond) {
+        auto future = std::async(std::launch::async, [&] {
+            return executor(name, args, {});
+        });
+        PollBridge(bridge, [&] {
+            respond();
+            return future.wait_for(0ms) == std::future_status::ready;
+        });
+        if (future.wait_for(0ms) != std::future_status::ready) {
+            bridge.shutdown();
+        }
+        return nlohmann::json::parse(future.get().content);
+    };
+    const auto idle = [] {};
+    const auto variant = [](Mail& mail) -> Mail::variant& {
+        return mail;
+    };
+    const auto complete = [&](Result result, std::shared_ptr<Flowgraph> flowgraph) {
+        return [&, result, flowgraph] {
+            for (auto& mail : mails) {
+                auto* open = std::get_if<MailOpenFlowgraphPath>(&variant(mail));
+                if (open && open->onComplete) {
+                    std::exchange(open->onComplete, {})(result, flowgraph);
+                }
+            }
+        };
+    };
+
+    const auto listed = invoke("list_flowgraphs", "{}", idle);
+    REQUIRE(listed["flowgraphs"].size() == 3);
+    CHECK(listed["flowgraphs"][0] == nlohmann::json({
+        {"path", "/flowgraphs/hf.yml"}, {"title", "HF Dashboard"}, {"favorite", true}, {"recent", true}}));
+    CHECK(listed["flowgraphs"][1] == nlohmann::json({
+        {"path", "/flowgraphs/ism.yml"}, {"title", "ISM"}, {"favorite", false}, {"recent", true}}));
+    CHECK(listed["flowgraphs"][2] == nlohmann::json({
+        {"path", "/flowgraphs/untitled.yml"}, {"favorite", false}, {"recent", true}}));
+
+    CHECK(invoke("open_flowgraph", R"({"path":"/elsewhere/other.yml"})", idle).contains("error"));
+    CHECK(invoke("open_flowgraph", R"({"path":42})", idle).contains("error"));
+    CHECK(invoke("open_flowgraph", R"({"path":"/flowgraphs/ism.yml","extra":1})", idle).contains("error"));
+    CHECK(mails.empty());
+
+    const auto missing = invoke("open_flowgraph", R"({"path":"/flowgraphs/ism.yml"})",
+                                complete(Result::ERROR, nullptr));
+    CHECK(missing["error"] == "Could not open flowgraph '/flowgraphs/ism.yml'.");
+    REQUIRE(mails.size() == 1);
+    CHECK(std::get<MailOpenFlowgraphPath>(variant(mails[0])).path == "/flowgraphs/ism.yml");
+
+    mails.clear();
+    const auto empty = invoke("open_flowgraph", R"({"path":"/flowgraphs/ism.yml"})",
+                              complete(Result::ERROR, blank));
+    CHECK(empty["error"] == "Could not load flowgraph '/flowgraphs/ism.yml'. An empty graph was opened in "
+                           "its place and is now selected.");
+    CHECK(invoke("inspect_tiles", "{}", idle)["error"] == "The graph selected for this turn was closed.");
+    state.flowgraph.items["blank"] = blank;
+
+    mails.clear();
+    const auto success = invoke("open_flowgraph", R"({"path":"/flowgraphs/hf.yml"})",
+                                complete(Result::SUCCESS, opened));
+    CHECK(success == nlohmann::json({{"opened", "/flowgraphs/hf.yml"}}));
+    REQUIRE(mails.size() == 1);
+
+    const auto bound = invoke("inspect_tiles", "{}", idle);
+    CHECK(bound["error"] == "The graph selected for this turn was closed.");
+
+    bridge.shutdown();
+}
+
+TEST_CASE("Flowgraph tools list open graphs and focus one through the focus mail",
+          "[agent][compositor][flowgraphs]") {
+    auto first = std::make_shared<Flowgraph>();
+    auto second = std::make_shared<Flowgraph>();
+    REQUIRE(first->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(second->create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    DefaultCompositorState state;
+    state.flowgraph.items["first"] = first;
+    state.flowgraph.items["second"] = second;
+    state.interface.focusedFlowgraph = "first";
+
+    std::vector<Mail> mails;
+    DefaultCompositorCallbacks callbacks;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+
+    AgentExecutor bridge(state, callbacks);
+    auto executor = bridge.bind();
+    const auto invoke = [&](const std::string& name, const std::string& args) {
+        auto future = std::async(std::launch::async, [&] {
+            return executor(name, args, {});
+        });
+        PollBridge(bridge, [&] {
+            return future.wait_for(0ms) == std::future_status::ready;
+        });
+        if (future.wait_for(0ms) != std::future_status::ready) {
+            bridge.shutdown();
+        }
+        return nlohmann::json::parse(future.get().content);
+    };
+    const auto variant = [](const Mail& mail) -> const Mail::variant& {
+        return mail;
+    };
+
+    const auto listed = invoke("list_open_flowgraphs", "{}");
+    CHECK(listed["selected"] == "first");
+    REQUIRE(listed["flowgraphs"].size() == 2);
+    CHECK(listed["flowgraphs"][0]["flowgraph"] == "first");
+    CHECK(listed["flowgraphs"][1]["flowgraph"] == "second");
+    CHECK_FALSE(listed["flowgraphs"][0].contains("path"));
+
+    const auto unknown = invoke("focus_flowgraph", R"({"flowgraph":"missing"})");
+    CHECK(unknown["error"] == "Flowgraph 'missing' is not open. Use an exact identifier from list_open_flowgraphs.");
+    CHECK(invoke("focus_flowgraph", R"({"flowgraph":5})").contains("error"));
+    CHECK(invoke("focus_flowgraph", R"({"graph":"second"})").contains("error"));
+    CHECK(mails.empty());
+
+    const auto focused = [&](const std::string& flowgraph) {
+        mails.clear();
+        const auto reply = invoke("focus_flowgraph", nlohmann::json({{"flowgraph", flowgraph}}).dump());
+        REQUIRE(mails.size() == 1);
+        const auto* focus = std::get_if<MailFocusFlowgraph>(&variant(mails[0]));
+        REQUIRE(focus != nullptr);
+        CHECK(focus->flowgraph == flowgraph);
+        CHECK(focus->reveal);
+        return reply;
+    };
+
+    CHECK(focused("first") == nlohmann::json({{"focused", "first"}}));
+    CHECK(invoke("list_open_flowgraphs", "{}")["selected"] == "first");
+
+    CHECK(focused("second") == nlohmann::json({{"focused", "second"}}));
+    CHECK(invoke("list_open_flowgraphs", "{}")["selected"] == "second");
+
+    FlowgraphActions actions(state, callbacks);
+    REQUIRE(actions.handle(std::get<MailFocusFlowgraph>(variant(mails[0]))) == Result::SUCCESS);
+    CHECK(state.interface.focusedFlowgraph == "second");
+    CHECK(state.interface.requestedFlowgraph == "second");
+    CHECK(state.interface.flowgraphRequests == 1);
+    REQUIRE(actions.handle(MailFocusFlowgraph{.flowgraph = "first"}) == Result::SUCCESS);
+    CHECK(state.interface.focusedFlowgraph == "first");
+    CHECK(state.interface.requestedFlowgraph == "second");
+    CHECK(state.interface.flowgraphRequests == 1);
+
+    mails.clear();
+    auto followed = bridge.focused();
+    auto mcp = std::async(std::launch::async, [&] {
+        return followed("list_open_flowgraphs", "{}", {});
+    });
+    PollBridge(bridge, [&] {
+        return mcp.wait_for(0ms) == std::future_status::ready;
+    });
+    REQUIRE(mcp.wait_for(0ms) == std::future_status::ready);
+    CHECK(nlohmann::json::parse(mcp.get().content)["selected"] == "first");
+
+    bridge.shutdown();
+    REQUIRE(first->destroy() == Result::SUCCESS);
+    REQUIRE(second->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Agent tools return fresh rendered bounds without changing automatic sizing",
           "[agent][compositor][bounds]") {
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
@@ -304,6 +675,9 @@ TEST_CASE("Agent tools return fresh rendered bounds without changing automatic s
     DefaultCompositorCallbacks callbacks;
     callbacks.enqueueCommand = [&](std::function<Result()> command, bool) {
         commands.push_back(std::move(command));
+    };
+    callbacks.enqueueFlowgraphEdit = [&](FlowgraphEdit edit) {
+        callbacks.enqueueCommand(std::move(edit.command), edit.silent);
     };
 
     AgentExecutor bridge(state, callbacks);
@@ -404,6 +778,67 @@ TEST_CASE("Agent tools return fresh rendered bounds without changing automatic s
 
     REQUIRE(graph->blockDestroy("source", false) == Result::SUCCESS);
     REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Intelligence sub-pages open and focus the settings tab through the shared settings path",
+          "[agent][compositor][settings]") {
+    DefaultCompositorState state;
+    state.agent.settings.enabled = false;
+    state.interface.startTab = true;
+    state.interface.focusedTab = WorkspaceTab::Start;
+    state.settings.registryPage = RegistryPage::AddPlugin;
+    DefaultCompositorCallbacks callbacks;
+    AgentRuntime runtime(state, callbacks);
+    AgentActions actions(state, callbacks, runtime);
+
+    REQUIRE(actions.handle(MailOpenAgentProviderEditor{}) == Result::SUCCESS);
+    CHECK(state.interface.settingsTab);
+    CHECK(state.settingsTabActive());
+    CHECK_FALSE(state.startTabActive());
+    CHECK(state.interface.settingsTabRequests == 1);
+    CHECK(state.settings.section == SettingsSection::Intelligence);
+    CHECK(state.settings.intelligencePage == IntelligencePage::Provider);
+    CHECK(state.settings.registryPage == RegistryPage::Overview);
+
+    REQUIRE(actions.handle(MailOpenAgentModelPicker{}) == Result::SUCCESS);
+    CHECK(state.interface.settingsTabRequests == 2);
+    CHECK(state.settings.intelligencePage == IntelligencePage::AddModel);
+}
+
+TEST_CASE("A reply that finishes while the assistant is hidden stays unread until the chat is shown",
+          "[agent][compositor][unread]") {
+    DefaultCompositorState state;
+    state.agent.settings.enabled = true;
+    state.agent.settings.models.clear();
+    DefaultCompositorCallbacks callbacks;
+    AgentRuntime runtime(state, callbacks);
+    AgentActions actions(state, callbacks, runtime);
+    auto& conversation = state.agent.chat.conversation;
+    const auto reply = [&](bool visible) {
+        state.agent.ui.visible = visible;
+        conversation.streaming = true;
+        actions.reconcile();
+        conversation.messages.push_back(std::make_shared<const Agent::Session::Entry>());
+        conversation.streaming = false;
+        actions.reconcile();
+    };
+
+    reply(true);
+    CHECK_FALSE(state.agent.ui.unread);
+
+    reply(false);
+    CHECK(state.agent.ui.unread);
+    actions.reconcile();
+    CHECK(state.agent.ui.unread);
+
+    REQUIRE(actions.handle(MailSetAgentChatVisible{.value = true}) == Result::SUCCESS);
+    CHECK_FALSE(state.agent.ui.unread);
+
+    reply(false);
+    CHECK(state.agent.ui.unread);
+    conversation.messages.clear();
+    actions.reconcile();
+    CHECK_FALSE(state.agent.ui.unread);
 }
 
 #if defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
@@ -563,6 +998,286 @@ TEST_CASE("Shutdown cancels in-flight model discovery and connection tests", "[a
 
     release.set_value();
     provider.stop();
+}
+
+namespace {
+
+class GatedProvider {
+ public:
+    GatedProvider() {
+        server.server.Post("/chat", [this](const httplib::Request& request, httplib::Response& response) {
+            const auto body = nlohmann::json::parse(request.body);
+            std::unique_lock lock(mutex);
+            const U64 index = prompts.size();
+            prompts.push_back(body["messages"].back()["content"].dump());
+            changed.notify_all();
+            changed.wait_for(lock, 5s, [&] {
+                return closing || verdicts.contains(index);
+            });
+            const int status = verdicts.contains(index) ? verdicts.at(index) : 401;
+            lock.unlock();
+
+            if (status == 200) {
+                response.set_content(AgentTest::Sse::Delta({{"content", "Done."}}) + AgentTest::Sse::Done(),
+                                     "text/event-stream");
+                return;
+            }
+            response.status = status;
+            response.set_content(R"({"error":{"message":"Rejected"}})", "application/json");
+        });
+        server.start();
+    }
+
+    ~GatedProvider() {
+        {
+            std::lock_guard lock(mutex);
+            closing = true;
+        }
+        changed.notify_all();
+        server.stop();
+    }
+
+    std::string origin() const {
+        return server.origin;
+    }
+
+    void release(int status) {
+        {
+            std::lock_guard lock(mutex);
+            verdicts[prompts.size() - 1] = status;
+        }
+        changed.notify_all();
+    }
+
+    std::vector<std::string> received() {
+        std::lock_guard lock(mutex);
+        return prompts;
+    }
+
+ private:
+    AgentTest::ProviderServer server;
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::vector<std::string> prompts;
+    std::map<U64, int> verdicts;
+    bool closing = false;
+};
+
+struct ChatSteerRig {
+    GatedProvider provider;
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    AgentRuntime runtime{state, callbacks};
+    AgentActions actions{state, callbacks, runtime};
+
+    ChatSteerRig() {
+        auto& settings = state.agent.settings;
+        settings.enabled = true;
+        settings.customProviders = {{
+            .name = "Local",
+            .host = provider.origin(),
+            .chatPath = "/chat",
+            .modelsPath = "/models",
+        }};
+        settings.models.clear();
+        settings.provider = "Local";
+        settings.model = AgentTest::ProviderServer::modelValue;
+        state.agent.ui.visible = true;
+    }
+
+    ~ChatSteerRig() {
+        runtime.shutdown();
+    }
+
+    void submit(const std::string& text) {
+        REQUIRE(actions.handle(MailSubmitAgentChat{.composer = AgentComposer::Dock, .text = text}) ==
+                Result::SUCCESS);
+    }
+
+    template<typename Done>
+    bool pump(const Done& done) {
+        const auto deadline = std::chrono::steady_clock::now() + 3s;
+        while (!done()) {
+            if (std::chrono::steady_clock::now() > deadline) {
+                return false;
+            }
+            runtime.poll();
+            actions.reconcile();
+            std::this_thread::sleep_for(1ms);
+        }
+        return true;
+    }
+
+    bool requested(U64 count) {
+        return pump([&] {
+            return provider.received().size() == count;
+        });
+    }
+
+    bool idle(U64 messages) {
+        const auto& conversation = state.agent.chat.conversation;
+        return pump([&] {
+            return !conversation.streaming && conversation.messages.size() == messages;
+        });
+    }
+
+    void settle() {
+        const auto deadline = std::chrono::steady_clock::now() + 100ms;
+        while (std::chrono::steady_clock::now() < deadline) {
+            runtime.poll();
+            actions.reconcile();
+            std::this_thread::sleep_for(1ms);
+        }
+    }
+
+    bool asked(U64 index, const std::string& text) {
+        const auto prompts = provider.received();
+        return index < prompts.size() && prompts[index].find(text) != std::string::npos;
+    }
+
+    std::vector<std::string> pending() const {
+        std::vector<std::string> texts;
+        for (const auto& entry : state.agent.chat.conversation.pending) {
+            texts.push_back(entry.text);
+        }
+        return texts;
+    }
+};
+
+}  // namespace
+
+TEST_CASE("Chat messages submitted while a turn runs steer it and continue after its answer",
+          "[agent][compositor][steer]") {
+    ChatSteerRig rig;
+    rig.submit("alpha");
+    REQUIRE(rig.requested(1));
+    CHECK(rig.asked(0, "alpha"));
+
+    rig.submit("bravo");
+    rig.submit("charlie");
+    CHECK(rig.state.agent.chat.dockAccepted == 3);
+    REQUIRE(rig.pump([&] {
+        return rig.pending() == std::vector<std::string>{"bravo", "charlie"};
+    }));
+    CHECK(rig.provider.received().size() == 1);
+
+    rig.provider.release(200);
+    REQUIRE(rig.requested(2));
+    CHECK(rig.asked(1, "bravo"));
+    CHECK(rig.asked(1, "charlie"));
+    rig.provider.release(200);
+    REQUIRE(rig.idle(4));
+    CHECK(rig.pending().empty());
+    CHECK(rig.state.agent.chat.conversation.messages[2]->user);
+}
+
+TEST_CASE("A failed turn keeps pending steers until the next submit sends them first",
+          "[agent][compositor][steer]") {
+    ChatSteerRig rig;
+    rig.submit("alpha");
+    REQUIRE(rig.requested(1));
+    rig.submit("bravo");
+
+    rig.provider.release(401);
+    REQUIRE(rig.idle(2));
+    rig.settle();
+    CHECK(rig.provider.received().size() == 1);
+    CHECK(rig.pending() == std::vector<std::string>{"bravo"});
+
+    rig.submit("charlie");
+    CHECK(rig.state.agent.chat.dockAccepted == 3);
+    REQUIRE(rig.requested(2));
+    CHECK(rig.asked(1, "bravo"));
+    CHECK(rig.asked(1, "charlie"));
+    rig.provider.release(200);
+    REQUIRE(rig.idle(4));
+    CHECK(rig.pending().empty());
+}
+
+TEST_CASE("Stopping a turn keeps pending steers until Resume sends them", "[agent][compositor][steer]") {
+    ChatSteerRig rig;
+    rig.submit("alpha");
+    REQUIRE(rig.requested(1));
+    rig.submit("bravo");
+
+    REQUIRE(rig.actions.handle(MailCancelAgentChat{}) == Result::SUCCESS);
+    REQUIRE(rig.idle(2));
+    rig.settle();
+    CHECK(rig.provider.received().size() == 1);
+    CHECK(rig.pending() == std::vector<std::string>{"bravo"});
+
+    REQUIRE(rig.actions.handle(MailResumeAgentChat{}) == Result::SUCCESS);
+    REQUIRE(rig.requested(2));
+    CHECK(rig.asked(1, "bravo"));
+    rig.provider.release(200);
+    REQUIRE(rig.idle(4));
+    CHECK(rig.pending().empty());
+}
+
+TEST_CASE("Withdrawing a pending steer keeps it out of the turn", "[agent][compositor][steer]") {
+    ChatSteerRig rig;
+    rig.submit("alpha");
+    REQUIRE(rig.requested(1));
+    rig.submit("bravo");
+    rig.submit("charlie");
+    REQUIRE(rig.pump([&] {
+        return rig.pending().size() == 2;
+    }));
+
+    const auto bravo = rig.state.agent.chat.conversation.pending.front().key;
+    REQUIRE(rig.actions.handle(MailWithdrawAgentChat{.key = bravo}) == Result::SUCCESS);
+    REQUIRE(rig.pump([&] {
+        return rig.pending() == std::vector<std::string>{"charlie"};
+    }));
+
+    rig.provider.release(200);
+    REQUIRE(rig.requested(2));
+    CHECK(rig.asked(1, "charlie"));
+    CHECK_FALSE(rig.asked(1, "bravo"));
+    rig.provider.release(200);
+    REQUIRE(rig.idle(4));
+}
+
+TEST_CASE("Clearing the chat drops pending steers and switching models keeps them", "[agent][compositor][steer]") {
+    TestSupport::SettingsSandbox sandbox("agent-chat-steer");
+    sandbox.require();
+    ChatSteerRig rig;
+    rig.submit("alpha");
+    REQUIRE(rig.requested(1));
+    rig.submit("bravo");
+
+    REQUIRE(rig.actions.handle(MailSelectAgentModel{.provider = "Local", .model = "other-model"}) == Result::SUCCESS);
+    REQUIRE(rig.pump([&] {
+        return rig.pending() == std::vector<std::string>{"bravo"};
+    }));
+
+    REQUIRE(rig.actions.handle(MailClearAgentChat{}) == Result::SUCCESS);
+    REQUIRE(rig.idle(0));
+    rig.settle();
+    CHECK(rig.pending().empty());
+    CHECK(rig.provider.received().size() == 1);
+
+    rig.submit("charlie");
+    REQUIRE(rig.requested(2));
+    CHECK(rig.asked(1, "charlie"));
+    rig.provider.release(200);
+    REQUIRE(rig.idle(2));
+}
+
+TEST_CASE("Voice mode refuses chat submits instead of steering", "[agent][compositor][steer]") {
+    ChatSteerRig rig;
+    rig.submit("alpha");
+    REQUIRE(rig.requested(1));
+    rig.state.agent.ui.voiceVisible = true;
+    rig.submit("bravo");
+    rig.settle();
+    CHECK(rig.pending().empty());
+    CHECK(rig.state.agent.chat.dockAccepted == 1);
+    rig.state.agent.ui.voiceVisible = false;
+    rig.provider.release(200);
+    REQUIRE(rig.idle(2));
+    rig.settle();
+    CHECK(rig.provider.received().size() == 1);
 }
 
 #endif

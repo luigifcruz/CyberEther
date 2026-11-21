@@ -4,6 +4,7 @@
 #include <ostream>
 #include <string>
 #include <mutex>
+#include <vector>
 
 #ifndef JST_FMT_INCLUDED
 #define JST_FMT_INCLUDED
@@ -24,6 +25,7 @@
 JETSTREAM_API std::string& JST_LOG_LAST_WARNING();
 JETSTREAM_API std::string& JST_LOG_LAST_ERROR();
 JETSTREAM_API std::string& JST_LOG_LAST_FATAL();
+JETSTREAM_API std::vector<std::string> JST_LOG_RECENT();
 
 JETSTREAM_API void JST_LOG_SET_DEBUG_LEVEL(int level);
 
@@ -36,12 +38,13 @@ JETSTREAM_API void JST_LOG_SET_DEBUG_LEVEL(int level);
 JETSTREAM_API std::mutex& _JST_LOG_MUTEX();
 JETSTREAM_API int& _JST_LOG_DEBUG_LEVEL();
 JETSTREAM_API std::ostream& JST_LOG_SINK();
+JETSTREAM_API std::ostream& _JST_LOG_STREAM();
 JETSTREAM_API void JST_LOG_SET_SINK(std::ostream*);
 JETSTREAM_API void JST_LOG_RESTORE_STDOUT();
 JETSTREAM_API void JST_LOG_COLOR(bool);
 JETSTREAM_API jst::fmt::text_style JST_LOG_STYLE(const jst::fmt::text_style&);
 
-#define _JST_LOG_SINK          (JST_LOG_SINK())
+#define _JST_LOG_SINK          (_JST_LOG_STREAM())
 #define _JST_LOG_ENDL          std::endl
 #define _JST_LOG_FORMAT        jst::fmt::format
 
@@ -107,8 +110,8 @@ JETSTREAM_API jst::fmt::text_style JST_LOG_STYLE(const jst::fmt::text_style&);
 
 #ifndef JST_WARN
 #define JST_WARN(...) if (_JST_LOG_DEBUG_LEVEL() >= 1) { \
-                      JST_LOG_LAST_WARNING() = _JST_LOG_DEFAULT(__VA_ARGS__); \
                       std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX()); \
+                      JST_LOG_LAST_WARNING() = _JST_LOG_DEFAULT(__VA_ARGS__); \
                       _JST_LOG_SINK                << \
                       _JST_LOG_NAME                << \
                       _JST_LOG_WARN                << \
@@ -121,8 +124,8 @@ JETSTREAM_API jst::fmt::text_style JST_LOG_STYLE(const jst::fmt::text_style&);
 
 #ifndef JST_ERROR
 #define JST_ERROR(...) if (_JST_LOG_DEBUG_LEVEL() >= 0) { \
-                       JST_LOG_LAST_ERROR() = _JST_LOG_DEFAULT(__VA_ARGS__); \
                        std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX()); \
+                       JST_LOG_LAST_ERROR() = _JST_LOG_DEFAULT(__VA_ARGS__); \
                        _JST_LOG_SINK             << \
                        _JST_LOG_NAME             << \
                        _JST_LOG_ERROR            << \
@@ -135,8 +138,8 @@ JETSTREAM_API jst::fmt::text_style JST_LOG_STYLE(const jst::fmt::text_style&);
 
 #ifndef JST_FATAL
 #define JST_FATAL(...) if (_JST_LOG_DEBUG_LEVEL() >= 0) { \
-                       JST_LOG_LAST_FATAL() = _JST_LOG_DEFAULT(__VA_ARGS__); \
                        std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX()); \
+                       JST_LOG_LAST_FATAL() = _JST_LOG_DEFAULT(__VA_ARGS__); \
                        _JST_LOG_SINK                 << \
                        _JST_LOG_NAME                 << \
                        _JST_LOG_FATAL                << \

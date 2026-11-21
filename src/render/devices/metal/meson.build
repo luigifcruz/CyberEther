@@ -9,11 +9,10 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    subdir('tools')
-
     cfg_lst.set('JETSTREAM_RENDER_METAL_AVAILABLE', true)
     src_lst += files([
         'window.cc',
+        'presenter.cc',
         'transfer.cc',
         'surface.cc',
         'program.cc',

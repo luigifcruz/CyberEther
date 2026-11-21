@@ -45,7 +45,6 @@ class JETSTREAM_API Session {
         U64 modelOutputTokens = 0;
         U64 maxToolResultChars = 32768;
         U64 maxImages = 4;
-        U64 maxToolTurns = 40;
         Voice voice;
     };
 
@@ -74,10 +73,16 @@ class JETSTREAM_API Session {
         std::vector<Segment> segments;
     };
 
+    struct Pending {
+        U64 key = 0;
+        std::string text;
+    };
+
     struct Snapshot {
         U64 generation = 0;
         bool streaming = false;
         std::vector<Entry> messages;
+        std::vector<Pending> pending;
         U64 contextTokens = 0;
     };
 
@@ -130,6 +135,8 @@ class JETSTREAM_API Session {
     void setMode(Mode mode);
 
     bool submit(const std::string& prompt, const Config& config);
+    bool steer(const std::string& text);
+    bool withdraw(U64 key);
     bool listen(const Config& config);
     void hangup();
     void cancel();

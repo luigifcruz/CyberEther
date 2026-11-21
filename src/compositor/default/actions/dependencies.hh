@@ -15,15 +15,8 @@ struct DependencyActions {
 
     DefaultCompositorCallbacks& callbacks;
 
-    explicit DependencyActions(DefaultCompositorCallbacks& callbacks) :
-        callbacks(callbacks) {}
-
-    Result handle(const MailInstallPythonDependencies& msg) {
-        callbacks.enqueueCommand([generation = msg.generation]() -> Result {
-            return BeginPythonDependencyInstallation(generation);
-        }, true);
-        return Result::SUCCESS;
-    }
+    explicit DependencyActions(DefaultCompositorCallbacks& callbacks);
+    Result handle(const MailInstallPythonDependencies& msg);
 };
 
 }  // namespace Jetstream

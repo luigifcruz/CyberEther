@@ -134,7 +134,7 @@ Result SdrSweepImpl::define() {
                                     {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
         [this]() -> std::any {
             const F32 fill = moduleImpl ? moduleImpl->getMetrics().bufferFill : 0.0f;
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", fill * 100.0f), fill};
+            return std::pair<std::string, F32>{jst::fmt::format("{:.0f}%", fill * 100.0f), fill};
         }));
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",
@@ -145,8 +145,8 @@ Result SdrSweepImpl::define() {
                                     {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}},
         [this]() -> std::any {
             const F64 loss = moduleImpl ? moduleImpl->getMetrics().bufferLoss : 0.0;
-            const auto label = loss > 0.0 && loss < 0.0001
-                ? std::string("<0.01%") : jst::fmt::format("{:.2f}%", loss * 100.0);
+            const auto label = loss > 0.0 && loss < 0.001
+                ? std::string("<0.1%") : jst::fmt::format("{:.1f}%", loss * 100.0);
             return std::pair<std::string, F32>{label, static_cast<F32>(loss)};
         }));
 

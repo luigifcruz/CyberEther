@@ -2,6 +2,7 @@
 #include "jetstream/render/base/texture.hh"
 #include "jetstream/render/base/transfer.hh"
 #include "jetstream/tools/numeric.hh"
+#include "transfer_impl.hh"
 
 #include <algorithm>
 #include <cstring>
@@ -222,10 +223,22 @@ Result Transfer::PendingUploadQueue::queue(const U64& start,
     return queueLocked(start, unitByteSize, source + sourceOffset, byteSize, generation);
 }
 
+void Transfer::PendingUploadQueue::watch(std::function<void()> callback) {
+    std::lock_guard lock(mutex);
+    listener = std::move(callback);
+    if (listener && !uploads.empty()) {
+        listener();
+    }
+}
+
 std::vector<Transfer::PendingUpload> Transfer::PendingUploadQueue::take() {
+    if (empty()) {
+        return {};
+    }
     std::lock_guard lock(mutex);
     auto result = std::move(uploads);
     uploads.clear();
+    uploadsPending.store(false, std::memory_order_release);
     return result;
 }
 
@@ -275,6 +288,7 @@ Result Transfer::PendingUploadQueue::restore(std::vector<PendingUpload> restored
                                           upload.generation);
         if (result != Result::SUCCESS) {
             uploads = std::move(current);
+            uploadsPending.store(!uploads.empty(), std::memory_order_release);
             return result;
         }
     }
@@ -286,6 +300,7 @@ Result Transfer::PendingUploadQueue::restore(std::vector<PendingUpload> restored
                                           upload.generation);
         if (result != Result::SUCCESS) {
             uploads = std::move(current);
+            uploadsPending.store(!uploads.empty(), std::memory_order_release);
             return result;
         }
     }
@@ -296,11 +311,11 @@ Result Transfer::PendingUploadQueue::restore(std::vector<PendingUpload> restored
 void Transfer::PendingUploadQueue::clear() {
     std::lock_guard lock(mutex);
     uploads.clear();
+    uploadsPending.store(false, std::memory_order_release);
 }
 
 bool Transfer::PendingUploadQueue::empty() const {
-    std::lock_guard lock(mutex);
-    return uploads.empty();
+    return !uploadsPending.load(std::memory_order_acquire);
 }
 
 Result Transfer::PendingUploadQueue::queueLocked(const U64& start,
@@ -410,10 +425,14 @@ Result Transfer::PendingUploadQueue::queueLocked(const U64& start,
 
     const auto position = uploads.erase(first, last);
     uploads.insert(position, std::move(merged));
+    uploadsPending.store(true, std::memory_order_release);
+    if (listener) {
+        listener();
+    }
     return Result::SUCCESS;
 }
 
-Transfer::Batch::Batch() = default;
+Transfer::Batch::Batch() : state(std::make_unique<State>()) {}
 
 Transfer::Batch::~Batch() {
     for (auto& transfer : bufferTransfers) {
@@ -434,21 +453,21 @@ bool Transfer::Batch::empty() const {
 }
 
 bool Transfer::Batch::contains(const std::shared_ptr<Buffer>& buffer) const {
-    return buffer && pendingBuffers.contains(buffer.get());
+    return buffer && state->pendingBuffers.contains(buffer.get());
 }
 
-bool Transfer::Batch::contains(const std::shared_ptr<Texture>& texture) const {
-    return texture && pendingTextures.contains(texture.get());
+bool Transfer::Batch::contains(const std::shared_ptr<const Texture>& texture) const {
+    return texture && state->pendingTextures.contains(texture.get());
 }
 
 void Transfer::Batch::collect(const std::shared_ptr<Buffer>& buffer) {
-    if (!buffer || !collectedBuffers.insert(buffer.get()).second) {
+    if (!buffer || state->visited(buffer.get()) || !state->collectedBuffers.insert(buffer.get()).second) {
         return;
     }
 
     auto uploads = buffer->pendingUploads.take();
     if (!uploads.empty()) {
-        pendingBuffers.insert(buffer.get());
+        state->pendingBuffers.insert(buffer.get());
     }
     for (auto& upload : uploads) {
         BufferTransfer transfer;
@@ -460,14 +479,15 @@ void Transfer::Batch::collect(const std::shared_ptr<Buffer>& buffer) {
 }
 
 void Transfer::Batch::collect(const std::shared_ptr<Texture>& texture) {
-    if (!texture || !collectedTextures.insert(texture.get()).second) {
+    if (!texture || state->visited(texture.get()) || !state->collectedTextures.insert(texture.get()).second ||
+        texture->pendingUploads.empty()) {
         return;
     }
 
     std::lock_guard lock(texture->uploadMutex);
     auto uploads = texture->pendingUploads.take();
     if (!uploads.empty()) {
-        pendingTextures.insert(texture.get());
+        state->pendingTextures.insert(texture.get());
     }
     for (auto& upload : uploads) {
         TextureTransfer transfer;
@@ -481,12 +501,15 @@ void Transfer::Batch::collect(const std::shared_ptr<Texture>& texture) {
 }
 
 void Transfer::Batch::commit() {
+    for (const auto& transfer : textureTransfers) {
+        if (transfer.upload.generation ==
+            transfer.destination->uploadGeneration.load(std::memory_order_acquire)) {
+            transfer.destination->markContentChanged();
+        }
+    }
     bufferTransfers.clear();
     textureTransfers.clear();
-    collectedBuffers.clear();
-    collectedTextures.clear();
-    pendingBuffers.clear();
-    pendingTextures.clear();
+    *state = State{};
 }
 
 const std::vector<Transfer::BufferTransfer>& Transfer::Batch::buffers() const {

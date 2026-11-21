@@ -1,145 +1,240 @@
 #include <jetstream/render/sakura/components/node/range_input.hh>
 
-#include "base.hh"
+#include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/node/text_input.hh>
+
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+#include "parse.hh"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
+namespace {
+
+std::string FormatGeneral(F32 value) {
+    char buffer[64];
+    std::snprintf(buffer, sizeof(buffer), "%.*g", std::numeric_limits<F32>::max_digits10, static_cast<double>(value));
+    return buffer;
+}
+
+}  // namespace
+
 struct NodeRangeInput::Impl {
     Config config;
-    bool editing = false;
-    bool focusEditor = false;
-    F32 editValue = 0.0f;
+    Box background;
+    Box fill;
+    Box knob;
+    Label labels;
+    NodeTextInput editor;
+    TextMetrics metrics;
+    Rect rect;
     bool dragging = false;
-    F32 dragValue = 0.0f;
-    F32 submittedValue = 0.0f;
-    F32 mouseX = 0.0f;
+    bool editing = false;
+    std::optional<F32> dragValue;
+
+    F32 valueAt(F32 x) const {
+        const F32 range = config.max - config.min;
+        const F32 fraction = rect.width > 0.0f ? std::clamp((x - rect.x) / rect.width, 0.0f, 1.0f) : 0.0f;
+        const F32 value = config.min + fraction * range;
+        return config.integer ? std::round(value) : value;
+    }
+
+    void drag(NodeRangeInput& self, F32 x) {
+        const F32 next = valueAt(x);
+        const F32 current = dragValue.value_or(config.value);
+        if (next != current) {
+            dragValue = next;
+            self.invalidate(Dirty::Layout);
+            if (config.onChange) {
+                config.onChange(next);
+            }
+        }
+    }
 };
 
 NodeRangeInput::NodeRangeInput() {
     this->impl = std::make_unique<Impl>();
+    addChild(impl->background);
+    addChild(impl->fill);
+    addChild(impl->knob);
+    addChild(impl->labels);
+    addChild(impl->editor);
+    impl->editor.setVisible(false);
 }
 
 NodeRangeInput::~NodeRangeInput() = default;
-NodeRangeInput::NodeRangeInput(NodeRangeInput&&) noexcept = default;
-NodeRangeInput& NodeRangeInput::operator=(NodeRangeInput&&) noexcept = default;
 
-bool NodeRangeInput::update(Config config) {
-    if (this->impl->config.id != config.id) {
-        this->impl->editing = false;
-        this->impl->focusEditor = false;
-        this->impl->dragging = false;
+void NodeRangeInput::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
     }
-    this->impl->config = std::move(config);
-    return true;
+    if (config.id != impl->config.id && (impl->dragging || impl->editing)) {
+        impl->dragging = false;
+        impl->dragValue.reset();
+        impl->editing = false;
+        impl->editor.setVisible(false);
+        cancelMouse(impl->editor);
+    }
+    impl->config = std::move(config);
+    if (!impl->dragging && impl->dragValue.has_value()) {
+        if (*impl->dragValue != impl->config.value) {
+            invalidate(Dirty::Layout);
+        }
+        impl->dragValue.reset();
+    }
+    impl->editor.update({
+        .id = impl->config.id + ":edit",
+        .value = FormatGeneral(impl->config.value),
+        .submit = NodeTextInput::Submit::OnEnter,
+        .selectAllOnFocus = true,
+        .characterFilter = ScientificCharacter,
+        .onChange = [this](const std::string& text) {
+            const auto parsed = ParseFloat(text);
+            if (parsed.has_value() && impl->config.onChange) {
+                impl->config.onChange(static_cast<F32>(*parsed));
+            }
+        },
+        .onDeactivate = [this]() {
+            impl->editing = false;
+            impl->editor.setVisible(false);
+        },
+    });
 }
 
-void NodeRangeInput::render(const Context& ctx) const {
-    const auto& config = this->impl->config;
+Extent2D<F32> NodeRangeInput::measure(const Context& ctx, Extent2D<F32> available) {
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
+}
 
-    const ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "card"));
-    const ImU32 unitColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "text_secondary"));
-    const F32 pad = Scale(ctx, 6.0f);
-    const F32 rounding = ImGui::GetStyle().FrameRounding;
-    const F32 availWidth = ImGui::GetContentRegionAvail().x;
-    const F32 frameHeight = ImGui::GetTextLineHeight() + Scale(ctx, 6.0f);
+void NodeRangeInput::layout(const Context& ctx) {
+    const auto& config = impl->config;
+    const Rect bounds = frame();
+    impl->rect = bounds;
+    impl->metrics.setWindow(ctx.render);
 
-    F32 value = this->impl->dragging ? this->impl->dragValue : config.value;
-    ImGui::PushID(config.id.c_str());
-
-    if (this->impl->editing) {
-        if (this->impl->focusEditor) {
-            ImGui::SetKeyboardFocusHere();
-            this->impl->focusEditor = false;
-        }
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                            ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
-        ImGui::SetNextItemWidth(availWidth);
-        if (ImGui::InputFloat("##range_edit",
-                              &this->impl->editValue,
-                              0.0f,
-                              0.0f,
-                              "%.6g",
-                              ImGuiInputTextFlags_EnterReturnsTrue |
-                                  ImGuiInputTextFlags_AutoSelectAll)) {
-            if (config.onChange) {
-                config.onChange(this->impl->editValue);
-            }
-            this->impl->editing = false;
-        } else if (ImGui::IsItemDeactivated()) {
-            this->impl->editing = false;
-        }
-        ImGui::PopStyleVar();
-        ImGui::PopID();
-        return;
-    }
-
-    ImGui::InvisibleButton("##range", ImVec2(availWidth, frameHeight));
-
-    const ImVec2 rectMin = ImGui::GetItemRectMin();
-    const ImVec2 rectMax = ImGui::GetItemRectMax();
-    ImGui::GetWindowDrawList()->AddRectFilled(rectMin, rectMax, bgColor, rounding);
-
+    const bool visible = !impl->editing && !bounds.empty();
+    const F32 value = impl->dragValue.value_or(config.value);
     const F32 range = config.max - config.min;
-    bool changed = false;
+    const F32 fraction = std::clamp(range != 0.0f ? (value - config.min) / range : 0.0f, 0.0f, 1.0f);
+    const F32 rounding = Px(ctx, kFrameRounding);
+    const F32 knobWidth = std::max(Px(ctx, 8.0f), rounding * 2.0f);
+    const F32 knobX = std::clamp(bounds.x + bounds.width * fraction - knobWidth * 0.5f,
+                                 bounds.x,
+                                 std::max(bounds.x, bounds.right() - knobWidth));
 
-    if (ImGui::IsItemHovered() &&
-        ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        this->impl->editValue = value;
-        this->impl->editing = true;
-        this->impl->focusEditor = true;
-        this->impl->dragging = false;
-    } else if (ImGui::IsItemActive() || this->impl->dragging) {
-        const bool active = ImGui::IsItemActive();
-        const F32 mouseX = ImGui::GetIO().MousePos.x;
-        const bool activated = !this->impl->dragging;
-        if (activated) {
-            this->impl->dragging = true;
-            this->impl->dragValue = value;
-            this->impl->submittedValue = value;
-        }
-        if ((activated || mouseX != this->impl->mouseX) && rectMax.x > rectMin.x) {
-            const F32 fraction = std::clamp((mouseX - rectMin.x) / (rectMax.x - rectMin.x), 0.0f, 1.0f);
-            F32 nextValue = config.min + fraction * range;
-            if (config.integer) {
-                nextValue = std::round(nextValue);
+    impl->background.update({
+        .instances = {{.rect = Snap(bounds), .visible = visible, .backgroundColor = ctx.color("card")}},
+        .clip = bounds,
+        .cornerRadius = rounding,
+    });
+    impl->fill.update({
+        .instances = {{
+            .rect = Snap({bounds.x, bounds.y, knobX + knobWidth - bounds.x, bounds.height}),
+            .visible = visible,
+            .backgroundColor = ctx.color("frame_bg_hovered"),
+        }},
+        .clip = bounds,
+        .cornerRadius = rounding,
+    });
+    impl->knob.update({
+        .instances = {{
+            .rect = Snap({knobX, bounds.y, knobWidth, bounds.height}),
+            .visible = visible,
+            .backgroundColor = ctx.color("frame_bg_active"),
+        }},
+        .clip = bounds,
+        .cornerRadius = rounding,
+    });
+
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
+    const F32 pad = Px(ctx, kNodeFramePadX);
+    const F32 unitWidth = impl->metrics.measure(Typography::MonoFont, config.unit, fontSize);
+    impl->labels.update({
+        .instances = {
+            {
+                .rect = {bounds.x + pad, bounds.y, std::max(0.0f, bounds.width - pad), bounds.height},
+                .str = jst::fmt::format("{:.{}f}", value, config.integer ? 0 : std::max<I32>(0, config.precision)),
+                .visible = visible,
+                .color = ctx.color("text_primary"),
+                .fontSize = fontSize,
+                .alignment = {0, 1},
+            },
+            {
+                .rect = {bounds.right() - unitWidth - Px(ctx, kNodeUnitInset), bounds.y, unitWidth, bounds.height},
+                .str = config.unit,
+                .visible = visible && !config.unit.empty(),
+                .color = ctx.color("text_secondary"),
+                .fontSize = fontSize,
+                .alignment = {0, 1},
+            },
+        },
+        .clip = bounds,
+        .fontName = Typography::MonoFont,
+        .maxCharacters = 64,
+    });
+
+    layoutChild(ctx, impl->background, bounds);
+    layoutChild(ctx, impl->fill, bounds);
+    layoutChild(ctx, impl->knob, bounds);
+    layoutChild(ctx, impl->labels, bounds);
+    if (impl->editing) {
+        layoutChild(ctx, impl->editor, bounds);
+    }
+}
+
+std::optional<SurfaceCursor> NodeRangeInput::cursorAt(const Extent2D<F32>& point) const {
+    if (impl->editing || !Intersect(Intersect(impl->rect, frame()), clip()).contains(point.x, point.y)) {
+        return std::nullopt;
+    }
+    return SurfaceCursor::Hand;
+}
+
+bool NodeRangeInput::mouseEvent(const MouseEvent& event) {
+    if (impl->editing) {
+        return mouseEventChildren(event);
+    }
+
+    const bool inside = impl->rect.contains(event.position.x, event.position.y);
+    switch (event.type) {
+        case MouseEventType::Click:
+            if (event.button != MouseButton::Left || !inside) {
+                return false;
             }
-            this->impl->dragValue = nextValue;
-        }
-        this->impl->mouseX = mouseX;
-        value = this->impl->dragValue;
-        changed = value != this->impl->submittedValue;
-        this->impl->dragging = active;
+            if (event.clicks >= 2) {
+                impl->dragging = false;
+                impl->dragValue.reset();
+                impl->editing = true;
+                impl->editor.setVisible(true);
+                impl->editor.focusWhenPlaced(true);
+                return true;
+            }
+            impl->dragging = true;
+            impl->drag(*this, event.position.x);
+            return true;
+        case MouseEventType::Move:
+            if (impl->dragging) {
+                impl->drag(*this, event.position.x);
+                return true;
+            }
+            return false;
+        case MouseEventType::Cancel:
+            impl->dragging = false;
+            return false;
+        case MouseEventType::Release:
+            if (impl->dragging && event.button == MouseButton::Left) {
+                impl->dragging = false;
+                return true;
+            }
+            return false;
+        default:
+            return false;
     }
-
-    F32 fraction = (range != 0.0f) ? (value - config.min) / range : 0.0f;
-    fraction = std::clamp(fraction, 0.0f, 1.0f);
-    const F32 sliderWidth = (rectMax.x - rectMin.x) * fraction;
-    const ImU32 sliderColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "frame_bg_hovered"));
-    const F32 knobWidth = ImMax(Scale(ctx, 8.0f), rounding * 2.0f);
-    const F32 knobX = std::clamp(rectMin.x + sliderWidth - knobWidth * 0.5f, rectMin.x, rectMax.x - knobWidth);
-    ImGui::GetWindowDrawList()->AddRectFilled(rectMin, ImVec2(knobX + knobWidth, rectMax.y), sliderColor, rounding);
-
-    const ImU32 knobColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "frame_bg_active"));
-    ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(knobX, rectMin.y),
-                                              ImVec2(knobX + knobWidth, rectMax.y),
-                                              knobColor,
-                                              rounding);
-
-    const std::string valueText = jst::fmt::format("{:.0f}", value);
-    const ImVec2 textPos(rectMin.x + pad, rectMin.y + (frameHeight - ImGui::GetFontSize()) * 0.5f);
-    ImGui::GetWindowDrawList()->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), valueText.c_str());
-    if (!config.unit.empty()) {
-        const ImVec2 unitTextSize = ImGui::CalcTextSize(config.unit.c_str());
-        const ImVec2 unitTextPos(rectMax.x - unitTextSize.x - Scale(ctx, 3.0f),
-                                 rectMin.y + (frameHeight - unitTextSize.y) * 0.5f);
-        ImGui::GetWindowDrawList()->AddText(unitTextPos, unitColor, config.unit.c_str());
-    }
-
-    if (changed && config.onChange) {
-        this->impl->submittedValue = value;
-        config.onChange(value);
-    }
-    ImGui::PopID();
 }
 
 }  // namespace Jetstream::Sakura

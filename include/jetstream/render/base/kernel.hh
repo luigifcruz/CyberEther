@@ -52,6 +52,8 @@ class JETSTREAM_API Kernel {
     Config config;
 
  private:
+    std::atomic_bool surfaceOwned = false;
+
     void prepareForFrame();
 
     std::atomic_bool updateRequested = false;

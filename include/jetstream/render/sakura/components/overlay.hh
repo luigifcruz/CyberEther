@@ -4,37 +4,46 @@
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
-#include <string>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
-struct Overlay {
-    using Child = std::function<void(const Context&)>;
+enum class Anchor {
+    Fill,
+    TopLeft,
+    TopCenter,
+    TopRight,
+    Center,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+};
 
-    using Anchor = Sakura::Anchor;
+struct Overlay : public Component {
+    struct Item {
+        Component* child = nullptr;
+        Anchor anchor = Anchor::Fill;
+        Extent2D<F32> offset = {0.0f, 0.0f};
+        Extent2D<F32> size = {0.0f, 0.0f};
+
+        bool operator==(const Item&) const = default;
+    };
 
     struct Config {
-        std::string id;
-        Extent2D<F32> size = {0.0f, 0.0f};
-        Anchor anchor = Anchor::Center;
-        Extent2D<F32> offset = {0.0f, 0.0f};
-        bool inputs = false;
-        std::function<void(Rect)> onPlacement;
+        std::vector<Item> items;
+
+        bool operator==(const Config&) const = default;
     };
 
     Overlay();
     ~Overlay();
 
-    Overlay(Overlay&&) noexcept;
-    Overlay& operator=(Overlay&&) noexcept;
+    void update(Config config);
 
-    Overlay(const Overlay&) = delete;
-    Overlay& operator=(const Overlay&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx, Child child) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

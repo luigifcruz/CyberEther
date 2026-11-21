@@ -320,6 +320,43 @@ void Module::timing(const Timing& timing) {
     impl->_timing.publish(timing);
 }
 
+void Module::recordCycle(const F32& elapsedMs, const bool& skipped) {
+    constexpr F64 RateWindowSeconds = 1.0;
+
+    auto timing = impl->_timing.get();
+
+    if (skipped) {
+        timing.skippedCycles += 1;
+        impl->_timing.publish(timing);
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+
+    if (timing.cycles == 0) {
+        timing.rateWindowStart = now;
+    } else {
+        timing.rateWindowCycles += 1;
+    }
+
+    timing.cycles += 1;
+    timing.computeTime += elapsedMs;
+    timing.lastComputeTime = elapsedMs;
+    timing.lastCycle = now;
+
+    const F64 window = std::chrono::duration<F64>(now - timing.rateWindowStart).count();
+    const bool windowClosed = window >= RateWindowSeconds;
+    if (window > 0.0 && timing.rateWindowCycles > 0 && (windowClosed || timing.cyclesPerSecond == 0.0)) {
+        timing.cyclesPerSecond = static_cast<F64>(timing.rateWindowCycles) / window;
+    }
+    if (windowClosed) {
+        timing.rateWindowStart = now;
+        timing.rateWindowCycles = 0;
+    }
+
+    impl->_timing.publish(timing);
+}
+
 const TensorMap& Module::inputs() const {
     return impl->_inputs;
 }

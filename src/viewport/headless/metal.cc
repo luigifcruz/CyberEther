@@ -42,28 +42,14 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::createImgui() {
-    return Result::SUCCESS;
-}
-
-Result Implementation::destroyImgui() {
-    return Result::SUCCESS;
-}
-
-F32 Implementation::scale(const F32& scale) const {
-    return scale;
+Extent2D<F32> Implementation::framebufferSize() const {
+    return {static_cast<F32>(config.size.x), static_cast<F32>(config.size.y)};
 }
 
 MTL::Texture* Implementation::nextDrawable(CA::MetalDrawable*& drawable) {
     const auto interval = std::chrono::duration<F64>(1.0 / config.framerate);
     std::this_thread::sleep_until(lastTime + interval);
-    const auto now = std::chrono::steady_clock::now();
-
-    auto& io = ImGui::GetIO();
-    io.DisplaySize = {static_cast<F32>(config.size.x), static_cast<F32>(config.size.y)};
-    io.DisplayFramebufferScale = {1.0f, 1.0f};
-    io.DeltaTime = std::chrono::duration<F32>(now - lastTime).count();
-    lastTime = now;
+    lastTime = std::chrono::steady_clock::now();
 
     drawable = nullptr;
     return texture;

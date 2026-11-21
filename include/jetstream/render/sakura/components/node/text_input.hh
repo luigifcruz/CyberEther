@@ -2,34 +2,48 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_TEXT_INPUT_HH
 
 #include <jetstream/render/sakura/component.hh>
-#include <jetstream/render/sakura/components/text_input.hh>
+#include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
 #include <string>
 
 namespace Jetstream::Sakura {
 
-struct NodeTextInput {
+struct NodeTextInput : public Component {
+    enum class Submit : U8 {
+        OnEnter,
+        OnCommit,
+    };
+
     struct Config {
         std::string id;
         std::string value;
+        std::string hint;
         std::string unit;
-        TextInput::Submit submit = TextInput::Submit::OnEnter;
-        std::function<void(const std::string&)> onChange;
+        Submit submit = Submit::OnEnter;
+        bool selectAllOnFocus = false;
+        Callback<bool(U32)> characterFilter;
+        bool background = true;
+        std::string textColorKey = "text_primary";
+        F32 height = 0.0f;
+        Callback<void(const std::string&)> onChange;
+        Callback<void()> onDeactivate;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeTextInput();
     ~NodeTextInput();
 
-    NodeTextInput(NodeTextInput&&) noexcept;
-    NodeTextInput& operator=(NodeTextInput&&) noexcept;
+    void update(Config config);
+    bool focused() const;
+    void focus(bool selectAll = false);
+    void focusWhenPlaced(bool selectAll = false);
 
-    NodeTextInput(const NodeTextInput&) = delete;
-    NodeTextInput& operator=(const NodeTextInput&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
 
  private:
     struct Impl;

@@ -1,61 +1,110 @@
 ---
 title: Architecture
 description: How the layers of CyberEther fit together, from the window to the compute kernels.
-order: 78
+order: 310
 category: Development
 ---
 
-Ever wondered what actually happens between dropping a block on the canvas and samples streaming across your screen? This page is the tour. It walks the layers from the window down to the compute kernels, shows the two threads everything runs on, and traces the paths that matter, so that when you open the source, or the rest of the development documentation, you already know where you are. Twenty minutes here saves hours of spelunking later.
+Ever wondered what happens between dropping a block onto the canvas and watching live samples stream across your screen? This guide walks you through CyberEther's architecture from top to bottom: the ownership hierarchy, the two threads that drive everything, and the four core execution paths. Spending a few minutes here will save you hours of navigating the codebase later.
 
-## The Layers
+## The Ownership Stack
 
-The structure is a chain of ownership. One instance owns the flowgraphs, each flowgraph owns its blocks and a scheduler, and the scheduler drives the modules through runtime implementations. Around that chain sit the shared foundations, from the render toolkit down to the tensor memory layer, and on top of it sits the compositor that draws the application. Each layer is described below, top down.
+CyberEther is organized as a clean chain of ownership surrounded by shared low-level foundations:
 
-**Instance** is the application root. It owns the render window, the compositor, the optional remote endpoint, and a set of named flowgraphs. Its `compute()` and `present()` methods are the two entry points the run loops call, and each fans out to every flowgraph.
+```text
+  Compositor (Sakura UI: editor, pickers, themes, Environment tile)
+       │ talks exclusively through Flowgraph and View APIs
+       ▼
+  Instance (application root, render window, optional remote endpoint)
+       └── Flowgraph (blocks, edges, metadata, environment, metrics)
+             └── Scheduler (topological order, segments, thread sync)
+                   └── Runtimes (Native C++, Embedded Python)
+                         └── Modules (device-specific compute & surface kernels)
 
-**Flowgraph** owns the graph itself: the blocks, the edges between them, the creation order, and the three shared facilities documented in [Metadata](/docs/metadata), namely the environment, the per-block metrics view, and the block metadata. All graph mutations go through it (`blockCreate`, `blockConnect`, `blockRecreate`, and friends), which is where downstream propagation, incomplete-block retries, and YAML import and export live. Each flowgraph owns one scheduler.
+  Shared Foundations:
+  Backend (CPU/CUDA/Metal/Vulkan/WebGPU) · Render · Viewport · Memory (Tensors) · Parser & Registry
+```
 
-**Scheduler** turns the module set into an execution plan. It keeps a topological order, identifies source modules, partitions the order into segments by runtime, and coordinates the compute and present threads. The synchronous scheduler guarantees that present never blocks waiting for compute, that compute yields to present at segment boundaries, and that structural changes safely halt both threads. Branches fed by different sources run independently, every module consumes exactly one frame from each input per step, and joins only pair inputs that come from the same source frames, as described in [the compute contract](/docs/blocks-and-modules#compute-contract).
+### Top-Down Layer Breakdown
 
-**Runtimes** execute segments. The native runtime calls module hooks directly, the Python runtime routes them through the embedded interpreter bridge. A runtime owns the modules assigned to its segment and reports per-module skip, stall, and failure sets back to the scheduler.
+- **Instance** is the application root. It owns the render window, the compositor, the optional remote streaming endpoint, and a collection of named flowgraphs. Its `compute()` and `present()` entry points fan out to every active flowgraph.
+- **Flowgraph** owns the graph structure itself: blocks, edges, creation order, and the three metadata facilities covered in [Metadata](/docs/metadata) (environment, per-block metrics view, and block metadata). Every graph mutation flows through it (`blockCreate`, `blockConnect`, `blockRecreate`, and friends), handling downstream propagation, incomplete-block retries, and YAML import/export. Each flowgraph owns one scheduler.
+- **Scheduler** compiles the active module set into an execution plan. It maintains a topological sort, detects source modules, groups modules into segments by runtime, and coordinates the compute and present threads. Branches driven by independent sources execute independently, each module consumes one frame per input per step, and multi-input joins only fire when all inputs derive from the same source frames (see [Compute Contract](/docs/module-contract#compute-contract)).
+- **Runtimes** execute scheduler segments. The native runtime invokes C++ module hooks directly, while the Python runtime bridges calls into the embedded interpreter. Each runtime owns the modules in its segment and reports skipped, stalled, and failed modules back to the scheduler.
+- **Blocks and Modules** form the two halves of every node. Blocks are the user-facing nodes stored in a flowgraph, while modules are the device-specific kernels executed by the scheduler. See [Blocks And Modules](/docs/blocks-and-modules) for the full design.
+- **Backend, Render, and Viewport** stay deliberately decoupled:
+  - **Backend** supplies compute device contexts under `src/backend/devices` (`cpu`, `cuda`, `metal`, `vulkan`, `webgpu`).
+  - **Render** manages windows, surfaces, and the [Sakura](/docs/sakura) UI toolkit across `metal`, `vulkan`, and `webgpu`.
+  - **Viewport** abstracts platform windowing and input (`glfw`, `headless`, `ios`, and a capture viewport for remote streaming).
+  Keeping these three apart lets headless deployments run compute backends without a real window, and lets your compute device differ from your rendering GPU.
+- **Memory** provides the tensor layer: typed multidimensional buffers with shapes, strides, device residency, and attached attributes. Tensors pass between modules by reference through link objects, so wiring blocks never copies sample data.
+- **Parser and Registry** underpin serialization and discovery. The parser defines the typed value system shared by block configs, the environment, and YAML files. The registry collects static block and module registrations from both the main binary and loaded plugins (see [Registration And Dispatch](/docs/blocks-and-modules#registration-and-dispatch)).
+- **Compositor** implements the visual application on top of Sakura (the flowgraph editor, block pickers, menus, Environment tile, and themes). Because it communicates strictly through flowgraph and view APIs, alternative frontends such as [Superluminal](/docs/superluminal) remain easy to build, and headless runs can pair a headless viewport with or without the default compositor (for example, keeping the compositor active when streaming over [Remote Streaming](/docs/remote)).
 
-**Blocks and Modules** are the subject of [their own page](/docs/blocks-and-modules). In one sentence, blocks are the user-facing nodes a flowgraph stores, and modules are the device-specific kernels the scheduler runs.
+## The Two Execution Loops
 
-**Backend** provides the device contexts the modules compute with, one per device type under `src/backend/devices` (cpu, cuda, metal, vulkan, webgpu). **Render** provides the window, surfaces, and the Sakura UI toolkit, with device implementations for metal, vulkan, and webgpu. **Viewport** abstracts platform windowing and input (glfw, headless, ios, plus a capture viewport for streaming). The three are deliberately separate: a headless deployment keeps backends without a real window, and the render device need not match the compute device.
+Every CyberEther run target starts two long-lived threads:
 
-**Memory** is the tensor layer: typed n-dimensional buffers with shapes, strides, device residency, and attached attributes. Tensors flow between modules by reference through link objects, so connecting blocks never copies samples.
+```text
+  Compute Thread                          Present Thread
+  ┌───────────────────────────────┐       ┌───────────────────────────────┐
+  │ loop: instance->compute()     │       │ loop: instance->present()     │
+  │  • poll source readiness      │       │  • begin render frame         │
+  │  • run runtime segments       │◀─yield│  • present block surfaces     │
+  │  • sleep if idle (<= 100 ms)  │       │  • draw compositor UI         │
+  └───────────────────────────────┘       └───────────────────────────────┘
+```
 
-**Parser and Registry** are the foundations everything serializes and dispatches through. The parser owns the value type system used by configurations, the environment, and YAML files. The registry collects the static block and module registrations from the binary and from loaded plugins, and answers the lookups described in [Registration And Dispatch](/docs/blocks-and-modules#registration-and-dispatch).
+- **The compute thread** loops `instance->compute()`, running one scheduler cycle across all flowgraphs back to back. Sources answer `hasPendingCompute()` immediately and wake the scheduler whenever fresh data arrives. If no flowgraph makes progress during a round, the instance sleeps until a source notifies, a throttled module comes due, or 100 ms elapses. A graph whose sources are always ready runs continuously at full speed.
+- **The present thread** loops `instance->present()` at display rate, starting a render frame, presenting each flowgraph's visual surfaces, drawing the compositor, and ending the frame.
 
-**Compositor** is the application UI built on Sakura: the flowgraph editor, the pickers and menus, the Environment window, and the themes. It talks to the rest of the system exclusively through the flowgraph and view APIs, which keeps the door open for alternative frontends and for the headless mode where no compositor runs.
+The synchronous scheduler enforces one strict priority rule: **present never waits for compute**. At every segment boundary, the compute thread checks for a pending present request and yields immediately. That keeps the interface responsive no matter how heavy the DSP pipeline gets.
 
-## The Two Loops
+Graph mutations can arrive from multiple threads: the compositor mutates on the present thread, host code and remote endpoints mutate from their own threads, and incomplete-block retries mutate from the compute thread. The flowgraph serializes every mutation behind a single lock, and the scheduler halts compute around structural edits so block authors never observe a half-built graph.
 
-CyberEther runs on two long-lived threads started by the run target:
+> [!IMPORTANT]
+> Three architectural consequences to keep in mind when writing blocks:
+> 1. **Never block on the compute path.** Blocking inside `computeSubmit()` or `hasPendingCompute()` stalls every branch of every flowgraph.
+> 2. **Shapes are fixed at creation.** Buffers are allocated once when a block is created and reused every cycle. Any change that alters tensor geometry is a graph mutation, not a live reallocation.
+> 3. **Surface binding is thread-safe.** Render resources bind through queues drained at frame boundaries, making it safe to create visual blocks from retry loops or remote threads.
 
-- The **compute thread** loops `instance->compute()`, which runs one scheduler cycle of every flowgraph back to back. Sources answer `hasPendingCompute()` immediately and notify the scheduler when new data arrives. When no flowgraph made progress in a round, the instance sleeps until a source notifies, a throttled module is due, or 100 ms pass. A graph whose sources are always ready is free-running.
-- The **present thread** loops `instance->present()`, which begins a render frame, lets each flowgraph present its surfaces, draws the compositor, and ends the frame. It runs at display rate.
+## Four Paths Worth Tracing
 
-The synchronous scheduler mediates between them with a priority rule: present never waits for compute, and compute checks for a pending present request at every segment boundary and yields. This keeps the UI responsive regardless of how heavy the DSP is.
+### 1. Creating a Block
 
-Graph mutations can originate from either thread, and from others besides, since the compositor mutates on the present thread, host code and remote endpoints mutate from their own threads, and the incomplete-block retry mutates from the compute thread. The flowgraph serializes all of it behind a mutation lock, and the scheduler halts compute around structural changes, so block authors never see a half-mutated graph.
+Calling `Flowgraph::blockCreate` instantiates the block via the registry, resolves requested input links against existing outputs, and runs the block lifecycle. Because `define()` runs before semantic validation, even an invalid block still exposes its ports and editable controls in the UI. Inside `create()`, the block builds its child modules, registers them with the scheduler, and triggers a rebuild of the topological order and segments. If required inputs are not ready yet, the block stays in the **incomplete** state rather than failing outright.
 
-Three consequences worth internalizing:
+### 2. Running a Compute Cycle
 
-- Anything called from the compute path must not block, or every branch of every flowgraph stalls. That includes `hasPendingCompute()`, which must return right away.
-- Shapes are settled when a block is created. The pipeline buffers are prepared then and reused on every cycle, and a change that alters a shape is a graph mutation rather than something the running pipeline absorbs.
-- Render resources are bound through queues processed at frame boundaries, so creating blocks with surfaces is safe from any thread. That is what makes the retry and remote paths sound.
+At the start of a cycle, the scheduler snapshots all source modules and polls each source's `hasPendingCompute()` once without waiting. Next, it walks segments in topological order and selects every module that satisfies three conditions:
 
-## Paths Worth Tracing
+1. Every input carries an unread frame.
+2. All inputs trace back to the same source frames.
+3. Every downstream consumer has finished reading the module's previous output.
 
-**Creating a block.** `Flowgraph::blockCreate` builds the block through the registry, resolves the requested input links against existing block outputs, and runs the block lifecycle. The candidate interface is defined before semantic validation, so an invalid block can still expose its ports and editable fields. The block's `create()` instantiates modules, each module registers with the scheduler, and the scheduler rebuilds its topological order and segments. A block whose inputs cannot resolve yet is kept in the incomplete state rather than rejected.
+Each runtime executes `computeSubmit()` on its selected modules while honoring skip, stall, and failure semantics (see [Compute Contract](/docs/module-contract#compute-contract)). Any module failures are collected after the cycle and turned into errored blocks while the rest of the graph keeps running. If nothing ran, the scheduler reports its next throttle deadline so the instance can decide whether to sleep.
 
-**A compute cycle.** The scheduler snapshots the source modules and polls each source's `hasPendingCompute()` once, without waiting. It then walks the segments in order and selects every module whose inputs all carry a frame it has not read, whose inputs come from the same source frames, and whose previous output has been read by all of its consumers. Each runtime runs the selected modules' `computeSubmit`, honoring the skip, stall, and failure semantics described in [the compute contract](/docs/blocks-and-modules#compute-contract). Module failures are collected and converted into errored blocks after the cycle, and the rest of the graph keeps running. When nothing ran, the scheduler reports its next throttle deadline and returns, and the instance decides whether to sleep.
+### 3. Editing a Configuration
 
-**Editing a configuration.** The compositor writes the change through `blockReconfigure`, which synchronizes with the scheduler and calls the block's `reconfigure`. An in-place change ends there. A `RECREATE` answer rebuilds affected blocks with the new configuration. Semantic validation errors also rebuild and publish the candidate as an errored block, preserving requested downstream links for recovery. If applying a validated edit fails, the flowgraph restores the previous graph state and returns the error.
+When you edit a field in the editor, the compositor calls `blockReconfigure`, which synchronizes with the scheduler and invokes the block's reconfiguration flow:
 
-**Loading a flowgraph file.** The YAML is parsed into a document, migrated across format versions if needed, topologically sorted so producers exist before consumers, and replayed through the same `blockCreate` path the editor uses. There is exactly one way blocks come into existence, whatever the origin.
+- An **in-place** update finishes immediately without rebuilding downstream blocks.
+- Returning `RECREATE` tears down and rebuilds the affected blocks with the new settings.
+- A **semantic validation error** still rebuilds and publishes the candidate as an errored block, keeping downstream connections intact as unresolved links so you can fix the typo and recover cleanly.
+- A **failure while applying an already-validated edit** rolls back the previous working graph state and returns the error.
 
-## Where To Go Next
+### 4. Loading a Flowgraph File
 
-To build something inside a flowgraph, read [Blocks And Modules](/docs/blocks-and-modules) and [Metadata](/docs/metadata). To ship it separately, read [Creating Plugins](/docs/plugins). To script instead of compile, read [Python Block](/docs/python-block).
+Loading a `.yml` file parses the YAML document, migrates older schema versions when needed, topologically sorts blocks so producers come before consumers, and replays every block through `blockCreate`. Whether a block arrives from the editor, a saved file, or C++ host code, it always follows the exact same creation path.
+
+## Where to Go Next
+
+| What You Want to Build | Read Next |
+|---|---|
+| Native C++ blocks and compute modules | [Blocks And Modules](/docs/blocks-and-modules) |
+| Zero-copy multi-device buffers and views | [Tensors](/docs/tensors) |
+| Environment keys, tensor attributes, and metrics | [Metadata](/docs/metadata) |
+| Embedded C++ and Python plotting windows | [Superluminal](/docs/superluminal) |
+| Retained GPU UI components, layouts, and themes | [Sakura UI](/docs/sakura) |
+| Out-of-tree `.cep` plugin bundles | [Creating Plugins](/docs/plugins) |
+| Quick custom processing without C++ | [Python Block](/docs/python-block) |

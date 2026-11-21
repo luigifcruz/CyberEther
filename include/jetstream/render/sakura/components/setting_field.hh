@@ -2,34 +2,31 @@
 #define JETSTREAM_RENDER_SAKURA_SETTING_FIELD_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
 #include <string>
 
 namespace Jetstream::Sakura {
 
-struct SettingField {
-    using Child = std::function<void(const Context&)>;
-
+struct SettingField : public Component {
     struct Config {
-        std::string id;
         std::string label;
         std::string description;
+        Component* control = nullptr;
         bool divider = true;
+
+        bool operator==(const Config&) const = default;
     };
 
     SettingField();
     ~SettingField();
 
-    SettingField(SettingField&&) noexcept;
-    SettingField& operator=(SettingField&&) noexcept;
+    void update(Config config);
 
-    SettingField(const SettingField&) = delete;
-    SettingField& operator=(const SettingField&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx, Child child) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

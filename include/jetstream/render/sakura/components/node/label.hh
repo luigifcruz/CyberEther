@@ -2,7 +2,6 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_LABEL_HH
 
 #include <jetstream/render/sakura/component.hh>
-#include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/types.hh>
 
 #include <memory>
@@ -10,30 +9,31 @@
 
 namespace Jetstream::Sakura {
 
-struct NodeLabel {
+struct NodeLabel : public Component {
+    enum class Align : U8 {
+        Left,
+        Center,
+        Right,
+    };
+
     struct Config {
         std::string id;
         std::string str;
-        Text::Font font = Text::Font::Current;
-        Text::Tone tone = Text::Tone::Primary;
-        Text::Align align = Text::Align::Left;
-        bool wrapped = false;
-        bool clipped = false;
-        F32 scale = 1.0f;
+        std::string colorKey = "text_primary";
+        Align align = Align::Left;
         bool boxed = false;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeLabel();
     ~NodeLabel();
 
-    NodeLabel(NodeLabel&&) noexcept;
-    NodeLabel& operator=(NodeLabel&&) noexcept;
+    void update(Config config);
 
-    NodeLabel(const NodeLabel&) = delete;
-    NodeLabel& operator=(const NodeLabel&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

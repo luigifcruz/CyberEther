@@ -71,7 +71,7 @@ Result WebsocketReceiverImpl::define() {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
             }
             const F32 bufferFill = moduleImpl->getBufferFill();
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", bufferFill * 100.0f),
+            return std::pair<std::string, F32>{jst::fmt::format("{:.0f}%", bufferFill * 100.0f),
                                                bufferFill};
         }));
 

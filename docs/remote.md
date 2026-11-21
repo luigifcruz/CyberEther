@@ -1,138 +1,150 @@
 ---
 title: Remote Streaming
 description: Stream the CyberEther interface to a browser on another device, hosted entirely on your own machine.
-order: 42
+order: 243
 category: Usage
 parent: platforms
 ---
 
-CyberEther Remote streams the full interface of a running instance to a web browser on another device and sends keyboard and mouse input back. The flowgraph keeps running on the host, with every native backend and device that machine has, while the viewer only needs a browser. It is the way to drive a headless server, a radio on a rooftop, or a GPU box in another room from a laptop or a phone.
+CyberEther Remote streams the full interactive interface of a running CyberEther instance to any modern web browser and relays keyboard and mouse input back. Your flowgraph stays on the host with full access to its GPUs, compute backends, and attached radios, while your laptop, tablet, or phone only needs a browser.
 
-Everything is self-hosted. When streaming starts, CyberEther launches a small broker on the host that serves the viewer page and introduces viewers to the host. Once a viewer is approved, video and input flow directly between the browser and the host over WebRTC. No account, cloud service, or third party is involved.
+Everything is completely self-hosted. There is no account, no cloud service, and no third-party relay.
+
+```text
+  Host Machine (CyberEther)                          Viewing Device (Browser)
+  ┌─────────────────────────┐                        ┌──────────────────────┐
+  │ Built-in Broker (:8686) │ ◀── Invite + Signal ─▶ │   /remote Viewer     │
+  │ Native Engine + Encoder │ ◀═ Encrypted WebRTC ═▶ │ Video + Mouse/Keys   │
+  └─────────────────────────┘                        └──────────────────────┘
+```
 
 ## Quick Start
 
-Remote Streaming supports the Vulkan and Metal renderers, including headless mode. Linux and Windows use Vulkan by default, and macOS uses Metal. On macOS, the Auto encoder uses VideoToolbox hardware encoding when available.
+Remote Streaming supports both the Vulkan and Metal renderers, including headless mode. Linux and Windows default to Vulkan, while macOS defaults to Metal. On macOS, setting the encoder to Auto uses VideoToolbox hardware encoding whenever available.
 
-### From the Desktop App
+### Option 1: Start From the Desktop App
 
-1. Open the **Remote** menu and choose **Remote Streaming**.
-2. Click **Start Streaming**. The window shows an invite link and a QR code.
-3. Open the link on the viewing device, or scan the QR code with a phone camera.
-4. While it waits, the viewer shows a six character code. The same code appears in the **Remote Streaming** window. Check that they match, then click **Approve**.
+1. Open the **Start** tab (it appears automatically when no flowgraph is open, or press **Cmd/Ctrl + T** or click the **+** tab button).
+2. In the **Remote** sidebar section, click **Start Streaming**.
+3. Share access by clicking **Copy Link** or scanning the **QR Code** from a phone camera.
+4. While waiting, the viewer shows a six-character code that also appears in the **Remote** viewer list. Confirm that both codes match, then click the check mark to approve the connection.
 
-Click **Stop Streaming** to end the session and disconnect every viewer.
+While streaming, click **Remote Sharing** in the titlebar to jump back to the Start tab. Click **Stop Streaming** to disconnect everyone, or click the **X** next to a specific viewer to remove only that device. Builds compiled without remote streaming hide the **Remote** section.
 
-### From the Command Line
+### Option 2: Start From a Headless Terminal
 
-For a headless machine, start CyberEther with the remote option and a flowgraph:
+Launch CyberEther with `--remote` and `--headless`:
 
-```
+```bash
 cyberether --remote --headless flowgraph.yml
 ```
 
-On macOS, add `--renderer vulkan` to the command.
-
-The terminal prints a QR code, the invite link, and the access token. When a viewer connects, the terminal shows its code and asks whether to approve it. Answer `y` after checking that the code matches the one on the viewer.
+The terminal prints a QR code, the invite link, and the access token. When a viewer requests access, the terminal prints its six-character code and waits for confirmation. Verify that it matches the viewer's screen, then type `y`.
 
 ## How It Works
 
-The broker is part of CyberEther itself and listens on port 8686 by default. It does three things:
+When streaming starts, CyberEther runs a lightweight broker on TCP port `8686` by default. That broker performs three tasks:
 
-- It serves the viewer page at `/remote`. The page is downloaded from the CyberEther CDN when CyberEther is built and is embedded in the binary, so nothing is fetched at runtime.
-- It hosts the signalling channel at `/api/v1/remote/signaller`, which the viewer and the host use to exchange connection details.
-- It holds the waiting list of viewers and enforces approval.
+1. **Serves the viewer page** at `/remote`. The viewer page is fetched from the CyberEther CDN at build time and embedded into the binary, so nothing is downloaded from the internet at runtime.
+2. **Hosts the signalling endpoint** at `/api/v1/remote/signaller` so the browser and host can exchange connection details.
+3. **Manages the approval queue** so no viewer connects without permission.
 
-The invite link has the form `http://<host>:8686/remote#<token>`. The token after the `#` stays in the browser and is never sent in the page request. Anyone holding a valid link can ask to join, and nobody gets in until the host approves them, unless auto approval is turned on.
+Invite links take the form `http://<host>:8686/remote#<token>`. Because browsers never send the `#<token>` fragment in page requests, the token stays client-side until signalling begins. Anyone holding a valid invite can ask to join, though nobody enters until approved by the host (unless auto-approval is turned on).
 
-After approval the broker steps aside. Video and input travel over a direct WebRTC connection between the viewer and the host, encrypted end to end.
+Once approved, the broker steps out of the way. Video and input travel directly between host and browser over an end-to-end encrypted WebRTC connection.
 
-## Network Requirements
+## Network and Firewall Requirements
 
-The viewer must be able to reach the host directly. There is no relay, so both devices need to be on the same network, or on networks that can route to each other.
+Because there is no cloud relay, the viewing device must have a direct network route to the host:
 
-- **Same local network** works out of the box.
-- **Different networks** work over a VPN such as WireGuard or Tailscale, which puts both devices on one routable network.
-- **Locked down hosts** that only accept SSH can stream through an SSH tunnel, as described in [Streaming Over SSH](#streaming-over-ssh).
-- **Firewalls** on the host must allow the broker port (TCP 8686 by default) and the media connection. Media uses UDP, and also TCP when it is allowed. Set a **Media Port Range** to open a fixed set of ports instead of random ones.
+- **Same local network** works immediately with no extra setup.
+- **Different networks** work seamlessly over a VPN such as WireGuard or Tailscale.
+- **Hosts behind strict firewalls** that only allow SSH can tunnel everything through SSH (see [Streaming Over SSH](#streaming-over-ssh)).
+- **Host firewalls** must permit the broker port (TCP `8686` by default) plus the media transport ports. Media uses UDP by default and also supports TCP when allowed. Configure **Media Port Range** to open a fixed range of ports instead of ephemeral ones.
 
-> The broker is designed for trusted local networks. Do not expose it directly to the internet, for example through port forwarding. Use a VPN to reach the host from outside.
+> [!WARNING]
+> The built-in broker is designed for trusted local networks. Never expose it directly to the public internet via port forwarding. Use a VPN or an SSH tunnel to connect from outside your network.
 
-## Settings
+## Settings Reference
 
-Open **Settings** and select **Remote**, or use **Remote** > **Open In Settings**. Changes apply the next time streaming starts. Every setting has a matching command line option, which overrides the saved value for that run only and leaves the saved settings untouched.
+Adjust these options under **Settings** > **Remote**, or click the settings icon in the **Remote** sidebar panel on the Start tab. Saved changes apply the next time you start streaming. Every setting also has a matching command-line flag that overrides the saved value for one run only without touching `settings.yaml`.
 
 ### Access
 
-| Setting | Option | Default | Meaning |
+| Setting | CLI Flag | Default | Description |
 |---|---|---|---|
-| **Viewer Approval** | `--remote-auto-approve <on\|off>` | Manual | Whether new viewers join automatically or wait for approval. |
+| **Viewer Approval** | `--remote-auto-approve <on\|off>` | Manual | Lets new viewers connect automatically or requires manual approval. |
 
-Leave approval on manual unless every device that could see the invite link is trusted.
+Leave approval set to Manual unless every device that might see the invite link is trusted.
 
 ### Video
 
-| Setting | Option | Default | Meaning |
+| Setting | CLI Flag | Default | Description |
 |---|---|---|---|
-| **Video Framerate** | `--remote-framerate <fps>` | 30 | Target framerate of the stream. |
-| **Video Codec** | `--remote-codec <codec>` | H264 | Compression format. Choices are h264, vp8, and vp9. The av1 choice is not supported for streaming yet. |
-| **Video Encoder** | `--remote-encoder <encoder>` | Auto | Encoder used for the stream. Auto picks a hardware encoder when one is available. |
+| **Video Framerate** | `--remote-framerate <fps>` | `30` | Target frame rate of the outgoing stream. |
+| **Video Codec** | `--remote-codec <codec>` | `H264` | Compression format (`h264`, `vp8`, or `vp9`). The `av1` option is not yet supported for streaming. |
+| **Video Encoder** | `--remote-encoder <encoder>` | `Auto` | Video encoder selection. Choosing `Auto` uses hardware encoding when available. |
 
-Some phone browsers cannot decode the H264 profile produced by hardware encoders. When a phone connects but never shows video, switch the codec to VP8, which every browser supports.
+> [!TIP]
+> Some mobile browsers struggle to decode hardware-encoded H264 profiles. If a phone connects without showing video, switch **Video Codec** to `vp8`, which every browser supports.
 
 ### Broker
 
-| Setting | Option | Default | Meaning |
+| Setting | CLI Flag | Default | Description |
 |---|---|---|---|
-| **Broker Address** | `--remote-broker-address <ip>` | 0.0.0.0 | Address the broker listens on. The default accepts viewers on every network interface. |
-| **Broker Port** | `--remote-broker-port <port>` | 8686 | Port that serves the viewer page and the signalling channel. |
-| **Broker Public URL** | `--remote-broker-public-url <url>` | Automatic | Address placed in the invite link. |
-| **Broker TLS Certificate** | `--remote-broker-tls-cert <path>` | None | Certificate file in PEM format. Enables HTTPS. |
-| **Broker TLS Key** | `--remote-broker-tls-key <path>` | None | Private key in PEM format that matches the certificate. |
+| **Broker Address** | `--remote-broker-address <ip>` | `0.0.0.0` | Interface address the broker binds to. The default listens on all network interfaces. |
+| **Broker Port** | `--remote-broker-port <port>` | `8686` | Port serving `/remote` and the signalling channel. |
+| **Broker Public URL** | `--remote-broker-public-url <url>` | Automatic | Origin placed into generated invite links. |
+| **Broker TLS Certificate** | `--remote-broker-tls-cert <path>` | None | Path to a PEM certificate file (enables HTTPS). |
+| **Broker TLS Key** | `--remote-broker-tls-key <path>` | None | Path to the matching PEM private key file. |
 
-To accept viewers from a single network only, set **Broker Address** to the address of that interface. Setting it to 127.0.0.1 limits viewers to the host itself.
+Bind **Broker Address** to a specific interface IP to limit access to one network, or set it to `127.0.0.1` to restrict access to the host itself.
 
-When **Broker Public URL** is empty, CyberEther builds the invite link from the local network address of the host and the broker port. Set it when viewers reach the host by a different name, for example a hostname that matches a certificate or the address of a VPN interface. It takes an origin only, written as scheme, host, and port, such as `https://cyberether.lan:8686`. Paths are not supported, since the viewer always connects at the root of the origin.
+When **Broker Public URL** is blank, CyberEther constructs invite links from the host's local IP address and broker port. Set it explicitly whenever viewers reach the host by another name, such as a TLS hostname or a VPN IP. Provide only the origin (`scheme://host:port`, like `https://cyberether.lan:8686`). Path prefixes are not supported because the viewer always connects at the root of the origin.
 
 ### Media
 
-| Setting | Option | Default | Meaning |
+| Setting | CLI Flag | Default | Description |
 |---|---|---|---|
-| **Media Transport** | `--remote-media-transport <transport>` | Auto | Network protocols offered for the video connection. Choices are auto, udp, and tcp. |
-| **Media Port Range** | `--remote-media-port-range <min-max>` | Any | Local ports used for the video connection, such as 40000-40100. |
-| **Media Address** | `--remote-media-address <ip>` | Automatic | The only local IP address offered for the video connection. Leave empty to offer every address. |
+| **Media Transport** | `--remote-media-transport <transport>` | `Auto` | Transport protocols offered for media (`auto`, `udp`, or `tcp`). |
+| **Media Port Range** | `--remote-media-port-range <min-max>` | Any | Fixed range of local ports for media, such as `40000-40100`. |
+| **Media Address** | `--remote-media-address <ip>` | Automatic | Single local IP address advertised for media. Leave blank to advertise all addresses. |
 
-Auto offers both UDP and TCP and lets the connection pick the best one, which is usually UDP. Choose TCP on networks that block UDP. Expect more latency and stutter on TCP, since lost packets hold up the frames behind them.
+Choosing `auto` offers both UDP and TCP so WebRTC selects the best path (typically UDP). Use `tcp` on networks that block UDP, keeping in mind that lost packets on TCP stall later frames and add latency or stutter.
 
-Give the port range more than one port. Each viewer needs its own port, and a port that was just released can take a moment before it is usable again.
+Always allocate more than one port in **Media Port Range**. Each viewer consumes one port, and recently closed ports need a brief cooldown before reuse.
 
-By default the host offers every network address it has, and the viewer picks one it can reach. **Media Address** narrows that to a single address. It is mainly useful for SSH tunnels, where it is set to 127.0.0.1.
+Setting **Media Address** restricts WebRTC candidates to one IP instead of advertising every host interface. This is primarily used with SSH tunnels, where you set it to `127.0.0.1`.
 
-## Securing the Connection
+## Securing the Connection With TLS
 
-By default the broker serves plain HTTP. The video connection is always encrypted, but the viewer page and the signalling channel are not. Anyone who can watch traffic on the network can read the invite token or tamper with the viewer page. On a home network that is often acceptable. On a shared network, enable TLS.
+Out of the box, the broker serves plain HTTP. While the WebRTC video stream itself is always encrypted, the viewer page and signalling channel are not. On a shared or untrusted network, someone monitoring traffic could intercept the invite token or tamper with the viewer page. Enabling TLS protects the entire session.
 
-To enable TLS, set both **Broker TLS Certificate** and **Broker TLS Key**. The broker then serves HTTPS and secure WebSockets on the same port. Set **Broker Public URL** to an `https://` address whose hostname matches the certificate, otherwise browsers reject the page.
+Provide both **Broker TLS Certificate** and **Broker TLS Key** to switch the broker to HTTPS and secure WebSockets on the same port. Remember to set **Broker Public URL** to an `https://` origin matching the certificate's hostname, or browsers will reject the page.
 
-A few ways to get a certificate:
+Three straightforward ways to provision TLS:
 
-- **A local certificate authority.** Tools such as mkcert create a certificate for a hostname or address on your network and install a matching authority on your devices, so browsers trust it without warnings.
-- **A certificate for a domain you own.** When the host has a DNS name, a certificate from a public authority works on every device without installing anything.
-- **A reverse proxy.** A proxy such as Caddy or nginx can terminate TLS in front of the broker. Forward the whole origin to the broker, including WebSocket upgrades, and set **Broker Public URL** to the address of the proxy. Serving the broker under a path prefix is not supported.
+- **Local certificate authority.** Tools like `mkcert` issue trusted certificates for local hostnames or IP addresses across your own devices without browser warnings.
+- **Public domain certificate.** If the host has a DNS name, a certificate from a public authority works automatically on every device.
+- **Reverse proxy.** Place Caddy or nginx in front of the broker to terminate TLS. Forward the entire origin including WebSocket upgrades, and point **Broker Public URL** at the proxy. Path prefixes are not supported.
 
-Keep the private key readable only by the account that runs CyberEther.
+Always restrict file permissions so only the user running CyberEther can read the private key.
 
 ## Streaming Over SSH
 
-When the host sits behind a firewall that only allows SSH, the whole session can travel through one SSH connection. The broker and the video connection both run over TCP, so SSH can forward them to the viewing machine, and the browser connects to them as if the host were local.
+If a remote host sits behind a firewall that only permits SSH, you can route both the broker and the media stream through a single encrypted SSH tunnel.
 
-The video connection needs three things to fit through the tunnel. It must use TCP, because SSH does not forward UDP. It must use a small, known set of ports, so each one can be forwarded. And the host must offer only its loopback address, so the browser connects to the forwarded port on the viewing machine instead of trying to reach the host directly.
+To fit cleanly through SSH, the media connection needs three settings:
 
-### On the Host
+1. **A TCP transport**, because SSH cannot forward UDP.
+2. **A small, fixed port range**, so you can forward each port explicitly.
+3. **Loopback binding**, so the browser connects to your forwarded local ports instead of trying to reach the host directly.
 
-Start CyberEther with the broker and the video connection limited to the loopback address:
+### Step 1: Launch CyberEther on the Host
 
-```
+Start CyberEther bound strictly to `127.0.0.1`:
+
+```bash
 cyberether --remote --headless \
   --remote-broker-address 127.0.0.1 \
   --remote-broker-public-url http://localhost:8686 \
@@ -142,15 +154,15 @@ cyberether --remote --headless \
   flowgraph.yml
 ```
 
-The same values can be saved in **Settings** under **Remote** instead. Each port in the range carries one viewer, so four ports allow up to four viewers at a time. Keep one spare, since a port that was just released can take a moment to become available again.
+You can also save these values permanently under **Settings** > **Remote**. Four ports support up to four simultaneous viewers (keep at least one spare port for cooldown after disconnects).
 
-Run this command from inside an SSH session to the host, so the approval prompt appears in your terminal. Alternatively, add `--remote-auto-approve on`, since only someone with access to the tunnel can reach the broker.
+Run this inside an interactive SSH session so approval prompts appear in your terminal, or add `--remote-auto-approve on` since only users with SSH tunnel access can reach the broker.
 
-### On the Viewing Machine
+### Step 2: Open the SSH Port-Forwarding Tunnel
 
-Open a second SSH connection that forwards the broker port and every media port to the same port numbers on the host:
+From your viewing machine, open a second SSH connection forwarding the broker port and every media port using identical local and remote port numbers:
 
-```
+```bash
 ssh -N \
   -L 8686:127.0.0.1:8686 \
   -L 40000:127.0.0.1:40000 \
@@ -160,22 +172,21 @@ ssh -N \
   user@host
 ```
 
-The local and remote port numbers must match. The host advertises its own port numbers to the browser, and the browser connects to those same numbers on the viewing machine. Make sure nothing else on the viewing machine already uses these ports.
+Local and remote port numbers must match because the host advertises its own port numbers to the browser. Verify that nothing else on your viewing machine is using those ports.
 
-With the tunnel open, open the invite link printed by the host, such as `http://localhost:8686/remote#<token>`, in a browser on the viewing machine.
+Once the tunnel is open, paste the invite link from the host (such as `http://localhost:8686/remote#<token>`) into a browser on your viewing machine.
 
-### Notes
+### Practical Notes for SSH Tunneling
 
-- Expect more latency than a direct connection. Video over TCP pauses briefly whenever a packet has to be resent, and SSH adds its own overhead.
-- Lowering **Video Framerate** helps on slow links.
-- Because the broker listens only on the loopback address, nothing is exposed on the network of the host. All traffic, including the viewer page and the invite token, is encrypted by SSH.
+- Expect slightly higher latency than on a direct LAN connection because TCP retransmissions pause video briefly and SSH adds encryption overhead.
+- Reducing **Video Framerate** keeps the session responsive over slower links.
+- Because the broker only listens on `127.0.0.1`, nothing is exposed on the host's network, and SSH encrypts all traffic including the viewer page and invite token.
 
 ## Troubleshooting
 
-**The invite link does not open on the other device.** Check that both devices are on the same network, that the host firewall allows the broker port, and that the address in the link belongs to the host. When the host has several network interfaces, set **Broker Public URL** to the address the viewer can reach.
-
-**The viewer waits forever.** The host has not approved it yet. Look for the matching code in the **Remote Streaming** window or in the terminal.
-
-**The viewer connects but shows no video.** On phones this is usually the codec. Switch **Video Codec** to VP8. On restrictive networks, try **Media Transport** set to TCP, and check that the firewall allows the media ports.
-
-**Streaming fails to start.** On macOS, check that CyberEther runs with `--renderer vulkan`. Otherwise, another program may already be using the broker port. Pick a different **Broker Port**. When TLS is enabled, check that both files exist and that the key matches the certificate.
+| Symptom | What to Check |
+|---|---|
+| **Invite link will not open** | Confirm both devices are on the same network (or VPN), check the host firewall for the broker port, and set **Broker Public URL** if the host has multiple network interfaces. |
+| **Viewer stays on the waiting screen** | The host has not approved the connection yet. Match the six-character code in the **Remote** sidebar panel or terminal. |
+| **Viewer connects with a black screen** | On phones, switch **Video Codec** to `vp8`. On strict networks, set **Media Transport** to `tcp` and verify that your media ports are open. |
+| **Streaming fails to start** | Another process may already own port `8686` (choose another **Broker Port**), your TLS certificate and key files may be missing or mismatched, or your default renderer may be unavailable (try `--renderer vulkan` or `--renderer metal`). |

@@ -1,5 +1,6 @@
 src_lst += files([
     'generic.cc',
+    'tools/touch_gesture.cc',
 ])
 
 if cfg_lst.get('JETSTREAM_BACKEND_METAL_AVAILABLE', false)

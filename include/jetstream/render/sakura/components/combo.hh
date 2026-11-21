@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_COMBO_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/types.hh>
 
 #include <functional>
 #include <memory>
@@ -11,29 +12,30 @@
 
 namespace Jetstream::Sakura {
 
-struct Combo {
+struct Combo : public Component {
     struct Config {
         std::string id;
         std::vector<std::string> options;
         std::string value;
-        F32 width = 0.0f;
+        F32 width = Fill;
         bool disabled = false;
-        std::function<void(const std::string&)> onChange;
         std::optional<U64> selectedIndex;
-        std::function<void(U64)> onSelect;
+        Callback<void(const std::string&)> onChange;
+        Callback<void(U64)> onSelect;
+
+        bool operator==(const Config&) const = default;
     };
 
     Combo();
     ~Combo();
 
-    Combo(Combo&&) noexcept;
-    Combo& operator=(Combo&&) noexcept;
+    void update(Config config);
 
-    Combo(const Combo&) = delete;
-    Combo& operator=(const Combo&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
+    std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
 
  private:
     struct Impl;

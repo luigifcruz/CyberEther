@@ -16,6 +16,7 @@ class Adapter<DeviceType::WebGPU> : public Generic {
 
     virtual Result nextDrawable() = 0;
     virtual Result commitDrawable(WGPUTextureView* framebufferTexture) = 0;
+    virtual Extent2D<U64> getSwapchainSize() const = 0;
 };
 
 }  // namespace Jetstream::Viewport

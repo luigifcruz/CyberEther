@@ -193,6 +193,24 @@ nlohmann::json Serialize::Interface(const std::vector<Flowgraph::View::Interface
     return result;
 }
 
+nlohmann::json Serialize::ConfigFields(const std::vector<Flowgraph::View::InterfaceEntry>& entries,
+                                       const Parser::Map& config, bool help) {
+    auto result = Serialize::Interface(entries, help);
+    for (U64 index = 0; index < entries.size(); ++index) {
+        const auto& entry = entries[index];
+        const bool tensor = Parser::Get<std::string>(entry.format, "type") == "tensor-config";
+        const auto key = tensor ? Parser::Get<std::string>(entry.format, "source") : entry.name;
+        if (!config.contains(key)) {
+            continue;
+        }
+        result[index]["config_key"] = key;
+        if (tensor) {
+            result[index]["config_index"] = Parser::Get<U64>(entry.format, "index", 0);
+        }
+    }
+    return result;
+}
+
 nlohmann::json Serialize::ConfigOptions(const std::vector<Flowgraph::View::InterfaceEntry>& entries) {
     nlohmann::json result = nlohmann::json::object();
     for (const auto& entry : entries) {
@@ -233,7 +251,9 @@ nlohmann::json Serialize::NodeLayout(const std::shared_ptr<Flowgraph>& flowgraph
 
 nlohmann::json Serialize::BlockDetail(const std::shared_ptr<Flowgraph>& flowgraph,
                                       const Flowgraph::View::BlockData& data,
-                                      bool full) {
+                                      BlockDetailMode mode) {
+    const bool full = mode != BlockDetailMode::Summary;
+
     nlohmann::json entry = {
         {"name", data.name},
         {"type", data.type},
@@ -258,12 +278,14 @@ nlohmann::json Serialize::BlockDetail(const std::shared_ptr<Flowgraph>& flowgrap
         entry["diagnostic"] = data.diagnostic;
     }
 
-    entry["config"] = full ? Serialize::Map(data.config) : Serialize::CompactMap(data.config);
+    if (mode != BlockDetailMode::Health) {
+        entry["config"] = full ? Serialize::Map(data.config) : Serialize::CompactMap(data.config);
+    }
     entry["inputs"] = Serialize::Inputs(data);
 
     if (full) {
         entry["summary"] = data.summary;
-        entry["config_fields"] = Serialize::Interface(data.interfaceConfigs, false);
+        entry["config_fields"] = Serialize::ConfigFields(data.interfaceConfigs, data.config, false);
         entry["input_ports"] = Serialize::Interface(data.interfaceInputs, false);
         entry["output_ports"] = Serialize::Interface(data.interfaceOutputs, false);
     } else {
@@ -286,8 +308,9 @@ nlohmann::json Serialize::FlowgraphDetail(const std::shared_ptr<Flowgraph>& flow
     });
 
     nlohmann::json blocks = nlohmann::json::array();
+    const auto mode = full ? BlockDetailMode::Full : BlockDetailMode::Summary;
     for (const auto& data : entries) {
-        blocks.push_back(Serialize::BlockDetail(flowgraph, data, full));
+        blocks.push_back(Serialize::BlockDetail(flowgraph, data, mode));
     }
 
     return {

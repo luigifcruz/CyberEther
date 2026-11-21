@@ -144,7 +144,7 @@ bool DescendKey(const Parser::Map& root,
         }
 
         error = jst::fmt::format("Key '{}' not found at {}. Available keys: {}",
-                                 step.key, location, Json(available).dump());
+                                 step.key, location, Response::Dump(available));
         return false;
     }
 
@@ -328,8 +328,8 @@ std::vector<Entry> Toolbox::Environment() {
     return {Entry::FromJson({
         "inspect_environment",
         "Discover or read runtime environment data. Omit key to list entries whose values are structural outlines, not contents. Provide key and optional path to read the contents of a specific value or subtree. A truncated value reports its full_length; a narrower path or a larger max_length returns more of it.",
-        R"({"type":"object","properties":{"query":{"type":"string","description":"Optional key filter when listing."},"key":{"type":"string"},"path":{"type":"string","description":"Dot path with [n] sequence indexes."},"max_length":{"type":"integer","minimum":256,"maximum":262144}},"additionalProperties":false})",
-        {.needsGraph = true},
+        R"({"type":"object","properties":{"query":{"type":"string","description":"Optional key filter when listing."},"key":{"type":"string","description":"Entry key from the listing whose value to read."},"path":{"type":"string","description":"Dot path with [n] sequence indexes."},"max_length":{"type":"integer","minimum":256,"maximum":262144,"description":"Maximum bytes of the value read by key. Default 8192."}},"additionalProperties":false})",
+        {.permission = Permission::Read, .graph = true},
     }, InspectEnvironment)};
 }
 

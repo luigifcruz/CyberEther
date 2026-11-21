@@ -1,19 +1,48 @@
 #include <jetstream/render/sakura/components/node/field.hh>
 
-#include <jetstream/render/sakura/components/divider.hh>
-#include <jetstream/render/sakura/components/text.hh>
-#include <jetstream/render/sakura/components/tooltip.hh>
+#include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/label.hh>
 
-#include "base.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+#include "pointer.hh"
+
+#include <algorithm>
+#include <limits>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
+namespace {
+
+constexpr F32 kLabelFont = Typography::FontSize * 0.75f;
+constexpr F32 kCardLabelOffsetX = 6.0f;
+constexpr F32 kCardLabelOffsetY = 2.0f;
+
+F32 CardLabelHeight(const Context& ctx) {
+    return NodeFontOf(ctx) + 14.0f;
+}
+
+}  // namespace
+
 struct NodeField::Impl {
     Config config;
-    Text label;
-    Tooltip helpTooltip;
-    Text helpText;
-    Divider divider;
+    Box card;
+    Label label;
+    TextMetrics metrics;
+    Pointer pointer;
+    Rect hoverRect;
+
+    F32 childTop(const Context& ctx) const {
+        if (!config.title || config.label.empty()) {
+            return 0.0f;
+        }
+        if (config.background) {
+            return Px(ctx, kCardLabelOffsetY + kLabelFont);
+        }
+        return Px(ctx, kLabelFont + 4.0f);
+    }
 };
 
 NodeField::NodeField() {
@@ -21,69 +50,118 @@ NodeField::NodeField() {
 }
 
 NodeField::~NodeField() = default;
-NodeField::NodeField(NodeField&&) noexcept = default;
-NodeField& NodeField::operator=(NodeField&&) noexcept = default;
 
-bool NodeField::update(Config config) {
+void NodeField::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
     impl->config = std::move(config);
-    impl->label.update({
-        .id = impl->config.id + "Label",
-        .str = impl->config.label,
-        .tone = Text::Tone::Secondary,
-        .scale = 0.75f,
-    });
-    impl->helpTooltip.update({
-        .id = impl->config.id + "HelpTooltip",
-    });
-    impl->helpText.update({
-        .id = impl->config.id + "HelpText",
-        .str = impl->config.help,
-        .wrapped = true,
-    });
-    impl->divider.update({
-        .id = impl->config.id + "Divider",
-    });
-    return true;
+    auto* content = impl->config.content;
+    const bool titled = impl->config.title && !impl->config.label.empty();
+    std::vector<Component*> next;
+    if (titled && impl->config.background) {
+        next.push_back(&impl->card);
+    }
+    if (titled) {
+        next.push_back(&impl->label);
+    }
+    for (auto* mounted : children()) {
+        if (mounted != &impl->card && mounted != &impl->label) {
+            next.push_back(mounted);
+        }
+    }
+    if (content && std::find(next.begin(), next.end(), content) == next.end()) {
+        next.push_back(content);
+    }
+    setChildren(next);
+    for (auto* mounted : children()) {
+        if (mounted != &impl->card && mounted != &impl->label) {
+            mounted->setVisible(mounted == content);
+        }
+    }
 }
 
-void NodeField::render(const Context& ctx, Child child) const {
+Extent2D<F32> NodeField::measure(const Context& ctx, Extent2D<F32> available) {
+    const F32 top = impl->childTop(ctx);
+    F32 childHeight = 0.0f;
+    if (impl->config.content && impl->config.content->visible()) {
+        childHeight = measureChild(*impl->config.content, ctx, {available.x, std::numeric_limits<F32>::infinity()}).y;
+    }
+    F32 height = top + childHeight;
+    if (impl->config.title && !impl->config.label.empty() && impl->config.background) {
+        height = std::max(height, Px(ctx, CardLabelHeight(ctx)));
+    }
+    return {FillLength(available.x), FitLength(height, available.y)};
+}
+
+void NodeField::layout(const Context& ctx) {
     const auto& config = impl->config;
+    const Rect bounds = frame();
+    const Rect clipRect = Intersect(bounds, clip());
+    const bool titled = config.title && !config.label.empty();
 
-    if (config.title && !config.label.empty()) {
-        if (config.background) {
-            const ImVec2 pos = ImGui::GetCursorScreenPos();
-            const F32 height = ImGui::GetTextLineHeight() + Scale(ctx, 14.0f);
-            const ImVec2 max(pos.x + ImGui::GetContentRegionAvail().x, pos.y + height);
-            ImGui::GetWindowDrawList()->AddRectFilled(pos,
-                                                      max,
-                                                      ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "card")),
-                                                      ImGui::GetStyle().FrameRounding);
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + Scale(ctx, 2.0f));
+    impl->metrics.setWindow(ctx.render);
+
+    if (titled && config.background) {
+        impl->card.update({
+            .instances = {{
+                .rect = Snap({bounds.x, bounds.y, bounds.width, Px(ctx, CardLabelHeight(ctx))}),
+                .visible = !bounds.empty(),
+                .backgroundColor = ctx.color("card"),
+            }},
+            .clip = bounds,
+            .cornerRadius = Px(ctx, kFrameRounding),
+        });
+        layoutChild(ctx, impl->card, bounds);
+    }
+
+    const F32 labelY = bounds.y + (config.background ? Px(ctx, kCardLabelOffsetY) : 0.0f);
+    const F32 labelX = bounds.x + Px(ctx, kCardLabelOffsetX);
+    const F32 labelSize = Px(ctx, kLabelFont);
+    const F32 labelWidth = impl->metrics.measure(Typography::MonoFont, config.label, labelSize);
+    const Rect labelRect = {labelX, labelY, std::max(0.0f, bounds.right() - labelX), labelSize};
+
+    if (titled) {
+        impl->label.update({
+            .instances = {{
+                .rect = labelRect,
+                .str = config.label,
+                .visible = !bounds.empty(),
+                .color = ctx.color("text_secondary"),
+                .fontSize = labelSize,
+                .alignment = {0, 1},
+            }},
+            .clip = Intersect(bounds, labelRect),
+            .fontName = Typography::MonoFont,
+            .maxCharacters = 128,
+        });
+        layoutChild(ctx, impl->label, bounds);
+    }
+
+    const F32 top = impl->childTop(ctx);
+    if (impl->config.content && impl->config.content->visible()) {
+        Context childCtx = ctx;
+        if (titled && config.background) {
+            childCtx.backdropTopColorKey = "card";
         }
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Scale(ctx, 6.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-                            ImVec2(ImGui::GetStyle().ItemSpacing.x,
-                                   Scale(ctx, config.background ? 0.0f : 4.0f)));
-        impl->label.render(ctx);
-        ImGui::PopStyleVar();
-        if (!config.help.empty()) {
-            impl->helpTooltip.render(ctx, [this](const Context& ctx) {
-                this->impl->helpText.render(ctx);
-            });
-        }
+        layoutChild(childCtx, *impl->config.content, {bounds.x, bounds.y + top, bounds.width, std::max(0.0f, bounds.height - top)});
     }
 
-    if (child) {
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, Private::ImColor(ctx, "card"));
-        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, Private::ImColor(ctx, "frame_bg_hovered"));
-        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, Private::ImColor(ctx, "frame_bg_active"));
-        child(ctx);
-        ImGui::PopStyleColor(3);
+    impl->hoverRect = Intersect({labelX, labelY, std::min(labelWidth, labelRect.width), labelSize}, clipRect);
+    impl->pointer.following = false;
+    if (titled && config.tooltip && impl->pointer.inside(impl->hoverRect) &&
+        !impl->pointer.tooltip(ctx, impl->hoverRect, config.tooltip())) {
+        requestFrame();
     }
+}
 
-    if (config.divider) {
-        impl->divider.render(ctx);
+bool NodeField::mouseEvent(const MouseEvent& event) {
+    const bool titled = impl->config.title && !impl->config.label.empty();
+    const bool moved = impl->pointer.track(event, impl->hoverRect, {impl->hoverRect});
+    if (moved && titled && impl->config.tooltip) {
+        invalidate(Dirty::Layout);
     }
+    return mouseEventChildren(event);
 }
 
 }  // namespace Jetstream::Sakura

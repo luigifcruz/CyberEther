@@ -94,13 +94,16 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying draw.");
 
-    if (buffer->isBuffered()) {
+    if (indexedIndirectBuffer) {
         JST_CHECK(indexedIndirectBuffer->destroy());
-        indexedDrawCommands.clear();
-    } else {
-        JST_CHECK(indirectBuffer->destroy());
-        drawCommands.clear();
+        indexedIndirectBuffer.reset();
     }
+    if (indirectBuffer) {
+        JST_CHECK(indirectBuffer->destroy());
+        indirectBuffer.reset();
+    }
+    indexedDrawCommands.clear();
+    drawCommands.clear();
     transferBuffers.clear();
 
     JST_CHECK(buffer->destroy());
@@ -109,6 +112,10 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
+    if (drawCount == 0) {
+        return Result::SUCCESS;
+    }
+
     JST_CHECK(buffer->encode(commandBuffer));
 
     const bool supportsMultiDrawIndirect =
@@ -155,6 +162,33 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
                               1,
                               sizeof(VkDrawIndirectCommand));
         }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::encode(VkCommandBuffer& commandBuffer, const Range& range, bool bind) {
+    if (bind) {
+        JST_CHECK(buffer->encode(commandBuffer));
+    }
+
+    if (range.count == 0 || range.instanceCount == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (buffer->isBuffered()) {
+        vkCmdDrawIndexed(commandBuffer,
+                         static_cast<U32>(range.count),
+                         static_cast<U32>(range.instanceCount),
+                         static_cast<U32>(range.first),
+                         static_cast<I32>(range.baseVertex),
+                         static_cast<U32>(range.firstInstance));
+    } else {
+        vkCmdDraw(commandBuffer,
+                  static_cast<U32>(range.count),
+                  static_cast<U32>(range.instanceCount),
+                  static_cast<U32>(range.first),
+                  static_cast<U32>(range.firstInstance));
     }
 
     return Result::SUCCESS;

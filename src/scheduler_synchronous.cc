@@ -4,7 +4,10 @@
 //   - Present waits at most kPresentWait for compute to reach a segment boundary, then
 //     skips the frame. It always withdraws its request before returning.
 //   - Present has priority: compute parks at segment boundaries while present wants in,
-//     and never waits for a later frame.
+//     and never waits for a later frame. Pause releases a park before the first segment,
+//     a cycle that already started keeps yielding until it completes.
+//   - Present capture copies compute data under the data lock, submit runs every
+//     frame without it and is only excluded by state modifications.
 //   - State modifications (add/remove/reload) safely halt both threads.
 //   - Compute polling (hasPendingCompute) doesn't hold locks, allowing fast state changes.
 //   - Branches run independently: a module runs only when every input is fresh, and a
@@ -25,6 +28,8 @@
 #include <jetstream/module_context.hh>
 #include <jetstream/runtime.hh>
 #include <jetstream/module.hh>
+#include <jetstream/instance.hh>
+#include <jetstream/viewport/adapters/generic.hh>
 
 #include <atomic>
 #include <algorithm>
@@ -43,6 +48,7 @@ namespace {
 
 constexpr auto kPresentWait = std::chrono::milliseconds(2);
 constexpr auto kPresentPoll = std::chrono::microseconds(250);
+constexpr auto kReadWait = std::chrono::milliseconds(500);
 
 }  // namespace
 
@@ -52,16 +58,22 @@ struct SynchronousScheduler : public Scheduler::Impl {
     Result destroy() override;
     Result start() override;
     Result stop() override;
+    Result pause() override;
+    Result resume() override;
+    bool paused() const override;
 
     Result add(const std::shared_ptr<Module>& module) override;
     Result remove(const std::shared_ptr<Module>& module) override;
     Result reload(const std::shared_ptr<Module>& module) override;
     Result synchronize(const std::function<Result()>& fn) override;
+    Result read(const std::function<Result()>& fn) override;
 
     Result present(std::unordered_set<std::string>& failedModules) override;
     Result compute(std::unordered_set<std::string>& failedModules) override;
 
  private:
+    Result capture(std::unordered_set<std::string>& failedModules);
+    Result submit(std::unordered_set<std::string>& failedModules);
     void haltAll();
     void resumeAll();
     bool isComputeHalted() const;
@@ -72,6 +84,9 @@ struct SynchronousScheduler : public Scheduler::Impl {
     void requestPresentEntry();
     void clearPresentRequest();
     bool isPresentRequested() const;
+    void requestRead();
+    void clearReadRequest();
+    bool isReadRequested() const;
     bool isStopping() const;
     void setComputeActive();
     void clearComputeActive();
@@ -84,25 +99,32 @@ struct SynchronousScheduler : public Scheduler::Impl {
     std::unique_lock<std::mutex> tryExclusiveSharedLock();
     void waitForPresentToFinish(std::unique_lock<std::mutex>& lock);
     bool waitForPresentTurn(std::chrono::steady_clock::time_point deadline);
-    void yieldToPresent();
+    bool waitForReadTurn(std::chrono::steady_clock::time_point deadline);
+    void yieldToWaiters(bool started);
     void notifyCompute();
     void notifyPresent();
+    void wakePresent();
+    void wakeSurface();
     Result lockState(const std::function<Result()>& func);
 
     std::atomic_flag computeHalt = ATOMIC_FLAG_INIT;
     std::atomic_flag presentHalt = ATOMIC_FLAG_INIT;
     std::shared_mutex dataMutex;
     std::mutex sharedMutex;
+    std::mutex surfaceMutex;
     std::condition_variable presentCond;
     std::condition_variable computeCond;
     bool presentSync = false;
     bool computeSync = false;
     std::atomic<bool> presentWantsIn{false};
+    std::atomic<U64> readRequests{0};
     std::atomic<bool> presentable{false};
     std::mutex handoffMutex;
     std::condition_variable handoffCond;
     std::atomic<bool> stopping{false};
+    std::atomic<bool> pausing{false};
     std::atomic<U64> generation{0};
+    std::weak_ptr<Viewport::Generic> viewport;
 
     using Clock = std::chrono::steady_clock;
     using Stamp = std::vector<std::pair<U64, U64>>;
@@ -120,6 +142,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
         bool throttled = false;
         bool retrying = false;
         bool empty = true;
+        bool surface = false;
         U64 sequence = 0;
         U64 frame = 0;
         Stamp stamp;
@@ -180,6 +203,11 @@ struct SynchronousScheduler : public Scheduler::Impl {
 Result SynchronousScheduler::create() {
     JST_DEBUG("[SCHEDULER_SYNCHRONOUS] Creating scheduler.");
     stopping.store(false, std::memory_order_release);
+    if (instance) {
+        std::shared_ptr<Viewport::Generic> instanceViewport;
+        JST_CHECK(instance->viewportGet(instanceViewport));
+        viewport = instanceViewport;
+    }
     return Result::SUCCESS;
 }
 
@@ -240,6 +268,27 @@ Result SynchronousScheduler::stop() {
     Scheduler::Context::NotifyPendingCompute();
 
     return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::pause() {
+    {
+        std::lock_guard lock(handoffMutex);
+        pausing.store(true, std::memory_order_release);
+    }
+    handoffCond.notify_all();
+
+    return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::resume() {
+    pausing.store(false, std::memory_order_release);
+    Scheduler::Context::NotifyPendingCompute();
+
+    return Result::SUCCESS;
+}
+
+bool SynchronousScheduler::paused() const {
+    return pausing.load(std::memory_order_acquire);
 }
 
 Result SynchronousScheduler::add(const std::shared_ptr<Module>& module) {
@@ -316,6 +365,35 @@ Result SynchronousScheduler::synchronize(const std::function<Result()>& fn) {
     return lockState(fn);
 }
 
+Result SynchronousScheduler::read(const std::function<Result()>& fn) {
+    if (!fn) {
+        return Result::SUCCESS;
+    }
+
+    struct ReadRequest {
+        SynchronousScheduler& scheduler;
+        explicit ReadRequest(SynchronousScheduler& scheduler) : scheduler(scheduler) { scheduler.requestRead(); }
+        ~ReadRequest() { scheduler.clearReadRequest(); }
+    } request(*this);
+
+    const auto deadline = Clock::now() + kReadWait;
+
+    while (true) {
+        {
+            auto dataLock = trySharedDataLock();
+            auto lock = dataLock.owns_lock() ? tryExclusiveSharedLock() : std::unique_lock<std::mutex>();
+
+            if (lock.owns_lock()) {
+                return fn();
+            }
+        }
+
+        if (!waitForReadTurn(deadline)) {
+            return Result::TIMEOUT;
+        }
+    }
+}
+
 Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModules) {
     failedModules.clear();
 
@@ -323,6 +401,11 @@ Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModu
         return Result::SUCCESS;
     }
 
+    JST_CHECK(capture(failedModules));
+    return submit(failedModules);
+}
+
+Result SynchronousScheduler::capture(std::unordered_set<std::string>& failedModules) {
     const auto deadline = Clock::now() + kPresentWait;
 
     while (true) {
@@ -343,7 +426,7 @@ Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModu
 
                 for (const auto& name : presentModules) {
                     const auto& mod = modules.at(name);
-                    res = mod->context()->scheduler()->presentSubmit();
+                    res = mod->context()->scheduler()->presentCapture();
                     if (res != Result::SUCCESS && res != Result::RELOAD) {
                         failedModules.insert(name);
                         break;
@@ -362,11 +445,30 @@ Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModu
 
         if (!waitForPresentTurn(deadline)) {
             clearPresentRequest();
+            wakePresent();
             return Result::SUCCESS;
         }
     }
 
     notifyCompute();
+
+    return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::submit(std::unordered_set<std::string>& failedModules) {
+    std::unique_lock lock(surfaceMutex, std::try_to_lock);
+    if (!lock.owns_lock() || isStopping() || isPresentHalted()) {
+        return Result::SUCCESS;
+    }
+
+    for (const auto& name : presentModules) {
+        const auto& mod = modules.at(name);
+        const Result res = mod->context()->scheduler()->presentSubmit();
+        if (res != Result::SUCCESS && res != Result::RELOAD) {
+            failedModules.insert(name);
+            return res;
+        }
+    }
 
     return Result::SUCCESS;
 }
@@ -381,6 +483,10 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
 
     if (isStopping()) {
         clearPresentRequest();
+        return Result::SUCCESS;
+    }
+
+    if (paused()) {
         return Result::SUCCESS;
     }
 
@@ -424,7 +530,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
             return Result::SUCCESS;
         }
 
-        if (currentGeneration() != localGeneration) {
+        if (currentGeneration() != localGeneration || paused()) {
             return Result::SUCCESS;
         }
 
@@ -441,7 +547,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
             return Result::SUCCESS;
         }
 
-        if (currentGeneration() != localGeneration) {
+        if (currentGeneration() != localGeneration || paused()) {
             return Result::SUCCESS;
         }
 
@@ -463,6 +569,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
     skippedModules.clear();
     stalledModules.clear();
     bool progressed = false;
+    bool started = false;
     const auto now = Clock::now();
 
     {
@@ -473,16 +580,16 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
     for (U64 i = 0; i < localRuntimeCount; i++) {
         std::vector<std::string> pendingModules;
 
-        // Priority Yield: Check if present wants in before each segment.
+        // Priority Yield: Check if present or a reader wants in before each segment.
 
-        if (isPresentRequested()) {
-            yieldToPresent();
+        if (isPresentRequested() || isReadRequested()) {
+            yieldToWaiters(started);
 
             if (isStopping()) {
                 return Result::SUCCESS;
             }
 
-            if (isComputeHalted()) {
+            if (isComputeHalted() || (!started && paused())) {
                 return Result::SUCCESS;
             }
         }
@@ -490,7 +597,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         {
             std::unique_lock dataLock(dataMutex);
 
-            if (currentGeneration() != localGeneration) {
+            if (currentGeneration() != localGeneration || (!started && paused())) {
                 return Result::SUCCESS;
             }
 
@@ -535,6 +642,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
 
             setComputeActive();
 
+            started = true;
             res = segment.runtime->compute(pendingModules, skippedModules, stalledModules, failedModules);
 
             if (res == Result::SUCCESS) {
@@ -699,6 +807,7 @@ Result SynchronousScheduler::rebuildOrder() {
         }
 
         node.throttled = (mod->taint() & Module::Taint::THROTTLED) != Module::Taint::CLEAN;
+        node.surface = (mod->taint() & Module::Taint::SURFACE) != Module::Taint::CLEAN;
         node.settled = settledModules.contains(node.name);
 
         if (node.throttled && deadlines.contains(node.name)) {
@@ -1111,6 +1220,7 @@ bool SynchronousScheduler::advance(const RuntimeSegment& segment,
                                    const std::unordered_set<std::string>& stalledModules,
                                    const Clock::time_point& now) {
     bool progressed = false;
+    bool freshSurface = false;
     const auto submitted = Clock::now();
 
     for (const auto index : segment.nodes) {
@@ -1171,10 +1281,15 @@ bool SynchronousScheduler::advance(const RuntimeSegment& segment,
         node.sequence += 1;
         node.retrying = false;
         node.empty = skippedModules.contains(node.name);
+        freshSurface |= node.surface && !node.empty;
 
         if (!node.empty && node.fixed) {
             settle(node);
         }
+    }
+
+    if (freshSurface) {
+        wakeSurface();
     }
 
     return progressed;
@@ -1191,7 +1306,8 @@ void SynchronousScheduler::settle(Node& node) {
     const auto& mod = modules.at(node.name);
     auto timing = mod->timing();
     settledTimings[node.name] = timing;
-    timing.computeTime = 0.0f;
+    timing.computeTime = 0.0;
+    timing.settled = true;
     mod->timing(timing);
 }
 
@@ -1259,6 +1375,23 @@ void SynchronousScheduler::clearPresentRequest() {
     handoffCond.notify_all();
 }
 
+void SynchronousScheduler::requestRead() {
+    std::lock_guard lock(handoffMutex);
+    readRequests.fetch_add(1, std::memory_order_release);
+}
+
+void SynchronousScheduler::clearReadRequest() {
+    {
+        std::lock_guard lock(handoffMutex);
+        readRequests.fetch_sub(1, std::memory_order_release);
+    }
+    handoffCond.notify_all();
+}
+
+bool SynchronousScheduler::isReadRequested() const {
+    return readRequests.load(std::memory_order_acquire) != 0;
+}
+
 bool SynchronousScheduler::isPresentRequested() const {
     return presentWantsIn.load(std::memory_order_acquire);
 }
@@ -1321,10 +1454,21 @@ bool SynchronousScheduler::waitForPresentTurn(const Clock::time_point deadline) 
     return !isStopping() && !isPresentHalted();
 }
 
-void SynchronousScheduler::yieldToPresent() {
+bool SynchronousScheduler::waitForReadTurn(const Clock::time_point deadline) {
+    if (Clock::now() >= deadline) {
+        return false;
+    }
+
+    std::unique_lock lock(handoffMutex);
+    presentCond.wait_until(lock, std::min(deadline, Clock::now() + kPresentPoll));
+    return true;
+}
+
+void SynchronousScheduler::yieldToWaiters(const bool started) {
     std::unique_lock lock(handoffMutex);
     handoffCond.wait(lock, [&] {
-        return !isPresentRequested() || isStopping() || isComputeHalted();
+        return (!isPresentRequested() && !isReadRequested()) ||
+               isStopping() || isComputeHalted() || (!started && paused());
     });
 }
 
@@ -1339,10 +1483,23 @@ void SynchronousScheduler::notifyPresent() {
     presentCond.notify_all();
 }
 
+void SynchronousScheduler::wakePresent() {
+    if (const auto target = viewport.lock()) {
+        target->input().wake();
+    }
+}
+
+void SynchronousScheduler::wakeSurface() {
+    if (const auto target = viewport.lock()) {
+        target->input().wakeSurface();
+    }
+}
+
 Result SynchronousScheduler::lockState(const std::function<Result()>& func) {
     haltAll();
 
     std::unique_lock dataLock(dataMutex);
+    std::unique_lock surfaceLock(surfaceMutex);
 
     sharedMutex.lock();
     presentSync = true;
@@ -1376,6 +1533,7 @@ Result SynchronousScheduler::lockState(const std::function<Result()>& func) {
     computeSync = false;
     presentSync = false;
     sharedMutex.unlock();
+    surfaceLock.unlock();
     dataLock.unlock();
 
     notifyCompute();

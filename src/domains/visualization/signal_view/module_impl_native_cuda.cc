@@ -152,6 +152,7 @@ struct SignalViewImplNativeCuda : public SignalViewImpl,
     Result create() final;
 
     Result presentInitialize() override;
+    Result presentCapture() override;
     Result presentSubmit() override;
     Result computeInitialize() override;
     Result computeSubmit(const cudaStream_t& stream) override;
@@ -299,6 +300,10 @@ Result SignalViewImplNativeCuda::presentInitialize() {
 Buffer::Config SignalViewImplNativeCuda::renderStateBufferConfig() const {
     // TODO: Restore CUDA/Vulkan zero-copy after adding cross-API synchronization.
     return {.hostAccessible = true};
+}
+
+Result SignalViewImplNativeCuda::presentCapture() {
+    return capture();
 }
 
 Result SignalViewImplNativeCuda::presentSubmit() {

@@ -34,6 +34,9 @@ class JETSTREAM_API Text : public Generic {
         ColorRGBA<F32> color = {1.0f, 1.0f, 1.0f, 1.0f};
         std::unordered_map<std::string, ElementConfig> elements;
         F32 sharpness = 0.5f;
+        F32 weight = 0.0f;
+        F32 emboss = 0.0f;
+        F32 embossBackdrop = 0.0f;
     };
 
     struct Unicode {
@@ -45,6 +48,15 @@ class JETSTREAM_API Text : public Generic {
         static U64 Align(std::string_view text, U64 column);
         static U64 Advance(std::string_view text, U64 pos, U64 count);
     };
+
+    struct Quad {
+        Extent2D<F32> origin = {0.0f, 0.0f};
+        Extent2D<F32> corner = {0.0f, 0.0f};
+        Extent2D<F32> texcoordOrigin = {0.0f, 0.0f};
+        Extent2D<F32> texcoordCorner = {0.0f, 0.0f};
+    };
+
+    static Extent2D<I32> Shape(const Font& font, const std::string& fill, F32 scale, std::vector<Quad>& quads);
 
     Text(const Config& config);
     ~Text();
@@ -62,10 +74,12 @@ class JETSTREAM_API Text : public Generic {
     F32 advance(const std::string& fill, F32 scale = 1.0f) const;
     std::vector<F32> advances(const std::string& fill, F32 scale = 1.0f) const;
     F32 lineHeight(F32 scale = 1.0f) const;
+    F32 inkOffset(const std::string& fill, F32 scale = 1.0f) const;
     void enabled(bool value);
 
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
     Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
+    Result updateColor(const ColorRGBA<F32>& color);
 
     constexpr const Config& getConfig() const {
         return config;

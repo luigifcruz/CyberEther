@@ -99,7 +99,7 @@ jobs:
           apt-get update --fix-missing
           apt-get install -y --no-install-recommends \
             git build-essential pkg-config python3-pip python-is-python3 \
-            curl ca-certificates bison flex nasm patchelf binutils \
+            curl ca-certificates bison flex nasm patchelf binutils xz-utils \
             glslang-tools \
             libudev-dev \
             libwayland-dev wayland-protocols libxkbcommon-dev \
@@ -114,6 +114,12 @@ jobs:
           set -euo pipefail
           python -m pip install meson ninja numpy
 
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.17.0'
+          cache-key: ${{ matrix.tag }}
+
       - name: Build binary
         run: |
           set -euo pipefail
@@ -122,8 +128,10 @@ jobs:
             --default-library=shared \
             -Dprefix=/opt/cyberether \
             -Dbuildtype=release \
+            -Dcpp_args=-g \
             -Dexamples=false \
-            -Dremote=enabled
+            -Dremote=enabled \
+            -Dterminal=enabled
           meson compile -C build cyberether jetstream-core-tests jetstream-modules-tests
 
       - name: Validate binary
@@ -151,10 +159,13 @@ jobs:
       - name: Package binary
         run: |
           set -euo pipefail
-          mkdir -p .dist/artifacts .dist/bin
+          mkdir -p .dist/artifacts .dist/bin .dist/symbols
+          objcopy --only-keep-debug build/cyberether .dist/symbols/cyberether.debug
+          objcopy --only-keep-debug build/libjetstream.so .dist/symbols/libjetstream.so.debug
           cp build/cyberether .dist/bin/cyberether
           cp build/libjetstream.so .dist/bin/libjetstream.so
           chmod 755 .dist/bin/cyberether .dist/bin/libjetstream.so
+          strip --strip-debug .dist/bin/cyberether .dist/bin/libjetstream.so
 
           patchelf --set-soname libjetstream.so .dist/bin/libjetstream.so
 
@@ -166,6 +177,8 @@ jobs:
 
           patchelf --set-rpath '$ORIGIN' .dist/bin/cyberether
           tar -C .dist/bin -czf ".dist/artifacts/${ARCHIVE}" cyberether libjetstream.so
+          tar -C .dist/symbols -czf ".dist/artifacts/${ARCHIVE%.tar.gz}-symbols.tar.gz" \
+            cyberether.debug libjetstream.so.debug
 
       - name: Stage CUDA runtime libraries
         if: ${{ inputs.package_desktop && contains(matrix.tag, 'cuda') }}
@@ -196,6 +209,11 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: .dist/artifacts/${{ matrix.archive }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cyberether-symbols-linux-${{ matrix.tag }}
+          path: .dist/artifacts/cyberether-linux-${{ matrix.tag }}-symbols.tar.gz
 
       - name: Upload CUDA runtime libraries
         if: ${{ inputs.package_desktop && contains(matrix.tag, 'cuda') }}

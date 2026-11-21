@@ -280,11 +280,13 @@ Result MapNavigation::resize(const SurfaceEvent& event, MapContext& context) {
 Result MapNavigation::mouse(const MouseEvent& event, MapContext& context) {
     auto view = context.view;
     switch (event.type) {
-        case MouseEventType::Scroll: {
-            if (!std::isfinite(event.scroll.y)) return Result::SUCCESS;
+        case MouseEventType::Scroll:
+        case MouseEventType::Zoom: {
+            const F32 delta = event.type == MouseEventType::Zoom ? std::log2(event.zoom) : event.scroll.y * 0.15f;
+            if (!std::isfinite(delta)) return Result::SUCCESS;
             const F32 fitZoom = FitZoom(view);
             const F32 newZoom = std::clamp(
-                view.detailZoom + event.scroll.y * 0.15f,
+                view.detailZoom + delta,
                 MinDetailZoom(view), MapContext::MaxZoom - fitZoom);
             if (newZoom == view.detailZoom) break;
             const F64 oldHeight = BaseHeight / std::exp2(static_cast<F64>(view.detailZoom + fitZoom));

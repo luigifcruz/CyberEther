@@ -3,50 +3,22 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphConfigIntField {
     using Config = FlowgraphConfigFieldConfig;
 
-    Result update(Config config) {
-        this->config = std::move(config);
-        if (this->config.format != parsedFormat) {
-            unit = Parser::Get<std::string>(this->config.format, "unit");
-            parsedFormat = this->config.format;
-        }
-        value = 0;
-        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
-        frame.update({
-            .id = this->config.id,
-            .label = this->config.label,
-            .help = this->config.help,
-        });
-        input.update({
-            .id = this->config.id + "Input",
-            .value = value,
-            .unit = unit,
-            .onChange = [this](I64 nextValue) {
-                Parser::Map patch;
-                patch[this->config.name] = nextValue;
-                if (this->config.onApply) {
-                    this->config.onApply(std::move(patch), false, {});
-                }
-            },
-        });
-        return Result::SUCCESS;
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            input.render(ctx);
-        });
-    }
+    Result update(Config config);
+    Sakura::Component& component();
 
  private:
     Config config;
     Parser::Map parsedFormat;
     std::string unit;
     I64 value = 0;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     Sakura::NodeIntInput input;
 };

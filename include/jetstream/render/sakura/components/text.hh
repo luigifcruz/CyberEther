@@ -9,20 +9,16 @@
 
 namespace Jetstream::Sakura {
 
-struct Text {
-    enum class Align {
-        Left,
-        Center,
-        Right,
-    };
-
+struct Text : public Component {
     enum class Font {
-        Current,
         Body,
         H1,
         H2,
         Bold,
         Display,
+        DisplaySemiBold,
+        Sans,
+        SansBold,
     };
 
     enum class Tone {
@@ -34,30 +30,41 @@ struct Text {
         Warning,
     };
 
+    enum class Align {
+        Left,
+        Center,
+        Right,
+    };
+
     struct Config {
-        std::string id;
         std::string str;
-        Font font = Font::Current;
+        Font font = Font::Body;
         Tone tone = Tone::Primary;
         Align align = Align::Left;
         std::string colorKey;
         bool wrapped = false;
-        bool clipped = false;
+        bool shrinkToFit = false;
+        bool ellipsis = false;
         F32 scale = 1.0f;
+        F32 lineHeight = 1.0f;
+        F32 weight = 0.0f;
+        F32 emboss = 0.0f;
         F32 verticalOffset = 0.0f;
+        U64 maxCharacters = 256;
+        F32 opacity = 1.0f;
+
+        bool operator==(const Config&) const = default;
     };
 
     Text();
     ~Text();
 
-    Text(Text&&) noexcept;
-    Text& operator=(Text&&) noexcept;
+    void update(Config config);
+    const Config& config() const;
 
-    Text(const Text&) = delete;
-    Text& operator=(const Text&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

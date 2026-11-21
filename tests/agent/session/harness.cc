@@ -263,34 +263,6 @@ TEST_CASE("Interrupted replies are marked incomplete and do not replay opaque co
     CHECK_FALSE(followup[2].state);
 }
 
-TEST_CASE("Final budget response retains tool schemas while disabling execution", "[agent][conversation][budget]") {
-    int calls = 0;
-    int executions = 0;
-    bool toolsRetained = false;
-
-    auto config = Config([&](const auto& request, const auto&, auto& response) {
-        if (++calls == 1) {
-            response.toolCalls = {{"call", "inspect", "{}"}};
-        } else {
-            toolsRetained = !request.allowTools && request.tools.size() == 2;
-            response.text = "Budget reached.";
-        }
-        return Result::SUCCESS;
-    });
-    config.maxToolTurns = 1;
-    config.executeTool = [&](const auto&, const auto&, const auto&) {
-        ++executions;
-        return Agent::Tools::Output{"{}"};
-    };
-
-    Agent::Session session;
-    REQUIRE(session.submit("Inspect", config));
-    REQUIRE(Wait(session));
-
-    CHECK(toolsRetained);
-    CHECK(executions == 0);
-}
-
 TEST_CASE("Compaction includes long message tails and middle constraints",
           "[agent][conversation][compaction]") {
     int calls = 0;
@@ -722,56 +694,6 @@ TEST_CASE("An image-limit rejection the cap already satisfies is not retried", "
     CHECK(Failed(session));
 }
 
-TEST_CASE("A blank reply after the tool-step budget is retried with a plain-text instruction",
-          "[agent][conversation][budget]") {
-    const bool recovers = GENERATE(true, false);
-    int calls = 0;
-    std::vector<std::vector<Agent::Provider::Message>> requests;
-    std::vector<bool> allowed;
-
-    auto config = Config([&](const auto& request, const auto&, auto& response) {
-        requests.push_back(request.messages);
-        allowed.push_back(request.allowTools);
-        if (++calls == 1) {
-            response.toolCalls = {{"call", "inspect", "{}"}};
-        } else if (calls == 2 || !recovers) {
-            response.text = request.allowTools ? "Later answer." : "\n\n";
-        } else {
-            response.text = "Summary.";
-        }
-        return Result::SUCCESS;
-    });
-    config.maxToolTurns = 1;
-
-    Agent::Session session;
-    REQUIRE(session.submit("Inspect", config));
-    REQUIRE(Wait(session));
-
-    REQUIRE(requests.size() == 3);
-    CHECK_FALSE(allowed[1]);
-    CHECK_FALSE(allowed[2]);
-    CHECK(requests[2].back().role == "user");
-    CHECK(requests[2].back().content.find("Tools are now disabled") != std::string::npos);
-    CHECK(requests[2].size() == requests[1].size() + 1);
-
-    if (recovers) {
-        CHECK_FALSE(Failed(session));
-    } else {
-        CHECK(Failed(session));
-        CHECK(LastError(session).find("empty reply instead of a summary") != std::string::npos);
-    }
-
-    REQUIRE(session.submit("Continue", config));
-    REQUIRE(Wait(session));
-    CHECK_FALSE(Mentions(requests.back(), "Tools are now disabled"));
-    CHECK_FALSE(Mentions(requests.back(), "[Incomplete assistant response"));
-    CHECK(Mentions(requests.back(), "Summary.") == recovers);
-    for (const auto& message : requests.back()) {
-        CHECK((message.role != "assistant" || !message.toolCalls.empty() ||
-               message.content.find_first_not_of(" \n") != std::string::npos));
-    }
-}
-
 TEST_CASE("A blank reply in an ordinary round is retried once", "[agent][conversation]") {
     const bool recovers = GENERATE(true, false);
     int calls = 0;
@@ -918,18 +840,18 @@ TEST_CASE("Repeated identical failing tool calls are flagged and then stop the t
     CHECK(LastError(session).find("same failing 'inspect' tool call 3 times") != std::string::npos);
     CHECK(LastError(session).find("nope") != std::string::npos);
 
-    calls = 100;
-    config.executeTool = [](const auto&, const auto&, const auto&) {
-        return Agent::Tools::Output{"{}"};
-    };
-    config.maxToolTurns = 1;
+    config = Config([&](const auto& request, const auto&, auto& response) {
+        requests.push_back(request.messages);
+        response.text = "Done";
+        return Result::SUCCESS;
+    });
     REQUIRE(session.submit("Continue", config));
     REQUIRE(Wait(session));
     CHECK(Paired(requests[3]));
     CHECK(Mentions(requests[3], "The same arguments failed again and the turn was stopped."));
 }
 
-TEST_CASE("Repeats that succeed, differ, or hit the budget are not flagged", "[agent][conversation][tools]") {
+TEST_CASE("Repeats that succeed or differ are not flagged", "[agent][conversation][tools]") {
     int calls = 0;
     int executions = 0;
     std::vector<Agent::Provider::Message> latest;
@@ -945,7 +867,6 @@ TEST_CASE("Repeats that succeed, differ, or hit the budget are not flagged", "[a
         }
         return Result::SUCCESS;
     });
-    config.maxToolTurns = 4;
     config.executeTool = [&](const auto&, const auto&, const auto&) {
         return ++executions < 3 ? Agent::Tools::Output{R"({"error":"nope"})", {}, true}
                                 : Agent::Tools::Output{"{}"};
@@ -957,7 +878,6 @@ TEST_CASE("Repeats that succeed, differ, or hit the budget are not flagged", "[a
 
     CHECK(calls == 5);
     CHECK_FALSE(Mentions(latest, "Repeated failing call"));
-    CHECK(Mentions(latest, "tool-step budget reached"));
     CHECK_FALSE(Failed(session));
 }
 
@@ -1095,7 +1015,6 @@ TEST_CASE("Identical failing calls in one reply count once and the stopping roun
     REQUIRE(executed.size() == 6);
     CHECK(executed.back() == R"({"good":true})");
 
-    config.maxToolTurns = 1;
     REQUIRE(session.submit("Continue", config));
     REQUIRE(Wait(session));
     CHECK(Paired(requests.back()));

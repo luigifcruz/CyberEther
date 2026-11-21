@@ -60,9 +60,13 @@ class JETSTREAM_API Registry {
         std::string title;
         std::string summary = "No summary.";
         std::string description = "No description.";
+        std::string category;
+        std::string accent;
+        std::string diagram;
+        bool featured = false;
         std::string content;
 
-        JST_SERDES(title, summary, description);
+        JST_SERDES(title, summary, description, category, accent, diagram, featured);
     };
 
     struct BenchmarkRegistration {

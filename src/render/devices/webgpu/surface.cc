@@ -3,6 +3,11 @@
 #include "jetstream/render/devices/webgpu/surface.hh"
 #include "jetstream/render/devices/webgpu/kernel.hh"
 #include "jetstream/render/devices/webgpu/buffer.hh"
+#include "jetstream/render/devices/webgpu/draw.hh"
+#include "jetstream/render/devices/webgpu/vertex.hh"
+
+#include <algorithm>
+#include <optional>
 
 namespace Jetstream::Render {
 
@@ -12,10 +17,10 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
     framebuffer = std::dynamic_pointer_cast<
         TextureImp<DeviceType::WebGPU>>(config.framebuffer);
 
-    for (auto& program : config.programs) {
-        programs.push_back(
-            std::dynamic_pointer_cast<ProgramImp<DeviceType::WebGPU>>(program)
-        );
+    for (const auto& program : config.programs) {
+        auto typed = std::dynamic_pointer_cast<ProgramImp<DeviceType::WebGPU>>(program);
+        programs.push_back(typed);
+        ordered.push_back({std::move(typed), std::nullopt, std::nullopt});
     }
 
     for (auto& kernel : config.kernels) {
@@ -23,6 +28,34 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
             std::dynamic_pointer_cast<KernelImp<DeviceType::WebGPU>>(kernel)
         );
     }
+}
+
+Result Implementation::sequenceSteps(const std::vector<Step>& steps) {
+    decltype(ordered) candidate;
+    candidate.reserve(steps.size());
+    for (const auto& step : steps) {
+        auto typed = std::dynamic_pointer_cast<ProgramImp<DeviceType::WebGPU>>(step.program);
+        if (!typed) {
+            return Result::ERROR;
+        }
+        candidate.push_back({std::move(typed), step.range, step.scissor});
+    }
+    ordered.swap(candidate);
+    return Result::SUCCESS;
+}
+
+bool Implementation::appendable() const {
+    return false;
+}
+
+Result Implementation::validateAppend(const std::vector<std::shared_ptr<Program>>& newPrograms,
+                                       const std::vector<std::shared_ptr<Kernel>>& newKernels) const {
+    return validateObjects<DeviceType::WebGPU>(newPrograms, newKernels);
+}
+
+Result Implementation::createAppended(const std::vector<std::shared_ptr<Program>>&,
+                                       const std::vector<std::shared_ptr<Kernel>>&) {
+    return Result::SKIP;
 }
 
 Result Implementation::create() {
@@ -36,7 +69,8 @@ Result Implementation::create() {
         JST_CHECK(kernel->create());
     }
 
-    requestedSize = framebuffer->size();
+    ready = true;
+    resizeResult = Result::SUCCESS;
     resetFramebuffer();
 
     return Result::SUCCESS;
@@ -44,6 +78,8 @@ Result Implementation::create() {
 
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying surface.");
+
+    ready = false;
 
     for (auto& kernel : kernels) {
         JST_CHECK(kernel->destroy());
@@ -56,32 +92,40 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::prepare() {
-    framebufferChanged = framebuffer->size(requestedSize);
-    if (framebufferChanged) {
-        resetFramebuffer();
-        JST_CHECK(framebuffer->destroy());
-        JST_CHECK(framebuffer->create());
-    }
+bool Implementation::created() const {
+    return ready;
+}
+
+Result Implementation::rebuildFramebuffer() {
+    JST_CHECK(framebuffer->destroy());
+    JST_CHECK(framebuffer->create());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::draw(WGPUCommandEncoder& commandEncoder, bool visible) {
-    if (!shouldDraw(framebufferChanged)) {
+    const bool required = shouldDraw(framebufferResized);
+    JST_CHECK(drawResult());
+    if (!required) {
+        return Result::SUCCESS;
+    }
+    if (hiddenAndIdle(visible, framebufferResized)) {
+        shouldDrawGraphics(visible);
         return Result::SUCCESS;
     }
 
     // Encode kernels.
 
-    WGPUComputePassEncoder computePassEncoder =
-        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
+    if (kernelsPending()) {
+        WGPUComputePassEncoder computePassEncoder =
+            wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
 
-    for (auto& kernel : kernels) {
-        JST_CHECK(kernel->encode(computePassEncoder));
+        for (auto& kernel : kernels) {
+            JST_CHECK(kernel->encode(computePassEncoder));
+        }
+
+        wgpuComputePassEncoderEnd(computePassEncoder);
     }
-
-    wgpuComputePassEncoderEnd(computePassEncoder);
 
     if (!shouldDrawGraphics(visible)) {
         return Result::SUCCESS;
@@ -109,28 +153,45 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder, bool visible) {
         wgpuCommandEncoderBeginRenderPass(commandEncoder, &renderPass);
 
     const auto& sz = framebuffer->size();
-    for (auto& program : programs) {
-        if (!program->enabled()) {
+    const ScissorRect fullScissor = {0, 0, static_cast<U32>(sz.x), static_cast<U32>(sz.y)};
+    std::optional<ScissorRect> previousScissor;
+    const ProgramImp<DeviceType::WebGPU>* bound = nullptr;
+    const auto clip = [&](ScissorRect scissor) {
+        if (scissor.x >= sz.x || scissor.y >= sz.y) {
+            return false;
+        }
+        scissor.width = static_cast<U32>(std::min<U64>(scissor.width, sz.x - scissor.x));
+        scissor.height = static_cast<U32>(std::min<U64>(scissor.height, sz.y - scissor.y));
+        if (scissor.width == 0 || scissor.height == 0) {
+            return false;
+        }
+        if (previousScissor != scissor) {
+            wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, scissor.x, scissor.y, scissor.width,
+                                                scissor.height);
+            previousScissor = scissor;
+        }
+        return true;
+    };
+    for (auto& step : ordered) {
+        if (!step.program->enabled()) {
             continue;
         }
-        wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, 0, 0, sz.x, sz.y);
-        JST_CHECK(program->draw(renderPassEncoder, sz));
+        if (!step.range.has_value()) {
+            if (clip(step.program->getConfig().scissorRect.value_or(fullScissor))) {
+                JST_CHECK(step.program->draw(renderPassEncoder));
+                bound = nullptr;
+            }
+            continue;
+        }
+        if (clip(step.scissor.value_or(fullScissor))) {
+            JST_CHECK(step.program->draw(renderPassEncoder, *step.range, bound != step.program.get()));
+            bound = step.program.get();
+        }
     }
 
     wgpuRenderPassEncoderEnd(renderPassEncoder);
 
     return Result::SUCCESS;
-}
-
-const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
-    if (!framebuffer) {
-        return NullSize2D;
-    }
-
-    requestedSize = size;
-    invalidate();
-
-    return framebuffer->size();
 }
 
 }  // namespace Jetstream::Render

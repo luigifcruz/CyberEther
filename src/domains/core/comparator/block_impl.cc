@@ -94,7 +94,7 @@ Result ComparatorImpl::define() {
             if (!moduleImpl) {
                 return std::string("n/a");
             }
-            return jst::fmt::format("{:.6g}", moduleImpl->getMaxDiff());
+            return jst::fmt::format("{:.3g}", moduleImpl->getMaxDiff());
         }));
 
     JST_CHECK(defineInterfaceMetric("meanDiff",
@@ -105,7 +105,7 @@ Result ComparatorImpl::define() {
             if (!moduleImpl) {
                 return std::string("n/a");
             }
-            return jst::fmt::format("{:.6g}", moduleImpl->getMeanDiff());
+            return jst::fmt::format("{:.3g}", moduleImpl->getMeanDiff());
         }));
 
     JST_CHECK(defineInterfaceMetric("mse",
@@ -116,7 +116,7 @@ Result ComparatorImpl::define() {
             if (!moduleImpl) {
                 return std::string("n/a");
             }
-            return jst::fmt::format("{:.6g}", moduleImpl->getMse());
+            return jst::fmt::format("{:.3g}", moduleImpl->getMse());
         }));
 
     JST_CHECK(defineInterfaceMetric("match",

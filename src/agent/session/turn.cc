@@ -13,9 +13,6 @@ namespace {
 constexpr U64 kFallbackOutputTokens = 32768;
 constexpr U64 kIdenticalFailureLimit = 3;
 
-constexpr const char* kToolsDisabledNudge =
-    "[Tool-step budget reached. Tools are now disabled, so do not emit tool calls. "
-    "Reply in plain text with a summary of what was done and what remains.]";
 constexpr const char* kEmptyReplyNudge =
     "[Your previous reply was empty. Continue the task by calling a tool or answering in plain text.]";
 constexpr const char* kSummaryNudge =
@@ -59,7 +56,7 @@ Session::Impl::Turn::Turn(Impl& session, Target target, Config config, std::shar
       aborted([flag = this->abort]() {
           return flag->load();
       }),
-      tools(this->config.executeTool, std::move(outputs), this->config.maxToolTurns) {
+      tools(this->config.executeTool, std::move(outputs)) {
     if (!this->config.tools.empty()) {
         this->config.tools.push_back(Detail::OutputStore::Schema());
     }
@@ -117,13 +114,18 @@ const std::vector<Provider::Message>& Session::Impl::Turn::history() const {
     return messages;
 }
 
+bool Session::Impl::Turn::succeeded() const {
+    return result == Result::SUCCESS && !aborted();
+}
+
 void Session::Impl::Turn::loop() {
-    while (!tools.exhausted()) {
+    while (true) {
         if (aborted()) {
             result = Result::ERROR;
             return;
         }
 
+        steer();
         auto response = respond();
         if (result != Result::SUCCESS || response.toolCalls.empty()) {
             finish(response);
@@ -136,15 +138,21 @@ void Session::Impl::Turn::loop() {
             .toolCalls = response.toolCalls,
             .state = std::move(response.state),
         });
-        execute(response.toolCalls, tools.advance());
+        execute(response.toolCalls);
         if (result != Result::SUCCESS) {
             return;
         }
     }
+}
 
-    if (result == Result::SUCCESS && !aborted()) {
-        auto response = respond(false);
-        finish(response);
+void Session::Impl::Turn::steer() {
+    if (auto text = session.absorb(target)) {
+        auto& last = messages.back();
+        if (last.role == "user" && !last.images.empty()) {
+            last.content += "\n\n" + *text;
+            return;
+        }
+        append({.role = "user", .content = std::move(*text)});
     }
 }
 
@@ -362,7 +370,7 @@ bool Session::Impl::Turn::compact(U64 targetBudget) {
     return true;
 }
 
-Provider::Response Session::Impl::Turn::stream(bool allowTools) {
+Provider::Response Session::Impl::Turn::stream() {
     announced = 0;
     Detail::Context::Trim(messages, config.maxImages);
 
@@ -371,18 +379,18 @@ Provider::Response Session::Impl::Turn::stream(bool allowTools) {
         return {};
     }
 
-    auto response = request(messages, allowTools);
+    auto response = request(messages, true);
     if (lowerImageCap(response)) {
-        response = request(messages, allowTools);
+        response = request(messages, true);
     }
 
     const bool contextRejected = bounded() && error.kind == Provider::Error::Kind::ContextLength;
     const bool nothingStreamed = response.text.empty() && !streamed;
     if (contextRejected && nothingStreamed && !aborted()) {
         if (compact(budget() / 2)) {
-            response = request(messages, allowTools);
+            response = request(messages, true);
             if (lowerImageCap(response)) {
-                response = request(messages, allowTools);
+                response = request(messages, true);
             }
         }
     }
@@ -405,36 +413,32 @@ bool Session::Impl::Turn::lowerImageCap(const Provider::Response& response) {
     return true;
 }
 
-Provider::Response Session::Impl::Turn::respond(bool allowTools) {
-    auto response = stream(allowTools);
+Provider::Response Session::Impl::Turn::respond() {
+    auto response = stream();
     if (result != Result::SUCCESS || aborted() || !Blank(response)) {
         return response;
     }
 
     write(Segment::Kind::Status, "The model returned an empty reply. Asking again.\n");
 
-    const std::string nudge = allowTools ? kEmptyReplyNudge : kToolsDisabledNudge;
     auto retry = messages;
     if (!retry.empty() && retry.back().role == "user") {
-        retry.back().content += "\n\n" + nudge;
+        retry.back().content += std::string("\n\n") + kEmptyReplyNudge;
     } else {
-        retry.push_back({"user", nudge});
+        retry.push_back({"user", kEmptyReplyNudge});
     }
-    response = request(retry, allowTools);
+    response = request(retry, true);
 
     if (result == Result::SUCCESS && !aborted() && Blank(response)) {
         fail(Provider::Error::Kind::Protocol,
-             allowTools ? "The model returned an empty reply twice. Nothing was lost, so "
-                          "send the request again or rephrase it."
-                        : "The tool-step budget was reached and the model returned an empty reply "
-                          "instead of a summary, even after being asked again. The completed tool "
-                          "work is kept in the conversation. Send a follow-up message to continue.");
+             "The model returned an empty reply twice. Nothing was lost, so "
+             "send the request again or rephrase it.");
         response = {};
     }
     return response;
 }
 
-void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& calls, bool lastRound) {
+void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& calls) {
     std::vector<Provider::Message> imageMessages;
     std::unordered_set<std::string> counted;
     std::string stall;
@@ -450,8 +454,8 @@ void Session::Impl::Turn::execute(const std::vector<Provider::FunctionCall>& cal
         }
         note({Segment::Kind::ToolCall, call.arguments, 1, call.name});
 
-        Tools::Output output = tools.run(call, resultLimit(), lastRound, aborted);
-        if (output.error && !lastRound && !aborted()) {
+        Tools::Output output = tools.run(call, resultLimit(), aborted);
+        if (output.error && !aborted()) {
             auto key = call.name + '\n' + call.arguments;
             U64& seen = failures[key];
             const U64 count = counted.insert(std::move(key)).second ? ++seen : seen;

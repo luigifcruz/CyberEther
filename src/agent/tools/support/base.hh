@@ -24,6 +24,7 @@ using Host = Tools::Host;
 using Layout = Tools::Layout;
 using Definition = Tools::Definition;
 using Call = Tools::Call;
+using Permission = Tools::Permission;
 
 struct Invocation {
     Host& host;
@@ -36,6 +37,7 @@ struct Entry {
     struct NewGraph {
         std::string name;
         std::string error;
+        bool requested = false;
     };
 
     Definition definition;
@@ -54,15 +56,22 @@ class Toolbox {
 
     static std::vector<Entry> Catalog();
     static std::vector<Entry> Inspect();
+    static std::vector<Entry> Tensors();
     static std::vector<Entry> Patch();
     static std::vector<Entry> Connections();
     static std::vector<Entry> Environment();
     static std::vector<Entry> Capture();
+    static std::vector<Entry> Docs();
+    static std::vector<Entry> Log();
     static std::vector<Entry> Text();
 };
 
 class Response {
  public:
+    static constexpr const char* CutShort = "A call in this reply may have been cut short by a literal tool-call "
+                                            "delimiter in one of its arguments.";
+
+    static std::string Dump(const Json& body);
     static Json Error(const std::string& message);
     static bool Failed(const Json& body);
     static Tools::Output Reply(const Json& body, std::vector<std::string> images = {});
@@ -79,6 +88,7 @@ class BlockText {
     struct Patch {
         std::string text;
         std::string error;
+        std::string note;
         Json changes = Json::array();
         U64 lineCount = 0;
     };
@@ -117,6 +127,12 @@ class Validation {
 
 class Serialize {
  public:
+    enum class BlockDetailMode {
+        Summary,
+        Full,
+        Health,
+    };
+
     static Result Collect(const Graph& flowgraph, std::vector<Flowgraph::View::BlockData>& blocks);
     static bool HasPort(const std::vector<Flowgraph::View::InterfaceEntry>& entries, const std::string& port);
 
@@ -130,12 +146,14 @@ class Serialize {
     static Json Map(const Parser::Map& map);
     static Json CompactMap(const Parser::Map& map);
     static Json Interface(const std::vector<Flowgraph::View::InterfaceEntry>& entries, bool help = true);
+    static Json ConfigFields(const std::vector<Flowgraph::View::InterfaceEntry>& entries,
+                             const Parser::Map& config, bool help = true);
     static Json ConfigOptions(const std::vector<Flowgraph::View::InterfaceEntry>& entries);
 
     static Json Node(const Graph& flowgraph, const std::string& name);
     static Json NodeLayout(const Graph& flowgraph, const std::string& name);
 
-    static Json BlockDetail(const Graph& flowgraph, const Flowgraph::View::BlockData& data, bool full);
+    static Json BlockDetail(const Graph& flowgraph, const Flowgraph::View::BlockData& data, BlockDetailMode mode);
     static Json FlowgraphDetail(const Graph& flowgraph, bool full = false);
     static Json Implementations(const std::string& type);
 };

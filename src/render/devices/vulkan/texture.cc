@@ -1,5 +1,10 @@
 #include "jetstream/render/devices/vulkan/texture.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
+#include "creation.hh"
+
+#include "present_layout.hh"
+
+#include <array>
 
 #include <cstring>
 #include <limits>
@@ -57,7 +62,9 @@ Result Implementation::create() {
         imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     }
 
-    JST_VK_CHECK(vkCreateImage(device, &imageCreateInfo, nullptr, &texture), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(texture, [&](auto* output) {
+        return vkCreateImage(device, &imageCreateInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create texture.");   
     });
 
@@ -73,7 +80,9 @@ Result Implementation::create() {
                                                                  memoryRequirements.memoryTypeBits,
                                                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &memory), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(memory, [&](auto* output) {
+        return vkAllocateMemory(device, &memoryAllocateInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to allocate texture memory.");
     });
 
@@ -100,7 +109,9 @@ Result Implementation::create() {
     createInfo.subresourceRange.baseArrayLayer = 0;
     createInfo.subresourceRange.layerCount = 1;
 
-    JST_VK_CHECK(vkCreateImageView(device, &createInfo, nullptr, &imageView), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(imageView, [&](auto* output) {
+        return vkCreateImageView(device, &createInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create image view."); 
     });
 
@@ -137,28 +148,17 @@ Result Implementation::create() {
     samplerCreateInfo.minLod = 0.0f;
     samplerCreateInfo.maxLod = 1.0f;
 
-    JST_VK_CHECK(vkCreateSampler(device, &samplerCreateInfo, nullptr, &sampler), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(sampler, [&](auto* output) {
+        return vkCreateSampler(device, &samplerCreateInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Can't create texture sampler.");
     });
 
-    // Register descriptor for ImGui attachment.
+    // Register descriptor for window presentation.
 
     auto& backend = Backend::State<DeviceType::Vulkan>();
 
-    VkDescriptorSetLayoutBinding binding{};
-    binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    binding.descriptorCount = 1;
-    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    binding.binding = 0;
-
-    VkDescriptorSetLayoutCreateInfo info{};
-    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    info.bindingCount = 1;
-    info.pBindings = &binding;
-
-    JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &descriptorSetLayout), [&]{
-        JST_ERROR("[VULKAN] Can't create descriptor set layout.");
-    });
+    JST_CHECK(Detail::CreatePresentLayout(device, descriptorSetLayout));
 
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -166,25 +166,38 @@ Result Implementation::create() {
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &descriptorSetLayout;
 
-    JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(descriptorSet, [&](auto* output) {
+        return vkAllocateDescriptorSets(device, &allocInfo, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to allocate descriptor set.");
     });
 
     VkDescriptorImageInfo descImage{};
-    descImage.sampler = sampler;
     descImage.imageView = imageView;
     descImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    VkWriteDescriptorSet writeDesc{};
-    writeDesc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writeDesc.dstSet = descriptorSet;
-    writeDesc.descriptorCount = 1;
-    writeDesc.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    writeDesc.pImageInfo = &descImage;
+    VkDescriptorImageInfo descSampler{};
+    descSampler.sampler = sampler;
 
-    vkUpdateDescriptorSets(device, 1, &writeDesc, 0, nullptr);
+    std::array<VkWriteDescriptorSet, 2> writes{};
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].dstSet = descriptorSet;
+    writes[0].dstBinding = 0;
+    writes[0].descriptorCount = 1;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    writes[0].pImageInfo = &descImage;
+    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[1].dstSet = descriptorSet;
+    writes[1].dstBinding = 1;
+    writes[1].descriptorCount = 1;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    writes[1].pImageInfo = &descSampler;
+
+    vkUpdateDescriptorSets(device, static_cast<U32>(writes.size()), writes.data(), 0, nullptr);
 
     // Fill image with initial data.
+
+    markAllocated();
 
     if (config.buffer) {
         JST_CHECK(fill());
@@ -195,6 +208,8 @@ Result Implementation::create() {
 
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying texture.");
+
+    markDeallocated();
 
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& descriptorPool = Backend::State<DeviceType::Vulkan>()->getDescriptorPool();

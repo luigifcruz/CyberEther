@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_BASE_DRAW_HH
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -21,6 +22,16 @@ class JETSTREAM_API Draw {
         LINE_STRIP,
         LINES,
         POINTS,
+    };
+
+    struct Range {
+        U64 first = 0;
+        U64 count = 0;
+        I64 baseVertex = 0;
+        U64 firstInstance = 0;
+        U64 instanceCount = 1;
+
+        bool operator==(const Range&) const = default;
     };
 
     struct Config {
@@ -55,7 +66,10 @@ class JETSTREAM_API Draw {
     std::vector<std::shared_ptr<Buffer>> transferBuffers;
 
  private:
+    std::atomic_bool surfaceOwned = false;
+
     friend class Surface;
+    friend class Window;
 };
 
 }  // namespace Jetstream::Render

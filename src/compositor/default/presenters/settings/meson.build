@@ -1,0 +1,15 @@
+src_lst += files([
+    'about.cc',
+    'base.cc',
+    'developer.cc',
+    'general.cc',
+    'intelligence.cc',
+    'intelligence_model.cc',
+    'intelligence_provider.cc',
+    'legal.cc',
+    'maps.cc',
+    'plugin_labels.cc',
+    'registry.cc',
+    'remote.cc',
+    'runtime.cc',
+])

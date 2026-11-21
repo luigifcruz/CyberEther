@@ -9,26 +9,24 @@
 
 namespace Jetstream::Sakura {
 
-struct NodeProgressBar {
+struct NodeProgressBar : public Component {
     struct Config {
         std::string id;
         F32 value = 0.0f;
         std::string overlay;
-        Extent2D<F32> size = {-1.0f, 0.0f};
         std::string colorKey = "button_active";
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeProgressBar();
     ~NodeProgressBar();
 
-    NodeProgressBar(NodeProgressBar&&) noexcept;
-    NodeProgressBar& operator=(NodeProgressBar&&) noexcept;
+    void update(Config config);
 
-    NodeProgressBar(const NodeProgressBar&) = delete;
-    NodeProgressBar& operator=(const NodeProgressBar&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

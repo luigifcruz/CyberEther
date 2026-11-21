@@ -4,31 +4,29 @@
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
 #include <string>
 
 namespace Jetstream::Sakura {
 
-struct NodeIntInput {
+struct NodeIntInput : public Component {
     struct Config {
         std::string id;
         I64 value = 0;
         std::string unit;
-        std::function<void(I64)> onChange;
+        Callback<void(I64)> onChange;
+
+        bool operator==(const Config&) const = default;
     };
 
     NodeIntInput();
     ~NodeIntInput();
 
-    NodeIntInput(NodeIntInput&&) noexcept;
-    NodeIntInput& operator=(NodeIntInput&&) noexcept;
+    void update(Config config);
 
-    NodeIntInput(const NodeIntInput&) = delete;
-    NodeIntInput& operator=(const NodeIntInput&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
 
  private:
     struct Impl;

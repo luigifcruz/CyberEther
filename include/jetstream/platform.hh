@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_PLATFORM_HH
 #define JETSTREAM_PLATFORM_HH
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -54,6 +55,45 @@ JETSTREAM_API Result InitializePersistentStorage();
 JETSTREAM_API bool PrepareStandardOutputForAnsi();
 
 //
+// Pseudo Terminal
+//
+
+class JETSTREAM_API PseudoTerminal {
+ public:
+    struct Config {
+        std::string program;
+        std::vector<std::string> arguments;
+        std::string directory;
+        std::vector<std::pair<std::string, std::string>> environment;
+        U16 columns = 80;
+        U16 rows = 24;
+    };
+
+    PseudoTerminal();
+    ~PseudoTerminal();
+
+    PseudoTerminal(const PseudoTerminal&) = delete;
+    PseudoTerminal& operator=(const PseudoTerminal&) = delete;
+
+    static bool Supported();
+
+    Result start(const Config& config);
+    void stop();
+    bool running() const;
+
+    Result read(std::string& output, U64 limit);
+    Result write(std::string_view data);
+    Result flush();
+    Result wait(std::optional<std::chrono::milliseconds> timeout, bool output = true);
+    void interrupt();
+    Result resize(U16 columns, U16 rows, U16 widthPixels, U16 heightPixels);
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
+//
 // Interrupt
 //
 
@@ -62,6 +102,15 @@ JETSTREAM_API bool InstallInterruptHandler(void (*handler)() noexcept);
 JETSTREAM_API void UninstallInterruptHandler();
 JETSTREAM_API void WriteInterruptMessage(const char* message, std::size_t size) noexcept;
 [[noreturn]] JETSTREAM_API void ForceTerminate(I32 status) noexcept;
+#endif
+
+//
+// Crash
+//
+
+#if defined(JETSTREAM_PLATFORM_CRASH_AVAILABLE)
+JETSTREAM_API Result InstallCrashHandler(const std::filesystem::path& directory);
+JETSTREAM_API Result PendingCrashReports(std::vector<std::filesystem::path>& reports);
 #endif
 
 //
@@ -322,6 +371,29 @@ class JETSTREAM_API WebSocket {
         struct Impl;
         std::unique_ptr<Impl> impl;
     };
+};
+
+//
+// Deadline Waiter
+//
+
+class JETSTREAM_API DeadlineWaiter {
+ public:
+    using Clock = std::chrono::steady_clock;
+
+    DeadlineWaiter();
+    ~DeadlineWaiter();
+
+    DeadlineWaiter(const DeadlineWaiter&) = delete;
+    DeadlineWaiter& operator=(const DeadlineWaiter&) = delete;
+
+    U64 generation() const;
+    void notify();
+    bool waitUntil(Clock::time_point deadline, U64 observedGeneration);
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 };
 
 //

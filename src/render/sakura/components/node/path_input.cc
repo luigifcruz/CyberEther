@@ -1,101 +1,131 @@
 #include <jetstream/render/sakura/components/node/path_input.hh>
 
-#include <jetstream/render/sakura/components/text.hh>
-#include <jetstream/render/sakura/components/tooltip.hh>
+#include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
+#include <jetstream/render/sakura/components/node/text_input.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
-#include "base.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+#include "pointer.hh"
+
+#include <algorithm>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
 struct NodePathInput::Impl {
     Config config;
-    Tooltip pathTooltip;
-    Text pathTooltipText;
+    Box background;
+    NodeTextInput input;
+    Label icon;
+    TextMetrics metrics;
+    Pressable press;
+    Rect buttonRect;
+    Rect inputRect;
+    Pointer pointer;
 };
 
 NodePathInput::NodePathInput() {
     this->impl = std::make_unique<Impl>();
+    addChild(impl->background);
+    addChild(impl->input);
+    addChild(impl->icon);
 }
 
 NodePathInput::~NodePathInput() = default;
-NodePathInput::NodePathInput(NodePathInput&&) noexcept = default;
-NodePathInput& NodePathInput::operator=(NodePathInput&&) noexcept = default;
 
-bool NodePathInput::update(Config config) {
+void NodePathInput::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
     impl->config = std::move(config);
-    impl->pathTooltip.update({
-        .id = impl->config.id + "Tooltip",
+    impl->input.update({
+        .id = impl->config.id + ":path",
+        .value = impl->config.value,
+        .hint = "Select file...",
+        .submit = NodeTextInput::Submit::OnEnter,
+        .onChange = impl->config.onChange,
     });
-    impl->pathTooltipText.update({
-        .id = impl->config.id + "TooltipText",
-        .str = impl->config.value,
-        .wrapped = true,
-    });
-    return true;
 }
 
-void NodePathInput::render(const Context& ctx) const {
+Extent2D<F32> NodePathInput::measure(const Context& ctx, Extent2D<F32> available) {
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
+}
+
+void NodePathInput::layout(const Context& ctx) {
     const auto& config = impl->config;
+    const Rect bounds = frame();
+    const Rect clipRect = Intersect(bounds, clip());
+    impl->metrics.setWindow(ctx.render);
 
-    const ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "card"));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
-    const F32 buttonWidth = ImGui::GetFrameHeight();
-    const F32 frameHeight = ImGui::GetFrameHeight();
-    const F32 connectorWidth = ImGui::GetStyle().ItemSpacing.x;
-    const F32 inputWidth = std::max(0.0f, ImGui::GetContentRegionAvail().x - buttonWidth - connectorWidth);
-    std::string value = config.value;
+    const F32 frameHeight = Px(ctx, NodeFrameHeight(ctx));
+    const F32 buttonWidth = frameHeight;
+    const F32 connector = Px(ctx, NodeContentStack::Spacing);
+    const F32 inputWidth = std::max(0.0f, bounds.width - buttonWidth - connector);
+    impl->inputRect = {bounds.x, bounds.y, inputWidth, frameHeight};
+    impl->buttonRect = {bounds.x + inputWidth + connector, bounds.y, buttonWidth, frameHeight};
 
-    ImGui::PushID(config.id.c_str());
-    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::ColorConvertU32ToFloat4(bgColor));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::ColorConvertU32ToFloat4(bgColor));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::ColorConvertU32ToFloat4(bgColor));
+    impl->background.update({
+        .instances = {
+            {.rect = Snap({bounds.x, bounds.y, inputWidth + connector + buttonWidth, frameHeight}),
+             .visible = !bounds.empty(), .backgroundColor = ctx.color("card")},
+        },
+        .clip = bounds,
+        .cornerRadius = Px(ctx, kFrameRounding),
+    });
 
-    const ImVec2 fieldRectMin = ImGui::GetCursorScreenPos();
-    ImGui::GetWindowDrawList()->AddRectFilled(fieldRectMin,
-                                              ImVec2(fieldRectMin.x + inputWidth + connectorWidth + buttonWidth,
-                                                     fieldRectMin.y + frameHeight),
-                                              bgColor,
-                                              ImGui::GetStyle().FrameRounding);
+    const F32 iconSize = Px(ctx, NodeFontOf(ctx)) * 0.7f;
+    const F32 iconWidth = impl->metrics.measure(Typography::IconFont, ICON_LC_FOLDER_OPEN, iconSize);
+    impl->icon.update({
+        .instances = {{
+            .rect = {impl->buttonRect.x + (impl->buttonRect.width - iconWidth) * 0.5f, impl->buttonRect.y,
+                     iconWidth, impl->buttonRect.height},
+            .str = ICON_LC_FOLDER_OPEN,
+            .visible = !bounds.empty(),
+            .color = ctx.color("text_primary"),
+            .fontSize = iconSize,
+            .alignment = {0, 1},
+        }},
+        .clip = bounds,
+        .fontName = Typography::IconFont,
+        .maxCharacters = 4,
+    });
 
-    ImGui::SetNextItemWidth(inputWidth);
-    if (ImGui::InputTextWithHint("##path", "Select file...", &value, ImGuiInputTextFlags_EnterReturnsTrue)) {
-        if (config.onChange) {
-            config.onChange(value);
+    layoutChild(ctx, impl->background, bounds);
+    layoutChild(ctx, impl->input, impl->inputRect);
+    layoutChild(ctx, impl->icon, bounds);
+
+    const bool buttonHovered = impl->pointer.inside(Intersect(impl->buttonRect, clipRect));
+    const bool inputHovered = impl->pointer.inside(Intersect(impl->inputRect, clipRect));
+    impl->pointer.following = false;
+    if (!config.value.empty() && (buttonHovered || inputHovered) && config.tooltip &&
+        !impl->pointer.tooltip(ctx, bounds, config.tooltip())) {
+        requestFrame();
+    }
+}
+
+bool NodePathInput::mouseEvent(const MouseEvent& event) {
+    const bool tooltip = impl->config.tooltip && !impl->config.value.empty();
+    const bool moved = impl->pointer.track(event, Intersect(frame(), clip()), {impl->buttonRect, impl->inputRect});
+    if (moved && tooltip) {
+        invalidate(Dirty::Layout);
+    }
+    if (mouseEventChildren(event)) {
+        return true;
+    }
+    if (impl->press.click(event, impl->buttonRect)) {
+        return true;
+    }
+    if (impl->press.release(event, impl->buttonRect)) {
+        if (impl->config.onBrowse) {
+            impl->config.onBrowse();
         }
+        return true;
     }
-    if (!config.value.empty()) {
-        impl->pathTooltip.render(ctx, [this](const Context& ctx) {
-            this->impl->pathTooltipText.render(ctx);
-        });
-    }
-
-    ImGui::SameLine(0.0f, 0.0f);
-    ImGui::Dummy(ImVec2(connectorWidth, frameHeight));
-    ImGui::SameLine(0.0f, 0.0f);
-
-    const F32 iconFontSize = ImGui::GetFontSize() * 0.7f;
-    const ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, ICON_FA_FOLDER_OPEN);
-    if (ImGui::Button("##browse", ImVec2(buttonWidth, frameHeight)) && config.onBrowse) {
-        config.onBrowse();
-    }
-    const ImVec2 buttonRectMin = ImGui::GetItemRectMin();
-    const ImVec2 buttonRectMax = ImGui::GetItemRectMax();
-    const F32 iconX = buttonRectMin.x + ((buttonRectMax.x - buttonRectMin.x) - iconSize.x) * 0.5f;
-    const F32 iconY = buttonRectMin.y + (frameHeight - iconFontSize) * 0.5f;
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
-                                        iconFontSize,
-                                        ImVec2(iconX, iconY),
-                                        ImGui::GetColorU32(ImGuiCol_Text),
-                                        ICON_FA_FOLDER_OPEN);
-    if (!config.value.empty()) {
-        impl->pathTooltip.render(ctx, [this](const Context& ctx) {
-            this->impl->pathTooltipText.render(ctx);
-        });
-    }
-
-    ImGui::PopStyleColor(3);
-    ImGui::PopStyleVar();
-    ImGui::PopID();
+    return false;
 }
 
 }  // namespace Jetstream::Sakura

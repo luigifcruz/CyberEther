@@ -31,23 +31,38 @@ class JETSTREAM_API Tools {
 
         struct Viewport {
             Rect visible;
-            Rect toolbar;
         };
 
         std::unordered_map<std::string, Node> nodes;
         std::optional<Viewport> viewport;
+        std::vector<std::string> selected;
     };
 
-    class Host {
+    class JETSTREAM_API Host {
      public:
+        struct DocPage {
+            std::string slug;
+            std::string title;
+            std::string description;
+            std::string body;
+        };
+
+        struct DocMatch {
+            std::string slug;
+            std::string title;
+            std::string heading;
+            std::string anchor;
+            std::string snippet;
+        };
+
         virtual ~Host() = default;
 
         virtual bool has(const std::string& name) = 0;
         virtual Result create(const std::string& name, std::shared_ptr<Flowgraph>& created) = 0;
 
-        virtual std::optional<F32> width(Block::NodeSize) {
-            return std::nullopt;
-        }
+        virtual std::optional<F32> width(Block::NodeSize size);
+        virtual std::optional<std::vector<DocMatch>> searchDocs(const std::string& query, U64 limit);
+        virtual std::optional<DocPage> readDocs(const std::string& slug);
     };
 
     struct Output {
@@ -56,10 +71,17 @@ class JETSTREAM_API Tools {
         bool error = false;
     };
 
+    enum class Permission {
+        Read,
+        Write,
+        Edit,
+    };
+
     struct Flags {
-        bool needsGraph = false;
-        bool reportsLayout = false;
-        bool needsCapture = false;
+        Permission permission = Permission::Write;
+        bool graph = false;
+        bool capture = false;
+        bool layout = false;
     };
 
     struct Definition {
@@ -77,7 +99,7 @@ class JETSTREAM_API Tools {
     };
 
     static const std::vector<Definition>& Definitions();
-    static std::vector<Provider::Function> Functions(bool captureSupported);
+    static std::vector<Definition> Available(bool captureSupported);
     static Output Error(const std::string& message, bool mayHaveApplied = false);
     static void Annotate(const Call& call, Output& output, const Layout& layout);
 

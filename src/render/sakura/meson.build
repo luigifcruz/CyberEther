@@ -1,12 +1,12 @@
 src_lst += files([
     'runtime.cc',
-    'state.cc',
-    'clipboard.cc',
-    'dockspace.cc',
+    'input_bridge.cc',
     'metrics.cc',
     'palette.cc',
     'toast.cc',
+    'surface_view.cc',
+    'themes.cc',
 ])
 
-subdir('retained')
+subdir('detail')
 subdir('components')

@@ -1,103 +1,96 @@
 ---
 title: Installing Plugins
 description: How to install, manage, and remove CyberEther plugins.
-order: 45
+order: 250
 category: Usage
 ---
 
+Plugins expand CyberEther with custom native blocks and optional example flowgraphs. Each plugin is distributed as a single `.cep` bundle file. Once loaded, its blocks appear right alongside built-in blocks in the catalog and behave identically.
+
+This guide covers installing and managing plugins as a user. If you want to build and package your own plugin, read [Creating Plugins](/docs/plugins).
+
 > [!WARNING]
->
-> Plugins run native code inside CyberEther with the same permissions as CyberEther itself. There is no sandbox. Installing a plugin is like installing any vendored app on your computer. A malicious plugin can read your files, access the network, and do anything else your user account can do. Only install plugins you built yourself or received from a source you trust.
-
-Plugins extend CyberEther with additional blocks. A plugin is distributed as a single `.cep` file, which is a bundle containing the plugin's native libraries and optional example flowgraphs. Once installed, the plugin's blocks show up in the block catalog and behave like any built-in block.
-
-This page covers the user side of plugins. If you want to build your own plugin, see [Creating Plugins](/docs/plugins).
+> Plugins execute native code inside CyberEther with the exact same permissions as your user account. There is no sandbox. A malicious plugin can read your files, access the network, or run arbitrary code on your machine. Only install plugins you built yourself or obtained from a developer you trust.
 
 > [!NOTE]
->
-> Plugin bundles are experimental. The format and loader behavior can change between CyberEther versions, so a plugin may need to be rebuilt for a newer release.
+> Plugin bundles are experimental. The bundle format and loader ABI can change between CyberEther releases, so plugins may occasionally need to be rebuilt for newer versions.
 
-## Before You Install
+## Security Checklist Before Installing
 
-Ask yourself these questions before installing any plugin:
+Take a moment to verify three things before registering any `.cep` file:
 
-- Do you know who made it? Prefer plugins from developers you can identify, with public source code you could inspect.
-- Did you download it from the official place? Get the `.cep` file from the developer's own website or repository releases, not from a re-upload somewhere else.
-- Does it match what the developer published? If the developer provides a checksum for the file, verify it.
+1. **Know the author.** Favor plugins from identifiable developers with public source code you can inspect.
+2. **Use the official download.** Grab the `.cep` bundle directly from the developer's website or official release page rather than a third-party mirror.
+3. **Verify checksums.** If the author publishes a checksum, check that your downloaded file matches.
 
-If you cannot answer these questions, do not install the plugin. CyberEther will ask you to confirm that you trust the source during installation, and that confirmation is your responsibility.
+If you cannot confirm these points, skip the plugin. During installation, CyberEther asks you to confirm that you trust the source, and that decision rests with you.
 
-## Installing A Plugin
+## Installing a Plugin Permanently
 
-You need a `.cep` file saved somewhere on your computer. Pick a permanent location for it, such as a `Plugins` folder in your home directory, because CyberEther loads the plugin from that exact path every time it starts. Then:
+First, move your `.cep` file to a permanent folder on disk, such as a `Plugins` directory in your home folder. CyberEther loads plugins from their registered path on every startup rather than copying the file into internal storage.
+
+Then register it through the Settings UI:
 
 1. Launch CyberEther.
-2. Open the **CyberEther** menu in the top menubar and click **Preferences...**. The shortcut is `CTRL+,`.
-3. In the **Sections** sidebar of the preferences window, click **Registry**.
-4. Find the **Plugins** section and click **Add Plugin**.
-5. In the **Register Plugin** dialog, click **Browse File** and pick your `.cep` file. You can also type or paste the full path into the **Plugin Path** field.
-6. Read the trust warning. If you trust where the plugin came from, tick **I trust the source of this plugin**. The register button stays disabled until you tick the box.
+2. Open **CyberEther** > **Settings** from the titlebar (or press **Cmd/Ctrl + Comma**).
+3. Click **Registry** in the settings sidebar.
+4. Locate the **Plugins** card and click **Add**.
+5. Click **Browse** to select your `.cep` file, or paste its full path into **Plugin Path**.
+6. Read the trust warning and enable **Trust Source** if you trust the plugin. The register button remains disabled until both a valid path and trust confirmation are provided.
 7. Click **Register Plugin**.
 
-CyberEther loads the plugin immediately and shows a "Plugin loaded." notification. The plugin now appears in the Plugins table with its name, version, and status.
+CyberEther loads the bundle immediately, displays a "Plugin loaded." notification, and adds it to the Plugins table with its name, version, and status. Going forward, it loads automatically every time CyberEther starts. If a registered plugin fails to load at startup, CyberEther logs a warning and continues launching normally.
 
-From now on, the plugin loads automatically every time CyberEther starts. If a plugin fails to load at startup, CyberEther logs a warning and continues starting normally.
+> [!IMPORTANT]
+> **Keep the `.cep` file in place.** Because CyberEther remembers the file path instead of copying the bundle, moving, renaming, or deleting the file causes the plugin to show a **Missing** status on the next launch. If you relocate a bundle, remove the stale entry and register it again from its new path.
 
-## Loading Plugins Temporarily
+## Loading Plugins Temporarily From the CLI
 
-Use the repeatable `--plugin` option to load one or more bundles for only the current process:
+Pass `--plugin` on the command line to load one or more bundles for a single session without modifying `settings.yaml`:
 
 ```bash
 cyberether --plugin path/to/first.cep --plugin path/to/second.cep
 ```
 
-The option also works with benchmarks, including benchmarks registered by a plugin:
+This flag also works with the `benchmark` command, including benchmarks defined inside the plugin:
 
 ```bash
 cyberether benchmark custom_block --plugin path/to/plugin.cep
 ```
 
-Command-line plugins are loaded in addition to registered plugins for that run. They are not added to the registry or saved in `settings.yaml`. If an explicitly requested bundle fails to load, the command exits with an error.
+Command-line plugins load alongside any registered plugins for that run only. Unlike startup plugins, if an explicitly passed `--plugin` bundle fails to load, the command exits immediately with an error.
 
-## Using The Plugin
+## Using and Managing Installed Plugins
 
-The plugin's blocks appear in the block catalog alongside the built-in blocks. Add them to a flowgraph the same way you add any other block.
+Once a plugin is loaded, its blocks show up in the normal block catalog, and any bundled example flowgraphs are registered so you can open them directly.
 
-If the plugin bundles example flowgraphs, those are registered too, so you can open them to see the plugin's blocks in a working graph.
+To inspect or manage a plugin, go to **Settings** > **Registry** and click an entry in the **Plugins** card. The detail page shows the plugin's status, metadata, blocks, examples, and two actions:
 
-## Keep The File In Place
+- **Reload** unloads and reloads the bundle after you replace the `.cep` file with an updated build. Close all open flowgraphs first, or CyberEther will prompt you to do so.
+- **Remove** unregisters the plugin from your list. Any blocks already loaded stay active until you restart CyberEther, and the `.cep` file on disk is left untouched.
 
-CyberEther remembers the path to the `.cep` file. It does not copy the bundle into its own storage. If you move, rename, or delete the file, the plugin shows a **Missing** status the next time CyberEther starts and its blocks will not be available. To fix that, delete the stale entry and register the plugin again from its new location.
+You can also reload every registered plugin at once from **CyberEther** > **Developer** > **Reload Plugins**.
 
-## Managing Installed Plugins
+## Status Reference and Troubleshooting
 
-The Plugins table in **Preferences → Registry** lists every registered plugin with its status and two actions:
-
-- **Reload** unloads and reloads that plugin. Use it after replacing the `.cep` file with a newer version. All flowgraphs must be closed first, otherwise CyberEther asks you to close them.
-- **Delete** removes the plugin from the registered list. Blocks that were already loaded stay available until you restart CyberEther. The `.cep` file itself is not deleted from your disk.
-
-The **Flowgraph** menu in the top menubar also has a **Reload Plugins** item that reloads every registered plugin at once.
-
-## Troubleshooting
-
-The **Status** column in the Plugins table tells you where a plugin stands:
+Check the **Status** field on a plugin's detail page to diagnose load issues:
 
 | Status | Meaning |
-|--------|---------|
-| Loaded | The plugin is active and its blocks are available. |
-| Not loaded | The plugin is registered but failed to load. Check the log for details. |
-| Missing | The `.cep` file is no longer at its registered path. |
-| Invalid extension | The registered path does not point to a `.cep` file. |
+|---|---|
+| **Loaded** | The plugin is active and its blocks are ready to use. |
+| **Not loaded** | The plugin is registered but failed to load. Check the logs for the exact error. |
+| **Missing** | No file exists at the registered path. |
+| **Invalid extension** | The registered path does not end in `.cep`. |
 
-If registration fails with a "Failed to load plugin." notification, the most common causes are:
+If registration triggers a "Failed to load plugin." notification, the cause is usually one of three things:
 
-- **The plugin needs a newer CyberEther.** Every bundle declares a minimum version. Update CyberEther and try again.
-- **The bundle has no compatible target.** A bundle ships libraries for specific systems and architectures. A bundle built only for macOS on Apple Silicon will not load on Linux, for example. Ask the developer for a build matching your platform.
-- **The plugin was built for a different plugin ABI.** Plugins are experimental, so a plugin built against an older CyberEther may be rejected by a newer one. Ask the developer for a rebuild.
+- **Outdated CyberEther version.** Every `.cep` bundle specifies a minimum supported version. Update CyberEther and retry.
+- **No matching target platform.** Bundles contain compiled libraries for specific operating systems, architectures, and device backends (for example, a macOS Apple Silicon bundle cannot load on Linux). Request a build matching your platform from the developer.
+- **Plugin ABI mismatch.** Because plugin bundles are experimental, a plugin compiled for an older CyberEther release may be rejected by a newer one. Ask the developer for an updated build.
 
-The exact reason is printed to the log. Run CyberEther from a terminal and look for lines starting with `[PLUGIN]`.
+To see the exact error message, launch CyberEther from a terminal and look for log lines starting with `[PLUGIN]`.
 
-A few limitations to be aware of:
+### Platform Notes
 
-- Browser plugins cannot be reloaded in place because WebAssembly side modules cannot be unloaded. Refresh the page after replacing a plugin.
-- Command-line plugins are temporary. Register a plugin through the preferences window to load it automatically in future sessions.
+- **Browser edition:** WebAssembly side modules cannot be unloaded in place, so refresh the browser tab after replacing a plugin.
+- **Temporary CLI plugins:** Bundles loaded with `--plugin` are not persisted. Register them through **Settings** if you want them loaded automatically on every launch.

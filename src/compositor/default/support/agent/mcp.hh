@@ -3,6 +3,7 @@
 
 #include "jetstream/agent/provider.hh"
 #include "jetstream/agent/session.hh"
+#include "jetstream/agent/tools.hh"
 #include "jetstream/types.hh"
 
 #include <memory>
@@ -17,7 +18,7 @@ class AgentMcp {
         std::string address;
         U16 port = 0;
         std::string instructions;
-        std::vector<Agent::Provider::Function> tools;
+        std::vector<Agent::Tools::Definition> tools;
         Agent::Session::ToolExecutor executeTool;
     };
 

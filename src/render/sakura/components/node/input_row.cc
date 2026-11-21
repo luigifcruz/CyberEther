@@ -1,152 +1,164 @@
 #include <jetstream/render/sakura/components/node/input_row.hh>
 
+#include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/node/combo.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
+#include <jetstream/render/sakura/components/node/text_input.hh>
 
-#include "base.hh"
+#include "../../detail/helpers.hh"
+#include "../../metrics.hh"
 
 #include <algorithm>
+#include <limits>
+#include <utility>
 
 namespace Jetstream::Sakura {
 
 namespace {
 
-constexpr F32 StackedRowSpacing = 3.0f;
+constexpr F32 kStackedGap = 3.0f;
 
 }  // namespace
 
 struct NodeInputRow::Impl {
     Config config;
-    std::vector<NodeCombo> combos;
-    bool stacked = false;
+    Box background;
+    NodeTextInput shape;
+    NodeTextInput axes;
+    std::vector<std::unique_ptr<NodeCombo>> combos;
 
-    void syncCombos() {
-        combos.resize(config.combos.size());
-        for (U64 i = 0; i < combos.size(); ++i) {
-            const auto& combo = config.combos[i];
-            combos[i].update({
-                .id = config.id + ":combo" + std::to_string(i),
-                .options = combo.options,
-                .value = combo.value,
-                .width = stacked ? 0.0f : combo.width,
-                .onChange = combo.onChange,
-            });
+    F32 combosWidth(const Context& ctx) const {
+        F32 width = 0.0f;
+        for (const auto& combo : config.combos) {
+            width += Px(ctx, combo.width) + Px(ctx, NodeContentStack::Spacing);
         }
+        return width;
+    }
+
+    bool stackedFor(const Context& ctx, F32 available) const {
+        const F32 minShape = Px(ctx, config.shapeMinWidth);
+        const F32 minAxes = config.onAxesChange ? Px(ctx, config.axesMinWidth) : 0.0f;
+        const F32 fieldsSpacing = config.onAxesChange ? Px(ctx, NodeContentStack::Spacing) : 0.0f;
+        return available < minShape + minAxes + combosWidth(ctx) + fieldsSpacing;
+    }
+
+    F32 rows() const {
+        return static_cast<F32>(config.combos.size()) + (config.onAxesChange ? 2.0f : 1.0f);
     }
 };
 
 NodeInputRow::NodeInputRow() {
     this->impl = std::make_unique<Impl>();
+    addChild(impl->background);
+    addChild(impl->shape);
+    addChild(impl->axes);
 }
 
 NodeInputRow::~NodeInputRow() = default;
-NodeInputRow::NodeInputRow(NodeInputRow&&) noexcept = default;
-NodeInputRow& NodeInputRow::operator=(NodeInputRow&&) noexcept = default;
 
-bool NodeInputRow::update(Config config) {
+void NodeInputRow::update(Config config) {
+    if (config != impl->config) {
+        invalidate(Dirty::Layout);
+    }
     impl->config = std::move(config);
-    impl->syncCombos();
-    return true;
+    impl->shape.update({
+        .id = impl->config.id + ":shape",
+        .value = impl->config.shape,
+        .hint = impl->config.shapeHint,
+        .submit = NodeTextInput::Submit::OnCommit,
+        .onChange = impl->config.onShapeChange,
+    });
+    impl->axes.update({
+        .id = impl->config.id + ":axes",
+        .value = impl->config.axes,
+        .hint = impl->config.axesHint,
+        .submit = NodeTextInput::Submit::OnCommit,
+        .onChange = impl->config.onAxesChange,
+    });
+    const bool axesVisible = static_cast<bool>(impl->config.onAxesChange);
+    if (impl->axes.visible() != axesVisible) {
+        impl->axes.setVisible(axesVisible);
+    }
+    while (impl->combos.size() < impl->config.combos.size()) {
+        impl->combos.push_back(std::make_unique<NodeCombo>());
+        addChild(*impl->combos.back());
+    }
+    for (U64 i = 0; i < impl->combos.size(); ++i) {
+        impl->combos[i]->setVisible(i < impl->config.combos.size());
+    }
+    for (U64 i = 0; i < impl->config.combos.size(); ++i) {
+        const auto& combo = impl->config.combos[i];
+        impl->combos[i]->update({
+            .id = jst::fmt::format("{}:combo{}", impl->config.id, i),
+            .options = combo.options,
+            .value = combo.value,
+            .onChange = combo.onChange,
+        });
+    }
 }
 
-void NodeInputRow::render(const Context& ctx) const {
-    auto& impl = *this->impl;
-    const auto& config = impl.config;
-
-    const ImGuiStyle& style = ImGui::GetStyle();
-    const F32 spacing = style.ItemSpacing.x;
-    const F32 minShapeWidth = Scale(ctx, config.shapeMinWidth);
-    const F32 minAxesWidth = config.onAxesChange ? Scale(ctx, config.axesMinWidth) : 0.0f;
-    const F32 startX = ImGui::GetCursorPosX();
-    const F32 available = ImGui::GetContentRegionAvail().x;
-
-    F32 combosWidth = 0.0f;
-    for (const auto& combo : config.combos) {
-        combosWidth += Scale(ctx, combo.width) + spacing;
+Extent2D<F32> NodeInputRow::measure(const Context& ctx, Extent2D<F32> available) {
+    const F32 frameHeight = Px(ctx, NodeFrameHeight(ctx));
+    if (!impl->stackedFor(ctx, available.x)) {
+        return {FillLength(available.x), FitLength(frameHeight, available.y)};
     }
+    const F32 rows = impl->rows();
+    return {FillLength(available.x), FitLength(frameHeight * rows + Px(ctx, kStackedGap) * (rows - 1.0f), available.y)};
+}
 
-    const F32 fieldsSpacing = config.onAxesChange ? spacing : 0.0f;
-    const bool nextStacked =
-        available < minShapeWidth + minAxesWidth + combosWidth + fieldsSpacing;
-    if (nextStacked != impl.stacked) {
-        impl.stacked = nextStacked;
-        impl.syncCombos();
-    }
+void NodeInputRow::layout(const Context& ctx) {
+    const auto& config = impl->config;
+    const Rect bounds = frame();
+    const F32 frameHeight = Px(ctx, NodeFrameHeight(ctx));
+    const F32 spacing = Px(ctx, NodeContentStack::Spacing);
+    const F32 stackedSpacing = Px(ctx, kStackedGap);
 
-    const F32 axesWidth = impl.stacked ? 0.0f : minAxesWidth;
-    const F32 shapeWidth = impl.stacked
-        ? available
-        : std::max(minShapeWidth, available - combosWidth - axesWidth - (config.onAxesChange ? spacing : 0.0f));
+    const bool stacked = impl->stackedFor(ctx, bounds.width);
 
-    ImGui::PushID(config.id.c_str());
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
+    const F32 rows = impl->rows();
+    const F32 backgroundHeight = stacked ? frameHeight * rows + stackedSpacing * (rows - 1.0f) : frameHeight;
+    impl->background.update({
+        .instances = {{
+            .rect = Snap({bounds.x, bounds.y, bounds.width, backgroundHeight}),
+            .visible = !bounds.empty(),
+            .backgroundColor = ctx.color("card"),
+        }},
+        .clip = bounds,
+        .cornerRadius = Px(ctx, kFrameRounding),
+    });
+    layoutChild(ctx, impl->background, bounds);
 
-    const F32 frameHeight = ImGui::GetFrameHeight();
-    const F32 stackedSpacingY = Scale(ctx, StackedRowSpacing);
-    const F32 rowCount = static_cast<F32>(config.combos.size()) + (config.onAxesChange ? 2.0f : 1.0f);
-    const F32 backgroundHeight = impl.stacked
-        ? frameHeight * rowCount + stackedSpacingY * (rowCount - 1.0f)
-        : frameHeight;
-    const ImVec2 rowMin = ImGui::GetCursorScreenPos();
-    ImGui::GetWindowDrawList()->AddRectFilled(
-        rowMin,
-        ImVec2(rowMin.x + available, rowMin.y + backgroundHeight),
-        ImGui::GetColorU32(ImGuiCol_FrameBg),
-        style.FrameRounding);
+    const F32 minShape = Px(ctx, config.shapeMinWidth);
+    const F32 axesWidth = stacked ? 0.0f : (config.onAxesChange ? Px(ctx, config.axesMinWidth) : 0.0f);
+    const F32 shapeWidth = stacked
+        ? bounds.width
+        : std::max(minShape, bounds.width - impl->combosWidth(ctx) - axesWidth - (config.onAxesChange ? spacing : 0.0f));
 
-    std::string shape = config.shape;
-    ImGui::SetNextItemWidth(shapeWidth);
-    bool changed = ImGui::InputTextWithHint("##input",
-                                            config.shapeHint.c_str(),
-                                            &shape,
-                                            ImGuiInputTextFlags_EnterReturnsTrue);
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
-        changed = true;
-    }
-    if (changed && config.onShapeChange) {
-        config.onShapeChange(shape);
-    }
+    layoutChild(ctx, impl->shape, {bounds.x, bounds.y, shapeWidth, frameHeight});
 
+    F32 y = bounds.y;
     if (config.onAxesChange) {
-        std::string axes = config.axes;
-        if (impl.stacked) {
-            const F32 stackedPull = style.ItemSpacing.y - stackedSpacingY;
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - stackedPull);
-            ImGui::SetNextItemWidth(available);
+        if (stacked) {
+            y += frameHeight + stackedSpacing;
+            layoutChild(ctx, impl->axes, {bounds.x, y, bounds.width, frameHeight});
         } else {
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(startX + shapeWidth + spacing);
-            ImGui::SetNextItemWidth(axesWidth);
-        }
-        bool axesChanged = ImGui::InputTextWithHint("##axes",
-                                                    config.axesHint.c_str(),
-                                                    &axes,
-                                                    ImGuiInputTextFlags_EnterReturnsTrue);
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-            axesChanged = true;
-        }
-        if (axesChanged) {
-            config.onAxesChange(axes);
+            layoutChild(ctx, impl->axes, {bounds.x + shapeWidth + spacing, bounds.y, axesWidth, frameHeight});
         }
     }
 
-    if (impl.stacked) {
-        const F32 stackedPull = style.ItemSpacing.y - stackedSpacingY;
-        for (const auto& combo : impl.combos) {
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - stackedPull);
-            combo.render(ctx);
+    if (stacked) {
+        for (U64 i = 0; i < config.combos.size(); ++i) {
+            y += frameHeight + stackedSpacing;
+            layoutChild(ctx, *impl->combos[i], {bounds.x, y, bounds.width, frameHeight});
         }
     } else {
-        F32 comboX = startX + shapeWidth + (config.onAxesChange ? axesWidth + spacing : 0.0f) + spacing;
-        for (U64 i = 0; i < impl.combos.size(); ++i) {
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(comboX);
-            impl.combos[i].render(ctx);
-            comboX += Scale(ctx, config.combos[i].width) + spacing;
+        F32 x = bounds.x + shapeWidth + (config.onAxesChange ? axesWidth + spacing : 0.0f) + spacing;
+        for (U64 i = 0; i < config.combos.size(); ++i) {
+            const F32 width = ResolveLength(ctx, config.combos[i].width, 0.0f, std::numeric_limits<F32>::infinity());
+            layoutChild(ctx, *impl->combos[i], {x, bounds.y, width, frameHeight});
+            x += width + spacing;
         }
     }
-
-    ImGui::PopStyleVar();
-    ImGui::PopID();
 }
 
 }  // namespace Jetstream::Sakura

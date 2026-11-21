@@ -24,13 +24,20 @@ namespace {
 constexpr F32 kTickLabelScale = 0.85f;
 constexpr U64 kMaxVerticalLines = 65;
 constexpr U64 kMaxHorizontalLines = 17;
-constexpr U64 kMinorTicksPerInterval = 4;
+constexpr U64 kMaxMinorSubdivisions = 4;
 
 std::string FormatTickValue(F64 value, const AxisTicks& scale) {
     if (std::abs(value) < scale.step * 1e-9) {
         value = 0.0;
     }
     return jst::fmt::format("{:.{}f}", value, scale.decimals);
+}
+
+U64 FitMinorDivisions(const U64 divisions, const U64 minorTicks) {
+    if (divisions <= minorTicks + 1) {
+        return divisions;
+    }
+    return minorTicks > 0 ? 2 : 1;
 }
 
 }  // namespace
@@ -133,7 +140,8 @@ struct Axis::Impl {
     static void computeTickCount(U64 numCols, U64 numRows,
                                  U64& outMajX, U64& outMinX,
                                  U64& outMajY, U64& outMinY,
-                                 bool showFrameTicks, bool combined);
+                                 bool showFrameTicks, bool combined,
+                                 U64 minorTicks);
     void recomputeTickCount();
     Result syncTickGeometry();
     glm::mat4 gridTransform(F32 zoom, F32 translation) const;
@@ -168,6 +176,8 @@ Result Axis::create(Window* window) {
         return Result::ERROR;
     }
 
+    config.minorTicks = std::min(config.minorTicks, kMaxMinorSubdivisions);
+
     pimpl->currentVerticalLines = 3;
     pimpl->currentHorizontalLines = 3;
     pimpl->maxVerticalLines = kMaxVerticalLines;
@@ -182,7 +192,7 @@ Result Axis::create(Window* window) {
         pimpl->computeTickCount(pimpl->maxVerticalLines,
                                 pimpl->maxHorizontalLines,
                                 majX, minx, majY, miny,
-                                true, false);
+                                true, false, kMaxMinorSubdivisions);
         pimpl->maxMajorTicks = majX + majY;
         pimpl->maxMinorTicks = minx + miny;
     }
@@ -415,6 +425,23 @@ Result Axis::create(Window* window) {
     return Result::SUCCESS;
 }
 
+Result Axis::updateColors(const ColorRGBA<F32>& gridColor,
+                          const ColorRGBA<F32>& majorGridColor,
+                          const ColorRGBA<F32>& labelColor) {
+    if (config.gridColor != gridColor || config.majorGridColor != majorGridColor) {
+        config.gridColor = gridColor;
+        config.majorGridColor = majorGridColor;
+        pimpl->gridUniforms.gridColor = {gridColor.r, gridColor.g, gridColor.b, gridColor.a};
+        pimpl->gridUniforms.majorColor = {majorGridColor.r, majorGridColor.g, majorGridColor.b, majorGridColor.a};
+        pimpl->updateGridUniformsFlag = true;
+    }
+    config.labelColor = labelColor;
+    if (pimpl->text) {
+        JST_CHECK(pimpl->text->updateColor(labelColor));
+    }
+    return Result::SUCCESS;
+}
+
 Result Axis::destroy(Window* window) {
     JST_CHECK(window->unbind(pimpl->text));
     return Result::SUCCESS;
@@ -500,16 +527,6 @@ Result Axis::updatePixelSize(const Extent2D<F32>& pixelSize) {
     return Result::SUCCESS;
 }
 
-Result Axis::updateZoom(F32 zoom, F32 translation) {
-    pimpl->zoom = zoom;
-    pimpl->translation = translation;
-    pimpl->gridUniforms.transform = pimpl->gridTransform(zoom, translation);
-    pimpl->gridUniforms.zoom = zoom;
-    pimpl->updateGridUniformsFlag = true;
-
-    return Result::SUCCESS;
-}
-
 Result Axis::updateScissorRect(const Render::ScissorRect& rect) {
     pimpl->gridProgram->scissorRect(rect);
     return Result::SUCCESS;
@@ -539,6 +556,20 @@ Result Axis::setShowFrameTicks(bool visible) {
     JST_CHECK(pimpl->syncTickGeometry());
 
     return Result::SUCCESS;
+}
+
+Result Axis::setMinorTicks(U64 count) {
+    count = std::min(count, kMaxMinorSubdivisions);
+    if (count == config.minorTicks) {
+        return Result::SUCCESS;
+    }
+
+    config.minorTicks = count;
+    pimpl->xRangeInputs.reset();
+    pimpl->yRangeInputs.reset();
+
+    JST_CHECK(pimpl->syncTickGeometry());
+    return pimpl->syncResponsiveGrid();
 }
 
 Result Axis::updateTickFormatters(TickFormatter xFormatter,
@@ -660,7 +691,8 @@ void Axis::Impl::computeTickCount(U64 numCols, U64 numRows,
                                   U64& outMajX, U64& outMinX,
                                   U64& outMajY, U64& outMinY,
                                   const bool showFrameTicks,
-                                  const bool combined) {
+                                  const bool combined,
+                                  const U64 minorTicks) {
     outMajX = outMinX = outMajY = outMinY = 0;
     if (!showFrameTicks) {
         return;
@@ -670,13 +702,13 @@ void Axis::Impl::computeTickCount(U64 numCols, U64 numRows,
         outMajX = xEdgeCount * (numCols - 2);
     }
     if (numCols >= 2) {
-        outMinX = xEdgeCount * 4 * (numCols - 1);
+        outMinX = xEdgeCount * minorTicks * (numCols - 1);
     }
     if (numRows >= 3) {
         outMajY = 2 * (numRows - 2);
     }
     if (numRows >= 2) {
-        outMinY = 2 * 4 * (numRows - 1);
+        outMinY = 2 * minorTicks * (numRows - 1);
     }
 }
 
@@ -684,7 +716,8 @@ void Axis::Impl::recomputeTickCount() {
     U64 majX = 0, minx = 0, majY = 0, miny = 0;
     computeTickCount(currentVerticalLines, currentHorizontalLines,
                      majX, minx, majY, miny,
-                     config.showFrameTicks, dividerLines > 0);
+                     config.showFrameTicks, dividerLines > 0,
+                     config.minorTicks);
     currentMajorTicks = majX + majY;
     currentMinorTicks = minx + miny;
 }
@@ -736,6 +769,8 @@ void Axis::Impl::generateGridPoints() {
     const F32 tickMinY = config.pixelSize.x * config.minorTickLengthPx;
 
     const U64 stride = 4;
+    const U64 minorTicks = config.minorTicks;
+    const F32 minorDivisions = static_cast<F32>(minorTicks + 1);
 
     std::fill(gridPoints.begin(), gridPoints.end(), 0.0f);
 
@@ -818,7 +853,7 @@ void Axis::Impl::generateGridPoints() {
         };
 
         if (xRangeEnabled) {
-            const U64 reserved = kMinorTicksPerInterval * (numCols - 1);
+            const U64 reserved = minorTicks * (numCols - 1);
             const U64 used = std::min<U64>(xMinorPositions.size(), reserved);
             for (U64 i = 0; i < used; i++) {
                 emitMinorX(xMinorPositions[i]);
@@ -828,9 +863,9 @@ void Axis::Impl::generateGridPoints() {
             for (U64 col = 0; col + 1 < numCols; col++) {
                 const F32 a = xStart + col * xStep;
                 const F32 b = a + xStep;
-                for (U64 s = 1; s <= kMinorTicksPerInterval; s++) {
+                for (U64 s = 1; s <= minorTicks; s++) {
                     emitMinorX(a + (b - a) *
-                        (static_cast<F32>(s) / 5.0f));
+                        (static_cast<F32>(s) / minorDivisions));
                 }
             }
         }
@@ -849,7 +884,7 @@ void Axis::Impl::generateGridPoints() {
         };
 
         if (yRangeEnabled) {
-            const U64 reserved = kMinorTicksPerInterval * (numRows - 1);
+            const U64 reserved = minorTicks * (numRows - 1);
             const U64 used = std::min<U64>(yMinorPositions.size(), reserved);
             for (U64 i = 0; i < used; i++) {
                 emitMinorY(yMinorPositions[i]);
@@ -874,8 +909,8 @@ void Axis::Impl::generateGridPoints() {
             }
             const F32 a = minorYBounds[i];
             const F32 b = minorYBounds[i + 1];
-            for (U64 s = 1; s <= kMinorTicksPerInterval; s++) {
-                emitMinorY(a + (b - a) * (static_cast<F32>(s) / 5.0f));
+            for (U64 s = 1; s <= minorTicks; s++) {
+                emitMinorY(a + (b - a) * (static_cast<F32>(s) / minorDivisions));
             }
         }
     }
@@ -1101,8 +1136,9 @@ void Axis::Impl::computeYRangeTicks(const F32 availableHeightPx,
     }
 
     yMinorPositions.clear();
+    yTicks.minorDivisions = FitMinorDivisions(yTicks.minorDivisions, config.minorTicks);
     const F64 minor = yTicks.step / static_cast<F64>(yTicks.minorDivisions);
-    const U64 reserved = kMinorTicksPerInterval * (kept.size() + 1);
+    const U64 reserved = config.minorTicks * (kept.size() + 1);
     for (const F64 value : yTicks.minors(yRangeBottom, yRangeTop)) {
         if (yMinorPositions.size() >= reserved) {
             break;
@@ -1152,7 +1188,8 @@ void Axis::Impl::computeXRangeTicks(const F32 availableWidthPx,
     }
 
     xMinorPositions.clear();
-    const U64 reserved = kMinorTicksPerInterval * (xTicks.values.size() + 1);
+    xTicks.minorDivisions = FitMinorDivisions(xTicks.minorDivisions, config.minorTicks);
+    const U64 reserved = config.minorTicks * (xTicks.values.size() + 1);
     for (const F64 value : xTicks.minors(xRangeLeft, xRangeRight)) {
         if (xMinorPositions.size() >= reserved) {
             break;

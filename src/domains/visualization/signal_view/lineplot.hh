@@ -121,6 +121,7 @@ struct SignalViewLineplot {
                 const Render::ScissorRect& scissor);
     Result upload(const Tensor& signalPoints, bool& holdPending);
     Result present();
+    void applyTheme(const SurfaceTheme& theme);
     std::optional<F32> sample(F32 position) const;
     JETSTREAM_API std::optional<F32> peak(F32 left, F32 right) const;
 
