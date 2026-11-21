@@ -329,31 +329,11 @@ Result SoapySdrStream::apply(const Settings& settings) {
         JST_WARN("[SDR_SOAPY] Sample rate ({:.3f} MHz) is not one that {} reports. "
                  "Requesting it anyway.", settings.sampleRate / 1e6, deviceInfo.label);
     }
-    F64 frequency = settings.frequency;
-    if (!Device::Range::Contains(deviceCapabilities.frequencyRanges, frequency)) {
-        // SDR block settings are F32. An exact hardware range endpoint may
-        // round just outside the F64 range when represented in that field.
-        // Only snap a value that is itself exactly representable as F32 and
-        // matches the F32 representation of an endpoint.
-        bool matchedEndpoint = false;
-        if (std::isfinite(frequency) && static_cast<F64>(static_cast<F32>(frequency)) == frequency) {
-            for (const auto& range : deviceCapabilities.frequencyRanges) {
-                for (const auto endpoint : {range.minimum, range.maximum}) {
-                    if (std::isfinite(endpoint) && static_cast<F64>(static_cast<F32>(endpoint)) == frequency) {
-                        frequency = endpoint;
-                        matchedEndpoint = true;
-                        break;
-                    }
-                }
-                if (matchedEndpoint) break;
-            }
-        }
-        if (!matchedEndpoint) {
-            JST_ERROR("[SDR_SOAPY] Frequency ({:.3f} MHz) not supported by {}. Use {}.",
-                      settings.frequency / 1e6, deviceInfo.label,
-                      Device::Range::Describe(deviceCapabilities.frequencyRanges));
-            return Result::ERROR;
-        }
+    if (!Device::Range::Contains(deviceCapabilities.frequencyRanges, settings.frequency)) {
+        JST_ERROR("[SDR_SOAPY] Frequency ({:.3f} MHz) not supported by {}. Use {}.",
+                  settings.frequency / 1e6, deviceInfo.label,
+                  Device::Range::Describe(deviceCapabilities.frequencyRanges));
+        return Result::ERROR;
     }
 
     receiveChannels = settings.receiveChannels;
@@ -406,7 +386,7 @@ Result SoapySdrStream::apply(const Settings& settings) {
         }
     }
     manualBandwidthSet = manualBandwidth;
-    JST_CHECK(setFrequency(frequency));
+    JST_CHECK(setFrequency(settings.frequency));
     requestedSettings = settings;
     JST_CHECK(setAutomaticGain(settings.automaticGain));
     JST_CHECK(applyGain(settings.gain, true));

@@ -9,6 +9,7 @@
 #include <limits>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 using namespace Jetstream;
@@ -157,6 +158,67 @@ TEST_CASE("String vectors show one dropdown per entry and patch the whole list",
     config.values["antennas"] = std::vector<std::string>{"LNAH"};
     REQUIRE(field.update(config) == Result::SUCCESS);
     CHECK(SakuraTest::Find<Sakura::NodeCombo>(field.component()).size() == 1);
+}
+
+TEST_CASE("Scaled float vector entries stay unchanged when committed without an edit",
+          "[core][sakura][interface]") {
+    SakuraTest::Typist typist;
+    FlowgraphConfigVectorField field;
+    std::vector<Parser::Map> edits;
+    REQUIRE(field.update({
+        .id = "taps",
+        .name = "center",
+        .format = {{"type", "vector"}, {"value_type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f},
+                   {"precision", 3}},
+        .values = {{"center", std::vector<F32>{1001000.0f}}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    }) == Result::SUCCESS);
+    SakuraTest::Host host(field.component());
+    typist.root = &host;
+    typist.place = [&] { host.place(typist.ctx, {0.0f, 0.0f, 320.0f, 100.0f}); };
+    typist.frame();
+    const auto inputs = SakuraTest::Find<Sakura::NodeFloatInput>(field.component());
+    REQUIRE(inputs.size() == 1);
+    const auto bounds = SakuraTest::Peek::Frame(*inputs.front());
+
+    REQUIRE(host.click(bounds.x + 30.0f, bounds.y + 10.0f));
+    typist.frame();
+    typist.press(KeyCode::Enter);
+    CHECK(edits.empty());
+
+    REQUIRE(host.click(bounds.x + 30.0f, bounds.y + 10.0f));
+    typist.frame();
+    typist.type("1.002");
+    typist.press(KeyCode::Enter);
+    REQUIRE(edits.size() == 1);
+    CHECK(std::any_cast<std::vector<F32>>(edits.front().at("center")) == std::vector<F32>{1002000.0f});
+}
+
+TEST_CASE("F32 vector entries skip edits that narrow to the stored value",
+          "[core][sakura][interface]") {
+    SakuraTest::Typist typist;
+    FlowgraphConfigVectorField field;
+    std::vector<Parser::Map> edits;
+    REQUIRE(field.update({
+        .id = "taps",
+        .name = "values",
+        .format = {{"type", "vector"}, {"value_type", "float"}, {"precision", 3}},
+        .values = {{"values", std::vector<F32>{0.1f}}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    }) == Result::SUCCESS);
+    SakuraTest::Host host(field.component());
+    typist.root = &host;
+    typist.place = [&] { host.place(typist.ctx, {0.0f, 0.0f, 320.0f, 100.0f}); };
+    typist.frame();
+    const auto inputs = SakuraTest::Find<Sakura::NodeFloatInput>(field.component());
+    REQUIRE(inputs.size() == 1);
+    const auto bounds = SakuraTest::Peek::Frame(*inputs.front());
+
+    REQUIRE(host.click(bounds.x + 30.0f, bounds.y + 10.0f));
+    typist.frame();
+    typist.type("0.10");
+    typist.press(KeyCode::Enter);
+    CHECK(edits.empty());
 }
 
 TEST_CASE("Retained unsigned range edits reject unsafe conversions and recover on the next edit",
@@ -434,4 +496,96 @@ TEST_CASE("Numeric fields apply explicit scale independently of their unit label
     typist.press(KeyCode::Enter);
     REQUIRE(edits.size() == 1);
     CHECK(std::any_cast<F32>(edits.front().at("value")) == 32.5f);
+}
+
+TEST_CASE("F32 numeric fields skip edits that narrow to the stored value",
+          "[core][sakura][interface]") {
+    SakuraTest::Typist typist;
+    FlowgraphConfigFloatField field;
+    std::vector<Parser::Map> edits;
+    REQUIRE(field.update({
+        .id = "duration",
+        .name = "value",
+        .format = {{"type", "float"}, {"precision", 3}},
+        .values = {{"value", 0.1f}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    }) == Result::SUCCESS);
+    SakuraTest::Host host(field.component());
+    typist.root = &host;
+    typist.place = [&] { host.place(typist.ctx, {0.0f, 0.0f, 320.0f, 100.0f}); };
+    typist.frame();
+    const auto inputs = SakuraTest::Find<Sakura::NodeFloatInput>(field.component());
+    REQUIRE(inputs.size() == 1);
+    const auto bounds = SakuraTest::Peek::Frame(*inputs.front());
+
+    REQUIRE(host.click(bounds.x + 30.0f, bounds.y + 10.0f));
+    typist.frame();
+    typist.type("0.10");
+    typist.press(KeyCode::Enter);
+    CHECK(edits.empty());
+
+    REQUIRE(host.click(bounds.x + 30.0f, bounds.y + 10.0f));
+    typist.frame();
+    typist.type("0.25");
+    typist.press(KeyCode::Enter);
+    REQUIRE(edits.size() == 1);
+    CHECK(std::any_cast<F32>(edits.front().at("value")) == 0.25f);
+}
+
+TEST_CASE("Numeric fields keep F64 values exact through scaled edits and steps",
+          "[core][sakura][interface]") {
+    constexpr F64 Frequency = 2750.0e6;
+    REQUIRE(static_cast<F64>(static_cast<F32>(Frequency)) != Frequency);
+    SakuraTest::Typist typist;
+    FlowgraphConfigFloatField field;
+    std::vector<Parser::Map> edits;
+    FlowgraphConfigFloatField::Config config{
+        .id = "frequency",
+        .name = "frequency",
+        .format = {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3},
+                   {"step_config", std::string("frequencyStep")}},
+        .values = {{"frequency", F64{100.0e6}}, {"frequencyStep", F64{1.0}}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
+    };
+    REQUIRE(field.update(config) == Result::SUCCESS);
+    SakuraTest::Host host(field.component());
+    typist.root = &host;
+    typist.place = [&] { host.place(typist.ctx, {0.0f, 0.0f, 320.0f, 100.0f}); };
+    typist.frame();
+    const auto inputs = SakuraTest::Find<Sakura::NodeFloatInput>(field.component());
+    REQUIRE(inputs.size() == 1);
+    const auto bounds = SakuraTest::Peek::Frame(*inputs.front());
+
+    REQUIRE(host.click(bounds.x + 30.0f, bounds.y + 10.0f));
+    typist.frame();
+    typist.type("2750");
+    typist.press(KeyCode::Enter);
+    REQUIRE(edits.size() == 1);
+    REQUIRE(edits.front().at("frequency").type() == typeid(F64));
+    CHECK(std::any_cast<F64>(edits.front().at("frequency")) == Frequency);
+
+    for (const auto& [text, expected] : {std::pair{"1024.016", 1024016000.0},
+                                         std::pair{"1.024016e3", 1024016000.0},
+                                         std::pair{"2750001e-3", 2750001000.0}}) {
+        DYNAMIC_SECTION("text " << text) {
+            REQUIRE(host.click(bounds.x + 30.0f, bounds.y + 10.0f));
+            typist.frame();
+            typist.type(text);
+            typist.press(KeyCode::Enter);
+            CHECK(std::any_cast<F64>(edits.back().at("frequency")) == expected);
+        }
+    }
+
+    edits.clear();
+    config.values["frequency"] = Frequency - 2.0e3;
+    config.values["frequencyStep"] = 1.0e3;
+    for (int click = 0; click < 2; ++click) {
+        REQUIRE(field.update(config) == Result::SUCCESS);
+        typist.frame();
+        REQUIRE(host.click(bounds.x + bounds.width - 5.0f, bounds.y + 30.0f));
+        REQUIRE(edits.size() == static_cast<U64>(click + 1));
+        REQUIRE(edits.back().at("frequency").type() == typeid(F64));
+        config.values["frequency"] = edits.back().at("frequency");
+    }
+    CHECK(std::any_cast<F64>(edits.back().at("frequency")) == Frequency);
 }

@@ -2,11 +2,10 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "domains/io/sdr/devices/soapy/tools/catalog.hh"
@@ -499,23 +498,6 @@ Radio::Device::Capture Read(Radio::Stream& stream) {
 
 }  // namespace
 
-TEST_CASE("SoapySDR accepts F32-rounded exact frequency endpoints without widening ranges",
-          "[devices][sdr][soapy][frequency]") {
-    for (const F64 exact : {2250000000.0, 2750000000.0}) {
-        const FakeRuntime runtime({.frequencyMinimum = exact, .frequencyMaximum = exact});
-        const F64 rounded = static_cast<F64>(static_cast<F32>(exact));
-        REQUIRE(rounded != exact);
-        std::unique_ptr<Radio::Stream> stream;
-        REQUIRE(Radio::Stream::Open("driver=soapy,serial=1234", stream) == Result::SUCCESS);
-        REQUIRE(stream->start({.frequency = rounded, .sampleRate = 1.0e6}) == Result::SUCCESS);
-        CHECK(Fake().lastFrequency == exact);
-        CHECK(stream->applied().frequency == exact);
-        const F64 outside = static_cast<F64>(std::nextafter(static_cast<F32>(rounded),
-                                                              std::numeric_limits<F32>::infinity()));
-        CHECK(stream->update({.frequency = outside, .sampleRate = 1.0e6}) != Result::SUCCESS);
-    }
-}
-
 TEST_CASE("SoapySDR stream passes driver arguments and switches Bias-T off on close",
           "[devices][sdr][soapy]") {
     const FakeRuntime runtime;
@@ -532,6 +514,28 @@ TEST_CASE("SoapySDR stream passes driver arguments and switches Bias-T off on cl
 
     stream.reset();
     CHECK(Fake().biasTee.back() == "false");
+}
+
+TEST_CASE("SoapySDR stream tunes exact frequency endpoints and rejects values past them",
+          "[devices][sdr][soapy]") {
+    const FakeRuntime runtime({.frequencyMinimum = 2250.0e6, .frequencyMaximum = 2750.0e6});
+
+    for (const auto& [endpoint, outside] : {std::pair{2250.0e6, 2250.0e6 - 1.0},
+                                            std::pair{2750.0e6, 2750.0e6 + 1.0}}) {
+        DYNAMIC_SECTION("endpoint " << endpoint) {
+            std::unique_ptr<Radio::Stream> stream;
+            REQUIRE(Radio::Stream::Open("driver=soapy,serial=1234", stream) == Result::SUCCESS);
+            REQUIRE(stream->start({.frequency = endpoint, .sampleRate = 1.0e6}) == Result::SUCCESS);
+            CHECK(Fake().lastFrequency == endpoint);
+            CHECK(stream->applied().frequency == endpoint);
+            stream.reset();
+
+            Fake().lastFrequency = 0.0;
+            REQUIRE(Radio::Stream::Open("driver=soapy,serial=1234", stream) == Result::SUCCESS);
+            CHECK(stream->start({.frequency = outside, .sampleRate = 1.0e6}) != Result::SUCCESS);
+            CHECK(Fake().lastFrequency == 0.0);
+        }
+    }
 }
 
 TEST_CASE("SoapySDR stream timestamps continue across reads and jump at a time gap",

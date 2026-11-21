@@ -50,7 +50,7 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
 Result SdrImpl::validate() {
     const auto& config = *candidate();
 
-    if (!std::isfinite(config.frequencyStep) || config.frequencyStep <= 0.0f) {
+    if (!std::isfinite(config.frequencyStep) || config.frequencyStep <= 0.0) {
         JST_ERROR("[BLOCK_SDR] Frequency step must be finite and positive.");
         return Result::ERROR;
     }
@@ -157,7 +157,7 @@ Result SdrImpl::define() {
                                     "Tuner frequency.",
                                     {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f},
                                      {"precision", 3}, {"step_config",
-                                        std::isfinite(config.frequencyStep) && config.frequencyStep > 0.0f
+                                        std::isfinite(config.frequencyStep) && config.frequencyStep > 0.0
                                             ? std::string("frequencyStep") : std::string{}}}));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",

@@ -1220,6 +1220,49 @@ TEST_CASE("Stepped node float inputs edit the step size in place of the toggle l
     CHECK(changes == std::vector<F32>{1.25f});
 }
 
+TEST_CASE("Scaled node float inputs show, parse, and step in raw units", kTags) {
+    Typist typist;
+    std::vector<F64> changes;
+    std::vector<F64> steps;
+    Sakura::NodeFloatInput input;
+    const auto update = [&](const F64 value) {
+        input.update({.id = "scaled", .value = value, .scale = 1.0e6, .unit = "MHz", .precision = 3, .step = 1.0e3,
+                      .onChange = [&](F64 next) { changes.push_back(next); },
+                      .onStepChange = [&](F64 next) { steps.push_back(next); }});
+    };
+    update(2749.998e6);
+    Host host(input);
+    typist.place = [&] { host.place(typist.ctx, {0.0f, 0.0f, 200.0f, 40.0f}); };
+    typist.root = &host;
+    typist.frame();
+
+    CHECK(host.click(50.0f, 10.0f));
+    typist.frame();
+    typist.press(KeyCode::Enter);
+    CHECK(changes.empty());
+
+    CHECK(host.click(50.0f, 10.0f));
+    typist.frame();
+    typist.type("1024.016");
+    typist.press(KeyCode::Enter);
+    CHECK(changes == std::vector<F64>{1024016000.0});
+
+    changes.clear();
+    CHECK(host.click(180.0f, 30.0f));
+    REQUIRE(changes.size() == 1);
+    update(changes.back());
+    typist.frame();
+    CHECK(host.click(180.0f, 30.0f));
+    CHECK(changes == std::vector<F64>{2749999000.0, 2750000000.0});
+
+    CHECK(host.click(100.0f, 30.0f));
+    typist.frame();
+    typist.press(KeyCode::A, {.control = true});
+    typist.type("0.0005");
+    typist.press(KeyCode::Enter);
+    CHECK(steps == std::vector<F64>{500.0});
+}
+
 TEST_CASE("Node float inputs select all on click and commit parsed values on enter", kTags) {
     Typist typist;
     std::vector<F32> changes;
