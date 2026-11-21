@@ -2155,6 +2155,15 @@ struct NodeEditor::Impl {
     Rect bounds;
     std::optional<Rect> reportedViewport;
     std::optional<View> reportedView;
+
+    Extent2D<F32> pointer() const {
+        const auto& mouse = root.mousePx;
+        const bool pointed = mouse.has_value() && bounds.contains(mouse->x, mouse->y);
+        const Extent2D<F32> point = pointed ? *mouse
+                                            : Extent2D<F32>{bounds.x + bounds.width * 0.5f,
+                                                            bounds.y + bounds.height * 0.5f};
+        return root.toGrid(point);
+    }
 };
 
 NodeEditor::NodeEditor() {
@@ -2280,13 +2289,7 @@ bool NodeEditor::keyEvent(const KeyEvent& event) {
             if (!initial || !config.onPasteShortcut) {
                 return false;
             }
-            const Rect& bounds = impl->bounds;
-            const auto& mouse = root.mousePx;
-            const bool pointed = mouse.has_value() && bounds.contains(mouse->x, mouse->y);
-            const Extent2D<F32> point = pointed ? *mouse
-                                                : Extent2D<F32>{bounds.x + bounds.width * 0.5f,
-                                                                bounds.y + bounds.height * 0.5f};
-            config.onPasteShortcut(root.toGrid(point));
+            config.onPasteShortcut(impl->pointer());
             return true;
         }
         case KeyCode::Equal:
@@ -2307,6 +2310,15 @@ bool NodeEditor::keyEvent(const KeyEvent& event) {
         default:
             return false;
     }
+}
+
+bool NodeEditor::fileDrop(const std::vector<std::string>& paths) {
+    const auto& config = impl->root.config;
+    if (!config.onFileDrop) {
+        return false;
+    }
+    config.onFileDrop(paths, impl->pointer());
+    return true;
 }
 
 bool NodeEditor::focusesOnClick() const {

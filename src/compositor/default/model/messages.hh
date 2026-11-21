@@ -55,6 +55,12 @@ struct MailSubmitAgentChat {
 struct MailCancelAgentChat {};
 struct MailClearAgentChat {};
 
+struct MailWithdrawAgentChat {
+    U64 key = 0;
+};
+
+struct MailResumeAgentChat {};
+
 struct MailSelectAgentModel {
     std::string provider;
     std::string model;
@@ -198,8 +204,10 @@ struct MailRememberFlowgraph {
     std::string title;
 };
 
-struct MailDropFlowgraphPath {
-    std::string path;
+struct MailDropFlowgraphFiles {
+    std::vector<std::string> paths;
+    std::optional<std::string> flowgraph;
+    std::optional<Extent2D<F32>> gridPosition;
 };
 
 struct MailOpenFlowgraphBlob {
@@ -800,7 +808,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailToggleFavoriteFlowgraph,
                            MailForgetRecentFlowgraph,
                            MailRememberFlowgraph,
-                           MailDropFlowgraphPath,
+                           MailDropFlowgraphFiles,
                            MailOpenFlowgraphBlob,
                            MailOpenFlowgraphExample,
                            MailFocusFlowgraph,
@@ -845,6 +853,8 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSubmitAgentChat,
                            MailCancelAgentChat,
                            MailClearAgentChat,
+                           MailWithdrawAgentChat,
+                           MailResumeAgentChat,
                            MailSelectAgentModel,
                            MailSetAgentReasoningEffort,
                            MailOpenAgentModelPicker,

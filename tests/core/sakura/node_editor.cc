@@ -62,6 +62,8 @@ struct Block {
 };
 
 struct Graph {
+    using FileDrop = Sakura::Callback<void(const std::vector<std::string>&, Extent2D<F32>)>;
+
     SakuraTest::FakeWindow window;
     NodeEditor editor;
     Host host{editor};
@@ -87,6 +89,8 @@ struct Graph {
     std::optional<NodeEditor::View> savedView;
     std::vector<NodeEditor::View> viewReports;
     std::vector<NodeEditor::Geometry> arranged;
+    std::vector<std::pair<std::vector<std::string>, Extent2D<F32>>> drops;
+    bool dropping = true;
     F32 scale = 1.0f;
 
     explicit Graph(F32 pixelRatio = 1.0f) {
@@ -189,6 +193,10 @@ struct Graph {
             .onSelectionChange = [this](const std::vector<std::string>& ids) {
                 selections.push_back(ids);
             },
+            .onFileDrop = dropping ? FileDrop([this](const std::vector<std::string>& paths, Extent2D<F32> point) {
+                                             drops.emplace_back(paths, point);
+                                         })
+                                   : FileDrop{},
             .onViewportGridChange = [this](Rect next) {
                 viewport = next;
                 center = Extent2D<F32>{next.x + next.width * 0.5f, next.y + next.height * 0.5f};
@@ -2397,6 +2405,25 @@ TEST_CASE("Pasting while another layer covers the pointer places the block at th
     REQUIRE(pastes.size() == 1);
     CHECK(pastes[0].x == Catch::Approx(center->x));
     CHECK(pastes[0].y == Catch::Approx(center->y));
+}
+
+TEST_CASE("Files dropped on the editor report the grid point under the pointer", "[core][sakura][node-editor]") {
+    Graph graph;
+    graph.add("a", {40.0f, 40.0f});
+    REQUIRE(Settle(graph));
+    const auto expected = CanvasPoint(graph, 400.0f, 300.0f);
+    graph.move(400.0f, 300.0f);
+
+    const std::vector<std::string> paths = {"/captures/one.cu8", "/captures/two.wav"};
+    CHECK(Sakura::Access::dropFiles(graph.host, {400.0f, 300.0f}, paths));
+    REQUIRE(graph.drops.size() == 1);
+    CHECK(graph.drops[0].first == paths);
+    CheckNear(graph.drops[0].second, expected.x, expected.y, 0.5f);
+
+    graph.dropping = false;
+    graph.step();
+    CHECK_FALSE(Sakura::Access::dropFiles(graph.host, {400.0f, 300.0f}, paths));
+    CHECK(graph.drops.size() == 1);
 }
 
 TEST_CASE("The editor only consumes a middle release after its own middle press", "[core][sakura][node-editor]") {

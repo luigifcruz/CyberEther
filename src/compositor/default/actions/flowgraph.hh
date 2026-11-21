@@ -22,6 +22,7 @@
 #include "tools/text.hh"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -47,7 +48,7 @@ struct FlowgraphActions {
                               MailToggleFavoriteFlowgraph,
                               MailForgetRecentFlowgraph,
                               MailRememberFlowgraph,
-                              MailDropFlowgraphPath,
+                              MailDropFlowgraphFiles,
                               MailOpenFlowgraphBlob,
                               MailOpenFlowgraphExample,
                               MailFocusFlowgraph,
@@ -87,7 +88,7 @@ struct FlowgraphActions {
     Result handle(const MailNewFlowgraph&);
     Result handle(const MailOpenFlowgraph&);
     Result handle(const MailOpenFlowgraphPath& msg);
-    Result handle(const MailDropFlowgraphPath& msg);
+    Result handle(const MailDropFlowgraphFiles& msg);
     Result handle(const MailOpenFlowgraphBlob& msg);
     std::optional<std::string> openBlob(std::vector<char> blob);
     Result handle(const MailOpenFlowgraphExample& msg);
@@ -135,6 +136,7 @@ struct FlowgraphActions {
     std::string startFolder(const std::string& name) const;
     void markUntracked(const std::string& flowgraph);
     static std::string ReconfigureMergeKey(const std::string& block, const Parser::Map& config);
+    static std::optional<Parser::Map> FileReaderConfig(const std::string& path);
     Sakura::Callback<void(Result)> selectOnComplete(const std::string& flowgraphId,
                                                     std::shared_ptr<std::vector<std::string>> created);
     Sakura::Callback<void(Result)> mailOnSuccess(Mail mail) const;

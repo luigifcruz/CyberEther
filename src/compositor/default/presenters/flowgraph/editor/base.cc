@@ -33,6 +33,9 @@ FlowgraphEditor::Config FlowgraphEditorPresenter::build(const std::string& flowg
             [enqueue, flowgraphId](std::optional<Extent2D<F32>> gridPosition) {
                 enqueue(MailPasteBlock{flowgraphId, gridPosition});
         },
+        .onDropFiles = [enqueue, flowgraphId](const std::vector<std::string>& paths, Extent2D<F32> gridPosition) {
+            enqueue(MailDropFlowgraphFiles{.paths = paths, .flowgraph = flowgraphId, .gridPosition = gridPosition});
+        },
         .onDuplicateBlocks = [enqueue, flowgraphId](const std::vector<std::string>& blockNames) {
             enqueue(MailDuplicateBlock{.flowgraph = flowgraphId, .blockIds = blockNames});
         },

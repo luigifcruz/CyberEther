@@ -65,7 +65,8 @@ Result AgentActions::handle(const MailSetAgentVoiceMuted& msg) {
 
 Result AgentActions::handle(const MailSubmitAgentChat& msg) {
     auto& agent = state.agent;
-    if (!agent.settings.enabled || !runtime.submit(msg.text)) {
+    const bool steerable = !agent.ui.voiceVisible;
+    if (!agent.settings.enabled || !(runtime.submit(msg.text) || (steerable && runtime.session().steer(msg.text)))) {
         return Result::SUCCESS;
     }
 
@@ -92,6 +93,18 @@ Result AgentActions::handle(const MailCancelAgentChat&) {
 
 Result AgentActions::handle(const MailClearAgentChat&) {
     runtime.session().clear();
+    return Result::SUCCESS;
+}
+
+Result AgentActions::handle(const MailWithdrawAgentChat& msg) {
+    runtime.session().withdraw(msg.key);
+    return Result::SUCCESS;
+}
+
+Result AgentActions::handle(const MailResumeAgentChat&) {
+    if (state.agent.settings.enabled && !state.agent.ui.voiceVisible) {
+        runtime.submit({});
+    }
     return Result::SUCCESS;
 }
 
