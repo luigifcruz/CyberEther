@@ -74,9 +74,9 @@ Open **Settings** from the titlebar (or press **Cmd/Ctrl + Comma**) to configure
 
 Drop a **Note** block onto any canvas to document a pipeline or build a live dashboard. Note blocks support standard Markdown along with live `${env.<path>}` placeholders, `[*]` list wildcards for dynamic tables, and fenced `stats` tiles that update in real time from the flowgraph environment. See [Live Markdown in Note Blocks](/docs/metadata#live-markdown-in-note-blocks) for the complete syntax and examples.
 
-## Built-In Example Gallery
+## Example Gallery
 
-Open ready-made pipelines from the gallery on the **Start** tab. The first time you browse the gallery online, CyberEther downloads the published flowgraphs and keeps a local copy for offline use. Each example opens in its own tab and begins running once its inputs and devices are ready.
+Open ready-made pipelines from the gallery on the **Start** tab. The first time you browse the gallery online, CyberEther downloads the published flowgraphs and keeps a local copy for offline use. Until that first download finishes, the gallery sections stay empty. Each loaded plugin that bundles examples gets its own section after the gallery sections. Each example opens in its own tab and begins running once its inputs and devices are ready.
 
 | Example | What You Will See |
 |---|---|

@@ -1,4 +1,5 @@
 #include "support/base.hh"
+#include "jetstream/home.hh"
 #include "tools/text.hh"
 
 #include <cctype>
@@ -15,17 +16,19 @@ std::vector<Flowgraph::View::InterfaceEntry> InterfaceEntries(const Block::Inter
     return result;
 }
 
-std::optional<Registry::FlowgraphRegistration> FindExample(const std::string& key, std::string& error) {
+std::optional<Home::Gallery::Flowgraph> FindExample(const std::string& key, std::string& error) {
+    const auto& gallery = Home::Get().gallery();
     if (!key.empty()) {
-        const auto examples = Registry::ListAvailableFlowgraphs(key);
-        if (!examples.empty()) {
-            return examples.front();
+        if (auto example = gallery.flowgraph(key)) {
+            return example;
         }
     }
 
     std::vector<std::string> keys;
-    for (const auto& example : Registry::ListAvailableFlowgraphs()) {
-        keys.push_back(example.key);
+    for (const auto& section : gallery.sections()) {
+        for (const auto& example : section.flowgraphs) {
+            keys.push_back(example.key);
+        }
     }
 
     error = jst::fmt::format("Example '{}' not found.{}", key, Lookup::Similar(key, keys, "example keys"));
@@ -220,41 +223,46 @@ Json GetBlockDocs(const Invocation& call) {
 Json ListExamples(const Graph&, const Json& args) {
     const std::string query = Text::ToLower(args.value("query", std::string{}));
     const auto terms = QueryTerms(query);
-    const auto available = Registry::ListAvailableFlowgraphs();
 
+    U64 total = 0;
     Json examples = Json::array();
-    for (const auto& example : available) {
-        const std::string about = jst::fmt::format("{} {} {} {}",
-                                                   Text::ToLower(example.key),
-                                                   Text::ToLower(example.title),
-                                                   Text::ToLower(example.summary),
-                                                   Text::ToLower(example.description));
-        const std::string content = Text::ToLower(example.content);
+    for (const auto& section : Home::Get().gallery().sections()) {
+        for (const auto& example : section.flowgraphs) {
+            ++total;
+            const std::string about = jst::fmt::format("{} {} {} {} {}",
+                                                       Text::ToLower(example.key),
+                                                       Text::ToLower(example.title),
+                                                       Text::ToLower(example.summary),
+                                                       Text::ToLower(example.description),
+                                                       Text::ToLower(section.title));
+            const std::string content = Text::ToLower(example.content);
 
-        const auto inAbout = [&](const auto& term) {
-            return about.find(term) != std::string::npos;
-        };
-        const auto found = [&](const auto& term) {
-            return inAbout(term) || content.find(term) != std::string::npos;
-        };
-        if (!std::all_of(terms.begin(), terms.end(), found)) {
-            continue;
-        }
+            const auto inAbout = [&](const auto& term) {
+                return about.find(term) != std::string::npos;
+            };
+            const auto found = [&](const auto& term) {
+                return inAbout(term) || content.find(term) != std::string::npos;
+            };
+            if (!std::all_of(terms.begin(), terms.end(), found)) {
+                continue;
+            }
 
-        Json item = {
-            {"key", example.key},
-            {"title", example.title},
-            {"summary", example.summary},
-        };
-        if (!std::all_of(terms.begin(), terms.end(), inAbout)) {
-            item["matched_in"] = "content";
+            Json item = {
+                {"key", example.key},
+                {"title", example.title},
+                {"summary", example.summary},
+                {"section", section.title},
+            };
+            if (!std::all_of(terms.begin(), terms.end(), inAbout)) {
+                item["matched_in"] = "content";
+            }
+            examples.push_back(std::move(item));
         }
-        examples.push_back(std::move(item));
     }
 
     return Json({
         {"query", query},
-        {"total", available.size()},
+        {"total", total},
         {"examples", std::move(examples)},
     });
 }
@@ -380,19 +388,19 @@ std::vector<Entry> Toolbox::Catalog() {
         }, GetBlockDocs),
         Entry::FromJson({
             "list_examples",
-            "List the bundled example flowgraphs with their key, title, and summary. Optional query words must all appear in the key, title, summary, description, or YAML content. matched_in is 'content' when some words appear only in the YAML, which get_example with pattern can locate.",
+            "List the example flowgraphs on the home page, from the CyberEther gallery and from loaded plugins, with their key, title, summary, and home page section. Optional query words must all appear in the key, title, summary, description, section, or YAML content. matched_in is 'content' when some words appear only in the YAML, which get_example with pattern can locate.",
             R"({"type":"object","properties":{"query":{"type":"string","description":"Optional words to filter examples."}},"additionalProperties":false})",
             {.permission = Permission::Read},
         }, ListExamples),
         Entry::FromJson({
             "get_example",
-            "Read one bundled example flowgraph by key, useful as a reference for block choices, configuration, wiring, and layout. Without pattern, offset, or limit it returns the description and full YAML content. With pattern it returns matching YAML lines (marked match=true) plus context, and with offset or limit a range of lines, each with its line number. pattern is a literal substring unless regex is true. Does not change any graph.",
+            "Read one example flowgraph by key, useful as a reference for block choices, configuration, wiring, and layout. Without pattern, offset, or limit it returns the description and full YAML content. With pattern it returns matching YAML lines (marked match=true) plus context, and with offset or limit a range of lines, each with its line number. pattern is a literal substring unless regex is true. Does not change any graph.",
             R"({"type":"object","required":["key"],"properties":{"key":{"type":"string","description":"Exact example key from list_examples."},"pattern":{"type":"string","description":"Text to find on a YAML line."},"regex":{"type":"boolean","description":"Treat pattern as an ECMAScript regular expression."},"context":{"type":"integer","minimum":0,"maximum":20,"description":"Lines of context around each match. Default 2."},"offset":{"type":"integer","minimum":1,"description":"First line to return when pattern is absent. Default 1."},"limit":{"type":"integer","minimum":1,"maximum":500,"description":"Maximum lines to return. Default 200."}},"additionalProperties":false})",
             {.permission = Permission::Read},
         }, GetExample),
         {{
             "open_example",
-            "Open a bundled example as a new flowgraph and select it for subsequent tools. Returns the new flowgraph name and its summary. Use only when the user wants to open or start from an example; get_example reads it without changing the graph.",
+            "Open an example as a new flowgraph and select it for subsequent tools. Returns the new flowgraph name and its summary. Use only when the user wants to open or start from an example; get_example reads it without changing the graph.",
             R"({"type":"object","required":["key"],"properties":{"key":{"type":"string","description":"Exact example key from list_examples."}},"additionalProperties":false})",
         }, OpenExample, ExampleGraph},
     };

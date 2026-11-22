@@ -1,4 +1,4 @@
-#include "gallery.hh"
+#include "home_gallery_remote.hh"
 
 #include "jetstream/config.hh"
 #include "jetstream/logger.hh"
@@ -80,6 +80,12 @@ bool SplitUrl(const std::string& url, std::string& host, std::string& path) {
     return !host.empty();
 }
 
+bool ValidSlug(std::string_view slug) {
+    return !slug.empty() && std::all_of(slug.begin(), slug.end(), [](const char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_';
+    });
+}
+
 bool ValidDigest(const std::string& digest) {
     return digest.size() == kDigestLength && std::all_of(digest.begin(), digest.end(), [](char c) {
         return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
@@ -110,10 +116,10 @@ bool Verified(const std::string& content, const std::string& digest) {
     return Digest(content) == digest;
 }
 
-Platform::Http::Client::Response Get(const Gallery::Source& source,
-                             const std::string& host,
-                             const std::string& path,
-                             const std::function<bool()>& cancelled) {
+Platform::Http::Client::Response Request(const Home::Gallery::Remote::Source& source,
+                                         const std::string& host,
+                                         const std::string& path,
+                                         const std::function<bool()>& cancelled) {
     if (!source.send) {
         return {};
     }
@@ -161,18 +167,15 @@ bool WriteFile(const std::filesystem::path& path, const std::string& content) {
     return true;
 }
 
-std::optional<Registry::FlowgraphRegistration> Register(const std::string& slug, std::string content) {
-    Registry::FlowgraphRegistration registration;
-    Parser::Map data;
-    if (Parser::YamlDecode(content, data) != Result::SUCCESS || registration.deserialize(data) != Result::SUCCESS) {
+std::optional<Home::Gallery::Flowgraph> Decode(const std::string& slug, std::string content) {
+    Home::Gallery::Flowgraph flowgraph;
+    if (Home::Gallery::Flowgraph::Parse(slug, std::move(content), flowgraph) != Result::SUCCESS) {
         return std::nullopt;
     }
-    registration.key = slug;
-    registration.content = std::move(content);
-    if (registration.title.empty()) {
-        registration.title = slug;
+    if (flowgraph.title.empty()) {
+        flowgraph.title = slug;
     }
-    return registration;
+    return flowgraph;
 }
 
 bool ReadText(const nlohmann::json& item, const char* name, std::string& value) {
@@ -205,13 +208,14 @@ std::optional<Entry> ReadEntry(const nlohmann::json& item) {
     }
     Entry entry;
     if (!ReadText(item, "slug", entry.slug) || !ReadText(item, "flowgraphSha256", entry.digest) ||
-        !ReadText(item, "url", entry.url) || !ReadSize(item, entry.size) || entry.slug.empty()) {
+        !ReadText(item, "url", entry.url) || !ReadSize(item, entry.size) || !ValidSlug(entry.slug)) {
         return std::nullopt;
     }
     return entry;
 }
 
-std::optional<std::vector<Entry>> Listing(const nlohmann::json& listing) {
+std::optional<std::vector<Entry>> Listing(const nlohmann::json& listing, bool& skipped) {
+    skipped = false;
     if (!listing.is_object()) {
         return std::nullopt;
     }
@@ -224,6 +228,7 @@ std::optional<std::vector<Entry>> Listing(const nlohmann::json& listing) {
         auto entry = ReadEntry(item);
         if (!entry.has_value()) {
             JST_WARN("[GALLERY] Skipping a malformed flowgraph entry.");
+            skipped = true;
             continue;
         }
         entries.push_back(std::move(*entry));
@@ -245,7 +250,7 @@ void Prune(const std::filesystem::path& folder, const std::vector<Entry>& keep) 
     }
 }
 
-nlohmann::json QueryJson(const Gallery::Query& query) {
+nlohmann::json QueryJson(const Home::Gallery::Remote::Query& query) {
     return {
         {"owner", query.owner},
         {"version", query.version},
@@ -254,7 +259,7 @@ nlohmann::json QueryJson(const Gallery::Query& query) {
     };
 }
 
-std::string IndexText(const Gallery::Query& query, const std::vector<Entry>& entries) {
+std::string IndexText(const Home::Gallery::Remote::Query& query, const std::vector<Entry>& entries) {
     nlohmann::json items = nlohmann::json::array();
     for (const auto& entry : entries) {
         items.push_back({
@@ -267,7 +272,8 @@ std::string IndexText(const Gallery::Query& query, const std::vector<Entry>& ent
     return nlohmann::json{{"query", QueryJson(query)}, {"flowgraphs", std::move(items)}}.dump();
 }
 
-std::optional<std::vector<Entry>> CachedListing(const std::filesystem::path& folder, const Gallery::Query& query) {
+std::optional<std::vector<Entry>> CachedListing(const std::filesystem::path& folder,
+                                                const Home::Gallery::Remote::Query& query) {
     const auto index = ReadFile(folder / kIndexFile);
     if (!index.has_value()) {
         return std::nullopt;
@@ -276,10 +282,11 @@ std::optional<std::vector<Entry>> CachedListing(const std::filesystem::path& fol
     if (!listing.is_object() || listing.value("query", nlohmann::json()) != QueryJson(query)) {
         return std::nullopt;
     }
-    return Listing(listing);
+    bool skipped = false;
+    return Listing(listing, skipped);
 }
 
-std::optional<Registry::FlowgraphRegistration> Restore(const std::filesystem::path& folder, const Entry& entry) {
+std::optional<Home::Gallery::Flowgraph> Restore(const std::filesystem::path& folder, const Entry& entry) {
     if (!ValidDigest(entry.digest)) {
         return std::nullopt;
     }
@@ -287,16 +294,17 @@ std::optional<Registry::FlowgraphRegistration> Restore(const std::filesystem::pa
     if (!content.has_value() || !Verified(*content, entry.digest)) {
         return std::nullopt;
     }
-    return Register(entry.slug, std::move(*content));
+    return Decode(entry.slug, std::move(*content));
 }
 
-std::optional<std::string> Download(const Gallery::Source& source,
+std::optional<std::string> Download(const Home::Gallery::Remote::Source& source,
                                     const Entry& entry,
                                     bool verifiable,
                                     const std::function<bool()>& cancelled) {
     std::string host;
     std::string path;
-    auto file = SplitUrl(entry.url, host, path) ? Get(source, host, path, cancelled) : Platform::Http::Client::Response{};
+    auto file =
+        SplitUrl(entry.url, host, path) ? Request(source, host, path, cancelled) : Platform::Http::Client::Response{};
     if (file.error || file.status != 200 || (entry.size > 0 && file.body.size() != entry.size)) {
         JST_WARN("[GALLERY] Skipping flowgraph '{}' because its file could not be downloaded.", entry.slug);
         return std::nullopt;
@@ -310,23 +318,23 @@ std::optional<std::string> Download(const Gallery::Source& source,
 
 }  // namespace
 
-Gallery::Source Gallery::Source::Default() {
+Home::Gallery::Remote::Source Home::Gallery::Remote::Source::Default() {
     return {
         .send = &Platform::Http::Client::Send,
         .folder = CacheFolder(),
     };
 }
 
-Gallery::Query Gallery::Current() {
+Home::Gallery::Remote::Query Home::Gallery::Remote::Current() {
     return {
-        .owner = Owner,
+        .owner = Origin,
         .version = JETSTREAM_VERSION_STR,
         .platform = CurrentPlatform(),
         .arch = CurrentArch(),
     };
 }
 
-std::string Gallery::Path(const Query& query) {
+std::string Home::Gallery::Remote::Path(const Query& query) {
     std::string path = Endpoint;
     char separator = '?';
     const auto add = [&](const char* name, const std::string& value) {
@@ -346,7 +354,7 @@ std::string Gallery::Path(const Query& query) {
     return path;
 }
 
-std::optional<std::string> Gallery::Slug(const std::string& url) {
+std::optional<std::string> Home::Gallery::Remote::Slug(const std::string& url) {
     std::string_view rest = url;
     for (const std::string_view scheme : {"https://", "http://"}) {
         if (rest.starts_with(scheme)) {
@@ -370,27 +378,57 @@ std::optional<std::string> Gallery::Slug(const std::string& url) {
     if (rest.ends_with('/')) {
         rest.remove_suffix(1);
     }
-    if (rest.empty() || !std::all_of(rest.begin(), rest.end(), [](const char c) {
-            return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_';
-        })) {
+    if (!ValidSlug(rest)) {
         return std::nullopt;
     }
     return std::string(rest);
 }
 
-Result Gallery::Load(std::vector<Registry::FlowgraphRegistration>& flowgraphs) {
+std::vector<Home::Gallery::Section> Home::Gallery::Remote::Sections(const Flowgraphs& flowgraphs) {
+    struct Known {
+        const char* title;
+        const char* description;
+    };
+    static const Known known[] = {
+        {"Basics", "Start here to learn the editor, sources, and plots."},
+        {"DSP", "Signal processing techniques, taken apart block by block."},
+        {"Receivers", "Tune, demodulate, and decode signals off the air."},
+        {"Visualization", "Turn numbers into color, shape, and motion."},
+    };
+    std::vector<Section> sections;
+    for (const auto& flowgraph : flowgraphs) {
+        const std::string title = flowgraph.category.empty() ? "Other" : flowgraph.category;
+        auto section = std::find_if(sections.begin(), sections.end(), [&](const auto& item) {
+            return item.title == title;
+        });
+        if (section == sections.end()) {
+            const auto info = std::find_if(std::begin(known), std::end(known), [&](const auto& item) {
+                return title == item.title;
+            });
+            sections.push_back({
+                .key = std::string(Origin) + "/" + title,
+                .title = title,
+                .description = info != std::end(known) ? info->description
+                                                       : "Complete pipelines, ready to run in Web or Native.",
+            });
+            section = std::prev(sections.end());
+        }
+        section->flowgraphs.push_back(flowgraph);
+    }
+    return sections;
+}
+
+Result Home::Gallery::Remote::Load(Flowgraphs& flowgraphs) {
     return LoadFrom(Source::Default(), Current(), flowgraphs);
 }
 
-Result Gallery::Fetch(const Query& query,
-                      const std::function<bool()>& cancelled,
-                      std::vector<Registry::FlowgraphRegistration>& flowgraphs) {
+Result Home::Gallery::Remote::Fetch(const Query& query,
+                                    const std::function<bool()>& cancelled,
+                                    Flowgraphs& flowgraphs) {
     return FetchFrom(Source::Default(), query, cancelled, flowgraphs);
 }
 
-Result Gallery::LoadFrom(const Source& source,
-                         const Query& query,
-                         std::vector<Registry::FlowgraphRegistration>& flowgraphs) {
+Result Home::Gallery::Remote::LoadFrom(const Source& source, const Query& query, Flowgraphs& flowgraphs) {
     flowgraphs.clear();
     if (!source.folder.has_value()) {
         return Result::ERROR;
@@ -399,25 +437,31 @@ Result Gallery::LoadFrom(const Source& source,
     if (!listing.has_value()) {
         return Result::ERROR;
     }
+    std::unordered_set<std::string> resolved;
     for (const auto& entry : *listing) {
-        if (auto registration = Restore(*source.folder, entry)) {
-            flowgraphs.push_back(std::move(*registration));
+        if (resolved.contains(entry.slug)) {
+            continue;
+        }
+        if (auto flowgraph = Restore(*source.folder, entry)) {
+            resolved.insert(entry.slug);
+            flowgraphs.push_back(std::move(*flowgraph));
         }
     }
     return Result::SUCCESS;
 }
 
-Result Gallery::FetchFrom(const Source& source,
-                          const Query& query,
-                          const std::function<bool()>& cancelled,
-                          std::vector<Registry::FlowgraphRegistration>& flowgraphs) {
+Result Home::Gallery::Remote::FetchFrom(const Source& source,
+                                        const Query& query,
+                                        const std::function<bool()>& cancelled,
+                                        Flowgraphs& flowgraphs) {
     flowgraphs.clear();
-    const auto response = Get(source, Host, Path(query), cancelled);
+    const auto response = Request(source, Host, Path(query), cancelled);
     if (response.error || response.status != 200) {
         JST_DEBUG("[GALLERY] Flowgraph list unavailable (status {}, {}).", response.status, response.error.message);
         return Result::ERROR;
     }
-    const auto listing = Listing(nlohmann::json::parse(response.body, nullptr, false));
+    bool skipped = false;
+    const auto listing = Listing(nlohmann::json::parse(response.body, nullptr, false), skipped);
     if (!listing.has_value()) {
         JST_WARN("[GALLERY] Flowgraph list response is malformed.");
         return Result::ERROR;
@@ -432,34 +476,39 @@ Result Gallery::FetchFrom(const Source& source,
     }
 
     std::vector<Entry> kept;
-    bool complete = true;
+    std::unordered_set<std::string> resolved;
+    bool complete = !skipped;
     for (const auto& entry : *listing) {
         if (cancelled && cancelled()) {
             return Result::ERROR;
         }
+        if (resolved.contains(entry.slug)) {
+            continue;
+        }
 
         const bool verifiable = kVerifiable && ValidDigest(entry.digest);
         const bool cacheable = verifiable && folder.has_value();
-        auto registration = cacheable ? Restore(*folder, entry) : std::nullopt;
-        bool cached = registration.has_value();
-        if (!registration.has_value()) {
+        auto flowgraph = cacheable ? Restore(*folder, entry) : std::nullopt;
+        bool cached = flowgraph.has_value();
+        if (!flowgraph.has_value()) {
             if (auto content = Download(source, entry, verifiable, cancelled)) {
-                registration = Register(entry.slug, std::move(*content));
-                if (!registration.has_value()) {
+                flowgraph = Decode(entry.slug, std::move(*content));
+                if (!flowgraph.has_value()) {
                     JST_WARN("[GALLERY] Skipping flowgraph '{}' because its file could not be parsed.", entry.slug);
                 } else if (cacheable) {
-                    cached = WriteFile(*folder / (entry.digest + ".yml"), registration->content);
+                    cached = WriteFile(*folder / (entry.digest + ".yml"), flowgraph->content);
                 }
             }
         }
         const auto fallback = previous.find(entry.slug);
-        if (registration.has_value()) {
+        if (flowgraph.has_value()) {
             if (cached) {
                 kept.push_back(entry);
             } else if (cacheable && fallback != previous.end()) {
                 kept.push_back(fallback->second);
             }
-            flowgraphs.push_back(std::move(*registration));
+            resolved.insert(entry.slug);
+            flowgraphs.push_back(std::move(*flowgraph));
             continue;
         }
 
@@ -470,10 +519,14 @@ Result Gallery::FetchFrom(const Source& source,
         if (auto restored = Restore(*folder, fallback->second)) {
             JST_WARN("[GALLERY] Keeping the cached copy of flowgraph '{}'.", entry.slug);
             kept.push_back(fallback->second);
+            resolved.insert(entry.slug);
             flowgraphs.push_back(std::move(*restored));
         }
     }
 
+    if (!complete && flowgraphs.empty()) {
+        return Result::INCOMPLETE;
+    }
     if (folder.has_value() && WriteFile(*folder / kIndexFile, IndexText(query, kept))) {
         Prune(*folder, kept);
     }

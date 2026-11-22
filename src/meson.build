@@ -45,6 +45,8 @@ src_lst += files([
     'block_context.cc',
     'block_interface.cc',
     'registry.cc',
+    'home.cc',
+    'home_gallery_remote.cc',
     'plugin.cc',
     'benchmark.cc',
     'testing.cc',

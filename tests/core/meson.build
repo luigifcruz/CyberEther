@@ -16,6 +16,7 @@ core_test_domains = {
         'flowgraph/mutation.cc',
         'flowgraph/state.cc',
     ],
+    'home': ['home/gallery.cc'],
     'lifecycle': ['lifecycle/block_module.cc'],
     'memory': [
         'memory/axis.cc',

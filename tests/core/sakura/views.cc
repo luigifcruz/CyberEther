@@ -134,6 +134,7 @@ struct Mailbox {
     TestSupport::SettingsSandbox sandbox{"sakura-views"};
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
+    Home::Gallery gallery;
     std::vector<Mail> mails;
 
     Mailbox() {
@@ -146,7 +147,7 @@ struct Mailbox {
 
     void refreshRegistry() {
         state.registry.stale = true;
-        GalleryActions(state).refreshRegistry();
+        GalleryActions(state, gallery).refreshRegistry();
     }
 
     PresenterContext context() const {
@@ -1910,7 +1911,7 @@ std::vector<Sakura::PillTabs*> SectionTabs(Sakura::Component& root) {
     return tabs;
 }
 
-std::vector<Registry::FlowgraphRegistration> GalleryFixture() {
+std::vector<Home::Gallery::Section> GalleryFixture() {
     struct Entry {
         const char* key;
         const char* title;
@@ -1949,19 +1950,19 @@ std::vector<Registry::FlowgraphRegistration> GalleryFixture() {
          "Hop a radio across the whole FM band and stitch the slices into one live spectrum.", "#5fd1b4",
          "sweep[SDR Sweep] --> spectrum[Spectrum]", false},
     };
-    std::vector<Registry::FlowgraphRegistration> flowgraphs;
+    GalleryActions::Flowgraphs flowgraphs;
     for (const auto& entry : entries) {
-        Registry::FlowgraphRegistration registration;
-        registration.key = entry.key;
-        registration.title = entry.title;
-        registration.summary = entry.summary;
-        registration.category = entry.category;
-        registration.accent = entry.accent;
-        registration.diagram = entry.diagram;
-        registration.featured = entry.featured;
-        flowgraphs.push_back(std::move(registration));
+        Home::Gallery::Flowgraph flowgraph;
+        flowgraph.key = entry.key;
+        flowgraph.title = entry.title;
+        flowgraph.summary = entry.summary;
+        flowgraph.category = entry.category;
+        flowgraph.accent = entry.accent;
+        flowgraph.diagram = entry.diagram;
+        flowgraph.featured = entry.featured;
+        flowgraphs.push_back(std::move(flowgraph));
     }
-    return flowgraphs;
+    return GalleryActions::Remote::Sections(flowgraphs);
 }
 
 struct WelcomeRig {
@@ -1973,7 +1974,7 @@ struct WelcomeRig {
     LayerHost host;
 
     explicit WelcomeRig(Jetstream::Rect bounds = kWide) : scene{bounds}, bounds(bounds), host({&layer}) {
-        mailbox.state.registry.flowgraphs = GalleryFixture();
+        mailbox.state.registry.sections = GalleryFixture();
     }
 
     WelcomeView::Config build() const {
@@ -2131,7 +2132,7 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
         {.path = "/flows/radio.yml", .title = "Radio", .accessed = 1},
         {.path = "/flows/sweep.yml"},
     };
-    mailbox.state.registry.flowgraphs = GalleryFixture();
+    mailbox.state.registry.sections = GalleryFixture();
     auto config = WelcomePresenter(mailbox.context()).build();
     REQUIRE(config.recent.size() == 2);
     CHECK(config.recent[0].title == "Radio");
@@ -2141,12 +2142,12 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
     for (const auto& example : config.featured) {
         featured.push_back(example.title);
     }
-    CHECK(featured == std::vector<std::string>{"CyberEther First Steps", "ADS-B Flight Tracker",
-                                               "Python QPSK Generator", "Simple FM Receiver", "Multi-FM Receiver",
+    CHECK(featured == std::vector<std::string>{"CyberEther First Steps", "Python QPSK Generator",
+                                               "ADS-B Flight Tracker", "Simple FM Receiver", "Multi-FM Receiver",
                                                "Overlap-Add-Fold"});
     CHECK(config.featured.front().diagram.find("Tone") != std::string::npos);
     CHECK(config.featured.front().summary.find("spectrum analyzer") != std::string::npos);
-    CHECK(config.featured[1].category == "Receivers");
+    CHECK(config.featured[2].category == "Receivers");
     CHECK(config.categoryNames == std::vector<std::string>{"Basics", "Receivers", "DSP"});
     REQUIRE(config.categories.size() == 3);
     CHECK(config.categories.front().title == "Basics");
@@ -2169,26 +2170,62 @@ TEST_CASE("Welcome presenter reads the gallery from example metadata and lists r
     CHECK_FALSE(config.featured.front().key.empty());
 }
 
-TEST_CASE("Welcome presenter files examples without gallery metadata under plugins",
+TEST_CASE("Welcome presenter gives each plugin with examples its own section after the gallery",
           "[core][sakura][views]") {
-    Registry::FlowgraphRegistration record;
-    record.key = "welcome-plain-example";
-    record.title = "Plain Example";
-    record.summary = "Plain summary.";
-    record.content = "---\nversion: 2\ngraph: []\n";
+    Home::Gallery::Flowgraph plain;
+    plain.key = "radio-tools/plain";
+    plain.title = "Plain Example";
+    plain.summary = "Plain summary.";
+    plain.category = "Basics";
+    plain.content = "---\nversion: 2\ngraph: []\n";
+    auto other = plain;
+    other.key = "radio-tools/other";
+    other.title = "Other Example";
 
     Mailbox mailbox;
-    mailbox.state.registry.flowgraphs = GalleryFixture();
-    mailbox.state.registry.flowgraphs.push_back(record);
+    mailbox.state.registry.sections = GalleryFixture();
+    mailbox.state.registry.sections.push_back({
+        .key = "/plugins/radio-tools.cep",
+        .title = "Radio Tools",
+        .description = "Examples bundled with this plugin.",
+        .flowgraphs = {plain, other},
+    });
+    mailbox.state.registry.sections.push_back({
+        .key = "/plugins/empty.cep",
+        .title = "Empty",
+    });
+    for (const auto* path : {"/plugins/dsp.cep", "/plugins/dsp-copy.cep"}) {
+        mailbox.state.registry.sections.push_back({
+            .key = path,
+            .title = "DSP",
+            .flowgraphs = {{.key = jst::fmt::format("{}/extra", path), .title = "Plugin DSP"}},
+        });
+    }
     const auto config = WelcomePresenter(mailbox.context()).build();
+    const auto titled = [&](const std::string& title) {
+        return std::find_if(config.categories.begin(), config.categories.end(), [&](const auto& category) {
+            return category.title == title;
+        });
+    };
+    REQUIRE(titled("DSP") != config.categories.end());
+    CHECK(titled("DSP")->examples.back().title == "Overlap-Add-Fold");
+    REQUIRE(titled("DSP (Plugin)") != config.categories.end());
+    CHECK(titled("DSP (Plugin)")->examples.front().title == "Plugin DSP");
+    CHECK(titled("DSP (Plugin)")->examples.front().category == "DSP (Plugin)");
+    CHECK(titled("DSP (Plugin 2)") != config.categories.end());
     CHECK(config.featured.size() == 6);
-    REQUIRE(config.categoryNames.back() == "Plugins");
-    const auto& plugins = config.categories.back();
-    CHECK(plugins.title == "Plugins");
-    REQUIRE(plugins.examples.size() == 1);
-    CHECK(plugins.examples[0].title == "Plain Example");
-    CHECK(plugins.examples[0].summary == "Plain summary.");
-    CHECK(plugins.examples[0].diagram.empty());
+    CHECK(config.categoryNames == std::vector<std::string>{"Basics", "Receivers", "DSP", "Radio Tools", "DSP (Plugin)",
+                                                           "DSP (Plugin 2)"});
+    const auto& plugin = *std::find_if(config.categories.begin(), config.categories.end(), [](const auto& category) {
+        return category.title == "Radio Tools";
+    });
+    CHECK(plugin.title == "Radio Tools");
+    CHECK(plugin.description == "Examples bundled with this plugin.");
+    REQUIRE(plugin.examples.size() == 2);
+    CHECK(plugin.examples[0].title == "Plain Example");
+    CHECK(plugin.examples[0].summary == "Plain summary.");
+    CHECK(plugin.examples[0].category == "Radio Tools");
+    CHECK(plugin.examples[0].diagram.empty());
 }
 
 TEST_CASE("Welcome screen lists favorites above recent and stars toggle without opening",
@@ -2400,7 +2437,6 @@ TEST_CASE("Registry presenter reads plugins from the cached registry", "[core][s
     Mailbox mailbox;
     auto& registry = mailbox.state.registry;
     CHECK_FALSE(registry.stale);
-    CHECK_FALSE(registry.flowgraphs.empty());
     const Plugin::Info radioTools = {.path = "/plugins/radio-tools.cep", .version = "1.2.0", .blocks = {"fft"}};
     registry.registered = {
         {.path = "/plugins/radio-tools.cep", .info = radioTools, .exists = true},
@@ -2425,27 +2461,29 @@ TEST_CASE("Registry presenter reads plugins from the cached registry", "[core][s
     CHECK_FALSE(settings.domains.empty());
 }
 
-TEST_CASE("Registry presenter shows plugin examples even when a gallery entry shares their key",
-          "[core][sakura][views]") {
+TEST_CASE("Registry presenter titles plugin examples from their gallery section", "[core][sakura][views]") {
     Mailbox mailbox;
     auto& registry = mailbox.state.registry;
-    Registry::FlowgraphRegistration example;
-    example.key = "demo";
+    Home::Gallery::Flowgraph example;
+    example.key = "demo/example";
     example.title = "Plugin Demo";
     example.summary = "From the plugin.";
-    Registry::FlowgraphRegistration published = example;
-    published.title = "Gallery Demo";
-    published.summary = "From the gallery.";
-    const Plugin::Info plugin = {.path = "/plugins/demo.cep", .version = "1.0.0", .examples = {"demo"}};
-    registry.flowgraphs = GalleryActions::Catalog({published}, {example}, {plugin});
+    registry.sections = GalleryFixture();
+    registry.sections.push_back({.key = "/plugins/demo.cep", .title = "Demo", .flowgraphs = {example}});
+    const Plugin::Info plugin = {
+        .path = "/plugins/demo.cep",
+        .version = "1.0.0",
+        .examples = {"demo/example", "demo/missing"},
+    };
     registry.registered = {{.path = "/plugins/demo.cep", .info = plugin, .exists = true}};
     mailbox.state.settings.section = SettingsSection::Registry;
 
     const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
     REQUIRE(settings.plugins.size() == 1);
-    REQUIRE(settings.plugins[0].examples.size() == 1);
+    REQUIRE(settings.plugins[0].examples.size() == 2);
     CHECK(settings.plugins[0].examples[0].title == "Plugin Demo");
     CHECK(settings.plugins[0].examples[0].summary == "From the plugin.");
+    CHECK(settings.plugins[0].examples[1].title == "demo/missing");
 }
 
 TEST_CASE("Welcome screen pins settings and a theme toggle to the bottom of the sidebar",
@@ -2550,7 +2588,7 @@ TEST_CASE("Welcome explore page keeps equal side margins inside its tile", "[cor
 TEST_CASE("Welcome shows a gallery progress card until the first fetch of the session finishes",
           "[core][sakura][views]") {
     WelcomeRig rig;
-    auto& gallery = rig.mailbox.state.registry.gallery;
+    auto& gallery = rig.mailbox.state.registry.fetch;
     const auto shown = [&](const std::string& label) {
         return ShownText(rig.root(), label) != nullptr;
     };
@@ -2575,7 +2613,7 @@ TEST_CASE("Welcome shows a gallery progress card until the first fetch of the se
     CHECK(ShownText(rig.root(), "Nothing matches your search.") == nullptr);
     rig.mailbox.state.interface.welcomeQuery.clear();
 
-    gallery.flowgraphs = GalleryFixture();
+    rig.mailbox.state.registry.sections = GalleryFixture();
     gallery.cached = true;
     CHECK(rig.build().progress == updating);
     rig.show();
@@ -2599,16 +2637,19 @@ TEST_CASE("Welcome shows a gallery progress card until the first fetch of the se
     rig.wait(WelcomeView::ProgressLinger);
     CHECK_FALSE(shown("Gallery updated successfully!"));
 
+    gallery.failed = true;
+    CHECK(rig.build().progressResult == "Using cached flowgraphs");
+    gallery.failed = false;
     gallery.cached = false;
     CHECK(rig.build().progressResult == "Gallery loaded.");
     gallery.failed = true;
-    CHECK(rig.build().progressResult == "Using bundled flowgraphs");
+    CHECK(rig.build().progressResult == "Gallery unavailable");
 }
 
 TEST_CASE("Welcome gallery progress ends with a warning when the first fetch fails", "[core][sakura][views]") {
     WelcomeRig rig;
-    auto& gallery = rig.mailbox.state.registry.gallery;
-    const std::string failure = "Using bundled flowgraphs";
+    auto& gallery = rig.mailbox.state.registry.fetch;
+    const std::string failure = "Gallery unavailable";
     gallery.loading = true;
     rig.show();
     rig.wait(0.5);
@@ -2723,11 +2764,10 @@ TEST_CASE("Welcome flowgraph filters narrow the catalog by search text and categ
 TEST_CASE("Welcome front page previews six examples per category and pages a selected category",
           "[core][sakura][views]") {
     WelcomeRig rig({0.0f, 0.0f, 1400.0f, 6000.0f});
-    auto& flowgraphs = rig.mailbox.state.registry.flowgraphs;
-    flowgraphs.clear();
+    GalleryActions::Flowgraphs flowgraphs;
     const auto add = [&](const std::string& category, U64 count) {
         for (U64 index = 0; index < count; ++index) {
-            Registry::FlowgraphRegistration entry;
+            Home::Gallery::Flowgraph entry;
             entry.key = jst::fmt::format("{}-{}", category, index);
             entry.title = jst::fmt::format("{} {}", category, index);
             entry.category = category;
@@ -2736,6 +2776,7 @@ TEST_CASE("Welcome front page previews six examples per category and pages a sel
     };
     add("Receivers", 26);
     add("Basics", 3);
+    rig.mailbox.state.registry.sections = GalleryActions::Remote::Sections(flowgraphs);
     const auto pagerButton = [&](const std::string& label) -> Sakura::Button* {
         for (auto* pager : Find<Pagination>(rig.root())) {
             for (auto* button : Find<Sakura::Button>(*pager)) {
@@ -2955,13 +2996,15 @@ TEST_CASE("Welcome remote section, gallery progress, and category pager settle u
           "[core][sakura][views]") {
     WelcomeRig rig;
     auto& state = rig.mailbox.state;
+    GalleryActions::Flowgraphs flowgraphs;
     for (U64 index = 0; index < 2 * WelcomePresenter::PageSize; ++index) {
-        Registry::FlowgraphRegistration entry;
+        Home::Gallery::Flowgraph entry;
         entry.key = jst::fmt::format("receiver-{}", index);
         entry.title = jst::fmt::format("Receiver {}", index);
         entry.category = "Receivers";
-        state.registry.flowgraphs.push_back(entry);
+        flowgraphs.push_back(entry);
     }
+    state.registry.sections = GalleryActions::Remote::Sections(flowgraphs);
     state.remote.supported = true;
     Frames frames(rig.host, kWide, rig.scene.context());
     const auto update = [&] {
@@ -2977,10 +3020,10 @@ TEST_CASE("Welcome remote section, gallery progress, and category pager settle u
     CHECK(Settles(frames, update));
     CHECK(IconButtons(rig.root(), ICON_LC_X).size() == 2);
 
-    state.registry.gallery.loading = true;
+    state.registry.fetch.loading = true;
     CHECK(Settles(frames, update));
-    state.registry.gallery.loading = false;
-    state.registry.gallery.attempted = true;
+    state.registry.fetch.loading = false;
+    state.registry.fetch.attempted = true;
     CHECK(Settles(frames, update));
 
     state.interface.welcomeCategory = "Receivers";

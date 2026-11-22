@@ -12,7 +12,7 @@ It is the fastest way to explore CyberEther, run a live demo, or share a flowgra
 
 ## Quick Start
 
-Open [cyberether.org/web](https://cyberether.org/web) in a WebGPU-enabled browser such as a recent version of Chrome. You get the same interface and built-in example gallery as the desktop application.
+Open [cyberether.org/web](https://cyberether.org/web) in a WebGPU-enabled browser such as a recent version of Chrome. You get the same interface and example gallery as the desktop application.
 
 ## How the Browser Build Works
 

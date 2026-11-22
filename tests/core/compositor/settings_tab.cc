@@ -195,7 +195,8 @@ TEST_CASE("Adding a plugin path that fails validation leaves the settings tab an
     };
     TestSupport::SettingsSandbox sandbox("compositor-settings");
     sandbox.require();
-    GalleryActions(state).refreshRegistry();
+    Home::Gallery gallery;
+    GalleryActions(state, gallery).refreshRegistry();
     SettingsActions actions(state, callbacks);
 
     REQUIRE(actions.handle(MailAddPluginPath{.path = "/plugins/alpha.txt"}) == Result::SUCCESS);

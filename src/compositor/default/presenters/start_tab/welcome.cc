@@ -57,9 +57,9 @@ WelcomeView::Config WelcomePresenter::build() const {
             enqueue(MailSetWelcomePage{.page = page});
         },
         .section = context.state.interface.welcomeSection,
-        .progress = Progress(context.state.registry.gallery),
-        .progressResult = ProgressResult(context.state.registry.gallery),
-        .progressFailed = context.state.registry.gallery.failed,
+        .progress = Progress(context.state.registry.fetch),
+        .progressResult = ProgressResult(context.state.registry.fetch),
+        .progressFailed = context.state.registry.fetch.failed,
         .onSelectSection = [enqueue](WelcomeSection section) {
             enqueue(MailSetWelcomeSection{.section = section});
         },
@@ -84,7 +84,7 @@ WelcomeView::Config WelcomePresenter::build() const {
     };
     config.remote = remote.build();
     const auto query = Text::ToLower(Text::TrimBlank(config.query));
-    Catalog(config, context.state.registry.flowgraphs, query, config.category);
+    Catalog(config, context.state.registry.sections, query, config.category);
     Paginate(config, context.state.interface.welcomePage);
     return config;
 }
@@ -101,36 +101,19 @@ std::string WelcomePresenter::ProgressResult(const DefaultCompositorState::Regis
         return "";
     }
     if (gallery.failed) {
-        return "Using bundled flowgraphs";
+        return gallery.cached ? "Using cached flowgraphs" : "Gallery unavailable";
     }
     return gallery.cached ? "Gallery updated successfully!" : "Gallery loaded.";
 }
 
-std::string WelcomePresenter::CategoryDescription(const std::string& category) {
-    static const CategoryInfo infos[] = {
-        {"Basics", "Start here to learn the editor, sources, and plots."},
-        {"DSP", "Signal processing techniques, taken apart block by block."},
-        {"Receivers", "Tune, demodulate, and decode signals off the air."},
-        {"Visualization", "Turn numbers into color, shape, and motion."},
-        {"Plugins", "Examples bundled with your installed plugins."},
-    };
-    for (const auto& info : infos) {
-        if (category == info.title) {
-            return info.description;
-        }
-    }
-    return "Complete pipelines, ready to run in Web or Native.";
-}
-
-WelcomeView::Example WelcomePresenter::Example(const Registry::FlowgraphRegistration& entry) {
-    WelcomeView::Example example{
+WelcomeView::Example WelcomePresenter::Example(const std::string& section, const Home::Gallery::Flowgraph& entry) {
+    return {
         .title = entry.title,
         .summary = entry.summary,
         .key = entry.key,
-        .category = entry.category.empty() ? "Plugins" : entry.category,
+        .category = section,
         .diagram = entry.diagram,
     };
-    return example;
 }
 
 std::vector<WelcomeView::Recent> WelcomePresenter::entries(const std::vector<Settings::Interface::FlowgraphEntry>& items) const {
@@ -159,37 +142,49 @@ bool WelcomePresenter::Matches(const WelcomeView::Example& example, const std::s
 }
 
 void WelcomePresenter::Catalog(WelcomeView::Config& config,
-                               const std::vector<Registry::FlowgraphRegistration>& available,
+                               const std::vector<Home::Gallery::Section>& sections,
                                const std::string& query,
                                const std::string& category) {
     if (query.empty() && category.empty()) {
-        for (const auto& entry : available) {
-            if (entry.featured) {
-                config.featured.push_back(Example(entry));
+        for (const auto& section : sections) {
+            for (const auto& entry : section.flowgraphs) {
+                if (entry.featured) {
+                    config.featured.push_back(Example(section.title, entry));
+                }
             }
         }
     }
-    for (const auto& entry : available) {
-        auto example = Example(entry);
-        if (std::find(config.categoryNames.begin(), config.categoryNames.end(), example.category) ==
-            config.categoryNames.end()) {
-            config.categoryNames.push_back(example.category);
-        }
-        if ((!category.empty() && example.category != category) || !Matches(example, query)) {
+    for (const auto& section : sections) {
+        if (section.flowgraphs.empty()) {
             continue;
         }
-        auto bucket = std::find_if(config.categories.begin(), config.categories.end(), [&](const auto& item) {
-            return item.title == example.category;
-        });
-        if (bucket == config.categories.end()) {
-            config.categories.push_back({
-                .title = example.category,
-                .description = CategoryDescription(example.category),
-            });
-            bucket = std::prev(config.categories.end());
+        const auto title = UniqueTitle(config.categoryNames, section.title);
+        config.categoryNames.push_back(title);
+        if (!category.empty() && title != category) {
+            continue;
         }
-        bucket->examples.push_back(std::move(example));
+        WelcomeView::Category bucket{
+            .title = title,
+            .description = section.description,
+        };
+        for (const auto& entry : section.flowgraphs) {
+            auto example = Example(title, entry);
+            if (Matches(example, query)) {
+                bucket.examples.push_back(std::move(example));
+            }
+        }
+        if (!bucket.examples.empty()) {
+            config.categories.push_back(std::move(bucket));
+        }
     }
+}
+
+std::string WelcomePresenter::UniqueTitle(const std::vector<std::string>& taken, const std::string& title) {
+    auto candidate = title;
+    for (U64 index = 1; std::find(taken.begin(), taken.end(), candidate) != taken.end(); ++index) {
+        candidate = index == 1 ? title + " (Plugin)" : jst::fmt::format("{} (Plugin {})", title, index);
+    }
+    return candidate;
 }
 
 void WelcomePresenter::Paginate(WelcomeView::Config& config, U64 page) {

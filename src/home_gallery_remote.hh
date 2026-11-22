@@ -1,8 +1,8 @@
-#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_SUPPORT_GALLERY_HH
-#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_SUPPORT_GALLERY_HH
+#ifndef JETSTREAM_HOME_GALLERY_REMOTE_HH
+#define JETSTREAM_HOME_GALLERY_REMOTE_HH
 
+#include "jetstream/home.hh"
 #include "jetstream/platform.hh"
-#include "jetstream/registry.hh"
 #include "jetstream/types.hh"
 
 #include <filesystem>
@@ -13,8 +13,10 @@
 
 namespace Jetstream {
 
-class JETSTREAM_API Gallery {
+class JETSTREAM_API Home::Gallery::Remote {
  public:
+    using Flowgraphs = std::vector<Flowgraph>;
+
     struct Query {
         std::string owner;
         std::string version;
@@ -22,7 +24,7 @@ class JETSTREAM_API Gallery {
         std::string arch;
     };
 
-    struct Source {
+    struct JETSTREAM_API Source {
         std::function<Platform::Http::Client::Response(const Platform::Http::Client::Request&)> send;
         std::optional<std::filesystem::path> folder;
 
@@ -31,25 +33,21 @@ class JETSTREAM_API Gallery {
 
     static constexpr const char* Host = "https://cyberether.org";
     static constexpr const char* Endpoint = "/api/v1/flowgraphs";
-    static constexpr const char* Owner = "cyberether";
     static constexpr const char* PagePath = "/gallery/flowgraphs/";
 
     static Query Current();
     static std::string Path(const Query& query);
     static std::optional<std::string> Slug(const std::string& url);
-    static Result Load(std::vector<Registry::FlowgraphRegistration>& flowgraphs);
-    static Result Fetch(const Query& query,
-                        const std::function<bool()>& cancelled,
-                        std::vector<Registry::FlowgraphRegistration>& flowgraphs);
-    static Result LoadFrom(const Source& source,
-                           const Query& query,
-                           std::vector<Registry::FlowgraphRegistration>& flowgraphs);
+    static std::vector<Section> Sections(const Flowgraphs& flowgraphs);
+    static Result Load(Flowgraphs& flowgraphs);
+    static Result Fetch(const Query& query, const std::function<bool()>& cancelled, Flowgraphs& flowgraphs);
+    static Result LoadFrom(const Source& source, const Query& query, Flowgraphs& flowgraphs);
     static Result FetchFrom(const Source& source,
                             const Query& query,
                             const std::function<bool()>& cancelled,
-                            std::vector<Registry::FlowgraphRegistration>& flowgraphs);
+                            Flowgraphs& flowgraphs);
 };
 
 }  // namespace Jetstream
 
-#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_SUPPORT_GALLERY_HH
+#endif  // JETSTREAM_HOME_GALLERY_REMOTE_HH

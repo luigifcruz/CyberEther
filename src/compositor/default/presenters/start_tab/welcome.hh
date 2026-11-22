@@ -10,8 +10,8 @@
 #include "../../views/start_tab/welcome.hh"
 
 #include "jetstream/config.hh"
+#include "jetstream/home.hh"
 #include "jetstream/platform.hh"
-#include "jetstream/registry.hh"
 #include "tools/text.hh"
 
 #include <algorithm>
@@ -35,17 +35,12 @@ struct WelcomePresenter {
     static std::string ProgressResult(const DefaultCompositorState::RegistryState::GalleryFetch& gallery);
 
  private:
-    struct CategoryInfo {
-        const char* title;
-        const char* description;
-    };
-
-    static std::string CategoryDescription(const std::string& category);
-    static WelcomeView::Example Example(const Registry::FlowgraphRegistration& entry);
+    static WelcomeView::Example Example(const std::string& section, const Home::Gallery::Flowgraph& entry);
+    static std::string UniqueTitle(const std::vector<std::string>& taken, const std::string& title);
     std::vector<WelcomeView::Recent> entries(const std::vector<Settings::Interface::FlowgraphEntry>& items) const;
     static bool Matches(const WelcomeView::Example& example, const std::string& query);
     static void Catalog(WelcomeView::Config& config,
-                        const std::vector<Registry::FlowgraphRegistration>& available,
+                        const std::vector<Home::Gallery::Section>& sections,
                         const std::string& query,
                         const std::string& category);
     static void Paginate(WelcomeView::Config& config, U64 page);

@@ -20,7 +20,7 @@ DefaultActions::DefaultActions(DefaultCompositorState& state, DefaultCompositorC
     onboarding = std::make_shared<OnboardingActions>(state);
     crashReport = std::make_shared<CrashReportActions>(state, callbacks);
     agent = std::make_shared<AgentActions>(state, callbacks, runtime);
-    gallery = std::make_shared<GalleryActions>(state);
+    gallery = std::make_shared<GalleryActions>(state, Home::Get().gallery());
     terminals = std::make_shared<TerminalActions>(state, callbacks);
 }
 

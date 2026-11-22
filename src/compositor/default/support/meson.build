@@ -3,7 +3,6 @@ src_lst += files([
     'crash_report.cc',
     'docs.cc',
     'feedback.cc',
-    'gallery.cc',
     'history.cc',
     'live_markdown.cc',
     'terminal.cc',
