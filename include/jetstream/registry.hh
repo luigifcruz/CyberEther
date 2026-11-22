@@ -55,20 +55,6 @@ class JETSTREAM_API Registry {
         ProviderType provider;
     };
 
-    struct FlowgraphRegistration {
-        std::string key;
-        std::string title;
-        std::string summary = "No summary.";
-        std::string description = "No description.";
-        std::string category;
-        std::string accent;
-        std::string diagram;
-        bool featured = false;
-        std::string content;
-
-        JST_SERDES(title, summary, description, category, accent, diagram, featured);
-    };
-
     struct BenchmarkRegistration {
         std::string moduleType;
         const void* owner = nullptr;
@@ -91,8 +77,6 @@ class JETSTREAM_API Registry {
                                 const std::string& description,
                                 BlockFactory factory,
                                 const std::vector<BlockModuleRequirement>& moduleRequirements = {});
-    static Result RegisterFlowgraph(const std::string& key,
-                                    const FlowgraphRegistration& metadata);
     static Result RegisterBenchmark(const std::string& moduleType,
                                     BenchmarkFactory factory,
                                     const void* owner);
@@ -102,7 +86,6 @@ class JETSTREAM_API Registry {
                                     RuntimeType runtime,
                                     const ProviderType& provider);
     static Result UnregisterBlock(const std::string& type);
-    static Result UnregisterFlowgraph(const std::string& key);
     static Result UnregisterBenchmark(const std::string& moduleType,
                                       const void* owner);
 
@@ -115,8 +98,6 @@ class JETSTREAM_API Registry {
         ListAvailableBlocks(const std::string& type = "");
     static std::vector<BlockTarget>
         ListAvailableBlockTargets(const std::string& type);
-    static std::vector<FlowgraphRegistration>
-        ListAvailableFlowgraphs(const std::string& key = "");
     static std::vector<BenchmarkRegistration>
         ListAvailableBenchmarks(const std::string& moduleType = "");
 
@@ -210,33 +191,6 @@ class JETSTREAM_API Registry {
 
 #define JST_REGISTER_BLOCK_NO_MODULES(impl_type) \
     JST_DETAIL_REGISTER_BLOCK(impl_type, false, __COUNTER__)
-
-#define JST_DETAIL_REGISTER_EXAMPLE(key_val, content_val, id) \
-    namespace { \
-    [[maybe_unused]] const ::Jetstream::Result JST_DETAIL_CONCAT(__jst_register_example_, id) = \
-        ::Jetstream::Registry::QueueStaticRegistration([]() { \
-            ::Jetstream::Registry::FlowgraphRegistration record; \
-            record.key = key_val; \
-            record.title = record.key; \
-            record.content = content_val; \
-            ::Jetstream::Parser::Map data; \
-            auto result = ::Jetstream::Parser::YamlDecode(record.content, data); \
-            if (result != ::Jetstream::Result::SUCCESS) { \
-                return result; \
-            } \
-            result = record.deserialize(data); \
-            if (result != ::Jetstream::Result::SUCCESS) { \
-                return result; \
-            } \
-            if (record.title.empty()) { \
-                record.title = record.key; \
-            } \
-            return ::Jetstream::Registry::RegisterFlowgraph(record.key, record); \
-        }); \
-    }
-
-#define JST_REGISTER_EXAMPLE(key_val, content_val) \
-    JST_DETAIL_REGISTER_EXAMPLE(key_val, content_val, __COUNTER__)
 
 #define JST_DETAIL_REGISTER_BENCHMARKS(module_type_val, id) \
     static std::vector<::Jetstream::Benchmark::Case> \

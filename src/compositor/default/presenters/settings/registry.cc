@@ -103,14 +103,11 @@ std::vector<RegistrySettingsView::PluginItem> RegistrySettingsPresenter::blocks(
 }
 
 std::vector<RegistrySettingsView::PluginItem> RegistrySettingsPresenter::examples(const Plugin::Info& info) const {
-    const auto& registered = context.state.registry.flowgraphs;
     std::vector<RegistrySettingsView::PluginItem> items;
     items.reserve(info.examples.size());
     for (const auto& key : info.examples) {
-        const auto flowgraph = std::find_if(registered.begin(), registered.end(), [&](const auto& entry) {
-            return entry.key == key;
-        });
-        if (flowgraph == registered.end()) {
+        const auto* flowgraph = context.state.registry.flowgraph(key);
+        if (flowgraph == nullptr) {
             items.push_back({.title = key});
             continue;
         }

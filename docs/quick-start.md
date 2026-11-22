@@ -101,7 +101,7 @@ If the plot stays blank or flat, check three things:
 
 ## Next Steps
 
-- Learn canvas shortcuts, dock tiles, and the built-in example gallery in [The Editor](/docs/editor).
+- Learn canvas shortcuts, dock tiles, and the example gallery in [The Editor](/docs/editor).
 - Understand `.yml` flowgraph files and how data moves along wires in [Flowgraphs](/docs/flowgraphs).
 - Explore every built-in node in the [Blocks Catalog](/docs/blocks).
 - Learn how to script custom logic in the [Python Block guide](/docs/python-block).

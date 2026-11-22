@@ -125,33 +125,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Built-in radio examples load with the direct SDR blocks",
-                 "[modules][io][sdr][block][examples]") {
-    const std::vector<std::pair<std::string, std::string>> examples{
-        {"spectrum-analyzer", "sdr"},
-    };
-    for (const auto& [key, source] : examples) {
-        DYNAMIC_SECTION("Example: " << key) {
-            const auto registrations = Registry::ListAvailableFlowgraphs(key);
-            REQUIRE(registrations.size() == 1);
-            const auto& content = registrations.front().content;
-            REQUIRE(content.find("soapy") == std::string::npos);
-            REQUIRE(flowgraph->importFromBlob({content.begin(), content.end()}) == Result::SUCCESS);
-
-            // No radio is selected, so the source waits and nothing fails.
-            const auto radio = viewBlock(source);
-            REQUIRE(radio.state == Block::State::Incomplete);
-            std::vector<std::string> names;
-            REQUIRE(flowgraph->view().keys(names) == Result::SUCCESS);
-            for (const auto& name : names) {
-                INFO(name << ": " << viewBlock(name).diagnostic);
-                REQUIRE(viewBlock(name).state != Block::State::Errored);
-            }
-        }
-    }
-}
-
-TEST_CASE_METHOD(FlowgraphFixture,
                  "SDR block loads saved SoapySDR blocks",
                  "[modules][io][sdr][block]") {
     const TestRadio::ScriptedDrivers drivers;

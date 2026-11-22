@@ -1,5 +1,6 @@
 #include "jetstream/plugin.hh"
 
+#include "jetstream/home.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/parser.hh"
@@ -66,7 +67,6 @@ struct Plugin::Impl {
 
         std::vector<Module> modules;
         std::vector<std::string> blocks;
-        std::vector<std::string> flowgraphs;
 
         struct Benchmark {
             std::string moduleType;
@@ -82,16 +82,18 @@ struct Plugin::Impl {
         std::string extractedPath;
         std::vector<void*> handles;
         Registrations registrations;
+        std::string origin;
+        std::vector<std::string> examples;
         Manifest manifest;
     };
 
     struct RegistrySnapshot {
         std::vector<Registrations::Module> modules;
         std::vector<std::string> blocks;
-        std::vector<std::string> flowgraphs;
         std::vector<Registrations::Benchmark> benchmarks;
     };
 
+    Impl();
     ~Impl();
 
     Result load(const std::string& path);
@@ -138,10 +140,13 @@ struct Plugin::Impl {
     void sweepCache(const std::filesystem::path& runsDirectory);
     void cleanupCache();
 
-    Result loadPluginCopy(const std::string& sourcePath, Record& plugin);
+    Result loadPluginCopy(const std::string& sourcePath, const std::string& origin, Record& plugin);
     Result openPlugin(const std::string& path, void*& handle);
     Result validatePluginAbi(const std::string& path, void* handle);
-    Result registerExamples(const std::filesystem::path& bundlePath, const Manifest& manifest);
+    static Result publishExamples(const std::filesystem::path& bundlePath,
+                                  const Manifest& manifest,
+                                  const std::string& origin,
+                                  std::vector<std::string>& keys);
     void closePlugin(Record& plugin, bool removeCachedFile = true);
     void removeCachedPluginFiles(Record& plugin);
     void cleanup();
@@ -155,6 +160,10 @@ struct Plugin::Impl {
     uint64_t cacheGeneration = 0;
     std::vector<Record> plugins;
 };
+
+Plugin::Impl::Impl() {
+    (void)Home::Get();
+}
 
 Plugin::Impl::~Impl() {
     cleanup();
@@ -655,7 +664,7 @@ Plugin::Info Plugin::Impl::buildInfo(const Record& plugin) {
     info.minimumJetstreamVersion = plugin.manifest.metadata.minimumJetstreamVersion;
     info.status = "Loaded";
     info.blocks = plugin.registrations.blocks;
-    info.examples = plugin.registrations.flowgraphs;
+    info.examples = plugin.examples;
     return info;
 }
 
@@ -697,10 +706,6 @@ Plugin::Impl::RegistrySnapshot Plugin::Impl::snapshotRegistry() {
         snapshot.blocks.push_back(block.type);
     }
 
-    for (const auto& flowgraph : Registry::ListAvailableFlowgraphs()) {
-        snapshot.flowgraphs.push_back(flowgraph.key);
-    }
-
     for (const auto& benchmark : Registry::ListAvailableBenchmarks()) {
         snapshot.benchmarks.push_back({
             .moduleType = benchmark.moduleType,
@@ -727,12 +732,6 @@ Plugin::Impl::Registrations Plugin::Impl::diffRegistrations(const RegistrySnapsh
         }
     }
 
-    for (const auto& flowgraph : after.flowgraphs) {
-        if (!containsString(before.flowgraphs, flowgraph)) {
-            diff.flowgraphs.push_back(flowgraph);
-        }
-    }
-
     for (const auto& benchmark : after.benchmarks) {
         if (!containsBenchmark(before.benchmarks, benchmark)) {
             diff.benchmarks.push_back(benchmark);
@@ -745,10 +744,6 @@ Plugin::Impl::Registrations Plugin::Impl::diffRegistrations(const RegistrySnapsh
 void Plugin::Impl::rollbackRegistrations(const Registrations& registrations) {
     for (auto it = registrations.benchmarks.rbegin(); it != registrations.benchmarks.rend(); ++it) {
         (void)Registry::UnregisterBenchmark(it->moduleType, it->owner);
-    }
-
-    for (auto it = registrations.flowgraphs.rbegin(); it != registrations.flowgraphs.rend(); ++it) {
-        (void)Registry::UnregisterFlowgraph(*it);
     }
 
     for (auto it = registrations.blocks.rbegin(); it != registrations.blocks.rend(); ++it) {
@@ -961,7 +956,7 @@ Result Plugin::Impl::load(const std::string& path) {
     }
 
     Record plugin;
-    JST_CHECK(loadPluginCopy(sourcePath, plugin));
+    JST_CHECK(loadPluginCopy(sourcePath, sourcePath, plugin));
 
     std::lock_guard<std::mutex> guard(pluginsMutex);
     plugins.push_back(std::move(plugin));
@@ -1008,10 +1003,10 @@ Result Plugin::Impl::reload(const std::string& path) {
         closePlugin(plugin, false);
     }
 
-    if (loadPluginCopy(sourcePath, newPlugin) != Result::SUCCESS) {
+    if (loadPluginCopy(sourcePath, sourcePath, newPlugin) != Result::SUCCESS) {
         if (loaded) {
             Record restoredPlugin;
-            if (loadPluginCopy(plugin.loadedPath, restoredPlugin) == Result::SUCCESS) {
+            if (loadPluginCopy(plugin.loadedPath, plugin.sourcePath, restoredPlugin) == Result::SUCCESS) {
                 restoredPlugin.sourcePath = plugin.sourcePath;
                 removeCachedPluginFiles(plugin);
 
@@ -1048,7 +1043,7 @@ std::vector<Plugin::Info> Plugin::Impl::list() {
     return rows;
 }
 
-Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugin) {
+Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, const std::string& origin, Record& plugin) {
     if (!Plugin::IsCepPath(sourcePath)) {
         JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", sourcePath);
         return Result::ERROR;
@@ -1128,7 +1123,8 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
         return fail();
     }
 
-    if (registerExamples(bundlePath, manifest) != Result::SUCCESS) {
+    std::vector<std::string> examples;
+    if (publishExamples(bundlePath, manifest, origin, examples) != Result::SUCCESS) {
         return fail();
     }
 
@@ -1137,6 +1133,8 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
     plugin.extractedPath = extractedPath;
     plugin.handles = std::move(handles);
     plugin.registrations = diffRegistrations(before, snapshotRegistry());
+    plugin.origin = examples.empty() ? std::string() : origin;
+    plugin.examples = std::move(examples);
     plugin.manifest = std::move(manifest);
     return Result::SUCCESS;
 }
@@ -1203,7 +1201,26 @@ Result Plugin::Impl::validatePluginAbi(const std::string& path, void* handle) {
     return Result::SUCCESS;
 }
 
-Result Plugin::Impl::registerExamples(const std::filesystem::path& bundlePath, const Manifest& manifest) {
+Result Plugin::Impl::publishExamples(const std::filesystem::path& bundlePath,
+                                     const Manifest& manifest,
+                                     const std::string& origin,
+                                     std::vector<std::string>& keys) {
+    keys.clear();
+    if (manifest.examples.empty()) {
+        return Result::SUCCESS;
+    }
+
+    std::string prefix;
+    for (const char c : manifest.metadata.name) {
+        const auto byte = static_cast<unsigned char>(c);
+        prefix += std::isalnum(byte) ? static_cast<char>(std::tolower(byte)) : '-';
+    }
+
+    Home::Gallery::Section section{
+        .key = origin,
+        .title = manifest.metadata.name,
+        .description = "Examples bundled with this plugin.",
+    };
     for (const auto& example : manifest.examples) {
         std::filesystem::path relativePath;
         if (!safeRelativePath(example.path, relativePath)) {
@@ -1215,36 +1232,29 @@ Result Plugin::Impl::registerExamples(const std::filesystem::path& bundlePath, c
         std::string content;
         JST_CHECK(readTextFile(examplePath, content));
 
-        Registry::FlowgraphRegistration record;
-        record.key = Platform::PathToUtf8(examplePath.stem());
-        if (record.key.empty()) {
-            record.key = Platform::PathToUtf8(relativePath);
-        }
-        record.title = record.key;
-        record.content = content;
-
-        Parser::Map data;
-        auto result = Parser::YamlDecode(record.content, data);
-        if (result != Result::SUCCESS) {
-            return result;
+        auto stem = Platform::PathToUtf8(examplePath.stem());
+        if (stem.empty()) {
+            stem = Platform::PathToUtf8(relativePath);
         }
 
-        result = record.deserialize(data);
-        if (result != Result::SUCCESS) {
-            return result;
+        Home::Gallery::Flowgraph flowgraph;
+        JST_CHECK(Home::Gallery::Flowgraph::Parse(prefix + "/" + stem, std::move(content), flowgraph));
+        if (flowgraph.title.empty()) {
+            flowgraph.title = stem;
         }
-
-        if (record.title.empty()) {
-            record.title = record.key;
-        }
-
-        JST_CHECK(Registry::RegisterFlowgraph(record.key, record));
+        keys.push_back(flowgraph.key);
+        section.flowgraphs.push_back(std::move(flowgraph));
     }
 
+    JST_CHECK(Home::Get().gallery().publish(origin, {std::move(section)}));
     return Result::SUCCESS;
 }
 
 void Plugin::Impl::closePlugin(Record& plugin, bool removeCachedFile) {
+    if (!plugin.origin.empty()) {
+        (void)Home::Get().gallery().publish(plugin.origin, {});
+        plugin.origin.clear();
+    }
     rollbackRegistrations(plugin.registrations);
     for (auto it = plugin.handles.rbegin(); it != plugin.handles.rend(); ++it) {
         closeHandle(*it);

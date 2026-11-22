@@ -414,9 +414,12 @@ TEST_CASE("Gallery page links open the matching example inside the app", "[core]
     callbacks.enqueueMail = [&](Mail&& mail) {
         mails.push_back(std::move(mail));
     };
-    GalleryActions(state).refreshRegistry();
-    REQUIRE_FALSE(state.registry.flowgraphs.empty());
-    const std::string key = state.registry.flowgraphs.front().key;
+    state.registry.sections = {{
+        .key = "Basics",
+        .title = "Basics",
+        .flowgraphs = {{.key = "first-steps", .title = "First Steps"}},
+    }};
+    const std::string key = "first-steps";
     WorkbenchActions actions(state, callbacks);
 
     REQUIRE(actions.handle(MailOpenUrl{.url = "https://cyberether.org/gallery/flowgraphs/" + key}) == Result::SUCCESS);
@@ -424,18 +427,6 @@ TEST_CASE("Gallery page links open the matching example inside the app", "[core]
     const auto* open = std::get_if<MailOpenFlowgraphExample>(&mails.front());
     REQUIRE(open != nullptr);
     CHECK(open->key == key);
-
-    auto renamed = state.registry.flowgraphs.front();
-    renamed.key = std::string(GalleryActions::PublishedPrefix) + "demo";
-    auto plugin = state.registry.flowgraphs.front();
-    plugin.key = "demo";
-    state.registry.flowgraphs = {plugin, renamed};
-    mails.clear();
-    REQUIRE(actions.handle(MailOpenUrl{.url = "https://cyberether.org/gallery/flowgraphs/demo"}) == Result::SUCCESS);
-    REQUIRE(mails.size() == 1);
-    open = std::get_if<MailOpenFlowgraphExample>(&mails.front());
-    REQUIRE(open != nullptr);
-    CHECK(open->key == "gallery/demo");
 }
 
 TEST_CASE("Docs page links open the bundled page inside the app", "[core][compositor][start-tab]") {
@@ -470,8 +461,11 @@ TEST_CASE("Gallery examples open from the cached registry by key", "[core][compo
     callbacks.notify = [&](Sakura::ToastType, I32, const std::string& message) {
         notice = message;
     };
-    GalleryActions(state).refreshRegistry();
-    REQUIRE_FALSE(state.registry.flowgraphs.empty());
+    state.registry.sections = {{
+        .key = "Basics",
+        .title = "Basics",
+        .flowgraphs = {{.key = "first-steps", .title = "First Steps", .content = "---\nversion: 2\ngraph: []\n"}},
+    }};
     FlowgraphActions actions(state, callbacks);
 
     REQUIRE(actions.handle(MailOpenFlowgraphExample{.key = "missing-example"}) == Result::SUCCESS);
@@ -481,11 +475,11 @@ TEST_CASE("Gallery examples open from the cached registry by key", "[core][compo
 
     CHECK(state.flowgraph.closedDescriptions.empty());
 
-    REQUIRE(actions.handle(MailOpenFlowgraphExample{.key = state.registry.flowgraphs.front().key}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailOpenFlowgraphExample{.key = "first-steps"}) == Result::SUCCESS);
     CHECK(commands == 1);
     REQUIRE(state.interface.pendingFocusedFlowgraph.has_value());
 
-    const auto& content = state.registry.flowgraphs.front().content;
+    const auto content = state.registry.sections.front().flowgraphs.front().content;
     REQUIRE(actions.handle(MailOpenFlowgraphBlob{{content.begin(), content.end()}}) == Result::SUCCESS);
     CHECK(commands == 2);
     CHECK(state.flowgraph.closedDescriptions.empty());

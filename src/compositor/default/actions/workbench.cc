@@ -310,16 +310,9 @@ Result WorkbenchActions::handle(const MailNotifyResult& msg) {
 }
 
 Result WorkbenchActions::handle(const MailOpenUrl& msg) {
-    if (const auto slug = Gallery::Slug(msg.url)) {
-        const auto& flowgraphs = state.registry.flowgraphs;
-        for (const auto& key : {GalleryActions::PublishedPrefix + *slug, *slug}) {
-            if (std::any_of(flowgraphs.begin(), flowgraphs.end(), [&](const auto& entry) {
-                    return entry.key == key;
-                })) {
-                callbacks.enqueueMail(MailOpenFlowgraphExample{.key = key});
-                return Result::SUCCESS;
-            }
-        }
+    if (const auto slug = GalleryActions::Remote::Slug(msg.url); slug && state.registry.flowgraph(*slug)) {
+        callbacks.enqueueMail(MailOpenFlowgraphExample{.key = *slug});
+        return Result::SUCCESS;
     }
     if (const auto link = Docs::Resolve(msg.url); link && Docs::Bundled().find(link->slug).has_value()) {
         callbacks.enqueueMail(MailOpenDocs{.page = link->slug, .anchor = link->anchor});

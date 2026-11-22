@@ -167,11 +167,8 @@ std::optional<std::string> FlowgraphActions::openBlob(std::vector<char> blob) {
 }
 
 Result FlowgraphActions::handle(const MailOpenFlowgraphExample& msg) {
-    const auto& flowgraphs = state.registry.flowgraphs;
-    const auto example = std::find_if(flowgraphs.begin(), flowgraphs.end(), [&](const auto& entry) {
-        return entry.key == msg.key;
-    });
-    if (example == flowgraphs.end()) {
+    const auto* example = state.registry.flowgraph(msg.key);
+    if (example == nullptr) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "The selected example is no longer available.");
         return Result::SUCCESS;
     }

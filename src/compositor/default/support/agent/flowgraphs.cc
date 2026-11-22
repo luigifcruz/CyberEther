@@ -43,8 +43,8 @@ std::vector<Agent::Tools::Definition> AgentFlowgraphs::Definitions() {
         {
             kList,
             "List the user's favorite and recently opened flowgraph files, the same ones the Start tab shows. "
-            "Returns each file's path and title, with favorite and recent flags. Bundled examples are separate "
-            "and come from list_examples.",
+            "Returns each file's path and title, with favorite and recent flags. Gallery and plugin examples "
+            "are separate and come from list_examples.",
             R"({"type":"object","properties":{},"additionalProperties":false})",
             {.permission = Agent::Tools::Permission::Read},
         },

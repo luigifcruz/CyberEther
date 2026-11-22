@@ -5,6 +5,7 @@
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_view.hh"
+#include "jetstream/home.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/parser.hh"
@@ -372,11 +373,10 @@ struct DefaultCompositorState {
 
         struct GalleryFetch {
             struct Fetched {
-                std::vector<Registry::FlowgraphRegistration> flowgraphs;
+                std::vector<Home::Gallery::Flowgraph> flowgraphs;
                 bool complete = true;
             };
 
-            std::vector<Registry::FlowgraphRegistration> flowgraphs;
             std::future<std::optional<Fetched>> future;
             std::shared_ptr<std::atomic<bool>> cancel;
             std::chrono::steady_clock::time_point started;
@@ -388,10 +388,13 @@ struct DefaultCompositorState {
         };
 
         bool stale = true;
+        U64 revision = 0;
         std::vector<BlockEntry> blocks;
-        std::vector<Registry::FlowgraphRegistration> flowgraphs;
-        GalleryFetch gallery;
+        std::vector<Home::Gallery::Section> sections;
+        GalleryFetch fetch;
         std::vector<PluginEntry> registered;
+
+        const Home::Gallery::Flowgraph* flowgraph(const std::string& key) const;
     };
 
     struct FilePickerState {

@@ -62,7 +62,7 @@ Command-line plugins load alongside any registered plugins for that run only. Un
 
 ## Using and Managing Installed Plugins
 
-Once a plugin is loaded, its blocks show up in the normal block catalog, and any bundled example flowgraphs are registered so you can open them directly.
+Once a plugin is loaded, its blocks show up in the normal block catalog, and any bundled example flowgraphs appear in their own section on the **Start** tab so you can open them directly.
 
 To inspect or manage a plugin, go to **Settings** > **Registry** and click an entry in the **Plugins** card. The detail page shows the plugin's status, metadata, blocks, examples, and two actions:
 

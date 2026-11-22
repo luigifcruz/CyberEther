@@ -2,6 +2,17 @@
 
 namespace Jetstream {
 
+const Home::Gallery::Flowgraph* DefaultCompositorState::RegistryState::flowgraph(const std::string& key) const {
+    for (const auto& section : sections) {
+        for (const auto& entry : section.flowgraphs) {
+            if (entry.key == key) {
+                return &entry;
+            }
+        }
+    }
+    return nullptr;
+}
+
 bool DefaultCompositorState::SakuraState::dark() const {
     return themeKey != "Light";
 }

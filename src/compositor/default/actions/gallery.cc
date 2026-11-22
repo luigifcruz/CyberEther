@@ -3,40 +3,42 @@
 namespace Jetstream {
 
 GalleryActions::GalleryActions(DefaultCompositorState& state,
+                               Home::Gallery& gallery,
                                Fetcher fetcher,
                                Loader loader)
-    : state(state), fetcher(std::move(fetcher)), loader(std::move(loader)) {}
+    : state(state), gallery(gallery), fetcher(std::move(fetcher)), loader(std::move(loader)) {}
 
 void GalleryActions::reconcile(Clock::time_point now) {
-    auto& gallery = state.registry.gallery;
+    auto& fetch = state.registry.fetch;
     if (!restored) {
         restored = true;
         Flowgraphs cached;
-        if (loader && loader(cached) == Result::SUCCESS && !cached.empty()) {
-            gallery.flowgraphs = std::move(cached);
-            gallery.cached = true;
-            state.registry.stale = true;
+        if (loader && loader(cached) == Result::SUCCESS && !cached.empty() && publish(cached)) {
+            fetch.cached = true;
         }
     }
-    if (gallery.loading) {
-        if (gallery.future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+    if (gallery.revision() != state.registry.revision) {
+        state.registry.stale = true;
+    }
+    if (fetch.loading) {
+        if (fetch.future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
             return;
         }
-        if (!gallery.attempted && now < gallery.started + ProgressMinimum) {
+        if (!fetch.attempted && now < fetch.started + ProgressMinimum) {
             return;
         }
         collect(now);
         return;
     }
-    if (now < gallery.next) {
+    if (now < fetch.next) {
         return;
     }
-    gallery.loading = true;
-    gallery.started = now;
-    gallery.cancel = std::make_shared<std::atomic<bool>>(false);
-    gallery.future = std::async(std::launch::async,
-                                [fetcher = fetcher, query = Gallery::Current(), cancel = gallery.cancel]()
-                                    -> std::optional<Fetched> {
+    fetch.loading = true;
+    fetch.started = now;
+    fetch.cancel = std::make_shared<std::atomic<bool>>(false);
+    fetch.future = std::async(std::launch::async,
+                              [fetcher = fetcher, query = Remote::Current(), cancel = fetch.cancel]()
+                                  -> std::optional<Fetched> {
         try {
             Flowgraphs flowgraphs;
             const auto cancelled = [cancel] {
@@ -56,39 +58,15 @@ void GalleryActions::reconcile(Clock::time_point now) {
     });
 }
 
-GalleryActions::Flowgraphs GalleryActions::Catalog(const Flowgraphs& published,
-                                                   Flowgraphs bundled,
-                                                   const std::vector<Plugin::Info>& plugins) {
-    std::set<std::string> examples;
-    for (const auto& plugin : plugins) {
-        examples.insert(plugin.examples.begin(), plugin.examples.end());
-    }
-    Flowgraphs catalog = published;
-    for (auto& entry : catalog) {
-        if (examples.contains(entry.key)) {
-            entry.key = PublishedPrefix + entry.key;
-        }
-    }
-    for (auto& entry : bundled) {
-        const bool replaced = std::any_of(catalog.begin(), catalog.end(), [&](const auto& item) {
-            return item.key == entry.key;
-        });
-        if (!replaced) {
-            catalog.push_back(std::move(entry));
-        }
-    }
-    return catalog;
-}
-
 void GalleryActions::shutdown() {
-    auto& gallery = state.registry.gallery;
-    if (!gallery.loading) {
+    auto& fetch = state.registry.fetch;
+    if (!fetch.loading) {
         return;
     }
-    gallery.cancel->store(true);
-    gallery.future.wait();
-    gallery.loading = false;
-    (void)gallery.future.get();
+    fetch.cancel->store(true);
+    fetch.future.wait();
+    fetch.loading = false;
+    (void)fetch.future.get();
 }
 
 void GalleryActions::refreshRegistry() {
@@ -105,8 +83,8 @@ void GalleryActions::refreshRegistry() {
             .summary = block.summary,
         });
     }
-    const auto plugins = Plugin::List();
-    registry.flowgraphs = Catalog(registry.gallery.flowgraphs, Registry::ListAvailableFlowgraphs(), plugins);
+    registry.revision = gallery.revision();
+    registry.sections = gallery.sections();
     registry.registered.clear();
 
     Settings settings;
@@ -114,6 +92,7 @@ void GalleryActions::refreshRegistry() {
         return;
     }
     registry.stale = false;
+    const auto plugins = Plugin::List();
     std::map<std::string, const Plugin::Info*> loaded;
     for (const auto& plugin : plugins) {
         loaded[NormalizePluginPath(plugin.path)] = &plugin;
@@ -149,19 +128,29 @@ std::string GalleryActions::NormalizePluginPath(const std::string& path) {
     return path;
 }
 
+bool GalleryActions::publish(const Flowgraphs& flowgraphs) {
+    if (gallery.publish(Home::Gallery::Origin, Remote::Sections(flowgraphs)) != Result::SUCCESS) {
+        JST_WARN("[GALLERY] Could not publish the fetched flowgraphs.");
+        return false;
+    }
+    state.registry.stale = true;
+    return true;
+}
+
 void GalleryActions::collect(Clock::time_point now) {
-    auto& gallery = state.registry.gallery;
-    gallery.loading = false;
-    gallery.attempted = true;
-    auto fetched = gallery.future.get();
-    gallery.failed = !fetched.has_value();
+    auto& fetch = state.registry.fetch;
+    fetch.loading = false;
+    fetch.attempted = true;
+    auto fetched = fetch.future.get();
+    fetch.failed = !fetched.has_value();
     if (!fetched.has_value()) {
-        gallery.next = now + RetryInterval;
+        fetch.next = now + RetryInterval;
         return;
     }
-    gallery.next = now + (fetched->complete ? RefreshInterval : RetryInterval);
-    gallery.flowgraphs = std::move(fetched->flowgraphs);
-    state.registry.stale = true;
+    const bool empty = !fetched->complete && fetched->flowgraphs.empty();
+    const bool published = !empty && publish(fetched->flowgraphs);
+    fetch.failed = !published;
+    fetch.next = now + (published && fetched->complete ? RefreshInterval : RetryInterval);
 }
 
 }  // namespace Jetstream

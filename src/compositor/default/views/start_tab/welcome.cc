@@ -93,7 +93,6 @@ WelcomeView::CategoryStyle WelcomeView::StyleOf(const std::string& category) {
         {"DSP", ICON_LC_AUDIO_WAVEFORM, "gallery_purple"},
         {"Receivers", ICON_LC_RADIO, "gallery_orange"},
         {"Visualization", ICON_LC_CHART_SPLINE, "gallery_blue"},
-        {"Plugins", ICON_LC_PUZZLE, "gallery_teal"},
     };
     for (const auto& style : styles) {
         if (category == style.title) {

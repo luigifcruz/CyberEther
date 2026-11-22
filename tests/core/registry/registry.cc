@@ -47,12 +47,6 @@ class RegistryCleanup {
         });
     }
 
-    void flowgraph(const std::string& key) {
-        callbacks.emplace_back([=]() {
-            (void)Registry::UnregisterFlowgraph(key);
-        });
-    }
-
     void benchmark(const std::string& moduleType, const void* owner) {
         callbacks.emplace_back([=]() {
             (void)Registry::UnregisterBenchmark(moduleType, owner);
@@ -79,17 +73,6 @@ std::shared_ptr<Module> MakeTestModule() {
 
 std::shared_ptr<Block> MakeTestBlock() {
     return std::make_shared<Block>(std::make_shared<Block::Impl>(), nullptr, nullptr);
-}
-
-Registry::FlowgraphRegistration MakeFlowgraph(const std::string& key,
-                                               const std::string& title) {
-    Registry::FlowgraphRegistration record;
-    record.key = key;
-    record.title = title;
-    record.summary = "Registry test summary";
-    record.description = "Registry test description";
-    record.content = "---\nversion: 2\ngraph: []\n";
-    return record;
 }
 
 Registry::BenchmarkFactory MakeBenchmarkFactory(const std::string& variant) {
@@ -206,17 +189,6 @@ TEST_CASE("Registry validates direct registrations", "[core][registry][validatio
                                   "Summary",
                                   "Description",
                                   {}) == Result::ERROR);
-
-    auto emptyFlowgraph = MakeFlowgraph("", "Empty key");
-    cleanup.flowgraph("");
-    REQUIRE(Registry::RegisterFlowgraph("", emptyFlowgraph) == Result::ERROR);
-
-    const std::string argumentKey = "__ce_registry_test_validation_argument_key";
-    const std::string metadataKey = "__ce_registry_test_validation_metadata_key";
-    auto mismatchedFlowgraph = MakeFlowgraph(metadataKey, "Mismatched key");
-    cleanup.flowgraph(argumentKey);
-    cleanup.flowgraph(metadataKey);
-    CHECK(Registry::RegisterFlowgraph(argumentKey, mismatchedFlowgraph) == Result::ERROR);
 
     cleanup.benchmark("", &benchmarkOwner);
     REQUIRE(Registry::RegisterBenchmark("",
@@ -573,34 +545,17 @@ TEST_CASE("Registry contains invalid module and block factory results",
     CHECK(nullBlock == blockSentinel);
 }
 
-TEST_CASE("Registry lists and unregisters flowgraphs and benchmarks", "[core][registry][metadata]") {
+TEST_CASE("Registry lists and unregisters benchmarks", "[core][registry][metadata]") {
     PrepareRegistry();
 
-    const std::string flowgraphKey = "__ce_registry_test_direct_flowgraph";
     const std::string benchmarkType = "__ce_registry_test_direct_benchmark";
     const std::string otherBenchmarkType = "__ce_registry_test_direct_benchmark_other";
     int ownerA = 0;
     int ownerB = 0;
     RegistryCleanup cleanup;
-    cleanup.flowgraph(flowgraphKey);
     cleanup.benchmark(benchmarkType, &ownerA);
     cleanup.benchmark(benchmarkType, &ownerB);
     cleanup.benchmark(otherBenchmarkType, &ownerA);
-
-    auto flowgraph = MakeFlowgraph(flowgraphKey, "Registry Flowgraph");
-    REQUIRE(Registry::RegisterFlowgraph(flowgraphKey, flowgraph) == Result::SUCCESS);
-    REQUIRE(Registry::RegisterFlowgraph(flowgraphKey, flowgraph) == Result::ERROR);
-    flowgraph.title = "Caller mutation";
-    flowgraph.content = "caller mutation";
-
-    const auto flowgraphs = Registry::ListAvailableFlowgraphs(flowgraphKey);
-    REQUIRE(flowgraphs.size() == 1);
-    REQUIRE(flowgraphs[0].key == flowgraphKey);
-    REQUIRE(flowgraphs[0].title == "Registry Flowgraph");
-    REQUIRE(flowgraphs[0].summary == "Registry test summary");
-    REQUIRE(flowgraphs[0].description == "Registry test description");
-    REQUIRE(flowgraphs[0].content == "---\nversion: 2\ngraph: []\n");
-    REQUIRE(Registry::ListAvailableFlowgraphs("__ce_registry_test_missing_flowgraph").empty());
 
     REQUIRE(Registry::RegisterBenchmark(benchmarkType,
                                         MakeBenchmarkFactory("owner-a"),
@@ -627,10 +582,6 @@ TEST_CASE("Registry lists and unregisters flowgraphs and benchmarks", "[core][re
     REQUIRE(otherBenchmarks[0].owner == &ownerA);
     REQUIRE(Registry::ListAvailableBenchmarks("__ce_registry_test_missing_benchmark").empty());
 
-    REQUIRE(Registry::UnregisterFlowgraph(flowgraphKey) == Result::SUCCESS);
-    REQUIRE(Registry::ListAvailableFlowgraphs(flowgraphKey).empty());
-    REQUIRE(Registry::UnregisterFlowgraph(flowgraphKey) == Result::ERROR);
-
     REQUIRE(Registry::UnregisterBenchmark(benchmarkType, &ownerA) == Result::SUCCESS);
     const auto remainingBenchmarks = Registry::ListAvailableBenchmarks(benchmarkType);
     REQUIRE(remainingBenchmarks.size() == 1);
@@ -639,55 +590,13 @@ TEST_CASE("Registry lists and unregisters flowgraphs and benchmarks", "[core][re
     REQUIRE(Registry::UnregisterBenchmark(benchmarkType, &ownerA) == Result::ERROR);
 }
 
-TEST_CASE("Flowgraph registrations read gallery metadata from the root and default without it",
-          "[core][registry][metadata]") {
-    const std::string yaml = R"(---
-version: 2
-revision: 1
-title: Gallery Example
-summary: Short summary.
-category: Receivers
-accent: '#5fd1b4'
-featured: true
-diagram: |-
-  sdr[SDR] --> fm[FM]
-  fm --> audio[Audio]
-compatibility: '>=1.16.0'
-graph: []
-meta:
-  layout:
-    order: 1
-)";
-    Registry::FlowgraphRegistration record;
-    Parser::Map data;
-    REQUIRE(Parser::YamlDecode(yaml, data) == Result::SUCCESS);
-    REQUIRE(record.deserialize(data) == Result::SUCCESS);
-    CHECK(record.title == "Gallery Example");
-    CHECK(record.summary == "Short summary.");
-    CHECK(record.category == "Receivers");
-    CHECK(record.accent == "#5fd1b4");
-    CHECK(record.featured);
-    CHECK(record.diagram == "sdr[SDR] --> fm[FM]\nfm --> audio[Audio]");
-
-    Registry::FlowgraphRegistration plain;
-    Parser::Map plainData;
-    REQUIRE(Parser::YamlDecode("---\nversion: 2\ntitle: Plain\ngraph: []\n", plainData) == Result::SUCCESS);
-    REQUIRE(plain.deserialize(plainData) == Result::SUCCESS);
-    CHECK(plain.category.empty());
-    CHECK(plain.accent.empty());
-    CHECK(plain.diagram.empty());
-    CHECK_FALSE(plain.featured);
-}
-
 TEST_CASE("Registry defers every registration kind until lookup", "[core][registry][deferred]") {
     PrepareRegistry();
 
     const std::string moduleType = "__ce_registry_test_deferred_module";
     const ProviderType provider = "__ce_registry_test_deferred_provider";
     const std::string blockType = "__ce_registry_test_deferred_all_block";
-    const std::string flowgraphKey = "__ce_registry_test_deferred_all_flowgraph";
     const std::string benchmarkType = "__ce_registry_test_deferred_benchmark";
-    const auto flowgraph = MakeFlowgraph(flowgraphKey, "Deferred Registry Flowgraph");
     auto expectedModule = MakeTestModule();
     auto expectedBlock = MakeTestBlock();
     int benchmarkOwner = 0;
@@ -695,7 +604,6 @@ TEST_CASE("Registry defers every registration kind until lookup", "[core][regist
     RegistryCleanup cleanup;
     cleanup.module(moduleType, DeviceType::CPU, RuntimeType::NATIVE, provider);
     cleanup.block(blockType);
-    cleanup.flowgraph(flowgraphKey);
     cleanup.benchmark(benchmarkType, &benchmarkOwner);
 
     REQUIRE(Registry::QueueStaticRegistration([&]() {
@@ -721,10 +629,6 @@ TEST_CASE("Registry defers every registration kind until lookup", "[core][regist
                                                });
             }) == Result::SUCCESS);
     REQUIRE(Registry::QueueStaticRegistration([&]() {
-                order.emplace_back("flowgraph");
-                return Registry::RegisterFlowgraph(flowgraphKey, flowgraph);
-            }) == Result::SUCCESS);
-    REQUIRE(Registry::QueueStaticRegistration([&]() {
                 order.emplace_back("benchmark");
                 return Registry::RegisterBenchmark(benchmarkType,
                                                    MakeBenchmarkFactory("deferred"),
@@ -734,11 +638,10 @@ TEST_CASE("Registry defers every registration kind until lookup", "[core][regist
 
     const auto modules = Registry::ListAvailableModules(moduleType);
     const std::vector<std::string> expectedOrder = {
-        "module", "block", "flowgraph", "benchmark"};
+        "module", "block", "benchmark"};
     REQUIRE(order == expectedOrder);
     REQUIRE(modules.size() == 1);
     REQUIRE(Registry::ListAvailableBlocks(blockType).size() == 1);
-    REQUIRE(Registry::ListAvailableFlowgraphs(flowgraphKey).size() == 1);
     const auto benchmarks = Registry::ListAvailableBenchmarks(benchmarkType);
     REQUIRE(benchmarks.size() == 1);
     REQUIRE(benchmarks[0].factory()[0].variant == "deferred");
@@ -884,8 +787,7 @@ TEST_CASE("Registry keeps partial deferred effects and drops the failed batch",
           "[core][registry][deferred][errors]") {
     PrepareRegistry();
 
-    const std::string flowgraphKey = "__ce_registry_test_partial_deferred_flowgraph";
-    const auto flowgraph = MakeFlowgraph(flowgraphKey, "Partial Deferred Flowgraph");
+    const std::string blockType = "__ce_registry_test_partial_deferred_block";
     int completedCalls = 0;
     int failingCalls = 0;
     int skippedCalls = 0;
@@ -896,12 +798,19 @@ TEST_CASE("Registry keeps partial deferred effects and drops the failed batch",
     std::weak_ptr<int> weakFailingCapture = failingCapture;
     std::weak_ptr<int> weakSkippedCapture = skippedCapture;
     RegistryCleanup cleanup;
-    cleanup.flowgraph(flowgraphKey);
+    cleanup.block(blockType);
 
     REQUIRE(Registry::QueueStaticRegistration([&, completedCapture]() {
                 (void)completedCapture;
                 ++completedCalls;
-                return Registry::RegisterFlowgraph(flowgraphKey, flowgraph);
+                return Registry::RegisterBlock(blockType,
+                                               "__ce_registry_test_domain",
+                                               "Partial Deferred Block",
+                                               "Partial deferred summary",
+                                               "Partial deferred description",
+                                               []() {
+                                                   return MakeTestBlock();
+                                               });
             }) == Result::SUCCESS);
     REQUIRE(Registry::QueueStaticRegistration([&, failingCapture]() {
                 (void)failingCapture;
@@ -924,7 +833,7 @@ TEST_CASE("Registry keeps partial deferred effects and drops the failed batch",
     REQUIRE(weakCompletedCapture.expired());
     REQUIRE(weakFailingCapture.expired());
     REQUIRE(weakSkippedCapture.expired());
-    REQUIRE(Registry::ListAvailableFlowgraphs(flowgraphKey).size() == 1);
+    REQUIRE(Registry::ListAvailableBlocks(blockType).size() == 1);
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
     REQUIRE(skippedCalls == 0);
 }
@@ -976,19 +885,25 @@ TEST_CASE("Registry retains callbacks queued concurrently with a failed drain",
 TEST_CASE("Registry drains nested deferred registrations in queue order", "[core][registry][deferred]") {
     PrepareRegistry();
 
-    const std::string flowgraphKey = "__ce_registry_test_deferred_flowgraph";
+    const std::string nestedType = "__ce_registry_test_deferred_nested_block";
     const std::string blockType = "__ce_registry_test_deferred_block";
-    const auto flowgraph = MakeFlowgraph(flowgraphKey, "Deferred Flowgraph");
     std::vector<std::string> order;
     RegistryCleanup cleanup;
-    cleanup.flowgraph(flowgraphKey);
+    cleanup.block(nestedType);
     cleanup.block(blockType);
 
     REQUIRE(Registry::QueueStaticRegistration([&]() {
                 order.emplace_back("outer-a");
                 return Registry::QueueStaticRegistration([&]() {
                     order.emplace_back("nested");
-                    return Registry::RegisterFlowgraph(flowgraphKey, flowgraph);
+                    return Registry::RegisterBlock(nestedType,
+                                                   "__ce_registry_test_domain",
+                                                   "Nested Block",
+                                                   "Nested summary",
+                                                   "Nested description",
+                                                   []() {
+                                                       return MakeTestBlock();
+                                                   });
                 });
             }) == Result::SUCCESS);
     REQUIRE(Registry::QueueStaticRegistration([&]() {
@@ -1006,7 +921,7 @@ TEST_CASE("Registry drains nested deferred registrations in queue order", "[core
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
     const std::vector<std::string> expectedOrder = {"outer-a", "outer-b", "nested"};
     REQUIRE(order == expectedOrder);
-    REQUIRE(Registry::ListAvailableFlowgraphs(flowgraphKey).size() == 1);
+    REQUIRE(Registry::ListAvailableBlocks(nestedType).size() == 1);
     REQUIRE(Registry::ListAvailableBlocks(blockType).size() == 1);
 
     bool discardedCallbackRan = false;
