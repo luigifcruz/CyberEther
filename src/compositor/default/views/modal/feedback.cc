@@ -71,10 +71,11 @@ void FeedbackView::update(Config config) {
     });
     editorHint.update({
         .str = blockReport
-                   ? "Describe what went wrong and what you were trying to do..."
+                   ? "What went wrong or what were you trying to do? (optional)"
                    : "Share bugs, feature ideas, or general comments...",
         .font = Text::Font::Body,
         .tone = Text::Tone::Secondary,
+        .wrapped = true,
     });
     std::vector<Sakura::Overlay::Item> editorItems = {{.child = editor.get()}};
     if (this->config.text.empty()) {
