@@ -27,6 +27,7 @@ namespace Jetstream {
 struct WelcomeView {
     static constexpr F32 FooterCardPadding = Sakura::Spacing::Medium;
     static constexpr F32 ThemeButtonWidth = 50.0f;
+    static constexpr F32 SidebarCollapseWidth = 960.0f;
     static constexpr F32 PageWidth = 1240.0f;
     static constexpr F32 FramePadding = Sakura::Spacing::Large;
     static constexpr F32 FilterHeight = 40.0f;
@@ -103,6 +104,7 @@ struct WelcomeView {
         bool darkMode = true;
         Sakura::Callback<void()> onToggleTheme;
         bool sidebarOpen = true;
+        Sakura::Callback<void(bool)> onSidebarOpen;
         std::vector<Recent> favorites;
         std::vector<Recent> recent;
         std::vector<Example> featured;

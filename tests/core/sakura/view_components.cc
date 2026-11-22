@@ -305,6 +305,94 @@ TEST_CASE("Sidebar helpers measure before placement and scale their insets with 
     CHECK(sidebar.laidFrame.width == Approx(width * 2.0f).margin(2.0f));
 }
 
+TEST_CASE("SidebarTiles auto-collapses when narrow, reverts when wide, and respects manual overrides",
+          "[core][sakura][view-components]") {
+    Scene scene;
+    Probe sidebar;
+    Probe page;
+    SidebarTiles tiles;
+    Host host(tiles);
+    bool open = true;
+    const auto sync = [&] {
+        tiles.update({
+            .sidebar = &sidebar,
+            .page = &page,
+            .sidebarOpen = open,
+            .autoCollapseWidth = 960.0f,
+            .onSidebarOpen = [&](bool next) { open = next; },
+        });
+    };
+
+    // Zero width does not auto-collapse.
+    sync();
+    host.place(scene.ctx, {0.0f, 0.0f, 0.0f, 800.0f});
+    CHECK(open);
+
+    // Wide -> narrow auto-collapses; narrow -> wide reverts.
+    host.place(scene.ctx, {0.0f, 0.0f, 1200.0f, 800.0f});
+    CHECK(open);
+
+    host.place(scene.ctx, {0.0f, 0.0f, 800.0f, 800.0f});
+    CHECK_FALSE(open);
+    sync();
+
+    // Respects HiDPI pixelRatio (1600px at 2x = 800 logical -> still narrow).
+    const auto doubled = Doubled(scene.ctx);
+    host.place(doubled, {0.0f, 0.0f, 1600.0f, 1600.0f});
+    CHECK_FALSE(open);
+
+    // Growing to >= 960 logical reverts open.
+    host.place(doubled, {0.0f, 0.0f, 2000.0f, 1600.0f});
+    CHECK(open);
+    sync();
+
+    // Manually closing while wide stays closed across narrow -> wide.
+    open = false;
+    sync();
+    host.place(scene.ctx, {0.0f, 0.0f, 800.0f, 800.0f});
+    CHECK_FALSE(open);
+    host.place(scene.ctx, {0.0f, 0.0f, 1200.0f, 800.0f});
+    CHECK_FALSE(open);
+
+    // Manually opening while narrow stays open while narrow, then auto-collapses on next wide -> narrow cycle.
+    open = true;
+    sync();
+    host.place(scene.ctx, {0.0f, 0.0f, 800.0f, 800.0f});
+    CHECK_FALSE(open);
+    sync();
+
+    open = true;
+    sync();
+    host.place(scene.ctx, {0.0f, 0.0f, 760.0f, 800.0f});
+    CHECK(open);
+
+    host.place(scene.ctx, {0.0f, 0.0f, 1200.0f, 800.0f});
+    CHECK(open);
+    host.place(scene.ctx, {0.0f, 0.0f, 800.0f, 800.0f});
+    CHECK_FALSE(open);
+    sync();
+    host.place(scene.ctx, {0.0f, 0.0f, 1200.0f, 800.0f});
+    CHECK(open);
+    sync();
+
+    // Rapid narrow -> wide layout before update() still reverts open instead of getting stuck closed.
+    host.place(scene.ctx, {0.0f, 0.0f, 800.0f, 800.0f});
+    CHECK_FALSE(open);
+    host.place(scene.ctx, {0.0f, 0.0f, 1200.0f, 800.0f});
+    CHECK(open);
+    sync();
+
+    // Round-tripping through tabbed mode (no toggle callback, forced open) preserves auto-collapse state.
+    host.place(scene.ctx, {0.0f, 0.0f, 800.0f, 800.0f});
+    CHECK_FALSE(open);
+    sync();
+    tiles.update({.sidebar = &sidebar, .page = &page, .sidebarOpen = true, .autoCollapseWidth = 960.0f});
+    host.place(scene.ctx, {0.0f, 0.0f, 800.0f, 800.0f});
+    sync();
+    host.place(scene.ctx, {0.0f, 0.0f, 1200.0f, 800.0f});
+    CHECK(open);
+}
+
 TEST_CASE("Flowgraph cells measure before placement, scale, repaint on favorite changes and fire the newest callbacks",
           "[core][sakura][view-components]") {
     Scene scene;

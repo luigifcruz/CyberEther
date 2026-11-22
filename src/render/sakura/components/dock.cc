@@ -2214,6 +2214,10 @@ void Dock::layout(const Context& ctx) {
     auto& s = *impl;
     s.bounds = frame();
     s.pixelRatio = ctx.pixelRatio;
+    if (s.config.onSize) {
+        const F32 ratio = ctx.pixelRatio > 0.0f ? ctx.pixelRatio : 1.0f;
+        s.config.onSize({s.bounds.width / ratio, s.bounds.height / ratio});
+    }
     s.drag = ctx.dockDrag;
     s.dragAlive = s.drag ? std::weak_ptr<bool>(s.drag->alive) : std::weak_ptr<bool>();
     s.metrics.setWindow(ctx.render);

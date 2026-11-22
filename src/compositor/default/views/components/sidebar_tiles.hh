@@ -3,6 +3,8 @@
 
 #include "jetstream/render/sakura/base.hh"
 
+#include <optional>
+
 namespace Jetstream {
 
 struct SidebarTiles : public Sakura::Dock {
@@ -15,9 +17,19 @@ struct SidebarTiles : public Sakura::Dock {
         Sakura::Component* page = nullptr;
         bool pageCard = true;
         bool sidebarOpen = true;
+        F32 autoCollapseWidth = 0.0f;
+        Sakura::Callback<void(bool)> onSidebarOpen;
     };
 
     void update(Config config);
+
+ private:
+    void handleSize(Extent2D<F32> logicalSize);
+
+    Config config;
+    std::optional<bool> compact;
+    std::optional<bool> pendingOpen;
+    bool autoCollapsed = false;
 };
 
 }  // namespace Jetstream

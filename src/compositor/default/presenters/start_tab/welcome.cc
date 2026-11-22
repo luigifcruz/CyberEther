@@ -36,7 +36,12 @@ WelcomeView::Config WelcomePresenter::build() const {
         .onToggleTheme = [enqueue, dark = context.state.sakura.dark()]() {
             enqueue(MailApplyTheme{dark ? "Light" : "Dark"});
         },
-        .sidebarOpen = context.state.interface.welcomeSidebarOpen,
+        .sidebarOpen = context.state.tabsHidden() ? context.state.interface.welcomeSidebarOpen : true,
+        .onSidebarOpen = context.state.tabsHidden()
+                             ? Sakura::Callback<void(bool)>([enqueue](bool open) {
+                                   enqueue(MailSetWelcomeSidebar{.open = open});
+                               })
+                             : Sakura::Callback<void(bool)>(),
 
         .favorites = entries(context.state.interface.favoriteFlowgraphs),
         .recent = entries(context.state.interface.recentFlowgraphs),

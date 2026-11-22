@@ -78,6 +78,8 @@ void WelcomeView::update(Config config) {
         .page = &pageOverlay,
         .pageCard = this->config.pageCard,
         .sidebarOpen = this->config.sidebarOpen,
+        .autoCollapseWidth = SidebarCollapseWidth,
+        .onSidebarOpen = this->config.onSidebarOpen,
     });
 }
 

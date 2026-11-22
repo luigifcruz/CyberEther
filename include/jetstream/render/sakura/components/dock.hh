@@ -99,6 +99,7 @@ struct Dock : public Component {
         F32 leadingReach = 0.0f;
         Callback<void(const std::string&, Extent2D<F32>)> onTabMenu;
         Callback<void(U8)> onBarPress;
+        Callback<void(Extent2D<F32>)> onSize;
         bool columns = false;
         std::string flexPane;
         bool loneHeader = false;
