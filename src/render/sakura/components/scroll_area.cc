@@ -73,6 +73,9 @@ Extent2D<F32> ScrollArea::measure(const Context& ctx, Extent2D<F32> available) {
         const F32 gutter = config.alwaysScrollbar && !config.overlay ? Px(ctx, kScrollbarSize) : 0.0f;
         const F32 inner = std::max(0.0f, width - 2.0f * padding - gutter);
         natural = measureChild(*config.content, ctx, {inner, std::numeric_limits<F32>::infinity()}).y + 2.0f * padding;
+        if (config.maxHeight > 0.0f) {
+            natural = std::min(natural, Px(ctx, config.maxHeight));
+        }
     }
     return {width, ResolveLength(ctx, config.height, natural, available.y)};
 }

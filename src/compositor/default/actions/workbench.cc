@@ -275,10 +275,23 @@ Result WorkbenchActions::handle(const MailOpenModal& msg) {
     if (msg.content != ModalContent::RenameBlock) {
         state.modal.renameBlockOldName.reset();
     }
+    if (msg.content == ModalContent::Feedback) {
+        if (state.feedback.blockReport) {
+            state.feedback.text.clear();
+            state.feedback.debugInfo.clear();
+            state.feedback.blockReport = false;
+        }
+        ++state.feedback.session;
+    }
     return Result::SUCCESS;
 }
 
 Result WorkbenchActions::handle(const MailCloseModal&) {
+    if (state.modal.content == ModalContent::Feedback) {
+        state.feedback.text.clear();
+        state.feedback.debugInfo.clear();
+        state.feedback.blockReport = false;
+    }
     state.modal.content.reset();
     state.modal.flowgraph.reset();
     state.modal.renameBlockOldName.reset();

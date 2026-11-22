@@ -1,19 +1,33 @@
 #include "feedback.hh"
 
+#include "../../support/feedback.hh"
+
 namespace Jetstream {
 
 void FeedbackView::update(Config config) {
+    std::unique_ptr<Sakura::CodeEditor> retiredEditor;
+    std::unique_ptr<Sakura::CodeEditor> retiredDebugEditor;
+    if (!editor || !debugEditor || editorSession != config.session) {
+        editorSession = config.session;
+        retiredEditor = std::move(editor);
+        retiredDebugEditor = std::move(debugEditor);
+        editor = std::make_unique<Sakura::CodeEditor>();
+        debugEditor = std::make_unique<Sakura::CodeEditor>();
+    }
     this->config = std::move(config);
 
     using Text = Sakura::Text;
 
+    const bool blockReport = this->config.blockReport || !this->config.debugInfo.empty();
+    const F32 editorHeight = blockReport ? ReportEditorHeight : EditorHeight;
+
     icon.update({
-        .str = ICON_LC_MESSAGE_CIRCLE_MORE,
+        .str = blockReport ? ICON_LC_BUG : ICON_LC_MESSAGE_CIRCLE_MORE,
         .colorKey = "text_primary",
         .scale = Sakura::Typography::Scale::Heading,
     });
     title.update({
-        .str = "Send Feedback",
+        .str = blockReport ? "Report Block Problem" : "Send Feedback",
         .font = Text::Font::Display,
         .scale = Sakura::Typography::Scale::Headline,
     });
@@ -26,47 +40,122 @@ void FeedbackView::update(Config config) {
         },
     });
     description.update({
-        .str = "Share bugs, feature ideas, or general comments. "
-               "All feedback helps. It is anonymous, with no follow-up.",
+        .str = blockReport
+                   ? "Add any extra context if you'd like, and review the block details below before sending. "
+                     "Reports are anonymous, with no follow-up."
+                   : "Share bugs, feature ideas, or general comments. "
+                     "All feedback helps. It is anonymous, with no follow-up.",
         .font = Text::Font::Sans,
         .tone = Text::Tone::Secondary,
         .wrapped = true,
         .scale = Sakura::Typography::Scale::Lead,
     });
 
-    editor.update({
-        .id = "FeedbackModalEditor",
+    editor->update({
+        .id = jst::fmt::format("FeedbackModalEditor:{}", this->config.session),
         .value = this->config.text,
-        .height = EditorHeight,
+        .height = editorHeight - 2.0f * AreaInset,
         .language = Sakura::CodeEditor::Language::Plain,
         .lineNumbers = false,
         .lineWrapping = true,
+        .scrollPastEnd = false,
         .showActiveLine = false,
-        .padding = Sakura::Padding{Sakura::Spacing::Medium, Sakura::Spacing::Medium, Sakura::Spacing::Medium,
-                                   Sakura::Spacing::Medium},
+        .padding = Sakura::Padding{AreaPadding, AreaVerticalPadding, AreaPadding, AreaVerticalPadding},
         .fontName = Sakura::Typography::BodyFont,
-        .backgroundColorKey = "card_surface",
-        .rounding = Sakura::Rounding::Card,
+        .backgroundColorKey = AreaFill,
         .onChange = [this](std::string value) {
             if (this->config.onTextChange) {
                 this->config.onTextChange(value);
             }
         },
     });
+    editorHint.update({
+        .str = blockReport
+                   ? "Describe what went wrong and what you were trying to do..."
+                   : "Share bugs, feature ideas, or general comments...",
+        .font = Text::Font::Body,
+        .tone = Text::Tone::Secondary,
+    });
+    std::vector<Sakura::Overlay::Item> editorItems = {{.child = editor.get()}};
+    if (this->config.text.empty()) {
+        editorItems.push_back({
+            .child = &editorHint,
+            .anchor = Sakura::Anchor::TopLeft,
+            .offset = {AreaPadding, AreaVerticalPadding},
+        });
+    }
+    editorWrite.update({.items = std::move(editorItems)});
     editorCard.update({
-        .content = &editor,
+        .content = &editorWrite,
+        .size = {Sakura::Fill, editorHeight},
+        .padding = AreaInset,
         .rounding = Sakura::Rounding::Card,
         .border = true,
-        .colorKey = "card_surface",
+        .borderWidth = AreaBorder,
+        .chrome = true,
+        .shadow = true,
+        .shadowSoftness = AreaShadowSoftness,
+        .shadowDrop = AreaShadowDrop,
+        .colorKey = AreaFill,
+        .hoveredColorKey = AreaFill,
     });
 
-    const bool overLimit = this->config.text.size() > this->config.maxLength;
-    const bool underMinimum = this->config.text.size() < this->config.minLength;
+    if (blockReport) {
+        debugLabel.update({
+            .str = "Debug Information (included with report)",
+            .font = Text::Font::Sans,
+            .tone = Text::Tone::Secondary,
+            .scale = CountScale,
+        });
+        debugEditor->update({
+            .id = jst::fmt::format("FeedbackModalDebugEditor:{}", this->config.session),
+            .value = this->config.debugInfo,
+            .height = DebugEditorHeight - 2.0f * AreaInset,
+            .language = Sakura::CodeEditor::Language::Plain,
+            .lineNumbers = false,
+            .lineWrapping = true,
+            .scrollPastEnd = false,
+            .showActiveLine = false,
+            .padding = Sakura::Padding{AreaPadding, AreaVerticalPadding, AreaPadding, AreaVerticalPadding},
+            .fontName = Sakura::Typography::MonoFont,
+            .backgroundColorKey = AreaFill,
+            .onChange = [this](std::string value) {
+                if (this->config.onDebugInfoChange) {
+                    this->config.onDebugInfoChange(value);
+                }
+            },
+        });
+        debugCard.update({
+            .content = debugEditor.get(),
+            .size = {Sakura::Fill, DebugEditorHeight},
+            .padding = AreaInset,
+            .rounding = Sakura::Rounding::Card,
+            .border = true,
+            .borderWidth = AreaBorder,
+            .chrome = true,
+            .shadow = true,
+            .shadowSoftness = AreaShadowSoftness,
+            .shadowDrop = AreaShadowDrop,
+            .colorKey = AreaFill,
+            .hoveredColorKey = AreaFill,
+        });
+        debugSection.update({
+            .spacing = Sakura::Spacing::XSmall,
+            .items = {
+                {.child = &debugLabel},
+                {.child = &debugCard},
+            },
+        });
+    }
+
+    const U64 totalLength = Feedback::Compose(this->config.text, this->config.debugInfo).size();
+    const bool overLimit = totalLength > this->config.maxLength;
+    const bool underMinimum = totalLength < this->config.minLength;
     const bool submitting = this->config.status == Config::Status::Submitting;
     const bool canSubmit = !underMinimum && !overLimit && !submitting;
 
     count.update({
-        .str = jst::fmt::format("{} / {}", this->config.text.size(), this->config.maxLength),
+        .str = jst::fmt::format("{} / {}", totalLength, this->config.maxLength),
         .tone = overLimit      ? Text::Tone::Warning
                 : underMinimum ? Text::Tone::Disabled
                                : Text::Tone::Secondary,
@@ -84,7 +173,7 @@ void FeedbackView::update(Config config) {
     });
     send.update({
         .icon = submitting ? ICON_LC_LOADER_CIRCLE : ICON_LC_SEND,
-        .label = submitting ? "Sending..." : "Send Feedback",
+        .label = submitting ? "Sending..." : (blockReport ? "Send Report" : "Send Feedback"),
         .colorKey = "action_btn_text",
         .backgroundColorKey = "action_btn",
         .hoverColorKey = "action_btn_hovered",
@@ -116,13 +205,17 @@ void FeedbackView::update(Config config) {
             {.child = &description},
         },
     });
+    std::vector<Sakura::Stack::Item> items = {
+        {.child = &header},
+        {.child = &editorCard},
+    };
+    if (blockReport) {
+        items.push_back({.child = &debugSection});
+    }
+    items.push_back({.child = &footer});
     stack.update({
         .spacing = Sakura::Spacing::Large,
-        .items = {
-            {.child = &header},
-            {.child = &editorCard, .size = EditorHeight},
-            {.child = &footer},
-        },
+        .items = std::move(items),
     });
     panel.update({
         .id = "FeedbackModal",

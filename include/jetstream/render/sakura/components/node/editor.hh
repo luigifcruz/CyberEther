@@ -66,6 +66,9 @@ struct NodeEditor : public Component {
         NodeState state = NodeState::Normal;
         std::string diagnostic;
         NodeOverlay diagnosticTooltip;
+        NodeOverlay diagnosticPopup;
+        Callback<void()> onDiagnosticClick;
+        Callback<void()> onDiagnosticDismiss;
         bool collapsible = false;
         bool collapsed = false;
         Callback<void()> onToggleCollapse;

@@ -108,9 +108,13 @@ FlowgraphNode::BlockData FlowgraphNodePresenter::build(const std::string& flowgr
                                                        const Flowgraph::View::BlockData& blockData) const {
     const std::string nodeViewId = jst::fmt::format("{}:{}", flowgraphId, blockName);
     const Block::State blockState = blockData.state;
-    const bool hasDiagnostic = (blockState == Block::State::Errored ||
-                                 blockState == Block::State::Incomplete) &&
-                                !blockData.diagnostic.empty();
+    const bool isErrored = blockState == Block::State::Errored;
+    const std::string cleanedDiagnostic = Sakura::CleanUserMessage(blockData.diagnostic);
+    const bool hasDiagnostic = isErrored ||
+                               (blockState == Block::State::Incomplete && !cleanedDiagnostic.empty());
+    const std::string diagnosticText = !hasDiagnostic              ? ""
+                                     : !cleanedDiagnostic.empty()  ? cleanedDiagnostic
+                                                                   : "No diagnostic available.";
     FlowgraphNode::BlockData block{
         .name = blockName,
         .module = blockData.type,
@@ -118,7 +122,7 @@ FlowgraphNode::BlockData FlowgraphNodePresenter::build(const std::string& flowgr
         .state = blockState,
         .frozen = blockData.frozen,
         .nodeSize = blockData.nodeSize,
-        .diagnostic = hasDiagnostic ? Sakura::CleanUserMessage(blockData.diagnostic) : "",
+        .diagnostic = diagnosticText,
     };
     block.deviceOptions = catalog.buildDeviceOptions(block.module,
                                                      blockData.device,

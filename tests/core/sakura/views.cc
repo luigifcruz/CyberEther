@@ -4495,6 +4495,76 @@ TEST_CASE("Feedback modal submits only within the length limits and while idle",
     CHECK(submitted == 1);
 }
 
+TEST_CASE("Feedback modal block report mode shows debug info editor and submits combined length",
+          "[core][sakura][views]") {
+    ModalRig rig;
+    U64 submitted = 0;
+    std::string userText;
+    std::string debugText = "Block: fft_1 (type: fft)\nError: invalid shape";
+    FeedbackView view;
+    const auto show = [&] {
+        view.update({
+            .text = userText,
+            .debugInfo = debugText,
+            .blockReport = true,
+            .minLength = 10,
+            .maxLength = 120,
+            .status = FeedbackView::Config::Status::Idle,
+            .onTextChange = [&](const std::string& value) { userText = value; },
+            .onDebugInfoChange = [&](const std::string& value) { debugText = value; },
+            .onSubmit = [&] { ++submitted; },
+        });
+        rig.show({.content = &view.component(), .size = Extent2D<F32>{520.0f, 0.0f}, .closeButton = false});
+    };
+
+    show();
+    CHECK(Find<Sakura::CodeEditor>(view.component()).size() == 2);
+    auto* send = Pill(view.component(), "Send Report");
+    REQUIRE(send != nullptr);
+    CHECK(Press(rig.host, *send));
+    CHECK(submitted == 1);
+
+    userText = std::string(100, 'x');
+    show();
+    send = Pill(view.component(), "Send Report");
+    REQUIRE(send != nullptr);
+    Press(rig.host, *send);
+    CHECK(submitted == 1);
+
+    // Reopening with a new session recreates both editors so local edits and undo history cannot leak across cancels.
+    const std::string originalDebug = "Block: fft_1 (type: fft)\nError: invalid shape";
+    std::string liveDebug = originalDebug;
+    view.update({
+        .session = 1,
+        .text = "",
+        .debugInfo = originalDebug,
+        .blockReport = true,
+        .minLength = 10,
+        .maxLength = 120,
+        .status = FeedbackView::Config::Status::Idle,
+        .onDebugInfoChange = [&](const std::string& value) { liveDebug = value; },
+    });
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{520.0f, 0.0f}, .closeButton = false});
+    auto grids = Find<Sakura::TextGrid>(view.component());
+    REQUIRE(grids.size() == 2);
+    auto* firstDebugGrid = grids[1];
+
+    // Reopen on a new session with the same configured debug text without echoing any intermediate edit.
+    view.update({
+        .session = 2,
+        .text = "",
+        .debugInfo = originalDebug,
+        .blockReport = true,
+        .minLength = 10,
+        .maxLength = 120,
+        .status = FeedbackView::Config::Status::Idle,
+    });
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{520.0f, 0.0f}, .closeButton = false});
+    grids = Find<Sakura::TextGrid>(view.component());
+    REQUIRE(grids.size() == 2);
+    CHECK(grids[1] != firstDebugGrid);
+}
+
 TEST_CASE("Crash report modal shows the report and sends or dismisses it", "[core][sakura][views]") {
     ModalRig rig;
     U64 submitted = 0;

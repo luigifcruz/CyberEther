@@ -532,6 +532,15 @@ struct MailSetFeedbackText {
     std::string value;
 };
 
+struct MailSetFeedbackDebugInfo {
+    std::string value;
+};
+
+struct MailReportBlockProblem {
+    std::string flowgraph;
+    std::string block;
+};
+
 struct MailSubmitFeedback {};
 
 struct MailOpenOnboarding {
@@ -898,6 +907,8 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailResetBenchmark,
                            MailSetBenchmarkModule,
                            MailSetFeedbackText,
+                           MailSetFeedbackDebugInfo,
+                           MailReportBlockProblem,
                            MailSubmitFeedback,
                            MailOpenOnboarding,
                            MailDismissOnboarding,

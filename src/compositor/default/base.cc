@@ -464,8 +464,13 @@ void DefaultCompositor::updateFeedbackState() {
             }
             if (!modalOpen &&
                 (state.feedback.status != DefaultCompositorState::FeedbackState::Status::Idle ||
-                 !state.feedback.text.empty())) {
-                state.feedback = {};
+                 !state.feedback.text.empty() ||
+                 !state.feedback.debugInfo.empty() ||
+                 state.feedback.blockReport)) {
+                state.feedback.status = DefaultCompositorState::FeedbackState::Status::Idle;
+                state.feedback.text.clear();
+                state.feedback.debugInfo.clear();
+                state.feedback.blockReport = false;
                 feedback.clear();
             }
             break;
@@ -477,7 +482,12 @@ void DefaultCompositor::updateFeedbackState() {
                 callbacks.notify(Sakura::ToastType::Success, 5000,
                                  "Feedback submitted. Thank you!");
                 feedback.clear();
-                state.feedback = {};
+                state.feedback.status = DefaultCompositorState::FeedbackState::Status::Idle;
+                if (!modalOpen) {
+                    state.feedback.text.clear();
+                    state.feedback.debugInfo.clear();
+                    state.feedback.blockReport = false;
+                }
             }
             break;
         case Feedback::Snapshot::Status::Error:
@@ -485,7 +495,12 @@ void DefaultCompositor::updateFeedbackState() {
                 callbacks.notify(Sakura::ToastType::Error, 5000,
                                  snapshot.message);
                 feedback.clear();
-                state.feedback = {};
+                state.feedback.status = DefaultCompositorState::FeedbackState::Status::Idle;
+                if (!modalOpen) {
+                    state.feedback.text.clear();
+                    state.feedback.debugInfo.clear();
+                    state.feedback.blockReport = false;
+                }
             }
             break;
     }

@@ -52,7 +52,10 @@ struct FlowgraphPinTooltip {
 };
 
 struct FlowgraphDiagnosticTooltip {
-    void update(const std::string& id, const std::string& message, const std::string& colorKey);
+    void update(const std::string& id,
+                const std::string& message,
+                const std::string& colorKey,
+                bool reportable = false);
     Sakura::NodeOverlay overlay();
 
  private:
@@ -62,7 +65,34 @@ struct FlowgraphDiagnosticTooltip {
     Sakura::Stack header;
     Sakura::Divider divider;
     Sakura::Text message;
+    Sakura::Text hint;
     Sakura::Stack content;
+};
+
+struct FlowgraphDiagnosticPopup {
+    static constexpr F32 WrapWidth = 420.0f;
+    static constexpr F32 MessageMaxHeight = 220.0f;
+    static constexpr F32 ButtonHeight = 30.0f;
+
+    void update(const std::string& id,
+                const std::string& message,
+                const std::string& colorKey,
+                Sakura::Callback<void()> onReport);
+    Sakura::NodeOverlay overlay();
+
+ private:
+    Sakura::Callback<void()> onReport;
+    Sakura::Text headerIcon;
+    Sakura::Text headerLabel;
+    Sakura::Stack header;
+    Sakura::Divider divider;
+    Sakura::Text message;
+    Sakura::ScrollArea messageScroll;
+    Sakura::Spacer footerSpacer;
+    Sakura::PillButton reportButton;
+    Sakura::Stack footer;
+    Sakura::Stack content;
+    Sakura::Panel panel;
 };
 
 struct FlowgraphNode {
@@ -163,6 +193,7 @@ struct FlowgraphNode {
         Sakura::Callback<void(bool)> onConfigCollapse;
         Sakura::Callback<void(bool)> onConfigDetach;
         Sakura::Callback<void(bool)> onConfigAdvanced;
+        Sakura::Callback<void()> onReportProblem;
     };
 
     static constexpr F32 MinimumNodeWidth = 120.0f;
@@ -197,11 +228,13 @@ struct FlowgraphNode {
     std::vector<std::unique_ptr<Sakura::NodeSurface>> surfaces;
     std::vector<std::unique_ptr<FlowgraphPinTooltip>> pinTooltips;
     FlowgraphDiagnosticTooltip diagnosticTooltip;
+    FlowgraphDiagnosticPopup diagnosticPopup;
     std::vector<FlowgraphNodeMenu::DeviceOption> deviceOptions;
     FlowgraphNodeMenu menu;
     FlowgraphNodeInspector inspector;
     bool menuOpen = false;
     bool inspectorOpen = false;
+    bool diagnosticOpen = false;
     bool layoutChanged = false;
     std::optional<Layout> emittedLayout;
 };

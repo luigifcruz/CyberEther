@@ -13,6 +13,7 @@
 
 #include "fonts.hh"
 #include "component_harness.hh"
+#include "render/sakura/detail/root_component.hh"
 
 #include <memory>
 #include <optional>
@@ -1686,4 +1687,120 @@ TEST_CASE("Busy nodes keep their metric and field components while the block is 
     session.run();
     CHECK(ranges() == 1);
     CHECK(labels() == 1);
+}
+
+TEST_CASE("Clicking the error skull icon opens a diagnostic popup with a Report Problem button",
+          "[core][sakura][flowgraph][node-view]") {
+    ScaledFontWindow window(1.0f);
+    FlowgraphNode node;
+    NodeEditor editor;
+    Sakura::Layer layer;
+    layer.update({.content = &editor});
+    Sakura::RootComponent root;
+    root.setLayers({&layer});
+
+    auto ctx = MakeContext({kViewport.width, kViewport.height});
+    ctx.pixelRatio = 1.0f;
+    ctx.render = &window;
+    ctx.popups = &root.popups;
+
+    auto block = MakeBlock("broken-block", "fft");
+    block.state = Block::State::Errored;
+    block.diagnostic = "Input shape mismatch";
+    auto config = MakeConfig(std::move(block));
+    config.block.layout = FlowgraphNode::Layout{.x = 40.0f, .y = 40.0f, .width = 240.0f, .height = 0.0f};
+    U64 reported = 0;
+    config.onReportProblem = [&] { ++reported; };
+
+    Rect viewport = kViewport;
+    std::optional<NodeEditor::Geometry> geometry;
+    const auto pump = [&](U64 count = 3) {
+        for (U64 i = 0; i < count; ++i) {
+            node.update(config);
+            auto spec = node.takeNode();
+            auto previous = spec.onGeometryChange;
+            spec.onGeometryChange = [&](const NodeEditor::Geometry& next) {
+                geometry = next;
+                if (previous) {
+                    previous(next);
+                }
+            };
+            editor.update({
+                .id = "diagnostic-popup-test",
+                .nodes = {std::move(spec)},
+            });
+            ++ctx.frame;
+            Sakura::Access::layout(root, ctx, viewport);
+            Sakura::Access::present(root, ctx.frame);
+        }
+    };
+
+    const auto clickAt = [&](Extent2D<F32> point) {
+        Sakura::Access::mouseEvent(root, Mouse(MouseEventType::Move, point.x, point.y));
+        Sakura::Access::mouseEvent(root, Mouse(MouseEventType::Click, point.x, point.y));
+        Sakura::Access::mouseEvent(root, Mouse(MouseEventType::Release, point.x, point.y));
+        pump();
+    };
+
+    pump();
+    REQUIRE(geometry.has_value());
+    const auto skullCenter = [&] {
+        const auto& geo = *geometry;
+        return Extent2D<F32>{
+            geo.gridPosition.x + geo.dimensions.x - kPadding - 3.0f - kNodeFont * 0.5f,
+            geo.gridPosition.y + kPadding + kTitleFont * 0.5f,
+        };
+    };
+
+    const auto visiblePopupButtons = [&]() -> std::vector<Sakura::PillButton*> {
+        std::vector<Sakura::PillButton*> buttons;
+        for (auto* button : Find<Sakura::PillButton>(root)) {
+            if (button->visible() && !Peek::Frame(*button).empty()) {
+                buttons.push_back(button);
+            }
+        }
+        return buttons;
+    };
+
+    // Click skull to open, click skull again to toggle closed.
+    CHECK(visiblePopupButtons().empty());
+    clickAt(skullCenter());
+    REQUIRE(visiblePopupButtons().size() == 1);
+
+    clickAt(skullCenter());
+    CHECK(visiblePopupButtons().empty());
+
+    // Click skull to open, click outside to dismiss.
+    clickAt(skullCenter());
+    REQUIRE(visiblePopupButtons().size() == 1);
+
+    clickAt({1200.0f, 1200.0f});
+    CHECK(visiblePopupButtons().empty());
+
+    // Long traceback keeps Report Problem button visible inside the bounded popup.
+    std::string longDiag;
+    for (U64 i = 0; i < 60; ++i) {
+        longDiag += "Traceback line " + std::to_string(i) + ": detailed error context\n";
+    }
+    config.block.diagnostic = longDiag;
+    pump();
+
+    clickAt(skullCenter());
+    auto buttons = visiblePopupButtons();
+    REQUIRE(buttons.size() == 1);
+    const Rect btnFrame = Peek::Frame(*buttons[0]);
+    CHECK(btnFrame.bottom() <= viewport.bottom());
+    clickAt({btnFrame.x + btnFrame.width * 0.5f, btnFrame.y + btnFrame.height * 0.5f});
+
+    CHECK(reported == 1);
+    CHECK(visiblePopupButtons().empty());
+
+    // Recovering from error dismisses an open popup.
+    clickAt(skullCenter());
+    REQUIRE(visiblePopupButtons().size() == 1);
+
+    config.block.state = Block::State::Created;
+    config.block.diagnostic.clear();
+    pump();
+    CHECK(visiblePopupButtons().empty());
 }

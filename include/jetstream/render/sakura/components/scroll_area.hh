@@ -15,6 +15,7 @@ struct ScrollArea : public Component {
         std::string id;
         Component* content = nullptr;
         F32 height = 240.0f;
+        F32 maxHeight = 0.0f;
         bool alwaysScrollbar = true;
         bool border = true;
         bool overlay = false;

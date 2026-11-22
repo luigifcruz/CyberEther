@@ -9,6 +9,10 @@ void ModalView::update(Config config) {
         this->config.content != ModalContent::RenameBlock) {
         renameBlockView.update({});
     }
+    if (previousContent == ModalContent::Feedback &&
+        this->config.content != ModalContent::Feedback) {
+        feedbackView.update({});
+    }
 
     if (!this->config.content.has_value()) {
         previousContent = this->config.content;

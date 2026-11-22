@@ -416,6 +416,9 @@ struct DefaultCompositorState {
 
         Status status = Status::Idle;
         std::string text;
+        std::string debugInfo;
+        bool blockReport = false;
+        U64 session = 0;
     };
 
     struct CrashReportState {

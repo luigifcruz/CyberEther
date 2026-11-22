@@ -27,6 +27,8 @@ class Feedback {
     static constexpr U64 MAX_LENGTH = 4000;
     static constexpr const char* ENDPOINT = "https://cyberether.org/api/v1/feedback";
 
+    static std::string Compose(const std::string& text, const std::string& debugInfo);
+
     Feedback();
     ~Feedback();
 

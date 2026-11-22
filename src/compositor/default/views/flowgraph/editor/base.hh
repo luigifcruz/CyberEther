@@ -82,6 +82,7 @@ struct FlowgraphEditor {
         Sakura::Callback<void(const std::string&, bool)> onNodeConfigCollapse;
         Sakura::Callback<void(const std::string&, bool)> onNodeConfigDetach;
         Sakura::Callback<void(const std::string&, bool)> onNodeConfigAdvanced;
+        Sakura::Callback<void(const std::string&)> onReportBlockProblem;
         Sakura::Callback<void()> onTogglePause;
         Sakura::Callback<void()> onSave;
         Sakura::Callback<void()> onToggleEnvironment;

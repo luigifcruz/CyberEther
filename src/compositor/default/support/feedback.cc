@@ -22,7 +22,7 @@ namespace {
 std::string BuildFeedbackBody(const std::string& text) {
     nlohmann::json json;
     json["feedback"] = text;
-    return json.dump();
+    return json.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
 }  // namespace
@@ -77,6 +77,31 @@ struct FetchContext {
     std::string body;
 };
 #endif
+
+std::string Feedback::Compose(const std::string& text, const std::string& debugInfo) {
+    const auto trim = [](std::string_view value) -> std::string_view {
+        const auto isSpace = [](const char c) {
+            return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+        };
+        while (!value.empty() && isSpace(value.front())) {
+            value.remove_prefix(1);
+        }
+        while (!value.empty() && isSpace(value.back())) {
+            value.remove_suffix(1);
+        }
+        return value;
+    };
+
+    const std::string_view cleanText = trim(text);
+    const std::string_view cleanDebug = trim(debugInfo);
+    if (cleanDebug.empty()) {
+        return std::string(cleanText);
+    }
+    if (cleanText.empty()) {
+        return std::string(cleanDebug);
+    }
+    return std::string(cleanText) + "\n\n--- Debug Info ---\n" + std::string(cleanDebug);
+}
 
 Feedback::Feedback() : pimpl(std::make_shared<Impl>()) {}
 

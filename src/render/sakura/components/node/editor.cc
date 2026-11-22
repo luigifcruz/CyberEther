@@ -71,6 +71,7 @@ enum class HeaderButton : U8 {
     None,
     Chevron,
     Detach,
+    Diagnostic,
 };
 
 bool HasAxis(ResizeAxes axes, ResizeAxes axis) {
@@ -536,12 +537,19 @@ struct NodeFrame : public Component {
         return {origin.x + kPadding + local.x, origin.y + kPadding + local.y, local.width, local.height};
     }
 
+    Rect skullGridRect() const {
+        return headerGridRect(skullRect);
+    }
+
     HeaderButton headerButtonAt(const Extent2D<F32>& mouse) const {
         if (chevronRect.width > 0.0f && headerGridRect(chevronRect).contains(mouse.x, mouse.y)) {
             return HeaderButton::Chevron;
         }
         if (detachRect.width > 0.0f && headerGridRect(detachRect).contains(mouse.x, mouse.y)) {
             return HeaderButton::Detach;
+        }
+        if (skullRect.width > 0.0f && spec.onDiagnosticClick && headerGridRect(skullRect).contains(mouse.x, mouse.y)) {
+            return HeaderButton::Diagnostic;
         }
         return HeaderButton::None;
     }
@@ -552,6 +560,9 @@ struct NodeFrame : public Component {
         }
         if (button == HeaderButton::Detach && spec.onDetach) {
             spec.onDetach();
+        }
+        if (button == HeaderButton::Diagnostic && spec.onDiagnosticClick) {
+            spec.onDiagnosticClick();
         }
     }
 
@@ -712,10 +723,13 @@ struct NodeFrame : public Component {
             });
         }
         if (skullRect.width > 0.0f) {
+            const auto skullColor = f.hoveredButton == HeaderButton::Diagnostic
+                ? Lighten(stateColor, 0.22f, 1.0f)
+                : stateColor;
             iconInstances.push_back({
                 .rect = {top.x + skullRect.x * r, top.y + skullRect.y * r, skullRect.width * r, skullRect.height * r},
                 .str = ICON_FA_SKULL,
-                .color = stateColor,
+                .color = skullColor,
                 .fontSize = kNodeFont * r,
                 .alignment = {1, 1},
             });
@@ -799,7 +813,7 @@ struct NodeFrame : public Component {
             }
         }
         const Rect skull = {top.x + skullRect.x, top.y + skullRect.y, skullRect.width, skullRect.height};
-        if (skullRect.width > 0.0f && spec.diagnosticTooltip && skull.contains(gridPoint.x, gridPoint.y)) {
+        if (skullRect.width > 0.0f && !spec.diagnosticPopup && spec.diagnosticTooltip && skull.contains(gridPoint.x, gridPoint.y)) {
             return static_cast<I64>(pins.size());
         }
         return -1;
@@ -814,7 +828,7 @@ struct NodeFrame : public Component {
             }
         }
         const Rect skull = {top.x + skullRect.x, top.y + skullRect.y, skullRect.width, skullRect.height};
-        if (skullRect.width > 0.0f && spec.diagnosticTooltip && skull.contains(gridPoint.x, gridPoint.y)) {
+        if (skullRect.width > 0.0f && !spec.diagnosticPopup && spec.diagnosticTooltip && skull.contains(gridPoint.x, gridPoint.y)) {
             return std::make_pair(skull, spec.diagnosticTooltip());
         }
         return std::nullopt;
@@ -1537,7 +1551,42 @@ struct GraphRoot : public Component {
             config.onNodesArranged();
         }
 
+        requestDiagnosticPopups(ctx);
         requestTooltips(ctx);
+    }
+
+    void requestDiagnosticPopups(const Context& ctx) {
+        for (const auto& id : depth) {
+            const auto* frame = frameFor(id);
+            if (!frame || !frame->spec.diagnosticPopup || frame->skullRect.width <= 0.0f) {
+                continue;
+            }
+            const Rect skull = frame->skullGridRect();
+            const auto corner = toPx(Extent2D<F32>{skull.x, skull.y});
+            const Rect anchor = {corner.x, corner.y, skull.width * ratio, skull.height * ratio};
+            if (!frame->visible() || !Overlaps(anchor, viewport)) {
+                if (frame->spec.onDiagnosticDismiss) {
+                    frame->spec.onDiagnosticDismiss();
+                }
+                continue;
+            }
+            Component* popup = frame->spec.diagnosticPopup();
+            if (!popup) {
+                requestFrame();
+                continue;
+            }
+            RequestPopup(ctx, {
+                .content = popup,
+                .anchor = anchor,
+                .placement = PopupPlacement::BelowEnd,
+                .panel = true,
+                .maxWidth = TooltipWidth,
+                .interactive = true,
+                .delayed = false,
+                .onDismiss = frame->spec.onDiagnosticDismiss,
+                .passthrough = anchor,
+            });
+        }
     }
 
     void requestTooltips(const Context& ctx) {

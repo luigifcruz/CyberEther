@@ -20,12 +20,18 @@ FeedbackView::Config FeedbackModalPresenter::build() const {
     }
 
     return FeedbackView::Config{
+        .session = context.state.feedback.session,
         .text = text,
+        .debugInfo = context.state.feedback.debugInfo,
+        .blockReport = context.state.feedback.blockReport,
         .minLength = Feedback::MIN_LENGTH,
         .maxLength = Feedback::MAX_LENGTH,
         .status = viewStatus,
         .onTextChange = [enqueue](const std::string& value) {
             enqueue(MailSetFeedbackText{.value = value});
+        },
+        .onDebugInfoChange = [enqueue](const std::string& value) {
+            enqueue(MailSetFeedbackDebugInfo{.value = value});
         },
         .onSubmit = [enqueue]() {
             enqueue(MailSubmitFeedback{});

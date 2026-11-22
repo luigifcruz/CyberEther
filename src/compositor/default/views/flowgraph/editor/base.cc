@@ -182,6 +182,11 @@ void FlowgraphEditor::update(Config config) {
                     this->config.onNodeConfigAdvanced(blockName, advanced);
                 }
             },
+            .onReportProblem = [this, blockName]() {
+                if (this->config.onReportBlockProblem) {
+                    this->config.onReportBlockProblem(blockName);
+                }
+            },
         };
 
         nodeViews[blockName].update(std::move(nodeConfig));

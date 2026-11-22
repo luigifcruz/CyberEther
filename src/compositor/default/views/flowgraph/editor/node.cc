@@ -111,7 +111,10 @@ void FlowgraphPinTooltip::prepare() {
     });
 }
 
-void FlowgraphDiagnosticTooltip::update(const std::string& id, const std::string& message, const std::string& colorKey) {
+void FlowgraphDiagnosticTooltip::update(const std::string& id,
+                                        const std::string& message,
+                                        const std::string& colorKey,
+                                        bool reportable) {
     if (!tooltip.requested()) {
         return;
     }
@@ -133,12 +136,21 @@ void FlowgraphDiagnosticTooltip::update(const std::string& id, const std::string
         .str = message,
         .wrapped = true,
     });
+    std::vector<Sakura::Stack::Item> items = {
+        {.child = &header},
+        {.child = &divider},
+        {.child = &this->message},
+    };
+    if (reportable) {
+        hint.update({
+            .str = "Click icon to report a problem.",
+            .tone = Sakura::Text::Tone::Secondary,
+            .scale = Sakura::Typography::Scale::Small,
+        });
+        items.push_back({.child = &hint});
+    }
     content.update({
-        .items = {
-            {.child = &header},
-            {.child = &divider},
-            {.child = &this->message},
-        },
+        .items = std::move(items),
     });
     tooltip.update({
         .id = id + "DiagnosticTooltip",
@@ -151,6 +163,88 @@ Sakura::NodeOverlay FlowgraphDiagnosticTooltip::overlay() {
     return {
         .content = [this]() {
             return tooltip.show();
+        },
+    };
+}
+
+void FlowgraphDiagnosticPopup::update(const std::string& id,
+                                      const std::string& message,
+                                      const std::string& colorKey,
+                                      Sakura::Callback<void()> onReport) {
+    this->onReport = std::move(onReport);
+    headerIcon.update({
+        .str = ICON_LC_TRIANGLE_ALERT,
+        .colorKey = colorKey,
+    });
+    headerLabel.update({.str = "Diagnostic"});
+    header.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::Medium,
+        .items = {
+            {.child = &headerIcon},
+            {.child = &headerLabel},
+        },
+    });
+    divider.update({.spacing = 0.0f});
+    this->message.update({
+        .str = message,
+        .wrapped = true,
+    });
+    messageScroll.update({
+        .id = id + "DiagnosticPopup:scroll",
+        .content = &this->message,
+        .height = 0.0f,
+        .maxHeight = MessageMaxHeight,
+        .alwaysScrollbar = false,
+        .border = false,
+        .overlay = true,
+    });
+    footerSpacer.update({});
+    reportButton.update({
+        .icon = ICON_LC_BUG,
+        .label = "Report Problem",
+        .colorKey = "action_btn_text",
+        .backgroundColorKey = "action_btn",
+        .hoverColorKey = "action_btn_hovered",
+        .raised = true,
+        .height = ButtonHeight,
+        .onClick = [this]() {
+            if (this->onReport) {
+                this->onReport();
+            }
+        },
+    });
+    footer.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::Small,
+        .items = {
+            {.child = &footerSpacer, .grow = 1.0f},
+            {.child = &reportButton},
+        },
+    });
+    content.update({
+        .spacing = Sakura::Spacing::Medium,
+        .items = {
+            {.child = &header},
+            {.child = &divider},
+            {.child = &messageScroll, .shrink = 1.0f},
+            {.child = &footer},
+        },
+    });
+    const F32 popupWidth = WrapWidth - 2.0f * Sakura::Spacing::Medium;
+    panel.update({
+        .id = id + "DiagnosticPopup:panel",
+        .content = &content,
+        .size = {popupWidth, 0.0f},
+        .maxWidth = popupWidth,
+        .transparent = true,
+    });
+}
+
+Sakura::NodeOverlay FlowgraphDiagnosticPopup::overlay() {
+    return {
+        .content = [this]() -> Sakura::Component* {
+            return &panel;
         },
     };
 }
@@ -290,10 +384,21 @@ void FlowgraphNode::update(Config config) {
     }
 
     const bool hasDiagnostic = !block.diagnostic.empty() && nodeState != NodeEditor::NodeState::Normal;
-    diagnosticTooltip.update(this->config.id,
-                             block.diagnostic,
-                             nodeState == NodeEditor::NodeState::Error ? "node_outline_error"
-                                                                       : "node_outline_pending");
+    const bool reportableError = isErrored && hasDiagnostic && static_cast<bool>(this->config.onReportProblem);
+    if (!reportableError) {
+        diagnosticOpen = false;
+    }
+    const std::string diagnosticColor = nodeState == NodeEditor::NodeState::Error ? "node_outline_error"
+                                                                                  : "node_outline_pending";
+    diagnosticTooltip.update(this->config.id, block.diagnostic, diagnosticColor, reportableError);
+    if (diagnosticOpen) {
+        diagnosticPopup.update(this->config.id, block.diagnostic, diagnosticColor, [this]() {
+            diagnosticOpen = false;
+            if (this->config.onReportProblem) {
+                this->config.onReportProblem();
+            }
+        });
+    }
 
     nodeSpec = {
         .id = this->config.id,
@@ -303,6 +408,13 @@ void FlowgraphNode::update(Config config) {
         .state = nodeState,
         .diagnostic = hasDiagnostic ? block.diagnostic : std::string(),
         .diagnosticTooltip = hasDiagnostic ? diagnosticTooltip.overlay() : Sakura::NodeOverlay{},
+        .diagnosticPopup = diagnosticOpen ? diagnosticPopup.overlay() : Sakura::NodeOverlay{},
+        .onDiagnosticClick = reportableError ? Sakura::Callback<void()>([this]() {
+            diagnosticOpen = !diagnosticOpen;
+        }) : Sakura::Callback<void()>(),
+        .onDiagnosticDismiss = diagnosticOpen ? Sakura::Callback<void()>([this]() {
+            diagnosticOpen = false;
+        }) : Sakura::Callback<void()>(),
         .collapsible = hasConfigFields,
         .collapsed = block.configCollapsed,
         .onToggleCollapse = [this]() {

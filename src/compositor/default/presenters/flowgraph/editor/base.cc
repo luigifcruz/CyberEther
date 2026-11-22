@@ -128,6 +128,12 @@ FlowgraphEditor::Config FlowgraphEditorPresenter::build(const std::string& flowg
             enqueue(MailSetConfigAdvanced{
                 flowgraphId, blockName, advanced});
         },
+        .onReportBlockProblem = [enqueue, flowgraphId](const std::string& blockName) {
+            enqueue(MailReportBlockProblem{
+                .flowgraph = flowgraphId,
+                .block = blockName,
+            });
+        },
     };
 
     if (const auto selection = context.state.flowgraph.selections.find(flowgraphId);
