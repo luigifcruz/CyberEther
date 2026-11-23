@@ -1,6 +1,7 @@
 #include "jetstream/plugin.hh"
 
 #include "plugin_gallery.hh"
+#include "tools/text.hh"
 
 #include "jetstream/home.hh"
 #include "jetstream/logger.hh"
@@ -10,7 +11,6 @@
 #include "jetstream/runtime.hh"
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <chrono>
 #include <cctype>
@@ -18,16 +18,16 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <limits>
 #include <map>
 #include <mutex>
 #include <set>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
 
-#include <zlib.h>
+#include <miniz.h>
 
 namespace Jetstream {
 
@@ -36,115 +36,10 @@ namespace {
 constexpr const char* ManifestFile = "manifest.yml";
 constexpr const char* IndexFile = "index.yml";
 
-class Inflater {
- public:
-    ~Inflater() {
-        if (initialized) {
-            inflateEnd(&stream);
-        }
-    }
-
-    Result open(const std::filesystem::path& path) {
-        file.open(path, std::ios::binary);
-        if (!file) {
-            JST_ERROR("[PLUGIN] Failed to open '{}'.", Platform::PathToUtf8(path));
-            return Result::ERROR;
-        }
-
-        if (inflateInit2(&stream, 15 + 16) != Z_OK) {
-            JST_ERROR("[PLUGIN] Failed to initialize gzip decompressor.");
-            return Result::ERROR;
-        }
-
-        initialized = true;
-        return Result::SUCCESS;
-    }
-
-    bool ended() const {
-        return finished;
-    }
-
-    Result read(uint8_t* data, std::size_t size) {
-        while (size > 0) {
-            if (finished) {
-                return Result::ERROR;
-            }
-
-            JST_CHECK(refill());
-
-            const auto capacity = static_cast<uInt>(std::min<std::size_t>(size, std::numeric_limits<uInt>::max()));
-            stream.next_out = reinterpret_cast<Bytef*>(data);
-            stream.avail_out = capacity;
-
-            const auto status = inflate(&stream, Z_NO_FLUSH);
-            const auto produced = static_cast<std::size_t>(capacity - stream.avail_out);
-            if (status == Z_STREAM_END) {
-                finished = true;
-            } else if (status != Z_OK && !(status == Z_BUF_ERROR && produced > 0)) {
-                JST_ERROR("[PLUGIN] Failed to decompress gzip payload.");
-                return Result::ERROR;
-            }
-
-            data += produced;
-            size -= produced;
-        }
-
-        return Result::SUCCESS;
-    }
-
-    Result skip(uint64_t size) {
-        std::array<uint8_t, 64 * 1024> scratch;
-        while (size > 0) {
-            const auto chunk = static_cast<std::size_t>(std::min<uint64_t>(size, scratch.size()));
-            JST_CHECK(read(scratch.data(), chunk));
-            size -= chunk;
-        }
-        return Result::SUCCESS;
-    }
-
-    Result finish() {
-        std::array<uint8_t, 64 * 1024> scratch;
-        while (!finished) {
-            JST_CHECK(refill());
-
-            stream.next_out = reinterpret_cast<Bytef*>(scratch.data());
-            stream.avail_out = static_cast<uInt>(scratch.size());
-
-            const auto status = inflate(&stream, Z_NO_FLUSH);
-            if (status == Z_STREAM_END) {
-                finished = true;
-            } else if (status != Z_OK) {
-                JST_ERROR("[PLUGIN] Failed to decompress gzip payload.");
-                return Result::ERROR;
-            }
-        }
-        return Result::SUCCESS;
-    }
-
- private:
-    Result refill() {
-        if (stream.avail_in != 0) {
-            return Result::SUCCESS;
-        }
-
-        file.read(reinterpret_cast<char*>(input.data()), static_cast<std::streamsize>(input.size()));
-        const auto count = static_cast<uInt>(file.gcount());
-        if (count == 0) {
-            JST_ERROR("[PLUGIN] Failed to decompress gzip payload.");
-            return Result::ERROR;
-        }
-
-        stream.next_in = reinterpret_cast<Bytef*>(input.data());
-        stream.avail_in = count;
-        return Result::SUCCESS;
-    }
-
-    std::ifstream file;
-    z_stream stream = {};
-    bool initialized = false;
-    bool finished = false;
-    std::array<uint8_t, 64 * 1024> input;
-};
+constexpr uint64_t MaxBundleSize = 512ull << 20;
+constexpr uint64_t MaxUncompressedSize = 2ull << 30;
+constexpr uint64_t MaxBundleEntries = 10000;
+constexpr uint64_t MaxManifestSize = 64ull << 10;
 
 struct InstallOptions {
     bool gallery = false;
@@ -331,35 +226,25 @@ std::filesystem::path Plugin::Impl::libraryPath(const std::filesystem::path& roo
 }
 
 bool Plugin::Impl::safeRelativePath(const std::string& rawPath, std::filesystem::path& relativePath) {
-    if (rawPath.empty() ||
-        rawPath.front() == '/' ||
-        rawPath.find('\\') != std::string::npos ||
-        rawPath.find(':') != std::string::npos) {
+    if (rawPath.find_first_of(std::string_view("\\:\0", 3)) != std::string::npos) {
         return false;
     }
 
-    std::filesystem::path candidate;
+    std::size_t start = 0;
+    while (start <= rawPath.size()) {
+        const auto end = std::min(rawPath.find('/', start), rawPath.size());
+        const auto segment = std::string_view(rawPath).substr(start, end - start);
+        if (segment.empty() || segment.back() == '.' || segment.back() == ' ' || Gallery::ReservedName(segment)) {
+            return false;
+        }
+        start = end + 1;
+    }
+
     try {
-        candidate = Platform::PathFromUtf8(rawPath);
+        relativePath = Platform::PathFromUtf8(rawPath);
     } catch (...) {
         return false;
     }
-    if (candidate.is_absolute() || candidate.has_root_name() || candidate.has_root_directory()) {
-        return false;
-    }
-
-    candidate = candidate.lexically_normal();
-    if (candidate.empty() || candidate == ".") {
-        return false;
-    }
-
-    for (const auto& part : candidate) {
-        if (part == "..") {
-            return false;
-        }
-    }
-
-    relativePath = std::move(candidate);
     return true;
 }
 
@@ -371,50 +256,57 @@ std::string Plugin::Impl::uniqueStamp() {
 }
 
 Result Plugin::Impl::extract(const std::filesystem::path& source, const std::filesystem::path& destination) {
-    Inflater inflater;
-    JST_CHECK(inflater.open(source));
+    const auto sourceName = Platform::PathToUtf8(source);
 
     std::error_code ec;
-    std::filesystem::create_directories(destination, ec);
-    if (ec) {
-        JST_ERROR("[PLUGIN] Failed to create plugin extraction directory '{}'.",
-                  Platform::PathToUtf8(destination));
+    const uint64_t size = std::filesystem::file_size(source, ec);
+
+    std::ifstream file;
+    if (!ec) {
+        file.open(source, std::ios::binary);
+    }
+    if (ec || !file) {
+        JST_ERROR("[PLUGIN] Failed to open '{}'.", sourceName);
         return Result::ERROR;
     }
 
-    const auto sourceName = Platform::PathToUtf8(source);
+    if (size > MaxBundleSize) {
+        JST_ERROR("[PLUGIN] Plugin bundle '{}' is larger than 512 MiB.", sourceName);
+        return Result::ERROR;
+    }
 
-    auto parseOctal = [](const uint8_t* data, std::size_t size, uint64_t& value) {
-        value = 0;
-        bool sawDigit = false;
-
-        for (std::size_t i = 0; i < size; ++i) {
-            const auto ch = data[i];
-            if (ch == 0 || ch == ' ') {
-                continue;
-            }
-            if (ch < '0' || ch > '7') {
-                return false;
-            }
-
-            sawDigit = true;
-            value = (value << 3) + static_cast<uint64_t>(ch - '0');
-        }
-
-        return sawDigit;
+    mz_zip_archive zip = {};
+    zip.m_pIO_opaque = &file;
+    zip.m_pRead = [](void* opaque, mz_uint64 offset, void* data, size_t count) -> size_t {
+        auto& stream = *static_cast<std::ifstream*>(opaque);
+        stream.clear();
+        stream.seekg(static_cast<std::streamoff>(offset));
+        stream.read(static_cast<char*>(data), static_cast<std::streamsize>(count));
+        return static_cast<size_t>(stream.gcount());
     };
 
-    auto tarString = [](const uint8_t* data, std::size_t size) {
-        std::size_t end = 0;
-        while (end < size && data[end] != 0) {
-            ++end;
-        }
+    auto zipError = [&]() {
+        return mz_zip_get_error_string(mz_zip_peek_last_error(&zip));
+    };
 
-        while (end > 0 && data[end - 1] == ' ') {
-            --end;
-        }
+    if (!mz_zip_reader_init(&zip, size, 0)) {
+        JST_ERROR("[PLUGIN] Failed to read plugin bundle '{}': {}.", sourceName, zipError());
+        return Result::ERROR;
+    }
 
-        return std::string(reinterpret_cast<const char*>(data), end);
+    struct Reader {
+        mz_zip_archive& zip;
+        ~Reader() {
+            mz_zip_reader_end(&zip);
+        }
+    } reader{zip};
+
+    struct Entry {
+        mz_uint index = 0;
+        std::filesystem::path path;
+        bool directory = false;
+        uint32_t mode = 0;
+        uint64_t size = 0;
     };
 
     auto allowed = [](const std::filesystem::path& path) {
@@ -422,95 +314,97 @@ Result Plugin::Impl::extract(const std::filesystem::path& source, const std::fil
         return path == ManifestFile || top == "lib" || top == "data" || top == "examples";
     };
 
-    auto missingEndMarker = [&]() {
-        JST_ERROR("[PLUGIN] Tar archive '{}' is missing an end marker.", sourceName);
+    const auto count = mz_zip_reader_get_num_files(&zip);
+    if (count > MaxBundleEntries) {
+        JST_ERROR("[PLUGIN] Plugin bundle '{}' has more than {} entries.", sourceName, MaxBundleEntries);
         return Result::ERROR;
-    };
+    }
 
-    auto zeroed = [](const std::array<uint8_t, 512>& block) {
-        return std::all_of(block.begin(), block.end(), [](uint8_t value) {
-            return value == 0;
-        });
-    };
+    std::vector<Entry> entries;
+    std::set<std::string> seen;
+    uint64_t totalSize = 0;
 
-    std::array<uint8_t, 512> header;
-    std::array<uint8_t, 64 * 1024> buffer;
-
-    while (true) {
-        if (inflater.read(header.data(), header.size()) != Result::SUCCESS) {
-            return inflater.ended() ? missingEndMarker() : Result::ERROR;
-        }
-
-        if (zeroed(header)) {
-            if (inflater.read(header.data(), header.size()) != Result::SUCCESS) {
-                return inflater.ended() ? missingEndMarker() : Result::ERROR;
-            }
-            if (!zeroed(header)) {
-                return missingEndMarker();
-            }
-            return inflater.finish();
-        }
-
-        uint64_t storedChecksum = 0;
-        if (!parseOctal(header.data() + 148, 8, storedChecksum)) {
-            JST_ERROR("[PLUGIN] Invalid tar checksum in '{}'.", sourceName);
+    for (mz_uint index = 0; index < count; ++index) {
+        mz_zip_archive_file_stat stat;
+        if (!mz_zip_reader_file_stat(&zip, index, &stat)) {
+            JST_ERROR("[PLUGIN] Failed to read plugin bundle '{}': {}.", sourceName, zipError());
             return Result::ERROR;
         }
 
-        uint64_t computedChecksum = 0;
-        for (std::size_t i = 0; i < header.size(); ++i) {
-            computedChecksum += (i >= 148 && i < 156) ? ' ' : header[i];
+        std::string name(mz_zip_reader_get_filename(&zip, index, nullptr, 0), '\0');
+        mz_zip_reader_get_filename(&zip, index, name.data(), static_cast<mz_uint>(name.size()));
+        name.pop_back();
+
+        Entry entry;
+        entry.index = index;
+        entry.directory = !name.empty() && name.back() == '/';
+        entry.size = stat.m_uncomp_size;
+        if ((stat.m_version_made_by >> 8) == 3) {
+            entry.mode = stat.m_external_attr >> 16;
         }
 
-        if (storedChecksum != computedChecksum) {
-            JST_ERROR("[PLUGIN] Tar checksum mismatch in '{}'.", sourceName);
+        const auto trimmed = entry.directory ? name.substr(0, name.size() - 1) : name;
+        if (!safeRelativePath(trimmed, entry.path)) {
+            JST_ERROR("[PLUGIN] Unsafe bundle entry path '{}'.", name);
             return Result::ERROR;
         }
 
-        std::string name = tarString(header.data(), 100);
-        const std::string prefix = tarString(header.data() + 345, 155);
-        if (!prefix.empty()) {
-            name = prefix + "/" + name;
-        }
-
-        uint64_t entrySize = 0;
-        if (!parseOctal(header.data() + 124, 12, entrySize)) {
-            JST_ERROR("[PLUGIN] Invalid tar entry size for '{}'.", name);
-            return Result::ERROR;
-        }
-
-        uint64_t mode = 0;
-        (void)parseOctal(header.data() + 100, 8, mode);
-
-        const auto type = header[156] == 0 ? '0' : static_cast<char>(header[156]);
-        const auto padding = (512 - (entrySize % 512)) % 512;
-
-        std::filesystem::path relativePath;
-        if (!safeRelativePath(name, relativePath)) {
-            JST_ERROR("[PLUGIN] Unsafe tar entry path '{}'.", name);
-            return Result::ERROR;
-        }
-
-        if (type != '0' && type != '5') {
-            JST_ERROR("[PLUGIN] Unsupported tar entry type '{}' for '{}'.", type, name);
-            return Result::ERROR;
-        }
-
-        if (!allowed(relativePath)) {
-            JST_ERROR("[PLUGIN] Unexpected tar entry '{}'. Bundles may only contain manifest.yml, lib/, data/, "
+        if (!allowed(entry.path)) {
+            JST_ERROR("[PLUGIN] Unexpected bundle entry '{}'. Bundles may only contain manifest.yml, lib/, data/, "
                       "and examples/.", name);
             return Result::ERROR;
         }
 
-        const auto outputPath = destination / relativePath;
-        if (type == '5') {
+        if (!seen.insert(Text::ToLower(trimmed)).second) {
+            JST_ERROR("[PLUGIN] Duplicate bundle entry '{}'.", name);
+            return Result::ERROR;
+        }
+
+        if (entry.path == ManifestFile && entry.size > MaxManifestSize) {
+            JST_ERROR("[PLUGIN] Plugin bundle '{}' has a manifest.yml larger than 64 KiB.", sourceName);
+            return Result::ERROR;
+        }
+
+        if (entry.size > MaxUncompressedSize - totalSize) {
+            JST_ERROR("[PLUGIN] Plugin bundle '{}' expands to more than 2 GiB.", sourceName);
+            return Result::ERROR;
+        }
+        totalSize += entry.size;
+
+        entries.push_back(std::move(entry));
+    }
+
+    std::filesystem::create_directories(destination, ec);
+    if (ec) {
+        JST_ERROR("[PLUGIN] Failed to create plugin extraction directory '{}'.",
+                  Platform::PathToUtf8(destination));
+        return Result::ERROR;
+    }
+
+    struct Sink {
+        std::ofstream output;
+        uint64_t remaining = 0;
+    };
+
+    const mz_file_write_func write = [](void* opaque, mz_uint64, const void* data, size_t count) -> size_t {
+        auto& sink = *static_cast<Sink*>(opaque);
+        if (count > sink.remaining) {
+            return 0;
+        }
+        sink.output.write(static_cast<const char*>(data), static_cast<std::streamsize>(count));
+        if (!sink.output) {
+            return 0;
+        }
+        sink.remaining -= count;
+        return count;
+    };
+
+    for (const auto& entry : entries) {
+        const auto outputPath = destination / entry.path;
+        if (entry.directory) {
             std::filesystem::create_directories(outputPath, ec);
             if (ec) {
                 JST_ERROR("[PLUGIN] Failed to create directory '{}'.", Platform::PathToUtf8(outputPath));
-                return Result::ERROR;
-            }
-            if (inflater.skip(entrySize + padding) != Result::SUCCESS) {
-                JST_ERROR("[PLUGIN] Tar entry '{}' extends beyond archive bounds.", name);
                 return Result::ERROR;
             }
             continue;
@@ -523,44 +417,37 @@ Result Plugin::Impl::extract(const std::filesystem::path& source, const std::fil
             return Result::ERROR;
         }
 
-        {
-            std::ofstream file(outputPath, std::ios::binary | std::ios::trunc);
-            if (!file) {
-                JST_ERROR("[PLUGIN] Failed to create file '{}'.", Platform::PathToUtf8(outputPath));
-                return Result::ERROR;
-            }
-
-            uint64_t remaining = entrySize;
-            while (remaining > 0) {
-                const auto chunk = static_cast<std::size_t>(std::min<uint64_t>(remaining, buffer.size()));
-                if (inflater.read(buffer.data(), chunk) != Result::SUCCESS) {
-                    JST_ERROR("[PLUGIN] Tar entry '{}' extends beyond archive bounds.", name);
-                    return Result::ERROR;
-                }
-                file.write(reinterpret_cast<const char*>(buffer.data()), static_cast<std::streamsize>(chunk));
-                if (!file) {
-                    JST_ERROR("[PLUGIN] Failed to write file '{}'.", Platform::PathToUtf8(outputPath));
-                    return Result::ERROR;
-                }
-                remaining -= chunk;
-            }
-
-            file.close();
-            if (!file) {
-                JST_ERROR("[PLUGIN] Failed to write file '{}'.", Platform::PathToUtf8(outputPath));
-                return Result::ERROR;
-            }
+        Sink sink;
+        sink.remaining = entry.size;
+        sink.output.open(outputPath, std::ios::binary | std::ios::trunc);
+        if (!sink.output) {
+            JST_ERROR("[PLUGIN] Failed to create file '{}'.", Platform::PathToUtf8(outputPath));
+            return Result::ERROR;
         }
 
-        if (inflater.skip(padding) != Result::SUCCESS) {
-            JST_ERROR("[PLUGIN] Tar entry '{}' extends beyond archive bounds.", name);
+        if (!mz_zip_reader_extract_to_callback(&zip, entry.index, write, &sink, 0)) {
+            JST_ERROR("[PLUGIN] Failed to extract bundle entry '{}': {}.",
+                      Platform::PathToUtf8(entry.path),
+                      zipError());
+            return Result::ERROR;
+        }
+
+        if (sink.remaining != 0) {
+            JST_ERROR("[PLUGIN] Bundle entry '{}' is smaller than its declared size.",
+                      Platform::PathToUtf8(entry.path));
+            return Result::ERROR;
+        }
+
+        sink.output.close();
+        if (!sink.output) {
+            JST_ERROR("[PLUGIN] Failed to write file '{}'.", Platform::PathToUtf8(outputPath));
             return Result::ERROR;
         }
 
 #if !defined(JST_OS_WINDOWS)
-        if ((mode & 0111) != 0) {
+        if ((entry.mode & 0111) != 0) {
             std::filesystem::permissions(outputPath,
-                                         static_cast<std::filesystem::perms>(mode & 0111),
+                                         static_cast<std::filesystem::perms>(entry.mode & 0111),
                                          std::filesystem::perm_options::add,
                                          ec);
             if (ec) {
@@ -570,6 +457,8 @@ Result Plugin::Impl::extract(const std::filesystem::path& source, const std::fil
         }
 #endif
     }
+
+    return Result::SUCCESS;
 }
 
 Result Plugin::Impl::readManifest(const std::filesystem::path& root, Manifest& manifest) {

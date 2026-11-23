@@ -108,18 +108,24 @@ bool Plugin::Gallery::ValidId(std::string_view id) {
         return false;
     }
 
-    static constexpr std::string_view reserved[] = {
-        "aux", "con", "nul", "prn",
-        "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
-        "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
-    };
-    if (std::find(std::begin(reserved), std::end(reserved), id) != std::end(reserved)) {
+    if (ReservedName(id)) {
         return false;
     }
 
     return std::all_of(id.begin(), id.end(), [](unsigned char character) {
         return std::islower(character) || std::isdigit(character);
     });
+}
+
+bool Plugin::Gallery::ReservedName(std::string_view name) {
+    static constexpr std::string_view reserved[] = {
+        "aux", "con", "nul", "prn",
+        "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+        "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+        "com\xc2\xb9", "com\xc2\xb2", "com\xc2\xb3", "lpt\xc2\xb9", "lpt\xc2\xb2", "lpt\xc2\xb3",
+    };
+    const auto base = Text::ToLower(Text::TrimBlank(std::string(name.substr(0, name.find('.')))));
+    return std::find(std::begin(reserved), std::end(reserved), base) != std::end(reserved);
 }
 
 std::string Plugin::Gallery::Host() {

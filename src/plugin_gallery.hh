@@ -56,6 +56,7 @@ class JETSTREAM_API Plugin::Gallery {
     static constexpr const char* PagePath = "/gallery/plugins/";
 
     static bool ValidId(std::string_view id);
+    static bool ReservedName(std::string_view name);
     static std::string Host();
     static Query Current(std::vector<std::string> ids = {});
     static std::string Path(const Query& query);

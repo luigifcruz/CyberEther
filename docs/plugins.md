@@ -101,7 +101,7 @@ The same build ID is available to C++ code as `JETSTREAM_BUILD_ID`.
 
 ## Anatomy of a `.cep` Bundle
 
-A `.cep` file is a standard `tar.gz` archive with a `.cep` extension. CyberEther finds everything by its location, so the manifest only describes the plugin:
+A `.cep` file is a standard zip archive with a `.cep` extension. CyberEther finds everything by its location, so the manifest only describes the plugin:
 
 ```text
 .
@@ -124,6 +124,8 @@ A `.cep` file is a standard `tar.gz` archive with a `.cep` extension. CyberEther
 | `examples/*.yml` | Example flowgraphs shown in the Start tab. |
 
 Each bundle holds exactly one build. CyberEther rejects bundles with anything else at the top level.
+
+Entries must be stored or deflated and not encrypted, and each path can appear only once. A bundle can be at most 512 MiB, expand to at most 2 GiB, and hold at most 10,000 entries, and `manifest.yml` can be at most 64 KiB. The blueprint's `tools/bundler.py` writes bundles that follow these rules.
 
 The manifest is a flat YAML file:
 

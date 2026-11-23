@@ -7,12 +7,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <iterator>
 #include <limits>
 #include <map>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -185,13 +183,13 @@ void WriteBytes(const std::filesystem::path& path, const std::vector<std::uint8_
     }
 }
 
-std::vector<std::uint8_t> Gzip(const std::vector<std::uint8_t>& input) {
+std::vector<std::uint8_t> Deflate(const std::vector<std::uint8_t>& input) {
     if (input.size() > static_cast<std::size_t>(std::numeric_limits<uInt>::max())) {
         throw std::runtime_error("plugin test payload is too large");
     }
 
     z_stream stream = {};
-    if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+    if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
         throw std::runtime_error("failed to initialize plugin test compressor");
     }
 
@@ -222,65 +220,111 @@ std::vector<std::uint8_t> Gzip(const std::vector<std::uint8_t>& input) {
     return output;
 }
 
-void WriteOctal(std::uint8_t* field, std::size_t width, std::uint64_t value) {
-    std::ostringstream encoded;
-    encoded << std::oct << std::setfill('0') << std::setw(static_cast<int>(width - 1)) << value;
-    const auto text = encoded.str();
-    if (text.size() > width - 1) {
-        throw std::runtime_error("plugin test tar field overflow");
-    }
-
-    std::fill(field, field + width, 0);
-    std::copy(text.begin(), text.end(), field);
+void PutU16(std::vector<std::uint8_t>& bytes, std::size_t offset, std::uint16_t value) {
+    bytes.at(offset) = static_cast<std::uint8_t>(value);
+    bytes.at(offset + 1) = static_cast<std::uint8_t>(value >> 8);
 }
 
-std::vector<std::uint8_t> TarHeader(const std::string& name,
-                                    std::uint64_t size,
-                                    char type = '0',
-                                    std::uint64_t mode = 0644) {
-    if (name.empty() || name.size() >= 100) {
-        throw std::runtime_error("invalid plugin test tar path");
-    }
-
-    std::vector<std::uint8_t> header(512, 0);
-    std::copy(name.begin(), name.end(), header.begin());
-    WriteOctal(header.data() + 100, 8, mode);
-    WriteOctal(header.data() + 124, 12, size);
-    header[156] = static_cast<std::uint8_t>(type);
-    std::fill(header.begin() + 148, header.begin() + 156, static_cast<std::uint8_t>(' '));
-
-    std::uint64_t checksum = 0;
-    for (const auto byte : header) {
-        checksum += byte;
-    }
-    WriteOctal(header.data() + 148, 8, checksum);
-    return header;
+void PutU32(std::vector<std::uint8_t>& bytes, std::size_t offset, std::uint32_t value) {
+    PutU16(bytes, offset, static_cast<std::uint16_t>(value));
+    PutU16(bytes, offset + 2, static_cast<std::uint16_t>(value >> 16));
 }
 
-struct TarEntry {
+std::uint32_t GetU32(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
+    return static_cast<std::uint32_t>(bytes.at(offset)) |
+           (static_cast<std::uint32_t>(bytes.at(offset + 1)) << 8) |
+           (static_cast<std::uint32_t>(bytes.at(offset + 2)) << 16) |
+           (static_cast<std::uint32_t>(bytes.at(offset + 3)) << 24);
+}
+
+void AppendU16(std::vector<std::uint8_t>& bytes, std::uint16_t value) {
+    bytes.resize(bytes.size() + 2);
+    PutU16(bytes, bytes.size() - 2, value);
+}
+
+void AppendU32(std::vector<std::uint8_t>& bytes, std::uint32_t value) {
+    bytes.resize(bytes.size() + 4);
+    PutU32(bytes, bytes.size() - 4, value);
+}
+
+struct BundleEntry {
     std::string name;
     std::vector<std::uint8_t> content;
-    char type = '0';
-    std::uint64_t mode = 0644;
+    std::uint32_t mode = 0100644;
+    bool deflate = true;
 };
 
-TarEntry TextEntry(const std::string& name, const std::string& content, char type = '0') {
-    return {name, std::vector<std::uint8_t>(content.begin(), content.end()), type};
+BundleEntry TextEntry(const std::string& name, const std::string& content, std::uint32_t mode = 0100644) {
+    return {name, std::vector<std::uint8_t>(content.begin(), content.end()), mode};
 }
 
-std::vector<std::uint8_t> TarArchive(const std::vector<TarEntry>& entries,
-                                     std::size_t terminatorBlocks = 2) {
-    std::vector<std::uint8_t> archive;
-    for (const auto& entry : entries) {
-        auto header = TarHeader(entry.name, entry.content.size(), entry.type, entry.mode);
-        archive.insert(archive.end(), header.begin(), header.end());
-        archive.insert(archive.end(), entry.content.begin(), entry.content.end());
+BundleEntry DirectoryEntry(const std::string& name) {
+    return {name, {}, 040755, false};
+}
 
-        const auto padding = (512 - (entry.content.size() % 512)) % 512;
-        archive.insert(archive.end(), padding, 0);
+std::vector<std::uint8_t> ZipArchive(const std::vector<BundleEntry>& entries) {
+    std::vector<std::uint8_t> archive;
+    std::vector<std::uint8_t> central;
+
+    for (const auto& entry : entries) {
+        const auto data = entry.deflate ? Deflate(entry.content) : entry.content;
+        const auto method = static_cast<std::uint16_t>(entry.deflate ? 8 : 0);
+        const auto crc = static_cast<std::uint32_t>(crc32(0L,
+                                                          entry.content.empty() ? Z_NULL : entry.content.data(),
+                                                          static_cast<uInt>(entry.content.size())));
+        const auto offset = static_cast<std::uint32_t>(archive.size());
+        const auto nameLength = static_cast<std::uint16_t>(entry.name.size());
+
+        AppendU32(archive, 0x04034b50);
+        AppendU16(archive, 20);
+        AppendU16(archive, 0);
+        AppendU16(archive, method);
+        AppendU16(archive, 0);
+        AppendU16(archive, 0x0021);
+        AppendU32(archive, crc);
+        AppendU32(archive, static_cast<std::uint32_t>(data.size()));
+        AppendU32(archive, static_cast<std::uint32_t>(entry.content.size()));
+        AppendU16(archive, nameLength);
+        AppendU16(archive, 0);
+        archive.insert(archive.end(), entry.name.begin(), entry.name.end());
+        archive.insert(archive.end(), data.begin(), data.end());
+
+        AppendU32(central, 0x02014b50);
+        AppendU16(central, (3 << 8) | 20);
+        AppendU16(central, 20);
+        AppendU16(central, 0);
+        AppendU16(central, method);
+        AppendU16(central, 0);
+        AppendU16(central, 0x0021);
+        AppendU32(central, crc);
+        AppendU32(central, static_cast<std::uint32_t>(data.size()));
+        AppendU32(central, static_cast<std::uint32_t>(entry.content.size()));
+        AppendU16(central, nameLength);
+        AppendU16(central, 0);
+        AppendU16(central, 0);
+        AppendU16(central, 0);
+        AppendU16(central, 0);
+        AppendU32(central, entry.mode << 16);
+        AppendU32(central, offset);
+        central.insert(central.end(), entry.name.begin(), entry.name.end());
     }
-    archive.insert(archive.end(), terminatorBlocks * 512, 0);
+
+    const auto centralOffset = static_cast<std::uint32_t>(archive.size());
+    archive.insert(archive.end(), central.begin(), central.end());
+
+    AppendU32(archive, 0x06054b50);
+    AppendU16(archive, 0);
+    AppendU16(archive, 0);
+    AppendU16(archive, static_cast<std::uint16_t>(entries.size()));
+    AppendU16(archive, static_cast<std::uint16_t>(entries.size()));
+    AppendU32(archive, static_cast<std::uint32_t>(central.size()));
+    AppendU32(archive, centralOffset);
+    AppendU16(archive, 0);
     return archive;
+}
+
+std::size_t CentralHeaderOffset(const std::vector<std::uint8_t>& archive) {
+    return GetU32(archive, archive.size() - 22 + 16);
 }
 
 std::string LibraryExtension() {
@@ -326,15 +370,14 @@ std::string Manifest(const ManifestSpec& spec) {
     return manifest + spec.extra;
 }
 
-void WriteBundle(const std::filesystem::path& path,
-                 const ManifestSpec& spec,
-                 std::vector<TarEntry> entries = {},
-                 std::size_t terminatorBlocks = 2) {
+void WriteBundle(const std::filesystem::path& path, const ManifestSpec& spec, std::vector<BundleEntry> entries = {}) {
     entries.insert(entries.begin(), TextEntry("manifest.yml", Manifest(spec)));
-    WriteBytes(path, Gzip(TarArchive(entries, terminatorBlocks)));
+    WriteBytes(path, ZipArchive(entries));
 }
 
-void WriteGarbageBundle(const std::filesystem::path& path, const ManifestSpec& spec, std::vector<TarEntry> extra = {}) {
+void WriteGarbageBundle(const std::filesystem::path& path,
+                        const ManifestSpec& spec,
+                        std::vector<BundleEntry> extra = {}) {
     extra.insert(extra.begin(), TextEntry(LibraryPath(spec.id), "not a library"));
     WriteBundle(path, spec, std::move(extra));
 }
@@ -421,82 +464,171 @@ TEST_CASE("Plugin entry points reject invalid bundle paths", "[core][extensions]
     }
 }
 
-TEST_CASE("Plugin loader rejects malformed CEP compression and tar structure", "[core][extensions][plugin]") {
+TEST_CASE("Plugin loader rejects malformed CEP zip structure", "[core][extensions][plugin]") {
     EnsurePluginSandbox();
     const TempDirectory temp("archive");
     const auto archivePath = temp.root / "fixture.cep";
+    const auto manifest = TextEntry("manifest.yml", "id: fixture\n");
 
     SECTION("empty file") {
         WriteBytes(archivePath, {});
-        RequireRejected(archivePath);
+        RequireRejected(archivePath, "Failed to read plugin bundle");
     }
 
-    SECTION("non-gzip bytes") {
-        WriteBytes(archivePath, {'n', 'o', 't', '-', 'g', 'z', 'i', 'p'});
-        RequireRejected(archivePath);
+    SECTION("non-zip bytes") {
+        WriteBytes(archivePath, {'n', 'o', 't', '-', 'a', '-', 'z', 'i', 'p'});
+        RequireRejected(archivePath, "Failed to read plugin bundle");
     }
 
-    SECTION("truncated gzip stream") {
-        auto archive = Gzip(TarArchive({TextEntry("manifest.yml", "id: fixture\n")}));
+    SECTION("gzip bytes from the old bundle format") {
+        WriteBytes(archivePath, {0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03});
+        RequireRejected(archivePath, "Failed to read plugin bundle");
+    }
+
+    SECTION("truncated archive") {
+        auto archive = ZipArchive({manifest});
         archive.resize(archive.size() - 4);
         WriteBytes(archivePath, archive);
-        RequireRejected(archivePath);
+        RequireRejected(archivePath, "Failed to read plugin bundle");
     }
 
-    SECTION("gzip with a partial tar header") {
-        WriteBytes(archivePath, Gzip({'t', 'a', 'r'}));
-        RequireRejected(archivePath);
+    SECTION("archive truncated inside the central directory") {
+        auto archive = ZipArchive({manifest});
+        const auto end = std::vector<std::uint8_t>(archive.end() - 22, archive.end());
+        archive.resize(CentralHeaderOffset(archive) + 10);
+        archive.insert(archive.end(), end.begin(), end.end());
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "Failed to read plugin bundle");
     }
 
-    SECTION("tar entry extending beyond archive bounds") {
-        WriteBytes(archivePath, Gzip(TarHeader("manifest.yml", 32)));
-        RequireRejected(archivePath, "extends beyond archive bounds");
+    SECTION("too many entries") {
+        std::vector<BundleEntry> entries = {manifest};
+        for (int i = 0; i < 10000; ++i) {
+            entries.push_back({"data/" + std::to_string(i), {}, 0100644, false});
+        }
+        WriteBytes(archivePath, ZipArchive(entries));
+        RequireRejected(archivePath, "more than 10000 entries");
     }
 
-    SECTION("tar checksum mismatch") {
-        auto archive = TarArchive({TextEntry("manifest.yml", "id: fixture\n")});
-        archive[0] ^= 0x01;
-        WriteBytes(archivePath, Gzip(archive));
-        RequireRejected(archivePath, "checksum mismatch");
+    SECTION("encrypted entry") {
+        auto archive = ZipArchive({manifest});
+        PutU16(archive, 6, 0x0001);
+        PutU16(archive, CentralHeaderOffset(archive) + 8, 0x0001);
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "Failed to extract bundle entry 'manifest.yml'");
     }
 
-    SECTION("tar without an end marker") {
-        WriteBytes(archivePath, Gzip(TarArchive({TextEntry("manifest.yml", "id: fixture\n")}, 0)));
-        RequireRejected(archivePath, "missing an end marker");
+    SECTION("unsupported compression method") {
+        auto archive = ZipArchive({manifest});
+        PutU16(archive, 8, 12);
+        PutU16(archive, CentralHeaderOffset(archive) + 10, 12);
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "Failed to extract bundle entry 'manifest.yml'");
     }
 
-    SECTION("unsafe archive path") {
-        WriteBytes(archivePath, Gzip(TarArchive({TextEntry("../manifest.yml", "id: fixture\n")})));
-        RequireRejected(archivePath, "Unsafe tar entry path");
+    SECTION("corrupted local header") {
+        auto archive = ZipArchive({manifest});
+        archive.at(0) ^= 0x01;
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "Failed to extract bundle entry 'manifest.yml'");
     }
 
-    SECTION("rooted archive path") {
-        WriteBytes(archivePath, Gzip(TarArchive({TextEntry("/manifest.yml", "id: fixture\n")})));
-        RequireRejected(archivePath, "Unsafe tar entry path");
+    SECTION("CRC mismatch") {
+        auto archive = ZipArchive({manifest});
+        const auto offset = CentralHeaderOffset(archive) + 16;
+        PutU32(archive, offset, GetU32(archive, offset) ^ 0x1);
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "decompression failed or archive is corrupted");
     }
 
-    SECTION("unsupported archive entry type") {
-        WriteBytes(archivePath, Gzip(TarArchive({TextEntry("manifest.yml", "", '2')})));
-        RequireRejected(archivePath, "Unsupported tar entry type");
+    SECTION("stored entry CRC mismatch") {
+        auto entry = manifest;
+        entry.deflate = false;
+        auto archive = ZipArchive({entry});
+        archive.at(30 + entry.name.size()) ^= 0x01;
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "decompression failed or archive is corrupted");
     }
 
-    SECTION("empty tar") {
-        WriteBytes(archivePath, Gzip(std::vector<std::uint8_t>(1024, 0)));
+    SECTION("entry larger than its declared size") {
+        auto archive = ZipArchive({manifest});
+        PutU32(archive, CentralHeaderOffset(archive) + 24, 4);
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "Failed to extract bundle entry 'manifest.yml'");
+    }
+
+    SECTION("entry smaller than its declared size") {
+        auto archive = ZipArchive({manifest});
+        PutU32(archive, CentralHeaderOffset(archive) + 24, 64);
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "Failed to extract bundle entry 'manifest.yml'");
+    }
+
+    SECTION("file entry carrying the DOS directory attribute") {
+        const auto library = TextEntry(LibraryPath("fixture"), "library");
+        auto archive = ZipArchive({TextEntry("manifest.yml", Manifest(ManifestSpec{})),
+                                   library,
+                                   TextEntry("data/table.bin", "table")});
+        const auto third = CentralHeaderOffset(archive) + 2 * 46 + manifest.name.size() + library.name.size();
+        PutU16(archive, third + 4, 20);
+        PutU32(archive, third + 38, 0x10);
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "Bundle entry 'data/table.bin' is smaller than its declared size");
+    }
+
+    SECTION("bundle expanding past 2 GiB") {
+        auto archive = ZipArchive({manifest, TextEntry("data/big", "x")});
+        const auto second = CentralHeaderOffset(archive) + 46 + manifest.name.size();
+        PutU32(archive, second + 24, 0x80000000);
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "more than 2 GiB");
+    }
+
+    SECTION("manifest larger than 64 KiB") {
+        WriteBytes(archivePath, ZipArchive({TextEntry("manifest.yml", "id: fixture\n" + std::string(65536, '#'))}));
+        RequireRejected(archivePath, "larger than 64 KiB");
+    }
+
+    SECTION("unsafe archive paths") {
+        for (const auto& name : {"../manifest.yml", "/manifest.yml", "lib//fixture", "lib\\fixture", "C:/lib/fixture",
+                                 "lib/../manifest.yml", "/", "lib//", "lib/./fixture", "lib/fixture.", "lib/fixture ",
+                                 "lib/con", "data/NUL.txt", "examples/Com1.yml", "data/COM\xc2\xb9.txt",
+                                 "data/NUL .txt"}) {
+            CAPTURE(name);
+            WriteBytes(archivePath, ZipArchive({manifest, TextEntry(name, "x")}));
+            RequireRejected(archivePath, "Unsafe bundle entry path");
+        }
+    }
+
+    SECTION("duplicate entries") {
+        WriteBytes(archivePath, ZipArchive({manifest, TextEntry("data/a", "1"), TextEntry("data/a", "2")}));
+        RequireRejected(archivePath, "Duplicate bundle entry 'data/a'");
+    }
+
+    SECTION("entries differing only in case") {
+        WriteBytes(archivePath,
+                   ZipArchive({manifest, TextEntry("data/Table.bin", "1"), TextEntry("data/table.bin", "2")}));
+        RequireRejected(archivePath, "Duplicate bundle entry 'data/table.bin'");
+    }
+
+    SECTION("directory entry colliding with a file") {
+        WriteBytes(archivePath, ZipArchive({manifest, TextEntry("data/a", "1"), DirectoryEntry("data/a/")}));
+        RequireRejected(archivePath, "Duplicate bundle entry 'data/a/'");
+    }
+
+    SECTION("empty zip") {
+        WriteBytes(archivePath, ZipArchive({}));
         RequireRejected(archivePath, "does not contain a manifest");
     }
 
-    SECTION("single-block tar terminator leaves no extraction behind") {
+    SECTION("failed extraction leaves nothing behind") {
         const auto extractionCount = CountExtractionDirectories();
-        WriteBundle(archivePath, ManifestSpec{}, {}, 1);
-        RequireRejected(archivePath, "missing an end marker");
+        auto archive = ZipArchive({manifest});
+        const auto offset = CentralHeaderOffset(archive) + 16;
+        PutU32(archive, offset, GetU32(archive, offset) ^ 0x1);
+        WriteBytes(archivePath, archive);
+        RequireRejected(archivePath, "decompression failed or archive is corrupted");
         REQUIRE(CountExtractionDirectories() == extractionCount);
-    }
-
-    SECTION("partial second tar terminator block") {
-        auto archive = TarArchive({TextEntry("manifest.yml", "id: fixture\n")}, 1);
-        archive.insert(archive.end(), 511, 0);
-        WriteBytes(archivePath, Gzip(archive));
-        RequireRejected(archivePath, "missing an end marker");
     }
 }
 
@@ -506,7 +638,7 @@ TEST_CASE("Plugin manifests are validated before any library opens", "[core][ext
     const auto archivePath = temp.root / "fixture.cep";
 
     SECTION("missing manifest") {
-        WriteBytes(archivePath, Gzip(TarArchive({TextEntry("data/manifest.yml", "id: fixture\n")})));
+        WriteBytes(archivePath, ZipArchive({TextEntry("data/manifest.yml", "id: fixture\n")}));
         RequireRejected(archivePath, "does not contain a manifest");
     }
 
@@ -514,18 +646,18 @@ TEST_CASE("Plugin manifests are validated before any library opens", "[core][ext
         for (const auto& name : {"other.yml", "builds/fixture.so", "manifest.yml/nested", ".users/lock"}) {
             CAPTURE(name);
             WriteBundle(archivePath, ManifestSpec{}, {TextEntry(name, "x")});
-            RequireRejected(archivePath, "Unexpected tar entry");
+            RequireRejected(archivePath, "Unexpected bundle entry");
         }
     }
 
     SECTION("malformed YAML") {
-        WriteBytes(archivePath, Gzip(TarArchive({TextEntry("manifest.yml", "id: [\n")})));
+        WriteBytes(archivePath, ZipArchive({TextEntry("manifest.yml", "id: [\n")}));
         RequireRejected(archivePath);
     }
 
     SECTION("old manifests with a metadata section") {
-        WriteBytes(archivePath, Gzip(TarArchive({TextEntry("manifest.yml",
-                                                           "metadata:\n  name: fixture\n  version: 1.0.0\n")})));
+        WriteBytes(archivePath, ZipArchive({TextEntry("manifest.yml",
+                                                      "metadata:\n  name: fixture\n  version: 1.0.0\n")}));
         RequireRejected(archivePath, "unknown key 'metadata'");
     }
 
@@ -537,13 +669,20 @@ TEST_CASE("Plugin manifests are validated before any library opens", "[core][ext
     }
 
     SECTION("invalid plugin IDs") {
-        for (const auto& id : {"", "Fixture", "1fixture", "fix_ture", "fix-ture", "abcdefghijklmnopqrstuvwxyz0123456",
-                               "aux", "com1", "lpt9"}) {
+        for (const auto& id : {"", "Fixture", "1fixture", "fix_ture", "fix-ture",
+                               "abcdefghijklmnopqrstuvwxyz0123456"}) {
             CAPTURE(id);
             auto spec = ManifestSpec{};
             spec.id = id;
             WriteGarbageBundle(archivePath, spec);
             RequireRejected(archivePath, "is invalid");
+        }
+        for (const auto& id : {"aux", "com1", "lpt9"}) {
+            CAPTURE(id);
+            auto spec = ManifestSpec{};
+            spec.id = id;
+            WriteGarbageBundle(archivePath, spec);
+            RequireRejected(archivePath, "Unsafe bundle entry path 'lib/" + std::string(id));
         }
     }
 
@@ -601,11 +740,13 @@ TEST_CASE("Plugin installs keep their own copy", "[core][extensions][plugin]") {
     spec.id = "stored";
     spec.title = "Stored";
     spec.extra = "summary: \"Kept in the store.\"\nauthor: \"Tester\"\nlicense: \"MIT\"\n";
-    TarEntry helper = TextEntry("lib/helper", "#!/bin/sh\n");
-    helper.mode = 0744;
+    auto table = TextEntry("data/table.bin", "table");
+    table.deflate = false;
     WriteGarbageBundle(archivePath, spec, {
-        TextEntry("data/table.bin", "table"),
-        helper,
+        DirectoryEntry("data/"),
+        table,
+        DirectoryEntry("examples/"),
+        TextEntry("lib/helper", "#!/bin/sh\n", 0100744),
     });
 
     std::string id;

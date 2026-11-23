@@ -41,8 +41,8 @@ This is a standalone CyberEther plugin blueprint. Copy this directory, rename
 The plugin ID is `blueprint`, so every block type and implementation it
 registers starts with `blueprint_`. The build compiles one library for the
 CyberEther build it is configured against, then packages that library,
-`manifest.yml`, and the bundled examples into a `.cep` plugin bundle using
-`tools/bundler.py`. Each bundle holds one CyberEther build, so build once per
+`manifest.yml`, and the bundled examples into a `.cep` plugin bundle, a zip
+archive written by `tools/bundler.py`. Each bundle holds one CyberEther build, so build once per
 platform to ship several.
 
 ## Build
