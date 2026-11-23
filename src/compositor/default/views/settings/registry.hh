@@ -50,7 +50,7 @@ struct RegistrySettingsView {
 
     void updateOverview();
     Sakura::Callback<void()> back();
-    void navigate(RegistryPage page, const std::string& path) const;
+    void navigate(RegistryPage page, const std::string& plugin) const;
     const PluginRow* selectedPlugin() const;
 
     Config config;

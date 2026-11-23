@@ -16,7 +16,7 @@ void RegistryAddPluginView::update(Config config) {
     });
     const bool ready = trusted && !pendingPath.empty();
     registerButton.update({
-        .str = "Register Plugin",
+        .str = "Install Plugin",
         .size = {Sakura::Fill, 40.0f},
         .variant = Sakura::Button::Variant::Action,
         .disabled = !ready,
@@ -30,7 +30,7 @@ void RegistryAddPluginView::update(Config config) {
     });
     header.update({
         .title = "Add Plugin",
-        .description = "Load a plugin bundle that registers additional blocks.",
+        .description = "Install a plugin bundle file.",
     });
     pathField.update({
         .icon = ICON_LC_PACKAGE,
@@ -55,11 +55,12 @@ void RegistryAddPluginView::update(Config config) {
         },
     });
     sourceGroup.update({
-        .warning = "Only register plugins you built yourself or received from a source you trust.",
+        .warning = "Only install plugins you built yourself or received from a source you trust.",
         .rows = {
             {
                 .label = "Plugin Path",
-                .description = "Path to a .cep plugin bundle that registers additional blocks.",
+                .description = "Path to a .cep plugin bundle. CyberEther keeps its own copy, so the file can be "
+                               "moved or deleted afterwards.",
                 .control = &pathField,
             },
             {

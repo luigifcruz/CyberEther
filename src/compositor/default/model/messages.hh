@@ -250,16 +250,16 @@ struct MailSetRegistryPage {
     std::string plugin;
 };
 
-struct MailAddPluginPath {
+struct MailInstallPlugin {
     std::string path;
 };
 
-struct MailRemovePluginPath {
-    std::string path;
+struct MailRemovePlugin {
+    std::string id;
 };
 
 struct MailReloadPlugin {
-    std::string path;
+    std::string id;
 };
 
 struct MailReloadAllPlugins {};
@@ -827,8 +827,8 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSetSettingsSection,
                            MailSetRegistryPage,
                            MailSetIntelligencePage,
-                           MailAddPluginPath,
-                           MailRemovePluginPath,
+                           MailInstallPlugin,
+                           MailRemovePlugin,
                            MailReloadPlugin,
                            MailReloadAllPlugins,
                            MailCloseModal,

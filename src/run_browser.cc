@@ -8,7 +8,6 @@
 #include "jetstream/instance.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/platform.hh"
-#include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
 
 #include <emscripten.h>
@@ -91,12 +90,6 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
         settings.interface.themeKey = startupTheme;
         if (Settings::Set(settings, false) != Result::SUCCESS) {
             JST_WARN("[CYBERETHER] Failed to apply startup theme.");
-        }
-    }
-
-    for (const auto& path : settings.registry.plugins) {
-        if (Plugin::Load(path) != Result::SUCCESS) {
-            JST_WARN("[CYBERETHER] Failed to load plugin '{}'. Continuing startup.", path);
         }
     }
 

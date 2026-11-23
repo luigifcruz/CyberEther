@@ -35,6 +35,17 @@ inline std::vector<std::string> SplitLines(const std::string& value) {
     return lines;
 }
 
+inline std::string Join(const std::vector<std::string>& values, std::string_view separator) {
+    std::string value;
+    for (U64 i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            value += separator;
+        }
+        value += values[i];
+    }
+    return value;
+}
+
 inline std::string JoinLines(const std::vector<std::string>& lines) {
     std::string value;
     for (U64 i = 0; i < lines.size(); ++i) {

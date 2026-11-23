@@ -4,6 +4,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/platform.hh"
+#include "tools/catalog.hh"
 
 #include <nlohmann/json.hpp>
 
@@ -69,26 +70,9 @@ std::string CurrentArch() {
 #endif
 }
 
-bool SplitUrl(const std::string& url, std::string& host, std::string& path) {
-    const U64 scheme = url.find("://");
-    if (scheme == std::string::npos) {
-        return false;
-    }
-    const U64 slash = url.find('/', scheme + 3);
-    host = url.substr(0, slash);
-    path = slash == std::string::npos ? "/" : url.substr(slash);
-    return !host.empty();
-}
-
 bool ValidSlug(std::string_view slug) {
     return !slug.empty() && std::all_of(slug.begin(), slug.end(), [](const char c) {
         return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_';
-    });
-}
-
-bool ValidDigest(const std::string& digest) {
-    return digest.size() == kDigestLength && std::all_of(digest.begin(), digest.end(), [](char c) {
-        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
     });
 }
 
@@ -178,37 +162,13 @@ std::optional<Home::Gallery::Flowgraph> Decode(const std::string& slug, std::str
     return flowgraph;
 }
 
-bool ReadText(const nlohmann::json& item, const char* name, std::string& value) {
-    const auto field = item.find(name);
-    if (field == item.end()) {
-        return true;
-    }
-    if (!field->is_string()) {
-        return false;
-    }
-    value = field->get<std::string>();
-    return true;
-}
-
-bool ReadSize(const nlohmann::json& item, U64& value) {
-    const auto field = item.find("size");
-    if (field == item.end()) {
-        return true;
-    }
-    if (!field->is_number_unsigned()) {
-        return false;
-    }
-    value = field->get<U64>();
-    return true;
-}
-
 std::optional<Entry> ReadEntry(const nlohmann::json& item) {
     if (!item.is_object()) {
         return std::nullopt;
     }
     Entry entry;
-    if (!ReadText(item, "slug", entry.slug) || !ReadText(item, "flowgraphSha256", entry.digest) ||
-        !ReadText(item, "url", entry.url) || !ReadSize(item, entry.size) || !ValidSlug(entry.slug)) {
+    if (!Catalog::ReadText(item, "slug", entry.slug) || !Catalog::ReadText(item, "flowgraphSha256", entry.digest) ||
+        !Catalog::ReadText(item, "url", entry.url) || !Catalog::ReadSize(item, entry.size) || !ValidSlug(entry.slug)) {
         return std::nullopt;
     }
     return entry;
@@ -287,7 +247,7 @@ std::optional<std::vector<Entry>> CachedListing(const std::filesystem::path& fol
 }
 
 std::optional<Home::Gallery::Flowgraph> Restore(const std::filesystem::path& folder, const Entry& entry) {
-    if (!ValidDigest(entry.digest)) {
+    if (!Catalog::ValidDigest(entry.digest)) {
         return std::nullopt;
     }
     auto content = ReadFile(folder / (entry.digest + ".yml"));
@@ -303,8 +263,8 @@ std::optional<std::string> Download(const Home::Gallery::Remote::Source& source,
                                     const std::function<bool()>& cancelled) {
     std::string host;
     std::string path;
-    auto file =
-        SplitUrl(entry.url, host, path) ? Request(source, host, path, cancelled) : Platform::Http::Client::Response{};
+    auto file = Catalog::SplitUrl(entry.url, host, path) ? Request(source, host, path, cancelled)
+                                                          : Platform::Http::Client::Response{};
     if (file.error || file.status != 200 || (entry.size > 0 && file.body.size() != entry.size)) {
         JST_WARN("[GALLERY] Skipping flowgraph '{}' because its file could not be downloaded.", entry.slug);
         return std::nullopt;
@@ -486,7 +446,7 @@ Result Home::Gallery::Remote::FetchFrom(const Source& source,
             continue;
         }
 
-        const bool verifiable = kVerifiable && ValidDigest(entry.digest);
+        const bool verifiable = kVerifiable && Catalog::ValidDigest(entry.digest);
         const bool cacheable = verifiable && folder.has_value();
         auto flowgraph = cacheable ? Restore(*folder, entry) : std::nullopt;
         bool cached = flowgraph.has_value();

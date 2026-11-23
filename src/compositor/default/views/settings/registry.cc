@@ -78,10 +78,10 @@ void RegistrySettingsView::updateOverview() {
         });
         pluginRows.push_back({
             .label = plugin.name,
-            .description = RegistryPluginView::VersionLabel(plugin),
+            .description = RegistryPluginView::SummaryLabel(plugin),
             .control = &entry.chevron,
-            .onClick = [this, path = plugin.path]() {
-                navigate(RegistryPage::Plugin, path);
+            .onClick = [this, id = plugin.id]() {
+                navigate(RegistryPage::Plugin, id);
             },
         });
     }
@@ -95,9 +95,9 @@ void RegistrySettingsView::updateOverview() {
     });
     pluginGroup.update({
         .title = "Plugins",
-        .description = "Load additional block domains from plugins at startup.",
+        .description = "Plugins installed in CyberEther load at startup.",
         .rows = std::move(pluginRows),
-        .empty = "No plugins registered yet. Use Add to load one.",
+        .empty = "No plugins installed yet. Use Add to install one.",
         .action = &addButton,
     });
 
@@ -117,15 +117,15 @@ Sakura::Callback<void()> RegistrySettingsView::back() {
     };
 }
 
-void RegistrySettingsView::navigate(RegistryPage page, const std::string& path) const {
+void RegistrySettingsView::navigate(RegistryPage page, const std::string& plugin) const {
     if (config.onNavigate) {
-        config.onNavigate(page, path);
+        config.onNavigate(page, plugin);
     }
 }
 
 const RegistrySettingsView::PluginRow* RegistrySettingsView::selectedPlugin() const {
     for (const auto& plugin : config.plugins) {
-        if (plugin.path == config.plugin) {
+        if (plugin.id == config.plugin) {
             return &plugin;
         }
     }

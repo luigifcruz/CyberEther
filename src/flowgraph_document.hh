@@ -32,10 +32,11 @@ struct FlowgraphDocument {
     std::optional<std::string> author;
     std::optional<std::string> license;
     std::optional<std::string> description;
+    std::optional<std::vector<std::string>> plugins;
     std::vector<Block> graph;
     std::optional<Parser::Map> meta;
 
-    JST_SERDES(version, title, summary, author, license, description, graph, meta);
+    JST_SERDES(version, title, summary, author, license, description, plugins, graph, meta);
 
     Result encode(std::string& yaml) const;
 

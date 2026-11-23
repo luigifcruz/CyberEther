@@ -271,11 +271,47 @@ if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_win
     }
 endif
 
+plugin_fixture_args = []
+plugin_fixture_targets = []
+if not jst_is_static and not jst_is_browser
+    plugin_fixture_modules = {
+        'PLUGIN_MODULE': ['fixture', 'fixture_probe'],
+        'PLUGIN_INSTALLED_MODULE': ['installed', 'installed_probe'],
+        'PLUGIN_UNPREFIXED_MODULE': ['loose', 'probe'],
+    }
+    foreach define, fixture : plugin_fixture_modules
+        plugin_fixture = shared_module(
+            'jetstream-plugin-' + fixture[0] + '-fixture',
+            'extensions/plugin_fixture.cc',
+            dependencies: libjetstream_dep,
+            cpp_args: [
+                '-DJETSTREAM_TEST_PLUGIN_ID="' + fixture[0] + '"',
+                '-DJETSTREAM_TEST_PLUGIN_BLOCK="' + fixture[1] + '"',
+            ],
+            install: false,
+        )
+        plugin_fixture_args += [
+            '-DJETSTREAM_TEST_' + define + '="' + plugin_fixture.full_path().replace('\\', '/') + '"',
+        ]
+        plugin_fixture_targets += [plugin_fixture]
+    endforeach
+    core_test_targets += plugin_fixture_targets
+endif
+
 foreach domain, sources : core_test_domains
     # The sakura suite drives Sakura internals, which are not exported from
     # the shared library on Windows.
     if domain == 'sakura' and jst_is_windows
         continue
+    endif
+    domain_args = []
+    if domain == 'runtime'
+        domain_args = [
+            '-DJETSTREAM_PYTHON_TEST_WHEEL="' + (meson.current_source_dir() /
+                'runtime/fixtures/cyberether_cache_fixture-1.0-py3-none-any.whl') + '"',
+        ]
+    elif domain == 'extensions'
+        domain_args = plugin_fixture_args
     endif
     domain_tests = executable(
         'jetstream-core-' + domain + '-tests',
@@ -285,10 +321,7 @@ foreach domain, sources : core_test_domains
         link_args: test_link_args,
         link_depends: browser_exe_link_depends,
         build_by_default: test_build_by_default,
-        cpp_args: domain == 'runtime' ? [
-            '-DJETSTREAM_PYTHON_TEST_WHEEL="' + (meson.current_source_dir() /
-                'runtime/fixtures/cyberether_cache_fixture-1.0-py3-none-any.whl') + '"',
-        ] : [],
+        cpp_args: domain_args,
     )
     core_test_targets += [domain_tests]
     # Sakura's 1,500+ cases exceed a single test's watchdog on slower runners.
@@ -310,6 +343,7 @@ foreach domain, sources : core_test_domains
                  suite: ['core', 'wasm'], is_parallel: false, timeout: 180)
         else
             test(test_name, domain_tests, args: test_args,
+                 depends: domain == 'extensions' ? plugin_fixture_targets : [],
                  suite: 'core', is_parallel: false, timeout: 180)
         endif
     endforeach

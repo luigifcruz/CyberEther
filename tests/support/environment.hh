@@ -56,9 +56,11 @@ class SettingsSandbox {
     explicit SettingsSandbox(const std::string& label) : directory(Directory(label)) {
 #if defined(JST_OS_LINUX)
         redirected = home.set(Jetstream::Platform::PathToUtf8(directory / "home")) &&
-                     config.set(Jetstream::Platform::PathToUtf8(directory / "config"));
+                     config.set(Jetstream::Platform::PathToUtf8(directory / "config")) &&
+                     data.set(Jetstream::Platform::PathToUtf8(directory / "data"));
 #elif defined(JST_OS_WINDOWS)
-        redirected = appData.set(Jetstream::Platform::PathToUtf8(directory / "AppData" / "Roaming"));
+        redirected = appData.set(Jetstream::Platform::PathToUtf8(directory / "AppData" / "Roaming")) &&
+                     localAppData.set(Jetstream::Platform::PathToUtf8(directory / "AppData" / "Local"));
 #elif defined(JST_OS_MAC)
         redirected = home.set(Jetstream::Platform::PathToUtf8(directory));
 #endif
@@ -98,8 +100,10 @@ class SettingsSandbox {
 #if defined(JST_OS_LINUX)
     ScopedEnvironment home{"HOME"};
     ScopedEnvironment config{"XDG_CONFIG_HOME"};
+    ScopedEnvironment data{"XDG_DATA_HOME"};
 #elif defined(JST_OS_WINDOWS)
     ScopedEnvironment appData{"APPDATA"};
+    ScopedEnvironment localAppData{"LOCALAPPDATA"};
 #elif defined(JST_OS_MAC)
     ScopedEnvironment home{"CFFIXED_USER_HOME"};
 #endif

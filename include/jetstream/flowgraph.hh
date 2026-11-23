@@ -121,6 +121,7 @@ class JETSTREAM_API Flowgraph {
     const View& view() const;
 
     static Result ReadTitle(const std::string& path, std::string& title);
+    static Result ReadPlugins(const std::vector<char>& blob, std::vector<std::string>& plugins);
 
  private:
     Result blockSetErroredFromModules(const std::unordered_set<std::string>& moduleNames);

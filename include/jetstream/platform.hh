@@ -32,6 +32,7 @@ JETSTREAM_API Result WriteEnvironmentVariable(const std::string& name, const std
 
 JETSTREAM_API Result ConfigPath(std::string& path);
 JETSTREAM_API Result CachePath(std::string& path);
+JETSTREAM_API Result DataPath(std::string& path);
 
 //
 // Secrets
@@ -437,9 +438,15 @@ enum class DynamicLibraryVisibility {
     Global,
 };
 
+enum class DynamicLibrarySearch {
+    Default,
+    LibraryDirectory,
+};
+
 JETSTREAM_API void* OpenDynamicLibrary(const std::string& path,
                                        DynamicLibraryVisibility visibility,
-                                       std::string& error);
+                                       std::string& error,
+                                       DynamicLibrarySearch search = DynamicLibrarySearch::Default);
 JETSTREAM_API void CloseDynamicLibrary(void* handle);
 JETSTREAM_API void* LoadDynamicLibrarySymbol(void* handle,
                                              const char* symbol,

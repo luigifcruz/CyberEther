@@ -15,13 +15,18 @@ namespace Jetstream::Platform {
 
 void* OpenDynamicLibrary(const std::string& path,
                          DynamicLibraryVisibility visibility,
-                         std::string& error) {
+                         std::string& error,
+                         DynamicLibrarySearch search) {
     error.clear();
 
 #if defined(JST_OS_WINDOWS)
     try {
         const auto nativePath = PathFromUtf8(path);
-        auto* handle = LoadLibraryW(nativePath.c_str());
+        auto* handle = search == DynamicLibrarySearch::LibraryDirectory && nativePath.is_absolute()
+            ? LoadLibraryExW(nativePath.c_str(),
+                             nullptr,
+                             LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)
+            : LoadLibraryW(nativePath.c_str());
         if (!handle) {
             error = "Windows error " + std::to_string(GetLastError());
         }
@@ -33,6 +38,7 @@ void* OpenDynamicLibrary(const std::string& path,
     }
     return nullptr;
 #else
+    (void)search;
     dlerror();
     const int flags = RTLD_NOW |
                       (visibility == DynamicLibraryVisibility::Global ? RTLD_GLOBAL : RTLD_LOCAL);

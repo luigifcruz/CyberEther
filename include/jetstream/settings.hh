@@ -175,12 +175,6 @@ struct JETSTREAM_API Settings {
         JST_SERDES(format);
     };
 
-    struct Registry {
-        std::vector<std::string> plugins;
-
-        JST_SERDES(plugins);
-    };
-
     struct Runtime {
         struct Python {
             std::string path;
@@ -201,10 +195,9 @@ struct JETSTREAM_API Settings {
     Intelligence intelligence;
     Developer developer;
     Benchmark benchmark;
-    Registry registry;
     Runtime runtime;
 
-    JST_SERDES(graphics, remote, interface, maps, intelligence, developer, registry, runtime);
+    JST_SERDES(graphics, remote, interface, maps, intelligence, developer, runtime);
 
     static Result Get(Settings& settings);
     static Result Set(const Settings& settings, bool persist = true);

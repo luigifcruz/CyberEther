@@ -126,7 +126,6 @@ The `settings.yaml` file organizes persisted settings into top-level sections:
 - **`interface`:** Active theme, background particles, tips, touchpad scroll speed, and recent or favorite flowgraphs.
 - **`maps`:** High-resolution map toggle and map rendering preferences.
 - **`developer`:** Log level, compute timing overlay, and render stats flags.
-- **`registry`:** Registered `.cep` plugin paths.
 - **`intelligence`:** Optional Assistant providers, model selection, voice settings, and the built-in MCP server (see [Intelligence](/docs/intelligence)).
 
 ## Troubleshooting

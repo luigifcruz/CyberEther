@@ -2,160 +2,157 @@
 
 import argparse
 import io
-import os
+import json
+import re
 from pathlib import Path, PurePosixPath
 import tarfile
 import tempfile
 
 
-def normalize_system(value):
-    value = value.lower()
-    aliases = {
-        "darwin": "macos",
-        "emscripten": "browser",
-        "mac": "macos",
-        "osx": "macos",
-        "win32": "windows",
-        "mingw": "windows",
-    }
-    return aliases.get(value, value)
+ID_PATTERN = re.compile(r"^[a-z][a-z0-9]{0,31}$")
+VERSION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$")
+BUILD_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9_]+)+$")
+KNOWN_BUILDS = {
+    "macos-arm64",
+    "linux-x86_64",
+    "linux-x86_64-cuda",
+    "linux-aarch64",
+    "linux-aarch64-cuda",
+    "windows-x86_64",
+}
 
 
-def normalize_arch(value):
-    value = value.lower()
-    aliases = {
-        "aarch64": "arm64",
-        "amd64": "x86_64",
-        "x64": "x86_64",
-    }
-    return aliases.get(value, value)
+RESERVED_IDS = {"aux", "con", "nul", "prn"} | {f"com{i}" for i in range(1, 10)} | {f"lpt{i}" for i in range(1, 10)}
 
 
-def yaml_quote(value):
-    return "'" + value.replace("'", "''") + "'"
-
-
-def parse_version(value):
-    parts = value.split(".")
-    if (
-        len(parts) != 3
-        or any(not part.isascii() or not part.isdigit() for part in parts)
-        or any(int(part) > 255 for part in parts)
-    ):
+def parse_id(value):
+    if not ID_PATTERN.match(value) or value in RESERVED_IDS:
         raise argparse.ArgumentTypeError(
-            "version must use x.y.z with each component between 0 and 255"
+            "id must use 1 to 32 lowercase letters and digits, starting with a letter, "
+            "and avoid names reserved by Windows"
         )
     return value
 
 
-def parse_target(value):
-    fields = {}
-    for part in value.split(","):
-        key, separator, field_value = part.partition("=")
-        if not separator:
-            raise argparse.ArgumentTypeError(
-                "targets must use key=value fields separated by commas"
-            )
-        fields[key.strip()] = field_value.strip()
-
-    required = {"path", "system", "device", "arch"}
-    missing = sorted(required - set(fields))
-    if missing:
+def parse_version(value):
+    if not VERSION_PATTERN.match(value) or ".." in value:
         raise argparse.ArgumentTypeError(
-            "target is missing required fields: " + ", ".join(missing)
+            "version must use letters, digits, '.', '-' or '+', starting with a letter or digit"
         )
-
-    return {
-        "source": Path(fields["path"]),
-        "system": normalize_system(fields["system"]),
-        "device": fields["device"].lower(),
-        "arch": normalize_arch(fields["arch"]),
-    }
+    return value
 
 
-def add_bytes(tar, arcname, data):
+def parse_build(value):
+    if not BUILD_PATTERN.match(value):
+        raise argparse.ArgumentTypeError("build must be a CyberEther build ID such as linux-x86_64")
+    return value
+
+
+def library_extension(build_id):
+    if build_id.startswith("macos-"):
+        return ".dylib"
+    if build_id.startswith("windows-"):
+        return ".dll"
+    return ".so"
+
+
+def tar_info(arcname, size, mode):
     info = tarfile.TarInfo(arcname)
-    info.size = len(data)
-    info.mode = 0o644
+    info.size = size
+    info.mode = mode
     info.mtime = 0
     info.uid = 0
     info.gid = 0
     info.uname = ""
     info.gname = ""
-    tar.addfile(info, io.BytesIO(data))
+    return info
+
+
+def add_bytes(tar, arcname, data, mode=0o644):
+    tar.addfile(tar_info(arcname, len(data), mode), io.BytesIO(data))
 
 
 def add_file(tar, source, arcname):
     if not source.is_file():
         raise SystemExit(f"input file does not exist: {source}")
 
-    info = tar.gettarinfo(str(source), arcname)
-    info.mtime = 0
-    info.uid = 0
-    info.gid = 0
-    info.uname = ""
-    info.gname = ""
-    info.mode = 0o755 if os.access(source, os.X_OK) else 0o644
-
+    mode = source.stat().st_mode & 0o777
     with source.open("rb") as file:
-        tar.addfile(info, file)
+        tar.addfile(tar_info(arcname, source.stat().st_size, mode), file)
 
 
-def build_manifest(args, targets, examples):
-    lines = [
-        "metadata:",
-        f"  name: {yaml_quote(args.name)}",
-        f"  version: {yaml_quote(args.version)}",
-        f"  minimumJetstreamVersion: {yaml_quote(args.minimum_jetstream_version)}",
-        "",
-        "targets:",
+def collect_files(source, prefix):
+    if source.is_file():
+        return [(source, PurePosixPath(prefix, source.name).as_posix())]
+    if not source.is_dir():
+        raise SystemExit(f"input path does not exist: {source}")
+
+    files = []
+    for path in sorted(source.rglob("*")):
+        if path.is_symlink():
+            raise SystemExit(f"symbolic links are not supported, store the file itself: {path}")
+        if path.is_file():
+            relative = path.relative_to(source).as_posix()
+            files.append((path, PurePosixPath(prefix, relative).as_posix()))
+    return files
+
+
+def build_manifest(args):
+    fields = [
+        ("id", args.id),
+        ("title", args.title),
+        ("version", args.version),
+        ("cyberether", args.cyberether),
+        ("build", args.build),
+        ("summary", args.summary),
+        ("author", args.author),
+        ("license", args.license),
+        ("description", args.description),
     ]
-
-    for target in targets:
-        lines += [
-            f"  - path: {yaml_quote(target['archive_path'])}",
-            f"    system: {yaml_quote(target['system'])}",
-            f"    device: {yaml_quote(target['device'])}",
-            f"    arch: {yaml_quote(target['arch'])}",
-        ]
-
-    lines += ["", "examples:"]
-    if examples:
-        for example in examples:
-            lines.append(f"  - path: {yaml_quote(example['archive_path'])}")
-    else:
-        lines[-1] = "examples: []"
-
+    lines = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in fields if value]
     return "\n".join(lines) + "\n"
 
 
 def main():
     parser = argparse.ArgumentParser(description="Create a CyberEther .cep plugin bundle.")
     parser.add_argument("--output", required=True, help="Output .cep path.")
-    parser.add_argument("--name", required=True, help="Plugin name.")
+    parser.add_argument("--id", required=True, type=parse_id, help="Stable plugin ID.")
+    parser.add_argument("--title", required=True, help="Display name.")
+    parser.add_argument("--version", required=True, type=parse_version, help="Plugin version.")
     parser.add_argument(
-        "--version", required=True, type=parse_version, help="Plugin version as x.y.z."
-    )
-    parser.add_argument(
-        "--minimum-jetstream-version",
-        "--min-jetstream-version",
-        dest="minimum_jetstream_version",
+        "--cyberether",
         required=True,
         type=parse_version,
-        help="Minimum CyberEther/Jetstream version, for example 1.20.0.",
+        help="Exact CyberEther version the plugin was built against.",
+    )
+    parser.add_argument("--summary", default="", help="One line shown in plugin lists.")
+    parser.add_argument("--description", default="", help="Longer Markdown description.")
+    parser.add_argument("--author", default="", help="Plugin author.")
+    parser.add_argument("--license", default="", help="Plugin license.")
+    parser.add_argument(
+        "--build",
+        required=True,
+        type=parse_build,
+        help="CyberEther build the library was compiled for, such as linux-x86_64.",
+    )
+    parser.add_argument("--library", required=True, help="Plugin library. It is stored as lib/<id>.<ext>.")
+    parser.add_argument(
+        "--lib-file",
+        action="append",
+        default=[],
+        help="Extra file or folder copied into lib/, such as a bundled library. May be repeated.",
     )
     parser.add_argument(
-        "--target",
+        "--data",
         action="append",
-        type=parse_target,
-        required=True,
-        help="Target as path=...,system=...,device=...,arch=.... May be repeated.",
+        default=[],
+        help="File or folder copied into data/ and shared by every build. May be repeated.",
     )
     parser.add_argument(
         "--example",
         action="append",
         default=[],
-        help="Example flowgraph path. May be repeated.",
+        help="Example flowgraph (.yml). May be repeated.",
     )
     args = parser.parse_args()
 
@@ -163,49 +160,34 @@ def main():
     if output.suffix.lower() != ".cep":
         raise SystemExit("output path must end with .cep")
 
-    targets = []
+    entries = []
     archive_paths = set()
-    target_variants = set()
-    source_devices = {}
-    for target in args.target:
-        variant = (target["system"], target["device"], target["arch"])
-        if variant in target_variants:
-            raise SystemExit("duplicate target variant: " + "-".join(variant))
-        target_variants.add(variant)
 
-        source_platform = (
-            target["source"].resolve(),
-            target["system"],
-            target["arch"],
-        )
-        known_device = source_devices.get(source_platform)
-        if known_device is not None and known_device != target["device"]:
-            raise SystemExit(
-                f"target source {target['source']} cannot be used for multiple "
-                f"devices on {target['system']}-{target['arch']}"
-            )
-        source_devices[source_platform] = target["device"]
-
-        archive_path = PurePosixPath(
-            "targets",
-            f"{target['system']}-{target['arch']}-{target['device']}",
-            target["source"].name,
-        ).as_posix()
+    def claim(source, archive_path):
         if archive_path in archive_paths:
             raise SystemExit(f"duplicate bundle path: {archive_path}")
         archive_paths.add(archive_path)
-        targets.append({**target, "archive_path": archive_path})
+        entries.append((source, archive_path))
 
-    examples = []
+    if args.build not in KNOWN_BUILDS:
+        print(f"warning: '{args.build}' is not a known CyberEther release build")
+    claim(Path(args.library), PurePosixPath("lib", args.id + library_extension(args.build)).as_posix())
+
+    for source in args.lib_file:
+        for path, archive_path in collect_files(Path(source), "lib"):
+            claim(path, archive_path)
+
+    for data in args.data:
+        for path, archive_path in collect_files(Path(data), "data"):
+            claim(path, archive_path)
+
     for example in args.example:
         source = Path(example)
-        archive_path = PurePosixPath("examples", source.name).as_posix()
-        if archive_path in archive_paths:
-            raise SystemExit(f"duplicate bundle path: {archive_path}")
-        archive_paths.add(archive_path)
-        examples.append({"source": source, "archive_path": archive_path})
+        if source.suffix != ".yml":
+            raise SystemExit(f"examples must be .yml files: {source}")
+        claim(source, PurePosixPath("examples", source.name).as_posix())
 
-    manifest = build_manifest(args, targets, examples).encode("utf-8")
+    manifest = build_manifest(args).encode("utf-8")
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as temp_file:
@@ -214,10 +196,8 @@ def main():
     try:
         with tarfile.open(temp_path, "w:gz", format=tarfile.USTAR_FORMAT) as tar:
             add_bytes(tar, "manifest.yml", manifest)
-            for target in targets:
-                add_file(tar, target["source"], target["archive_path"])
-            for example in examples:
-                add_file(tar, example["source"], example["archive_path"])
+            for source, archive_path in entries:
+                add_file(tar, source, archive_path)
 
         temp_path.replace(output)
     finally:

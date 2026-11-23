@@ -5,10 +5,7 @@ order: 360
 category: Development
 ---
 
-Plugins let you develop, build, and distribute custom CyberEther blocks outside the main source tree while using the exact same block, module, scheduler, runtime, and tensor APIs as built-in blocks. Each plugin ships as a `.cep` bundle containing compiled shared libraries, a manifest, and optional example flowgraphs.
-
-> [!WARNING]
-> Plugin bundles are experimental. The bundle format, ABI, tooling, and loader behavior may change between CyberEther releases.
+Plugins let you develop, build, and distribute custom CyberEther blocks outside the main source tree while using the exact same block, module, scheduler, runtime, and tensor APIs as built-in blocks. Each plugin ships as one `.cep` bundle per CyberEther build, containing a manifest, the compiled library, optional data files, and optional example flowgraphs.
 
 ## Starting From the Blueprint
 
@@ -18,7 +15,7 @@ The fastest way to start a new plugin is to copy the official blueprint included
 examples/plugins/blueprint
 ```
 
-After copying the directory, rename the Meson project, include folder, source folder, block type, module type, and plugin name to match your own plugin.
+After copying the directory, pick a plugin ID and rename the Meson project, include folder, source folder, block type, module type, and plugin metadata to match it.
 
 ### Blueprint Layout
 
@@ -32,9 +29,8 @@ The blueprint mirrors the standard built-in block layout:
 │           ├── block.hh                 Public Block Config
 │           └── module.hh                Public Module Config
 ├── examples/
-│   └── blueprint_gain.yml               Bundled example flowgraph
+│   └── gain.yml                         Bundled example flowgraph
 ├── src/
-│   ├── plugin.cc                        Exports the Plugin ABI symbol
 │   ├── meson.build
 │   └── blueprint/
 │       └── gain/
@@ -46,33 +42,25 @@ The blueprint mirrors the standard built-in block layout:
 ├── subprojects/
 │   └── cyberether.wrap                  Fallback Meson wrap for CyberEther
 ├── tools/
-│   ├── bundler.py                       Packages single/multi-target .cep files
-│   └── merger.py                        Combines platform .cep files for release
+│   └── bundler.py                       Packages a .cep bundle
 ├── meson.build
 └── meson_options.txt
 ```
 
-## Exporting the Plugin ABI
+## Plugin ID and Naming
 
-Every shared library inside a `.cep` bundle must export CyberEther's plugin ABI symbol. In the blueprint, `src/plugin.cc` handles this in two lines:
+Every plugin has a stable ID, such as `blueprint`. The ID uses 1 to 32 lowercase letters and digits and starts with a letter. CyberEther uses it to tell plugins apart, to name the plugin's install folder, and to record which plugins a flowgraph needs.
 
-```cpp
-#include <jetstream/plugin.hh>
+Everything a plugin registers must carry the ID as a prefix:
 
-JST_REGISTER_PLUGIN();
-```
+- **Block types** start with `<id>_`, for example `blueprint_gain`.
+- **Implementations** either belong to one of the plugin's own blocks, or use a provider name that starts with `<id>_`. That second form lets a plugin add an implementation to a built-in block, for example a CUDA kernel for `fft` with the provider `blueprint_fast`.
 
-The exported record lets the loader verify compatibility before touching any static registrations:
-
-| Field | Purpose |
-|---|---|
-| **Magic** | Identifies the library as a valid CyberEther plugin. |
-| **Size** | Byte size of the exported ABI record. |
-| **ABI version** | Plugin ABI version expected by CyberEther. |
+CyberEther rejects a plugin that registers anything without the prefix.
 
 ## Registering Blocks and Modules
 
-Plugins use the exact same registration macros as built-in blocks (see [Blocks And Modules](/docs/blocks-and-modules)). The blueprint implements a `BlueprintGain` block backed by a native CPU module supporting `F32` and `CF32` tensors:
+Plugins use the exact same registration macros as built-in blocks (see [Blocks And Modules](/docs/blocks-and-modules)). The blueprint implements a `blueprint_gain` block backed by a native CPU module supporting `F32` and `CF32` tensors:
 
 ```cpp
 JST_REGISTER_BLOCK(BlueprintGainImpl, {"blueprint_gain"});
@@ -83,53 +71,113 @@ JST_REGISTER_MODULE(BlueprintGainImplNativeCpu,
                     "generic");
 ```
 
-When CyberEther opens a compatible shared library from your bundle, those static registrations drain straight into the global registry.
+When CyberEther opens your library, those static registrations drain straight into the global registry. No extra export or entry point is needed.
+
+## CyberEther Versions and Builds
+
+A plugin is built against one exact CyberEther version and loads only into that version. CyberEther also ships several release builds, and their libraries differ, so a plugin needs one library per build:
+
+| Build | Platform |
+|---|---|
+| `macos-arm64` | macOS on Apple Silicon |
+| `linux-x86_64` | Linux on x86_64 |
+| `linux-x86_64-cuda` | Linux on x86_64 with CUDA |
+| `linux-aarch64` | Linux on ARM64 |
+| `linux-aarch64-cuda` | Linux on ARM64 with CUDA |
+| `windows-x86_64` | Windows on x86_64 |
+
+Each library contains every implementation whose backend that build supports. The CyberEther Meson dependency exports its build ID and its enabled backends, so the plugin build reads them and compiles the matching implementation files automatically:
+
+```meson
+cyberether_build_id = cyberether_dep.get_variable('build_id')
+cyberether_backends = cyberether_dep.get_variable('backends').split(',')
+
+if 'cuda' in cyberether_backends
+    plugin_sources += files('module_impl_native_cuda.cc')
+endif
+```
+
+The same build ID is available to C++ code as `JETSTREAM_BUILD_ID`.
 
 ## Anatomy of a `.cep` Bundle
 
-A `.cep` file is a standard `tar.gz` archive with a `.cep` extension containing a root `manifest.yml`:
+A `.cep` file is a standard `tar.gz` archive with a `.cep` extension. CyberEther finds everything by its location, so the manifest only describes the plugin:
+
+```text
+.
+├── manifest.yml
+├── lib/
+│   ├── blueprint.so
+│   └── libvendor.so.2
+├── data/
+│   └── taps.bin
+└── examples/
+    └── gain.yml
+```
+
+| Path | Purpose |
+|---|---|
+| `manifest.yml` | Plugin ID, title, version, build, and metadata. |
+| `lib/<id>.<ext>` | The plugin library. The extension is `.dylib` on macOS, `.so` on Linux, and `.dll` on Windows. |
+| `lib/` | Anything else native, such as bundled libraries, compiled kernels, or helper programs. |
+| `data/` | Read-only files such as models, lookup tables, or firmware. |
+| `examples/*.yml` | Example flowgraphs shown in the Start tab. |
+
+Each bundle holds exactly one build. CyberEther rejects bundles with anything else at the top level.
+
+The manifest is a flat YAML file:
 
 ```yaml
-metadata:
-  name: cyberether-blueprint-plugin
-  version: 0.1.0
-  minimumJetstreamVersion: 1.20.0
-
-targets:
-  - path: targets/macos-arm64-cpu/cyberether_blueprint_plugin.dylib
-    system: macos
-    device: cpu
-    arch: arm64
-
-examples:
-  - path: examples/blueprint_gain.yml
+id: blueprint
+title: Blueprint
+version: 0.1.0
+cyberether: 1.20.0
+build: macos-arm64
+summary: A minimal gain block to start new plugins from.
+author: CyberEther
+license: MIT
+description: |-
+  Longer text for the plugin detail page.
 ```
 
 | Field | Purpose |
 |---|---|
-| `metadata.name` | Unique plugin bundle name. |
-| `metadata.version` | Plugin version in `x.y.z` format. |
-| `metadata.minimumJetstreamVersion` | Minimum CyberEther or Jetstream version required (`x.y.z`). |
-| `targets[].path` | Path to the shared library inside the archive. |
-| `targets[].system` | Target operating system (`macos`, `linux`, `windows`, and so on). |
-| `targets[].device` | Required device backend (`cpu`, `cuda`, `metal`, `vulkan`, or `webgpu`). |
-| `targets[].arch` | Target CPU architecture (`arm64`, `x86_64`, and so on). |
-| `examples[].path` | Path to an optional bundled example flowgraph. |
+| `id` | Stable plugin ID. Required. |
+| `title` | Display name. Required. |
+| `version` | Plugin version, using letters, digits, `.`, `-`, or `+`. Required. |
+| `cyberether` | Exact CyberEther version the plugin was built against. Required. |
+| `build` | CyberEther build the library was compiled for. Required. |
+| `summary` | One line shown in plugin lists. |
+| `author` | Plugin author. |
+| `license` | Plugin license. |
+| `description` | Longer Markdown text for the plugin detail page. |
 
-Version fields must contain exactly three decimal components between `0` and `255` with no prerelease or build suffixes.
+CyberEther rejects manifests with unknown keys.
 
-> [!IMPORTANT]
-> Treat `targets[].device` as a compatibility discriminator for one shared-library variant, never as a list of backends compiled into one file. CyberEther loads **every** target matching the current OS, architecture, and enabled backends. Listing the same library under multiple device labels causes CyberEther to load it twice and collide on static registrations.
->
-> Instead, compile one library per device backend (keeping shared block registrations in each variant while ensuring module provider keys never overlap across compatible variants), package each into a single-target `.cep`, and combine them with `merger.py`.
+## Finding Bundled Files
+
+Plugin code finds its own files through `Plugin::Path`, which returns the plugin's install folder with the same layout as the `.cep` bundle. It works from the moment the library opens, including inside static registrations:
+
+```cpp
+#include <jetstream/plugin.hh>
+
+const auto root = Jetstream::Plugin::Path("blueprint");
+const auto table = root / "data" / "taps.bin";
+const auto kernel = root / "lib" / "gain.cubin";
+```
 
 ## Managing Native Dependencies
 
-Because users will drop your `.cep` file onto machines you do not control, aim for zero external setup:
+Because users will install your `.cep` file on machines you do not control, aim for zero external setup:
 
-- Depend only on ubiquitous system libraries (such as the C and C++ standard libraries).
-- **Statically link** all third-party libraries directly into your plugin shared library whenever possible.
-- If a dynamic dependency cannot be avoided, document every required library, its version range, and the exact package name for every supported OS. Missing shared libraries are painful for users to debug, so treat undocumented runtime dependencies as a packaging bug.
+- Depend only on ubiquitous system libraries (such as the C and C++ standard libraries) and on the libraries CyberEther itself already loads.
+- **Statically link** third-party libraries into your plugin library whenever possible.
+- Otherwise, **bundle** the library next to your plugin library in `lib/`. Your operating system loads it together with the plugin:
+  - On Linux, set the `$ORIGIN` run path on the plugin library and on every bundled library that needs a sibling. Store each library under its real soname, since bundles cannot contain symbolic links.
+  - On macOS, use `@rpath` install names with an `@loader_path` run path, then sign the libraries again after changing them.
+  - On Windows, place the DLLs next to the plugin library.
+- Two plugins that bundle different copies of the same library can clash. Rename your copy or link it statically.
+- A library you only need sometimes, such as a vendor SDK for one backend, should not be linked at all. Open it from your implementation with the path from `Plugin::Path` when it is first used, so the rest of the plugin still loads without it.
 
 ## Building Standalone
 
@@ -137,74 +185,57 @@ Compile the blueprint directly from its own directory:
 
 ```bash
 cd examples/plugins/blueprint
-meson setup build -Ddevices=cpu
+meson setup build
 meson compile -C build
 ```
 
-On Linux, this produces the ready-to-install bundle at `build/cyberether_blueprint_plugin.cep`. Thanks to `subprojects/cyberether.wrap`, Meson automatically fetches CyberEther as a fallback when no system installation is found. The raw shared library in `build/` is only an intermediate artifact, while the `.cep` file is what you distribute.
+This produces the ready-to-install bundle at `build/blueprint-<version>-cyberether-<cyberether-version>-<build-id>.cep`. Thanks to `subprojects/cyberether.wrap`, Meson automatically fetches CyberEther as a fallback when no installation is found. The raw shared library in `build/` is only an intermediate artifact, while the `.cep` file is what you distribute.
 
-### Building for the Browser (WebAssembly)
-
-To build a browser-compatible plugin, cross-compile with Emscripten and CyberEther's cross file so your side module matches the host's threading, exception, SIMD, and LTO flags:
-
-```bash
-meson setup build-wasm examples/plugins/blueprint \
-  --cross-file meson/crosscompile/emscripten.ini \
-  -Dbuildtype=release \
-  -Ddevices=cpu \
-  -Dtests=false
-meson compile -C build-wasm cyberether_blueprint_plugin_cep
-```
-
-## Bundling and Merging for Release
-
-### Creating a Bundle With `bundler.py`
+## Creating a Bundle With `bundler.py`
 
 Run `tools/bundler.py` from your plugin directory to assemble a `.cep` file manually:
 
 ```bash
 ./tools/bundler.py \
-  --output build/cyberether_blueprint_plugin.cep \
-  --name cyberether-blueprint-plugin \
+  --output build/blueprint.cep \
+  --id blueprint \
+  --title Blueprint \
   --version 0.1.0 \
-  --minimum-jetstream-version 1.20.0 \
-  --target path=build/cyberether_blueprint_plugin.dylib,system=macos,device=cpu,arch=arm64 \
-  --example examples/blueprint_gain.yml
+  --cyberether 1.20.0 \
+  --build macos-arm64 \
+  --library build/blueprint.dylib \
+  --summary "A minimal gain block to start new plugins from." \
+  --example examples/gain.yml
 ```
 
-Repeat `--target` for distinct library variants and `--example` for additional flowgraphs. Each `(system, device, arch)` tuple must be unique, and the same source library cannot be reused under multiple device labels for the same system and architecture.
+| Option | Purpose |
+|---|---|
+| `--build <build-id>` | CyberEther build the library was compiled for. |
+| `--library <path>` | Plugin library. It is renamed to `lib/<id>.<ext>` inside the bundle. |
+| `--lib-file <path>` | Extra file or folder copied into `lib/`, such as a bundled library. |
+| `--data <path>` | File or folder copied into `data/`. |
+| `--example <path>` | Example flowgraph. |
+| `--summary`, `--description`, `--author`, `--license` | Optional manifest metadata. |
 
-### Combining Multi-Platform Builds With `merger.py`
+Repeat `--lib-file`, `--data`, and `--example` as needed. To ship several builds, run the bundler once per build and publish each file.
 
-When release pipelines build each platform on its own runner, combine the resulting single-target `.cep` files into one universal bundle using `tools/merger.py`:
+## How CyberEther Installs and Loads a Bundle
 
-```bash
-./tools/merger.py \
-  --output build/cyberether_blueprint_plugin.cep \
-  build/macos-arm64.cep \
-  build/linux-x86_64.cep
-```
+When a user installs your plugin, CyberEther:
 
-Before writing, `merger.py` validates that:
+1. Extracts the bundle into its own plugin storage.
+2. Reads and validates `manifest.yml`, including the exact CyberEther version and build.
+3. Checks that `lib/<id>.<ext>` exists.
 
-- Every input bundle shares identical metadata (`name`, `version`, and `minimumJetstreamVersion`).
-- Each `(system, device, arch)` combination appears in at most one input bundle.
-- Duplicate example paths have identical file contents (and deduplicates them cleanly).
+When it loads the plugin, CyberEther:
 
-Output is written atomically so an interrupted merge never leaves a corrupt `.cep` file behind.
+1. Opens the plugin library.
+2. Drains its static block and module registrations into the global registry.
+3. Checks that every registration carries the plugin ID prefix.
+4. Publishes the bundled examples.
 
-## How CyberEther Loads a Bundle
+To test installing your finished `.cep` bundle inside CyberEther, follow [Installing Plugins](/docs/installing-plugins). While you iterate, load it with `--plugin` instead and use **Reload** after each rebuild.
 
-When a user installs or loads your plugin, CyberEther executes nine steps:
+## Publishing to the Gallery
 
-1. Copies the `.cep` archive into the plugin cache.
-2. Extracts the `tar.gz` contents into a cache folder.
-3. Parses and validates `manifest.yml`.
-4. Selects every target matching the current OS, architecture, and compiled device backends.
-5. Opens each compatible shared library.
-6. Resolves the exported plugin ABI symbol for each library.
-7. Verifies ABI magic, record size, and ABI version.
-8. Drains static block and module registrations into the global registry.
-9. Registers any bundled examples from `examples[].path`.
-
-To test installing and reloading your finished `.cep` bundle inside CyberEther, follow [Installing Plugins](/docs/installing-plugins).
+Plugins published to the CyberEther gallery are rebuilt for every CyberEther release and build, and CyberEther installs those builds automatically. Users can link to your plugin with `https://cyberether.org/gallery/plugins/<id>`.

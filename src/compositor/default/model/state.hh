@@ -365,12 +365,6 @@ struct DefaultCompositorState {
             std::string summary;
         };
 
-        struct PluginEntry {
-            std::string path;
-            std::optional<Plugin::Info> info;
-            bool exists = false;
-        };
-
         struct GalleryFetch {
             struct Fetched {
                 std::vector<Home::Gallery::Flowgraph> flowgraphs;
@@ -392,7 +386,7 @@ struct DefaultCompositorState {
         std::vector<BlockEntry> blocks;
         std::vector<Home::Gallery::Section> sections;
         GalleryFetch fetch;
-        std::vector<PluginEntry> registered;
+        std::vector<Plugin::Info> plugins;
 
         const Home::Gallery::Flowgraph* flowgraph(const std::string& key) const;
     };

@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_PLUGIN_HH
 #define JETSTREAM_PLUGIN_HH
 
-#include <stdint.h>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -11,19 +11,43 @@ namespace Jetstream {
 
 class JETSTREAM_API Plugin {
  public:
+    class Gallery;
+
+    enum class Status {
+        Loaded,
+        Restart,
+        Incompatible,
+        Waiting,
+        Failed,
+    };
+
     struct Info {
-        std::string path;
-        std::string name;
+        std::string id;
+        std::string title;
+        std::string summary;
+        std::string description;
+        std::string author;
+        std::string license;
         std::string version;
-        std::string minimumJetstreamVersion;
-        std::string status;
+        std::string cyberether;
+        std::string path;
+        std::string source;
+        std::string pending;
+        bool temporary = false;
+        bool gallery = false;
+        Status status = Status::Failed;
         std::vector<std::string> blocks;
         std::vector<std::string> examples;
     };
 
+    static Result Install(const std::string& path, std::string& id);
+    static Result Remove(const std::string& id);
+    static Result LoadInstalled();
     static Result Load(const std::string& path);
-    static Result Reload(const std::string& path);
+    static Result Reload(const std::string& id);
     static std::vector<Info> List();
+    static std::filesystem::path Path(const std::string& id);
+    static std::string Owner(const std::string& block, const std::string& provider);
     static bool IsCepPath(const std::string& path);
 
  private:
@@ -32,46 +56,5 @@ class JETSTREAM_API Plugin {
 };
 
 }  // namespace Jetstream
-
-#define JETSTREAM_PLUGIN_ABI_SYMBOL "jetstream_plugin_abi"
-#define JETSTREAM_PLUGIN_ABI_MAGIC UINT32_C(0x4a535450)
-#define JETSTREAM_PLUGIN_ABI_VERSION UINT32_C(16)
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef struct JetstreamPluginAbi {
-    uint32_t magic;
-    uint32_t size;
-    uint32_t abi_version;
-} JetstreamPluginAbi;
-
-#ifdef __cplusplus
-}
-#endif
-
-#ifndef JETSTREAM_PLUGIN_API
-#if defined(_WIN32)
-#define JETSTREAM_PLUGIN_API __declspec(dllexport)
-#elif defined(__GNUC__) || defined(__clang__)
-#define JETSTREAM_PLUGIN_API __attribute__((visibility("default")))
-#else
-#define JETSTREAM_PLUGIN_API
-#endif
-#endif  // JETSTREAM_PLUGIN_API
-
-#ifdef __cplusplus
-#define JETSTREAM_PLUGIN_EXTERN_C extern "C"
-#else
-#define JETSTREAM_PLUGIN_EXTERN_C
-#endif
-
-#define JST_REGISTER_PLUGIN() \
-    JETSTREAM_PLUGIN_EXTERN_C JETSTREAM_PLUGIN_API const JetstreamPluginAbi jetstream_plugin_abi = { \
-        JETSTREAM_PLUGIN_ABI_MAGIC, \
-        (uint32_t)sizeof(JetstreamPluginAbi), \
-        JETSTREAM_PLUGIN_ABI_VERSION, \
-    }
 
 #endif  // JETSTREAM_PLUGIN_HH

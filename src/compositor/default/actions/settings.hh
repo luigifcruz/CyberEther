@@ -39,8 +39,8 @@ struct SettingsActions {
                               MailSetPythonRuntimePath,
                               MailSetRuntimeDependencyPolicy,
                               MailOpenPythonEnvironmentCache,
-                              MailAddPluginPath,
-                              MailRemovePluginPath,
+                              MailInstallPlugin,
+                              MailRemovePlugin,
                               MailReloadPlugin,
                               MailReloadAllPlugins>;
 
@@ -68,8 +68,8 @@ struct SettingsActions {
     Result handle(const MailSetPythonRuntimePath& msg);
     Result handle(const MailSetRuntimeDependencyPolicy& msg);
     Result handle(const MailOpenPythonEnvironmentCache&);
-    Result handle(const MailAddPluginPath& msg);
-    Result handle(const MailRemovePluginPath& msg);
+    Result handle(const MailInstallPlugin& msg);
+    Result handle(const MailRemovePlugin& msg);
     Result handle(const MailReloadPlugin& msg);
     Result handle(const MailReloadAllPlugins&);
 
