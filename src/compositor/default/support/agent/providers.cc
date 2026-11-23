@@ -1,4 +1,5 @@
 #include "providers.hh"
+#include "chatgpt.hh"
 
 #include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
@@ -6,6 +7,7 @@
 #include "tools/text.hh"
 
 #include <algorithm>
+#include <mutex>
 #include <span>
 #include <tuple>
 #include <utility>
@@ -15,6 +17,48 @@ namespace Jetstream {
 namespace {
 
 constexpr const char* ProviderKeyService = "CyberEther Intelligence";
+constexpr const char* ChatGptHostAccount = "chatgpt-host-id";
+constexpr const char* ChatGptRevokeWarning =
+    "Signed out locally. Disconnect CyberEther in ChatGPT settings to finish.";
+
+struct Record {
+    std::string host;
+    std::string value;
+};
+
+std::optional<Record> ReadRecord(const std::string& keyId) {
+    std::string secret;
+    if (keyId.empty() || Platform::ReadSecret(ProviderKeyService, keyId, secret) != Result::SUCCESS) {
+        return std::nullopt;
+    }
+    const auto separator = secret.find('\n');
+    if (separator == std::string::npos) {
+        return std::nullopt;
+    }
+    return Record{secret.substr(0, separator), secret.substr(separator + 1)};
+}
+
+std::optional<AgentChatGpt::Credentials> ReadCredentials(const std::string& keyId) {
+    const auto record = ReadRecord(keyId);
+    return record ? AgentChatGpt::Credentials::Decode(record->value) : std::nullopt;
+}
+
+std::string ChatGptHostId() {
+    std::string hostId;
+    if (Platform::ReadSecret(ProviderKeyService, ChatGptHostAccount, hostId) == Result::SUCCESS && !hostId.empty()) {
+        return hostId;
+    }
+    hostId = AgentChatGpt::NewHostId();
+    if (!hostId.empty() && Platform::WriteSecret(ProviderKeyService, ChatGptHostAccount, hostId) != Result::SUCCESS) {
+        JST_WARN("[AGENT] Can't store the ChatGPT host identifier in the system keychain.");
+    }
+    return hostId;
+}
+
+std::mutex& PlanRefreshMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
 
 void PickOption(std::string& value, std::span<const std::string> options) {
     if (std::find(options.begin(), options.end(), value) == options.end()) {
@@ -139,6 +183,9 @@ AgentProviders::VoiceAvailability AgentProviders::availability() const {
 }
 
 Agent::Provider::Kind AgentProviders::Identify(const Provider& provider) {
+    if (PlanBilled(provider)) {
+        return Agent::Provider::Kind::ChatGPT;
+    }
     return Agent::Provider::Profile::Identify(provider.host, provider.chatPath);
 }
 
@@ -156,6 +203,7 @@ AgentProviders::Provider AgentProviders::Preset(Agent::Provider::Kind kind) {
         .api = Agent::Provider::Name(profile.api),
         .chatPath = profile.chatPath,
         .modelsPath = profile.modelsPath,
+        .auth = kind == Agent::Provider::Kind::ChatGPT ? AgentChatGpt::Auth : "",
         .requestReasoning = profile.requestReasoning,
     };
 }
@@ -164,6 +212,14 @@ AgentProviders::Provider AgentProviders::Normalize(Provider provider) {
     const auto kind = Identify(provider);
     const auto& defaults = Agent::Provider::Profile::Find(kind);
 
+    if (kind == Agent::Provider::Kind::ChatGPT) {
+        provider.host = defaults.host;
+        provider.chatPath = defaults.chatPath;
+        provider.modelsPath = defaults.modelsPath;
+        provider.apiKeyEnv.clear();
+    } else {
+        provider.account.clear();
+    }
     if (provider.api.empty() || kind != Agent::Provider::Kind::Custom) {
         provider.api = Agent::Provider::Name(defaults.api);
     }
@@ -177,6 +233,10 @@ AgentProviders::Provider AgentProviders::Normalize(Provider provider) {
     return provider;
 }
 
+bool AgentProviders::PlanBilled(const Provider& provider) {
+    return provider.auth == AgentChatGpt::Auth;
+}
+
 bool AgentProviders::External(const Provider& provider) {
     return !provider.apiKeyEnv.empty();
 }
@@ -187,7 +247,7 @@ bool AgentProviders::Ready(const Provider& provider, Agent::Provider::Scope scop
 }
 
 bool AgentProviders::Transferable(const Provider& stored, const Provider& target) {
-    return !stored.apiKeyId.empty() && stored.host == target.host;
+    return !stored.apiKeyId.empty() && stored.host == target.host && PlanBilled(stored) == PlanBilled(target);
 }
 
 std::string AgentProviders::Effort(const Model& model) {
@@ -220,19 +280,44 @@ std::shared_ptr<Agent::Provider> AgentProviders::Client(const Provider& provider
 }
 
 DefaultCompositorState::AgentState::ProviderKeyResult AgentProviders::Store(std::string keyId, std::string host,
-                                                                            std::string apiKey) {
-    if (Platform::WriteSecret(ProviderKeyService, keyId, host + "\n" + apiKey) != Result::SUCCESS) {
-        return {false, "Can't store the API key in the system keychain."};
+                                                                            std::string apiKey, bool plan) {
+    std::optional<AgentChatGpt::Credentials> replaced;
+    {
+        std::unique_lock<std::mutex> refreshing;
+        if (plan) {
+            refreshing = std::unique_lock(PlanRefreshMutex());
+            replaced = ReadCredentials(keyId);
+        }
+        if (Platform::WriteSecret(ProviderKeyService, keyId, host + "\n" + apiKey) != Result::SUCCESS) {
+            return {false, "Can't store the API key in the system keychain."};
+        }
     }
 
+    const auto stored = plan ? AgentChatGpt::Credentials::Decode(apiKey) : std::nullopt;
+    const bool superseded = replaced && (!stored || stored->refreshToken != replaced->refreshToken);
+    if (superseded && !AgentChatGpt::Revoke(*replaced)) {
+        return {true, "", ChatGptRevokeWarning};
+    }
     return {true, ""};
 }
 
-DefaultCompositorState::AgentState::ProviderKeyResult AgentProviders::Erase(std::string keyId) {
-    if (Platform::DeleteSecret(ProviderKeyService, keyId) != Result::SUCCESS) {
-        return {false, "Can't remove the API key from the system keychain."};
+DefaultCompositorState::AgentState::ProviderKeyResult AgentProviders::Erase(std::string keyId, bool plan) {
+    std::optional<AgentChatGpt::Credentials> credentials;
+    {
+        std::unique_lock<std::mutex> refreshing;
+        if (plan) {
+            refreshing = std::unique_lock(PlanRefreshMutex());
+            credentials = ReadCredentials(keyId);
+        }
+
+        if (Platform::DeleteSecret(ProviderKeyService, keyId) != Result::SUCCESS) {
+            return {false, "Can't remove the API key from the system keychain."};
+        }
     }
 
+    if (credentials && !AgentChatGpt::Revoke(*credentials)) {
+        return {true, "", ChatGptRevokeWarning};
+    }
     return {true, ""};
 }
 
@@ -264,6 +349,10 @@ DefaultCompositorState::AgentState::ModelListResult AgentProviders::Models(std::
         result.models.reserve(result.models.size() + models.size());
         for (auto& model : models) {
             ResolveModelMetadata(model, kind, catalog, cancelled);
+            if (kind == Agent::Provider::Kind::ChatGPT) {
+                model.inputCost.reset();
+                model.outputCost.reset();
+            }
             result.models.push_back({
                 .provider = provider.name,
                 .id = std::move(model.id),
@@ -291,6 +380,10 @@ std::pair<bool, std::string> AgentProviders::Test(Provider provider, std::string
 
     std::string keyError;
     auto key = std::move(apiKey);
+    if (!key.empty() && PlanBilled(provider)) {
+        const auto credentials = AgentChatGpt::Credentials::Decode(key);
+        key = credentials ? credentials->accessToken : std::string{};
+    }
     if (key.empty() && External(provider)) {
         key = Key(provider, &keyError);
     } else if (key.empty() && stored) {
@@ -321,6 +414,39 @@ std::pair<bool, std::string> AgentProviders::Test(Provider provider, std::string
         message += " The model catalog is public. Add an API key before starting a chat.";
     }
     return {true, message};
+}
+
+bool AgentProviders::SignInAvailable() {
+    static const bool available = AgentChatGpt::Available() && Platform::SecretStoreAvailable();
+    return available;
+}
+
+DefaultCompositorState::AgentState::SignInResult AgentProviders::SignIn(
+    std::shared_ptr<DefaultCompositorState::AgentState::SignInLink> link, Agent::Cancellation cancelled) {
+    const auto open = [link](const std::string& url) {
+        std::lock_guard lock(link->mutex);
+        link->url = url;
+    };
+    auto signedIn = AgentChatGpt::SignIn(ChatGptHostId(), open, cancelled);
+    if (!signedIn.success || !signedIn.credentials) {
+        return {.success = false, .message = std::move(signedIn.message)};
+    }
+
+    auto record = signedIn.credentials->encode();
+    auto email = signedIn.credentials->email;
+    const auto [listed, listing] = Test(Preset(Agent::Provider::Kind::ChatGPT), record, std::nullopt, cancelled);
+    if (!listed) {
+        AgentChatGpt::Revoke(*signedIn.credentials);
+        return {.success = false, .message = listing};
+    }
+
+    const auto account = email.empty() ? std::string("ChatGPT") : email;
+    return {
+        .success = true,
+        .message = jst::fmt::format("Signed in as {}. {}", account, listing),
+        .record = std::move(record),
+        .email = std::move(email),
+    };
 }
 
 std::string AgentProviders::Key(const Provider& provider, std::string* error) {
@@ -359,7 +485,48 @@ std::string AgentProviders::Key(const Provider& provider, std::string* error) {
         return {};
     }
 
+    if (PlanBilled(provider)) {
+        return PlanToken(provider, secret.substr(separator + 1));
+    }
+    if (AgentChatGpt::Credentials::Decode(secret.substr(separator + 1))) {
+        return {};
+    }
     return secret.substr(separator + 1);
+}
+
+std::string AgentProviders::PlanToken(const Provider& provider, const std::string& record) {
+    auto credentials = AgentChatGpt::Credentials::Decode(record);
+    if (!credentials) {
+        JST_WARN("[AGENT] The ChatGPT sign-in for provider '{}' is unreadable. Sign in again in Settings.",
+                 provider.name);
+        return {};
+    }
+    if (!credentials->expiring(AgentChatGpt::Now())) {
+        return credentials->accessToken;
+    }
+
+    std::lock_guard lock(PlanRefreshMutex());
+    const auto latest = ReadRecord(provider.apiKeyId);
+    credentials = latest && latest->host == provider.host ? AgentChatGpt::Credentials::Decode(latest->value)
+                                                          : std::nullopt;
+    if (!credentials) {
+        return {};
+    }
+    if (!credentials->expiring(AgentChatGpt::Now())) {
+        return credentials->accessToken;
+    }
+
+    const auto refreshed = AgentChatGpt::Refresh(*credentials);
+    if (!refreshed.success) {
+        JST_WARN("[AGENT] {}{}", refreshed.message, refreshed.terminal ? " Sign in to ChatGPT again in Settings." : "");
+        return credentials->expiresAt > AgentChatGpt::Now() ? credentials->accessToken : std::string{};
+    }
+
+    const auto value = provider.host + "\n" + credentials->encode();
+    if (Platform::WriteSecret(ProviderKeyService, provider.apiKeyId, value) != Result::SUCCESS) {
+        JST_WARN("[AGENT] Can't store the refreshed ChatGPT sign-in in the system keychain.");
+    }
+    return credentials->accessToken;
 }
 
 Agent::Provider::Config AgentProviders::Configure(const Provider& value) {

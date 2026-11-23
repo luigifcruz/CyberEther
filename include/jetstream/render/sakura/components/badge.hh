@@ -5,6 +5,7 @@
 #include <jetstream/types.hh>
 
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace Jetstream::Sakura {
@@ -15,6 +16,9 @@ struct Badge : public Component {
         std::string backgroundColorKey = "header_hovered";
         std::string borderColorKey = "border";
         std::string textColorKey = "text_primary";
+        std::string icon;
+        std::string iconHoveredColorKey = "text_primary";
+        Callback<void()> onIcon;
 
         bool operator==(const Config&) const = default;
     };
@@ -27,6 +31,8 @@ struct Badge : public Component {
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
     void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
+    std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
 
  private:
     struct Impl;

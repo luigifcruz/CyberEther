@@ -406,6 +406,45 @@ TEST_CASE("Model pickers open an effort panel and select models by identity", kP
     CHECK_FALSE(rig.open());
 }
 
+TEST_CASE("Model picker footers show their note only on the effort panel and run their action", kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    U64 actions = 0;
+    rig.config.footer = Sakura::ModelPicker::Footer{
+        .text = "Using plan",
+        .action = "Manage",
+        .onAction = [&actions] { ++actions; },
+    };
+    rig.config.models[0].detail = "Provider A";
+    REQUIRE(rig.settle());
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    REQUIRE(rig.open());
+    CHECK(Shows(rig.host, "Using plan"));
+    CHECK(Shows(rig.host, "Medium"));
+    CHECK(Shows(rig.host, "Provider A"));
+
+    rig.click(kModelRow);
+    REQUIRE(rig.settle());
+    REQUIRE(rig.open());
+    CHECK_FALSE(Shows(rig.host, "Using plan"));
+    CHECK_FALSE(Shows(rig.host, "Manage"));
+
+    rig.click(kBackRow);
+    REQUIRE(rig.settle());
+    REQUIRE(rig.open());
+    CHECK(Shows(rig.host, "Using plan"));
+
+    const auto links = Texts(rig.host, "Manage");
+    REQUIRE(links.size() == 1);
+    const Rect link = links.front().rect;
+    rig.click({link.x + 0.5f * link.width, link.y + 0.5f * link.height});
+    REQUIRE(rig.settle());
+    CHECK(actions == 1);
+    CHECK_FALSE(rig.open());
+    CHECK(rig.selected.empty());
+}
+
 TEST_CASE("Icon model pickers measure a square field and show only their icon", kPickerTags) {
     Scene scene;
     Sakura::ModelPicker picker;

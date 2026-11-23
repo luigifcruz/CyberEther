@@ -7,5 +7,6 @@ src_lst += files([
     'docs_search.cc',
     'feedback.cc',
     'onboarding.cc',
+    'plan_notice.cc',
     'remote_qr.cc',
 ])

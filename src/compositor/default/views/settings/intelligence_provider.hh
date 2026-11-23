@@ -47,10 +47,17 @@ struct IntelligenceProviderView {
         bool testSuccess = false;
         U64 testRevision = 0;
         std::string testMessage;
+        bool signInRunning = false;
+        bool signedIn = false;
+        std::string signInEmail;
+        std::string signInMessage;
         std::vector<std::string> existingNames;
         Sakura::Callback<bool(const Settings::Intelligence::Provider&)> isValid;
         Sakura::Callback<void(const Settings::Intelligence::Provider&, const std::string&, U64)> onTest;
         Sakura::Callback<void(const Settings::Intelligence::Provider&, const std::string&)> onAdd;
+        Sakura::Callback<void(const Settings::Intelligence::Provider&, U64)> onSignIn;
+        Sakura::Callback<void()> onCancelSignIn;
+        Sakura::Callback<void()> onManageUsage;
         Sakura::Callback<void()> onBack;
     };
 
@@ -71,6 +78,10 @@ struct IntelligenceProviderView {
     bool keySourceValid() const;
     std::string keyDescription() const;
     std::string keyHint() const;
+    bool planBilled() const;
+    bool accountReady() const;
+    bool accountStored() const;
+    std::string accountDescription() const;
     bool nameTaken() const;
     bool testCurrent() const;
     bool testPassed() const;
@@ -100,6 +111,7 @@ struct IntelligenceProviderView {
     std::string modelsPath;
     std::string apiKey;
     std::string apiKeyEnv;
+    std::string auth;
     KeySource keySource = KeySource::Keychain;
     SettingsBreadcrumb breadcrumb;
     SettingsHeader header;
@@ -114,6 +126,9 @@ struct IntelligenceProviderView {
     Sakura::PillInput keyInput;
     Sakura::PillInput keySourceInput;
     SectionGroup apiGroup;
+    CompactButton signInButton;
+    CompactButton usageButton;
+    SectionGroup accountGroup;
     StatusBadge testStatus;
     CompactButton testButton;
     Sakura::Stack testControls;

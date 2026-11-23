@@ -24,14 +24,22 @@ std::string Wire::Error(const nlohmann::json& payload) {
     if (value.is_string()) {
         return value.get<std::string>();
     }
-    return value.is_object() ? Field(value, "message") : std::string{};
+    if (!value.is_object()) {
+        return {};
+    }
+    auto message = Field(value, "message");
+    return message.empty() ? Field(value, "detail") : message;
 }
 
-nlohmann::json Wire::Replay(const Provider::Message& message, const std::string& host,
-                            const std::string& path, const std::string& model) {
+std::string Wire::Origin(const Provider::Config& config) {
+    return config.kind == Provider::Kind::ChatGPT ? config.host + "#chatgpt" : config.host;
+}
+
+nlohmann::json Wire::Replay(const Provider::Message& message, const Provider::Config& config,
+                            const std::string& model) {
     const auto& saved = message.state;
-    if (message.role == "assistant" && saved && saved->host == host &&
-        saved->path == path && saved->model == model) {
+    if (message.role == "assistant" && saved && saved->host == Origin(config) &&
+        saved->path == config.path && saved->model == model) {
         return nlohmann::json::parse(saved->payload);
     }
     return {};

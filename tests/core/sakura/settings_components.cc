@@ -13,6 +13,7 @@
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/components/toggle.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "component_harness.hh"
 #include "harness.hh"
@@ -172,6 +173,39 @@ TEST_CASE("Badges are full pills with a border and a display font label", "[core
     auto* text = ShownText(badge, "Ready");
     REQUIRE(text != nullptr);
     CHECK(text->config().font == Sakura::Text::Font::Display);
+}
+
+TEST_CASE("Badges with an icon fit it after the label and click only on the icon", "[core][sakura][settings]") {
+    const Scene scene;
+    U64 clicks = 0;
+    Sakura::Badge plain;
+    plain.update({.label = "gpt-6.2-sol"});
+    Sakura::Badge badge;
+    badge.update({.label = "gpt-6.2-sol", .icon = ICON_LC_COPY, .onIcon = [&] { ++clicks; }});
+    Host plainHost(plain);
+    Host host(badge);
+    const auto plainSize = plainHost.measureOf(scene.ctx, {500.0f, 500.0f});
+    const auto size = host.measureOf(scene.ctx, {500.0f, 500.0f});
+    CHECK(size.y == plainSize.y);
+    CHECK(size.x > plainSize.x);
+    host.place(scene.ctx, {0.0f, 0.0f, size.x, size.y});
+
+    auto* label = ShownText(badge, "gpt-6.2-sol");
+    auto* icon = ShownText(badge, ICON_LC_COPY);
+    REQUIRE(label != nullptr);
+    REQUIRE(icon != nullptr);
+    const Rect labelFrame = Peek::Frame(*label);
+    const Rect iconFrame = Peek::Frame(*icon);
+    CHECK(iconFrame.x >= labelFrame.right());
+    CHECK(iconFrame.right() <= size.x - 14.0f + 0.5f);
+
+    CHECK_FALSE(host.click(labelFrame.x + 0.5f * labelFrame.width, 0.5f * size.y));
+    CHECK(clicks == 0);
+    CHECK(host.click(iconFrame.x + 0.5f * iconFrame.width, 0.5f * size.y));
+    CHECK(clicks == 1);
+    host.send(Mouse(MouseEventType::Click, iconFrame.x + 0.5f * iconFrame.width, 0.5f * size.y));
+    host.send(Mouse(MouseEventType::Release, labelFrame.x, 0.5f * size.y));
+    CHECK(clicks == 1);
 }
 
 TEST_CASE("Setting card rows click on release inside the same row", "[core][sakura][settings]") {

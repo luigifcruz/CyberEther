@@ -15,12 +15,23 @@ std::span<const Provider::Profile> Provider::Profile::All() {
     static const std::array profiles{
         Profile{
             .kind = Kind::OpenAI,
-            .name = "OpenAI",
-            .description = "OpenAI models through the Responses API.",
+            .name = "OpenAI API",
+            .description = "OpenAI models billed to your API key through the Responses API.",
             .host = "https://api.openai.com",
             .api = Api::Responses,
             .chatPath = "/v1/responses",
             .livePath = "/v1/live/sessions",
+            .catalogId = "openai",
+            .requestReasoning = true,
+            .promptCacheKey = true,
+        },
+        Profile{
+            .kind = Kind::ChatGPT,
+            .name = "ChatGPT Plan",
+            .description = "OpenAI models included in your ChatGPT plan instead of API credits.",
+            .host = "https://api.openai.com",
+            .api = Api::Responses,
+            .chatPath = "/v1/responses",
             .catalogId = "openai",
             .requestReasoning = true,
             .promptCacheKey = true,
@@ -101,6 +112,9 @@ Provider::Kind Provider::Profile::Identify(const std::string& host, const std::s
     }
 
     for (const auto& profile : All()) {
+        if (profile.kind == Kind::ChatGPT) {
+            continue;
+        }
         const bool sameHost = !profile.host.empty() && origin == profile.host;
         const bool samePath = chatPath.empty() || chatPath == profile.chatPath;
         if (sameHost && samePath) {

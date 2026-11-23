@@ -70,6 +70,11 @@ void ModalView::update(Config config) {
             crashReportView.update(std::move(viewConfig));
             break;
         }
+        case ModalContent::PlanNotice: {
+            auto viewConfig = this->config.planNotice;
+            planNoticeView.update(std::move(viewConfig));
+            break;
+        }
     }
 
     previousContent = this->config.content;
@@ -84,7 +89,7 @@ Sakura::ModalLayer::Config ModalView::layer() {
         .size = modalSize(),
         .closeButton = config.content != ModalContent::Feedback && config.content != ModalContent::RemoteQr &&
                        config.content != ModalContent::Onboarding && config.content != ModalContent::FlowgraphInfo &&
-                       config.content != ModalContent::CrashReport,
+                       config.content != ModalContent::CrashReport && config.content != ModalContent::PlanNotice,
         .onClose = [this]() {
             if (config.onClose) {
                 config.onClose();
@@ -118,6 +123,8 @@ Sakura::Component* ModalView::content() {
             return &onboardingView.component();
         case ModalContent::CrashReport:
             return &crashReportView.component();
+        case ModalContent::PlanNotice:
+            return &planNoticeView.component();
     }
     return nullptr;
 }
@@ -140,6 +147,9 @@ Extent2D<F32> ModalView::modalSize() const {
     }
     if (config.content == ModalContent::CrashReport) {
         return Extent2D<F32>{CrashReportView::Width, 0.0f};
+    }
+    if (config.content == ModalContent::PlanNotice) {
+        return Extent2D<F32>{PlanNoticeView::Width, 0.0f};
     }
     return Sakura::ModalLayer::Config{}.size;
 }

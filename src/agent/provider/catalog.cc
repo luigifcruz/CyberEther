@@ -1,5 +1,7 @@
 #include "support/base.hh"
 
+#include <unordered_set>
+
 namespace Jetstream::Agent {
 
 namespace {
@@ -98,8 +100,9 @@ Result Provider::Catalog::fetch(Provider::Error* error, const Cancellation& canc
                                        error, kCatalogContext, {});
         }
 
+        std::unordered_set<std::string> parsed;
         for (const auto& profile : Profile::All()) {
-            if (profile.catalogId.empty()) {
+            if (profile.catalogId.empty() || !parsed.insert(profile.catalogId).second) {
                 continue;
             }
 

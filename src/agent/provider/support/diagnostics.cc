@@ -17,6 +17,12 @@ struct Classification {
     Kind kind;
     std::string_view summary;
     std::string_view advice;
+    bool advise = false;
+};
+
+struct CodeRule {
+    std::string_view code;
+    Classification classification;
 };
 
 struct Rule {
@@ -40,6 +46,34 @@ constexpr std::array kRules{
          {Kind::RateLimit, "Rate limit exceeded", "Try again later."}},
     Rule{408, 504, "", "timeout_error",
          {Kind::Timeout, "The provider timed out", "Try again later."}},
+};
+
+constexpr std::string_view kSignInAgain = "Sign in to ChatGPT again.";
+
+constexpr Classification kPlanSignInInvalid{
+    Kind::Authentication, "The ChatGPT sign-in is no longer valid", kSignInAgain, true};
+
+constexpr std::array kPlanRules{
+    CodeRule{"subscription_sharing_usage_limit_exceeded",
+             {Kind::Quota, "Usage limit reached",
+              "Review your plan or this app's limit in ChatGPT settings. "
+              "[Manage usage](https://chatgpt.com/settings/usage)", true}},
+    CodeRule{"subscription_sharing_user_not_eligible",
+             {Kind::Permission, "This ChatGPT account can't use its plan here",
+              "Use an eligible account or an API key provider.", true}},
+    CodeRule{"subscription_sharing_unsupported_capability",
+             {Kind::InvalidRequest, "The ChatGPT plan doesn't support part of this request", ""}},
+    CodeRule{"subscription_sharing_route_not_supported",
+             {Kind::InvalidRequest, "The ChatGPT plan doesn't support this endpoint", ""}},
+    CodeRule{"subscription_sharing_invalid_user", kPlanSignInInvalid},
+    CodeRule{"chatpass_v2_scope_not_authorized",
+             {Kind::Permission, "The ChatGPT sign-in doesn't allow plan usage", kSignInAgain, true}},
+    CodeRule{"chatpass_v2_invalid_authorization_context",
+             {Kind::Permission, "The ChatGPT sign-in doesn't allow plan usage", kSignInAgain, true}},
+    CodeRule{"subscription_sharing_usage_unavailable",
+             {Kind::Server, "ChatGPT plan usage is temporarily unavailable", "Try again later."}},
+    CodeRule{"subscription_sharing_user_unavailable",
+             {Kind::Server, "ChatGPT plan usage is temporarily unavailable", "Try again later."}},
 };
 
 constexpr std::array<std::string_view, 5> kServerCodes{
@@ -75,9 +109,17 @@ bool Matches(const Rule& rule, const Provider::Error& error) {
            (!rule.alternateCode.empty() && error.code == rule.alternateCode);
 }
 
-Classification Classify(const Provider::Error& error) {
+Classification Classify(const Provider::Error& error, Provider::Kind provider) {
+    for (const auto& rule : kPlanRules) {
+        if (!error.code.empty() && error.code == rule.code) {
+            return rule.classification;
+        }
+    }
     for (const auto& rule : kRules) {
         if (Matches(rule, error)) {
+            if (provider == Provider::Kind::ChatGPT && rule.classification.kind == Kind::Authentication) {
+                return kPlanSignInInvalid;
+            }
             return rule.classification;
         }
     }
@@ -117,6 +159,9 @@ std::string RetryHint(const Provider::Error& error) {
 std::string Describe(const Provider::Error& error, const std::string& detail,
                      const Classification& classification) {
     std::string message = detail.empty() ? std::string(classification.summary) : detail;
+    if (classification.advise && !detail.empty() && !classification.summary.empty()) {
+        message = jst::fmt::format("{}. {}", classification.summary, detail);
+    }
     if (message.ends_with('.')) {
         message.pop_back();
     }
@@ -126,7 +171,7 @@ std::string Describe(const Provider::Error& error, const std::string& detail,
     message += '.';
     if (const auto hint = RetryHint(error); !hint.empty()) {
         message += hint;
-    } else if (detail.empty() && !classification.advice.empty()) {
+    } else if ((detail.empty() || classification.advise) && !classification.advice.empty()) {
         message += " " + std::string(classification.advice);
     }
     return message;
@@ -222,16 +267,20 @@ Result Diagnostics::Report(Provider::Error failure, Provider::Error* output, con
     return Result::ERROR;
 }
 
-std::string Diagnostics::MissingKey() {
+std::string Diagnostics::MissingKey(Provider::Kind provider) {
+    if (provider == Provider::Kind::ChatGPT) {
+        return "The ChatGPT sign-in is missing or expired. " + std::string(kSignInAgain);
+    }
     return "No API key is stored for this provider.";
 }
 
-Provider::Error Diagnostics::Payload(const nlohmann::json& payload, I32 status, const std::string& retryAfter) {
+Provider::Error Diagnostics::Payload(const nlohmann::json& payload, I32 status, const std::string& retryAfter,
+                                     Provider::Kind provider) {
     Provider::Error error;
     error.status = status;
     error.retryAfter = retryAfter;
     ReadErrorCode(payload, error);
-    const auto classification = Classify(error);
+    const auto classification = Classify(error, provider);
     error.kind = classification.kind;
     const auto detail = CleanDetail(Wire::Error(payload));
     error.message = Describe(error, detail, classification);
@@ -245,8 +294,9 @@ Provider::Error Diagnostics::Payload(const nlohmann::json& payload, I32 status, 
     return error;
 }
 
-Provider::Error Diagnostics::Http(I32 status, const std::string& body, const std::string& retryAfter) {
-    return Payload(nlohmann::json::parse(body, nullptr, false), status, retryAfter);
+Provider::Error Diagnostics::Http(I32 status, const std::string& body, const std::string& retryAfter,
+                                  Provider::Kind provider) {
+    return Payload(nlohmann::json::parse(body, nullptr, false), status, retryAfter, provider);
 }
 
 Provider::Error Diagnostics::Transport(const Platform::Http::Error& failure) {

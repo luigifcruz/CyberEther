@@ -7,6 +7,7 @@
 #include "docs_search.hh"
 #include "feedback.hh"
 #include "onboarding.hh"
+#include "plan_notice.hh"
 #include "remote_qr.hh"
 
 #include "../context.hh"
@@ -29,6 +30,7 @@ struct ModalPresenter {
     RemoteQrModalPresenter remoteQr;
     DocsSearchModalPresenter docsSearch;
     CrashReportModalPresenter crashReport;
+    PlanNoticeModalPresenter planNotice;
 
     explicit ModalPresenter(const PresenterContext& context);
     ModalView::Config build() const;

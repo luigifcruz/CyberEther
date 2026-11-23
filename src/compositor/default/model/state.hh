@@ -36,6 +36,7 @@
 #include <future>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -57,6 +58,7 @@ struct DefaultCompositorState {
         struct ProviderKeyResult {
             bool success = false;
             std::string message;
+            std::string warning;
         };
 
         struct ProviderKeyTask {
@@ -67,10 +69,37 @@ struct DefaultCompositorState {
 
             bool running = false;
             Kind kind = Kind::Save;
+            bool signedIn = false;
             U64 session = 0;
             Settings::Intelligence::Provider provider;
             std::string previousName;
             std::future<ProviderKeyResult> future;
+        };
+
+        struct SignInResult {
+            bool success = false;
+            std::string message;
+            std::string record;
+            std::string email;
+        };
+
+        struct SignInLink {
+            std::mutex mutex;
+            std::string url;
+        };
+
+        struct SignInState {
+            bool running = false;
+            U64 session = 0;
+            U64 revision = 0;
+            std::string record;
+            std::string email;
+            std::string message;
+            std::optional<Settings::Intelligence::Provider> draft;
+            std::optional<std::string> replaceName;
+            std::future<SignInResult> future;
+            std::shared_ptr<std::atomic<bool>> cancel;
+            std::shared_ptr<SignInLink> link;
         };
 
         struct ProvidersState {
@@ -78,6 +107,7 @@ struct DefaultCompositorState {
             std::optional<Settings::Intelligence::Provider> editTarget;
             U64 editSession = 0;
             ProviderKeyTask keyTask;
+            SignInState signIn;
         };
 
         struct CatalogState {
