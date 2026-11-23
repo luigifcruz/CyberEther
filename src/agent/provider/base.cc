@@ -185,7 +185,7 @@ class Capabilities {
         std::lock_guard lock(mutex);
 
         const std::string visibility = config.requestReasoning ? "visible" : "hidden";
-        const auto key = config.host + '\n' + config.path + '\n' + request.model + '\n' +
+        const auto key = Detail::Wire::Origin(config) + '\n' + config.path + '\n' + request.model + '\n' +
                          request.reasoningEffort + '\n' + request.reasoningContext + '\n' + visibility;
 
         auto& entry = known[key];
@@ -258,7 +258,7 @@ Provider::Error Validate(const Config& config, bool models, const std::string& m
     const auto scope = models ? Provider::Scope::Models : Provider::Scope::Chat;
     if ((config.requireApiKey && key.empty()) ||
         !Provider::Profile::Find(config.kind).ready(scope, !key.empty())) {
-        return {Kind::MissingCredentials, 0, Detail::Diagnostics::MissingKey()};
+        return {Kind::MissingCredentials, 0, Detail::Diagnostics::MissingKey(config.kind)};
     }
 
     return {};
@@ -413,7 +413,7 @@ class ChatCall {
 
         const bool informational = attempt.status != 0 && attempt.status < 200;
         if (attempt.status >= 300 || informational) {
-            return Detail::Diagnostics::Http(attempt.status, attempt.body, attempt.retryAfter);
+            return Detail::Diagnostics::Http(attempt.status, attempt.body, attempt.retryAfter, config.kind);
         }
         if (stream.error) {
             return stream.error;
@@ -427,7 +427,7 @@ class ChatCall {
 
         const auto payload = nlohmann::json::parse(attempt.body, nullptr, false);
         if (payload.is_object() && payload.contains("error")) {
-            return Detail::Diagnostics::Payload(payload);
+            return Detail::Diagnostics::Payload(payload, 0, {}, config.kind);
         }
         return stream.error;
     }
@@ -499,7 +499,7 @@ class ChatCall {
         auto payload = stream.payload();
         if (!payload.empty()) {
             response.state = std::make_shared<const Provider::State>(Provider::State{
-                config.host,
+                Detail::Wire::Origin(config),
                 config.path,
                 request.model,
                 std::move(payload),
@@ -561,6 +561,25 @@ Result Provider::models(std::vector<Model>& models, Provider::Error* error,
         nlohmann::json body;
         if (auto failure = Detail::Diagnostics::Response(Platform::Http::Client::Send(http), body)) {
             return Fail(std::move(failure), error, config, key, " model discovery");
+        }
+
+        if (config.kind == Provider::Kind::ChatGPT) {
+            if (!body.is_object() || !body.contains("models") || !body["models"].is_array()) {
+                return Fail({Provider::Error::Kind::Protocol, 0, "Expected a JSON object containing a 'models' array."},
+                            error, config, key, " model discovery");
+            }
+
+            for (const auto& item : body["models"]) {
+                if (!item.is_object() || Detail::Wire::Field(item, "visibility") != "list") {
+                    continue;
+                }
+                auto slug = Detail::Wire::Field(item, "slug");
+                if (slug.empty()) {
+                    continue;
+                }
+                models.push_back({std::move(slug), Detail::Wire::Field(item, "display_name")});
+            }
+            return Result::SUCCESS;
         }
 
         if (!body.is_object() || !body.contains("data") || !body["data"].is_array()) {

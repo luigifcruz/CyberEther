@@ -107,14 +107,22 @@ AgentProviderStatus AgentLabels::Health(Agent::Provider::Error::Kind kind) {
 
 AgentProviderStatus AgentLabels::Status(const DefaultCompositorState::AgentState& agent,
                                         const Settings::Intelligence::Provider& value) {
+    using Kind = Agent::Provider::Error::Kind;
     const auto provider = AgentProviders::Normalize(value);
+    const bool plan = AgentProviders::PlanBilled(provider);
     if (!AgentProviders::Ready(provider, Agent::Provider::Scope::Chat)) {
-        return {.label = "Key not set"};
+        return {.label = plan ? "Signed out" : "Key not set"};
     }
     const auto& health = agent.providers.health;
     const auto entry = health.find(provider.name);
     if (entry == health.end()) {
         return {.label = "Checking...", .pending = true};
+    }
+    if (plan && (entry->second == Kind::MissingCredentials || entry->second == Kind::Authentication)) {
+        return {.label = "Sign in again"};
+    }
+    if (plan && entry->second == Kind::Quota) {
+        return {.label = "Usage limit reached"};
     }
     return Health(entry->second);
 }

@@ -58,3 +58,15 @@ TEST_CASE("Anthropic profile uses the Messages API", "[agent][providers]") {
     }
     CHECK(std::string(Agent::Provider::Name(Api::Messages)) == "messages");
 }
+
+TEST_CASE("ChatGPT profile shares the OpenAI endpoint without claiming it", "[agent][providers][chatgpt]") {
+    using Kind = Agent::Provider::Kind;
+    const auto& profile = Agent::Provider::Profile::Find(Kind::ChatGPT);
+    REQUIRE(profile.kind == Kind::ChatGPT);
+    CHECK(profile.api == Agent::Provider::Api::Responses);
+    CHECK(profile.host == "https://api.openai.com");
+    CHECK(profile.chatPath == "/v1/responses");
+    CHECK(profile.livePath.empty());
+    CHECK_FALSE(profile.ready(Agent::Provider::Scope::Models, false));
+    CHECK(Agent::Provider::Profile::Identify(profile.host, profile.chatPath) == Kind::OpenAI);
+}

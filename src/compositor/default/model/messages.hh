@@ -106,6 +106,14 @@ struct MailTestAgentProvider {
     std::string apiKey;
 };
 
+struct MailSignInAgentProvider {
+    U64 revision = 0;
+    Settings::Intelligence::Provider value;
+    std::optional<std::string> replaceName;
+};
+
+struct MailCancelAgentProviderSignIn {};
+
 struct MailSetAgentVoiceBackend {
     Settings::Intelligence::Model value;
 };
@@ -874,6 +882,8 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSaveAgentProvider,
                            MailRemoveAgentProvider,
                            MailTestAgentProvider,
+                           MailSignInAgentProvider,
+                           MailCancelAgentProviderSignIn,
                            MailSetAgentVoiceBackend,
                            MailSetAgentVoiceModel,
                            MailSetAgentVoiceName,

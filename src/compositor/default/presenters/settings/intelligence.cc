@@ -53,7 +53,11 @@ IntelligenceSettingsView::Config IntelligenceSettingsPresenter::build() const {
     for (const auto& entry : providers.all()) {
         const auto status = AgentLabels::Status(agent, entry);
         statuses.try_emplace(entry.name, status);
-        config.providers.push_back({.name = entry.name, .status = Badge(status)});
+        config.providers.push_back({
+            .name = entry.name,
+            .description = entry.account,
+            .status = Badge(status),
+        });
     }
 
     for (const auto& entry : agent.settings.models) {

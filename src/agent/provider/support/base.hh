@@ -26,10 +26,12 @@ class Diagnostics {
     static void Sanitize(Provider::Error& failure, std::string_view secret);
     static Result Report(Provider::Error failure, Provider::Error* output, const std::string& context,
                          std::string_view secret);
-    static std::string MissingKey();
+    static std::string MissingKey(Provider::Kind provider = Provider::Kind::Custom);
 
-    static Provider::Error Payload(const nlohmann::json& payload, I32 status = 0, const std::string& retryAfter = {});
-    static Provider::Error Http(I32 status, const std::string& body, const std::string& retryAfter);
+    static Provider::Error Payload(const nlohmann::json& payload, I32 status = 0, const std::string& retryAfter = {},
+                                   Provider::Kind provider = Provider::Kind::Custom);
+    static Provider::Error Http(I32 status, const std::string& body, const std::string& retryAfter,
+                                Provider::Kind provider = Provider::Kind::Custom);
     static Provider::Error Transport(const Platform::Http::Error& failure);
     static Provider::Error Response(const Platform::Http::Client::Response& response, nlohmann::json& body);
 };
@@ -50,8 +52,9 @@ class Wire {
  public:
     static std::string Field(const nlohmann::json& object, const char* name);
     static std::string Error(const nlohmann::json& payload);
-    static nlohmann::json Replay(const Provider::Message& message, const std::string& host,
-                                 const std::string& path, const std::string& model);
+    static std::string Origin(const Provider::Config& config);
+    static nlohmann::json Replay(const Provider::Message& message, const Provider::Config& config,
+                                 const std::string& model);
     static bool Empty(const Provider::Message& message, const nlohmann::json& state);
     static nlohmann::json Function(const Provider::Function& tool);
     static nlohmann::json FunctionCall(const Provider::FunctionCall& call);

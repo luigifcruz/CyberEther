@@ -111,7 +111,12 @@ void IntelligenceSettingsView::updateProviders() {
                 {.child = &controls.remove},
             },
         });
-        rows.push_back({.label = provider.name, .control = &controls.row, .wide = true});
+        rows.push_back({
+            .label = provider.name,
+            .description = provider.description,
+            .control = &controls.row,
+            .wide = true,
+        });
     }
     addProviderButton.update({
         .str = "Add",

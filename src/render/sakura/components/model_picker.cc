@@ -60,6 +60,9 @@ constexpr F32 kMarkSpace = 2.0f;
 constexpr F32 kBlockPadX = 10.0f;
 constexpr F32 kBlockPadY = 5.0f;
 constexpr F32 kBlockRounding = 8.0f;
+constexpr F32 kDetailAlpha = 0.6f;
+constexpr F32 kLinkIconScale = 0.7f;
+constexpr F32 kProviderScale = 0.72f;
 
 enum class Mode {
     Effort,
@@ -72,6 +75,7 @@ struct Target {
         ModelRow,
         Back,
         Row,
+        Footer,
     };
 
     Kind kind = Kind::None;
@@ -122,13 +126,22 @@ struct PickerState {
         return std::min<U64>(config.efforts.size(), kMaxStops);
     }
 
+    const ModelPicker::Option* selectedOption() const {
+        const auto found = std::find_if(config.models.begin(), config.models.end(), [&](const auto& option) {
+            return option.id == config.value;
+        });
+        return found == config.models.end() ? nullptr : &*found;
+    }
+
     const std::string& modelLabel() const {
-        for (const auto& option : config.models) {
-            if (option.id == config.value) {
-                return option.label;
-            }
-        }
-        return config.placeholder;
+        const auto* option = selectedOption();
+        return option ? option->label : config.placeholder;
+    }
+
+    const std::string& modelDetail() const {
+        static const std::string empty;
+        const auto* option = selectedOption();
+        return option ? option->detail : empty;
     }
 
     const std::string& currentEffort() const {
@@ -242,6 +255,12 @@ struct PickerBody : public Component {
     Label headerIcon;
     Rect header;
     Label icons;
+    Box divider;
+    Label footerTexts;
+    Label footerIcon;
+    Rect footerRow;
+    Rect footerAction;
+    F32 footerTop = 0.0f;
     Rect modelRow;
     Rect modelBlock;
     std::vector<F32> stops;
@@ -262,6 +281,9 @@ struct PickerBody : public Component {
         addChild(heading);
         addChild(headerIcon);
         addChild(icons);
+        addChild(divider);
+        addChild(footerTexts);
+        addChild(footerIcon);
     }
 
     void refresh() {
@@ -290,9 +312,30 @@ struct PickerBody : public Component {
         return backable() ? RowHeight(m) + m.unit + 2.0f * kHeaderGap * m.unit : 0.0f;
     }
 
+    bool showsFooter() const {
+        return picker.config.footer && picker.activeMode() == Mode::Effort;
+    }
+
+    F32 footerHeight(const PickerMetrics& m) const {
+        if (!showsFooter()) {
+            return 0.0f;
+        }
+        return RowHeight(m) + m.unit + (2.0f * kHeaderGap + kListPadding) * m.unit;
+    }
+
+    F32 footerWidth(const PickerMetrics& m) {
+        if (!showsFooter()) {
+            return 0.0f;
+        }
+        const auto& footer = *picker.config.footer;
+        return picker.measureText(footer.text, m.font) + 2.0f * m.gap + picker.measureText(footer.action, m.font) +
+               0.5f * m.gap + kLinkIconScale * m.font + 2.0f * kListInset * m.unit;
+    }
+
     F32 effortHeight(const PickerMetrics& m) const {
+        const F32 provider = picker.modelDetail().empty() ? 0.0f : m.font;
         return 3.0f * kEffortPadding * m.unit + 2.0f * kBlockPadY * m.unit + m.font * (kTitleHeight + kModelRowHeight) +
-               kThumbSize * m.unit;
+               provider + kThumbSize * m.unit;
     }
 
     std::optional<U64> rowAt(const Extent2D<F32>& point) const {
@@ -313,10 +356,13 @@ struct PickerBody : public Component {
 
     bool onTrack(const Extent2D<F32>& point) const {
         return picker.activeMode() == Mode::Effort && !stops.empty() && frame().contains(point.x, point.y) &&
-               point.y >= modelBlock.bottom();
+               point.y >= modelBlock.bottom() && point.y < footerTop;
     }
 
     Target targetAt(const Extent2D<F32>& point) const {
+        if (!footerAction.empty() && footerAction.contains(point.x, point.y) && frame().contains(point.x, point.y)) {
+            return {.kind = Target::Kind::Footer};
+        }
         if (picker.activeMode() == Mode::Effort) {
             if (modelBlock.contains(point.x, point.y) && frame().contains(point.x, point.y)) {
                 return {.kind = Target::Kind::ModelRow};
@@ -356,8 +402,13 @@ struct PickerBody : public Component {
         picker.textMetrics.setWindow(ctx.render);
         const auto m = picker.metrics(ctx);
         if (picker.activeMode() == Mode::Effort) {
-            const F32 width = std::max(picker.anchorWidth, kPanelWidth * m.unit);
-            return FitExtent({std::ceil(width), std::ceil(effortHeight(m))}, available);
+            const std::string& detail = picker.modelDetail();
+            const F32 modelLine = std::max(picker.measureText(picker.modelLabel(), m.font) +
+                                               kChevronScale * m.font + 0.5f * m.gap,
+                                           picker.measureText(detail, m.font * kProviderScale)) +
+                                  2.0f * (kEffortPadding + kBlockPadX) * m.unit;
+            const F32 width = std::max({picker.anchorWidth, kPanelWidth * m.unit, footerWidth(m), modelLine});
+            return FitExtent({std::ceil(width), std::ceil(effortHeight(m) + footerHeight(m))}, available);
         }
         F32 widest = 0.0f;
         for (const auto& option : picker.config.models) {
@@ -380,7 +431,10 @@ struct PickerBody : public Component {
         const Rect title = {bounds.x, bounds.y + pad + kBlockPadY * m.unit, bounds.width, m.font * kTitleHeight};
         modelRow = {bounds.x + pad, title.bottom(), std::max(0.0f, bounds.width - 2.0f * pad),
                     m.font * kModelRowHeight};
-        const F32 trackCenter = modelRow.bottom() + kBlockPadY * m.unit + pad + thumbSize * 0.5f;
+        const bool showProvider = !state.modelDetail().empty();
+        const Rect providerRow = {modelRow.x, modelRow.bottom(), modelRow.width,
+                                  showProvider ? m.font : 0.0f};
+        const F32 trackCenter = providerRow.bottom() + kBlockPadY * m.unit + pad + thumbSize * 0.5f;
         const Rect track = {bounds.x + pad, trackCenter - trackHeight * 0.5f,
                             std::max(0.0f, bounds.width - 2.0f * pad), trackHeight};
         const F32 inset = trackHeight * 0.5f;
@@ -424,19 +478,23 @@ struct PickerBody : public Component {
         const auto rowColor = state.color(ctx, hovered ? config.textColorKey : config.detailColorKey);
         const std::string& effort = state.effortLabel();
         const std::string& model = state.modelLabel();
+        const std::string& detail = state.modelDetail();
+        const F32 providerFont = m.font * kProviderScale;
         const F32 modelWidth = state.measureText(model, m.font);
+        const F32 detailWidth = state.measureText(detail, providerFont);
+        const auto detailColor = hovered ? state.color(ctx, config.detailColorKey)
+                                         : WithAlpha(state.color(ctx, config.detailColorKey), kDetailAlpha);
+        const std::string& headingText = effort.empty() ? config.effortPlaceholder : effort;
         const F32 chevron = kChevronScale * m.font;
         const F32 chevronGap = 0.5f * m.gap;
         const F32 modelX = std::round(modelRow.x + (modelRow.width - modelWidth - chevronGap - chevron) * 0.5f);
-        const std::string& headingText = effort.empty() ? config.effortPlaceholder : effort;
-        const F32 content = std::max(state.measureText(headingText, m.font * kTitleScale),
-                                     modelWidth + chevronGap + chevron);
+        const F32 content = std::max({state.measureText(headingText, m.font * kTitleScale),
+                                      modelWidth + chevronGap + chevron, detailWidth});
         const F32 blockPadX = kBlockPadX * m.unit;
         const F32 blockPadY = kBlockPadY * m.unit;
         const F32 blockWidth = std::min(modelRow.width, content + 2.0f * blockPadX);
         modelBlock = {std::round(modelRow.x + (modelRow.width - blockWidth) * 0.5f), title.y - blockPadY, blockWidth,
-                      modelRow.bottom() - title.y + 2.0f * blockPadY};
-
+                      providerRow.bottom() - title.y + 2.0f * blockPadY};
         highlight.update({
             .instances = {{.rect = modelBlock, .visible = hovered && !modelBlock.empty(),
                            .backgroundColor = state.color(ctx, config.rowHoveredColorKey)}},
@@ -480,7 +538,7 @@ struct PickerBody : public Component {
         });
         heading.update({
             .instances = {{.rect = title, .str = headingText, .visible = !title.empty(),
-                           .color = state.color(ctx, effort.empty() ? config.detailColorKey : config.accentColorKey),
+                           .color = state.color(ctx, effort.empty() ? config.detailColorKey : config.textColorKey),
                            .fontSize = m.font * kTitleScale, .alignment = {1, 1}}},
             .clip = bounds,
             .fontName = Typography::BodyFont,
@@ -492,6 +550,8 @@ struct PickerBody : public Component {
             .instances = {
                 {.rect = {modelX, modelRow.y, modelWidth, modelRow.height}, .str = model,
                  .visible = !modelRow.empty(), .color = rowColor, .fontSize = m.font, .alignment = {0, 1}},
+                {.rect = providerRow, .str = detail, .visible = showProvider && !providerRow.empty(),
+                 .color = detailColor, .fontSize = providerFont, .alignment = {1, 1}},
             },
             .clip = bounds,
             .fontName = Typography::BodyFont,
@@ -621,11 +681,73 @@ struct PickerBody : public Component {
         });
     }
 
+    void placeFooter(const PickerMetrics& m, const Rect& bounds) {
+        footerRow = {};
+        footerAction = {};
+        footerTop = bounds.bottom() - footerHeight(m);
+        if (footerHeight(m) <= 0.0f || bounds.empty()) {
+            return;
+        }
+        const F32 inset = kListInset * m.unit;
+        const F32 top = footerTop;
+        footerRow = {bounds.x + inset, top + 2.0f * kHeaderGap * m.unit + m.unit, std::max(0.0f, bounds.width - 2.0f * inset),
+                     RowHeight(m)};
+        const F32 actionWidth = std::min(footerRow.width, picker.measureText(picker.config.footer->action, m.font) +
+                                                              0.5f * m.gap + kLinkIconScale * m.font);
+        footerAction = {footerRow.right() - actionWidth, footerRow.y, actionWidth, footerRow.height};
+    }
+
+    void layoutFooter(const Context& ctx, const PickerMetrics& m, const Rect& bounds) {
+        const auto& config = picker.config;
+        const bool visible = !footerRow.empty();
+        const F32 pad = kListPadding * m.unit;
+        const F32 top = footerTop;
+        const bool hovered = picker.hover.kind == Target::Kind::Footer;
+        static const std::string empty;
+        const auto& text = visible ? config.footer->text : empty;
+        const auto& action = visible ? config.footer->action : empty;
+        const auto detailColor = picker.color(ctx, config.detailColorKey);
+        const auto linkColor = picker.color(ctx, hovered ? config.textColorKey : config.detailColorKey);
+        const F32 icon = kLinkIconScale * m.font;
+        const F32 actionText = std::max(0.0f, footerAction.width - 0.5f * m.gap - icon);
+        const Rect actionRect = {footerAction.x, footerAction.y, actionText, footerAction.height};
+        divider.update({
+            .instances = {{.rect = {bounds.x + pad, top + kHeaderGap * m.unit, std::max(0.0f, bounds.width - 2.0f * pad),
+                                    m.unit},
+                           .visible = visible, .backgroundColor = picker.color(ctx, "separator")}},
+            .clip = bounds,
+        });
+        footerIcon.update({
+            .instances = {{.rect = {footerAction.right() - icon, footerAction.y, icon, footerAction.height},
+                           .str = ICON_LC_EXTERNAL_LINK, .visible = visible && !action.empty(), .color = linkColor,
+                           .fontSize = icon, .alignment = {0, 1}}},
+            .clip = bounds,
+            .fontName = Typography::IconFont,
+            .maxCharacters = 4,
+            .capacity = 1,
+        });
+        footerTexts.update({
+            .instances = {
+                {.rect = {footerRow.x, footerRow.y, std::max(0.0f, footerAction.x - footerRow.x - m.gap),
+                          footerRow.height},
+                 .str = text, .visible = visible && !text.empty(), .color = detailColor,
+                 .fontSize = m.font, .alignment = {0, 1}},
+                {.rect = actionRect, .str = action, .visible = visible && !action.empty(), .color = linkColor,
+                 .fontSize = m.font, .alignment = {0, 1}},
+            },
+            .clip = bounds,
+            .fontName = Typography::BodyFont,
+            .maxCharacters = kMaxCharacters,
+            .capacity = 2,
+        });
+    }
+
     void layout(const Context& ctx) override {
         picker.textMetrics.setWindow(ctx.render);
         const auto& config = picker.config;
         const auto m = picker.metrics(ctx);
         const Rect bounds = frame();
+        placeFooter(m, bounds);
         background.update({
             .rects = bounds.empty() ? std::vector<Rect>{} : std::vector<Rect>{bounds},
             .clip = clip(),
@@ -650,6 +772,7 @@ struct PickerBody : public Component {
         } else {
             layoutModels(ctx, m, bounds, capacity);
         }
+        layoutFooter(ctx, m, bounds);
         layoutChild(ctx, background, bounds);
         layoutChild(ctx, highlight, bounds);
         layoutChild(ctx, rail, bounds);
@@ -660,6 +783,9 @@ struct PickerBody : public Component {
         layoutChild(ctx, heading, bounds);
         layoutChild(ctx, headerIcon, bounds);
         layoutChild(ctx, icons, bounds);
+        layoutChild(ctx, divider, bounds);
+        layoutChild(ctx, footerTexts, bounds);
+        layoutChild(ctx, footerIcon, bounds);
     }
 
     bool mouseEvent(const MouseEvent& event) override {
@@ -737,7 +863,13 @@ struct PickerBody : public Component {
                 if (!activate) {
                     return inside;
                 }
-                if (target.kind == Target::Kind::ModelRow) {
+                if (target.kind == Target::Kind::Footer) {
+                    const auto action = state.config.footer ? state.config.footer->onAction : Callback<void()>{};
+                    state.setOpen(false);
+                    if (action) {
+                        action();
+                    }
+                } else if (target.kind == Target::Kind::ModelRow) {
                     state.mode = Mode::Models;
                     state.resetScroll();
                     state.hover = {};

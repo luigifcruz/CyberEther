@@ -209,6 +209,7 @@ Result AgentActions::handle(const MailOpenAgentProviderEditor& msg) {
 
     providers.editSession++;
     resetProviderTest();
+    resetSignIn();
     openIntelligencePage(IntelligencePage::Provider);
     return Result::SUCCESS;
 }
@@ -225,7 +226,8 @@ Result AgentActions::handle(const MailSaveAgentProvider& msg) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "Providers need a name and a base URL.");
         return Result::SUCCESS;
     }
-    const auto apiKey = Text::TrimBlank(msg.apiKey);
+    const auto planBilled = AgentProviders::PlanBilled(provider);
+    const auto apiKey = planBilled ? pendingSignIn() : Text::TrimBlank(msg.apiKey);
 
     const auto previousName = msg.replaceName.value_or(provider.name);
     const bool renamed = previousName != provider.name;
@@ -240,9 +242,28 @@ Result AgentActions::handle(const MailSaveAgentProvider& msg) {
     task.kind = DefaultCompositorState::AgentState::ProviderKeyTask::Kind::Save;
     task.previousName = previousName;
     task.session = agent.providers.editSession;
+    task.signedIn = planBilled && !apiKey.empty();
 
-    if (AgentProviders::External(provider)) {
+    if (planBilled) {
+        const bool sameAccount = AgentProviders::PlanBilled(previous);
+        provider.account = task.signedIn ? agent.providers.signIn.email : sameAccount ? previous.account : "";
+        for (auto& model : agent.settings.models) {
+            if (!sameAccount && model.provider == previousName) {
+                model.priced = false;
+                model.inputCost = 0.0;
+                model.outputCost = 0.0;
+            }
+        }
+    }
+
+    const bool planChanged = AgentProviders::PlanBilled(previous) != planBilled;
+    if (AgentProviders::External(provider) && !planChanged) {
         provider.apiKeyId = previous.apiKeyId;
+    } else if (AgentProviders::External(provider)) {
+        if (!previous.apiKeyId.empty()) {
+            task.future = std::async(std::launch::async, AgentProviders::Erase, previous.apiKeyId,
+                                     AgentProviders::PlanBilled(previous));
+        }
     } else if (!apiKey.empty()) {
         if (previous.apiKeyId.empty()) {
             provider.apiKeyId = Random::HexToken();
@@ -253,15 +274,17 @@ Result AgentActions::handle(const MailSaveAgentProvider& msg) {
                                  AgentProviders::Store,
                                  provider.apiKeyId,
                                  provider.host,
-                                 apiKey);
+                                 apiKey,
+                                 AgentProviders::PlanBilled(previous));
     } else if (AgentProviders::Transferable(previous, provider)) {
         provider.apiKeyId = previous.apiKeyId;
     } else if (!previous.apiKeyId.empty()) {
-        task.future = std::async(std::launch::async, AgentProviders::Erase, previous.apiKeyId);
+        task.future = std::async(std::launch::async, AgentProviders::Erase, previous.apiKeyId,
+                                 AgentProviders::PlanBilled(previous));
     }
 
     if (!task.future.valid()) {
-        return saveProvider(std::move(provider), previousName);
+        return saveProvider(std::move(provider), previousName, false);
     }
 
     task.running = true;
@@ -279,6 +302,9 @@ Result AgentActions::handle(const MailRemoveAgentProvider& msg) {
     if (provider.name.empty()) {
         return Result::SUCCESS;
     }
+    if (state.agent.providers.signIn.replaceName == msg.name) {
+        resetSignIn();
+    }
     if (provider.apiKeyId.empty()) {
         return removeProvider(msg.name);
     }
@@ -287,7 +313,8 @@ Result AgentActions::handle(const MailRemoveAgentProvider& msg) {
     task.kind = DefaultCompositorState::AgentState::ProviderKeyTask::Kind::Remove;
     task.provider = provider;
     task.previousName = msg.name;
-    task.future = std::async(std::launch::async, AgentProviders::Erase, provider.apiKeyId);
+    task.future = std::async(std::launch::async, AgentProviders::Erase, provider.apiKeyId,
+                             AgentProviders::PlanBilled(provider));
     return Result::SUCCESS;
 }
 
@@ -306,7 +333,8 @@ Result AgentActions::handle(const MailTestAgentProvider& msg) {
         return Result::SUCCESS;
     }
 
-    const auto apiKey = Text::TrimBlank(msg.apiKey);
+    const auto planBilled = AgentProviders::PlanBilled(provider);
+    const auto apiKey = planBilled ? pendingSignIn() : Text::TrimBlank(msg.apiKey);
     std::optional<Settings::Intelligence::Provider> stored;
     if (apiKey.empty()) {
         const auto& target = state.agent.providers.editTarget;
@@ -328,6 +356,43 @@ Result AgentActions::handle(const MailTestAgentProvider& msg) {
                              apiKey,
                              std::move(stored),
                              Cancelled(test.cancel));
+    return Result::SUCCESS;
+}
+
+Result AgentActions::handle(const MailSignInAgentProvider& msg) {
+    auto& agent = state.agent;
+    auto& signIn = agent.providers.signIn;
+    if (signIn.running) {
+        return Result::SUCCESS;
+    }
+    if (!AgentProviders::SignInAvailable()) {
+        callbacks.notify(Sakura::ToastType::Error, 5000, "Sign in with ChatGPT needs the system keychain.");
+        return Result::SUCCESS;
+    }
+
+    signIn.running = true;
+    signIn.session = agent.providers.editSession;
+    signIn.revision = msg.revision;
+    signIn.draft = msg.value;
+    signIn.replaceName = msg.replaceName;
+    signIn.record.clear();
+    signIn.email.clear();
+    signIn.message = "Finish signing in with your browser.";
+    signIn.cancel = std::make_shared<std::atomic<bool>>(false);
+    signIn.link = std::make_shared<DefaultCompositorState::AgentState::SignInLink>();
+    signIn.future = std::async(std::launch::async,
+                               AgentProviders::SignIn,
+                               signIn.link,
+                               Cancelled(signIn.cancel));
+    resetProviderTest();
+    return Result::SUCCESS;
+}
+
+Result AgentActions::handle(const MailCancelAgentProviderSignIn&) {
+    auto& signIn = state.agent.providers.signIn;
+    if (signIn.running && signIn.cancel) {
+        signIn.cancel->store(true);
+    }
     return Result::SUCCESS;
 }
 
@@ -378,6 +443,7 @@ void AgentActions::reconcile() {
     checkContextLengths();
     checkSettingsSection();
     collectProviderTest();
+    collectSignIn();
     collectProviderKeyTask();
     collectModels();
 }
@@ -395,6 +461,12 @@ void AgentActions::shutdown() {
     if (test.running) {
         test.future.wait();
         collectProviderTest();
+    }
+
+    auto& signIn = state.agent.providers.signIn;
+    if (signIn.running) {
+        signIn.future.wait();
+        collectSignIn();
     }
 
     auto& keyTask = state.agent.providers.keyTask;
@@ -423,6 +495,9 @@ void AgentActions::cancel() {
     }
     if (agent.providerTest.cancel) {
         agent.providerTest.cancel->store(true);
+    }
+    if (agent.providers.signIn.cancel) {
+        agent.providers.signIn.cancel->store(true);
     }
 }
 
@@ -469,6 +544,23 @@ void AgentActions::resetProviderTest() {
     test.message.clear();
 }
 
+void AgentActions::resetSignIn() {
+    auto& signIn = state.agent.providers.signIn;
+    if (signIn.running && signIn.cancel) {
+        signIn.cancel->store(true);
+    }
+    signIn.record.clear();
+    signIn.email.clear();
+    signIn.message.clear();
+    signIn.draft.reset();
+    signIn.replaceName.reset();
+}
+
+std::string AgentActions::pendingSignIn() const {
+    const auto& providers = state.agent.providers;
+    return providers.signIn.session == providers.editSession ? providers.signIn.record : std::string{};
+}
+
 bool AgentActions::selectFallbackModel() {
     auto& settings = state.agent.settings;
     if (settings.models.empty()) {
@@ -507,7 +599,8 @@ void AgentActions::renameProvider(const std::string& previous, const std::string
     });
 }
 
-Result AgentActions::saveProvider(Settings::Intelligence::Provider provider, const std::string& previousName) {
+Result AgentActions::saveProvider(Settings::Intelligence::Provider provider, const std::string& previousName,
+                                  bool signedIn) {
     auto& agent = state.agent;
     auto& customs = agent.settings.customProviders;
     if (previousName != provider.name) {
@@ -526,9 +619,17 @@ Result AgentActions::saveProvider(Settings::Intelligence::Provider provider, con
 
     JST_CHECK(persist());
     const char* verb = replaced ? "updated" : "added";
+    const bool planBilled = AgentProviders::PlanBilled(provider);
+    if (planBilled) {
+        agent.providers.signIn.record.clear();
+        agent.providers.signIn.email.clear();
+    }
     callbacks.notify(Sakura::ToastType::Success,
                      3000,
                      jst::fmt::format("Provider '{}' {}.", provider.name, verb));
+    if (signedIn && !state.modal.content) {
+        state.modal = {.content = ModalContent::PlanNotice};
+    }
 
     const bool sameSession = agent.providers.editSession == agent.providers.keyTask.session;
     const bool editorOpen = state.interface.settingsTab &&
@@ -601,12 +702,15 @@ void AgentActions::collectProviderKeyTask() {
 
     Result commit;
     if (task.kind == DefaultCompositorState::AgentState::ProviderKeyTask::Kind::Save) {
-        commit = saveProvider(std::move(task.provider), task.previousName);
+        commit = saveProvider(std::move(task.provider), task.previousName, task.signedIn);
     } else {
         commit = removeProvider(task.previousName);
     }
     if (commit != Result::SUCCESS) {
         JST_WARN("[AGENT] Failed to apply provider changes.");
+    }
+    if (!result.warning.empty()) {
+        callbacks.notify(Sakura::ToastType::Warning, 8000, result.warning);
     }
 }
 
@@ -660,6 +764,72 @@ void AgentActions::checkSettingsSection() {
     });
     if (unchecked) {
         refresh();
+    }
+}
+
+void AgentActions::collectSignIn() {
+    auto& agent = state.agent;
+    auto& signIn = agent.providers.signIn;
+    if (signIn.running && signIn.link) {
+        std::string url;
+        {
+            std::lock_guard lock(signIn.link->mutex);
+            url = std::exchange(signIn.link->url, {});
+        }
+        if (!url.empty()) {
+            callbacks.enqueueMail(MailOpenUrl{.url = std::move(url), .notifyResult = true});
+        }
+    }
+    if (!signIn.running || !FutureReady(signIn.future)) {
+        return;
+    }
+
+    auto result = signIn.future.get();
+    signIn.running = false;
+    if (signIn.session != agent.providers.editSession) {
+        signIn.message.clear();
+        return;
+    }
+    if (signIn.cancel && signIn.cancel->load()) {
+        signIn.message = "Sign-in cancelled.";
+        return;
+    }
+
+    signIn.message = result.message;
+    if (!result.success) {
+        return;
+    }
+
+    signIn.record = std::move(result.record);
+    signIn.email = std::move(result.email);
+    auto& test = agent.providerTest;
+    if (!test.running) {
+        test.completed = true;
+        test.success = true;
+        test.revision = signIn.revision;
+        test.message = result.message;
+    }
+
+    if (!signIn.draft) {
+        return;
+    }
+    auto draft = AgentProviders::Normalize(*std::exchange(signIn.draft, std::nullopt));
+    const auto& target = agent.providers.editTarget;
+    if (!target) {
+        const auto base = draft.name;
+        for (U64 suffix = 2; !AgentProviders(agent).find(draft.name).name.empty(); ++suffix) {
+            draft.name = jst::fmt::format("{} {}", base, suffix);
+        }
+    }
+    const auto previousName = signIn.replaceName.value_or(draft.name);
+    const auto existing = AgentProviders(agent).find(draft.name);
+    const bool taken = !existing.name.empty() && existing.name != previousName;
+    const bool replacing = !target || AgentProviders::PlanBilled(*target);
+    if (AgentProviders::Valid(draft) && !taken && replacing) {
+        callbacks.enqueueMail(MailSaveAgentProvider{
+            .value = draft,
+            .replaceName = signIn.replaceName,
+        });
     }
 }
 

@@ -111,7 +111,7 @@ void MarkCacheBreakpoints(nlohmann::json& messages) {
 nlohmann::json EncodeMessages(const Config& config, const Request& request) {
     auto encoded = nlohmann::json::array();
     for (const auto& message : request.messages) {
-        const auto state = Wire::Replay(message, config.host, config.path, request.model);
+        const auto state = Wire::Replay(message, config, request.model);
         if (Wire::Empty(message, state)) {
             continue;
         }

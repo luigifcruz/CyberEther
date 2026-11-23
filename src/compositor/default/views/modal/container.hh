@@ -10,6 +10,7 @@
 #include "../flowgraph/modals/rename.hh"
 #include "feedback.hh"
 #include "onboarding.hh"
+#include "plan_notice.hh"
 #include "remote_qr.hh"
 #include "../../model/ui.hh"
 
@@ -32,6 +33,7 @@ struct ModalView {
         DocsSearchView::Config docsSearch;
         OnboardingView::Config onboarding;
         CrashReportView::Config crashReport;
+        PlanNoticeView::Config planNotice;
         Sakura::Callback<void()> onClose;
     };
 
@@ -54,6 +56,7 @@ struct ModalView {
     DocsSearchView docsSearchView;
     OnboardingView onboardingView;
     CrashReportView crashReportView;
+    PlanNoticeView planNoticeView;
 };
 
 }  // namespace Jetstream

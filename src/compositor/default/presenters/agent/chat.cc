@@ -43,6 +43,16 @@ Sakura::ChatComposer::Selector AgentChatPresenter::ModelSelector(const Presenter
             selector.onEffort = [enqueue, provider = model.provider, id = model.id](const std::string& value) {
                 enqueue(MailSetAgentReasoningEffort{.provider = provider, .model = id, .value = value});
             };
+            const auto provider = AgentProviders(context.state.agent).find(model.provider);
+            if (AgentProviders::PlanBilled(provider)) {
+                selector.footer = Sakura::ModelPicker::Footer{
+                    .text = "Using ChatGPT plan",
+                    .action = "Manage usage",
+                    .onAction = [enqueue]() {
+                        enqueue(MailOpenUrl{.url = AgentChatGpt::UsageUrl, .notifyResult = true});
+                    },
+                };
+            }
         }
     }
     selector.disabled = selector.options.empty();

@@ -15,6 +15,7 @@ enum class ModalContent : I32 {
     DocsSearch,
     Onboarding,
     CrashReport,
+    PlanNotice,
 };
 
 enum class OnboardingPage : I32 {

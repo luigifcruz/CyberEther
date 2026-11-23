@@ -44,6 +44,7 @@ class AgentProviders {
     static bool Valid(const Provider& provider);
     static Provider Preset(Agent::Provider::Kind kind);
     static Provider Normalize(Provider provider);
+    static bool PlanBilled(const Provider& provider);
     static bool External(const Provider& provider);
     static bool Ready(const Provider& provider, Agent::Provider::Scope scope);
     static bool Transferable(const Provider& stored, const Provider& target);
@@ -53,15 +54,19 @@ class AgentProviders {
     static std::shared_ptr<Agent::Provider> Client(const Provider& provider);
 
     static DefaultCompositorState::AgentState::ProviderKeyResult Store(std::string keyId, std::string host,
-                                                                       std::string apiKey);
-    static DefaultCompositorState::AgentState::ProviderKeyResult Erase(std::string keyId);
+                                                                       std::string apiKey, bool plan = false);
+    static DefaultCompositorState::AgentState::ProviderKeyResult Erase(std::string keyId, bool plan = false);
     static DefaultCompositorState::AgentState::ModelListResult Models(std::vector<Provider> providers,
                                                                       Agent::Cancellation cancelled);
     static std::pair<bool, std::string> Test(Provider provider, std::string apiKey, std::optional<Provider> stored,
                                              Agent::Cancellation cancelled);
+    static DefaultCompositorState::AgentState::SignInResult SignIn(
+        std::shared_ptr<DefaultCompositorState::AgentState::SignInLink> link, Agent::Cancellation cancelled);
+    static bool SignInAvailable();
 
  private:
     static std::string Key(const Provider& provider, std::string* error = nullptr);
+    static std::string PlanToken(const Provider& provider, const std::string& record);
     static Agent::Provider::Config Configure(const Provider& provider);
 
     const DefaultCompositorState::AgentState& agent;

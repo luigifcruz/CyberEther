@@ -25,6 +25,7 @@ class JETSTREAM_API Provider {
         Fireworks,
         Custom,
         Anthropic,
+        ChatGPT,
     };
 
     enum class Api {

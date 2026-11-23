@@ -11,6 +11,7 @@
 #include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/settings.hh"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -33,6 +34,7 @@ struct IntelligenceModelView {
         bool warning = false;
         Sakura::Callback<void(const std::string&)> onSearch;
         Sakura::Callback<void(const Option&)> onCommit;
+        Sakura::Callback<void(const std::string&)> onCopy;
         Sakura::Callback<void()> onBack;
     };
 
@@ -52,6 +54,7 @@ struct IntelligenceModelView {
     Sakura::PillInput filterInput;
     std::vector<std::unique_ptr<Entry>> entries;
     SectionGroup modelsGroup;
+    std::vector<std::unique_ptr<SectionGroup>> providerGroups;
     Sakura::Stack stack;
 };
 

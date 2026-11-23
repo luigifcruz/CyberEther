@@ -30,12 +30,20 @@ void IntelligenceModelView::update(Config config) {
     while (entries.size() < models.size()) {
         entries.push_back(std::make_unique<Entry>());
     }
-    std::vector<Sakura::SettingCard::Row> rows;
-    rows.reserve(models.size());
+    std::vector<std::string> providers;
+    std::vector<std::vector<Sakura::SettingCard::Row>> groups;
     for (U64 index = 0; index < models.size(); ++index) {
         const auto& item = models[index];
         auto& entry = *entries[index];
-        entry.id.update({.label = item.model.id});
+        entry.id.update({
+            .label = item.model.id,
+            .icon = ICON_LC_COPY,
+            .onIcon = [this, id = item.model.id]() {
+                if (this->config.onCopy) {
+                    this->config.onCopy(id);
+                }
+            },
+        });
         entry.add.update({
             .str = "Add",
             .icon = ICON_LC_PLUS,
@@ -53,9 +61,14 @@ void IntelligenceModelView::update(Config config) {
                 {.child = &entry.add},
             },
         });
-        rows.push_back({
+        const auto found = std::find(providers.begin(), providers.end(), item.model.provider);
+        const auto group = static_cast<U64>(found - providers.begin());
+        if (found == providers.end()) {
+            providers.push_back(item.model.provider);
+            groups.emplace_back();
+        }
+        groups[group].push_back({
             .label = item.label,
-            .description = item.model.provider,
             .control = &entry.row,
             .wide = true,
         });
@@ -64,18 +77,31 @@ void IntelligenceModelView::update(Config config) {
         .title = "Available Models",
         .description = this->config.warning ? "" : this->config.status,
         .warning = this->config.warning ? this->config.status : "",
-        .rows = std::move(rows),
-        .empty = "No models match the filter.",
+        .empty = models.empty() ? "No models match the filter." : "",
         .toolbar = &filterInput,
     });
 
+    while (providerGroups.size() < groups.size()) {
+        providerGroups.push_back(std::make_unique<SectionGroup>());
+    }
+    std::vector<Sakura::Stack::Item> items{
+        {.child = &breadcrumb},
+        {.child = &header},
+        {.child = &modelsGroup},
+    };
+    for (U64 index = 0; index < groups.size(); ++index) {
+        const U64 count = groups[index].size();
+        providerGroups[index]->update({
+            .title = providers[index],
+            .description = jst::fmt::format("{} {}", count, count == 1 ? "model" : "models"),
+            .rows = std::move(groups[index]),
+        });
+        items.push_back({.child = providerGroups[index].get()});
+    }
+
     stack.update({
         .spacing = Sakura::Spacing::XSmall,
-        .items = {
-            {.child = &breadcrumb},
-            {.child = &header},
-            {.child = &modelsGroup},
-        },
+        .items = std::move(items),
     });
 }
 

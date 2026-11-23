@@ -19,12 +19,14 @@ struct StatusBadge : public Sakura::Badge {
     struct Config {
         std::string label;
         Tone tone = Tone::Neutral;
+        std::string icon;
+        Sakura::Callback<void()> onIcon;
     };
 
     void update(Config config);
 
  private:
-    void banner(std::string label, const char* key);
+    void banner(Config config, const char* key);
 };
 
 }  // namespace Jetstream

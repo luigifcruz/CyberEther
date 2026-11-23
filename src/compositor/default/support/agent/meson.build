@@ -1,4 +1,5 @@
 src_lst += files([
+    'chatgpt.cc',
     'executor.cc',
     'flowgraphs.cc',
     'mcp.cc',

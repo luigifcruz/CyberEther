@@ -170,7 +170,7 @@ void EncodeConversation(const Config& config, const Request& request, nlohmann::
             continue;
         }
 
-        const auto state = Wire::Replay(message, config.host, config.path, request.model);
+        const auto state = Wire::Replay(message, config, request.model);
         if (state.is_array() && !state.empty()) {
             Append(messages, "assistant", state);
             continue;

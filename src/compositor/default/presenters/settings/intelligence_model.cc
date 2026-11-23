@@ -34,6 +34,9 @@ IntelligenceModelView::Config IntelligenceModelPresenter::build() const {
     config.onCommit = [enqueue](const Settings::Intelligence::Model& model) {
         enqueue(MailAddAgentModel{.value = model});
     };
+    config.onCopy = [enqueue](const std::string& id) {
+        enqueue(MailCopyText{.label = "Model ID", .value = id});
+    };
 
     return config;
 }

@@ -270,6 +270,47 @@ TEST_CASE("Provider state is scoped to its endpoint and model", "[agent][provide
     CHECK(request.dump().find("private") == std::string::npos);
 }
 
+TEST_CASE("Responses state never replays between API key and ChatGPT plan billing", "[agent][providers][replay]") {
+    using Kind = Agent::Provider::Kind;
+    const auto [first, second] = GENERATE(std::pair{Kind::OpenAI, Kind::OpenAI}, std::pair{Kind::OpenAI, Kind::ChatGPT},
+                                          std::pair{Kind::ChatGPT, Kind::OpenAI}, std::pair{Kind::ChatGPT, Kind::ChatGPT});
+
+    std::vector<Json> requests;
+    AgentTest::ProviderServer provider;
+    provider.server.Post("/v1/responses", [&](const auto& input, auto& response) {
+        requests.push_back(Json::parse(input.body));
+        std::string stream = Event({{"type", "response.output_text.delta"}, {"delta", "Answer"}});
+        stream += Event({{"type", "response.output_item.done"}, {"output_index", 0}, {"item", ReasoningItem("rs-private")}});
+        stream += Event({{"type", "response.completed"}});
+        response.set_content(stream, "text/event-stream");
+    });
+    provider.start();
+
+    const auto configure = [&](Kind kind) {
+        auto config = provider.config(kind);
+        config.path = "/v1/responses";
+        config.api = Agent::Provider::Api::Responses;
+        return config;
+    };
+
+    Agent::Provider::Response response;
+    REQUIRE(Agent::Provider(configure(first)).stream(AgentTest::Request({{"user", "Hello"}}), {}, response) ==
+            Result::SUCCESS);
+    REQUIRE(response.state != nullptr);
+
+    const std::vector<Agent::Provider::Message> history{
+        {"user", "Hello"},
+        {"assistant", "Answer", {}, "", {}, response.state},
+        {"user", "Next"},
+    };
+    Agent::Provider::Response next;
+    REQUIRE(Agent::Provider(configure(second)).stream(AgentTest::Request(history), {}, next) == Result::SUCCESS);
+
+    REQUIRE(requests.size() == 2);
+    const bool replayed = requests[1].dump().find("rs-private") != std::string::npos;
+    CHECK(replayed == (first == second));
+}
+
 TEST_CASE("Responses respect the visible reasoning preference while retaining continuation state",
           "[agent][providers][replay]") {
     Json request;
