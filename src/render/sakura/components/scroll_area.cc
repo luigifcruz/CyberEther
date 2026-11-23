@@ -70,7 +70,8 @@ Extent2D<F32> ScrollArea::measure(const Context& ctx, Extent2D<F32> available) {
     F32 natural = 0.0f;
     if (config.height == 0.0f && config.content) {
         const F32 padding = config.border ? Px(ctx, kWindowPadding) : 0.0f;
-        const F32 gutter = config.alwaysScrollbar && !config.overlay ? Px(ctx, kScrollbarSize) : 0.0f;
+        const F32 gutter = config.alwaysScrollbar && !config.overlay && config.scrollbar ? Px(ctx, kScrollbarSize)
+                                                                                           : 0.0f;
         const F32 inner = std::max(0.0f, width - 2.0f * padding - gutter);
         natural = measureChild(*config.content, ctx, {inner, std::numeric_limits<F32>::infinity()}).y + 2.0f * padding;
         if (config.maxHeight > 0.0f) {
@@ -86,7 +87,7 @@ void ScrollArea::layout(const Context& ctx) {
     const F32 padding = border ? Px(ctx, kWindowPadding) : 0.0f;
     const F32 infinite = std::numeric_limits<F32>::infinity();
     const bool overlay = impl->config.overlay;
-    F32 scrollbar = Px(ctx, kScrollbarSize);
+    F32 scrollbar = impl->config.scrollbar ? Px(ctx, kScrollbarSize) : 0.0f;
     F32 innerWidth = std::max(0.0f, bounds.width - 2.0f * padding - (overlay ? 0.0f : scrollbar));
     impl->contentHeight = 0.0f;
     if (impl->config.content) {
@@ -127,6 +128,7 @@ void ScrollArea::layout(const Context& ctx) {
     impl->scroll.update({
         .contentHeight = impl->contentHeight,
         .scrollY = impl->scrollY,
+        .scrollbar = impl->config.scrollbar,
         .wheel = !overlay,
         .wheelStep = Px(ctx, kWheelStep),
         .thickness = scrollbar,
