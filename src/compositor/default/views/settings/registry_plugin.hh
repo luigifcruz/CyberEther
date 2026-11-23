@@ -34,6 +34,8 @@ struct RegistryPluginView {
         std::string license;
         StatusBadge::Config status;
         std::string path;
+        std::string update;
+        bool updating = false;
         bool temporary = false;
         std::vector<Item> blocks;
         std::vector<Item> examples;
@@ -41,6 +43,7 @@ struct RegistryPluginView {
 
     struct Config {
         Plugin plugin;
+        Sakura::Callback<void(const std::string&)> onUpdate;
         Sakura::Callback<void(const std::string&)> onReload;
         Sakura::Callback<void(const std::string&)> onRemove;
         Sakura::Callback<void()> onBack;
@@ -48,6 +51,7 @@ struct RegistryPluginView {
 
     static std::string VersionLabel(const Plugin& plugin);
     static std::string SummaryLabel(const Plugin& plugin);
+    static std::string UpdateLabel(const Plugin& plugin);
     void update(Config config);
     Sakura::Component& content();
 
@@ -57,6 +61,7 @@ struct RegistryPluginView {
     Config config;
     SettingsBreadcrumb breadcrumb;
     SettingsHeader header;
+    CompactButton updateButton;
     CompactButton reloadButton;
     CompactButton removeButton;
     Sakura::Stack actions;

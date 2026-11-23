@@ -190,6 +190,12 @@ struct JETSTREAM_API Settings {
         JST_SERDES(python, dependencyPolicy);
     };
 
+    struct Plugins {
+        std::string updatePolicy = "prompt";
+
+        JST_SERDES(updatePolicy);
+    };
+
     Graphics graphics;
     Remote remote;
     Interface interface;
@@ -198,8 +204,9 @@ struct JETSTREAM_API Settings {
     Developer developer;
     Benchmark benchmark;
     Runtime runtime;
+    Plugins plugins;
 
-    JST_SERDES(graphics, remote, interface, maps, intelligence, developer, runtime);
+    JST_SERDES(graphics, remote, interface, maps, intelligence, developer, runtime, plugins);
 
     static Result Get(Settings& settings);
     static Result Set(const Settings& settings, bool persist = true);

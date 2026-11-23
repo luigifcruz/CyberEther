@@ -9,9 +9,9 @@
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "feedback.hh"
-#include "missing_plugins.hh"
 #include "onboarding.hh"
 #include "plan_notice.hh"
+#include "plugin_prompt.hh"
 #include "remote_qr.hh"
 #include "../../model/ui.hh"
 
@@ -34,7 +34,8 @@ struct ModalView {
         DocsSearchView::Config docsSearch;
         OnboardingView::Config onboarding;
         CrashReportView::Config crashReport;
-        MissingPluginsView::Config missingPlugins;
+        PluginPromptView::Config missingPlugins;
+        PluginPromptView::Config pluginUpdates;
         PlanNoticeView::Config planNotice;
         Sakura::Callback<void()> onClose;
     };
@@ -58,7 +59,7 @@ struct ModalView {
     DocsSearchView docsSearchView;
     OnboardingView onboardingView;
     CrashReportView crashReportView;
-    MissingPluginsView missingPluginsView;
+    PluginPromptView pluginPromptView;
     PlanNoticeView planNoticeView;
 };
 

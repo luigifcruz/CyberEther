@@ -185,6 +185,13 @@ Result DefaultCompositor::create() {
     state.runtime.pythonValidation = PythonRuntimeContext::ValidateRuntimePath(state.runtime.pythonPath);
     state.runtime.initialPythonValidation = state.runtime.pythonValidation;
 
+    state.plugins.updatePolicy = settings.plugins.updatePolicy;
+    if (!PluginActions::ValidUpdatePolicy(state.plugins.updatePolicy)) {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved plugin update policy '{}'. Using default.",
+                 state.plugins.updatePolicy);
+        state.plugins.updatePolicy = "prompt";
+    }
+
     try {
         state.remote.config.video.codec = StringToRemoteCodec(settings.remote.video.codec);
     } catch (const Result&) {

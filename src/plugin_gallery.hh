@@ -56,6 +56,7 @@ class JETSTREAM_API Plugin::Gallery {
     static constexpr const char* PagePath = "/gallery/plugins/";
 
     static bool ValidId(std::string_view id);
+    static bool Outdated(const Info& info, const Entry& entry);
     static bool ReservedName(std::string_view name);
     static std::string Host();
     static Query Current(std::vector<std::string> ids = {});
@@ -72,7 +73,11 @@ class JETSTREAM_API Plugin::Gallery {
     static Result Install(const Source& source,
                           const std::string& id,
                           const std::function<bool()>& cancelled = {});
+    static Result Updates(const Source& source,
+                          Entries& updates,
+                          const std::function<bool()>& cancelled = {});
     static Result Update(const Source& source,
+                         const std::vector<std::string>& ids,
                          std::vector<std::string>& updated,
                          const std::function<bool()>& cancelled = {});
 };

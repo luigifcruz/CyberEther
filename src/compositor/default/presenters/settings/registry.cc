@@ -16,6 +16,7 @@ RegistrySettingsView::Config RegistrySettingsPresenter::build() const {
     RegistrySettingsView::Config config{
         .page = context.state.settings.registryPage,
         .plugin = context.state.settings.registryPlugin,
+        .updatePolicy = context.state.plugins.updatePolicy,
         .onNavigate = [enqueue](RegistryPage page, const std::string& plugin) {
             enqueue(MailSetRegistryPage{.page = page, .plugin = plugin});
         },
@@ -36,6 +37,12 @@ RegistrySettingsView::Config RegistrySettingsPresenter::build() const {
         .onReloadPlugin = [enqueue](const std::string& id) {
             enqueue(MailReloadPlugin{.id = id});
         },
+        .onUpdatePlugin = [enqueue](const std::string& id) {
+            enqueue(MailUpdateGalleryPlugins{.ids = {id}});
+        },
+        .onUpdatePolicyChange = [enqueue](const std::string& value) {
+            enqueue(MailSetPluginUpdatePolicy{.value = value});
+        },
         .onBrowsePlugins = [enqueue]() {
             enqueue(MailSetWelcomeSection{.section = WelcomeSection::Plugins});
             enqueue(MailOpenStartTab{});
@@ -48,8 +55,13 @@ RegistrySettingsView::Config RegistrySettingsPresenter::build() const {
         config.domains.push_back({.domain = domain, .blocks = std::move(blocks)});
     }
 
+    const auto updates = context.state.pluginUpdates();
+    const auto& updating = context.state.plugins.update.ids;
     config.plugins.reserve(registry.plugins.size());
     for (const auto& info : registry.plugins) {
+        const auto update = std::find_if(updates.begin(), updates.end(), [&](const auto& entry) {
+            return entry.id == info.id;
+        });
         config.plugins.push_back({
             .id = info.id,
             .name = info.title.empty() ? info.id : info.title,
@@ -61,6 +73,8 @@ RegistrySettingsView::Config RegistrySettingsPresenter::build() const {
             .license = info.license,
             .status = Status(info),
             .path = info.temporary ? info.source : info.path,
+            .update = update == updates.end() || info.temporary ? "" : update->version,
+            .updating = std::find(updating.begin(), updating.end(), info.id) != updating.end(),
             .temporary = info.temporary,
             .blocks = blocks(info),
             .examples = examples(info),

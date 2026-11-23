@@ -1161,8 +1161,12 @@ TEST_CASE("Gallery installs remember their source and follow gallery updates", "
     CHECK(plugin->version == "1.0.0");
     CHECK(plugin->status == Plugin::Status::Restart);
 
+    Plugin::Gallery::Entries updates;
+    REQUIRE(Plugin::Gallery::Updates(gallery.source(), updates) == Result::SUCCESS);
+    CHECK(updates.empty());
+
     std::vector<std::string> updated;
-    REQUIRE(Plugin::Gallery::Update(gallery.source(), updated) == Result::SUCCESS);
+    REQUIRE(Plugin::Gallery::Update(gallery.source(), {"remote"}, updated) == Result::SUCCESS);
     CHECK(updated.empty());
 
     spec.version = "2.0.0";
@@ -1170,7 +1174,17 @@ TEST_CASE("Gallery installs remember their source and follow gallery updates", "
     gallery.files["https://files.example/remote-2.cep"] = second;
     gallery.list(Listing({Entry("remote", "2.0.0", "https://files.example/remote-2.cep", Sha256(second), second.size())}),
                  query);
-    REQUIRE(Plugin::Gallery::Update(gallery.source(), updated) == Result::SUCCESS);
+    REQUIRE(Plugin::Gallery::Updates(gallery.source(), updates) == Result::SUCCESS);
+    REQUIRE(updates.size() == 1);
+    CHECK(updates.front().id == "remote");
+    CHECK(updates.front().version == "2.0.0");
+    CHECK(Find("remote")->version == "1.0.0");
+
+    REQUIRE(Plugin::Gallery::Update(gallery.source(), {"other"}, updated) == Result::SUCCESS);
+    CHECK(updated.empty());
+    CHECK(Find("remote")->version == "1.0.0");
+
+    REQUIRE(Plugin::Gallery::Update(gallery.source(), {"remote"}, updated) == Result::SUCCESS);
     CHECK(updated == std::vector<std::string>{"remote"});
     plugin = Find("remote");
     REQUIRE(plugin.has_value());
@@ -1188,7 +1202,7 @@ TEST_CASE("Gallery installs remember their source and follow gallery updates", "
         REQUIRE(plugin.has_value());
         CHECK(plugin->status == Plugin::Status::Waiting);
 
-        REQUIRE(Plugin::Gallery::Update(gallery.source(), updated) == Result::SUCCESS);
+        REQUIRE(Plugin::Gallery::Update(gallery.source(), {"remote"}, updated) == Result::SUCCESS);
         CHECK(updated == std::vector<std::string>{"remote"});
         plugin = Find("remote");
         REQUIRE(plugin.has_value());
@@ -1205,7 +1219,7 @@ TEST_CASE("Gallery installs remember their source and follow gallery updates", "
         CHECK_FALSE(plugin->gallery);
 
         gallery.requests.clear();
-        REQUIRE(Plugin::Gallery::Update(gallery.source(), updated) == Result::SUCCESS);
+        REQUIRE(Plugin::Gallery::Update(gallery.source(), {"remote"}, updated) == Result::SUCCESS);
         CHECK(updated.empty());
         CHECK(gallery.requests.empty());
     }

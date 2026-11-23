@@ -1,5 +1,7 @@
 #include "state.hh"
 
+#include <algorithm>
+
 namespace Jetstream {
 
 const Home::Gallery::Flowgraph* DefaultCompositorState::RegistryState::flowgraph(const std::string& key) const {
@@ -21,6 +23,19 @@ std::string DefaultCompositorState::FlowgraphState::FieldKey(const std::string& 
                                                              const std::string& blockName,
                                                              const std::string& fieldName) {
     return jst::fmt::format("{}:{}:{}", flowgraphId, blockName, fieldName);
+}
+
+std::vector<Plugin::Gallery::Entry> DefaultCompositorState::pluginUpdates() const {
+    std::vector<Plugin::Gallery::Entry> updates;
+    for (const auto& entry : plugins.updates.entries) {
+        const auto outdated = std::any_of(registry.plugins.begin(), registry.plugins.end(), [&](const auto& info) {
+            return Plugin::Gallery::Outdated(info, entry);
+        });
+        if (outdated) {
+            updates.push_back(entry);
+        }
+    }
+    return updates;
 }
 
 bool DefaultCompositorState::startTabShown() const {

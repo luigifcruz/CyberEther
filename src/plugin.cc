@@ -1633,10 +1633,18 @@ Result Plugin::Gallery::Install(const Source& source,
     return plugin().installEntry(source, *entry, false, cancelled);
 }
 
-Result Plugin::Gallery::Update(const Source& source,
-                              std::vector<std::string>& updated,
-                              const std::function<bool()>& cancelled) {
-    updated.clear();
+bool Plugin::Gallery::Outdated(const Info& info, const Entry& entry) {
+    if (info.temporary || !info.gallery || info.id != entry.id || !entry.available() ||
+        info.pending == entry.version) {
+        return false;
+    }
+    return info.version != entry.version || info.status == Status::Waiting;
+}
+
+Result Plugin::Gallery::Updates(const Source& source,
+                               Entries& updates,
+                               const std::function<bool()>& cancelled) {
+    updates.clear();
 
     std::vector<Info> inventory;
     JST_CHECK(plugin().collect(inventory));
@@ -1656,11 +1664,7 @@ Result Plugin::Gallery::Update(const Source& source,
     Entries entries;
     JST_CHECK(Fetch(source, Current(ids), cancelled, entries));
 
-    Result result = Result::SUCCESS;
     for (const auto& info : installed) {
-        if (cancelled && cancelled()) {
-            break;
-        }
         const auto entry = std::find_if(entries.begin(), entries.end(), [&](const auto& item) {
             return item.id == info.id;
         });
@@ -1668,17 +1672,36 @@ Result Plugin::Gallery::Update(const Source& source,
             JST_WARN("[PLUGIN] Plugin '{}' is no longer in the CyberEther gallery.", info.id);
             continue;
         }
-        if (!entry->available() || info.pending == entry->version) {
-            continue;
+        if (Outdated(info, *entry)) {
+            updates.push_back(*entry);
         }
-        if (info.version == entry->version && info.status != Status::Waiting) {
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Plugin::Gallery::Update(const Source& source,
+                              const std::vector<std::string>& ids,
+                              std::vector<std::string>& updated,
+                              const std::function<bool()>& cancelled) {
+    updated.clear();
+
+    Entries updates;
+    JST_CHECK(Updates(source, updates, cancelled));
+
+    Result result = Result::SUCCESS;
+    for (const auto& entry : updates) {
+        if (cancelled && cancelled()) {
+            break;
+        }
+        if (std::find(ids.begin(), ids.end(), entry.id) == ids.end()) {
             continue;
         }
 
-        if (plugin().installEntry(source, *entry, true, cancelled) == Result::SUCCESS) {
-            updated.push_back(entry->id);
+        if (plugin().installEntry(source, entry, true, cancelled) == Result::SUCCESS) {
+            updated.push_back(entry.id);
         } else {
-            JST_ERROR("[PLUGIN] Failed to update plugin '{}' from the gallery.", info.id);
+            JST_ERROR("[PLUGIN] Failed to update plugin '{}' from the gallery.", entry.id);
             result = Result::ERROR;
         }
     }

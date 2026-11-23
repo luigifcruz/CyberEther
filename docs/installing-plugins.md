@@ -38,9 +38,17 @@ The CyberEther gallery lists plugins built for every CyberEther release. To inst
 
 CyberEther downloads the plugin, checks it against the checksum published by the gallery, and loads it right away.
 
-Plugins installed from the gallery update themselves. Every time CyberEther starts, it asks the gallery for newer builds and installs them in the background. New versions of plugins that are already loaded take effect the next time CyberEther starts.
+Every time CyberEther starts, it asks the gallery for newer builds of the plugins you installed from it. Under **Settings** > **Registry** > **Updates**, the **Update Policy** setting controls what happens next:
 
-After you update CyberEther itself, a gallery plugin may show **Waiting for a compatible build** until its author publishes a build for the new release. CyberEther installs it automatically once it appears.
+| Policy | Behavior |
+| --- | --- |
+| **Ask Every Time** | The default. CyberEther lists the new versions and asks before installing them. |
+| **Update Automatically** | CyberEther installs new versions in the background. |
+| **Update Manually** | CyberEther only marks plugins that have a new version. |
+
+With any policy, a plugin with a new version shows **Update** next to it in the **Plugins** card and on its detail page. New versions of plugins that are already loaded take effect the next time CyberEther starts.
+
+After you update CyberEther itself, a gallery plugin may show **Waiting for a compatible build** until its author publishes a build for the new release. Once that build appears, CyberEther offers it like any other update.
 
 ## Installing From a File
 
@@ -58,7 +66,7 @@ CyberEther copies the plugin into its own storage, loads it immediately, and ope
 
 ## Updating a Plugin
 
-Gallery plugins update automatically. To update a plugin installed from a file, install the new `.cep` file the same way. Installing a file also stops automatic gallery updates for that plugin until you install it from the gallery again.
+Gallery plugins follow the update policy described in [Installing From the Gallery](#installing-from-the-gallery). To update a plugin installed from a file, install the new `.cep` file the same way. Installing a file also stops gallery updates for that plugin until you install it from the gallery again.
 
 If the plugin is already loaded, CyberEther keeps the running version and switches to the new one the next time it starts. The plugin detail page shows **Version x ready on restart** in the meantime.
 
@@ -103,7 +111,7 @@ Check the **Status** field on a plugin's detail page to diagnose load issues:
 | **Loaded for this run** | The plugin was loaded with `--plugin` and is not installed. |
 | **Ready on restart** | The plugin is installed and loads the next time CyberEther starts. |
 | **Replacement file needed** | The installed plugin was built for another CyberEther version or build. Install a matching `.cep` file. |
-| **Waiting for a compatible build** | The gallery has no build of this plugin for your CyberEther version yet. CyberEther installs it once it appears. |
+| **Waiting for a compatible build** | The gallery has no build of this plugin for your CyberEther version yet. Once it appears, CyberEther offers it as an update. |
 | **Failed to load** | The plugin is installed but did not load. Check the logs for the exact error. |
 
 If an install shows an error, the cause is usually one of these:

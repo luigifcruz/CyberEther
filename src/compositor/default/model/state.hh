@@ -479,10 +479,13 @@ struct DefaultCompositorState {
         };
 
         Catalog catalog;
+        Catalog updates;
         Task install;
         Task update;
         std::shared_ptr<std::atomic<bool>> cancel = std::make_shared<std::atomic<bool>>(false);
+        std::string updatePolicy = "prompt";
         bool checked = false;
+        bool prompt = false;
         std::vector<std::string> missing;
         std::string path;
         std::vector<char> blob;
@@ -510,6 +513,7 @@ struct DefaultCompositorState {
     CrashReportState crashReport;
     PluginState plugins;
 
+    std::vector<Plugin::Gallery::Entry> pluginUpdates() const;
     bool startTabShown() const;
     bool tabShown(WorkspaceTab tab) const;
     bool tabActive(WorkspaceTab tab) const;

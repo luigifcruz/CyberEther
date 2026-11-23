@@ -240,4 +240,4 @@ To test installing your finished `.cep` bundle inside CyberEther, follow [Instal
 
 ## Publishing to the Gallery
 
-Plugins published to the CyberEther gallery are rebuilt for every CyberEther release and build, and CyberEther installs those builds automatically. Users can link to your plugin with `https://cyberether.org/gallery/plugins/<id>`.
+Plugins published to the CyberEther gallery are rebuilt for every CyberEther release and build, and CyberEther offers those builds to users as updates, following the update policy each user picks in **Settings** > **Registry**. Users can link to your plugin with `https://cyberether.org/gallery/plugins/<id>`.

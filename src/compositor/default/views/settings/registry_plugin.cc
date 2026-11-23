@@ -10,10 +10,22 @@ std::string RegistryPluginView::VersionLabel(const Plugin& plugin) {
 }
 
 std::string RegistryPluginView::SummaryLabel(const Plugin& plugin) {
-    if (plugin.status.label.empty() || plugin.status.label == "Loaded") {
+    std::vector<std::string> notes;
+    if (!plugin.status.label.empty() && plugin.status.label != "Loaded") {
+        notes.push_back(plugin.status.label);
+    }
+    if (!plugin.update.empty()) {
+        notes.push_back(plugin.update == plugin.version ? "New build available"
+                                                        : jst::fmt::format("Version {} available", plugin.update));
+    }
+    if (notes.empty()) {
         return VersionLabel(plugin);
     }
-    return jst::fmt::format("{} ({})", VersionLabel(plugin), plugin.status.label);
+    return jst::fmt::format("{} ({})", VersionLabel(plugin), jst::fmt::join(notes, ", "));
+}
+
+std::string RegistryPluginView::UpdateLabel(const Plugin& plugin) {
+    return plugin.updating ? "Updating..." : "Update";
 }
 
 void RegistryPluginView::update(Config config) {
@@ -23,6 +35,17 @@ void RegistryPluginView::update(Config config) {
         .root = "Registry",
         .current = plugin.name,
         .onRoot = this->config.onBack,
+    });
+    updateButton.update({
+        .str = UpdateLabel(plugin),
+        .icon = ICON_LC_DOWNLOAD,
+        .tone = CompactButton::Tone::Primary,
+        .disabled = plugin.updating,
+        .onClick = [this]() {
+            if (this->config.onUpdate) {
+                this->config.onUpdate(this->config.plugin.id);
+            }
+        },
     });
     reloadButton.update({
         .str = "Reload",
@@ -43,12 +66,15 @@ void RegistryPluginView::update(Config config) {
             }
         },
     });
+    std::vector<Sakura::Stack::Item> actionItems;
+    if (!plugin.update.empty()) {
+        actionItems.push_back({.child = &updateButton});
+    }
+    actionItems.push_back({.child = plugin.temporary ? static_cast<Sakura::Component*>(&reloadButton) : &removeButton});
     actions.update({
         .axis = Sakura::Stack::Axis::Horizontal,
         .spacing = Sakura::Spacing::Small,
-        .items = {
-            {.child = plugin.temporary ? static_cast<Sakura::Component*>(&reloadButton) : &removeButton},
-        },
+        .items = std::move(actionItems),
     });
     header.update({
         .title = plugin.name,

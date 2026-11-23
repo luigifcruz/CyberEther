@@ -7,7 +7,9 @@
 #include "home_gallery_remote.hh"
 
 #include <chrono>
+#include <future>
 #include <map>
+#include <optional>
 #include <string>
 #include <thread>
 #include <variant>
@@ -138,4 +140,161 @@ TEST_CASE("Plugin details open and close in the side panel", "[core][compositor]
 
     REQUIRE(actions.handle(MailClosePluginDetails{}) == Result::SUCCESS);
     CHECK(state.plugins.details.empty());
+}
+
+TEST_CASE("The plugin update policy decides what happens to gallery updates", "[core][compositor][plugins]") {
+    TestSupport::SettingsSandbox sandbox("compositor-plugin-updates");
+    sandbox.require();
+
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<std::string> notices;
+    callbacks.notifyResult = [&](Result, const std::string& message) {
+        notices.push_back(message);
+    };
+    callbacks.notify = [&](Sakura::ToastType, I32, const std::string& message) {
+        notices.push_back(message);
+    };
+
+    PluginActions actions(state, callbacks, Serve({}));
+    state.plugins.checked = true;
+    state.registry.plugins = {{.id = "alpha", .version = "1.0.0", .gallery = true}};
+    state.registry.stale = false;
+
+    const auto offer = [&](const std::string& policy) {
+        state.plugins.updatePolicy = policy;
+        std::promise<std::optional<std::vector<Plugin::Gallery::Entry>>> promise;
+        promise.set_value(std::vector<Plugin::Gallery::Entry>{
+            {.id = "alpha", .title = "Alpha", .version = "2.0.0", .url = "https://files.example/alpha.cep"},
+        });
+        state.plugins.updates.future = promise.get_future();
+        state.plugins.updates.loading = true;
+    };
+
+    SECTION("prompt waits for the open modal and then asks") {
+        offer("prompt");
+        state.modal = {.content = ModalContent::Onboarding};
+        actions.reconcile();
+        REQUIRE(state.plugins.updates.entries.size() == 1);
+        CHECK(state.plugins.prompt);
+        CHECK(state.modal.content == ModalContent::Onboarding);
+        CHECK_FALSE(state.plugins.update.loading);
+
+        state.modal = {};
+        state.interface.closingFlowgraph = "graph";
+        actions.reconcile();
+        CHECK_FALSE(state.modal.content.has_value());
+        CHECK(state.plugins.prompt);
+
+        state.interface.closingFlowgraph.reset();
+        state.filePicker.active = true;
+        actions.reconcile();
+        CHECK_FALSE(state.modal.content.has_value());
+
+        state.filePicker.active = false;
+        state.plugins.update.loading = true;
+        actions.reconcile();
+        CHECK_FALSE(state.modal.content.has_value());
+        CHECK(state.plugins.prompt);
+        state.plugins.update.loading = false;
+
+        state.plugins.install.loading = true;
+        actions.reconcile();
+        CHECK_FALSE(state.modal.content.has_value());
+        CHECK(state.plugins.prompt);
+        state.plugins.install.loading = false;
+
+        state.registry.stale = true;
+        actions.reconcile();
+        CHECK_FALSE(state.modal.content.has_value());
+
+        state.registry.stale = false;
+        actions.reconcile();
+        CHECK(state.modal.content == ModalContent::PluginUpdates);
+
+        state.registry.plugins.front().pending = "2.0.0";
+        actions.reconcile();
+        CHECK_FALSE(state.modal.content.has_value());
+        state.registry.plugins.front().pending.clear();
+        state.modal = {.content = ModalContent::PluginUpdates};
+        CHECK_FALSE(state.plugins.prompt);
+
+        REQUIRE(actions.handle(MailUpdateGalleryPlugins{.ids = {"alpha"}}) == Result::SUCCESS);
+        CHECK_FALSE(state.modal.content.has_value());
+        CHECK(state.plugins.update.loading);
+        CHECK(state.plugins.update.ids == std::vector<std::string>{"alpha"});
+
+        REQUIRE(actions.handle(MailUpdateGalleryPlugins{.ids = {"alpha"}}) == Result::SUCCESS);
+        REQUIRE_FALSE(notices.empty());
+        CHECK(notices.back() == "Plugin updates are still being installed.");
+
+        REQUIRE(actions.handle(MailInstallGalleryPlugins{.ids = {"alpha"}}) == Result::SUCCESS);
+        CHECK(notices.back() == "Another plugin is still being installed.");
+        CHECK_FALSE(state.plugins.install.loading);
+
+        Wait(state.plugins.update.future);
+        actions.reconcile();
+        CHECK_FALSE(state.plugins.update.loading);
+        CHECK(state.plugins.update.ids.empty());
+        CHECK(state.plugins.updates.entries.empty());
+    }
+
+    SECTION("a deferred prompt follows a policy change") {
+        offer("prompt");
+        state.modal = {.content = ModalContent::Onboarding};
+        actions.reconcile();
+        CHECK(state.plugins.prompt);
+
+        REQUIRE(actions.handle(MailSetPluginUpdatePolicy{.value = "manual"}) == Result::SUCCESS);
+        state.modal = {};
+        actions.reconcile();
+        CHECK_FALSE(state.plugins.prompt);
+        CHECK_FALSE(state.modal.content.has_value());
+    }
+
+    SECTION("prompt skips updates for plugins that left the gallery") {
+        offer("prompt");
+        state.registry.plugins.front().gallery = false;
+        actions.reconcile();
+        CHECK(state.plugins.updates.entries.size() == 1);
+        CHECK_FALSE(state.plugins.prompt);
+        CHECK_FALSE(state.modal.content.has_value());
+    }
+
+    SECTION("manual only remembers the update") {
+        offer("manual");
+        actions.reconcile();
+        REQUIRE(state.plugins.updates.entries.size() == 1);
+        CHECK_FALSE(state.plugins.prompt);
+        CHECK_FALSE(state.modal.content.has_value());
+        CHECK_FALSE(state.plugins.update.loading);
+    }
+
+    SECTION("auto installs the update right away") {
+        offer("auto");
+        actions.reconcile();
+        CHECK_FALSE(state.plugins.prompt);
+        CHECK_FALSE(state.modal.content.has_value());
+        CHECK(state.plugins.update.loading);
+        CHECK(state.plugins.update.ids == std::vector<std::string>{"alpha"});
+
+        Wait(state.plugins.update.future);
+        actions.reconcile();
+        CHECK_FALSE(state.plugins.update.loading);
+        CHECK(state.plugins.updates.entries.empty());
+    }
+
+    SECTION("the policy is validated and saved") {
+        REQUIRE(actions.handle(MailSetPluginUpdatePolicy{.value = "sometimes"}) == Result::SUCCESS);
+        CHECK(state.plugins.updatePolicy == "prompt");
+
+        REQUIRE(actions.handle(MailSetPluginUpdatePolicy{.value = "manual"}) == Result::SUCCESS);
+        CHECK(state.plugins.updatePolicy == "manual");
+        REQUIRE(Settings::Flush() == Result::SUCCESS);
+        Settings settings;
+        REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+        CHECK(settings.plugins.updatePolicy == "manual");
+    }
+
+    actions.shutdown();
 }

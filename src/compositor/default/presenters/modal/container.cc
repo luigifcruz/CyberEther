@@ -13,6 +13,7 @@ ModalPresenter::ModalPresenter(const PresenterContext& context) : context(contex
                                                                   docsSearch(context),
                                                                   crashReport(context),
                                                                   missingPlugins(context),
+                                                                  pluginUpdates(context),
                                                                   planNotice(context) {}
 
 ModalView::Config ModalPresenter::build() const {
@@ -68,6 +69,9 @@ ModalView::Config ModalPresenter::build() const {
             break;
         case ModalContent::MissingPlugins:
             config.missingPlugins = missingPlugins.build();
+            break;
+        case ModalContent::PluginUpdates:
+            config.pluginUpdates = pluginUpdates.build();
             break;
         case ModalContent::PlanNotice:
             config.planNotice = planNotice.build();

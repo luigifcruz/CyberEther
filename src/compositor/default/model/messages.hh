@@ -277,6 +277,10 @@ struct MailInstallGalleryPlugins {
     bool reopen = false;
 };
 
+struct MailUpdateGalleryPlugins {
+    std::vector<std::string> ids;
+};
+
 struct MailOpenPluginDetails {
     std::string id;
 };
@@ -495,6 +499,10 @@ struct MailSetPythonRuntimePath {
 };
 
 struct MailSetRuntimeDependencyPolicy {
+    std::string value;
+};
+
+struct MailSetPluginUpdatePolicy {
     std::string value;
 };
 
@@ -851,6 +859,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailReloadPlugin,
                            MailReloadAllPlugins,
                            MailInstallGalleryPlugins,
+                           MailUpdateGalleryPlugins,
                            MailOpenPluginDetails,
                            MailClosePluginDetails,
                            MailCloseModal,
@@ -918,6 +927,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSetRemoteMediaAddress,
                            MailSetPythonRuntimePath,
                            MailSetRuntimeDependencyPolicy,
+                           MailSetPluginUpdatePolicy,
                            MailOpenPythonEnvironmentCache,
                            MailInstallPythonDependencies,
                            MailSaveFlowgraphPath,

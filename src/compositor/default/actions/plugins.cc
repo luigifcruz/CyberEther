@@ -21,6 +21,10 @@ PluginActions::PluginActions(DefaultCompositorState& state,
                              Plugin::Gallery::Source source)
     : state(state), callbacks(callbacks), source(std::move(source)) {}
 
+bool PluginActions::ValidUpdatePolicy(const std::string& value) {
+    return value == "prompt" || value == "auto" || value == "manual";
+}
+
 std::vector<std::string> PluginActions::Missing(const std::vector<char>& blob) {
     std::vector<std::string> plugins;
     if (Flowgraph::ReadPlugins(blob, plugins) != Result::SUCCESS) {
@@ -66,9 +70,11 @@ void PluginActions::Request(DefaultCompositorState& state,
 }
 
 void PluginActions::reconcile(Clock::time_point now) {
+    reconcileCheck();
     reconcileUpdate();
     reconcileCatalog(now);
     reconcileInstall();
+    reconcilePrompt();
 }
 
 void PluginActions::shutdown() {
@@ -79,46 +85,109 @@ void PluginActions::shutdown() {
         }
         task->loading = false;
     }
-    if (state.plugins.catalog.future.valid()) {
-        state.plugins.catalog.future.wait();
+    for (auto* catalog : {&state.plugins.catalog, &state.plugins.updates}) {
+        if (catalog->future.valid()) {
+            catalog->future.wait();
+        }
+        catalog->loading = false;
     }
-    state.plugins.catalog.loading = false;
 }
 
-void PluginActions::reconcileUpdate() {
-    auto& update = state.plugins.update;
+void PluginActions::reconcileCheck() {
+    auto& updates = state.plugins.updates;
     if (!state.plugins.checked) {
         state.plugins.checked = true;
-        update.loading = true;
-        update.future = std::async(std::launch::async, [source = source, cancel = state.plugins.cancel]() {
-            Outcome outcome;
+        updates.loading = true;
+        updates.future = std::async(std::launch::async, [source = source, cancel = state.plugins.cancel]()
+                                        -> std::optional<std::vector<Plugin::Gallery::Entry>> {
+            Plugin::Gallery::Entries entries;
+            const auto cancelled = [cancel] {
+                return cancel->load();
+            };
             try {
-                outcome.result = Plugin::Gallery::Update(source, outcome.ids, [cancel] { return cancel->load(); });
+                if (Plugin::Gallery::Updates(source, entries, cancelled) != Result::SUCCESS) {
+                    return std::nullopt;
+                }
             } catch (...) {
-                outcome.result = Result::ERROR;
+                return std::nullopt;
             }
-            return outcome;
+            return entries;
         });
         return;
     }
 
+    if (!updates.loading || !Ready(updates.future) || state.benchmark.running) {
+        return;
+    }
+    updates.loading = false;
+
+    auto entries = updates.future.get();
+    updates.failed = !entries.has_value();
+    if (!entries.has_value() || entries->empty()) {
+        return;
+    }
+    updates.entries = std::move(*entries);
+
+    if (state.plugins.updatePolicy == "auto") {
+        std::vector<std::string> ids;
+        for (const auto& entry : updates.entries) {
+            ids.push_back(entry.id);
+        }
+        (void)handle(MailUpdateGalleryPlugins{.ids = std::move(ids)});
+    } else if (state.plugins.updatePolicy == "prompt") {
+        state.plugins.prompt = true;
+    }
+}
+
+void PluginActions::reconcilePrompt() {
+    if (state.modal.content == ModalContent::PluginUpdates && !state.registry.stale &&
+        state.pluginUpdates().empty()) {
+        state.modal = {};
+    }
+    if (state.plugins.updatePolicy != "prompt") {
+        state.plugins.prompt = false;
+    }
+    if (!state.plugins.prompt || state.modal.content.has_value() || state.interface.closingFlowgraph.has_value() ||
+        state.filePicker.active || state.registry.stale || state.plugins.update.loading ||
+        state.plugins.install.loading || state.benchmark.running) {
+        return;
+    }
+    state.plugins.prompt = false;
+    if (!state.pluginUpdates().empty()) {
+        state.modal = {.content = ModalContent::PluginUpdates};
+    }
+}
+
+void PluginActions::reconcileUpdate() {
+    auto& update = state.plugins.update;
     if (!update.loading || !Ready(update.future) || state.benchmark.running) {
         return;
     }
     update.loading = false;
 
     const auto outcome = update.future.get();
-    if (outcome.ids.empty()) {
-        return;
+    const auto requested = std::move(update.ids);
+    update.ids.clear();
+
+    const auto& settled = outcome.result == Result::SUCCESS ? requested : outcome.ids;
+    std::erase_if(state.plugins.updates.entries, [&](const auto& entry) {
+        return std::find(settled.begin(), settled.end(), entry.id) != settled.end();
+    });
+
+    if (!outcome.ids.empty()) {
+        (void)Plugin::LoadInstalled();
+        state.registry.stale = true;
+        callbacks.notify(Sakura::ToastType::Info,
+                         5000,
+                         jst::fmt::format("Updated plugins from the gallery: {}. New versions of loaded plugins "
+                                          "take effect the next time CyberEther starts.",
+                                          Text::Join(outcome.ids, ", ")));
     }
 
-    (void)Plugin::LoadInstalled();
-    state.registry.stale = true;
-    callbacks.notify(Sakura::ToastType::Info,
-                     5000,
-                     jst::fmt::format("Updated plugins from the gallery: {}. New versions of loaded plugins "
-                                      "take effect the next time CyberEther starts.",
-                                      Text::Join(outcome.ids, ", ")));
+    if (outcome.result != Result::SUCCESS) {
+        const auto message = outcome.error.empty() ? "Failed to update plugins from the gallery." : outcome.error;
+        callbacks.notifyResult(Result::ERROR, message);
+    }
 }
 
 void PluginActions::reconcileCatalog(Clock::time_point now) {
@@ -179,6 +248,9 @@ void PluginActions::reconcileInstall() {
         }
         state.registry.stale = true;
         state.plugins.catalog.next = {};
+        std::erase_if(state.plugins.updates.entries, [&](const auto& entry) {
+            return std::find(outcome.ids.begin(), outcome.ids.end(), entry.id) != outcome.ids.end();
+        });
     }
 
     if (outcome.result != Result::SUCCESS) {
@@ -225,7 +297,7 @@ Result PluginActions::handle(const MailClosePluginDetails&) {
 
 Result PluginActions::handle(const MailInstallGalleryPlugins& msg) {
     auto& install = state.plugins.install;
-    if (install.loading) {
+    if (install.loading || state.plugins.update.loading) {
         callbacks.notify(Sakura::ToastType::Info, 3000, "Another plugin is still being installed.");
         return Result::SUCCESS;
     }
@@ -286,6 +358,58 @@ Result PluginActions::handle(const MailInstallGalleryPlugins& msg) {
         }
         return outcome;
     });
+
+    return Result::SUCCESS;
+}
+
+Result PluginActions::handle(const MailUpdateGalleryPlugins& msg) {
+    auto& update = state.plugins.update;
+    if (update.loading || state.plugins.install.loading) {
+        callbacks.notify(Sakura::ToastType::Info, 3000, "Plugin updates are still being installed.");
+        return Result::SUCCESS;
+    }
+
+    if (state.modal.content == ModalContent::PluginUpdates) {
+        state.modal = {};
+    }
+
+    if (msg.ids.empty()) {
+        return Result::SUCCESS;
+    }
+
+    update.loading = true;
+    update.ids = msg.ids;
+    update.future = std::async(std::launch::async, [source = source, ids = msg.ids, cancel = state.plugins.cancel]() {
+        Outcome outcome;
+        const auto cancelled = [cancel] {
+            return cancel->load();
+        };
+        try {
+            outcome.result = Plugin::Gallery::Update(source, ids, outcome.ids, cancelled);
+        } catch (...) {
+            outcome.result = Result::ERROR;
+        }
+        if (outcome.result != Result::SUCCESS) {
+            std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX());
+            outcome.error = JST_LOG_LAST_ERROR();
+        }
+        return outcome;
+    });
+
+    return Result::SUCCESS;
+}
+
+Result PluginActions::handle(const MailSetPluginUpdatePolicy& msg) {
+    if (!ValidUpdatePolicy(msg.value)) {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid plugin update policy '{}'.", msg.value);
+        return Result::SUCCESS;
+    }
+
+    state.plugins.updatePolicy = msg.value;
+
+    JST_CHECK(PersistSettings([&](Settings& settings) {
+        settings.plugins.updatePolicy = msg.value;
+    }));
 
     return Result::SUCCESS;
 }

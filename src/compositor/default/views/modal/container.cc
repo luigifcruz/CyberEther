@@ -72,7 +72,12 @@ void ModalView::update(Config config) {
         }
         case ModalContent::MissingPlugins: {
             auto viewConfig = this->config.missingPlugins;
-            missingPluginsView.update(std::move(viewConfig));
+            pluginPromptView.update(std::move(viewConfig));
+            break;
+        }
+        case ModalContent::PluginUpdates: {
+            auto viewConfig = this->config.pluginUpdates;
+            pluginPromptView.update(std::move(viewConfig));
             break;
         }
         case ModalContent::PlanNotice: {
@@ -96,6 +101,7 @@ Sakura::ModalLayer::Config ModalView::layer() {
                        config.content != ModalContent::Onboarding && config.content != ModalContent::FlowgraphInfo &&
                        config.content != ModalContent::CrashReport &&
                        config.content != ModalContent::MissingPlugins &&
+                       config.content != ModalContent::PluginUpdates &&
                        config.content != ModalContent::PlanNotice,
         .onClose = [this]() {
             if (config.onClose) {
@@ -131,7 +137,8 @@ Sakura::Component* ModalView::content() {
         case ModalContent::CrashReport:
             return &crashReportView.component();
         case ModalContent::MissingPlugins:
-            return &missingPluginsView.component();
+        case ModalContent::PluginUpdates:
+            return &pluginPromptView.component();
         case ModalContent::PlanNotice:
             return &planNoticeView.component();
     }
@@ -157,8 +164,8 @@ Extent2D<F32> ModalView::modalSize() const {
     if (config.content == ModalContent::CrashReport) {
         return Extent2D<F32>{CrashReportView::Width, 0.0f};
     }
-    if (config.content == ModalContent::MissingPlugins) {
-        return Extent2D<F32>{MissingPluginsView::Width, 0.0f};
+    if (config.content == ModalContent::MissingPlugins || config.content == ModalContent::PluginUpdates) {
+        return Extent2D<F32>{PluginPromptView::Width, 0.0f};
     }
     if (config.content == ModalContent::PlanNotice) {
         return Extent2D<F32>{PlanNoticeView::Width, 0.0f};
