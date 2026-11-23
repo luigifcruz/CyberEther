@@ -247,6 +247,7 @@ Result DefaultCompositor::destroy() {
     agent.shutdown();
     actions.shutdownAgent();
     actions.shutdownGallery();
+    actions.shutdownPlugins();
     actions.shutdownTerminals();
     actions.shutdownMaps();
     updater.shutdown();
@@ -319,6 +320,7 @@ Result DefaultCompositor::poll() {
     actions.reconcileHistory();
     actions.settleStartTab();
     actions.reconcileGallery();
+    actions.reconcilePlugins();
     actions.refreshRegistry();
     actions.refreshLiveMarkdown();
     actions.refreshConfigDrafts();

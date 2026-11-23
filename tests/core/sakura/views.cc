@@ -2477,6 +2477,27 @@ TEST_CASE("Registry presenter reads plugins from the cached registry", "[core][s
     CHECK_FALSE(settings.domains.empty());
 }
 
+TEST_CASE("Missing plugins prompt installs the listed plugins and reopens the flowgraph", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.plugins.missing = {"alpha", "beta"};
+
+    const auto config = MissingPluginsModalPresenter(mailbox.context()).build();
+    CHECK(config.plugins == std::vector<std::string>{"alpha", "beta"});
+    CHECK_FALSE(config.installing);
+
+    config.onInstall();
+    REQUIRE(mailbox.last<MailInstallGalleryPlugins>() != nullptr);
+    CHECK(mailbox.last<MailInstallGalleryPlugins>()->ids == std::vector<std::string>{"alpha", "beta"});
+    CHECK(mailbox.last<MailInstallGalleryPlugins>()->reopen);
+
+    config.onCancel();
+    CHECK(mailbox.last<MailCloseModal>() != nullptr);
+
+    MissingPluginsView view;
+    view.update(config);
+    CHECK(&view.component() != nullptr);
+}
+
 TEST_CASE("Registry presenter titles plugin examples from their gallery section", "[core][sakura][views]") {
     Mailbox mailbox;
     auto& registry = mailbox.state.registry;

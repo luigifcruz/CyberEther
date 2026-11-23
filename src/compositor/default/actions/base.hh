@@ -15,6 +15,7 @@
 #include "maps.hh"
 #include "metrics.hh"
 #include "onboarding.hh"
+#include "plugins.hh"
 #include "remote.hh"
 #include "settings.hh"
 #include "terminal.hh"
@@ -57,6 +58,8 @@ class DefaultActions {
     void shutdownAgent();
     void reconcileGallery();
     void shutdownGallery();
+    void reconcilePlugins();
+    void shutdownPlugins();
     void reconcileTerminals();
     void shutdownTerminals();
 
@@ -96,6 +99,7 @@ class DefaultActions {
     std::shared_ptr<CrashReportActions> crashReport;
     std::shared_ptr<AgentActions> agent;
     std::shared_ptr<GalleryActions> gallery;
+    std::shared_ptr<PluginActions> plugins;
     std::shared_ptr<TerminalActions> terminals;
 };
 

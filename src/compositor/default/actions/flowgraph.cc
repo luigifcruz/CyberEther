@@ -53,6 +53,14 @@ Result FlowgraphActions::handle(const MailOpenFlowgraphPath& msg) {
         return Result::SUCCESS;
     }
 
+    if (auto missing = PluginActions::MissingInFile(msg.path); !missing.empty()) {
+        PluginActions::Request(state, std::move(missing), msg.path, {});
+        if (msg.onComplete) {
+            msg.onComplete(Result::ERROR, nullptr);
+        }
+        return Result::SUCCESS;
+    }
+
     auto inst = state.system.instance;
     auto name = GenerateRandomFlowgraphName();
     auto path = msg.path;
@@ -139,6 +147,10 @@ Result FlowgraphActions::handle(const MailDropFlowgraphFiles& msg) {
 }
 
 Result FlowgraphActions::handle(const MailOpenFlowgraphBlob& msg) {
+    if (auto missing = PluginActions::Missing(msg.blob); !missing.empty()) {
+        PluginActions::Request(state, std::move(missing), {}, msg.blob);
+        return Result::SUCCESS;
+    }
     return openBlob(msg.blob).has_value() ? Result::SUCCESS : Result::ERROR;
 }
 
@@ -172,7 +184,12 @@ Result FlowgraphActions::handle(const MailOpenFlowgraphExample& msg) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "The selected example is no longer available.");
         return Result::SUCCESS;
     }
-    const auto name = openBlob({example->content.begin(), example->content.end()});
+    std::vector<char> blob(example->content.begin(), example->content.end());
+    if (auto missing = PluginActions::Missing(blob); !missing.empty()) {
+        PluginActions::Request(state, std::move(missing), {}, std::move(blob));
+        return Result::SUCCESS;
+    }
+    const auto name = openBlob(std::move(blob));
     if (!name.has_value()) {
         return Result::ERROR;
     }

@@ -131,6 +131,7 @@ if not jst_is_windows
             'compositor/layout.cc',
             'compositor/metrics.cc',
             'compositor/onboarding.cc',
+            'compositor/plugins.cc',
             'compositor/settings_tab.cc',
             'compositor/tiles.cc',
             'compositor/clipboard.cc',

@@ -264,6 +264,11 @@ struct MailReloadPlugin {
 
 struct MailReloadAllPlugins {};
 
+struct MailInstallGalleryPlugins {
+    std::vector<std::string> ids;
+    bool reopen = false;
+};
+
 struct MailCloseModal {};
 
 struct MailNotify {
@@ -831,6 +836,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailRemovePlugin,
                            MailReloadPlugin,
                            MailReloadAllPlugins,
+                           MailInstallGalleryPlugins,
                            MailCloseModal,
                            MailNotify,
                            MailNotifyResult,

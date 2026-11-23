@@ -424,6 +424,30 @@ struct DefaultCompositorState {
         bool submitting = false;
     };
 
+    struct PluginState {
+        struct Task {
+            struct Outcome {
+                Result result = Result::SUCCESS;
+                std::vector<std::string> ids;
+                std::string error;
+            };
+
+            std::future<Outcome> future;
+            std::vector<std::string> ids;
+            std::string path;
+            std::vector<char> blob;
+            bool loading = false;
+        };
+
+        Task install;
+        Task update;
+        std::shared_ptr<std::atomic<bool>> cancel = std::make_shared<std::atomic<bool>>(false);
+        bool checked = false;
+        std::vector<std::string> missing;
+        std::string path;
+        std::vector<char> blob;
+    };
+
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;
@@ -443,6 +467,7 @@ struct DefaultCompositorState {
     FilePickerState filePicker;
     FeedbackState feedback;
     CrashReportState crashReport;
+    PluginState plugins;
 
     bool startTabShown() const;
     bool tabShown(WorkspaceTab tab) const;

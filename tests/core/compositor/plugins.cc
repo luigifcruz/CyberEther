@@ -1,0 +1,113 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include "compositor/default/actions/flowgraph.hh"
+#include "compositor/default/actions/plugins.hh"
+#include "compositor/default/actions/workbench.hh"
+#include "environment.hh"
+#include "home_gallery_remote.hh"
+
+#include <chrono>
+#include <map>
+#include <string>
+#include <thread>
+#include <variant>
+#include <vector>
+
+using namespace Jetstream;
+
+namespace {
+
+std::vector<char> Blob(const std::string& text) {
+    return {text.begin(), text.end()};
+}
+
+Plugin::Gallery::Source Serve(std::map<std::string, std::string> files) {
+    return {
+        .send = [files = std::move(files)](const Platform::Http::Client::Request& request) {
+            Platform::Http::Client::Response response;
+            const auto file = files.find(request.host + request.path);
+            response.status = file == files.end() ? 404 : 200;
+            if (file != files.end()) {
+                response.body = file->second;
+            }
+            return response;
+        },
+    };
+}
+
+template<typename T>
+void Wait(const std::future<T>& future) {
+    REQUIRE(future.valid());
+    REQUIRE(future.wait_for(std::chrono::seconds(10)) == std::future_status::ready);
+}
+
+}  // namespace
+
+TEST_CASE("Flowgraphs that need missing plugins open the plugin prompt instead", "[core][compositor][plugins]") {
+    CHECK(PluginActions::Missing(Blob("version: 2\ngraph: []\n")).empty());
+    CHECK(PluginActions::Missing(Blob("version: [\n")).empty());
+    CHECK(PluginActions::Missing(Blob("version: 3\nplugins: [nothere]\ngraph: []\n")).empty());
+    CHECK(PluginActions::Missing(Blob("plugins: [nothere]\ngraph: []\n")) == std::vector<std::string>{"nothere"});
+    CHECK(PluginActions::Missing(Blob("protocolVersion: 3\nplugins: [nothere]\ngraph: []\n")).empty());
+    CHECK(PluginActions::Missing(Blob("protocolVersion: 1.0.0\nplugins: [nothere]\ngraph: {}\n")) ==
+          std::vector<std::string>{"nothere"});
+    CHECK(PluginActions::Missing(Blob("version: 2\nplugins: ['https://cyberether.org/gallery/plugins/x']\ngraph: []\n")).empty());
+    CHECK(PluginActions::Missing(Blob("version: 2\nplugins: [nothere, other, nothere]\ngraph: []\n")) ==
+          std::vector<std::string>{"nothere", "other"});
+
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    FlowgraphActions actions(state, callbacks);
+
+    const auto blob = Blob("version: 2\nplugins: [nothere]\ngraph: []\n");
+    REQUIRE(actions.handle(MailOpenFlowgraphBlob{.blob = blob}) == Result::SUCCESS);
+    CHECK(state.modal.content == ModalContent::MissingPlugins);
+    CHECK(state.plugins.missing == std::vector<std::string>{"nothere"});
+    CHECK(state.plugins.blob == blob);
+    CHECK(state.plugins.path.empty());
+    CHECK(state.flowgraph.items.empty());
+}
+
+TEST_CASE("Gallery plugin installs report failures", "[core][compositor][plugins]") {
+    TestSupport::SettingsSandbox sandbox("compositor-plugins");
+    sandbox.require();
+
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<std::string> notices;
+    std::vector<Mail> mails;
+    callbacks.notifyResult = [&](Result, const std::string& message) {
+        notices.push_back(message);
+    };
+    callbacks.notify = [&](Sakura::ToastType, I32, const std::string& message) {
+        notices.push_back(message);
+    };
+    callbacks.enqueueMail = [&](Mail mail) {
+        mails.push_back(std::move(mail));
+    };
+
+    const std::string host = Home::Gallery::Remote::Host;
+    const std::string body = "{\"plugins\":[{\"id\":\"alpha\",\"title\":\"Alpha\"}]}";
+    PluginActions actions(state, callbacks, Serve({
+        {host + Plugin::Gallery::Path(Plugin::Gallery::Current({"alpha"})), body},
+    }));
+    state.plugins.checked = true;
+
+    state.modal = {.content = ModalContent::MissingPlugins};
+    REQUIRE(actions.handle(MailInstallGalleryPlugins{.ids = {"alpha"}, .reopen = true}) == Result::SUCCESS);
+    CHECK_FALSE(state.modal.content.has_value());
+    CHECK(state.plugins.install.loading);
+
+    REQUIRE(actions.handle(MailInstallGalleryPlugins{.ids = {"beta"}}) == Result::SUCCESS);
+    REQUIRE_FALSE(notices.empty());
+    CHECK(notices.back() == "Another plugin is still being installed.");
+
+    Wait(state.plugins.install.future);
+    actions.reconcile();
+    CHECK_FALSE(state.plugins.install.loading);
+    REQUIRE(notices.size() == 2);
+    CHECK(notices.back().find("does not have a build for CyberEther") != std::string::npos);
+    CHECK(mails.empty());
+
+    actions.shutdown();
+}
