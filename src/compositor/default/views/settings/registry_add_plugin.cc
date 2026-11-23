@@ -30,7 +30,8 @@ void RegistryAddPluginView::update(Config config) {
     });
     header.update({
         .title = "Add Plugin",
-        .description = "Install a plugin bundle file.",
+        .description = "Install a plugin bundle file. To browse the CyberEther gallery, use Browse on "
+                       "the Registry page.",
     });
     pathField.update({
         .icon = ICON_LC_PACKAGE,

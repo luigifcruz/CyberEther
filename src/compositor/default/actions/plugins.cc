@@ -65,8 +65,9 @@ void PluginActions::Request(DefaultCompositorState& state,
     state.modal = {.content = ModalContent::MissingPlugins};
 }
 
-void PluginActions::reconcile() {
+void PluginActions::reconcile(Clock::time_point now) {
     reconcileUpdate();
+    reconcileCatalog(now);
     reconcileInstall();
 }
 
@@ -78,6 +79,10 @@ void PluginActions::shutdown() {
         }
         task->loading = false;
     }
+    if (state.plugins.catalog.future.valid()) {
+        state.plugins.catalog.future.wait();
+    }
+    state.plugins.catalog.loading = false;
 }
 
 void PluginActions::reconcileUpdate() {
@@ -116,6 +121,44 @@ void PluginActions::reconcileUpdate() {
                                       Text::Join(outcome.ids, ", ")));
 }
 
+void PluginActions::reconcileCatalog(Clock::time_point now) {
+    auto& catalog = state.plugins.catalog;
+    if (catalog.loading) {
+        if (!Ready(catalog.future)) {
+            return;
+        }
+        catalog.loading = false;
+        auto entries = catalog.future.get();
+        catalog.failed = !entries.has_value();
+        if (entries.has_value()) {
+            catalog.entries = std::move(*entries);
+        }
+        catalog.next = now + (catalog.failed ? RetryInterval : RefreshInterval);
+        return;
+    }
+
+    if (now < catalog.next) {
+        return;
+    }
+
+    catalog.loading = true;
+    catalog.future = std::async(std::launch::async, [source = source, cancel = state.plugins.cancel]()
+                                    -> std::optional<std::vector<Plugin::Gallery::Entry>> {
+        Plugin::Gallery::Entries entries;
+        const auto cancelled = [cancel] {
+            return cancel->load();
+        };
+        try {
+            if (Plugin::Gallery::Fetch(source, Plugin::Gallery::Current(), cancelled, entries) != Result::SUCCESS) {
+                return std::nullopt;
+            }
+        } catch (...) {
+            return std::nullopt;
+        }
+        return entries;
+    });
+}
+
 void PluginActions::reconcileInstall() {
     auto& install = state.plugins.install;
     if (!install.loading || !Ready(install.future) || state.benchmark.running) {
@@ -135,6 +178,7 @@ void PluginActions::reconcileInstall() {
             callbacks.notifyResult(Result::ERROR, "");
         }
         state.registry.stale = true;
+        state.plugins.catalog.next = {};
     }
 
     if (outcome.result != Result::SUCCESS) {
@@ -167,6 +211,16 @@ void PluginActions::reconcileInstall() {
     callbacks.notify(Sakura::ToastType::Success,
                      3000,
                      outcome.ids.size() == 1 ? "Plugin installed." : "Plugins installed.");
+}
+
+Result PluginActions::handle(const MailOpenPluginDetails& msg) {
+    state.plugins.details = msg.id;
+    return Result::SUCCESS;
+}
+
+Result PluginActions::handle(const MailClosePluginDetails&) {
+    state.plugins.details.clear();
+    return Result::SUCCESS;
 }
 
 Result PluginActions::handle(const MailInstallGalleryPlugins& msg) {

@@ -269,6 +269,12 @@ struct MailInstallGalleryPlugins {
     bool reopen = false;
 };
 
+struct MailOpenPluginDetails {
+    std::string id;
+};
+
+struct MailClosePluginDetails {};
+
 struct MailCloseModal {};
 
 struct MailNotify {
@@ -837,6 +843,8 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailReloadPlugin,
                            MailReloadAllPlugins,
                            MailInstallGalleryPlugins,
+                           MailOpenPluginDetails,
+                           MailClosePluginDetails,
                            MailCloseModal,
                            MailNotify,
                            MailNotifyResult,

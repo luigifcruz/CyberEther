@@ -39,6 +39,7 @@ enum class IntelligencePage : I32 {
 enum class WelcomeSection : I32 {
     All = 0,
     Flowgraphs,
+    Plugins,
 };
 
 enum class WorkspaceTab : I32 {

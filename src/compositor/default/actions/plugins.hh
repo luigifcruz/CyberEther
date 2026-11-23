@@ -23,7 +23,11 @@
 namespace Jetstream {
 
 struct PluginActions {
-    using Filter = std::tuple<MailInstallGalleryPlugins>;
+    using Clock = std::chrono::steady_clock;
+    using Filter = std::tuple<MailInstallGalleryPlugins, MailOpenPluginDetails, MailClosePluginDetails>;
+
+    static constexpr auto RetryInterval = std::chrono::seconds(30);
+    static constexpr auto RefreshInterval = std::chrono::hours(1);
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -40,12 +44,15 @@ struct PluginActions {
                         std::string path,
                         std::vector<char> blob);
 
-    void reconcile();
+    void reconcile(Clock::time_point now = Clock::now());
     void shutdown();
     Result handle(const MailInstallGalleryPlugins& msg);
+    Result handle(const MailOpenPluginDetails& msg);
+    Result handle(const MailClosePluginDetails& msg);
 
  private:
     void reconcileUpdate();
+    void reconcileCatalog(Clock::time_point now);
     void reconcileInstall();
 };
 

@@ -89,6 +89,14 @@ struct WelcomeView {
         U64 total = 0;
     };
 
+    struct PluginItem {
+        std::string id;
+        std::string title;
+        std::string summary;
+        std::string category;
+        std::vector<std::string> blocks;
+    };
+
     struct Config {
         std::string version;
         bool assistantEnabled = true;
@@ -128,6 +136,10 @@ struct WelcomeView {
         Sakura::Callback<void(const std::string&)> onRevealRecent;
         Sakura::Callback<void(const std::string&)> onCopyRecentPath;
         Sakura::Callback<void(const std::string&)> onOpenExample;
+        std::vector<PluginItem> plugins;
+        bool pluginsLoading = false;
+        bool pluginsFailed = false;
+        Sakura::Callback<void(const std::string&)> onOpenPlugin;
         std::optional<RemoteSectionView::Config> remote;
         U64 visit = 0;
     };
@@ -191,6 +203,7 @@ struct WelcomeView {
     void updateStatusPill();
     void updateExplore();
     std::vector<Sakura::Component*> updateFlowgraphs();
+    void updatePlugins();
 
     Config config;
     Pagination pager;
@@ -246,6 +259,8 @@ struct WelcomeView {
     Sakura::Stack featuredContent;
     Sakura::Div featuredCard;
     std::vector<std::unique_ptr<Section>> sections;
+    Section pluginSection;
+    Sakura::SettingCard pluginsEmpty;
     std::optional<std::string> pendingScroll;
     Sakura::Component* scrollTarget = nullptr;
     U64 scrollRequest = 0;

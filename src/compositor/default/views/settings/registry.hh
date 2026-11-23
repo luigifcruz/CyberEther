@@ -38,6 +38,7 @@ struct RegistrySettingsView {
         Sakura::Callback<void(const std::string&)> onRegister;
         Sakura::Callback<void(const std::string&)> onRemovePlugin;
         Sakura::Callback<void(const std::string&)> onReloadPlugin;
+        Sakura::Callback<void()> onBrowsePlugins;
     };
 
     void update(Config config);
@@ -59,7 +60,9 @@ struct RegistrySettingsView {
     SettingsHeader header;
     SectionGroup domainGroup;
     std::vector<std::unique_ptr<PluginEntry>> entries;
+    CompactButton browseButton;
     CompactButton addButton;
+    Sakura::Stack pluginActions;
     SectionGroup pluginGroup;
     RegistryAddPluginView addPage;
     RegistryPluginView pluginPage;

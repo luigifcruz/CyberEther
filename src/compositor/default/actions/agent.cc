@@ -35,6 +35,9 @@ Result AgentActions::handle(const MailSetAgentChatVisible& msg) {
         ui.unread = false;
     }
     ui.visible = msg.value;
+    if (msg.value) {
+        state.plugins.details.clear();
+    }
 
     if (msg.value && msg.focus) {
         ++ui.chatFocusRequests;
@@ -80,6 +83,7 @@ Result AgentActions::handle(const MailSubmitAgentChat& msg) {
     if (msg.reveal) {
         hideVoice();
         agent.ui.visible = true;
+        state.plugins.details.clear();
         ++agent.ui.chatFocusRequests;
     }
 
@@ -613,7 +617,7 @@ void AgentActions::collectProviderKeyTask() {
 void AgentActions::checkUnread() {
     auto& agent = state.agent;
     const auto& conversation = agent.chat.conversation;
-    const bool shown = agent.settings.enabled && agent.ui.visible;
+    const bool shown = agent.settings.enabled && state.agentChatShown();
     if (streaming && !conversation.streaming && !shown) {
         agent.ui.unread = true;
     }

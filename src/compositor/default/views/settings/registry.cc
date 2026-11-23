@@ -85,6 +85,15 @@ void RegistrySettingsView::updateOverview() {
             },
         });
     }
+    browseButton.update({
+        .str = "Browse",
+        .icon = ICON_LC_PUZZLE,
+        .onClick = [this]() {
+            if (config.onBrowsePlugins) {
+                config.onBrowsePlugins();
+            }
+        },
+    });
     addButton.update({
         .str = "Add",
         .icon = ICON_LC_PLUS,
@@ -93,12 +102,20 @@ void RegistrySettingsView::updateOverview() {
             navigate(RegistryPage::AddPlugin, "");
         },
     });
+    pluginActions.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::Small,
+        .items = {
+            {.child = &browseButton},
+            {.child = &addButton},
+        },
+    });
     pluginGroup.update({
         .title = "Plugins",
         .description = "Plugins installed in CyberEther load at startup.",
         .rows = std::move(pluginRows),
-        .empty = "No plugins installed yet. Use Add to install one.",
-        .action = &addButton,
+        .empty = "No plugins installed yet. Use Browse to find one in the gallery, or Add to install a file.",
+        .action = &pluginActions,
     });
 
     stack.update({

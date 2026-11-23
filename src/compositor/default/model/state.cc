@@ -55,6 +55,10 @@ bool DefaultCompositorState::docsTabActive() const {
     return tabActive(WorkspaceTab::Docs);
 }
 
+bool DefaultCompositorState::agentChatShown() const {
+    return agent.ui.visible && plugins.details.empty();
+}
+
 std::optional<std::string> DefaultCompositorState::activeFlowgraph() const {
     if (startTabActive() || settingsTabActive() || docsTabActive() || terminal.focused.has_value()) {
         return std::nullopt;

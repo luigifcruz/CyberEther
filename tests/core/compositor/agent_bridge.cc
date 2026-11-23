@@ -831,11 +831,18 @@ TEST_CASE("A reply that finishes while the assistant is hidden stays unread unti
     actions.reconcile();
     CHECK(state.agent.ui.unread);
 
+    state.plugins.details = "alpha";
     REQUIRE(actions.handle(MailSetAgentChatVisible{.value = true}) == Result::SUCCESS);
     CHECK_FALSE(state.agent.ui.unread);
+    CHECK(state.plugins.details.empty());
 
     reply(false);
     CHECK(state.agent.ui.unread);
+    REQUIRE(actions.handle(MailSetAgentChatVisible{.value = true}) == Result::SUCCESS);
+    state.plugins.details = "alpha";
+    reply(true);
+    CHECK(state.agent.ui.unread);
+    state.plugins.details.clear();
     conversation.messages.clear();
     actions.reconcile();
     CHECK_FALSE(state.agent.ui.unread);

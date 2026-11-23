@@ -17,6 +17,7 @@
 #include "compositor/default/presenters/titlebar.hh"
 #include "compositor/default/presenters/workbench.hh"
 #include "compositor/default/presenters/modal/container.hh"
+#include "compositor/default/presenters/plugin_details.hh"
 #include "compositor/default/views/components/callout.hh"
 #include "compositor/default/views/components/hint_overlay.hh"
 #include "compositor/default/views/components/render_stats.hh"
@@ -617,6 +618,7 @@ struct SettingsRig : ModalRig {
             .onRegister = [log](const std::string& path) { log("register:" + path); },
             .onRemovePlugin = [log](const std::string& id) { log("remove:" + id); },
             .onReloadPlugin = [log](const std::string& id) { log("reload:" + id); },
+            .onBrowsePlugins = [log]() { log("browse-plugins"); },
         };
         config.developer = {
             .timingEnabled = true,
@@ -2477,6 +2479,125 @@ TEST_CASE("Registry presenter reads plugins from the cached registry", "[core][s
     CHECK_FALSE(settings.domains.empty());
 }
 
+TEST_CASE("Start tab lists gallery plugins and opens their page", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.registry.plugins = {
+        {.id = "alpha", .version = "1.0.0", .gallery = true, .status = Plugin::Status::Loaded},
+        {.id = "beta", .version = "1.0.0", .gallery = true, .status = Plugin::Status::Waiting},
+        {.id = "gamma", .version = "1.0.0", .status = Plugin::Status::Loaded},
+    };
+    mailbox.state.plugins.catalog.entries = {
+        {.id = "alpha", .title = "Alpha", .summary = "First.", .version = "1.0.0", .url = "https://files/alpha.cep"},
+        {.id = "beta", .title = "Beta", .version = "1.0.0", .url = "https://files/beta.cep"},
+        {.id = "gamma", .title = "Gamma", .version = "1.0.0", .url = "https://files/gamma.cep"},
+        {.id = "delta", .title = "Delta"},
+    };
+
+    auto welcome = WelcomePresenter(mailbox.context()).build();
+    REQUIRE(welcome.plugins.size() == 4);
+    CHECK(welcome.plugins[0].category == "Installed");
+    CHECK(welcome.plugins[1].category == "Plugin v1.0.0");
+    CHECK(welcome.plugins[2].category == "Plugin v1.0.0");
+    CHECK(welcome.plugins[3].category == "Waiting for a Build");
+    CHECK(welcome.plugins[3].blocks == std::vector<std::string>{"Delta"});
+
+    mailbox.state.interface.welcomeCategory = "Basics";
+    mailbox.state.interface.welcomeSection = WelcomeSection::Plugins;
+    welcome = WelcomePresenter(mailbox.context()).build();
+    CHECK(welcome.plugins.size() == 4);
+    mailbox.state.interface.welcomeCategory.clear();
+
+    mailbox.state.interface.welcomeQuery = "gam";
+    welcome = WelcomePresenter(mailbox.context()).build();
+    REQUIRE(welcome.plugins.size() == 1);
+    CHECK(welcome.plugins[0].id == "gamma");
+
+    mailbox.state.agent.settings.enabled = true;
+    mailbox.state.agent.ui.visible = true;
+    mailbox.state.plugins.details = "gamma";
+    TitlebarPresenter(mailbox.context()).build().onAction(TitlebarView::Action::ToggleAgent);
+    REQUIRE(mailbox.last<MailSetAgentChatVisible>() != nullptr);
+    CHECK(mailbox.last<MailSetAgentChatVisible>()->value);
+
+    welcome.onOpenPlugin("gamma");
+    REQUIRE(mailbox.last<MailOpenPluginDetails>() != nullptr);
+    CHECK(mailbox.last<MailOpenPluginDetails>()->id == "gamma");
+
+    const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
+    REQUIRE(settings.plugins.size() == 3);
+    CHECK(settings.plugins[1].status.label == "Waiting for a compatible build");
+    settings.onBrowsePlugins();
+    REQUIRE(mailbox.last<MailSetWelcomeSection>() != nullptr);
+    CHECK(mailbox.last<MailSetWelcomeSection>()->section == WelcomeSection::Plugins);
+    CHECK(mailbox.last<MailOpenStartTab>() != nullptr);
+}
+
+TEST_CASE("Plugin details panel shows gallery details and installs from the gallery", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.plugins.details = "alpha";
+
+    auto details = PluginDetailsPresenter(mailbox.context()).build();
+    CHECK(details.title == "alpha");
+    CHECK(details.installDisabled);
+
+    CHECK(details.summary == "This plugin is no longer in the CyberEther gallery.");
+
+    mailbox.state.plugins.catalog.loading = true;
+    details = PluginDetailsPresenter(mailbox.context()).build();
+    CHECK(details.summary == "Loading plugin details from the CyberEther gallery.");
+    mailbox.state.plugins.catalog.loading = false;
+
+    mailbox.state.plugins.catalog.entries = {{
+        .id = "alpha",
+        .title = "Alpha",
+        .summary = "First.",
+        .description = "# Alpha\n\nLonger text.",
+        .author = "Tester",
+        .license = "MIT",
+        .version = "1.0.0",
+        .url = "https://files/alpha.cep",
+        .blocks = {"alpha_gain", "alpha_fm_demod"},
+    }};
+    details = PluginDetailsPresenter(mailbox.context()).build();
+    CHECK(details.title == "Alpha");
+    CHECK(details.summary == "First.");
+    CHECK(details.description == "# Alpha\n\nLonger text.");
+    REQUIRE(details.details.size() == 5);
+    CHECK(details.details[0].value == "Tester");
+    CHECK(details.details[2].label == "Blocks");
+    CHECK(details.details[2].value == "Gain, Fm Demod");
+    CHECK(details.installLabel == "Install");
+    CHECK_FALSE(details.installDisabled);
+
+    details.onInstall();
+    REQUIRE(mailbox.last<MailInstallGalleryPlugins>() != nullptr);
+    CHECK(mailbox.last<MailInstallGalleryPlugins>()->ids == std::vector<std::string>{"alpha"});
+    details.onCopyLink();
+    REQUIRE(mailbox.last<MailCopyText>() != nullptr);
+    CHECK(mailbox.last<MailCopyText>()->value == "https://cyberether.org/gallery/plugins/alpha");
+    details.onOpenUrl("file:///Applications/Calculator.app");
+    CHECK(mailbox.last<MailOpenUrl>() == nullptr);
+    details.onOpenUrl("https://cyberether.org/docs/plugins");
+    REQUIRE(mailbox.last<MailOpenUrl>() != nullptr);
+    details.onHowToInstall();
+    REQUIRE(mailbox.last<MailOpenDocs>() != nullptr);
+    CHECK(mailbox.last<MailOpenDocs>()->page == "installing-plugins");
+    details.onClose();
+    CHECK(mailbox.last<MailClosePluginDetails>() != nullptr);
+
+    mailbox.state.registry.plugins = {{.id = "alpha", .version = "1.0.0", .gallery = true,
+                                       .status = Plugin::Status::Loaded}};
+    details = PluginDetailsPresenter(mailbox.context()).build();
+    CHECK(details.installLabel == "Installed");
+    CHECK(details.installDisabled);
+
+    PluginDetailsView view;
+    view.update(details);
+    CHECK(&view.component() != nullptr);
+
+    CHECK(PluginLabels::Block("other", "alpha_gain") == "Alpha Gain");
+}
+
 TEST_CASE("Missing plugins prompt installs the listed plugins and reopens the flowgraph", "[core][sakura][views]") {
     Mailbox mailbox;
     mailbox.state.plugins.missing = {"alpha", "beta"};
@@ -3801,8 +3922,9 @@ TEST_CASE("Registry overview lists plugins by name and navigates to their pages"
     rig.show(SettingsSection::Registry);
 
     auto buttons = Actions(rig.view.component());
-    REQUIRE(buttons.size() == 1);
+    REQUIRE(buttons.size() == 2);
     CHECK(Press(rig.host, *buttons[0]));
+    CHECK(Press(rig.host, *buttons[1]));
     CHECK(Find<Sakura::Badge>(rig.view.component()).empty());
 
     auto cards = Find<Sakura::SettingCard>(rig.view.component());
@@ -3810,13 +3932,13 @@ TEST_CASE("Registry overview lists plugins by name and navigates to their pages"
     const auto plugins = Peek::Frame(*cards[1]);
     CHECK(rig.host.click(plugins.x + 40.0f, plugins.y + 20.0f));
     CHECK(rig.host.click(plugins.x + 40.0f, plugins.bottom() - 20.0f));
-    CHECK(rig.calls == std::vector<std::string>{"nav:1:", "nav:2:alpha", "nav:2:beta"});
+    CHECK(rig.calls == std::vector<std::string>{"browse-plugins", "nav:1:", "nav:2:alpha", "nav:2:beta"});
 
     rig.calls.clear();
     rig.config.registry.plugins.clear();
     rig.config.registry.domains.clear();
     rig.show(SettingsSection::Registry);
-    CHECK(Actions(rig.view.component()).size() == 1);
+    CHECK(Actions(rig.view.component()).size() == 2);
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
 }
 

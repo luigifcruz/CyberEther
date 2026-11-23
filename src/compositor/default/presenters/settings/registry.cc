@@ -36,6 +36,10 @@ RegistrySettingsView::Config RegistrySettingsPresenter::build() const {
         .onReloadPlugin = [enqueue](const std::string& id) {
             enqueue(MailReloadPlugin{.id = id});
         },
+        .onBrowsePlugins = [enqueue]() {
+            enqueue(MailSetWelcomeSection{.section = WelcomeSection::Plugins});
+            enqueue(MailOpenStartTab{});
+        },
     };
 
     config.domains.reserve(domains.size());

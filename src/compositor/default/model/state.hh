@@ -16,6 +16,7 @@
 #include "jetstream/settings.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 
+#include "plugin_gallery.hh"
 #include "render/sakura/runtime.hh"
 #include "runtime/python/dependencies/coordinator.hh"
 
@@ -425,6 +426,14 @@ struct DefaultCompositorState {
     };
 
     struct PluginState {
+        struct Catalog {
+            std::vector<Plugin::Gallery::Entry> entries;
+            std::future<std::optional<std::vector<Plugin::Gallery::Entry>>> future;
+            std::chrono::steady_clock::time_point next;
+            bool loading = false;
+            bool failed = false;
+        };
+
         struct Task {
             struct Outcome {
                 Result result = Result::SUCCESS;
@@ -439,6 +448,7 @@ struct DefaultCompositorState {
             bool loading = false;
         };
 
+        Catalog catalog;
         Task install;
         Task update;
         std::shared_ptr<std::atomic<bool>> cancel = std::make_shared<std::atomic<bool>>(false);
@@ -446,6 +456,7 @@ struct DefaultCompositorState {
         std::vector<std::string> missing;
         std::string path;
         std::vector<char> blob;
+        std::string details;
     };
 
     SystemState system;
@@ -475,6 +486,7 @@ struct DefaultCompositorState {
     bool startTabActive() const;
     bool settingsTabActive() const;
     bool docsTabActive() const;
+    bool agentChatShown() const;
     std::optional<std::string> activeFlowgraph() const;
     bool flowgraphUnsaved(const std::string& id) const;
     bool flowgraphMayLoseChanges(const std::string& id) const;

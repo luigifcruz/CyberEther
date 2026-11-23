@@ -7,6 +7,7 @@
 #include "flowgraph/pane.hh"
 #include "file_picker.hh"
 #include "modal/container.hh"
+#include "plugin_details.hh"
 #include "docs.hh"
 #include "settings/base.hh"
 #include "start_tab/base.hh"
@@ -30,6 +31,7 @@ struct WorkspaceShellView {
         std::optional<std::string> activate;
         bool hideTabs = false;
         Sakura::Component* aside = nullptr;
+        F32 asideWidth = 0.0f;
         std::optional<FlowgraphClosePromptView::Config> closePrompt;
     };
 
@@ -55,6 +57,7 @@ struct WorkbenchView {
         bool backgroundParticles = true;
         bool renderStats = false;
         AgentChatView::Config agentChat;
+        std::optional<PluginDetailsView::Config> pluginDetails;
         std::optional<StartTabView::Config> startTab;
         bool hideTabs = false;
         U64 startTabRequests = 0;
@@ -99,6 +102,7 @@ struct WorkbenchView {
     Sakura::Text filePendingText;
     Sakura::Panel filePendingPanel;
     AgentChatView agentChat;
+    PluginDetailsView pluginDetails;
     StartTabView startTab;
     U64 startTabRequests = 0;
     bool startTabShown = false;

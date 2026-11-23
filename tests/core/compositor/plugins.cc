@@ -68,7 +68,8 @@ TEST_CASE("Flowgraphs that need missing plugins open the plugin prompt instead",
     CHECK(state.flowgraph.items.empty());
 }
 
-TEST_CASE("Gallery plugin installs report failures", "[core][compositor][plugins]") {
+TEST_CASE("Gallery plugin installs report failures and the catalog loads in the background",
+          "[core][compositor][plugins]") {
     TestSupport::SettingsSandbox sandbox("compositor-plugins");
     sandbox.require();
 
@@ -89,9 +90,20 @@ TEST_CASE("Gallery plugin installs report failures", "[core][compositor][plugins
     const std::string host = Home::Gallery::Remote::Host;
     const std::string body = "{\"plugins\":[{\"id\":\"alpha\",\"title\":\"Alpha\"}]}";
     PluginActions actions(state, callbacks, Serve({
+        {host + Plugin::Gallery::Path(Plugin::Gallery::Current()), body},
         {host + Plugin::Gallery::Path(Plugin::Gallery::Current({"alpha"})), body},
     }));
     state.plugins.checked = true;
+
+    actions.reconcile();
+    CHECK(state.plugins.catalog.loading);
+    Wait(state.plugins.catalog.future);
+    actions.reconcile();
+    CHECK_FALSE(state.plugins.catalog.loading);
+    CHECK_FALSE(state.plugins.catalog.failed);
+    REQUIRE(state.plugins.catalog.entries.size() == 1);
+    CHECK(state.plugins.catalog.entries.front().id == "alpha");
+    CHECK_FALSE(state.plugins.catalog.entries.front().available());
 
     state.modal = {.content = ModalContent::MissingPlugins};
     REQUIRE(actions.handle(MailInstallGalleryPlugins{.ids = {"alpha"}, .reopen = true}) == Result::SUCCESS);
@@ -110,4 +122,20 @@ TEST_CASE("Gallery plugin installs report failures", "[core][compositor][plugins
     CHECK(mails.empty());
 
     actions.shutdown();
+}
+
+TEST_CASE("Plugin details open and close in the side panel", "[core][compositor][plugins]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    PluginActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailOpenPluginDetails{.id = "alpha"}) == Result::SUCCESS);
+    CHECK(state.plugins.details == "alpha");
+    CHECK_FALSE(state.modal.content.has_value());
+
+    REQUIRE(actions.handle(MailOpenPluginDetails{.id = "beta"}) == Result::SUCCESS);
+    CHECK(state.plugins.details == "beta");
+
+    REQUIRE(actions.handle(MailClosePluginDetails{}) == Result::SUCCESS);
+    CHECK(state.plugins.details.empty());
 }
