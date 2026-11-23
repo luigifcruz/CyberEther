@@ -11,6 +11,7 @@
 #include "feedback.hh"
 #include "missing_plugins.hh"
 #include "onboarding.hh"
+#include "plan_notice.hh"
 #include "remote_qr.hh"
 #include "../../model/ui.hh"
 
@@ -34,6 +35,7 @@ struct ModalView {
         OnboardingView::Config onboarding;
         CrashReportView::Config crashReport;
         MissingPluginsView::Config missingPlugins;
+        PlanNoticeView::Config planNotice;
         Sakura::Callback<void()> onClose;
     };
 
@@ -57,6 +59,7 @@ struct ModalView {
     OnboardingView onboardingView;
     CrashReportView crashReportView;
     MissingPluginsView missingPluginsView;
+    PlanNoticeView planNoticeView;
 };
 
 }  // namespace Jetstream

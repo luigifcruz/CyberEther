@@ -581,6 +581,7 @@ struct ChatComposer::Impl {
             .efforts = selector.efforts,
             .effort = selector.effort,
             .disabled = selector.disabled,
+            .footer = selector.footer,
             .icon = config.style.compact ? config.style.pickerIcon : std::string(),
             .fontSize = config.style.fontSize,
             .rounding = controlRounding(),

@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <tuple>
 
 using namespace Jetstream;
 using namespace std::chrono_literals;
@@ -451,6 +452,13 @@ TEST_CASE("Missing credentials and unauthenticated local endpoints are distinct"
     Agent::Provider::Error error;
     REQUIRE(Chat(Agent::Provider(config), error) == Result::ERROR);
     CHECK(error.kind == Kind::MissingCredentials);
+    CHECK(error.message.find("No API key") != std::string::npos);
+    CHECK(requests.load() == 0);
+
+    config.kind = Agent::Provider::Kind::ChatGPT;
+    REQUIRE(Chat(Agent::Provider(config), error) == Result::ERROR);
+    CHECK(error.kind == Kind::MissingCredentials);
+    CHECK(error.message.find("Sign in to ChatGPT again") != std::string::npos);
     CHECK(requests.load() == 0);
 
     config.kind = Agent::Provider::Kind::Custom;
@@ -701,6 +709,140 @@ TEST_CASE("An image-count rejection reports the server's limit and is not retrie
     if (example.limit) {
         CHECK(error.message.find("image(s)") != std::string::npos);
     }
+}
+
+TEST_CASE("ChatGPT plan requests follow the plan's Responses rules", "[agent][providers][chatgpt]") {
+    const bool plan = GENERATE(false, true);
+
+    AgentTest::ProviderServer provider;
+    nlohmann::json captured;
+    provider.server.Post("/v1/responses", [&](const auto& input, auto& output) {
+        captured = nlohmann::json::parse(input.body);
+        output.set_content(Event({{"type", "response.completed"}, {"response", {{"usage", nlohmann::json::object()}}}}),
+                           "text/event-stream");
+    });
+    provider.start();
+
+    auto config = provider.config(plan ? Agent::Provider::Kind::ChatGPT : Agent::Provider::Kind::OpenAI);
+    config.path = "/v1/responses";
+    config.api = Agent::Provider::Api::Responses;
+
+    const std::vector<Agent::Provider::Message> messages{{"system", "Be brief"}, {"user", "Hello"}};
+    const std::vector<Agent::Provider::Function> tools{{"inspect", "Inspect", R"({"type":"object"})"}};
+    auto request = AgentTest::Request(messages, tools);
+    request.maxOutputTokens = 512;
+    Agent::Provider::Response response;
+    REQUIRE(Agent::Provider(config).stream(request, {}, response) == Result::SUCCESS);
+
+    CHECK(captured["store"] == false);
+    CHECK(captured["stream"] == true);
+    REQUIRE(captured["input"].is_array());
+    const U64 first = plan ? 1 : 0;
+    if (plan) {
+        const auto& additional = captured["input"][0];
+        CHECK(additional["type"] == "additional_tools");
+        CHECK(additional["role"] == "developer");
+        REQUIRE(additional["tools"].size() == 1);
+        CHECK(additional["tools"][0]["name"] == "inspect");
+    }
+    CHECK(captured.contains("tools") == !plan);
+    CHECK(captured["input"][first]["role"] == (plan ? "developer" : "system"));
+    CHECK(captured["input"][first + 1]["role"] == "user");
+    CHECK(captured.contains("max_output_tokens") == !plan);
+}
+
+TEST_CASE("ChatGPT plan model discovery lists visible slugs in server order", "[agent][providers][chatgpt]") {
+    AgentTest::ProviderServer provider;
+    provider.server.Get("/models", [](const auto&, auto& response) {
+        response.set_content(R"({"models":[
+            {"slug":"gpt-plan-b","display_name":"Plan B","visibility":"list"},
+            {"slug":"gpt-hidden","display_name":"Hidden","visibility":"hide"},
+            {"slug":"gpt-plan-a","display_name":"Plan A","visibility":"list"},
+            {"display_name":"No Slug","visibility":"list"}
+        ]})", "application/json");
+    });
+    provider.start();
+
+    Agent::Provider client(provider.config(Agent::Provider::Kind::ChatGPT));
+    std::vector<Agent::Provider::Model> models;
+    REQUIRE(client.models(models) == Result::SUCCESS);
+
+    REQUIRE(models.size() == 2);
+    CHECK(models[0].id == "gpt-plan-b");
+    CHECK(models[0].name == "Plan B");
+    CHECK(models[1].id == "gpt-plan-a");
+}
+
+TEST_CASE("ChatGPT plan errors explain the limit and are not retried", "[agent][providers][chatgpt][errors]") {
+    const auto [code, status, kind, hint] = GENERATE(
+        std::tuple{"subscription_sharing_usage_limit_exceeded", 429, Kind::Quota, "chatgpt.com/settings/usage"},
+        std::tuple{"subscription_sharing_invalid_user", 401, Kind::Authentication, "Sign in to ChatGPT again"},
+        std::tuple{"subscription_sharing_user_not_eligible", 403, Kind::Permission, "eligible account"});
+
+    AgentTest::ProviderServer provider;
+    std::atomic<int> attempts = 0;
+    provider.server.Post("/v1/responses", [&, code = code, status = status](const auto&, auto& response) {
+        ++attempts;
+        const nlohmann::json body = {{"error", {{"message", "Plan request rejected"}, {"code", code}}}};
+        response.status = status;
+        response.set_content(body.dump(), "application/json");
+    });
+    provider.start();
+
+    auto config = provider.config(Agent::Provider::Kind::ChatGPT);
+    config.path = "/v1/responses";
+    config.api = Agent::Provider::Api::Responses;
+    config.retries = 2;
+
+    Agent::Provider::Error error;
+    REQUIRE(Chat(Agent::Provider(config), error) == Result::ERROR);
+
+    CHECK(error.kind == kind);
+    CHECK(error.code == code);
+    CHECK(error.message.find("Plan request rejected") != std::string::npos);
+    CHECK(error.message.find(hint) != std::string::npos);
+    if (kind == Kind::Quota) {
+        CHECK(error.message.find("Usage limit reached. Plan request rejected") != std::string::npos);
+    }
+    CHECK(attempts == 1);
+}
+
+TEST_CASE("Admission errors with a detail body keep the detail", "[agent][providers][chatgpt][errors]") {
+    AgentTest::ProviderServer provider;
+    provider.server.Post("/chat", [](const auto&, auto& response) {
+        response.status = 403;
+        response.set_content(R"({"detail":"Region not supported"})", "application/json");
+    });
+    provider.start();
+
+    Agent::Provider::Error error;
+    REQUIRE(Chat(Agent::Provider(provider.config()), error) == Result::ERROR);
+
+    CHECK(error.kind == Kind::Permission);
+    CHECK(error.message.find("Region not supported") != std::string::npos);
+}
+
+TEST_CASE("Unstructured authentication failures on the ChatGPT plan ask to sign in again",
+          "[agent][providers][chatgpt][errors]") {
+    const bool plan = GENERATE(false, true);
+
+    AgentTest::ProviderServer provider;
+    provider.server.Post("/v1/responses", [](const auto&, auto& response) {
+        response.status = 401;
+        response.set_content(R"({"detail":"Token revoked"})", "application/json");
+    });
+    provider.start();
+
+    auto config = provider.config(plan ? Agent::Provider::Kind::ChatGPT : Agent::Provider::Kind::OpenAI);
+    config.path = "/v1/responses";
+    config.api = Agent::Provider::Api::Responses;
+
+    Agent::Provider::Error error;
+    REQUIRE(Chat(Agent::Provider(config), error) == Result::ERROR);
+
+    CHECK(error.kind == Kind::Authentication);
+    CHECK(error.message.find("Token revoked") != std::string::npos);
+    CHECK((error.message.find("Sign in to ChatGPT again") != std::string::npos) == plan);
 }
 
 #endif

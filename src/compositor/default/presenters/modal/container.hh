@@ -8,6 +8,7 @@
 #include "feedback.hh"
 #include "missing_plugins.hh"
 #include "onboarding.hh"
+#include "plan_notice.hh"
 #include "remote_qr.hh"
 
 #include "../context.hh"
@@ -31,6 +32,7 @@ struct ModalPresenter {
     DocsSearchModalPresenter docsSearch;
     CrashReportModalPresenter crashReport;
     MissingPluginsModalPresenter missingPlugins;
+    PlanNoticeModalPresenter planNotice;
 
     explicit ModalPresenter(const PresenterContext& context);
     ModalView::Config build() const;

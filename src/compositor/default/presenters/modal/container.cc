@@ -12,7 +12,8 @@ ModalPresenter::ModalPresenter(const PresenterContext& context) : context(contex
                                                                   remoteQr(context),
                                                                   docsSearch(context),
                                                                   crashReport(context),
-                                                                  missingPlugins(context) {}
+                                                                  missingPlugins(context),
+                                                                  planNotice(context) {}
 
 ModalView::Config ModalPresenter::build() const {
     const auto enqueue = context.callbacks.enqueueMail;
@@ -67,6 +68,9 @@ ModalView::Config ModalPresenter::build() const {
             break;
         case ModalContent::MissingPlugins:
             config.missingPlugins = missingPlugins.build();
+            break;
+        case ModalContent::PlanNotice:
+            config.planNotice = planNotice.build();
             break;
     }
 

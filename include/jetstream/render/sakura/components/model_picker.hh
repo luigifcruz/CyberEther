@@ -22,6 +22,14 @@ struct ModelPicker : public Component {
         bool operator==(const Option&) const = default;
     };
 
+    struct Footer {
+        std::string text;
+        std::string action;
+        Callback<void()> onAction;
+
+        bool operator==(const Footer&) const = default;
+    };
+
     struct Config {
         std::vector<Option> models;
         std::string value;
@@ -30,6 +38,7 @@ struct ModelPicker : public Component {
         std::string effort;
         std::string effortPlaceholder = "Select effort";
         bool disabled = false;
+        std::optional<Footer> footer;
         std::string icon;
         F32 fontSize = Typography::FontSize;
         F32 rounding = 0.0f;

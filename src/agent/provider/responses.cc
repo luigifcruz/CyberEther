@@ -39,13 +39,18 @@ bool AppendResponseHistory(nlohmann::json& input, const nlohmann::json& state) {
     return input.size() != start;
 }
 
-void AppendMessage(nlohmann::json& input, const Provider::Message& message) {
+bool PlanBilled(const Config& config) {
+    return config.kind == Provider::Kind::ChatGPT;
+}
+
+void AppendMessage(nlohmann::json& input, const Provider::Message& message, bool plan) {
     if (message.role == "tool") {
         input.push_back(Responses::FunctionOutput(message.toolCallId, message.content));
         return;
     }
 
-    nlohmann::json item = {{"role", message.role}};
+    const bool system = message.role == "system";
+    nlohmann::json item = {{"role", plan && system ? "developer" : message.role}};
     if (message.images.empty()) {
         item["content"] = message.content;
     } else {
@@ -73,7 +78,7 @@ void AppendMessage(nlohmann::json& input, const Provider::Message& message) {
 nlohmann::json EncodeInput(const Config& config, const Request& request) {
     auto input = nlohmann::json::array();
     for (const auto& message : request.messages) {
-        const auto state = Wire::Replay(message, config.host, config.path, request.model);
+        const auto state = Wire::Replay(message, config, request.model);
         if (state.is_array() && AppendResponseHistory(input, state)) {
             continue;
         }
@@ -81,7 +86,7 @@ nlohmann::json EncodeInput(const Config& config, const Request& request) {
         if (Wire::Empty(message, state)) {
             continue;
         }
-        AppendMessage(input, message);
+        AppendMessage(input, message, PlanBilled(config));
     }
     return input;
 }
@@ -377,13 +382,21 @@ nlohmann::json Responses::Encode(const Config& config, const Request& request, b
     body["input"] = EncodeInput(config, request);
 
     if (!request.tools.empty()) {
-        body["tools"] = EncodeTools(request.tools);
+        if (PlanBilled(config)) {
+            body["input"].insert(body["input"].begin(), nlohmann::json{
+                {"type", "additional_tools"},
+                {"role", "developer"},
+                {"tools", EncodeTools(request.tools)},
+            });
+        } else {
+            body["tools"] = EncodeTools(request.tools);
+        }
         if (!request.allowTools) {
             body["tool_choice"] = "none";
         }
     }
 
-    if (request.maxOutputTokens) {
+    if (request.maxOutputTokens && !PlanBilled(config)) {
         body["max_output_tokens"] = request.maxOutputTokens;
     }
 

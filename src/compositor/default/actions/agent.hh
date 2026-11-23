@@ -48,6 +48,8 @@ struct AgentActions {
                               MailSaveAgentProvider,
                               MailRemoveAgentProvider,
                               MailTestAgentProvider,
+                              MailSignInAgentProvider,
+                              MailCancelAgentProviderSignIn,
                               MailSetAgentVoiceBackend,
                               MailSetAgentVoiceModel,
                               MailSetAgentVoiceName,
@@ -78,6 +80,8 @@ struct AgentActions {
     Result handle(const MailSaveAgentProvider& msg);
     Result handle(const MailRemoveAgentProvider& msg);
     Result handle(const MailTestAgentProvider& msg);
+    Result handle(const MailSignInAgentProvider& msg);
+    Result handle(const MailCancelAgentProviderSignIn&);
     Result handle(const MailSetAgentVoiceBackend& msg);
     Result handle(const MailSetAgentVoiceModel& msg);
     Result handle(const MailSetAgentVoiceName& msg);
@@ -94,17 +98,20 @@ struct AgentActions {
     bool startVoice();
     void ensureModels();
     void resetProviderTest();
+    void resetSignIn();
+    std::string pendingSignIn() const;
     bool selectFallbackModel();
     void returnToSettings();
     void openIntelligencePage(IntelligencePage page);
     void renameProvider(const std::string& previous, const std::string& next);
-    Result saveProvider(Settings::Intelligence::Provider provider, const std::string& previousName);
+    Result saveProvider(Settings::Intelligence::Provider provider, const std::string& previousName, bool signedIn);
     Result removeProvider(const std::string& name);
     void collectProviderKeyTask();
     void checkUnread();
     void checkContextLengths();
     void checkSettingsSection();
     void collectProviderTest();
+    void collectSignIn();
     void collectModels();
     bool mergeModelMetadata();
     Result persist();

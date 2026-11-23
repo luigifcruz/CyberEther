@@ -27,6 +27,7 @@ namespace Jetstream {
 struct IntelligenceSettingsView {
     struct ProviderRow {
         std::string name;
+        std::string description;
         StatusBadge::Config status;
     };
 

@@ -4,6 +4,8 @@
 #include "labels.hh"
 #include "transcript.hh"
 #include "../context.hh"
+#include "../../support/agent/chatgpt.hh"
+#include "../../support/agent/providers.hh"
 #include "../../views/agent/chat.hh"
 
 #include <algorithm>

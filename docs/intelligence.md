@@ -15,11 +15,12 @@ Once enabled, press **Cmd/Ctrl + L** to toggle the **Assistant** tile on the rig
 
 ## Providers and API Keys
 
-Under **Settings** > **Intelligence** > **Providers**, CyberEther includes six provider presets:
+Under **Settings** > **Intelligence** > **Providers**, CyberEther includes seven provider presets:
 
 | Provider Preset | Request API | Notes |
 |---|---|---|
-| **OpenAI** | Responses | Supports chat, reasoning models, and live Voice mode. |
+| **OpenAI API** | Responses | Billed to your OpenAI API key. Supports chat, reasoning models, and live Voice mode. |
+| **ChatGPT Plan** | Responses | Signs in with your ChatGPT account and uses your ChatGPT plan for eligible requests instead of API credits. Desktop builds only. |
 | **Anthropic** | Messages | Claude models through the Anthropic Messages API. |
 | **OpenRouter** | Chat Completions | Aggregates third-party models. Its model catalog lists models even without a valid key, so a passing catalog test does not guarantee chat access. |
 | **OpenCode Go** | Chat Completions | Hosted OpenAI-compatible endpoint. |
@@ -30,10 +31,14 @@ Before saving a provider, CyberEther requires a passing connection test.
 
 ### Managing Credentials
 
-Every provider supports two mutually exclusive API key sources:
+Every provider except **ChatGPT Plan** supports two mutually exclusive API key sources:
 
 - **Keychain:** Stores the secret in your operating system's native secret store (`CyberEther Intelligence`). Only a secret identifier (`apiKeyId`) is written to `settings.yaml`, never the raw key.
 - **Environment:** Reads the key on each request from a named environment variable (`apiKeyEnv`) without storing the secret on disk. A configured environment variable that is missing or unset does **not** fall back to Keychain.
+
+### ChatGPT Plan
+
+The **ChatGPT Plan** preset uses a ChatGPT sign-in instead of an API key. Click **Continue with ChatGPT**, sign in from your browser, and the provider is saved once the sign-in succeeds. The sign-in is stored in Keychain, and usage counts toward your ChatGPT plan limits. Voice mode is not supported.
 
 ### Models and Reasoning Effort
 

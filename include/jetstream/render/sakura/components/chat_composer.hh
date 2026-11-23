@@ -43,6 +43,7 @@ struct ChatComposer : public Component {
         bool disabled = false;
         std::vector<ModelPicker::Option> efforts;
         std::string effort;
+        std::optional<ModelPicker::Footer> footer;
         Callback<void(const std::string&)> onSelect;
         Callback<void(const std::string&)> onEffort;
 
