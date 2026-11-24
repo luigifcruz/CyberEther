@@ -64,12 +64,16 @@ jobs:
           set -euo pipefail
           python3 -m pip install --break-system-packages meson ninja numpy
 
+      - name: Install sccache
+        if: ${{ inputs.compiler_cache }}
+        run: brew install sccache
+
       - name: Set up compiler cache
         if: ${{ inputs.compiler_cache }}
         uses: hendrikmuhs/ccache-action@e91f31892a1d1b8c44424b1a94c0b7f52d337168 # v1.2.26
         with:
           variant: sccache
-          install: binary
+          install: 'no'
           key: macos-arm64
           max-size: 1500M
           save: ${{ github.event_name == 'push' }}
