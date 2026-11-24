@@ -2498,7 +2498,7 @@ TEST_CASE("Start tab lists gallery plugins and opens their page", "[core][sakura
     auto welcome = WelcomePresenter(mailbox.context()).build();
     REQUIRE(welcome.plugins.size() == 4);
     CHECK(welcome.plugins[0].category == "Installed");
-    CHECK(welcome.plugins[1].category == "Plugin v1.0.0");
+    CHECK(welcome.plugins[1].category == "Update Available");
     CHECK(welcome.plugins[2].category == "Plugin v1.0.0");
     CHECK(welcome.plugins[3].category == "Waiting for a Build");
     CHECK(welcome.plugins[3].blocks == std::vector<std::string>{"Delta"});
