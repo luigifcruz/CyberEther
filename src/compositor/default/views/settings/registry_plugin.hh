@@ -24,23 +24,34 @@ struct RegistryPluginView {
     };
 
     struct Plugin {
+        std::string id;
         std::string name;
+        std::string summary;
+        std::string description;
         std::string version;
+        std::string cyberether;
+        std::string author;
+        std::string license;
         StatusBadge::Config status;
         std::string path;
-        std::string minimumVersion;
+        std::string update;
+        bool updating = false;
+        bool temporary = false;
         std::vector<Item> blocks;
         std::vector<Item> examples;
     };
 
     struct Config {
         Plugin plugin;
+        Sakura::Callback<void(const std::string&)> onUpdate;
         Sakura::Callback<void(const std::string&)> onReload;
         Sakura::Callback<void(const std::string&)> onRemove;
         Sakura::Callback<void()> onBack;
     };
 
     static std::string VersionLabel(const Plugin& plugin);
+    static std::string SummaryLabel(const Plugin& plugin);
+    static std::string UpdateLabel(const Plugin& plugin);
     void update(Config config);
     Sakura::Component& content();
 
@@ -50,11 +61,12 @@ struct RegistryPluginView {
     Config config;
     SettingsBreadcrumb breadcrumb;
     SettingsHeader header;
+    CompactButton updateButton;
     CompactButton reloadButton;
     CompactButton removeButton;
     Sakura::Stack actions;
     StatusBadge statusBadge;
-    std::array<Sakura::Text, 2> aboutValues;
+    std::array<Sakura::Text, 4> aboutValues;
     SectionGroup aboutGroup;
     SectionGroup blocksGroup;
     SectionGroup examplesGroup;

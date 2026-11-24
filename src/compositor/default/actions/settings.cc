@@ -193,91 +193,79 @@ Result SettingsActions::handle(const MailOpenPythonEnvironmentCache&) {
     return Result::SUCCESS;
 }
 
-Result SettingsActions::handle(const MailAddPluginPath& msg) {
+Result SettingsActions::handle(const MailInstallPlugin& msg) {
     if (msg.path.empty()) {
-        callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot add plugin because the path is empty.");
+        callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot install plugin because the path is empty.");
         return Result::SUCCESS;
     }
 
-    if (Platform::PathFromUtf8(msg.path).extension() != ".cep") {
+    if (!Plugin::IsCepPath(msg.path)) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "Plugins must be .cep bundles.");
         return Result::SUCCESS;
     }
 
-    if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(Platform::PathFromUtf8(msg.path), ec)) {
         callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
         return Result::SUCCESS;
     }
 
-    Settings settings;
-    JST_CHECK(Settings::Get(settings));
-
-    const auto duplicate = std::find_if(settings.registry.plugins.begin(),
-                                        settings.registry.plugins.end(),
-                                        [&](const auto& path) {
-                                            return path == msg.path;
-                                        });
-    if (duplicate != settings.registry.plugins.end()) {
-        callbacks.notify(Sakura::ToastType::Info, 3000, "Plugin is already registered.");
+    if (state.benchmark.running) {
+        callbacks.notify(Sakura::ToastType::Error, 5000, "Wait for the benchmark to finish before installing plugins.");
         return Result::SUCCESS;
     }
 
-    if (Plugin::Load(msg.path) != Result::SUCCESS) {
-        callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to load plugin.");
+    std::string id;
+    if (Plugin::Install(msg.path, id) != Result::SUCCESS) {
+        callbacks.notifyResult(Result::ERROR, "");
         return Result::SUCCESS;
     }
 
-    settings.registry.plugins.push_back(msg.path);
-    JST_CHECK(Settings::SetAsync(settings));
+    const auto plugins = Plugin::List();
+    const auto loaded = std::any_of(plugins.begin(), plugins.end(), [&](const auto& plugin) {
+        return plugin.id == id && plugin.status == Plugin::Status::Loaded;
+    });
+    if (!loaded && Plugin::LoadInstalled() != Result::SUCCESS) {
+        callbacks.notifyResult(Result::ERROR, "");
+    }
+
     state.registry.stale = true;
+    state.settings.registryPage = RegistryPage::Plugin;
+    state.settings.registryPlugin = id;
 
-    Select(state, SettingsSection::Registry);
-    callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin loaded.");
+    if (!loaded && Plugin::Path(id).empty()) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         "Plugin installed but could not be loaded. Check the logs for details.");
+        return Result::SUCCESS;
+    }
+
+    if (loaded) {
+        callbacks.notify(Sakura::ToastType::Success,
+                         5000,
+                         "Plugin installed. The new version loads the next time CyberEther starts.");
+    } else {
+        callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin installed.");
+    }
     return Result::SUCCESS;
 }
 
-Result SettingsActions::handle(const MailRemovePluginPath& msg) {
-    Settings settings;
-    JST_CHECK(Settings::Get(settings));
-
-    const auto initialSize = settings.registry.plugins.size();
-    settings.registry.plugins.erase(
-        std::remove(settings.registry.plugins.begin(),
-                    settings.registry.plugins.end(),
-                    msg.path),
-        settings.registry.plugins.end());
-
-    if (settings.registry.plugins.size() == initialSize) {
-        callbacks.notify(Sakura::ToastType::Info, 3000, "Plugin was not registered.");
+Result SettingsActions::handle(const MailRemovePlugin& msg) {
+    if (Plugin::Remove(msg.id) != Result::SUCCESS) {
+        callbacks.notifyResult(Result::ERROR, "");
         return Result::SUCCESS;
     }
 
-    JST_CHECK(Settings::SetAsync(settings));
     state.registry.stale = true;
-    if (state.settings.registryPlugin == msg.path) {
+    if (state.settings.registryPlugin == msg.id) {
         state.settings.registryPage = RegistryPage::Overview;
         state.settings.registryPlugin.clear();
     }
-    callbacks.notify(Sakura::ToastType::Success, 5000, "Plugin removed. Restart CyberEther to unload registered blocks.");
+    callbacks.notify(Sakura::ToastType::Success, 5000, "Plugin removed. Restart CyberEther to unload its blocks.");
     return Result::SUCCESS;
 }
 
 Result SettingsActions::handle(const MailReloadPlugin& msg) {
-    if (msg.path.empty()) {
-        callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot reload plugin because the path is empty.");
-        return Result::SUCCESS;
-    }
-
-    if (Platform::PathFromUtf8(msg.path).extension() != ".cep") {
-        callbacks.notify(Sakura::ToastType::Error, 5000, "Plugins must be .cep bundles.");
-        return Result::SUCCESS;
-    }
-
-    if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
-        callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
-        return Result::SUCCESS;
-    }
-
     if (!state.flowgraph.items.empty()) {
         callbacks.notify(Sakura::ToastType::Error,
                          5000,
@@ -285,9 +273,16 @@ Result SettingsActions::handle(const MailReloadPlugin& msg) {
         return Result::SUCCESS;
     }
 
+    if (state.benchmark.running) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         "Wait for the benchmark to finish before reloading plugins.");
+        return Result::SUCCESS;
+    }
+
     state.registry.stale = true;
-    if (Plugin::Reload(msg.path) != Result::SUCCESS) {
-        callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to reload plugin.");
+    if (Plugin::Reload(msg.id) != Result::SUCCESS) {
+        callbacks.notifyResult(Result::ERROR, "");
         return Result::SUCCESS;
     }
 
@@ -303,49 +298,37 @@ Result SettingsActions::handle(const MailReloadAllPlugins&) {
         return Result::SUCCESS;
     }
 
-    Settings settings;
-    JST_CHECK(Settings::Get(settings));
-
-    if (settings.registry.plugins.empty()) {
-        callbacks.notify(Sakura::ToastType::Info, 3000, "No plugins registered to reload.");
+    if (state.benchmark.running) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         "Wait for the benchmark to finish before reloading plugins.");
         return Result::SUCCESS;
     }
 
-    for (const auto& path : settings.registry.plugins) {
-        if (path.empty()) {
-            callbacks.notify(Sakura::ToastType::Error,
-                             5000,
-                             "Cannot reload plugin because a registered path is empty.");
-            return Result::SUCCESS;
+    std::vector<std::string> ids;
+    for (const auto& plugin : Plugin::List()) {
+        if (plugin.temporary) {
+            ids.push_back(plugin.id);
         }
-        if (Platform::PathFromUtf8(path).extension() != ".cep") {
-            callbacks.notify(Sakura::ToastType::Error,
-                             5000,
-                             jst::fmt::format("Registered plugins must be .cep bundles: {}", path));
-            return Result::SUCCESS;
-        }
-        if (!std::filesystem::exists(Platform::PathFromUtf8(path))) {
-            callbacks.notify(Sakura::ToastType::Error,
-                             5000,
-                             jst::fmt::format("A registered plugin does not exist: {}", path));
-            return Result::SUCCESS;
-        }
+    }
+
+    if (ids.empty()) {
+        callbacks.notify(Sakura::ToastType::Info, 3000, "No plugins loaded with --plugin to reload.");
+        return Result::SUCCESS;
     }
 
     state.registry.stale = true;
-    for (const auto& path : settings.registry.plugins) {
-        if (Plugin::Reload(path) != Result::SUCCESS) {
-            callbacks.notify(Sakura::ToastType::Error,
-                             5000,
-                             jst::fmt::format("Failed to reload plugin: {}", path));
+    for (const auto& id : ids) {
+        if (Plugin::Reload(id) != Result::SUCCESS) {
+            callbacks.notifyResult(Result::ERROR, "");
             return Result::SUCCESS;
         }
     }
 
-    const auto count = settings.registry.plugins.size();
+    const auto count = ids.size();
     callbacks.notify(Sakura::ToastType::Success,
                      3000,
-                     jst::fmt::format("Reloaded modules from {} {}.", count, count == 1 ? "plugin" : "plugins"));
+                     jst::fmt::format("Reloaded {} {}.", count, count == 1 ? "plugin" : "plugins"));
     return Result::SUCCESS;
 }
 

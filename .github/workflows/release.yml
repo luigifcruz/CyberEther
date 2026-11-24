@@ -71,6 +71,7 @@ jobs:
     uses: ./.github/workflows/linux.yml
     with:
       package_desktop: true
+      compiler_cache: false
 
   wheel:
     needs: prepare-release
@@ -84,12 +85,14 @@ jobs:
     uses: ./.github/workflows/windows.yml
     with:
       package_desktop: true
+      compiler_cache: false
 
   macos:
     needs: prepare-release
     uses: ./.github/workflows/macos.yml
     with:
       package_desktop: true
+      compiler_cache: false
     secrets: inherit
 
   emscripten:

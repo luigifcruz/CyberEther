@@ -19,6 +19,7 @@ struct ScrollArea : public Component {
         bool alwaysScrollbar = true;
         bool border = true;
         bool overlay = false;
+        bool scrollbar = true;
         Extent2D<F32> scrollbarInset = {0.0f, 0.0f};
         Component* scrollTarget = nullptr;
         U64 scrollRequest = 0;

@@ -500,7 +500,7 @@ void WelcomeView::updateFilterCard() {
     });
     search.update({
         .value = config.query,
-        .hint = "Search flowgraphs...",
+        .hint = config.section == WelcomeSection::Plugins ? "Search plugins..." : "Search flowgraphs...",
         .submit = Sakura::TextInput::Submit::OnEdit,
         .height = FilterHeight,
         .onChange = [this](const std::string& value) {
@@ -523,6 +523,7 @@ void WelcomeView::updateFilterCard() {
         .items = {
             {.icon = ICON_LC_LAYOUT_GRID, .label = "All"},
             {.icon = ICON_LC_WORKFLOW, .label = "Flowgraphs"},
+            {.icon = ICON_LC_PUZZLE, .label = "Plugins"},
         },
         .selected = static_cast<U64>(config.section),
         .onSelect = [this](U64 index) {
@@ -814,7 +815,12 @@ void WelcomeView::updateExplore() {
             {.child = &loadingReveal},
         },
     });
-    auto items = updateFlowgraphs();
+    const bool pluginsOnly = config.section == WelcomeSection::Plugins;
+    auto items = pluginsOnly ? std::vector<Sakura::Component*>{} : updateFlowgraphs();
+    if (pluginsOnly || (config.section == WelcomeSection::All && !config.plugins.empty())) {
+        updatePlugins();
+        items.push_back(&pluginSection.stack);
+    }
     if (items.empty() && config.progress.empty()) {
         noResults.update({.empty = config.section == WelcomeSection::Flowgraphs ? "No flowgraphs match your search."
                                                                                  : "Nothing matches your search."});
@@ -834,8 +840,10 @@ void WelcomeView::updateExplore() {
     std::vector<Sakura::Stack::Item> stackItems = {
         {.child = &exploreHeader},
         {.child = &filterGroup},
-        {.child = &categoryGrid},
     };
+    if (!pluginsOnly) {
+        stackItems.push_back({.child = &categoryGrid});
+    }
     for (auto* item : items) {
         stackItems.push_back({.child = item});
     }
@@ -844,6 +852,96 @@ void WelcomeView::updateExplore() {
     explore.update({
         .spacing = ExploreSpacing,
         .items = std::move(stackItems),
+    });
+}
+
+void WelcomeView::updatePlugins() {
+    using Text = Sakura::Text;
+
+    auto& section = pluginSection;
+    while (section.cards.size() < config.plugins.size()) {
+        section.cards.push_back(std::make_unique<Sakura::FlowgraphCard>());
+    }
+    std::vector<Sakura::Component*> cards;
+    for (U64 index = 0; index < config.plugins.size(); ++index) {
+        const auto& plugin = config.plugins[index];
+        section.cards[index]->update({
+            .id = plugin.id,
+            .blocks = plugin.blocks,
+            .category = plugin.category,
+            .title = plugin.title,
+            .description = plugin.summary,
+            .onOpen = [this, id = plugin.id]() {
+                if (config.onOpenPlugin) {
+                    config.onOpenPlugin(id);
+                }
+            },
+        });
+        cards.push_back(section.cards[index].get());
+    }
+    section.icon.update({
+        .str = ICON_LC_PUZZLE,
+        .colorKey = "cyber_blue",
+        .scale = SectionIconScale,
+    });
+    section.heading.update({
+        .str = "Plugins",
+        .font = Text::Font::DisplaySemiBold,
+        .scale = SectionTitleScale,
+    });
+    section.headingRow.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::Small,
+        .items = {
+            {.child = &section.icon},
+            {.child = &section.heading},
+        },
+    });
+    section.caption.update({
+        .str = "Extra blocks from the CyberEther gallery, built for this version of CyberEther.",
+        .font = Text::Font::Sans,
+        .tone = Text::Tone::Secondary,
+        .scale = SectionCaptionScale,
+    });
+    section.titles.update({
+        .spacing = Sakura::Spacing::XSmall,
+        .centerCross = false,
+        .items = {
+            {.child = &section.headingRow},
+            {.child = &section.caption},
+        },
+    });
+    section.spacing.update({.lines = 2});
+    section.headerGap.update({});
+
+    Sakura::Component* body = &section.grid;
+    if (cards.empty()) {
+        std::string empty = "No plugins are available for this version of CyberEther yet.";
+        if (config.pluginsLoading) {
+            empty = "Loading plugins from the CyberEther gallery.";
+        } else if (config.pluginsFailed) {
+            empty = "Could not reach the CyberEther gallery. Retrying shortly.";
+        } else if (!config.query.empty()) {
+            empty = "No plugins match your search.";
+        }
+        pluginsEmpty.update({.empty = std::move(empty)});
+        body = &pluginsEmpty;
+    }
+    section.grid.update({
+        .columns = GridColumns,
+        .minCellWidth = MinCardWidth,
+        .cellPadding = {6.0f, 6.0f},
+        .outerPadding = false,
+        .items = std::move(cards),
+    });
+    section.stack.update({
+        .spacing = Sakura::Spacing::XSmall,
+        .items = {
+            {.child = &section.spacing},
+            {.child = &section.titles},
+            {.child = &section.headerGap, .size = SectionHeaderGap},
+            {.child = body},
+        },
     });
 }
 

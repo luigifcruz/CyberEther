@@ -11,6 +11,7 @@
 #include "feedback.hh"
 #include "onboarding.hh"
 #include "plan_notice.hh"
+#include "plugin_prompt.hh"
 #include "remote_qr.hh"
 #include "../../model/ui.hh"
 
@@ -33,6 +34,8 @@ struct ModalView {
         DocsSearchView::Config docsSearch;
         OnboardingView::Config onboarding;
         CrashReportView::Config crashReport;
+        PluginPromptView::Config missingPlugins;
+        PluginPromptView::Config pluginUpdates;
         PlanNoticeView::Config planNotice;
         Sakura::Callback<void()> onClose;
     };
@@ -56,6 +59,7 @@ struct ModalView {
     DocsSearchView docsSearchView;
     OnboardingView onboardingView;
     CrashReportView crashReportView;
+    PluginPromptView pluginPromptView;
     PlanNoticeView planNoticeView;
 };
 

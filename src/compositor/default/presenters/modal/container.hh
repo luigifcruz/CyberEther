@@ -6,8 +6,10 @@
 #include "dependencies.hh"
 #include "docs_search.hh"
 #include "feedback.hh"
+#include "missing_plugins.hh"
 #include "onboarding.hh"
 #include "plan_notice.hh"
+#include "plugin_updates.hh"
 #include "remote_qr.hh"
 
 #include "../context.hh"
@@ -30,6 +32,8 @@ struct ModalPresenter {
     RemoteQrModalPresenter remoteQr;
     DocsSearchModalPresenter docsSearch;
     CrashReportModalPresenter crashReport;
+    MissingPluginsModalPresenter missingPlugins;
+    PluginUpdatesModalPresenter pluginUpdates;
     PlanNoticeModalPresenter planNotice;
 
     explicit ModalPresenter(const PresenterContext& context);

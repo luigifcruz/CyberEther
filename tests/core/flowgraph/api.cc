@@ -10,6 +10,7 @@
 
 #include "jetstream/flowgraph_environment.hh"
 #include "jetstream/flowgraph_metadata.hh"
+#include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
 
 #include "flowgraph_fixture.hh"
@@ -467,6 +468,42 @@ graph:
     CHECK(flowgraph->title() == "Gallery Graph");
     CHECK(flowgraph->summary() == "A short gallery summary.");
     CHECK(flowgraph->view().size() == 1);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph imports name the plugins they need but cannot find",
+                 "[core][flowgraph][api][plugin]") {
+    const std::string yaml = R"(---
+version: 2
+plugins:
+  - nothere
+  - missing
+graph:
+  - name: gen1
+    module: flowgraph_test_source
+)";
+
+    JST_LOG_LAST_ERROR().clear();
+    const std::vector<char> blob(yaml.begin(), yaml.end());
+    REQUIRE(flowgraph->importFromBlob(blob) == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find("needs the plugins 'nothere', 'missing'") != std::string::npos);
+    CHECK(flowgraph->view().size() == 0);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph exports list no plugins when only built-in blocks are used",
+                 "[core][flowgraph][api][plugin]") {
+    const std::string yaml = R"(---
+version: 2
+graph:
+  - name: gen1
+    module: flowgraph_test_source
+)";
+
+    const std::vector<char> blob(yaml.begin(), yaml.end());
+    REQUIRE(flowgraph->importFromBlob(blob) == Result::SUCCESS);
+
+    std::vector<char> exported;
+    REQUIRE(flowgraph->exportToBlob(exported) == Result::SUCCESS);
+    CHECK(std::string(exported.begin(), exported.end()).find("plugins:") == std::string::npos);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph blob APIs are covered", "[core][flowgraph][api][serialization]") {

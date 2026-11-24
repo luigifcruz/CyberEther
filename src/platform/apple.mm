@@ -41,6 +41,10 @@ Result CachePath(std::string& path) {
     return ResolveAppPath(NSCachesDirectory, @"CyberEther", path);
 }
 
+Result DataPath(std::string& path) {
+    return ResolveAppPath(NSApplicationSupportDirectory, @"CyberEther/Data", path);
+}
+
 Result OpenUrl(const std::string& url) {
     NSString* nsUrl = [NSString stringWithUTF8String:url.c_str()];
     NSURL* urlObj = [NSURL URLWithString:nsUrl];

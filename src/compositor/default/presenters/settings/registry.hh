@@ -2,7 +2,6 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_SETTINGS_REGISTRY_HH
 
 #include "../context.hh"
-#include "plugin_labels.hh"
 
 #include "../../model/messages.hh"
 #include "../../views/settings/registry.hh"
@@ -24,7 +23,7 @@ struct RegistrySettingsPresenter {
     RegistrySettingsView::Config build() const;
 
  private:
-    static StatusBadge::Config Status(const DefaultCompositorState::RegistryState::PluginEntry& entry);
+    static StatusBadge::Config Status(const Plugin::Info& info);
     std::vector<RegistrySettingsView::PluginItem> blocks(const Plugin::Info& info) const;
     std::vector<RegistrySettingsView::PluginItem> examples(const Plugin::Info& info) const;
 };

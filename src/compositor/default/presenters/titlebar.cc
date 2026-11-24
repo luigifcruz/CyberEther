@@ -10,6 +10,7 @@ TitlebarView::Config TitlebarPresenter::build() const {
     const bool startTabActive = context.state.startTabActive();
     const bool settingsTabActive = context.state.settingsTabActive();
     const bool docsTabActive = context.state.docsTabActive();
+    const bool agentShown = context.state.agentChatShown();
     const bool canCheckForUpdates = context.state.update.supported &&
                                     !context.state.update.checking &&
                                     !context.state.update.available &&
@@ -31,7 +32,7 @@ TitlebarView::Config TitlebarPresenter::build() const {
         .updateAvailable = context.state.update.available,
         .updateReady = context.state.update.ready,
         .intelligenceEnabled = context.state.agent.settings.enabled,
-        .agentWorking = context.state.agent.chat.conversation.streaming && !context.state.agent.ui.visible,
+        .agentWorking = context.state.agent.chat.conversation.streaming && !agentShown,
         .agentUnread = context.state.agent.ui.unread,
         .terminalEnabled = TerminalSession::Supported(),
         .voice = voice.build(),
@@ -46,7 +47,7 @@ TitlebarView::Config TitlebarPresenter::build() const {
                      terminalTab = context.state.terminal.focused,
                      timing = context.state.debug.timingEnabled,
                      renderStats = context.state.debug.renderStatsEnabled,
-                     agentVisible = context.state.agent.ui.visible,
+                     agentVisible = agentShown,
                      activePaused = activeFlowgraph.has_value() &&
                                     context.state.flowgraph.items.at(*activeFlowgraph) &&
                                     context.state.flowgraph.items.at(*activeFlowgraph)->paused(),

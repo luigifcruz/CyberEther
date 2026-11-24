@@ -1,5 +1,8 @@
 #include "jetstream/plugin.hh"
 
+#include "plugin_gallery.hh"
+#include "tools/text.hh"
+
 #include "jetstream/home.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
@@ -8,53 +11,81 @@
 #include "jetstream/runtime.hh"
 
 #include <algorithm>
-#include <array>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <exception>
 #include <filesystem>
 #include <fstream>
-#include <functional>
-#include <limits>
+#include <iterator>
+#include <map>
 #include <mutex>
+#include <set>
 #include <string>
+#include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
-#include <zlib.h>
+#include <miniz.h>
 
 namespace Jetstream {
 
+namespace {
+
+constexpr const char* ManifestFile = "manifest.yml";
+constexpr const char* IndexFile = "index.yml";
+
+constexpr uint64_t MaxBundleSize = 512ull << 20;
+constexpr uint64_t MaxUncompressedSize = 2ull << 30;
+constexpr uint64_t MaxBundleEntries = 10000;
+constexpr uint64_t MaxManifestSize = 64ull << 10;
+
+struct InstallOptions {
+    bool gallery = false;
+    bool update = false;
+    std::string id;
+    std::string version;
+};
+
+std::string ReadText(const std::filesystem::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        throw Result::ERROR;
+    }
+    return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+}
+
+}  // namespace
+
 struct Plugin::Impl {
-    struct ManifestMetadata {
-        std::string name;
-        std::string version;
-        std::string minimumJetstreamVersion;
-
-        JST_SERDES(name, version, minimumJetstreamVersion);
-    };
-
-    struct ManifestTarget {
-        std::string path;
-        std::string system;
-        std::string device;
-        std::string arch;
-
-        JST_SERDES(path, system, device, arch);
-    };
-
-    struct ManifestExample {
-        std::string path;
-
-        JST_SERDES(path);
-    };
-
     struct Manifest {
-        ManifestMetadata metadata;
-        std::vector<ManifestTarget> targets;
-        std::vector<ManifestExample> examples;
+        std::string id;
+        std::string title;
+        std::string version;
+        std::string cyberether;
+        std::string build;
+        std::string summary;
+        std::string description;
+        std::string author;
+        std::string license;
 
-        JST_SERDES(metadata, targets, examples);
+        JST_SERDES(id, title, version, cyberether, build, summary, description, author, license);
+    };
+
+    struct IndexEntry {
+        std::string id;
+        std::string folder;
+        std::string pending;
+        bool gallery = false;
+
+        JST_SERDES(id, folder, pending, gallery);
+    };
+
+    struct Index {
+        std::vector<IndexEntry> plugins;
+
+        JST_SERDES(plugins);
     };
 
     struct Registrations {
@@ -65,100 +96,93 @@ struct Plugin::Impl {
             ProviderType provider;
         };
 
-        std::vector<Module> modules;
-        std::vector<std::string> blocks;
-
         struct Benchmark {
             std::string moduleType;
             const void* owner = nullptr;
         };
 
+        std::vector<Module> modules;
+        std::vector<std::string> blocks;
         std::vector<Benchmark> benchmarks;
     };
 
     struct Record {
-        std::string sourcePath;
-        std::string loadedPath;
-        std::string extractedPath;
-        std::vector<void*> handles;
-        Registrations registrations;
-        std::string origin;
-        std::vector<std::string> examples;
         Manifest manifest;
-    };
-
-    struct RegistrySnapshot {
-        std::vector<Registrations::Module> modules;
-        std::vector<std::string> blocks;
-        std::vector<Registrations::Benchmark> benchmarks;
+        std::filesystem::path root;
+        std::string source;
+        bool temporary = false;
+        void* handle = nullptr;
+        Registrations registrations;
+        std::vector<std::string> examples;
+        Platform::FileLock user;
     };
 
     Impl();
     ~Impl();
 
+    Result install(const std::string& path, std::string& id, const InstallOptions& options = {});
+    Result installEntry(const Gallery::Source& source,
+                        const Gallery::Entry& entry,
+                        bool update,
+                        const std::function<bool()>& cancelled);
+    Result remove(const std::string& id);
+    Result loadInstalled();
     Result load(const std::string& path);
-    Result reload(const std::string& path);
+    Result reload(const std::string& id);
     std::vector<Plugin::Info> list();
+    Result collect(std::vector<Plugin::Info>& rows);
+    std::filesystem::path path(const std::string& id);
+    std::string owner(const std::string& block, const std::string& provider);
 
  private:
-    static std::string normalizePath(const std::string& path);
-    static std::string cacheFileName(const std::string& sourcePath, uint64_t generation);
-    static std::string lowercase(std::string value);
-    static std::string currentSystem();
-    static std::string currentArch();
-    static bool isDeviceAvailable(DeviceType device);
-    static bool parseVersion(const std::string& version, uint32_t& encoded);
+    static bool validName(const std::string& value, U64 limit);
+    static std::string galleryOrigin(const std::string& id);
+    static std::string libraryExtension();
+    static std::filesystem::path libraryPath(const std::filesystem::path& root, const std::string& id);
     static bool safeRelativePath(const std::string& rawPath, std::filesystem::path& relativePath);
+    static std::string uniqueStamp();
 
-    static void closeHandle(void* handle);
-    static const JetstreamPluginAbi* loadAbi(void* handle, std::string& error);
+    static Result extract(const std::filesystem::path& source, const std::filesystem::path& destination);
+    static Result readManifest(const std::filesystem::path& root, Manifest& manifest);
+    static Result validateManifest(const std::filesystem::path& root, const Manifest& manifest);
+    static bool compatible(const std::filesystem::path& root, const Manifest& manifest);
 
-    static Result readFileBytes(const std::filesystem::path& path, std::vector<uint8_t>& bytes);
-    static Result readTextFile(const std::filesystem::path& path, std::string& content);
-    static Result decompressGzip(const std::vector<uint8_t>& compressed, std::vector<uint8_t>& decompressed);
-    static Result extractCepArchive(const std::string& sourcePath, const std::filesystem::path& destination);
-    static Result loadManifest(const std::filesystem::path& bundlePath, Manifest& manifest);
-    static Result validateManifest(const std::string& sourcePath, const Manifest& manifest);
-    static bool isCompatibleTarget(const ManifestTarget& target);
-    static Plugin::Info buildInfo(const Record& plugin);
-
-    static bool containsModule(const std::vector<Registrations::Module>& modules,
-                               const Registrations::Module& module);
-    static bool containsBenchmark(const std::vector<Registrations::Benchmark>& benchmarks,
-                                  const Registrations::Benchmark& benchmark);
-    static bool containsString(const std::vector<std::string>& values,
-                               const std::string& value);
-    static RegistrySnapshot snapshotRegistry();
-    static Registrations diffRegistrations(const RegistrySnapshot& before,
-                                           const RegistrySnapshot& after);
+    static Registrations snapshotRegistry();
+    static Registrations diffRegistrations(const Registrations& before, const Registrations& after);
     static void rollbackRegistrations(const Registrations& registrations);
+    static Result validatePrefixes(const std::string& id,
+                                   const Registrations& registrations,
+                                   const Registrations& before);
+    static Result publishExamples(const Record& plugin, std::vector<std::string>& keys);
 
-    Result copyToCache(const std::string& sourcePath, std::string& cachedPath);
-    Result ensureCacheReady();
-    Result createCacheRunDirectory(const std::filesystem::path& runsDirectory);
-    Result extractToCache(const std::string& sourcePath, std::string& extractedPath);
-    void sweepCache(const std::filesystem::path& runsDirectory);
+    static Result storeRoot(std::filesystem::path& root, bool create = true);
+    static Result readIndex(const std::filesystem::path& root, Index& index);
+    static Result writeIndex(const std::filesystem::path& root, const Index& index);
+    static void sweepStore(const std::filesystem::path& root, const Index& index);
+    static bool folderInUse(const std::filesystem::path& folder);
+    static void pruneUsers(const std::filesystem::path& folder);
+
+    Result cacheDirectory(std::filesystem::path& directory);
+    static void sweepCache(const std::filesystem::path& runs);
     void cleanupCache();
 
-    Result loadPluginCopy(const std::string& sourcePath, const std::string& origin, Record& plugin);
-    Result openPlugin(const std::string& path, void*& handle);
-    Result validatePluginAbi(const std::string& path, void* handle);
-    static Result publishExamples(const std::filesystem::path& bundlePath,
-                                  const Manifest& manifest,
-                                  const std::string& origin,
-                                  std::vector<std::string>& keys);
-    void closePlugin(Record& plugin, bool removeCachedFile = true);
-    void removeCachedPluginFiles(Record& plugin);
+    Result open(Record& plugin);
+    void close(Record& plugin);
+    bool loaded(const std::string& id);
     void cleanup();
 
-    std::mutex cacheMutex;
     std::mutex lifecycleMutex;
     std::mutex pluginsMutex;
+    std::mutex pathsMutex;
+    std::mutex cacheMutex;
+
+    std::vector<Record> plugins;
+    std::map<std::string, std::filesystem::path> paths;
+    std::set<std::string> failed;
 
     Platform::FileLock cacheOwnerLock;
     std::filesystem::path cacheRunDirectory;
     uint64_t cacheGeneration = 0;
-    std::vector<Record> plugins;
 };
 
 Plugin::Impl::Impl() {
@@ -169,267 +193,187 @@ Plugin::Impl::~Impl() {
     cleanup();
 }
 
-std::string Plugin::Impl::normalizePath(const std::string& path) {
-    std::error_code ec;
-    const auto inputPath = Platform::PathFromUtf8(path);
-
-    const auto canonicalPath = std::filesystem::weakly_canonical(inputPath, ec);
-    if (!ec) {
-        return Platform::PathToUtf8(canonicalPath);
-    }
-
-    ec.clear();
-    const auto absolutePath = std::filesystem::absolute(inputPath, ec);
-    if (!ec) {
-        return Platform::PathToUtf8(absolutePath);
-    }
-
-    return path;
-}
-
-std::string Plugin::Impl::cacheFileName(const std::string& sourcePath, uint64_t generation) {
-    auto filename = Platform::PathToUtf8(Platform::PathFromUtf8(sourcePath).filename());
-    if (filename.empty()) {
-        filename = "plugin";
-    }
-
-    const auto sourceHash = std::hash<std::string>{}(sourcePath);
-    return std::to_string(sourceHash) + "-" + std::to_string(generation) + "-" + filename;
-}
-
-std::string Plugin::Impl::lowercase(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return value;
-}
-
-std::string Plugin::Impl::currentSystem() {
-#if defined(JST_OS_MAC)
-    return "macos";
-#elif defined(JST_OS_LINUX)
-    return "linux";
-#elif defined(JST_OS_WINDOWS)
-    return "windows";
-#elif defined(JST_OS_ANDROID)
-    return "android";
-#elif defined(JST_OS_IOS)
-    return "ios";
-#elif defined(JST_OS_BROWSER)
-    return "browser";
-#else
-    return "unknown";
-#endif
-}
-
-std::string Plugin::Impl::currentArch() {
-#if defined(__aarch64__) || defined(_M_ARM64)
-    return "arm64";
-#elif defined(__x86_64__) || defined(_M_X64)
-    return "x86_64";
-#elif defined(__i386__) || defined(_M_IX86)
-    return "x86";
-#elif defined(__arm__) || defined(_M_ARM)
-    return "arm";
-#elif defined(__wasm32__)
-    return "wasm32";
-#else
-    return "unknown";
-#endif
-}
-
-bool Plugin::Impl::isDeviceAvailable(DeviceType device) {
-    switch (device) {
-        case DeviceType::CPU:
-#if defined(JETSTREAM_BACKEND_CPU_AVAILABLE)
-            return true;
-#else
-            return false;
-#endif
-        case DeviceType::CUDA:
-#if defined(JETSTREAM_BACKEND_CUDA_AVAILABLE)
-            return true;
-#else
-            return false;
-#endif
-        case DeviceType::Metal:
-#if defined(JETSTREAM_BACKEND_METAL_AVAILABLE)
-            return true;
-#else
-            return false;
-#endif
-        case DeviceType::Vulkan:
-#if defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
-            return true;
-#else
-            return false;
-#endif
-        case DeviceType::WebGPU:
-#if defined(JETSTREAM_BACKEND_WEBGPU_AVAILABLE)
-            return true;
-#else
-            return false;
-#endif
-        default:
-            return false;
-    }
-}
-
-bool Plugin::Impl::parseVersion(const std::string& version, uint32_t& encoded) {
-    const auto parts = Parser::SplitString(version, ".");
-    if (parts.size() != 3) {
+bool Plugin::Impl::validName(const std::string& value, U64 limit) {
+    if (value.empty() || value.size() > limit ||
+        !std::isalnum(static_cast<unsigned char>(value.front())) ||
+        value.find("..") != std::string::npos) {
         return false;
     }
 
-    uint32_t values[3] = {0, 0, 0};
-    for (std::size_t i = 0; i < 3; ++i) {
-        if (parts[i].empty() ||
-            !std::all_of(parts[i].begin(), parts[i].end(), [](unsigned char character) {
-                return character >= '0' && character <= '9';
-            })) {
-            return false;
-        }
+    return std::all_of(value.begin(), value.end(), [](unsigned char character) {
+        return std::isalnum(character) || character == '.' || character == '-' || character == '+';
+    });
+}
 
-        std::size_t consumed = 0;
-        unsigned long value = 0;
-        try {
-            value = std::stoul(parts[i], &consumed, 10);
-        } catch (...) {
-            return false;
-        }
+std::string Plugin::Impl::galleryOrigin(const std::string& id) {
+    return "plugin/" + id;
+}
 
-        if (consumed != parts[i].size() || value > 255) {
-            return false;
-        }
+std::string Plugin::Impl::libraryExtension() {
+#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
+    return ".dylib";
+#elif defined(JST_OS_WINDOWS)
+    return ".dll";
+#elif defined(JST_OS_BROWSER)
+    return ".wasm";
+#else
+    return ".so";
+#endif
+}
 
-        values[i] = static_cast<uint32_t>(value);
-    }
-
-    encoded = JETSTREAM_VERSION_ENCODE(values[0], values[1], values[2]);
-    return true;
+std::filesystem::path Plugin::Impl::libraryPath(const std::filesystem::path& root, const std::string& id) {
+    return root / "lib" / Platform::PathFromUtf8(id + libraryExtension());
 }
 
 bool Plugin::Impl::safeRelativePath(const std::string& rawPath, std::filesystem::path& relativePath) {
-    if (rawPath.empty() ||
-        rawPath.find('\\') != std::string::npos ||
-        rawPath.find(':') != std::string::npos) {
+    if (rawPath.find_first_of(std::string_view("\\:\0", 3)) != std::string::npos) {
         return false;
     }
 
-    auto candidate = Platform::PathFromUtf8(rawPath);
-    if (candidate.is_absolute() || candidate.has_root_name()) {
-        return false;
-    }
-
-    candidate = candidate.lexically_normal();
-    if (candidate.empty() || candidate == ".") {
-        return false;
-    }
-
-    for (const auto& part : candidate) {
-        if (part == "..") {
+    std::size_t start = 0;
+    while (start <= rawPath.size()) {
+        const auto end = std::min(rawPath.find('/', start), rawPath.size());
+        const auto segment = std::string_view(rawPath).substr(start, end - start);
+        if (segment.empty() || segment.back() == '.' || segment.back() == ' ' || Gallery::ReservedName(segment)) {
             return false;
         }
+        start = end + 1;
     }
 
-    relativePath = std::move(candidate);
+    try {
+        relativePath = Platform::PathFromUtf8(rawPath);
+    } catch (...) {
+        return false;
+    }
     return true;
 }
 
-void Plugin::Impl::closeHandle(void* handle) {
-    Platform::CloseDynamicLibrary(handle);
+std::string Plugin::Impl::uniqueStamp() {
+    static std::atomic<uint64_t> sequence = 0;
+    const auto timestamp = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    return std::to_string(timestamp) + "-" + std::to_string(sequence.fetch_add(1));
 }
 
-const JetstreamPluginAbi* Plugin::Impl::loadAbi(void* handle, std::string& error) {
-    return reinterpret_cast<const JetstreamPluginAbi*>(
-        Platform::LoadDynamicLibrarySymbol(handle, JETSTREAM_PLUGIN_ABI_SYMBOL, error));
-}
-
-Result Plugin::Impl::readFileBytes(const std::filesystem::path& path, std::vector<uint8_t>& bytes) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        JST_ERROR("[PLUGIN] Failed to open '{}'.", Platform::PathToUtf8(path));
-        return Result::ERROR;
-    }
-
-    file.seekg(0, std::ios::end);
-    const auto size = file.tellg();
-    if (size < 0) {
-        JST_ERROR("[PLUGIN] Failed to determine size for '{}'.", Platform::PathToUtf8(path));
-        return Result::ERROR;
-    }
-
-    file.seekg(0, std::ios::beg);
-    bytes.resize(static_cast<std::size_t>(size));
-    if (!bytes.empty()) {
-        file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        if (!file) {
-            JST_ERROR("[PLUGIN] Failed to read '{}'.", Platform::PathToUtf8(path));
-            return Result::ERROR;
-        }
-    }
-
-    return Result::SUCCESS;
-}
-
-Result Plugin::Impl::readTextFile(const std::filesystem::path& path, std::string& content) {
-    std::vector<uint8_t> bytes;
-    JST_CHECK(readFileBytes(path, bytes));
-    if (bytes.empty()) {
-        content.clear();
-        return Result::SUCCESS;
-    }
-
-    content.assign(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-    return Result::SUCCESS;
-}
-
-Result Plugin::Impl::decompressGzip(const std::vector<uint8_t>& compressed,
-                                    std::vector<uint8_t>& decompressed) {
-    if (compressed.empty() || compressed.size() > std::numeric_limits<uInt>::max()) {
-        JST_ERROR("[PLUGIN] Invalid gzip payload size.");
-        return Result::ERROR;
-    }
-
-    z_stream stream = {};
-    stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(compressed.data()));
-    stream.avail_in = static_cast<uInt>(compressed.size());
-
-    if (inflateInit2(&stream, 15 + 16) != Z_OK) {
-        JST_ERROR("[PLUGIN] Failed to initialize gzip decompressor.");
-        return Result::ERROR;
-    }
-
-    std::array<uint8_t, 64 * 1024> buffer;
-    int status = Z_OK;
-    while (status == Z_OK) {
-        stream.next_out = reinterpret_cast<Bytef*>(buffer.data());
-        stream.avail_out = static_cast<uInt>(buffer.size());
-
-        status = inflate(&stream, Z_NO_FLUSH);
-        const auto produced = buffer.size() - stream.avail_out;
-        decompressed.insert(decompressed.end(), buffer.begin(), buffer.begin() + produced);
-    }
-
-    inflateEnd(&stream);
-
-    if (status != Z_STREAM_END) {
-        JST_ERROR("[PLUGIN] Failed to decompress gzip payload.");
-        return Result::ERROR;
-    }
-
-    return Result::SUCCESS;
-}
-
-Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
-                                       const std::filesystem::path& destination) {
-    std::vector<uint8_t> compressed;
-    JST_CHECK(readFileBytes(Platform::PathFromUtf8(sourcePath), compressed));
-
-    std::vector<uint8_t> tar;
-    JST_CHECK(decompressGzip(compressed, tar));
+Result Plugin::Impl::extract(const std::filesystem::path& source, const std::filesystem::path& destination) {
+    const auto sourceName = Platform::PathToUtf8(source);
 
     std::error_code ec;
+    const uint64_t size = std::filesystem::file_size(source, ec);
+
+    std::ifstream file;
+    if (!ec) {
+        file.open(source, std::ios::binary);
+    }
+    if (ec || !file) {
+        JST_ERROR("[PLUGIN] Failed to open '{}'.", sourceName);
+        return Result::ERROR;
+    }
+
+    if (size > MaxBundleSize) {
+        JST_ERROR("[PLUGIN] Plugin bundle '{}' is larger than 512 MiB.", sourceName);
+        return Result::ERROR;
+    }
+
+    mz_zip_archive zip = {};
+    zip.m_pIO_opaque = &file;
+    zip.m_pRead = [](void* opaque, mz_uint64 offset, void* data, size_t count) -> size_t {
+        auto& stream = *static_cast<std::ifstream*>(opaque);
+        stream.clear();
+        stream.seekg(static_cast<std::streamoff>(offset));
+        stream.read(static_cast<char*>(data), static_cast<std::streamsize>(count));
+        return static_cast<size_t>(stream.gcount());
+    };
+
+    auto zipError = [&]() {
+        return mz_zip_get_error_string(mz_zip_peek_last_error(&zip));
+    };
+
+    if (!mz_zip_reader_init(&zip, size, 0)) {
+        JST_ERROR("[PLUGIN] Failed to read plugin bundle '{}': {}.", sourceName, zipError());
+        return Result::ERROR;
+    }
+
+    struct Reader {
+        mz_zip_archive& zip;
+        ~Reader() {
+            mz_zip_reader_end(&zip);
+        }
+    } reader{zip};
+
+    struct Entry {
+        mz_uint index = 0;
+        std::filesystem::path path;
+        bool directory = false;
+        uint32_t mode = 0;
+        uint64_t size = 0;
+    };
+
+    auto allowed = [](const std::filesystem::path& path) {
+        const auto top = *path.begin();
+        return path == ManifestFile || top == "lib" || top == "data" || top == "examples";
+    };
+
+    const auto count = mz_zip_reader_get_num_files(&zip);
+    if (count > MaxBundleEntries) {
+        JST_ERROR("[PLUGIN] Plugin bundle '{}' has more than {} entries.", sourceName, MaxBundleEntries);
+        return Result::ERROR;
+    }
+
+    std::vector<Entry> entries;
+    std::set<std::string> seen;
+    uint64_t totalSize = 0;
+
+    for (mz_uint index = 0; index < count; ++index) {
+        mz_zip_archive_file_stat stat;
+        if (!mz_zip_reader_file_stat(&zip, index, &stat)) {
+            JST_ERROR("[PLUGIN] Failed to read plugin bundle '{}': {}.", sourceName, zipError());
+            return Result::ERROR;
+        }
+
+        std::string name(mz_zip_reader_get_filename(&zip, index, nullptr, 0), '\0');
+        mz_zip_reader_get_filename(&zip, index, name.data(), static_cast<mz_uint>(name.size()));
+        name.pop_back();
+
+        Entry entry;
+        entry.index = index;
+        entry.directory = !name.empty() && name.back() == '/';
+        entry.size = stat.m_uncomp_size;
+        if ((stat.m_version_made_by >> 8) == 3) {
+            entry.mode = stat.m_external_attr >> 16;
+        }
+
+        const auto trimmed = entry.directory ? name.substr(0, name.size() - 1) : name;
+        if (!safeRelativePath(trimmed, entry.path)) {
+            JST_ERROR("[PLUGIN] Unsafe bundle entry path '{}'.", name);
+            return Result::ERROR;
+        }
+
+        if (!allowed(entry.path)) {
+            JST_ERROR("[PLUGIN] Unexpected bundle entry '{}'. Bundles may only contain manifest.yml, lib/, data/, "
+                      "and examples/.", name);
+            return Result::ERROR;
+        }
+
+        if (!seen.insert(Text::ToLower(trimmed)).second) {
+            JST_ERROR("[PLUGIN] Duplicate bundle entry '{}'.", name);
+            return Result::ERROR;
+        }
+
+        if (entry.path == ManifestFile && entry.size > MaxManifestSize) {
+            JST_ERROR("[PLUGIN] Plugin bundle '{}' has a manifest.yml larger than 64 KiB.", sourceName);
+            return Result::ERROR;
+        }
+
+        if (entry.size > MaxUncompressedSize - totalSize) {
+            JST_ERROR("[PLUGIN] Plugin bundle '{}' expands to more than 2 GiB.", sourceName);
+            return Result::ERROR;
+        }
+        totalSize += entry.size;
+
+        entries.push_back(std::move(entry));
+    }
+
     std::filesystem::create_directories(destination, ec);
     if (ec) {
         JST_ERROR("[PLUGIN] Failed to create plugin extraction directory '{}'.",
@@ -437,261 +381,166 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
         return Result::ERROR;
     }
 
-    auto parseOctal = [](const uint8_t* data, std::size_t size, uint64_t& value) {
-        value = 0;
-        bool sawDigit = false;
-
-        for (std::size_t i = 0; i < size; ++i) {
-            const auto ch = data[i];
-            if (ch == 0 || ch == ' ') {
-                continue;
-            }
-            if (ch < '0' || ch > '7') {
-                return false;
-            }
-
-            sawDigit = true;
-            value = (value << 3) + static_cast<uint64_t>(ch - '0');
-        }
-
-        return sawDigit;
+    struct Sink {
+        std::ofstream output;
+        uint64_t remaining = 0;
     };
 
-    auto tarString = [](const uint8_t* data, std::size_t size) {
-        std::size_t end = 0;
-        while (end < size && data[end] != 0) {
-            ++end;
+    const mz_file_write_func write = [](void* opaque, mz_uint64, const void* data, size_t count) -> size_t {
+        auto& sink = *static_cast<Sink*>(opaque);
+        if (count > sink.remaining) {
+            return 0;
         }
-
-        while (end > 0 && data[end - 1] == ' ') {
-            --end;
+        sink.output.write(static_cast<const char*>(data), static_cast<std::streamsize>(count));
+        if (!sink.output) {
+            return 0;
         }
-
-        return std::string(reinterpret_cast<const char*>(data), end);
+        sink.remaining -= count;
+        return count;
     };
 
-    std::size_t offset = 0;
-    while (offset + 512 <= tar.size()) {
-        const auto* header = tar.data() + offset;
-        const bool emptyBlock = std::all_of(header, header + 512, [](uint8_t value) {
-            return value == 0;
-        });
-        if (emptyBlock) {
-            const bool completeEndMarker = tar.size() - offset >= 1024 &&
-                std::all_of(header + 512, header + 1024, [](uint8_t value) {
-                    return value == 0;
-                });
-            if (completeEndMarker) {
-                return Result::SUCCESS;
-            }
-            break;
-        }
-
-        uint64_t storedChecksum = 0;
-        if (!parseOctal(header + 148, 8, storedChecksum)) {
-            JST_ERROR("[PLUGIN] Invalid tar checksum in '{}'.", sourcePath);
-            return Result::ERROR;
-        }
-
-        uint64_t computedChecksum = 0;
-        for (std::size_t i = 0; i < 512; ++i) {
-            computedChecksum += (i >= 148 && i < 156) ? ' ' : header[i];
-        }
-
-        if (storedChecksum != computedChecksum) {
-            JST_ERROR("[PLUGIN] Tar checksum mismatch in '{}'.", sourcePath);
-            return Result::ERROR;
-        }
-
-        std::string name = tarString(header, 100);
-        const std::string prefix = tarString(header + 345, 155);
-        if (!prefix.empty()) {
-            name = prefix + "/" + name;
-        }
-
-        uint64_t entrySize = 0;
-        if (!parseOctal(header + 124, 12, entrySize)) {
-            JST_ERROR("[PLUGIN] Invalid tar entry size for '{}'.", name);
-            return Result::ERROR;
-        }
-
-        const auto type = header[156] == 0 ? '0' : static_cast<char>(header[156]);
-        const auto dataOffset = offset + 512;
-        const auto paddedSize = ((entrySize + 511) / 512) * 512;
-        if (entrySize > std::numeric_limits<std::size_t>::max() ||
-            dataOffset + entrySize > tar.size() ||
-            dataOffset + paddedSize > tar.size()) {
-            JST_ERROR("[PLUGIN] Tar entry '{}' extends beyond archive bounds.", name);
-            return Result::ERROR;
-        }
-
-        std::filesystem::path relativePath;
-        if (!safeRelativePath(name, relativePath)) {
-            JST_ERROR("[PLUGIN] Unsafe tar entry path '{}'.", name);
-            return Result::ERROR;
-        }
-
-        const auto outputPath = destination / relativePath;
-        if (type == '5') {
+    for (const auto& entry : entries) {
+        const auto outputPath = destination / entry.path;
+        if (entry.directory) {
             std::filesystem::create_directories(outputPath, ec);
             if (ec) {
                 JST_ERROR("[PLUGIN] Failed to create directory '{}'.", Platform::PathToUtf8(outputPath));
                 return Result::ERROR;
             }
-        } else if (type == '0') {
-            std::filesystem::create_directories(outputPath.parent_path(), ec);
-            if (ec) {
-                JST_ERROR("[PLUGIN] Failed to create directory '{}'.",
-                          Platform::PathToUtf8(outputPath.parent_path()));
-                return Result::ERROR;
-            }
+            continue;
+        }
 
-            std::ofstream file(outputPath, std::ios::binary | std::ios::trunc);
-            if (!file) {
-                JST_ERROR("[PLUGIN] Failed to create file '{}'.", Platform::PathToUtf8(outputPath));
-                return Result::ERROR;
-            }
-
-            if (entrySize > 0) {
-                file.write(reinterpret_cast<const char*>(tar.data() + dataOffset),
-                           static_cast<std::streamsize>(entrySize));
-                if (!file) {
-                    JST_ERROR("[PLUGIN] Failed to write file '{}'.", Platform::PathToUtf8(outputPath));
-                    return Result::ERROR;
-                }
-            }
-        } else {
-            JST_ERROR("[PLUGIN] Unsupported tar entry type '{}' for '{}'.", type, name);
+        std::filesystem::create_directories(outputPath.parent_path(), ec);
+        if (ec) {
+            JST_ERROR("[PLUGIN] Failed to create directory '{}'.",
+                      Platform::PathToUtf8(outputPath.parent_path()));
             return Result::ERROR;
         }
 
-        offset = dataOffset + static_cast<std::size_t>(paddedSize);
+        Sink sink;
+        sink.remaining = entry.size;
+        sink.output.open(outputPath, std::ios::binary | std::ios::trunc);
+        if (!sink.output) {
+            JST_ERROR("[PLUGIN] Failed to create file '{}'.", Platform::PathToUtf8(outputPath));
+            return Result::ERROR;
+        }
+
+        if (!mz_zip_reader_extract_to_callback(&zip, entry.index, write, &sink, 0)) {
+            JST_ERROR("[PLUGIN] Failed to extract bundle entry '{}': {}.",
+                      Platform::PathToUtf8(entry.path),
+                      zipError());
+            return Result::ERROR;
+        }
+
+        if (sink.remaining != 0) {
+            JST_ERROR("[PLUGIN] Bundle entry '{}' is smaller than its declared size.",
+                      Platform::PathToUtf8(entry.path));
+            return Result::ERROR;
+        }
+
+        sink.output.close();
+        if (!sink.output) {
+            JST_ERROR("[PLUGIN] Failed to write file '{}'.", Platform::PathToUtf8(outputPath));
+            return Result::ERROR;
+        }
+
+#if !defined(JST_OS_WINDOWS)
+        if ((entry.mode & 0111) != 0) {
+            std::filesystem::permissions(outputPath,
+                                         static_cast<std::filesystem::perms>(entry.mode & 0111),
+                                         std::filesystem::perm_options::add,
+                                         ec);
+            if (ec) {
+                JST_ERROR("[PLUGIN] Failed to mark '{}' as executable.", Platform::PathToUtf8(outputPath));
+                return Result::ERROR;
+            }
+        }
+#endif
     }
 
-    JST_ERROR("[PLUGIN] Tar archive '{}' is missing an end marker.", sourcePath);
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
-Result Plugin::Impl::loadManifest(const std::filesystem::path& bundlePath, Manifest& manifest) {
+Result Plugin::Impl::readManifest(const std::filesystem::path& root, Manifest& manifest) {
+    manifest = {};
+
     std::string content;
-    JST_CHECK(readTextFile(bundlePath / "manifest.yml", content));
+    try {
+        content = ReadText(root / ManifestFile);
+    } catch (...) {
+        JST_ERROR("[PLUGIN] Plugin bundle does not contain a manifest.");
+        return Result::ERROR;
+    }
 
     Parser::Map data;
     JST_CHECK(Parser::YamlDecode(content, data));
+
+    static const std::set<std::string> keys = {
+        "id", "title", "version", "cyberether", "build", "summary", "description", "author", "license",
+    };
+    for (const auto& entry : data) {
+        if (!keys.contains(entry.key)) {
+            JST_ERROR("[PLUGIN] Plugin manifest has an unknown key '{}'.", entry.key);
+            return Result::ERROR;
+        }
+    }
+
     JST_CHECK(manifest.deserialize(data));
     return Result::SUCCESS;
 }
 
-Result Plugin::Impl::validateManifest(const std::string& sourcePath, const Manifest& manifest) {
-    if (manifest.metadata.name.empty() || manifest.metadata.version.empty()) {
-        JST_ERROR("[PLUGIN] Plugin '{}' has incomplete metadata.", sourcePath);
+Result Plugin::Impl::validateManifest(const std::filesystem::path& root, const Manifest& manifest) {
+    if (!Gallery::ValidId(manifest.id)) {
+        JST_ERROR("[PLUGIN] Plugin ID '{}' is invalid. Use 1 to 32 lowercase letters and digits, "
+                  "starting with a letter, and avoid names reserved by Windows.", manifest.id);
         return Result::ERROR;
     }
 
-    uint32_t version = 0;
-    if (!parseVersion(manifest.metadata.version, version)) {
-        JST_ERROR("[PLUGIN] Plugin '{}' has invalid version '{}'.",
-                  sourcePath,
-                  manifest.metadata.version);
+    if (manifest.title.empty()) {
+        JST_ERROR("[PLUGIN] Plugin '{}' does not have a title.", manifest.id);
         return Result::ERROR;
     }
 
-    uint32_t minimumVersion = 0;
-    if (!parseVersion(manifest.metadata.minimumJetstreamVersion, minimumVersion)) {
-        JST_ERROR("[PLUGIN] Plugin '{}' has invalid minimumJetstreamVersion '{}'.",
-                  sourcePath,
-                  manifest.metadata.minimumJetstreamVersion);
+    if (!validName(manifest.version, 64)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' has an invalid version '{}'.", manifest.id, manifest.version);
         return Result::ERROR;
     }
 
-    if (minimumVersion > JETSTREAM_VERSION_CURRENT) {
-        JST_ERROR("[PLUGIN] Plugin '{}' requires Jetstream version {}, current version is {}.",
-                  sourcePath,
-                  manifest.metadata.minimumJetstreamVersion,
+    if (manifest.cyberether != JETSTREAM_VERSION_STR) {
+        JST_ERROR("[PLUGIN] Plugin '{}' was built for CyberEther {}, but this is CyberEther {}.",
+                  manifest.id,
+                  manifest.cyberether.empty() ? "an unknown version" : manifest.cyberether,
                   JETSTREAM_VERSION_STR);
         return Result::ERROR;
     }
 
-    if (manifest.targets.empty()) {
-        JST_ERROR("[PLUGIN] Plugin '{}' does not define any targets.", sourcePath);
+    if (manifest.build != JETSTREAM_BUILD_ID) {
+        JST_ERROR("[PLUGIN] Plugin '{}' was built for {}, but this CyberEther is {}.",
+                  manifest.id,
+                  manifest.build.empty() ? "an unknown build" : manifest.build,
+                  JETSTREAM_BUILD_ID);
         return Result::ERROR;
     }
 
-    for (const auto& target : manifest.targets) {
-        std::filesystem::path targetPath;
-        if (!safeRelativePath(target.path, targetPath) ||
-            target.system.empty() ||
-            target.device.empty() ||
-            target.arch.empty()) {
-            JST_ERROR("[PLUGIN] Plugin '{}' has an invalid target entry.", sourcePath);
-            return Result::ERROR;
-        }
-
-        if (StringToDevice(lowercase(target.device)) == DeviceType::None) {
-            JST_ERROR("[PLUGIN] Plugin '{}' target '{}' has invalid device '{}'.",
-                      sourcePath,
-                      target.path,
-                      target.device);
-            return Result::ERROR;
-        }
-    }
-
-    for (const auto& example : manifest.examples) {
-        std::filesystem::path examplePath;
-        if (!safeRelativePath(example.path, examplePath)) {
-            JST_ERROR("[PLUGIN] Plugin '{}' has an invalid example path '{}'.",
-                      sourcePath,
-                      example.path);
-            return Result::ERROR;
-        }
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(libraryPath(root, manifest.id), ec)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' does not include lib/{}{}.", manifest.id, manifest.id, libraryExtension());
+        return Result::ERROR;
     }
 
     return Result::SUCCESS;
 }
 
-bool Plugin::Impl::isCompatibleTarget(const ManifestTarget& target) {
-    const auto device = StringToDevice(lowercase(target.device));
-    return lowercase(target.system) == currentSystem() &&
-           lowercase(target.arch) == currentArch() &&
-           isDeviceAvailable(device);
+bool Plugin::Impl::compatible(const std::filesystem::path& root, const Manifest& manifest) {
+    std::error_code ec;
+    return Gallery::ValidId(manifest.id) &&
+           manifest.cyberether == JETSTREAM_VERSION_STR &&
+           manifest.build == JETSTREAM_BUILD_ID &&
+           std::filesystem::is_regular_file(libraryPath(root, manifest.id), ec);
 }
 
-Plugin::Info Plugin::Impl::buildInfo(const Record& plugin) {
-    Plugin::Info info;
-    info.path = plugin.sourcePath;
-    info.name = plugin.manifest.metadata.name;
-    info.version = plugin.manifest.metadata.version;
-    info.minimumJetstreamVersion = plugin.manifest.metadata.minimumJetstreamVersion;
-    info.status = "Loaded";
-    info.blocks = plugin.registrations.blocks;
-    info.examples = plugin.examples;
-    return info;
-}
-
-bool Plugin::Impl::containsModule(const std::vector<Registrations::Module>& modules,
-                                  const Registrations::Module& module) {
-    return std::find_if(modules.begin(), modules.end(), [&](const auto& entry) {
-        return entry.type == module.type &&
-               entry.device == module.device &&
-               entry.runtime == module.runtime &&
-               entry.provider == module.provider;
-    }) != modules.end();
-}
-
-bool Plugin::Impl::containsBenchmark(const std::vector<Registrations::Benchmark>& benchmarks,
-                                     const Registrations::Benchmark& benchmark) {
-    return std::find_if(benchmarks.begin(), benchmarks.end(), [&](const auto& entry) {
-        return entry.moduleType == benchmark.moduleType && entry.owner == benchmark.owner;
-    }) != benchmarks.end();
-}
-
-bool Plugin::Impl::containsString(const std::vector<std::string>& values,
-                                  const std::string& value) {
-    return std::find(values.begin(), values.end(), value) != values.end();
-}
-
-Plugin::Impl::RegistrySnapshot Plugin::Impl::snapshotRegistry() {
-    RegistrySnapshot snapshot;
+Plugin::Impl::Registrations Plugin::Impl::snapshotRegistry() {
+    Registrations snapshot;
 
     for (const auto& module : Registry::ListAvailableModules()) {
         snapshot.modules.push_back({
@@ -716,24 +565,33 @@ Plugin::Impl::RegistrySnapshot Plugin::Impl::snapshotRegistry() {
     return snapshot;
 }
 
-Plugin::Impl::Registrations Plugin::Impl::diffRegistrations(const RegistrySnapshot& before,
-                                                            const RegistrySnapshot& after) {
+Plugin::Impl::Registrations Plugin::Impl::diffRegistrations(const Registrations& before,
+                                                            const Registrations& after) {
     Registrations diff;
 
     for (const auto& module : after.modules) {
-        if (!containsModule(before.modules, module)) {
+        const auto existing = std::find_if(before.modules.begin(), before.modules.end(), [&](const auto& entry) {
+            return entry.type == module.type &&
+                   entry.device == module.device &&
+                   entry.runtime == module.runtime &&
+                   entry.provider == module.provider;
+        });
+        if (existing == before.modules.end()) {
             diff.modules.push_back(module);
         }
     }
 
     for (const auto& block : after.blocks) {
-        if (!containsString(before.blocks, block)) {
+        if (std::find(before.blocks.begin(), before.blocks.end(), block) == before.blocks.end()) {
             diff.blocks.push_back(block);
         }
     }
 
     for (const auto& benchmark : after.benchmarks) {
-        if (!containsBenchmark(before.benchmarks, benchmark)) {
+        const auto existing = std::find_if(before.benchmarks.begin(), before.benchmarks.end(), [&](const auto& entry) {
+            return entry.moduleType == benchmark.moduleType && entry.owner == benchmark.owner;
+        });
+        if (existing == before.benchmarks.end()) {
             diff.benchmarks.push_back(benchmark);
         }
     }
@@ -755,155 +613,359 @@ void Plugin::Impl::rollbackRegistrations(const Registrations& registrations) {
     }
 }
 
-Result Plugin::Impl::copyToCache(const std::string& sourcePath, std::string& cachedPath) {
-    std::lock_guard<std::mutex> guard(cacheMutex);
-    JST_CHECK(ensureCacheReady());
+Result Plugin::Impl::validatePrefixes(const std::string& id,
+                                      const Registrations& registrations,
+                                      const Registrations& before) {
+    const auto prefix = id + "_";
 
-    const auto destination = cacheRunDirectory / cacheFileName(sourcePath, ++cacheGeneration);
-
-    std::error_code ec;
-    std::filesystem::copy_file(Platform::PathFromUtf8(sourcePath),
-                               destination,
-                               std::filesystem::copy_options::overwrite_existing,
-                               ec);
-    if (ec) {
-        std::error_code cleanupEc;
-        (void)std::filesystem::remove(destination, cleanupEc);
-
-        JST_ERROR("[PLUGIN] Failed to copy plugin '{}' to cache '{}'.",
-                  sourcePath,
-                  Platform::PathToUtf8(destination));
-        return Result::ERROR;
-    }
-
-    cachedPath = Platform::PathToUtf8(destination);
-    return Result::SUCCESS;
-}
-
-Result Plugin::Impl::ensureCacheReady() {
-    if (!cacheRunDirectory.empty()) {
-        return Result::SUCCESS;
-    }
-
-#if defined(JST_OS_BROWSER)
-    std::error_code ec;
-    const auto cacheRoot = std::filesystem::temp_directory_path(ec) / "cyberether-registry-plugins";
-    if (ec) {
-        JST_ERROR("[PLUGIN] Failed to resolve the temporary plugin cache directory.");
-        return Result::ERROR;
-    }
-
-    std::filesystem::create_directories(cacheRoot, ec);
-    if (ec) {
-        JST_ERROR("[PLUGIN] Failed to create plugin cache directory '{}'.",
-                  Platform::PathToUtf8(cacheRoot));
-        return Result::ERROR;
-    }
-
-    cacheRunDirectory = cacheRoot;
-    return Result::SUCCESS;
-#else
-    std::string cachePath;
-    JST_CHECK(Platform::CachePath(cachePath));
-
-    const auto cacheRoot = Platform::PathFromUtf8(cachePath) / "registry-plugins";
-    const auto runsDirectory = cacheRoot / "runs";
-
-    std::error_code ec;
-    std::filesystem::create_directories(runsDirectory, ec);
-    if (ec) {
-        JST_ERROR("[PLUGIN] Failed to create plugin cache directory '{}'.",
-                  Platform::PathToUtf8(runsDirectory));
-        return Result::ERROR;
-    }
-
-    Platform::FileLock maintenanceLock;
-    JST_CHECK(maintenanceLock.acquire(Platform::PathToUtf8(cacheRoot / "maintenance.lock")));
-
-    sweepCache(runsDirectory);
-    JST_CHECK(createCacheRunDirectory(runsDirectory));
-    return Result::SUCCESS;
-#endif
-}
-
-Result Plugin::Impl::createCacheRunDirectory(const std::filesystem::path& runsDirectory) {
-    const auto timestamp = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-
-    std::error_code ec;
-    for (uint64_t attempt = 0; attempt < 1024; ++attempt) {
-        const auto candidate = runsDirectory / (std::to_string(timestamp) + "-" + std::to_string(attempt));
-
-        ec.clear();
-        if (std::filesystem::create_directory(candidate, ec)) {
-            if (cacheOwnerLock.acquire(Platform::PathToUtf8(candidate / "owner.lock")) != Result::SUCCESS) {
-                std::error_code cleanupEc;
-                (void)std::filesystem::remove_all(candidate, cleanupEc);
-                return Result::ERROR;
-            }
-
-            cacheRunDirectory = candidate;
-            return Result::SUCCESS;
-        }
-
-        if (ec) {
-            JST_ERROR("[PLUGIN] Failed to create plugin cache run directory '{}'.",
-                      Platform::PathToUtf8(candidate));
+    for (const auto& block : registrations.blocks) {
+        if (!block.starts_with(prefix)) {
+            JST_ERROR("[PLUGIN] Plugin '{}' registered block '{}' without the '{}' prefix.", id, block, prefix);
             return Result::ERROR;
         }
     }
 
-    JST_ERROR("[PLUGIN] Failed to allocate a unique plugin cache run directory.");
-    return Result::ERROR;
-}
-
-Result Plugin::Impl::extractToCache(const std::string& sourcePath, std::string& extractedPath) {
-    std::lock_guard<std::mutex> guard(cacheMutex);
-    JST_CHECK(ensureCacheReady());
-
-    auto directoryName = cacheFileName(sourcePath, ++cacheGeneration);
-    if (!directoryName.ends_with(".cep")) {
-        directoryName += ".cep";
-    }
-    directoryName += ".contents";
-
-    const auto destination = cacheRunDirectory / directoryName;
-    if (extractCepArchive(sourcePath, destination) != Result::SUCCESS) {
-        std::error_code cleanupEc;
-        (void)std::filesystem::remove_all(destination, cleanupEc);
-        return Result::ERROR;
+    for (const auto& module : registrations.modules) {
+        const bool existing = std::any_of(before.modules.begin(), before.modules.end(), [&](const auto& entry) {
+            return entry.type == module.type;
+        });
+        const bool owned = module.type.starts_with(prefix) && !existing;
+        if (!owned && !module.provider.starts_with(prefix)) {
+            JST_ERROR("[PLUGIN] Plugin '{}' registered an implementation of '{}' with provider '{}' "
+                      "without the '{}' prefix.",
+                      id,
+                      module.type,
+                      module.provider,
+                      prefix);
+            return Result::ERROR;
+        }
     }
 
-    extractedPath = Platform::PathToUtf8(destination);
     return Result::SUCCESS;
 }
 
-void Plugin::Impl::sweepCache(const std::filesystem::path& runsDirectory) {
+Result Plugin::Impl::publishExamples(const Record& plugin, std::vector<std::string>& keys) {
+    keys.clear();
+
+    const auto directory = plugin.root / "examples";
     std::error_code ec;
-    std::filesystem::directory_iterator entries(runsDirectory, ec);
+    if (!std::filesystem::is_directory(directory, ec)) {
+        return Result::SUCCESS;
+    }
+
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
+        std::error_code entryEc;
+        if (entry.is_regular_file(entryEc) && entry.path().extension() == ".yml") {
+            files.push_back(entry.path());
+        }
+    }
     if (ec) {
-        JST_WARN("[PLUGIN] Failed to inspect plugin cache directory '{}'.",
-                 Platform::PathToUtf8(runsDirectory));
+        JST_ERROR("[PLUGIN] Failed to list the examples of plugin '{}'.", plugin.manifest.id);
+        return Result::ERROR;
+    }
+    if (files.empty()) {
+        return Result::SUCCESS;
+    }
+
+    std::sort(files.begin(), files.end());
+
+    Home::Gallery::Section section{
+        .key = galleryOrigin(plugin.manifest.id),
+        .title = plugin.manifest.title,
+        .description = "Examples bundled with this plugin.",
+    };
+
+    for (const auto& file : files) {
+        std::string content;
+        try {
+            content = ReadText(file);
+        } catch (...) {
+            JST_ERROR("[PLUGIN] Failed to read example '{}'.", Platform::PathToUtf8(file));
+            return Result::ERROR;
+        }
+
+        const auto stem = Platform::PathToUtf8(file.stem());
+        Home::Gallery::Flowgraph flowgraph;
+        JST_CHECK(Home::Gallery::Flowgraph::Parse(plugin.manifest.id + "/" + stem, std::move(content), flowgraph));
+        if (flowgraph.title.empty()) {
+            flowgraph.title = stem;
+        }
+        keys.push_back(flowgraph.key);
+        section.flowgraphs.push_back(std::move(flowgraph));
+    }
+
+    JST_CHECK(Home::Get().gallery().publish(galleryOrigin(plugin.manifest.id), {std::move(section)}));
+    return Result::SUCCESS;
+}
+
+Result Plugin::Impl::storeRoot(std::filesystem::path& root, bool create) {
+    std::string dataPath;
+    JST_CHECK(Platform::DataPath(dataPath));
+    root = Platform::PathFromUtf8(dataPath) / "plugins" / JETSTREAM_BUILD_ID;
+    if (!create) {
+        return Result::SUCCESS;
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(root, ec);
+    if (ec) {
+        JST_ERROR("[PLUGIN] Failed to create the plugin store '{}'.", Platform::PathToUtf8(root));
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Plugin::Impl::readIndex(const std::filesystem::path& root, Index& index) {
+    index = {};
+
+    std::error_code ec;
+    const bool exists = std::filesystem::exists(root / IndexFile, ec);
+    if (ec) {
+        JST_ERROR("[PLUGIN] Failed to read the plugin store index.");
+        return Result::ERROR;
+    }
+    if (!exists) {
+        const bool present = std::filesystem::exists(root, ec);
+        if (ec) {
+            JST_ERROR("[PLUGIN] Failed to inspect the plugin store '{}'.", Platform::PathToUtf8(root));
+            return Result::ERROR;
+        }
+        if (!present) {
+            return Result::SUCCESS;
+        }
+        for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+            std::error_code entryEc;
+            if (!entry.is_symlink(entryEc) && entry.is_directory(entryEc) &&
+                Gallery::ValidId(Platform::PathToUtf8(entry.path().filename()))) {
+                JST_ERROR("[PLUGIN] The plugin store index is missing but plugins are still stored in '{}'. "
+                          "Restore index.yml or delete that folder to start over.",
+                          Platform::PathToUtf8(root));
+                return Result::ERROR;
+            }
+        }
+        if (ec) {
+            JST_ERROR("[PLUGIN] Failed to inspect the plugin store '{}'.", Platform::PathToUtf8(root));
+            return Result::ERROR;
+        }
+        return Result::SUCCESS;
+    }
+
+    std::string content;
+    try {
+        content = ReadText(root / IndexFile);
+    } catch (...) {
+        JST_ERROR("[PLUGIN] Failed to read the plugin store index.");
+        return Result::ERROR;
+    }
+
+    Parser::Map data;
+    if (Parser::YamlDecode(content, data) != Result::SUCCESS || !data.contains("plugins") ||
+        index.deserialize(data) != Result::SUCCESS) {
+        JST_ERROR("[PLUGIN] The plugin store index is corrupted.");
+        return Result::ERROR;
+    }
+
+    const auto malformed = std::any_of(index.plugins.begin(), index.plugins.end(), [](const IndexEntry& entry) {
+        return !Gallery::ValidId(entry.id) || !validName(entry.folder, 160) ||
+               (!entry.pending.empty() && !validName(entry.pending, 160));
+    });
+    std::set<std::string> ids;
+    const auto duplicate = std::any_of(index.plugins.begin(), index.plugins.end(), [&](const IndexEntry& entry) {
+        return !ids.insert(entry.id).second;
+    });
+    if (malformed || duplicate) {
+        JST_ERROR("[PLUGIN] The plugin store index has a malformed entry.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Plugin::Impl::writeIndex(const std::filesystem::path& root, const Index& index) {
+    std::string content = "plugins: []\n";
+    if (!index.plugins.empty()) {
+        Parser::Map data;
+        JST_CHECK(index.serialize(data));
+        JST_CHECK(Parser::YamlEncode(data, content));
+    }
+
+    const auto temporary = root / (std::string(IndexFile) + ".tmp");
+    {
+        std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+        file << content;
+        file.close();
+        if (!file) {
+            JST_ERROR("[PLUGIN] Failed to write the plugin store index.");
+            return Result::ERROR;
+        }
+    }
+
+    std::error_code ec;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        ec.clear();
+        std::filesystem::rename(temporary, root / IndexFile, ec);
+        if (!ec) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    if (ec) {
+        JST_ERROR("[PLUGIN] Failed to replace the plugin store index.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+bool Plugin::Impl::folderInUse(const std::filesystem::path& folder) {
+    std::error_code ec;
+    const auto users = folder / ".users";
+    if (!std::filesystem::is_directory(users, ec)) {
+        return false;
+    }
+
+    std::filesystem::directory_iterator entries(users, ec);
+    for (const auto end = std::filesystem::directory_iterator(); !ec && entries != end; entries.increment(ec)) {
+        Platform::FileLock probe;
+        if (probe.acquire(Platform::PathToUtf8(entries->path()), false) != Result::SUCCESS) {
+            return true;
+        }
+    }
+
+    return static_cast<bool>(ec);
+}
+
+void Plugin::Impl::pruneUsers(const std::filesystem::path& folder) {
+    std::error_code ec;
+    std::filesystem::directory_iterator entries(folder / ".users", ec);
+    for (const auto end = std::filesystem::directory_iterator(); !ec && entries != end; entries.increment(ec)) {
+        Platform::FileLock probe;
+        if (probe.acquire(Platform::PathToUtf8(entries->path()), false) != Result::SUCCESS) {
+            continue;
+        }
+        probe.release();
+
+        std::error_code removeEc;
+        std::filesystem::remove(entries->path(), removeEc);
+    }
+}
+
+void Plugin::Impl::sweepStore(const std::filesystem::path& root, const Index& index) {
+    std::error_code ec;
+    std::filesystem::remove_all(root / ".staging", ec);
+
+    if (!std::filesystem::is_regular_file(root / IndexFile, ec)) {
         return;
     }
 
-    for (const auto& entry : entries) {
-        ec.clear();
-        if (!entry.is_directory(ec) || ec) {
+    for (const auto& plugin : std::filesystem::directory_iterator(root, ec)) {
+        std::error_code entryEc;
+        if (plugin.is_symlink(entryEc) || !plugin.is_directory(entryEc)) {
+            continue;
+        }
+
+        const auto id = Platform::PathToUtf8(plugin.path().filename());
+        if (!Gallery::ValidId(id)) {
+            continue;
+        }
+
+        const auto entry = std::find_if(index.plugins.begin(), index.plugins.end(), [&](const auto& item) {
+            return item.id == id;
+        });
+
+        for (const auto& folder : std::filesystem::directory_iterator(plugin.path(), entryEc)) {
+            const auto name = Platform::PathToUtf8(folder.path().filename());
+            const bool referenced = entry != index.plugins.end() &&
+                                    (entry->folder == name || entry->pending == name);
+            if (referenced || folderInUse(folder.path())) {
+                continue;
+            }
+
+            std::error_code removeEc;
+            std::filesystem::remove_all(folder.path(), removeEc);
+            if (removeEc) {
+                JST_WARN("[PLUGIN] Failed to remove old plugin files '{}'. Retrying on the next start.",
+                         Platform::PathToUtf8(folder.path()));
+            }
+        }
+
+        std::error_code emptyEc;
+        if (std::filesystem::is_empty(plugin.path(), emptyEc)) {
+            std::filesystem::remove(plugin.path(), emptyEc);
+        }
+    }
+}
+
+Result Plugin::Impl::cacheDirectory(std::filesystem::path& directory) {
+    std::lock_guard<std::mutex> guard(cacheMutex);
+
+#if defined(JST_OS_BROWSER)
+    if (cacheRunDirectory.empty()) {
+        std::error_code ec;
+        cacheRunDirectory = std::filesystem::temp_directory_path(ec) / "cyberether-plugins";
+        if (ec) {
+            JST_ERROR("[PLUGIN] Failed to resolve the temporary plugin cache directory.");
+            cacheRunDirectory.clear();
+            return Result::ERROR;
+        }
+    }
+#else
+    if (cacheRunDirectory.empty()) {
+        std::string cachePath;
+        JST_CHECK(Platform::CachePath(cachePath));
+
+        const auto cacheRoot = Platform::PathFromUtf8(cachePath) / "plugins";
+        const auto runs = cacheRoot / "runs";
+
+        std::error_code ec;
+        std::filesystem::create_directories(runs, ec);
+        if (ec) {
+            JST_ERROR("[PLUGIN] Failed to create plugin cache directory '{}'.", Platform::PathToUtf8(runs));
+            return Result::ERROR;
+        }
+
+        Platform::FileLock maintenanceLock;
+        JST_CHECK(maintenanceLock.acquire(Platform::PathToUtf8(cacheRoot / "maintenance.lock")));
+        sweepCache(runs);
+
+        const auto candidate = runs / uniqueStamp();
+        std::filesystem::create_directories(candidate, ec);
+        if (ec) {
+            JST_ERROR("[PLUGIN] Failed to create plugin cache run directory '{}'.", Platform::PathToUtf8(candidate));
+            return Result::ERROR;
+        }
+
+        if (cacheOwnerLock.acquire(Platform::PathToUtf8(candidate / "owner.lock")) != Result::SUCCESS) {
+            std::filesystem::remove_all(candidate, ec);
+            return Result::ERROR;
+        }
+
+        cacheRunDirectory = candidate;
+    }
+#endif
+
+    directory = cacheRunDirectory / std::to_string(++cacheGeneration);
+    return Result::SUCCESS;
+}
+
+void Plugin::Impl::sweepCache(const std::filesystem::path& runs) {
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(runs, ec)) {
+        std::error_code entryEc;
+        if (!entry.is_directory(entryEc)) {
             continue;
         }
 
         Platform::FileLock staleOwnerLock;
-        const auto lockResult = staleOwnerLock.acquire(Platform::PathToUtf8(entry.path() / "owner.lock"), false);
-        if (lockResult != Result::SUCCESS) {
+        if (staleOwnerLock.acquire(Platform::PathToUtf8(entry.path() / "owner.lock"), false) != Result::SUCCESS) {
             continue;
         }
-
         staleOwnerLock.release();
 
-        std::error_code cleanupEc;
-        (void)std::filesystem::remove_all(entry.path(), cleanupEc);
-        if (cleanupEc) {
+        std::filesystem::remove_all(entry.path(), entryEc);
+        if (entryEc) {
             JST_WARN("[PLUGIN] Failed to remove stale plugin cache directory '{}'.",
                      Platform::PathToUtf8(entry.path()));
         }
@@ -919,7 +981,7 @@ void Plugin::Impl::cleanupCache() {
     cacheOwnerLock.release();
 
     std::error_code ec;
-    (void)std::filesystem::remove_all(cacheRunDirectory, ec);
+    std::filesystem::remove_all(cacheRunDirectory, ec);
     if (ec) {
         JST_WARN("[PLUGIN] Failed to remove plugin cache run directory '{}'.",
                  Platform::PathToUtf8(cacheRunDirectory));
@@ -929,18 +991,365 @@ void Plugin::Impl::cleanupCache() {
     cacheGeneration = 0;
 }
 
-Result Plugin::Impl::load(const std::string& path) {
-    if (path.empty()) {
-        JST_ERROR("[PLUGIN] Cannot load plugin because path is empty.");
+bool Plugin::Impl::loaded(const std::string& id) {
+    std::lock_guard<std::mutex> guard(pluginsMutex);
+    return std::any_of(plugins.begin(), plugins.end(), [&](const auto& plugin) {
+        return plugin.manifest.id == id;
+    });
+}
+
+Result Plugin::Impl::open(Record& plugin) {
+    JST_CHECK(readManifest(plugin.root, plugin.manifest));
+    JST_CHECK(validateManifest(plugin.root, plugin.manifest));
+
+    const auto id = plugin.manifest.id;
+    if (loaded(id)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' is already loaded.", id);
         return Result::ERROR;
     }
+
+    {
+        std::lock_guard<std::mutex> guard(pathsMutex);
+        paths[id] = plugin.root;
+    }
+
+    const auto before = snapshotRegistry();
+    auto fail = [&]() {
+        (void)Registry::DiscardStaticRegistrations();
+        rollbackRegistrations(diffRegistrations(before, snapshotRegistry()));
+        plugin.registrations = {};
+        if (plugin.handle != nullptr) {
+            Platform::CloseDynamicLibrary(plugin.handle);
+            plugin.handle = nullptr;
+        }
+
+        std::lock_guard<std::mutex> guard(pathsMutex);
+        paths.erase(id);
+        return Result::ERROR;
+    };
+
+    const auto library = Platform::PathToUtf8(libraryPath(plugin.root, id));
+    std::string error;
+    try {
+        plugin.handle = Platform::OpenDynamicLibrary(library,
+                                                     Platform::DynamicLibraryVisibility::Local,
+                                                     error,
+                                                     Platform::DynamicLibrarySearch::LibraryDirectory);
+    } catch (const Result& status) {
+        JST_ERROR("[PLUGIN] Exception while loading plugin '{}': {}", id, status);
+        return fail();
+    } catch (const std::exception& e) {
+        JST_ERROR("[PLUGIN] Exception while loading plugin '{}': {}", id, e.what());
+        return fail();
+    } catch (...) {
+        JST_ERROR("[PLUGIN] Unknown exception while loading plugin '{}'.", id);
+        return fail();
+    }
+
+    if (plugin.handle == nullptr) {
+        JST_ERROR("[PLUGIN] Failed to load plugin '{}': {}", id, error);
+        return fail();
+    }
+
+    if (Registry::DrainStaticRegistrations() != Result::SUCCESS) {
+        return fail();
+    }
+
+    plugin.registrations = diffRegistrations(before, snapshotRegistry());
+    if (validatePrefixes(id, plugin.registrations, before) != Result::SUCCESS ||
+        publishExamples(plugin, plugin.examples) != Result::SUCCESS) {
+        return fail();
+    }
+
+    return Result::SUCCESS;
+}
+
+void Plugin::Impl::close(Record& plugin) {
+    if (!plugin.examples.empty()) {
+        (void)Home::Get().gallery().publish(galleryOrigin(plugin.manifest.id), {});
+        plugin.examples.clear();
+    }
+
+    rollbackRegistrations(plugin.registrations);
+    plugin.registrations = {};
+
+    if (plugin.handle != nullptr) {
+        Platform::CloseDynamicLibrary(plugin.handle);
+        plugin.handle = nullptr;
+    }
+
+    std::lock_guard<std::mutex> guard(pathsMutex);
+    const auto current = paths.find(plugin.manifest.id);
+    if (current != paths.end() && current->second == plugin.root) {
+        paths.erase(current);
+    }
+}
+
+Result Plugin::Impl::installEntry(const Gallery::Source& source,
+                                  const Gallery::Entry& entry,
+                                  bool update,
+                                  const std::function<bool()>& cancelled) {
+    std::filesystem::path directory;
+    JST_CHECK(cacheDirectory(directory));
+    const auto bundle = directory / "bundle.cep";
+
+    std::string id;
+    const auto result = Gallery::Download(source, entry, bundle, cancelled) == Result::SUCCESS
+        ? install(Platform::PathToUtf8(bundle),
+                  id,
+                  {.gallery = true, .update = update, .id = entry.id, .version = entry.version})
+        : Result::ERROR;
+
+    std::error_code ec;
+    std::filesystem::remove_all(directory, ec);
+    return result;
+}
+
+Result Plugin::Impl::install(const std::string& path, std::string& id, const InstallOptions& options) {
+    id.clear();
 
     if (!Plugin::IsCepPath(path)) {
         JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", path);
         return Result::ERROR;
     }
 
-    const auto sourcePath = normalizePath(path);
+    std::error_code ec;
+    const auto source = Platform::PathFromUtf8(path);
+    if (!std::filesystem::is_regular_file(source, ec)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' does not exist.", path);
+        return Result::ERROR;
+    }
+
+    std::lock_guard<std::mutex> lifecycleGuard(lifecycleMutex);
+
+    std::filesystem::path root;
+    JST_CHECK(storeRoot(root));
+
+    Platform::FileLock storeLock;
+    JST_CHECK(storeLock.acquire(Platform::PathToUtf8(root / "store.lock")));
+
+    Index index;
+    JST_CHECK(readIndex(root, index));
+    if (!std::filesystem::exists(root / IndexFile, ec)) {
+        JST_CHECK(writeIndex(root, index));
+    }
+
+    const auto staging = root / ".staging" / uniqueStamp();
+    auto discard = [&]() {
+        std::error_code cleanupEc;
+        std::filesystem::remove_all(staging, cleanupEc);
+        return Result::ERROR;
+    };
+
+    Manifest manifest;
+    if (extract(source, staging) != Result::SUCCESS ||
+        readManifest(staging, manifest) != Result::SUCCESS ||
+        validateManifest(staging, manifest) != Result::SUCCESS) {
+        return discard();
+    }
+
+    if ((!options.id.empty() && manifest.id != options.id) ||
+        (!options.version.empty() && manifest.version != options.version)) {
+        JST_ERROR("[PLUGIN] The downloaded bundle is plugin '{}' version {}, but the gallery listed '{}' version {}.",
+                  manifest.id,
+                  manifest.version,
+                  options.id,
+                  options.version);
+        return discard();
+    }
+
+    const auto folder = manifest.version + "-" + manifest.cyberether + "-" + uniqueStamp();
+    const auto destination = root / Platform::PathFromUtf8(manifest.id) / Platform::PathFromUtf8(folder);
+
+    std::filesystem::create_directories(destination.parent_path(), ec);
+    if (!ec) {
+        std::filesystem::rename(staging, destination, ec);
+    }
+    if (ec) {
+        JST_ERROR("[PLUGIN] Failed to move plugin '{}' into the store.", manifest.id);
+        return discard();
+    }
+
+    const bool active = loaded(manifest.id);
+    auto entry = std::find_if(index.plugins.begin(), index.plugins.end(), [&](const auto& item) {
+        return item.id == manifest.id;
+    });
+    if (options.update && (entry == index.plugins.end() || !entry->gallery)) {
+        JST_WARN("[PLUGIN] Plugin '{}' was removed or replaced while its update downloaded. Skipping the update.",
+                 manifest.id);
+        std::error_code cleanupEc;
+        std::filesystem::remove_all(destination, cleanupEc);
+        return Result::ERROR;
+    }
+    if (entry == index.plugins.end() && active) {
+        std::string current;
+        {
+            std::lock_guard<std::mutex> guard(pluginsMutex);
+            for (const auto& plugin : plugins) {
+                if (!plugin.temporary && plugin.manifest.id == manifest.id) {
+                    current = Platform::PathToUtf8(plugin.root.filename());
+                }
+            }
+        }
+        if (current.empty()) {
+            index.plugins.push_back({.id = manifest.id, .folder = folder, .pending = {}, .gallery = options.gallery});
+        } else {
+            index.plugins.push_back({
+                .id = manifest.id,
+                .folder = current,
+                .pending = folder,
+                .gallery = options.gallery,
+            });
+        }
+    } else if (entry == index.plugins.end()) {
+        index.plugins.push_back({.id = manifest.id, .folder = folder, .pending = {}, .gallery = options.gallery});
+    } else if (active) {
+        entry->pending = folder;
+        entry->gallery = options.gallery;
+    } else {
+        entry->folder = folder;
+        entry->pending.clear();
+        entry->gallery = options.gallery;
+    }
+
+    JST_CHECK(writeIndex(root, index));
+    sweepStore(root, index);
+
+    {
+        std::lock_guard<std::mutex> guard(pluginsMutex);
+        failed.erase(manifest.id);
+    }
+
+    id = manifest.id;
+    JST_INFO("[PLUGIN] Installed plugin '{}' version {}.", manifest.id, manifest.version);
+    return Result::SUCCESS;
+}
+
+Result Plugin::Impl::remove(const std::string& id) {
+    std::lock_guard<std::mutex> lifecycleGuard(lifecycleMutex);
+
+    std::filesystem::path root;
+    JST_CHECK(storeRoot(root));
+
+    Platform::FileLock storeLock;
+    JST_CHECK(storeLock.acquire(Platform::PathToUtf8(root / "store.lock")));
+
+    Index index;
+    JST_CHECK(readIndex(root, index));
+
+    const auto count = index.plugins.size();
+    std::erase_if(index.plugins, [&](const auto& entry) {
+        return entry.id == id;
+    });
+    if (index.plugins.size() == count) {
+        JST_ERROR("[PLUGIN] Plugin '{}' is not installed.", id);
+        return Result::ERROR;
+    }
+
+    JST_CHECK(writeIndex(root, index));
+    sweepStore(root, index);
+
+    {
+        std::lock_guard<std::mutex> guard(pluginsMutex);
+        failed.erase(id);
+    }
+
+    JST_INFO("[PLUGIN] Removed plugin '{}'.", id);
+    return Result::SUCCESS;
+}
+
+Result Plugin::Impl::loadInstalled() {
+    std::lock_guard<std::mutex> lifecycleGuard(lifecycleMutex);
+    JST_CHECK(Registry::DrainStaticRegistrations());
+
+    std::filesystem::path root;
+    JST_CHECK(storeRoot(root));
+
+    Platform::FileLock storeLock;
+    JST_CHECK(storeLock.acquire(Platform::PathToUtf8(root / "store.lock")));
+
+    Index index;
+    JST_CHECK(readIndex(root, index));
+
+    bool changed = false;
+    for (auto& entry : index.plugins) {
+        if (!entry.pending.empty() && !loaded(entry.id)) {
+            entry.folder = entry.pending;
+            entry.pending.clear();
+            changed = true;
+        }
+    }
+    if (changed) {
+        JST_CHECK(writeIndex(root, index));
+    }
+    sweepStore(root, index);
+
+    for (const auto& entry : index.plugins) {
+        if (loaded(entry.id)) {
+            continue;
+        }
+
+        Record plugin;
+        plugin.root = root / Platform::PathFromUtf8(entry.id) / Platform::PathFromUtf8(entry.folder);
+
+        Manifest manifest;
+        if (readManifest(plugin.root, manifest) != Result::SUCCESS || manifest.id != entry.id) {
+            JST_WARN("[PLUGIN] Installed plugin '{}' is damaged. Install it again.", entry.id);
+            std::lock_guard<std::mutex> guard(pluginsMutex);
+            failed.insert(entry.id);
+            continue;
+        }
+
+        if (!compatible(plugin.root, manifest)) {
+            JST_WARN("[PLUGIN] Installed plugin '{}' was built for CyberEther {} ({}). "
+                     "Install a build for CyberEther {} ({}).",
+                     entry.id,
+                     manifest.cyberether,
+                     manifest.build,
+                     JETSTREAM_VERSION_STR,
+                     JETSTREAM_BUILD_ID);
+            continue;
+        }
+
+        pruneUsers(plugin.root);
+        const auto userLock = plugin.root / ".users" / (uniqueStamp() + ".lock");
+        if (plugin.user.acquire(Platform::PathToUtf8(userLock)) != Result::SUCCESS ||
+            open(plugin) != Result::SUCCESS) {
+            JST_WARN("[PLUGIN] Failed to load installed plugin '{}'. Continuing startup.", entry.id);
+            plugin.user.release();
+            std::error_code ec;
+            std::filesystem::remove(userLock, ec);
+            std::lock_guard<std::mutex> guard(pluginsMutex);
+            failed.insert(entry.id);
+            continue;
+        }
+
+        std::lock_guard<std::mutex> guard(pluginsMutex);
+        failed.erase(entry.id);
+        plugins.push_back(std::move(plugin));
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Plugin::Impl::load(const std::string& path) {
+    if (!Plugin::IsCepPath(path)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", path);
+        return Result::ERROR;
+    }
+
+    std::error_code ec;
+    const auto source = Platform::PathFromUtf8(path);
+    if (!std::filesystem::is_regular_file(source, ec)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' does not exist.", path);
+        return Result::ERROR;
+    }
+
+    auto normalized = std::filesystem::weakly_canonical(source, ec);
+    if (ec) {
+        normalized = std::filesystem::absolute(source, ec);
+    }
+    const auto sourcePath = Platform::PathToUtf8(normalized);
 
     std::lock_guard<std::mutex> lifecycleGuard(lifecycleMutex);
     JST_CHECK(Registry::DrainStaticRegistrations());
@@ -948,7 +1357,7 @@ Result Plugin::Impl::load(const std::string& path) {
     {
         std::lock_guard<std::mutex> guard(pluginsMutex);
         const auto duplicate = std::find_if(plugins.begin(), plugins.end(), [&](const auto& entry) {
-            return entry.sourcePath == sourcePath;
+            return entry.temporary && entry.source == sourcePath;
         });
         if (duplicate != plugins.end()) {
             return Result::SUCCESS;
@@ -956,337 +1365,206 @@ Result Plugin::Impl::load(const std::string& path) {
     }
 
     Record plugin;
-    JST_CHECK(loadPluginCopy(sourcePath, sourcePath, plugin));
+    plugin.source = sourcePath;
+    plugin.temporary = true;
+    JST_CHECK(cacheDirectory(plugin.root));
+
+    if (extract(normalized, plugin.root) != Result::SUCCESS || open(plugin) != Result::SUCCESS) {
+        std::filesystem::remove_all(plugin.root, ec);
+        return Result::ERROR;
+    }
 
     std::lock_guard<std::mutex> guard(pluginsMutex);
     plugins.push_back(std::move(plugin));
     return Result::SUCCESS;
 }
 
-Result Plugin::Impl::reload(const std::string& path) {
+Result Plugin::Impl::reload(const std::string& id) {
 #if defined(JST_OS_BROWSER)
-    (void)path;
+    (void)id;
     JST_ERROR("[PLUGIN] Browser plugins cannot be reloaded in place. Refresh the page instead.");
     return Result::ERROR;
 #else
-    if (path.empty()) {
-        JST_ERROR("[PLUGIN] Cannot reload plugin because path is empty.");
-        return Result::ERROR;
-    }
-
-    if (!Plugin::IsCepPath(path)) {
-        JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", path);
-        return Result::ERROR;
-    }
-
-    const auto sourcePath = normalizePath(path);
-
     std::lock_guard<std::mutex> lifecycleGuard(lifecycleMutex);
     JST_CHECK(Registry::DrainStaticRegistrations());
 
-    Record plugin;
-    bool loaded = false;
+    Record current;
     {
         std::lock_guard<std::mutex> guard(pluginsMutex);
         const auto it = std::find_if(plugins.begin(), plugins.end(), [&](const auto& entry) {
-            return entry.sourcePath == sourcePath;
+            return entry.manifest.id == id;
         });
-        if (it != plugins.end()) {
-            plugin = std::move(*it);
-            plugins.erase(it);
-            loaded = true;
+        if (it == plugins.end()) {
+            JST_ERROR("[PLUGIN] Plugin '{}' is not loaded.", id);
+            return Result::ERROR;
         }
+        if (!it->temporary) {
+            JST_ERROR("[PLUGIN] Plugin '{}' is installed. Only plugins loaded with --plugin can be reloaded.", id);
+            return Result::ERROR;
+        }
+        current = std::move(*it);
+        plugins.erase(it);
     }
 
-    Record newPlugin;
-    if (loaded) {
-        closePlugin(plugin, false);
-    }
+    close(current);
 
-    if (loadPluginCopy(sourcePath, sourcePath, newPlugin) != Result::SUCCESS) {
-        if (loaded) {
-            Record restoredPlugin;
-            if (loadPluginCopy(plugin.loadedPath, plugin.sourcePath, restoredPlugin) == Result::SUCCESS) {
-                restoredPlugin.sourcePath = plugin.sourcePath;
-                removeCachedPluginFiles(plugin);
+    Record replacement;
+    replacement.source = current.source;
+    replacement.temporary = true;
 
-                std::lock_guard<std::mutex> guard(pluginsMutex);
-                plugins.push_back(std::move(restoredPlugin));
-            } else {
-                JST_ERROR("[PLUGIN] Failed to restore plugin '{}' after reload failure.", sourcePath);
-                removeCachedPluginFiles(plugin);
-            }
+    std::error_code ec;
+    const bool reloaded = cacheDirectory(replacement.root) == Result::SUCCESS &&
+                          extract(Platform::PathFromUtf8(current.source), replacement.root) == Result::SUCCESS &&
+                          open(replacement) == Result::SUCCESS;
+    if (!reloaded) {
+        if (!replacement.root.empty()) {
+            std::filesystem::remove_all(replacement.root, ec);
         }
 
+        Record restored;
+        restored.source = current.source;
+        restored.temporary = true;
+        restored.root = current.root;
+        if (open(restored) != Result::SUCCESS) {
+            JST_ERROR("[PLUGIN] Failed to restore plugin '{}' after reload failure.", id);
+            std::filesystem::remove_all(current.root, ec);
+            return Result::ERROR;
+        }
+
+        std::lock_guard<std::mutex> guard(pluginsMutex);
+        plugins.push_back(std::move(restored));
         return Result::ERROR;
     }
 
-    if (loaded) {
-        removeCachedPluginFiles(plugin);
-    }
+    std::filesystem::remove_all(current.root, ec);
 
     std::lock_guard<std::mutex> guard(pluginsMutex);
-    plugins.push_back(std::move(newPlugin));
+    plugins.push_back(std::move(replacement));
     return Result::SUCCESS;
 #endif
 }
 
 std::vector<Plugin::Info> Plugin::Impl::list() {
-    std::lock_guard<std::mutex> guard(pluginsMutex);
-
     std::vector<Plugin::Info> rows;
-    rows.reserve(plugins.size());
-    for (const auto& plugin : plugins) {
-        rows.push_back(buildInfo(plugin));
-    }
-
+    (void)collect(rows);
     return rows;
 }
 
-Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, const std::string& origin, Record& plugin) {
-    if (!Plugin::IsCepPath(sourcePath)) {
-        JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", sourcePath);
-        return Result::ERROR;
-    }
+Result Plugin::Impl::collect(std::vector<Plugin::Info>& rows) {
+    rows.clear();
 
-    const auto before = snapshotRegistry();
-
-    std::string cachedPath;
-    if (copyToCache(sourcePath, cachedPath) != Result::SUCCESS) {
-        return Result::ERROR;
-    }
-
-    std::string extractedPath;
-    std::vector<void*> handles;
-    auto fail = [&]() {
-        (void)Registry::DiscardStaticRegistrations();
-        rollbackRegistrations(diffRegistrations(before, snapshotRegistry()));
-        for (auto* handle : handles) {
-            closeHandle(handle);
-        }
-        handles.clear();
-
-        Record failedPlugin;
-        failedPlugin.sourcePath = sourcePath;
-        failedPlugin.loadedPath = cachedPath;
-        failedPlugin.extractedPath = extractedPath;
-        closePlugin(failedPlugin);
-        return Result::ERROR;
+    auto describe = [](const Manifest& manifest, Plugin::Info& info) {
+        info.id = manifest.id;
+        info.title = manifest.title;
+        info.summary = manifest.summary;
+        info.description = manifest.description;
+        info.author = manifest.author;
+        info.license = manifest.license;
+        info.version = manifest.version;
+        info.cyberether = manifest.cyberether;
     };
 
-    if (extractToCache(cachedPath, extractedPath) != Result::SUCCESS) {
-        return fail();
+    {
+        std::lock_guard<std::mutex> guard(pluginsMutex);
+        for (const auto& plugin : plugins) {
+            if (!plugin.temporary) {
+                continue;
+            }
+            Plugin::Info info;
+            describe(plugin.manifest, info);
+            info.path = Platform::PathToUtf8(plugin.root);
+            info.source = plugin.source;
+            info.temporary = true;
+            info.status = Status::Loaded;
+            info.blocks = plugin.registrations.blocks;
+            info.examples = plugin.examples;
+            rows.push_back(std::move(info));
+        }
     }
 
-    const auto bundlePath = Platform::PathFromUtf8(extractedPath);
-    Manifest manifest;
-    if (loadManifest(bundlePath, manifest) != Result::SUCCESS ||
-        validateManifest(sourcePath, manifest) != Result::SUCCESS) {
-        return fail();
+    std::filesystem::path root;
+    Index index;
+    if (storeRoot(root, false) != Result::SUCCESS || readIndex(root, index) != Result::SUCCESS) {
+        return Result::ERROR;
     }
 
-    bool loadedCompatibleTarget = false;
-    for (const auto& target : manifest.targets) {
-        if (!isCompatibleTarget(target)) {
+    for (const auto& entry : index.plugins) {
+        if (std::any_of(rows.begin(), rows.end(), [&](const auto& row) { return row.id == entry.id; })) {
             continue;
         }
 
-        loadedCompatibleTarget = true;
+        const auto folder = root / Platform::PathFromUtf8(entry.id) / Platform::PathFromUtf8(entry.folder);
 
-        std::filesystem::path relativePath;
-        if (!safeRelativePath(target.path, relativePath)) {
-            return fail();
+        Plugin::Info info;
+        Manifest manifest;
+        const bool readable = readManifest(folder, manifest) == Result::SUCCESS;
+        if (readable) {
+            describe(manifest, info);
         }
+        info.id = entry.id;
+        info.path = Platform::PathToUtf8(folder);
+        info.gallery = entry.gallery;
 
-        void* handle = nullptr;
-        const auto libraryPath = Platform::PathToUtf8(bundlePath / relativePath);
-        if (openPlugin(libraryPath, handle) != Result::SUCCESS) {
-            if (handle != nullptr) {
-                closeHandle(handle);
+        if (!entry.pending.empty()) {
+            const auto pendingFolder = root / Platform::PathFromUtf8(entry.id) / Platform::PathFromUtf8(entry.pending);
+            Manifest pending;
+            if (readManifest(pendingFolder, pending) == Result::SUCCESS && compatible(pendingFolder, pending)) {
+                info.pending = pending.version;
             }
-
-            return fail();
         }
 
-        handles.push_back(handle);
-
-        if (Registry::DrainStaticRegistrations() != Result::SUCCESS) {
-            return fail();
+        std::lock_guard<std::mutex> guard(pluginsMutex);
+        const auto record = std::find_if(plugins.begin(), plugins.end(), [&](const auto& plugin) {
+            return !plugin.temporary && plugin.manifest.id == entry.id;
+        });
+        if (record != plugins.end()) {
+            describe(record->manifest, info);
+            info.path = Platform::PathToUtf8(record->root);
+            info.status = Status::Loaded;
+            info.blocks = record->registrations.blocks;
+            info.examples = record->examples;
+        } else if (!readable || failed.contains(entry.id)) {
+            info.status = Status::Failed;
+        } else if (!compatible(folder, manifest)) {
+            info.status = entry.gallery ? Status::Waiting : Status::Incompatible;
+        } else {
+            info.status = Status::Restart;
         }
+
+        rows.push_back(std::move(info));
     }
 
-    if (!loadedCompatibleTarget) {
-        JST_ERROR("[PLUGIN] Plugin '{}' does not contain targets compatible with {}-{}.",
-                  sourcePath,
-                  currentSystem(),
-                  currentArch());
-        return fail();
-    }
-
-    std::vector<std::string> examples;
-    if (publishExamples(bundlePath, manifest, origin, examples) != Result::SUCCESS) {
-        return fail();
-    }
-
-    plugin.sourcePath = sourcePath;
-    plugin.loadedPath = cachedPath;
-    plugin.extractedPath = extractedPath;
-    plugin.handles = std::move(handles);
-    plugin.registrations = diffRegistrations(before, snapshotRegistry());
-    plugin.origin = examples.empty() ? std::string() : origin;
-    plugin.examples = std::move(examples);
-    plugin.manifest = std::move(manifest);
     return Result::SUCCESS;
 }
 
-Result Plugin::Impl::openPlugin(const std::string& path, void*& handle) {
-    handle = nullptr;
-    std::string error;
-
-    try {
-        handle = Platform::OpenDynamicLibrary(path, Platform::DynamicLibraryVisibility::Local, error);
-    } catch (const Result& status) {
-        JST_ERROR("[PLUGIN] Exception while loading plugin '{}': {}", path, status);
-        return Result::ERROR;
-    } catch (const std::exception& e) {
-        JST_ERROR("[PLUGIN] Exception while loading plugin '{}': {}", path, e.what());
-        return Result::ERROR;
-    } catch (...) {
-        JST_ERROR("[PLUGIN] Unknown exception while loading plugin '{}'.", path);
-        return Result::ERROR;
-    }
-
-    if (handle == nullptr) {
-        JST_ERROR("[PLUGIN] Failed to load plugin '{}': {}", path, error);
-        return Result::ERROR;
-    }
-
-    JST_CHECK(validatePluginAbi(path, handle));
-    return Result::SUCCESS;
+std::filesystem::path Plugin::Impl::path(const std::string& id) {
+    std::lock_guard<std::mutex> guard(pathsMutex);
+    const auto entry = paths.find(id);
+    return entry == paths.end() ? std::filesystem::path() : entry->second;
 }
 
-Result Plugin::Impl::validatePluginAbi(const std::string& path, void* handle) {
-    std::string error;
-    const auto abi = loadAbi(handle, error);
-    if (abi == nullptr) {
-        JST_ERROR("[PLUGIN] Plugin '{}' does not export '{}': {}.",
-                  path,
-                  JETSTREAM_PLUGIN_ABI_SYMBOL,
-                  error);
-        return Result::ERROR;
-    }
-
-    if (abi->magic != JETSTREAM_PLUGIN_ABI_MAGIC) {
-        JST_ERROR("[PLUGIN] Plugin '{}' has invalid plugin ABI magic.", path);
-        return Result::ERROR;
-    }
-
-    if (abi->size != sizeof(JetstreamPluginAbi)) {
-        JST_ERROR("[PLUGIN] Plugin '{}' reports an unsupported plugin ABI size ({} != {}).",
-                  path,
-                  abi->size,
-                  sizeof(JetstreamPluginAbi));
-        return Result::ERROR;
-    }
-
-    if (abi->abi_version != JETSTREAM_PLUGIN_ABI_VERSION) {
-        JST_ERROR("[PLUGIN] Plugin '{}' has plugin ABI version {}, expected {}.",
-                  path,
-                  abi->abi_version,
-                  JETSTREAM_PLUGIN_ABI_VERSION);
-        return Result::ERROR;
-    }
-
-    JST_TRACE("[PLUGIN] Plugin '{}' ABI validated.", path);
-    return Result::SUCCESS;
-}
-
-Result Plugin::Impl::publishExamples(const std::filesystem::path& bundlePath,
-                                     const Manifest& manifest,
-                                     const std::string& origin,
-                                     std::vector<std::string>& keys) {
-    keys.clear();
-    if (manifest.examples.empty()) {
-        return Result::SUCCESS;
-    }
-
-    std::string prefix;
-    for (const char c : manifest.metadata.name) {
-        const auto byte = static_cast<unsigned char>(c);
-        prefix += std::isalnum(byte) ? static_cast<char>(std::tolower(byte)) : '-';
-    }
-
-    Home::Gallery::Section section{
-        .key = origin,
-        .title = manifest.metadata.name,
-        .description = "Examples bundled with this plugin.",
-    };
-    for (const auto& example : manifest.examples) {
-        std::filesystem::path relativePath;
-        if (!safeRelativePath(example.path, relativePath)) {
-            JST_ERROR("[PLUGIN] Invalid bundled example path '{}'.", example.path);
-            return Result::ERROR;
+std::string Plugin::Impl::owner(const std::string& block, const std::string& provider) {
+    std::lock_guard<std::mutex> guard(pluginsMutex);
+    for (const auto& plugin : plugins) {
+        const auto& registrations = plugin.registrations;
+        if (std::find(registrations.blocks.begin(), registrations.blocks.end(), block) != registrations.blocks.end()) {
+            return plugin.manifest.id;
         }
 
-        const auto examplePath = bundlePath / relativePath;
-        std::string content;
-        JST_CHECK(readTextFile(examplePath, content));
-
-        auto stem = Platform::PathToUtf8(examplePath.stem());
-        if (stem.empty()) {
-            stem = Platform::PathToUtf8(relativePath);
+        if (!provider.starts_with(plugin.manifest.id + "_")) {
+            continue;
         }
 
-        Home::Gallery::Flowgraph flowgraph;
-        JST_CHECK(Home::Gallery::Flowgraph::Parse(prefix + "/" + stem, std::move(content), flowgraph));
-        if (flowgraph.title.empty()) {
-            flowgraph.title = stem;
+        const auto& modules = registrations.modules;
+        const auto module = std::find_if(modules.begin(), modules.end(), [&](const auto& entry) {
+            return entry.provider == provider;
+        });
+        if (module != modules.end()) {
+            return plugin.manifest.id;
         }
-        keys.push_back(flowgraph.key);
-        section.flowgraphs.push_back(std::move(flowgraph));
     }
 
-    JST_CHECK(Home::Get().gallery().publish(origin, {std::move(section)}));
-    return Result::SUCCESS;
-}
-
-void Plugin::Impl::closePlugin(Record& plugin, bool removeCachedFile) {
-    if (!plugin.origin.empty()) {
-        (void)Home::Get().gallery().publish(plugin.origin, {});
-        plugin.origin.clear();
-    }
-    rollbackRegistrations(plugin.registrations);
-    for (auto it = plugin.handles.rbegin(); it != plugin.handles.rend(); ++it) {
-        closeHandle(*it);
-    }
-    plugin.handles.clear();
-
-    if (removeCachedFile) {
-        removeCachedPluginFiles(plugin);
-    }
-}
-
-void Plugin::Impl::removeCachedPluginFiles(Record& plugin) {
-    std::error_code ec;
-
-    if (!plugin.extractedPath.empty()) {
-        (void)std::filesystem::remove_all(Platform::PathFromUtf8(plugin.extractedPath), ec);
-        if (ec) {
-            JST_WARN("[PLUGIN] Failed to remove extracted plugin '{}'.", plugin.extractedPath);
-        }
-
-        plugin.extractedPath.clear();
-    }
-
-    if (!plugin.loadedPath.empty()) {
-        ec.clear();
-        (void)std::filesystem::remove(Platform::PathFromUtf8(plugin.loadedPath), ec);
-        if (ec) {
-            JST_WARN("[PLUGIN] Failed to remove cached plugin '{}'.", plugin.loadedPath);
-        }
-
-        plugin.loadedPath.clear();
-    }
+    return {};
 }
 
 void Plugin::Impl::cleanup() {
@@ -1298,8 +1576,12 @@ void Plugin::Impl::cleanup() {
         records.swap(plugins);
     }
 
-    for (auto& plugin : records) {
-        closePlugin(plugin);
+    for (auto it = records.rbegin(); it != records.rend(); ++it) {
+        close(*it);
+        if (it->temporary) {
+            std::error_code ec;
+            std::filesystem::remove_all(it->root, ec);
+        }
     }
 
     cleanupCache();
@@ -1318,18 +1600,141 @@ bool Plugin::IsCepPath(const std::string& path) {
     return extension == ".cep";
 }
 
-Result Plugin::Load(const std::string& path) {
-    JST_CHECK(plugin().load(path));
+Result Plugin::Install(const std::string& path, std::string& id) {
+    return plugin().install(path, id);
+}
+
+Result Plugin::Gallery::Install(const Source& source,
+                               const std::string& id,
+                               const std::function<bool()>& cancelled) {
+    if (!ValidId(id)) {
+        JST_ERROR("[PLUGIN] '{}' is not a plugin ID.", id);
+        return Result::ERROR;
+    }
+
+    Entries entries;
+    JST_CHECK(Fetch(source, Current({id}), cancelled, entries));
+
+    const auto entry = std::find_if(entries.begin(), entries.end(), [&](const auto& item) {
+        return item.id == id;
+    });
+    if (entry == entries.end()) {
+        JST_ERROR("[PLUGIN] Plugin '{}' is not in the CyberEther gallery.", id);
+        return Result::ERROR;
+    }
+    if (!entry->available()) {
+        JST_ERROR("[PLUGIN] Plugin '{}' does not have a build for CyberEther {} ({}) yet.",
+                  id,
+                  JETSTREAM_VERSION_STR,
+                  JETSTREAM_BUILD_ID);
+        return Result::ERROR;
+    }
+
+    return plugin().installEntry(source, *entry, false, cancelled);
+}
+
+bool Plugin::Gallery::Outdated(const Info& info, const Entry& entry) {
+    if (info.temporary || !info.gallery || info.id != entry.id || !entry.available() ||
+        info.pending == entry.version) {
+        return false;
+    }
+    return info.version != entry.version || info.status == Status::Waiting;
+}
+
+Result Plugin::Gallery::Updates(const Source& source,
+                               Entries& updates,
+                               const std::function<bool()>& cancelled) {
+    updates.clear();
+
+    std::vector<Info> inventory;
+    JST_CHECK(plugin().collect(inventory));
+
+    std::vector<Info> installed;
+    std::vector<std::string> ids;
+    for (auto& info : inventory) {
+        if (!info.temporary && info.gallery) {
+            ids.push_back(info.id);
+            installed.push_back(std::move(info));
+        }
+    }
+    if (ids.empty()) {
+        return Result::SUCCESS;
+    }
+
+    Entries entries;
+    JST_CHECK(Fetch(source, Current(ids), cancelled, entries));
+
+    for (const auto& info : installed) {
+        const auto entry = std::find_if(entries.begin(), entries.end(), [&](const auto& item) {
+            return item.id == info.id;
+        });
+        if (entry == entries.end()) {
+            JST_WARN("[PLUGIN] Plugin '{}' is no longer in the CyberEther gallery.", info.id);
+            continue;
+        }
+        if (Outdated(info, *entry)) {
+            updates.push_back(*entry);
+        }
+    }
+
     return Result::SUCCESS;
 }
 
-Result Plugin::Reload(const std::string& path) {
-    JST_CHECK(plugin().reload(path));
-    return Result::SUCCESS;
+Result Plugin::Gallery::Update(const Source& source,
+                              const std::vector<std::string>& ids,
+                              std::vector<std::string>& updated,
+                              const std::function<bool()>& cancelled) {
+    updated.clear();
+
+    Entries updates;
+    JST_CHECK(Updates(source, updates, cancelled));
+
+    Result result = Result::SUCCESS;
+    for (const auto& entry : updates) {
+        if (cancelled && cancelled()) {
+            break;
+        }
+        if (std::find(ids.begin(), ids.end(), entry.id) == ids.end()) {
+            continue;
+        }
+
+        if (plugin().installEntry(source, entry, true, cancelled) == Result::SUCCESS) {
+            updated.push_back(entry.id);
+        } else {
+            JST_ERROR("[PLUGIN] Failed to update plugin '{}' from the gallery.", entry.id);
+            result = Result::ERROR;
+        }
+    }
+
+    return result;
+}
+
+Result Plugin::Remove(const std::string& id) {
+    return plugin().remove(id);
+}
+
+Result Plugin::LoadInstalled() {
+    return plugin().loadInstalled();
+}
+
+Result Plugin::Load(const std::string& path) {
+    return plugin().load(path);
+}
+
+Result Plugin::Reload(const std::string& id) {
+    return plugin().reload(id);
 }
 
 std::vector<Plugin::Info> Plugin::List() {
     return plugin().list();
+}
+
+std::filesystem::path Plugin::Path(const std::string& id) {
+    return plugin().path(id);
+}
+
+std::string Plugin::Owner(const std::string& block, const std::string& provider) {
+    return plugin().owner(block, provider);
 }
 
 }  // namespace Jetstream

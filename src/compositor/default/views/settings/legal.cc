@@ -135,6 +135,7 @@ const std::vector<LegalSettingsView::Dependency>& LegalSettingsView::Dependencie
         {"libusb", "LGPL-2.1"},
         {"libqrencode", "LGPL-2.1-or-later"},
         {"zlib", "zlib License"},
+        {"miniz", "MIT"},
         {"OpenSSL", "Apache License 2.0"},
         {"Nanobench", "MIT"},
         {"Catch2", "Boost Software License"},

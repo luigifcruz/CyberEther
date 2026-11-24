@@ -9,6 +9,25 @@ std::string RegistryPluginView::VersionLabel(const Plugin& plugin) {
     return jst::fmt::format("Version {}", plugin.version);
 }
 
+std::string RegistryPluginView::SummaryLabel(const Plugin& plugin) {
+    std::vector<std::string> notes;
+    if (!plugin.status.label.empty() && plugin.status.label != "Loaded") {
+        notes.push_back(plugin.status.label);
+    }
+    if (!plugin.update.empty()) {
+        notes.push_back(plugin.update == plugin.version ? "New build available"
+                                                        : jst::fmt::format("Version {} available", plugin.update));
+    }
+    if (notes.empty()) {
+        return VersionLabel(plugin);
+    }
+    return jst::fmt::format("{} ({})", VersionLabel(plugin), jst::fmt::join(notes, ", "));
+}
+
+std::string RegistryPluginView::UpdateLabel(const Plugin& plugin) {
+    return plugin.updating ? "Updating..." : "Update";
+}
+
 void RegistryPluginView::update(Config config) {
     this->config = std::move(config);
     const auto& plugin = this->config.plugin;
@@ -17,12 +36,23 @@ void RegistryPluginView::update(Config config) {
         .current = plugin.name,
         .onRoot = this->config.onBack,
     });
+    updateButton.update({
+        .str = UpdateLabel(plugin),
+        .icon = ICON_LC_DOWNLOAD,
+        .tone = CompactButton::Tone::Primary,
+        .disabled = plugin.updating,
+        .onClick = [this]() {
+            if (this->config.onUpdate) {
+                this->config.onUpdate(this->config.plugin.id);
+            }
+        },
+    });
     reloadButton.update({
         .str = "Reload",
         .icon = ICON_LC_REFRESH_CW,
         .onClick = [this]() {
             if (this->config.onReload) {
-                this->config.onReload(this->config.plugin.path);
+                this->config.onReload(this->config.plugin.id);
             }
         },
     });
@@ -32,27 +62,31 @@ void RegistryPluginView::update(Config config) {
         .tone = CompactButton::Tone::Danger,
         .onClick = [this]() {
             if (this->config.onRemove) {
-                this->config.onRemove(this->config.plugin.path);
+                this->config.onRemove(this->config.plugin.id);
             }
         },
     });
+    std::vector<Sakura::Stack::Item> actionItems;
+    if (!plugin.update.empty()) {
+        actionItems.push_back({.child = &updateButton});
+    }
+    actionItems.push_back({.child = plugin.temporary ? static_cast<Sakura::Component*>(&reloadButton) : &removeButton});
     actions.update({
         .axis = Sakura::Stack::Axis::Horizontal,
         .spacing = Sakura::Spacing::Small,
-        .items = {
-            {.child = &reloadButton},
-            {.child = &removeButton},
-        },
+        .items = std::move(actionItems),
     });
     header.update({
         .title = plugin.name,
-        .description = VersionLabel(plugin),
+        .description = plugin.summary.empty() ? VersionLabel(plugin) : plugin.summary,
         .action = &actions,
     });
     statusBadge.update(plugin.status);
-    const std::array<std::string, 2> values = {
+    const std::array<std::string, 4> values = {
         plugin.version.empty() ? "Unknown" : plugin.version,
-        plugin.minimumVersion.empty() ? "Unknown" : plugin.minimumVersion,
+        plugin.cyberether.empty() ? "Unknown" : plugin.cyberether,
+        plugin.author,
+        plugin.license,
     };
     for (U64 index = 0; index < values.size(); ++index) {
         aboutValues[index].update({
@@ -60,15 +94,32 @@ void RegistryPluginView::update(Config config) {
             .font = Sakura::Text::Font::Sans,
         });
     }
+    std::vector<Sakura::SettingCard::Row> aboutRows = {
+        {.label = "Status", .control = &statusBadge},
+        {.label = "ID", .description = plugin.id},
+        {.label = "Version", .control = &aboutValues[0]},
+        {.label = "Built For", .control = &aboutValues[1]},
+    };
+    if (!plugin.author.empty()) {
+        aboutRows.push_back({.label = "Author", .control = &aboutValues[2]});
+    }
+    if (!plugin.license.empty()) {
+        aboutRows.push_back({.label = "License", .control = &aboutValues[3]});
+    }
+    aboutRows.push_back({
+        .label = plugin.temporary ? "Source" : "Location",
+        .description = plugin.path,
+    });
+    std::string about = plugin.description;
+    if (about.empty()) {
+        about = plugin.temporary
+            ? "Details reported by the plugin bundle. This plugin was loaded with --plugin for this run only."
+            : "Details reported by the plugin bundle.";
+    }
     aboutGroup.update({
         .title = "About",
-        .description = "Details reported by the plugin bundle.",
-        .rows = {
-            {.label = "Status", .control = &statusBadge},
-            {.label = "Version", .control = &aboutValues[0]},
-            {.label = "Minimum CyberEther", .control = &aboutValues[1]},
-            {.label = "Location", .description = plugin.path},
-        },
+        .description = std::move(about),
+        .rows = std::move(aboutRows),
     });
     blocksGroup.update({
         .title = "Blocks",

@@ -64,7 +64,7 @@ Open **Settings** from the titlebar (or press **Cmd/Ctrl + Comma**) to configure
 - **Remote:** Self-hosted WebRTC streaming settings, codec selection, and access controls. See [Remote Streaming](/docs/remote).
 - **Maps:** High-resolution map rendering options for blocks such as **ADS-B Decoder**.
 - **Runtime:** Choose which Python interpreter runs **Python** blocks and configure PEP 723 dependency installation policies. See [Python Runtime And Dependencies](/docs/python-runtime).
-- **Registry:** Register, inspect, reload, and remove `.cep` plugin bundles. See [Installing Plugins](/docs/installing-plugins).
+- **Registry:** Install, inspect, and remove `.cep` plugin bundles. See [Installing Plugins](/docs/installing-plugins).
 - **Intelligence:** Optional Assistant providers, models, voice mode, and the built-in MCP server. See [Intelligence](/docs/intelligence).
 - **Developer:** Show Timing, Show Render Stats, Log Level, Benchmarks, and Plugins reload controls.
 - **About:** Build version and application details.

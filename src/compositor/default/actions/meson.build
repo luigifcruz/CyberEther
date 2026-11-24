@@ -15,6 +15,7 @@ src_lst += files([
     'maps.cc',
     'metrics.cc',
     'onboarding.cc',
+    'plugins.cc',
     'remote.cc',
     'settings.cc',
     'terminal.cc',

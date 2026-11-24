@@ -136,14 +136,6 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
     return config;
 }
 
-void LoadRegistryPlugins(const Settings& settings) {
-    for (const auto& path : settings.registry.plugins) {
-        if (Plugin::Load(path) != Result::SUCCESS) {
-            JST_WARN("[CYBERETHER] Failed to load plugin '{}'. Continuing startup.", path);
-        }
-    }
-}
-
 std::string RemoteCodecOptionsString() {
     std::string options;
 
@@ -406,7 +398,7 @@ static void printUsage(const char* program,
         jst::fmt::print("  --python-runtime <path>               Python executable or library\n");
         jst::fmt::print("  --device-index <index>                Vulkan and CUDA device index (current: {})\n",
                         settings.graphics.deviceId);
-        jst::fmt::print("  --plugin <path>                       Load a .cep plugin (repeatable)\n\n");
+        jst::fmt::print("  --plugin <path>                       Load a .cep plugin for this run (repeatable)\n\n");
     }
 
     if (!command.has_value() || *command == CommandType::Run) {
@@ -1224,12 +1216,14 @@ int Run(int argc, char* argv[]) {
     }
 #endif
 
-    LoadRegistryPlugins(settings);
     for (const auto& path : commandLinePlugins) {
         if (Plugin::Load(path) != Result::SUCCESS) {
             jst::fmt::print(stderr, "Error: Failed to load command-line plugin '{}'.\n", path);
             return -1;
         }
+    }
+    if (Plugin::LoadInstalled() != Result::SUCCESS) {
+        JST_WARN("[CYBERETHER] Failed to load installed plugins. Continuing startup.");
     }
 
     //

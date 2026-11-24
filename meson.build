@@ -167,6 +167,49 @@ subdir('resources')
 subdir('src')
 
 #
+# Build Identity
+#
+
+jst_build_system = 'unknown'
+if jst_is_macos
+    jst_build_system = 'macos'
+elif jst_is_linux
+    jst_build_system = target_machine.system().startswith('freebsd') ? 'freebsd' : 'linux'
+elif jst_is_windows
+    jst_build_system = 'windows'
+elif jst_is_browser
+    jst_build_system = 'browser'
+elif jst_is_ios
+    jst_build_system = 'ios'
+elif jst_is_android
+    jst_build_system = 'android'
+endif
+
+jst_build_arch = target_machine.cpu_family()
+if jst_build_arch == 'aarch64' and (jst_is_macos or jst_is_ios)
+    jst_build_arch = 'arm64'
+endif
+
+jst_build_backends = []
+foreach backend : ['cpu', 'cuda', 'vulkan', 'metal', 'webgpu']
+    if cfg_lst.get('JETSTREAM_BACKEND_' + backend.to_upper() + '_AVAILABLE', false)
+        jst_build_backends += backend
+    endif
+endforeach
+
+jst_build_id = jst_build_system + '-' + jst_build_arch
+if 'cuda' in jst_build_backends
+    jst_build_id += '-cuda'
+endif
+
+cfg_lst.set('build_id', jst_build_id)
+
+jst_build_variables = {
+    'build_id': jst_build_id,
+    'backends': ','.join(jst_build_backends),
+}
+
+#
 # Library
 #
 
@@ -182,7 +225,9 @@ if jst_is_browser or jst_is_static
     libjetstream_dep = declare_dependency(
         include_directories: inc_lst,
         dependencies: dep_lst,
-        link_whole: libjetstream
+        link_whole: libjetstream,
+        version: meson.project_version(),
+        variables: jst_build_variables,
     )
 else
     libjetstream = shared_library(
@@ -198,7 +243,9 @@ else
     libjetstream_dep = declare_dependency(
         include_directories: inc_lst,
         dependencies: dep_lst,
-        link_with: libjetstream
+        link_with: libjetstream,
+        version: meson.project_version(),
+        variables: jst_build_variables,
     )
 endif
 
@@ -223,6 +270,8 @@ if not jst_is_static
         name: 'jetstream',
         description: 'CyberEther',
         version: meson.project_version(),
+        variables: jst_build_variables,
+        uninstalled_variables: jst_build_variables,
     )
 endif
 

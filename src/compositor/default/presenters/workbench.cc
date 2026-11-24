@@ -12,6 +12,7 @@ WorkbenchPresenter::WorkbenchPresenter(const PresenterContext& context) : contex
                                                                           settings(context),
                                                                           docs(context),
                                                                           agentChat{context},
+                                                                          pluginDetails(context),
                                                                           terminals(context) {}
 
 WorkbenchView::Config WorkbenchPresenter::build() const {
@@ -20,6 +21,9 @@ WorkbenchView::Config WorkbenchPresenter::build() const {
     config.titlebar = titlebar.build();
     config.closePrompt = closePrompt.build();
     config.agentChat = agentChat.build();
+    if (!context.state.plugins.details.empty()) {
+        config.pluginDetails = pluginDetails.build();
+    }
     config.hideTabs = context.state.tabsHidden();
     config.startTab = startTab.build();
     config.startTabRequests = context.state.interface.startTabRequests;

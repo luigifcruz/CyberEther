@@ -124,11 +124,11 @@ class SettingsSandbox {
  public:
     SettingsSandbox()
 #if defined(_WIN32)
-        : appData_("APPDATA")
+        : appData_("APPDATA"), localAppData_("LOCALAPPDATA")
 #elif defined(__APPLE__)
         : fixedHome_("CFFIXED_USER_HOME")
 #else
-        : home_("HOME"), xdgConfigHome_("XDG_CONFIG_HOME")
+        : home_("HOME"), xdgConfigHome_("XDG_CONFIG_HOME"), xdgDataHome_("XDG_DATA_HOME")
 #endif
     {
         static std::atomic<unsigned long long> sequence = 0;
@@ -160,22 +160,25 @@ class SettingsSandbox {
     bool ConfigureEnvironment(const std::filesystem::path& root) {
         const auto path = Jetstream::Platform::PathToUtf8(root);
 #if defined(_WIN32)
-        return appData_.set(path);
+        return appData_.set(path) && localAppData_.set(path);
 #elif defined(__APPLE__)
         return fixedHome_.set(path);
 #else
-        return home_.set(path) && xdgConfigHome_.set(path);
+        return home_.set(path) && xdgConfigHome_.set(path) &&
+               xdgDataHome_.set(Jetstream::Platform::PathToUtf8(root / "data"));
 #endif
     }
 
     std::filesystem::path root_;
 #if defined(_WIN32)
     EnvironmentGuard appData_;
+    EnvironmentGuard localAppData_;
 #elif defined(__APPLE__)
     EnvironmentGuard fixedHome_;
 #else
     EnvironmentGuard home_;
     EnvironmentGuard xdgConfigHome_;
+    EnvironmentGuard xdgDataHome_;
 #endif
 };
 

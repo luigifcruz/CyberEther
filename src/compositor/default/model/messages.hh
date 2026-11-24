@@ -258,19 +258,34 @@ struct MailSetRegistryPage {
     std::string plugin;
 };
 
-struct MailAddPluginPath {
+struct MailInstallPlugin {
     std::string path;
 };
 
-struct MailRemovePluginPath {
-    std::string path;
+struct MailRemovePlugin {
+    std::string id;
 };
 
 struct MailReloadPlugin {
-    std::string path;
+    std::string id;
 };
 
 struct MailReloadAllPlugins {};
+
+struct MailInstallGalleryPlugins {
+    std::vector<std::string> ids;
+    bool reopen = false;
+};
+
+struct MailUpdateGalleryPlugins {
+    std::vector<std::string> ids;
+};
+
+struct MailOpenPluginDetails {
+    std::string id;
+};
+
+struct MailClosePluginDetails {};
 
 struct MailCloseModal {};
 
@@ -484,6 +499,10 @@ struct MailSetPythonRuntimePath {
 };
 
 struct MailSetRuntimeDependencyPolicy {
+    std::string value;
+};
+
+struct MailSetPluginUpdatePolicy {
     std::string value;
 };
 
@@ -835,10 +854,14 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSetSettingsSection,
                            MailSetRegistryPage,
                            MailSetIntelligencePage,
-                           MailAddPluginPath,
-                           MailRemovePluginPath,
+                           MailInstallPlugin,
+                           MailRemovePlugin,
                            MailReloadPlugin,
                            MailReloadAllPlugins,
+                           MailInstallGalleryPlugins,
+                           MailUpdateGalleryPlugins,
+                           MailOpenPluginDetails,
+                           MailClosePluginDetails,
                            MailCloseModal,
                            MailNotify,
                            MailNotifyResult,
@@ -904,6 +927,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSetRemoteMediaAddress,
                            MailSetPythonRuntimePath,
                            MailSetRuntimeDependencyPolicy,
+                           MailSetPluginUpdatePolicy,
                            MailOpenPythonEnvironmentCache,
                            MailInstallPythonDependencies,
                            MailSaveFlowgraphPath,

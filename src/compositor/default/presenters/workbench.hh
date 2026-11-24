@@ -7,6 +7,7 @@
 #include "flowgraph/close_prompt.hh"
 #include "flowgraph/pane.hh"
 #include "modal/container.hh"
+#include "plugin_details.hh"
 #include "settings/base.hh"
 #include "start_tab/base.hh"
 #include "terminal.hh"
@@ -28,6 +29,7 @@ struct WorkbenchPresenter {
     SettingsPresenter settings;
     DocsPresenter docs;
     AgentChatPresenter agentChat;
+    PluginDetailsPresenter pluginDetails;
     TerminalPresenter terminals;
 
     explicit WorkbenchPresenter(const PresenterContext& context);

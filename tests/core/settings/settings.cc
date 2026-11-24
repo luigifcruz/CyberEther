@@ -184,7 +184,6 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE_FALSE(settings.developer.timingEnabled);
     REQUIRE_FALSE(settings.developer.renderStatsEnabled);
     REQUIRE(settings.benchmark.format == "markdown");
-    REQUIRE(settings.registry.plugins.empty());
     REQUIRE(settings.runtime.python.path.empty());
     REQUIRE(settings.runtime.dependencyPolicy == "prompt");
 }
@@ -218,7 +217,6 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     SettingsSandbox sandbox("roundtrip");
     const auto runtimePath = Platform::PathToUtf8(
         sandbox.tempRoot.root / "Python Runtime" / "libpython3.14.dylib");
-    const auto pluginPath = Platform::PathToUtf8(sandbox.tempRoot.root / "plugins" / "extra.cep");
 
     Settings settings;
     settings.benchmark.format = "json";
@@ -240,7 +238,6 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.developer.logLevel = 4;
     settings.developer.timingEnabled = true;
     settings.developer.renderStatsEnabled = true;
-    settings.registry.plugins.push_back(pluginPath);
     settings.runtime.python.path = runtimePath;
     settings.runtime.dependencyPolicy = "allow";
 
@@ -257,7 +254,6 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(yaml.find("interface:") != std::string::npos);
     REQUIRE(yaml.find("remote:") != std::string::npos);
     REQUIRE(yaml.find("developer:") != std::string::npos);
-    REQUIRE(yaml.find("registry:") != std::string::npos);
     REQUIRE(yaml.find("runtime:") != std::string::npos);
     REQUIRE(yaml.find("python:") != std::string::npos);
 
@@ -289,7 +285,6 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.developer.timingEnabled);
     REQUIRE(restored.developer.renderStatsEnabled);
     REQUIRE(restored.benchmark.format == "markdown");
-    REQUIRE(restored.registry.plugins == settings.registry.plugins);
     REQUIRE(restored.runtime.python.path == runtimePath);
     REQUIRE(restored.runtime.dependencyPolicy == "allow");
 }
@@ -338,8 +333,6 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
     REQUIRE(settings.remote.access.autoApprove);
     REQUIRE(settings.remote.video.codec == "h264");
     REQUIRE(settings.developer.logLevel == 4);
-    REQUIRE(settings.registry.plugins.size() == 1);
-    REQUIRE(settings.registry.plugins[0] == "/tmp/cyberether-extra.cep");
     REQUIRE(settings.runtime.python.path == "/opt/python/lib/libpython3.12.so");
     REQUIRE(settings.runtime.dependencyPolicy == "deny");
     REQUIRE(settings.benchmark.format == "markdown");
@@ -641,7 +634,6 @@ TEST_CASE("Settings removes cleared fields without touching unknown siblings",
     REQUIRE(settings.graphics.device == DeviceType::CPU);
 
     settings.graphics.device.reset();
-    settings.registry.plugins = {"/plugins/a.cep"};
     settings.runtime.python.path.clear();
     REQUIRE(Settings::Set(settings) == Result::SUCCESS);
 
@@ -652,8 +644,9 @@ TEST_CASE("Settings removes cleared fields without touching unknown siblings",
 
     const auto& registry = Section(document, "registry");
     const auto& plugins = List(registry, "plugins");
-    REQUIRE(plugins.size() == 1);
+    REQUIRE(plugins.size() == 2);
     CHECK(Scalar(plugins, 0) == "/plugins/a.cep");
+    CHECK(Scalar(plugins, 1) == "/plugins/b.cep");
     CHECK(Scalar(registry, "mirror") == "https://plugins.example");
 
     {
@@ -665,7 +658,6 @@ TEST_CASE("Settings removes cleared fields without touching unknown siblings",
     Settings restored;
     REQUIRE(Settings::Get(restored) == Result::SUCCESS);
     CHECK_FALSE(restored.graphics.device.has_value());
-    CHECK(restored.registry.plugins == settings.registry.plugins);
     CHECK(restored.runtime.python.path.empty());
 }
 

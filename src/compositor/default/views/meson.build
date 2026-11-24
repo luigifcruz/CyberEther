@@ -1,6 +1,7 @@
 src_lst += files([
     'docs.cc',
     'file_picker.cc',
+    'plugin_details.cc',
     'terminal.cc',
     'titlebar.cc',
     'workbench.cc',

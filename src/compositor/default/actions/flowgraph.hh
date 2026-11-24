@@ -10,6 +10,7 @@
 #include "../model/messages.hh"
 #include "../model/state.hh"
 #include "layout.hh"
+#include "plugins.hh"
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"

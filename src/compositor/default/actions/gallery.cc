@@ -85,47 +85,8 @@ void GalleryActions::refreshRegistry() {
     }
     registry.revision = gallery.revision();
     registry.sections = gallery.sections();
-    registry.registered.clear();
-
-    Settings settings;
-    if (Settings::Get(settings) != Result::SUCCESS) {
-        return;
-    }
+    registry.plugins = Plugin::List();
     registry.stale = false;
-    const auto plugins = Plugin::List();
-    std::map<std::string, const Plugin::Info*> loaded;
-    for (const auto& plugin : plugins) {
-        loaded[NormalizePluginPath(plugin.path)] = &plugin;
-    }
-    for (const auto& path : settings.registry.plugins) {
-        const auto match = loaded.find(NormalizePluginPath(path));
-        std::error_code error;
-        DefaultCompositorState::RegistryState::PluginEntry entry{
-            .path = path,
-            .exists = std::filesystem::exists(Platform::PathFromUtf8(path), error),
-        };
-        if (match != loaded.end()) {
-            entry.info = *match->second;
-        }
-        registry.registered.push_back(std::move(entry));
-    }
-}
-
-std::string GalleryActions::NormalizePluginPath(const std::string& path) {
-    std::error_code ec;
-    const auto inputPath = Platform::PathFromUtf8(path);
-    const auto canonical = std::filesystem::weakly_canonical(inputPath, ec);
-    if (!ec) {
-        return Platform::PathToUtf8(canonical);
-    }
-
-    ec.clear();
-    const auto absolute = std::filesystem::absolute(inputPath, ec);
-    if (!ec) {
-        return Platform::PathToUtf8(absolute.lexically_normal());
-    }
-
-    return path;
 }
 
 bool GalleryActions::publish(const Flowgraphs& flowgraphs) {

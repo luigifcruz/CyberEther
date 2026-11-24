@@ -9,7 +9,7 @@ WelcomeView::Config WelcomePresenter::build() const {
     WelcomeView::Config config{
         .version = "v" JETSTREAM_VERSION_STR,
         .assistantEnabled = context.state.agent.settings.enabled,
-        .pageCard = !context.state.tabsHidden(),
+        .pageCard = !context.state.tabsHidden() || !context.state.plugins.details.empty(),
         .assistantClearRequest = context.state.agent.chat.welcomeAccepted,
         .assistantSelector = AgentChatPresenter::ModelSelector(context),
         .onAssistantSubmit = [enqueue](const std::string& text) {
@@ -86,7 +86,42 @@ WelcomeView::Config WelcomePresenter::build() const {
     const auto query = Text::ToLower(Text::TrimBlank(config.query));
     Catalog(config, context.state.registry.sections, query, config.category);
     Paginate(config, context.state.interface.welcomePage);
+    if (config.category.empty() || config.section == WelcomeSection::Plugins) {
+        config.plugins = Plugins(context.state, query);
+    }
+    const auto& catalog = context.state.plugins.catalog;
+    config.pluginsLoading = catalog.loading && catalog.entries.empty();
+    config.pluginsFailed = catalog.failed && catalog.entries.empty();
+    config.onOpenPlugin = [enqueue](const std::string& id) {
+        enqueue(MailOpenPluginDetails{.id = id});
+    };
     return config;
+}
+
+std::vector<WelcomeView::PluginItem> WelcomePresenter::Plugins(const DefaultCompositorState& state,
+                                                               const std::string& query) {
+    const auto& installed = state.registry.plugins;
+    std::vector<WelcomeView::PluginItem> items;
+    for (const auto& entry : state.plugins.catalog.entries) {
+        const auto matches = query.empty() || Text::ToLower(entry.title).find(query) != std::string::npos ||
+                             Text::ToLower(entry.summary).find(query) != std::string::npos ||
+                             entry.id.find(query) != std::string::npos;
+        if (!matches) {
+            continue;
+        }
+        auto blocks = PluginLabels::Blocks(entry);
+        if (blocks.empty()) {
+            blocks.push_back(entry.title);
+        }
+        items.push_back({
+            .id = entry.id,
+            .title = entry.title,
+            .summary = entry.summary,
+            .category = PluginLabels::Category(installed, entry),
+            .blocks = std::move(blocks),
+        });
+    }
+    return items;
 }
 
 std::string WelcomePresenter::Progress(const DefaultCompositorState::RegistryState::GalleryFetch& gallery) {

@@ -63,9 +63,9 @@ TEST_CASE("Registry pages navigate and reset when settings change section", "[co
     WorkbenchActions workbench(state, callbacks);
     SettingsActions settings(state, callbacks);
 
-    settings.handle(MailSetRegistryPage{.page = RegistryPage::Plugin, .plugin = "/plugins/alpha.cep"});
+    settings.handle(MailSetRegistryPage{.page = RegistryPage::Plugin, .plugin = "alpha"});
     CHECK(state.settings.registryPage == RegistryPage::Plugin);
-    CHECK(state.settings.registryPlugin == "/plugins/alpha.cep");
+    CHECK(state.settings.registryPlugin == "alpha");
 
     settings.handle(MailSetSettingsSection{.section = SettingsSection::General});
     CHECK(state.settings.registryPage == RegistryPage::Overview);
@@ -199,7 +199,7 @@ TEST_CASE("Adding a plugin path that fails validation leaves the settings tab an
     GalleryActions(state, gallery).refreshRegistry();
     SettingsActions actions(state, callbacks);
 
-    REQUIRE(actions.handle(MailAddPluginPath{.path = "/plugins/alpha.txt"}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailInstallPlugin{.path = "/plugins/alpha.txt"}) == Result::SUCCESS);
     CHECK(notice == "Plugins must be .cep bundles.");
     CHECK_FALSE(state.interface.settingsTab);
     CHECK(state.interface.settingsTabRequests == 0);

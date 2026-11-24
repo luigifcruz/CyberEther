@@ -29,6 +29,7 @@ void RegistrySettingsView::update(Config config) {
         case RegistryPage::Plugin:
             pluginPage.update({
                 .plugin = *plugin,
+                .onUpdate = this->config.onUpdatePlugin,
                 .onReload = this->config.onReloadPlugin,
                 .onRemove = this->config.onRemovePlugin,
                 .onBack = back(),
@@ -71,20 +72,50 @@ void RegistrySettingsView::updateOverview() {
     for (U64 index = 0; index < config.plugins.size(); ++index) {
         const auto& plugin = config.plugins[index];
         auto& entry = *entries[index];
+        entry.updateButton.update({
+            .str = RegistryPluginView::UpdateLabel(plugin),
+            .icon = ICON_LC_DOWNLOAD,
+            .tone = CompactButton::Tone::Primary,
+            .disabled = plugin.updating,
+            .onClick = [this, id = plugin.id]() {
+                if (config.onUpdatePlugin) {
+                    config.onUpdatePlugin(id);
+                }
+            },
+        });
         entry.chevron.update({
             .str = ICON_LC_CHEVRON_RIGHT,
             .tone = Sakura::Text::Tone::Secondary,
             .scale = 0.8f,
         });
+        std::vector<Sakura::Stack::Item> controlItems;
+        if (!plugin.update.empty()) {
+            controlItems.push_back({.child = &entry.updateButton});
+        }
+        controlItems.push_back({.child = &entry.chevron});
+        entry.control.update({
+            .axis = Sakura::Stack::Axis::Horizontal,
+            .spacing = Sakura::Spacing::Small,
+            .items = std::move(controlItems),
+        });
         pluginRows.push_back({
             .label = plugin.name,
-            .description = RegistryPluginView::VersionLabel(plugin),
-            .control = &entry.chevron,
-            .onClick = [this, path = plugin.path]() {
-                navigate(RegistryPage::Plugin, path);
+            .description = RegistryPluginView::SummaryLabel(plugin),
+            .control = &entry.control,
+            .onClick = [this, id = plugin.id]() {
+                navigate(RegistryPage::Plugin, id);
             },
         });
     }
+    browseButton.update({
+        .str = "Browse",
+        .icon = ICON_LC_PUZZLE,
+        .onClick = [this]() {
+            if (config.onBrowsePlugins) {
+                config.onBrowsePlugins();
+            }
+        },
+    });
     addButton.update({
         .str = "Add",
         .icon = ICON_LC_PLUS,
@@ -93,12 +124,44 @@ void RegistrySettingsView::updateOverview() {
             navigate(RegistryPage::AddPlugin, "");
         },
     });
+    pluginActions.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = Sakura::Spacing::Small,
+        .items = {
+            {.child = &browseButton},
+            {.child = &addButton},
+        },
+    });
     pluginGroup.update({
         .title = "Plugins",
-        .description = "Load additional block domains from plugins at startup.",
+        .description = "Plugins installed in CyberEther load at startup.",
         .rows = std::move(pluginRows),
-        .empty = "No plugins registered yet. Use Add to load one.",
-        .action = &addButton,
+        .empty = "No plugins installed yet. Use Browse to find one in the gallery, or Add to install a file.",
+        .action = &pluginActions,
+    });
+
+    updatePolicyCombo.update({
+        .id = "settings:plugin-update-policy",
+        .options = {
+            "Ask Every Time",
+            "Update Automatically",
+            "Update Manually",
+        },
+        .value = updatePolicyLabel(config.updatePolicy),
+        .onChange = [this](const std::string& label) {
+            if (config.onUpdatePolicyChange) {
+                config.onUpdatePolicyChange(updatePolicyValue(label));
+            }
+        },
+    });
+    updatesGroup.update({
+        .title = "Updates",
+        .description = "How plugins installed from the gallery are updated.",
+        .rows = {{
+            .label = "Update Policy",
+            .description = "CyberEther checks the gallery for new plugin versions every time it starts.",
+            .control = &updatePolicyCombo,
+        }},
     });
 
     stack.update({
@@ -107,8 +170,29 @@ void RegistrySettingsView::updateOverview() {
             {.child = &header},
             {.child = &domainGroup},
             {.child = &pluginGroup},
+            {.child = &updatesGroup},
         },
     });
+}
+
+std::string RegistrySettingsView::updatePolicyLabel(const std::string& value) {
+    if (value == "auto") {
+        return "Update Automatically";
+    }
+    if (value == "manual") {
+        return "Update Manually";
+    }
+    return "Ask Every Time";
+}
+
+std::string RegistrySettingsView::updatePolicyValue(const std::string& label) {
+    if (label == "Update Automatically") {
+        return "auto";
+    }
+    if (label == "Update Manually") {
+        return "manual";
+    }
+    return "prompt";
 }
 
 Sakura::Callback<void()> RegistrySettingsView::back() {
@@ -117,15 +201,15 @@ Sakura::Callback<void()> RegistrySettingsView::back() {
     };
 }
 
-void RegistrySettingsView::navigate(RegistryPage page, const std::string& path) const {
+void RegistrySettingsView::navigate(RegistryPage page, const std::string& plugin) const {
     if (config.onNavigate) {
-        config.onNavigate(page, path);
+        config.onNavigate(page, plugin);
     }
 }
 
 const RegistrySettingsView::PluginRow* RegistrySettingsView::selectedPlugin() const {
     for (const auto& plugin : config.plugins) {
-        if (plugin.path == config.plugin) {
+        if (plugin.id == config.plugin) {
             return &plugin;
         }
     }

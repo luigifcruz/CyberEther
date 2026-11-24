@@ -16,6 +16,7 @@
 #include "jetstream/settings.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 
+#include "plugin_gallery.hh"
 #include "render/sakura/runtime.hh"
 #include "runtime/python/dependencies/coordinator.hh"
 
@@ -395,12 +396,6 @@ struct DefaultCompositorState {
             std::string summary;
         };
 
-        struct PluginEntry {
-            std::string path;
-            std::optional<Plugin::Info> info;
-            bool exists = false;
-        };
-
         struct GalleryFetch {
             struct Fetched {
                 std::vector<Home::Gallery::Flowgraph> flowgraphs;
@@ -422,7 +417,7 @@ struct DefaultCompositorState {
         std::vector<BlockEntry> blocks;
         std::vector<Home::Gallery::Section> sections;
         GalleryFetch fetch;
-        std::vector<PluginEntry> registered;
+        std::vector<Plugin::Info> plugins;
 
         const Home::Gallery::Flowgraph* flowgraph(const std::string& key) const;
     };
@@ -460,6 +455,43 @@ struct DefaultCompositorState {
         bool submitting = false;
     };
 
+    struct PluginState {
+        struct Catalog {
+            std::vector<Plugin::Gallery::Entry> entries;
+            std::future<std::optional<std::vector<Plugin::Gallery::Entry>>> future;
+            std::chrono::steady_clock::time_point next;
+            bool loading = false;
+            bool failed = false;
+        };
+
+        struct Task {
+            struct Outcome {
+                Result result = Result::SUCCESS;
+                std::vector<std::string> ids;
+                std::string error;
+            };
+
+            std::future<Outcome> future;
+            std::vector<std::string> ids;
+            std::string path;
+            std::vector<char> blob;
+            bool loading = false;
+        };
+
+        Catalog catalog;
+        Catalog updates;
+        Task install;
+        Task update;
+        std::shared_ptr<std::atomic<bool>> cancel = std::make_shared<std::atomic<bool>>(false);
+        std::string updatePolicy = "prompt";
+        bool checked = false;
+        bool prompt = false;
+        std::vector<std::string> missing;
+        std::string path;
+        std::vector<char> blob;
+        std::string details;
+    };
+
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;
@@ -479,13 +511,16 @@ struct DefaultCompositorState {
     FilePickerState filePicker;
     FeedbackState feedback;
     CrashReportState crashReport;
+    PluginState plugins;
 
+    std::vector<Plugin::Gallery::Entry> pluginUpdates() const;
     bool startTabShown() const;
     bool tabShown(WorkspaceTab tab) const;
     bool tabActive(WorkspaceTab tab) const;
     bool startTabActive() const;
     bool settingsTabActive() const;
     bool docsTabActive() const;
+    bool agentChatShown() const;
     std::optional<std::string> activeFlowgraph() const;
     bool flowgraphUnsaved(const std::string& id) const;
     bool flowgraphMayLoseChanges(const std::string& id) const;

@@ -8,7 +8,6 @@ src_lst += files([
     'intelligence_provider.cc',
     'legal.cc',
     'maps.cc',
-    'plugin_labels.cc',
     'registry.cc',
     'remote.cc',
     'runtime.cc',

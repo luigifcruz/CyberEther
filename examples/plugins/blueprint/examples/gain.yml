@@ -5,6 +5,9 @@ title: Blueprint Gain
 summary: Demonstrates the CyberEther plugin blueprint gain block.
 description: A minimal flowgraph that routes a generated signal through the bundled blueprint gain block.
 
+plugins:
+  - blueprint
+
 graph:
   - name: signal_generator
     module: signal_generator

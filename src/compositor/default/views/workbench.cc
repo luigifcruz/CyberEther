@@ -24,7 +24,7 @@ void WorkspaceShellView::updatePanes(Config config) {
         .trailing = &titlebar.trailing(),
         .end = &titlebar.end(),
         .aside = config.aside,
-        .asideWidth = AgentChatView::Width,
+        .asideWidth = config.asideWidth,
         .tabBarHeight = titlebar.height(),
         .leadingInset = titlebar.leadingInset(),
         .trailingInset = titlebar.trailingInset(),
@@ -77,6 +77,9 @@ Sakura::Dock& WorkspaceShellView::dock() {
 void WorkbenchView::update(Config config) {
     this->config = std::move(config);
     agentChat.update(std::move(this->config.agentChat));
+    if (this->config.pluginDetails.has_value()) {
+        pluginDetails.update(std::move(this->config.pluginDetails.value()));
+    }
     workspaceShell.updateTitlebar(std::move(this->config.titlebar));
 
     background.update({
@@ -216,11 +219,21 @@ void WorkbenchView::update(Config config) {
         activate = this->config.terminalRequested;
     }
     terminalRequests = this->config.terminalRequests;
+    Sakura::Component* aside = nullptr;
+    F32 asideWidth = 0.0f;
+    if (this->config.pluginDetails.has_value()) {
+        aside = &pluginDetails.component();
+        asideWidth = PluginDetailsView::Width;
+    } else if (agentChat.shown()) {
+        aside = &agentChat.component();
+        asideWidth = AgentChatView::Width;
+    }
     workspaceShell.updatePanes({
         .panes = std::move(panes),
         .activate = std::move(activate),
         .hideTabs = this->config.hideTabs,
-        .aside = agentChat.shown() ? &agentChat.component() : nullptr,
+        .aside = aside,
+        .asideWidth = asideWidth,
         .closePrompt = std::move(this->config.closePrompt),
     });
     content.update({.content = &workspaceShell.component()});

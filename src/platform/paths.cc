@@ -131,6 +131,11 @@ Result CachePath(std::string& path) {
     return Result::SUCCESS;
 }
 
+Result DataPath(std::string& path) {
+    path = "/storage/cyberether/data";
+    return Result::SUCCESS;
+}
+
 #elif defined(JST_OS_LINUX)
 
 Result ConfigPath(std::string& path) {
@@ -181,6 +186,30 @@ Result CachePath(std::string& path) {
     return Result::SUCCESS;
 }
 
+Result DataPath(std::string& path) {
+    std::filesystem::path basePath;
+    if (EnvironmentPath("XDG_DATA_HOME", basePath) == Result::SUCCESS) {
+        if (basePath.is_absolute()) {
+            path = PathToUtf8(basePath / "cyberether");
+            return Result::SUCCESS;
+        }
+
+        JST_WARN("XDG_DATA_HOME must be an absolute path. Falling back to $HOME/.local/share.");
+    }
+
+    std::filesystem::path homePath;
+    if (EnvironmentPath("HOME", homePath) != Result::SUCCESS) {
+        JST_ERROR("Failed to resolve app path because HOME is not set.");
+        return Result::ERROR;
+    }
+    if (!homePath.is_absolute()) {
+        JST_ERROR("Failed to resolve app path because HOME is not an absolute path.");
+        return Result::ERROR;
+    }
+    path = PathToUtf8(homePath / ".local" / "share" / "cyberether");
+    return Result::SUCCESS;
+}
+
 #elif defined(JST_OS_WINDOWS)
 
 Result ConfigPath(std::string& path) {
@@ -224,6 +253,32 @@ Result CachePath(std::string& path) {
     return Result::ERROR;
 }
 
+Result DataPath(std::string& path) {
+    std::filesystem::path appData;
+    std::filesystem::path localAppData;
+
+    if (EnvironmentPath("LOCALAPPDATA", localAppData) == Result::SUCCESS) {
+        if (!localAppData.is_absolute()) {
+            JST_ERROR("Failed to resolve data path because LOCALAPPDATA is not an absolute path.");
+            return Result::ERROR;
+        }
+        path = PathToUtf8(localAppData / L"CyberEther" / L"Data");
+        return Result::SUCCESS;
+    }
+
+    if (EnvironmentPath("APPDATA", appData) == Result::SUCCESS) {
+        if (!appData.is_absolute()) {
+            JST_ERROR("Failed to resolve data path because APPDATA is not an absolute path.");
+            return Result::ERROR;
+        }
+        path = PathToUtf8(appData / L"CyberEther" / L"Data");
+        return Result::SUCCESS;
+    }
+
+    JST_ERROR("Failed to resolve data path because LOCALAPPDATA and APPDATA are not set.");
+    return Result::ERROR;
+}
+
 #else
 
 Result ConfigPath(std::string& path) {
@@ -235,6 +290,12 @@ Result ConfigPath(std::string& path) {
 Result CachePath(std::string& path) {
     path.clear();
     JST_ERROR("Resolving cache paths is not supported on this platform.");
+    return Result::ERROR;
+}
+
+Result DataPath(std::string& path) {
+    path.clear();
+    JST_ERROR("Resolving data paths is not supported on this platform.");
     return Result::ERROR;
 }
 

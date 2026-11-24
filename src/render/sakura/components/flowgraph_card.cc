@@ -13,9 +13,11 @@
 #include "tools/text.hh"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <deque>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -55,6 +57,18 @@ constexpr F32 kTitleText = 24.0f;
 constexpr F32 kDescriptionText = 16.0f;
 constexpr F32 kSectionGap = 6.0f;
 constexpr F32 kCategoryGap = 2.0f;
+constexpr U64 kTileColumns = 8;
+constexpr U64 kTileRows = 4;
+constexpr U64 kTileMinSpan = 3;
+constexpr U64 kTileMaxSpan = 5;
+constexpr U64 kTileHighlights = 4;
+constexpr U64 kTileLabelColumns = 5;
+constexpr U64 kTileLabelPadding = 4;
+constexpr F32 kTilePad = 16.0f;
+constexpr F32 kTileGap = 8.0f;
+constexpr F32 kTileRounding = 6.0f;
+constexpr F32 kTileFill = 0.16f;
+constexpr F32 kTileLabelFont = 10.5f;
 constexpr U64 kMaxNodes = 16;
 constexpr U64 kMaxEdges = 2 * kMaxNodes;
 constexpr U64 kWireSegments = 16;
@@ -410,12 +424,70 @@ struct FlowgraphCard::Impl {
         }
     };
 
+    struct Highlight {
+        std::string label;
+        U64 row = 0;
+        U64 column = 0;
+        U64 span = 0;
+    };
+
+    static std::vector<Highlight> Highlights(const std::vector<std::string>& blocks, const std::string& seed) {
+        static constexpr std::array<std::array<U64, kTileHighlights>, kTileHighlights + 1> kRows = {{
+            {},
+            {1},
+            {1, 2},
+            {0, 1, 2},
+            {0, 1, 2, 3},
+        }};
+        const U64 shown = std::min<U64>(blocks.size(), kTileHighlights);
+        std::vector<U64> spans;
+        for (U64 index = 0; index < shown; ++index) {
+            const U64 wanted = (blocks[index].size() + kTileLabelPadding + kTileLabelColumns - 1) / kTileLabelColumns;
+            spans.push_back(std::clamp(wanted, kTileMinSpan, kTileMaxSpan));
+        }
+
+        std::vector<I64> starts(shown, 0);
+        if (shown == 1) {
+            starts[0] = static_cast<I64>((kTileColumns - spans[0]) / 2);
+        } else if (shown > 1) {
+            const I64 pair = static_cast<I64>(spans[0] + spans[1]);
+            const I64 origin = std::max<I64>(0, (static_cast<I64>(kTileColumns) - pair) / 2);
+            starts[0] = origin;
+            starts[1] = origin + static_cast<I64>(spans[0]);
+            if (shown > 2) {
+                starts[2] = origin - 1;
+            }
+            if (shown > 3) {
+                starts[3] = origin - 1 + static_cast<I64>(spans[2]);
+            }
+        }
+
+        const bool mirrored = std::accumulate(seed.begin(), seed.end(), U64{0}) % 2 == 1;
+        std::vector<Highlight> highlights;
+        for (U64 index = 0; index < shown; ++index) {
+            const I64 limit = static_cast<I64>(kTileColumns - spans[index]);
+            U64 column = static_cast<U64>(std::clamp<I64>(starts[index], 0, limit));
+            if (mirrored) {
+                column = kTileColumns - spans[index] - column;
+            }
+            highlights.push_back({
+                .label = blocks[index],
+                .row = kRows[shown][index],
+                .column = column,
+                .span = spans[index],
+            });
+        }
+        return highlights;
+    }
+
     Config config;
     Diagram diagram;
+    std::vector<Highlight> highlights;
     Box card;
     Box preview;
     Box divider;
     Box dots;
+    Box tiles;
     Polyline wires;
     Box boxes;
     Label labels;
@@ -465,7 +537,7 @@ struct FlowgraphCard::Impl {
     };
 
     F32 previewHeight(F32 width) const {
-        return config.diagram.empty() ? 0.0f : std::round(width * kDesignHeight / kDesignWidth);
+        return config.diagram.empty() && config.blocks.empty() ? 0.0f : std::round(width * kDesignHeight / kDesignWidth);
     }
 
     Metrics metrics(FlowgraphCard& self, const Context& ctx, F32 width) {
@@ -485,7 +557,7 @@ struct FlowgraphCard::Impl {
 
 FlowgraphCard::FlowgraphCard() {
     impl = std::make_unique<Impl>();
-    mountChildren({&impl->card, &impl->preview, &impl->dots, &impl->divider, &impl->wires, &impl->boxes,
+    mountChildren({&impl->card, &impl->preview, &impl->dots, &impl->tiles, &impl->divider, &impl->wires, &impl->boxes,
                    &impl->labels, &impl->category, &impl->title, &impl->accentTitle, &impl->description});
 }
 
@@ -496,6 +568,9 @@ void FlowgraphCard::update(Config config) {
         invalidate(Dirty::Layout);
         if (config.diagram != impl->config.diagram) {
             impl->diagram = Impl::Diagram::Parse(config.diagram);
+        }
+        if (config.blocks != impl->config.blocks || config.id != impl->config.id) {
+            impl->highlights = Impl::Highlights(config.blocks, config.id);
         }
         if (config.id != impl->config.id) {
             impl->pressed = false;
@@ -583,13 +658,14 @@ void FlowgraphCard::layout(const Context& ctx) {
     };
 
     const F32 unit = preview.width / kDesignWidth;
+    const bool tiled = !s.config.blocks.empty();
     std::vector<Box::Instance> dots;
     const F32 dot = kDotSize * unit;
     for (U64 row = 0; row < kDotRows; ++row) {
         for (U64 column = 0; column < kDotColumns; ++column) {
             const F32 x = preview.x + (static_cast<F32>(column) * kDotPitch + 1.0f) * unit - dot * 0.5f;
             const F32 y = preview.y + (static_cast<F32>(row) * kDotPitch + 1.0f) * unit - dot * 0.5f;
-            const bool shown = !preview.empty() && within({x, y}) && within({x + dot, y}) &&
+            const bool shown = !tiled && !preview.empty() && within({x, y}) && within({x + dot, y}) &&
                                within({x, y + dot}) && within({x + dot, y + dot});
             dots.push_back({.rect = {x, y, dot, dot}, .visible = shown,
                             .backgroundColor = WithAlpha(ctx.color("border"), kDotAlpha)});
@@ -651,6 +727,58 @@ void FlowgraphCard::layout(const Context& ctx) {
             .alignment = {1, 1},
         });
     }
+
+    const F32 tileWidth = (kDesignWidth - 2.0f * kTilePad - static_cast<F32>(kTileColumns - 1) * kTileGap) /
+                          static_cast<F32>(kTileColumns);
+    const F32 tileHeight = (kDesignHeight - 2.0f * kTilePad - static_cast<F32>(kTileRows - 1) * kTileGap) /
+                           static_cast<F32>(kTileRows);
+    const auto tileRect = [&](U64 row, U64 column, U64 span) {
+        return Rect{
+            preview.x + (kTilePad + static_cast<F32>(column) * (tileWidth + kTileGap)) * unit,
+            preview.y + (kTilePad + static_cast<F32>(row) * (tileHeight + kTileGap)) * unit,
+            (static_cast<F32>(span) * tileWidth + static_cast<F32>(span - 1) * kTileGap) * unit,
+            tileHeight * unit,
+        };
+    };
+    std::vector<Box::Instance> tiles;
+    if (tiled) {
+        for (U64 row = 0; row < kTileRows; ++row) {
+            for (U64 column = 0; column < kTileColumns; ++column) {
+                const bool covered = std::any_of(s.highlights.begin(), s.highlights.end(), [&](const auto& item) {
+                    return item.row == row && column >= item.column && column < item.column + item.span;
+                });
+                if (!covered) {
+                    tiles.push_back({.rect = tileRect(row, column, 1), .visible = !preview.empty(),
+                                     .backgroundColor = BlendOver(backdrop, WithAlpha(ctx.color("border"), kTileFill))});
+                }
+            }
+        }
+        const F32 tileFont = kTileLabelFont * unit;
+        for (const auto& highlight : s.highlights) {
+            const Rect rect = tileRect(highlight.row, highlight.column, highlight.span);
+            const F32 width = std::max(0.0f, rect.width - 2.0f * kLabelPadding * unit);
+            boxes.push_back({.rect = rect, .visible = !rect.empty(), .backgroundColor = fill});
+            labels.push_back({
+                .rect = rect,
+                .str = s.textMetrics.ellipsize(Typography::MonoFont, highlight.label, tileFont, width),
+                .visible = !rect.empty(),
+                .color = accent,
+                .fontSize = tileFont,
+                .alignment = {1, 1},
+            });
+        }
+    }
+    s.tiles.update({
+        .instances = std::move(tiles),
+        .clip = inside,
+        .cornerRadius = kTileRounding * unit,
+        .borderWidth = Px(ctx, 1.0f),
+        .borderColor = WithAlpha(ctx.color("border"), kStrokeAlpha),
+        .strokeFringe = true,
+        .capacity = kTileColumns * kTileRows,
+    });
+    layoutChild(ctx, s.tiles, bounds);
+
     s.boxes.update({
         .instances = std::move(boxes),
         .clip = inside,

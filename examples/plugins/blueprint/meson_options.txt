@@ -4,10 +4,3 @@ option(
     value: true,
     description: 'Build plugin tests.',
 )
-option(
-    'devices',
-    type: 'array',
-    value: ['auto'],
-    choices: ['auto', 'cpu'],
-    description: 'Device implementations to build. auto enables every available supported device.',
-)

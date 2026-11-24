@@ -17,6 +17,7 @@
 #include "compositor/default/presenters/titlebar.hh"
 #include "compositor/default/presenters/workbench.hh"
 #include "compositor/default/presenters/modal/container.hh"
+#include "compositor/default/presenters/plugin_details.hh"
 #include "compositor/default/views/components/callout.hh"
 #include "compositor/default/views/components/hint_overlay.hh"
 #include "compositor/default/views/components/render_stats.hh"
@@ -593,15 +594,18 @@ struct SettingsRig : ModalRig {
             .domains = {{.domain = "core", .blocks = {"FFT", "Filter"}}, {.domain = "dsp", .blocks = {"Window"}}},
             .plugins = {
                 {
+                    .id = "alpha",
                     .name = "Alpha",
                     .version = "1.0",
                     .status = {.label = "Loaded", .tone = StatusBadge::Tone::Success},
-                    .path = "/plugins/alpha.cep",
+                    .path = "/plugins/alpha",
                 },
                 {
+                    .id = "beta",
                     .name = "Beta",
-                    .status = {.label = "Missing", .tone = StatusBadge::Tone::Warning},
+                    .status = {.label = "Loaded for this run", .tone = StatusBadge::Tone::Success},
                     .path = "/plugins/beta.cep",
+                    .temporary = true,
                 },
             },
             .onNavigate = [log](RegistryPage page, const std::string& plugin) {
@@ -612,8 +616,11 @@ struct SettingsRig : ModalRig {
                 onSelect("/plugins/gamma.cep");
             },
             .onRegister = [log](const std::string& path) { log("register:" + path); },
-            .onRemovePlugin = [log](const std::string& path) { log("remove:" + path); },
-            .onReloadPlugin = [log](const std::string& path) { log("reload:" + path); },
+            .onRemovePlugin = [log](const std::string& id) { log("remove:" + id); },
+            .onReloadPlugin = [log](const std::string& id) { log("reload:" + id); },
+            .onUpdatePlugin = [log](const std::string& id) { log("update:" + id); },
+            .onUpdatePolicyChange = [log](const std::string& value) { log("updates:" + value); },
+            .onBrowsePlugins = [log]() { log("browse-plugins"); },
         };
         config.developer = {
             .timingEnabled = true,
@@ -2437,28 +2444,223 @@ TEST_CASE("Registry presenter reads plugins from the cached registry", "[core][s
     Mailbox mailbox;
     auto& registry = mailbox.state.registry;
     CHECK_FALSE(registry.stale);
-    const Plugin::Info radioTools = {.path = "/plugins/radio-tools.cep", .version = "1.2.0", .blocks = {"fft"}};
-    registry.registered = {
-        {.path = "/plugins/radio-tools.cep", .info = radioTools, .exists = true},
-        {.path = "/plugins/missing.cep"},
-        {.path = "/plugins/ghost.cep", .exists = true},
+    registry.plugins = {
+        {.id = "radiotools", .title = "Radio Tools", .version = "1.2.0", .status = Plugin::Status::Loaded,
+         .blocks = {"fft"}},
+        {.id = "ghost", .status = Plugin::Status::Incompatible},
+        {.id = "late", .version = "2.0.0", .status = Plugin::Status::Restart},
+        {.id = "broken", .status = Plugin::Status::Failed},
+        {.id = "dev", .title = "Dev", .path = "/cache/dev", .source = "/plugins/dev.cep", .temporary = true,
+         .status = Plugin::Status::Loaded},
+        {.id = "next", .version = "1.0.0", .pending = "1.1.0", .status = Plugin::Status::Loaded},
     };
     mailbox.state.settings.section = SettingsSection::Registry;
 
     const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
-    REQUIRE(settings.plugins.size() == 3);
-    CHECK(settings.plugins[0].name == "radio-tools");
+    REQUIRE(settings.plugins.size() == 6);
+    CHECK(settings.plugins[0].id == "radiotools");
+    CHECK(settings.plugins[0].name == "Radio Tools");
     CHECK(settings.plugins[0].version == "1.2.0");
+    CHECK(settings.plugins[0].status.label == "Loaded");
     CHECK(settings.plugins[0].status.tone == StatusBadge::Tone::Success);
-    CHECK(settings.plugins[1].name == "missing");
-    CHECK(settings.plugins[1].version.empty());
-    CHECK(settings.plugins[1].status.label == "Missing");
+    CHECK(settings.plugins[1].name == "ghost");
+    CHECK(settings.plugins[1].status.label == "Replacement file needed");
     CHECK(settings.plugins[1].status.tone == StatusBadge::Tone::Warning);
-    CHECK(settings.plugins[2].status.label == "Not loaded");
+    CHECK(settings.plugins[2].status.label == "Ready on restart");
     CHECK(settings.plugins[2].status.tone == StatusBadge::Tone::Neutral);
+    CHECK(settings.plugins[3].status.label == "Failed to load");
+    CHECK(settings.plugins[3].status.tone == StatusBadge::Tone::Error);
+    CHECK(settings.plugins[4].status.label == "Loaded for this run");
+    CHECK(settings.plugins[4].path == "/plugins/dev.cep");
+    CHECK(settings.plugins[4].temporary);
+    CHECK(settings.plugins[5].status.label == "Version 1.1.0 ready on restart");
     CHECK(RegistryPluginView::VersionLabel(settings.plugins[1]) == "Unknown version");
     CHECK(RegistryPluginView::VersionLabel(settings.plugins[0]) == "Version 1.2.0");
+    CHECK(RegistryPluginView::SummaryLabel(settings.plugins[0]) == "Version 1.2.0");
+    CHECK(RegistryPluginView::SummaryLabel(settings.plugins[4]) == "Unknown version (Loaded for this run)");
     CHECK_FALSE(settings.domains.empty());
+}
+
+TEST_CASE("Start tab lists gallery plugins and opens their page", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.registry.plugins = {
+        {.id = "alpha", .version = "1.0.0", .gallery = true, .status = Plugin::Status::Loaded},
+        {.id = "beta", .version = "1.0.0", .gallery = true, .status = Plugin::Status::Waiting},
+        {.id = "gamma", .version = "1.0.0", .status = Plugin::Status::Loaded},
+    };
+    mailbox.state.plugins.catalog.entries = {
+        {.id = "alpha", .title = "Alpha", .summary = "First.", .version = "1.0.0", .url = "https://files/alpha.cep"},
+        {.id = "beta", .title = "Beta", .version = "1.0.0", .url = "https://files/beta.cep"},
+        {.id = "gamma", .title = "Gamma", .version = "1.0.0", .url = "https://files/gamma.cep"},
+        {.id = "delta", .title = "Delta"},
+    };
+
+    auto welcome = WelcomePresenter(mailbox.context()).build();
+    REQUIRE(welcome.plugins.size() == 4);
+    CHECK(welcome.plugins[0].category == "Installed");
+    CHECK(welcome.plugins[1].category == "Update Available");
+    CHECK(welcome.plugins[2].category == "Plugin v1.0.0");
+    CHECK(welcome.plugins[3].category == "Waiting for a Build");
+    CHECK(welcome.plugins[3].blocks == std::vector<std::string>{"Delta"});
+
+    mailbox.state.interface.welcomeCategory = "Basics";
+    mailbox.state.interface.welcomeSection = WelcomeSection::Plugins;
+    welcome = WelcomePresenter(mailbox.context()).build();
+    CHECK(welcome.plugins.size() == 4);
+    mailbox.state.interface.welcomeCategory.clear();
+
+    mailbox.state.interface.welcomeQuery = "gam";
+    welcome = WelcomePresenter(mailbox.context()).build();
+    REQUIRE(welcome.plugins.size() == 1);
+    CHECK(welcome.plugins[0].id == "gamma");
+
+    mailbox.state.agent.settings.enabled = true;
+    mailbox.state.agent.ui.visible = true;
+    mailbox.state.plugins.details = "gamma";
+    TitlebarPresenter(mailbox.context()).build().onAction(TitlebarView::Action::ToggleAgent);
+    REQUIRE(mailbox.last<MailSetAgentChatVisible>() != nullptr);
+    CHECK(mailbox.last<MailSetAgentChatVisible>()->value);
+
+    welcome.onOpenPlugin("gamma");
+    REQUIRE(mailbox.last<MailOpenPluginDetails>() != nullptr);
+    CHECK(mailbox.last<MailOpenPluginDetails>()->id == "gamma");
+
+    const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
+    REQUIRE(settings.plugins.size() == 3);
+    CHECK(settings.plugins[1].status.label == "Waiting for a compatible build");
+    settings.onBrowsePlugins();
+    REQUIRE(mailbox.last<MailSetWelcomeSection>() != nullptr);
+    CHECK(mailbox.last<MailSetWelcomeSection>()->section == WelcomeSection::Plugins);
+    CHECK(mailbox.last<MailOpenStartTab>() != nullptr);
+}
+
+TEST_CASE("Plugin details panel shows gallery details and installs from the gallery", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.plugins.details = "alpha";
+
+    auto details = PluginDetailsPresenter(mailbox.context()).build();
+    CHECK(details.title == "alpha");
+    CHECK(details.installDisabled);
+
+    CHECK(details.summary == "This plugin is no longer in the CyberEther gallery.");
+
+    mailbox.state.plugins.catalog.loading = true;
+    details = PluginDetailsPresenter(mailbox.context()).build();
+    CHECK(details.summary == "Loading plugin details from the CyberEther gallery.");
+    mailbox.state.plugins.catalog.loading = false;
+
+    mailbox.state.plugins.catalog.entries = {{
+        .id = "alpha",
+        .title = "Alpha",
+        .summary = "First.",
+        .description = "# Alpha\n\nLonger text.",
+        .author = "Tester",
+        .license = "MIT",
+        .version = "1.0.0",
+        .url = "https://files/alpha.cep",
+        .blocks = {"alpha_gain", "alpha_fm_demod"},
+    }};
+    details = PluginDetailsPresenter(mailbox.context()).build();
+    CHECK(details.title == "Alpha");
+    CHECK(details.summary == "First.");
+    CHECK(details.description == "# Alpha\n\nLonger text.");
+    REQUIRE(details.details.size() == 5);
+    CHECK(details.details[0].value == "Tester");
+    CHECK(details.details[2].label == "Blocks");
+    CHECK(details.details[2].value == "Gain, Fm Demod");
+    CHECK(details.installLabel == "Install");
+    CHECK_FALSE(details.installDisabled);
+
+    details.onInstall();
+    REQUIRE(mailbox.last<MailInstallGalleryPlugins>() != nullptr);
+    CHECK(mailbox.last<MailInstallGalleryPlugins>()->ids == std::vector<std::string>{"alpha"});
+    details.onCopyLink();
+    REQUIRE(mailbox.last<MailCopyText>() != nullptr);
+    CHECK(mailbox.last<MailCopyText>()->value == "https://cyberether.org/gallery/plugins/alpha");
+    details.onOpenUrl("file:///Applications/Calculator.app");
+    CHECK(mailbox.last<MailOpenUrl>() == nullptr);
+    details.onOpenUrl("https://cyberether.org/docs/plugins");
+    REQUIRE(mailbox.last<MailOpenUrl>() != nullptr);
+    details.onHowToInstall();
+    REQUIRE(mailbox.last<MailOpenDocs>() != nullptr);
+    CHECK(mailbox.last<MailOpenDocs>()->page == "installing-plugins");
+    details.onClose();
+    CHECK(mailbox.last<MailClosePluginDetails>() != nullptr);
+
+    mailbox.state.registry.plugins = {{.id = "alpha", .version = "1.0.0", .gallery = true,
+                                       .status = Plugin::Status::Loaded}};
+    details = PluginDetailsPresenter(mailbox.context()).build();
+    CHECK(details.installLabel == "Installed");
+    CHECK(details.installDisabled);
+
+    PluginDetailsView view;
+    view.update(details);
+    CHECK(&view.component() != nullptr);
+
+    CHECK(PluginLabels::Block("other", "alpha_gain") == "Alpha Gain");
+}
+
+TEST_CASE("Missing plugins prompt installs the listed plugins and reopens the flowgraph", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.plugins.missing = {"alpha", "beta"};
+
+    const auto config = MissingPluginsModalPresenter(mailbox.context()).build();
+    CHECK(config.title == "Plugins Needed");
+    CHECK(config.description.find("alpha, beta") != std::string::npos);
+    CHECK(config.action == "Install Plugins");
+    CHECK_FALSE(config.busy);
+
+    config.onAction();
+    REQUIRE(mailbox.last<MailInstallGalleryPlugins>() != nullptr);
+    CHECK(mailbox.last<MailInstallGalleryPlugins>()->ids == std::vector<std::string>{"alpha", "beta"});
+    CHECK(mailbox.last<MailInstallGalleryPlugins>()->reopen);
+
+    config.onCancel();
+    CHECK(mailbox.last<MailCloseModal>() != nullptr);
+
+    PluginPromptView view;
+    view.update(config);
+    CHECK(&view.component() != nullptr);
+}
+
+TEST_CASE("Plugin update prompt lists new versions and updates them", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.registry.plugins = {{.id = "alpha", .version = "1.0.0", .gallery = true}};
+    mailbox.state.plugins.updates.entries = {
+        {.id = "alpha", .title = "Alpha", .version = "2.0.0", .url = "https://files.example/alpha.cep"},
+    };
+
+    auto config = PluginUpdatesModalPresenter(mailbox.context()).build();
+    CHECK(config.title == "Plugin Update Available");
+    CHECK(config.description.find("this plugin") != std::string::npos);
+    CHECK(config.columns == std::vector<std::string>{"Plugin", "Installed", "New"});
+    CHECK(config.rows == std::vector<std::vector<std::string>>{{"Alpha", "1.0.0", "2.0.0"}});
+    CHECK(config.cancel == "Not Now");
+    CHECK(config.action == "Update Plugin");
+    CHECK_FALSE(config.busy);
+
+    config.onAction();
+    REQUIRE(mailbox.last<MailUpdateGalleryPlugins>() != nullptr);
+    CHECK(mailbox.last<MailUpdateGalleryPlugins>()->ids == std::vector<std::string>{"alpha"});
+
+    mailbox.state.registry.plugins.push_back({.id = "beta", .version = "2.5.0", .gallery = true});
+    mailbox.state.registry.plugins.push_back({.id = "gamma", .version = "3.0.0"});
+    auto& entries = mailbox.state.plugins.updates.entries;
+    entries.push_back({.id = "beta", .version = "3.0.0", .url = "https://files.example/beta.cep"});
+    entries.push_back({.id = "gamma", .version = "4.0.0", .url = "https://files.example/gamma.cep"});
+    entries.push_back({.id = "delta", .version = "1.0.0", .url = "https://files.example/delta.cep"});
+    mailbox.state.plugins.update.loading = true;
+    config = PluginUpdatesModalPresenter(mailbox.context()).build();
+    CHECK(config.title == "Plugin Updates Available");
+    CHECK(config.description.find("these plugins") != std::string::npos);
+    CHECK(config.rows.size() == 2);
+    CHECK(config.rows[1] == std::vector<std::string>{"beta", "2.5.0", "3.0.0"});
+    CHECK(config.action == "Updating...");
+    CHECK(config.busy);
+
+    PluginPromptView view;
+    view.update(config);
+    CHECK(Find<Sakura::Table>(view.component()).size() == 1);
 }
 
 TEST_CASE("Registry presenter titles plugin examples from their gallery section", "[core][sakura][views]") {
@@ -2469,13 +2671,13 @@ TEST_CASE("Registry presenter titles plugin examples from their gallery section"
     example.title = "Plugin Demo";
     example.summary = "From the plugin.";
     registry.sections = GalleryFixture();
-    registry.sections.push_back({.key = "/plugins/demo.cep", .title = "Demo", .flowgraphs = {example}});
-    const Plugin::Info plugin = {
-        .path = "/plugins/demo.cep",
+    registry.sections.push_back({.key = "demo", .title = "Demo", .flowgraphs = {example}});
+    registry.plugins = {{
+        .id = "demo",
         .version = "1.0.0",
+        .status = Plugin::Status::Loaded,
         .examples = {"demo/example", "demo/missing"},
-    };
-    registry.registered = {{.path = "/plugins/demo.cep", .info = plugin, .exists = true}};
+    }};
     mailbox.state.settings.section = SettingsSection::Registry;
 
     const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
@@ -2484,6 +2686,52 @@ TEST_CASE("Registry presenter titles plugin examples from their gallery section"
     CHECK(settings.plugins[0].examples[0].title == "Plugin Demo");
     CHECK(settings.plugins[0].examples[0].summary == "From the plugin.");
     CHECK(settings.plugins[0].examples[1].title == "demo/missing");
+}
+
+TEST_CASE("Registry shows plugin updates and the update policy", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.registry.plugins = {
+        {.id = "alpha", .version = "1.0.0", .gallery = true, .status = Plugin::Status::Loaded},
+        {.id = "beta", .version = "1.0.0", .pending = "2.0.0", .gallery = true, .status = Plugin::Status::Loaded},
+        {.id = "gamma", .version = "3.0.0", .status = Plugin::Status::Loaded},
+    };
+    mailbox.state.plugins.updates.entries = {
+        {.id = "alpha", .version = "2.0.0", .url = "https://files.example/alpha.cep"},
+        {.id = "beta", .version = "2.0.0", .url = "https://files.example/beta.cep"},
+        {.id = "gamma", .version = "2.0.0", .url = "https://files.example/gamma.cep"},
+    };
+    mailbox.state.plugins.updatePolicy = "manual";
+
+    auto settings = RegistrySettingsPresenter(mailbox.context()).build();
+    CHECK(settings.updatePolicy == "manual");
+    REQUIRE(settings.plugins.size() == 3);
+    CHECK(settings.plugins[0].update == "2.0.0");
+    CHECK_FALSE(settings.plugins[0].updating);
+    CHECK(settings.plugins[1].update.empty());
+    CHECK(settings.plugins[2].update.empty());
+    CHECK(RegistryPluginView::SummaryLabel(settings.plugins[0]) == "Version 1.0.0 (Version 2.0.0 available)");
+    CHECK(RegistryPluginView::SummaryLabel(settings.plugins[1]) == "Version 1.0.0 (Version 2.0.0 ready on restart)");
+    auto waiting = settings.plugins[0];
+    waiting.status = {.label = "Waiting for a compatible build"};
+    waiting.update = waiting.version;
+    CHECK(RegistryPluginView::SummaryLabel(waiting) ==
+          "Version 1.0.0 (Waiting for a compatible build, New build available)");
+
+    settings.onUpdatePlugin("alpha");
+    REQUIRE(mailbox.last<MailUpdateGalleryPlugins>() != nullptr);
+    CHECK(mailbox.last<MailUpdateGalleryPlugins>()->ids == std::vector<std::string>{"alpha"});
+
+    settings.onUpdatePolicyChange("auto");
+    REQUIRE(mailbox.last<MailSetPluginUpdatePolicy>() != nullptr);
+    CHECK(mailbox.last<MailSetPluginUpdatePolicy>()->value == "auto");
+
+    mailbox.state.plugins.update.ids = {"alpha"};
+    settings = RegistrySettingsPresenter(mailbox.context()).build();
+    CHECK(settings.plugins[0].updating);
+    CHECK(RegistryPluginView::UpdateLabel(settings.plugins[0]) == "Updating...");
+
+    RegistrySettingsView view;
+    view.update(settings);
 }
 
 TEST_CASE("Welcome screen pins settings and a theme toggle to the bottom of the sidebar",
@@ -3655,9 +3903,9 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 1);
 
     rig.show(SettingsSection::Registry);
-    CHECK(rig.combos().empty());
+    CHECK(rig.combos().size() == 1);
     CHECK(Find<Sakura::Table>(rig.view.component()).empty());
-    CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
+    CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 3);
 
     rig.show(SettingsSection::Legal);
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
@@ -3764,43 +4012,88 @@ TEST_CASE("Registry overview lists plugins by name and navigates to their pages"
     rig.show(SettingsSection::Registry);
 
     auto buttons = Actions(rig.view.component());
-    REQUIRE(buttons.size() == 1);
+    REQUIRE(buttons.size() == 2);
     CHECK(Press(rig.host, *buttons[0]));
+    CHECK(Press(rig.host, *buttons[1]));
     CHECK(Find<Sakura::Badge>(rig.view.component()).empty());
 
     auto cards = Find<Sakura::SettingCard>(rig.view.component());
-    REQUIRE(cards.size() == 2);
+    REQUIRE(cards.size() == 3);
     const auto plugins = Peek::Frame(*cards[1]);
     CHECK(rig.host.click(plugins.x + 40.0f, plugins.y + 20.0f));
     CHECK(rig.host.click(plugins.x + 40.0f, plugins.bottom() - 20.0f));
-    CHECK(rig.calls == std::vector<std::string>{"nav:1:", "nav:2:/plugins/alpha.cep", "nav:2:/plugins/beta.cep"});
+    CHECK(rig.calls == std::vector<std::string>{"browse-plugins", "nav:1:", "nav:2:alpha", "nav:2:beta"});
 
     rig.calls.clear();
     rig.config.registry.plugins.clear();
     rig.config.registry.domains.clear();
     rig.show(SettingsSection::Registry);
-    CHECK(Actions(rig.view.component()).size() == 1);
-    CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
+    CHECK(Actions(rig.view.component()).size() == 2);
+    CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 3);
 }
 
-TEST_CASE("Registry plugin page reloads, removes, and returns to the overview", "[core][sakura][views]") {
+TEST_CASE("Registry offers plugin updates in the list and on the plugin page", "[core][sakura][views]") {
+    SettingsRig rig;
+    rig.config.registry.plugins[0].update = "2.0";
+    rig.show(SettingsSection::Registry);
+
+    REQUIRE(Actions(rig.view.component()).size() == 3);
+    CHECK(ShownText(rig.view.component(), "Version 1.0 (Version 2.0 available)") != nullptr);
+    auto* update = Pill(rig.view.component(), "Update");
+    REQUIRE(update != nullptr);
+    CHECK(Press(rig.host, *update));
+    REQUIRE(rig.combos().size() == 1);
+    rig.choose(0, 2);
+    CHECK(rig.calls == std::vector<std::string>{"update:alpha", "updates:manual"});
+
+    rig.calls.clear();
+    rig.config.registry.page = RegistryPage::Plugin;
+    rig.config.registry.plugin = "alpha";
+    rig.show(SettingsSection::Registry);
+    REQUIRE(Actions(rig.view.component()).size() == 3);
+    update = Pill(rig.view.component(), "Update");
+    REQUIRE(update != nullptr);
+    CHECK(Press(rig.host, *update));
+    CHECK(rig.calls == std::vector<std::string>{"update:alpha"});
+
+    rig.calls.clear();
+    rig.config.registry.plugins[0].updating = true;
+    rig.show(SettingsSection::Registry);
+    update = Pill(rig.view.component(), "Updating...");
+    REQUIRE(update != nullptr);
+    Press(rig.host, *update);
+    CHECK(rig.calls.empty());
+}
+
+TEST_CASE("Registry plugin page removes installed plugins, reloads temporary ones, and returns to the overview",
+          "[core][sakura][views]") {
     SettingsRig rig;
     rig.config.registry.page = RegistryPage::Plugin;
-    rig.config.registry.plugin = "/plugins/alpha.cep";
+    rig.config.registry.plugin = "alpha";
     rig.show(SettingsSection::Registry);
 
     CHECK(Find<Sakura::Badge>(rig.view.component()).size() == 1);
     auto buttons = Actions(rig.view.component());
-    REQUIRE(buttons.size() == 3);
+    REQUIRE(buttons.size() == 2);
     for (auto* button : buttons) {
         CHECK(Press(rig.host, *button));
     }
-    CHECK(rig.calls == std::vector<std::string>{"nav:0:", "reload:/plugins/alpha.cep", "remove:/plugins/alpha.cep"});
+    CHECK(rig.calls == std::vector<std::string>{"nav:0:", "remove:alpha"});
 
-    rig.config.registry.plugin = "/plugins/missing.cep";
+    rig.calls.clear();
+    rig.config.registry.plugin = "beta";
+    rig.show(SettingsSection::Registry);
+    buttons = Actions(rig.view.component());
+    REQUIRE(buttons.size() == 2);
+    for (auto* button : buttons) {
+        CHECK(Press(rig.host, *button));
+    }
+    CHECK(rig.calls == std::vector<std::string>{"nav:0:", "reload:beta"});
+
+    rig.config.registry.plugin = "missing";
     rig.show(SettingsSection::Registry);
     CHECK(Find<Sakura::Badge>(rig.view.component()).empty());
-    CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
+    CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 3);
 }
 
 TEST_CASE("Registry add page registers a browsed path only after the source is trusted", "[core][sakura][views]") {

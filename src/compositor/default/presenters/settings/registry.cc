@@ -16,6 +16,7 @@ RegistrySettingsView::Config RegistrySettingsPresenter::build() const {
     RegistrySettingsView::Config config{
         .page = context.state.settings.registryPage,
         .plugin = context.state.settings.registryPlugin,
+        .updatePolicy = context.state.plugins.updatePolicy,
         .onNavigate = [enqueue](RegistryPage page, const std::string& plugin) {
             enqueue(MailSetRegistryPage{.page = page, .plugin = plugin});
         },
@@ -28,13 +29,23 @@ RegistrySettingsView::Config RegistrySettingsPresenter::build() const {
             });
         },
         .onRegister = [enqueue](const std::string& path) {
-            enqueue(MailAddPluginPath{.path = path});
+            enqueue(MailInstallPlugin{.path = path});
         },
-        .onRemovePlugin = [enqueue](const std::string& path) {
-            enqueue(MailRemovePluginPath{.path = path});
+        .onRemovePlugin = [enqueue](const std::string& id) {
+            enqueue(MailRemovePlugin{.id = id});
         },
-        .onReloadPlugin = [enqueue](const std::string& path) {
-            enqueue(MailReloadPlugin{.path = path});
+        .onReloadPlugin = [enqueue](const std::string& id) {
+            enqueue(MailReloadPlugin{.id = id});
+        },
+        .onUpdatePlugin = [enqueue](const std::string& id) {
+            enqueue(MailUpdateGalleryPlugins{.ids = {id}});
+        },
+        .onUpdatePolicyChange = [enqueue](const std::string& value) {
+            enqueue(MailSetPluginUpdatePolicy{.value = value});
+        },
+        .onBrowsePlugins = [enqueue]() {
+            enqueue(MailSetWelcomeSection{.section = WelcomeSection::Plugins});
+            enqueue(MailOpenStartTab{});
         },
     };
 
@@ -44,42 +55,53 @@ RegistrySettingsView::Config RegistrySettingsPresenter::build() const {
         config.domains.push_back({.domain = domain, .blocks = std::move(blocks)});
     }
 
-    config.plugins.reserve(registry.registered.size());
-    for (const auto& entry : registry.registered) {
-        if (entry.info.has_value()) {
-            const auto& info = *entry.info;
-            config.plugins.push_back({
-                .name = PluginLabels::Name(entry.path, info.name),
-                .version = info.version,
-                .status = {
-                    .label = info.status.empty() ? "Loaded" : info.status,
-                    .tone = StatusBadge::Tone::Success,
-                },
-                .path = entry.path,
-                .minimumVersion = info.minimumJetstreamVersion,
-                .blocks = blocks(info),
-                .examples = examples(info),
-            });
-            continue;
-        }
+    const auto updates = context.state.pluginUpdates();
+    const auto& updating = context.state.plugins.update.ids;
+    config.plugins.reserve(registry.plugins.size());
+    for (const auto& info : registry.plugins) {
+        const auto update = std::find_if(updates.begin(), updates.end(), [&](const auto& entry) {
+            return entry.id == info.id;
+        });
         config.plugins.push_back({
-            .name = PluginLabels::Name(entry.path),
-            .status = Status(entry),
-            .path = entry.path,
+            .id = info.id,
+            .name = info.title.empty() ? info.id : info.title,
+            .summary = info.summary,
+            .description = info.description,
+            .version = info.version,
+            .cyberether = info.cyberether,
+            .author = info.author,
+            .license = info.license,
+            .status = Status(info),
+            .path = info.temporary ? info.source : info.path,
+            .update = update == updates.end() || info.temporary ? "" : update->version,
+            .updating = std::find(updating.begin(), updating.end(), info.id) != updating.end(),
+            .temporary = info.temporary,
+            .blocks = blocks(info),
+            .examples = examples(info),
         });
     }
 
     return config;
 }
 
-StatusBadge::Config RegistrySettingsPresenter::Status(const DefaultCompositorState::RegistryState::PluginEntry& entry) {
-    if (Platform::PathFromUtf8(entry.path).extension() != ".cep") {
-        return {.label = "Invalid extension", .tone = StatusBadge::Tone::Warning};
+StatusBadge::Config RegistrySettingsPresenter::Status(const Plugin::Info& info) {
+    switch (info.status) {
+        case Plugin::Status::Loaded:
+            if (!info.pending.empty()) {
+                return {.label = jst::fmt::format("Version {} ready on restart", info.pending),
+                        .tone = StatusBadge::Tone::Success};
+            }
+            return {.label = info.temporary ? "Loaded for this run" : "Loaded", .tone = StatusBadge::Tone::Success};
+        case Plugin::Status::Restart:
+            return {.label = "Ready on restart"};
+        case Plugin::Status::Incompatible:
+            return {.label = "Replacement file needed", .tone = StatusBadge::Tone::Warning};
+        case Plugin::Status::Waiting:
+            return {.label = "Waiting for a compatible build", .tone = StatusBadge::Tone::Warning};
+        case Plugin::Status::Failed:
+            return {.label = "Failed to load", .tone = StatusBadge::Tone::Error};
     }
-    if (!entry.exists) {
-        return {.label = "Missing", .tone = StatusBadge::Tone::Warning};
-    }
-    return {.label = "Not loaded"};
+    return {.label = "Unknown"};
 }
 
 std::vector<RegistrySettingsView::PluginItem> RegistrySettingsPresenter::blocks(const Plugin::Info& info) const {

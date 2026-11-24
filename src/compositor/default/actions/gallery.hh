@@ -53,7 +53,6 @@ struct GalleryActions {
     void refreshRegistry();
 
  private:
-    static std::string NormalizePluginPath(const std::string& path);
     bool publish(const Flowgraphs& flowgraphs);
     void collect(Clock::time_point now);
 };

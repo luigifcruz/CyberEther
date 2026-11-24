@@ -55,12 +55,6 @@ void Settle(GalleryActions& actions, DefaultCompositorState& state, GalleryActio
     REQUIRE_FALSE(state.registry.fetch.loading);
 }
 
-void WriteText(const std::filesystem::path& path, const std::string& content) {
-    std::filesystem::create_directories(path.parent_path());
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    file << content;
-}
-
 }  // namespace
 
 TEST_CASE("Fetched gallery flowgraphs publish into the home gallery and refresh the registry snapshot",
@@ -248,66 +242,18 @@ TEST_CASE("Registry snapshot refreshes only while it is marked stale", "[core][c
     CHECK_FALSE(state.registry.sections.empty());
 }
 
-TEST_CASE("Registry snapshot stays stale and retries while the settings file cannot be read",
+TEST_CASE("Registry snapshot lists no plugins when none are installed",
           "[core][compositor][gallery]") {
     TestSupport::SettingsSandbox sandbox("compositor-registry");
     sandbox.require();
-    std::string configPath;
-    REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
-    const auto settingsPath = Platform::PathFromUtf8(configPath) / "settings.yaml";
-    std::filesystem::create_directories(settingsPath.parent_path());
-    {
-        std::ofstream file(settingsPath, std::ios::binary | std::ios::trunc);
-        file << "graphics: [unterminated\n";
-    }
 
     DefaultCompositorState state;
     Home::Gallery gallery;
     GalleryActions actions(state, gallery);
     actions.refreshRegistry();
-    CHECK(state.registry.stale);
+    CHECK_FALSE(state.registry.stale);
     CHECK_FALSE(state.registry.blocks.empty());
-    CHECK(state.registry.registered.empty());
-
-    {
-        std::ofstream file(settingsPath, std::ios::binary | std::ios::trunc);
-        file << "registry:\n  plugins:\n    - /plugins/missing.cep\n";
-    }
-    actions.refreshRegistry();
-    CHECK_FALSE(state.registry.stale);
-    REQUIRE(state.registry.registered.size() == 1);
-    CHECK(state.registry.registered.front().path == "/plugins/missing.cep");
-    CHECK_FALSE(state.registry.registered.front().exists);
-    CHECK_FALSE(state.registry.registered.front().info.has_value());
-}
-
-TEST_CASE("Registry snapshot lists plugins behind an inaccessible folder as missing",
-          "[core][compositor][gallery]") {
-    TestSupport::SettingsSandbox sandbox("compositor-registry");
-    sandbox.require();
-    std::string configPath;
-    REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
-    const auto settingsPath = Platform::PathFromUtf8(configPath) / "settings.yaml";
-    const auto locked = sandbox.root() / "locked";
-    const auto plugin = Platform::PathToUtf8(locked / "plugin.cep");
-    WriteText(locked / "plugin.cep", "");
-    WriteText(settingsPath, "registry:\n  plugins:\n    - " + plugin + "\n");
-    std::filesystem::permissions(locked, std::filesystem::perms::none);
-    std::error_code denied;
-    if (std::filesystem::exists(locked / "plugin.cep", denied) || !denied) {
-        std::filesystem::permissions(locked, std::filesystem::perms::owner_all);
-        SKIP("Folder permissions do not deny access on this machine");
-    }
-
-    DefaultCompositorState state;
-    Home::Gallery gallery;
-    GalleryActions actions(state, gallery);
-    CHECK_NOTHROW(actions.refreshRegistry());
-    std::filesystem::permissions(locked, std::filesystem::perms::owner_all);
-    CHECK_FALSE(state.registry.stale);
-    REQUIRE(state.registry.registered.size() == 1);
-    CHECK(state.registry.registered.front().path == plugin);
-    CHECK_FALSE(state.registry.registered.front().exists);
+    CHECK(state.registry.plugins.empty());
 }
 
 TEST_CASE("Registry snapshot keeps block metadata without holding registered factories",

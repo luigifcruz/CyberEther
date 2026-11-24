@@ -4,6 +4,7 @@
 #include "remote.hh"
 #include "../agent/chat.hh"
 #include "../context.hh"
+#include "../plugin_labels.hh"
 
 #include "../../model/messages.hh"
 #include "../../support/terminal.hh"
@@ -33,6 +34,7 @@ struct WelcomePresenter {
     WelcomeView::Config build() const;
     static std::string Progress(const DefaultCompositorState::RegistryState::GalleryFetch& gallery);
     static std::string ProgressResult(const DefaultCompositorState::RegistryState::GalleryFetch& gallery);
+    static std::vector<WelcomeView::PluginItem> Plugins(const DefaultCompositorState& state, const std::string& query);
 
  private:
     static WelcomeView::Example Example(const std::string& section, const Home::Gallery::Flowgraph& entry);

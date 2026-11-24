@@ -7,7 +7,9 @@
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/platform.hh"
+#include "jetstream/plugin.hh"
 #include "jetstream/registry.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -21,6 +23,7 @@
 #include <queue>
 #include <ranges>
 #include <regex>
+#include <set>
 #include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -263,7 +266,8 @@ Result ReconstructBlocks(Flowgraph& flowgraph,
 
 Result MigrateFlowgraphVersion100To200(Parser::Map& root) {
     if (!root.contains("version") && root.contains("protocolVersion")) {
-        root["version"] = root.at("protocolVersion");
+        const auto protocolVersion = root.at("protocolVersion");
+        root["version"] = protocolVersion;
     }
 
     std::string version;
@@ -1530,6 +1534,22 @@ Result Flowgraph::ReadTitle(const std::string& path, std::string& title) {
     return Parser::Deserialize(root, "title", title);
 }
 
+Result Flowgraph::ReadPlugins(const std::vector<char>& blob, std::vector<std::string>& plugins) {
+    plugins.clear();
+
+    Parser::Map root;
+    JST_CHECK(Parser::YamlDecode(std::string(blob.begin(), blob.end()), root));
+    JST_CHECK(MigrateFlowgraphVersion100To200(root));
+
+    std::string version = "2";
+    JST_CHECK(Parser::Deserialize(root, "version", version));
+    if (version != "2") {
+        return Result::SUCCESS;
+    }
+
+    return Parser::Deserialize(root, "plugins", plugins);
+}
+
 Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.")
 
@@ -1547,6 +1567,20 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
 
     if (document.version != "2") {
         JST_ERROR("[FLOWGRAPH] Invalid flowgraph version '{}'.", document.version);
+        return Result::ERROR;
+    }
+
+    std::vector<std::string> missingPlugins;
+    for (const auto& id : document.plugins.value_or(std::vector<std::string>{})) {
+        if (Plugin::Path(id).empty()) {
+            missingPlugins.push_back("'" + id + "'");
+        }
+    }
+    if (!missingPlugins.empty()) {
+        JST_ERROR("[FLOWGRAPH] This flowgraph needs {} {}. Install {} and open it again.",
+                  missingPlugins.size() == 1 ? "the plugin" : "the plugins",
+                  Text::Join(missingPlugins, ", "),
+                  missingPlugins.size() == 1 ? "it" : "them");
         return Result::ERROR;
     }
 
@@ -1871,6 +1905,19 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     document.meta = FlowgraphDocument::CompactMeta(metadataValues);
 
     const auto outputLookup = BuildOutputLookup(impl->blockOrder, impl->blocks);
+
+    std::set<std::string> plugins;
+    for (const auto& name : impl->blockOrder) {
+        const auto& block = impl->blocks.at(name);
+        for (const auto& owner : {Plugin::Owner(block->config().type(), ""), Plugin::Owner("", block->provider())}) {
+            if (!owner.empty()) {
+                plugins.insert(owner);
+            }
+        }
+    }
+    if (!plugins.empty()) {
+        document.plugins = std::vector<std::string>(plugins.begin(), plugins.end());
+    }
 
     for (const auto& name : impl->blockOrder) {
         const auto& block = impl->blocks.at(name);

@@ -21,6 +21,7 @@ DefaultActions::DefaultActions(DefaultCompositorState& state, DefaultCompositorC
     crashReport = std::make_shared<CrashReportActions>(state, callbacks);
     agent = std::make_shared<AgentActions>(state, callbacks, runtime);
     gallery = std::make_shared<GalleryActions>(state, Home::Get().gallery());
+    plugins = std::make_shared<PluginActions>(state, callbacks);
     terminals = std::make_shared<TerminalActions>(state, callbacks);
 }
 
@@ -53,6 +54,9 @@ Result DefaultActions::handle(const Mail& mail) {
         return result;
     }
     if (Handle(*settings, mail, result)) {
+        return result;
+    }
+    if (Handle(*plugins, mail, result)) {
         return result;
     }
     if (Handle(*benchmark, mail, result)) {
@@ -180,6 +184,14 @@ void DefaultActions::reconcileGallery() {
 
 void DefaultActions::shutdownGallery() {
     gallery->shutdown();
+}
+
+void DefaultActions::reconcilePlugins() {
+    plugins->reconcile();
+}
+
+void DefaultActions::shutdownPlugins() {
+    plugins->shutdown();
 }
 
 void DefaultActions::reconcileTerminals() {

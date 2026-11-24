@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
@@ -14,6 +15,7 @@ struct FlowgraphCard : public Component {
     struct Config {
         std::string id;
         std::string diagram;
+        std::vector<std::string> blocks;
         std::string category;
         std::string title;
         std::string description;
