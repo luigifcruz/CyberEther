@@ -15,12 +15,14 @@ zig = find_program(
 zig_build_file = meson.current_source_dir() / 'build.zig'
 zig_cpu = get_option('native') ? [] : ['-Dcpu=baseline']
 zig_cache_dir = meson.current_build_dir() / 'zig-cache'
+zig_version_arg = '-Dversion-string=1.4.0'
 
 run_command(
     zig, 'build',
     '--build-file', zig_build_file,
     '--cache-dir', zig_cache_dir,
     '--fetch',
+    zig_version_arg,
     '-Demit-lib-vt=true',
     check: true,
 )
@@ -34,6 +36,7 @@ ghostty_vt_lib = custom_target(
         '--cache-dir', zig_cache_dir,
         '--prefix', meson.current_build_dir() / 'zig-out',
         '--prefix-lib-dir', meson.current_build_dir(),
+        zig_version_arg,
         '-Demit-lib-vt=true',
         '-Demit-xcframework=false',
         '-Doptimize=ReleaseFast',

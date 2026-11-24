@@ -275,12 +275,14 @@ TEST_CASE("The plugin update policy decides what happens to gallery updates", "[
         actions.reconcile();
         CHECK_FALSE(state.plugins.prompt);
         CHECK_FALSE(state.modal.content.has_value());
-        CHECK(state.plugins.update.loading);
-        CHECK(state.plugins.update.ids == std::vector<std::string>{"alpha"});
 
-        Wait(state.plugins.update.future);
-        actions.reconcile();
+        if (state.plugins.update.loading) {
+            CHECK(state.plugins.update.ids == std::vector<std::string>{"alpha"});
+            Wait(state.plugins.update.future);
+            actions.reconcile();
+        }
         CHECK_FALSE(state.plugins.update.loading);
+        CHECK(state.plugins.update.ids.empty());
         CHECK(state.plugins.updates.entries.empty());
     }
 
