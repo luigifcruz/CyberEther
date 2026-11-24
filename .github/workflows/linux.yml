@@ -6,6 +6,9 @@ on:
       package_desktop:
         type: boolean
         default: false
+      compiler_cache:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -113,6 +116,16 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install meson ninja numpy
+
+      - name: Set up compiler cache
+        if: ${{ inputs.compiler_cache }}
+        uses: hendrikmuhs/ccache-action@e91f31892a1d1b8c44424b1a94c0b7f52d337168 # v1.2.26
+        with:
+          variant: sccache
+          install: binary
+          key: linux-${{ matrix.tag }}-objects
+          max-size: 1500M
+          save: ${{ github.event_name == 'push' }}
 
       - name: Install Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1

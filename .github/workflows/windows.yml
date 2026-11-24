@@ -6,6 +6,9 @@ on:
       package_desktop:
         type: boolean
         default: false
+      compiler_cache:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -56,8 +59,8 @@ jobs:
   bin:
     runs-on: windows-latest
     env:
-      CC: cl
-      CXX: cl
+      CC: ${{ inputs.compiler_cache && 'sccache cl' || 'cl' }}
+      CXX: ${{ inputs.compiler_cache && 'sccache cl' || 'cl' }}
     defaults:
       run:
         shell: pwsh
@@ -78,6 +81,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install meson ninja numpy
+
+      - name: Set up compiler cache
+        if: ${{ inputs.compiler_cache }}
+        uses: hendrikmuhs/ccache-action@e91f31892a1d1b8c44424b1a94c0b7f52d337168 # v1.2.26
+        with:
+          variant: sccache
+          install: binary
+          key: windows-x86_64
+          max-size: 1500M
+          save: ${{ github.event_name == 'push' }}
 
       - name: Install Vulkan SDK
         run: |
