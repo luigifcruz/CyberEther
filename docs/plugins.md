@@ -133,7 +133,7 @@ The manifest is a flat YAML file:
 id: blueprint
 title: Blueprint
 version: 0.1.0
-cyberether: 1.20.0
+cyberether: 2.0.0
 build: macos-arm64
 summary: A minimal gain block to start new plugins from.
 author: CyberEther
@@ -203,7 +203,7 @@ Run `tools/bundler.py` from your plugin directory to assemble a `.cep` file manu
   --id blueprint \
   --title Blueprint \
   --version 0.1.0 \
-  --cyberether 1.20.0 \
+  --cyberether 2.0.0 \
   --build macos-arm64 \
   --library build/blueprint.dylib \
   --summary "A minimal gain block to start new plugins from." \

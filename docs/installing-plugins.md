@@ -26,7 +26,7 @@ If you cannot confirm these points, skip the plugin. During installation, CyberE
 
 Every plugin is built for one exact CyberEther version and one CyberEther build, such as `macos-arm64` or `linux-x86_64-cuda`. CyberEther only installs and loads a plugin that was built for the version and build you are running. After you update CyberEther, install a plugin file built for the new version.
 
-Each `.cep` file holds one build, and its name usually says which, such as `blueprint-0.1.0-cyberether-1.20.0-linux-x86_64.cep`.
+Each `.cep` file holds one build, and its name usually says which, such as `blueprint-0.1.0-cyberether-2.0.0-linux-x86_64.cep`.
 
 ## Installing From the Gallery
 
