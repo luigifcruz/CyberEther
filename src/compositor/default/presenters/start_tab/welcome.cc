@@ -117,7 +117,7 @@ std::vector<WelcomeView::PluginItem> WelcomePresenter::Plugins(const DefaultComp
             .id = entry.id,
             .title = entry.title,
             .summary = entry.summary,
-            .category = PluginLabels::Category(entry, PluginLabels::Installed(installed, entry)),
+            .category = PluginLabels::Category(installed, entry),
             .blocks = std::move(blocks),
         });
     }

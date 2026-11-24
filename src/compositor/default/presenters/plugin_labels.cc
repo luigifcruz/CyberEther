@@ -11,9 +11,18 @@ bool PluginLabels::Installed(const std::vector<Plugin::Info>& installed, const P
     });
 }
 
-std::string PluginLabels::Category(const Plugin::Gallery::Entry& entry, bool installed) {
-    if (installed) {
+bool PluginLabels::Outdated(const std::vector<Plugin::Info>& installed, const Plugin::Gallery::Entry& entry) {
+    return std::any_of(installed.begin(), installed.end(), [&](const auto& info) {
+        return Plugin::Gallery::Outdated(info, entry);
+    });
+}
+
+std::string PluginLabels::Category(const std::vector<Plugin::Info>& installed, const Plugin::Gallery::Entry& entry) {
+    if (Installed(installed, entry)) {
         return "Installed";
+    }
+    if (Outdated(installed, entry)) {
+        return "Update Available";
     }
     if (!entry.available()) {
         return "Waiting for a Build";

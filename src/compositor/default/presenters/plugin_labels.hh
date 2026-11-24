@@ -15,7 +15,8 @@ namespace Jetstream {
 class PluginLabels {
  public:
     static bool Installed(const std::vector<Plugin::Info>& installed, const Plugin::Gallery::Entry& entry);
-    static std::string Category(const Plugin::Gallery::Entry& entry, bool installed);
+    static bool Outdated(const std::vector<Plugin::Info>& installed, const Plugin::Gallery::Entry& entry);
+    static std::string Category(const std::vector<Plugin::Info>& installed, const Plugin::Gallery::Entry& entry);
     static std::string Block(const std::string& plugin, const std::string& block);
     static std::vector<std::string> Blocks(const Plugin::Gallery::Entry& entry);
 };

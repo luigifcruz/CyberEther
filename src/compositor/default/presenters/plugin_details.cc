@@ -63,10 +63,20 @@ PluginDetailsView::Config PluginDetailsPresenter::build() const {
         {"ID", entry->id},
     };
 
+    const auto& installed = context.state.registry.plugins;
+    const auto& updating = plugins.update.ids;
     if (plugins.install.loading) {
         config.installLabel = "Installing...";
-    } else if (PluginLabels::Installed(context.state.registry.plugins, *entry)) {
+    } else if (std::find(updating.begin(), updating.end(), id) != updating.end()) {
+        config.installLabel = "Updating...";
+    } else if (PluginLabels::Installed(installed, *entry)) {
         config.installLabel = "Installed";
+    } else if (PluginLabels::Outdated(installed, *entry)) {
+        config.installLabel = "Update";
+        config.installDisabled = false;
+        config.onInstall = [enqueue, id]() {
+            enqueue(MailUpdateGalleryPlugins{.ids = {id}});
+        };
     } else if (!entry->available()) {
         config.installLabel = "Unavailable";
     } else {
