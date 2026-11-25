@@ -19,20 +19,19 @@ subprojects/*
 !subprojects/bladerf-no-os.wrap
 !subprojects/catch2.wrap
 !subprojects/cpp-httplib.wrap
+!subprojects/ffmpeg.wrap
 !subprojects/fmt.wrap
 !subprojects/ghostty-vt.wrap
 !subprojects/glfw.wrap
 !subprojects/glm.wrap
-!subprojects/libffi.wrap
-!subprojects/glib.wrap
-!subprojects/gstreamer-full.wrap
 !subprojects/libad9361.wrap
 !subprojects/libairspy.wrap
 !subprojects/libairspyhf.wrap
 !subprojects/libbladerf.wrap
-!subprojects/libgudev.wrap
+!subprojects/libdatachannel.wrap
 !subprojects/libhackrf.wrap
 !subprojects/libiio.wrap
+!subprojects/libjuice.wrap
 !subprojects/libmodes.wrap
 !subprojects/librtlsdr.wrap
 !subprojects/libusb-browser.wrap
@@ -47,8 +46,10 @@ subprojects/*
 !subprojects/nanobench.wrap
 !subprojects/nanobind.wrap
 !subprojects/nlohmann_json.wrap
+!subprojects/nv-codec-headers.wrap
+!subprojects/openh264.wrap
 !subprojects/openssl.wrap
-!subprojects/pcre2.wrap
+!subprojects/plog.wrap
 !subprojects/pocketfft.wrap
 !subprojects/pthreads4w.wrap
 !subprojects/qrencode.wrap
@@ -63,8 +64,8 @@ subprojects/*
 !subprojects/tree-sitter-markdown.wrap
 !subprojects/tree-sitter-python.wrap
 !subprojects/tree-sitter-yaml.wrap
+!subprojects/usrsctp.wrap
 !subprojects/velopack.wrap
-!subprojects/vpx.wrap
 !subprojects/zlib.wrap
 
 build

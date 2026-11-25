@@ -1,0 +1,9 @@
+[wrap-file]
+directory = libdatachannel-0.24.8
+source_url = https://github.com/paullouisageneau/libdatachannel/archive/refs/tags/v0.24.8.tar.gz
+source_filename = libdatachannel-0.24.8.tar.gz
+source_hash = d2c982fec0c820dd7e640d7ddafc3b3b62e6cefd9d95915d9297aa36d0a1854b
+patch_directory = libdatachannel
+
+[provide]
+libdatachannel = libdatachannel_dep

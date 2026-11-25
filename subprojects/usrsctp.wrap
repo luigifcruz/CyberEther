@@ -1,0 +1,8 @@
+[wrap-file]
+directory = usrsctp-6a768c4618ca2442cfda21064075f84ff94c1863
+source_url = https://github.com/paullouisageneau/usrsctp/archive/6a768c4618ca2442cfda21064075f84ff94c1863.tar.gz
+source_filename = usrsctp-6a768c4618ca2442cfda21064075f84ff94c1863.tar.gz
+source_hash = ffa7076ee8b93d10a7048af9a45be38bf45f3b05cecfa4334c087120898be1ed
+
+[provide]
+usrsctp = usrsctp_dep

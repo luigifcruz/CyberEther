@@ -1,0 +1,10 @@
+[wrap-file]
+directory = openh264-2.6.0
+source_url = https://github.com/cisco/openh264/archive/refs/tags/v2.6.0.tar.gz
+source_filename = openh264-2.6.0.tar.gz
+source_hash = 558544ad358283a7ab2930d69a9ceddf913f4a51ee9bf1bfb9e377322af81a69
+source_fallback_url = https://github.com/mesonbuild/wrapdb/releases/download/openh264_2.6.0-1/openh264-2.6.0.tar.gz
+wrapdb_version = 2.6.0-1
+
+[provide]
+openh264 = openh264_dep

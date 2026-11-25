@@ -1,0 +1,22 @@
+diff --git a/libavcodec/videotoolboxenc.c b/libavcodec/videotoolboxenc.c
+index de52923..60e004f 100644
+--- a/libavcodec/videotoolboxenc.c
++++ b/libavcodec/videotoolboxenc.c
+@@ -2521,6 +2521,17 @@ static int vtenc_send_frame(AVCodecContext *avctx,
+         goto out;
+     }
+ 
++    node = NULL;
++
++    if (vtctx->realtime > 0) {
++        status = VTCompressionSessionCompleteFrames(vtctx->session, time);
++        if (status) {
++            av_log(avctx, AV_LOG_ERROR, "Cannot complete frame: %d\n", status);
++            status = AVERROR_EXTERNAL;
++            goto out;
++        }
++    }
++
+ out:
+     if (frame_dict)
+         CFRelease(frame_dict);
