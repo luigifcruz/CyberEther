@@ -29,12 +29,10 @@ std::string GetRemoteCodecName(const Instance::Remote::CodecType& codec) {
     switch (codec) {
         case Instance::Remote::CodecType::AV1:
             return "av1";
-        case Instance::Remote::CodecType::VP8:
-            return "vp8";
-        case Instance::Remote::CodecType::VP9:
-            return "vp9";
         case Instance::Remote::CodecType::H264:
             return "h264";
+        case Instance::Remote::CodecType::H265:
+            return "h265";
         default:
             JST_ERROR("Unknown remote codec.");
             throw Result::ERROR;
@@ -49,12 +47,10 @@ Instance::Remote::CodecType StringToRemoteCodec(const std::string& codec) {
 
     if (sanitizedCodec == "av1") {
         return Instance::Remote::CodecType::AV1;
-    } else if (sanitizedCodec == "vp8") {
-        return Instance::Remote::CodecType::VP8;
-    } else if (sanitizedCodec == "vp9") {
-        return Instance::Remote::CodecType::VP9;
     } else if (sanitizedCodec == "h264") {
         return Instance::Remote::CodecType::H264;
+    } else if (sanitizedCodec == "h265") {
+        return Instance::Remote::CodecType::H265;
     }
 
     JST_ERROR("Unknown remote codec: {}", codec);
@@ -65,12 +61,10 @@ const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec) {
     switch (codec) {
         case Instance::Remote::CodecType::AV1:
             return "AV1";
-        case Instance::Remote::CodecType::VP8:
-            return "VP8";
-        case Instance::Remote::CodecType::VP9:
-            return "VP9";
         case Instance::Remote::CodecType::H264:
             return "H264";
+        case Instance::Remote::CodecType::H265:
+            return "H265";
         default:
             return "Unknown";
     }
@@ -88,8 +82,6 @@ std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder) {
             return "v4l2";
         case Instance::Remote::EncoderType::VideoToolbox:
             return "videotoolbox";
-        case Instance::Remote::EncoderType::MediaFoundation:
-            return "mediafoundation";
         default:
             JST_ERROR("Unknown remote encoder.");
             throw Result::ERROR;
@@ -112,8 +104,6 @@ Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder) 
         return Instance::Remote::EncoderType::V4L2;
     } else if (sanitizedEncoder == "videotoolbox") {
         return Instance::Remote::EncoderType::VideoToolbox;
-    } else if (sanitizedEncoder == "mediafoundation") {
-        return Instance::Remote::EncoderType::MediaFoundation;
     }
 
     JST_ERROR("Unknown remote encoder: {}", encoder);
@@ -132,8 +122,6 @@ const char* GetRemoteEncoderPrettyName(const Instance::Remote::EncoderType& enco
             return "V4L2";
         case Instance::Remote::EncoderType::VideoToolbox:
             return "VideoToolbox";
-        case Instance::Remote::EncoderType::MediaFoundation:
-            return "MediaFoundation";
         default:
             return "Unknown";
     }
@@ -145,8 +133,6 @@ std::string GetRemoteTransportName(const Instance::Remote::TransportType& transp
             return "auto";
         case Instance::Remote::TransportType::UDP:
             return "udp";
-        case Instance::Remote::TransportType::TCP:
-            return "tcp";
         default:
             JST_ERROR("Unknown remote transport.");
             throw Result::ERROR;
@@ -163,8 +149,6 @@ Instance::Remote::TransportType StringToRemoteTransport(const std::string& trans
         return Instance::Remote::TransportType::Auto;
     } else if (sanitizedTransport == "udp") {
         return Instance::Remote::TransportType::UDP;
-    } else if (sanitizedTransport == "tcp") {
-        return Instance::Remote::TransportType::TCP;
     }
 
     JST_ERROR("Unknown remote transport: {}", transport);
@@ -177,8 +161,6 @@ const char* GetRemoteTransportPrettyName(const Instance::Remote::TransportType& 
             return "Auto";
         case Instance::Remote::TransportType::UDP:
             return "UDP";
-        case Instance::Remote::TransportType::TCP:
-            return "TCP";
         default:
             return "Unknown";
     }

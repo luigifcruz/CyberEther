@@ -94,6 +94,25 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
     return config;
 }
 
+std::string CurrentRemoteValue(const std::string& value) {
+    std::string lower = value;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+
+    std::string current = value;
+    if (lower == "vp8" || lower == "vp9") {
+        current = "h264";
+    } else if (lower == "mediafoundation" || lower == "tcp") {
+        current = "auto";
+    }
+
+    if (current != value) {
+        JST_WARN("Saved remote option '{}' is no longer available. Using '{}'.", value, current);
+    }
+    return current;
+}
+
 Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
     Instance::Remote::Config config = {
         .access = {
@@ -101,8 +120,8 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
         },
         .video = {
             .framerate = static_cast<U32>(settings.remote.video.framerate),
-            .codec = StringToRemoteCodec(settings.remote.video.codec),
-            .encoder = StringToRemoteEncoder(settings.remote.video.encoder),
+            .codec = StringToRemoteCodec(CurrentRemoteValue(settings.remote.video.codec)),
+            .encoder = StringToRemoteEncoder(CurrentRemoteValue(settings.remote.video.encoder)),
         },
         .broker = {
             .address = settings.remote.broker.address,
@@ -112,7 +131,7 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
             .key = settings.remote.broker.key,
         },
         .media = {
-            .transport = StringToRemoteTransport(settings.remote.media.transport),
+            .transport = StringToRemoteTransport(CurrentRemoteValue(settings.remote.media.transport)),
             .minPort = static_cast<U16>(settings.remote.media.minPort),
             .maxPort = static_cast<U16>(settings.remote.media.maxPort),
             .address = settings.remote.media.address,

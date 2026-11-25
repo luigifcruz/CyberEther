@@ -14,7 +14,7 @@ Building CyberEther from source requires a C++20 compiler (GCC 11+ or Clang 14+)
 <!-- [NEW DEPENDENCY HOOK] -->
 
 > [!NOTE]
-> Standard source builds do not need system GLFW, SoapySDR, or GStreamer packages. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, PlutoSDR, and BirriaSDR are built in. Both the SDR and SDR Sweep blocks also detect and use a SoapySDR 0.8 or 0.9 installation and its device modules whenever one is present at runtime.
+> Standard source builds do not need system GLFW, SoapySDR, or FFmpeg packages. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, PlutoSDR, and BirriaSDR are built in. Both the SDR and SDR Sweep blocks also detect and use a SoapySDR 0.8 or 0.9 installation and its device modules whenever one is present at runtime.
 
 Expand your target platform below to install the required packages.
 
@@ -45,10 +45,10 @@ python -m pip install meson ninja numpy
 
 ### Optional Features
 
-Remote streaming uses bundled GStreamer sources and requires these generator tools:
+Remote streaming uses bundled FFmpeg and libdatachannel sources and requires NASM:
 
 ```bash
-pacman -S bison flex nasm
+pacman -S nasm
 ```
 
 Machine learning inference requires ONNX Runtime:
@@ -87,10 +87,10 @@ python3 -m pip install meson ninja numpy
 
 ### Optional Features
 
-Remote streaming uses bundled GStreamer sources and requires these generator tools:
+Remote streaming uses bundled FFmpeg and libdatachannel sources and requires NASM:
 
 ```bash
-apt install bison flex nasm
+apt install nasm
 ```
 
 Machine learning inference requires ONNX Runtime:
@@ -126,11 +126,10 @@ python3 -m pip install meson ninja numpy
 
 ### Optional Features
 
-Remote streaming uses bundled GStreamer sources and requires NASM along with Bison 2.4+:
+On Intel Macs, remote streaming also requires NASM for the bundled FFmpeg sources:
 
 ```bash
-brew install bison nasm
-export PATH="$(brew --prefix bison)/bin:$PATH"
+brew install nasm
 ```
 
 Machine learning inference requires ONNX Runtime:
@@ -168,10 +167,10 @@ python -m pip install meson ninja numpy
 
 ### Optional Features
 
-Remote streaming uses bundled GStreamer sources and requires NASM and WinFlexBison:
+Remote streaming uses bundled FFmpeg and libdatachannel sources and requires NASM:
 
 ```bash
-choco install nasm winflexbison3 -y
+choco install nasm -y
 ```
 
 </details>
@@ -229,7 +228,7 @@ Pass any of the options from `meson_options.txt` to `meson setup` to customize y
 | `-Dwheel` | boolean | `false` | Enables Python wheel packaging mode for Superluminal. |
 | `-Dtests` | boolean | `true` | Builds the Catch2 and helper test targets. |
 | `-Dexamples` | boolean | `true` | Builds the C++ example programs under `examples/`. |
-| `-Dremote` | feature | `auto` | Enables [Remote Streaming](/docs/remote) with bundled static GStreamer. |
+| `-Dremote` | feature | `auto` | Enables [Remote Streaming](/docs/remote) with bundled static FFmpeg and libdatachannel. |
 | `-Dinference` | feature | `auto` | Enables ONNX Runtime machine learning inference blocks in the ML domain. |
 | `-Dterminal` | feature | `auto` | Enables the integrated terminal tile backed by `libghostty-vt`. |
 

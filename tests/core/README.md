@@ -46,6 +46,6 @@ TODO integration coverage requiring dedicated environments:
 
 - Real window and GPU-backed `Instance` lifecycle across Metal, Vulkan, and WebGPU.
 - Browser OPFS, Emscripten main-loop, and main-thread proxy behavior.
-- Live GStreamer/WebRTC broker sessions and hardware encoders.
+- Browser WebRTC sessions and hardware encoders.
 - Successful cross-platform plugin DSO load, unload, and reload.
 - Permanently blocking source cancellation and adversarial scheduler concurrency under TSAN.

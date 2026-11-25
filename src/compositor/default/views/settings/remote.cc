@@ -256,7 +256,7 @@ void RemoteSettingsView::update(Config config) {
         .rows = {
             {
                 .label = "Media Transport",
-                .description = "The network protocols offered for the media connection. TCP helps on networks that block UDP.",
+                .description = "The network protocol offered for the media connection.",
                 .control = &transportTabs,
                 .wide = true,
             },
@@ -267,7 +267,7 @@ void RemoteSettingsView::update(Config config) {
             },
             {
                 .label = "Media Address",
-                .description = "The only local IP address offered for the media connection. Use 127.0.0.1 when tunneling over SSH. Leave empty to offer every address.",
+                .description = "The only local IP address offered for the media connection. Use the tunnel address when streaming through an SSH tunnel device. Leave empty to offer every address.",
                 .control = &mediaAddressInput,
             },
         },
@@ -325,9 +325,8 @@ bool RemoteSettingsView::portValue(const std::string& label, U16& port) {
 std::string RemoteSettingsView::codecLabel(Instance::Remote::CodecType codec) {
     switch (codec) {
         case Instance::Remote::CodecType::H264: return "H264";
+        case Instance::Remote::CodecType::H265: return "H265";
         case Instance::Remote::CodecType::AV1: return "AV1";
-        case Instance::Remote::CodecType::VP8: return "VP8";
-        case Instance::Remote::CodecType::VP9: return "VP9";
     }
     return "H264";
 }

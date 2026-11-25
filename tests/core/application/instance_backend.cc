@@ -57,11 +57,10 @@ struct CodecNameCase {
     const char* mixedCaseName;
 };
 
-constexpr std::array<CodecNameCase, 4> CodecNameCases = {{
+constexpr std::array<CodecNameCase, 3> CodecNameCases = {{
     {Instance::Remote::CodecType::H264, "h264", "H264", "H264"},
+    {Instance::Remote::CodecType::H265, "h265", "H265", "h265"},
     {Instance::Remote::CodecType::AV1, "av1", "AV1", "Av1"},
-    {Instance::Remote::CodecType::VP8, "vp8", "VP8", "Vp8"},
-    {Instance::Remote::CodecType::VP9, "vp9", "VP9", "vP9"},
 }};
 
 struct EncoderNameCase {
@@ -71,7 +70,7 @@ struct EncoderNameCase {
     const char* mixedCaseName;
 };
 
-constexpr std::array<EncoderNameCase, 6> EncoderNameCases = {{
+constexpr std::array<EncoderNameCase, 5> EncoderNameCases = {{
     {Instance::Remote::EncoderType::Auto, "auto", "Auto", "AuTo"},
     {Instance::Remote::EncoderType::Software, "software", "Software", "SoFtWaRe"},
     {Instance::Remote::EncoderType::NVENC, "nvenc", "NVENC", "NvEnC"},
@@ -80,10 +79,6 @@ constexpr std::array<EncoderNameCase, 6> EncoderNameCases = {{
      "videotoolbox",
      "VideoToolbox",
      "ViDeOtOoLbOx"},
-    {Instance::Remote::EncoderType::MediaFoundation,
-     "mediafoundation",
-     "MediaFoundation",
-     "MeDiAfOuNdAtIoN"},
 }};
 
 template<typename Callable>
@@ -191,7 +186,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
         .access = {.autoApprove = true},
         .video = {
             .framerate = 24,
-            .codec = Instance::Remote::CodecType::VP9,
+            .codec = Instance::Remote::CodecType::H265,
             .encoder = Instance::Remote::EncoderType::Software,
         },
         .broker = {.publicUrl = "http://remote.invalid/root/"},
@@ -207,7 +202,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
     REQUIRE(remoteSnapshot.access.autoApprove);
     REQUIRE(remoteSnapshot.video.framerate == 24);
     REQUIRE(remoteSnapshot.video.encoder == Instance::Remote::EncoderType::Software);
-    REQUIRE(remoteSnapshot.video.codec == Instance::Remote::CodecType::VP9);
+    REQUIRE(remoteSnapshot.video.codec == Instance::Remote::CodecType::H265);
 }
 
 // TODO: Expose the native settings-to-Instance and settings-to-Remote builders
@@ -615,7 +610,7 @@ TEST_CASE("Remote supervisor treats a null remote as a stopped transport",
 // TODO: Add injectable frame-capture, media-pipeline, and signaller transport
 // factories for supported Remote create/destroy and rollback at stream, broker,
 // room, capture, and submission-thread boundaries. The concrete path requires
-// Vulkan, GStreamer, threads, and network services.
+// Vulkan, FFmpeg, threads, and network services.
 // TODO: Give Supervisor an injectable remote transport and wait strategy so
 // waitlist deduplication, short IDs, authorization-code normalization, auto-join,
 // rejected approval, and stop races can be tested without sleeping or reading stdin.

@@ -105,7 +105,7 @@ Superluminal supports the same self-hosted WebRTC [Remote Streaming](/docs/remot
 
 Enable it on `InstanceConfig` (or via `sl.configure(...)` in Python):
 
-- Set `remote = true` along with optional `remoteCodec` (`"h264"`, `"vp8"`, `"vp9"`), `remoteEncoder` (`"auto"`), `remoteAutoApprove`, and `remoteFramerate` (default `30`).
+- Set `remote = true` along with optional `remoteCodec` (`"h264"`, `"h265"`, `"av1"`), `remoteEncoder` (`"auto"`), `remoteAutoApprove`, and `remoteFramerate` (default `30`).
 - Retrieve connection details programmatically with `Superluminal::RemoteRoomId()`, `RemoteInviteUrl()`, `RemoteAccessToken()`, or print the invite and QR code to your terminal with `Superluminal::PrintRemoteInfo()` (in Python: `sl.remote_room_id()`, `sl.remote_invite_url()`, `sl.remote_access_token()`, and `sl.print_remote_info()`).
 
 See `examples/superluminal/` in the repository for complete working examples covering `hello_world`, `realtime`, `constellation`, `interface`, `global_interface`, `interferometer`, and `remote`.

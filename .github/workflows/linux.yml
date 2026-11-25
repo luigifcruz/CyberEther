@@ -36,7 +36,6 @@ env:
     libwayland-cursor.so.0
     libwayland-egl.so.1
     libudev.so.1
-    libgudev-1.0.so.0
     libcuda.so.1
   BUNDLED_LINUX_LIBS: |
     libjetstream.so
@@ -102,7 +101,7 @@ jobs:
           apt-get update --fix-missing
           apt-get install -y --no-install-recommends \
             git build-essential pkg-config python3-pip python-is-python3 \
-            curl ca-certificates bison flex nasm patchelf binutils xz-utils \
+            curl ca-certificates nasm patchelf binutils xz-utils \
             glslang-tools \
             libudev-dev \
             libwayland-dev wayland-protocols libxkbcommon-dev \

@@ -75,7 +75,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          choco install nasm winflexbison3 pkgconfiglite -y --no-progress
+          choco install nasm pkgconfiglite -y --no-progress
 
       - name: Install Python dependencies
         run: |

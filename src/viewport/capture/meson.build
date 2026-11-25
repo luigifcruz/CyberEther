@@ -9,7 +9,8 @@ if cfg_lst.get('JETSTREAM_BACKEND_METAL_AVAILABLE', false)
 endif
 
 instance_remote_deps = [
-    'JETSTREAM_LOADER_GSTREAMER_AVAILABLE',
+    'JETSTREAM_LOADER_FFMPEG_AVAILABLE',
+    'JETSTREAM_LOADER_LIBDATACHANNEL_AVAILABLE',
     'JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE',
 ]
 
@@ -22,6 +23,7 @@ if instance_remote_deps_found
     cfg_lst.set('JETSTREAM_INSTANCE_REMOTE_AVAILABLE', true)
     src_lst += files([
         '../../instance_remote_impl.cc',
+        '../../instance_remote_encoder.cc',
         '../../instance_remote_socket.cc',
         '../../instance_remote_broker.cc',
     ])

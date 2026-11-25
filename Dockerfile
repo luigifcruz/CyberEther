@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update --fix-missing && \
     apt-get install -y --no-install-recommends \
       git build-essential pkg-config python3-pip libpython3.12t64 \
-      curl ca-certificates bison flex nasm xz-utils \
+      curl ca-certificates nasm xz-utils \
       spirv-cross glslang-tools \
       libudev-dev \
       libwayland-dev wayland-protocols libxkbcommon-dev \
@@ -49,9 +49,8 @@ ARG PREFIX=/usr
 
 RUN rm -rf build && \
     meson setup build \
-      --force-fallback-for=libffi,openssl \
+      --force-fallback-for=openssl \
       --default-library=shared \
-      -Dlibffi:default_library=static \
       -Dopenssl:default_library=static \
       -Dprefix=${PREFIX} \
       -Dbuildtype=${BUILD_TYPE} \

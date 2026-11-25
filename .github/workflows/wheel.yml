@@ -60,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y \
-            git gcc-c++ glslang curl bison flex nasm \
+            git gcc-c++ glslang curl nasm \
             wayland-devel wayland-protocols-devel libxkbcommon-devel \
             libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel \
             vulkan-loader-devel systemd-devel pkgconf-pkg-config

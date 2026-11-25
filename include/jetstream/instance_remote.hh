@@ -16,12 +16,12 @@ struct JETSTREAM_API Instance::Remote {
     struct Impl;
     struct Supervisor;
     struct Broker;
+    struct Encoder;
 
     enum class CodecType : uint32_t {
         H264,
         AV1,
-        VP8,
-        VP9,
+        H265,
     };
 
     enum class EncoderType {
@@ -30,13 +30,11 @@ struct JETSTREAM_API Instance::Remote {
         NVENC,
         V4L2,
         VideoToolbox,
-        MediaFoundation,
     };
 
     enum class TransportType {
         Auto,
         UDP,
-        TCP,
     };
 
     struct Config {
@@ -118,26 +116,23 @@ JETSTREAM_API bool IsRemotePortRangeValid(U64 minPort, U64 maxPort);
 JETSTREAM_API bool ParseRemotePortRange(const std::string& value, U16& minPort, U16& maxPort);
 JETSTREAM_API std::string GetRemotePortRangeName(U64 minPort, U64 maxPort);
 
-static inline constexpr std::array<Instance::Remote::CodecType, 4> RemoteCodecTypes = {
+static inline constexpr std::array<Instance::Remote::CodecType, 3> RemoteCodecTypes = {
     Instance::Remote::CodecType::H264,
+    Instance::Remote::CodecType::H265,
     Instance::Remote::CodecType::AV1,
-    Instance::Remote::CodecType::VP8,
-    Instance::Remote::CodecType::VP9,
 };
 
-static inline constexpr std::array<Instance::Remote::EncoderType, 6> RemoteEncoderTypes = {
+static inline constexpr std::array<Instance::Remote::EncoderType, 5> RemoteEncoderTypes = {
     Instance::Remote::EncoderType::Auto,
     Instance::Remote::EncoderType::Software,
     Instance::Remote::EncoderType::NVENC,
     Instance::Remote::EncoderType::V4L2,
     Instance::Remote::EncoderType::VideoToolbox,
-    Instance::Remote::EncoderType::MediaFoundation,
 };
 
-static inline constexpr std::array<Instance::Remote::TransportType, 3> RemoteTransportTypes = {
+static inline constexpr std::array<Instance::Remote::TransportType, 2> RemoteTransportTypes = {
     Instance::Remote::TransportType::Auto,
     Instance::Remote::TransportType::UDP,
-    Instance::Remote::TransportType::TCP,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Instance::Remote::EncoderType& encoder) {
