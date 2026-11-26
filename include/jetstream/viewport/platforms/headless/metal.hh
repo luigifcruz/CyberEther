@@ -37,6 +37,7 @@ class Headless<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
+    bool retainedPresent() const;
 
  private:
     MTL::Texture* texture = nullptr;

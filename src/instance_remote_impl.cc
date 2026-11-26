@@ -209,7 +209,9 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
     // Create frame capture
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     if (this->viewportDevice == DeviceType::Metal) {
-        this->frameCapture = std::make_unique<Viewport::FrameCaptureMetal>();
+        this->frameCapture = std::make_unique<Viewport::FrameCaptureMetal>([this](bool available) {
+            return this->acceptCapture(available, std::chrono::steady_clock::now());
+        });
     }
 #endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
@@ -235,8 +237,11 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
             while (this->frameSubmissionRunning) {
                 Tensor tensor;
                 if (this->frameCapture->getFrameData(tensor) == Result::SUCCESS) {
-                    this->pushNewFrame(tensor.data());
-                    this->frameCapture->releaseFrame();
+                    const Result pushed = this->pushNewFrame(tensor.data());
+                    this->releaseCapture();
+                    if (pushed != Result::SUCCESS) {
+                        this->requestKeyframe();
+                    }
                 }
             }
         });
@@ -264,6 +269,8 @@ Result Instance::Remote::Impl::rollbackCreate() {
     Result result = Result::SUCCESS;
     this->started_ = false;
     this->nextCaptureTime = {};
+    this->capturePending = false;
+    this->captureBlocked = false;
 
     {
         std::lock_guard<std::mutex> lock(inputMutex);
@@ -318,27 +325,61 @@ Result Instance::Remote::Impl::captureFrame(bool presented, std::chrono::steady_
     if (this->captureRequested.exchange(false)) {
         this->capturePending = true;
     }
+    if (this->viewportDevice == DeviceType::Metal) {
+        if (this->capturePending && now >= this->nextCaptureTime && !this->captureBlocked && viewport) {
+            viewport->requestRedraw();
+        }
+        return Result::SUCCESS;
+    }
     if (now < this->nextCaptureTime) {
         this->capturePending = this->capturePending || presented;
         return Result::SUCCESS;
     }
     if (!presented) {
-        if (this->capturePending && viewport) {
+        if (this->capturePending && !this->captureBlocked && viewport) {
             viewport->requestRedraw();
         }
         return Result::SUCCESS;
     }
+    this->captureBlocked = true;
     if (this->frameCapture->captureFrame() == Result::SKIP) {
         this->capturePending = true;
         return Result::SUCCESS;
     }
+    this->captureBlocked = false;
+    this->scheduleCapture(now);
+    return Result::SUCCESS;
+}
+
+bool Instance::Remote::Impl::acceptCapture(bool available, std::chrono::steady_clock::time_point now) {
+    if (!available) {
+        this->captureBlocked = true;
+        this->capturePending = true;
+        return false;
+    }
+    if (now < this->nextCaptureTime) {
+        this->capturePending = true;
+        return false;
+    }
+    this->captureRequested = false;
+    this->scheduleCapture(now);
+    return true;
+}
+
+void Instance::Remote::Impl::releaseCapture() {
+    this->frameCapture->releaseFrame();
+    if (this->captureBlocked.exchange(false) && viewport) {
+        viewport->requestRedraw();
+    }
+}
+
+void Instance::Remote::Impl::scheduleCapture(std::chrono::steady_clock::time_point now) {
     const auto interval = std::chrono::nanoseconds(std::chrono::seconds(1)) / config.video.framerate;
     if (now - this->nextCaptureTime >= interval) {
         this->nextCaptureTime = now;
     }
     this->nextCaptureTime += interval;
     this->capturePending = false;
-    return Result::SUCCESS;
 }
 
 void Instance::Remote::Impl::requestKeyframe() {

@@ -228,6 +228,10 @@ bool Implementation::keepRunning() {
     return running.load();
 }
 
+bool Implementation::retainedPresent() const {
+    return true;
+}
+
 Result Implementation::createSwapchain() {
     return Result::SUCCESS;
 }

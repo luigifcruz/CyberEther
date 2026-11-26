@@ -72,4 +72,8 @@ bool Implementation::keepRunning() {
     return texture != nullptr;
 }
 
+bool Implementation::retainedPresent() const {
+    return true;
+}
+
 }  // namespace Jetstream::Viewport

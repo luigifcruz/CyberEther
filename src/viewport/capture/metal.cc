@@ -5,30 +5,39 @@
 #include <condition_variable>
 #include <mutex>
 #include <queue>
+#include <utility>
 
 namespace Jetstream::Viewport {
 
 struct FrameCaptureMetal::Impl {
     static constexpr U32 MAX_FRAMES_IN_FLIGHT = 2;
 
-    Adapter<DeviceType::Metal>* metalViewport = nullptr;
-    Extent2D<U64> extent = {};
+    struct State {
+        Adapter<DeviceType::Metal>* metalViewport = nullptr;
+        Extent2D<U64> extent = {};
 
-    std::array<Tensor, MAX_FRAMES_IN_FLIGHT> stagingTensors = {};
-    std::array<Tensor, MAX_FRAMES_IN_FLIGHT> outputTensors = {};
-    std::array<bool, MAX_FRAMES_IN_FLIGHT> frameEvents = {};
+        std::array<Tensor, MAX_FRAMES_IN_FLIGHT> stagingTensors = {};
+        std::array<Tensor, MAX_FRAMES_IN_FLIGHT> outputTensors = {};
+        std::array<bool, MAX_FRAMES_IN_FLIGHT> frameEvents = {};
 
-    std::queue<U32> frameQueue;
-    std::mutex frameMutex;
-    std::condition_variable frameCond;
-    bool running = false;
-    bool requested = false;
+        std::queue<U32> frameQueue;
+        std::mutex frameMutex;
+        std::condition_variable frameCond;
+        bool running = false;
+        bool requested = false;
+        Gate gate;
 
-    U32 currentCaptureIndex = 0;
-    U32 currentReadyIndex = MAX_FRAMES_IN_FLIGHT;
+        U32 currentCaptureIndex = 0;
+        U32 currentReadyIndex = MAX_FRAMES_IN_FLIGHT;
+    };
+
+    Gate gate;
+    std::shared_ptr<State> state;
 };
 
-FrameCaptureMetal::FrameCaptureMetal() = default;
+FrameCaptureMetal::FrameCaptureMetal(Gate gate) : pimpl(std::make_unique<Impl>()) {
+    pimpl->gate = std::move(gate);
+}
 
 FrameCaptureMetal::~FrameCaptureMetal() {
     destroy();
@@ -45,7 +54,7 @@ Result FrameCaptureMetal::create(Generic* viewport, const DeviceType& outputDevi
         return Result::ERROR;
     }
 
-    auto state = std::make_shared<Impl>();
+    auto state = std::make_shared<Impl::State>();
     state->extent = adapter->getSwapchainExtent();
     if (state->extent.x == 0 || state->extent.y == 0) {
         JST_ERROR("[CAPTURE] Metal viewport has an empty extent.");
@@ -64,17 +73,12 @@ Result FrameCaptureMetal::create(Generic* viewport, const DeviceType& outputDevi
 
     state->metalViewport = adapter;
     state->running = true;
-    pimpl = state;
+    state->gate = pimpl->gate;
+    pimpl->state = state;
 
     adapter->setCaptureCallback([state](MTL::CommandBuffer* commandBuffer, MTL::Texture* texture) {
         std::lock_guard lock(state->frameMutex);
-        if (!state->running || !state->requested) {
-            return Result::SUCCESS;
-        }
-        state->requested = false;
-
-        const U32 index = state->currentCaptureIndex;
-        if (state->frameEvents[index]) {
+        if (!state->running || (!state->gate && !state->requested)) {
             return Result::SUCCESS;
         }
 
@@ -85,6 +89,14 @@ Result FrameCaptureMetal::create(Generic* viewport, const DeviceType& outputDevi
         if (texture->width() < state->extent.x || texture->height() < state->extent.y) {
             return Result::SUCCESS;
         }
+
+        const U32 index = state->currentCaptureIndex;
+        const bool available = !state->frameEvents[index];
+        const bool accepted = !state->gate || state->gate(available);
+        if (!available || !accepted) {
+            return Result::SUCCESS;
+        }
+        state->requested = false;
 
         auto* encoder = commandBuffer->blitCommandEncoder();
         if (!encoder) {
@@ -120,11 +132,11 @@ Result FrameCaptureMetal::create(Generic* viewport, const DeviceType& outputDevi
 Result FrameCaptureMetal::stop() {
     JST_DEBUG("[CAPTURE] Stopping Metal frame capture.");
 
-    if (pimpl) {
-        std::lock_guard lock(pimpl->frameMutex);
-        pimpl->running = false;
-        pimpl->requested = false;
-        pimpl->frameCond.notify_all();
+    if (const auto& state = pimpl->state) {
+        std::lock_guard lock(state->frameMutex);
+        state->running = false;
+        state->requested = false;
+        state->frameCond.notify_all();
     }
     return Result::SUCCESS;
 }
@@ -133,23 +145,30 @@ Result FrameCaptureMetal::destroy() {
     JST_DEBUG("[CAPTURE] Destroying Metal frame capture.");
 
     JST_CHECK(stop());
-    if (pimpl && pimpl->metalViewport) {
-        pimpl->metalViewport->setCaptureCallback({});
+    if (pimpl->state && pimpl->state->metalViewport) {
+        pimpl->state->metalViewport->setCaptureCallback({});
     }
-    pimpl.reset();
+    pimpl->state.reset();
     return Result::SUCCESS;
 }
 
 Result FrameCaptureMetal::captureFrame() {
-    if (pimpl) {
-        std::lock_guard lock(pimpl->frameMutex);
-        pimpl->requested = pimpl->running;
+    if (const auto& state = pimpl->state) {
+        bool requested = false;
+        {
+            std::lock_guard lock(state->frameMutex);
+            state->requested = state->running;
+            requested = state->requested;
+        }
+        if (requested) {
+            state->metalViewport->requestRedraw();
+        }
     }
     return Result::SUCCESS;
 }
 
 Result FrameCaptureMetal::getFrameData(Tensor& tensor) {
-    const auto state = pimpl;
+    const auto state = pimpl->state;
     if (!state) {
         return Result::ERROR;
     }
@@ -170,12 +189,19 @@ Result FrameCaptureMetal::getFrameData(Tensor& tensor) {
 }
 
 Result FrameCaptureMetal::releaseFrame() {
-    const auto state = pimpl;
+    const auto state = pimpl->state;
     if (state) {
-        std::lock_guard lock(state->frameMutex);
-        if (state->currentReadyIndex != Impl::MAX_FRAMES_IN_FLIGHT) {
-            state->frameEvents[state->currentReadyIndex] = false;
-            state->currentReadyIndex = Impl::MAX_FRAMES_IN_FLIGHT;
+        bool requested = false;
+        {
+            std::lock_guard lock(state->frameMutex);
+            if (state->currentReadyIndex != Impl::MAX_FRAMES_IN_FLIGHT) {
+                state->frameEvents[state->currentReadyIndex] = false;
+                state->currentReadyIndex = Impl::MAX_FRAMES_IN_FLIGHT;
+            }
+            requested = state->requested;
+        }
+        if (requested) {
+            state->metalViewport->requestRedraw();
         }
     }
     return Result::SUCCESS;

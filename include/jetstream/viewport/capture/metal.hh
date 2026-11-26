@@ -3,13 +3,16 @@
 
 #include "jetstream/viewport/capture.hh"
 
+#include <functional>
 #include <memory>
 
 namespace Jetstream::Viewport {
 
 class FrameCaptureMetal : public FrameCapture {
  public:
-    FrameCaptureMetal();
+    using Gate = std::function<bool(bool available)>;
+
+    explicit FrameCaptureMetal(Gate gate = {});
     ~FrameCaptureMetal() override;
 
     Result create(Generic* viewport, const DeviceType& outputDevice = DeviceType::CPU) override;
@@ -21,7 +24,7 @@ class FrameCaptureMetal : public FrameCapture {
 
  private:
     struct Impl;
-    std::shared_ptr<Impl> pimpl;
+    std::unique_ptr<Impl> pimpl;
 };
 
 }  // namespace Jetstream::Viewport

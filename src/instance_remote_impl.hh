@@ -38,6 +38,9 @@ struct Instance::Remote::Impl {
     Result rollbackCreate();
     Result processInput();
     void requestKeyframe();
+    bool acceptCapture(bool available, std::chrono::steady_clock::time_point now);
+    void scheduleCapture(std::chrono::steady_clock::time_point now);
+    void releaseCapture();
     Result captureFrame(bool presented,
                         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
     Result approveClient(const std::string& sessionId);
@@ -179,6 +182,7 @@ struct Instance::Remote::Impl {
     std::chrono::steady_clock::time_point nextCaptureTime{};
     bool capturePending = false;
     std::atomic<bool> captureRequested = false;
+    std::atomic<bool> captureBlocked = false;
     std::thread frameSubmissionThread;
     std::atomic<bool> frameSubmissionRunning = false;
 

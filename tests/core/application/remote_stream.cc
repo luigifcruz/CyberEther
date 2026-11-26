@@ -777,7 +777,7 @@ TEST_CASE("A keyframe request on an idle window asks for a frame and captures it
     CHECK_FALSE(viewport.consumeRedraw());
 }
 
-TEST_CASE("A busy capture slot keeps the frame pending until a capture is accepted",
+TEST_CASE("A busy capture slot keeps the frame pending until the encoder releases it",
           "[core][application][remote][capture]") {
     struct Capture final : Viewport::FrameCapture {
         unsigned attempts = 0;
@@ -808,10 +808,73 @@ TEST_CASE("A busy capture slot keeps the frame pending until a capture is accept
     REQUIRE(remote.captureFrame(true, start) == Result::SUCCESS);
     CHECK(counter->frames == 0);
     REQUIRE(remote.captureFrame(false, start + 1ms) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+    remote.releaseCapture();
     CHECK(viewport.consumeRedraw());
     REQUIRE(remote.captureFrame(true, start + 2ms) == Result::SUCCESS);
     CHECK(counter->frames == 1);
+    remote.releaseCapture();
+    CHECK_FALSE(viewport.consumeRedraw());
     REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+}
+
+TEST_CASE("Metal capture is decided on the present it captures",
+          "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned released = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { return Result::ERROR; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { ++released; return Result::SUCCESS; }
+    };
+    RenderTest::Viewport viewport;
+    Instance::Remote::Impl remote;
+    remote.viewport = &viewport;
+    remote.viewportDevice = DeviceType::Metal;
+    remote.config.video.framerate = 60;
+    remote.frameCapture = std::make_unique<Capture>();
+    (void)viewport.consumeRedraw();
+
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    CHECK(remote.acceptCapture(true, start));
+    REQUIRE(remote.captureFrame(true, start) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    CHECK_FALSE(remote.acceptCapture(true, start + 1ms));
+    REQUIRE(remote.captureFrame(true, start + 1ms) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK(viewport.consumeRedraw());
+    CHECK(remote.acceptCapture(true, start + 1s + 1ms));
+    REQUIRE(remote.captureFrame(true, start + 1s + 1ms) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(false, start + 2s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    CHECK_FALSE(remote.acceptCapture(false, start + 3s));
+    REQUIRE(remote.captureFrame(false, start + 3s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+    remote.releaseCapture();
+    CHECK(viewport.consumeRedraw());
+    CHECK(remote.acceptCapture(true, start + 3s + 1ms));
+    REQUIRE(remote.captureFrame(false, start + 4s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    remote.requestKeyframe();
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(false, start + 5s) == Result::SUCCESS);
+    CHECK(viewport.consumeRedraw());
+    CHECK(remote.acceptCapture(true, start + 5s + 1ms));
+    REQUIRE(remote.captureFrame(false, start + 6s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    remote.requestKeyframe();
+    CHECK(viewport.consumeRedraw());
+    CHECK(remote.acceptCapture(true, start + 7s));
+    REQUIRE(remote.captureFrame(true, start + 7s) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(false, start + 8s) == Result::SUCCESS);
     CHECK_FALSE(viewport.consumeRedraw());
 }
 
