@@ -1,6 +1,7 @@
 #include "jetstream/viewport/platforms/headless/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
+#include <algorithm>
 #include <cmath>
 
 namespace Jetstream::Viewport {
@@ -137,24 +138,10 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
 
     _currentDrawableIndex = (_currentDrawableIndex + 1) % kImageCount;
 
-    // Ensure that we don't run too fast.
-
-    auto currentTime = std::chrono::steady_clock::now();
-    auto deltaTime = std::chrono::duration<F64>(currentTime - lastTime).count();
-    const F64 targetDeltaTime = 1.0 / config.framerate;
-
-    if (deltaTime < targetDeltaTime) {
-        auto sleepTime = std::chrono::duration<F64>(targetDeltaTime - deltaTime);
-        auto endSleepTime = currentTime + std::chrono::duration_cast<std::chrono::steady_clock::duration>(sleepTime);
-
-        while (std::chrono::steady_clock::now() < endSleepTime) {
-            std::this_thread::yield();
-        }
-
-        currentTime = std::chrono::steady_clock::now();
-    }
-
-    lastTime = currentTime;
+    using Clock = Jetstream::Platform::DeadlineWaiter::Clock;
+    const auto period = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<F64>(1.0 / config.framerate));
+    lastTime = std::max(lastTime + period, Clock::now());
+    waiter.waitUntil(lastTime, waiter.generation());
 
     // Dummy signal semaphore.
 
