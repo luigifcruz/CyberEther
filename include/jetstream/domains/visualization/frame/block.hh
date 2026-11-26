@@ -14,11 +14,12 @@ struct Frame : public Block::Config {
     std::string interpolation = "nearest";
     std::string xLabel = "X (px)";
     std::string yLabel = "Y (px)";
+    bool showBoxes = true;
 
     JST_BLOCK_TYPE(frame);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(fit, colormap, autoRange, interpolation, xLabel, yLabel);
+    JST_BLOCK_PARAMS(fit, colormap, autoRange, interpolation, xLabel, yLabel, showBoxes);
     JST_BLOCK_DESCRIPTION(
         "Frame",
         "Displays images and heat maps.",
@@ -57,6 +58,32 @@ struct Frame : public Block::Config {
         "| **Interpolation** | Nearest | Nearest, Bilinear, Bicubic | How values "
         "between pixel centers are drawn. Nearest keeps pixels sharp, and Bicubic is "
         "the smoothest. |\n"
+        "| **Boxes** | On | On, Off | Draws the boxes listed in the input's `boxes` "
+        "attribute over the frame. |\n"
+        "\n"
+        "## Boxes\n"
+        "\n"
+        "A producer such as a Python block can mark regions of the frame by setting the "
+        "`boxes` tensor attribute to a list of entries. Each entry is a map in frame "
+        "pixels with row 0 at the top. Boxes follow zoom and pan, are clipped to the "
+        "image, and update with every frame. Set the attribute to an empty list to "
+        "clear them. Up to 64 boxes are drawn.\n"
+        "\n"
+        "| Key | Type | Meaning |\n"
+        "|---|---|---|\n"
+        "| **x**, **y** | Number | Left column and top row of the box. |\n"
+        "| **width**, **height** | Number | Box size in columns and rows. |\n"
+        "| **label** | String, optional | Text drawn inside the top-left corner, up to "
+        "48 characters. |\n"
+        "| **color** | List of 3 or 4 numbers from 0 to 1, or \"#RRGGBB[AA]\", optional |"
+        " Outline and label color. Yellow when omitted. |\n"
+        "\n"
+        "```python\n"
+        "ctx.output_attrs[0][\"boxes\"] = [\n"
+        "    {\"x\": 120, \"y\": 40, \"width\": 30, \"height\": 12,\n"
+        "     \"label\": \"pulse\", \"color\": [1.0, 0.3, 0.3]},\n"
+        "]\n"
+        "```\n"
         "\n"
         "## Recipes\n"
         "\n"
@@ -85,6 +112,9 @@ struct Frame : public Block::Config {
         " or Slice the last axis down to 1, 3, or 4. |\n"
         "| The block reports an unsupported input data type | The input is not F32 | "
         "Convert it with a Cast block. |\n"
+        "| Boxes do not appear | The `boxes` attribute is missing, is not a list of maps, "
+        "or the entries lack x, y, width, or height | Check the log for a Frame warning "
+        "and fix the entries. |\n"
         "| The block reports that it expects a contiguous tensor | The input is "
         "strided, such as a Slice with Contiguous off | Turn on Contiguous in the "
         "Slice. |\n"

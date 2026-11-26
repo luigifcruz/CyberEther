@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_FRAME_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_FRAME_MODULE_IMPL_HH
 
+#include <any>
 #include <optional>
 #include <array>
 #include <string>
@@ -26,6 +27,24 @@ namespace Jetstream::Modules {
 constexpr F32 kFrameZoomSpeed = 0.15f;
 constexpr F32 kFrameMaxZoom = 64.0f;
 constexpr F32 kFrameDragThresholdPx = 4.0f;
+constexpr U64 kFrameMaxBoxes = 64;
+constexpr U64 kFrameMaxBoxLabelCharacters = 48;
+
+// A region of the frame in pixel units, with row 0 at the top.
+struct FrameBox {
+    F32 x = 0.0f;
+    F32 y = 0.0f;
+    F32 width = 0.0f;
+    F32 height = 0.0f;
+    std::string label;
+    ColorRGBA<F32> color = {1.0f, 0.85f, 0.2f, 1.0f};
+
+    bool operator==(const FrameBox&) const = default;
+};
+
+// Parses the value of the `boxes` tensor attribute. Malformed entries are
+// skipped and counted in `rejected`. At most kFrameMaxBoxes are kept.
+JETSTREAM_API std::vector<FrameBox> ParseFrameBoxes(const std::any& value, U64& rejected);
 
 struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
  public:
@@ -45,6 +64,14 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     std::string frameLabel;
 
     std::vector<F32> pixels;
+    std::vector<FrameBox> pendingBoxes;
+    std::vector<FrameBox> boxes;
+    bool warnedBoxes = false;
+    // Box overlay cache. The overlay is rebuilt only when the boxes or the view
+    // change, and skipped entirely while no box is drawn.
+    bool boxesChanged = false;
+    U64 drawnBoxes = 0;
+    std::array<F32, 13> boxLayout = {};
     bool updateFrameFlag = false;
     bool redrawFlag = false;
 
@@ -107,6 +134,8 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     std::shared_ptr<Render::Components::Axis> axis;
     std::shared_ptr<Render::Components::Text> text;
     std::shared_ptr<Render::Components::Shapes> selection;
+    std::shared_ptr<Render::Components::Shapes> boxOutlines;
+    std::shared_ptr<Render::Components::Text> boxLabels;
 
     Result createPresent();
     Result destroyPresent();
@@ -114,6 +143,10 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     Result present();
     Result applyTheme();
     JETSTREAM_API std::pair<F32, F32> displayRange() const;
+
+    void stageBoxes();
+    Result updateBoxState();
+    Extent2D<F32> imageToPlot(const Extent2D<F32>& image) const;
 
     void processInputEvents(const std::vector<InputEvent>& events);
     void clampViewCenter();

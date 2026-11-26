@@ -172,6 +172,16 @@ Each role may appear at most once, omitted trailing dimensions carry no explicit
 
 Structural tensor blocks remain explicitly axis-configured because modifying dimensions is their job. Built-in structural blocks remap `sampleAxis`, `batchAxis`, and `channelAxis` to the output layout (or drop a role when its dimension disappears or becomes ambiguous). Custom structural blocks must do the same rather than copying stale axis indices.
 
+### Frame Boxes
+
+The `boxes` attribute lists regions for the **Frame** block to outline over the image. It is a sequence of maps, each with numeric `x`, `y`, `width`, and `height` in frame pixels (row 0 at the top), plus an optional `label` string and an optional `color` given as three or four numbers from 0 to 1 or as `"#RRGGBB[AA]"`. Frame draws up to 64 boxes, skips malformed entries with a warning, and clears the overlay when the attribute is an empty sequence or absent. Unlike stream properties, `boxes` describes the current frame, so producers update it with every frame they emit:
+
+```python
+ctx.output_attrs[0]["boxes"] = [
+    {"x": 120, "y": 40, "width": 30, "height": 12, "label": "pulse"},
+]
+```
+
 ### Attribute Best Practices
 
 - **Reuse established names.** Built-in blocks and UI pin tooltips expect standard names like `sampleRate` and `frequency`. Inventing alternate spellings silently breaks interoperability.

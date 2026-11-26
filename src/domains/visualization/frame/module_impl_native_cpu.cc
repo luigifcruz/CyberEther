@@ -64,6 +64,7 @@ Result FrameImplNativeCpu::presentSubmit() {
 
 Result FrameImplNativeCpu::computeSubmit() {
     updateFrameFlag = true;
+    stageBoxes();
 
     if (!autoRange || input.size() == 0 || channels == 0) {
         return Result::SUCCESS;

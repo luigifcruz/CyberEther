@@ -28,6 +28,9 @@ inline constexpr std::string_view ReceivedSamplesAttribute = "receivedSamples";
 inline constexpr std::string_view RadioLostSamplesAttribute = "radioLostSamples";
 inline constexpr std::string_view RadioGapsAttribute = "radioGaps";
 inline constexpr std::string_view BufferLostSamplesAttribute = "bufferLostSamples";
+// Sequence of maps with x, y, width, and height in frame pixels (row 0 at the
+// top), plus optional label and color. Drawn as overlays by the Frame module.
+inline constexpr std::string_view BoxesAttribute = "boxes";
 
 JETSTREAM_API Result ValidateAttribute(std::string_view key, const std::any& value);
 JETSTREAM_API Result AttributeTypeError(std::string_view key,

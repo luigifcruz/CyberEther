@@ -15,9 +15,10 @@ struct Frame : public Module::Config {
     std::string interpolation = "nearest";
     std::string xLabel = "X (px)";
     std::string yLabel = "Y (px)";
+    bool showBoxes = true;
 
     JST_MODULE_TYPE(frame);
-    JST_MODULE_PARAMS(fit, colormap, autoRange, interpolation, xLabel, yLabel);
+    JST_MODULE_PARAMS(fit, colormap, autoRange, interpolation, xLabel, yLabel, showBoxes);
 };
 
 }  // namespace Jetstream::Modules

@@ -22,6 +22,7 @@ Result FrameImpl::configure() {
     frameConfig->interpolation = interpolation;
     frameConfig->xLabel = xLabel;
     frameConfig->yLabel = yLabel;
+    frameConfig->showBoxes = showBoxes;
 
     return Result::SUCCESS;
 }
@@ -63,6 +64,12 @@ Result FrameImpl::define() {
                                         Parser::Map{{"label", "Bilinear"}, {"value", "bilinear"}},
                                         Parser::Map{{"label", "Bicubic"}, {"value", "bicubic"}},
                                     }}}));
+
+    JST_CHECK(defineInterfaceConfig("showBoxes",
+                                    "Boxes",
+                                    "Draw the boxes listed in the input's boxes attribute "
+                                    "over the frame.",
+                                    {{"type", "bool"}}));
 
     return Result::SUCCESS;
 }
