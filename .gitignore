@@ -15,6 +15,7 @@ builddir
 *.zip
 subprojects/*
 !subprojects/packagefiles
+!subprojects/amf-headers.wrap
 !subprojects/birriasdr.wrap
 !subprojects/bladerf-no-os.wrap
 !subprojects/catch2.wrap
@@ -33,6 +34,7 @@ subprojects/*
 !subprojects/libiio.wrap
 !subprojects/libjuice.wrap
 !subprojects/libmodes.wrap
+!subprojects/libvpl.wrap
 !subprojects/librtlsdr.wrap
 !subprojects/libusb-browser.wrap
 !subprojects/libusb.wrap

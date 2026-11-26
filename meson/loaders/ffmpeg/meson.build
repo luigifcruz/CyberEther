@@ -94,6 +94,22 @@ if all_deps_found
         ]
     endif
 
+    if jst_is_windows
+        ffmpeg_options += [
+            'd3d11va=enabled',
+            'amf=enabled',
+            'h264_amf_encoder=enabled',
+            'hevc_amf_encoder=enabled',
+            'av1_amf_encoder=enabled',
+            'libvpl=enabled',
+            'h264_qsv_encoder=enabled',
+            'hevc_qsv_encoder=enabled',
+            'av1_qsv_encoder=enabled',
+        ]
+        subproject('amf-headers', required: true)
+        subproject('libvpl', required: true)
+    endif
+
     if ffmpeg_nvidia
         subproject('nv-codec-headers', required: true)
     endif

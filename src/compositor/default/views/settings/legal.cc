@@ -126,6 +126,8 @@ const std::vector<LegalSettingsView::Dependency>& LegalSettingsView::Dependencie
         {"FFmpeg", "LGPL-2.1-or-later"},
         {"OpenH264", "BSD-2-Clause"},
         {"nv-codec-headers", "MIT"},
+        {"AMF", "MIT"},
+        {"libvpl", "MIT"},
         {"libdatachannel", "MPL-2.0"},
         {"libjuice", "MPL-2.0"},
         {"usrsctp", "BSD-3-Clause"},

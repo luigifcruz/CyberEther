@@ -70,10 +70,12 @@ struct EncoderNameCase {
     const char* mixedCaseName;
 };
 
-constexpr std::array<EncoderNameCase, 5> EncoderNameCases = {{
+constexpr std::array<EncoderNameCase, 7> EncoderNameCases = {{
     {Instance::Remote::EncoderType::Auto, "auto", "Auto", "AuTo"},
     {Instance::Remote::EncoderType::Software, "software", "Software", "SoFtWaRe"},
     {Instance::Remote::EncoderType::NVENC, "nvenc", "NVENC", "NvEnC"},
+    {Instance::Remote::EncoderType::AMF, "amf", "AMF", "AmF"},
+    {Instance::Remote::EncoderType::QSV, "qsv", "QSV", "QsV"},
     {Instance::Remote::EncoderType::V4L2, "v4l2", "V4L2", "V4l2"},
     {Instance::Remote::EncoderType::VideoToolbox,
      "videotoolbox",
@@ -520,7 +522,7 @@ TEST_CASE("Remote encoder names round-trip and reject unknown values",
     RequireResultError([] { (void)StringToRemoteEncoder(std::string{"auto\0suffix", 11}); });
     RequireResultError([] { (void)StringToRemoteEncoder("not-an-encoder"); });
 
-    for (const auto value : {6, 255}) {
+    for (const auto value : {7, 255}) {
         const auto invalid = static_cast<Instance::Remote::EncoderType>(value);
         RequireResultError([invalid] { (void)GetRemoteEncoderName(invalid); });
         REQUIRE(std::string(GetRemoteEncoderPrettyName(invalid)) == "Unknown");

@@ -167,6 +167,20 @@ const char* Instance::Remote::Encoder::CodecName(CodecType codec, EncoderType en
                 case CodecType::H265: return "hevc_v4l2m2m";
                 default:              return nullptr;
             }
+        case EncoderType::AMF:
+            switch (codec) {
+                case CodecType::H264: return "h264_amf";
+                case CodecType::H265: return "hevc_amf";
+                case CodecType::AV1:  return "av1_amf";
+                default:              return nullptr;
+            }
+        case EncoderType::QSV:
+            switch (codec) {
+                case CodecType::H264: return "h264_qsv";
+                case CodecType::H265: return "hevc_qsv";
+                case CodecType::AV1:  return "av1_qsv";
+                default:              return nullptr;
+            }
         default:
             return nullptr;
     }
@@ -232,6 +246,8 @@ Result Instance::Remote::Encoder::Configure(AVCodecContext* context, const Confi
     } else if (config.encoder == EncoderType::VideoToolbox) {
         context->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
         context->sw_pix_fmt = AV_PIX_FMT_BGRA;
+    } else if (config.encoder == EncoderType::QSV) {
+        context->pix_fmt = AV_PIX_FMT_NV12;
     } else {
         context->pix_fmt = InputFormat(codec);
     }
@@ -267,6 +283,38 @@ Result Instance::Remote::Encoder::Configure(AVCodecContext* context, const Confi
             if (config.codec == CodecType::H264) {
                 context->profile = AV_PROFILE_H264_CONSTRAINED_BASELINE;
             }
+            break;
+        case EncoderType::AMF:
+            if (config.codec == CodecType::H264) {
+                context->profile = AV_PROFILE_H264_CONSTRAINED_BASELINE;
+            }
+            context->flags |= AV_CODEC_FLAG_LOW_DELAY;
+            SetOption(context, "usage", "ultralowlatency");
+            SetOption(context, "quality", "speed");
+            SetOption(context, "rc", "cbr");
+            SetOption(context, "async_depth", "1");
+            SetOption(context, "forced_idr", "1");
+            if (config.codec == CodecType::AV1) {
+                SetOption(context, "latency", "lowest_latency");
+                SetOption(context, "header_insertion_mode", "frame");
+            } else {
+                SetOption(context, "latency", "1");
+            }
+            if (config.codec == CodecType::H265) {
+                SetOption(context, "header_insertion_mode", "idr");
+            }
+            break;
+        case EncoderType::QSV:
+            if (config.codec == CodecType::H264) {
+                SetOption(context, "profile", std::to_string(AV_PROFILE_H264_CONSTRAINED_BASELINE).c_str());
+            }
+            if (config.codec != CodecType::AV1) {
+                SetOption(context, "scenario", "remotegaming");
+            }
+            SetOption(context, "preset", "veryfast");
+            SetOption(context, "async_depth", "1");
+            SetOption(context, "low_delay_brc", "1");
+            SetOption(context, "forced_idr", "1");
             break;
         default:
             JST_ERROR("[REMOTE] Unsupported encoder '{}'.", config.encoder);

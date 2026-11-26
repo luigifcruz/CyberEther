@@ -523,6 +523,8 @@ std::vector<Instance::Remote::Impl::EncodingCombination> Instance::Remote::Impl:
 #endif
 
     add(nvencDevice, EncoderType::NVENC);
+    add(DeviceType::CPU, EncoderType::AMF);
+    add(DeviceType::CPU, EncoderType::QSV);
     add(DeviceType::CPU, EncoderType::VideoToolbox);
     add(DeviceType::CPU, EncoderType::V4L2);
     add(DeviceType::CPU, EncoderType::Software);

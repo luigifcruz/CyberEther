@@ -20,7 +20,7 @@ Everything is completely self-hosted. There is no account, no cloud service, and
 
 ## Quick Start
 
-Remote Streaming supports both the Vulkan and Metal renderers, including headless mode. Linux and Windows default to Vulkan, while macOS defaults to Metal. On macOS, setting the encoder to Auto uses VideoToolbox hardware encoding whenever available.
+Remote Streaming supports both the Vulkan and Metal renderers, including headless mode. Linux and Windows default to Vulkan, while macOS defaults to Metal. On macOS, setting the encoder to Auto uses VideoToolbox hardware encoding whenever available. On Windows, Auto picks NVENC on NVIDIA, AMF on AMD, or QSV on Intel graphics.
 
 ### Option 1: Start From the Desktop App
 
