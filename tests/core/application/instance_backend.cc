@@ -129,6 +129,7 @@ TEST_CASE("Startup configuration defaults are stable",
     REQUIRE(remote.broker.key.empty());
     REQUIRE_FALSE(remote.access.autoApprove);
     REQUIRE(remote.video.framerate == 30);
+    REQUIRE(remote.video.matchViewer);
     REQUIRE(remote.video.encoder == Instance::Remote::EncoderType::Auto);
     REQUIRE(remote.video.codec == Instance::Remote::CodecType::H264);
 }

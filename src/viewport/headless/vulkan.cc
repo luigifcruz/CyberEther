@@ -18,17 +18,29 @@ Result Implementation::create() {
 
     extent.width = static_cast<U32>(config.size.x);
     extent.height = static_cast<U32>(config.size.y);
+    requestedExtent = extent;
 
     // Initialize timing.
 
     lastTime = std::chrono::steady_clock::now();
 
+    imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+
+    return createSwapchain();
+}
+
+Result Implementation::createSwapchain() {
+    {
+        std::lock_guard<std::mutex> lock(extentMutex);
+        extent = requestedExtent;
+        scale = requestedScale;
+        resizeRequested = false;
+    }
+
     // Create off-screen images.
 
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<DeviceType::Vulkan>()->getPhysicalDevice();
-
-    imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
 
     for (U32 i = 0; i < kImageCount; i++) {
         // Create image.
@@ -101,29 +113,21 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    return destroySwapchain();
+}
 
-    for (U32 i = 0; i < kImageCount; i++) {
-        if (imageViews[i]) {
-            vkDestroyImageView(device, imageViews[i], nullptr);
-        }
-        if (images[i]) {
-            vkDestroyImage(device, images[i], nullptr);
-        }
-        if (imageMemory[i]) {
-            vkFreeMemory(device, imageMemory[i], nullptr);
-        }
-    }
-
-    return Result::SUCCESS;
+Extent2D<F32> Implementation::displaySize() const {
+    std::lock_guard<std::mutex> lock(extentMutex);
+    return {static_cast<F32>(extent.width) / scale, static_cast<F32>(extent.height) / scale};
 }
 
 Extent2D<F32> Implementation::framebufferSize() const {
+    std::lock_guard<std::mutex> lock(extentMutex);
     return {static_cast<F32>(extent.width), static_cast<F32>(extent.height)};
 }
 
 Result Implementation::waitForPresent() {
-    return Result::SUCCESS;
+    return resizeRequested ? Result::RECREATE : Result::SUCCESS;
 }
 
 Result Implementation::nextDrawable(VkSemaphore& semaphore) {
@@ -212,6 +216,7 @@ U32 Implementation::getSwapchainImageViewsCount() const {
 }
 
 Extent2D<U64> Implementation::getSwapchainExtent() const {
+    std::lock_guard<std::mutex> lock(extentMutex);
     return {extent.width, extent.height};
 }
 
@@ -232,11 +237,42 @@ bool Implementation::retainedPresent() const {
     return true;
 }
 
-Result Implementation::createSwapchain() {
+Result Implementation::destroySwapchain() {
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+
+    for (U32 i = 0; i < kImageCount; i++) {
+        if (imageViews[i]) {
+            vkDestroyImageView(device, imageViews[i], nullptr);
+            imageViews[i] = VK_NULL_HANDLE;
+        }
+        if (images[i]) {
+            vkDestroyImage(device, images[i], nullptr);
+            images[i] = VK_NULL_HANDLE;
+        }
+        if (imageMemory[i]) {
+            vkFreeMemory(device, imageMemory[i], nullptr);
+            imageMemory[i] = VK_NULL_HANDLE;
+        }
+    }
+
     return Result::SUCCESS;
 }
 
-Result Implementation::destroySwapchain() {
+Result Implementation::resize(const Extent2D<U64>& size, F32 scale) {
+    if (size.x == 0 || size.y == 0 || scale <= 0.0f) {
+        return Result::ERROR;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(extentMutex);
+        requestedExtent = {static_cast<U32>(size.x), static_cast<U32>(size.y)};
+        requestedScale = scale;
+        resizeRequested = requestedExtent.width != extent.width ||
+                          requestedExtent.height != extent.height ||
+                          requestedScale != this->scale;
+    }
+
+    requestRedraw();
     return Result::SUCCESS;
 }
 

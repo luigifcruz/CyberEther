@@ -27,6 +27,15 @@ void RemoteSettingsView::update(Config config) {
         },
     });
 
+    matchViewerToggle.update({
+        .value = this->config.matchViewer,
+        .onChange = [this](bool value) {
+            if (this->config.onMatchViewerChange) {
+                this->config.onMatchViewerChange(value);
+            }
+        },
+    });
+
     framerateStepper.update({
         .options = {"15 fps", "30 fps", "60 fps", "120 fps"},
         .selected = framerateIndex(this->config.framerate),
@@ -215,6 +224,12 @@ void RemoteSettingsView::update(Config config) {
                 .label = "Video Encoder",
                 .description = "The hardware or software encoder used to compress the video stream.",
                 .control = &encoderCombo,
+            },
+            {
+                .label = "Match Viewer Resolution",
+                .description = "Resize a headless session to fit the browser window of the viewer in control. "
+                               "Turn off to keep the size set at launch.",
+                .control = &matchViewerToggle,
             },
         },
     });

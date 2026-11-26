@@ -90,6 +90,16 @@ Result RemoteActions::handle(const MailSetRemoteEncoder& msg) {
     return Result::SUCCESS;
 }
 
+Result RemoteActions::handle(const MailSetRemoteMatchViewer& msg) {
+    state.remote.config.video.matchViewer = msg.value;
+
+    JST_CHECK(PersistSettings([&](Settings& settings) {
+        settings.remote.video.matchViewer = msg.value;
+    }));
+
+    return Result::SUCCESS;
+}
+
 Result RemoteActions::handle(const MailSetRemoteAutoApprove& msg) {
     state.remote.config.access.autoApprove = msg.value;
 

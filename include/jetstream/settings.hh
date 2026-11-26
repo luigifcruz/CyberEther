@@ -41,8 +41,9 @@ struct JETSTREAM_API Settings {
             U64 framerate = 30;
             std::string codec = "h264";
             std::string encoder = "auto";
+            bool matchViewer = true;
 
-            JST_SERDES(framerate, codec, encoder);
+            JST_SERDES(framerate, codec, encoder, matchViewer);
         };
 
         struct Broker {

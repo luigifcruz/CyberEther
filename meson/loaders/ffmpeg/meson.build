@@ -89,6 +89,7 @@ if all_deps_found
 
     if jst_is_linux
         ffmpeg_options += [
+            'c_std=gnu17',
             'v4l2_m2m=enabled',
             'h264_v4l2m2m_encoder=enabled',
             'hevc_v4l2m2m_encoder=enabled',

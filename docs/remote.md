@@ -41,6 +41,8 @@ cyberether --remote --headless flowgraph.yml
 
 The terminal prints a QR code, the invite link, and the access token. When a viewer requests access, the terminal prints its six-character code and waits for confirmation. Verify that it matches the viewer's screen, then type `y`.
 
+In headless mode, the interface resizes to fit the browser window of the viewer in control, matching its pixel density up to 4K. The `--size` option only sets the size used before a viewer connects. Turn off **Match Viewer Resolution** to keep the launch size instead. A desktop window keeps its own size, and the stream follows it when the window is resized.
+
 ## How It Works
 
 When streaming starts, CyberEther runs a lightweight broker on TCP port `8686` by default. That broker performs three tasks:
@@ -84,6 +86,7 @@ Leave approval set to Manual unless every device that might see the invite link 
 | **Video Framerate** | `--remote-framerate <fps>` | `30` | Target frame rate of the outgoing stream. |
 | **Video Codec** | `--remote-codec <codec>` | `H264` | Compression format (`h264`, `h265`, or `av1`). H265 and AV1 need an encoder that supports them, and H265 also needs a browser that can decode it. |
 | **Video Encoder** | `--remote-encoder <encoder>` | `Auto` | Video encoder selection. Choosing `Auto` uses hardware encoding when available. |
+| **Match Viewer Resolution** | `--remote-match-viewer <on\|off>` | On | Resizes a headless session to fit the browser window of the viewer in control. Turn off to keep the launch size. |
 
 > [!TIP]
 > H264 is the only codec every browser decodes. If a viewer connects without showing video after you pick `h265` or `av1`, switch **Video Codec** back to `h264`.

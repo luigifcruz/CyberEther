@@ -40,7 +40,7 @@ struct Instance::Remote::Encoder::CudaInput : public Input {
 
     Result create(Encoder& encoder) override {
         if (!driver.load()) {
-            JST_ERROR("[REMOTE] Failed to load the CUDA driver.");
+            JST_DEBUG("[REMOTE] Failed to load the CUDA driver.");
             return Result::ERROR;
         }
 

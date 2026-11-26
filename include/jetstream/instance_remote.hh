@@ -50,6 +50,7 @@ struct JETSTREAM_API Instance::Remote {
             U32 framerate = 30;
             CodecType codec = CodecType::H264;
             EncoderType encoder = EncoderType::Auto;
+            bool matchViewer = true;
         };
 
         struct Broker {

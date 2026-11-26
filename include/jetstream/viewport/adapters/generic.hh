@@ -83,6 +83,7 @@ class JETSTREAM_API Generic {
 
     virtual bool macOSBehaviors() const;
     virtual bool retainedPresent() const;
+    virtual Result resize(const Extent2D<U64>& size, F32 scale);
     virtual bool waitIdle(F64 seconds, bool surfaces);
 
     F64 inputTime() const;

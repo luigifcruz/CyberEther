@@ -22,6 +22,7 @@ struct RemoteActions {
                               MailSetRemoteCodec,
                               MailSetRemoteFramerate,
                               MailSetRemoteEncoder,
+                              MailSetRemoteMatchViewer,
                               MailSetRemoteAutoApprove,
                               MailSetRemoteTransport,
                               MailSetRemotePortRange,
@@ -40,6 +41,7 @@ struct RemoteActions {
     Result handle(const MailSetRemoteCodec& msg);
     Result handle(const MailSetRemoteFramerate& msg);
     Result handle(const MailSetRemoteEncoder& msg);
+    Result handle(const MailSetRemoteMatchViewer& msg);
     Result handle(const MailSetRemoteAutoApprove& msg);
     Result handle(const MailSetRemoteTransport& msg);
     Result handle(const MailSetRemotePortRange& msg);

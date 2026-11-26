@@ -261,8 +261,11 @@ Result FrameCaptureVulkan::destroy() {
 Result FrameCaptureVulkan::stop() {
     JST_DEBUG("[CAPTURE] Stopping Vulkan frame capture.");
 
-    pimpl->running = false;
-    pimpl->stopped = true;
+    {
+        std::lock_guard<std::mutex> lock(pimpl->frameMutex);
+        pimpl->running = false;
+        pimpl->stopped = true;
+    }
     pimpl->frameCond.notify_all();
 
     return Result::SUCCESS;
@@ -271,6 +274,11 @@ Result FrameCaptureVulkan::stop() {
 Result FrameCaptureVulkan::captureFrame() {
     if (!pimpl->running || !pimpl->vulkanViewport) {
         return Result::SUCCESS;
+    }
+
+    const auto swapchainExtent = pimpl->vulkanViewport->getSwapchainExtent();
+    if (swapchainExtent.x != pimpl->extent.width || swapchainExtent.y != pimpl->extent.height) {
+        return Result::SKIP;
     }
 
     if (pimpl->frameEvents[pimpl->currentCaptureIndex].test()) {

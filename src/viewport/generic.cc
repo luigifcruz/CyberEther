@@ -75,6 +75,10 @@ bool Generic::retainedPresent() const {
     return false;
 }
 
+Result Generic::resize(const Extent2D<U64>&, F32) {
+    return Result::SKIP;
+}
+
 void Generic::setCursor(SurfaceCursor cursor) {
     if (platform) {
         platform->setCursor(cursor);

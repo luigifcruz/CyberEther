@@ -16,6 +16,7 @@
 #endif
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <condition_variable>
 #include <chrono>
@@ -173,24 +174,13 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
         return Result::ERROR;
     }
 
-    // Get viewport size
-    this->size = {};
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    if (this->viewportDevice == DeviceType::Metal) {
-        auto* metalAdapter = dynamic_cast<Viewport::Adapter<DeviceType::Metal>*>(this->viewport);
-        if (metalAdapter) {
-            this->size = metalAdapter->getSwapchainExtent();
-        }
+    this->setStreamSize(this->viewportExtent());
+    if (viewport && (this->launchSize.x == 0 || this->launchSize.y == 0)) {
+        this->launchSize = this->size;
+        const auto display = viewport->displaySize();
+        const auto framebuffer = viewport->framebufferSize();
+        this->launchScale = display.x > 0.0f ? framebuffer.x / display.x : 1.0f;
     }
-#endif
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-    if (this->viewportDevice == DeviceType::Vulkan) {
-        auto* vulkanAdapter = dynamic_cast<Viewport::Adapter<DeviceType::Vulkan>*>(this->viewport);
-        if (vulkanAdapter) {
-            this->size = vulkanAdapter->getSwapchainExtent();
-        }
-    }
-#endif
 
     if (this->size.x == 0 || this->size.y == 0) {
         JST_ERROR("[REMOTE] Failed to get viewport size.");
@@ -219,7 +209,35 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
         return Result::ERROR;
     }
 
-    // Start frame submission thread
+    if (this->startSubmission() != Result::SUCCESS) {
+        this->rollbackCreate();
+        return Result::ERROR;
+    }
+
+    this->started_ = true;
+    JST_INFO("[REMOTE] Remote streaming started.");
+    return Result::SUCCESS;
+}
+
+Extent2D<U64> Instance::Remote::Impl::viewportExtent() const {
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if (this->viewportDevice == DeviceType::Metal) {
+        if (auto* adapter = dynamic_cast<Viewport::Adapter<DeviceType::Metal>*>(this->viewport)) {
+            return adapter->getSwapchainExtent();
+        }
+    }
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    if (this->viewportDevice == DeviceType::Vulkan) {
+        if (auto* adapter = dynamic_cast<Viewport::Adapter<DeviceType::Vulkan>*>(this->viewport)) {
+            return adapter->getSwapchainExtent();
+        }
+    }
+#endif
+    return {};
+}
+
+Result Instance::Remote::Impl::startSubmission() {
     this->frameSubmissionRunning = true;
     try {
         this->frameSubmissionThread = std::thread([this]() {
@@ -247,14 +265,122 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
             }
         });
     } catch (const std::exception& e) {
+        this->frameSubmissionRunning = false;
         JST_ERROR("[REMOTE] Failed to start frame submission thread: {}", e.what());
-        this->rollbackCreate();
         return Result::ERROR;
     }
 
-    this->started_ = true;
-    JST_INFO("[REMOTE] Remote streaming started.");
     return Result::SUCCESS;
+}
+
+void Instance::Remote::Impl::stopSubmission() {
+    this->frameSubmissionRunning = false;
+    if (this->frameCapture) {
+        (void)this->frameCapture->stop();
+    }
+    if (this->frameSubmissionThread.joinable()) {
+        this->frameSubmissionThread.join();
+    }
+}
+
+Result Instance::Remote::Impl::followViewport() {
+    const Extent2D<U64> current = this->viewportExtent();
+    if (current.x == 0 || current.y == 0 || (current.x == this->size.x && current.y == this->size.y)) {
+        return Result::SUCCESS;
+    }
+    return this->rebuildStream(current);
+}
+
+Result Instance::Remote::Impl::rebuildStream(const Extent2D<U64>& next) {
+    JST_INFO("[REMOTE] Viewport changed from {}x{} to {}x{}. Rebuilding the stream.",
+             this->size.x, this->size.y, next.x, next.y);
+
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex);
+
+    this->stopSubmission();
+
+    std::unique_ptr<Encoder> oldEncoder;
+    {
+        std::lock_guard<std::mutex> lock(streamMutex);
+        oldEncoder = std::move(encoder);
+    }
+    oldEncoder.reset();
+
+    this->setStreamSize(next);
+    this->nextCaptureTime = {};
+    this->capturePending = false;
+    this->captureBlocked = false;
+
+    if (this->createCapture() != Result::SUCCESS) {
+        JST_WARN("[REMOTE] Failed to share frames with the encoder. Falling back to CPU memory.");
+        if (this->inputMemoryDevice_ == DeviceType::CPU ||
+            this->createStream(DeviceType::CPU) != Result::SUCCESS ||
+            this->createCapture() != Result::SUCCESS) {
+            JST_ERROR("[REMOTE] Failed to rebuild the frame capture.");
+            return Result::ERROR;
+        }
+    }
+
+    JST_CHECK(this->startSubmission());
+
+    if (!this->streaming) {
+        return Result::SUCCESS;
+    }
+
+    if (this->reopenStream() == Result::SUCCESS) {
+        return Result::SUCCESS;
+    }
+
+    JST_WARN("[REMOTE] Encoder can't stream at {}x{}. Picking another encoder.", next.x, next.y);
+    this->stopSubmission();
+    if (this->createStream() != Result::SUCCESS || this->createCapture() != Result::SUCCESS) {
+        if (this->createStream(DeviceType::CPU) != Result::SUCCESS || this->createCapture() != Result::SUCCESS) {
+            JST_ERROR("[REMOTE] Failed to rebuild the frame capture.");
+            return Result::ERROR;
+        }
+    }
+    JST_CHECK(this->startSubmission());
+    return this->reopenStream();
+}
+
+Result Instance::Remote::Impl::reopenStream() {
+    std::unique_ptr<Encoder> newEncoder;
+    JST_CHECK(this->openEncoder(newEncoder));
+    {
+        std::lock_guard<std::mutex> lock(telemetry.mutex);
+        telemetry.samples.clear();
+        telemetry.format = newEncoder->format();
+    }
+    {
+        std::lock_guard<std::mutex> lock(streamMutex);
+        encoder = std::move(newEncoder);
+    }
+    requestKeyframe();
+    return Result::SUCCESS;
+}
+
+Extent2D<U64> Instance::Remote::Impl::streamSize() const {
+    std::lock_guard<std::mutex> lock(sizeMutex);
+    return this->size;
+}
+
+void Instance::Remote::Impl::setStreamSize(const Extent2D<U64>& next) {
+    std::lock_guard<std::mutex> lock(sizeMutex);
+    this->size = next;
+}
+
+void Instance::Remote::Impl::restoreViewport() {
+    bool resized = false;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        resized = appliedViewport != ViewportRequest{};
+        viewportRequests.clear();
+        appliedViewport = {};
+    }
+
+    if (resized && viewport && launchSize.x > 0 && launchSize.y > 0) {
+        (void)viewport->resize(launchSize, launchScale);
+    }
 }
 
 Result Instance::Remote::Impl::createCapture() {
@@ -312,6 +438,7 @@ Result Instance::Remote::Impl::rollbackCreate() {
         std::lock_guard<std::mutex> lock(inputMutex);
         inputQueue.clear();
     }
+    this->restoreViewport();
     while (!remoteInputStates.empty()) {
         resetInput(remoteInputStates.begin()->first);
     }
@@ -355,6 +482,11 @@ Result Instance::Remote::Impl::captureFrame(bool presented, std::chrono::steady_
     }
 
     JST_CHECK(processInput());
+    applyViewport();
+    if (this->started_ && followViewport() != Result::SUCCESS) {
+        JST_ERROR("[REMOTE] Stopping remote streaming after the viewport change failed.");
+        return this->destroy();
+    }
     if (!this->frameCapture) {
         return Result::SUCCESS;
     }
@@ -543,7 +675,7 @@ std::vector<Instance::Remote::Impl::EncodingCombination> Instance::Remote::Impl:
             .codec = codec,
             .encoder = encoder,
             .device = device,
-            .size = size,
+            .size = streamSize(),
         };
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
         if (device == DeviceType::Vulkan) {
@@ -923,10 +1055,72 @@ void Instance::Remote::Impl::handleControlMessage(const std::string& sessionId, 
         return;
     }
 
+    if (j["kind"] == "viewport") {
+        recordViewport(sessionId, j);
+        return;
+    }
+
     try {
         enqueueInput(sessionId, std::move(j));
     } catch (const std::exception& e) {
         JST_WARN("[REMOTE] Rejected malformed control message: {}", e.what());
+    }
+}
+
+void Instance::Remote::Impl::recordViewport(const std::string& sessionId, const nlohmann::json& j) {
+    constexpr F64 kMaxWidth = 3840.0;
+    constexpr F64 kMaxHeight = 2160.0;
+    constexpr F64 kMinSide = 240.0;
+
+    const F64 width = j.value("width", 0.0);
+    const F64 height = j.value("height", 0.0);
+    const F64 scale = std::clamp(j.value("scale", 1.0), 0.5, 4.0);
+    if (!std::isfinite(width) || !std::isfinite(height) || width < 1.0 || height < 1.0) {
+        JST_WARN("[REMOTE] Rejected invalid viewport size.");
+        return;
+    }
+
+    F64 pixelsX = width * scale;
+    F64 pixelsY = height * scale;
+    const F64 shrink = std::min({1.0, kMaxWidth / pixelsX, kMaxHeight / pixelsY});
+    pixelsX = std::max(kMinSide, pixelsX * shrink);
+    pixelsY = std::max(kMinSide, pixelsY * shrink);
+
+    const auto even = [](F64 value) {
+        return static_cast<U64>(value) & ~static_cast<U64>(1);
+    };
+
+    std::lock_guard<std::mutex> lock(inputMutex);
+    viewportRequests[sessionId] = {
+        .size = {even(pixelsX), even(pixelsY)},
+        .scale = static_cast<F32>(scale * shrink),
+    };
+}
+
+void Instance::Remote::Impl::applyViewport() {
+    if (!config.video.matchViewer) {
+        return;
+    }
+
+    ViewportRequest request;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        std::erase_if(viewportRequests, [&](const auto& entry) {
+            return std::ranges::find(inputSessionOrder, entry.first) == inputSessionOrder.end();
+        });
+        if (inputSessionOrder.empty()) {
+            return;
+        }
+        const auto it = viewportRequests.find(inputSessionOrder.front());
+        if (it == viewportRequests.end() || it->second == appliedViewport) {
+            return;
+        }
+        request = it->second;
+        appliedViewport = request;
+    }
+
+    if (viewport) {
+        (void)viewport->resize(request.size, request.scale);
     }
 }
 
@@ -956,15 +1150,13 @@ void Instance::Remote::Impl::bindControlChannel(const std::string& sessionId,
     });
 }
 
-Result Instance::Remote::Impl::startStream() {
-    JST_DEBUG("[REMOTE] Starting stream.");
-
-    const auto open = [&](std::unique_ptr<Encoder>& opened) {
+Result Instance::Remote::Impl::openEncoder(std::unique_ptr<Encoder>& opened) {
+    const auto open = [&]() {
         Encoder::Config encoderConfig = {
             .codec = config.video.codec,
             .encoder = encoderType,
             .device = inputMemoryDevice_,
-            .size = size,
+            .size = streamSize(),
             .framerate = config.video.framerate,
         };
 
@@ -978,8 +1170,7 @@ Result Instance::Remote::Impl::startStream() {
         return opened->create(encoderConfig);
     };
 
-    std::unique_ptr<Encoder> newEncoder;
-    Result result = open(newEncoder);
+    Result result = open();
     for (const auto& fallback : encoderFallbacks) {
         if (result == Result::SUCCESS) {
             break;
@@ -989,9 +1180,19 @@ Result Instance::Remote::Impl::startStream() {
         encoderType = fallback.encoder;
         JST_WARN("[REMOTE] Falling back to {} encoding with {} memory.", fallback.encoder,
                                                                          GetDevicePrettyName(fallback.device));
-        result = open(newEncoder);
+        result = open();
     }
-    JST_CHECK(result);
+
+    return result;
+}
+
+Result Instance::Remote::Impl::startStream() {
+    JST_DEBUG("[REMOTE] Starting stream.");
+
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex);
+
+    std::unique_ptr<Encoder> newEncoder;
+    JST_CHECK(openEncoder(newEncoder));
 
     initialFrameTime = std::chrono::steady_clock::now();
     lastKeyframeTime = initialFrameTime;
@@ -1019,6 +1220,7 @@ Result Instance::Remote::Impl::stopStream() {
 
     destroyAllWebRtcSessions();
 
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex);
     std::unique_ptr<Encoder> oldEncoder;
     {
         std::lock_guard<std::mutex> lock(streamMutex);
@@ -1114,7 +1316,7 @@ Result Instance::Remote::Impl::createVideoTrack(WebRtcSession& session) {
 
     const std::string parameters = Encoder::Parameters({
         .codec = config.video.codec,
-        .size = size,
+        .size = streamSize(),
         .framerate = config.video.framerate,
     });
 
@@ -1710,7 +1912,7 @@ Instance::Remote::Stats Instance::Remote::Impl::stats() {
     stats.encoder = encoderType;
     stats.codec = config.video.codec;
     stats.memory = inputMemoryDevice_;
-    stats.size = size;
+    stats.size = streamSize();
     stats.targetRate = static_cast<F32>(config.video.framerate);
 
     std::vector<std::shared_ptr<WebRtcSession>> active;

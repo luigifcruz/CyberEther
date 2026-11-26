@@ -768,6 +768,8 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
         {"--remote=true", "does not accept a value"},
         {"--remote-auto-approve", "Missing value for --remote-auto-approve"},
         {"--remote-auto-approve=true", "Invalid value for --remote-auto-approve"},
+        {"--remote-match-viewer", "Missing value for --remote-match-viewer"},
+        {"--remote-match-viewer=yes", "Invalid value for --remote-match-viewer"},
     };
     for (const auto& [argument, message] : errors) {
         Expect(argument, {argument}, 2, {}, {message});
@@ -776,6 +778,7 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
     Expect("codec dependency", {"--remote-codec", "h264"}, 2, {}, {"requires --remote"});
     Expect("encoder dependency", {"--remote-encoder", "auto"}, 2, {}, {"requires --remote"});
     Expect("auto approve dependency", {"--remote-auto-approve", "on"}, 2, {}, {"requires --remote"});
+    Expect("match viewer dependency", {"--remote-match-viewer", "off"}, 2, {}, {"requires --remote"});
     Expect("transport dependency", {"--remote-media-transport", "udp"}, 2, {}, {"requires --remote"});
     Expect("broker dependency", {"--remote-broker-port", "9000"}, 2, {}, {"requires --remote"});
     Expect("media address dependency", {"--remote-media-address", "127.0.0.1"}, 2, {}, {"requires --remote"});

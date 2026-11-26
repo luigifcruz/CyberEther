@@ -1321,6 +1321,121 @@ TEST_CASE("Headless Metal frames reach a remote WebRTC viewer after restart",
 }
 #endif
 
+#if defined(JETSTREAM_RENDER_METAL_AVAILABLE) || defined(JETSTREAM_RENDER_VULKAN_AVAILABLE)
+TEST_CASE("Headless stream follows the controlling viewer's viewport",
+          "[core][application][remote][stream]") {
+    SkipRemoteEncodingOnCI();
+    const auto device = GENERATE(DeviceType::Metal, DeviceType::Vulkan);
+    CAPTURE(device);
+#ifndef JETSTREAM_RENDER_METAL_AVAILABLE
+    if (device == DeviceType::Metal) {
+        SKIP("Metal is unavailable.");
+    }
+#endif
+#ifndef JETSTREAM_RENDER_VULKAN_AVAILABLE
+    if (device == DeviceType::Vulkan) {
+        SKIP("Vulkan is unavailable.");
+    }
+#endif
+
+    Instance instance;
+    REQUIRE(instance.create({.device = device, .headless = true, .size = {320, 240}, .framerate = 120}) ==
+            Result::SUCCESS);
+    REQUIRE(instance.start() == Result::SUCCESS);
+    std::shared_ptr<Viewport::Generic> viewport;
+    REQUIRE(instance.viewportGet(viewport) == Result::SUCCESS);
+    REQUIRE(viewport->device() == device);
+    std::shared_ptr<Render::Window> render;
+    REQUIRE(instance.renderGet(render) == Result::SUCCESS);
+    const auto present = [&] {
+        const U64 presented = render->stats().presentedFrames;
+        REQUIRE(instance.present() == Result::SUCCESS);
+        return render->stats().presentedFrames != presented;
+    };
+
+    Stream stream;
+    auto& remote = stream.remote;
+    remote.viewport = viewport.get();
+    remote.viewportDevice = viewport->device();
+    Instance::Remote::Config config;
+    config.video.encoder = Instance::Remote::EncoderType::Software;
+    config.broker = {.address = "127.0.0.1", .port = 0};
+    REQUIRE(remote.create(config) == Result::SUCCESS);
+
+    {
+        Viewer peer(stream);
+        peer.connect();
+        const auto pump = [&](const std::function<bool()>& done) {
+            const auto deadline = std::chrono::steady_clock::now() + 10s;
+            while (!done() && std::chrono::steady_clock::now() < deadline) {
+                REQUIRE(remote.captureFrame(present()) == Result::SUCCESS);
+            }
+            return done();
+        };
+
+        REQUIRE(pump([&] {
+            std::lock_guard<std::mutex> lock(peer.mutex);
+            return peer.packets >= 3 && peer.control && peer.control->isOpen();
+        }));
+
+        {
+            std::lock_guard<std::mutex> lock(peer.mutex);
+            REQUIRE(peer.control->send(nlohmann::json({{"kind", "viewport"},
+                                                       {"width", 200},
+                                                       {"height", 150},
+                                                       {"scale", 2.0}}).dump()));
+        }
+
+        REQUIRE(pump([&] { return remote.size.x == 400 && remote.size.y == 300; }));
+        CHECK(viewport->displaySize().x == 200.0f);
+        CHECK(viewport->displaySize().y == 150.0f);
+        CHECK(remote.stats().size.x == 400);
+
+        const unsigned before = peer.packets;
+        REQUIRE(pump([&] { return peer.packets >= before + 3; }));
+    }
+
+    REQUIRE(remote.destroy() == Result::SUCCESS);
+
+    config.video.matchViewer = false;
+    REQUIRE(remote.create(config) == Result::SUCCESS);
+    {
+        Viewer peer(stream);
+        peer.connect();
+        const auto pump = [&](const std::function<bool()>& done) {
+            const auto deadline = std::chrono::steady_clock::now() + 10s;
+            while (!done() && std::chrono::steady_clock::now() < deadline) {
+                REQUIRE(remote.captureFrame(present()) == Result::SUCCESS);
+            }
+            return done();
+        };
+
+        REQUIRE(pump([&] {
+            std::lock_guard<std::mutex> lock(peer.mutex);
+            return peer.packets >= 3 && peer.control && peer.control->isOpen();
+        }));
+
+        {
+            std::lock_guard<std::mutex> lock(peer.mutex);
+            REQUIRE(peer.control->send(nlohmann::json({{"kind", "viewport"},
+                                                       {"width", 320},
+                                                       {"height", 200},
+                                                       {"scale", 1.0}}).dump()));
+        }
+
+        for (unsigned i = 0; i < 30; ++i) {
+            REQUIRE(remote.captureFrame(present()) == Result::SUCCESS);
+        }
+        CHECK(remote.size.x == 320);
+        CHECK(remote.size.y == 240);
+        CHECK(viewport->displaySize().x == 320.0f);
+    }
+
+    REQUIRE(remote.destroy() == Result::SUCCESS);
+    REQUIRE(instance.destroy() == Result::SUCCESS);
+}
+#endif
+
 TEST_CASE("Remote broker rejects incomplete or unreadable TLS configuration",
           "[core][application][remote][broker]") {
     Instance::Remote::Broker server;

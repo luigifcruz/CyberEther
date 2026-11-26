@@ -63,7 +63,10 @@ struct Instance::Remote::Impl {
         EncoderType encoder = EncoderType::Auto;
     };
 
-    Extent2D<U64> size;
+    Extent2D<U64> size = {};
+    mutable std::mutex sizeMutex;
+    Extent2D<U64> launchSize = {};
+    F32 launchScale = 1.0f;
 
     DeviceType inputMemoryDevice_ = DeviceType::None;
     EncoderType encoderType = EncoderType::Auto;
@@ -117,9 +120,20 @@ struct Instance::Remote::Impl {
 
     std::atomic<bool> streaming = false;
     std::mutex streamMutex;
+    std::mutex lifecycleMutex;
 
     Result createStream(DeviceType only = DeviceType::None);
     Result createCapture();
+    Result startSubmission();
+    void stopSubmission();
+    Result openEncoder(std::unique_ptr<Encoder>& opened);
+    Result followViewport();
+    Result rebuildStream(const Extent2D<U64>& next);
+    Result reopenStream();
+    Extent2D<U64> viewportExtent() const;
+    Extent2D<U64> streamSize() const;
+    void setStreamSize(const Extent2D<U64>& next);
+    void restoreViewport();
     Result startStream();
     Result stopStream();
     Result destroyStream();
@@ -163,7 +177,16 @@ struct Instance::Remote::Impl {
         bool meta = false;
     };
 
+    struct ViewportRequest {
+        Extent2D<U64> size = {};
+        F32 scale = 1.0f;
+
+        bool operator==(const ViewportRequest&) const = default;
+    };
+
     std::mutex inputMutex;
+    std::unordered_map<std::string, ViewportRequest> viewportRequests;
+    ViewportRequest appliedViewport;
     std::deque<std::string> inputSessionOrder;
     std::deque<QueuedInput> inputQueue;
     std::unordered_map<std::string, RemoteInputState> remoteInputStates;
@@ -178,6 +201,8 @@ struct Instance::Remote::Impl {
     Extent2D<F32> framebufferScale() const;
     void bindControlChannel(const std::string& sessionId, const std::shared_ptr<rtc::DataChannel>& channel);
     void handleControlMessage(const std::string& sessionId, std::string_view payload);
+    void recordViewport(const std::string& sessionId, const nlohmann::json& j);
+    void applyViewport();
 
     std::unique_ptr<Viewport::FrameCapture> frameCapture;
     std::chrono::steady_clock::time_point nextCaptureTime{};

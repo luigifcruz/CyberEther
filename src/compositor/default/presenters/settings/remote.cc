@@ -16,6 +16,7 @@ RemoteSettingsView::Config RemoteSettingsPresenter::build() const {
         .framerate = context.state.remote.config.video.framerate,
         .encoder = context.state.remote.config.video.encoder,
         .available = available,
+        .matchViewer = context.state.remote.config.video.matchViewer,
         .autoApprove = context.state.remote.config.access.autoApprove,
         .transport = context.state.remote.config.media.transport,
         .minPort = context.state.remote.config.media.minPort,
@@ -42,6 +43,9 @@ RemoteSettingsView::Config RemoteSettingsPresenter::build() const {
         },
         .onEncoderChange = [enqueue](Instance::Remote::EncoderType value) {
             enqueue(MailSetRemoteEncoder{.value = value});
+        },
+        .onMatchViewerChange = [enqueue](bool value) {
+            enqueue(MailSetRemoteMatchViewer{.value = value});
         },
         .onAutoApproveChange = [enqueue](bool value) {
             enqueue(MailSetRemoteAutoApprove{.value = value});

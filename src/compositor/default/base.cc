@@ -169,6 +169,7 @@ Result DefaultCompositor::create() {
     }
     state.remote.config.access.autoApprove = settings.remote.access.autoApprove;
     state.remote.config.video.framerate = static_cast<U32>(settings.remote.video.framerate);
+    state.remote.config.video.matchViewer = settings.remote.video.matchViewer;
 
     // Restore runtime preferences.
 
