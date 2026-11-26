@@ -57,6 +57,9 @@ WorkbenchView::Config WorkbenchPresenter::build() const {
     config.modal = modal.build();
     config.filePicker = filePicker.build();
     config.renderStats = context.state.debug.renderStatsEnabled;
+    if (config.renderStats && context.state.remote.started) {
+        config.remoteStats = context.state.remote.stats;
+    }
     config.backgroundParticles = context.state.interface.backgroundParticles &&
                                  (config.filePending || config.hideTabs);
     return config;

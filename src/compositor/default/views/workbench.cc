@@ -112,7 +112,10 @@ void WorkbenchView::update(Config config) {
     }
 
     if (this->config.renderStats) {
-        renderStats.update({.stats = root.stats()});
+        renderStats.update({
+            .stats = root.stats(),
+            .remote = this->config.remoteStats,
+        });
         huds.update({.huds = {renderStats.hud()}});
     } else {
         huds.update({});

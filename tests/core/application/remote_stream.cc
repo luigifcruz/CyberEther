@@ -1120,6 +1120,31 @@ TEST_CASE("Remote streams send RTCP sender reports",
     REQUIRE(WaitFor([&] { return viewer.senderReport(); }, 10s));
 }
 
+TEST_CASE("Remote stats describe the encoder and the outgoing stream",
+          "[core][application][remote][stream][stats]") {
+    Stream stream;
+    auto& remote = stream.remote;
+    CHECK(remote.stats().frameRate == 0.0f);
+
+    stream.start();
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
+
+    const auto stats = remote.stats();
+    CHECK(stats.encoder == Instance::Remote::EncoderType::Software);
+    CHECK(stats.codec == Instance::Remote::CodecType::H264);
+    CHECK(stats.memory == DeviceType::CPU);
+    CHECK(stats.format == "yuv420p");
+    CHECK(stats.size.x == 320);
+    CHECK(stats.size.y == 240);
+    CHECK(stats.targetRate == static_cast<F32>(remote.config.video.framerate));
+    CHECK(stats.frameRate > 0.0f);
+    CHECK(stats.bitrate > 0.0f);
+    CHECK(stats.keyframeBytes > 0);
+    CHECK(stats.encodeAverage > 0.0f);
+}
+
 TEST_CASE("Remote stream can stop and restart on the same instance",
           "[core][application][remote][stream]") {
     Stream stream;

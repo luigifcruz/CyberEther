@@ -187,7 +187,24 @@ struct Instance::Remote::Impl {
     std::chrono::time_point<std::chrono::steady_clock> initialFrameTime;
     std::chrono::time_point<std::chrono::steady_clock> lastKeyframeTime;
 
+    struct Telemetry {
+        struct Sample {
+            std::chrono::steady_clock::time_point time;
+            F32 encode = 0.0f;
+            U64 bytes = 0;
+        };
+
+        std::mutex mutex;
+        std::deque<Sample> samples;
+        U64 keyframeBytes = 0;
+        std::string format;
+    };
+
+    Telemetry telemetry;
+
     Result pushNewFrame(const void* data);
+    void record(std::chrono::steady_clock::time_point time, F32 encode, const std::vector<Encoder::Packet>& output);
+    Stats stats();
 };
 
 }  // namespace Jetstream

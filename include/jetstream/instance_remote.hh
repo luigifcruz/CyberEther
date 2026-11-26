@@ -5,6 +5,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -73,6 +74,20 @@ struct JETSTREAM_API Instance::Remote {
         std::string sessionId;
     };
 
+    struct Stats {
+        EncoderType encoder = EncoderType::Auto;
+        CodecType codec = CodecType::H264;
+        DeviceType memory = DeviceType::None;
+        std::string format;
+        Extent2D<U64> size = {};
+        F32 targetRate = 0.0f;
+        F32 frameRate = 0.0f;
+        F32 encodeAverage = 0.0f;
+        F32 bitrate = 0.0f;
+        U64 keyframeBytes = 0;
+        std::optional<F32> roundTrip;
+    };
+
     Remote(Viewport::Generic* viewport);
     ~Remote();
 
@@ -90,6 +105,7 @@ struct JETSTREAM_API Instance::Remote {
     const std::string& inviteUrl() const;
     std::vector<ClientInfo> clients() const;
     std::vector<std::string> waitlist() const;
+    Stats stats() const;
 
     Result approveClient(const std::string& sessionId);
     Result removeClient(const std::string& sessionId);

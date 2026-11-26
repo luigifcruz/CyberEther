@@ -41,6 +41,8 @@ struct Instance::Remote::Encoder {
 
     Result create(const Config& config);
     Result destroy();
+    std::string format() const;
+
     Result encode(const void* data,
                   std::chrono::microseconds timestamp,
                   bool keyframe,
@@ -54,6 +56,7 @@ struct Instance::Remote::Encoder {
     Result createConverter();
     Result allocateConverted();
     Result submit(AVFrame* frame);
+    Result submitBorrowed(std::vector<Packet>& packets);
     Result receive(std::vector<Packet>& packets);
     bool waitForRelease();
 

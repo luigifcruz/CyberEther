@@ -386,6 +386,7 @@ struct DefaultCompositorState {
         std::string inviteUrl;
         std::vector<Instance::Remote::ClientInfo> clients;
         std::vector<std::string> waitlist;
+        Instance::Remote::Stats stats;
     };
 
     struct RegistryState {

@@ -11,6 +11,10 @@
 #include <cuda.h>
 #endif
 
+#ifdef JST_OS_MAC
+#include <CoreVideo/CoreVideo.h>
+#endif
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/hwcontext.h>
@@ -62,7 +66,7 @@ void RouteLogs() {
     });
 }
 
-AVPixelFormat InputFormat(const AVCodec* codec, bool packed) {
+AVPixelFormat InputFormat(const AVCodec* codec) {
     const void* formats = nullptr;
     int count = 0;
     if (avcodec_get_supported_config(nullptr, codec, AV_CODEC_CONFIG_PIX_FORMAT, 0, &formats, &count) < 0) {
@@ -74,7 +78,7 @@ AVPixelFormat InputFormat(const AVCodec* codec, bool packed) {
 
     const auto* list = static_cast<const AVPixelFormat*>(formats);
     for (const AVPixelFormat format : {AV_PIX_FMT_BGRA, AV_PIX_FMT_NV12, AV_PIX_FMT_YUV420P}) {
-        if ((packed || format != AV_PIX_FMT_BGRA) && std::find(list, list + count, format) != list + count) {
+        if (std::find(list, list + count, format) != list + count) {
             return format;
         }
     }
@@ -223,9 +227,14 @@ Result Instance::Remote::Encoder::Configure(AVCodecContext* context, const Confi
     context->color_primaries = AVCOL_PRI_BT709;
     context->color_trc = AVCOL_TRC_IEC61966_2_1;
 
-    context->pix_fmt = config.device == DeviceType::CUDA
-                           ? AV_PIX_FMT_CUDA
-                           : InputFormat(codec, config.encoder != EncoderType::VideoToolbox);
+    if (config.device == DeviceType::CUDA) {
+        context->pix_fmt = AV_PIX_FMT_CUDA;
+    } else if (config.encoder == EncoderType::VideoToolbox) {
+        context->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
+        context->sw_pix_fmt = AV_PIX_FMT_BGRA;
+    } else {
+        context->pix_fmt = InputFormat(codec);
+    }
     if (context->pix_fmt == AV_PIX_FMT_NONE) {
         JST_ERROR("[REMOTE] Encoder '{}' accepts no supported pixel format.", codec->name);
         return Result::ERROR;
@@ -356,7 +365,9 @@ Result Instance::Remote::Encoder::createDevice() {
 }
 
 Result Instance::Remote::Encoder::createConverter() {
-    if (context->pix_fmt == AV_PIX_FMT_BGRA || context->pix_fmt == AV_PIX_FMT_CUDA) {
+    if (context->pix_fmt == AV_PIX_FMT_BGRA ||
+        context->pix_fmt == AV_PIX_FMT_CUDA ||
+        context->pix_fmt == AV_PIX_FMT_VIDEOTOOLBOX) {
         return Result::SUCCESS;
     }
 
@@ -473,20 +484,55 @@ Result Instance::Remote::Encoder::encode(const void* data,
             return Result::ERROR;
         }
 
-        const Result submitted = submit(input);
-        av_frame_unref(input);
-        const Result received = submitted == Result::SUCCESS ? receive(packets) : Result::ERROR;
+        return submitBorrowed(packets);
+    }
 
-        if (!waitForRelease()) {
-            JST_ERROR("[REMOTE] Encoder did not release the input frame. Reopening it.");
-            avcodec_free_context(&context);
-            (void)waitForRelease();
-            (void)create(Config(config));
+#ifdef JST_OS_MAC
+    if (context->pix_fmt == AV_PIX_FMT_VIDEOTOOLBOX) {
+        {
+            std::lock_guard<std::mutex> lock(releaseMutex);
+            released = false;
+        }
+
+        CVPixelBufferRef pixels = nullptr;
+        const CVReturn status = CVPixelBufferCreateWithBytes(kCFAllocatorDefault,
+                                                             static_cast<size_t>(context->width),
+                                                             static_cast<size_t>(context->height),
+                                                             kCVPixelFormatType_32BGRA,
+                                                             const_cast<void*>(data),
+                                                             static_cast<size_t>(stride),
+                                                             [](void* opaque, const void*) {
+                                                                 auto* encoder = static_cast<Encoder*>(opaque);
+                                                                 std::lock_guard<std::mutex> lock(encoder->releaseMutex);
+                                                                 encoder->released = true;
+                                                                 encoder->releaseCondition.notify_all();
+                                                             },
+                                                             this,
+                                                             nullptr,
+                                                             &pixels);
+        if (status != kCVReturnSuccess || !pixels) {
+            std::lock_guard<std::mutex> lock(releaseMutex);
+            released = true;
+            JST_ERROR("[REMOTE] Failed to wrap the VideoToolbox encoder frame ({}).", static_cast<int>(status));
             return Result::ERROR;
         }
 
-        return received;
+        input->format = AV_PIX_FMT_VIDEOTOOLBOX;
+        input->data[3] = reinterpret_cast<U8*>(pixels);
+        input->buf[0] = av_buffer_create(reinterpret_cast<U8*>(pixels), 0, [](void*, uint8_t* buffer) {
+            CFRelease(reinterpret_cast<CVPixelBufferRef>(buffer));
+        }, nullptr, 0);
+        if (!input->buf[0]) {
+            av_frame_unref(input);
+            CFRelease(pixels);
+            JST_ERROR("[REMOTE] Failed to wrap the VideoToolbox encoder frame.");
+            (void)waitForRelease();
+            return Result::ERROR;
+        }
+
+        return submitBorrowed(packets);
     }
+#endif
 
     input->format = AV_PIX_FMT_BGRA;
     input->data[0] = static_cast<U8*>(const_cast<void*>(data));
@@ -525,6 +571,30 @@ Result Instance::Remote::Encoder::encode(const void* data,
 
     JST_CHECK(submit(converted));
     return receive(packets);
+}
+
+std::string Instance::Remote::Encoder::format() const {
+    if (!context) {
+        return {};
+    }
+    const char* name = av_get_pix_fmt_name(context->pix_fmt);
+    return name ? name : "";
+}
+
+Result Instance::Remote::Encoder::submitBorrowed(std::vector<Packet>& packets) {
+    const Result submitted = submit(input);
+    av_frame_unref(input);
+    const Result received = submitted == Result::SUCCESS ? receive(packets) : Result::ERROR;
+
+    if (!waitForRelease()) {
+        JST_ERROR("[REMOTE] Encoder did not release the input frame. Reopening it.");
+        avcodec_free_context(&context);
+        (void)waitForRelease();
+        (void)create(Config(config));
+        return Result::ERROR;
+    }
+
+    return received;
 }
 
 Result Instance::Remote::Encoder::submit(AVFrame* frame) {

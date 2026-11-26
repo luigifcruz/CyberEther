@@ -438,6 +438,7 @@ void DefaultCompositor::updateRemoteState() {
     state.remote.inviteUrl = remoteStarted ? remote->inviteUrl() : "";
     state.remote.clients = remoteStarted ? remote->clients() : std::vector<Instance::Remote::ClientInfo>{};
     state.remote.waitlist = remoteStarted ? remote->waitlist() : std::vector<std::string>{};
+    state.remote.stats = remoteStarted && state.debug.renderStatsEnabled ? remote->stats() : Instance::Remote::Stats{};
 }
 
 void DefaultCompositor::updateUpdaterState() {

@@ -54,6 +54,7 @@ constexpr U16 kPlayoutDelayMaximum = 2;
 constexpr U64 kMaximumFragmentSize = 1100;
 constexpr U64 kMaximumCandidates = 64;
 constexpr U64 kNackHistory = 2048;
+constexpr U64 kTelemetryLimit = 4096;
 
 }  // namespace
 
@@ -117,6 +118,10 @@ std::vector<Instance::Remote::ClientInfo> Instance::Remote::clients() const {
 std::vector<std::string> Instance::Remote::waitlist() const {
     std::lock_guard<std::mutex> lock(impl->remoteStateMutex);
     return impl->waitlist_;
+}
+
+Instance::Remote::Stats Instance::Remote::stats() const {
+    return impl->stats();
 }
 
 Result Instance::Remote::approveClient(const std::string& sessionId) {
@@ -895,6 +900,13 @@ Result Instance::Remote::Impl::startStream() {
     lastKeyframeTime = initialFrameTime;
 
     {
+        std::lock_guard<std::mutex> lock(telemetry.mutex);
+        telemetry.samples.clear();
+        telemetry.keyframeBytes = 0;
+        telemetry.format = newEncoder->format();
+    }
+
+    {
         std::lock_guard<std::mutex> lock(streamMutex);
         encoder = std::move(newEncoder);
         streaming = true;
@@ -1538,7 +1550,16 @@ Result Instance::Remote::Impl::pushNewFrame(const void* data) {
             lastKeyframeTime = currentFrameTime;
         }
 
-        JST_CHECK(encoder->encode(data, elapsedSinceStart, keyframe, packets));
+        const auto encodeStart = std::chrono::steady_clock::now();
+        const Result encoded = encoder->encode(data, elapsedSinceStart, keyframe, packets);
+        const auto encodeEnd = std::chrono::steady_clock::now();
+        const std::chrono::duration<F32, std::milli> encodeTime = encodeEnd - encodeStart;
+        if (encoded == Result::SUCCESS) {
+            record(encodeEnd, encodeTime.count(), packets);
+        } else {
+            record(encodeEnd, encodeTime.count(), {});
+        }
+        JST_CHECK(encoded);
     }
 
     for (const auto& packet : packets) {
@@ -1558,6 +1579,86 @@ Result Instance::Remote::Impl::pushNewFrame(const void* data) {
     }
 
     return Result::SUCCESS;
+}
+
+void Instance::Remote::Impl::record(std::chrono::steady_clock::time_point time,
+                                    F32 encode,
+                                    const std::vector<Encoder::Packet>& output) {
+    U64 bytes = 0;
+    U64 keyframeBytes = 0;
+    for (const auto& packet : output) {
+        bytes += packet.data.size();
+        if (packet.keyframe) {
+            keyframeBytes += packet.data.size();
+        }
+    }
+
+    std::lock_guard<std::mutex> lock(telemetry.mutex);
+    telemetry.samples.push_back({time, encode, bytes});
+    while (telemetry.samples.size() > kTelemetryLimit ||
+           time - telemetry.samples.front().time > std::chrono::seconds(1)) {
+        telemetry.samples.pop_front();
+    }
+    if (keyframeBytes > 0) {
+        telemetry.keyframeBytes = keyframeBytes;
+    }
+}
+
+Instance::Remote::Stats Instance::Remote::Impl::stats() {
+    Stats stats;
+    if (!streaming) {
+        return stats;
+    }
+
+    stats.encoder = encoderType;
+    stats.codec = config.video.codec;
+    stats.memory = inputMemoryDevice_;
+    stats.size = size;
+    stats.targetRate = static_cast<F32>(config.video.framerate);
+
+    std::vector<std::shared_ptr<WebRtcSession>> active;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        for (const auto& [sessionId, session] : sessions) {
+            (void)sessionId;
+            active.push_back(session);
+        }
+    }
+    for (const auto& session : active) {
+        if (!session->track || !session->track->isOpen()) {
+            continue;
+        }
+        if (const auto roundTrip = session->peer->rtt()) {
+            stats.roundTrip = std::max(stats.roundTrip.value_or(0.0f), static_cast<F32>(roundTrip->count()));
+        }
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(telemetry.mutex);
+    stats.format = telemetry.format;
+    stats.keyframeBytes = telemetry.keyframeBytes;
+
+    U64 frames = 0;
+    U64 bytes = 0;
+    U64 calls = 0;
+    F32 encodeTotal = 0.0f;
+    for (const auto& sample : telemetry.samples) {
+        if (now - sample.time > std::chrono::seconds(1)) {
+            continue;
+        }
+        ++calls;
+        encodeTotal += sample.encode;
+        if (sample.bytes > 0) {
+            ++frames;
+            bytes += sample.bytes;
+        }
+    }
+
+    stats.frameRate = static_cast<F32>(frames);
+    stats.bitrate = static_cast<F32>(bytes * 8);
+    stats.encodeAverage = calls > 0 ? encodeTotal / static_cast<F32>(calls) : 0.0f;
+
+    return stats;
 }
 
 }  // namespace Jetstream
