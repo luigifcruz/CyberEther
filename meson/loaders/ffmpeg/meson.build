@@ -20,7 +20,7 @@ if all_deps_found
         'tests=disabled',
         'checkasm=disabled',
         'avdevice=disabled',
-        'avfilter=disabled',
+        'avfilter=enabled',
         'avformat=disabled',
         'swresample=disabled',
         'postproc=disabled',
@@ -36,6 +36,7 @@ if all_deps_found
         'demuxers=disabled',
         'protocols=disabled',
         'filters=disabled',
+        'hwmap_filter=enabled',
         'indevs=disabled',
         'outdevs=disabled',
         'appkit=disabled',
@@ -105,9 +106,43 @@ if all_deps_found
             'h264_qsv_encoder=enabled',
             'hevc_qsv_encoder=enabled',
             'av1_qsv_encoder=enabled',
+            'vpp_qsv_filter=enabled',
         ]
         subproject('amf-headers', required: true)
         subproject('libvpl', required: true)
+    endif
+
+    if jst_is_linux
+        ffmpeg_options += [
+            'libdrm=enabled',
+            'vaapi=enabled',
+            'vaapi_drm=enabled',
+            'h264_vaapi_encoder=enabled',
+            'hevc_vaapi_encoder=enabled',
+            'av1_vaapi_encoder=enabled',
+            'scale_vaapi_filter=enabled',
+        ]
+        subproject('libdrm', required: true, default_options: [
+            'default_library=static',
+            'intel=disabled',
+            'radeon=disabled',
+            'amdgpu=disabled',
+            'nouveau=disabled',
+            'vmwgfx=disabled',
+            'omap=disabled',
+            'exynos=disabled',
+            'freedreno=disabled',
+            'tegra=disabled',
+            'vc4=disabled',
+            'etnaviv=disabled',
+            'cairo-tests=disabled',
+            'man-pages=disabled',
+            'valgrind=disabled',
+            'install-test-programs=false',
+            'udev=false',
+            'tests=false',
+        ])
+        subproject('libva', required: true)
     endif
 
     if ffmpeg_nvidia
@@ -116,7 +151,7 @@ if all_deps_found
 
     subproject('ffmpeg', required: true, default_options: ffmpeg_options)
 
-    foreach ffmpeg_lib : ['libavcodec', 'libavutil', 'libswscale']
+    foreach ffmpeg_lib : ['libavcodec', 'libavfilter', 'libavutil', 'libswscale']
         deps += dependency(ffmpeg_lib, required: true, static: true).partial_dependency(
             compile_args: true,
             includes: true,
@@ -125,9 +160,28 @@ if all_deps_found
         )
     endforeach
 
+    if jst_is_linux
+        deps += dependency('libdrm', required: true).partial_dependency(compile_args: true, includes: true)
+        deps += dependency('libva', required: true).partial_dependency(compile_args: true, includes: true, sources: true)
+    endif
+
+    if jst_is_linux and ffmpeg_nvidia
+        deps += dependency('ffnvcodec', required: true).partial_dependency(compile_args: true, includes: true)
+        cfg_lst.set('JETSTREAM_LOADER_FFMPEG_CUDA_AVAILABLE', true)
+    endif
+
     deps += declare_dependency(
         link_args: meson.get_compiler('c').get_supported_link_arguments(
-            '-Wl,--exclude-libs,libavcodec.a:libavutil.a:libswscale.a:libopenh264.a',
+            '-Wl,--exclude-libs,' + ':'.join([
+                'libavcodec.a',
+                'libavfilter.a',
+                'libavutil.a',
+                'libswscale.a',
+                'libopenh264.a',
+                'libva.a',
+                'libva-drm.a',
+                'libdrm.a',
+            ]),
         ),
     )
 

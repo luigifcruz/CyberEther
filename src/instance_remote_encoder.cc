@@ -7,24 +7,20 @@
 #include <mutex>
 #include <string_view>
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-#include <cuda.h>
-#endif
-
 #ifdef JST_OS_MAC
 #include <CoreVideo/CoreVideo.h>
 #endif
 
 extern "C" {
 #include <libavcodec/avcodec.h>
+#include <libavfilter/avfilter.h>
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
 #include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-#include <libavutil/hwcontext_cuda.h>
-#endif
 }
 
 namespace Jetstream {
@@ -141,6 +137,44 @@ Instance::Remote::Encoder::~Encoder() {
     (void)destroy();
 }
 
+Instance::Remote::Encoder::Export Instance::Remote::Encoder::ExportFor(EncoderType encoder) {
+#if defined(JST_OS_LINUX)
+    switch (encoder) {
+        case EncoderType::NVENC: return Export::OpaqueFd;
+        case EncoderType::VAAPI: return Export::DmaBuf;
+        default:                 return Export::None;
+    }
+#elif defined(JST_OS_WINDOWS)
+    switch (encoder) {
+        case EncoderType::NVENC:
+        case EncoderType::AMF:
+        case EncoderType::QSV:   return Export::D3D11;
+        default:                 return Export::None;
+    }
+#else
+    (void)encoder;
+    return Export::None;
+#endif
+}
+
+#if !defined(JETSTREAM_LOADER_FFMPEG_CUDA_AVAILABLE)
+std::unique_ptr<Instance::Remote::Encoder::Input> Instance::Remote::Encoder::CreateCudaInput() {
+    return nullptr;
+}
+#endif
+
+#if !defined(JST_OS_LINUX)
+std::unique_ptr<Instance::Remote::Encoder::Input> Instance::Remote::Encoder::CreateVaapiInput() {
+    return nullptr;
+}
+#endif
+
+#if !defined(JST_OS_WINDOWS)
+std::unique_ptr<Instance::Remote::Encoder::Input> Instance::Remote::Encoder::CreateD3D11Input() {
+    return nullptr;
+}
+#endif
+
 const char* Instance::Remote::Encoder::CodecName(CodecType codec, EncoderType encoder) {
     switch (encoder) {
         case EncoderType::Software:
@@ -181,6 +215,13 @@ const char* Instance::Remote::Encoder::CodecName(CodecType codec, EncoderType en
                 case CodecType::AV1:  return "av1_qsv";
                 default:              return nullptr;
             }
+        case EncoderType::VAAPI:
+            switch (codec) {
+                case CodecType::H264: return "h264_vaapi";
+                case CodecType::H265: return "hevc_vaapi";
+                case CodecType::AV1:  return "av1_vaapi";
+                default:              return nullptr;
+            }
         default:
             return nullptr;
     }
@@ -213,7 +254,9 @@ bool Instance::Remote::Encoder::Available(const Config& config) {
 
     Encoder probe;
     probe.config = config;
-    probe.config.size = {640, 480};
+    if (probe.config.size.x == 0 || probe.config.size.y == 0) {
+        probe.config.size = {640, 480};
+    }
     probe.context = avcodec_alloc_context3(avcodec);
 
     return probe.context &&
@@ -241,8 +284,8 @@ Result Instance::Remote::Encoder::Configure(AVCodecContext* context, const Confi
     context->color_primaries = AVCOL_PRI_BT709;
     context->color_trc = AVCOL_TRC_IEC61966_2_1;
 
-    if (config.device == DeviceType::CUDA) {
-        context->pix_fmt = AV_PIX_FMT_CUDA;
+    if (config.device == DeviceType::Vulkan) {
+        context->pix_fmt = AV_PIX_FMT_NONE;
     } else if (config.encoder == EncoderType::VideoToolbox) {
         context->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
         context->sw_pix_fmt = AV_PIX_FMT_BGRA;
@@ -251,7 +294,7 @@ Result Instance::Remote::Encoder::Configure(AVCodecContext* context, const Confi
     } else {
         context->pix_fmt = InputFormat(codec);
     }
-    if (context->pix_fmt == AV_PIX_FMT_NONE) {
+    if (config.device != DeviceType::Vulkan && context->pix_fmt == AV_PIX_FMT_NONE) {
         JST_ERROR("[REMOTE] Encoder '{}' accepts no supported pixel format.", codec->name);
         return Result::ERROR;
     }
@@ -316,6 +359,13 @@ Result Instance::Remote::Encoder::Configure(AVCodecContext* context, const Confi
             SetOption(context, "low_delay_brc", "1");
             SetOption(context, "forced_idr", "1");
             break;
+        case EncoderType::VAAPI:
+            if (config.codec == CodecType::H264) {
+                context->profile = AV_PROFILE_H264_CONSTRAINED_BASELINE;
+            }
+            SetOption(context, "rc_mode", "CBR");
+            SetOption(context, "async_depth", "1");
+            break;
         default:
             JST_ERROR("[REMOTE] Unsupported encoder '{}'.", config.encoder);
             return Result::ERROR;
@@ -367,54 +417,110 @@ Result Instance::Remote::Encoder::create(const Config& config) {
 }
 
 Result Instance::Remote::Encoder::createDevice() {
-    if (config.device != DeviceType::CUDA) {
+    if (config.device != DeviceType::Vulkan) {
         return Result::SUCCESS;
     }
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    device = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_CUDA);
-    if (!device) {
-        JST_ERROR("[REMOTE] Failed to allocate the CUDA encoder device.");
+    switch (ExportFor(config.encoder)) {
+        case Export::OpaqueFd: sharing = CreateCudaInput();  break;
+        case Export::DmaBuf:   sharing = CreateVaapiInput(); break;
+        case Export::D3D11:    sharing = CreateD3D11Input(); break;
+        default:               sharing = nullptr;            break;
+    }
+
+    if (!sharing) {
+        JST_ERROR("[REMOTE] Encoder '{}' can't take shared frames on this system.", config.encoder);
         return Result::ERROR;
     }
 
-    auto* deviceContext = reinterpret_cast<AVHWDeviceContext*>(device->data);
-    auto* cudaContext = static_cast<AVCUDADeviceContext*>(deviceContext->hwctx);
-    cudaContext->cuda_ctx = static_cast<CUcontext>(config.context);
+    return sharing->create(*this);
+}
 
-    if (const int error = av_hwdevice_ctx_init(device); error < 0) {
-        JST_ERROR("[REMOTE] Failed to initialize the CUDA encoder device: {}", ErrorString(error));
+Result Instance::Remote::Encoder::createFilter(AVBufferRef* frames, const char* description) {
+    const auto* framesContext = reinterpret_cast<const AVHWFramesContext*>(frames->data);
+
+    graph = avfilter_graph_alloc();
+    filtered = av_frame_alloc();
+    if (!graph || !filtered) {
+        JST_ERROR("[REMOTE] Failed to allocate the encoder filter.");
         return Result::ERROR;
     }
 
-    frames = av_hwframe_ctx_alloc(device);
-    if (!frames) {
-        JST_ERROR("[REMOTE] Failed to allocate the CUDA encoder frames.");
+    source = avfilter_graph_alloc_filter(graph, avfilter_get_by_name("buffer"), "source");
+    AVBufferSrcParameters* parameters = av_buffersrc_parameters_alloc();
+    if (!source || !parameters) {
+        av_free(parameters);
+        JST_ERROR("[REMOTE] Failed to allocate the encoder filter source.");
         return Result::ERROR;
     }
 
-    auto* framesContext = reinterpret_cast<AVHWFramesContext*>(frames->data);
-    framesContext->format = AV_PIX_FMT_CUDA;
-    framesContext->sw_format = AV_PIX_FMT_BGRA;
-    framesContext->width = static_cast<int>(config.size.x);
-    framesContext->height = static_cast<int>(config.size.y);
+    parameters->format = framesContext->format;
+    parameters->width = context->width;
+    parameters->height = context->height;
+    parameters->time_base = {1, 1'000'000};
+    parameters->hw_frames_ctx = frames;
+    parameters->color_space = AVCOL_SPC_RGB;
+    parameters->color_range = AVCOL_RANGE_JPEG;
+    const int set = av_buffersrc_parameters_set(source, parameters);
+    av_free(parameters);
 
-    if (const int error = av_hwframe_ctx_init(frames); error < 0) {
-        JST_ERROR("[REMOTE] Failed to initialize the CUDA encoder frames: {}", ErrorString(error));
+    if (set < 0 || avfilter_init_str(source, nullptr) < 0) {
+        JST_ERROR("[REMOTE] Failed to configure the encoder filter source.");
         return Result::ERROR;
     }
 
-    context->hw_frames_ctx = av_buffer_ref(frames);
+    if (const int error = avfilter_graph_create_filter(&sink, avfilter_get_by_name("buffersink"), "sink",
+                                                       nullptr, nullptr, graph); error < 0) {
+        JST_ERROR("[REMOTE] Failed to create the encoder filter sink: {}", ErrorString(error));
+        return Result::ERROR;
+    }
+
+    AVFilterInOut* outputs = avfilter_inout_alloc();
+    AVFilterInOut* inputs = avfilter_inout_alloc();
+    if (!outputs || !inputs) {
+        avfilter_inout_free(&outputs);
+        avfilter_inout_free(&inputs);
+        JST_ERROR("[REMOTE] Failed to allocate the encoder filter links.");
+        return Result::ERROR;
+    }
+
+    outputs->name = av_strdup("in");
+    outputs->filter_ctx = source;
+    inputs->name = av_strdup("out");
+    inputs->filter_ctx = sink;
+
+    const int parsed = avfilter_graph_parse_ptr(graph, description, &inputs, &outputs, nullptr);
+    avfilter_inout_free(&outputs);
+    avfilter_inout_free(&inputs);
+    if (parsed < 0) {
+        JST_ERROR("[REMOTE] Failed to parse the encoder filter '{}': {}", description, ErrorString(parsed));
+        return Result::ERROR;
+    }
+
+    if (const int error = avfilter_graph_config(graph, nullptr); error < 0) {
+        JST_ERROR("[REMOTE] Failed to configure the encoder filter '{}': {}", description, ErrorString(error));
+        return Result::ERROR;
+    }
+
+    AVBufferRef* output = av_buffersink_get_hw_frames_ctx(sink);
+    if (!output) {
+        JST_ERROR("[REMOTE] Encoder filter '{}' produced no hardware frames.", description);
+        return Result::ERROR;
+    }
+
+    context->pix_fmt = static_cast<AVPixelFormat>(av_buffersink_get_format(sink));
+    context->hw_frames_ctx = av_buffer_ref(output);
+    if (!context->hw_frames_ctx) {
+        JST_ERROR("[REMOTE] Failed to reference the encoder filter frames.");
+        return Result::ERROR;
+    }
+
     return Result::SUCCESS;
-#else
-    JST_ERROR("[REMOTE] CUDA encoder input is not available in this build.");
-    return Result::ERROR;
-#endif
 }
 
 Result Instance::Remote::Encoder::createConverter() {
-    if (context->pix_fmt == AV_PIX_FMT_BGRA ||
-        context->pix_fmt == AV_PIX_FMT_CUDA ||
+    if (config.device == DeviceType::Vulkan ||
+        context->pix_fmt == AV_PIX_FMT_BGRA ||
         context->pix_fmt == AV_PIX_FMT_VIDEOTOOLBOX) {
         return Result::SUCCESS;
     }
@@ -473,12 +579,15 @@ Result Instance::Remote::Encoder::destroy() {
         sws_freeContext(converter);
         converter = nullptr;
     }
+    avfilter_graph_free(&graph);
+    source = nullptr;
+    sink = nullptr;
+    av_frame_free(&filtered);
     av_frame_free(&converted);
     av_frame_free(&input);
     av_packet_free(&packet);
     avcodec_free_context(&context);
-    av_buffer_unref(&frames);
-    av_buffer_unref(&device);
+    sharing.reset();
 
     return Result::SUCCESS;
 }
@@ -492,48 +601,16 @@ Result Instance::Remote::Encoder::encode(const void* data,
         return Result::ERROR;
     }
 
+    if (config.device == DeviceType::Vulkan) {
+        return encodeShared(data, timestamp, keyframe, packets);
+    }
+
     av_frame_unref(input);
     input->width = context->width;
     input->height = context->height;
-    input->pts = timestamp.count();
-    input->pict_type = keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_NONE;
-    input->color_range = context->color_range;
-    input->colorspace = context->colorspace;
-    input->color_primaries = context->color_primaries;
-    input->color_trc = context->color_trc;
+    stamp(input, timestamp, keyframe);
 
     const int stride = context->width * 4;
-
-    if (context->pix_fmt == AV_PIX_FMT_CUDA) {
-        {
-            std::lock_guard<std::mutex> lock(releaseMutex);
-            released = false;
-        }
-
-        input->format = AV_PIX_FMT_CUDA;
-        input->data[0] = static_cast<U8*>(const_cast<void*>(data));
-        input->linesize[0] = stride;
-        input->hw_frames_ctx = av_buffer_ref(frames);
-        input->buf[0] = av_buffer_create(input->data[0],
-                                         static_cast<size_t>(stride) * context->height,
-                                         [](void* opaque, uint8_t*) {
-                                             auto* encoder = static_cast<Encoder*>(opaque);
-                                             std::lock_guard<std::mutex> lock(encoder->releaseMutex);
-                                             encoder->released = true;
-                                             encoder->releaseCondition.notify_all();
-                                         },
-                                         this,
-                                         AV_BUFFER_FLAG_READONLY);
-        if (!input->buf[0] || !input->hw_frames_ctx) {
-            av_frame_unref(input);
-            std::lock_guard<std::mutex> lock(releaseMutex);
-            released = true;
-            JST_ERROR("[REMOTE] Failed to wrap the CUDA encoder frame.");
-            return Result::ERROR;
-        }
-
-        return submitBorrowed(packets);
-    }
 
 #ifdef JST_OS_MAC
     if (context->pix_fmt == AV_PIX_FMT_VIDEOTOOLBOX) {
@@ -629,20 +706,115 @@ std::string Instance::Remote::Encoder::format() const {
     return name ? name : "";
 }
 
-Result Instance::Remote::Encoder::submitBorrowed(std::vector<Packet>& packets) {
-    const Result submitted = submit(input);
+AVBufferRef* Instance::Remote::Encoder::borrow(U8* data, size_t size) {
+    return av_buffer_create(data, size, [](void* opaque, uint8_t*) {
+        auto* encoder = static_cast<Encoder*>(opaque);
+        std::lock_guard<std::mutex> lock(encoder->releaseMutex);
+        encoder->released = true;
+        encoder->releaseCondition.notify_all();
+    }, this, AV_BUFFER_FLAG_READONLY);
+}
+
+void Instance::Remote::Encoder::stamp(AVFrame* frame, std::chrono::microseconds timestamp, bool keyframe) const {
+    frame->pts = timestamp.count();
+    frame->pict_type = keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_NONE;
+    frame->color_range = context->color_range;
+    frame->colorspace = context->colorspace;
+    frame->color_primaries = context->color_primaries;
+    frame->color_trc = context->color_trc;
+}
+
+Result Instance::Remote::Encoder::encodeShared(const void* data,
+                                               std::chrono::microseconds timestamp,
+                                               bool keyframe,
+                                               std::vector<Packet>& packets) {
+    const bool borrowed = sharing->borrowed();
+    if (borrowed) {
+        std::lock_guard<std::mutex> lock(releaseMutex);
+        released = false;
+    }
+
     av_frame_unref(input);
-    const Result received = submitted == Result::SUCCESS ? receive(packets) : Result::ERROR;
+    if (sharing->wrap(*this, *static_cast<const SharedFrame*>(data), input) != Result::SUCCESS) {
+        av_frame_unref(input);
+        std::lock_guard<std::mutex> lock(releaseMutex);
+        released = true;
+        return Result::ERROR;
+    }
+
+    stamp(input, timestamp, keyframe);
+    if (graph) {
+        input->colorspace = AVCOL_SPC_RGB;
+        input->color_range = AVCOL_RANGE_JPEG;
+    }
+
+    if (borrowed) {
+        return submitBorrowed(packets);
+    }
+
+    const Result delivered = deliver(input, packets);
+    av_frame_unref(input);
+    return delivered;
+}
+
+Result Instance::Remote::Encoder::deliver(AVFrame* frame, std::vector<Packet>& packets) {
+    if (!graph) {
+        JST_CHECK(submit(frame));
+        av_frame_unref(frame);
+        return receive(packets);
+    }
+
+    const int64_t pts = frame->pts;
+    const AVPictureType type = frame->pict_type;
+
+    if (const int error = av_buffersrc_add_frame_flags(source, frame, 0); error < 0) {
+        JST_ERROR("[REMOTE] Failed to filter the encoder frame: {}", ErrorString(error));
+        return Result::ERROR;
+    }
+
+    while (true) {
+        const int error = av_buffersink_get_frame(sink, filtered);
+        if (error == AVERROR(EAGAIN) || error == AVERROR_EOF) {
+            break;
+        }
+        if (error < 0) {
+            JST_ERROR("[REMOTE] Failed to receive the filtered encoder frame: {}", ErrorString(error));
+            return Result::ERROR;
+        }
+
+        if (sharing && sharing->synchronize(filtered) != Result::SUCCESS) {
+            av_frame_unref(filtered);
+            return Result::ERROR;
+        }
+
+        filtered->pts = pts;
+        filtered->pict_type = type;
+        filtered->color_range = context->color_range;
+        filtered->colorspace = context->colorspace;
+        filtered->color_primaries = context->color_primaries;
+        filtered->color_trc = context->color_trc;
+        const Result submitted = submit(filtered);
+        av_frame_unref(filtered);
+        JST_CHECK(submitted);
+    }
+
+    return receive(packets);
+}
+
+Result Instance::Remote::Encoder::submitBorrowed(std::vector<Packet>& packets) {
+    const Result delivered = deliver(input, packets);
+    av_frame_unref(input);
 
     if (!waitForRelease()) {
         JST_ERROR("[REMOTE] Encoder did not release the input frame. Reopening it.");
         avcodec_free_context(&context);
+        avfilter_graph_free(&graph);
         (void)waitForRelease();
         (void)create(Config(config));
         return Result::ERROR;
     }
 
-    return received;
+    return delivered;
 }
 
 Result Instance::Remote::Encoder::submit(AVFrame* frame) {

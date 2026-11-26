@@ -128,6 +128,8 @@ const std::vector<LegalSettingsView::Dependency>& LegalSettingsView::Dependencie
         {"nv-codec-headers", "MIT"},
         {"AMF", "MIT"},
         {"libvpl", "MIT"},
+        {"libva", "MIT"},
+        {"libdrm", "MIT"},
         {"libdatachannel", "MPL-2.0"},
         {"libjuice", "MPL-2.0"},
         {"usrsctp", "BSD-3-Clause"},

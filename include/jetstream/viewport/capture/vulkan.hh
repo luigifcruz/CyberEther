@@ -9,14 +9,18 @@ namespace Jetstream::Viewport {
 
 class FrameCaptureVulkan : public FrameCapture {
  public:
-    FrameCaptureVulkan();
+    explicit FrameCaptureVulkan(Export exporting = Export::None);
     ~FrameCaptureVulkan() override;
+
+    static bool SupportsExport(Export exporting);
+    static SharedDevice Device();
 
     Result create(Generic* viewport, const DeviceType& outputDevice = DeviceType::CPU) override;
     Result destroy() override;
     Result stop() override;
     Result captureFrame() override;
     Result getFrameData(Tensor& tensor) override;
+    Result getSharedFrame(SharedFrame& frame) override;
     Result releaseFrame() override;
 
  private:

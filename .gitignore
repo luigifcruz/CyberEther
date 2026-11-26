@@ -30,6 +30,7 @@ subprojects/*
 !subprojects/libairspyhf.wrap
 !subprojects/libbladerf.wrap
 !subprojects/libdatachannel.wrap
+!subprojects/libdrm.wrap
 !subprojects/libhackrf.wrap
 !subprojects/libiio.wrap
 !subprojects/libjuice.wrap
@@ -38,6 +39,7 @@ subprojects/*
 !subprojects/librtlsdr.wrap
 !subprojects/libusb-browser.wrap
 !subprojects/libusb.wrap
+!subprojects/libva.wrap
 !subprojects/libxml2.wrap
 !subprojects/limesuiteng.wrap
 !subprojects/libsrtp2.wrap

@@ -5,7 +5,10 @@
 #include "jetstream/memory/devices/vulkan/buffer.hh"
 #include "jetstream/logger.hh"
 
+#include "vulkan_export.hh"
+
 #include <array>
+#include <cstring>
 #include <queue>
 #include <mutex>
 #include <condition_variable>
@@ -19,9 +22,11 @@ struct FrameCaptureVulkan::Impl {
     Adapter<DeviceType::Vulkan>* vulkanViewport = nullptr;
     VkExtent2D extent = {};
     DeviceType outputDevice = DeviceType::Vulkan;
+    Export exporting = Export::None;
 
     std::array<Tensor, MAX_FRAMES_IN_FLIGHT> stagingTensors = {};
     std::array<Tensor, MAX_FRAMES_IN_FLIGHT> outputTensors = {};
+    std::unique_ptr<FrameExport> exporter;
 
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> commandBuffers = {};
@@ -36,9 +41,98 @@ struct FrameCaptureVulkan::Impl {
 
     U32 currentCaptureIndex = 0;
     U64 currentReadyIndex = 0;
+
+    Result createExporter(U32 family);
+    Result waitFrame(U64& index);
 };
 
-FrameCaptureVulkan::FrameCaptureVulkan() : pimpl(std::make_unique<Impl>()) {}
+bool FrameCaptureVulkan::SupportsExport(Export exporting) {
+    const auto& state = Backend::State<DeviceType::Vulkan>();
+    if (!state->isAvailable()) {
+        return false;
+    }
+
+    switch (exporting) {
+        case Export::None:
+            return true;
+#if defined(JST_OS_LINUX)
+        case Export::OpaqueFd:
+            return state->canExportDeviceMemory();
+        case Export::DmaBuf:
+            return state->canShareFrames() && Device().render != 0;
+#endif
+#if defined(JST_OS_WINDOWS)
+        case Export::D3D11:
+            return state->canShareFrames() && Device().luid != 0;
+#endif
+        default:
+            return false;
+    }
+}
+
+FrameCapture::SharedDevice FrameCaptureVulkan::Device() {
+    const auto& state = Backend::State<DeviceType::Vulkan>();
+
+    VkPhysicalDeviceIDProperties id = {};
+    id.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+
+    VkPhysicalDeviceProperties2 properties = {};
+    properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties.pNext = &id;
+
+#if defined(JST_OS_LINUX)
+    VkPhysicalDeviceDrmPropertiesEXT drm = {};
+    drm.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT;
+    if (state->canShareFrames()) {
+        id.pNext = &drm;
+    }
+#endif
+
+    vkGetPhysicalDeviceProperties2(state->getPhysicalDevice(), &properties);
+
+    SharedDevice device;
+    std::memcpy(device.uuid.data(), id.deviceUUID, device.uuid.size());
+    if (id.deviceLUIDValid) {
+        std::memcpy(&device.luid, id.deviceLUID, sizeof(device.luid));
+    }
+#if defined(JST_OS_LINUX)
+    if (state->canShareFrames() && drm.hasRender) {
+        device.render = static_cast<U32>(drm.renderMinor);
+    }
+#endif
+
+    return device;
+}
+
+Result FrameCaptureVulkan::Impl::createExporter(U32 family) {
+    switch (exporting) {
+#if defined(JST_OS_LINUX)
+        case Export::OpaqueFd:
+        case Export::DmaBuf:
+            exporter = CreateBufferExport(exporting);
+            break;
+#endif
+#if defined(JST_OS_WINDOWS)
+        case Export::D3D11:
+            exporter = CreateD3D11Export();
+            break;
+#endif
+        default:
+            JST_ERROR("[CAPTURE] Frame export is not supported on this platform.");
+            return Result::ERROR;
+    }
+
+    if (exporter->create(extent, family, MAX_FRAMES_IN_FLIGHT) != Result::SUCCESS) {
+        exporter.reset();
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+FrameCaptureVulkan::FrameCaptureVulkan(Export exporting) : pimpl(std::make_unique<Impl>()) {
+    pimpl->exporting = exporting;
+}
 
 FrameCaptureVulkan::~FrameCaptureVulkan() = default;
 
@@ -59,29 +153,38 @@ Result FrameCaptureVulkan::create(Generic* viewport, const DeviceType& outputDev
     const auto extent = pimpl->vulkanViewport->getSwapchainExtent();
     pimpl->extent = {static_cast<U32>(extent.x), static_cast<U32>(extent.y)};
 
-    for (U32 i = 0; i < Impl::MAX_FRAMES_IN_FLIGHT; i++) {
-        const Shape extent = {
-            pimpl->extent.height,
-            pimpl->extent.width,
-            4
-        };
+    Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
+    const U32 family = indices.graphicFamily.value();
 
-        const Buffer::Config config = {
-            .hostAccessible = (pimpl->outputDevice == DeviceType::CPU),
-        };
-        JST_CHECK(pimpl->stagingTensors[i].create(DeviceType::Vulkan, DataType::U8, extent, config));
-
-        if (pimpl->outputTensors[i].create(pimpl->outputDevice, pimpl->stagingTensors[i]) != Result::SUCCESS) {
-            JST_ERROR("[CAPTURE] Staging tensor does not support requested output device.");
+    if (pimpl->exporting != Export::None) {
+        if (outputDevice != DeviceType::Vulkan || !SupportsExport(pimpl->exporting)) {
+            JST_ERROR("[CAPTURE] Vulkan device can't export frames to the encoder.");
             return Result::ERROR;
+        }
+        JST_CHECK(pimpl->createExporter(family));
+    } else {
+        for (U32 i = 0; i < Impl::MAX_FRAMES_IN_FLIGHT; i++) {
+            const Shape extent = {
+                pimpl->extent.height,
+                pimpl->extent.width,
+                4
+            };
+
+            const Buffer::Config config = {
+                .hostAccessible = (pimpl->outputDevice == DeviceType::CPU),
+            };
+            JST_CHECK(pimpl->stagingTensors[i].create(DeviceType::Vulkan, DataType::U8, extent, config));
+
+            if (pimpl->outputTensors[i].create(pimpl->outputDevice, pimpl->stagingTensors[i]) != Result::SUCCESS) {
+                JST_ERROR("[CAPTURE] Staging tensor does not support requested output device.");
+                return Result::ERROR;
+            }
         }
     }
 
-    Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
-
     VkCommandPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = indices.graphicFamily.value();
+    poolInfo.queueFamilyIndex = family;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     JST_VK_CHECK(vkCreateCommandPool(device, &poolInfo, nullptr, &pimpl->commandPool), [&]{
@@ -114,7 +217,9 @@ Result FrameCaptureVulkan::create(Generic* viewport, const DeviceType& outputDev
     pimpl->stopped = false;
     pimpl->currentCaptureIndex = 0;
 
-    JST_DEBUG("[CAPTURE] Vulkan frame capture created ({}x{}).", pimpl->extent.width, pimpl->extent.height);
+    JST_DEBUG("[CAPTURE] Vulkan frame capture created ({}x{}, {}).", pimpl->extent.width,
+                                                                    pimpl->extent.height,
+                                                                    pimpl->exporter ? "exported" : "copied");
 
     return Result::SUCCESS;
 }
@@ -144,6 +249,10 @@ Result FrameCaptureVulkan::destroy() {
         pimpl->outputTensors[i] = Tensor();
     }
 
+    if (pimpl->exporter) {
+        pimpl->exporter->destroy();
+        pimpl->exporter.reset();
+    }
     pimpl->vulkanViewport = nullptr;
 
     return Result::SUCCESS;
@@ -172,97 +281,68 @@ Result FrameCaptureVulkan::captureFrame() {
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     const bool headless = Backend::State<DeviceType::Vulkan>()->headless();
     const U32 drawableIndex = pimpl->vulkanViewport->currentDrawableIndex();
+    const VkImage source = pimpl->vulkanViewport->getSwapchainImage(drawableIndex);
+    auto& commandBuffer = pimpl->commandBuffers[pimpl->currentCaptureIndex];
 
-    vkResetCommandBuffer(pimpl->commandBuffers[pimpl->currentCaptureIndex], 0);
+    vkResetCommandBuffer(commandBuffer, 0);
 
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    JST_VK_CHECK(vkBeginCommandBuffer(pimpl->commandBuffers[pimpl->currentCaptureIndex], &beginInfo), [&]{
+    JST_VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo), [&]{
         JST_ERROR("[CAPTURE] Failed to begin command buffer.");
     });
 
-    if (!headless) {
-        VkImageMemoryBarrier toTransferBarrier = {};
-        toTransferBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        toTransferBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        toTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        toTransferBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        toTransferBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        toTransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        toTransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        toTransferBarrier.image = pimpl->vulkanViewport->getSwapchainImage(drawableIndex);
-        toTransferBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        toTransferBarrier.subresourceRange.baseMipLevel = 0;
-        toTransferBarrier.subresourceRange.levelCount = 1;
-        toTransferBarrier.subresourceRange.baseArrayLayer = 0;
-        toTransferBarrier.subresourceRange.layerCount = 1;
+    VkImageMemoryBarrier swapchainBarrier = {};
+    swapchainBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    swapchainBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    swapchainBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    swapchainBarrier.image = source;
+    swapchainBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    swapchainBarrier.subresourceRange.levelCount = 1;
+    swapchainBarrier.subresourceRange.layerCount = 1;
 
-        vkCmdPipelineBarrier(pimpl->commandBuffers[pimpl->currentCaptureIndex],
+    if (!headless) {
+        swapchainBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        swapchainBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        swapchainBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        swapchainBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+        vkCmdPipelineBarrier(commandBuffer,
                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             0,
-                             0,
-                             nullptr,
-                             0,
-                             nullptr,
-                             1,
-                             &toTransferBarrier);
+                             0, 0, nullptr, 0, nullptr, 1, &swapchainBarrier);
     }
 
-    VkBufferImageCopy region = {};
-    region.bufferOffset = 0;
-    region.bufferRowLength = 0;
-    region.bufferImageHeight = 0;
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.mipLevel = 0;
-    region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = 1;
-    region.imageOffset = {0, 0, 0};
-    region.imageExtent.width = pimpl->extent.width;
-    region.imageExtent.height = pimpl->extent.height;
-    region.imageExtent.depth = 1;
+    if (pimpl->exporter) {
+        pimpl->exporter->record(commandBuffer, source, pimpl->currentCaptureIndex);
+    } else {
+        VkBufferImageCopy region = {};
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.layerCount = 1;
+        region.imageExtent = {pimpl->extent.width, pimpl->extent.height, 1};
 
-    auto* vkBackend = static_cast<VulkanBufferBackend*>(
-        pimpl->stagingTensors[pimpl->currentCaptureIndex].buffer().backend());
+        auto* vkBackend = static_cast<VulkanBufferBackend*>(
+            pimpl->stagingTensors[pimpl->currentCaptureIndex].buffer().backend());
 
-    vkCmdCopyImageToBuffer(pimpl->commandBuffers[pimpl->currentCaptureIndex],
-                           pimpl->vulkanViewport->getSwapchainImage(drawableIndex),
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           vkBackend->buffer(),
-                           1,
-                           &region);
+        vkCmdCopyImageToBuffer(commandBuffer, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               vkBackend->buffer(), 1, &region);
+    }
 
     if (!headless) {
-        VkImageMemoryBarrier toPresentBarrier = {};
-        toPresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        toPresentBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        toPresentBarrier.dstAccessMask = 0;
-        toPresentBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        toPresentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        toPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        toPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        toPresentBarrier.image = pimpl->vulkanViewport->getSwapchainImage(drawableIndex);
-        toPresentBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        toPresentBarrier.subresourceRange.baseMipLevel = 0;
-        toPresentBarrier.subresourceRange.levelCount = 1;
-        toPresentBarrier.subresourceRange.baseArrayLayer = 0;
-        toPresentBarrier.subresourceRange.layerCount = 1;
+        swapchainBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        swapchainBarrier.dstAccessMask = 0;
+        swapchainBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        swapchainBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        vkCmdPipelineBarrier(pimpl->commandBuffers[pimpl->currentCaptureIndex],
+        vkCmdPipelineBarrier(commandBuffer,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                             0,
-                             0,
-                             nullptr,
-                             0,
-                             nullptr,
-                             1,
-                             &toPresentBarrier);
+                             0, 0, nullptr, 0, nullptr, 1, &swapchainBarrier);
     }
 
-    JST_VK_CHECK(vkEndCommandBuffer(pimpl->commandBuffers[pimpl->currentCaptureIndex]), [&]{
+    JST_VK_CHECK(vkEndCommandBuffer(commandBuffer), [&]{
         JST_ERROR("[CAPTURE] Failed to end command buffer.");
     });
 
@@ -271,7 +351,7 @@ Result FrameCaptureVulkan::captureFrame() {
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &pimpl->commandBuffers[pimpl->currentCaptureIndex];
+    submitInfo.pCommandBuffers = &commandBuffer;
 
     auto& graphicsQueue = Backend::State<DeviceType::Vulkan>()->getGraphicsQueue();
     JST_VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, pimpl->fences[pimpl->currentCaptureIndex]), [&]{
@@ -289,32 +369,53 @@ Result FrameCaptureVulkan::captureFrame() {
     return Result::SUCCESS;
 }
 
-Result FrameCaptureVulkan::getFrameData(Tensor& tensor) {
-    if (pimpl->stopped) {
+Result FrameCaptureVulkan::Impl::waitFrame(U64& index) {
+    if (stopped) {
         return Result::ERROR;
     }
 
-    U64 frameIndex;
-
     {
-        std::unique_lock<std::mutex> lock(pimpl->frameMutex);
-        pimpl->frameCond.wait(lock, [&]{
-            return !pimpl->frameQueue.empty() || pimpl->stopped;
+        std::unique_lock<std::mutex> lock(frameMutex);
+        frameCond.wait(lock, [&]{
+            return !frameQueue.empty() || stopped;
         });
 
-        if (pimpl->stopped && pimpl->frameQueue.empty()) {
+        if (stopped && frameQueue.empty()) {
             return Result::ERROR;
         }
 
-        frameIndex = pimpl->frameQueue.front();
-        pimpl->frameQueue.pop();
+        index = frameQueue.front();
+        frameQueue.pop();
     }
 
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
-    vkWaitForFences(device, 1, &pimpl->fences[frameIndex], VK_TRUE, UINT64_MAX);
+    vkWaitForFences(device, 1, &fences[index], VK_TRUE, UINT64_MAX);
 
-    pimpl->currentReadyIndex = frameIndex;
-    tensor = pimpl->outputTensors[frameIndex];
+    currentReadyIndex = index;
+
+    return Result::SUCCESS;
+}
+
+Result FrameCaptureVulkan::getFrameData(Tensor& tensor) {
+    if (pimpl->exporter) {
+        return Result::ERROR;
+    }
+
+    U64 index = 0;
+    JST_CHECK(pimpl->waitFrame(index));
+    tensor = pimpl->outputTensors[index];
+
+    return Result::SUCCESS;
+}
+
+Result FrameCaptureVulkan::getSharedFrame(SharedFrame& frame) {
+    if (!pimpl->exporter) {
+        return Result::ERROR;
+    }
+
+    U64 index = 0;
+    JST_CHECK(pimpl->waitFrame(index));
+    frame = pimpl->exporter->frame(static_cast<U32>(index));
 
     return Result::SUCCESS;
 }

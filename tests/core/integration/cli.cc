@@ -481,6 +481,8 @@ TEST_CASE("CLI accepts every documented enum value", "[core][integration][cli]")
          "Video encoder (current: amf)"},
         {"encoder qsv", {"--remote", "--remote-encoder=QSV", "--help"},
          "Video encoder (current: qsv)"},
+        {"encoder vaapi", {"--remote", "--remote-encoder=VAAPI", "--help"},
+         "Video encoder (current: vaapi)"},
         {"transport auto", {"--remote", "--remote-media-transport=AUTO", "--help"},
          "Media transport (current: auto)"},
         {"transport udp", {"--remote", "--remote-media-transport=UDP", "--help"},

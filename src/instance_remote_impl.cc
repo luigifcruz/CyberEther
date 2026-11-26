@@ -201,31 +201,20 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
         this->rollbackCreate();
         return Result::ERROR;
     }
+    if (this->createCapture() != Result::SUCCESS) {
+        if (this->inputMemoryDevice_ == DeviceType::CPU) {
+            this->rollbackCreate();
+            return Result::ERROR;
+        }
+
+        JST_WARN("[REMOTE] Failed to share frames with the encoder. Falling back to CPU memory.");
+        if (this->createStream(DeviceType::CPU) != Result::SUCCESS || this->createCapture() != Result::SUCCESS) {
+            this->rollbackCreate();
+            return Result::ERROR;
+        }
+    }
+
     if (this->createBroker() != Result::SUCCESS) {
-        this->rollbackCreate();
-        return Result::ERROR;
-    }
-
-    // Create frame capture
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    if (this->viewportDevice == DeviceType::Metal) {
-        this->frameCapture = std::make_unique<Viewport::FrameCaptureMetal>([this](bool available) {
-            return this->acceptCapture(available, std::chrono::steady_clock::now());
-        });
-    }
-#endif
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-    if (this->viewportDevice == DeviceType::Vulkan) {
-        this->frameCapture = std::make_unique<Viewport::FrameCaptureVulkan>();
-    }
-#endif
-
-    if (!this->frameCapture) {
-        JST_ERROR("[REMOTE] No frame capture available for device type.");
-        this->rollbackCreate();
-        return Result::ERROR;
-    }
-    if (this->frameCapture->create(this->viewport, inputMemoryDevice_) != Result::SUCCESS) {
         this->rollbackCreate();
         return Result::ERROR;
     }
@@ -234,14 +223,26 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
     this->frameSubmissionRunning = true;
     try {
         this->frameSubmissionThread = std::thread([this]() {
+            const auto push = [this](const void* data) {
+                const Result pushed = this->pushNewFrame(data);
+                this->releaseCapture();
+                if (pushed != Result::SUCCESS) {
+                    this->requestKeyframe();
+                }
+            };
+
             while (this->frameSubmissionRunning) {
+                if (this->inputMemoryDevice_ == DeviceType::Vulkan) {
+                    Viewport::FrameCapture::SharedFrame frame;
+                    if (this->frameCapture->getSharedFrame(frame) == Result::SUCCESS) {
+                        push(&frame);
+                    }
+                    continue;
+                }
+
                 Tensor tensor;
                 if (this->frameCapture->getFrameData(tensor) == Result::SUCCESS) {
-                    const Result pushed = this->pushNewFrame(tensor.data());
-                    this->releaseCapture();
-                    if (pushed != Result::SUCCESS) {
-                        this->requestKeyframe();
-                    }
+                    push(tensor.data());
                 }
             }
         });
@@ -253,6 +254,41 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
 
     this->started_ = true;
     JST_INFO("[REMOTE] Remote streaming started.");
+    return Result::SUCCESS;
+}
+
+Result Instance::Remote::Impl::createCapture() {
+    if (this->frameCapture) {
+        (void)this->frameCapture->destroy();
+        this->frameCapture.reset();
+    }
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if (this->viewportDevice == DeviceType::Metal) {
+        this->frameCapture = std::make_unique<Viewport::FrameCaptureMetal>([this](bool available) {
+            return this->acceptCapture(available, std::chrono::steady_clock::now());
+        });
+    }
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    if (this->viewportDevice == DeviceType::Vulkan) {
+        const auto exporting = this->inputMemoryDevice_ == DeviceType::Vulkan ? Encoder::ExportFor(this->encoderType)
+                                                                              : Encoder::Export::None;
+        this->frameCapture = std::make_unique<Viewport::FrameCaptureVulkan>(exporting);
+    }
+#endif
+
+    if (!this->frameCapture) {
+        JST_ERROR("[REMOTE] No frame capture available for device type.");
+        return Result::ERROR;
+    }
+
+    if (this->frameCapture->create(this->viewport, this->inputMemoryDevice_) != Result::SUCCESS) {
+        (void)this->frameCapture->destroy();
+        this->frameCapture.reset();
+        return Result::ERROR;
+    }
+
     return Result::SUCCESS;
 }
 
@@ -496,56 +532,74 @@ std::vector<Instance::Remote::EncoderType> Instance::Remote::Impl::available(Cod
     return encoders;
 }
 
-std::vector<Instance::Remote::Impl::EncodingCombination> Instance::Remote::Impl::encodingCombinations(CodecType codec) {
+std::vector<Instance::Remote::Impl::EncodingCombination> Instance::Remote::Impl::encodingCombinations(CodecType codec,
+                                                                                                    DeviceType only) {
     std::vector<EncodingCombination> combinations;
 
-    const auto add = [&](DeviceType device, EncoderType encoder) {
-        Encoder::Config probe = {
+    std::vector<EncodingCombination> copied;
+
+    const auto probe = [&](DeviceType device, EncoderType encoder) {
+        Encoder::Config config = {
             .codec = codec,
             .encoder = encoder,
             .device = device,
+            .size = size,
         };
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        if (device == DeviceType::CUDA) {
-            probe.context = Backend::State<DeviceType::CUDA>()->getContext();
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        if (device == DeviceType::Vulkan) {
+            config.adapter = Viewport::FrameCaptureVulkan::Device();
         }
 #endif
-        if (Encoder::Available(probe)) {
-            combinations.push_back({device, encoder});
+        return Encoder::Available(config);
+    };
+
+    const auto add = [&](EncoderType encoder) {
+        bool exported = false;
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        const auto exporting = Encoder::ExportFor(encoder);
+        exported = only != DeviceType::CPU &&
+                   viewportDevice == DeviceType::Vulkan &&
+                   exporting != Encoder::Export::None &&
+                   Viewport::FrameCaptureVulkan::SupportsExport(exporting);
+#endif
+        if (exported && probe(DeviceType::Vulkan, encoder)) {
+            combinations.push_back({DeviceType::Vulkan, encoder});
+        } else if (probe(DeviceType::CPU, encoder)) {
+            copied.push_back({DeviceType::CPU, encoder});
         }
     };
 
-    DeviceType nvencDevice = DeviceType::CPU;
-#if defined(JETSTREAM_BACKEND_CUDA_AVAILABLE) && defined(JST_OS_LINUX)
-    if (viewportDevice == DeviceType::Vulkan && Backend::State<DeviceType::CUDA>()->isAvailable()) {
-        nvencDevice = DeviceType::CUDA;
-    }
-#endif
+    add(EncoderType::NVENC);
+    add(EncoderType::AMF);
+    add(EncoderType::QSV);
+    add(EncoderType::VAAPI);
+    add(EncoderType::VideoToolbox);
+    add(EncoderType::V4L2);
+    add(EncoderType::Software);
 
-    add(nvencDevice, EncoderType::NVENC);
-    add(DeviceType::CPU, EncoderType::AMF);
-    add(DeviceType::CPU, EncoderType::QSV);
-    add(DeviceType::CPU, EncoderType::VideoToolbox);
-    add(DeviceType::CPU, EncoderType::V4L2);
-    add(DeviceType::CPU, EncoderType::Software);
-
+    combinations.insert(combinations.end(), copied.begin(), copied.end());
     return combinations;
 }
 
-Result Instance::Remote::Impl::createStream() {
+Result Instance::Remote::Impl::createStream(DeviceType only) {
     JST_DEBUG("[REMOTE] Creating stream.");
 
     encoderType = EncoderType::Auto;
     inputMemoryDevice_ = DeviceType::None;
     encoderFallbacks.clear();
 
-    for (const auto& combination : encodingCombinations(config.video.codec)) {
+    for (const auto& combination : encodingCombinations(config.video.codec, only)) {
         if (config.video.encoder != EncoderType::Auto && config.video.encoder != combination.encoder) {
             continue;
         }
 
         if (encoderType != EncoderType::Auto) {
-            encoderFallbacks.push_back(combination);
+            const bool sameInput = combination.device == inputMemoryDevice_ &&
+                                   (combination.device != DeviceType::Vulkan ||
+                                    Encoder::ExportFor(combination.encoder) == Encoder::ExportFor(encoderType));
+            if (sameInput) {
+                encoderFallbacks.push_back(combination);
+            }
             continue;
         }
 
@@ -914,9 +968,9 @@ Result Instance::Remote::Impl::startStream() {
             .framerate = config.video.framerate,
         };
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        if (inputMemoryDevice_ == DeviceType::CUDA) {
-            encoderConfig.context = Backend::State<DeviceType::CUDA>()->getContext();
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        if (inputMemoryDevice_ == DeviceType::Vulkan) {
+            encoderConfig.adapter = Viewport::FrameCaptureVulkan::Device();
         }
 #endif
 

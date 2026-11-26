@@ -86,6 +86,8 @@ std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder) {
             return "amf";
         case Instance::Remote::EncoderType::QSV:
             return "qsv";
+        case Instance::Remote::EncoderType::VAAPI:
+            return "vaapi";
         default:
             JST_ERROR("Unknown remote encoder.");
             throw Result::ERROR;
@@ -112,6 +114,8 @@ Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder) 
         return Instance::Remote::EncoderType::AMF;
     } else if (sanitizedEncoder == "qsv") {
         return Instance::Remote::EncoderType::QSV;
+    } else if (sanitizedEncoder == "vaapi") {
+        return Instance::Remote::EncoderType::VAAPI;
     }
 
     JST_ERROR("Unknown remote encoder: {}", encoder);
@@ -134,6 +138,8 @@ const char* GetRemoteEncoderPrettyName(const Instance::Remote::EncoderType& enco
             return "AMF";
         case Instance::Remote::EncoderType::QSV:
             return "QSV";
+        case Instance::Remote::EncoderType::VAAPI:
+            return "VAAPI";
         default:
             return "Unknown";
     }

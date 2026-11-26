@@ -2,6 +2,21 @@ if cfg_lst.get('JETSTREAM_BACKEND_VULKAN_AVAILABLE', false)
     src_lst += files([
         'vulkan.cc',
     ])
+
+    if jst_is_linux
+        src_lst += files('vulkan_export_buffer.cc')
+    endif
+
+    if jst_is_windows
+        src_lst += files('vulkan_export_d3d11.cc')
+    endif
+endif
+
+if jst_is_windows
+    dep_lst += [
+        cpp.find_library('d3d11', required: true),
+        cpp.find_library('dxgi', required: true),
+    ]
 endif
 
 if cfg_lst.get('JETSTREAM_BACKEND_METAL_AVAILABLE', false)
@@ -27,6 +42,15 @@ if instance_remote_deps_found
         '../../instance_remote_socket.cc',
         '../../instance_remote_broker.cc',
     ])
+    if cfg_lst.get('JETSTREAM_LOADER_FFMPEG_CUDA_AVAILABLE', false)
+        src_lst += files('../../instance_remote_encoder_cuda.cc')
+    endif
+    if jst_is_linux
+        src_lst += files('../../instance_remote_encoder_vaapi.cc')
+    endif
+    if jst_is_windows
+        src_lst += files('../../instance_remote_encoder_d3d11.cc')
+    endif
     src_lst += custom_target(
         output : ['remote_viewer.cc'],
         command : [py, files(meson.project_source_root() / 'resources/remote/fetch.py'),

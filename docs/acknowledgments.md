@@ -63,6 +63,8 @@ CyberEther incorporates the following open-source libraries, fonts, and datasets
 | [nv-codec-headers](https://github.com/FFmpeg/nv-codec-headers) | NVENC encoding support in FFmpeg. | MIT |
 | [AMF](https://github.com/GPUOpen-LibrariesAndSDKs/AMF) | AMD hardware encoding support in FFmpeg. | MIT |
 | [libvpl](https://github.com/intel/libvpl) | Intel Quick Sync Video encoding support in FFmpeg. | MIT |
+| [libva](https://github.com/intel/libva) | VAAPI hardware encoding support in FFmpeg on Linux. | MIT |
+| [libdrm](https://gitlab.freedesktop.org/mesa/drm) | Linux GPU device access for VAAPI. | MIT |
 | [libdatachannel](https://github.com/paullouisageneau/libdatachannel) | WebRTC peer connections, data channels, and media transport. | MPL-2.0 |
 | [libjuice](https://github.com/paullouisageneau/libjuice) | ICE connectivity for libdatachannel. | MPL-2.0 |
 | [usrsctp](https://github.com/sctplab/usrsctp) | SCTP data channel transport for libdatachannel. | BSD-3-Clause |
@@ -5400,6 +5402,69 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+</details>
+
+### libva
+Video Acceleration API library. Used by FFmpeg for VAAPI hardware encoding on Linux. Licensed under MIT. [GitHub](https://github.com/intel/libva)
+
+<details>
+  <summary>View License</summary>
+
+```
+Copyright (c) 2007 Intel Corporation. All Rights Reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sub license, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice (including the
+next paragraph) shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+IN NO EVENT SHALL PRECISION INSIGHT AND/OR ITS SUPPLIERS BE LIABLE FOR
+ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+</details>
+
+### libdrm
+Userspace library for the Linux Direct Rendering Manager. Used by VAAPI to open the GPU. Licensed under MIT. [GitLab](https://gitlab.freedesktop.org/mesa/drm)
+
+<details>
+  <summary>View License</summary>
+
+```
+Copyright 1999 Precision Insight, Inc., Cedar Park, Texas.
+Copyright 2000 VA Linux Systems, Inc., Sunnyvale, California.
+All Rights Reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice (including the next
+paragraph) shall be included in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+PRECISION INSIGHT AND/OR ITS SUPPLIERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 ```
 </details>
 

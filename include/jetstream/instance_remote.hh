@@ -33,6 +33,7 @@ struct JETSTREAM_API Instance::Remote {
         VideoToolbox,
         AMF,
         QSV,
+        VAAPI,
     };
 
     enum class TransportType {
@@ -140,12 +141,13 @@ static inline constexpr std::array<Instance::Remote::CodecType, 3> RemoteCodecTy
     Instance::Remote::CodecType::AV1,
 };
 
-static inline constexpr std::array<Instance::Remote::EncoderType, 7> RemoteEncoderTypes = {
+static inline constexpr std::array<Instance::Remote::EncoderType, 8> RemoteEncoderTypes = {
     Instance::Remote::EncoderType::Auto,
     Instance::Remote::EncoderType::Software,
     Instance::Remote::EncoderType::NVENC,
     Instance::Remote::EncoderType::AMF,
     Instance::Remote::EncoderType::QSV,
+    Instance::Remote::EncoderType::VAAPI,
     Instance::Remote::EncoderType::V4L2,
     Instance::Remote::EncoderType::VideoToolbox,
 };

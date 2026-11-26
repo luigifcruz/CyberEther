@@ -118,12 +118,13 @@ struct Instance::Remote::Impl {
     std::atomic<bool> streaming = false;
     std::mutex streamMutex;
 
-    Result createStream();
+    Result createStream(DeviceType only = DeviceType::None);
+    Result createCapture();
     Result startStream();
     Result stopStream();
     Result destroyStream();
     std::vector<EncoderType> available(CodecType codec);
-    std::vector<EncodingCombination> encodingCombinations(CodecType codec);
+    std::vector<EncodingCombination> encodingCombinations(CodecType codec, DeviceType only = DeviceType::None);
     Result createWebRtcSession(const std::string& sessionId, const std::string& peerId);
     void destroyWebRtcSession(const std::string& sessionId);
     void destroyAllWebRtcSessions();

@@ -9,8 +9,8 @@
 
 #include "../render/harness.hh"
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-#include "jetstream/backend/base.hh"
+#if defined(JETSTREAM_LOADER_FFMPEG_CUDA_AVAILABLE) && defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
+#include "jetstream/viewport/capture/vulkan.hh"
 #endif
 
 #include <rtc/rtc.hpp>
@@ -1223,18 +1223,18 @@ TEST_CASE("Remote stream can stop and restart on the same instance",
     }
 }
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-TEST_CASE("Remote NVENC opens on the input CUDA context across stream restarts",
+#if defined(JETSTREAM_LOADER_FFMPEG_CUDA_AVAILABLE) && defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
+TEST_CASE("Remote NVENC opens on shared Vulkan frames across stream restarts",
           "[core][application][remote][stream][cuda]") {
     SkipRemoteEncodingOnCI();
-    if (!Backend::State<DeviceType::CUDA>()->isAvailable()) {
-        SKIP("CUDA is unavailable");
+    if (!Viewport::FrameCaptureVulkan::SupportsExport(Viewport::FrameCapture::Export::OpaqueFd)) {
+        SKIP("Vulkan can't export frames");
     }
     if (!Instance::Remote::Encoder::Available({
             .codec = Instance::Remote::CodecType::H264,
             .encoder = Instance::Remote::EncoderType::NVENC,
-            .device = DeviceType::CUDA,
-            .context = Backend::State<DeviceType::CUDA>()->getContext(),
+            .device = DeviceType::Vulkan,
+            .adapter = Viewport::FrameCaptureVulkan::Device(),
         })) {
         SKIP("NVENC is unavailable");
     }
@@ -1243,7 +1243,7 @@ TEST_CASE("Remote NVENC opens on the input CUDA context across stream restarts",
     auto& remote = stream.remote;
     remote.size = {320, 240};
     remote.config.video.codec = Instance::Remote::CodecType::H264;
-    remote.inputMemoryDevice_ = DeviceType::CUDA;
+    remote.inputMemoryDevice_ = DeviceType::Vulkan;
     remote.encoderType = Instance::Remote::EncoderType::NVENC;
     for (unsigned i = 0; i < 2; ++i) {
         CAPTURE(i);

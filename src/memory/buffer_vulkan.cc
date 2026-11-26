@@ -102,12 +102,22 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            if (Jetstream::Backend::HasMemoryType(physicalDevice,
+                                                 memoryRequirements.memoryTypeBits,
+                                                 memoryProperties | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+                memoryProperties |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+            }
             locationState = Location::Unified;
             hostAccessible = true;
             JST_TRACE("[MEMORY:BUFFER:VULKAN] Using unified memory (DL, HV, HC).");
         } else if (config.hostAccessible) {
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            if (Jetstream::Backend::HasMemoryType(physicalDevice,
+                                                 memoryRequirements.memoryTypeBits,
+                                                 memoryProperties | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+                memoryProperties |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+            }
             locationState = Location::Host;
             hostAccessible = true;
             JST_TRACE("[MEMORY:BUFFER:VULKAN] Using host accessible memory (HV, HC).");

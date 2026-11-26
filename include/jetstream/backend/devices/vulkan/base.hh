@@ -55,6 +55,7 @@ class JETSTREAM_API Vulkan {
     bool canExportDeviceMemory() const;
     bool canImportDeviceMemory() const;
     bool canImportHostMemory() const;
+    bool canShareFrames() const;
 
     constexpr const U64& getDeviceId() const {
         return config.deviceId;
@@ -136,6 +137,7 @@ class JETSTREAM_API Vulkan {
         bool canImportDeviceMemory;
         bool canImportHostMemory;
         bool canExportDeviceMemory;
+        bool canShareFrames;
     } cache;
 
     VkDebugReportCallbackEXT debugReportCallback{};
