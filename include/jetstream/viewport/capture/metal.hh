@@ -21,6 +21,7 @@ class FrameCaptureMetal : public FrameCapture {
     Result captureFrame() override;
     Result getFrameData(Tensor& tensor) override;
     Result releaseFrame() override;
+    Extent2D<U64> extent() const override;
 
  private:
     struct Impl;

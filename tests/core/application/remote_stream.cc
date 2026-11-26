@@ -659,6 +659,7 @@ TEST_CASE("Remote capture honors the configured frame rate without catch-up burs
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     Instance::Remote::Impl remote;
     remote.config.video.framerate = captureFps;
@@ -692,6 +693,7 @@ TEST_CASE("Remote capture skips frames that presented nothing", "[core][applicat
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     Instance::Remote::Impl remote;
     remote.config.video.framerate = 60;
@@ -716,6 +718,7 @@ TEST_CASE("A redraw inside the capture interval is captured once the interval el
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     RenderTest::Viewport viewport;
     Instance::Remote::Impl remote;
@@ -755,6 +758,7 @@ TEST_CASE("A keyframe request on an idle window asks for a frame and captures it
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     RenderTest::Viewport viewport;
     Instance::Remote::Impl remote;
@@ -794,6 +798,7 @@ TEST_CASE("A busy capture slot keeps the frame pending until the encoder release
         }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     RenderTest::Viewport viewport;
     Instance::Remote::Impl remote;
@@ -829,6 +834,7 @@ TEST_CASE("Metal capture is decided on the present it captures",
         Result captureFrame() override { return Result::ERROR; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { ++released; return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     RenderTest::Viewport viewport;
     Instance::Remote::Impl remote;
@@ -921,6 +927,7 @@ TEST_CASE("An idle remote viewer requests a fresh frame after connecting",
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     RenderTest::Viewport viewport;
     Stream stream;

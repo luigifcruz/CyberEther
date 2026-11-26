@@ -1,5 +1,6 @@
 #include "jetstream/viewport/platforms/headless/metal.hh"
 
+#include <cmath>
 #include <thread>
 
 namespace Jetstream::Viewport {
@@ -47,7 +48,7 @@ Result Implementation::createTexture(const Extent2D<U64>& size) {
 }
 
 Result Implementation::resize(const Extent2D<U64>& size, F32 scale) {
-    if (size.x == 0 || size.y == 0 || scale <= 0.0f) {
+    if (size.x == 0 || size.y == 0 || !(scale > 0.0f) || !std::isfinite(scale)) {
         return Result::ERROR;
     }
 

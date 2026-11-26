@@ -428,6 +428,10 @@ Result FrameCaptureVulkan::getSharedFrame(SharedFrame& frame) {
     return Result::SUCCESS;
 }
 
+Extent2D<U64> FrameCaptureVulkan::extent() const {
+    return {pimpl->extent.width, pimpl->extent.height};
+}
+
 Result FrameCaptureVulkan::releaseFrame() {
     pimpl->frameEvents[pimpl->currentReadyIndex].clear();
     pimpl->frameEvents[pimpl->currentReadyIndex].notify_one();

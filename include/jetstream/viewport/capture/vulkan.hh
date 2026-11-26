@@ -22,6 +22,7 @@ class FrameCaptureVulkan : public FrameCapture {
     Result getFrameData(Tensor& tensor) override;
     Result getSharedFrame(SharedFrame& frame) override;
     Result releaseFrame() override;
+    Extent2D<U64> extent() const override;
 
  private:
     struct Impl;

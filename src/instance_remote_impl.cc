@@ -239,8 +239,9 @@ Extent2D<U64> Instance::Remote::Impl::viewportExtent() const {
 
 Result Instance::Remote::Impl::startSubmission() {
     this->frameSubmissionRunning = true;
+    const bool shared = this->inputMemoryDevice_ == DeviceType::Vulkan;
     try {
-        this->frameSubmissionThread = std::thread([this]() {
+        this->frameSubmissionThread = std::thread([this, shared]() {
             const auto push = [this](const void* data) {
                 const Result pushed = this->pushNewFrame(data);
                 this->releaseCapture();
@@ -250,7 +251,7 @@ Result Instance::Remote::Impl::startSubmission() {
             };
 
             while (this->frameSubmissionRunning) {
-                if (this->inputMemoryDevice_ == DeviceType::Vulkan) {
+                if (shared) {
                     Viewport::FrameCapture::SharedFrame frame;
                     if (this->frameCapture->getSharedFrame(frame) == Result::SUCCESS) {
                         push(&frame);
@@ -310,6 +311,11 @@ Result Instance::Remote::Impl::rebuildStream(const Extent2D<U64>& next) {
     this->nextCaptureTime = {};
     this->capturePending = false;
     this->captureBlocked = false;
+
+    if (this->inputMemoryDevice_ == DeviceType::None && this->createStream() != Result::SUCCESS) {
+        JST_ERROR("[REMOTE] No encoder supports {}x{}.", next.x, next.y);
+        return Result::ERROR;
+    }
 
     if (this->createCapture() != Result::SUCCESS) {
         JST_WARN("[REMOTE] Failed to share frames with the encoder. Falling back to CPU memory.");
@@ -415,6 +421,7 @@ Result Instance::Remote::Impl::createCapture() {
         return Result::ERROR;
     }
 
+    this->setStreamSize(this->frameCapture->extent());
     return Result::SUCCESS;
 }
 
@@ -484,8 +491,7 @@ Result Instance::Remote::Impl::captureFrame(bool presented, std::chrono::steady_
     JST_CHECK(processInput());
     applyViewport();
     if (this->started_ && followViewport() != Result::SUCCESS) {
-        JST_ERROR("[REMOTE] Stopping remote streaming after the viewport change failed.");
-        return this->destroy();
+        JST_WARN("[REMOTE] Video is paused until the viewport returns to a size the encoder supports.");
     }
     if (!this->frameCapture) {
         return Result::SUCCESS;
@@ -1071,20 +1077,22 @@ void Instance::Remote::Impl::recordViewport(const std::string& sessionId, const 
     constexpr F64 kMaxWidth = 3840.0;
     constexpr F64 kMaxHeight = 2160.0;
     constexpr F64 kMinSide = 240.0;
+    constexpr F64 kMinPixels = 16.0;
 
     const F64 width = j.value("width", 0.0);
     const F64 height = j.value("height", 0.0);
     const F64 scale = std::clamp(j.value("scale", 1.0), 0.5, 4.0);
-    if (!std::isfinite(width) || !std::isfinite(height) || width < 1.0 || height < 1.0) {
+    if (!std::isfinite(width) || !std::isfinite(height) || width < 1.0 || height < 1.0 ||
+        width > 65536.0 || height > 65536.0) {
         JST_WARN("[REMOTE] Rejected invalid viewport size.");
         return;
     }
 
-    F64 pixelsX = width * scale;
-    F64 pixelsY = height * scale;
-    const F64 shrink = std::min({1.0, kMaxWidth / pixelsX, kMaxHeight / pixelsY});
-    pixelsX = std::max(kMinSide, pixelsX * shrink);
-    pixelsY = std::max(kMinSide, pixelsY * shrink);
+    const F64 pixelsX = width * scale;
+    const F64 pixelsY = height * scale;
+    const F64 fit = std::min({1.0, kMaxWidth / pixelsX, kMaxHeight / pixelsY});
+    const F64 grow = std::max(1.0, kMinSide / (std::min(pixelsX, pixelsY) * fit));
+    const F64 factor = fit * std::min(grow, std::min(kMaxWidth / (pixelsX * fit), kMaxHeight / (pixelsY * fit)));
 
     const auto even = [](F64 value) {
         return static_cast<U64>(value) & ~static_cast<U64>(1);
@@ -1092,8 +1100,8 @@ void Instance::Remote::Impl::recordViewport(const std::string& sessionId, const 
 
     std::lock_guard<std::mutex> lock(inputMutex);
     viewportRequests[sessionId] = {
-        .size = {even(pixelsX), even(pixelsY)},
-        .scale = static_cast<F32>(scale * shrink),
+        .size = {even(std::max(kMinPixels, pixelsX * factor)), even(std::max(kMinPixels, pixelsY * factor))},
+        .scale = static_cast<F32>(scale * factor),
     };
 }
 

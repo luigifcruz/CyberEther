@@ -39,6 +39,7 @@ class FrameCapture {
     virtual Result captureFrame() = 0;
     virtual Result getFrameData(Tensor& tensor) = 0;
     virtual Result getSharedFrame(SharedFrame&) { return Result::ERROR; }
+    virtual Extent2D<U64> extent() const = 0;
     virtual Result releaseFrame() = 0;
 };
 

@@ -188,6 +188,11 @@ Result FrameCaptureMetal::getFrameData(Tensor& tensor) {
     return Result::SUCCESS;
 }
 
+Extent2D<U64> FrameCaptureMetal::extent() const {
+    const auto state = pimpl->state;
+    return state ? state->extent : Extent2D<U64>{};
+}
+
 Result FrameCaptureMetal::releaseFrame() {
     const auto state = pimpl->state;
     if (state) {
