@@ -100,11 +100,20 @@ if all_deps_found
 
     subproject('ffmpeg', required: true, default_options: ffmpeg_options)
 
-    deps += [
-        dependency('libavcodec', required: true, static: true),
-        dependency('libavutil', required: true, static: true),
-        dependency('libswscale', required: true, static: true),
-    ]
+    foreach ffmpeg_lib : ['libavcodec', 'libavutil', 'libswscale']
+        deps += dependency(ffmpeg_lib, required: true, static: true).partial_dependency(
+            compile_args: true,
+            includes: true,
+            links: true,
+            sources: true,
+        )
+    endforeach
+
+    deps += declare_dependency(
+        link_args: meson.get_compiler('c').get_supported_link_arguments(
+            '-Wl,--exclude-libs,libavcodec.a:libavutil.a:libswscale.a:libopenh264.a',
+        ),
+    )
 
     foreach x_dep : deps
         all_deps_found = all_deps_found and x_dep.found()
