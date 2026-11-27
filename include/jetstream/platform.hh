@@ -230,6 +230,7 @@ class JETSTREAM_API Http {
             std::function<bool(I32 status, const Headers& headers)> onResponse;
             std::function<bool(std::string_view data)> onData;
             std::function<bool()> cancelled;
+            bool followRedirects = true;
         };
 
         struct Response {
