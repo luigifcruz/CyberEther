@@ -58,7 +58,9 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         auto& commandBuffer = state->getDefaultCommandBuffer();
         const auto& unified = state->hasUnifiedMemory();
 #if !defined(JST_OS_WINDOWS)
-        const auto& canExport = state->canExportDeviceMemory();
+        VkPhysicalDeviceProperties physicalDeviceProperties;
+        vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+        const bool canExport = state->canExportDeviceMemory() && physicalDeviceProperties.vendorID == 0x10DE;
 #endif
 
         U64 alignedSize = 0;
@@ -143,6 +145,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
             memoryAllocateInfo.pNext = &exportInfo;
         }
+        exported = canExport;
 #endif
 
         JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &_memory), [&]{
@@ -364,6 +367,10 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         return _memory;
     }
 
+    bool exportable() const override {
+        return exported;
+    }
+
     void destroy() override {
         if (_memory != VK_NULL_HANDLE) {
             auto& device = Jetstream::Backend::State<DeviceType::Vulkan>()->getDevice();
@@ -394,6 +401,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         hostAccessible = false;
         locationState = Location::None;
         importedFromCuda = false;
+        exported = false;
     }
 
  private:
@@ -406,6 +414,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
     bool hostAccessible = false;
     Location locationState = Location::None;
     bool importedFromCuda = false;
+    bool exported = false;
 };
 
 }  // namespace

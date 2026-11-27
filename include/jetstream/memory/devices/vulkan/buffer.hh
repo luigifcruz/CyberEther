@@ -10,6 +10,7 @@ class VulkanBufferBackend {
     virtual ~VulkanBufferBackend() = default;
     virtual VkBuffer buffer() const = 0;
     virtual VkDeviceMemory memory() const = 0;
+    virtual bool exportable() const = 0;
 };
 
 }  // namespace Jetstream

@@ -336,6 +336,22 @@ Result FrameCaptureVulkan::captureFrame() {
 
         vkCmdCopyImageToBuffer(commandBuffer, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                vkBackend->buffer(), 1, &region);
+
+        if (pimpl->outputDevice == DeviceType::CPU) {
+            VkBufferMemoryBarrier hostRead = {};
+            hostRead.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            hostRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            hostRead.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+            hostRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            hostRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            hostRead.buffer = vkBackend->buffer();
+            hostRead.size = VK_WHOLE_SIZE;
+
+            vkCmdPipelineBarrier(commandBuffer,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_HOST_BIT,
+                                 0, 0, nullptr, 1, &hostRead, 0, nullptr);
+        }
     }
 
     if (!headless) {
