@@ -23,9 +23,11 @@ class TestPlatform final : public Jetstream::Viewport::Generic::Platform {
     void setCursor(Jetstream::SurfaceCursor next) override { cursor = next; }
     std::string clipboardText() const override { return clipboard; }
     void setClipboardText(const std::string& text) override { clipboard = text; }
+    void focus() override { ++focuses; }
 
     Jetstream::F64 clock = 1.0;
     bool ticking = false;
+    Jetstream::U64 focuses = 0;
     Jetstream::SurfaceCursor cursor = Jetstream::SurfaceCursor::Default;
     std::string clipboard;
 };

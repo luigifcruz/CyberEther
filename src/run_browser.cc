@@ -9,6 +9,10 @@
 #include "jetstream/backend/base.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/settings.hh"
+#include "jetstream/viewport/adapters/generic.hh"
+
+#include "home_gallery_remote.hh"
+#include "plugin_gallery.hh"
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
@@ -118,8 +122,12 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
 
     if (!startupFlowgraph.empty()) {
         std::shared_ptr<Viewport::Generic> viewport;
-        if (instance->viewportGet(viewport) != Result::SUCCESS || !viewport ||
-            viewport->addFileDropEvent({startupFlowgraph}) != Result::SUCCESS) {
+        if (instance->viewportGet(viewport) != Result::SUCCESS || !viewport) {
+            JST_WARN("[CYBERETHER] Failed to queue startup flowgraph '{}'.", startupFlowgraph);
+        } else if (Home::Gallery::Remote::Link(startupFlowgraph).has_value() ||
+                   Plugin::Gallery::Link(startupFlowgraph).has_value()) {
+            viewport->addOpenRequest(startupFlowgraph);
+        } else if (viewport->addFileDropEvent({startupFlowgraph}) != Result::SUCCESS) {
             JST_WARN("[CYBERETHER] Failed to queue startup flowgraph '{}'.", startupFlowgraph);
         }
     }

@@ -117,6 +117,29 @@ bool Plugin::Gallery::ValidId(std::string_view id) {
     });
 }
 
+std::optional<Plugin::Gallery::Reference> Plugin::Gallery::Link(const std::string& url) {
+    std::string_view rest = url;
+    if (!rest.starts_with(LinkPrefix)) {
+        return std::nullopt;
+    }
+    rest.remove_prefix(std::string_view(LinkPrefix).size());
+    rest = rest.substr(0, rest.find_first_of("?#"));
+    if (rest.ends_with('/')) {
+        rest.remove_suffix(1);
+    }
+
+    std::string_view owner = Home::Gallery::Origin;
+    if (const auto separator = rest.find('/'); separator != std::string_view::npos) {
+        owner = rest.substr(0, separator);
+        rest.remove_prefix(separator + 1);
+    }
+    if (!Home::Gallery::Remote::ValidOwner(owner) || !ValidId(rest)) {
+        return std::nullopt;
+    }
+
+    return Reference{.owner = std::string(owner), .id = std::string(rest)};
+}
+
 bool Plugin::Gallery::ReservedName(std::string_view name) {
     static constexpr std::string_view reserved[] = {
         "aux", "con", "nul", "prn",

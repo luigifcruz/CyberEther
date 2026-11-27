@@ -157,6 +157,22 @@ std::vector<std::string> Generic::takeDroppedFiles() {
     return std::exchange(droppedFiles, {});
 }
 
+void Generic::addOpenRequest(std::string url) {
+    {
+        std::lock_guard lock(openRequestsMutex);
+        openRequests.push_back(std::move(url));
+    }
+    if (platform) {
+        platform->focus();
+    }
+    requestRedraw();
+}
+
+std::vector<std::string> Generic::takeOpenRequests() {
+    std::lock_guard lock(openRequestsMutex);
+    return std::exchange(openRequests, {});
+}
+
 void Generic::setInterceptClose(bool enabled) {
     closeIntercepted = enabled;
 }

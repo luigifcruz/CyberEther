@@ -286,6 +286,11 @@ void PluginActions::reconcileInstall() {
 }
 
 Result PluginActions::handle(const MailOpenPluginDetails& msg) {
+    auto& catalog = state.plugins.catalog;
+    const bool listed = std::ranges::any_of(catalog.entries, [&](const auto& entry) { return entry.id == msg.id; });
+    if (!listed && !catalog.loading) {
+        catalog.next = {};
+    }
     state.plugins.details = msg.id;
     return Result::SUCCESS;
 }

@@ -305,6 +305,10 @@ struct MailOpenUrl {
     bool notifyResult = false;
 };
 
+struct MailOpenLink {
+    std::string url;
+};
+
 struct MailRevealPath {
     std::string path;
 };
@@ -866,6 +870,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailNotify,
                            MailNotifyResult,
                            MailOpenUrl,
+                           MailOpenLink,
                            MailCopyText,
                            MailRevealPath,
                            MailQuit,

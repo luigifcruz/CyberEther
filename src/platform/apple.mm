@@ -4,12 +4,53 @@
 #include <dispatch/dispatch.h>
 
 #include <filesystem>
+#include <mutex>
 
 #ifdef JST_OS_IOS
 #import <UIKit/UIKit.h>
 #else
 #import <AppKit/AppKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#endif
+
+#ifdef JST_OS_MAC
+namespace {
+
+std::mutex urlEventMutex;
+std::function<void(std::string)> urlEventHandler;
+
+}  // namespace
+
+@interface JSTUrlEventReceiver : NSObject
+- (void)install:(NSNotification*)notification;
+- (void)handleUrlEvent:(NSAppleEventDescriptor*)event withReplyEvent:(NSAppleEventDescriptor*)reply;
+@end
+
+@implementation JSTUrlEventReceiver
+- (void)install:(NSNotification*)notification {
+    (void)notification;
+    [[NSAppleEventManager sharedAppleEventManager] setEventHandler:self
+                                                       andSelector:@selector(handleUrlEvent:withReplyEvent:)
+                                                     forEventClass:kInternetEventClass
+                                                        andEventID:kAEGetURL];
+}
+
+- (void)handleUrlEvent:(NSAppleEventDescriptor*)event withReplyEvent:(NSAppleEventDescriptor*)reply {
+    (void)reply;
+    NSString* url = [[event paramDescriptorForKeyword:keyDirectObject] stringValue];
+    if (url == nil) {
+        return;
+    }
+    std::function<void(std::string)> handler;
+    {
+        std::lock_guard lock(urlEventMutex);
+        handler = urlEventHandler;
+    }
+    if (handler) {
+        handler(std::string([url UTF8String]));
+    }
+}
+@end
 #endif
 
 namespace Jetstream::Platform {
@@ -44,6 +85,25 @@ Result CachePath(std::string& path) {
 Result DataPath(std::string& path) {
     return ResolveAppPath(NSApplicationSupportDirectory, @"CyberEther/Data", path);
 }
+
+#ifdef JST_OS_MAC
+void InstallUrlEventHandler(std::function<void(std::string)> handler) {
+    static JSTUrlEventReceiver* receiver = nil;
+    {
+        std::lock_guard lock(urlEventMutex);
+        urlEventHandler = std::move(handler);
+    }
+    if (receiver != nil) {
+        return;
+    }
+    receiver = [[JSTUrlEventReceiver alloc] init];
+    [receiver install:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:receiver
+                                             selector:@selector(install:)
+                                                 name:NSApplicationWillFinishLaunchingNotification
+                                               object:nil];
+}
+#endif
 
 Result OpenUrl(const std::string& url) {
     NSString* nsUrl = [NSString stringWithUTF8String:url.c_str()];

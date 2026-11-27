@@ -235,6 +235,7 @@ struct GlfwInput::Impl {
     std::array<GLFWcursor*, kCursorCount> cursors{};
     std::optional<SurfaceCursor> cursor;
     std::atomic<SurfaceCursor> requestedCursor = SurfaceCursor::Default;
+    std::atomic<bool> focusRequested = false;
     mutable std::mutex clipboardMutex;
     std::string clipboard;
     std::optional<std::string> pendingClipboard;
@@ -627,6 +628,14 @@ GlfwInput::~GlfwInput() {
 void GlfwInput::poll() {
     impl->applyCursor();
     impl->applyClipboard();
+#ifndef __EMSCRIPTEN__
+    if (impl->focusRequested.exchange(false)) {
+        if (glfwGetWindowAttrib(impl->window, GLFW_ICONIFIED) != 0) {
+            glfwRestoreWindow(impl->window);
+        }
+        glfwFocusWindow(impl->window);
+    }
+#endif
 #if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS)
     impl->pointer->poll();
     impl->touchGesture.poll(glfwGetTime());
@@ -661,6 +670,11 @@ void GlfwInput::setCursor(SurfaceCursor cursor) {
     if (impl->requestedCursor.exchange(cursor) != cursor) {
         WakeEvents();
     }
+}
+
+void GlfwInput::focus() {
+    impl->focusRequested = true;
+    WakeEvents();
 }
 
 F64 GlfwInput::time() const {

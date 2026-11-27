@@ -508,6 +508,29 @@ class JETSTREAM_API FileLock {
 JETSTREAM_API Result OpenUrl(const std::string& url);
 JETSTREAM_API Result OpenFolder(const std::string& path);
 
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+class JETSTREAM_API UrlScheme {
+ public:
+    using Handler = std::function<void(std::string)>;
+
+    UrlScheme();
+    ~UrlScheme();
+
+    UrlScheme(const UrlScheme&) = delete;
+    UrlScheme& operator=(const UrlScheme&) = delete;
+
+    static Result Register(const std::string& scheme);
+    static Result Forward(const std::string& scheme, const std::string& url);
+
+    Result listen(const std::string& scheme, Handler handler);
+    void close();
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+#endif
+
 //
 // Dialogs
 //

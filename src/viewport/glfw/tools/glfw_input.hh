@@ -25,6 +25,7 @@ class GlfwInput final : public Generic::Platform {
     void setCursor(SurfaceCursor cursor) override;
     std::string clipboardText() const override;
     void setClipboardText(const std::string& text) override;
+    void focus() override;
 
  private:
     struct Impl;

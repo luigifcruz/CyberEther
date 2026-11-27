@@ -76,6 +76,17 @@ bool ValidSlug(std::string_view slug) {
     });
 }
 
+std::optional<std::string> TrailingSlug(std::string_view rest) {
+    rest = rest.substr(0, rest.find_first_of("?#"));
+    if (rest.ends_with('/')) {
+        rest.remove_suffix(1);
+    }
+    if (!ValidSlug(rest)) {
+        return std::nullopt;
+    }
+    return std::string(rest);
+}
+
 std::optional<std::string> Digest(const std::string& content) {
 #if defined(JETSTREAM_LOADER_OPENSSL_AVAILABLE)
     unsigned char digest[SHA256_DIGEST_LENGTH];
@@ -334,14 +345,34 @@ std::optional<std::string> Home::Gallery::Remote::Slug(const std::string& url) {
         return std::nullopt;
     }
     rest.remove_prefix(std::string_view(PagePath).size());
+    return TrailingSlug(rest);
+}
+
+bool Home::Gallery::Remote::ValidOwner(std::string_view owner) {
+    return ValidSlug(owner);
+}
+
+std::optional<Home::Gallery::Remote::Reference> Home::Gallery::Remote::Link(const std::string& url) {
+    std::string_view rest = url;
+    if (!rest.starts_with(LinkPrefix)) {
+        return std::nullopt;
+    }
+    rest.remove_prefix(std::string_view(LinkPrefix).size());
     rest = rest.substr(0, rest.find_first_of("?#"));
     if (rest.ends_with('/')) {
         rest.remove_suffix(1);
     }
-    if (!ValidSlug(rest)) {
+
+    std::string_view owner = Origin;
+    if (const auto separator = rest.find('/'); separator != std::string_view::npos) {
+        owner = rest.substr(0, separator);
+        rest.remove_prefix(separator + 1);
+    }
+    if (!ValidOwner(owner) || !ValidSlug(rest)) {
         return std::nullopt;
     }
-    return std::string(rest);
+
+    return Reference{.owner = std::string(owner), .slug = std::string(rest)};
 }
 
 std::vector<Home::Gallery::Section> Home::Gallery::Remote::Sections(const Flowgraphs& flowgraphs) {

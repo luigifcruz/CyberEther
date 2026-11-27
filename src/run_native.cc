@@ -8,7 +8,10 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -23,7 +26,10 @@
 #include "jetstream/registry.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/benchmark.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 
+#include "home_gallery_remote.hh"
+#include "plugin_gallery.hh"
 #include "updater.hh"
 
 #if defined(JST_OS_WINDOWS)
@@ -54,6 +60,38 @@ void HandleInterrupt() noexcept {
     Platform::WriteInterruptMessage(ForceShutdownMessage, sizeof(ForceShutdownMessage) - 1);
     Platform::ForceTerminate(130);
 }
+
+constexpr const char* URL_SCHEME = "cyberether";
+constexpr std::string_view URL_PREFIX = "cyberether://";
+
+class LinkInbox {
+ public:
+    void deliver(std::string url) {
+        std::lock_guard lock(mutex);
+        if (viewport) {
+            viewport->addOpenRequest(std::move(url));
+            return;
+        }
+        pending.push_back(std::move(url));
+    }
+
+    void attach(std::shared_ptr<Viewport::Generic> next) {
+        std::lock_guard lock(mutex);
+        viewport = std::move(next);
+        if (!viewport) {
+            return;
+        }
+        for (auto& url : pending) {
+            viewport->addOpenRequest(std::move(url));
+        }
+        pending.clear();
+    }
+
+ private:
+    std::mutex mutex;
+    std::shared_ptr<Viewport::Generic> viewport;
+    std::vector<std::string> pending;
+};
 
 class InterruptHandlerGuard {
  public:
@@ -472,6 +510,7 @@ static void printUsage(const char* program,
     if (!command.has_value() || *command == CommandType::Run) {
         jst::fmt::print("  {} flowgraph.yaml\n", program);
         jst::fmt::print("  {} --remote flowgraph.yaml\n", program);
+        jst::fmt::print("  {} {}first-steps\n", program, Home::Gallery::Remote::LinkPrefix);
     }
     if (!command.has_value() || *command == CommandType::Benchmark) {
         jst::fmt::print("  {} benchmark fft --format json\n", program);
@@ -535,10 +574,39 @@ int Run(int argc, char* argv[]) {
     JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
 
     std::string flowgraphPath;
+    std::string link;
+
+    for (int i = 1; i < argc; i++) {
+        if (!std::string_view(argv[i]).starts_with(URL_PREFIX)) {
+            continue;
+        }
+        if (argc != 2) {
+            return PrintUsageError(argv[0], "A CyberEther link must be the only argument.");
+        }
+        link = argv[i];
+        if (!Home::Gallery::Remote::Link(link).has_value() && !Plugin::Gallery::Link(link).has_value()) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "Invalid CyberEther link: '{}'. Expected {}[owner/]<name> or {}[owner/]<id>.",
+                link,
+                Home::Gallery::Remote::LinkPrefix,
+                Plugin::Gallery::LinkPrefix));
+        }
+        if (Platform::UrlScheme::Forward(URL_SCHEME, link) == Result::SUCCESS) {
+            return 0;
+        }
+    }
 
     std::shared_ptr<Instance> instance;
     std::shared_ptr<Flowgraph> flowgraph;
     std::unique_ptr<Instance::Remote::Supervisor> supervisor;
+    LinkInbox inbox;
+    Platform::UrlScheme links;
+    Result listening = Result::ERROR;
+    const auto listen = [&] {
+        return links.listen(URL_SCHEME, [&inbox](std::string url) {
+            inbox.deliver(std::move(url));
+        });
+    };
 
     std::atomic<int> code{0};
 
@@ -558,6 +626,9 @@ int Run(int argc, char* argv[]) {
 
     for (int i = 1; i < argc; i++) {
         const std::string originalArg = argv[i];
+        if (!link.empty() && originalArg == link) {
+            continue;
+        }
         std::string arg = originalArg;
         std::optional<std::string> inlineValue;
 
@@ -1151,6 +1222,8 @@ int Run(int argc, char* argv[]) {
             shutdownRequested.test_and_set(std::memory_order_relaxed);
         }
         supervisor.reset();
+        links.close();
+        inbox.attach(nullptr);
 
         try {
             if (instanceCreated && (instance->computing() || instance->presenting())) {
@@ -1256,6 +1329,25 @@ int Run(int argc, char* argv[]) {
             return -1;
         }
 
+        if (!settings.graphics.headless) {
+            if (Updater().snapshot().supported) {
+                (void)Platform::UrlScheme::Register(URL_SCHEME);
+            }
+            listening = listen();
+            if (listening == Result::ERROR) {
+                JST_WARN("[CYBERETHER] Links will open in a new window because the link listener is unavailable.");
+            }
+            for (int attempt = 0; listening == Result::SKIP && !link.empty() && attempt < 20; attempt++) {
+                if (Platform::UrlScheme::Forward(URL_SCHEME, link) == Result::SUCCESS) {
+                    return 0;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            if (!link.empty()) {
+                inbox.deliver(link);
+            }
+        }
+
         instance = std::make_shared<Instance>();
 
         const Result createResult = instance->create(config);
@@ -1282,6 +1374,11 @@ int Run(int argc, char* argv[]) {
 
         if (instance->start() != Result::SUCCESS) {
             return -1;
+        }
+
+        if (std::shared_ptr<Viewport::Generic> viewport;
+            instance->viewportGet(viewport) == Result::SUCCESS) {
+            inbox.attach(std::move(viewport));
         }
 
         if (remoteEnabled) {
@@ -1349,10 +1446,16 @@ int Run(int argc, char* argv[]) {
             supervisor->start();
         }
 
+        auto listenRetry = std::chrono::steady_clock::now();
         while (!shutdownRequested.test(std::memory_order_relaxed) && instance->polling()) {
             if (instance->poll() != Result::SUCCESS) {
                 code.store(-1);
                 break;
+            }
+            if (const auto now = std::chrono::steady_clock::now();
+                listening == Result::SKIP && now - listenRetry >= std::chrono::seconds(2)) {
+                listenRetry = now;
+                listening = listen();
             }
         }
 

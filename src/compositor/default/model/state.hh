@@ -412,11 +412,17 @@ struct DefaultCompositorState {
             bool failed = false;
         };
 
+        struct Request {
+            std::string key;
+            bool refreshed = false;
+        };
+
         bool stale = true;
         U64 revision = 0;
         std::vector<BlockEntry> blocks;
         std::vector<Home::Gallery::Section> sections;
         GalleryFetch fetch;
+        std::vector<Request> requests;
         std::vector<Plugin::Info> plugins;
 
         const Home::Gallery::Flowgraph* flowgraph(const std::string& key) const;
