@@ -4,6 +4,7 @@ source_url = https://github.com/paullouisageneau/libdatachannel/archive/refs/tag
 source_filename = libdatachannel-0.24.8.tar.gz
 source_hash = d2c982fec0c820dd7e640d7ddafc3b3b62e6cefd9d95915d9297aa36d0a1854b
 patch_directory = libdatachannel
+diff_files = libdatachannel/av1-aggregate-obus.diff
 
 [provide]
 libdatachannel = libdatachannel_dep

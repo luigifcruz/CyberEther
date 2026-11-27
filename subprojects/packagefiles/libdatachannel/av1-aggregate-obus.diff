@@ -1,0 +1,124 @@
+diff --git a/src/av1rtppacketizer.cpp b/src/av1rtppacketizer.cpp
+--- a/src/av1rtppacketizer.cpp
++++ b/src/av1rtppacketizer.cpp
+@@ -41,6 +41,39 @@
+ const uint8_t sevenLsbBitmask = 0b01111111;
+ const uint8_t msbBitmask = 0b10000000;
+ 
++static size_t leb128Size(size_t value) {
++	size_t size = 1;
++	while (value >= 128) {
++		value >>= 7;
++		++size;
++	}
++	return size;
++}
++
++static void appendLeb128(binary &data, size_t value) {
++	while (value >= 128) {
++		data.push_back(byte((value & sevenLsbBitmask) | msbBitmask));
++		value >>= 7;
++	}
++	data.push_back(byte(value));
++}
++
++static bool isSequenceHeader(const binary &obu) {
++	return ((obu.front() & obuFrameTypeMask) >> obuFrameTypeBitshift) ==
++	       obuFrameTypeSequenceHeader;
++}
++
++static bool isDiscardableObu(const binary &obu) {
++	const auto type = (obu.front() & obuFrameTypeMask) >> obuFrameTypeBitshift;
++	return type == byte(2) || type == byte(8) || type == byte(15);
++}
++
++static optional<byte> obuLayer(const binary &obu) {
++	if ((obu.front() & obuHasExtensionMask) != byte(0))
++		return obu[1] & byte(0b11111000);
++	return std::nullopt;
++}
++
+ AV1RtpPacketizer::AV1RtpPacketizer(Packetization packetization,
+                                    shared_ptr<RtpPacketizationConfig> rtpConfig,
+                                    size_t maxFragmentSize)
+@@ -109,19 +142,69 @@
+ }
+ 
+ std::vector<binary> AV1RtpPacketizer::fragment(binary data) {
+-	if (mPacketization == AV1RtpPacketizer::Packetization::TemporalUnit) {
+-		std::vector<binary> result;
+-		auto obus = extractTemporalUnitObus(data);
+-		for (auto obu : obus) {
+-			auto fragments = fragmentObu(obu);
+-			result.reserve(result.size() + fragments.size());
+-			for(auto &fragment : fragments)
+-				result.push_back(std::move(fragment));
+-		}
+-		return result;
+-	} else {
++	if (mPacketization != AV1RtpPacketizer::Packetization::TemporalUnit)
+ 		return fragmentObu(data);
++
++	auto obus = extractTemporalUnitObus(data);
++	obus.erase(std::remove_if(obus.begin(), obus.end(), isDiscardableObu), obus.end());
++	if (obus.empty() || mMaxFragmentSize < payloadHeaderSize + 2)
++		return {};
++	const bool newSequence = std::any_of(obus.begin(), obus.end(), isSequenceHeader);
++	if (newSequence) {
++		mSequenceHeader = nullptr;
++		if (obus.size() == 1) {
++			mSequenceHeader = std::make_unique<binary>(std::move(obus.front()));
++			return {};
++		}
++	} else if (mSequenceHeader) {
++		obus.insert(obus.begin(), std::move(*mSequenceHeader));
++		mSequenceHeader = nullptr;
++	} else if (obus.size() == 1) {
++		return fragmentObu(obus.front());
+ 	}
++
++	std::vector<binary> result;
++	size_t obuIndex = 0;
++	size_t offset = 0;
++	while (obuIndex < obus.size()) {
++		binary payload{offset != 0 ? zMask : byte(0)};
++		if (result.empty() && newSequence)
++			payload.front() |= nMask;
++		payload.reserve(mMaxFragmentSize);
++		optional<byte> layer;
++		while (obuIndex < obus.size() && mMaxFragmentSize - payload.size() >= 2) {
++			const auto &obu = obus[obuIndex];
++			if (auto currentLayer = obuLayer(obu)) {
++				if (layer && layer != currentLayer)
++					break;
++				layer = currentLayer;
++			}
++			const size_t space = mMaxFragmentSize - payload.size();
++			const size_t remaining = obu.size() - offset;
++			size_t length = std::min(remaining, space - 1);
++			while (length + leb128Size(length) > space)
++				--length;
++
++			if (obuIndex + 1 < obus.size() && length == remaining && length > 1 &&
++			    space - length - leb128Size(length) < 2) {
++				const auto nextLayer = obuLayer(obus[obuIndex + 1]);
++				if (!layer || !nextLayer || layer == nextLayer)
++					--length;
++			}
++
++			appendLeb128(payload, length);
++			payload.insert(payload.end(), obu.begin() + offset, obu.begin() + offset + length);
++			offset += length;
++			if (offset != obu.size()) {
++				payload.front() |= yMask;
++				break;
++			}
++			++obuIndex;
++			offset = 0;
++		}
++		result.push_back(std::move(payload));
++	}
++	return result;
+ }
+ 
+ /*
