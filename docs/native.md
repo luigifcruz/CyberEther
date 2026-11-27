@@ -47,6 +47,8 @@ cyberether update [--install]
 
 Running `cyberether` (or `cyberether run`) opens the application. Use `benchmark` to run the performance suite and `update` to check for or install newer releases. Run `cyberether --help`, or pass `--help` to any subcommand, for the complete list of flags and defaults.
 
+The flowgraph argument also accepts a gallery link. A link such as `cyberether://flowgraph/first-steps` opens that example from the [gallery](https://cyberether.org/gallery/flowgraphs), and a link of the form `cyberether://plugin/<id>` opens the details of the plugin with that ID, where you can choose to install it. Either kind can name the owner first, as in `cyberether://flowgraph/cyberether/first-steps`, and a link without an owner refers to the official gallery. A link must be the only argument, and when CyberEther is already running it opens in that window instead of starting a second one.
+
 Long options that take a value accept both `--option value` and `--option=value`. Insert `--` to treat every argument after it as positional, which is useful when a flowgraph filename begins with a dash.
 
 ### Global Options

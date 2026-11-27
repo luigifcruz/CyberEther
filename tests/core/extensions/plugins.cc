@@ -1054,6 +1054,23 @@ TEST_CASE("Plugin gallery queries mirror the flowgraph gallery", "[core][extensi
     CHECK_FALSE(Plugin::Gallery::ValidId("Blue_print"));
     CHECK_FALSE(Plugin::Gallery::ValidId("con"));
     CHECK_FALSE(Plugin::Gallery::ValidId("https://cyberether.org/gallery/plugins/blueprint"));
+
+    const auto official = Plugin::Gallery::Link("cyberether://plugin/blueprint/?ref=page");
+    REQUIRE(official.has_value());
+    CHECK(official->owner == Home::Gallery::Origin);
+    CHECK(official->id == "blueprint");
+    const auto owned = Plugin::Gallery::Link("cyberether://plugin/Some-User_1/blueprint");
+    REQUIRE(owned.has_value());
+    CHECK(owned->owner == "Some-User_1");
+    CHECK(owned->id == "blueprint");
+    CHECK_FALSE(Plugin::Gallery::Link("cyberether://plugin/").has_value());
+    CHECK_FALSE(Plugin::Gallery::Link("cyberether://plugin//blueprint").has_value());
+    CHECK_FALSE(Plugin::Gallery::Link("cyberether://plugin/some.user/blueprint").has_value());
+    CHECK_FALSE(Plugin::Gallery::Link("cyberether://plugin/a/b/c").has_value());
+    CHECK_FALSE(Plugin::Gallery::Link("cyberether://plugin/Blue_print").has_value());
+    CHECK_FALSE(Plugin::Gallery::Link("cyberether://plugin/../blueprint").has_value());
+    CHECK_FALSE(Plugin::Gallery::Link("cyberether://flowgraph/blueprint").has_value());
+    CHECK_FALSE(Plugin::Gallery::Link("/plugins/blueprint.cep").has_value());
 }
 
 TEST_CASE("Plugin gallery lists use the flat entry format", "[core][extensions][plugin][gallery]") {

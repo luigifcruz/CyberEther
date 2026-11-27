@@ -117,7 +117,7 @@ Result FileLock::acquire(const std::string& path, bool wait) {
     JST_ERROR("File locks are not supported in this platform.");
     return Result::ERROR;
 #else
-    const int fd = open(path.c_str(), O_RDWR | O_CREAT, 0600);
+    const int fd = open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
     if (fd < 0) {
         JST_ERROR("Failed to open file lock '{}' [Errno: {}].", path, errno);
         return Result::ERROR;

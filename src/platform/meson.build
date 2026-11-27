@@ -21,7 +21,10 @@ if jst_is_browser or cfg_lst.get('JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE', false)
 endif
 
 if jst_is_linux or jst_is_macos or jst_is_windows
-    src_lst += files('interrupt.cc')
+    src_lst += files([
+        'interrupt.cc',
+        'url_scheme.cc',
+    ])
 endif
 
 if not jst_is_browser
@@ -59,6 +62,7 @@ if jst_is_windows
         compiler.find_library('iphlpapi', required: true),
         compiler.find_library('kernel32', required: true),
         compiler.find_library('shell32', required: true),
+        compiler.find_library('user32', required: true),
         compiler.find_library('ws2_32', required: true),
     ]
 endif

@@ -336,6 +336,7 @@ Result DefaultCompositor::poll() {
     actions.reconcileGallery();
     actions.reconcilePlugins();
     actions.refreshRegistry();
+    actions.settleLinks();
     actions.refreshLiveMarkdown();
     actions.refreshConfigDrafts();
     actions.refreshMetrics();
@@ -370,6 +371,9 @@ Result DefaultCompositor::present() {
     droppedFiles.clear();
     if (state.system.viewport) {
         droppedFiles = state.system.viewport->takeDroppedFiles();
+        for (auto& url : state.system.viewport->takeOpenRequests()) {
+            enqueue(MailOpenLink{.url = std::move(url)});
+        }
         if (state.system.viewport->takeCloseRequest()) {
             enqueue(MailQuit{});
         }

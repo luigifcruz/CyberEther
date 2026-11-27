@@ -258,7 +258,7 @@ if cfg_lst.get('JETSTREAM_LOADER_ZLIB_AVAILABLE', false) and not jst_is_windows 
 endif
 if not jst_is_browser
     core_test_domains += {
-        'platform': core_test_domains['platform'] + ['platform/socket.cc'],
+        'platform': core_test_domains['platform'] + ['platform/socket.cc', 'platform/url_scheme.cc'],
     }
 endif
 if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)

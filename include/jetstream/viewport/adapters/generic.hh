@@ -51,6 +51,7 @@ class JETSTREAM_API Generic {
         virtual void setCursor(SurfaceCursor cursor) = 0;
         virtual std::string clipboardText() const = 0;
         virtual void setClipboardText(const std::string& text) = 0;
+        virtual void focus() = 0;
     };
 
     struct ClipboardChange {
@@ -108,6 +109,9 @@ class JETSTREAM_API Generic {
 
     std::vector<std::string> takeDroppedFiles();
 
+    void addOpenRequest(std::string url);
+    std::vector<std::string> takeOpenRequests();
+
     void setInterceptClose(bool enabled);
     bool interceptClose() const;
     void addCloseRequest();
@@ -142,6 +146,8 @@ class JETSTREAM_API Generic {
     std::atomic<bool> platformAnimating = false;
     std::mutex droppedFilesMutex;
     std::vector<std::string> droppedFiles;
+    std::mutex openRequestsMutex;
+    std::vector<std::string> openRequests;
     std::atomic<bool> closeIntercepted = false;
     std::atomic<bool> closeRequested = false;
 };

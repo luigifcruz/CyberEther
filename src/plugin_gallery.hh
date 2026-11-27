@@ -36,6 +36,11 @@ class JETSTREAM_API Plugin::Gallery {
 
     using Entries = std::vector<Entry>;
 
+    struct Reference {
+        std::string owner;
+        std::string id;
+    };
+
     struct Query {
         std::string owner;
         std::string version;
@@ -54,8 +59,10 @@ class JETSTREAM_API Plugin::Gallery {
     static constexpr const char* HostVariable = "CYBERETHER_PLUGIN_GALLERY_HOST";
     static constexpr const char* Endpoint = "/api/v1/plugins";
     static constexpr const char* PagePath = "/gallery/plugins/";
+    static constexpr const char* LinkPrefix = "cyberether://plugin/";
 
     static bool ValidId(std::string_view id);
+    static std::optional<Reference> Link(const std::string& url);
     static bool Outdated(const Info& info, const Entry& entry);
     static bool ReservedName(std::string_view name);
     static std::string Host();

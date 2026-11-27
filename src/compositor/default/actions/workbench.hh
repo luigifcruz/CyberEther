@@ -10,6 +10,8 @@
 #include "../model/state.hh"
 #include "render/sakura/themes.hh"
 
+#include "plugin_gallery.hh"
+
 #include "jetstream/settings.hh"
 #include "jetstream/platform.hh"
 
@@ -30,6 +32,7 @@ struct WorkbenchActions {
                               MailNotify,
                               MailNotifyResult,
                               MailOpenUrl,
+                              MailOpenLink,
                               MailCopyText,
                               MailRevealPath,
                               MailQuit,
@@ -84,6 +87,8 @@ struct WorkbenchActions {
     Result handle(const MailNotify& msg);
     Result handle(const MailNotifyResult& msg);
     Result handle(const MailOpenUrl& msg);
+    Result handle(const MailOpenLink& msg);
+    void settleLinks();
     Result handle(const MailCopyText& msg);
     Result handle(const MailRevealPath& msg);
     Result handle(const MailQuit&);

@@ -142,6 +142,22 @@ TEST_CASE("Plugin details open and close in the side panel", "[core][compositor]
     CHECK(state.plugins.details.empty());
 }
 
+TEST_CASE("Plugin details refresh the catalog when the plugin is not listed yet", "[core][compositor][plugins]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    PluginActions actions(state, callbacks);
+    const auto later = std::chrono::steady_clock::now() + std::chrono::hours(1);
+    state.plugins.catalog.entries = {{.id = "alpha"}};
+    state.plugins.catalog.next = later;
+
+    REQUIRE(actions.handle(MailOpenPluginDetails{.id = "alpha"}) == Result::SUCCESS);
+    CHECK(state.plugins.catalog.next == later);
+
+    REQUIRE(actions.handle(MailOpenPluginDetails{.id = "beta"}) == Result::SUCCESS);
+    CHECK(state.plugins.catalog.next < later);
+    CHECK(state.plugins.details == "beta");
+}
+
 TEST_CASE("The plugin update policy decides what happens to gallery updates", "[core][compositor][plugins]") {
     TestSupport::SettingsSandbox sandbox("compositor-plugin-updates");
     sandbox.require();
