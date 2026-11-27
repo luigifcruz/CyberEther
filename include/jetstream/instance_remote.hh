@@ -18,6 +18,7 @@ struct JETSTREAM_API Instance::Remote {
     struct Supervisor;
     struct Broker;
     struct Encoder;
+    struct Audio;
 
     enum class CodecType : uint32_t {
         H264,
@@ -54,6 +55,10 @@ struct JETSTREAM_API Instance::Remote {
             bool matchViewer = true;
         };
 
+        struct Audio {
+            bool enabled = true;
+        };
+
         struct Broker {
             std::string address = "0.0.0.0";
             U16 port = 8686;
@@ -73,6 +78,7 @@ struct JETSTREAM_API Instance::Remote {
         Video video;
         Broker broker;
         Media media;
+        Audio audio;
     };
 
     struct ClientInfo {

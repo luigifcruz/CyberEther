@@ -579,6 +579,7 @@ struct SettingsRig : ModalRig {
             .onFramerateChange = [log](U32 value) { log("fps:" + std::to_string(value)); },
             .onEncoderChange = [log](Instance::Remote::EncoderType) { log("encoder"); },
             .onMatchViewerChange = [log](bool value) { log("match:" + Flag(value)); },
+            .onAudioChange = [log](bool value) { log("audio:" + Flag(value)); },
             .onAutoApproveChange = [log](bool value) { log("approve:" + Flag(value)); },
         };
         config.runtime = {
@@ -3901,7 +3902,7 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(Find<Sakura::PillTabs>(rig.view.component()).size() == 2);
     CHECK(Find<Sakura::PillStepper>(rig.view.component()).size() == 1);
     CHECK(Find<Sakura::PillInput>(rig.view.component()).size() == 8);
-    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 2);
+    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 3);
 
     rig.show(SettingsSection::Registry);
     CHECK(rig.combos().size() == 1);
@@ -3972,10 +3973,10 @@ TEST_CASE("Developer settings presenter opens the benchmark modal and reloads ev
 TEST_CASE("Remote settings report codec, framerate, and approval while the encoder stays disabled",
           "[core][sakura][views]") {
     SettingsRig rig;
-    rig.show(SettingsSection::Remote);
+    rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
     REQUIRE(rig.combos().size() == 1);
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
-    REQUIRE(toggles.size() == 2);
+    REQUIRE(toggles.size() == 3);
     auto steppers = Find<Sakura::PillStepper>(rig.view.component());
     REQUIRE(steppers.size() == 1);
 
@@ -3984,7 +3985,8 @@ TEST_CASE("Remote settings report codec, framerate, and approval while the encod
     rig.choose(0, 0);
     CHECK(Press(rig.host, *toggles[0]));
     CHECK(Press(rig.host, *toggles[1]));
-    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true", "match:false"});
+    CHECK(Press(rig.host, *toggles[2]));
+    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true", "match:false", "audio:false"});
 }
 
 TEST_CASE("Runtime settings pick interpreters and browse for a custom path", "[core][sakura][views]") {

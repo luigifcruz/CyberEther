@@ -72,7 +72,7 @@ class Viewport final : public Jetstream::Viewport::Generic {
     }
     void beginWindowDrag() override { ++drags; }
     void zoomWindow() override { ++zooms; }
-    bool setDarkAppearance(bool dark) override {
+    bool applyDarkAppearance(bool dark) override {
         if (appearances.empty() || appearances.back() != dark) {
             appearances.push_back(dark);
         }

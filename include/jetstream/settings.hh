@@ -47,6 +47,12 @@ struct JETSTREAM_API Settings {
             JST_SERDES(framerate, codec, encoder, matchViewer);
         };
 
+        struct Audio {
+            bool enabled = true;
+
+            JST_SERDES(enabled);
+        };
+
         struct Broker {
             std::string address = "0.0.0.0";
             U64 port = 8686;
@@ -70,8 +76,9 @@ struct JETSTREAM_API Settings {
         Video video;
         Broker broker;
         Media media;
+        Audio audio;
 
-        JST_SERDES(access, video, broker, media);
+        JST_SERDES(access, video, broker, media, audio);
     };
 
     struct Interface {

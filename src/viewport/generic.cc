@@ -53,7 +53,16 @@ void Generic::beginWindowDrag() {}
 
 void Generic::zoomWindow() {}
 
-bool Generic::setDarkAppearance(bool) { return false; }
+bool Generic::setDarkAppearance(bool dark) {
+    this->dark = dark;
+    return applyDarkAppearance(dark);
+}
+
+bool Generic::darkAppearance() const {
+    return dark;
+}
+
+bool Generic::applyDarkAppearance(bool) { return false; }
 
 F64 Generic::inputTime() const {
     if (platform) {

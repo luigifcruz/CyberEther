@@ -114,6 +114,16 @@ Result RemoteActions::handle(const MailSetRemoteMatchViewer& msg) {
     return Result::SUCCESS;
 }
 
+Result RemoteActions::handle(const MailSetRemoteAudio& msg) {
+    state.remote.config.audio.enabled = msg.value;
+
+    JST_CHECK(PersistSettings([&](Settings& settings) {
+        settings.remote.audio.enabled = msg.value;
+    }));
+
+    return Result::SUCCESS;
+}
+
 Result RemoteActions::handle(const MailSetRemoteAutoApprove& msg) {
     state.remote.config.access.autoApprove = msg.value;
 

@@ -47,6 +47,9 @@ bool IsIpAddress(const std::string& address) {
 }
 
 constexpr const char* kVideoMid = "video";
+constexpr const char* kAudioMid = "audio";
+constexpr U8 kAudioPayloadType = 111;
+constexpr const char* kAudioProfile = "minptime=10;maxaveragebitrate=96000;stereo=1;sprop-stereo=1";
 constexpr const char* kCname = "cyberether";
 constexpr U8 kPayloadType = 96;
 constexpr int kPlayoutDelayExtension = 5;
@@ -519,6 +522,7 @@ Result Instance::Remote::Impl::captureFrame(bool presented, std::chrono::steady_
     }
 
     syncClipboard();
+    syncAppearance();
     JST_CHECK(processInput());
     applyViewport();
     if (this->started_ && followViewport() != Result::SUCCESS) {
@@ -1425,10 +1429,55 @@ void Instance::Remote::Impl::bindControlChannel(const std::string& sessionId,
     channel->onMessage([](rtc::binary) {}, [this, sessionId](rtc::string text) {
         handleControlMessage(sessionId, text);
     });
-    channel->onOpen([this]() {
+    channel->onOpen([this, weak = std::weak_ptr<rtc::DataChannel>(channel)]() {
         broadcastControlState();
+        if (const auto opened = weak.lock()) {
+            sendAppearance(opened);
+        }
     });
     broadcastControlState();
+    sendAppearance(channel);
+}
+
+void Instance::Remote::Impl::syncAppearance() {
+    if (!viewport) {
+        return;
+    }
+
+    const bool dark = viewport->darkAppearance();
+    if (sentAppearance == dark) {
+        return;
+    }
+    sentAppearance = dark;
+
+    std::vector<std::shared_ptr<rtc::DataChannel>> channels;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        for (const auto& [sessionId, session] : sessions) {
+            (void)sessionId;
+            if (session->control) {
+                channels.push_back(session->control);
+            }
+        }
+    }
+    for (const auto& channel : channels) {
+        sendAppearance(channel);
+    }
+}
+
+void Instance::Remote::Impl::sendAppearance(const std::shared_ptr<rtc::DataChannel>& channel) {
+    if (!viewport || !channel->isOpen()) {
+        return;
+    }
+
+    try {
+        channel->send(nlohmann::json{
+            {"kind", "theme"},
+            {"appearance", viewport->darkAppearance() ? "dark" : "light"},
+        }.dump());
+    } catch (const std::exception& e) {
+        JST_WARN("[REMOTE] Failed to send the theme to the viewer: {}", e.what());
+    }
 }
 
 Result Instance::Remote::Impl::openEncoder(std::unique_ptr<Encoder>& opened) {
@@ -1478,6 +1527,18 @@ Result Instance::Remote::Impl::startStream() {
     initialFrameTime = std::chrono::steady_clock::now();
     lastKeyframeTime = initialFrameTime;
 
+    if (config.audio.enabled) {
+        auto opened = std::make_unique<Audio>();
+        const Result started = opened->start(initialFrameTime, [this](const U8* data, U64 size, U64 sampleTime) {
+            pushAudio(data, size, sampleTime);
+        });
+        if (started == Result::SUCCESS) {
+            audio = std::move(opened);
+        } else {
+            JST_WARN("[REMOTE] Streaming without audio.");
+        }
+    }
+
     {
         std::lock_guard<std::mutex> lock(telemetry.mutex);
         telemetry.samples.clear();
@@ -1499,6 +1560,7 @@ Result Instance::Remote::Impl::startStream() {
 Result Instance::Remote::Impl::stopStream() {
     JST_DEBUG("[REMOTE] Stopping stream.");
 
+    audio.reset();
     destroyAllWebRtcSessions();
 
     std::lock_guard<std::mutex> lifecycle(lifecycleMutex);
@@ -1573,6 +1635,10 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
     });
 
     if (createVideoTrack(*session) != Result::SUCCESS) {
+        closeWebRtcSession(*session);
+        return Result::ERROR;
+    }
+    if (config.audio.enabled && createAudioTrack(*session) != Result::SUCCESS) {
         closeWebRtcSession(*session);
         return Result::ERROR;
     }
@@ -1659,6 +1725,34 @@ Result Instance::Remote::Impl::createVideoTrack(WebRtcSession& session) {
         session.track->setMediaHandler(packetizer);
     } catch (const std::exception& e) {
         JST_ERROR("[REMOTE] Failed to add WebRTC video track: {}", e.what());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Instance::Remote::Impl::createAudioTrack(WebRtcSession& session) {
+    U32 ssrc = 0;
+    while (ssrc == 0) {
+        ssrc = std::random_device{}();
+    }
+
+    rtc::Description::Audio media(kAudioMid, rtc::Description::Direction::SendOnly);
+    media.addOpusCodec(kAudioPayloadType, std::string(kAudioProfile));
+    media.addSSRC(ssrc, kCname, kCname, kAudioMid);
+
+    session.audioConfig = std::make_shared<rtc::RtpPacketizationConfig>(ssrc,
+                                                                        kCname,
+                                                                        kAudioPayloadType,
+                                                                        rtc::OpusRtpPacketizer::DefaultClockRate);
+    auto packetizer = std::make_shared<rtc::OpusRtpPacketizer>(session.audioConfig);
+    packetizer->addToChain(std::make_shared<rtc::RtcpSrReporter>(session.audioConfig));
+
+    try {
+        session.audio = session.peer->addTrack(std::move(media));
+        session.audio->setMediaHandler(packetizer);
+    } catch (const std::exception& e) {
+        JST_ERROR("[REMOTE] Failed to add WebRTC audio track: {}", e.what());
         return Result::ERROR;
     }
 
@@ -2164,6 +2258,31 @@ Result Instance::Remote::Impl::pushNewFrame(const void* data) {
     }
 
     return Result::SUCCESS;
+}
+
+void Instance::Remote::Impl::pushAudio(const U8* data, const U64 size, const U64 sampleTime) {
+    std::vector<std::shared_ptr<WebRtcSession>> targets;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        for (const auto& [sessionId, session] : sessions) {
+            (void)sessionId;
+            if (session->audio) {
+                targets.push_back(session);
+            }
+        }
+    }
+
+    for (const auto& session : targets) {
+        if (!session->audio->isOpen()) {
+            continue;
+        }
+        try {
+            const auto timestamp = static_cast<U32>(session->audioConfig->startTimestamp + sampleTime);
+            session->audio->sendFrame(reinterpret_cast<const rtc::byte*>(data), size, rtc::FrameInfo(timestamp));
+        } catch (const std::exception& e) {
+            JST_DEBUG("[REMOTE] Failed to send WebRTC audio frame: {}", e.what());
+        }
+    }
 }
 
 void Instance::Remote::Impl::record(std::chrono::steady_clock::time_point time,

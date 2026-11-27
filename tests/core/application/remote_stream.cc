@@ -20,6 +20,7 @@
 #include <openssl/sha.h>
 #include <openssl/x509.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -248,11 +249,14 @@ struct Viewer {
     std::shared_ptr<rtc::PeerConnection> connection;
     std::shared_ptr<rtc::Track> track;
     std::shared_ptr<rtc::RtcpReceivingSession> rtcp;
+    std::shared_ptr<rtc::Track> audio;
+    std::shared_ptr<rtc::RtcpReceivingSession> audioRtcp;
     std::shared_ptr<rtc::DataChannel> control;
     std::function<std::string(const std::string&)> editAnswer;
     bool holdAnswer = false;
     nlohmann::json heldAnswer;
     std::atomic<unsigned> packets = 0;
+    std::atomic<unsigned> audioPackets = 0;
     std::atomic<bool> ended = false;
     std::atomic<bool> running = false;
     std::thread reader;
@@ -297,12 +301,18 @@ struct Viewer {
         connection->onTrack([this](std::shared_ptr<rtc::Track> incoming) {
             auto session = std::make_shared<rtc::RtcpReceivingSession>();
             incoming->setMediaHandler(session);
-            incoming->onMessage([this](rtc::binary) {
-                ++packets;
+            const bool isAudio = incoming->mid() == "audio";
+            incoming->onMessage([this, isAudio](rtc::binary) {
+                ++(isAudio ? audioPackets : packets);
             }, nullptr);
             std::lock_guard<std::mutex> lock(mutex);
-            track = std::move(incoming);
-            rtcp = std::move(session);
+            if (isAudio) {
+                audio = std::move(incoming);
+                audioRtcp = std::move(session);
+            } else {
+                track = std::move(incoming);
+                rtcp = std::move(session);
+            }
         });
         connection->onDataChannel([this](std::shared_ptr<rtc::DataChannel> channel) {
             std::lock_guard<std::mutex> lock(mutex);
@@ -411,12 +421,17 @@ struct Viewer {
             connection->resetCallbacks();
         }
         std::shared_ptr<rtc::Track> incoming;
+        std::shared_ptr<rtc::Track> incomingAudio;
         {
             std::lock_guard<std::mutex> lock(mutex);
             incoming = track;
+            incomingAudio = audio;
         }
         if (incoming) {
             incoming->resetCallbacks();
+        }
+        if (incomingAudio) {
+            incomingAudio->resetCallbacks();
         }
         if (connection) {
             connection->close();
@@ -1025,6 +1040,123 @@ TEST_CASE("Remote offers advertise the video codec and the control channel",
         std::lock_guard<std::mutex> lock(viewer.mutex);
         return viewer.control && viewer.control->label() == "control";
     }));
+}
+
+TEST_CASE("Remote offers carry Opus audio that follows the Audio block tap",
+          "[core][application][remote][stream][audio]") {
+    Stream stream;
+    stream.start();
+    REQUIRE(Instance::Remote::Audio::Active());
+
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return !viewer.description().empty(); }));
+
+    const std::string offer = viewer.description();
+    CHECK(offer.find("m=audio") != std::string::npos);
+    CHECK(offer.find("opus/48000/2") != std::string::npos);
+    CHECK(offer.find("a=mid:audio") != std::string::npos);
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
+    CHECK(viewer.audioPackets == 0);
+
+    auto source = Instance::Remote::Audio::Attach();
+    std::atomic<bool> playing = true;
+    std::thread player([&] {
+        std::vector<F32> tone(Instance::Remote::Audio::FrameSize);
+        U64 phase = 0;
+        while (playing) {
+            for (auto& sample : tone) {
+                sample = 0.25f * std::sin(static_cast<F32>(phase++) * 0.0572f);
+            }
+            Instance::Remote::Audio::Push(*source, tone.data(), tone.size(), 1, 1.0f);
+            std::this_thread::sleep_for(Instance::Remote::Audio::FrameDuration);
+        }
+    });
+
+    CHECK(WaitFor([&] { return viewer.audioPackets >= 20; }, 10s));
+    CHECK(WaitFor([&] {
+        std::lock_guard<std::mutex> lock(viewer.mutex);
+        return viewer.audioRtcp && viewer.audioRtcp->getSyncTimestamps().ntpTimestamp != 0;
+    }, 10s));
+
+    playing = false;
+    player.join();
+    source.reset();
+    viewer.close();
+    stream.stop();
+    CHECK_FALSE(Instance::Remote::Audio::Active());
+}
+
+TEST_CASE("Remote offers leave out audio when audio streaming is off",
+          "[core][application][remote][stream][audio]") {
+    Stream stream;
+    stream.remote.config.audio.enabled = false;
+    stream.start();
+    CHECK_FALSE(Instance::Remote::Audio::Active());
+
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return !viewer.description().empty(); }));
+    CHECK(viewer.description().find("m=audio") == std::string::npos);
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
+}
+
+TEST_CASE("Remote viewers follow the host theme", "[core][application][remote][stream][theme]") {
+    RenderTest::Viewport viewport;
+    Stream stream;
+    stream.remote.viewport = &viewport;
+    stream.start();
+
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] {
+        std::lock_guard<std::mutex> lock(viewer.mutex);
+        return viewer.control && viewer.control->isOpen();
+    }, 10s));
+
+    std::mutex mutex;
+    std::vector<std::string> themes;
+    {
+        std::lock_guard<std::mutex> lock(viewer.mutex);
+        viewer.control->onMessage([](rtc::binary) {}, [&](rtc::string text) {
+            const auto message = nlohmann::json::parse(text, nullptr, false);
+            if (message.is_object() && message.value("kind", "") == "theme") {
+                std::lock_guard<std::mutex> themeLock(mutex);
+                themes.push_back(message.value("appearance", ""));
+            }
+        });
+    }
+    const auto last = [&] {
+        std::lock_guard<std::mutex> lock(mutex);
+        return themes.empty() ? std::string() : themes.back();
+    };
+
+    stream.remote.syncAppearance();
+    (void)viewport.setDarkAppearance(false);
+    stream.remote.syncAppearance();
+    CHECK(WaitFor([&] { return last() == "light"; }, 5s));
+
+    (void)viewport.setDarkAppearance(true);
+    stream.remote.syncAppearance();
+    CHECK(WaitFor([&] { return last() == "dark"; }, 5s));
+
+    const auto count = [&] {
+        std::lock_guard<std::mutex> lock(mutex);
+        return themes.size();
+    }();
+    stream.remote.syncAppearance();
+    std::this_thread::sleep_for(100ms);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        CHECK(themes.size() == count);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(viewer.mutex);
+        viewer.control->resetCallbacks();
+    }
+    viewer.close();
+    stream.stop();
 }
 
 TEST_CASE("Remote SDP validation closes rejected sessions and permits valid negotiations",

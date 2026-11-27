@@ -79,7 +79,8 @@ class JETSTREAM_API Generic {
     bool integratedTitlebar() const;
     virtual void beginWindowDrag();
     virtual void zoomWindow();
-    virtual bool setDarkAppearance(bool dark);
+    bool setDarkAppearance(bool dark);
+    bool darkAppearance() const;
 
     virtual bool macOSBehaviors() const;
     virtual bool retainedPresent() const;
@@ -115,6 +116,8 @@ class JETSTREAM_API Generic {
  protected:
     Config config;
 
+    virtual bool applyDarkAppearance(bool dark);
+
     void attachPlatform(std::unique_ptr<Platform> next);
     void detachPlatform();
     void pumpPlatform();
@@ -135,6 +138,7 @@ class JETSTREAM_API Generic {
     ClipboardChange copiedClipboard;
     Render::InputQueue inputQueue;
     std::atomic<bool> redrawRequested = true;
+    std::atomic<bool> dark = true;
     std::atomic<bool> platformAnimating = false;
     std::mutex droppedFilesMutex;
     std::vector<std::string> droppedFiles;

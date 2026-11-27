@@ -1,5 +1,6 @@
 #pragma once
 
+#include "instance_remote_audio.hh"
 #include "instance_remote_broker.hh"
 #include "instance_remote_encoder.hh"
 
@@ -15,6 +16,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -87,6 +89,7 @@ struct Instance::Remote::Impl {
 
     // Stream
     std::unique_ptr<Encoder> encoder;
+    std::unique_ptr<Audio> audio;
     std::vector<Encoder::Packet> packets;
 
     std::unique_ptr<Broker> broker;
@@ -106,6 +109,8 @@ struct Instance::Remote::Impl {
         std::string peerId;
         std::shared_ptr<rtc::PeerConnection> peer;
         std::shared_ptr<rtc::Track> track;
+        std::shared_ptr<rtc::Track> audio;
+        std::shared_ptr<rtc::RtpPacketizationConfig> audioConfig;
         std::shared_ptr<rtc::DataChannel> control;
         std::shared_ptr<Keyframe> keyframe;
 
@@ -158,6 +163,8 @@ struct Instance::Remote::Impl {
     void sendIceCandidate(const std::string& sessionId, const rtc::Candidate& candidate);
     void addRemoteCandidate(WebRtcSession& session, const std::string& candidate, const std::string& mid);
     Result createVideoTrack(WebRtcSession& session);
+    Result createAudioTrack(WebRtcSession& session);
+    void pushAudio(const U8* data, U64 size, U64 sampleTime);
     void closeWebRtcSession(WebRtcSession& session);
     Result applyRemoteDescription(const std::string& sessionId,
                                   const std::string& type,
@@ -189,6 +196,7 @@ struct Instance::Remote::Impl {
     std::unordered_map<std::string, ViewportRequest> viewportRequests;
     ViewportRequest appliedViewport;
     U64 sentClipboardRevision = 0;
+    std::optional<bool> sentAppearance;
     U64 inputFrame = 0;
     U64 lastInputFrame = 0;
     U64 controlEpoch = 0;
@@ -219,6 +227,8 @@ struct Instance::Remote::Impl {
     void recordViewport(const std::string& sessionId, const nlohmann::json& j);
     void applyViewport();
     void syncClipboard();
+    void syncAppearance();
+    void sendAppearance(const std::shared_ptr<rtc::DataChannel>& channel);
     void receiveClipboard(const std::string& sessionId, const nlohmann::json& j);
     void handleControlRequest(const std::string& sessionId, const nlohmann::json& j);
     void broadcastControlState();

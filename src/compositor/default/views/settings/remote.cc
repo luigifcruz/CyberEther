@@ -51,6 +51,15 @@ void RemoteSettingsView::update(Config config) {
         },
     });
 
+    audioToggle.update({
+        .value = this->config.audio,
+        .onChange = [this](bool value) {
+            if (this->config.onAudioChange) {
+                this->config.onAudioChange(value);
+            }
+        },
+    });
+
     framerateStepper.update({
         .options = {"15 fps", "30 fps", "60 fps", "120 fps"},
         .selected = framerateIndex(this->config.framerate),
@@ -257,6 +266,17 @@ void RemoteSettingsView::update(Config config) {
             },
         },
     });
+    audioGroup.update({
+        .title = "Audio",
+        .description = "What viewers hear from this machine.",
+        .rows = {
+            {
+                .label = "Stream Audio",
+                .description = "Send the sound of every Audio block to viewers.",
+                .control = &audioToggle,
+            },
+        },
+    });
     brokerGroup.update({
         .title = "Broker",
         .description = "The server on this machine that hosts the viewer page and connects viewers.",
@@ -321,6 +341,7 @@ void RemoteSettingsView::update(Config config) {
     }
     items.push_back({.child = &accessGroup});
     items.push_back({.child = &videoGroup});
+    items.push_back({.child = &audioGroup});
     items.push_back({.child = &brokerGroup});
     items.push_back({.child = &mediaGroup});
     stack.update({

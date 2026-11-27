@@ -477,7 +477,11 @@ class AppearanceViewport final : public Viewport::Generic {
     Result pollEvents() override { return Result::SUCCESS; }
     bool keepRunning() override { return true; }
 
-    bool setDarkAppearance(bool dark) override {
+    bool baseAppearance(bool dark) {
+        return Viewport::Generic::applyDarkAppearance(dark);
+    }
+
+    bool applyDarkAppearance(bool dark) override {
         if (ready && appearance == dark) {
             return true;
         }
@@ -2445,7 +2449,7 @@ TEST_CASE("Render window appearance retries null and late native targets",
     window.setDarkAppearance(true);
     CHECK(window.native.appearances == std::vector<bool>{true});
     CHECK(window.native.requests == 3);
-    CHECK_FALSE(window.native.Viewport::Generic::setDarkAppearance(false));
+    CHECK_FALSE(window.native.baseAppearance(false));
     CHECK(window.native.appearance == true);
 }
 

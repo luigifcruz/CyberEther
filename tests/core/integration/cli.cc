@@ -491,6 +491,8 @@ TEST_CASE("CLI accepts every documented enum value", "[core][integration][cli]")
          "Media address (current: 127.0.0.1)"},
         {"remote framerate", {"--remote", "--remote-framerate=24", "--help"},
          "Video framerate (current: 24)"},
+        {"remote audio", {"--remote", "--remote-audio=OFF", "--help"},
+         "Stream audio to viewers (current: off)"},
         {"port range", {"--remote", "--remote-media-port-range=40000-40100", "--help"},
          "Media port range (current: 40000-40100)"},
         {"port range single", {"--remote", "--remote-media-port-range", "50000-50000", "--help"},
@@ -770,6 +772,8 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
         {"--remote-auto-approve=true", "Invalid value for --remote-auto-approve"},
         {"--remote-match-viewer", "Missing value for --remote-match-viewer"},
         {"--remote-match-viewer=yes", "Invalid value for --remote-match-viewer"},
+        {"--remote-audio", "Missing value for --remote-audio"},
+        {"--remote-audio=maybe", "Invalid value for --remote-audio"},
         {"--remote-token", "Missing value for --remote-token"},
         {"--remote-token=short", "Invalid value for --remote-token"},
         {"--remote-token=has spaces in the token", "Invalid value for --remote-token"},
@@ -782,6 +786,7 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
     Expect("encoder dependency", {"--remote-encoder", "auto"}, 2, {}, {"requires --remote"});
     Expect("auto approve dependency", {"--remote-auto-approve", "on"}, 2, {}, {"requires --remote"});
     Expect("match viewer dependency", {"--remote-match-viewer", "off"}, 2, {}, {"requires --remote"});
+    Expect("audio dependency", {"--remote-audio", "off"}, 2, {}, {"requires --remote"});
     Expect("token dependency", {"--remote-token", "living-room-screen-2026"}, 2, {}, {"requires --remote"});
     Expect("transport dependency", {"--remote-media-transport", "udp"}, 2, {}, {"requires --remote"});
     Expect("broker dependency", {"--remote-broker-port", "9000"}, 2, {}, {"requires --remote"});

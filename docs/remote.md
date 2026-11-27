@@ -55,6 +55,10 @@ Invite links take the form `http://<host>:8686/remote#<token>`. Because browsers
 
 Once approved, the broker steps out of the way. Video and input travel directly between host and browser over an end-to-end encrypted WebRTC connection.
 
+Viewers also hear every Audio block in the flowgraph, mixed into one Opus stream that stays in sync with the video. Browsers start the stream muted, so click the speaker button in the viewer to hear it. A headless host without a sound card still streams audio, and its Audio blocks play only for viewers.
+
+The viewer page follows the light or dark theme of CyberEther, and switches as soon as the theme changes on the host.
+
 The viewer in control also shares its clipboard with the host. Text copied inside CyberEther lands in the viewer's clipboard, and pasting in the viewer pastes the viewer's clipboard into CyberEther. When CyberEther runs with a window, a paste from the viewer also replaces the host's system clipboard. Clipboard text is limited to 1 MiB.
 
 ## Network and Firewall Requirements
@@ -95,6 +99,12 @@ Set **Invite Token** when a screen or kiosk should keep the same link across res
 
 > [!TIP]
 > H264 is the only codec every browser decodes. If a viewer connects without showing video after you pick `h265` or `av1`, switch **Video Codec** back to `h264`.
+
+### Audio
+
+| Setting | CLI Flag | Default | Description |
+|---|---|---|---|
+| **Stream Audio** | `--remote-audio <on\|off>` | On | Sends the sound of every Audio block to viewers. |
 
 ### Broker
 

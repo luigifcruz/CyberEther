@@ -52,6 +52,7 @@ subprojects/*
 !subprojects/nlohmann_json.wrap
 !subprojects/nv-codec-headers.wrap
 !subprojects/openh264.wrap
+!subprojects/opus.wrap
 !subprojects/openssl.wrap
 !subprojects/plog.wrap
 !subprojects/pocketfft.wrap

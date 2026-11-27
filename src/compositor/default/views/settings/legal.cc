@@ -135,6 +135,7 @@ const std::vector<LegalSettingsView::Dependency>& LegalSettingsView::Dependencie
         {"usrsctp", "BSD-3-Clause"},
         {"plog", "MIT"},
         {"libsrtp2", "BSD-3-Clause"},
+        {"Opus", "BSD-3-Clause"},
         {"libusb", "LGPL-2.1"},
         {"libqrencode", "LGPL-2.1-or-later"},
         {"zlib", "zlib License"},

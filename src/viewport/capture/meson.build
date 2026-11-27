@@ -26,6 +26,7 @@ endif
 instance_remote_deps = [
     'JETSTREAM_LOADER_FFMPEG_AVAILABLE',
     'JETSTREAM_LOADER_LIBDATACHANNEL_AVAILABLE',
+    'JETSTREAM_LOADER_OPUS_AVAILABLE',
     'JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE',
 ]
 
@@ -41,6 +42,7 @@ if instance_remote_deps_found
         '../../instance_remote_encoder.cc',
         '../../instance_remote_socket.cc',
         '../../instance_remote_broker.cc',
+        '../../instance_remote_audio.cc',
     ])
     if cfg_lst.get('JETSTREAM_LOADER_FFMPEG_CUDA_AVAILABLE', false)
         src_lst += files('../../instance_remote_encoder_cuda.cc')

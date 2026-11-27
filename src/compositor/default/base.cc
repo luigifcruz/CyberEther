@@ -175,6 +175,7 @@ Result DefaultCompositor::create() {
     }
     state.remote.config.video.framerate = static_cast<U32>(settings.remote.video.framerate);
     state.remote.config.video.matchViewer = settings.remote.video.matchViewer;
+    state.remote.config.audio.enabled = settings.remote.audio.enabled;
 
     // Restore runtime preferences.
 

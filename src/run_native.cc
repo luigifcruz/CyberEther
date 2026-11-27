@@ -138,6 +138,9 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
             .maxPort = static_cast<U16>(settings.remote.media.maxPort),
             .address = settings.remote.media.address,
         },
+        .audio = {
+            .enabled = settings.remote.audio.enabled,
+        },
     };
 
     if (!IsRemotePortRangeValid(settings.remote.media.minPort, settings.remote.media.maxPort)) {
@@ -451,6 +454,8 @@ static void printUsage(const char* program,
                         settings.remote.video.framerate);
         jst::fmt::print("  --remote-match-viewer <on|off>        Match the viewer resolution (current: {})\n",
                         settings.remote.video.matchViewer ? "on" : "off");
+        jst::fmt::print("  --remote-audio <on|off>               Stream audio to viewers (current: {})\n",
+                        settings.remote.audio.enabled ? "on" : "off");
         jst::fmt::print("  --remote-codec <codec>                Video codec (current: {})\n",
                         settings.remote.video.codec);
         jst::fmt::print("  {:<38}  Choices: {}\n", "", codecOptions);
@@ -1073,6 +1078,22 @@ int Run(int argc, char* argv[]) {
                     "Invalid value for --remote-match-viewer: '{}'. Expected on or off.", value));
             }
             settings.remote.video.matchViewer = value == "on";
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-audio") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-audio. Expected on or off.");
+            }
+            value = Lowercase(value);
+            if (value != "on" && value != "off") {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-audio: '{}'. Expected on or off.", value));
+            }
+            settings.remote.audio.enabled = value == "on";
             runOption = arg;
             remoteSettingOption = arg;
             continue;
