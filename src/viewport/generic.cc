@@ -53,7 +53,16 @@ void Generic::beginWindowDrag() {}
 
 void Generic::zoomWindow() {}
 
-bool Generic::setDarkAppearance(bool) { return false; }
+bool Generic::setDarkAppearance(bool dark) {
+    this->dark = dark;
+    return applyDarkAppearance(dark);
+}
+
+bool Generic::darkAppearance() const {
+    return dark;
+}
+
+bool Generic::applyDarkAppearance(bool) { return false; }
 
 F64 Generic::inputTime() const {
     if (platform) {
@@ -75,6 +84,10 @@ bool Generic::retainedPresent() const {
     return false;
 }
 
+Result Generic::resize(const Extent2D<U64>&, F32) {
+    return Result::SKIP;
+}
+
 void Generic::setCursor(SurfaceCursor cursor) {
     if (platform) {
         platform->setCursor(cursor);
@@ -88,9 +101,22 @@ std::string Generic::clipboardText() const {
 void Generic::setClipboardText(const std::string& text) {
     if (platform) {
         platform->setClipboardText(text);
-        return;
+    } else {
+        clipboard = text;
     }
-    clipboard = text;
+    std::lock_guard lock(clipboardMutex);
+    copiedClipboard.text = text;
+    ++copiedClipboard.revision;
+}
+
+U64 Generic::clipboardRevision() const {
+    std::lock_guard lock(clipboardMutex);
+    return copiedClipboard.revision;
+}
+
+Generic::ClipboardChange Generic::clipboardChange() const {
+    std::lock_guard lock(clipboardMutex);
+    return copiedClipboard;
 }
 
 void Generic::attachPlatform(std::unique_ptr<Platform> next) {

@@ -53,6 +53,11 @@ class JETSTREAM_API Generic {
         virtual void setClipboardText(const std::string& text) = 0;
     };
 
+    struct ClipboardChange {
+        U64 revision = 0;
+        std::string text;
+    };
+
     explicit Generic(const Config& config);
     virtual ~Generic();
 
@@ -79,16 +84,20 @@ class JETSTREAM_API Generic {
     bool integratedTitlebar() const;
     virtual void beginWindowDrag();
     virtual void zoomWindow();
-    virtual bool setDarkAppearance(bool dark);
+    bool setDarkAppearance(bool dark);
+    bool darkAppearance() const;
 
     virtual bool macOSBehaviors() const;
     virtual bool retainedPresent() const;
+    virtual Result resize(const Extent2D<U64>& size, F32 scale);
     virtual bool waitIdle(F64 seconds, bool surfaces);
 
     F64 inputTime() const;
     void setCursor(SurfaceCursor cursor);
     std::string clipboardText() const;
     void setClipboardText(const std::string& text);
+    U64 clipboardRevision() const;
+    ClipboardChange clipboardChange() const;
     void requestRedraw();
     void refreshSnapshot();
     bool consumeRedraw();
@@ -107,6 +116,8 @@ class JETSTREAM_API Generic {
  protected:
     Config config;
 
+    virtual bool applyDarkAppearance(bool dark);
+
     void attachPlatform(std::unique_ptr<Platform> next);
     void detachPlatform();
     void pumpPlatform();
@@ -123,8 +134,11 @@ class JETSTREAM_API Generic {
     mutable std::mutex snapshotMutex;
     std::optional<Snapshot> snapshot;
     std::string clipboard;
+    mutable std::mutex clipboardMutex;
+    ClipboardChange copiedClipboard;
     Render::InputQueue inputQueue;
     std::atomic<bool> redrawRequested = true;
+    std::atomic<bool> dark = true;
     std::atomic<bool> platformAnimating = false;
     std::mutex droppedFilesMutex;
     std::vector<std::string> droppedFiles;

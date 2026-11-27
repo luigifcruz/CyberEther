@@ -25,6 +25,7 @@
 #include "jetstream/benchmark.hh"
 
 #include "updater.hh"
+#include "tools/text.hh"
 
 #if defined(JST_OS_WINDOWS)
 #define WIN32_LEAN_AND_MEAN
@@ -94,15 +95,33 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
     return config;
 }
 
+std::string CurrentRemoteValue(const std::string& value) {
+    const std::string lower = Text::ToLower(value);
+
+    std::string current = value;
+    if (lower == "vp8" || lower == "vp9") {
+        current = "h264";
+    } else if (lower == "mediafoundation" || lower == "tcp") {
+        current = "auto";
+    }
+
+    if (current != value) {
+        JST_WARN("Saved remote option '{}' is no longer available. Using '{}'.", value, current);
+    }
+    return current;
+}
+
 Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
     Instance::Remote::Config config = {
         .access = {
             .autoApprove = settings.remote.access.autoApprove,
+            .token = settings.remote.access.token,
         },
         .video = {
             .framerate = static_cast<U32>(settings.remote.video.framerate),
-            .codec = StringToRemoteCodec(settings.remote.video.codec),
-            .encoder = StringToRemoteEncoder(settings.remote.video.encoder),
+            .codec = StringToRemoteCodec(CurrentRemoteValue(settings.remote.video.codec)),
+            .encoder = StringToRemoteEncoder(CurrentRemoteValue(settings.remote.video.encoder)),
+            .matchViewer = settings.remote.video.matchViewer,
         },
         .broker = {
             .address = settings.remote.broker.address,
@@ -112,10 +131,13 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
             .key = settings.remote.broker.key,
         },
         .media = {
-            .transport = StringToRemoteTransport(settings.remote.media.transport),
+            .transport = StringToRemoteTransport(CurrentRemoteValue(settings.remote.media.transport)),
             .minPort = static_cast<U16>(settings.remote.media.minPort),
             .maxPort = static_cast<U16>(settings.remote.media.maxPort),
             .address = settings.remote.media.address,
+        },
+        .audio = {
+            .enabled = settings.remote.audio.enabled,
         },
     };
 
@@ -126,6 +148,11 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
 
     if (!settings.remote.broker.publicUrl.empty() && !IsRemotePublicUrlValid(settings.remote.broker.publicUrl)) {
         throw Result::ERROR;
+    }
+
+    if (!config.access.token.empty() && !IsRemoteTokenValid(config.access.token)) {
+        JST_WARN("Saved remote access token is invalid. Using a random token.");
+        config.access.token.clear();
     }
 
     if (settings.remote.broker.port > 65535) {
@@ -419,8 +446,14 @@ static void printUsage(const char* program,
         jst::fmt::print("  --remote                              Enable CyberEther Remote\n");
         jst::fmt::print("  --remote-auto-approve <on|off>        Approve viewers automatically (current: {})\n",
                         settings.remote.access.autoApprove ? "on" : "off");
+        jst::fmt::print("  --remote-token <token>                Fixed invite token (current: {})\n",
+                        settings.remote.access.token.empty() ? "random" : "set");
         jst::fmt::print("  --remote-framerate <fps>              Video framerate (current: {})\n",
                         settings.remote.video.framerate);
+        jst::fmt::print("  --remote-match-viewer <on|off>        Match the viewer resolution (current: {})\n",
+                        settings.remote.video.matchViewer ? "on" : "off");
+        jst::fmt::print("  --remote-audio <on|off>               Stream audio to viewers (current: {})\n",
+                        settings.remote.audio.enabled ? "on" : "off");
         jst::fmt::print("  --remote-codec <codec>                Video codec (current: {})\n",
                         settings.remote.video.codec);
         jst::fmt::print("  {:<38}  Choices: {}\n", "", codecOptions);
@@ -1012,6 +1045,53 @@ int Run(int argc, char* argv[]) {
                     "Invalid value for --remote-auto-approve: '{}'. Expected on or off.", value));
             }
             settings.remote.access.autoApprove = value == "on";
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-token") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-token. Expected a token.");
+            }
+            if (!IsRemoteTokenValid(value)) {
+                return PrintUsageError(argv[0],
+                    "Invalid value for --remote-token. Expected 16 to 128 letters, digits, or the characters - _ . ~, not starting with -");
+            }
+            settings.remote.access.token = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-match-viewer") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-match-viewer. Expected on or off.");
+            }
+            value = Lowercase(value);
+            if (value != "on" && value != "off") {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-match-viewer: '{}'. Expected on or off.", value));
+            }
+            settings.remote.video.matchViewer = value == "on";
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-audio") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-audio. Expected on or off.");
+            }
+            value = Lowercase(value);
+            if (value != "on" && value != "off") {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-audio: '{}'. Expected on or off.", value));
+            }
+            settings.remote.audio.enabled = value == "on";
             runOption = arg;
             remoteSettingOption = arg;
             continue;

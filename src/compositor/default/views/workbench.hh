@@ -56,6 +56,7 @@ struct WorkbenchView {
         bool filePending = false;
         bool backgroundParticles = true;
         bool renderStats = false;
+        std::optional<Instance::Remote::Stats> remoteStats;
         AgentChatView::Config agentChat;
         std::optional<PluginDetailsView::Config> pluginDetails;
         std::optional<StartTabView::Config> startTab;

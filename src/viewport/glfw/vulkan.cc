@@ -522,7 +522,7 @@ void Implementation::zoomWindow() {
 #endif
 }
 
-bool Implementation::setDarkAppearance(bool dark) {
+bool Implementation::applyDarkAppearance(bool dark) {
 #ifdef JST_OS_MAC
     return CocoaTitlebar::SetAppearance(window, dark);
 #elif defined(JST_OS_WINDOWS)

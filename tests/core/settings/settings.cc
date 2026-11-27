@@ -171,7 +171,10 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE(settings.remote.video.codec == "h264");
     REQUIRE(settings.remote.video.encoder == "auto");
     REQUIRE_FALSE(settings.remote.access.autoApprove);
+    REQUIRE(settings.remote.access.token.empty());
     REQUIRE(settings.remote.video.framerate == 30);
+    REQUIRE(settings.remote.video.matchViewer);
+    REQUIRE(settings.remote.audio.enabled);
     REQUIRE(settings.interface.themeKey == "Dark");
     REQUIRE(settings.interface.backgroundParticles);
     REQUIRE(settings.interface.touchpadScrollSpeed == Settings::Interface::DefaultTouchpadScrollSpeed);
@@ -234,7 +237,10 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.remote.video.codec = "av1";
     settings.remote.video.encoder = "software";
     settings.remote.access.autoApprove = true;
+    settings.remote.access.token = "living-room-screen-2026";
     settings.remote.video.framerate = 24;
+    settings.remote.video.matchViewer = false;
+    settings.remote.audio.enabled = false;
     settings.developer.logLevel = 4;
     settings.developer.timingEnabled = true;
     settings.developer.renderStatsEnabled = true;
@@ -280,7 +286,10 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.remote.video.codec == "av1");
     REQUIRE(restored.remote.video.encoder == "software");
     REQUIRE(restored.remote.access.autoApprove);
+    REQUIRE(restored.remote.access.token == "living-room-screen-2026");
     REQUIRE(restored.remote.video.framerate == 24);
+    REQUIRE_FALSE(restored.remote.video.matchViewer);
+    REQUIRE_FALSE(restored.remote.audio.enabled);
     REQUIRE(restored.developer.logLevel == 4);
     REQUIRE(restored.developer.timingEnabled);
     REQUIRE(restored.developer.renderStatsEnabled);

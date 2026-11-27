@@ -20,7 +20,7 @@ Everything is completely self-hosted. There is no account, no cloud service, and
 
 ## Quick Start
 
-Remote Streaming supports both the Vulkan and Metal renderers, including headless mode. Linux and Windows default to Vulkan, while macOS defaults to Metal. On macOS, setting the encoder to Auto uses VideoToolbox hardware encoding whenever available.
+Remote Streaming supports both the Vulkan and Metal renderers, including headless mode. Linux and Windows default to Vulkan, while macOS defaults to Metal. On macOS, setting the encoder to Auto uses VideoToolbox hardware encoding whenever available. On Windows, Auto picks NVENC on NVIDIA, AMF on AMD, or QSV on Intel graphics. On Linux, Auto picks NVENC on NVIDIA or VAAPI on AMD and Intel graphics. With the Vulkan renderer, these hardware encoders read each frame straight from GPU memory whenever the driver supports sharing it, and fall back to copying frames through the CPU otherwise.
 
 ### Option 1: Start From the Desktop App
 
@@ -41,6 +41,8 @@ cyberether --remote --headless flowgraph.yml
 
 The terminal prints a QR code, the invite link, and the access token. When a viewer requests access, the terminal prints its six-character code and waits for confirmation. Verify that it matches the viewer's screen, then type `y`.
 
+In headless mode, the interface resizes to fit the browser window of the viewer in control, matching its pixel density up to 4K. The `--size` option only sets the size used before a viewer connects. Turn off **Match Viewer Resolution** to keep the launch size instead. A desktop window keeps its own size, and the stream follows it when the window is resized.
+
 ## How It Works
 
 When streaming starts, CyberEther runs a lightweight broker on TCP port `8686` by default. That broker performs three tasks:
@@ -53,14 +55,20 @@ Invite links take the form `http://<host>:8686/remote#<token>`. Because browsers
 
 Once approved, the broker steps out of the way. Video and input travel directly between host and browser over an end-to-end encrypted WebRTC connection.
 
+Viewers also hear every Audio block in the flowgraph, mixed into one Opus stream that stays in sync with the video. Browsers start the stream muted, so click the speaker button in the viewer to hear it. A headless host without a sound card still streams audio, and its Audio blocks play only for viewers.
+
+The viewer page follows the light or dark theme of CyberEther, and switches as soon as the theme changes on the host.
+
+The viewer in control also shares its clipboard with the host. Text copied inside CyberEther lands in the viewer's clipboard, and pasting in the viewer pastes the viewer's clipboard into CyberEther. When CyberEther runs with a window, a paste from the viewer also replaces the host's system clipboard. Clipboard text is limited to 1 MiB.
+
 ## Network and Firewall Requirements
 
 Because there is no cloud relay, the viewing device must have a direct network route to the host:
 
 - **Same local network** works immediately with no extra setup.
 - **Different networks** work seamlessly over a VPN such as WireGuard or Tailscale.
-- **Hosts behind strict firewalls** that only allow SSH can tunnel everything through SSH (see [Streaming Over SSH](#streaming-over-ssh)).
-- **Host firewalls** must permit the broker port (TCP `8686` by default) plus the media transport ports. Media uses UDP by default and also supports TCP when allowed. Configure **Media Port Range** to open a fixed range of ports instead of ephemeral ones.
+- **Hosts behind strict firewalls** that only allow SSH can carry everything through an SSH tunnel device (see [Streaming Over SSH](#streaming-over-ssh)).
+- **Host firewalls** must permit the broker port (TCP `8686` by default) plus the UDP media ports. Configure **Media Port Range** to open a fixed range of ports instead of ephemeral ones.
 
 > [!WARNING]
 > The built-in broker is designed for trusted local networks. Never expose it directly to the public internet via port forwarding. Use a VPN or an SSH tunnel to connect from outside your network.
@@ -74,19 +82,29 @@ Adjust these options under **Settings** > **Remote**, or click the settings icon
 | Setting | CLI Flag | Default | Description |
 |---|---|---|---|
 | **Viewer Approval** | `--remote-auto-approve <on\|off>` | Manual | Lets new viewers connect automatically or requires manual approval. |
+| **Invite Token** | `--remote-token <token>` | Random | Fixed token for the invite link. Leave blank for a new random link every time streaming starts. |
 
 Leave approval set to Manual unless every device that might see the invite link is trusted.
+
+Set **Invite Token** when a screen or kiosk should keep the same link across restarts. The link then always ends in `/remote#<token>`, and an open viewer reconnects by itself once CyberEther is back. The rest of the link follows the broker address, port, and TLS setting, so set **Broker Public URL** too when the host's address can change. The token must be 16 to 128 letters, digits, or the characters `-`, `_`, `.`, and `~`, and it cannot start with `-`. Anyone with the token can ask to join, so pick a long one that is hard to guess, and change it to revoke the old link. The token is stored in plain text in `settings.yaml`, which CyberEther saves readable only by your user, and a headless host prints it with the invite link at startup.
 
 ### Video
 
 | Setting | CLI Flag | Default | Description |
 |---|---|---|---|
 | **Video Framerate** | `--remote-framerate <fps>` | `30` | Target frame rate of the outgoing stream. |
-| **Video Codec** | `--remote-codec <codec>` | `H264` | Compression format (`h264`, `vp8`, or `vp9`). The `av1` option is not yet supported for streaming. |
+| **Video Codec** | `--remote-codec <codec>` | `H264` | Compression format (`h264`, `h265`, or `av1`). H265 and AV1 need an encoder that supports them, and H265 also needs a browser that can decode it. |
 | **Video Encoder** | `--remote-encoder <encoder>` | `Auto` | Video encoder selection. Choosing `Auto` uses hardware encoding when available. |
+| **Match Viewer Resolution** | `--remote-match-viewer <on\|off>` | On | Resizes a headless session to fit the browser window of the viewer in control. Turn off to keep the launch size. |
 
 > [!TIP]
-> Some mobile browsers struggle to decode hardware-encoded H264 profiles. If a phone connects without showing video, switch **Video Codec** to `vp8`, which every browser supports.
+> H264 is the only codec every browser decodes. If a viewer connects without showing video after you pick `h265` or `av1`, switch **Video Codec** back to `h264`.
+
+### Audio
+
+| Setting | CLI Flag | Default | Description |
+|---|---|---|---|
+| **Stream Audio** | `--remote-audio <on\|off>` | On | Sends the sound of every Audio block to viewers. |
 
 ### Broker
 
@@ -106,15 +124,15 @@ When **Broker Public URL** is blank, CyberEther constructs invite links from the
 
 | Setting | CLI Flag | Default | Description |
 |---|---|---|---|
-| **Media Transport** | `--remote-media-transport <transport>` | `Auto` | Transport protocols offered for media (`auto`, `udp`, or `tcp`). |
+| **Media Transport** | `--remote-media-transport <transport>` | `Auto` | Transport protocol offered for media (`auto` or `udp`). |
 | **Media Port Range** | `--remote-media-port-range <min-max>` | Any | Fixed range of local ports for media, such as `40000-40100`. |
 | **Media Address** | `--remote-media-address <ip>` | Automatic | Single local IP address advertised for media. Leave blank to advertise all addresses. |
 
-Choosing `auto` offers both UDP and TCP so WebRTC selects the best path (typically UDP). Use `tcp` on networks that block UDP, keeping in mind that lost packets on TCP stall later frames and add latency or stutter.
+Media always travels over UDP. On networks that block UDP, use a VPN or the SSH tunnel device described below.
 
 Always allocate more than one port in **Media Port Range**. Each viewer consumes one port, and recently closed ports need a brief cooldown before reuse.
 
-Setting **Media Address** restricts WebRTC candidates to one IP instead of advertising every host interface. This is primarily used with SSH tunnels, where you set it to `127.0.0.1`.
+Setting **Media Address** restricts WebRTC candidates to one IP instead of advertising every host interface. This is primarily used with SSH tunnel devices, where you set it to the host's tunnel address.
 
 ## Securing the Connection With TLS
 
@@ -132,55 +150,60 @@ Always restrict file permissions so only the user running CyberEther can read th
 
 ## Streaming Over SSH
 
-If a remote host sits behind a firewall that only permits SSH, you can route both the broker and the media stream through a single encrypted SSH tunnel.
+If a remote host sits behind a firewall that only permits SSH, an SSH tunnel device can carry both the broker and the media stream. Media uses UDP, which plain SSH port forwarding cannot carry, so the tunnel must be a layer 3 device created with `ssh -w`.
 
-To fit cleanly through SSH, the media connection needs three settings:
+### Step 1: Allow Tunnel Devices on the Host
 
-1. **A TCP transport**, because SSH cannot forward UDP.
-2. **A small, fixed port range**, so you can forward each port explicitly.
-3. **Loopback binding**, so the browser connects to your forwarded local ports instead of trying to reach the host directly.
+Enable tunnels in the host's `/etc/ssh/sshd_config` and restart the SSH server:
 
-### Step 1: Launch CyberEther on the Host
+```
+PermitTunnel yes
+```
 
-Start CyberEther bound strictly to `127.0.0.1`:
+Creating the tunnel device needs root on both machines, or an account allowed to create TUN devices.
+
+### Step 2: Open the Tunnel
+
+From your viewing machine, open the tunnel and give each end an address:
+
+```bash
+sudo ssh -N -w 0:0 root@host
+```
+
+Then, in another terminal on each machine, bring the device up:
+
+```bash
+# On the host
+sudo ip addr add 10.10.0.1/30 dev tun0
+sudo ip link set tun0 up
+
+# On the viewing machine
+sudo ip addr add 10.10.0.2/30 dev tun0
+sudo ip link set tun0 up
+```
+
+### Step 3: Launch CyberEther on the Host
+
+Bind the broker and the media to the tunnel address:
 
 ```bash
 cyberether --remote --headless \
-  --remote-broker-address 127.0.0.1 \
-  --remote-broker-public-url http://localhost:8686 \
-  --remote-media-transport tcp \
-  --remote-media-port-range 40000-40003 \
-  --remote-media-address 127.0.0.1 \
+  --remote-broker-address 10.10.0.1 \
+  --remote-broker-public-url http://10.10.0.1:8686 \
+  --remote-media-address 10.10.0.1 \
   flowgraph.yml
 ```
 
-You can also save these values permanently under **Settings** > **Remote**. Four ports support up to four simultaneous viewers (keep at least one spare port for cooldown after disconnects).
+You can also save these values permanently under **Settings** > **Remote**. Run this inside an interactive SSH session so approval prompts appear in your terminal, or add `--remote-auto-approve on` since only users with tunnel access can reach the broker.
 
-Run this inside an interactive SSH session so approval prompts appear in your terminal, or add `--remote-auto-approve on` since only users with SSH tunnel access can reach the broker.
-
-### Step 2: Open the SSH Port-Forwarding Tunnel
-
-From your viewing machine, open a second SSH connection forwarding the broker port and every media port using identical local and remote port numbers:
-
-```bash
-ssh -N \
-  -L 8686:127.0.0.1:8686 \
-  -L 40000:127.0.0.1:40000 \
-  -L 40001:127.0.0.1:40001 \
-  -L 40002:127.0.0.1:40002 \
-  -L 40003:127.0.0.1:40003 \
-  user@host
-```
-
-Local and remote port numbers must match because the host advertises its own port numbers to the browser. Verify that nothing else on your viewing machine is using those ports.
-
-Once the tunnel is open, paste the invite link from the host (such as `http://localhost:8686/remote#<token>`) into a browser on your viewing machine.
+Once the tunnel is up, open the invite link from the host (such as `http://10.10.0.1:8686/remote#<token>`) in a browser on your viewing machine.
 
 ### Practical Notes for SSH Tunneling
 
-- Expect slightly higher latency than on a direct LAN connection because TCP retransmissions pause video briefly and SSH adds encryption overhead.
+- The commands above use Linux `ip`. Other systems name and configure tunnel devices differently, and some SSH clients, including the one bundled with macOS, do not support `-w`. A VPN such as WireGuard or Tailscale is the simpler choice on those systems.
+- Expect slightly higher latency than on a direct LAN connection because SSH carries every packet over a single TCP connection and adds encryption overhead.
 - Reducing **Video Framerate** keeps the session responsive over slower links.
-- Because the broker only listens on `127.0.0.1`, nothing is exposed on the host's network, and SSH encrypts all traffic including the viewer page and invite token.
+- Because the broker only listens on the tunnel address, nothing is exposed on the host's network, and SSH encrypts all traffic including the viewer page and invite token.
 
 ## Troubleshooting
 
@@ -188,5 +211,5 @@ Once the tunnel is open, paste the invite link from the host (such as `http://lo
 |---|---|
 | **Invite link will not open** | Confirm both devices are on the same network (or VPN), check the host firewall for the broker port, and set **Broker Public URL** if the host has multiple network interfaces. |
 | **Viewer stays on the waiting screen** | The host has not approved the connection yet. Match the six-character code in the **Remote** sidebar panel or terminal. |
-| **Viewer connects with a black screen** | On phones, switch **Video Codec** to `vp8`. On strict networks, set **Media Transport** to `tcp` and verify that your media ports are open. |
+| **Viewer connects with a black screen** | Switch **Video Codec** to `h264`. On strict networks, verify that your UDP media ports are open or use a VPN. |
 | **Streaming fails to start** | Another process may already own port `8686` (choose another **Broker Port**), your TLS certificate and key files may be missing or mismatched, or your default renderer may be unavailable (try `--renderer vulkan` or `--renderer metal`). |

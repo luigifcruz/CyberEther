@@ -16,11 +16,13 @@
 #endif
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <condition_variable>
 #include <chrono>
 #include <atomic>
 #include <map>
+#include <random>
 #include <memory>
 #include <mutex>
 #include <string_view>
@@ -28,15 +30,62 @@
 #include <unordered_map>
 #include <utility>
 
-#include <gst/app/gstappsrc.h>
-#include <gst/sdp/sdp.h>
-#include <gst/video/video-color.h>
-#include <gst/video/video-event.h>
-#include <gst/gststructure.h>
-
-extern "C" void gst_init_static_plugins(void);
+#ifdef JST_OS_WINDOWS
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#endif
 
 namespace Jetstream {
+
+namespace {
+
+bool IsIpAddress(const std::string& address) {
+    in6_addr buffer = {};
+    return inet_pton(AF_INET, address.c_str(), &buffer) == 1 ||
+           inet_pton(AF_INET6, address.c_str(), &buffer) == 1;
+}
+
+constexpr const char* kVideoMid = "video";
+constexpr const char* kAudioMid = "audio";
+constexpr U8 kAudioPayloadType = 111;
+constexpr const char* kAudioProfile = "minptime=10;maxaveragebitrate=96000;stereo=1;sprop-stereo=1";
+constexpr const char* kCname = "cyberether";
+constexpr U8 kPayloadType = 96;
+constexpr int kPlayoutDelayExtension = 5;
+constexpr const char* kPlayoutDelayUri = "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay";
+constexpr U16 kPlayoutDelayMaximum = 2;
+constexpr U64 kMaximumFragmentSize = 1100;
+constexpr U64 kMaximumCandidates = 64;
+constexpr U64 kNackHistory = 2048;
+constexpr U64 kMaxClipboardBytes = 1024 * 1024;
+constexpr U64 kClipboardChunkBytes = 8 * 1024;
+constexpr U64 kMaxClipboardChunks = 256;
+constexpr U64 kMaxControlBytes = 16 * 1024;
+constexpr U64 kMaxClipboardMessageBytes = 64 * 1024;
+constexpr U64 kTelemetryLimit = 4096;
+
+std::vector<std::string> SplitUtf8(const std::string& text, const U64 limit) {
+    std::vector<std::string> chunks;
+    U64 start = 0;
+    while (start < text.size()) {
+        U64 end = std::min<U64>(start + limit, text.size());
+        while (end < text.size() && end > start && (static_cast<U8>(text[end]) & 0xC0) == 0x80) {
+            --end;
+        }
+        if (end == start) {
+            end = std::min<U64>(start + limit, text.size());
+        }
+        chunks.push_back(text.substr(start, end - start));
+        start = end;
+    }
+    if (chunks.empty()) {
+        chunks.emplace_back();
+    }
+    return chunks;
+}
+
+}  // namespace
 
 Instance::Remote::Remote(Viewport::Generic* viewport) {
     impl = std::make_shared<Impl>();
@@ -59,7 +108,7 @@ Result Instance::Remote::create(const Config& config) {
         JST_ERROR("[REMOTE] Invalid port range {}-{}.", config.media.minPort, config.media.maxPort);
         return Result::ERROR;
     }
-    if (!config.media.address.empty() && !g_hostname_is_ip_address(config.media.address.c_str())) {
+    if (!config.media.address.empty() && !IsIpAddress(config.media.address)) {
         JST_ERROR("[REMOTE] Invalid media address '{}'. Expected an IP address.", config.media.address);
         return Result::ERROR;
     }
@@ -98,6 +147,10 @@ std::vector<Instance::Remote::ClientInfo> Instance::Remote::clients() const {
 std::vector<std::string> Instance::Remote::waitlist() const {
     std::lock_guard<std::mutex> lock(impl->remoteStateMutex);
     return impl->waitlist_;
+}
+
+Instance::Remote::Stats Instance::Remote::stats() const {
+    return impl->stats();
 }
 
 Result Instance::Remote::approveClient(const std::string& sessionId) {
@@ -149,24 +202,13 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
         return Result::ERROR;
     }
 
-    // Get viewport size
-    this->size = {};
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    if (this->viewportDevice == DeviceType::Metal) {
-        auto* metalAdapter = dynamic_cast<Viewport::Adapter<DeviceType::Metal>*>(this->viewport);
-        if (metalAdapter) {
-            this->size = metalAdapter->getSwapchainExtent();
-        }
+    this->setStreamSize(this->viewportExtent());
+    if (viewport && (this->launchSize.x == 0 || this->launchSize.y == 0)) {
+        this->launchSize = this->size;
+        const auto display = viewport->displaySize();
+        const auto framebuffer = viewport->framebufferSize();
+        this->launchScale = display.x > 0.0f ? framebuffer.x / display.x : 1.0f;
     }
-#endif
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-    if (this->viewportDevice == DeviceType::Vulkan) {
-        auto* vulkanAdapter = dynamic_cast<Viewport::Adapter<DeviceType::Vulkan>*>(this->viewport);
-        if (vulkanAdapter) {
-            this->size = vulkanAdapter->getSwapchainExtent();
-        }
-    }
-#endif
 
     if (this->size.x == 0 || this->size.y == 0) {
         JST_ERROR("[REMOTE] Failed to get viewport size.");
@@ -177,53 +219,242 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
         this->rollbackCreate();
         return Result::ERROR;
     }
+    if (this->createCapture() != Result::SUCCESS) {
+        if (this->inputMemoryDevice_ == DeviceType::CPU) {
+            this->rollbackCreate();
+            return Result::ERROR;
+        }
+
+        JST_WARN("[REMOTE] Failed to share frames with the encoder. Falling back to CPU memory.");
+        if (this->createStream(DeviceType::CPU) != Result::SUCCESS || this->createCapture() != Result::SUCCESS) {
+            this->rollbackCreate();
+            return Result::ERROR;
+        }
+    }
+
     if (this->createBroker() != Result::SUCCESS) {
         this->rollbackCreate();
         return Result::ERROR;
     }
 
-    // Create frame capture
+    if (this->startSubmission() != Result::SUCCESS) {
+        this->rollbackCreate();
+        return Result::ERROR;
+    }
+
+    if (viewport) {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        sentClipboardRevision = viewport->clipboardRevision();
+    }
+
+    this->started_ = true;
+    JST_INFO("[REMOTE] Remote streaming started.");
+    return Result::SUCCESS;
+}
+
+Extent2D<U64> Instance::Remote::Impl::viewportExtent() const {
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     if (this->viewportDevice == DeviceType::Metal) {
-        this->frameCapture = std::make_unique<Viewport::FrameCaptureMetal>();
+        if (auto* adapter = dynamic_cast<Viewport::Adapter<DeviceType::Metal>*>(this->viewport)) {
+            return adapter->getSwapchainExtent();
+        }
     }
 #endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     if (this->viewportDevice == DeviceType::Vulkan) {
-        this->frameCapture = std::make_unique<Viewport::FrameCaptureVulkan>();
+        if (auto* adapter = dynamic_cast<Viewport::Adapter<DeviceType::Vulkan>*>(this->viewport)) {
+            return adapter->getSwapchainExtent();
+        }
+    }
+#endif
+    return {};
+}
+
+Result Instance::Remote::Impl::startSubmission() {
+    this->frameSubmissionRunning = true;
+    const bool shared = this->inputMemoryDevice_ == DeviceType::Vulkan;
+    try {
+        this->frameSubmissionThread = std::thread([this, shared]() {
+            const auto push = [this](const void* data) {
+                const Result pushed = this->pushNewFrame(data);
+                this->releaseCapture();
+                if (pushed != Result::SUCCESS) {
+                    this->requestKeyframe();
+                }
+            };
+
+            while (this->frameSubmissionRunning) {
+                if (shared) {
+                    Viewport::FrameCapture::SharedFrame frame;
+                    if (this->frameCapture->getSharedFrame(frame) == Result::SUCCESS) {
+                        push(&frame);
+                    }
+                    continue;
+                }
+
+                Tensor tensor;
+                if (this->frameCapture->getFrameData(tensor) == Result::SUCCESS) {
+                    push(tensor.data());
+                }
+            }
+        });
+    } catch (const std::exception& e) {
+        this->frameSubmissionRunning = false;
+        JST_ERROR("[REMOTE] Failed to start frame submission thread: {}", e.what());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+void Instance::Remote::Impl::stopSubmission() {
+    this->frameSubmissionRunning = false;
+    if (this->frameCapture) {
+        (void)this->frameCapture->stop();
+    }
+    if (this->frameSubmissionThread.joinable()) {
+        this->frameSubmissionThread.join();
+    }
+}
+
+Result Instance::Remote::Impl::followViewport() {
+    const Extent2D<U64> current = this->viewportExtent();
+    if (current.x == 0 || current.y == 0 || (current.x == this->size.x && current.y == this->size.y)) {
+        return Result::SUCCESS;
+    }
+    return this->rebuildStream(current);
+}
+
+Result Instance::Remote::Impl::rebuildStream(const Extent2D<U64>& next) {
+    JST_INFO("[REMOTE] Viewport changed from {}x{} to {}x{}. Rebuilding the stream.",
+             this->size.x, this->size.y, next.x, next.y);
+
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex);
+
+    this->stopSubmission();
+
+    std::unique_ptr<Encoder> oldEncoder;
+    {
+        std::lock_guard<std::mutex> lock(streamMutex);
+        oldEncoder = std::move(encoder);
+    }
+    oldEncoder.reset();
+
+    this->setStreamSize(next);
+    this->nextCaptureTime = {};
+    this->capturePending = false;
+    this->captureBlocked = false;
+
+    if (this->inputMemoryDevice_ == DeviceType::None && this->createStream() != Result::SUCCESS) {
+        JST_ERROR("[REMOTE] No encoder supports {}x{}.", next.x, next.y);
+        return Result::ERROR;
+    }
+
+    if (this->createCapture() != Result::SUCCESS) {
+        JST_WARN("[REMOTE] Failed to share frames with the encoder. Falling back to CPU memory.");
+        if (this->inputMemoryDevice_ == DeviceType::CPU ||
+            this->createStream(DeviceType::CPU) != Result::SUCCESS ||
+            this->createCapture() != Result::SUCCESS) {
+            JST_ERROR("[REMOTE] Failed to rebuild the frame capture.");
+            return Result::ERROR;
+        }
+    }
+
+    JST_CHECK(this->startSubmission());
+
+    if (!this->streaming) {
+        return Result::SUCCESS;
+    }
+
+    if (this->reopenStream() == Result::SUCCESS) {
+        return Result::SUCCESS;
+    }
+
+    JST_WARN("[REMOTE] Encoder can't stream at {}x{}. Picking another encoder.", next.x, next.y);
+    this->stopSubmission();
+    if (this->createStream() != Result::SUCCESS || this->createCapture() != Result::SUCCESS) {
+        if (this->createStream(DeviceType::CPU) != Result::SUCCESS || this->createCapture() != Result::SUCCESS) {
+            JST_ERROR("[REMOTE] Failed to rebuild the frame capture.");
+            return Result::ERROR;
+        }
+    }
+    JST_CHECK(this->startSubmission());
+    return this->reopenStream();
+}
+
+Result Instance::Remote::Impl::reopenStream() {
+    std::unique_ptr<Encoder> newEncoder;
+    JST_CHECK(this->openEncoder(newEncoder));
+    {
+        std::lock_guard<std::mutex> lock(telemetry.mutex);
+        telemetry.samples.clear();
+        telemetry.format = newEncoder->format();
+    }
+    {
+        std::lock_guard<std::mutex> lock(streamMutex);
+        encoder = std::move(newEncoder);
+    }
+    requestKeyframe();
+    return Result::SUCCESS;
+}
+
+Extent2D<U64> Instance::Remote::Impl::streamSize() const {
+    std::lock_guard<std::mutex> lock(sizeMutex);
+    return this->size;
+}
+
+void Instance::Remote::Impl::setStreamSize(const Extent2D<U64>& next) {
+    std::lock_guard<std::mutex> lock(sizeMutex);
+    this->size = next;
+}
+
+void Instance::Remote::Impl::restoreViewport() {
+    bool resized = false;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        resized = appliedViewport != ViewportRequest{};
+        viewportRequests.clear();
+        appliedViewport = {};
+    }
+
+    if (resized && viewport && launchSize.x > 0 && launchSize.y > 0) {
+        (void)viewport->resize(launchSize, launchScale);
+    }
+}
+
+Result Instance::Remote::Impl::createCapture() {
+    if (this->frameCapture) {
+        (void)this->frameCapture->destroy();
+        this->frameCapture.reset();
+    }
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if (this->viewportDevice == DeviceType::Metal) {
+        this->frameCapture = std::make_unique<Viewport::FrameCaptureMetal>([this](bool available) {
+            return this->acceptCapture(available, std::chrono::steady_clock::now());
+        });
+    }
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    if (this->viewportDevice == DeviceType::Vulkan) {
+        const auto exporting = this->inputMemoryDevice_ == DeviceType::Vulkan ? Encoder::ExportFor(this->encoderType)
+                                                                              : Encoder::Export::None;
+        this->frameCapture = std::make_unique<Viewport::FrameCaptureVulkan>(exporting);
     }
 #endif
 
     if (!this->frameCapture) {
         JST_ERROR("[REMOTE] No frame capture available for device type.");
-        this->rollbackCreate();
-        return Result::ERROR;
-    }
-    if (this->frameCapture->create(this->viewport, inputMemoryDevice_) != Result::SUCCESS) {
-        this->rollbackCreate();
         return Result::ERROR;
     }
 
-    // Start frame submission thread
-    this->frameSubmissionRunning = true;
-    try {
-        this->frameSubmissionThread = std::thread([this]() {
-            while (this->frameSubmissionRunning) {
-                Tensor tensor;
-                if (this->frameCapture->getFrameData(tensor) == Result::SUCCESS) {
-                    this->pushNewFrame(tensor.data());
-                    this->frameCapture->releaseFrame();
-                }
-            }
-        });
-    } catch (const std::exception& e) {
-        JST_ERROR("[REMOTE] Failed to start frame submission thread: {}", e.what());
-        this->rollbackCreate();
+    if (this->frameCapture->create(this->viewport, this->inputMemoryDevice_) != Result::SUCCESS) {
+        (void)this->frameCapture->destroy();
+        this->frameCapture.reset();
         return Result::ERROR;
     }
 
-    this->started_ = true;
-    JST_INFO("[REMOTE] Remote streaming started.");
+    this->setStreamSize(this->frameCapture->extent());
     return Result::SUCCESS;
 }
 
@@ -240,11 +471,14 @@ Result Instance::Remote::Impl::rollbackCreate() {
     Result result = Result::SUCCESS;
     this->started_ = false;
     this->nextCaptureTime = {};
+    this->capturePending = false;
+    this->captureBlocked = false;
 
     {
         std::lock_guard<std::mutex> lock(inputMutex);
         inputQueue.clear();
     }
+    this->restoreViewport();
     while (!remoteInputStates.empty()) {
         resetInput(remoteInputStates.begin()->first);
     }
@@ -257,7 +491,7 @@ Result Instance::Remote::Impl::rollbackCreate() {
         result = Result::ERROR;
     }
 
-    // Pipeline teardown releases any frame still retained by GStreamer, which
+    // Stream teardown releases any frame still retained by the encoder, which
     // wakes the submission thread before it is joined below.
     if (this->destroyBroker() != Result::SUCCESS) {
         result = Result::ERROR;
@@ -287,34 +521,74 @@ Result Instance::Remote::Impl::captureFrame(bool presented, std::chrono::steady_
         return this->destroy();
     }
 
+    syncClipboard();
+    syncAppearance();
     JST_CHECK(processInput());
+    applyViewport();
+    if (this->started_ && followViewport() != Result::SUCCESS) {
+        JST_WARN("[REMOTE] Video is paused until the viewport returns to a size the encoder supports.");
+    }
     if (!this->frameCapture) {
         return Result::SUCCESS;
     }
     if (this->captureRequested.exchange(false)) {
         this->capturePending = true;
     }
+    if (this->viewportDevice == DeviceType::Metal) {
+        if (this->capturePending && now >= this->nextCaptureTime && !this->captureBlocked && viewport) {
+            viewport->requestRedraw();
+        }
+        return Result::SUCCESS;
+    }
     if (now < this->nextCaptureTime) {
         this->capturePending = this->capturePending || presented;
         return Result::SUCCESS;
     }
     if (!presented) {
-        if (this->capturePending && viewport) {
+        if (this->capturePending && !this->captureBlocked && viewport) {
             viewport->requestRedraw();
         }
         return Result::SUCCESS;
     }
+    this->captureBlocked = true;
     if (this->frameCapture->captureFrame() == Result::SKIP) {
         this->capturePending = true;
         return Result::SUCCESS;
     }
-    const auto interval = std::chrono::nanoseconds(GST_SECOND / config.video.framerate);
+    this->captureBlocked = false;
+    this->scheduleCapture(now);
+    return Result::SUCCESS;
+}
+
+bool Instance::Remote::Impl::acceptCapture(bool available, std::chrono::steady_clock::time_point now) {
+    if (!available) {
+        this->captureBlocked = true;
+        this->capturePending = true;
+        return false;
+    }
+    if (now < this->nextCaptureTime) {
+        this->capturePending = true;
+        return false;
+    }
+    this->captureRequested = false;
+    this->scheduleCapture(now);
+    return true;
+}
+
+void Instance::Remote::Impl::releaseCapture() {
+    this->frameCapture->releaseFrame();
+    if (this->captureBlocked.exchange(false) && viewport) {
+        viewport->requestRedraw();
+    }
+}
+
+void Instance::Remote::Impl::scheduleCapture(std::chrono::steady_clock::time_point now) {
+    const auto interval = std::chrono::nanoseconds(std::chrono::seconds(1)) / config.video.framerate;
     if (now - this->nextCaptureTime >= interval) {
         this->nextCaptureTime = now;
     }
     this->nextCaptureTime += interval;
     this->capturePending = false;
-    return Result::SUCCESS;
 }
 
 void Instance::Remote::Impl::requestKeyframe() {
@@ -327,19 +601,34 @@ void Instance::Remote::Impl::requestKeyframe() {
 
 Result Instance::Remote::Impl::processInput() {
     std::deque<QueuedInput> pending;
+    U64 epoch = 0;
     {
         std::lock_guard<std::mutex> lock(inputMutex);
         pending.swap(inputQueue);
+        epoch = controlEpoch;
     }
 
-    for (const auto& input : pending) {
+    ++inputFrame;
+    for (auto it = pending.begin(); it != pending.end(); ++it) {
         try {
-            if (input.reset) {
-                resetInput(input.sessionId);
+            if (!it->reset && it->epoch != epoch) {
                 continue;
             }
-            const std::string kind = input.payload.value("kind", "");
-            handleInput(input.sessionId, kind, input.payload);
+            if (it->reset) {
+                resetInput(it->sessionId);
+                lastInputFrame = inputFrame;
+                continue;
+            }
+            const std::string kind = it->payload.value("kind", "");
+            if (kind == "clipboard" && lastInputFrame != 0 && inputFrame - lastInputFrame < 2) {
+                std::lock_guard<std::mutex> lock(inputMutex);
+                inputQueue.insert(inputQueue.begin(), std::make_move_iterator(it), std::make_move_iterator(pending.end()));
+                break;
+            }
+            handleInput(it->sessionId, it->epoch, kind, it->payload);
+            if (kind == "keyboard" || kind == "text" || (kind == "mouse" && it->payload.value("act", "") != "move")) {
+                lastInputFrame = inputFrame;
+            }
         } catch (const std::exception& e) {
             JST_WARN("[REMOTE] Rejected malformed control message: {}", e.what());
         }
@@ -401,6 +690,7 @@ Result Instance::Remote::Impl::removeClient(const std::string& sessionId) {
     return Result::SUCCESS;
 }
 
+
 //
 // Stream
 //
@@ -415,21 +705,10 @@ std::vector<Instance::Remote::EncoderType> Instance::Remote::Impl::available(Cod
         return cacheIt->second;
     }
 
-    if (!gst_is_initialized()) {
-        gst_init(nullptr, nullptr);
-    }
-    gst_init_static_plugins();
-
     std::vector<EncoderType> encoders;
-    const auto addEncoder = [&](EncoderType encoder) {
-        if (std::find(encoders.begin(), encoders.end(), encoder) == encoders.end()) {
-            encoders.push_back(encoder);
-        }
-    };
-
     for (const auto& combination : encodingCombinations(codec)) {
-        if (checkGstreamerPlugins(combination.plugins, true) == Result::SUCCESS) {
-            addEncoder(EncoderFromEncodingStrategy(combination.strategy));
+        if (std::ranges::find(encoders, combination.encoder) == encoders.end()) {
+            encoders.push_back(combination.encoder);
         }
     }
 
@@ -441,219 +720,117 @@ std::vector<Instance::Remote::EncoderType> Instance::Remote::Impl::available(Cod
     return encoders;
 }
 
-std::vector<Instance::Remote::Impl::EncodingCombination> Instance::Remote::Impl::encodingCombinations(CodecType codec) {
+std::vector<Instance::Remote::Impl::EncodingCombination> Instance::Remote::Impl::encodingCombinations(CodecType codec,
+                                                                                                    DeviceType only) {
     std::vector<EncodingCombination> combinations;
 
-    if (codec == CodecType::H264) {
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        if (viewportDevice == DeviceType::Vulkan && Backend::State<DeviceType::CUDA>()->isAvailable()) {
-            combinations.push_back({DeviceType::CUDA, EncodingStrategyType::HardwareNVENC, {"nvh264enc", "h264parse", "rtph264pay"}});
-            GST_DEBUG("[REMOTE] Checking for NVENC strategy support for h264.");
+    std::vector<EncodingCombination> copied;
+
+    const auto probe = [&](DeviceType device, EncoderType encoder) {
+        Encoder::Config config = {
+            .codec = codec,
+            .encoder = encoder,
+            .device = device,
+            .size = streamSize(),
+        };
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        if (device == DeviceType::Vulkan) {
+            config.adapter = Viewport::FrameCaptureVulkan::Device();
         }
 #endif
+        return Encoder::Available(config);
+    };
 
-        if (checkGstreamerPlugins({"vtenc_h264_hw"}, true) == Result::SUCCESS) {
-            GstElementFactory* factory = gst_element_factory_find("vtenc_h264_hw");
-            if (factory) {
-                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareVideoToolbox, {"vtenc_h264_hw", "h264parse", "rtph264pay"}});
-                gst_object_unref(GST_OBJECT(factory));
-                GST_DEBUG("[REMOTE] Checking for VideoToolbox strategy support for h264.");
-            }
+    const auto add = [&](EncoderType encoder) {
+        bool exported = false;
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        const auto exporting = Encoder::ExportFor(encoder);
+        exported = only != DeviceType::CPU &&
+                   viewportDevice == DeviceType::Vulkan &&
+                   exporting != Encoder::Export::None &&
+                   Viewport::FrameCaptureVulkan::SupportsExport(exporting);
+#endif
+        if (exported && probe(DeviceType::Vulkan, encoder)) {
+            combinations.push_back({DeviceType::Vulkan, encoder});
+        } else if (probe(DeviceType::CPU, encoder)) {
+            copied.push_back({DeviceType::CPU, encoder});
         }
+    };
 
-        if (checkGstreamerPlugins({"v4l2h264enc"}, true) == Result::SUCCESS) {
-            GstElementFactory* factory = gst_element_factory_find("v4l2h264enc");
-            if (factory) {
-                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareV4L2, {"v4l2h264enc", "h264parse", "rtph264pay"}});
-                gst_object_unref(GST_OBJECT(factory));
-                GST_DEBUG("[REMOTE] Checking for V4L2 strategy support for h264.");
-            }
-        }
+    add(EncoderType::NVENC);
+    add(EncoderType::AMF);
+    add(EncoderType::QSV);
+    add(EncoderType::VAAPI);
+    add(EncoderType::VideoToolbox);
+    add(EncoderType::V4L2);
+    add(EncoderType::Software);
 
-        if (checkGstreamerPlugins({"mfh264enc"}, true) == Result::SUCCESS) {
-            GstElementFactory* factory = gst_element_factory_find("mfh264enc");
-            if (factory) {
-                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareMediaFoundation, {"mfh264enc", "h264parse", "rtph264pay"}});
-                gst_object_unref(GST_OBJECT(factory));
-                GST_DEBUG("[REMOTE] Checking for MediaFoundation strategy support for h264.");
-            }
-        }
-
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"openh264enc", "h264parse", "rtph264pay"}});
-    }
-
-    if (codec == CodecType::VP8) {
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vp8enc", "rtpvp8pay"}});
-    }
-
-    if (codec == CodecType::VP9) {
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vp9enc", "rtpvp9pay"}});
-    }
-
+    combinations.insert(combinations.end(), copied.begin(), copied.end());
     return combinations;
 }
 
-Instance::Remote::EncoderType Instance::Remote::Impl::EncoderFromEncodingStrategy(EncodingStrategyType strategy) {
-    switch (strategy) {
-        case EncodingStrategyType::Software:
-            return EncoderType::Software;
-        case EncodingStrategyType::HardwareNVENC:
-            return EncoderType::NVENC;
-        case EncodingStrategyType::HardwareV4L2:
-            return EncoderType::V4L2;
-        case EncodingStrategyType::HardwareVideoToolbox:
-            return EncoderType::VideoToolbox;
-        case EncodingStrategyType::HardwareMediaFoundation:
-            return EncoderType::MediaFoundation;
-        default:
-            return EncoderType::Auto;
-    }
-}
-
-bool Instance::Remote::Impl::EncoderMatchesStrategy(EncoderType encoder, EncodingStrategyType strategy) {
-    return EncoderFromEncodingStrategy(strategy) == encoder;
-}
-
-Result Instance::Remote::Impl::createStream() {
+Result Instance::Remote::Impl::createStream(DeviceType only) {
     JST_DEBUG("[REMOTE] Creating stream.");
 
-    encodingStrategy = EncodingStrategyType::None;
+    encoderType = EncoderType::Auto;
     inputMemoryDevice_ = DeviceType::None;
+    encoderFallbacks.clear();
 
-    if (!gst_is_initialized()) {
-        gst_init(nullptr, nullptr);
+    for (const auto& combination : encodingCombinations(config.video.codec, only)) {
+        if (config.video.encoder != EncoderType::Auto && config.video.encoder != combination.encoder) {
+            continue;
+        }
+
+        if (encoderType != EncoderType::Auto) {
+            const bool sameInput = combination.device == inputMemoryDevice_ &&
+                                   (combination.device != DeviceType::Vulkan ||
+                                    Encoder::ExportFor(combination.encoder) == Encoder::ExportFor(encoderType));
+            if (sameInput) {
+                encoderFallbacks.push_back(combination);
+            }
+            continue;
+        }
+
+        inputMemoryDevice_ = combination.device;
+        encoderType = combination.encoder;
+
+        JST_INFO("[REMOTE] Using {} encoding with {} memory.", combination.encoder,
+                                                               GetDevicePrettyName(combination.device));
     }
 
-    gst_init_static_plugins();
+    if (encoderType != EncoderType::Auto) {
+        return Result::SUCCESS;
+    }
 
-    std::vector<std::string> plugins = {
-        "appsrc",
-        "appsink",
-        "capsfilter",
-        "clocksync",
-        "funnel",
-        "nicesink",
-        "nicesrc",
-        "queue",
-        "rawvideoparse",
-        "rtpbin",
-        "rtpfunnel",
-        "rtphdrextmid",
-        "rtphdrextrepairedstreamid",
-        "rtphdrextstreamid",
-        "rtphdrexttwcc",
-        "rtpjitterbuffer",
-        "rtpptdemux",
-        "rtpreddec",
-        "rtpredenc",
-        "rtprtxreceive",
-        "rtprtxsend",
-        "rtpsession",
-        "rtpssrcdemux",
-        "rtpstorage",
-        "rtpulpfecdec",
-        "rtpulpfecenc",
-        "tee",
-        "videoconvert",
-        "webrtcbin",
-    };
+    const std::string codecName = Jetstream::GetRemoteCodecName(config.video.codec);
 
-    JST_CHECK(checkGstreamerPlugins(plugins));
-
-    if (config.video.codec == Instance::Remote::CodecType::AV1) {
-        JST_ERROR("[REMOTE] AV1 remote encoding is not implemented in the native WebRTC path.");
+    if (config.video.encoder != EncoderType::Auto) {
+        JST_ERROR("[REMOTE] Requested encoder '{}' is not available for codec '{}' on this system.",
+                  Jetstream::GetRemoteEncoderPrettyName(config.video.encoder),
+                  codecName);
         return Result::ERROR;
     }
 
-    const auto combinations = encodingCombinations(config.video.codec);
-
-    bool requestedEncoderFound = false;
-
-    for (const auto& combination : combinations) {
-        if (config.video.encoder != Instance::Remote::EncoderType::Auto) {
-            if (!EncoderMatchesStrategy(config.video.encoder, combination.strategy)) {
-                continue;
-            }
-
-            requestedEncoderFound = true;
-        }
-
-        if (checkGstreamerPlugins(combination.plugins, true) == Result::SUCCESS) {
-            inputMemoryDevice_ = combination.device;
-            encodingStrategy = combination.strategy;
-
-            JST_INFO("[REMOTE] Using {} encoding with {} memory.", GetEncodingStrategyPrettyName(combination.strategy),
-                                                                   GetDevicePrettyName(combination.device));
-
-            return Result::SUCCESS;
-        }
-        JST_DEBUG("[REMOTE] Failed to find plugins: {}", combination.plugins);
-    }
-
-    if (config.video.encoder != Instance::Remote::EncoderType::Auto) {
-        const std::string encoderName = Jetstream::GetRemoteEncoderPrettyName(config.video.encoder);
-        const std::string codecName = Jetstream::GetRemoteCodecName(config.video.codec);
-
-        if (!requestedEncoderFound) {
-            JST_ERROR("[REMOTE] Requested encoder '{}' is not available for codec '{}' on this system.",
-                      encoderName,
-                      codecName);
-        } else {
-            JST_ERROR("[REMOTE] Requested encoder '{}' for codec '{}' matched a supported path, but the required GStreamer plugins were not available.",
-                      encoderName,
-                      codecName);
-        }
-    }
-
-    JST_ERROR("[REMOTE] No encoding combination is available.");
-    JST_ERROR("[REMOTE] This is typically caused by missing plugins.");
+    JST_ERROR("[REMOTE] No encoder is available for codec '{}' on this system.", codecName);
     return Result::ERROR;
 }
 
 Result Instance::Remote::Impl::destroyStream() {
     JST_DEBUG("[REMOTE] Destroying stream.");
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    gst_clear_object(&gstCudaContext);
-#endif
-
-    encodingStrategy = EncodingStrategyType::None;
+    encoderType = EncoderType::Auto;
     inputMemoryDevice_ = DeviceType::None;
-
-    return Result::SUCCESS;
-}
-
-Result Instance::Remote::Impl::checkGstreamerPlugins(const std::vector<std::string>& plugins,
-                                                     const bool& silent) {
-    for (const auto& plugin : plugins) {
-        GstPlugin* gstPlugin = gst_registry_find_plugin(gst_registry_get(), plugin.c_str());
-        if (gstPlugin) {
-            gst_object_unref(GST_OBJECT(gstPlugin));
-            continue;
-        }
-
-        GstElementFactory* factory = gst_element_factory_find(plugin.c_str());
-        if (factory) {
-            gst_object_unref(GST_OBJECT(factory));
-            continue;
-        }
-
-        {
-            if (!silent) {
-                JST_ERROR("[REMOTE] Gstreamer plugin or element '{}' is not available.", plugin);
-            }
-            return Result::ERROR;
-        }
-    }
+    encoderFallbacks.clear();
 
     return Result::SUCCESS;
 }
 
 void Instance::Remote::Impl::handleInput(const std::string& sessionId,
+                                         const U64 epoch,
                                          const std::string& kind,
                                          const nlohmann::json& j) {
     std::lock_guard<std::mutex> lock(inputMutex);
-    if (inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
+    if (epoch != controlEpoch || inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
         return;
     }
 
@@ -792,6 +969,23 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         return;
     }
 
+    if (kind == "clipboard") {
+        if (!j.contains("text") || !j["text"].is_string()) {
+            JST_WARN("[REMOTE] Rejected invalid clipboard text.");
+            return;
+        }
+        const std::string text = j["text"].get<std::string>();
+        if (text.size() > kMaxClipboardBytes) {
+            JST_WARN("[REMOTE] Rejected clipboard text larger than {} bytes.", kMaxClipboardBytes);
+            return;
+        }
+        if (viewport) {
+            viewport->setClipboardText(text);
+            sentClipboardRevision = viewport->clipboardRevision();
+        }
+        return;
+    }
+
     if (kind == "text") {
         if (!j.contains("text") || !j["text"].is_string()) {
             JST_WARN("[REMOTE] Rejected invalid text input.");
@@ -863,7 +1057,7 @@ void Instance::Remote::Impl::enqueueInput(std::string sessionId, nlohmann::json 
     if (inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
         return;
     }
-    inputQueue.push_back({std::move(sessionId), std::move(payload), false});
+    inputQueue.push_back({std::move(sessionId), std::move(payload), false, controlEpoch});
 }
 
 void Instance::Remote::Impl::enqueueInputReset(const std::string& sessionId) {
@@ -914,11 +1108,9 @@ void Instance::Remote::Impl::synchronizeKeyboardState() {
     appliedRemoteKeys = std::move(keys);
 }
 
-void Instance::Remote::Impl::onMessageCallback(GstWebRTCDataChannel* self, gchar* data, gpointer user_data) {
-    (void)self;
 
-    const std::string payload = data ? data : "";
-    if (payload.empty() || payload.size() > 16 * 1024) {
+void Instance::Remote::Impl::handleControlMessage(const std::string& sessionId, std::string_view payload) {
+    if (payload.empty() || payload.size() > kMaxClipboardMessageBytes) {
         JST_WARN("[REMOTE] Rejected invalid control message size.");
         return;
     }
@@ -936,569 +1128,432 @@ void Instance::Remote::Impl::onMessageCallback(GstWebRTCDataChannel* self, gchar
         JST_WARN("[REMOTE] Control message is missing a valid kind.");
         return;
     }
-    const std::string kind = j["kind"].get<std::string>();
 
-    auto* context = reinterpret_cast<ControlChannelContext*>(user_data);
+    if (j["kind"] != "clipboard" && payload.size() > kMaxControlBytes) {
+        JST_WARN("[REMOTE] Rejected invalid control message size.");
+        return;
+    }
+
+    if (j["kind"] == "viewport") {
+        recordViewport(sessionId, j);
+        return;
+    }
+
+    if (j["kind"] == "clipboard") {
+        receiveClipboard(sessionId, j);
+        return;
+    }
+
+    if (j["kind"] == "control") {
+        handleControlRequest(sessionId, j);
+        return;
+    }
+
     try {
-        context->impl->enqueueInput(context->sessionId, std::move(j));
+        enqueueInput(sessionId, std::move(j));
     } catch (const std::exception& e) {
         JST_WARN("[REMOTE] Rejected malformed control message: {}", e.what());
     }
 }
 
-void Instance::Remote::Impl::onChannelClosedCallback(GstWebRTCDataChannel* self, gpointer user_data) {
-    (void)self;
-    auto* context = reinterpret_cast<ControlChannelContext*>(user_data);
-    context->impl->enqueueInputReset(context->sessionId);
-}
-
-void Instance::Remote::Impl::onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data) {
-    (void)self;
-
-    gchar *label = NULL; gint id = -1; gboolean negotiated = FALSE;
-    g_object_get(channel, "label", &label, "id", &id, "negotiated", &negotiated, NULL);
-    const std::string channelLabel = label ? label : "";
-
-    auto* signalContext = reinterpret_cast<WebRtcSignalContext*>(user_data);
-    if (channelLabel == "control") {
-        JST_INFO("[REMOTE] Control data channel opened (id='{}', negotiated='{}').", id, negotiated);
-        auto* messageContext = new ControlChannelContext{signalContext->impl, signalContext->sessionId};
-        g_signal_connect_data(G_OBJECT(channel), "on-message-string", G_CALLBACK(onMessageCallback), messageContext,
-                              [](gpointer data, GClosure*) { delete reinterpret_cast<ControlChannelContext*>(data); },
-                              GConnectFlags(0));
-        auto* closeContext = new ControlChannelContext{signalContext->impl, signalContext->sessionId};
-        g_signal_connect_data(G_OBJECT(channel), "on-close", G_CALLBACK(onChannelClosedCallback), closeContext,
-                              [](gpointer data, GClosure*) { delete reinterpret_cast<ControlChannelContext*>(data); },
-                              GConnectFlags(0));
-    } else {
-        JST_INFO("[REMOTE] Dropping data channel opened from client (label='{}', id='{}', negotiated='{}')", channelLabel, id, negotiated);
-        g_signal_emit_by_name(channel, "close");
+void Instance::Remote::Impl::handleControlRequest(const std::string& sessionId, const nlohmann::json& j) {
+    const std::string action = j.value("action", "");
+    if (action != "take" && action != "release") {
+        JST_WARN("[REMOTE] Rejected invalid control request.");
+        return;
     }
 
-    g_free(label);
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        const auto it = std::ranges::find(inputSessionOrder, sessionId);
+        if (it == inputSessionOrder.end()) {
+            return;
+        }
+
+        const std::string previous = inputSessionOrder.front();
+        inputSessionOrder.erase(it);
+        if (action == "take") {
+            inputSessionOrder.insert(inputSessionOrder.begin(), sessionId);
+        } else {
+            inputSessionOrder.push_back(sessionId);
+        }
+
+        if (inputSessionOrder.front() != previous) {
+            ++controlEpoch;
+            clipboardTransfers.erase(previous);
+            inputQueue.push_back({previous, {}, true});
+            JST_INFO("[REMOTE] Viewer control moved to session '{}'.", inputSessionOrder.front());
+        }
+    }
+
+    broadcastControlState();
+}
+
+void Instance::Remote::Impl::broadcastControlState() {
+    std::lock_guard<std::mutex> broadcastLock(controlBroadcastMutex);
+    std::vector<std::pair<std::string, std::shared_ptr<rtc::DataChannel>>> channels;
+    std::string controller;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        for (const auto& [sessionId, session] : sessions) {
+            if (session->control) {
+                channels.emplace_back(sessionId, session->control);
+            }
+        }
+
+        std::lock_guard<std::mutex> inputLock(inputMutex);
+        if (!inputSessionOrder.empty()) {
+            controller = inputSessionOrder.front();
+        }
+    }
+
+    for (const auto& [sessionId, channel] : channels) {
+        if (!channel->isOpen()) {
+            continue;
+        }
+        try {
+            channel->send(nlohmann::json{
+                {"kind", "control"},
+                {"state", sessionId == controller ? "controller" : "viewer"},
+                {"viewers", channels.size()},
+            }.dump());
+        } catch (const std::exception& e) {
+            JST_WARN("[REMOTE] Failed to send control state to the viewer: {}", e.what());
+        }
+    }
+}
+
+void Instance::Remote::Impl::receiveClipboard(const std::string& sessionId, const nlohmann::json& j) {
+    const bool chunked = j.contains("id") || j.contains("index") || j.contains("count");
+    const auto isCount = [&](const char* key) {
+        return j.contains(key) && j[key].is_number_unsigned();
+    };
+    const bool valid = j.contains("text") && j["text"].is_string() &&
+                       (!chunked || (isCount("id") && isCount("index") && isCount("count") &&
+                                     j["text"].get_ref<const std::string&>().size() <= kClipboardChunkBytes));
+
+    const U64 count = valid && chunked ? j["count"].get<U64>() : 1;
+    const U64 index = valid && chunked ? j["index"].get<U64>() : 0;
+    const U64 id = valid && chunked ? j["id"].get<U64>() : 0;
+
+    std::string text;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        if (inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
+            clipboardTransfers.erase(sessionId);
+            return;
+        }
+        if (!valid || count == 0 || count > kMaxClipboardChunks || index >= count) {
+            clipboardTransfers.erase(sessionId);
+            JST_WARN("[REMOTE] Rejected invalid clipboard chunk.");
+            return;
+        }
+
+        auto& transfer = clipboardTransfers[sessionId];
+        if (index == 0) {
+            transfer = {.id = id, .count = count};
+        } else if (transfer.id != id || transfer.count != count || transfer.next != index) {
+            clipboardTransfers.erase(sessionId);
+            JST_WARN("[REMOTE] Dropped an incomplete clipboard transfer.");
+            return;
+        }
+
+        transfer.text += j["text"].get<std::string>();
+        transfer.next = index + 1;
+        if (transfer.text.size() > kMaxClipboardBytes) {
+            clipboardTransfers.erase(sessionId);
+            JST_WARN("[REMOTE] Rejected clipboard text larger than {} bytes.", kMaxClipboardBytes);
+            return;
+        }
+        if (transfer.next < transfer.count) {
+            return;
+        }
+
+        text = std::move(transfer.text);
+        clipboardTransfers.erase(sessionId);
+        inputQueue.push_back({sessionId, nlohmann::json{{"kind", "clipboard"}, {"text", std::move(text)}}, false, controlEpoch});
+    }
+}
+
+void Instance::Remote::Impl::recordViewport(const std::string& sessionId, const nlohmann::json& j) {
+    constexpr F64 kMaxWidth = 3840.0;
+    constexpr F64 kMaxHeight = 2160.0;
+    constexpr F64 kMinSide = 240.0;
+    constexpr F64 kMinPixels = 16.0;
+
+    const F64 width = j.value("width", 0.0);
+    const F64 height = j.value("height", 0.0);
+    const F64 scale = std::clamp(j.value("scale", 1.0), 0.5, 4.0);
+    if (!std::isfinite(width) || !std::isfinite(height) || width < 1.0 || height < 1.0 ||
+        width > 65536.0 || height > 65536.0) {
+        JST_WARN("[REMOTE] Rejected invalid viewport size.");
+        return;
+    }
+
+    const F64 pixelsX = width * scale;
+    const F64 pixelsY = height * scale;
+    const F64 fit = std::min({1.0, kMaxWidth / pixelsX, kMaxHeight / pixelsY});
+    const F64 grow = std::max(1.0, kMinSide / (std::min(pixelsX, pixelsY) * fit));
+    const F64 factor = fit * std::min(grow, std::min(kMaxWidth / (pixelsX * fit), kMaxHeight / (pixelsY * fit)));
+
+    const auto even = [](F64 value) {
+        return static_cast<U64>(value) & ~static_cast<U64>(1);
+    };
+
+    std::lock_guard<std::mutex> lock(inputMutex);
+    viewportRequests[sessionId] = {
+        .size = {even(std::max(kMinPixels, pixelsX * factor)), even(std::max(kMinPixels, pixelsY * factor))},
+        .scale = static_cast<F32>(scale * factor),
+    };
+}
+
+void Instance::Remote::Impl::applyViewport() {
+    if (!config.video.matchViewer) {
+        return;
+    }
+
+    ViewportRequest request;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        std::erase_if(viewportRequests, [&](const auto& entry) {
+            return std::ranges::find(inputSessionOrder, entry.first) == inputSessionOrder.end();
+        });
+        if (inputSessionOrder.empty()) {
+            return;
+        }
+        const auto it = viewportRequests.find(inputSessionOrder.front());
+        if (it == viewportRequests.end() || it->second == appliedViewport) {
+            return;
+        }
+        request = it->second;
+        appliedViewport = request;
+    }
+
+    if (viewport) {
+        (void)viewport->resize(request.size, request.scale);
+    }
+}
+
+void Instance::Remote::Impl::syncClipboard() {
+    if (!viewport) {
+        return;
+    }
+
+    const U64 revision = viewport->clipboardRevision();
+    std::string controller;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        if (revision == sentClipboardRevision) {
+            return;
+        }
+        if (inputSessionOrder.empty()) {
+            sentClipboardRevision = revision;
+            return;
+        }
+        controller = inputSessionOrder.front();
+    }
+
+    std::shared_ptr<rtc::DataChannel> channel;
+    if (const auto session = findSession(controller)) {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        channel = session->control;
+    }
+    if (!channel || !channel->isOpen()) {
+        return;
+    }
+
+    const auto change = viewport->clipboardChange();
+    const auto markSent = [&] {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        sentClipboardRevision = change.revision;
+    };
+
+    if (change.text.size() > kMaxClipboardBytes) {
+        JST_WARN("[REMOTE] Clipboard text is too large to send to the viewer.");
+        markSent();
+        return;
+    }
+
+    try {
+        const auto chunks = SplitUtf8(change.text, kClipboardChunkBytes);
+        const U64 limit = std::min<U64>(channel->maxMessageSize(), kMaxClipboardMessageBytes);
+        std::vector<std::string> messages;
+        messages.reserve(chunks.size());
+        for (U64 index = 0; index < chunks.size(); ++index) {
+            messages.push_back(nlohmann::json{
+                {"kind", "clipboard"},
+                {"id", change.revision},
+                {"index", index},
+                {"count", chunks.size()},
+                {"text", chunks[index]},
+            }.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+            if (messages.back().size() > limit) {
+                JST_WARN("[REMOTE] Clipboard text is too large to send to the viewer.");
+                markSent();
+                return;
+            }
+        }
+        for (const auto& message : messages) {
+            channel->send(message);
+        }
+        std::lock_guard<std::mutex> lock(inputMutex);
+        if (channel->isOpen() && !inputSessionOrder.empty() && inputSessionOrder.front() == controller) {
+            sentClipboardRevision = change.revision;
+        }
+    } catch (const std::exception& e) {
+        JST_WARN("[REMOTE] Failed to send clipboard text to the viewer: {}", e.what());
+    }
+}
+
+void Instance::Remote::Impl::bindControlChannel(const std::string& sessionId,
+                                                const std::shared_ptr<rtc::DataChannel>& channel) {
+    const auto session = findSession(sessionId);
+    if (!session) {
+        channel->close();
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        if (session->control) {
+            JST_INFO("[REMOTE] Dropping duplicate control data channel.");
+            channel->close();
+            return;
+        }
+        session->control = channel;
+    }
+
+    channel->onClosed([this, sessionId]() {
+        enqueueInputReset(sessionId);
+    });
+    channel->onMessage([](rtc::binary) {}, [this, sessionId](rtc::string text) {
+        handleControlMessage(sessionId, text);
+    });
+    channel->onOpen([this, weak = std::weak_ptr<rtc::DataChannel>(channel)]() {
+        broadcastControlState();
+        if (const auto opened = weak.lock()) {
+            sendAppearance(opened);
+        }
+    });
+    broadcastControlState();
+    sendAppearance(channel);
+}
+
+void Instance::Remote::Impl::syncAppearance() {
+    if (!viewport) {
+        return;
+    }
+
+    const bool dark = viewport->darkAppearance();
+    if (sentAppearance == dark) {
+        return;
+    }
+    sentAppearance = dark;
+
+    std::vector<std::shared_ptr<rtc::DataChannel>> channels;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        for (const auto& [sessionId, session] : sessions) {
+            (void)sessionId;
+            if (session->control) {
+                channels.push_back(session->control);
+            }
+        }
+    }
+    for (const auto& channel : channels) {
+        sendAppearance(channel);
+    }
+}
+
+void Instance::Remote::Impl::sendAppearance(const std::shared_ptr<rtc::DataChannel>& channel) {
+    std::lock_guard<std::mutex> lock(appearanceMutex);
+    if (!viewport || !channel->isOpen()) {
+        return;
+    }
+
+    try {
+        channel->send(nlohmann::json{
+            {"kind", "theme"},
+            {"appearance", viewport->darkAppearance() ? "dark" : "light"},
+        }.dump());
+    } catch (const std::exception& e) {
+        JST_WARN("[REMOTE] Failed to send the theme to the viewer: {}", e.what());
+    }
+}
+
+Result Instance::Remote::Impl::openEncoder(std::unique_ptr<Encoder>& opened) {
+    const auto open = [&]() {
+        Encoder::Config encoderConfig = {
+            .codec = config.video.codec,
+            .encoder = encoderType,
+            .device = inputMemoryDevice_,
+            .size = streamSize(),
+            .framerate = config.video.framerate,
+        };
+
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        if (inputMemoryDevice_ == DeviceType::Vulkan) {
+            encoderConfig.adapter = Viewport::FrameCaptureVulkan::Device();
+        }
+#endif
+
+        opened = std::make_unique<Encoder>();
+        return opened->create(encoderConfig);
+    };
+
+    Result result = open();
+    for (const auto& fallback : encoderFallbacks) {
+        if (result == Result::SUCCESS) {
+            break;
+        }
+
+        inputMemoryDevice_ = fallback.device;
+        encoderType = fallback.encoder;
+        JST_WARN("[REMOTE] Falling back to {} encoding with {} memory.", fallback.encoder,
+                                                                         GetDevicePrettyName(fallback.device));
+        result = open();
+    }
+
+    return result;
 }
 
 Result Instance::Remote::Impl::startStream() {
     JST_DEBUG("[REMOTE] Starting stream.");
 
-    GstElement* newPipeline = gst_pipeline_new("remote-src-pipeline");
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex);
 
-    if (!newPipeline) {
-        JST_ERROR("[REMOTE] Failed to create gstreamer pipeline.");
-        return Result::ERROR;
-    }
-
-    std::map<std::string, GstElement*> elements;
-    std::vector<std::string> elementOrder;
-    GstElement* newSource = nullptr;
-    GstElement* newEncoder = nullptr;
-    GstElement* newTee = nullptr;
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    GstCudaContext* newGstCudaContext = nullptr;
-#endif
-
-    const auto fail = [&]() {
-        for (const auto& [name, element] : elements) {
-            (void)name;
-            if (element) {
-                gst_object_unref(element);
-            }
-        }
-        if (newPipeline) {
-            gst_element_set_state(newPipeline, GST_STATE_NULL);
-            gst_object_unref(newPipeline);
-        }
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        gst_clear_object(&newGstCudaContext);
-#endif
-        return Result::ERROR;
-    };
-
-    const auto makeElement = [&](const std::string& name, const char* factory) {
-        GstElement* element = gst_element_factory_make(factory, name.c_str());
-        elements[name] = element;
-        if (!element) {
-            JST_ERROR("[REMOTE] Failed to create gstreamer element '{}'.", name);
-            return element;
-        }
-        elementOrder.push_back(name);
-        return element;
-    };
-
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    if (inputMemoryDevice_ == DeviceType::CUDA) {
-        gst_cuda_memory_init_once();
-
-        const auto& cudaState = Backend::State<DeviceType::CUDA>();
-        newGstCudaContext = gst_cuda_context_new_wrapped(cudaState->getContext(), cudaState->getDevice());
-        if (!newGstCudaContext) {
-            JST_ERROR("[REMOTE] Failed to wrap CUDA context for GStreamer.");
-            return fail();
-        }
-    }
-#endif
-
-    // 01. Setup Source element.
-
-    newSource = makeElement("source", "appsrc");
-    if (!newSource) {
-        return fail();
-    }
-
-    g_object_set(elements["source"], "block", true, nullptr);
-    g_object_set(elements["source"], "format", 3, nullptr);
-    g_object_set(elements["source"], "leaky-type", 2, nullptr);
-    g_object_set(elements["source"], "is-live", true, nullptr);
-    g_object_set(elements["source"], "max-bytes", 2*size.x*size.y*4, nullptr);
-
-    // 02. Setup Caps element.
-
-    if (!makeElement("caps", "capsfilter")) {
-        return fail();
-    }
-
-    GstCaps* caps = gst_caps_new_simple("video/x-raw",
-                                        "format", G_TYPE_STRING, "BGRA",
-                                        "width", G_TYPE_INT, static_cast<int>(size.x),
-                                        "height", G_TYPE_INT, static_cast<int>(size.y),
-                                        "framerate", GST_TYPE_FRACTION, config.video.framerate, 1,
-                                        "interlace-mode", G_TYPE_STRING, "progressive",
-                                        "colorimetry", G_TYPE_STRING, GST_VIDEO_COLORIMETRY_SRGB,
-                                        nullptr);
-    if (!caps) {
-        JST_ERROR("[REMOTE] Failed to create gstreamer input caps.");
-        return fail();
-    }
-
-    switch (inputMemoryDevice_) {
-        case DeviceType::CPU:
-            break;
-        case DeviceType::CUDA: {
-            GstCapsFeatures* features = gst_caps_features_new("memory:CUDAMemory", nullptr);
-            if (!features) {
-                JST_ERROR("[REMOTE] Failed to create gstreamer CUDA caps features.");
-                gst_caps_unref(caps);
-                return fail();
-            }
-            gst_caps_set_features(caps, 0, features);
-            break;
-        }
-        default:
-            JST_ERROR("[REMOTE] Unsupported input memory device '{}'.", inputMemoryDevice_);
-            gst_caps_unref(caps);
-            return fail();
-    }
-
-    gst_app_src_set_caps(GST_APP_SRC(newSource), caps);
-    g_object_set(elements["caps"], "caps", caps, nullptr);
-    gst_caps_unref(caps);
-
-    // 03. Setup strategy-specific elements.
-
-    if (encodingStrategy == EncodingStrategyType::None) {
-        JST_ERROR("[REMOTE] No encoding strategy selected.");
-        return fail();
-    }
-
-    if (encodingStrategy == EncodingStrategyType::Software) {
-        if (!makeElement("rawparser", "rawvideoparse")) {
-            return fail();
-        }
-
-        g_object_set(elements["rawparser"], "use-sink-caps", TRUE, nullptr);
-
-        if (!makeElement("convert", "videoconvert")) {
-            return fail();
-        }
-
-        switch(config.video.codec) {
-            case Instance::Remote::CodecType::H264: {
-                newEncoder = makeElement("encoder", "openh264enc");
-                if (!newEncoder) {
-                    return fail();
-                }
-
-                gst_util_set_object_arg(G_OBJECT(elements["encoder"]), "rate-control", "bitrate");
-                gst_util_set_object_arg(G_OBJECT(elements["encoder"]), "usage-type", "screen");
-                g_object_set(elements["encoder"], "bitrate", 25*1024*1024, nullptr);
-                g_object_set(elements["encoder"], "max-bitrate", 25*1024*1024, nullptr);
-
-                if (!makeElement("hwcaps", "capsfilter")) {
-                    return fail();
-                }
-
-                GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
-                                                      "profile", G_TYPE_STRING, "constrained-baseline",
-                                                      nullptr);
-                if (!hwcaps) {
-                    JST_ERROR("[REMOTE] Failed to create gstreamer H264 caps.");
-                    return fail();
-                }
-                g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
-                gst_caps_unref(hwcaps);
-
-                if (!makeElement("parser", "h264parse")) {
-                    return fail();
-                }
-
-                g_object_set(elements["parser"], "config-interval", 1, nullptr);
-                break;
-            }
-            case Instance::Remote::CodecType::VP8:
-                newEncoder = makeElement("encoder", "vp8enc");
-                if (!newEncoder) {
-                    return fail();
-                }
-
-                g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
-                break;
-            case Instance::Remote::CodecType::VP9:
-                newEncoder = makeElement("encoder", "vp9enc");
-                if (!newEncoder) {
-                    return fail();
-                }
-
-                g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
-                break;
-            default:
-                JST_ERROR("[REMOTE] Unsupported codec for software encoding.");
-                return fail();
-        }
-    }
-
-    if (encodingStrategy == EncodingStrategyType::HardwareNVENC) {
-        constexpr guint bitrate = 25'000'000 / 1024;
-        switch(config.video.codec) {
-            case Instance::Remote::CodecType::H264:
-                newEncoder = makeElement("encoder", "nvh264enc");
-                if (!newEncoder) {
-                    return fail();
-                }
-
-                g_object_set(elements["encoder"], "zerolatency", true, nullptr);
-                g_object_set(elements["encoder"], "preset", 5, nullptr);
-                gst_util_set_object_arg(G_OBJECT(elements["encoder"]), "rc-mode", "vbr");
-                g_object_set(elements["encoder"],
-                             "bitrate", bitrate,
-                             "max-bitrate", bitrate,
-                             nullptr);
-
-                if (!makeElement("hwcaps", "capsfilter")) {
-                    return fail();
-                }
-
-                if (!makeElement("parser", "h264parse")) {
-                    return fail();
-                }
-
-                g_object_set(elements["parser"], "config-interval", 1, nullptr);
-                break;
-            default:
-                JST_ERROR("[REMOTE] Unsupported codec for hardware encoding.");
-                return fail();
-        }
-    }
-
-    if (encodingStrategy == EncodingStrategyType::HardwareV4L2) {
-        if (!makeElement("rawparser", "rawvideoparse")) {
-            return fail();
-        }
-
-        g_object_set(elements["rawparser"], "use-sink-caps", TRUE, nullptr);
-
-        if (!makeElement("convert", "videoconvert")) {
-            return fail();
-        }
-
-        switch(config.video.codec) {
-            case Instance::Remote::CodecType::H264: {
-                newEncoder = makeElement("encoder", "v4l2h264enc");
-                if (!newEncoder) {
-                    return fail();
-                }
-
-                if (!makeElement("hwcaps", "capsfilter")) {
-                    return fail();
-                }
-
-                GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
-                                                      "profile", G_TYPE_STRING, "high",
-                                                      nullptr);
-                if (!hwcaps) {
-                    JST_ERROR("[REMOTE] Failed to create gstreamer H264 caps.");
-                    return fail();
-                }
-                g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
-                gst_caps_unref(hwcaps);
-
-                if (!makeElement("parser", "h264parse")) {
-                    return fail();
-                }
-
-                g_object_set(elements["parser"], "config-interval", 1, nullptr);
-                break;
-            }
-            default:
-                JST_ERROR("[REMOTE] Unsupported codec for hardware encoding.");
-                return fail();
-        }
-    }
-
-    if (encodingStrategy == EncodingStrategyType::HardwareVideoToolbox) {
-        if (!makeElement("rawparser", "rawvideoparse")) {
-            return fail();
-        }
-
-        g_object_set(elements["rawparser"], "use-sink-caps", TRUE, nullptr);
-
-        if (!makeElement("convert", "videoconvert")) {
-            return fail();
-        }
-
-        switch(config.video.codec) {
-            case Instance::Remote::CodecType::H264: {
-                newEncoder = makeElement("encoder", "vtenc_h264_hw");
-                if (!newEncoder) {
-                    return fail();
-                }
-
-                gst_util_set_object_arg(G_OBJECT(elements["encoder"]), "rate-control", "cbr");
-                g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
-                g_object_set(elements["encoder"], "realtime", true, nullptr);
-                g_object_set(elements["encoder"], "allow-frame-reordering", false, nullptr);
-                g_object_set(elements["encoder"], "max-keyframe-interval", static_cast<int>(config.video.framerate), nullptr);
-
-                if (!makeElement("hwcaps", "capsfilter")) {
-                    return fail();
-                }
-
-                GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
-                                                      "profile", G_TYPE_STRING, "baseline",
-                                                      nullptr);
-                if (!hwcaps) {
-                    JST_ERROR("[REMOTE] Failed to create gstreamer H264 caps.");
-                    return fail();
-                }
-                g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
-                gst_caps_unref(hwcaps);
-
-                if (!makeElement("parser", "h264parse")) {
-                    return fail();
-                }
-
-                g_object_set(elements["parser"], "config-interval", 1, nullptr);
-                break;
-            }
-            default:
-                JST_ERROR("[REMOTE] Unsupported codec for hardware encoding.");
-                return fail();
-        }
-    }
-
-    if (encodingStrategy == EncodingStrategyType::HardwareMediaFoundation) {
-        if (!makeElement("rawparser", "rawvideoparse")) {
-            return fail();
-        }
-
-        g_object_set(elements["rawparser"], "use-sink-caps", TRUE, nullptr);
-
-        if (!makeElement("convert", "videoconvert")) {
-            return fail();
-        }
-
-        switch(config.video.codec) {
-            case Instance::Remote::CodecType::H264: {
-                newEncoder = makeElement("encoder", "mfh264enc");
-                if (!newEncoder) {
-                    return fail();
-                }
-
-                g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
-
-                if (!makeElement("hwcaps", "capsfilter")) {
-                    return fail();
-                }
-
-                GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
-                                                      "profile", G_TYPE_STRING, "baseline",
-                                                      nullptr);
-                if (!hwcaps) {
-                    JST_ERROR("[REMOTE] Failed to create gstreamer H264 caps.");
-                    return fail();
-                }
-                g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
-                gst_caps_unref(hwcaps);
-
-                if (!makeElement("parser", "h264parse")) {
-                    return fail();
-                }
-
-                g_object_set(elements["parser"], "config-interval", 1, nullptr);
-                break;
-            }
-            default:
-                JST_ERROR("[REMOTE] Unsupported codec for hardware encoding.");
-                return fail();
-        }
-    }
-
-    GstPad* encoderSrcPad = gst_element_get_static_pad(newEncoder, "src");
-    gst_pad_add_probe(encoderSrcPad, GST_PAD_PROBE_TYPE_EVENT_UPSTREAM,
-        +[](GstPad*, GstPadProbeInfo* info, gpointer data) {
-            if (gst_video_event_is_force_key_unit(GST_PAD_PROBE_INFO_EVENT(info))) {
-                reinterpret_cast<Impl*>(data)->requestKeyframe();
-            }
-            return GST_PAD_PROBE_OK;
-        }, this, nullptr);
-    gst_object_unref(encoderSrcPad);
-
-    if (config.video.codec == Instance::Remote::CodecType::H264) {
-        if (!makeElement("encodedcaps", "capsfilter")) {
-            return fail();
-        }
-        GstCaps* encodedCaps = gst_caps_new_simple("video/x-h264",
-                                                  "stream-format", G_TYPE_STRING, "avc",
-                                                  "alignment", G_TYPE_STRING, "au",
-                                                  nullptr);
-        if (!encodedCaps) {
-            JST_ERROR("[REMOTE] Failed to create gstreamer encoded caps.");
-            return fail();
-        }
-        g_object_set(elements["encodedcaps"], "caps", encodedCaps, nullptr);
-        gst_caps_unref(encodedCaps);
-    }
-
-    // 04. Setup stream tee. WebRTC peer branches are added per session.
-
-    newTee = makeElement("tee", "tee");
-    if (!newTee) {
-        return fail();
-    }
-
-    g_object_set(elements["tee"], "allow-not-linked", true, nullptr);
-
-    // Add elements to the pipeline.
-
-    // Keep one local reference per element so a rejected gst_bin_add() cannot
-    // consume the only reference before rollback inspects it.
-    for (const auto& [name, element] : elements) {
-        (void)name;
-        gst_object_ref_sink(element);
-    }
-
-    for (const auto& [name, element] : elements) {
-        if (!gst_bin_add(GST_BIN(newPipeline), element)) {
-            JST_ERROR("[REMOTE] Failed to add gstreamer element '{}' to pipeline.", name);
-            return fail();
-        }
-    }
-
-    // Link elements in the pipeline.
-
-    std::string lastElement = "source";
-    for (const auto& name : elementOrder) {
-        if (name == "source") {
-            continue;
-        }
-
-        if (!gst_element_link(elements[lastElement], elements[name])) {
-            JST_ERROR("[REMOTE] Failed to link gstreamer element '{}' -> '{}'.", lastElement, name);
-            return fail();
-        }
-
-        lastElement = name;
-    }
-
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    if (newGstCudaContext) {
-        GstContext* context = gst_context_new_cuda_context(newGstCudaContext);
-        gst_element_set_context(newPipeline, context);
-        gst_context_unref(context);
-    }
-#endif
-
-    // Set pipeline state to playing.
-
-    if (gst_element_set_state(newPipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
-        JST_ERROR("[REMOTE] Failed to start gstreamer pipeline.");
-        return fail();
-    }
-
-    for (const auto& [name, element] : elements) {
-        (void)name;
-        gst_object_unref(element);
-    }
+    std::unique_ptr<Encoder> newEncoder;
+    JST_CHECK(openEncoder(newEncoder));
 
     initialFrameTime = std::chrono::steady_clock::now();
     lastKeyframeTime = initialFrameTime;
-    requestKeyframe();
+
+    if (config.audio.enabled) {
+        auto opened = std::make_unique<Audio>();
+        const Result started = opened->start(initialFrameTime, [this](const U8* data, U64 size, U64 sampleTime) {
+            pushAudio(data, size, sampleTime);
+        });
+        if (started == Result::SUCCESS) {
+            audio = std::move(opened);
+        } else {
+            JST_WARN("[REMOTE] Streaming without audio.");
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(telemetry.mutex);
+        telemetry.samples.clear();
+        telemetry.keyframeBytes = 0;
+        telemetry.format = newEncoder->format();
+    }
 
     {
         std::lock_guard<std::mutex> lock(streamMutex);
-        pipeline = newPipeline;
-        source = newSource;
-        encoder = newEncoder;
-        tee = newTee;
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        gstCudaContext = newGstCudaContext;
-#endif
+        encoder = std::move(newEncoder);
         streaming = true;
     }
 
-    GstBus* bus = gst_element_get_bus(newPipeline);
-    busRunning = true;
-    try {
-        busThread = std::thread([this, bus]() {
-            while (busRunning) {
-                GstMessage* message = gst_bus_timed_pop(bus, 100 * GST_MSECOND);
-                if (!message) {
-                    continue;
-                }
-                switch (GST_MESSAGE_TYPE(message)) {
-                    case GST_MESSAGE_ERROR:
-                    case GST_MESSAGE_WARNING: {
-                        GError* error = nullptr;
-                        gchar* debug = nullptr;
-                        const bool fatal = GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR;
-                        if (fatal) {
-                            gst_message_parse_error(message, &error, &debug);
-                            GstObject* source = GST_MESSAGE_SRC(message);
-                            GstElementFactory* factory = GST_IS_ELEMENT(source)
-                                ? gst_element_get_factory(GST_ELEMENT(source)) : nullptr;
-                            const bool sctpDisconnect = factory &&
-                                g_strcmp0(GST_OBJECT_NAME(factory), "sctpenc") == 0 &&
-                                g_error_matches(error, GST_RESOURCE_ERROR, GST_RESOURCE_ERROR_WRITE) &&
-                                debug && std::string_view(debug).find("SCTP association went into error state") != std::string_view::npos;
-                            if (sctpDisconnect) {
-                                JST_WARN("[REMOTE] WebRTC data channel disconnected ({}).", GST_OBJECT_NAME(source));
-                                JST_DEBUG("[REMOTE] GStreamer '{}': {} ({})",
-                                          GST_OBJECT_NAME(source), error->message, debug);
-                            } else {
-                                JST_ERROR("[REMOTE] GStreamer '{}': {} ({})",
-                                          GST_OBJECT_NAME(source), error->message, debug ? debug : "");
-                            }
-                        } else {
-                            gst_message_parse_warning(message, &error, &debug);
-                            JST_WARN("[REMOTE] GStreamer '{}': {} ({})",
-                                     GST_OBJECT_NAME(GST_MESSAGE_SRC(message)), error->message, debug ? debug : "");
-                        }
-                        g_clear_error(&error);
-                        g_free(debug);
-                        break;
-                    }
-                    default:
-                        break;
-                }
-                gst_message_unref(message);
-            }
-            gst_object_unref(bus);
-        });
-    } catch (const std::exception& e) {
-        gst_object_unref(bus);
-        JST_ERROR("[REMOTE] Failed to start GStreamer bus thread: {}", e.what());
-        stopStream();
-        return Result::ERROR;
-    }
+    requestKeyframe();
 
     return Result::SUCCESS;
 }
@@ -1506,313 +1561,93 @@ Result Instance::Remote::Impl::startStream() {
 Result Instance::Remote::Impl::stopStream() {
     JST_DEBUG("[REMOTE] Stopping stream.");
 
-    busRunning = false;
-    if (busThread.joinable()) {
-        busThread.join();
-    }
+    audio.reset();
     destroyAllWebRtcSessions();
 
-    if (pipeline) {
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex);
+    std::unique_ptr<Encoder> oldEncoder;
+    {
         std::lock_guard<std::mutex> lock(streamMutex);
         streaming = false;
-
-        gst_element_set_state(pipeline, GST_STATE_NULL);
-        gst_object_unref(pipeline);
-        pipeline = nullptr;
-        source = nullptr;
-        encoder = nullptr;
-        tee = nullptr;
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        gst_clear_object(&gstCudaContext);
-#endif
+        oldEncoder = std::move(encoder);
     }
 
     return Result::SUCCESS;
 }
 
-GstElement* Instance::Remote::Impl::createPayloader() {
-    GstElement* element = nullptr;
-
-    switch(config.video.codec) {
-        case Instance::Remote::CodecType::H264:
-            element = gst_element_factory_make("rtph264pay", nullptr);
-            if (element) {
-                g_object_set(element, "pt", 96, nullptr);
-                g_object_set(element, "config-interval", -1, nullptr);
-                gst_util_set_object_arg(G_OBJECT(element), "aggregate-mode", "zero-latency");
-            }
-            break;
-        case Instance::Remote::CodecType::VP8:
-            element = gst_element_factory_make("rtpvp8pay", nullptr);
-            if (element) {
-                g_object_set(element, "pt", 96, nullptr);
-            }
-            break;
-        case Instance::Remote::CodecType::VP9:
-            element = gst_element_factory_make("rtpvp9pay", nullptr);
-            if (element) {
-                g_object_set(element, "pt", 96, nullptr);
-            }
-            break;
-        default:
-            JST_ERROR("[REMOTE] Unsupported codec for WebRTC streaming.");
-            break;
-    }
-
-    return element;
-}
-
-GstElement* Instance::Remote::Impl::createRtpCapsFilter() {
-    GstElement* element = gst_element_factory_make("capsfilter", nullptr);
-    if (!element) {
-        return nullptr;
-    }
-
-    GstCaps* caps = nullptr;
-    switch(config.video.codec) {
-        case Instance::Remote::CodecType::H264:
-            caps = gst_caps_new_simple("application/x-rtp",
-                                       "media", G_TYPE_STRING, "video",
-                                       "encoding-name", G_TYPE_STRING, "H264",
-                                       "payload", G_TYPE_INT, 96,
-                                       "clock-rate", G_TYPE_INT, 90000,
-                                       "packetization-mode", G_TYPE_STRING, "1",
-                                       nullptr);
-            break;
-        case Instance::Remote::CodecType::VP8:
-            caps = gst_caps_new_simple("application/x-rtp",
-                                       "media", G_TYPE_STRING, "video",
-                                       "encoding-name", G_TYPE_STRING, "VP8",
-                                       "payload", G_TYPE_INT, 96,
-                                       "clock-rate", G_TYPE_INT, 90000,
-                                       nullptr);
-            break;
-        case Instance::Remote::CodecType::VP9:
-            caps = gst_caps_new_simple("application/x-rtp",
-                                       "media", G_TYPE_STRING, "video",
-                                       "encoding-name", G_TYPE_STRING, "VP9",
-                                       "payload", G_TYPE_INT, 96,
-                                       "clock-rate", G_TYPE_INT, 90000,
-                                       nullptr);
-            break;
-        default:
-            JST_ERROR("[REMOTE] Unsupported codec for WebRTC streaming.");
-            gst_object_unref(element);
-            return nullptr;
-    }
-
-    g_object_set(element, "caps", caps, nullptr);
-    gst_caps_unref(caps);
-
-    return element;
-}
-
-GstElement* Instance::Remote::Impl::refSessionWebrtc(const std::string& sessionId) {
+std::shared_ptr<Instance::Remote::Impl::WebRtcSession> Instance::Remote::Impl::findSession(const std::string& sessionId) {
     std::lock_guard<std::mutex> lock(sessionsMutex);
-    auto it = sessions.find(sessionId);
-    if (it == sessions.end() || !it->second->webrtc) {
-        return nullptr;
-    }
-
-    return GST_ELEMENT(gst_object_ref(it->second->webrtc));
+    const auto it = sessions.find(sessionId);
+    return it == sessions.end() ? nullptr : it->second;
 }
 
 Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId, const std::string& peerId) {
-    std::lock_guard<std::mutex> lock(sessionsMutex);
-
-    if (sessions.contains(sessionId)) {
+    if (findSession(sessionId)) {
         return Result::SUCCESS;
     }
 
-    std::lock_guard<std::mutex> streamLock(streamMutex);
-
-    if (!streaming || !pipeline || !tee) {
+    if (!streaming) {
         JST_ERROR("[REMOTE] Can't create WebRTC session without an active stream.");
         return Result::ERROR;
     }
 
-    auto session = std::make_unique<WebRtcSession>();
+    auto session = std::make_shared<WebRtcSession>();
     session->sessionId = sessionId;
     session->peerId = peerId;
-    session->queue = gst_element_factory_make("queue", nullptr);
-    session->payloader = createPayloader();
-    session->rtpCaps = createRtpCapsFilter();
-    session->webrtc = gst_element_factory_make("webrtcbin", nullptr);
+    session->keyframe = std::make_shared<WebRtcSession::Keyframe>();
+    session->keyframe->impl = this;
 
-    auto removeElement = [this](GstElement*& element) {
-        if (!element) {
+    rtc::Configuration configuration;
+    configuration.disableAutoNegotiation = true;
+    if (!config.media.address.empty()) {
+        configuration.bindAddress = config.media.address;
+    }
+    if (config.media.minPort != 0) {
+        configuration.portRangeBegin = config.media.minPort;
+        configuration.portRangeEnd = config.media.maxPort;
+    }
+
+    try {
+        session->peer = std::make_shared<rtc::PeerConnection>(configuration);
+    } catch (const std::exception& e) {
+        JST_ERROR("[REMOTE] Failed to create WebRTC peer: {}", e.what());
+        return Result::ERROR;
+    }
+
+    session->peer->onLocalDescription([this, sessionId](rtc::Description description) {
+        sendSessionDescription(sessionId, description);
+    });
+    session->peer->onLocalCandidate([this, sessionId](rtc::Candidate candidate) {
+        sendIceCandidate(sessionId, candidate);
+    });
+    session->peer->onStateChange([this](rtc::PeerConnection::State state) {
+        if (state == rtc::PeerConnection::State::Connected) {
+            requestKeyframe();
+        }
+    });
+    session->peer->onDataChannel([this, sessionId](std::shared_ptr<rtc::DataChannel> channel) {
+        if (channel->label() == "control") {
+            JST_INFO("[REMOTE] Control data channel opened by client.");
+            bindControlChannel(sessionId, channel);
             return;
         }
+        JST_INFO("[REMOTE] Dropping data channel opened from client (label='{}').", channel->label());
+        channel->close();
+    });
 
-        gst_element_set_state(element, GST_STATE_NULL);
-        if (pipeline && GST_OBJECT_PARENT(element)) {
-            gst_bin_remove(GST_BIN(pipeline), element);
-        } else {
-            gst_object_unref(element);
-        }
-        element = nullptr;
-    };
-
-    auto fail = [&]() {
-        if (session->teeSrcPad) {
-            if (tee) {
-                gst_element_release_request_pad(tee, session->teeSrcPad);
-            }
-            gst_object_unref(session->teeSrcPad);
-            session->teeSrcPad = nullptr;
-        }
-
-        if (session->webrtcSinkPad) {
-            if (session->webrtc) {
-                gst_element_release_request_pad(session->webrtc, session->webrtcSinkPad);
-            }
-            gst_object_unref(session->webrtcSinkPad);
-            session->webrtcSinkPad = nullptr;
-        }
-
-        removeElement(session->webrtc);
-        removeElement(session->rtpCaps);
-        removeElement(session->payloader);
-        removeElement(session->queue);
+    if (createVideoTrack(*session) != Result::SUCCESS) {
+        closeWebRtcSession(*session);
         return Result::ERROR;
-    };
-
-    if (!session->queue || !session->payloader || !session->rtpCaps || !session->webrtc) {
-        JST_ERROR("[REMOTE] Failed to create WebRTC session elements.");
-        return fail();
+    }
+    if (config.audio.enabled && createAudioTrack(*session) != Result::SUCCESS) {
+        closeWebRtcSession(*session);
+        return Result::ERROR;
     }
 
-    g_object_set(session->queue, "max-size-buffers", 32u, "max-size-bytes", 0u,
-                 "max-size-time", guint64(GST_SECOND), nullptr);
-    gst_util_set_object_arg(G_OBJECT(session->queue), "leaky", "upstream");
-
-    g_object_set(session->webrtc, "bundle-policy", GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE, nullptr);
-
-    GstWebRTCICE* ice = nullptr;
-    g_object_get(session->webrtc, "ice-agent", &ice, nullptr);
-    if (!ice) {
-        JST_ERROR("[REMOTE] Failed to find WebRTC ICE agent.");
-        return fail();
-    }
-    g_object_set(ice,
-                 "ice-udp", config.media.transport != Instance::Remote::TransportType::TCP,
-                 "ice-tcp", config.media.transport != Instance::Remote::TransportType::UDP,
-                 nullptr);
-    if (config.media.minPort != 0) {
-        g_object_set(ice, "min-rtp-port", static_cast<guint>(config.media.minPort),
-                     "max-rtp-port", static_cast<guint>(config.media.maxPort), nullptr);
-    }
-    if (!config.media.address.empty()) {
-        gboolean added = FALSE;
-        g_signal_emit_by_name(ice, "add-local-ip-address", config.media.address.c_str(), &added);
-        if (!added) {
-            JST_ERROR("[REMOTE] Failed to use media address '{}'.", config.media.address);
-            gst_object_unref(ice);
-            return fail();
-        }
-    }
-    gst_object_unref(ice);
-
-    GstElement* rtpbin = gst_bin_get_by_name(GST_BIN(session->webrtc), "rtpbin");
-    if (!rtpbin) {
-        JST_ERROR("[REMOTE] Failed to find WebRTC RTP session manager.");
-        return fail();
-    }
-    g_object_set(rtpbin, "rtcp-sync-send-time", FALSE, nullptr);
-    gst_object_unref(rtpbin);
-
-    if (!gst_bin_add(GST_BIN(pipeline), session->queue) ||
-        !gst_bin_add(GST_BIN(pipeline), session->payloader) ||
-        !gst_bin_add(GST_BIN(pipeline), session->rtpCaps) ||
-        !gst_bin_add(GST_BIN(pipeline), session->webrtc)) {
-        JST_ERROR("[REMOTE] Failed to add WebRTC session elements to pipeline.");
-        return fail();
-    }
-
-    if (!gst_element_link_many(session->queue, session->payloader, session->rtpCaps, nullptr)) {
-        JST_ERROR("[REMOTE] Failed to link WebRTC session RTP elements.");
-        return fail();
-    }
-
-    GstPad* rtpCapsSrcPad = gst_element_get_static_pad(session->rtpCaps, "src");
-    session->webrtcSinkPad = gst_element_request_pad_simple(session->webrtc, "sink_%u");
-    if (!rtpCapsSrcPad || !session->webrtcSinkPad) {
-        JST_ERROR("[REMOTE] Failed to create WebRTC RTP link pads.");
-        if (rtpCapsSrcPad) gst_object_unref(rtpCapsSrcPad);
-        return fail();
-    }
-
-    const GstPadLinkReturn webrtcLinkReturn = gst_pad_link(rtpCapsSrcPad, session->webrtcSinkPad);
-    gst_object_unref(rtpCapsSrcPad);
-    if (webrtcLinkReturn != GST_PAD_LINK_OK) {
-        JST_ERROR("[REMOTE] Failed to link RTP payloader to WebRTC element.");
-        return fail();
-    }
-
-    auto* context = new WebRtcSignalContext{this, sessionId};
-    session->iceHandler = g_signal_connect_data(G_OBJECT(session->webrtc),
-                                                "on-ice-candidate",
-                                                G_CALLBACK(onIceCandidateCallback),
-                                                context,
-                                                [](gpointer data, GClosure*) {
-                                                    delete reinterpret_cast<WebRtcSignalContext*>(data);
-                                                },
-                                                GConnectFlags(0));
-    auto* channelContext = new WebRtcSignalContext{this, sessionId};
-    session->channelHandler = g_signal_connect_data(G_OBJECT(session->webrtc),
-                                                    "on-data-channel",
-                                                    G_CALLBACK(onChannelCallback),
-                                                    channelContext,
-                                                    [](gpointer data, GClosure*) {
-                                                        delete reinterpret_cast<WebRtcSignalContext*>(data);
-                                                    },
-                                                    GConnectFlags(0));
-
-    auto* negotiationContext = new WebRtcSignalContext{this, sessionId};
-    session->negotiationHandler = g_signal_connect_data(G_OBJECT(session->webrtc),
-                                                        "on-negotiation-needed",
-                                                        G_CALLBACK(onNegotiationNeededCallback),
-                                                        negotiationContext,
-                                                        [](gpointer data, GClosure*) {
-                                                            delete reinterpret_cast<WebRtcSignalContext*>(data);
-                                                        },
-                                                        GConnectFlags(0));
-
-    auto* connectionContext = new WebRtcSignalContext{this, sessionId};
-    session->connectionHandler = g_signal_connect_data(G_OBJECT(session->webrtc),
-                                                        "notify::connection-state",
-                                                        G_CALLBACK(onConnectionStateCallback),
-                                                        connectionContext,
-                                                        [](gpointer data, GClosure*) {
-                                                            delete reinterpret_cast<WebRtcSignalContext*>(data);
-                                                        },
-                                                        GConnectFlags(0));
-
-    if (!gst_element_sync_state_with_parent(session->payloader) ||
-        !gst_element_sync_state_with_parent(session->rtpCaps) ||
-        !gst_element_sync_state_with_parent(session->webrtc) ||
-        !gst_element_sync_state_with_parent(session->queue)) {
-        JST_ERROR("[REMOTE] Failed to start WebRTC session elements.");
-        return fail();
-    }
-
-    session->teeSrcPad = gst_element_request_pad_simple(tee, "src_%u");
-    GstPad* queueSinkPad = gst_element_get_static_pad(session->queue, "sink");
-    if (!session->teeSrcPad || !queueSinkPad) {
-        JST_ERROR("[REMOTE] Failed to create WebRTC tee link pads.");
-        if (queueSinkPad) gst_object_unref(queueSinkPad);
-        return fail();
-    }
-
-    const GstPadLinkReturn teeLinkReturn = gst_pad_link(session->teeSrcPad, queueSinkPad);
-    gst_object_unref(queueSinkPad);
-    if (teeLinkReturn != GST_PAD_LINK_OK) {
-        JST_ERROR("[REMOTE] Failed to link stream tee to WebRTC session frame queue.");
-        return fail();
-    }
-
-    sessions[sessionId] = std::move(session);
     {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        sessions[sessionId] = session;
+
         std::lock_guard<std::mutex> inputLock(inputMutex);
         inputSessionOrder.push_back(sessionId);
     }
@@ -1821,8 +1656,136 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
     return Result::SUCCESS;
 }
 
+Result Instance::Remote::Impl::createVideoTrack(WebRtcSession& session) {
+    U32 ssrc = 0;
+    while (ssrc == 0) {
+        ssrc = std::random_device{}();
+    }
+
+    const std::string parameters = Encoder::Parameters({
+        .codec = config.video.codec,
+        .size = streamSize(),
+        .framerate = config.video.framerate,
+    });
+
+    rtc::Description::Video media(kVideoMid, rtc::Description::Direction::SendOnly);
+    switch (config.video.codec) {
+        case CodecType::H265:
+            media.addH265Codec(kPayloadType, parameters);
+            break;
+        case CodecType::AV1:
+            media.addAV1Codec(kPayloadType);
+            break;
+        case CodecType::H264:
+        default:
+            media.addH264Codec(kPayloadType, parameters);
+            break;
+    }
+    media.addSSRC(ssrc, kCname, kCname, kVideoMid);
+    media.addExtMap({kPlayoutDelayExtension, kPlayoutDelayUri});
+
+    auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(ssrc,
+                                                                    kCname,
+                                                                    kPayloadType,
+                                                                    rtc::RtpPacketizer::VideoClockRate);
+    rtpConfig->playoutDelayId = kPlayoutDelayExtension;
+    rtpConfig->playoutDelayMin = 0;
+    rtpConfig->playoutDelayMax = kPlayoutDelayMaximum;
+
+    std::shared_ptr<rtc::RtpPacketizer> packetizer;
+    switch (config.video.codec) {
+        case CodecType::H265:
+            packetizer = std::make_shared<rtc::H265RtpPacketizer>(rtc::NalUnit::Separator::StartSequence,
+                                                                  rtpConfig,
+                                                                  kMaximumFragmentSize);
+            break;
+        case CodecType::AV1:
+            packetizer = std::make_shared<rtc::AV1RtpPacketizer>(rtc::AV1RtpPacketizer::Packetization::TemporalUnit,
+                                                                 rtpConfig,
+                                                                 kMaximumFragmentSize);
+            break;
+        case CodecType::H264:
+        default:
+            packetizer = std::make_shared<rtc::H264RtpPacketizer>(rtc::NalUnit::Separator::StartSequence,
+                                                                  rtpConfig,
+                                                                  kMaximumFragmentSize);
+            break;
+    }
+
+    packetizer->addToChain(std::make_shared<rtc::RtcpSrReporter>(rtpConfig));
+    packetizer->addToChain(std::make_shared<rtc::RtcpNackResponder>(kNackHistory));
+    packetizer->addToChain(std::make_shared<rtc::PliHandler>([keyframe = session.keyframe]() {
+        std::lock_guard<std::mutex> lock(keyframe->mutex);
+        if (keyframe->impl) {
+            keyframe->impl->requestKeyframe();
+        }
+    }));
+
+    try {
+        session.track = session.peer->addTrack(std::move(media));
+        session.track->setMediaHandler(packetizer);
+    } catch (const std::exception& e) {
+        JST_ERROR("[REMOTE] Failed to add WebRTC video track: {}", e.what());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Instance::Remote::Impl::createAudioTrack(WebRtcSession& session) {
+    U32 ssrc = 0;
+    while (ssrc == 0) {
+        ssrc = std::random_device{}();
+    }
+
+    rtc::Description::Audio media(kAudioMid, rtc::Description::Direction::SendOnly);
+    media.addOpusCodec(kAudioPayloadType, std::string(kAudioProfile));
+    media.addSSRC(ssrc, kCname, kCname, kAudioMid);
+
+    session.audioConfig = std::make_shared<rtc::RtpPacketizationConfig>(ssrc,
+                                                                        kCname,
+                                                                        kAudioPayloadType,
+                                                                        rtc::OpusRtpPacketizer::DefaultClockRate);
+    auto packetizer = std::make_shared<rtc::OpusRtpPacketizer>(session.audioConfig);
+    packetizer->addToChain(std::make_shared<rtc::RtcpSrReporter>(session.audioConfig));
+
+    try {
+        session.audio = session.peer->addTrack(std::move(media));
+        session.audio->setMediaHandler(packetizer);
+    } catch (const std::exception& e) {
+        JST_ERROR("[REMOTE] Failed to add WebRTC audio track: {}", e.what());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+void Instance::Remote::Impl::closeWebRtcSession(WebRtcSession& session) {
+    {
+        std::lock_guard<std::mutex> lock(session.keyframe->mutex);
+        session.keyframe->impl = nullptr;
+    }
+
+    session.peer->resetCallbacks();
+
+    std::shared_ptr<rtc::DataChannel> control;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        control = std::move(session.control);
+    }
+    if (control) {
+        control->resetCallbacks();
+    }
+
+    try {
+        session.peer->close();
+    } catch (const std::exception& e) {
+        JST_DEBUG("[REMOTE] Failed to close WebRTC peer: {}", e.what());
+    }
+}
+
 void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) {
-    std::unique_ptr<WebRtcSession> session;
+    std::shared_ptr<WebRtcSession> session;
     {
         std::lock_guard<std::mutex> lock(sessionsMutex);
         auto it = sessions.find(sessionId);
@@ -1834,74 +1797,18 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
         sessions.erase(it);
 
         std::lock_guard<std::mutex> inputLock(inputMutex);
+        if (!inputSessionOrder.empty() && inputSessionOrder.front() == sessionId) {
+            ++controlEpoch;
+        }
         std::erase(inputSessionOrder, sessionId);
+        clipboardTransfers.erase(sessionId);
         inputQueue.push_back({sessionId, {}, true});
     }
 
     JST_INFO("[REMOTE] Destroying WebRTC session '{}' with peer '{}'.", session->sessionId, session->peerId);
 
-    std::lock_guard<std::mutex> streamLock(streamMutex);
-
-    if (session->webrtc) {
-        if (session->iceHandler) {
-            g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->iceHandler);
-            session->iceHandler = 0;
-        }
-        if (session->channelHandler) {
-            g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->channelHandler);
-            session->channelHandler = 0;
-        }
-        if (session->negotiationHandler) {
-            g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->negotiationHandler);
-            session->negotiationHandler = 0;
-        }
-        if (session->connectionHandler) {
-            g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->connectionHandler);
-            session->connectionHandler = 0;
-        }
-    }
-
-    if (session->teeSrcPad) {
-        GstPad* queueSinkPad = session->queue ? gst_element_get_static_pad(session->queue, "sink") : nullptr;
-        if (queueSinkPad) {
-            gst_pad_unlink(session->teeSrcPad, queueSinkPad);
-            gst_object_unref(queueSinkPad);
-        }
-        if (tee) {
-            gst_element_release_request_pad(tee, session->teeSrcPad);
-        }
-        gst_object_unref(session->teeSrcPad);
-        session->teeSrcPad = nullptr;
-    }
-
-    if (session->webrtc) gst_element_set_state(session->webrtc, GST_STATE_NULL);
-    if (session->rtpCaps) gst_element_set_state(session->rtpCaps, GST_STATE_NULL);
-    if (session->payloader) gst_element_set_state(session->payloader, GST_STATE_NULL);
-    if (session->queue) gst_element_set_state(session->queue, GST_STATE_NULL);
-
-    if (session->webrtcSinkPad) {
-        if (session->webrtc) {
-            gst_element_release_request_pad(session->webrtc, session->webrtcSinkPad);
-        }
-        gst_object_unref(session->webrtcSinkPad);
-        session->webrtcSinkPad = nullptr;
-    }
-
-    auto removeElement = [this](GstElement*& element) {
-        if (!element) {
-            return;
-        }
-
-        if (pipeline && GST_OBJECT_PARENT(element)) {
-            gst_bin_remove(GST_BIN(pipeline), element);
-        }
-        element = nullptr;
-    };
-
-    removeElement(session->webrtc);
-    removeElement(session->rtpCaps);
-    removeElement(session->payloader);
-    removeElement(session->queue);
+    closeWebRtcSession(*session);
+    broadcastControlState();
 }
 
 void Instance::Remote::Impl::destroyAllWebRtcSessions() {
@@ -2078,54 +1985,19 @@ void Instance::Remote::Impl::handleStartSession(const nlohmann::json& j) {
 
     JST_INFO("[REMOTE] Starting WebRTC session '{}' with peer '{}'.", sessionId, peerId);
 
-    if (j.contains("offer") && !j["offer"].is_null()) {
-        if (!j["offer"].is_string() || j["offer"].get_ref<const std::string&>().size() > 128 * 1024) {
-            JST_ERROR("[REMOTE] Invalid startSession offer.");
-            destroyWebRtcSession(sessionId);
-            (void)sendSignallerMessage({{"type", "endSession"}, {"sessionId", sessionId}});
-            return;
-        }
-        const std::string offer = j["offer"].get<std::string>();
-        if (applyRemoteDescription(sessionId, "offer", offer) != Result::SUCCESS) {
-            destroyWebRtcSession(sessionId);
-            (void)sendSignallerMessage({{"type", "endSession"}, {"sessionId", sessionId}});
-        }
+    const auto session = findSession(sessionId);
+    if (!session) {
         return;
     }
 
-    createControlChannel(sessionId);
-
-    {
-        std::lock_guard<std::mutex> lock(sessionsMutex);
-        const auto it = sessions.find(sessionId);
-        if (it == sessions.end()) {
-            return;
-        }
-        it->second->offerPending = true;
+    try {
+        bindControlChannel(sessionId, session->peer->createDataChannel("control"));
+        session->peer->setLocalDescription(rtc::Description::Type::Offer);
+    } catch (const std::exception& e) {
+        JST_ERROR("[REMOTE] Failed to create WebRTC offer: {}", e.what());
+        destroyWebRtcSession(sessionId);
+        (void)sendSignallerMessage({{"type", "endSession"}, {"sessionId", sessionId}});
     }
-    createOfferIfReady(sessionId);
-}
-
-void Instance::Remote::Impl::createOfferIfReady(const std::string& sessionId) {
-    GstElement* sessionWebrtc = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(sessionsMutex);
-        const auto it = sessions.find(sessionId);
-        if (it == sessions.end() || !it->second->offerPending ||
-            !it->second->negotiationReady) {
-            return;
-        }
-        it->second->offerPending = false;
-        sessionWebrtc = GST_ELEMENT(gst_object_ref(it->second->webrtc));
-    }
-
-    auto* context = new WebRtcPromiseContext{this, sessionId};
-    GstPromise* promise = gst_promise_new_with_change_func(onOfferCreatedCallback, context, [](gpointer data) {
-        delete reinterpret_cast<WebRtcPromiseContext*>(data);
-    });
-
-    g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "create-offer", nullptr, promise);
-    gst_object_unref(sessionWebrtc);
 }
 
 void Instance::Remote::Impl::handlePeerMessage(const nlohmann::json& j) {
@@ -2163,22 +2035,25 @@ void Instance::Remote::Impl::handlePeerMessage(const nlohmann::json& j) {
             return;
         }
 
-        guint mlineIndex = 0;
         if (ice.contains("sdpMLineIndex") && !ice["sdpMLineIndex"].is_null()) {
             if (!ice["sdpMLineIndex"].is_number_unsigned() ||
                 ice["sdpMLineIndex"].get<uint64_t>() > 65535) {
                 JST_ERROR("[REMOTE] Peer message has an invalid ICE media index.");
                 return;
             }
-            mlineIndex = ice["sdpMLineIndex"].get<guint>();
         }
 
         const std::string candidate = ice["candidate"].get<std::string>();
+        std::string mid;
+        if (ice.contains("sdpMid") && ice["sdpMid"].is_string() &&
+            ice["sdpMid"].get_ref<const std::string&>().size() <= 64) {
+            mid = ice["sdpMid"].get<std::string>();
+        }
+
         if (!candidate.empty()) {
-            GstElement* sessionWebrtc = refSessionWebrtc(sessionId);
-            if (sessionWebrtc) {
-                g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "add-ice-candidate", mlineIndex, candidate.c_str());
-                gst_object_unref(sessionWebrtc);
+            const auto session = findSession(sessionId);
+            if (session) {
+                addRemoteCandidate(*session, candidate, mid);
             }
         }
         return;
@@ -2201,59 +2076,74 @@ void Instance::Remote::Impl::handleEndSession(const nlohmann::json& j) {
     destroyWebRtcSession(sessionId);
 }
 
+
 void Instance::Remote::Impl::sendSessionDescription(const std::string& sessionId,
-                                                    const GstWebRTCSessionDescription* desc) {
-    {
-        std::lock_guard<std::mutex> lock(sessionsMutex);
-        if (!sessions.contains(sessionId)) {
-            return;
-        }
+                                                    const rtc::Description& description) {
+    if (!findSession(sessionId)) {
+        return;
     }
 
-    if (!desc || !desc->sdp) {
+    const std::string sdp(description);
+    if (sdp.empty()) {
         JST_ERROR("[REMOTE] Can't send empty WebRTC session description.");
         return;
     }
 
-    gchar* sdpText = gst_sdp_message_as_text(desc->sdp);
-    if (!sdpText) {
-        JST_ERROR("[REMOTE] Failed to serialize WebRTC session description.");
-        return;
-    }
-
-    const char* type = desc->type == GST_WEBRTC_SDP_TYPE_OFFER ? "offer" : "answer";
     nlohmann::json msg = {
         {"type", "peer"},
         {"sessionId", sessionId},
-        {"sdp", {{"type", type}, {"sdp", std::string(sdpText)}}},
+        {"sdp", {{"type", description.typeString()}, {"sdp", sdp}}},
     };
 
-    g_free(sdpText);
     if (!sendSignallerMessage(msg)) {
         JST_ERROR("[REMOTE] Failed to send WebRTC session description.");
     }
 }
 
-void Instance::Remote::Impl::sendIceCandidate(const std::string& sessionId, guint mlineIndex, const gchar* candidate) {
-    {
-        std::lock_guard<std::mutex> lock(sessionsMutex);
-        if (!sessions.contains(sessionId)) {
-            return;
-        }
+void Instance::Remote::Impl::sendIceCandidate(const std::string& sessionId,
+                                              const rtc::Candidate& candidate) {
+    const std::string line = candidate.candidate();
+    if (sessionId.empty() || line.empty()) {
+        return;
     }
 
-    if (sessionId.empty() || !candidate) {
+    if (!findSession(sessionId)) {
         return;
     }
 
     nlohmann::json msg = {
         {"type", "peer"},
         {"sessionId", sessionId},
-        {"ice", {{"candidate", std::string(candidate)}, {"sdpMLineIndex", mlineIndex}}},
+        {"ice", {{"candidate", line}, {"sdpMid", candidate.mid()}, {"sdpMLineIndex", 0}}},
     };
 
     if (!sendSignallerMessage(msg)) {
         JST_ERROR("[REMOTE] Failed to send WebRTC ICE candidate.");
+    }
+}
+
+void Instance::Remote::Impl::addRemoteCandidate(WebRtcSession& session,
+                                                const std::string& candidate,
+                                                const std::string& mid) {
+    const std::string target = mid.empty() ? kVideoMid : mid;
+    {
+        std::lock_guard<std::mutex> lock(session.candidatesMutex);
+        if (session.received >= kMaximumCandidates) {
+            JST_WARN("[REMOTE] Dropping WebRTC candidate beyond the session limit.");
+            return;
+        }
+        ++session.received;
+
+        if (!session.described) {
+            session.candidates.emplace_back(candidate, target);
+            return;
+        }
+    }
+
+    try {
+        session.peer->addRemoteCandidate(rtc::Candidate(candidate, target));
+    } catch (const std::exception& e) {
+        JST_ERROR("[REMOTE] Failed to add WebRTC candidate: {}", e.what());
     }
 }
 
@@ -2270,334 +2160,210 @@ Result Instance::Remote::Impl::applyRemoteDescription(const std::string& session
         return Result::ERROR;
     }
 
-    GstElement* sessionWebrtc = refSessionWebrtc(sessionId);
-    if (!sessionWebrtc) {
+    const auto session = findSession(sessionId);
+    if (!session) {
         JST_ERROR("[REMOTE] WebRTC session '{}' does not exist.", sessionId);
         return Result::ERROR;
     }
 
-    GstSDPMessage* sdp = nullptr;
-    if (gst_sdp_message_new(&sdp) != GST_SDP_OK) {
-        JST_ERROR("[REMOTE] Failed to allocate WebRTC SDP message.");
-        gst_object_unref(sessionWebrtc);
-        return Result::ERROR;
-    }
-
-    const auto* data = reinterpret_cast<const guint8*>(sdpText.data());
-    if (gst_sdp_message_parse_buffer(data, sdpText.size(), sdp) != GST_SDP_OK) {
-        JST_ERROR("[REMOTE] Failed to parse WebRTC SDP message.");
-        gst_sdp_message_free(sdp);
-        gst_object_unref(sessionWebrtc);
-        return Result::ERROR;
-    }
-
-    const GstWebRTCSDPType descType = type == "offer" ? GST_WEBRTC_SDP_TYPE_OFFER : GST_WEBRTC_SDP_TYPE_ANSWER;
-    GstWebRTCSessionDescription* desc = gst_webrtc_session_description_new(descType, sdp);
-    GstPromise* promise = gst_promise_new();
-    g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "set-remote-description", desc, promise);
-    const auto result = gst_promise_wait(promise);
-    GError* error = nullptr;
-    if (result == GST_PROMISE_RESULT_REPLIED) {
-        const GstStructure* reply = gst_promise_get_reply(promise);
-        if (reply) {
-            gst_structure_get(reply, "error", G_TYPE_ERROR, &error, nullptr);
+    try {
+        session->peer->setRemoteDescription(rtc::Description(sdpText, type));
+        if (type == "offer") {
+            session->peer->setLocalDescription(rtc::Description::Type::Answer);
         }
-    }
-    const bool applied = result == GST_PROMISE_RESULT_REPLIED && !error;
-    if (!applied) {
-        JST_ERROR("[REMOTE] Failed to apply WebRTC {} for session '{}': {}",
-                  type, sessionId, error ? error->message : "GStreamer did not reply.");
-    }
-    g_clear_error(&error);
-    gst_promise_unref(promise);
-    gst_webrtc_session_description_free(desc);
-
-    if (!applied) {
-        gst_object_unref(sessionWebrtc);
+    } catch (const std::exception& e) {
+        JST_ERROR("[REMOTE] Failed to apply WebRTC {} for session '{}': {}", type, sessionId, e.what());
         return Result::ERROR;
     }
 
-    if (descType == GST_WEBRTC_SDP_TYPE_OFFER) {
-        auto* context = new WebRtcPromiseContext{this, sessionId};
-        GstPromise* answerPromise = gst_promise_new_with_change_func(onAnswerCreatedCallback, context, [](gpointer data) {
-            delete reinterpret_cast<WebRtcPromiseContext*>(data);
-        });
-        g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "create-answer", nullptr, answerPromise);
-    }
-
-    gst_object_unref(sessionWebrtc);
-    return Result::SUCCESS;
-}
-
-void Instance::Remote::Impl::createControlChannel(const std::string& sessionId) {
-    GstElement* sessionWebrtc = refSessionWebrtc(sessionId);
-    if (!sessionWebrtc) {
-        JST_ERROR("[REMOTE] WebRTC session '{}' does not exist.", sessionId);
-        return;
-    }
-
-    GstWebRTCDataChannel* channel = nullptr;
-    g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "create-data-channel", "control", nullptr, &channel);
-    if (!channel) {
-        JST_ERROR("[REMOTE] Failed to create control data channel.");
-        gst_object_unref(sessionWebrtc);
-        return;
-    }
-    auto* messageContext = new ControlChannelContext{this, sessionId};
-    g_signal_connect_data(G_OBJECT(channel), "on-message-string", G_CALLBACK(onMessageCallback), messageContext,
-                          [](gpointer data, GClosure*) { delete reinterpret_cast<ControlChannelContext*>(data); },
-                          GConnectFlags(0));
-    auto* closeContext = new ControlChannelContext{this, sessionId};
-    g_signal_connect_data(G_OBJECT(channel), "on-close", G_CALLBACK(onChannelClosedCallback), closeContext,
-                          [](gpointer data, GClosure*) { delete reinterpret_cast<ControlChannelContext*>(data); },
-                          GConnectFlags(0));
-    g_object_unref(channel);
-    gst_object_unref(sessionWebrtc);
-}
-
-void Instance::Remote::Impl::onIceCandidateCallback(GstElement* self,
-                                                    guint mlineIndex,
-                                                    gchar* candidate,
-                                                    gpointer user_data) {
-    (void)self;
-    auto* context = reinterpret_cast<WebRtcSignalContext*>(user_data);
-    context->impl->sendIceCandidate(context->sessionId, mlineIndex, candidate);
-}
-
-void Instance::Remote::Impl::onNegotiationNeededCallback(GstElement* self, gpointer user_data) {
-    auto* context = reinterpret_cast<WebRtcSignalContext*>(user_data);
+    std::vector<std::pair<std::string, std::string>> queued;
     {
-        std::lock_guard<std::mutex> lock(context->impl->sessionsMutex);
-        const auto it = context->impl->sessions.find(context->sessionId);
-        if (it == context->impl->sessions.end() || it->second->webrtc != self) {
-            return;
+        std::lock_guard<std::mutex> lock(session->candidatesMutex);
+        session->described = true;
+        queued.swap(session->candidates);
+    }
+    for (const auto& [candidate, mid] : queued) {
+        try {
+            session->peer->addRemoteCandidate(rtc::Candidate(candidate, mid));
+        } catch (const std::exception& e) {
+            JST_ERROR("[REMOTE] Failed to add WebRTC candidate: {}", e.what());
         }
-        it->second->negotiationReady = true;
-    }
-    context->impl->createOfferIfReady(context->sessionId);
-}
-
-void Instance::Remote::Impl::onConnectionStateCallback(GstElement* self, GParamSpec* pspec, gpointer user_data) {
-    (void)pspec;
-    auto* context = reinterpret_cast<WebRtcSignalContext*>(user_data);
-    GstWebRTCPeerConnectionState state;
-    g_object_get(self, "connection-state", &state, nullptr);
-    if (state == GST_WEBRTC_PEER_CONNECTION_STATE_CONNECTED) {
-        context->impl->requestKeyframe();
-    }
-}
-
-void Instance::Remote::Impl::onOfferCreatedCallback(GstPromise* promise, gpointer user_data) {
-    auto* context = reinterpret_cast<WebRtcPromiseContext*>(user_data);
-    GstStructure const* reply = gst_promise_get_reply(promise);
-    GstWebRTCSessionDescription* offer = nullptr;
-    if (!reply) {
-        JST_ERROR("[REMOTE] Failed to create WebRTC offer.");
-        gst_promise_unref(promise);
-        return;
     }
 
-    gst_structure_get(reply, "offer", GST_TYPE_WEBRTC_SESSION_DESCRIPTION, &offer, nullptr);
-
-    if (!offer) {
-        JST_ERROR("[REMOTE] Failed to create WebRTC offer.");
-        gst_promise_unref(promise);
-        return;
-    }
-
-    GstElement* sessionWebrtc = context->impl->refSessionWebrtc(context->sessionId);
-    if (!sessionWebrtc) {
-        gst_webrtc_session_description_free(offer);
-        gst_promise_unref(promise);
-        return;
-    }
-
-    GstPromise* localPromise = gst_promise_new();
-    g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "set-local-description", offer, localPromise);
-    gst_promise_interrupt(localPromise);
-    gst_promise_unref(localPromise);
-
-    context->impl->sendSessionDescription(context->sessionId, offer);
-    gst_webrtc_session_description_free(offer);
-    gst_object_unref(sessionWebrtc);
-    gst_promise_unref(promise);
-}
-
-void Instance::Remote::Impl::onAnswerCreatedCallback(GstPromise* promise, gpointer user_data) {
-    auto* context = reinterpret_cast<WebRtcPromiseContext*>(user_data);
-    GstStructure const* reply = gst_promise_get_reply(promise);
-    GstWebRTCSessionDescription* answer = nullptr;
-    if (!reply) {
-        JST_ERROR("[REMOTE] Failed to create WebRTC answer.");
-        gst_promise_unref(promise);
-        return;
-    }
-
-    gst_structure_get(reply, "answer", GST_TYPE_WEBRTC_SESSION_DESCRIPTION, &answer, nullptr);
-
-    if (!answer) {
-        JST_ERROR("[REMOTE] Failed to create WebRTC answer.");
-        gst_promise_unref(promise);
-        return;
-    }
-
-    GstElement* sessionWebrtc = context->impl->refSessionWebrtc(context->sessionId);
-    if (!sessionWebrtc) {
-        gst_webrtc_session_description_free(answer);
-        gst_promise_unref(promise);
-        return;
-    }
-
-    GstPromise* localPromise = gst_promise_new();
-    g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "set-local-description", answer, localPromise);
-    gst_promise_interrupt(localPromise);
-    gst_promise_unref(localPromise);
-
-    context->impl->sendSessionDescription(context->sessionId, answer);
-    gst_webrtc_session_description_free(answer);
-    gst_object_unref(sessionWebrtc);
-    gst_promise_unref(promise);
+    return Result::SUCCESS;
 }
 
 //
 // Frame Submission
 //
 
-void Instance::Remote::Impl::OnBufferReleaseCallback(gpointer user_data) {
-    auto* that = reinterpret_cast<Instance::Remote::Impl*>(user_data);
-    std::unique_lock<std::mutex> lock(that->bufferMutex);
-    that->bufferProcessed = true;
-    that->bufferCond.notify_one();
-}
-
 Result Instance::Remote::Impl::pushNewFrame(const void* data) {
+    std::vector<std::shared_ptr<WebRtcSession>> targets;
     {
         std::lock_guard<std::mutex> lock(sessionsMutex);
         if (sessions.empty()) {
             return Result::SUCCESS;
         }
+        for (const auto& [sessionId, session] : sessions) {
+            (void)sessionId;
+            targets.push_back(session);
+        }
     }
 
-    Result result = Result::SUCCESS;
+    packets.clear();
     {
         std::lock_guard<std::mutex> lock(streamMutex);
 
-        if (!streaming || !source) {
+        if (!streaming || !encoder) {
             return Result::SUCCESS;
         }
 
-        GstBuffer* buffer = nullptr;
-
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        if (inputMemoryDevice_ == DeviceType::CUDA) {
-            if (!gstCudaContext) {
-                JST_ERROR("[REMOTE] CUDA frame submitted without a GStreamer CUDA context.");
-                return Result::ERROR;
-            }
-
-            GstVideoInfo info;
-            gst_video_info_set_format(&info,
-                                      GST_VIDEO_FORMAT_BGRA,
-                                      static_cast<guint>(size.x),
-                                      static_cast<guint>(size.y));
-
-            GstMemory* memory = gst_cuda_allocator_alloc_wrapped(nullptr,
-                                                                 gstCudaContext,
-                                                                 nullptr,
-                                                                 &info,
-                                                                 reinterpret_cast<CUdeviceptr>(const_cast<void*>(data)),
-                                                                 this,
-                                                                 &OnBufferReleaseCallback);
-            if (!memory) {
-                JST_ERROR("[REMOTE] Failed to wrap CUDA frame for GStreamer.");
-                return Result::ERROR;
-            }
-
-            GST_MINI_OBJECT_FLAG_SET(memory, GST_MEMORY_FLAG_READONLY);
-
-            buffer = gst_buffer_new();
-            gst_buffer_append_memory(buffer, memory);
-            gst_buffer_add_video_meta_full(buffer,
-                                           GST_VIDEO_FRAME_FLAG_NONE,
-                                           GST_VIDEO_FORMAT_BGRA,
-                                           static_cast<guint>(size.x),
-                                           static_cast<guint>(size.y),
-                                           GST_VIDEO_INFO_N_PLANES(&info),
-                                           info.offset,
-                                           info.stride);
-        }
-#endif
-
-        if (!buffer) {
-            buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY,
-                                                 const_cast<void*>(data),
-                                                 size.x * size.y * 4,
-                                                 0,
-                                                 size.x * size.y * 4,
-                                                 this,
-                                                 &OnBufferReleaseCallback);
-        }
-
         const auto currentFrameTime = std::chrono::steady_clock::now();
-        const auto elapsedSinceLastFrame = std::chrono::duration_cast<std::chrono::nanoseconds>(currentFrameTime -
-                                                                                                initialFrameTime);
+        const auto elapsedSinceStart = std::chrono::duration_cast<std::chrono::microseconds>(currentFrameTime -
+                                                                                            initialFrameTime);
         const auto elapsedSinceLastKeyframe = std::chrono::duration_cast<std::chrono::seconds>(currentFrameTime -
-                                                                                                lastKeyframeTime);
+                                                                                               lastKeyframeTime);
 
-        GST_BUFFER_PTS(buffer) = static_cast<U64>(elapsedSinceLastFrame.count());
-        GST_BUFFER_DTS(buffer) = GST_CLOCK_TIME_NONE;
-
-        const bool keyframeRequested = forceKeyframe.exchange(false);
-        if ((elapsedSinceLastKeyframe.count() > 1) || keyframeRequested) {
-            GstEvent* force_key_unit_event = gst_video_event_new_downstream_force_key_unit(
-                GST_CLOCK_TIME_NONE,
-                GST_CLOCK_TIME_NONE,
-                GST_CLOCK_TIME_NONE,
-                TRUE,
-                0
-            );
-
-            gst_element_send_event(encoder, force_key_unit_event);
-
+        bool keyframe = forceKeyframe.exchange(false);
+        if (elapsedSinceLastKeyframe.count() > 1 || keyframe) {
+            keyframe = true;
             lastKeyframeTime = currentFrameTime;
         }
 
-        if (gst_app_src_push_buffer(GST_APP_SRC(source), buffer) != GST_FLOW_OK) {
-            JST_ERROR("[REMOTE] Failed to push buffer to gstreamer pipeline.");
-            result = Result::ERROR;
+        const auto encodeStart = std::chrono::steady_clock::now();
+        const Result encoded = encoder->encode(data, elapsedSinceStart, keyframe, packets);
+        const auto encodeEnd = std::chrono::steady_clock::now();
+        const std::chrono::duration<F32, std::milli> encodeTime = encodeEnd - encodeStart;
+        if (encoded == Result::SUCCESS) {
+            record(encodeEnd, encodeTime.count(), packets);
+        } else {
+            record(encodeEnd, encodeTime.count(), {});
+        }
+        JST_CHECK(encoded);
+    }
+
+    for (const auto& packet : packets) {
+        for (const auto& session : targets) {
+            if (!session->track->isOpen()) {
+                continue;
+            }
+            try {
+                const std::chrono::duration<double, std::micro> time(static_cast<double>(packet.timestamp.count()));
+                session->track->sendFrame(reinterpret_cast<const rtc::byte*>(packet.data.data()),
+                                          packet.data.size(),
+                                          rtc::FrameInfo(time));
+            } catch (const std::exception& e) {
+                JST_DEBUG("[REMOTE] Failed to send WebRTC media frame: {}", e.what());
+            }
         }
     }
 
-    {
-        std::unique_lock<std::mutex> lock(bufferMutex);
-        bufferCond.wait(lock, [this]{ return bufferProcessed; });
-        bufferProcessed = false;
-    }
-
-    return result;
+    return Result::SUCCESS;
 }
 
-//
-// Helpers
-//
-
-const char* Instance::Remote::Impl::GetEncodingStrategyPrettyName(const EncodingStrategyType& strategy) {
-    switch (strategy) {
-        case EncodingStrategyType::None:
-            return "None";
-        case EncodingStrategyType::Software:
-            return "Software";
-        case EncodingStrategyType::HardwareNVENC:
-            return "Hardware NVIDIA (NVENC)";
-        case EncodingStrategyType::HardwareV4L2:
-            return "Hardware Linux (V4L2)";
-        case EncodingStrategyType::HardwareVideoToolbox:
-            return "Hardware Apple (VideoToolbox)";
-        case EncodingStrategyType::HardwareMediaFoundation:
-            return "Hardware Windows (MediaFoundation)";
-        default:
-            return "Unknown";
+void Instance::Remote::Impl::pushAudio(const U8* data, const U64 size, const U64 sampleTime) {
+    std::vector<std::shared_ptr<WebRtcSession>> targets;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        for (const auto& [sessionId, session] : sessions) {
+            (void)sessionId;
+            if (session->audio) {
+                targets.push_back(session);
+            }
+        }
     }
+
+    for (const auto& session : targets) {
+        if (!session->audio->isOpen()) {
+            continue;
+        }
+        try {
+            const auto timestamp = static_cast<U32>(session->audioConfig->startTimestamp + sampleTime);
+            session->audio->sendFrame(reinterpret_cast<const rtc::byte*>(data), size, rtc::FrameInfo(timestamp));
+        } catch (const std::exception& e) {
+            JST_DEBUG("[REMOTE] Failed to send WebRTC audio frame: {}", e.what());
+        }
+    }
+}
+
+void Instance::Remote::Impl::record(std::chrono::steady_clock::time_point time,
+                                    F32 encode,
+                                    const std::vector<Encoder::Packet>& output) {
+    U64 bytes = 0;
+    U64 keyframeBytes = 0;
+    for (const auto& packet : output) {
+        bytes += packet.data.size();
+        if (packet.keyframe) {
+            keyframeBytes += packet.data.size();
+        }
+    }
+
+    std::lock_guard<std::mutex> lock(telemetry.mutex);
+    telemetry.samples.push_back({time, encode, bytes});
+    while (telemetry.samples.size() > kTelemetryLimit ||
+           time - telemetry.samples.front().time > std::chrono::seconds(1)) {
+        telemetry.samples.pop_front();
+    }
+    if (keyframeBytes > 0) {
+        telemetry.keyframeBytes = keyframeBytes;
+    }
+}
+
+Instance::Remote::Stats Instance::Remote::Impl::stats() {
+    Stats stats;
+    if (!streaming) {
+        return stats;
+    }
+
+    stats.encoder = encoderType;
+    stats.codec = config.video.codec;
+    stats.memory = inputMemoryDevice_;
+    stats.size = streamSize();
+    stats.targetRate = static_cast<F32>(config.video.framerate);
+
+    std::vector<std::shared_ptr<WebRtcSession>> active;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        for (const auto& [sessionId, session] : sessions) {
+            (void)sessionId;
+            active.push_back(session);
+        }
+    }
+    for (const auto& session : active) {
+        if (!session->track || !session->track->isOpen()) {
+            continue;
+        }
+        if (const auto roundTrip = session->peer->rtt()) {
+            stats.roundTrip = std::max(stats.roundTrip.value_or(0.0f), static_cast<F32>(roundTrip->count()));
+        }
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(telemetry.mutex);
+    stats.format = telemetry.format;
+    stats.keyframeBytes = telemetry.keyframeBytes;
+
+    U64 frames = 0;
+    U64 bytes = 0;
+    U64 calls = 0;
+    F32 encodeTotal = 0.0f;
+    for (const auto& sample : telemetry.samples) {
+        if (now - sample.time > std::chrono::seconds(1)) {
+            continue;
+        }
+        ++calls;
+        encodeTotal += sample.encode;
+        if (sample.bytes > 0) {
+            ++frames;
+            bytes += sample.bytes;
+        }
+    }
+
+    stats.frameRate = static_cast<F32>(frames);
+    stats.bitrate = static_cast<F32>(bytes * 8);
+    stats.encodeAverage = calls > 0 ? encodeTotal / static_cast<F32>(calls) : 0.0f;
+
+    return stats;
 }
 
 }  // namespace Jetstream

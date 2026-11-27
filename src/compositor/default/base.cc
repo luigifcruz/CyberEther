@@ -168,7 +168,14 @@ Result DefaultCompositor::create() {
                  settings.remote.broker.port);
     }
     state.remote.config.access.autoApprove = settings.remote.access.autoApprove;
+    if (settings.remote.access.token.empty() || IsRemoteTokenValid(settings.remote.access.token)) {
+        state.remote.config.access.token = settings.remote.access.token;
+    } else {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote access token. Using a random token.");
+    }
     state.remote.config.video.framerate = static_cast<U32>(settings.remote.video.framerate);
+    state.remote.config.video.matchViewer = settings.remote.video.matchViewer;
+    state.remote.config.audio.enabled = settings.remote.audio.enabled;
 
     // Restore runtime preferences.
 
@@ -438,6 +445,7 @@ void DefaultCompositor::updateRemoteState() {
     state.remote.inviteUrl = remoteStarted ? remote->inviteUrl() : "";
     state.remote.clients = remoteStarted ? remote->clients() : std::vector<Instance::Remote::ClientInfo>{};
     state.remote.waitlist = remoteStarted ? remote->waitlist() : std::vector<std::string>{};
+    state.remote.stats = remoteStarted && state.debug.renderStatsEnabled ? remote->stats() : Instance::Remote::Stats{};
 }
 
 void DefaultCompositor::updateUpdaterState() {

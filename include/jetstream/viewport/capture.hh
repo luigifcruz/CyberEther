@@ -5,10 +5,31 @@
 #include "jetstream/memory/tensor.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 
+#include <array>
+
 namespace Jetstream::Viewport {
 
 class FrameCapture {
  public:
+    enum class Export {
+        None,
+        OpaqueFd,
+        DmaBuf,
+        D3D11,
+    };
+
+    struct SharedDevice {
+        U64 luid = 0;
+        U32 render = 0;
+        std::array<U8, 16> uuid = {};
+    };
+
+    struct SharedFrame {
+        U64 handle = 0;
+        U64 pitch = 0;
+        U64 size = 0;
+    };
+
     virtual ~FrameCapture() = default;
 
     virtual Result create(Generic* viewport, const DeviceType& outputDevice = DeviceType::CPU) = 0;
@@ -17,6 +38,8 @@ class FrameCapture {
     virtual Result stop() = 0;
     virtual Result captureFrame() = 0;
     virtual Result getFrameData(Tensor& tensor) = 0;
+    virtual Result getSharedFrame(SharedFrame&) { return Result::ERROR; }
+    virtual Extent2D<U64> extent() const = 0;
     virtual Result releaseFrame() = 0;
 };
 

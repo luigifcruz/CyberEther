@@ -578,6 +578,9 @@ struct SettingsRig : ModalRig {
             },
             .onFramerateChange = [log](U32 value) { log("fps:" + std::to_string(value)); },
             .onEncoderChange = [log](Instance::Remote::EncoderType) { log("encoder"); },
+            .onMatchViewerChange = [log](bool value) { log("match:" + Flag(value)); },
+            .onAudioChange = [log](bool value) { log("audio:" + Flag(value)); },
+            .onTokenChange = [log](const std::string& value) { log("token:" + value); },
             .onAutoApproveChange = [log](bool value) { log("approve:" + Flag(value)); },
         };
         config.runtime = {
@@ -3899,8 +3902,8 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(rig.combos().size() == 1);
     CHECK(Find<Sakura::PillTabs>(rig.view.component()).size() == 2);
     CHECK(Find<Sakura::PillStepper>(rig.view.component()).size() == 1);
-    CHECK(Find<Sakura::PillInput>(rig.view.component()).size() == 7);
-    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 1);
+    CHECK(Find<Sakura::PillInput>(rig.view.component()).size() == 8);
+    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 3);
 
     rig.show(SettingsSection::Registry);
     CHECK(rig.combos().size() == 1);
@@ -3968,13 +3971,13 @@ TEST_CASE("Developer settings presenter opens the benchmark modal and reloads ev
     CHECK(mailbox.count<MailReloadAllPlugins>() == 1);
 }
 
-TEST_CASE("Remote settings report codec, framerate, and approval while the encoder stays disabled",
+TEST_CASE("Remote settings report codec, framerate, approval, viewer matching, and audio while the encoder stays disabled",
           "[core][sakura][views]") {
     SettingsRig rig;
-    rig.show(SettingsSection::Remote);
+    rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
     REQUIRE(rig.combos().size() == 1);
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
-    REQUIRE(toggles.size() == 1);
+    REQUIRE(toggles.size() == 3);
     auto steppers = Find<Sakura::PillStepper>(rig.view.component());
     REQUIRE(steppers.size() == 1);
 
@@ -3982,7 +3985,33 @@ TEST_CASE("Remote settings report codec, framerate, and approval while the encod
     CHECK(Step(rig.host, *steppers[0], true));
     rig.choose(0, 0);
     CHECK(Press(rig.host, *toggles[0]));
-    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true"});
+    CHECK(Press(rig.host, *toggles[1]));
+    CHECK(Press(rig.host, *toggles[2]));
+    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true", "match:false", "audio:false"});
+}
+
+TEST_CASE("Remote settings forward only valid invite tokens", "[core][sakura][views]") {
+    SettingsRig rig;
+    rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
+    auto inputs = Find<Sakura::PillInput>(rig.view.component());
+    REQUIRE(inputs.size() == 8);
+
+    CHECK(Press(rig.host, *inputs[0]));
+    Type(rig.host, "living-room-screen-2026");
+    Tap(rig.host, KeyCode::Enter);
+    rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
+
+    std::vector<std::string> tokens;
+    for (const auto& call : rig.calls) {
+        if (call.starts_with("token:")) {
+            tokens.push_back(call.substr(6));
+        }
+    }
+    REQUIRE_FALSE(tokens.empty());
+    CHECK(tokens.back() == "living-room-screen-2026");
+    for (const auto& token : tokens) {
+        CHECK(IsRemoteTokenValid(token));
+    }
 }
 
 TEST_CASE("Runtime settings pick interpreters and browse for a custom path", "[core][sakura][views]") {
@@ -5149,11 +5178,15 @@ TEST_CASE("Settings navigation, toggles, tabs, and text fields repaint without r
     CHECK(RepaintOnly(rig.frame()));
     CHECK(rig.settles());
     auto inputs = Find<Sakura::TextInput>(view.component());
-    REQUIRE_FALSE(inputs.empty());
-    auto& broker = *inputs[0];
+    REQUIRE(inputs.size() > 1);
+    auto& broker = *inputs[1];
     const auto shown = [&] {
         const auto center = Center(broker);
-        return Peek::Clip(broker).contains(center.x, center.y);
+        const auto shift = Peek::Translation(broker);
+        auto clip = Peek::Clip(broker);
+        clip.x += shift.x;
+        clip.y += shift.y;
+        return clip.contains(center.x, center.y);
     };
     const auto areas = Find<Sakura::ScrollArea>(view.component());
     REQUIRE(areas.size() == 2);

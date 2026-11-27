@@ -26,6 +26,8 @@ env:
     COMCTL32.dll
     COMBASE.dll
     DWMAPI.dll
+    D3D11.dll
+    DXGI.dll
     UXTHEME.dll
     ADVAPI32.dll
     RPCRT4.dll
@@ -75,7 +77,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          choco install nasm winflexbison3 pkgconfiglite -y --no-progress
+          choco install nasm pkgconfiglite -y --no-progress
 
       - name: Install Python dependencies
         run: |

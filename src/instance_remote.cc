@@ -8,6 +8,16 @@
 
 namespace Jetstream {
 
+bool IsRemoteTokenValid(const std::string& token) {
+    if (token.size() < 16 || token.size() > 128 || token.front() == '-') {
+        return false;
+    }
+    return std::ranges::all_of(token, [](const char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+               c == '-' || c == '_' || c == '.' || c == '~';
+    });
+}
+
 bool IsRemotePublicUrlValid(const std::string& url) {
     std::string_view rest = url;
     if (rest.starts_with("https://")) {
@@ -29,12 +39,10 @@ std::string GetRemoteCodecName(const Instance::Remote::CodecType& codec) {
     switch (codec) {
         case Instance::Remote::CodecType::AV1:
             return "av1";
-        case Instance::Remote::CodecType::VP8:
-            return "vp8";
-        case Instance::Remote::CodecType::VP9:
-            return "vp9";
         case Instance::Remote::CodecType::H264:
             return "h264";
+        case Instance::Remote::CodecType::H265:
+            return "h265";
         default:
             JST_ERROR("Unknown remote codec.");
             throw Result::ERROR;
@@ -49,12 +57,10 @@ Instance::Remote::CodecType StringToRemoteCodec(const std::string& codec) {
 
     if (sanitizedCodec == "av1") {
         return Instance::Remote::CodecType::AV1;
-    } else if (sanitizedCodec == "vp8") {
-        return Instance::Remote::CodecType::VP8;
-    } else if (sanitizedCodec == "vp9") {
-        return Instance::Remote::CodecType::VP9;
     } else if (sanitizedCodec == "h264") {
         return Instance::Remote::CodecType::H264;
+    } else if (sanitizedCodec == "h265") {
+        return Instance::Remote::CodecType::H265;
     }
 
     JST_ERROR("Unknown remote codec: {}", codec);
@@ -65,12 +71,10 @@ const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec) {
     switch (codec) {
         case Instance::Remote::CodecType::AV1:
             return "AV1";
-        case Instance::Remote::CodecType::VP8:
-            return "VP8";
-        case Instance::Remote::CodecType::VP9:
-            return "VP9";
         case Instance::Remote::CodecType::H264:
             return "H264";
+        case Instance::Remote::CodecType::H265:
+            return "H265";
         default:
             return "Unknown";
     }
@@ -88,8 +92,12 @@ std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder) {
             return "v4l2";
         case Instance::Remote::EncoderType::VideoToolbox:
             return "videotoolbox";
-        case Instance::Remote::EncoderType::MediaFoundation:
-            return "mediafoundation";
+        case Instance::Remote::EncoderType::AMF:
+            return "amf";
+        case Instance::Remote::EncoderType::QSV:
+            return "qsv";
+        case Instance::Remote::EncoderType::VAAPI:
+            return "vaapi";
         default:
             JST_ERROR("Unknown remote encoder.");
             throw Result::ERROR;
@@ -112,8 +120,12 @@ Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder) 
         return Instance::Remote::EncoderType::V4L2;
     } else if (sanitizedEncoder == "videotoolbox") {
         return Instance::Remote::EncoderType::VideoToolbox;
-    } else if (sanitizedEncoder == "mediafoundation") {
-        return Instance::Remote::EncoderType::MediaFoundation;
+    } else if (sanitizedEncoder == "amf") {
+        return Instance::Remote::EncoderType::AMF;
+    } else if (sanitizedEncoder == "qsv") {
+        return Instance::Remote::EncoderType::QSV;
+    } else if (sanitizedEncoder == "vaapi") {
+        return Instance::Remote::EncoderType::VAAPI;
     }
 
     JST_ERROR("Unknown remote encoder: {}", encoder);
@@ -132,8 +144,12 @@ const char* GetRemoteEncoderPrettyName(const Instance::Remote::EncoderType& enco
             return "V4L2";
         case Instance::Remote::EncoderType::VideoToolbox:
             return "VideoToolbox";
-        case Instance::Remote::EncoderType::MediaFoundation:
-            return "MediaFoundation";
+        case Instance::Remote::EncoderType::AMF:
+            return "AMF";
+        case Instance::Remote::EncoderType::QSV:
+            return "QSV";
+        case Instance::Remote::EncoderType::VAAPI:
+            return "VAAPI";
         default:
             return "Unknown";
     }
@@ -145,8 +161,6 @@ std::string GetRemoteTransportName(const Instance::Remote::TransportType& transp
             return "auto";
         case Instance::Remote::TransportType::UDP:
             return "udp";
-        case Instance::Remote::TransportType::TCP:
-            return "tcp";
         default:
             JST_ERROR("Unknown remote transport.");
             throw Result::ERROR;
@@ -163,8 +177,6 @@ Instance::Remote::TransportType StringToRemoteTransport(const std::string& trans
         return Instance::Remote::TransportType::Auto;
     } else if (sanitizedTransport == "udp") {
         return Instance::Remote::TransportType::UDP;
-    } else if (sanitizedTransport == "tcp") {
-        return Instance::Remote::TransportType::TCP;
     }
 
     JST_ERROR("Unknown remote transport: {}", transport);
@@ -177,8 +189,6 @@ const char* GetRemoteTransportPrettyName(const Instance::Remote::TransportType& 
             return "Auto";
         case Instance::Remote::TransportType::UDP:
             return "UDP";
-        case Instance::Remote::TransportType::TCP:
-            return "TCP";
         default:
             return "Unknown";
     }

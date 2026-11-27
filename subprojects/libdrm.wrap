@@ -1,0 +1,8 @@
+[wrap-file]
+directory = libdrm-2.4.134
+source_url = https://dri.freedesktop.org/libdrm/libdrm-2.4.134.tar.xz
+source_filename = libdrm-2.4.134.tar.xz
+source_hash = ac5e74d157830eb8bee44c6a6bf3ad49774ef0dd2a72bdad74a8f20308b52a95
+
+[provide]
+libdrm = ext_libdrm

@@ -219,8 +219,8 @@ class CudaBackend final : public CudaBufferBackend, public Backend {
             }
 
             const auto& vkState = Jetstream::Backend::State<DeviceType::Vulkan>();
-            if (!vkState->canExportDeviceMemory()) {
-                JST_ERROR("[MEMORY:BUFFER:CUDA] Vulkan cannot export device memory.");
+            if (!vulkanBackend->exportable()) {
+                JST_ERROR("[MEMORY:BUFFER:CUDA] Vulkan buffer was not allocated for export.");
                 return Result::ERROR;
             }
 

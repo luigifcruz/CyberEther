@@ -33,16 +33,24 @@ struct JETSTREAM_API Settings {
     struct Remote {
         struct Access {
             bool autoApprove = false;
+            std::string token;
 
-            JST_SERDES(autoApprove);
+            JST_SERDES(autoApprove, token);
         };
 
         struct Video {
             U64 framerate = 30;
             std::string codec = "h264";
             std::string encoder = "auto";
+            bool matchViewer = true;
 
-            JST_SERDES(framerate, codec, encoder);
+            JST_SERDES(framerate, codec, encoder, matchViewer);
+        };
+
+        struct Audio {
+            bool enabled = true;
+
+            JST_SERDES(enabled);
         };
 
         struct Broker {
@@ -68,8 +76,9 @@ struct JETSTREAM_API Settings {
         Video video;
         Broker broker;
         Media media;
+        Audio audio;
 
-        JST_SERDES(access, video, broker, media);
+        JST_SERDES(access, video, broker, media, audio);
     };
 
     struct Interface {

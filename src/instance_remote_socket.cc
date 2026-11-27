@@ -16,7 +16,7 @@ constexpr int kSignallerMaxMissedPongs = 2;
 
 Result Instance::Remote::Impl::createBroker() {
     broker = std::make_unique<Broker>();
-    if (broker->create(config.broker) != Result::SUCCESS) {
+    if (broker->create(config.broker, config.access.token) != Result::SUCCESS) {
         broker.reset();
         return Result::ERROR;
     }

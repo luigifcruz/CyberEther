@@ -46,7 +46,7 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     void setIntegratedTitlebar(bool enabled);
     void beginWindowDrag();
     void zoomWindow();
-    bool setDarkAppearance(bool dark);
+    bool applyDarkAppearance(bool dark) override;
 
  private:
     void setCaptureEnabled(bool enabled);

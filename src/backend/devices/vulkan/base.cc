@@ -92,6 +92,16 @@ std::set<std::string> Vulkan::getOptionalDeviceExtensions() {
     extensions.insert(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
 #endif
 
+#if defined(JST_OS_LINUX)
+    extensions.insert(VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME);
+    extensions.insert(VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME);
+    extensions.insert(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
+#endif
+
+#if defined(JST_OS_WINDOWS)
+    extensions.insert(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+#endif
+
 #if defined(VK_KHR_portability_subset)
     extensions.insert(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
 #endif
@@ -418,6 +428,16 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     cache.canExportDeviceMemory = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
 #endif
     cache.canImportHostMemory = supportedDeviceExtensions.contains(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+#if defined(JST_OS_LINUX)
+    cache.canShareFrames = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME) &&
+                           supportedDeviceExtensions.contains(VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME) &&
+                           supportedDeviceExtensions.contains(VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME) &&
+                           supportedDeviceExtensions.contains(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
+#elif defined(JST_OS_WINDOWS)
+    cache.canShareFrames = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+#else
+    cache.canShareFrames = false;
+#endif
 
     // Create logical device.
 
@@ -614,6 +634,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     JST_INFO("  - Can Import Device Memory: {}", canImportDeviceMemory() ? "YES" : "NO");
     JST_INFO("  - Can Export Device Memory: {}", canExportDeviceMemory() ? "YES" : "NO");
     JST_INFO("  - Can Import Host Memory:   {}", canImportHostMemory() ? "YES" : "NO");
+    JST_INFO("  - Can Share Frames:         {}", canShareFrames() ? "YES" : "NO");
     JST_INFO("-----------------------------------------------------");
 }
 
@@ -688,6 +709,10 @@ bool Vulkan::canImportDeviceMemory() const {
 
 bool Vulkan::canImportHostMemory() const {
     return cache.canImportHostMemory;
+}
+
+bool Vulkan::canShareFrames() const {
+    return cache.canShareFrames;
 }
 
 U64 Vulkan::getPhysicalMemory() const {

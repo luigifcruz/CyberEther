@@ -57,11 +57,10 @@ struct CodecNameCase {
     const char* mixedCaseName;
 };
 
-constexpr std::array<CodecNameCase, 4> CodecNameCases = {{
+constexpr std::array<CodecNameCase, 3> CodecNameCases = {{
     {Instance::Remote::CodecType::H264, "h264", "H264", "H264"},
+    {Instance::Remote::CodecType::H265, "h265", "H265", "h265"},
     {Instance::Remote::CodecType::AV1, "av1", "AV1", "Av1"},
-    {Instance::Remote::CodecType::VP8, "vp8", "VP8", "Vp8"},
-    {Instance::Remote::CodecType::VP9, "vp9", "VP9", "vP9"},
 }};
 
 struct EncoderNameCase {
@@ -71,19 +70,18 @@ struct EncoderNameCase {
     const char* mixedCaseName;
 };
 
-constexpr std::array<EncoderNameCase, 6> EncoderNameCases = {{
+constexpr std::array<EncoderNameCase, 8> EncoderNameCases = {{
     {Instance::Remote::EncoderType::Auto, "auto", "Auto", "AuTo"},
     {Instance::Remote::EncoderType::Software, "software", "Software", "SoFtWaRe"},
     {Instance::Remote::EncoderType::NVENC, "nvenc", "NVENC", "NvEnC"},
+    {Instance::Remote::EncoderType::AMF, "amf", "AMF", "AmF"},
+    {Instance::Remote::EncoderType::QSV, "qsv", "QSV", "QsV"},
+    {Instance::Remote::EncoderType::VAAPI, "vaapi", "VAAPI", "VaApI"},
     {Instance::Remote::EncoderType::V4L2, "v4l2", "V4L2", "V4l2"},
     {Instance::Remote::EncoderType::VideoToolbox,
      "videotoolbox",
      "VideoToolbox",
      "ViDeOtOoLbOx"},
-    {Instance::Remote::EncoderType::MediaFoundation,
-     "mediafoundation",
-     "MediaFoundation",
-     "MeDiAfOuNdAtIoN"},
 }};
 
 template<typename Callable>
@@ -131,6 +129,7 @@ TEST_CASE("Startup configuration defaults are stable",
     REQUIRE(remote.broker.key.empty());
     REQUIRE_FALSE(remote.access.autoApprove);
     REQUIRE(remote.video.framerate == 30);
+    REQUIRE(remote.video.matchViewer);
     REQUIRE(remote.video.encoder == Instance::Remote::EncoderType::Auto);
     REQUIRE(remote.video.codec == Instance::Remote::CodecType::H264);
 }
@@ -191,7 +190,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
         .access = {.autoApprove = true},
         .video = {
             .framerate = 24,
-            .codec = Instance::Remote::CodecType::VP9,
+            .codec = Instance::Remote::CodecType::H265,
             .encoder = Instance::Remote::EncoderType::Software,
         },
         .broker = {.publicUrl = "http://remote.invalid/root/"},
@@ -207,7 +206,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
     REQUIRE(remoteSnapshot.access.autoApprove);
     REQUIRE(remoteSnapshot.video.framerate == 24);
     REQUIRE(remoteSnapshot.video.encoder == Instance::Remote::EncoderType::Software);
-    REQUIRE(remoteSnapshot.video.codec == Instance::Remote::CodecType::VP9);
+    REQUIRE(remoteSnapshot.video.codec == Instance::Remote::CodecType::H265);
 }
 
 // TODO: Expose the native settings-to-Instance and settings-to-Remote builders
@@ -525,7 +524,7 @@ TEST_CASE("Remote encoder names round-trip and reject unknown values",
     RequireResultError([] { (void)StringToRemoteEncoder(std::string{"auto\0suffix", 11}); });
     RequireResultError([] { (void)StringToRemoteEncoder("not-an-encoder"); });
 
-    for (const auto value : {6, 255}) {
+    for (const auto value : {8, 255}) {
         const auto invalid = static_cast<Instance::Remote::EncoderType>(value);
         RequireResultError([invalid] { (void)GetRemoteEncoderName(invalid); });
         REQUIRE(std::string(GetRemoteEncoderPrettyName(invalid)) == "Unknown");
@@ -580,6 +579,19 @@ TEST_CASE("Remote without a viewport is inert and reports unsupported operations
     requireInertState();
 }
 
+TEST_CASE("Remote access token accepts only long URL-safe values", "[core][application][instance][remote]") {
+    REQUIRE(IsRemoteTokenValid("living-room-screen-2026"));
+    REQUIRE(IsRemoteTokenValid("Abc123_.~-Abc123_.~-"));
+    REQUIRE(IsRemoteTokenValid(std::string(128, 'a')));
+    REQUIRE_FALSE(IsRemoteTokenValid(""));
+    REQUIRE_FALSE(IsRemoteTokenValid("short-token"));
+    REQUIRE_FALSE(IsRemoteTokenValid(std::string(129, 'a')));
+    REQUIRE_FALSE(IsRemoteTokenValid("living room screen 2026"));
+    REQUIRE_FALSE(IsRemoteTokenValid("living-room-screen#2026"));
+    REQUIRE_FALSE(IsRemoteTokenValid("living-room-screen/2026"));
+    REQUIRE_FALSE(IsRemoteTokenValid("-living-room-screen"));
+}
+
 TEST_CASE("Remote broker public URL accepts only HTTP and HTTPS origins",
           "[core][application][instance][remote]") {
     REQUIRE(IsRemotePublicUrlValid("https://example.com"));
@@ -615,7 +627,7 @@ TEST_CASE("Remote supervisor treats a null remote as a stopped transport",
 // TODO: Add injectable frame-capture, media-pipeline, and signaller transport
 // factories for supported Remote create/destroy and rollback at stream, broker,
 // room, capture, and submission-thread boundaries. The concrete path requires
-// Vulkan, GStreamer, threads, and network services.
+// Vulkan, FFmpeg, threads, and network services.
 // TODO: Give Supervisor an injectable remote transport and wait strategy so
 // waitlist deduplication, short IDs, authorization-code normalization, auto-join,
 // rejected approval, and stop races can be tested without sleeping or reading stdin.

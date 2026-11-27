@@ -1,0 +1,15 @@
+--- a/meson.build
++++ b/meson.build
+@@ -4298,11 +4298,7 @@
+   ])
+   link_args = bsymbolic + vflag
+ 
+-  if conf.get('static') == 1
+-    static_link_args = bsymbolic
+-  else
+-    static_link_args = []
+-  endif
++  static_link_args = []
+ 
+   special_files = []
+   special_includes = []

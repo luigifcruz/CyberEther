@@ -1,0 +1,48 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -1501,15 +1501,15 @@
+ 
+ if get_option('vaapi').allowed()
+   check_types += [
+-    ['VAPictureParameterBufferHEVC', ['va/va.h', 'va/va_dec_hevc.h']],
+-    ['VAPictureParameterBufferVVC', ['va/va.h', 'va/va_dec_vvc.h']],
+-    ['VAProcFilterParameterBufferHDRToneMapping', ['va/va.h', 'va/va_vpp.h']],
+-    ['VAEncPictureParameterBufferHEVC', ['va/va.h', 'va/va_enc_hevc.h']],
+-    ['VAEncPictureParameterBufferHEVC', ['va/va.h', 'va/va_enc_hevc.h']],
+-    ['VAEncPictureParameterBufferJPEG', ['va/va.h', 'va/va_enc_jpeg.h']],
+-    ['VAEncPictureParameterBufferVP8', ['va/va.h', 'va/va_enc_vp8.h']],
+-    ['VAEncPictureParameterBufferVP9', ['va/va.h', 'va/va_enc_vp9.h']],
+-    ['VAEncPictureParameterBufferAV1', ['va/va.h', 'va/va_enc_av1.h']],
++    ['VAPictureParameterBufferHEVC', ['va/va.h', 'va/va_dec_hevc.h'], {'extra_deps': ['vaapi_headers_extra_deps']}],
++    ['VAPictureParameterBufferVVC', ['va/va.h', 'va/va_dec_vvc.h'], {'extra_deps': ['vaapi_headers_extra_deps']}],
++    ['VAProcFilterParameterBufferHDRToneMapping', ['va/va.h', 'va/va_vpp.h'], {'extra_deps': ['vaapi_headers_extra_deps']}],
++    ['VAEncPictureParameterBufferHEVC', ['va/va.h', 'va/va_enc_hevc.h'], {'extra_deps': ['vaapi_headers_extra_deps']}],
++    ['VAEncPictureParameterBufferHEVC', ['va/va.h', 'va/va_enc_hevc.h'], {'extra_deps': ['vaapi_headers_extra_deps']}],
++    ['VAEncPictureParameterBufferJPEG', ['va/va.h', 'va/va_enc_jpeg.h'], {'extra_deps': ['vaapi_headers_extra_deps']}],
++    ['VAEncPictureParameterBufferVP8', ['va/va.h', 'va/va_enc_vp8.h'], {'extra_deps': ['vaapi_headers_extra_deps']}],
++    ['VAEncPictureParameterBufferVP9', ['va/va.h', 'va/va_enc_vp9.h'], {'extra_deps': ['vaapi_headers_extra_deps']}],
++    ['VAEncPictureParameterBufferAV1', ['va/va.h', 'va/va_enc_av1.h'], {'extra_deps': ['vaapi_headers_extra_deps']}],
+   ]
+ endif
+ 
+@@ -2584,6 +2584,11 @@
+     else
+       set_variable('@0@_extra_deps'.format(name.underscorify().to_lower()), [])
+     endif
++
++    if found and check_type == 'pkg-config'
++      set_variable('@0@_headers_extra_deps'.format(name.underscorify().to_lower()),
++                   [dep.partial_dependency(compile_args: true, includes: true)])
++    endif
+   endif
+ endforeach
+ 
+@@ -3076,6 +3081,7 @@
+ if conf.get('vaapi', 0) == 1
+   conf.set10('vaapi_1', cc.links(
+     cpp_cond.format('va/va.h', 'VA_CHECK_VERSION(1, 0, 0)'),
++    dependencies: get_variable('vaapi_headers_extra_deps', []),
+     name: 'VA-API is v1.0 or higher'
+   ))
+ endif

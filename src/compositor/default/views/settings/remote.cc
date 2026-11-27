@@ -27,6 +27,39 @@ void RemoteSettingsView::update(Config config) {
         },
     });
 
+    tokenInput.update({
+        .icon = ICON_LC_KEY_ROUND,
+        .value = this->config.token,
+        .hint = "Random",
+        .password = true,
+        .onChange = [this](const std::string& value) {
+            if (!value.empty() && !IsRemoteTokenValid(value)) {
+                return;
+            }
+            if (this->config.onTokenChange) {
+                this->config.onTokenChange(value);
+            }
+        },
+    });
+
+    matchViewerToggle.update({
+        .value = this->config.matchViewer,
+        .onChange = [this](bool value) {
+            if (this->config.onMatchViewerChange) {
+                this->config.onMatchViewerChange(value);
+            }
+        },
+    });
+
+    audioToggle.update({
+        .value = this->config.audio,
+        .onChange = [this](bool value) {
+            if (this->config.onAudioChange) {
+                this->config.onAudioChange(value);
+            }
+        },
+    });
+
     framerateStepper.update({
         .options = {"15 fps", "30 fps", "60 fps", "120 fps"},
         .selected = framerateIndex(this->config.framerate),
@@ -190,11 +223,20 @@ void RemoteSettingsView::update(Config config) {
     accessGroup.update({
         .title = "Access",
         .description = "Who can join a remote session.",
-        .rows = {{
-            .label = "Auto Approve Viewers",
-            .description = "Let new viewers join without waiting for manual approval.",
-            .control = &approvalToggle,
-        }},
+        .rows = {
+            {
+                .label = "Auto Approve Viewers",
+                .description = "Let new viewers join without waiting for manual approval.",
+                .control = &approvalToggle,
+            },
+            {
+                .label = "Invite Token",
+                .description = "Keep the same invite link across restarts. Use 16 to 128 letters, digits, "
+                               "or the characters - _ . ~ with no leading -. Change it to revoke the old link, "
+                               "or leave it empty for a new random link each time.",
+                .control = &tokenInput,
+            },
+        },
     });
     videoGroup.update({
         .title = "Video",
@@ -215,6 +257,23 @@ void RemoteSettingsView::update(Config config) {
                 .label = "Video Encoder",
                 .description = "The hardware or software encoder used to compress the video stream.",
                 .control = &encoderCombo,
+            },
+            {
+                .label = "Match Viewer Resolution",
+                .description = "Resize a headless session to fit the browser window of the viewer in control. "
+                               "Turn off to keep the size set at launch.",
+                .control = &matchViewerToggle,
+            },
+        },
+    });
+    audioGroup.update({
+        .title = "Audio",
+        .description = "What viewers hear from this machine.",
+        .rows = {
+            {
+                .label = "Stream Audio",
+                .description = "Send the sound of every Audio block to viewers.",
+                .control = &audioToggle,
             },
         },
     });
@@ -256,7 +315,7 @@ void RemoteSettingsView::update(Config config) {
         .rows = {
             {
                 .label = "Media Transport",
-                .description = "The network protocols offered for the media connection. TCP helps on networks that block UDP.",
+                .description = "The network protocol offered for the media connection.",
                 .control = &transportTabs,
                 .wide = true,
             },
@@ -267,7 +326,7 @@ void RemoteSettingsView::update(Config config) {
             },
             {
                 .label = "Media Address",
-                .description = "The only local IP address offered for the media connection. Use 127.0.0.1 when tunneling over SSH. Leave empty to offer every address.",
+                .description = "The only local IP address offered for the media connection. Use the tunnel address when streaming through an SSH tunnel device. Leave empty to offer every address.",
                 .control = &mediaAddressInput,
             },
         },
@@ -282,6 +341,7 @@ void RemoteSettingsView::update(Config config) {
     }
     items.push_back({.child = &accessGroup});
     items.push_back({.child = &videoGroup});
+    items.push_back({.child = &audioGroup});
     items.push_back({.child = &brokerGroup});
     items.push_back({.child = &mediaGroup});
     stack.update({
@@ -325,9 +385,8 @@ bool RemoteSettingsView::portValue(const std::string& label, U16& port) {
 std::string RemoteSettingsView::codecLabel(Instance::Remote::CodecType codec) {
     switch (codec) {
         case Instance::Remote::CodecType::H264: return "H264";
+        case Instance::Remote::CodecType::H265: return "H265";
         case Instance::Remote::CodecType::AV1: return "AV1";
-        case Instance::Remote::CodecType::VP8: return "VP8";
-        case Instance::Remote::CodecType::VP9: return "VP9";
     }
     return "H264";
 }

@@ -33,6 +33,7 @@ src_lst += files([
     'tensor_link.cc',
     'instance.cc',
     'instance_remote.cc',
+    'instance_remote_audio_mixer.cc',
     'instance_remote_supervisor.cc',
     'logger.cc',
     'module.cc',

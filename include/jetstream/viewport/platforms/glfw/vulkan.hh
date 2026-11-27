@@ -53,7 +53,7 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     void setIntegratedTitlebar(bool enabled);
     void beginWindowDrag();
     void zoomWindow();
-    bool setDarkAppearance(bool dark);
+    bool applyDarkAppearance(bool dark) override;
 
     Result waitForPresent();
     Result nextDrawable(VkSemaphore& semaphore);

@@ -463,12 +463,10 @@ TEST_CASE("CLI accepts every documented enum value", "[core][integration][cli]")
          "Dependency installation policy (current: deny)"},
         {"codec h264", {"--remote", "--remote-codec=H264", "--help"},
          "Video codec (current: h264)"},
+        {"codec h265", {"--remote", "--remote-codec=H265", "--help"},
+         "Video codec (current: h265)"},
         {"codec av1", {"--remote", "--remote-codec=AV1", "--help"},
          "Video codec (current: av1)"},
-        {"codec vp8", {"--remote", "--remote-codec=VP8", "--help"},
-         "Video codec (current: vp8)"},
-        {"codec vp9", {"--remote", "--remote-codec=VP9", "--help"},
-         "Video codec (current: vp9)"},
         {"encoder auto", {"--remote", "--remote-encoder=AUTO", "--help"},
          "Video encoder (current: auto)"},
         {"encoder software", {"--remote", "--remote-encoder=SOFTWARE", "--help"},
@@ -479,18 +477,22 @@ TEST_CASE("CLI accepts every documented enum value", "[core][integration][cli]")
          "Video encoder (current: v4l2)"},
         {"encoder videotoolbox", {"--remote", "--remote-encoder=VIDEOTOOLBOX", "--help"},
          "Video encoder (current: videotoolbox)"},
-        {"encoder mediafoundation", {"--remote", "--remote-encoder=MEDIAFOUNDATION", "--help"},
-         "Video encoder (current: mediafoundation)"},
+        {"encoder amf", {"--remote", "--remote-encoder=AMF", "--help"},
+         "Video encoder (current: amf)"},
+        {"encoder qsv", {"--remote", "--remote-encoder=QSV", "--help"},
+         "Video encoder (current: qsv)"},
+        {"encoder vaapi", {"--remote", "--remote-encoder=VAAPI", "--help"},
+         "Video encoder (current: vaapi)"},
         {"transport auto", {"--remote", "--remote-media-transport=AUTO", "--help"},
          "Media transport (current: auto)"},
         {"transport udp", {"--remote", "--remote-media-transport=UDP", "--help"},
          "Media transport (current: udp)"},
-        {"transport tcp", {"--remote", "--remote-media-transport=TCP", "--help"},
-         "Media transport (current: tcp)"},
         {"media address", {"--remote", "--remote-media-address=127.0.0.1", "--help"},
          "Media address (current: 127.0.0.1)"},
         {"remote framerate", {"--remote", "--remote-framerate=24", "--help"},
          "Video framerate (current: 24)"},
+        {"remote audio", {"--remote", "--remote-audio=OFF", "--help"},
+         "Stream audio to viewers (current: off)"},
         {"port range", {"--remote", "--remote-media-port-range=40000-40100", "--help"},
          "Media port range (current: 40000-40100)"},
         {"port range single", {"--remote", "--remote-media-port-range", "50000-50000", "--help"},
@@ -545,7 +547,7 @@ TEST_CASE("CLI repeated options use last scalar and idempotent flag values",
             "https://second.example:8443/",
             "--remote-codec=h264",
             "--remote-codec",
-            "vp9",
+            "h265",
             "--remote-encoder=auto",
             "--remote-encoder",
             "software",
@@ -567,7 +569,7 @@ TEST_CASE("CLI repeated options use last scalar and idempotent flag values",
             "Target frame rate (current: 75)",
             "Broker public URL (current: https://second.example:8443/)",
             "Approve viewers automatically (current: on)",
-            "Video codec (current: vp9)",
+            "Video codec (current: h265)",
             "Video encoder (current: software)"});
     Expect("repeated benchmark format",
            {"benchmark", "--format=markdown", "--format", "csv", "--help"},
@@ -768,6 +770,13 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
         {"--remote=true", "does not accept a value"},
         {"--remote-auto-approve", "Missing value for --remote-auto-approve"},
         {"--remote-auto-approve=true", "Invalid value for --remote-auto-approve"},
+        {"--remote-match-viewer", "Missing value for --remote-match-viewer"},
+        {"--remote-match-viewer=yes", "Invalid value for --remote-match-viewer"},
+        {"--remote-audio", "Missing value for --remote-audio"},
+        {"--remote-audio=maybe", "Invalid value for --remote-audio"},
+        {"--remote-token", "Missing value for --remote-token"},
+        {"--remote-token=short", "Invalid value for --remote-token"},
+        {"--remote-token=has spaces in the token", "Invalid value for --remote-token"},
     };
     for (const auto& [argument, message] : errors) {
         Expect(argument, {argument}, 2, {}, {message});
@@ -776,7 +785,10 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
     Expect("codec dependency", {"--remote-codec", "h264"}, 2, {}, {"requires --remote"});
     Expect("encoder dependency", {"--remote-encoder", "auto"}, 2, {}, {"requires --remote"});
     Expect("auto approve dependency", {"--remote-auto-approve", "on"}, 2, {}, {"requires --remote"});
-    Expect("transport dependency", {"--remote-media-transport", "tcp"}, 2, {}, {"requires --remote"});
+    Expect("match viewer dependency", {"--remote-match-viewer", "off"}, 2, {}, {"requires --remote"});
+    Expect("audio dependency", {"--remote-audio", "off"}, 2, {}, {"requires --remote"});
+    Expect("token dependency", {"--remote-token", "living-room-screen-2026"}, 2, {}, {"requires --remote"});
+    Expect("transport dependency", {"--remote-media-transport", "udp"}, 2, {}, {"requires --remote"});
     Expect("broker dependency", {"--remote-broker-port", "9000"}, 2, {}, {"requires --remote"});
     Expect("media address dependency", {"--remote-media-address", "127.0.0.1"}, 2, {}, {"requires --remote"});
     Expect("external broker removed", {"--remote", "--broker", "https://example.com"}, 2, {}, {"Unknown option: '--broker'."});

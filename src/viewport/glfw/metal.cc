@@ -172,7 +172,7 @@ void Implementation::zoomWindow() {
     }
 }
 
-bool Implementation::setDarkAppearance(bool dark) {
+bool Implementation::applyDarkAppearance(bool dark) {
     return CocoaTitlebar::SetAppearance(window, dark);
 }
 

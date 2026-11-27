@@ -1,0 +1,9 @@
+[wrap-file]
+directory = libjuice-1.7.5
+source_url = https://github.com/paullouisageneau/libjuice/archive/refs/tags/v1.7.5.tar.gz
+source_filename = libjuice-1.7.5.tar.gz
+source_hash = a0cdc9069613d4dfdc54f829ad11ebd23fedf345bc43727fbcd2f5439f2425bd
+patch_directory = libjuice
+
+[provide]
+libjuice = libjuice_dep

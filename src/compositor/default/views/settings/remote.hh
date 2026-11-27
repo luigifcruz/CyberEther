@@ -28,7 +28,10 @@ struct RemoteSettingsView {
         U32 framerate = 30;
         Instance::Remote::EncoderType encoder = Instance::Remote::EncoderType::Auto;
         std::vector<Instance::Remote::EncoderType> available;
+        bool matchViewer = true;
+        bool audio = true;
         bool autoApprove = false;
+        std::string token;
         Instance::Remote::TransportType transport = Instance::Remote::TransportType::Auto;
         U16 minPort = 0;
         U16 maxPort = 0;
@@ -38,6 +41,9 @@ struct RemoteSettingsView {
         Sakura::Callback<void(Instance::Remote::CodecType)> onCodecChange;
         Sakura::Callback<void(U32)> onFramerateChange;
         Sakura::Callback<void(Instance::Remote::EncoderType)> onEncoderChange;
+        Sakura::Callback<void(bool)> onMatchViewerChange;
+        Sakura::Callback<void(bool)> onAudioChange;
+        Sakura::Callback<void(const std::string&)> onTokenChange;
         Sakura::Callback<void(bool)> onAutoApproveChange;
         Sakura::Callback<void(Instance::Remote::TransportType)> onTransportChange;
         Sakura::Callback<void(U16, U16)> onPortRangeChange;
@@ -66,6 +72,9 @@ struct RemoteSettingsView {
     Callout activeCallout;
     Sakura::Spacer activeTrailing;
     Sakura::Toggle approvalToggle;
+    Sakura::Toggle matchViewerToggle;
+    Sakura::Toggle audioToggle;
+    Sakura::PillInput tokenInput;
     OptionStepper framerateStepper;
     Sakura::PillTabs codecTabs;
     Sakura::Combo encoderCombo;
@@ -79,6 +88,7 @@ struct RemoteSettingsView {
     Sakura::PillInput mediaAddressInput;
     SectionGroup accessGroup;
     SectionGroup videoGroup;
+    SectionGroup audioGroup;
     SectionGroup brokerGroup;
     SectionGroup mediaGroup;
     Sakura::Stack stack;

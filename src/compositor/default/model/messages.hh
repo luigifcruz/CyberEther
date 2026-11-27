@@ -477,8 +477,20 @@ struct MailSetRemoteEncoder {
     Instance::Remote::EncoderType value = Instance::Remote::EncoderType::Auto;
 };
 
+struct MailSetRemoteMatchViewer {
+    bool value = true;
+};
+
+struct MailSetRemoteAudio {
+    bool value = true;
+};
+
 struct MailSetRemoteAutoApprove {
     bool value = false;
+};
+
+struct MailSetRemoteToken {
+    std::string value;
 };
 
 struct MailSetRemoteTransport {
@@ -921,7 +933,10 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSetRemoteCodec,
                            MailSetRemoteFramerate,
                            MailSetRemoteEncoder,
+                           MailSetRemoteMatchViewer,
+                           MailSetRemoteAudio,
                            MailSetRemoteAutoApprove,
+                           MailSetRemoteToken,
                            MailSetRemoteTransport,
                            MailSetRemotePortRange,
                            MailSetRemoteMediaAddress,
