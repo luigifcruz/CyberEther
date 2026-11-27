@@ -2492,7 +2492,8 @@ TEST_CASE("Start tab lists gallery plugins and opens their page", "[core][sakura
         {.id = "gamma", .version = "1.0.0", .status = Plugin::Status::Loaded},
     };
     mailbox.state.plugins.catalog.entries = {
-        {.id = "alpha", .title = "Alpha", .summary = "First.", .version = "1.0.0", .url = "https://files/alpha.cep"},
+        {.id = "alpha", .title = "Alpha", .summary = "First.", .version = "1.0.0", .url = "https://files/alpha.cep",
+         .diagram = "rx[Receiver] --> fft[FFT]", .blocks = {"alpha_receiver", "alpha_fft"}},
         {.id = "beta", .title = "Beta", .version = "1.0.0", .url = "https://files/beta.cep"},
         {.id = "gamma", .title = "Gamma", .version = "1.0.0", .url = "https://files/gamma.cep"},
         {.id = "delta", .title = "Delta"},
@@ -2502,9 +2503,12 @@ TEST_CASE("Start tab lists gallery plugins and opens their page", "[core][sakura
     REQUIRE(welcome.plugins.size() == 4);
     CHECK(welcome.plugins[0].category == "Installed");
     CHECK(welcome.plugins[1].category == "Update Available");
-    CHECK(welcome.plugins[2].category == "Plugin v1.0.0");
-    CHECK(welcome.plugins[3].category == "Waiting for a Build");
-    CHECK(welcome.plugins[3].blocks == std::vector<std::string>{"Delta"});
+    CHECK(welcome.plugins[2].category == "v1.0.0");
+    CHECK(welcome.plugins[3].category == "Not Supported");
+    CHECK(welcome.plugins[0].diagram == "rx[Receiver] --> fft[FFT]");
+    CHECK(welcome.plugins[0].blocks == std::vector<std::string>{"Receiver", "Fft"});
+    CHECK(welcome.plugins[3].diagram.empty());
+    CHECK(welcome.plugins[3].blocks.empty());
 
     mailbox.state.interface.welcomeCategory = "Basics";
     mailbox.state.interface.welcomeSection = WelcomeSection::Plugins;

@@ -27,6 +27,7 @@ class JETSTREAM_API Plugin::Gallery {
         std::string url;
         U64 size = 0;
         std::string digest;
+        std::string diagram;
         std::vector<std::string> blocks;
 
         bool available() const {

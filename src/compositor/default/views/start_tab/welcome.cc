@@ -867,7 +867,8 @@ void WelcomeView::updatePlugins() {
         const auto& plugin = config.plugins[index];
         section.cards[index]->update({
             .id = plugin.id,
-            .blocks = plugin.blocks,
+            .diagram = plugin.diagram,
+            .fallback = Sakura::FlowgraphCard::Config::Fallback{.title = plugin.title, .blocks = plugin.blocks},
             .category = plugin.category,
             .title = plugin.title,
             .description = plugin.summary,

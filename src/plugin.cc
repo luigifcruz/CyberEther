@@ -69,8 +69,9 @@ struct Plugin::Impl {
         std::string description;
         std::string author;
         std::string license;
+        std::string diagram;
 
-        JST_SERDES(id, title, version, cyberether, build, summary, description, author, license);
+        JST_SERDES(id, title, version, cyberether, build, summary, description, author, license, diagram);
     };
 
     struct IndexEntry {
@@ -477,6 +478,7 @@ Result Plugin::Impl::readManifest(const std::filesystem::path& root, Manifest& m
 
     static const std::set<std::string> keys = {
         "id", "title", "version", "cyberether", "build", "summary", "description", "author", "license",
+        "diagram",
     };
     for (const auto& entry : data) {
         if (!keys.contains(entry.key)) {

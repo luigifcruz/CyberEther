@@ -109,16 +109,13 @@ std::vector<WelcomeView::PluginItem> WelcomePresenter::Plugins(const DefaultComp
         if (!matches) {
             continue;
         }
-        auto blocks = PluginLabels::Blocks(entry);
-        if (blocks.empty()) {
-            blocks.push_back(entry.title);
-        }
         items.push_back({
             .id = entry.id,
             .title = entry.title,
             .summary = entry.summary,
             .category = PluginLabels::Category(installed, entry),
-            .blocks = std::move(blocks),
+            .diagram = entry.diagram,
+            .blocks = PluginLabels::Blocks(entry),
         });
     }
     return items;

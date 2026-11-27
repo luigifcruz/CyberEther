@@ -13,9 +13,16 @@ namespace Jetstream::Sakura {
 
 struct FlowgraphCard : public Component {
     struct Config {
+        struct Fallback {
+            std::string title;
+            std::vector<std::string> blocks;
+
+            bool operator==(const Fallback&) const = default;
+        };
+
         std::string id;
         std::string diagram;
-        std::vector<std::string> blocks;
+        std::optional<Fallback> fallback;
         std::string category;
         std::string title;
         std::string description;

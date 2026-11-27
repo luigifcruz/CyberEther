@@ -94,6 +94,7 @@ struct WelcomeView {
         std::string title;
         std::string summary;
         std::string category;
+        std::string diagram;
         std::vector<std::string> blocks;
     };
 
