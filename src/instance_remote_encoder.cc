@@ -527,7 +527,7 @@ Result Instance::Remote::Encoder::createConverter() {
 
     converter = sws_getContext(context->width, context->height, AV_PIX_FMT_BGRA,
                                context->width, context->height, context->pix_fmt,
-                               SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+                               SWS_FAST_BILINEAR | SWS_FULL_CHR_H_INP, nullptr, nullptr, nullptr);
     if (!converter) {
         JST_ERROR("[REMOTE] Failed to create the encoder color converter.");
         return Result::ERROR;
