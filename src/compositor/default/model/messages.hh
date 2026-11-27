@@ -485,6 +485,10 @@ struct MailSetRemoteAutoApprove {
     bool value = false;
 };
 
+struct MailSetRemoteToken {
+    std::string value;
+};
+
 struct MailSetRemoteTransport {
     Instance::Remote::TransportType value = Instance::Remote::TransportType::Auto;
 };
@@ -927,6 +931,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailSetRemoteEncoder,
                            MailSetRemoteMatchViewer,
                            MailSetRemoteAutoApprove,
+                           MailSetRemoteToken,
                            MailSetRemoteTransport,
                            MailSetRemotePortRange,
                            MailSetRemoteMediaAddress,

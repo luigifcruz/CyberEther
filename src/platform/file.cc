@@ -7,6 +7,7 @@
 #include <cstring>
 #include <filesystem>
 #include <limits>
+#include <random>
 #include <string_view>
 #include <system_error>
 
@@ -89,8 +90,9 @@ Result WriteFileAtomic(const std::string& destination, std::string_view bytes, b
         }
     }
 
+    std::random_device random;
     auto temporary = path;
-    temporary += ".tmp";
+    temporary += jst::fmt::format(".{:08x}{:08x}.tmp", random(), random());
     const auto discard = [&]() {
         std::error_code ignored;
         std::filesystem::remove(temporary, ignored);

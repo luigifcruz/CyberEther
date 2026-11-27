@@ -32,7 +32,7 @@ struct Instance::Remote::Broker {
  public:
     ~Broker();
 
-    Result create(const Config::Broker& config);
+    Result create(const Config::Broker& config, const std::string& token = {});
     Result destroy();
 
     bool secure() const;
@@ -93,6 +93,7 @@ struct Instance::Remote::Broker {
     Session* findSession(const std::string& sessionId);
 
     Config::Broker config;
+    std::string token;
     std::unique_ptr<httplib::Server> server;
     std::thread thread;
     std::atomic<bool> running = false;

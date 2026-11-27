@@ -1451,7 +1451,31 @@ TEST_CASE("Remote broker rejects incomplete or unreadable TLS configuration",
     CHECK(server.create({.address = "127.0.0.1", .port = 0,
                             .certificate = "missing-cert.pem", .key = "missing-key.pem"}) == Result::ERROR);
     CHECK(server.create({.address = "127.0.0.1", .port = 0, .publicUrl = "ws://example.com"}) == Result::ERROR);
+    CHECK(server.create({.address = "127.0.0.1", .port = 0}, "too-short") == Result::ERROR);
     CHECK(server.origin().empty());
+}
+
+TEST_CASE("Remote broker reuses a fixed access token for every room",
+          "[core][application][remote][broker]") {
+    const std::string token = "living-room-screen-2026";
+    Instance::Remote::Broker server;
+    REQUIRE(server.create({.address = "127.0.0.1", .port = 0}, token) == Result::SUCCESS);
+
+    const httplib::Headers producerHeaders = {{"Authorization", "Bearer " + server.producerKey()}};
+    BrokerPeer producer(server.origin(), "", producerHeaders);
+    REQUIRE(producer.connect());
+    producer.next("welcome");
+    producer.send({{"type", "createRoom"}});
+    const auto room = producer.next("roomCreated");
+    CHECK(room["consumerToken"] == token);
+    CHECK(producer.next("roomState")["waiting"].empty());
+
+    BrokerPeer viewer(server.origin(), "?tokenHash=" + BrokerTokenHash(token));
+    REQUIRE(viewer.connect());
+    viewer.next("welcome");
+    viewer.send({{"type", "setPeerStatus"}, {"roles", {"listener"}}, {"meta", {{"token", token}}}});
+    const std::string sessionId = viewer.next("sessionRegistered")["sessionId"];
+    CHECK(producer.next("roomState")["waiting"] == nlohmann::json::array({sessionId}));
 }
 
 TEST_CASE("Remote broker admits, relays, and ends a viewer session",

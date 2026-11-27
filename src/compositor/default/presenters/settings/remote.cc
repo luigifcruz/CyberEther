@@ -18,6 +18,7 @@ RemoteSettingsView::Config RemoteSettingsPresenter::build() const {
         .available = available,
         .matchViewer = context.state.remote.config.video.matchViewer,
         .autoApprove = context.state.remote.config.access.autoApprove,
+        .token = context.state.remote.config.access.token,
         .transport = context.state.remote.config.media.transport,
         .minPort = context.state.remote.config.media.minPort,
         .maxPort = context.state.remote.config.media.maxPort,
@@ -46,6 +47,9 @@ RemoteSettingsView::Config RemoteSettingsPresenter::build() const {
         },
         .onMatchViewerChange = [enqueue](bool value) {
             enqueue(MailSetRemoteMatchViewer{.value = value});
+        },
+        .onTokenChange = [enqueue](const std::string& value) {
+            enqueue(MailSetRemoteToken{.value = value});
         },
         .onAutoApproveChange = [enqueue](bool value) {
             enqueue(MailSetRemoteAutoApprove{.value = value});

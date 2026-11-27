@@ -90,6 +90,20 @@ Result RemoteActions::handle(const MailSetRemoteEncoder& msg) {
     return Result::SUCCESS;
 }
 
+Result RemoteActions::handle(const MailSetRemoteToken& msg) {
+    if (!msg.value.empty() && !IsRemoteTokenValid(msg.value)) {
+        return Result::SUCCESS;
+    }
+
+    state.remote.config.access.token = msg.value;
+
+    JST_CHECK(PersistSettings([&](Settings& settings) {
+        settings.remote.access.token = msg.value;
+    }));
+
+    return Result::SUCCESS;
+}
+
 Result RemoteActions::handle(const MailSetRemoteMatchViewer& msg) {
     state.remote.config.video.matchViewer = msg.value;
 

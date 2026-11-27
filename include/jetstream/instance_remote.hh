@@ -44,6 +44,7 @@ struct JETSTREAM_API Instance::Remote {
     struct Config {
         struct Access {
             bool autoApprove = false;
+            std::string token;
         };
 
         struct Video {
@@ -123,6 +124,7 @@ JETSTREAM_API Instance::Remote::CodecType StringToRemoteCodec(const std::string&
 JETSTREAM_API const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec);
 
 JETSTREAM_API bool IsRemotePublicUrlValid(const std::string& url);
+JETSTREAM_API bool IsRemoteTokenValid(const std::string& token);
 
 JETSTREAM_API std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder);
 JETSTREAM_API Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder);

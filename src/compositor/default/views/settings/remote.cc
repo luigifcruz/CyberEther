@@ -27,6 +27,21 @@ void RemoteSettingsView::update(Config config) {
         },
     });
 
+    tokenInput.update({
+        .icon = ICON_LC_KEY_ROUND,
+        .value = this->config.token,
+        .hint = "Random",
+        .password = true,
+        .onChange = [this](const std::string& value) {
+            if (!value.empty() && !IsRemoteTokenValid(value)) {
+                return;
+            }
+            if (this->config.onTokenChange) {
+                this->config.onTokenChange(value);
+            }
+        },
+    });
+
     matchViewerToggle.update({
         .value = this->config.matchViewer,
         .onChange = [this](bool value) {
@@ -199,11 +214,20 @@ void RemoteSettingsView::update(Config config) {
     accessGroup.update({
         .title = "Access",
         .description = "Who can join a remote session.",
-        .rows = {{
-            .label = "Auto Approve Viewers",
-            .description = "Let new viewers join without waiting for manual approval.",
-            .control = &approvalToggle,
-        }},
+        .rows = {
+            {
+                .label = "Auto Approve Viewers",
+                .description = "Let new viewers join without waiting for manual approval.",
+                .control = &approvalToggle,
+            },
+            {
+                .label = "Invite Token",
+                .description = "Keep the same invite link across restarts. Use 16 to 128 letters, digits, "
+                               "or the characters - _ . ~, not starting with -, and change it to revoke the old link. "
+                               "Leave blank for a new random link each time.",
+                .control = &tokenInput,
+            },
+        },
     });
     videoGroup.update({
         .title = "Video",

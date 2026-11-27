@@ -3900,7 +3900,7 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(rig.combos().size() == 1);
     CHECK(Find<Sakura::PillTabs>(rig.view.component()).size() == 2);
     CHECK(Find<Sakura::PillStepper>(rig.view.component()).size() == 1);
-    CHECK(Find<Sakura::PillInput>(rig.view.component()).size() == 7);
+    CHECK(Find<Sakura::PillInput>(rig.view.component()).size() == 8);
     CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 2);
 
     rig.show(SettingsSection::Registry);
@@ -5151,8 +5151,8 @@ TEST_CASE("Settings navigation, toggles, tabs, and text fields repaint without r
     CHECK(RepaintOnly(rig.frame()));
     CHECK(rig.settles());
     auto inputs = Find<Sakura::TextInput>(view.component());
-    REQUIRE_FALSE(inputs.empty());
-    auto& broker = *inputs[0];
+    REQUIRE(inputs.size() > 1);
+    auto& broker = *inputs[1];
     const auto shown = [&] {
         const auto center = Center(broker);
         const auto shift = Peek::Translation(broker);

@@ -30,6 +30,7 @@ struct RemoteSettingsView {
         std::vector<Instance::Remote::EncoderType> available;
         bool matchViewer = true;
         bool autoApprove = false;
+        std::string token;
         Instance::Remote::TransportType transport = Instance::Remote::TransportType::Auto;
         U16 minPort = 0;
         U16 maxPort = 0;
@@ -40,6 +41,7 @@ struct RemoteSettingsView {
         Sakura::Callback<void(U32)> onFramerateChange;
         Sakura::Callback<void(Instance::Remote::EncoderType)> onEncoderChange;
         Sakura::Callback<void(bool)> onMatchViewerChange;
+        Sakura::Callback<void(const std::string&)> onTokenChange;
         Sakura::Callback<void(bool)> onAutoApproveChange;
         Sakura::Callback<void(Instance::Remote::TransportType)> onTransportChange;
         Sakura::Callback<void(U16, U16)> onPortRangeChange;
@@ -69,6 +71,7 @@ struct RemoteSettingsView {
     Sakura::Spacer activeTrailing;
     Sakura::Toggle approvalToggle;
     Sakura::Toggle matchViewerToggle;
+    Sakura::PillInput tokenInput;
     OptionStepper framerateStepper;
     Sakura::PillTabs codecTabs;
     Sakura::Combo encoderCombo;

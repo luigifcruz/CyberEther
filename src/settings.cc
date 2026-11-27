@@ -222,7 +222,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
     std::string yaml;
     JST_CHECK(Parser::YamlEncode(data, yaml));
 
-    return Platform::WriteFileAtomic(Platform::PathToUtf8(path), yaml);
+    return Platform::WriteFileAtomic(Platform::PathToUtf8(path), yaml, true);
 }
 
 Result Settings::Get(Settings& settings) {

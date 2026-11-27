@@ -8,6 +8,16 @@
 
 namespace Jetstream {
 
+bool IsRemoteTokenValid(const std::string& token) {
+    if (token.size() < 16 || token.size() > 128 || token.front() == '-') {
+        return false;
+    }
+    return std::ranges::all_of(token, [](const char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+               c == '-' || c == '_' || c == '.' || c == '~';
+    });
+}
+
 bool IsRemotePublicUrlValid(const std::string& url) {
     std::string_view rest = url;
     if (rest.starts_with("https://")) {

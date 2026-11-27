@@ -33,8 +33,9 @@ struct JETSTREAM_API Settings {
     struct Remote {
         struct Access {
             bool autoApprove = false;
+            std::string token;
 
-            JST_SERDES(autoApprove);
+            JST_SERDES(autoApprove, token);
         };
 
         struct Video {

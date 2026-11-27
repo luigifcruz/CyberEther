@@ -117,6 +117,7 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
     Instance::Remote::Config config = {
         .access = {
             .autoApprove = settings.remote.access.autoApprove,
+            .token = settings.remote.access.token,
         },
         .video = {
             .framerate = static_cast<U32>(settings.remote.video.framerate),
@@ -146,6 +147,11 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
 
     if (!settings.remote.broker.publicUrl.empty() && !IsRemotePublicUrlValid(settings.remote.broker.publicUrl)) {
         throw Result::ERROR;
+    }
+
+    if (!config.access.token.empty() && !IsRemoteTokenValid(config.access.token)) {
+        JST_WARN("Saved remote access token is invalid. Using a random token.");
+        config.access.token.clear();
     }
 
     if (settings.remote.broker.port > 65535) {
@@ -439,6 +445,8 @@ static void printUsage(const char* program,
         jst::fmt::print("  --remote                              Enable CyberEther Remote\n");
         jst::fmt::print("  --remote-auto-approve <on|off>        Approve viewers automatically (current: {})\n",
                         settings.remote.access.autoApprove ? "on" : "off");
+        jst::fmt::print("  --remote-token <token>                Fixed invite token (current: {})\n",
+                        settings.remote.access.token.empty() ? "random" : "set");
         jst::fmt::print("  --remote-framerate <fps>              Video framerate (current: {})\n",
                         settings.remote.video.framerate);
         jst::fmt::print("  --remote-match-viewer <on|off>        Match the viewer resolution (current: {})\n",
@@ -1034,6 +1042,21 @@ int Run(int argc, char* argv[]) {
                     "Invalid value for --remote-auto-approve: '{}'. Expected on or off.", value));
             }
             settings.remote.access.autoApprove = value == "on";
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-token") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-token. Expected a token.");
+            }
+            if (!IsRemoteTokenValid(value)) {
+                return PrintUsageError(argv[0],
+                    "Invalid value for --remote-token. Expected 16 to 128 letters, digits, or the characters - _ . ~, not starting with -");
+            }
+            settings.remote.access.token = value;
             runOption = arg;
             remoteSettingOption = arg;
             continue;

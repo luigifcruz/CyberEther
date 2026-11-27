@@ -579,6 +579,19 @@ TEST_CASE("Remote without a viewport is inert and reports unsupported operations
     requireInertState();
 }
 
+TEST_CASE("Remote access token accepts only long URL-safe values", "[core][application][instance][remote]") {
+    REQUIRE(IsRemoteTokenValid("living-room-screen-2026"));
+    REQUIRE(IsRemoteTokenValid("Abc123_.~-Abc123_.~-"));
+    REQUIRE(IsRemoteTokenValid(std::string(128, 'a')));
+    REQUIRE_FALSE(IsRemoteTokenValid(""));
+    REQUIRE_FALSE(IsRemoteTokenValid("short-token"));
+    REQUIRE_FALSE(IsRemoteTokenValid(std::string(129, 'a')));
+    REQUIRE_FALSE(IsRemoteTokenValid("living room screen 2026"));
+    REQUIRE_FALSE(IsRemoteTokenValid("living-room-screen#2026"));
+    REQUIRE_FALSE(IsRemoteTokenValid("living-room-screen/2026"));
+    REQUIRE_FALSE(IsRemoteTokenValid("-living-room-screen"));
+}
+
 TEST_CASE("Remote broker public URL accepts only HTTP and HTTPS origins",
           "[core][application][instance][remote]") {
     REQUIRE(IsRemotePublicUrlValid("https://example.com"));

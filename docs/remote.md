@@ -78,8 +78,11 @@ Adjust these options under **Settings** > **Remote**, or click the settings icon
 | Setting | CLI Flag | Default | Description |
 |---|---|---|---|
 | **Viewer Approval** | `--remote-auto-approve <on\|off>` | Manual | Lets new viewers connect automatically or requires manual approval. |
+| **Invite Token** | `--remote-token <token>` | Random | Fixed token for the invite link. Leave blank for a new random link every time streaming starts. |
 
 Leave approval set to Manual unless every device that might see the invite link is trusted.
+
+Set **Invite Token** when a screen or kiosk should keep the same link across restarts. The link then always ends in `/remote#<token>`, and an open viewer reconnects by itself once CyberEther is back. The rest of the link follows the broker address, port, and TLS setting, so set **Broker Public URL** too when the host's address can change. The token must be 16 to 128 letters, digits, or the characters `-`, `_`, `.`, and `~`, and it cannot start with `-`. Anyone with the token can ask to join, so pick a long one that is hard to guess, and change it to revoke the old link. The token is stored in plain text in `settings.yaml`, which CyberEther saves readable only by your user, and a headless host prints it with the invite link at startup.
 
 ### Video
 

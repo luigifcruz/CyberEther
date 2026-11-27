@@ -168,6 +168,11 @@ Result DefaultCompositor::create() {
                  settings.remote.broker.port);
     }
     state.remote.config.access.autoApprove = settings.remote.access.autoApprove;
+    if (settings.remote.access.token.empty() || IsRemoteTokenValid(settings.remote.access.token)) {
+        state.remote.config.access.token = settings.remote.access.token;
+    } else {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote access token. Using a random token.");
+    }
     state.remote.config.video.framerate = static_cast<U32>(settings.remote.video.framerate);
     state.remote.config.video.matchViewer = settings.remote.video.matchViewer;
 
