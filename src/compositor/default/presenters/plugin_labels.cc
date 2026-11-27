@@ -25,9 +25,9 @@ std::string PluginLabels::Category(const std::vector<Plugin::Info>& installed, c
         return "Update Available";
     }
     if (!entry.available()) {
-        return "Waiting for a Build";
+        return "Not Supported";
     }
-    return jst::fmt::format("Plugin v{}", entry.version);
+    return jst::fmt::format("v{}", entry.version);
 }
 
 std::string PluginLabels::Block(const std::string& plugin, const std::string& block) {

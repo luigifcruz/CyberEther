@@ -120,6 +120,7 @@ def build_manifest(args):
         ("author", args.author),
         ("license", args.license),
         ("description", args.description),
+        ("diagram", args.diagram.strip()),
     ]
     lines = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in fields if value]
     return "\n".join(lines) + "\n"
@@ -139,6 +140,12 @@ def main():
     )
     parser.add_argument("--summary", default="", help="One line shown in plugin lists.")
     parser.add_argument("--description", default="", help="Longer Markdown description.")
+    parser.add_argument(
+        "--diagram",
+        default="",
+        help="Gallery card thumbnail in flowgraph diagram syntax, such as 'rx[Receiver] --> fft[FFT]'. "
+        "Only CyberEther versions that know the key load a manifest carrying it.",
+    )
     parser.add_argument("--author", default="", help="Plugin author.")
     parser.add_argument("--license", default="", help="Plugin license.")
     parser.add_argument(

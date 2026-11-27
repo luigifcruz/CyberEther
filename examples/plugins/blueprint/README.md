@@ -45,6 +45,13 @@ CyberEther build it is configured against, then packages that library,
 archive written by `tools/bundler.py`. Each bundle holds one CyberEther build, so build once per
 platform to ship several.
 
+The bundler also takes `--diagram` with a thumbnail for the plugin's
+gallery card, written in the arrow syntax of a flowgraph file's `diagram`, such
+as `--diagram 'in[Input] --> gain[Gain]'`. The blueprint leaves it out because
+CyberEther versions released before the key existed reject a manifest that
+carries it. Add it to `plugin_bundle_args` in `meson.build` once the plugin
+only targets versions that know the key.
+
 ## Build
 
 Install CyberEther so Meson can find `cyberether`, or let Meson fetch the

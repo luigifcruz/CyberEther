@@ -845,7 +845,9 @@ TEST_CASE("Plugins loaded for one run register prefixed blocks and know their pa
     EnsurePluginSandbox();
     const TempDirectory temp("fixture");
     const auto archivePath = temp.root / "fixture.cep";
-    WriteBundle(archivePath, ManifestSpec{}, {
+    auto spec = ManifestSpec{};
+    spec.extra = "diagram: |-\n  rx[Receiver] --> probe[Probe]\n  rx --> fft[FFT]\n";
+    WriteBundle(archivePath, spec, {
         {LibraryPath("fixture"), ReadBytes(JETSTREAM_TEST_PLUGIN_MODULE)},
         TextEntry("examples/demo.yml", "version: 2\ntitle: Demo\ngraph: []\n"),
         TextEntry("examples/notes.txt", "ignored"),
@@ -1078,6 +1080,23 @@ TEST_CASE("Plugin gallery lists use the flat entry format", "[core][extensions][
     CHECK(entries[1].id == "waiting");
     CHECK(entries[1].title == "waiting");
     CHECK_FALSE(entries[1].available());
+    CHECK(entries[0].diagram.empty());
+    CHECK(entries[1].diagram.empty());
+
+    gallery.list(Listing({
+        "{\"id\":\"drawn\",\"diagram\":\"rx[ATA Receiver] --> corr[Correlator]\\nrx --> fft[FFT]\"}",
+        "{\"id\":\"blank\",\"diagram\":null}",
+        "{\"id\":\"older\"}",
+        "{\"id\":\"broken\",\"diagram\":7}",
+    }), query);
+    REQUIRE(Plugin::Gallery::Fetch(gallery.source(), query, {}, entries) == Result::SUCCESS);
+    REQUIRE(entries.size() == 3);
+    CHECK(entries[0].id == "drawn");
+    CHECK(entries[0].diagram == "rx[ATA Receiver] --> corr[Correlator]\nrx --> fft[FFT]");
+    CHECK(entries[1].id == "blank");
+    CHECK(entries[1].diagram.empty());
+    CHECK(entries[2].id == "older");
+    CHECK(entries[2].diagram.empty());
 
     gallery.list("{\"plugins\": 3}", query);
     CHECK(Plugin::Gallery::Fetch(gallery.source(), query, {}, entries) == Result::ERROR);

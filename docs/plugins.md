@@ -153,6 +153,9 @@ description: |-
 | `author` | Plugin author. |
 | `license` | Plugin license. |
 | `description` | Longer Markdown text for the plugin detail page. |
+| `diagram` | Gallery card thumbnail, in the arrow syntax of a flowgraph file's `diagram`. |
+
+Leave `diagram` out of bundles built for CyberEther versions released before the key existed, because they reject it as unknown.
 
 CyberEther rejects manifests with unknown keys.
 

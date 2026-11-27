@@ -57,7 +57,7 @@ std::optional<Plugin::Gallery::Entry> ReadEntry(const nlohmann::json& item) {
         !Catalog::ReadText(item, "author", entry.author) ||
         !Catalog::ReadText(item, "license", entry.license) || !Catalog::ReadText(item, "version", entry.version) ||
         !Catalog::ReadText(item, "url", entry.url) || !Catalog::ReadText(item, "cepSha256", entry.digest) ||
-        !Catalog::ReadSize(item, entry.size) || !ReadBlocks(item, entry.blocks) ||
+        !Catalog::ReadText(item, "diagram", entry.diagram) || !Catalog::ReadSize(item, entry.size) || !ReadBlocks(item, entry.blocks) ||
         !Plugin::Gallery::ValidId(entry.id)) {
         return std::nullopt;
     }
