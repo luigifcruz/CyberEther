@@ -1466,6 +1466,7 @@ void Instance::Remote::Impl::syncAppearance() {
 }
 
 void Instance::Remote::Impl::sendAppearance(const std::shared_ptr<rtc::DataChannel>& channel) {
+    std::lock_guard<std::mutex> lock(appearanceMutex);
     if (!viewport || !channel->isOpen()) {
         return;
     }

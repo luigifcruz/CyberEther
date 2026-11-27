@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 namespace Jetstream {
 
@@ -40,6 +41,15 @@ struct Instance::Remote::Audio {
 
  private:
     struct Encoder;
+
+    struct Mixer {
+        std::mutex mutex;
+        std::vector<std::weak_ptr<Source>> sources;
+        std::atomic<bool> active = false;
+        bool owned = false;
+    };
+
+    static Mixer& Shared();
 
     void loop(std::chrono::steady_clock::time_point epoch);
 

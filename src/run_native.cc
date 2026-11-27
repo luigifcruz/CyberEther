@@ -25,6 +25,7 @@
 #include "jetstream/benchmark.hh"
 
 #include "updater.hh"
+#include "tools/text.hh"
 
 #if defined(JST_OS_WINDOWS)
 #define WIN32_LEAN_AND_MEAN
@@ -95,10 +96,7 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
 }
 
 std::string CurrentRemoteValue(const std::string& value) {
-    std::string lower = value;
-    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
+    const std::string lower = Text::ToLower(value);
 
     std::string current = value;
     if (lower == "vp8" || lower == "vp9") {

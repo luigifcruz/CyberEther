@@ -19,6 +19,10 @@ namespace Jetstream::detail {
 
 namespace {
 
+#if !defined(JST_OS_WINDOWS)
+constexpr U32 kNvidiaVendorId = 0x10DE;
+#endif
+
 class VulkanBackend final : public VulkanBufferBackend, public Backend {
  public:
     VulkanBackend() = default;
@@ -60,7 +64,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
 #if !defined(JST_OS_WINDOWS)
         VkPhysicalDeviceProperties physicalDeviceProperties;
         vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
-        const bool canExport = state->canExportDeviceMemory() && physicalDeviceProperties.vendorID == 0x10DE;
+        const bool canExport = state->canExportDeviceMemory() && physicalDeviceProperties.vendorID == kNvidiaVendorId;
 #endif
 
         U64 alignedSize = 0;

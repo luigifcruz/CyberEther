@@ -197,6 +197,7 @@ struct Instance::Remote::Impl {
     ViewportRequest appliedViewport;
     U64 sentClipboardRevision = 0;
     std::optional<bool> sentAppearance;
+    std::mutex appearanceMutex;
     U64 inputFrame = 0;
     U64 lastInputFrame = 0;
     U64 controlEpoch = 0;

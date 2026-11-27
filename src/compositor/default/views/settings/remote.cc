@@ -232,8 +232,8 @@ void RemoteSettingsView::update(Config config) {
             {
                 .label = "Invite Token",
                 .description = "Keep the same invite link across restarts. Use 16 to 128 letters, digits, "
-                               "or the characters - _ . ~, not starting with -, and change it to revoke the old link. "
-                               "Leave blank for a new random link each time.",
+                               "or the characters - _ . ~ with no leading -. Change it to revoke the old link, "
+                               "or leave it empty for a new random link each time.",
                 .control = &tokenInput,
             },
         },

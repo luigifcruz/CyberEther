@@ -15,9 +15,7 @@
 #include <emscripten.h>
 #endif
 
-#ifdef JETSTREAM_INSTANCE_REMOTE_AVAILABLE
 #include "instance_remote_audio.hh"
-#endif
 
 namespace Jetstream::Modules {
 
@@ -81,7 +79,6 @@ struct AudioImpl::Impl {
     bool resamplerInitialized = false;
     Tools::CircularBuffer<F32>* circularBuffer = nullptr;
 
-#ifdef JETSTREAM_INSTANCE_REMOTE_AVAILABLE
     using RemoteAudio = Instance::Remote::Audio;
     static constexpr U64 RemoteChunkFrames = 256;
 
@@ -97,7 +94,6 @@ struct AudioImpl::Impl {
     Result createRemote(U32 channels, U32 sampleRate);
     void destroyRemote();
     void forwardRemote(const F32* frames, U64 frameCount, U32 channels);
-#endif
 
     static void callback(ma_device* pDevice, void* pOutput, const void* pInput,
                          ma_uint32 frameCount);
@@ -200,13 +196,9 @@ void AudioImpl::Impl::callback(ma_device* pDevice, void* pOutput, const void*,
             reinterpret_cast<F32*>(pOutput), sampleCount);
     }
 
-#ifdef JETSTREAM_INSTANCE_REMOTE_AVAILABLE
     impl->forwardRemote(reinterpret_cast<const F32*>(pOutput), frameCount,
                         pDevice->playback.channels);
-#endif
 }
-
-#ifdef JETSTREAM_INSTANCE_REMOTE_AVAILABLE
 
 Result AudioImpl::Impl::createRemote(const U32 channels, const U32 sampleRate) {
     if (sampleRate != RemoteAudio::SampleRate) {
@@ -272,8 +264,6 @@ void AudioImpl::Impl::forwardRemote(const F32* frames, const U64 frameCount, con
         offset += frameCountIn;
     }
 }
-
-#endif
 
 AudioImpl::DeviceList AudioImpl::ListAvailableDevices() {
     const auto& devices = Impl::GetAvailableDevices();
@@ -486,6 +476,7 @@ Result AudioImpl::create() {
             JST_WARN("[MODULE_AUDIO] No audio device available. Audio plays only for remote viewers.");
         }
     }
+#endif
 
     pimpl->remoteGain = volume;
     if (deviceResult == MA_SUCCESS &&
@@ -493,13 +484,10 @@ Result AudioImpl::create() {
         ma_device_uninit(&pimpl->deviceCtx);
         deviceResult = MA_ERROR;
     }
-#endif
 
     if (deviceResult != MA_SUCCESS) {
         JST_ERROR("[MODULE_AUDIO] Failed to open audio device.");
-#ifdef JETSTREAM_INSTANCE_REMOTE_AVAILABLE
         pimpl->destroyRemote();
-#endif
         ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
         pimpl->resamplerInitialized = false;
         return Result::INCOMPLETE;
@@ -510,9 +498,7 @@ Result AudioImpl::create() {
     if (ma_device_start(&pimpl->deviceCtx) != MA_SUCCESS) {
         JST_ERROR("[MODULE_AUDIO] Failed to start playback device.");
         ma_device_uninit(&pimpl->deviceCtx);
-#ifdef JETSTREAM_INSTANCE_REMOTE_AVAILABLE
         pimpl->destroyRemote();
-#endif
         ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
         pimpl->resamplerInitialized = false;
         return Result::ERROR;
@@ -546,9 +532,7 @@ Result AudioImpl::create() {
 Result AudioImpl::destroy() {
     if (pimpl) {
         ma_device_uninit(&pimpl->deviceCtx);
-#ifdef JETSTREAM_INSTANCE_REMOTE_AVAILABLE
         pimpl->destroyRemote();
-#endif
         if (pimpl->resamplerInitialized) {
             ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
         }
@@ -572,9 +556,7 @@ Result AudioImpl::reconfigure() {
         volume = config.volume;
         if (pimpl) {
             ma_device_set_master_volume(&pimpl->deviceCtx, volume);
-#ifdef JETSTREAM_INSTANCE_REMOTE_AVAILABLE
             pimpl->remoteGain = volume;
-#endif
         }
     }
 

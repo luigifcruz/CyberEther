@@ -3,7 +3,6 @@
 #include "jetstream/logger.hh"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <system_error>
 #include <vector>
@@ -21,22 +20,8 @@ constexpr U64 kDriftLimitFrames = kPrimeFrames + Audio::FrameSize * 2;
 constexpr U64 kDriftFloorFrames = kPrimeFrames - Audio::FrameSize / 2;
 constexpr U64 kDriftTrimFrames = Audio::SampleRate / 1000;
 constexpr U64 kLatencyLimitFrames = Audio::SampleRate / 5;
-constexpr U64 kSourceCapacityFrames = Audio::SampleRate / 2;
-constexpr U64 kPushChunkFrames = 512;
 constexpr U64 kMaximumPacketBytes = 1500;
 constexpr opus_int32 kBitrate = 96000;
-
-struct Mixer {
-    std::mutex mutex;
-    std::vector<std::weak_ptr<Audio::Source>> sources;
-    std::atomic<bool> active = false;
-    bool owned = false;
-};
-
-Mixer& GetMixer() {
-    static auto* mixer = new Mixer();
-    return *mixer;
-}
 
 }  // namespace
 
@@ -50,54 +35,16 @@ struct Instance::Remote::Audio::Encoder {
     OpusEncoder* state = nullptr;
 };
 
-Instance::Remote::Audio::Source::Source() : buffer(kSourceCapacityFrames * Channels) {}
-
 Instance::Remote::Audio::Audio() = default;
 
 Instance::Remote::Audio::~Audio() {
     stop();
 }
 
-bool Instance::Remote::Audio::Active() {
-    return GetMixer().active.load(std::memory_order_relaxed);
-}
-
-std::shared_ptr<Instance::Remote::Audio::Source> Instance::Remote::Audio::Attach() {
-    auto source = std::make_shared<Source>();
-    auto& mixer = GetMixer();
-    std::lock_guard<std::mutex> lock(mixer.mutex);
-    std::erase_if(mixer.sources, [](const auto& entry) {
-        return entry.expired();
-    });
-    mixer.sources.push_back(source);
-    return source;
-}
-
-void Instance::Remote::Audio::Push(Source& source, const F32* frames, const U64 frameCount, const U32 channels,
-                                   const F32 gain) {
-    if (!Active() || !frames || frameCount == 0 || (channels != 1 && channels != 2)) {
-        return;
-    }
-
-    std::array<F32, kPushChunkFrames * Channels> scratch;
-    for (U64 offset = 0; offset < frameCount;) {
-        const U64 count = std::min(frameCount - offset, kPushChunkFrames);
-        for (U64 i = 0; i < count; ++i) {
-            const F32* frame = frames + (offset + i) * channels;
-            const F32 left = frame[0] * gain;
-            const F32 right = frame[channels - 1] * gain;
-            scratch[i * Channels] = std::isfinite(left) ? left : 0.0f;
-            scratch[i * Channels + 1] = std::isfinite(right) ? right : 0.0f;
-        }
-        (void)source.buffer.push(scratch.data(), count * Channels);
-        offset += count;
-    }
-}
-
 Result Instance::Remote::Audio::start(const std::chrono::steady_clock::time_point epoch, Sink output) {
     stop();
 
-    auto& mixer = GetMixer();
+    auto& mixer = Shared();
     {
         std::lock_guard<std::mutex> lock(mixer.mutex);
         if (mixer.owned) {
@@ -165,7 +112,7 @@ void Instance::Remote::Audio::stop() {
     }
 
     if (encoder) {
-        auto& mixer = GetMixer();
+        auto& mixer = Shared();
         std::lock_guard<std::mutex> lock(mixer.mutex);
         mixer.active = false;
         mixer.owned = false;
@@ -197,7 +144,7 @@ void Instance::Remote::Audio::loop(const std::chrono::steady_clock::time_point e
 
         sources.clear();
         {
-            auto& mixer = GetMixer();
+            auto& mixer = Shared();
             std::lock_guard<std::mutex> mixerLock(mixer.mutex);
             for (const auto& entry : mixer.sources) {
                 if (auto source = entry.lock()) {

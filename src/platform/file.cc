@@ -1,4 +1,5 @@
 #include "jetstream/platform.hh"
+#include "tools/random.hh"
 
 #include <algorithm>
 #include <cerrno>
@@ -7,7 +8,6 @@
 #include <cstring>
 #include <filesystem>
 #include <limits>
-#include <random>
 #include <string_view>
 #include <system_error>
 
@@ -90,9 +90,8 @@ Result WriteFileAtomic(const std::string& destination, std::string_view bytes, b
         }
     }
 
-    std::random_device random;
     auto temporary = path;
-    temporary += jst::fmt::format(".{:08x}{:08x}.tmp", random(), random());
+    temporary += "." + Random::HexToken().substr(0, 16) + ".tmp";
     const auto discard = [&]() {
         std::error_code ignored;
         std::filesystem::remove(temporary, ignored);

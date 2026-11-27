@@ -580,6 +580,7 @@ struct SettingsRig : ModalRig {
             .onEncoderChange = [log](Instance::Remote::EncoderType) { log("encoder"); },
             .onMatchViewerChange = [log](bool value) { log("match:" + Flag(value)); },
             .onAudioChange = [log](bool value) { log("audio:" + Flag(value)); },
+            .onTokenChange = [log](const std::string& value) { log("token:" + value); },
             .onAutoApproveChange = [log](bool value) { log("approve:" + Flag(value)); },
         };
         config.runtime = {
@@ -3970,7 +3971,7 @@ TEST_CASE("Developer settings presenter opens the benchmark modal and reloads ev
     CHECK(mailbox.count<MailReloadAllPlugins>() == 1);
 }
 
-TEST_CASE("Remote settings report codec, framerate, and approval while the encoder stays disabled",
+TEST_CASE("Remote settings report codec, framerate, approval, viewer matching, and audio while the encoder stays disabled",
           "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
@@ -3987,6 +3988,30 @@ TEST_CASE("Remote settings report codec, framerate, and approval while the encod
     CHECK(Press(rig.host, *toggles[1]));
     CHECK(Press(rig.host, *toggles[2]));
     CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true", "match:false", "audio:false"});
+}
+
+TEST_CASE("Remote settings forward only valid invite tokens", "[core][sakura][views]") {
+    SettingsRig rig;
+    rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
+    auto inputs = Find<Sakura::PillInput>(rig.view.component());
+    REQUIRE(inputs.size() == 8);
+
+    CHECK(Press(rig.host, *inputs[0]));
+    Type(rig.host, "living-room-screen-2026");
+    Tap(rig.host, KeyCode::Enter);
+    rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
+
+    std::vector<std::string> tokens;
+    for (const auto& call : rig.calls) {
+        if (call.starts_with("token:")) {
+            tokens.push_back(call.substr(6));
+        }
+    }
+    REQUIRE_FALSE(tokens.empty());
+    CHECK(tokens.back() == "living-room-screen-2026");
+    for (const auto& token : tokens) {
+        CHECK(IsRemoteTokenValid(token));
+    }
 }
 
 TEST_CASE("Runtime settings pick interpreters and browse for a custom path", "[core][sakura][views]") {

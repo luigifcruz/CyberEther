@@ -53,6 +53,11 @@ class JETSTREAM_API Generic {
         virtual void setClipboardText(const std::string& text) = 0;
     };
 
+    struct ClipboardChange {
+        U64 revision = 0;
+        std::string text;
+    };
+
     explicit Generic(const Config& config);
     virtual ~Generic();
 
@@ -91,11 +96,6 @@ class JETSTREAM_API Generic {
     void setCursor(SurfaceCursor cursor);
     std::string clipboardText() const;
     void setClipboardText(const std::string& text);
-    struct ClipboardChange {
-        U64 revision = 0;
-        std::string text;
-    };
-
     U64 clipboardRevision() const;
     ClipboardChange clipboardChange() const;
     void requestRedraw();

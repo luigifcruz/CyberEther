@@ -3,22 +3,18 @@
 #include "jetstream/viewport/capture.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/backend/devices/vulkan/base.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
 
 #include <memory>
 
 namespace Jetstream::Viewport {
 
 inline Result FindExportMemoryType(VkPhysicalDevice physicalDevice, U32 typeBits, U32& index) {
-    VkPhysicalDeviceMemoryProperties properties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &properties);
-
-    for (const bool deviceLocal : {true, false}) {
-        for (U32 i = 0; i < properties.memoryTypeCount; ++i) {
-            const bool local = (properties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
-            if ((typeBits & (1u << i)) && (!deviceLocal || local)) {
-                index = i;
-                return Result::SUCCESS;
-            }
+    for (const VkMemoryPropertyFlags flags : {VkMemoryPropertyFlags{VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT},
+                                              VkMemoryPropertyFlags{0}}) {
+        if (Backend::HasMemoryType(physicalDevice, typeBits, flags)) {
+            index = Backend::FindMemoryType(physicalDevice, typeBits, flags);
+            return Result::SUCCESS;
         }
     }
 
