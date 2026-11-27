@@ -185,7 +185,7 @@ ctx.output_attrs[0]["boxes"] = [
 ### Attribute Best Practices
 
 - **Reuse established names.** Built-in blocks and UI pin tooltips expect standard names like `sampleRate` and `frequency`. Inventing alternate spellings silently breaks interoperability.
-- **Update only on stream changes.** Attributes describe the stream, not individual frames. Update them when a property actually changes (such as retuning a radio) so downstream change detection stays fast.
+- **Update only on stream changes.** Attributes describe the stream, not individual frames. Update them when a property actually changes (such as retuning a radio) so downstream change detection stays fast. The Frame `boxes` attribute is the exception, since it describes one frame.
 - **Guard against width mismatches.** Because `std::any_cast` throws if types differ, an `F32` attribute cannot be read as `F64`. Agree on widths for shared names and read defensively, as some blocks in the tree currently store `sampleRate` and `frequency` at different widths.
 - **Remember concrete Python types.** Assigning `np.float32` to `ctx.output_attrs` stores `F32`, while plain Python `float` stores `F64`, replacing the previous type rather than coercing to it (see [Tensor Attributes](/docs/python-context#tensor-attributes)).
 

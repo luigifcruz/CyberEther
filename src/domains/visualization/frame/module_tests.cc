@@ -9,9 +9,8 @@
 #include <utility>
 
 #include "jetstream/domains/visualization/frame/module.hh"
-#include "jetstream/memory/attributes.hh"
-#include "jetstream/parser.hh"
 #include "jetstream/module_interface.hh"
+#include "jetstream/parser.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/scheduler_context.hh"
@@ -745,7 +744,7 @@ TEST_CASE("Frame publishes boxes from the input attribute with the captured fram
         REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
         REQUIRE(failed.empty());
     };
-    const std::string key(BoxesAttribute);
+    const std::string key(Modules::kFrameBoxesAttribute);
 
     auto entry = BoxEntry(2.0, 3.0, 4.0, 2.0);
     entry["label"] = std::string("carrier");
@@ -794,10 +793,12 @@ TEST_CASE_METHOD(FrameViewFixture, "Frame box placement inverts the zoomed and p
 
             for (const auto& image : {Extent2D<F32>{0.0f, 0.0f}, Extent2D<F32>{0.3f, 0.7f},
                                       Extent2D<F32>{1.0f, 1.0f}}) {
-                const auto plot = (frame->*FrameImplAccess::imageToPlotMember())(image);
-                const auto back = (frame->*FrameImplAccess::plotToImageMember())(plot);
-                REQUIRE(back.x == Catch::Approx(image.x).margin(1e-5f));
-                REQUIRE(back.y == Catch::Approx(image.y).margin(1e-5f));
+                DYNAMIC_SECTION("Image " << image.x << ", " << image.y) {
+                    const auto plot = (frame->*FrameImplAccess::imageToPlotMember())(image);
+                    const auto back = (frame->*FrameImplAccess::plotToImageMember())(plot);
+                    REQUIRE(back.x == Catch::Approx(image.x).margin(1e-5f));
+                    REQUIRE(back.y == Catch::Approx(image.y).margin(1e-5f));
+                }
             }
         }
     }

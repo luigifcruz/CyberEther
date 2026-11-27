@@ -9,7 +9,6 @@
 #include <span>
 
 #include "jetstream/constants.hh"
-#include "jetstream/memory/attributes.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/base.hh"
 #include "resources/shaders/frame_shaders.hh"
@@ -71,10 +70,18 @@ std::optional<std::vector<F64>> TypedVectorNumbers(const std::any& value) {
 }
 
 std::optional<std::vector<F64>> AnyNumbers(const std::any& value) {
-    if (auto numbers = TypedVectorNumbers<F64>(value)) return numbers;
-    if (auto numbers = TypedVectorNumbers<F32>(value)) return numbers;
-    if (auto numbers = TypedVectorNumbers<U64>(value)) return numbers;
-    if (auto numbers = TypedVectorNumbers<I64>(value)) return numbers;
+    if (auto numbers = TypedVectorNumbers<F64>(value)) {
+        return numbers;
+    }
+    if (auto numbers = TypedVectorNumbers<F32>(value)) {
+        return numbers;
+    }
+    if (auto numbers = TypedVectorNumbers<U64>(value)) {
+        return numbers;
+    }
+    if (auto numbers = TypedVectorNumbers<I64>(value)) {
+        return numbers;
+    }
     if (const auto* sequence = std::any_cast<Parser::Sequence>(&value)) {
         std::vector<F64> numbers;
         numbers.reserve(sequence->size());
@@ -100,10 +107,15 @@ std::optional<ColorRGBA<F32>> ParseHexColor(const std::string& text) {
         for (std::size_t j = 1 + i * 2; j < 3 + i * 2; ++j) {
             const char c = text[j];
             byte <<= 4;
-            if (c >= '0' && c <= '9') byte |= static_cast<unsigned int>(c - '0');
-            else if (c >= 'a' && c <= 'f') byte |= static_cast<unsigned int>(c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F') byte |= static_cast<unsigned int>(c - 'A' + 10);
-            else return std::nullopt;
+            if (c >= '0' && c <= '9') {
+                byte |= static_cast<unsigned int>(c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                byte |= static_cast<unsigned int>(c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                byte |= static_cast<unsigned int>(c - 'A' + 10);
+            } else {
+                return std::nullopt;
+            }
         }
         channels[i] = static_cast<F32>(byte) / 255.0f;
     }
@@ -186,7 +198,6 @@ std::vector<FrameBox> ParseFrameBoxes(const std::any& value, U64& rejected) {
 
     const auto* sequence = std::any_cast<Parser::Sequence>(&value);
     if (!sequence) {
-        // A single map is accepted as a one-box list.
         if (auto box = ParseFrameBox(value)) {
             boxes.push_back(std::move(*box));
         } else {
@@ -474,8 +485,6 @@ Result FrameImpl::createPresent() {
             2.0f / interaction.viewSize.x,
             2.0f / interaction.viewSize.y,
         };
-        // Each box is drawn as four edge rectangles so that every box keeps its
-        // own color and edges clipped by the view disappear individually.
         cfg.elements["outlines"] = {
             .type = Render::Components::Shapes::Type::RECT,
             .numberOfInstances = kFrameMaxBoxes * 4,
@@ -745,7 +754,7 @@ Extent2D<F32> FrameImpl::imageToPlot(const Extent2D<F32>& image) const {
 void FrameImpl::stageBoxes() {
     pendingBoxes.clear();
 
-    const std::string key(BoxesAttribute);
+    const std::string key(kFrameBoxesAttribute);
     if (!showBoxes || !input.hasAttribute(key)) {
         return;
     }
@@ -769,7 +778,6 @@ Result FrameImpl::updateBoxState() {
     const Extent2D<F32> padding = axis ? axis->paddingScale() : Extent2D<F32>{1.0f, 1.0f};
     const U64 count = (showBoxes && width > 0 && height > 0) ? boxes.size() : 0;
 
-    // Nothing drawn and nothing to draw: the overlay is already hidden.
     if (count == 0 && drawnBoxes == 0) {
         boxesChanged = false;
         return Result::SUCCESS;
@@ -810,7 +818,6 @@ Result FrameImpl::updateBoxState() {
         return Extent2D<F32>{(x * 2.0f - 1.0f) * padding.x, (1.0f - y * 2.0f) * padding.y};
     };
 
-    // Visible part of the image in plot coordinates.
     const auto lower = clampToFrame({0.0f, 0.0f});
     const auto upper = clampToFrame({1.0f, 1.0f});
     constexpr F32 kEdgeEpsilon = 1e-6f;
@@ -818,7 +825,6 @@ Result FrameImpl::updateBoxState() {
     const F32 frameWidth = static_cast<F32>(std::max<U64>(width, 1));
     const F32 frameHeight = static_cast<F32>(std::max<U64>(height, 1));
 
-    // Labels past both the new and the previous count are already blank.
     const U64 labelCount = std::max(count, drawnBoxes);
     for (U64 i = 0; i < labelCount; ++i) {
         auto label = boxLabels->get(jst::fmt::format("box{}", i));
@@ -841,7 +847,6 @@ Result FrameImpl::updateBoxState() {
                 const F32 midY = (y0 + y1) * 0.5f;
                 const U64 base = i * 4;
 
-                // Top, bottom, left, right. Edges outside the view are hidden.
                 if (a.y >= lower.y - kEdgeEpsilon) {
                     positions[base + 0] = toNdc(midX, y0);
                     sizes[base + 0] = {boxWidthPx + thickness, thickness};

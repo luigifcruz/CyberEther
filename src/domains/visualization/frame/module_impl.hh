@@ -5,6 +5,7 @@
 #include <optional>
 #include <array>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -27,10 +28,10 @@ namespace Jetstream::Modules {
 constexpr F32 kFrameZoomSpeed = 0.15f;
 constexpr F32 kFrameMaxZoom = 64.0f;
 constexpr F32 kFrameDragThresholdPx = 4.0f;
+constexpr std::string_view kFrameBoxesAttribute = "boxes";
 constexpr U64 kFrameMaxBoxes = 64;
 constexpr U64 kFrameMaxBoxLabelCharacters = 48;
 
-// A region of the frame in pixel units, with row 0 at the top.
 struct FrameBox {
     F32 x = 0.0f;
     F32 y = 0.0f;
@@ -42,8 +43,6 @@ struct FrameBox {
     bool operator==(const FrameBox&) const = default;
 };
 
-// Parses the value of the `boxes` tensor attribute. Malformed entries are
-// skipped and counted in `rejected`. At most kFrameMaxBoxes are kept.
 JETSTREAM_API std::vector<FrameBox> ParseFrameBoxes(const std::any& value, U64& rejected);
 
 struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
@@ -67,8 +66,6 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     std::vector<FrameBox> pendingBoxes;
     std::vector<FrameBox> boxes;
     bool warnedBoxes = false;
-    // Box overlay cache. The overlay is rebuilt only when the boxes or the view
-    // change, and skipped entirely while no box is drawn.
     bool boxesChanged = false;
     U64 drawnBoxes = 0;
     std::array<F32, 13> boxLayout = {};
