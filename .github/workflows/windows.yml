@@ -26,6 +26,8 @@ env:
     COMCTL32.dll
     COMBASE.dll
     DWMAPI.dll
+    D3D11.dll
+    DXGI.dll
     UXTHEME.dll
     ADVAPI32.dll
     RPCRT4.dll

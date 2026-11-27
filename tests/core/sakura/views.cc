@@ -578,6 +578,7 @@ struct SettingsRig : ModalRig {
             },
             .onFramerateChange = [log](U32 value) { log("fps:" + std::to_string(value)); },
             .onEncoderChange = [log](Instance::Remote::EncoderType) { log("encoder"); },
+            .onMatchViewerChange = [log](bool value) { log("match:" + Flag(value)); },
             .onAutoApproveChange = [log](bool value) { log("approve:" + Flag(value)); },
         };
         config.runtime = {
@@ -3900,7 +3901,7 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(Find<Sakura::PillTabs>(rig.view.component()).size() == 2);
     CHECK(Find<Sakura::PillStepper>(rig.view.component()).size() == 1);
     CHECK(Find<Sakura::PillInput>(rig.view.component()).size() == 7);
-    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 1);
+    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 2);
 
     rig.show(SettingsSection::Registry);
     CHECK(rig.combos().size() == 1);
@@ -3974,7 +3975,7 @@ TEST_CASE("Remote settings report codec, framerate, and approval while the encod
     rig.show(SettingsSection::Remote);
     REQUIRE(rig.combos().size() == 1);
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
-    REQUIRE(toggles.size() == 1);
+    REQUIRE(toggles.size() == 2);
     auto steppers = Find<Sakura::PillStepper>(rig.view.component());
     REQUIRE(steppers.size() == 1);
 
@@ -3982,7 +3983,8 @@ TEST_CASE("Remote settings report codec, framerate, and approval while the encod
     CHECK(Step(rig.host, *steppers[0], true));
     rig.choose(0, 0);
     CHECK(Press(rig.host, *toggles[0]));
-    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true"});
+    CHECK(Press(rig.host, *toggles[1]));
+    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true", "match:false"});
 }
 
 TEST_CASE("Runtime settings pick interpreters and browse for a custom path", "[core][sakura][views]") {
@@ -5153,7 +5155,11 @@ TEST_CASE("Settings navigation, toggles, tabs, and text fields repaint without r
     auto& broker = *inputs[0];
     const auto shown = [&] {
         const auto center = Center(broker);
-        return Peek::Clip(broker).contains(center.x, center.y);
+        const auto shift = Peek::Translation(broker);
+        auto clip = Peek::Clip(broker);
+        clip.x += shift.x;
+        clip.y += shift.y;
+        return clip.contains(center.x, center.y);
     };
     const auto areas = Find<Sakura::ScrollArea>(view.component());
     REQUIRE(areas.size() == 2);
