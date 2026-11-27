@@ -1,12 +1,15 @@
 #include "module_impl.hh"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <span>
 
 #include "jetstream/constants.hh"
+#include "jetstream/parser.hh"
 #include "jetstream/render/base.hh"
 #include "resources/shaders/frame_shaders.hh"
 
@@ -39,7 +42,186 @@ const char* ChannelLabel(const U64 channels) {
     }
 }
 
+template<typename... Ts>
+std::optional<F64> AnyCastNumber(const std::any& value) {
+    std::optional<F64> result;
+    const auto cast = [&]<typename T>() {
+        if (const auto* typed = std::any_cast<T>(&value)) {
+            result = static_cast<F64>(*typed);
+            return true;
+        }
+        return false;
+    };
+    (cast.template operator()<Ts>() || ...);
+    return result;
+}
+
+std::optional<F64> AnyNumber(const std::any& value) {
+    return AnyCastNumber<F64, F32, I64, U64, I32, U32, I16, U16, I8, U8>(value);
+}
+
+template<typename T>
+std::optional<std::vector<F64>> TypedVectorNumbers(const std::any& value) {
+    const auto* typed = std::any_cast<std::vector<T>>(&value);
+    if (!typed) {
+        return std::nullopt;
+    }
+    return std::vector<F64>(typed->begin(), typed->end());
+}
+
+std::optional<std::vector<F64>> AnyNumbers(const std::any& value) {
+    if (auto numbers = TypedVectorNumbers<F64>(value)) {
+        return numbers;
+    }
+    if (auto numbers = TypedVectorNumbers<F32>(value)) {
+        return numbers;
+    }
+    if (auto numbers = TypedVectorNumbers<U64>(value)) {
+        return numbers;
+    }
+    if (auto numbers = TypedVectorNumbers<I64>(value)) {
+        return numbers;
+    }
+    if (const auto* sequence = std::any_cast<Parser::Sequence>(&value)) {
+        std::vector<F64> numbers;
+        numbers.reserve(sequence->size());
+        for (const auto& item : *sequence) {
+            const auto number = AnyNumber(item);
+            if (!number) {
+                return std::nullopt;
+            }
+            numbers.push_back(*number);
+        }
+        return numbers;
+    }
+    return std::nullopt;
+}
+
+std::optional<ColorRGBA<F32>> ParseHexColor(const std::string& text) {
+    if ((text.size() != 7 && text.size() != 9) || text[0] != '#') {
+        return std::nullopt;
+    }
+    std::array<F32, 4> channels = {0.0f, 0.0f, 0.0f, 1.0f};
+    for (std::size_t i = 0; i * 2 + 1 < text.size(); ++i) {
+        unsigned int byte = 0;
+        for (std::size_t j = 1 + i * 2; j < 3 + i * 2; ++j) {
+            const char c = text[j];
+            byte <<= 4;
+            if (c >= '0' && c <= '9') {
+                byte |= static_cast<unsigned int>(c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                byte |= static_cast<unsigned int>(c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                byte |= static_cast<unsigned int>(c - 'A' + 10);
+            } else {
+                return std::nullopt;
+            }
+        }
+        channels[i] = static_cast<F32>(byte) / 255.0f;
+    }
+    return ColorRGBA<F32>{channels[0], channels[1], channels[2], channels[3]};
+}
+
+std::optional<ColorRGBA<F32>> ParseBoxColor(const std::any& value) {
+    if (const auto* text = std::any_cast<std::string>(&value)) {
+        return ParseHexColor(*text);
+    }
+    const auto numbers = AnyNumbers(value);
+    if (!numbers || (numbers->size() != 3 && numbers->size() != 4)) {
+        return std::nullopt;
+    }
+    std::array<F32, 4> channels = {0.0f, 0.0f, 0.0f, 1.0f};
+    for (std::size_t i = 0; i < numbers->size(); ++i) {
+        const F64 channel = (*numbers)[i];
+        if (!std::isfinite(channel)) {
+            return std::nullopt;
+        }
+        channels[i] = std::clamp(static_cast<F32>(channel), 0.0f, 1.0f);
+    }
+    return ColorRGBA<F32>{channels[0], channels[1], channels[2], channels[3]};
+}
+
+std::optional<FrameBox> ParseFrameBox(const std::any& value) {
+    const auto* entry = std::any_cast<Parser::Map>(&value);
+    if (!entry) {
+        return std::nullopt;
+    }
+
+    FrameBox box;
+    const std::array<std::pair<const char*, F32*>, 4> geometry = {{
+        {"x", &box.x}, {"y", &box.y}, {"width", &box.width}, {"height", &box.height},
+    }};
+    for (const auto& [key, target] : geometry) {
+        if (!entry->contains(key)) {
+            return std::nullopt;
+        }
+        const auto number = AnyNumber(entry->at(key));
+        if (!number || !std::isfinite(*number) ||
+            std::abs(*number) > std::numeric_limits<F32>::max()) {
+            return std::nullopt;
+        }
+        *target = static_cast<F32>(*number);
+    }
+    if (box.width < 0.0f || box.height < 0.0f) {
+        return std::nullopt;
+    }
+
+    if (entry->contains("label")) {
+        const auto* label = std::any_cast<std::string>(&entry->at("label"));
+        if (!label) {
+            return std::nullopt;
+        }
+        using Unicode = Render::Components::Text::Unicode;
+        const auto end = Unicode::Advance(*label, 0, kFrameMaxBoxLabelCharacters);
+        box.label = label->substr(0, end);
+    }
+
+    if (entry->contains("color")) {
+        const auto color = ParseBoxColor(entry->at("color"));
+        if (!color) {
+            return std::nullopt;
+        }
+        box.color = *color;
+    }
+
+    return box;
+}
+
 }  // namespace
+
+std::vector<FrameBox> ParseFrameBoxes(const std::any& value, U64& rejected) {
+    std::vector<FrameBox> boxes;
+    rejected = 0;
+
+    if (!value.has_value()) {
+        return boxes;
+    }
+
+    const auto* sequence = std::any_cast<Parser::Sequence>(&value);
+    if (!sequence) {
+        if (auto box = ParseFrameBox(value)) {
+            boxes.push_back(std::move(*box));
+        } else {
+            rejected = 1;
+        }
+        return boxes;
+    }
+
+    for (const auto& item : *sequence) {
+        auto box = ParseFrameBox(item);
+        if (!box) {
+            ++rejected;
+            continue;
+        }
+        if (boxes.size() == kFrameMaxBoxes) {
+            ++rejected;
+            continue;
+        }
+        boxes.push_back(std::move(*box));
+    }
+
+    return boxes;
+}
 
 Result FrameImpl::validate() {
     const auto& config = *candidate();
@@ -118,6 +300,10 @@ Result FrameImpl::create() {
     frameLabel = jst::fmt::format("{} x {}  {}", width, height, ChannelLabel(channels));
 
     pixels.assign(input.size(), 0.0f);
+    pendingPixels.assign(input.size(), 0.0f);
+    pendingBoxes.clear();
+    boxes.clear();
+    warnedBoxes = false;
     updateFrameFlag = false;
 
     autoRangeMin = 0.0f;
@@ -142,6 +328,7 @@ Result FrameImpl::reconfigure() {
     interpolation = config.interpolation;
     xLabel = config.xLabel;
     yLabel = config.yLabel;
+    showBoxes = config.showBoxes;
     redrawFlag = true;
 
     return Result::SUCCESS;
@@ -295,6 +482,42 @@ Result FrameImpl::createPresent() {
     }
 
     {
+        Render::Components::Shapes::Config cfg;
+        cfg.pixelSize = {
+            2.0f / interaction.viewSize.x,
+            2.0f / interaction.viewSize.y,
+        };
+        cfg.elements["outlines"] = {
+            .type = Render::Components::Shapes::Type::RECT,
+            .numberOfInstances = kFrameMaxBoxes * 4,
+            .color = {1.0f, 1.0f, 1.0f, 1.0f},
+            .position = {-2.0f, -2.0f},
+            .size = {0.0f, 0.0f},
+        };
+        JST_CHECK(window->build(boxOutlines, cfg));
+        JST_CHECK(window->bind(boxOutlines));
+        drawnBoxes = 0;
+        boxesChanged = true;
+    }
+
+    {
+        Render::Components::Text::Config cfg;
+        cfg.maxCharacters = kFrameMaxBoxLabelCharacters;
+        cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
+        cfg.font = window->font("default_mono");
+        for (U64 i = 0; i < kFrameMaxBoxes; ++i) {
+            cfg.elements[jst::fmt::format("box{}", i)] = {
+                .scale = 0.8f,
+                .position = {-2.0f, -2.0f},
+                .alignment = {0, 0},
+                .fill = " ",
+            };
+        }
+        JST_CHECK(window->build(boxLabels, cfg));
+        JST_CHECK(window->bind(boxLabels));
+    }
+
+    {
         Render::Texture::Config cfg;
         cfg.size = interaction.viewSize;
         JST_CHECK(window->build(framebufferTexture, cfg));
@@ -308,6 +531,8 @@ Result FrameImpl::createPresent() {
         cfg.clearColor = interaction.theme.background;
         cfg.programs.push_back(frameProgram);
         JST_CHECK(axis->surfaceUnderlay(cfg));
+        JST_CHECK(boxOutlines->surface(cfg));
+        JST_CHECK(boxLabels->surface(cfg));
         JST_CHECK(axis->surfaceOverlay(cfg));
         JST_CHECK(text->surface(cfg));
         JST_CHECK(selection->surface(cfg));
@@ -336,6 +561,8 @@ Result FrameImpl::destroyPresent() {
 
     JST_CHECK(window->unbind(renderSurface));
     JST_CHECK(window->unbind(selection));
+    JST_CHECK(window->unbind(boxLabels));
+    JST_CHECK(window->unbind(boxOutlines));
     JST_CHECK(window->unbind(text));
     JST_CHECK(window->unbind(axis));
     return Result::SUCCESS;
@@ -374,11 +601,15 @@ Result FrameImpl::capture() {
 
     displayRangeMin = autoRangeMin;
     displayRangeMax = autoRangeMax;
+    if (boxes != pendingBoxes) {
+        boxes = pendingBoxes;
+        boxesChanged = true;
+    }
     updateFrameFlag = false;
     redrawFlag = true;
 
     if (frameBuffer) {
-        std::copy_n(input.data<F32>(), pixels.size(), pixels.begin());
+        std::copy(pendingPixels.begin(), pendingPixels.end(), pixels.begin());
         JST_CHECK(frameBuffer->update());
     }
 
@@ -428,6 +659,7 @@ Result FrameImpl::present() {
     updateCursorReadout();
     JST_CHECK(updateTextState());
     JST_CHECK(updateSelectionState());
+    JST_CHECK(updateBoxState());
 
     const auto [lower, upper] = displayRange();
 
@@ -456,6 +688,8 @@ Result FrameImpl::present() {
     JST_CHECK(axis->present());
     JST_CHECK(text->present());
     JST_CHECK(selection->present());
+    JST_CHECK(boxOutlines->present());
+    JST_CHECK(boxLabels->present());
 
     if (redraw) {
         renderSurface->invalidate();
@@ -510,6 +744,148 @@ Extent2D<F32> FrameImpl::plotToView(const Extent2D<F32>& plot) const {
         (plot.x - 0.5f) / view.zoom + view.center.x,
         (plot.y - 0.5f) / view.zoom + view.center.y,
     };
+}
+
+Extent2D<F32> FrameImpl::imageToPlot(const Extent2D<F32>& image) const {
+    return {
+        ((image.x - 0.5f) / view.fitScale.x - view.center.x + 0.5f) * view.zoom + 0.5f,
+        ((image.y - 0.5f) / view.fitScale.y - view.center.y + 0.5f) * view.zoom + 0.5f,
+    };
+}
+
+void FrameImpl::stageBoxes() {
+    pendingBoxes.clear();
+
+    const std::string key(kFrameBoxesAttribute);
+    if (!showBoxes || !input.hasAttribute(key)) {
+        return;
+    }
+
+    U64 rejected = 0;
+    pendingBoxes = ParseFrameBoxes(input.attribute(key), rejected);
+    if (rejected > 0 && !warnedBoxes) {
+        warnedBoxes = true;
+        JST_WARN("[MODULE_FRAME] Ignored {} entries of the '{}' attribute. Expected up to {} maps "
+                 "with numeric x, y, width, and height, and an optional label string and color.",
+                 rejected, key, kFrameMaxBoxes);
+    }
+}
+
+Result FrameImpl::updateBoxState() {
+    if (!boxOutlines || !boxLabels) {
+        return Result::SUCCESS;
+    }
+
+    const auto& viewSize = interaction.viewSize;
+    const Extent2D<F32> padding = axis ? axis->paddingScale() : Extent2D<F32>{1.0f, 1.0f};
+    const U64 count = (showBoxes && width > 0 && height > 0) ? boxes.size() : 0;
+
+    if (count == 0 && drawnBoxes == 0) {
+        boxesChanged = false;
+        return Result::SUCCESS;
+    }
+
+    const std::array<F32, 13> layout = {
+        static_cast<F32>(viewSize.x), static_cast<F32>(viewSize.y), interaction.scale,
+        padding.x, padding.y, view.zoom, view.center.x, view.center.y,
+        view.fitScale.x, view.fitScale.y, static_cast<F32>(width), static_cast<F32>(height),
+        static_cast<F32>(count),
+    };
+    if (!boxesChanged && layout == boxLayout) {
+        return Result::SUCCESS;
+    }
+    boxesChanged = false;
+    boxLayout = layout;
+
+    JST_CHECK(boxOutlines->updatePixelSize({2.0f / viewSize.x, 2.0f / viewSize.y}));
+    const Extent2D<F32> textPixelSize = {
+        (2.0f * interaction.scale) / viewSize.x,
+        (2.0f * interaction.scale) / viewSize.y,
+    };
+    JST_CHECK(boxLabels->updatePixelSize(textPixelSize));
+
+    std::span<Extent2D<F32>> positions;
+    std::span<Extent2D<F32>> sizes;
+    std::span<ColorRGBA<F32>> colors;
+    JST_CHECK(boxOutlines->getPositions("outlines", positions));
+    JST_CHECK(boxOutlines->getSizes("outlines", sizes));
+    JST_CHECK(boxOutlines->getColors("outlines", colors));
+    std::fill(positions.begin(), positions.end(), Extent2D<F32>{-2.0f, -2.0f});
+    std::fill(sizes.begin(), sizes.end(), Extent2D<F32>{0.0f, 0.0f});
+
+    const F32 plotWidth = static_cast<F32>(viewSize.x) * padding.x;
+    const F32 plotHeight = static_cast<F32>(viewSize.y) * padding.y;
+    const F32 thickness = std::max(1.0f, 1.5f * interaction.scale);
+    const auto toNdc = [&](const F32 x, const F32 y) {
+        return Extent2D<F32>{(x * 2.0f - 1.0f) * padding.x, (1.0f - y * 2.0f) * padding.y};
+    };
+
+    const auto lower = clampToFrame({0.0f, 0.0f});
+    const auto upper = clampToFrame({1.0f, 1.0f});
+    constexpr F32 kEdgeEpsilon = 1e-6f;
+
+    const F32 frameWidth = static_cast<F32>(std::max<U64>(width, 1));
+    const F32 frameHeight = static_cast<F32>(std::max<U64>(height, 1));
+
+    const U64 labelCount = std::max(count, drawnBoxes);
+    for (U64 i = 0; i < labelCount; ++i) {
+        auto label = boxLabels->get(jst::fmt::format("box{}", i));
+        label.fill = " ";
+
+        if (i < count) {
+            const auto& box = boxes[i];
+            const auto a = imageToPlot({box.x / frameWidth, box.y / frameHeight});
+            const auto b = imageToPlot({(box.x + box.width) / frameWidth,
+                                        (box.y + box.height) / frameHeight});
+            const F32 x0 = std::max(a.x, lower.x);
+            const F32 x1 = std::min(b.x, upper.x);
+            const F32 y0 = std::max(a.y, lower.y);
+            const F32 y1 = std::min(b.y, upper.y);
+
+            if (x0 <= x1 && y0 <= y1) {
+                const F32 boxWidthPx = (x1 - x0) * plotWidth;
+                const F32 boxHeightPx = (y1 - y0) * plotHeight;
+                const F32 midX = (x0 + x1) * 0.5f;
+                const F32 midY = (y0 + y1) * 0.5f;
+                const U64 base = i * 4;
+
+                if (a.y >= lower.y - kEdgeEpsilon) {
+                    positions[base + 0] = toNdc(midX, y0);
+                    sizes[base + 0] = {boxWidthPx + thickness, thickness};
+                }
+                if (b.y <= upper.y + kEdgeEpsilon) {
+                    positions[base + 1] = toNdc(midX, y1);
+                    sizes[base + 1] = {boxWidthPx + thickness, thickness};
+                }
+                if (a.x >= lower.x - kEdgeEpsilon) {
+                    positions[base + 2] = toNdc(x0, midY);
+                    sizes[base + 2] = {thickness, boxHeightPx + thickness};
+                }
+                if (b.x <= upper.x + kEdgeEpsilon) {
+                    positions[base + 3] = toNdc(x1, midY);
+                    sizes[base + 3] = {thickness, boxHeightPx + thickness};
+                }
+                std::fill_n(colors.begin() + static_cast<std::ptrdiff_t>(base), 4, box.color);
+
+                if (!box.label.empty()) {
+                    const auto corner = toNdc(x0, y0);
+                    label.fill = box.label;
+                    label.color = box.color;
+                    label.position = {corner.x + textPixelSize.x * 3.0f,
+                                      corner.y - textPixelSize.y * 3.0f};
+                }
+            }
+        }
+
+        JST_CHECK(boxLabels->update(jst::fmt::format("box{}", i), label));
+    }
+
+    JST_CHECK(boxOutlines->updatePositions("outlines"));
+    JST_CHECK(boxOutlines->updateSizes("outlines"));
+    JST_CHECK(boxOutlines->updateColors("outlines"));
+    drawnBoxes = count;
+
+    return Result::SUCCESS;
 }
 
 F32 FrameImpl::plotDistancePx(const Extent2D<F32>& a, const Extent2D<F32>& b) const {

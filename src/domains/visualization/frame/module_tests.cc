@@ -10,6 +10,7 @@
 
 #include "jetstream/domains/visualization/frame/module.hh"
 #include "jetstream/module_interface.hh"
+#include "jetstream/parser.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/scheduler_context.hh"
@@ -37,6 +38,18 @@ struct FrameImplAccess : Modules::FrameImpl {
 
     static auto textMember() {
         return &FrameImplAccess::text;
+    }
+
+    static auto boxesMember() {
+        return &FrameImplAccess::boxes;
+    }
+
+    static auto imageToPlotMember() {
+        return &FrameImplAccess::imageToPlot;
+    }
+
+    static auto plotToImageMember() {
+        return &FrameImplAccess::plotToImage;
     }
 };
 
@@ -611,6 +624,182 @@ TEST_CASE_METHOD(FrameViewFixture, "Frame selection bounds follow the zoomed and
             REQUIRE_FALSE(view.selecting);
             REQUIRE(view.zoom == Catch::Approx(8.0f));
             requireCenter(wide ? 0.75f : 0.5625f, wide ? 0.5625f : 0.75f);
+        }
+    }
+}
+
+namespace {
+
+Parser::Map BoxEntry(const std::any& x,
+                     const std::any& y,
+                     const std::any& width,
+                     const std::any& height) {
+    Parser::Map entry;
+    entry["x"] = x;
+    entry["y"] = y;
+    entry["width"] = width;
+    entry["height"] = height;
+    return entry;
+}
+
+}  // namespace
+
+TEST_CASE("Frame parses box attributes and skips malformed entries", "[modules][frame][boxes]") {
+    U64 rejected = 0;
+
+    SECTION("Missing attribute and empty list draw nothing") {
+        REQUIRE(Modules::ParseFrameBoxes(std::any{}, rejected).empty());
+        REQUIRE(rejected == 0);
+        REQUIRE(Modules::ParseFrameBoxes(Parser::Sequence{}, rejected).empty());
+        REQUIRE(rejected == 0);
+    }
+
+    SECTION("Numbers of any width, labels, and colors") {
+        auto first = BoxEntry(static_cast<U64>(10), static_cast<I64>(-4), 2.5,
+                              static_cast<F32>(8.0f));
+        first["label"] = std::string("pulse");
+        first["color"] = std::vector<F64>{1.0, 0.5, 2.0};
+        auto second = BoxEntry(0.0, 0.0, 1.0, 1.0);
+        second["color"] = std::string("#FF000080");
+        auto third = BoxEntry(1.0, 2.0, 3.0, 4.0);
+        third["color"] = Parser::Sequence{static_cast<U64>(0), 1.0, static_cast<U64>(0), 0.25};
+
+        const auto boxes = Modules::ParseFrameBoxes(Parser::Sequence{first, second, third},
+                                                    rejected);
+        REQUIRE(rejected == 0);
+        REQUIRE(boxes.size() == 3);
+        REQUIRE(boxes[0].x == 10.0f);
+        REQUIRE(boxes[0].y == -4.0f);
+        REQUIRE(boxes[0].width == 2.5f);
+        REQUIRE(boxes[0].height == 8.0f);
+        REQUIRE(boxes[0].label == "pulse");
+        REQUIRE(boxes[0].color == ColorRGBA<F32>{1.0f, 0.5f, 1.0f, 1.0f});
+        REQUIRE(boxes[1].label.empty());
+        REQUIRE(boxes[1].color.r == 1.0f);
+        REQUIRE(boxes[1].color.g == 0.0f);
+        REQUIRE(boxes[1].color.a == Catch::Approx(128.0f / 255.0f));
+        REQUIRE(boxes[2].color == ColorRGBA<F32>{0.0f, 1.0f, 0.0f, 0.25f});
+    }
+
+    SECTION("A single map is one box") {
+        const auto boxes = Modules::ParseFrameBoxes(BoxEntry(1.0, 2.0, 3.0, 4.0), rejected);
+        REQUIRE(rejected == 0);
+        REQUIRE(boxes.size() == 1);
+    }
+
+    SECTION("Malformed entries are rejected") {
+        auto missing = BoxEntry(1.0, 2.0, 3.0, 4.0);
+        missing.erase("height");
+        auto negative = BoxEntry(1.0, 2.0, -3.0, 4.0);
+        auto nonFinite = BoxEntry(std::numeric_limits<F64>::quiet_NaN(), 2.0, 3.0, 4.0);
+        auto text = BoxEntry(std::string("1"), 2.0, 3.0, 4.0);
+        auto badColor = BoxEntry(1.0, 2.0, 3.0, 4.0);
+        badColor["color"] = std::vector<F64>{1.0, 0.0};
+        auto badLabel = BoxEntry(1.0, 2.0, 3.0, 4.0);
+        badLabel["label"] = 3.0;
+
+        const auto boxes = Modules::ParseFrameBoxes(Parser::Sequence{
+            missing, negative, nonFinite, text, badColor, badLabel, 7.0,
+            BoxEntry(0.0, 0.0, 1.0, 1.0),
+        }, rejected);
+        REQUIRE(rejected == 7);
+        REQUIRE(boxes.size() == 1);
+        REQUIRE(Modules::ParseFrameBoxes(std::string("box"), rejected).empty());
+        REQUIRE(rejected == 1);
+    }
+
+    SECTION("Labels are truncated and the box count is capped") {
+        auto entry = BoxEntry(0.0, 0.0, 1.0, 1.0);
+        entry["label"] = std::string(200, 'a');
+        Parser::Sequence many(Modules::kFrameMaxBoxes + 3, entry);
+        const auto boxes = Modules::ParseFrameBoxes(many, rejected);
+        REQUIRE(boxes.size() == Modules::kFrameMaxBoxes);
+        REQUIRE(rejected == 3);
+        REQUIRE(boxes[0].label.size() == Modules::kFrameMaxBoxLabelCharacters);
+    }
+}
+
+TEST_CASE("Frame publishes boxes from the input attribute with the captured frame",
+          "[modules][frame][boxes]") {
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {8, 16}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["frame"].requested("test", "frame");
+    inputs["frame"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("frame", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::Frame{}, inputs) == Result::SUCCESS);
+    auto* frame = module->getImpl<Modules::FrameImpl>();
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(frame);
+    REQUIRE(presenter);
+    const auto& boxes = frame->*FrameImplAccess::boxesMember();
+
+    Runtime runtime("test", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+    std::unordered_set<std::string> skipped, stalled, failed;
+    const auto compute = [&] {
+        REQUIRE(runtime.compute({}, skipped, stalled, failed) == Result::SUCCESS);
+        REQUIRE(failed.empty());
+    };
+    const std::string key(Modules::kFrameBoxesAttribute);
+
+    auto entry = BoxEntry(2.0, 3.0, 4.0, 2.0);
+    entry["label"] = std::string("carrier");
+    REQUIRE(input.setAttribute(key, Parser::Sequence{entry}) == Result::SUCCESS);
+    compute();
+    REQUIRE(boxes.empty());
+    REQUIRE(presenter->presentCapture() == Result::SUCCESS);
+    REQUIRE(boxes.size() == 1);
+    REQUIRE(boxes[0].x == 2.0f);
+    REQUIRE(boxes[0].label == "carrier");
+
+    REQUIRE(input.setAttribute(key, Parser::Sequence{}) == Result::SUCCESS);
+    compute();
+    REQUIRE(presenter->presentCapture() == Result::SUCCESS);
+    REQUIRE(boxes.empty());
+
+    REQUIRE(input.setAttribute(key, Parser::Sequence{entry, entry}) == Result::SUCCESS);
+    compute();
+    REQUIRE(presenter->presentCapture() == Result::SUCCESS);
+    REQUIRE(boxes.size() == 2);
+
+    REQUIRE(input.removeAttribute(key) == Result::SUCCESS);
+    compute();
+    REQUIRE(presenter->presentCapture() == Result::SUCCESS);
+    REQUIRE(boxes.empty());
+
+    Parser::Map edit;
+    edit["showBoxes"] = false;
+    REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+    REQUIRE(input.setAttribute(key, Parser::Sequence{entry}) == Result::SUCCESS);
+    compute();
+    REQUIRE(presenter->presentCapture() == Result::SUCCESS);
+    REQUIRE(boxes.empty());
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FrameViewFixture, "Frame box placement inverts the zoomed and panned view",
+                 "[modules][frame][boxes][interaction]") {
+    for (const auto* fit : {"contain", "cover", "stretch"}) {
+        DYNAMIC_SECTION("Fit " << fit) {
+            create({64, 16}, fit);
+            zoomTo(3.0f);
+            pan({0.1f, -0.05f});
+
+            for (const auto& image : {Extent2D<F32>{0.0f, 0.0f}, Extent2D<F32>{0.3f, 0.7f},
+                                      Extent2D<F32>{1.0f, 1.0f}}) {
+                DYNAMIC_SECTION("Image " << image.x << ", " << image.y) {
+                    const auto plot = (frame->*FrameImplAccess::imageToPlotMember())(image);
+                    const auto back = (frame->*FrameImplAccess::plotToImageMember())(plot);
+                    REQUIRE(back.x == Catch::Approx(image.x).margin(1e-5f));
+                    REQUIRE(back.y == Catch::Approx(image.y).margin(1e-5f));
+                }
+            }
         }
     }
 }

@@ -1,9 +1,11 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_FRAME_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_FRAME_MODULE_IMPL_HH
 
+#include <any>
 #include <optional>
 #include <array>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -26,6 +28,22 @@ namespace Jetstream::Modules {
 constexpr F32 kFrameZoomSpeed = 0.15f;
 constexpr F32 kFrameMaxZoom = 64.0f;
 constexpr F32 kFrameDragThresholdPx = 4.0f;
+constexpr std::string_view kFrameBoxesAttribute = "boxes";
+constexpr U64 kFrameMaxBoxes = 64;
+constexpr U64 kFrameMaxBoxLabelCharacters = 48;
+
+struct FrameBox {
+    F32 x = 0.0f;
+    F32 y = 0.0f;
+    F32 width = 0.0f;
+    F32 height = 0.0f;
+    std::string label;
+    ColorRGBA<F32> color = {1.0f, 0.85f, 0.2f, 1.0f};
+
+    bool operator==(const FrameBox&) const = default;
+};
+
+JETSTREAM_API std::vector<FrameBox> ParseFrameBoxes(const std::any& value, U64& rejected);
 
 struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
  public:
@@ -45,6 +63,13 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     std::string frameLabel;
 
     std::vector<F32> pixels;
+    std::vector<F32> pendingPixels;
+    std::vector<FrameBox> pendingBoxes;
+    std::vector<FrameBox> boxes;
+    bool warnedBoxes = false;
+    bool boxesChanged = false;
+    U64 drawnBoxes = 0;
+    std::array<F32, 13> boxLayout = {};
     bool updateFrameFlag = false;
     bool redrawFlag = false;
 
@@ -107,6 +132,8 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     std::shared_ptr<Render::Components::Axis> axis;
     std::shared_ptr<Render::Components::Text> text;
     std::shared_ptr<Render::Components::Shapes> selection;
+    std::shared_ptr<Render::Components::Shapes> boxOutlines;
+    std::shared_ptr<Render::Components::Text> boxLabels;
 
     Result createPresent();
     Result destroyPresent();
@@ -115,6 +142,10 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     Result applyTheme();
     JETSTREAM_API std::pair<F32, F32> displayRange() const;
 
+    void stageBoxes();
+    Result updateBoxState();
+    JETSTREAM_API Extent2D<F32> imageToPlot(const Extent2D<F32>& image) const;
+
     void processInputEvents(const std::vector<InputEvent>& events);
     void clampViewCenter();
     Extent2D<F32> plotToView(const Extent2D<F32>& plot) const;
@@ -122,7 +153,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     void zoomToSelection();
     Result updateSelectionState();
     Extent2D<F32> surfaceToPlot(const Extent2D<F32>& position) const;
-    Extent2D<F32> plotToImage(const Extent2D<F32>& plot) const;
+    JETSTREAM_API Extent2D<F32> plotToImage(const Extent2D<F32>& plot) const;
     Extent2D<F32> clampToFrame(const Extent2D<F32>& plot) const;
     void updateFitScale();
     Result updateViewGeometry();

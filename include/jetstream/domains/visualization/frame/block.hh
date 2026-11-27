@@ -14,11 +14,12 @@ struct Frame : public Block::Config {
     std::string interpolation = "nearest";
     std::string xLabel = "X (px)";
     std::string yLabel = "Y (px)";
+    bool showBoxes = true;
 
     JST_BLOCK_TYPE(frame);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(fit, colormap, autoRange, interpolation, xLabel, yLabel);
+    JST_BLOCK_PARAMS(fit, colormap, autoRange, interpolation, xLabel, yLabel, showBoxes);
     JST_BLOCK_DESCRIPTION(
         "Frame",
         "Displays images and heat maps.",
@@ -49,14 +50,16 @@ struct Frame : public Block::Config {
         " Cover fills the view and crops the edges. Stretch fills the view and changes "
         "the proportions. |\n"
         "| **Colormap** | Grayscale | Grayscale, Turbo, Viridis, Inferno, Magma, "
-        "Plasma, Jet, Density | Palette from low to high values. Shown only for single-channel "
-        "frames. |\n"
+        "Plasma, Jet, Density | Palette from low to high values. Shown only for "
+        "single-channel frames. |\n"
         "| **Auto Range** | On | On, Off | Maps the lowest and highest color value of "
         "each frame to the full display range. Off shows values from 0 to 1, and alpha "
         "is never ranged. |\n"
         "| **Interpolation** | Nearest | Nearest, Bilinear, Bicubic | How values "
         "between pixel centers are drawn. Nearest keeps pixels sharp, and Bicubic is "
         "the smoothest. |\n"
+        "| **Boxes** | On | On, Off | Draws the boxes listed in the input's `boxes` "
+        "attribute, as in Draw Boxes. |\n"
         "\n"
         "## Recipes\n"
         "\n"
@@ -85,9 +88,9 @@ struct Frame : public Block::Config {
         " or Slice the last axis down to 1, 3, or 4. |\n"
         "| The block reports an unsupported input data type | The input is not F32 | "
         "Convert it with a Cast block. |\n"
-        "| The block reports that it expects a contiguous tensor | The input is "
-        "strided, such as a Slice with Contiguous off | Turn on Contiguous in the "
-        "Slice. |\n"
+        "| The log warns that entries of the `boxes` attribute were ignored | An entry "
+        "is not a map, lacks a number for `x`, `y`, `width`, or `height`, or has a bad "
+        "label or color | Fix the entries as in Draw Boxes. |\n"
         "\n"
         "## Controls\n"
         "\n"
@@ -98,6 +101,23 @@ struct Frame : public Block::Config {
         "| Zoom into a box | Right Drag |\n"
         "| Reset zoom and pan | Right Click |\n"
         "| Show the position and value of a pixel | Hover |\n"
+        "\n"
+        "## Reference\n"
+        "\n"
+        "### Draw Boxes\n"
+        "\n"
+        "Set the `boxes` attribute of the tensor that feeds the Frame to a list of maps"
+        " in frame pixels, as below. Each map needs `x`, `y`, `width`, and `height`, "
+        "with row 0 at the top, and takes an optional `label` of up to 48 characters "
+        "and a `color`. Colors are three or four numbers from 0 to 1 or a `#RRGGBB[AA]`"
+        " string, and up to 64 boxes are drawn, in yellow by default.\n"
+        "\n"
+        "```python\n"
+        "ctx.output_attrs[0][\"boxes\"] = [\n"
+        "    {\"x\": 120, \"y\": 40, \"width\": 30, \"height\": 12,\n"
+        "     \"label\": \"pulse\", \"color\": [1.0, 0.3, 0.3]},\n"
+        "]\n"
+        "```\n"
         "\n"
         "## Under the Hood\n"
         "\n"
