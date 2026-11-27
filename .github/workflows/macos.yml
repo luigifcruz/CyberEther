@@ -23,26 +23,18 @@ env:
     CoreFoundation.framework/CoreFoundation
     CoreAudio.framework/CoreAudio
     CoreGraphics.framework/CoreGraphics
-    IOSurface.framework/IOSurface
     CoreServices.framework/CoreServices
     CFNetwork.framework/CFNetwork
     IOKit.framework/IOKit
-    OpenGL.framework/OpenGL
-    QuartzCore.framework/QuartzCore
     Security.framework/Security
-    libz.1.dylib
     AppKit.framework/AppKit
-    AVFoundation.framework/AVFoundation
     CoreMedia.framework/CoreMedia
     CoreVideo.framework/CoreVideo
-    SystemConfiguration.framework/SystemConfiguration
     VideoToolbox.framework/VideoToolbox
     UniformTypeIdentifiers.framework/UniformTypeIdentifiers
     libc++.1.dylib
     libSystem.B.dylib
-    libiconv.2.dylib
     libobjc.A.dylib
-    libresolv.9.dylib
   BUNDLED_MACOS_DYLIBS: |
     libjetstream.dylib
 

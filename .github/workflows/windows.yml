@@ -30,26 +30,12 @@ env:
     DXGI.dll
     UXTHEME.dll
     ADVAPI32.dll
-    RPCRT4.dll
-    SHLWAPI.dll
-    IMM32.dll
-    MF.dll
-    MFPlat.dll
-    MFReadWrite.dll
     BCRYPT.dll
     CRYPT32.dll
-    DNSAPI.dll
     IPHLPAPI.dll
-    NORMALIZ.dll
     NTDLL.dll
-    SECUR32.dll
-    VERSION.dll
     VULKAN-1.dll
-    WINMM.dll
-    WLDAP32.dll
     api-ms-win-core-synch-l1-2-0.dll
-    api-ms-win-core-winrt-l1-1-0.dll
-    api-ms-win-core-winrt-string-l1-1-0.dll
   BUNDLED_WINDOWS_DLLS: |
     jetstream.dll
   VULKAN_VERSION: 1.4.309.0
