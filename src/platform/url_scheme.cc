@@ -152,6 +152,10 @@ bool WriteText(const std::filesystem::path& path, const std::string& current, co
 }
 
 std::string QuoteExec(const std::string& path) {
+    if (path.find_first_of(" \t\n\"'\\><~|&;$*?#()`%") == std::string::npos) {
+        return path;
+    }
+
     std::string quoted = "\"";
     for (const char c : path) {
         if (c == '"' || c == '`' || c == '$') {
@@ -510,7 +514,8 @@ Result UrlScheme::listen(const std::string& scheme, Handler handler) {
                                   0,
                                   nullptr);
     if (impl->pipe == INVALID_HANDLE_VALUE) {
-        return GetLastError() == ERROR_ACCESS_DENIED ? Result::SKIP : Result::ERROR;
+        const DWORD error = GetLastError();
+        return error == ERROR_ACCESS_DENIED || error == ERROR_PIPE_BUSY ? Result::SKIP : Result::ERROR;
     }
     impl->stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     impl->ioEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
