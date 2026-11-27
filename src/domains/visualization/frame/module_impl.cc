@@ -156,7 +156,8 @@ std::optional<FrameBox> ParseFrameBox(const std::any& value) {
             return std::nullopt;
         }
         const auto number = AnyNumber(entry->at(key));
-        if (!number || !std::isfinite(*number)) {
+        if (!number || !std::isfinite(*number) ||
+            std::abs(*number) > std::numeric_limits<F32>::max()) {
             return std::nullopt;
         }
         *target = static_cast<F32>(*number);
@@ -299,6 +300,7 @@ Result FrameImpl::create() {
     frameLabel = jst::fmt::format("{} x {}  {}", width, height, ChannelLabel(channels));
 
     pixels.assign(input.size(), 0.0f);
+    pendingPixels.assign(input.size(), 0.0f);
     pendingBoxes.clear();
     boxes.clear();
     warnedBoxes = false;
@@ -607,7 +609,7 @@ Result FrameImpl::capture() {
     redrawFlag = true;
 
     if (frameBuffer) {
-        std::copy_n(input.data<F32>(), pixels.size(), pixels.begin());
+        std::copy(pendingPixels.begin(), pendingPixels.end(), pixels.begin());
         JST_CHECK(frameBuffer->update());
     }
 

@@ -63,6 +63,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     std::string frameLabel;
 
     std::vector<F32> pixels;
+    std::vector<F32> pendingPixels;
     std::vector<FrameBox> pendingBoxes;
     std::vector<FrameBox> boxes;
     bool warnedBoxes = false;
@@ -143,7 +144,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
 
     void stageBoxes();
     Result updateBoxState();
-    Extent2D<F32> imageToPlot(const Extent2D<F32>& image) const;
+    JETSTREAM_API Extent2D<F32> imageToPlot(const Extent2D<F32>& image) const;
 
     void processInputEvents(const std::vector<InputEvent>& events);
     void clampViewCenter();
@@ -152,7 +153,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     void zoomToSelection();
     Result updateSelectionState();
     Extent2D<F32> surfaceToPlot(const Extent2D<F32>& position) const;
-    Extent2D<F32> plotToImage(const Extent2D<F32>& plot) const;
+    JETSTREAM_API Extent2D<F32> plotToImage(const Extent2D<F32>& plot) const;
     Extent2D<F32> clampToFrame(const Extent2D<F32>& plot) const;
     void updateFitScale();
     Result updateViewGeometry();
