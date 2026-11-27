@@ -8,6 +8,7 @@ if all_deps_found
     ffmpeg_nvidia = (jst_is_linux or jst_is_windows) and ['x86_64', 'aarch64'].contains(ffmpeg_cpu)
 
     ffmpeg_options = [
+        'buildtype=' + get_option('buildtype'),
         'auto_features=disabled',
         'default_library=static',
         'gpl=disabled',
@@ -54,6 +55,7 @@ if all_deps_found
         'libopenh264=enabled',
         'libopenh264_encoder=enabled',
 
+        'openh264:buildtype=' + get_option('buildtype'),
         'openh264:default_library=static',
         'openh264:tests=disabled',
     ]

@@ -7,6 +7,7 @@ all_deps_found = remote_opt.enabled() and \
 
 if all_deps_found
     subproject('libsrtp2', required: true, default_options: [
+        'buildtype=' + get_option('buildtype'),
         'default_library=static',
         'crypto-library=openssl',
         'doc=disabled',
