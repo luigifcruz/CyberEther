@@ -55,6 +55,8 @@ Invite links take the form `http://<host>:8686/remote#<token>`. Because browsers
 
 Once approved, the broker steps out of the way. Video and input travel directly between host and browser over an end-to-end encrypted WebRTC connection.
 
+The viewer in control also shares its clipboard with the host. Text copied inside CyberEther lands in the viewer's clipboard, and pasting in the viewer pastes the viewer's clipboard into CyberEther. When CyberEther runs with a window, a paste from the viewer also replaces the host's system clipboard. Clipboard text is limited to 1 MiB.
+
 ## Network and Firewall Requirements
 
 Because there is no cloud relay, the viewing device must have a direct network route to the host:

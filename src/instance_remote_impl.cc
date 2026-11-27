@@ -55,7 +55,32 @@ constexpr U16 kPlayoutDelayMaximum = 2;
 constexpr U64 kMaximumFragmentSize = 1100;
 constexpr U64 kMaximumCandidates = 64;
 constexpr U64 kNackHistory = 2048;
+constexpr U64 kMaxClipboardBytes = 1024 * 1024;
+constexpr U64 kClipboardChunkBytes = 8 * 1024;
+constexpr U64 kMaxClipboardChunks = 256;
+constexpr U64 kMaxControlBytes = 16 * 1024;
+constexpr U64 kMaxClipboardMessageBytes = 64 * 1024;
 constexpr U64 kTelemetryLimit = 4096;
+
+std::vector<std::string> SplitUtf8(const std::string& text, const U64 limit) {
+    std::vector<std::string> chunks;
+    U64 start = 0;
+    while (start < text.size()) {
+        U64 end = std::min<U64>(start + limit, text.size());
+        while (end < text.size() && end > start && (static_cast<U8>(text[end]) & 0xC0) == 0x80) {
+            --end;
+        }
+        if (end == start) {
+            end = std::min<U64>(start + limit, text.size());
+        }
+        chunks.push_back(text.substr(start, end - start));
+        start = end;
+    }
+    if (chunks.empty()) {
+        chunks.emplace_back();
+    }
+    return chunks;
+}
 
 }  // namespace
 
@@ -212,6 +237,11 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
     if (this->startSubmission() != Result::SUCCESS) {
         this->rollbackCreate();
         return Result::ERROR;
+    }
+
+    if (viewport) {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        sentClipboardRevision = viewport->clipboardRevision();
     }
 
     this->started_ = true;
@@ -488,6 +518,7 @@ Result Instance::Remote::Impl::captureFrame(bool presented, std::chrono::steady_
         return this->destroy();
     }
 
+    syncClipboard();
     JST_CHECK(processInput());
     applyViewport();
     if (this->started_ && followViewport() != Result::SUCCESS) {
@@ -571,14 +602,24 @@ Result Instance::Remote::Impl::processInput() {
         pending.swap(inputQueue);
     }
 
-    for (const auto& input : pending) {
+    ++inputFrame;
+    for (auto it = pending.begin(); it != pending.end(); ++it) {
         try {
-            if (input.reset) {
-                resetInput(input.sessionId);
+            if (it->reset) {
+                resetInput(it->sessionId);
+                lastInputFrame = inputFrame;
                 continue;
             }
-            const std::string kind = input.payload.value("kind", "");
-            handleInput(input.sessionId, kind, input.payload);
+            const std::string kind = it->payload.value("kind", "");
+            if (kind == "clipboard" && lastInputFrame != 0 && inputFrame - lastInputFrame < 2) {
+                std::lock_guard<std::mutex> lock(inputMutex);
+                inputQueue.insert(inputQueue.begin(), std::make_move_iterator(it), std::make_move_iterator(pending.end()));
+                break;
+            }
+            handleInput(it->sessionId, kind, it->payload);
+            if (kind == "keyboard" || kind == "text" || (kind == "mouse" && it->payload.value("act", "") != "move")) {
+                lastInputFrame = inputFrame;
+            }
         } catch (const std::exception& e) {
             JST_WARN("[REMOTE] Rejected malformed control message: {}", e.what());
         }
@@ -918,6 +959,23 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         return;
     }
 
+    if (kind == "clipboard") {
+        if (!j.contains("text") || !j["text"].is_string()) {
+            JST_WARN("[REMOTE] Rejected invalid clipboard text.");
+            return;
+        }
+        const std::string text = j["text"].get<std::string>();
+        if (text.size() > kMaxClipboardBytes) {
+            JST_WARN("[REMOTE] Rejected clipboard text larger than {} bytes.", kMaxClipboardBytes);
+            return;
+        }
+        if (viewport) {
+            viewport->setClipboardText(text);
+            sentClipboardRevision = viewport->clipboardRevision();
+        }
+        return;
+    }
+
     if (kind == "text") {
         if (!j.contains("text") || !j["text"].is_string()) {
             JST_WARN("[REMOTE] Rejected invalid text input.");
@@ -1042,7 +1100,7 @@ void Instance::Remote::Impl::synchronizeKeyboardState() {
 
 
 void Instance::Remote::Impl::handleControlMessage(const std::string& sessionId, std::string_view payload) {
-    if (payload.empty() || payload.size() > 16 * 1024) {
+    if (payload.empty() || payload.size() > kMaxClipboardMessageBytes) {
         JST_WARN("[REMOTE] Rejected invalid control message size.");
         return;
     }
@@ -1061,8 +1119,18 @@ void Instance::Remote::Impl::handleControlMessage(const std::string& sessionId, 
         return;
     }
 
+    if (j["kind"] != "clipboard" && payload.size() > kMaxControlBytes) {
+        JST_WARN("[REMOTE] Rejected invalid control message size.");
+        return;
+    }
+
     if (j["kind"] == "viewport") {
         recordViewport(sessionId, j);
+        return;
+    }
+
+    if (j["kind"] == "clipboard") {
+        receiveClipboard(sessionId, j);
         return;
     }
 
@@ -1071,6 +1139,59 @@ void Instance::Remote::Impl::handleControlMessage(const std::string& sessionId, 
     } catch (const std::exception& e) {
         JST_WARN("[REMOTE] Rejected malformed control message: {}", e.what());
     }
+}
+
+void Instance::Remote::Impl::receiveClipboard(const std::string& sessionId, const nlohmann::json& j) {
+    const bool chunked = j.contains("id") || j.contains("index") || j.contains("count");
+    const auto isCount = [&](const char* key) {
+        return j.contains(key) && j[key].is_number_unsigned();
+    };
+    const bool valid = j.contains("text") && j["text"].is_string() &&
+                       (!chunked || (isCount("id") && isCount("index") && isCount("count") &&
+                                     j["text"].get_ref<const std::string&>().size() <= kClipboardChunkBytes));
+
+    const U64 count = valid && chunked ? j["count"].get<U64>() : 1;
+    const U64 index = valid && chunked ? j["index"].get<U64>() : 0;
+    const U64 id = valid && chunked ? j["id"].get<U64>() : 0;
+
+    std::string text;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        if (inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
+            clipboardTransfers.erase(sessionId);
+            return;
+        }
+        if (!valid || count == 0 || count > kMaxClipboardChunks || index >= count) {
+            clipboardTransfers.erase(sessionId);
+            JST_WARN("[REMOTE] Rejected invalid clipboard chunk.");
+            return;
+        }
+
+        auto& transfer = clipboardTransfers[sessionId];
+        if (index == 0) {
+            transfer = {.id = id, .count = count};
+        } else if (transfer.id != id || transfer.count != count || transfer.next != index) {
+            clipboardTransfers.erase(sessionId);
+            JST_WARN("[REMOTE] Dropped an incomplete clipboard transfer.");
+            return;
+        }
+
+        transfer.text += j["text"].get<std::string>();
+        transfer.next = index + 1;
+        if (transfer.text.size() > kMaxClipboardBytes) {
+            clipboardTransfers.erase(sessionId);
+            JST_WARN("[REMOTE] Rejected clipboard text larger than {} bytes.", kMaxClipboardBytes);
+            return;
+        }
+        if (transfer.next < transfer.count) {
+            return;
+        }
+
+        text = std::move(transfer.text);
+        clipboardTransfers.erase(sessionId);
+    }
+
+    enqueueInput(sessionId, nlohmann::json{{"kind", "clipboard"}, {"text", std::move(text)}});
 }
 
 void Instance::Remote::Impl::recordViewport(const std::string& sessionId, const nlohmann::json& j) {
@@ -1129,6 +1250,76 @@ void Instance::Remote::Impl::applyViewport() {
 
     if (viewport) {
         (void)viewport->resize(request.size, request.scale);
+    }
+}
+
+void Instance::Remote::Impl::syncClipboard() {
+    if (!viewport) {
+        return;
+    }
+
+    const U64 revision = viewport->clipboardRevision();
+    std::string controller;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        if (revision == sentClipboardRevision) {
+            return;
+        }
+        if (inputSessionOrder.empty()) {
+            sentClipboardRevision = revision;
+            return;
+        }
+        controller = inputSessionOrder.front();
+    }
+
+    std::shared_ptr<rtc::DataChannel> channel;
+    if (const auto session = findSession(controller)) {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        channel = session->control;
+    }
+    if (!channel || !channel->isOpen()) {
+        return;
+    }
+
+    const auto change = viewport->clipboardChange();
+    const auto markSent = [&] {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        sentClipboardRevision = change.revision;
+    };
+
+    if (change.text.size() > kMaxClipboardBytes) {
+        JST_WARN("[REMOTE] Clipboard text is too large to send to the viewer.");
+        markSent();
+        return;
+    }
+
+    try {
+        const auto chunks = SplitUtf8(change.text, kClipboardChunkBytes);
+        const U64 limit = std::min<U64>(channel->maxMessageSize(), kMaxClipboardMessageBytes);
+        std::vector<std::string> messages;
+        messages.reserve(chunks.size());
+        for (U64 index = 0; index < chunks.size(); ++index) {
+            messages.push_back(nlohmann::json{
+                {"kind", "clipboard"},
+                {"id", change.revision},
+                {"index", index},
+                {"count", chunks.size()},
+                {"text", chunks[index]},
+            }.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+            if (messages.back().size() > limit) {
+                JST_WARN("[REMOTE] Clipboard text is too large to send to the viewer.");
+                markSent();
+                return;
+            }
+        }
+        for (const auto& message : messages) {
+            channel->send(message);
+        }
+        if (channel->isOpen()) {
+            markSent();
+        }
+    } catch (const std::exception& e) {
+        JST_WARN("[REMOTE] Failed to send clipboard text to the viewer: {}", e.what());
     }
 }
 
@@ -1430,6 +1621,7 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
 
         std::lock_guard<std::mutex> inputLock(inputMutex);
         std::erase(inputSessionOrder, sessionId);
+        clipboardTransfers.erase(sessionId);
         inputQueue.push_back({sessionId, {}, true});
     }
 

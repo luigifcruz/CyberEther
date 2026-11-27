@@ -187,6 +187,18 @@ struct Instance::Remote::Impl {
     std::mutex inputMutex;
     std::unordered_map<std::string, ViewportRequest> viewportRequests;
     ViewportRequest appliedViewport;
+    U64 sentClipboardRevision = 0;
+    U64 inputFrame = 0;
+    U64 lastInputFrame = 0;
+
+    struct ClipboardTransfer {
+        U64 id = 0;
+        U64 count = 0;
+        U64 next = 0;
+        std::string text;
+    };
+
+    std::unordered_map<std::string, ClipboardTransfer> clipboardTransfers;
     std::deque<std::string> inputSessionOrder;
     std::deque<QueuedInput> inputQueue;
     std::unordered_map<std::string, RemoteInputState> remoteInputStates;
@@ -203,6 +215,8 @@ struct Instance::Remote::Impl {
     void handleControlMessage(const std::string& sessionId, std::string_view payload);
     void recordViewport(const std::string& sessionId, const nlohmann::json& j);
     void applyViewport();
+    void syncClipboard();
+    void receiveClipboard(const std::string& sessionId, const nlohmann::json& j);
 
     std::unique_ptr<Viewport::FrameCapture> frameCapture;
     std::chrono::steady_clock::time_point nextCaptureTime{};

@@ -92,9 +92,22 @@ std::string Generic::clipboardText() const {
 void Generic::setClipboardText(const std::string& text) {
     if (platform) {
         platform->setClipboardText(text);
-        return;
+    } else {
+        clipboard = text;
     }
-    clipboard = text;
+    std::lock_guard lock(clipboardMutex);
+    copiedClipboard.text = text;
+    ++copiedClipboard.revision;
+}
+
+U64 Generic::clipboardRevision() const {
+    std::lock_guard lock(clipboardMutex);
+    return copiedClipboard.revision;
+}
+
+Generic::ClipboardChange Generic::clipboardChange() const {
+    std::lock_guard lock(clipboardMutex);
+    return copiedClipboard;
 }
 
 void Generic::attachPlatform(std::unique_ptr<Platform> next) {

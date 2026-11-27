@@ -3,7 +3,7 @@ directory = ffmpeg
 url = https://gitlab.freedesktop.org/gstreamer/meson-ports/ffmpeg.git
 revision = 42c25af15f513546c187f2fc2748a00e18a90022
 depth = 1
-diff_files = ffmpeg/videotoolbox-realtime-complete.diff, ffmpeg/windows-encoders.diff, ffmpeg/vaapi-static.diff
+diff_files = ffmpeg/videotoolbox-realtime-complete.diff, ffmpeg/windows-encoders.diff, ffmpeg/vaapi-static.diff, ffmpeg/static-no-bsymbolic.diff
 
 [provide]
 libavcodec = libavcodec_dep

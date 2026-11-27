@@ -90,6 +90,13 @@ class JETSTREAM_API Generic {
     void setCursor(SurfaceCursor cursor);
     std::string clipboardText() const;
     void setClipboardText(const std::string& text);
+    struct ClipboardChange {
+        U64 revision = 0;
+        std::string text;
+    };
+
+    U64 clipboardRevision() const;
+    ClipboardChange clipboardChange() const;
     void requestRedraw();
     void refreshSnapshot();
     bool consumeRedraw();
@@ -124,6 +131,8 @@ class JETSTREAM_API Generic {
     mutable std::mutex snapshotMutex;
     std::optional<Snapshot> snapshot;
     std::string clipboard;
+    mutable std::mutex clipboardMutex;
+    ClipboardChange copiedClipboard;
     Render::InputQueue inputQueue;
     std::atomic<bool> redrawRequested = true;
     std::atomic<bool> platformAnimating = false;
