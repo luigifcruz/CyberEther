@@ -1,5 +1,6 @@
 #include "jetstream/viewport/platforms/headless/metal.hh"
 
+#include <algorithm>
 #include <cmath>
 #include <thread>
 
@@ -82,9 +83,10 @@ Extent2D<F32> Implementation::framebufferSize() const {
 }
 
 MTL::Texture* Implementation::nextDrawable(CA::MetalDrawable*& drawable) {
-    const auto interval = std::chrono::duration<F64>(1.0 / config.framerate);
-    std::this_thread::sleep_until(lastTime + interval);
-    lastTime = std::chrono::steady_clock::now();
+    using Clock = Jetstream::Platform::DeadlineWaiter::Clock;
+    const auto period = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<F64>(1.0 / config.framerate));
+    lastTime = std::max(lastTime + period, Clock::now());
+    waiter.waitUntil(lastTime, waiter.generation());
 
     Extent2D<U64> next;
     F32 nextScale = 1.0f;

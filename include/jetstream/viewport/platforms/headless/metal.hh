@@ -5,6 +5,7 @@
 #include <chrono>
 #include <mutex>
 
+#include "jetstream/platform.hh"
 #include "jetstream/viewport/adapters/metal.hh"
 #include "jetstream/viewport/platforms/headless/generic.hh"
 
@@ -54,6 +55,7 @@ class Headless<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     F32 requestedScale = 1.0f;
     mutable std::mutex extentMutex;
     std::chrono::steady_clock::time_point lastTime;
+    Jetstream::Platform::DeadlineWaiter waiter;
 };
 
 }  // namespace Jetstream::Viewport
