@@ -106,7 +106,8 @@ RtlSdrSweep::~RtlSdrSweep() {
 }
 
 Result RtlSdrSweep::connect(const Device::Info& info) {
-    const auto index = rtlsdr_get_index_by_serial(info.serial.c_str());
+    const auto index = info.index ? static_cast<I64>(*info.index)
+                                 : rtlsdr_get_index_by_serial(info.serial.c_str());
     if (index < 0) {
         JST_ERROR("[SDR_RTLSDR] Device with serial '{}' is no longer available.", info.serial);
         return Result::INCOMPLETE;

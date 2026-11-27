@@ -22,7 +22,7 @@ void FlowgraphConfigFieldInstance::update(FlowgraphConfigFieldConfig config) {
     const std::string nextKind = Parser::Get<std::string>(config.format, "type");
     std::vector<std::shared_ptr<void>> replaced;
     if (nextKind != builtKind || config.id != builtId) {
-        replaced = {std::move(dropdown), std::move(floatField), std::move(intField), std::move(uintField),
+        replaced = {std::move(dropdown), std::move(webUsbDropdown), std::move(floatField), std::move(intField), std::move(uintField),
                     std::move(vectorField), std::move(vectorInline), std::move(path), std::move(boolField),
                     std::move(range), std::move(tensor), std::move(markdown), std::move(python),
                     std::move(pythonConsole), std::move(multiline), std::move(text)};
@@ -50,6 +50,9 @@ void FlowgraphConfigFieldInstance::update(FlowgraphConfigFieldConfig config) {
     switch (kind) {
         case Kind::Dropdown:
             result = ensure(dropdown).update(std::move(config));
+            break;
+        case Kind::WebUsbDropdown:
+            result = ensure(webUsbDropdown).update(std::move(config));
             break;
         case Kind::Float:
             result = ensure(floatField).update(std::move(config));
@@ -145,6 +148,8 @@ Sakura::Component& FlowgraphConfigFieldInstance::component() {
     switch (kind) {
         case Kind::Dropdown:
             return dropdown ? dropdown->component() : unknownFrame;
+        case Kind::WebUsbDropdown:
+            return webUsbDropdown ? webUsbDropdown->component() : unknownFrame;
         case Kind::Float:
             return floatField ? floatField->component() : unknownFrame;
         case Kind::Int:
@@ -182,6 +187,7 @@ Sakura::Component& FlowgraphConfigFieldInstance::component() {
 FlowgraphConfigFieldInstance::Kind FlowgraphConfigFieldInstance::ParseKind(const std::string& value) {
     static const std::unordered_map<std::string, Kind> kinds = {
         {"dropdown", Kind::Dropdown},
+        {"webusb-dropdown", Kind::WebUsbDropdown},
         {"float", Kind::Float},
         {"int", Kind::Int},
         {"uint", Kind::UInt},
@@ -204,6 +210,7 @@ FlowgraphConfigFieldInstance::Kind FlowgraphConfigFieldInstance::ParseKind(const
 
 void FlowgraphConfigFieldInstance::reset() {
     dropdown.reset();
+    webUsbDropdown.reset();
     floatField.reset();
     intField.reset();
     uintField.reset();

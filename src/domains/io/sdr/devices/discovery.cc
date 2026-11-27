@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <charconv>
 #include <map>
 #include <mutex>
 
@@ -205,6 +206,9 @@ Result OpenMode(const std::string& selector, Factory Device::Driver::* factory,
 }  // namespace
 
 std::string Device::Info::selector() const {
+    if (driver == "rtlsdr" && index) {
+        return jst::fmt::format("driver={},index={}", driver, *index);
+    }
     return jst::fmt::format("driver={},serial={}", driver, serial);
 }
 
@@ -228,19 +232,27 @@ std::optional<Device::Selection> Device::Selection::Parse(const std::string& sel
         } else if (key == "serial" && !hasSerial) {
             selection.serial = value;
             hasSerial = true;
+        } else if (key == "index" && !selection.index) {
+            U32 index = 0;
+            const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), index);
+            if (error != std::errc{} || end != value.data() + value.size()) {
+                return std::nullopt;
+            }
+            selection.index = index;
         } else {
             return std::nullopt;
         }
         begin = end + 1;
     }
-    if (!hasDriver || !hasSerial || selection.driver.empty()) {
+    if (!hasDriver || (!hasSerial && !selection.index) || selection.driver.empty() ||
+        (selection.index && (selection.driver != "rtlsdr" || hasSerial))) {
         return std::nullopt;
     }
     return selection;
 }
 
 bool Device::Selection::matches(const Info& info) const {
-    return info.driver == driver && info.serial == serial;
+    return info.driver == driver && (index ? info.index == index : info.serial == serial);
 }
 
 std::vector<Device::Driver> Device::Drivers() {

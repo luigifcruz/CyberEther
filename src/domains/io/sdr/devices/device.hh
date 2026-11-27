@@ -46,6 +46,7 @@ struct JETSTREAM_API Device {
         std::string label;
         bool biasTee = true;
         U64 receiveChannels = 1;
+        std::optional<U32> index;
 
         std::string selector() const;
     };
@@ -53,6 +54,7 @@ struct JETSTREAM_API Device {
     struct JETSTREAM_API Selection {
         std::string driver;
         std::string serial;
+        std::optional<U32> index;
 
         bool matches(const Info& info) const;
 

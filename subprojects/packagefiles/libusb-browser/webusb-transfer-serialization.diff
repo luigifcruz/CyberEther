@@ -1,0 +1,38 @@
+diff --git a/libusb/os/emscripten_webusb.cpp b/libusb/os/emscripten_webusb.cpp
+--- a/libusb/os/emscripten_webusb.cpp
++++ b/libusb/os/emscripten_webusb.cpp
+@@ -192,12 +192,32 @@
+ 			if (timeout) record.timer = setTimeout(() => {
+ 				drain();
+ 				record.finish(undefined, new DOMException('USB transfer timed out', 'TimeoutError'));
+ 			}, timeout);
+-			Promise.resolve(device[method](...args)).then(value => complete(value), error => complete(undefined, error));
++			const rtlControl = device.vendorId === 0x0bda && device.productId === 0x2832 &&
++				(method === 'controlTransferIn' || method === 'controlTransferOut');
++			const invoke = async () => {
++				if (rtlControl) await new Promise(resolve => setTimeout(resolve, 1));
++				try {
++					return await device[method](...args);
++				} catch (error) {
++					if (!rtlControl || record.done || !(error instanceof DOMException) ||
++						error.name !== 'NetworkError') throw error;
++					await new Promise(resolve => setTimeout(resolve, 1));
++					return device[method](...args);
++				}
++			};
++			invoke().then(value => complete(value), error => complete(undefined, error));
+ 		} catch (error) {
+ 			complete(undefined, error);
+ 		}
+ 	};
+-	start();
++	if (method === 'controlTransferIn' || method === 'controlTransferOut') {
++		const chain = Symbol.for('libusb.control_transfer_chain');
++		const previous = device[chain] || Promise.resolve();
++		previous.then(start, start);
++		device[chain] = previous.catch(() => {}).then(() => promise).catch(() => {});
++	} else {
++		start();
++	}
+ 	return Emval.toHandle(promise);
+ });
