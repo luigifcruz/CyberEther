@@ -166,6 +166,7 @@ struct Instance::Remote::Impl {
         std::string sessionId;
         nlohmann::json payload;
         bool reset = false;
+        U64 epoch = 0;
     };
 
     struct RemoteInputState {
@@ -190,6 +191,8 @@ struct Instance::Remote::Impl {
     U64 sentClipboardRevision = 0;
     U64 inputFrame = 0;
     U64 lastInputFrame = 0;
+    U64 controlEpoch = 0;
+    std::mutex controlBroadcastMutex;
 
     struct ClipboardTransfer {
         U64 id = 0;
@@ -206,7 +209,7 @@ struct Instance::Remote::Impl {
 
     void enqueueInput(std::string sessionId, nlohmann::json payload);
     void enqueueInputReset(const std::string& sessionId);
-    void handleInput(const std::string& sessionId, const std::string& kind, const nlohmann::json& j);
+    void handleInput(const std::string& sessionId, U64 epoch, const std::string& kind, const nlohmann::json& j);
     void resetInput(const std::string& sessionId);
     void synchronizeKeyboardState();
     void pushInput(Render::InputQueue::Event event);
@@ -217,6 +220,8 @@ struct Instance::Remote::Impl {
     void applyViewport();
     void syncClipboard();
     void receiveClipboard(const std::string& sessionId, const nlohmann::json& j);
+    void handleControlRequest(const std::string& sessionId, const nlohmann::json& j);
+    void broadcastControlState();
 
     std::unique_ptr<Viewport::FrameCapture> frameCapture;
     std::chrono::steady_clock::time_point nextCaptureTime{};

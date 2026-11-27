@@ -597,14 +597,19 @@ void Instance::Remote::Impl::requestKeyframe() {
 
 Result Instance::Remote::Impl::processInput() {
     std::deque<QueuedInput> pending;
+    U64 epoch = 0;
     {
         std::lock_guard<std::mutex> lock(inputMutex);
         pending.swap(inputQueue);
+        epoch = controlEpoch;
     }
 
     ++inputFrame;
     for (auto it = pending.begin(); it != pending.end(); ++it) {
         try {
+            if (!it->reset && it->epoch != epoch) {
+                continue;
+            }
             if (it->reset) {
                 resetInput(it->sessionId);
                 lastInputFrame = inputFrame;
@@ -616,7 +621,7 @@ Result Instance::Remote::Impl::processInput() {
                 inputQueue.insert(inputQueue.begin(), std::make_move_iterator(it), std::make_move_iterator(pending.end()));
                 break;
             }
-            handleInput(it->sessionId, kind, it->payload);
+            handleInput(it->sessionId, it->epoch, kind, it->payload);
             if (kind == "keyboard" || kind == "text" || (kind == "mouse" && it->payload.value("act", "") != "move")) {
                 lastInputFrame = inputFrame;
             }
@@ -817,10 +822,11 @@ Result Instance::Remote::Impl::destroyStream() {
 }
 
 void Instance::Remote::Impl::handleInput(const std::string& sessionId,
+                                         const U64 epoch,
                                          const std::string& kind,
                                          const nlohmann::json& j) {
     std::lock_guard<std::mutex> lock(inputMutex);
-    if (inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
+    if (epoch != controlEpoch || inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
         return;
     }
 
@@ -1047,7 +1053,7 @@ void Instance::Remote::Impl::enqueueInput(std::string sessionId, nlohmann::json 
     if (inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
         return;
     }
-    inputQueue.push_back({std::move(sessionId), std::move(payload), false});
+    inputQueue.push_back({std::move(sessionId), std::move(payload), false, controlEpoch});
 }
 
 void Instance::Remote::Impl::enqueueInputReset(const std::string& sessionId) {
@@ -1134,10 +1140,82 @@ void Instance::Remote::Impl::handleControlMessage(const std::string& sessionId, 
         return;
     }
 
+    if (j["kind"] == "control") {
+        handleControlRequest(sessionId, j);
+        return;
+    }
+
     try {
         enqueueInput(sessionId, std::move(j));
     } catch (const std::exception& e) {
         JST_WARN("[REMOTE] Rejected malformed control message: {}", e.what());
+    }
+}
+
+void Instance::Remote::Impl::handleControlRequest(const std::string& sessionId, const nlohmann::json& j) {
+    const std::string action = j.value("action", "");
+    if (action != "take" && action != "release") {
+        JST_WARN("[REMOTE] Rejected invalid control request.");
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        const auto it = std::ranges::find(inputSessionOrder, sessionId);
+        if (it == inputSessionOrder.end()) {
+            return;
+        }
+
+        const std::string previous = inputSessionOrder.front();
+        inputSessionOrder.erase(it);
+        if (action == "take") {
+            inputSessionOrder.insert(inputSessionOrder.begin(), sessionId);
+        } else {
+            inputSessionOrder.push_back(sessionId);
+        }
+
+        if (inputSessionOrder.front() != previous) {
+            ++controlEpoch;
+            clipboardTransfers.erase(previous);
+            inputQueue.push_back({previous, {}, true});
+            JST_INFO("[REMOTE] Viewer control moved to session '{}'.", inputSessionOrder.front());
+        }
+    }
+
+    broadcastControlState();
+}
+
+void Instance::Remote::Impl::broadcastControlState() {
+    std::lock_guard<std::mutex> broadcastLock(controlBroadcastMutex);
+    std::vector<std::pair<std::string, std::shared_ptr<rtc::DataChannel>>> channels;
+    std::string controller;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        for (const auto& [sessionId, session] : sessions) {
+            if (session->control) {
+                channels.emplace_back(sessionId, session->control);
+            }
+        }
+
+        std::lock_guard<std::mutex> inputLock(inputMutex);
+        if (!inputSessionOrder.empty()) {
+            controller = inputSessionOrder.front();
+        }
+    }
+
+    for (const auto& [sessionId, channel] : channels) {
+        if (!channel->isOpen()) {
+            continue;
+        }
+        try {
+            channel->send(nlohmann::json{
+                {"kind", "control"},
+                {"state", sessionId == controller ? "controller" : "viewer"},
+                {"viewers", channels.size()},
+            }.dump());
+        } catch (const std::exception& e) {
+            JST_WARN("[REMOTE] Failed to send control state to the viewer: {}", e.what());
+        }
     }
 }
 
@@ -1189,9 +1267,8 @@ void Instance::Remote::Impl::receiveClipboard(const std::string& sessionId, cons
 
         text = std::move(transfer.text);
         clipboardTransfers.erase(sessionId);
+        inputQueue.push_back({sessionId, nlohmann::json{{"kind", "clipboard"}, {"text", std::move(text)}}, false, controlEpoch});
     }
-
-    enqueueInput(sessionId, nlohmann::json{{"kind", "clipboard"}, {"text", std::move(text)}});
 }
 
 void Instance::Remote::Impl::recordViewport(const std::string& sessionId, const nlohmann::json& j) {
@@ -1315,8 +1392,9 @@ void Instance::Remote::Impl::syncClipboard() {
         for (const auto& message : messages) {
             channel->send(message);
         }
-        if (channel->isOpen()) {
-            markSent();
+        std::lock_guard<std::mutex> lock(inputMutex);
+        if (channel->isOpen() && !inputSessionOrder.empty() && inputSessionOrder.front() == controller) {
+            sentClipboardRevision = change.revision;
         }
     } catch (const std::exception& e) {
         JST_WARN("[REMOTE] Failed to send clipboard text to the viewer: {}", e.what());
@@ -1347,6 +1425,10 @@ void Instance::Remote::Impl::bindControlChannel(const std::string& sessionId,
     channel->onMessage([](rtc::binary) {}, [this, sessionId](rtc::string text) {
         handleControlMessage(sessionId, text);
     });
+    channel->onOpen([this]() {
+        broadcastControlState();
+    });
+    broadcastControlState();
 }
 
 Result Instance::Remote::Impl::openEncoder(std::unique_ptr<Encoder>& opened) {
@@ -1620,6 +1702,9 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
         sessions.erase(it);
 
         std::lock_guard<std::mutex> inputLock(inputMutex);
+        if (!inputSessionOrder.empty() && inputSessionOrder.front() == sessionId) {
+            ++controlEpoch;
+        }
         std::erase(inputSessionOrder, sessionId);
         clipboardTransfers.erase(sessionId);
         inputQueue.push_back({sessionId, {}, true});
@@ -1628,6 +1713,7 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
     JST_INFO("[REMOTE] Destroying WebRTC session '{}' with peer '{}'.", session->sessionId, session->peerId);
 
     closeWebRtcSession(*session);
+    broadcastControlState();
 }
 
 void Instance::Remote::Impl::destroyAllWebRtcSessions() {
