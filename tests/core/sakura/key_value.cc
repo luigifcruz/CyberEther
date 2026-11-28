@@ -119,12 +119,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     environment->onClose();
 
     REQUIRE(scene.mail.size() == 2);
-    REQUIRE(std::holds_alternative<MailSetFlowgraphEnvironmentSearch>(scene.mail[0]));
-    CHECK(std::get<MailSetFlowgraphEnvironmentSearch>(scene.mail[0]).flowgraph == "graph");
-    CHECK(std::get<MailSetFlowgraphEnvironmentSearch>(scene.mail[0]).value == "path");
-    REQUIRE(std::holds_alternative<MailSetFlowgraphEnvironmentVisible>(scene.mail[1]));
-    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(scene.mail[1]).flowgraph == "graph");
-    CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(scene.mail[1]).value);
+    REQUIRE(scene.mail[0].is<MailSetFlowgraphEnvironmentSearch>());
+    CHECK(scene.mail[0].get<MailSetFlowgraphEnvironmentSearch>().flowgraph == "graph");
+    CHECK(scene.mail[0].get<MailSetFlowgraphEnvironmentSearch>().value == "path");
+    REQUIRE(scene.mail[1].is<MailSetFlowgraphEnvironmentVisible>());
+    CHECK(scene.mail[1].get<MailSetFlowgraphEnvironmentVisible>().flowgraph == "graph");
+    CHECK_FALSE(scene.mail[1].get<MailSetFlowgraphEnvironmentVisible>().value);
 }
 
 TEST_CASE("Key-value nodes render scalars, vectors, and nested containers as text",

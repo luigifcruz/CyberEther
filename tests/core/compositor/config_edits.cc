@@ -46,7 +46,7 @@ TEST_CASE("Inline and detached config edits preserve their completion callbacks"
         fields[0].onApply({{"gain", 25.0f}}, true, complete);
     }
     REQUIRE(messages.size() == 1);
-    const auto& message = std::get<MailReconfigureBlock>(messages[0]);
+    const auto& message = messages[0].get<MailReconfigureBlock>();
     REQUIRE(message.flowgraph == "graph");
     REQUIRE(message.blockId == "radio");
     REQUIRE(message.silent);
@@ -106,7 +106,7 @@ TEST_CASE("Advanced settings stay behind a toggle that the node metadata remembe
     REQUIRE(Parser::Get<bool>(shown[1].values, "advanced"));
     shown[2].onApply({{"batches", U64{4}}}, false, {});
     REQUIRE(messages.size() == 1);
-    REQUIRE(std::holds_alternative<MailReconfigureBlock>(messages[0]));
+    REQUIRE(messages[0].is<MailReconfigureBlock>());
 
     auto plain = built;
     plain.erase(plain.begin());
@@ -117,7 +117,7 @@ TEST_CASE("Advanced settings stay behind a toggle that the node metadata remembe
     REQUIRE(editor.onNodeConfigAdvanced);
     editor.onNodeConfigAdvanced("radio", true);
     REQUIRE(messages.size() == 2);
-    const auto& toggle = std::get<MailSetConfigAdvanced>(messages[1]);
+    const auto& toggle = messages[1].get<MailSetConfigAdvanced>();
     REQUIRE(toggle.flowgraph == "graph");
     REQUIRE(toggle.block == "radio");
     REQUIRE(toggle.advanced);
@@ -132,7 +132,7 @@ TEST_CASE("Advanced settings stay behind a toggle that the node metadata remembe
     REQUIRE(detached[0].onConfigAdvanced);
     detached[0].onConfigAdvanced(false);
     REQUIRE(messages.size() == 3);
-    const auto& detachedToggle = std::get<MailSetConfigAdvanced>(messages[2]);
+    const auto& detachedToggle = messages[2].get<MailSetConfigAdvanced>();
     REQUIRE(detachedToggle.flowgraph == "graph");
     REQUIRE(detachedToggle.block == "radio");
     REQUIRE_FALSE(detachedToggle.advanced);
@@ -210,7 +210,7 @@ TEST_CASE("Inline and detached config copies share one draft until the committed
     };
     const auto dispatch = [&] {
         for (const auto& mail : messages) {
-            REQUIRE(drafts.handle(std::get<MailSetConfigDraft>(mail)) == Result::SUCCESS);
+            REQUIRE(drafts.handle(mail.get<MailSetConfigDraft>()) == Result::SUCCESS);
         }
         messages.clear();
     };

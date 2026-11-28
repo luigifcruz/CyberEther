@@ -1191,7 +1191,7 @@ TEST_CASE("Terminal actions run a session per open terminal, publish each screen
             Result::SUCCESS);
     REQUIRE(settle([&] { return !rig.mails.empty(); }));
     REQUIRE(rig.mails.size() == 1);
-    const auto* closed = std::get_if<MailCloseTerminal>(&rig.mails.front());
+    const auto* closed = rig.mails.front().getIf<MailCloseTerminal>();
     REQUIRE(closed != nullptr);
     CHECK(closed->terminal == 1);
 
@@ -1413,7 +1413,7 @@ TEST_CASE("Terminal link opens forward only web, mail, and file links", "[core][
     }
     std::vector<std::string> opened;
     for (const auto& mail : rig.mails) {
-        if (const auto* open = std::get_if<MailOpenUrl>(&mail)) {
+        if (const auto* open = mail.getIf<MailOpenUrl>()) {
             opened.push_back(open->url);
         }
     }

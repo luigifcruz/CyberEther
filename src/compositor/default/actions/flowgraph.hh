@@ -35,7 +35,6 @@
 #include <regex>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -43,44 +42,6 @@
 namespace Jetstream {
 
 struct FlowgraphActions {
-    using Filter = std::tuple<MailNewFlowgraph,
-                              MailOpenFlowgraph,
-                              MailOpenFlowgraphPath,
-                              MailToggleFavoriteFlowgraph,
-                              MailForgetRecentFlowgraph,
-                              MailRememberFlowgraph,
-                              MailDropFlowgraphFiles,
-                              MailOpenFlowgraphBlob,
-                              MailOpenFlowgraphExample,
-                              MailFocusFlowgraph,
-                              MailSetFlowgraphPaused,
-                              MailSaveFlowgraph,
-                              MailCloseFlowgraph,
-                              MailCancelCloseFlowgraph,
-                              MailSaveFlowgraphPath,
-                              MailSetFlowgraphInfo,
-                              MailCreateBlock,
-                              MailOpenRenameBlock,
-                              MailRenameBlock,
-                              MailDeleteBlock,
-                              MailToggleBlockFrozen,
-                              MailReloadBlock,
-                              MailChangeBlockDevice,
-                              MailConnectBlock,
-                              MailDisconnectBlock,
-                              MailReconfigureBlock,
-                              MailCopyBlock,
-                              MailPasteBlock,
-                              MailDuplicateBlock,
-                              MailSelectBlocks,
-                              MailSetNodeMeta,
-                              MailSetEditorMeta,
-                              MailSetConfigCollapsed,
-                              MailSetMetricsCollapsed,
-                              MailSetConfigAdvanced,
-                              MailSurfaceInput,
-                              MailResizeSurface>;
-
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 

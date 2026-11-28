@@ -21,40 +21,12 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 namespace Jetstream {
 
 struct AgentActions {
-    using Filter = std::tuple<MailSetAgentEnabled,
-                              MailSetAgentChatVisible,
-                              MailSetAgentVoiceVisible,
-                              MailStartAgentVoice,
-                              MailSetAgentVoiceMuted,
-                              MailSubmitAgentChat,
-                              MailCancelAgentChat,
-                              MailClearAgentChat,
-                              MailWithdrawAgentChat,
-                              MailResumeAgentChat,
-                              MailSelectAgentModel,
-                              MailSetAgentReasoningEffort,
-                              MailOpenAgentModelPicker,
-                              MailSetAgentModelSearch,
-                              MailAddAgentModel,
-                              MailRemoveAgentModel,
-                              MailOpenAgentProviderEditor,
-                              MailSaveAgentProvider,
-                              MailRemoveAgentProvider,
-                              MailTestAgentProvider,
-                              MailSignInAgentProvider,
-                              MailCancelAgentProviderSignIn,
-                              MailSetAgentVoiceBackend,
-                              MailSetAgentVoiceModel,
-                              MailSetAgentVoiceName,
-                              MailSetAgentMcp>;
-
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
     AgentRuntime& runtime;

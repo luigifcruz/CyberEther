@@ -7,15 +7,10 @@
 #include "../support/crash_report.hh"
 
 #include <optional>
-#include <tuple>
 
 namespace Jetstream {
 
 struct CrashReportActions {
-    using Filter = std::tuple<MailOpenCrashReport,
-                              MailSubmitCrashReport,
-                              MailDismissCrashReport>;
-
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 

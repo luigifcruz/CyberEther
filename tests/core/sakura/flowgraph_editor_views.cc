@@ -939,8 +939,8 @@ TEST_CASE("Detached surface presenter reports config panel toggles as the collap
         rig.mails.clear();
         actions[0].onClick();
         REQUIRE(rig.mails.size() == 1);
-        REQUIRE(std::holds_alternative<MailSetSurfaceConfigCollapsed>(rig.mails[0]));
-        return std::get<MailSetSurfaceConfigCollapsed>(rig.mails[0]);
+        REQUIRE(rig.mails[0].is<MailSetSurfaceConfigCollapsed>());
+        return rig.mails[0].get<MailSetSurfaceConfigCollapsed>();
     };
 
     const auto opened = toggle(true);
@@ -1336,17 +1336,17 @@ TEST_CASE("Editor presenter wires the toolbar to pause, save, environment, and i
     config.onToggleEnvironment();
     config.onInfo();
     REQUIRE(mails.size() == 4);
-    CHECK(std::get<MailSetFlowgraphPaused>(mails[0]).flowgraph == "graph");
-    CHECK(std::get<MailSetFlowgraphPaused>(mails[0]).paused);
-    CHECK(std::get<MailSaveFlowgraph>(mails[1]).flowgraph == "graph");
-    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mails[2]).value);
-    CHECK(std::get<MailOpenModal>(mails[3]).content == ModalContent::FlowgraphInfo);
-    CHECK(std::get<MailOpenModal>(mails[3]).flowgraph == std::optional<std::string>("graph"));
+    CHECK(mails[0].get<MailSetFlowgraphPaused>().flowgraph == "graph");
+    CHECK(mails[0].get<MailSetFlowgraphPaused>().paused);
+    CHECK(mails[1].get<MailSaveFlowgraph>().flowgraph == "graph");
+    CHECK(mails[2].get<MailSetFlowgraphEnvironmentVisible>().value);
+    CHECK(mails[3].get<MailOpenModal>().content == ModalContent::FlowgraphInfo);
+    CHECK(mails[3].get<MailOpenModal>().flowgraph == std::optional<std::string>("graph"));
 
     state.flowgraph.environment["graph"] = "";
     config = FlowgraphEditorPresenter(context).build("graph", graph);
     config.onToggleEnvironment();
-    CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(mails.back()).value);
+    CHECK_FALSE(mails.back().get<MailSetFlowgraphEnvironmentVisible>().value);
 
 }
 
@@ -1362,13 +1362,13 @@ TEST_CASE("Editor presenter sends the blocks to delete or freeze as one mail",
     auto config = FlowgraphEditorPresenter(context).build("graph", graph);
     config.onDeleteBlocks({"fft", "ifft"});
     REQUIRE(mails.size() == 1);
-    const auto& mail = std::get<MailDeleteBlock>(mails[0]);
+    const auto& mail = mails[0].get<MailDeleteBlock>();
     CHECK(mail.flowgraph == "graph");
     CHECK(mail.blockIds == std::vector<std::string>{"fft", "ifft"});
 
     config.onToggleBlockFrozen({"fft"});
     REQUIRE(mails.size() == 2);
-    const auto& freeze = std::get<MailToggleBlockFrozen>(mails[1]);
+    const auto& freeze = mails[1].get<MailToggleBlockFrozen>();
     CHECK(freeze.flowgraph == "graph");
     CHECK(freeze.blockIds == std::vector<std::string>{"fft"});
 }
@@ -1388,13 +1388,13 @@ TEST_CASE("Editor presenter sends copy, cut, duplicate, and select mail and pass
     config.onDuplicateBlocks({"ifft"});
     config.onSelectBlocks({"fft", "ifft"});
     REQUIRE(mails.size() == 4);
-    CHECK_FALSE(std::get<MailCopyBlock>(mails[0]).cut);
-    CHECK(std::get<MailCopyBlock>(mails[0]).blockIds == std::vector<std::string>{"fft"});
-    CHECK(std::get<MailCopyBlock>(mails[1]).cut);
-    CHECK(std::get<MailCopyBlock>(mails[1]).blockIds == std::vector<std::string>{"fft", "ifft"});
-    CHECK(std::get<MailDuplicateBlock>(mails[2]).blockIds == std::vector<std::string>{"ifft"});
-    CHECK(std::get<MailSelectBlocks>(mails[3]).flowgraph == "graph");
-    CHECK(std::get<MailSelectBlocks>(mails[3]).blockIds == std::vector<std::string>{"fft", "ifft"});
+    CHECK_FALSE(mails[0].get<MailCopyBlock>().cut);
+    CHECK(mails[0].get<MailCopyBlock>().blockIds == std::vector<std::string>{"fft"});
+    CHECK(mails[1].get<MailCopyBlock>().cut);
+    CHECK(mails[1].get<MailCopyBlock>().blockIds == std::vector<std::string>{"fft", "ifft"});
+    CHECK(mails[2].get<MailDuplicateBlock>().blockIds == std::vector<std::string>{"ifft"});
+    CHECK(mails[3].get<MailSelectBlocks>().flowgraph == "graph");
+    CHECK(mails[3].get<MailSelectBlocks>().blockIds == std::vector<std::string>{"fft", "ifft"});
 
     state.flowgraph.selections["graph"] = {.requests = 7, .blocks = {"fft_1"}};
     const auto selected = FlowgraphEditorPresenter(context).build("graph", graph);
@@ -1469,7 +1469,7 @@ TEST_CASE("Attached surface presenter forwards plot input and cursor and reports
 
     surface.onInput(Mouse(MouseEventType::Click, 4.0f, 8.0f));
     REQUIRE(rig.mails.size() == 1);
-    const auto input = std::get<MailSurfaceInput>(rig.mails[0]);
+    const auto input = rig.mails[0].get<MailSurfaceInput>();
     CHECK(input.surface == rig.module->surface());
     REQUIRE(std::holds_alternative<MouseEvent>(input.event));
     CHECK(std::get<MouseEvent>(input.event).type == MouseEventType::Click);
@@ -1477,7 +1477,7 @@ TEST_CASE("Attached surface presenter forwards plot input and cursor and reports
 
     surface.onAttachedSize({.logicalSize = {120, 80}, .framebufferSize = {240, 160}, .scale = 2.0f});
     REQUIRE(rig.mails.size() == 2);
-    const auto resize = std::get<MailResizeSurface>(rig.mails[1]);
+    const auto resize = rig.mails[1].get<MailResizeSurface>();
     CHECK(resize.surface == rig.module->surface());
     CHECK(resize.placement == SurfacePlacement::Attached);
     CHECK(resize.metaKey == "surface_default");
@@ -1485,7 +1485,7 @@ TEST_CASE("Attached surface presenter forwards plot input and cursor and reports
 
     surface.onDetach(true);
     REQUIRE(rig.mails.size() == 3);
-    const auto detach = std::get<MailSetSurfaceDetached>(rig.mails[2]);
+    const auto detach = rig.mails[2].get<MailSetSurfaceDetached>();
     CHECK(detach.flowgraph == "graph");
     CHECK(detach.block == "source");
     CHECK(detach.surface == "default");

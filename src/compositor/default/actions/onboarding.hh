@@ -10,14 +10,10 @@
 
 #include <optional>
 #include <string>
-#include <tuple>
 
 namespace Jetstream {
 
 struct OnboardingActions {
-    using Filter = std::tuple<MailOpenOnboarding,
-                              MailDismissOnboarding>;
-
     DefaultCompositorState& state;
 
     explicit OnboardingActions(DefaultCompositorState& state);

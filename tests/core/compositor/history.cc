@@ -288,7 +288,7 @@ TEST_CASE_METHOD(HistoryFixture, "Undoing a rename renames back and moves the ti
     CHECK(blocks() == std::vector<std::string>{"leaf", "middle", "source"});
     CHECK(sourceOf("leaf") == "middle");
     REQUIRE(mail.size() == 1);
-    const auto* rename = std::get_if<MailRenameLayoutBlock>(&mail.front());
+    const auto* rename = mail.front().getIf<MailRenameLayoutBlock>();
     REQUIRE(rename != nullptr);
     CHECK(rename->oldId == "renamed");
     CHECK(rename->newId == "middle");
@@ -300,7 +300,7 @@ TEST_CASE_METHOD(HistoryFixture, "Undoing a new block removes its tiles", "[core
 
     undo();
     REQUIRE(mail.size() == 1);
-    const auto* removed = std::get_if<MailRemoveLayoutBlock>(&mail.front());
+    const auto* removed = mail.front().getIf<MailRemoveLayoutBlock>();
     REQUIRE(removed != nullptr);
     CHECK(removed->block == "source");
 }
@@ -515,7 +515,7 @@ TEST_CASE_METHOD(HistoryFixture, "Deleting several blocks at once is one undo st
 
     std::vector<std::string> removed;
     for (const auto& message : mail) {
-        if (const auto* remove = std::get_if<MailRemoveLayoutBlock>(&message)) {
+        if (const auto* remove = message.getIf<MailRemoveLayoutBlock>()) {
             removed.push_back(remove->block);
         }
     }
@@ -546,7 +546,7 @@ TEST_CASE_METHOD(HistoryFixture, "A failed multi-delete keeps the blocks it remo
 
     std::vector<std::string> removed;
     for (const auto& message : mail) {
-        if (const auto* remove = std::get_if<MailRemoveLayoutBlock>(&message)) {
+        if (const auto* remove = message.getIf<MailRemoveLayoutBlock>()) {
             removed.push_back(remove->block);
         }
     }
@@ -715,7 +715,7 @@ TEST_CASE_METHOD(HistoryFixture, "Saving a flowgraph to a file marks its current
     drain();
     CHECK_FALSE(graphHistory().unsaved());
     CHECK(std::any_of(mail.begin(), mail.end(), [](const Mail& message) {
-        return std::holds_alternative<MailRememberFlowgraph>(message);
+        return message.is<MailRememberFlowgraph>();
     }));
 
     std::filesystem::remove(path);

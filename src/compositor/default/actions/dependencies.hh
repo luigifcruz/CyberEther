@@ -6,13 +6,10 @@
 
 #include "runtime/python/dependencies/coordinator.hh"
 
-#include <tuple>
 
 namespace Jetstream {
 
 struct DependencyActions {
-    using Filter = std::tuple<MailInstallPythonDependencies>;
-
     DefaultCompositorCallbacks& callbacks;
 
     explicit DependencyActions(DefaultCompositorCallbacks& callbacks);

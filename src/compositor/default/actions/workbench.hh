@@ -18,37 +18,11 @@
 #include <optional>
 #include <string>
 #include <system_error>
-#include <tuple>
 #include <unordered_set>
 
 namespace Jetstream {
 
 struct WorkbenchActions {
-    using Filter = std::tuple<MailApplyTheme,
-                              MailOpenModal,
-                              MailCloseModal,
-                              MailNotify,
-                              MailNotifyResult,
-                              MailOpenUrl,
-                              MailCopyText,
-                              MailRevealPath,
-                              MailQuit,
-                              MailOpenStartTab,
-                              MailCloseStartTab,
-                              MailFocusStartTab,
-                              MailSetWelcomeSection,
-                              MailSetWelcomeSidebar,
-                              MailSetWelcomeQuery,
-                              MailSetWelcomeCategory,
-                              MailSetWelcomePage,
-                              MailOpenSettings,
-                              MailCloseSettings,
-                              MailFocusSettings,
-                              MailOpenDocs,
-                              MailCloseDocs,
-                              MailSetDocsQuery,
-                              MailFocusDocs>;
-
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 

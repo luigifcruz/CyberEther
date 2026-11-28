@@ -476,7 +476,7 @@ struct Workbench : FlowgraphFixture {
 
         LayoutActions actions(state.flowgraph);
         for (const auto& mail : std::exchange(mails, {})) {
-            if (const auto* layout = std::get_if<MailSetFlowgraphLayout>(&mail)) {
+            if (const auto* layout = mail.getIf<MailSetFlowgraphLayout>()) {
                 CHECK(actions.handle(*layout) == Result::SUCCESS);
             }
         }

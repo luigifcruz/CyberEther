@@ -18,19 +18,12 @@
 #include <fstream>
 #include <iterator>
 #include <string>
-#include <tuple>
 #include <vector>
 
 namespace Jetstream {
 
 struct PluginActions {
     using Clock = std::chrono::steady_clock;
-    using Filter = std::tuple<MailInstallGalleryPlugins,
-                              MailUpdateGalleryPlugins,
-                              MailSetPluginUpdatePolicy,
-                              MailOpenPluginDetails,
-                              MailClosePluginDetails>;
-
     static constexpr auto RetryInterval = std::chrono::seconds(30);
     static constexpr auto RefreshInterval = std::chrono::hours(1);
 

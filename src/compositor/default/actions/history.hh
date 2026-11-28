@@ -10,7 +10,6 @@
 #include <chrono>
 #include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -18,9 +17,6 @@
 namespace Jetstream {
 
 struct HistoryActions {
-    using Filter = std::tuple<MailUndoFlowgraph,
-                              MailRedoFlowgraph,
-                              MailRecordFlowgraphLayout>;
     using Clock = FlowgraphHistory::Clock;
 
     static constexpr std::chrono::milliseconds MergeWindow{1000};

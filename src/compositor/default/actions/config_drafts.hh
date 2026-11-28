@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <chrono>
 #include <string>
-#include <tuple>
 #include <unordered_map>
 
 namespace Jetstream {
@@ -17,8 +16,6 @@ namespace Jetstream {
 struct ConfigDraftActions {
     using FlowgraphState = DefaultCompositorState::FlowgraphState;
     using Clock = std::chrono::steady_clock;
-    using Filter = std::tuple<MailSetConfigDraft>;
-
     static constexpr auto SettleInterval = std::chrono::seconds(2);
 
     FlowgraphState& state;

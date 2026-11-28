@@ -42,7 +42,7 @@ TEST_CASE("Detached configs use block snapshots with live markdown previews",
     REQUIRE(field.onBrowsePath);
     field.onApply({{"content", std::string("Updated")}}, true, {});
     REQUIRE(messages.size() == 1);
-    const auto& reconfigure = std::get<MailReconfigureBlock>(messages[0]);
+    const auto& reconfigure = messages[0].get<MailReconfigureBlock>();
     CHECK(reconfigure.flowgraph == "graph");
     CHECK(reconfigure.blockId == "note");
     CHECK(reconfigure.silent);

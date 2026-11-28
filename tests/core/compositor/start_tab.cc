@@ -424,7 +424,7 @@ TEST_CASE("Gallery page links open the matching example inside the app", "[core]
 
     REQUIRE(actions.handle(MailOpenUrl{.url = "https://cyberether.org/gallery/flowgraphs/" + key}) == Result::SUCCESS);
     REQUIRE(mails.size() == 1);
-    const auto* open = std::get_if<MailOpenFlowgraphExample>(&mails.front());
+    const auto* open = mails.front().getIf<MailOpenFlowgraphExample>();
     REQUIRE(open != nullptr);
     CHECK(open->key == key);
 }
@@ -442,7 +442,7 @@ TEST_CASE("Docs page links open the bundled page inside the app", "[core][compos
     REQUIRE(actions.handle(MailOpenUrl{.url = "https://cyberether.org/docs/quick-start#first-steps"}) ==
             Result::SUCCESS);
     REQUIRE(mails.size() == 1);
-    const auto* open = std::get_if<MailOpenDocs>(&mails.front());
+    const auto* open = mails.front().getIf<MailOpenDocs>();
     REQUIRE(open != nullptr);
     CHECK(open->page == "quick-start");
     CHECK(open->anchor == "first-steps");
@@ -560,8 +560,8 @@ TEST_CASE("Recent flowgraph history records a path only after its open or save s
 
     REQUIRE(completions.size() == 2);
     for (const auto& mail : completions) {
-        REQUIRE(std::holds_alternative<MailRememberFlowgraph>(mail));
-        REQUIRE(actions.handle(std::get<MailRememberFlowgraph>(mail)) == Result::SUCCESS);
+        REQUIRE(mail.is<MailRememberFlowgraph>());
+        REQUIRE(actions.handle(mail.get<MailRememberFlowgraph>()) == Result::SUCCESS);
     }
 
     const auto& recent = state.interface.recentFlowgraphs;

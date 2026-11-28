@@ -416,9 +416,6 @@ TEST_CASE("Tile tools list placeable tiles and arrange them through layout mail"
         }
         return nlohmann::json::parse(future.get().content);
     };
-    const auto variant = [](const Mail& mail) -> const Mail::variant& {
-        return mail;
-    };
 
     const auto listed = invoke("inspect_tiles", "{}");
     CHECK(listed["layout"]["tile"] == "flowgraph");
@@ -432,12 +429,12 @@ TEST_CASE("Tile tools list placeable tiles and arrange them through layout mail"
     CHECK(arranged["closed"].empty());
     REQUIRE(mails.size() == 2);
 
-    const auto* detach = std::get_if<MailSetConfigDetached>(&variant(mails[0]));
+    const auto* detach = mails[0].getIf<MailSetConfigDetached>();
     REQUIRE(detach != nullptr);
     CHECK(detach->block == "source");
     CHECK(detach->detached);
 
-    const auto* layout = std::get_if<MailSetFlowgraphLayout>(&variant(mails[1]));
+    const auto* layout = mails[1].getIf<MailSetFlowgraphLayout>();
     REQUIRE(layout != nullptr);
     CHECK(layout->track);
     REQUIRE(layout->tiles.has_value());
@@ -461,13 +458,13 @@ TEST_CASE("Tile tools list placeable tiles and arrange them through layout mail"
     const auto closed = invoke("arrange_tiles", R"({"layout":{"tile":"flowgraph"}})");
     CHECK(closed["closed"] == nlohmann::json::array({"config:source"}));
     REQUIRE(mails.size() == 2);
-    const auto* attach = std::get_if<MailSetConfigDetached>(&variant(mails[0]));
+    const auto* attach = mails[0].getIf<MailSetConfigDetached>();
     REQUIRE(attach != nullptr);
     CHECK_FALSE(attach->detached);
 
     invoke("arrange_tiles", R"({"layout":{"split":"row","children":[{"tile":"flowgraph"},{"tile":"config:source"}]}})");
     REQUIRE(mails.size() == 4);
-    const auto* reopen = std::get_if<MailSetConfigDetached>(&variant(mails[2]));
+    const auto* reopen = mails[2].getIf<MailSetConfigDetached>();
     REQUIRE(reopen != nullptr);
     CHECK(reopen->detached);
 
@@ -514,13 +511,10 @@ TEST_CASE("Flowgraph tools list favorite and recent files and open them through 
         return nlohmann::json::parse(future.get().content);
     };
     const auto idle = [] {};
-    const auto variant = [](Mail& mail) -> Mail::variant& {
-        return mail;
-    };
     const auto complete = [&](Result result, std::shared_ptr<Flowgraph> flowgraph) {
         return [&, result, flowgraph] {
             for (auto& mail : mails) {
-                auto* open = std::get_if<MailOpenFlowgraphPath>(&variant(mail));
+                auto* open = mail.getIf<MailOpenFlowgraphPath>();
                 if (open && open->onComplete) {
                     std::exchange(open->onComplete, {})(result, flowgraph);
                 }
@@ -546,7 +540,7 @@ TEST_CASE("Flowgraph tools list favorite and recent files and open them through 
                                 complete(Result::ERROR, nullptr));
     CHECK(missing["error"] == "Could not open flowgraph '/flowgraphs/ism.yml'.");
     REQUIRE(mails.size() == 1);
-    CHECK(std::get<MailOpenFlowgraphPath>(variant(mails[0])).path == "/flowgraphs/ism.yml");
+    CHECK(mails[0].get<MailOpenFlowgraphPath>().path == "/flowgraphs/ism.yml");
 
     mails.clear();
     const auto empty = invoke("open_flowgraph", R"({"path":"/flowgraphs/ism.yml"})",
@@ -600,9 +594,6 @@ TEST_CASE("Flowgraph tools list open graphs and focus one through the focus mail
         }
         return nlohmann::json::parse(future.get().content);
     };
-    const auto variant = [](const Mail& mail) -> const Mail::variant& {
-        return mail;
-    };
 
     const auto listed = invoke("list_open_flowgraphs", "{}");
     CHECK(listed["selected"] == "first");
@@ -621,7 +612,7 @@ TEST_CASE("Flowgraph tools list open graphs and focus one through the focus mail
         mails.clear();
         const auto reply = invoke("focus_flowgraph", nlohmann::json({{"flowgraph", flowgraph}}).dump());
         REQUIRE(mails.size() == 1);
-        const auto* focus = std::get_if<MailFocusFlowgraph>(&variant(mails[0]));
+        const auto* focus = mails[0].getIf<MailFocusFlowgraph>();
         REQUIRE(focus != nullptr);
         CHECK(focus->flowgraph == flowgraph);
         CHECK(focus->reveal);
@@ -635,7 +626,7 @@ TEST_CASE("Flowgraph tools list open graphs and focus one through the focus mail
     CHECK(invoke("list_open_flowgraphs", "{}")["selected"] == "second");
 
     FlowgraphActions actions(state, callbacks);
-    REQUIRE(actions.handle(std::get<MailFocusFlowgraph>(variant(mails[0]))) == Result::SUCCESS);
+    REQUIRE(actions.handle(mails[0].get<MailFocusFlowgraph>()) == Result::SUCCESS);
     CHECK(state.interface.focusedFlowgraph == "second");
     CHECK(state.interface.requestedFlowgraph == "second");
     CHECK(state.interface.flowgraphRequests == 1);

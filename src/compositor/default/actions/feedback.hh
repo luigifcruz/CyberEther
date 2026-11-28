@@ -8,16 +8,10 @@
 
 #include "jetstream/logger.hh"
 
-#include <tuple>
 
 namespace Jetstream {
 
 struct FeedbackActions {
-    using Filter = std::tuple<MailSetFeedbackText,
-                              MailSetFeedbackDebugInfo,
-                              MailReportBlockProblem,
-                              MailSubmitFeedback>;
-
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
