@@ -1,6 +1,7 @@
 #include "feedback.hh"
 
 #include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 
 #include <cstring>
 #include <mutex>
@@ -11,8 +12,6 @@
 
 #if defined(JST_OS_BROWSER)
 #include <emscripten/fetch.h>
-#elif defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
-#include <httplib.h>
 #endif
 
 namespace Jetstream {
@@ -192,17 +191,22 @@ void Feedback::submit(const std::string& text) {
         std::string resultId;
 
         try {
-            httplib::Client cli("https://cyberether.org");
-            cli.set_connection_timeout(10);
-            cli.set_read_timeout(15);
+            Platform::Http::Client::Request request;
+            request.method = "POST";
+            request.host = "https://cyberether.org";
+            request.path = "/api/v1/feedback";
+            request.headers = {{"Content-Type", "application/json"}};
+            request.body = body;
+            request.timeoutSeconds = 15;
+            request.followRedirects = false;
 
-            auto res = cli.Post("/api/v1/feedback", body, "application/json");
+            const auto res = Platform::Http::Client::Send(request);
 
-            if (!res) {
+            if (res.error) {
                 errorMessage = "Network error: unable to reach the feedback server.";
-            } else if (res->status == 202) {
+            } else if (res.status == 202) {
                 try {
-                    auto responseJson = nlohmann::json::parse(res->body);
+                    auto responseJson = nlohmann::json::parse(res.body);
                     if (responseJson.contains("accepted") &&
                         responseJson["accepted"] == true) {
                         resultId = responseJson.value("id", "");
@@ -212,16 +216,16 @@ void Feedback::submit(const std::string& text) {
                 } catch (const std::exception&) {
                     resultId = "";
                 }
-            } else if (res->status == 429) {
+            } else if (res.status == 429) {
                 errorMessage = "Rate limit reached. Please try again later.";
-            } else if (res->status == 403) {
+            } else if (res.status == 403) {
                 errorMessage = "Access denied. The feedback endpoint rejected the request.";
-            } else if (res->status == 400) {
+            } else if (res.status == 400) {
                 errorMessage = "Invalid feedback. Please check your input and try again.";
             } else {
-                errorMessage = "HTTP " + std::to_string(res->status);
-                if (!res->body.empty()) {
-                    errorMessage += ": " + res->body;
+                errorMessage = "HTTP " + std::to_string(res.status);
+                if (!res.body.empty()) {
+                    errorMessage += ": " + res.body;
                 }
             }
         } catch (const std::exception& e) {

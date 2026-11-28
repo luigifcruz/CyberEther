@@ -215,7 +215,11 @@ Result Plugin::Gallery::Fetch(const Source& source,
 
     const auto response = source.send(request);
     if (response.error || response.status != 200) {
-        JST_ERROR("[PLUGIN] The CyberEther gallery is unreachable (status {}).", response.status);
+        if (response.error) {
+            JST_ERROR("[PLUGIN] The CyberEther gallery is unreachable: {}.", response.error.message);
+        } else {
+            JST_ERROR("[PLUGIN] The CyberEther gallery is unreachable (status {}).", response.status);
+        }
         return Result::ERROR;
     }
 
