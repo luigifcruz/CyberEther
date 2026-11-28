@@ -447,6 +447,10 @@ struct MailSetGraphicsDevice {
     DeviceType value = DeviceType::None;
 };
 
+struct MailSetGraphicsGpu {
+    Settings::Gpu value;
+};
+
 struct MailSetDebugTimingEnabled {
     bool value = false;
 };
@@ -902,6 +906,7 @@ struct Mail : std::variant<MailNewFlowgraph,
                            MailTerminalInput,
                            MailSetGraphicsScale,
                            MailSetGraphicsDevice,
+                           MailSetGraphicsGpu,
                            MailSetAgentEnabled,
                            MailSetAgentChatVisible,
                            MailSetAgentVoiceVisible,

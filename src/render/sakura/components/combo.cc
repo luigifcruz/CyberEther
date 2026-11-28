@@ -63,6 +63,7 @@ void Combo::update(Config config) {
     impl->dropdown.update({
         .id = current.id,
         .options = current.options,
+        .details = current.details,
         .selected = SelectedOption(current),
         .padding = 8.0f,
         .rowPadding = {6.0f, 4.0f},

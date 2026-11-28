@@ -3,6 +3,7 @@ src_lst += files([
     'base.cc',
     'developer.cc',
     'general.cc',
+    'gpu_labels.cc',
     'intelligence.cc',
     'intelligence_model.cc',
     'intelligence_provider.cc',

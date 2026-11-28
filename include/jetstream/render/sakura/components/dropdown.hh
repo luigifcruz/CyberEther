@@ -17,6 +17,7 @@ struct Dropdown {
     struct Config {
         std::string id;
         std::vector<std::string> options;
+        std::vector<std::string> details;
         std::optional<U64> selected;
         F32 rowGap = 0.0f;
         F32 padding = 12.0f;

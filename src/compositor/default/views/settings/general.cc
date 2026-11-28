@@ -131,14 +131,38 @@ void GeneralSettingsView::update(Config config) {
         }},
     });
 
+    const auto& gpuOptions = this->config.gpuOptions;
+    gpuCombo.update({
+        .id = "settings:graphics-gpu",
+        .options = gpuOptions,
+        .details = this->config.gpuDetails,
+        .value = this->config.gpuSelected < gpuOptions.size() ? gpuOptions[this->config.gpuSelected] : std::string(),
+        .disabled = this->config.gpuDisabled,
+        .selectedIndex = this->config.gpuSelected,
+        .onSelect = [this](U64 index) {
+            if (this->config.onGpuSelect) {
+                this->config.onGpuSelect(index);
+            }
+        },
+    });
+    std::vector<Sakura::SettingCard::Row> renderingRows = {{
+        .label = "Graphics Renderer",
+        .description = "Changing the renderer requires restarting CyberEther.",
+        .control = &rendererTabs,
+    }};
+    if (this->config.gpuVisible) {
+        renderingRows.push_back({
+            .label = "Graphics Device",
+            .description = "Select the graphics card used for rendering and compute.",
+            .control = &gpuCombo,
+            .wide = true,
+        });
+    }
     renderingGroup.update({
         .title = "Rendering",
         .description = "The graphics backend that draws the interface.",
-        .rows = {{
-            .label = "Graphics Renderer",
-            .description = "Changing the renderer requires restarting CyberEther.",
-            .control = &rendererTabs,
-        }},
+        .warning = this->config.gpuVisible ? "Changing the graphics device requires restarting CyberEther." : "",
+        .rows = std::move(renderingRows),
     });
 
     stack.update({

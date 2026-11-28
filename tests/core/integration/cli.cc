@@ -563,7 +563,7 @@ TEST_CASE("CLI repeated options use last scalar and idempotent flag values",
            0,
             {"Preferred graphics backend (current: vulkan)",
              "Dependency installation policy (current: allow)",
-             "Vulkan and CUDA device index (current: 2)",
+             "Vulkan device index for this run (current: 2)",
             "Viewport size (current: 800x600)",
             "Interface scale factor (current: 2.5)",
             "Target frame rate (current: 75)",
@@ -598,7 +598,7 @@ TEST_CASE("CLI accepts normalized, inline, and boundary values", "[core][integra
            0,
             {"Preferred graphics backend (current: metal)",
              "Dependency installation policy (current: deny)",
-             "Vulkan and CUDA device index (current: 7)",
+             "Vulkan device index for this run (current: 7)",
             "Viewport size (current: 640x480)",
             "Interface scale factor (current: 2.0)",
             "Target frame rate (current: 30)",
@@ -633,14 +633,14 @@ TEST_CASE("CLI accepts normalized, inline, and boundary values", "[core][integra
             "--framerate=18446744073709551615",
             "--help"},
            0,
-            {"Vulkan and CUDA device index (current: 18446744073709551615)",
+            {"Vulkan device index for this run (current: 18446744073709551615)",
              "Viewport size (current: 2147483647x1)",
              "Interface scale factor (current: 0.125)",
              "Target frame rate (current: 18446744073709551615)"});
     Expect("minimum numeric boundaries",
            {"--device-index=0", "--size=1X1", "--scale=0.125", "--framerate=1", "--help"},
            0,
-           {"Vulkan and CUDA device index (current: 0)",
+           {"Vulkan device index for this run (current: 0)",
             "Viewport size (current: 1x1)",
             "Interface scale factor (current: 0.125)",
             "Target frame rate (current: 1)"});
@@ -649,7 +649,7 @@ TEST_CASE("CLI accepts normalized, inline, and boundary values", "[core][integra
            0,
             {"Preferred graphics backend (current: automatic)",
              "Dependency installation policy (current: prompt)",
-             "Vulkan and CUDA device index (current: 0)",
+             "Vulkan device index for this run (current: auto)",
             "Viewport size (current: 1920x1080)",
             "Interface scale factor (current: 1.0)",
             "Target frame rate (current: 60)",
@@ -677,7 +677,7 @@ TEST_CASE("CLI rejects invalid syntax and command conflicts", "[core][integratio
     Expect("device index with benchmark",
            {"benchmark", "--device-index", "7", "--help"},
            0,
-           {"Vulkan and CUDA device index (current: 7)"});
+           {"Vulkan device index for this run (current: 7)"});
     Expect("benchmark option with run", {"run", "--format", "json"}, 2, {}, {"only available for the benchmark command"});
     Expect("benchmark option before run", {"--format=csv", "run"}, 2, {}, {"only available for the benchmark command"});
     Expect("update positional", {"update", "release"}, 2, {}, {"does not accept positional arguments"});

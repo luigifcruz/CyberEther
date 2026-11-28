@@ -19,15 +19,25 @@ struct JETSTREAM_API Settings {
         JST_SERDES(width, height);
     };
 
+    struct Gpu {
+        std::string uuid;
+        std::string name;
+
+        bool operator==(const Gpu&) const = default;
+
+        JST_SERDES(uuid, name);
+    };
+
     struct Graphics {
         std::optional<DeviceType> device{};
-        U64 deviceId = 0;
+        std::optional<U64> deviceId{};
+        Gpu gpu;
         bool headless = false;
         Size size;
         F32 scale = 1.0f;
         U64 framerate = 60;
 
-        JST_SERDES(device, size, scale, framerate);
+        JST_SERDES(device, gpu, size, scale, framerate);
     };
 
     struct Remote {

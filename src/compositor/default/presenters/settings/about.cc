@@ -56,16 +56,6 @@ std::string AboutPresenter::ThermalLabel(U64 state) {
     return "Unknown";
 }
 
-std::string AboutPresenter::DeviceTypeLabel(Backend::PhysicalDeviceType type) {
-    switch (type) {
-        case Backend::PhysicalDeviceType::DISCRETE: return "Discrete";
-        case Backend::PhysicalDeviceType::INTEGRATED: return "Integrated";
-        case Backend::PhysicalDeviceType::OTHER: return "Other";
-        case Backend::PhysicalDeviceType::UNKNOWN: break;
-    }
-    return "Unknown";
-}
-
 std::string AboutPresenter::MemoryLabel(U64 bytes) {
     return jst::fmt::format("{:.0f} GB", static_cast<F64>(bytes) / (1024.0 * 1024.0 * 1024.0));
 }
@@ -154,7 +144,7 @@ std::vector<AboutInfoTable::Config> AboutPresenter::InfoTables(const Input& inpu
             .title = "Metal Backend",
             .rows = {
                 {"Device", backend->getDeviceName()},
-                {"Device Type", DeviceTypeLabel(backend->getPhysicalDeviceType())},
+                {"Device Type", GpuLabels::Type(backend->getPhysicalDeviceType())},
                 {"API Version", backend->getApiVersion()},
                 {"Physical Memory", MemoryLabel(backend->getPhysicalMemory())},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},
@@ -171,11 +161,16 @@ std::vector<AboutInfoTable::Config> AboutPresenter::InfoTables(const Input& inpu
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     if (Backend::Initialized<DeviceType::Vulkan>()) {
         auto& backend = Backend::State<DeviceType::Vulkan>();
+        const auto names = GpuLabels::Names(backend->getDevices());
+        const auto index = backend->getDeviceId();
         tables.push_back({
             .title = "Vulkan Backend",
             .rows = {
-                {"Device", backend->getDeviceName()},
-                {"Device Index", jst::fmt::format("{}", backend->getDeviceId())},
+                {"Device", index < names.size() ? names[index] : backend->getDeviceName()},
+                {"Device Type", GpuLabels::Type(backend->getPhysicalDeviceType())},
+                {"Device Index", jst::fmt::format("{}", index)},
+                {"Device UUID", backend->getDeviceUuid().empty() ? std::string("Unknown") : backend->getDeviceUuid()},
+                {"Device Selection", GpuLabels::Selection(backend->getDeviceSelection())},
                 {"API Version", backend->getApiVersion()},
                 {"Physical Memory", MemoryLabel(backend->getPhysicalMemory())},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},

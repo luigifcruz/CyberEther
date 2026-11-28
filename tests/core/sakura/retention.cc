@@ -1622,6 +1622,28 @@ TEST_CASE("Closed combos settle and repaint once per hover transition", "[core][
     CHECK(Retains(frames, update));
 }
 
+TEST_CASE("Open combo dropdowns settle and repaint only when an option detail changes", "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Combo combo;
+    LayerSlot mount;
+    mount.hold(combo, {100.0f, 100.0f, 200.0f, 34.0f});
+    LayerHost host({&mount});
+    Frames frames(host, kScreen, scene.context());
+    std::string detail = "Integrated";
+    const auto update = [&] {
+        combo.update({.id = "details", .options = {"Automatic", "Intel"}, .details = {"", detail}, .value = "Automatic"});
+    };
+    REQUIRE(frames.settle(update));
+    host.click(150.0f, 117.0f);
+    REQUIRE(frames.settle(update));
+    REQUIRE(host.popups.interactiveAt({150.0f, 150.0f}));
+    CHECK(Retains(frames, update));
+
+    detail = "Discrete";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+}
+
 TEST_CASE("Text inputs settle under identical updates and repaint on value changes",
           "[core][sakura][retention]") {
     Scene scene;

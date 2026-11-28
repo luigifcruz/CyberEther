@@ -21,6 +21,7 @@ namespace {
 
 constexpr U64 kRowSlots = 24;
 constexpr U64 kMaxCharacters = 128;
+constexpr F32 kDetailGap = 24.0f;
 
 }  // namespace
 
@@ -43,6 +44,7 @@ struct DropdownBody : public Component {
     Box panel;
     Box highlights;
     Label texts;
+    Label detailTexts;
     Scroller scroll;
     TextMetrics textMetrics;
     F32 anchorWidth = 0.0f;
@@ -50,6 +52,7 @@ struct DropdownBody : public Component {
     std::function<void(U64)> onActivate;
 
     std::vector<std::string> options;
+    std::vector<std::string> details;
     std::optional<U64> selected;
     Metrics metrics;
     F32 scrollY = 0.0f;
@@ -67,6 +70,7 @@ struct DropdownBody : public Component {
         addChild(panel);
         addChild(highlights);
         addChild(texts);
+        addChild(detailTexts);
         addChild(scroll);
     }
 
@@ -93,8 +97,12 @@ struct DropdownBody : public Component {
         const F32 unit = ctx.pixelRatio;
         textMetrics.setWindow(ctx.render);
         F32 labelWidth = 0.0f;
-        for (const auto& option : options) {
-            labelWidth = std::max(labelWidth, textMetrics.measure(metrics.fontName, option, metrics.fontSize * unit));
+        for (U64 row = 0; row < options.size(); ++row) {
+            F32 width = textMetrics.measure(metrics.fontName, options[row], metrics.fontSize * unit);
+            if (row < details.size() && !details[row].empty()) {
+                width += kDetailGap * unit + textMetrics.measure(metrics.fontName, details[row], metrics.fontSize * unit);
+            }
+            labelWidth = std::max(labelWidth, width);
         }
         const U64 count = options.size();
         const F32 rowHeight = (metrics.fontSize + 2.0f * metrics.padY) * unit;
@@ -103,12 +111,14 @@ struct DropdownBody : public Component {
         const F32 maxHeight = visibleRows > 0 ? static_cast<F32>(visibleRows) * (rowHeight + gap) - gap : contentHeight;
         const F32 marginX = metrics.marginX * unit;
         const F32 marginY = metrics.marginY * unit;
-        const F32 innerWidth = std::max(anchorWidth - 2.0f * marginX, labelWidth + 2.0f * metrics.padX * unit);
+        const F32 gutter = contentHeight > maxHeight ? Px(ctx, kScrollbarThickness + 2.0f * kScrollbarMargin) : 0.0f;
+        const F32 innerWidth = std::max(anchorWidth - 2.0f * marginX, labelWidth + 2.0f * metrics.padX * unit + gutter);
         return FitExtent({std::ceil(innerWidth + 2.0f * marginX), std::ceil(std::min(contentHeight, maxHeight) + 2.0f * marginY)},
                          available);
     }
 
     void layout(const Context& ctx) override {
+        textMetrics.setWindow(ctx.render);
         const Rect outer = frame();
         const F32 unit = ctx.pixelRatio;
         const F32 marginX = metrics.marginX * unit;
@@ -165,6 +175,7 @@ struct DropdownBody : public Component {
 
         std::vector<Box::Instance> boxes;
         std::vector<Label::Instance> labels;
+        std::vector<Label::Instance> detailLabels;
         const F32 visual = scrollY + overscrollY;
         const U64 first = stride > 0.0f ? static_cast<U64>(std::max(0.0f, std::floor(visual / stride))) : 0;
         for (U64 row = first; row < count && labels.size() < kRowSlots; ++row) {
@@ -191,6 +202,19 @@ struct DropdownBody : public Component {
                 .fontSize = fontSize,
                 .alignment = {0, 1},
             });
+            const bool fits = row < details.size() && !details[row].empty() &&
+                              textMetrics.measure(metrics.fontName, options[row], fontSize) + kDetailGap * unit +
+                                      textMetrics.measure(metrics.fontName, details[row], fontSize) <=
+                                  rowRect.width - 2.0f * padX;
+            if (fits) {
+                detailLabels.push_back({
+                    .rect = {rowRect.x + padX, rowRect.y + padY, std::max(0.0f, rowRect.width - 2.0f * padX), fontSize},
+                    .str = details[row],
+                    .color = ctx.color("text_secondary"),
+                    .fontSize = fontSize,
+                    .alignment = {2, 1},
+                });
+            }
         }
 
         highlights.update({
@@ -206,8 +230,16 @@ struct DropdownBody : public Component {
             .maxCharacters = kMaxCharacters,
             .capacity = kRowSlots,
         });
+        detailTexts.update({
+            .instances = std::move(detailLabels),
+            .clip = viewport,
+            .fontName = metrics.fontName,
+            .maxCharacters = kMaxCharacters,
+            .capacity = kRowSlots,
+        });
         layoutChild(ctx, highlights, bounds);
         layoutChild(ctx, texts, bounds);
+        layoutChild(ctx, detailTexts, bounds);
     }
 
     bool mouseEvent(const MouseEvent& event) override {
@@ -314,8 +346,9 @@ bool Dropdown::isOpen() const {
 
 void Dropdown::update(Config config) {
     impl->config = std::move(config);
-    if (impl->body.options != impl->config.options) {
+    if (impl->body.options != impl->config.options || impl->body.details != impl->config.details) {
         impl->body.options = impl->config.options;
+        impl->body.details = impl->config.details;
         impl->body.refresh();
     }
     const bool stateChanged = impl->body.selected != impl->config.selected ||

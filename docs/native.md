@@ -64,7 +64,7 @@ Long options that take a value accept both `--option value` and `--option=value`
 | Option | Purpose |
 |---|---|
 | `--renderer <renderer>` | Select the preferred graphics backend (`metal` or `vulkan`). |
-| `--device-index <index>` | Zero-based device index for Vulkan and CUDA. |
+| `--device-index <index>` | Zero-based Vulkan device index. |
 | `--headless` | Run without creating a desktop window. |
 | `--size <WxH>` | Set the viewport width and height. |
 | `--scale <factor>` | Set the UI scaling factor. |
@@ -72,7 +72,7 @@ Long options that take a value accept both `--option value` and `--option=value`
 | `--framerate <fps>` | Set the target presentation frame rate. |
 
 > [!NOTE]
-> Vulkan and CUDA enumerate devices independently. On machines with multiple GPUs, the same `--device-index` number may refer to different physical cards in each API.
+> The CUDA backend follows the graphics card that Vulkan uses by matching the device UUID. When no CUDA device matches, it uses the first CUDA device. The startup log lists every Vulkan GPU with its index.
 
 ### Runtime Options
 
@@ -90,7 +90,7 @@ The `benchmark` subcommand supports `--format markdown`, `--format json`, and `-
 cyberether benchmark fft --format json
 ```
 
-All CUDA benchmarks respect the global `--device-index` flag.
+Benchmarks run CUDA on the graphics device saved in **Settings** when a CUDA device matches it, and on the first CUDA device otherwise. The `--device-index` flag only selects the Vulkan device.
 
 ### Updating CyberEther
 
@@ -122,7 +122,7 @@ On Linux, setting the `XDG_CONFIG_HOME` environment variable overrides `~/.confi
 
 The `settings.yaml` file organizes persisted settings into top-level sections:
 
-- **`graphics`:** Preferred graphics device, window size, UI scale, and frame rate. Session flags such as `--device-index` and `--headless` are not persisted.
+- **`graphics`:** Preferred graphics backend and device, window size, UI scale, and frame rate. Session flags such as `--device-index` and `--headless` are not persisted.
 - **`remote`:** Access approval mode, video codec and encoder, broker address, port, TLS paths, and media transport settings.
 - **`runtime`:** Selected Python runtime path and PEP 723 dependency policy.
 - **`interface`:** Active theme, background particles, tips, touchpad scroll speed, and recent or favorite flowgraphs.
@@ -135,5 +135,5 @@ The `settings.yaml` file organizes persisted settings into top-level sections:
 | Symptom | What to Try |
 |---|---|
 | **The window fails to open** | Switch renderers with `--renderer vulkan` or `--renderer metal`, and confirm your GPU drivers are up to date. |
-| **The wrong GPU is active** | Pass a different `--device-index`. Remember that Vulkan and CUDA can number GPUs differently on multi-GPU systems. |
+| **The wrong GPU is active** | With the Vulkan renderer, pick the card under **Settings** > **General** > **Graphics Device** and restart CyberEther, or pass `--device-index` for a single run. Metal always uses the system default device. A saved GPU that is not connected falls back to the automatic choice without losing the setting. |
 | **Python blocks report an invalid runtime** | Select a working interpreter under **Settings** > **Runtime**, or pass one explicitly with `--python-runtime`. |

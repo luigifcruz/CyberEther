@@ -3,6 +3,7 @@
 #include "compositor/default/actions/gallery.hh"
 #include "compositor/default/actions/settings.hh"
 #include "compositor/default/presenters/agent/labels.hh"
+#include "compositor/default/presenters/settings/gpu_labels.hh"
 #include "compositor/default/actions/workbench.hh"
 #include "environment.hh"
 
@@ -10,6 +11,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace Jetstream;
 
@@ -183,6 +185,144 @@ TEST_CASE("Touchpad scroll speed updates the interface state and persists the se
     Settings settings;
     REQUIRE(Settings::Get(settings) == Result::SUCCESS);
     CHECK(settings.interface.touchpadScrollSpeed == 2.4f);
+}
+
+TEST_CASE("Selecting a GPU updates the graphics state and persists the UUID and name",
+          "[core][compositor][settings-tab][gpu]") {
+    TestSupport::SettingsSandbox sandbox("compositor-gpu");
+    sandbox.require();
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    SettingsActions actions(state, callbacks);
+    const Settings::Gpu nvidia = {.uuid = "nvidia-uuid", .name = "NVIDIA GeForce RTX 5060 Ti"};
+
+    REQUIRE(actions.handle(MailSetGraphicsGpu{.value = nvidia}) == Result::SUCCESS);
+    CHECK(state.graphics.gpu == nvidia);
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    CHECK(settings.graphics.gpu == nvidia);
+    CHECK_FALSE(settings.graphics.deviceId.has_value());
+
+    REQUIRE(actions.handle(MailSetGraphicsGpu{}) == Result::SUCCESS);
+    CHECK(state.graphics.gpu == Settings::Gpu{});
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    CHECK(settings.graphics.gpu.uuid.empty());
+}
+
+namespace {
+
+std::vector<Backend::PhysicalDevice> HybridLaptop() {
+    return {
+        {.index = 0, .name = "Intel(R) Graphics (PTL)", .uuid = "intel", .type = Backend::PhysicalDeviceType::INTEGRATED},
+        {.index = 1, .name = "NVIDIA GeForce RTX 5060 Ti", .uuid = "nvidia", .type = Backend::PhysicalDeviceType::DISCRETE},
+        {.index = 2, .name = "llvmpipe (LLVM 19.1.7, 256 bits)", .uuid = "cpu", .type = Backend::PhysicalDeviceType::CPU},
+    };
+}
+
+std::vector<std::string> Labels(const GpuLabels::Choices& choices) {
+    std::vector<std::string> labels;
+    for (const auto& option : choices.options) {
+        labels.push_back(option.label);
+    }
+    return labels;
+}
+
+std::vector<std::string> Details(const GpuLabels::Choices& choices) {
+    std::vector<std::string> details;
+    for (const auto& option : choices.options) {
+        details.push_back(option.detail);
+    }
+    return details;
+}
+
+}  // namespace
+
+TEST_CASE("GPU choices lead with what Automatic resolves to and hide CPU renderers",
+          "[core][compositor][settings-tab][gpu]") {
+    const auto choices = GpuLabels::Build(HybridLaptop(), {});
+    CHECK(Labels(choices) == std::vector<std::string>{
+        "Automatic (Intel(R) Graphics (PTL))",
+        "Intel(R) Graphics (PTL)",
+        "NVIDIA GeForce RTX 5060 Ti",
+    });
+    CHECK(Details(choices) == std::vector<std::string>{"", "Integrated", "Discrete"});
+    CHECK(choices.selected == 0);
+    CHECK_FALSE(choices.disabled);
+    CHECK(choices.options[0].value == Settings::Gpu{});
+    CHECK(choices.options[2].value == Settings::Gpu{.uuid = "nvidia", .name = "NVIDIA GeForce RTX 5060 Ti"});
+
+    const auto saved = GpuLabels::Build(HybridLaptop(), {.uuid = "nvidia", .name = "NVIDIA GeForce RTX 5060 Ti"});
+    CHECK(saved.selected == 2);
+}
+
+TEST_CASE("GPU choices keep a saved GPU that is not connected selected",
+          "[core][compositor][settings-tab][gpu]") {
+    const auto choices = GpuLabels::Build(HybridLaptop(), {.uuid = "egpu", .name = "AMD Radeon RX 7900 XTX"});
+    REQUIRE(choices.options.size() == 4);
+    CHECK(choices.options.back().label == "AMD Radeon RX 7900 XTX (not connected)");
+    CHECK(choices.options.back().detail.empty());
+    CHECK(choices.options.back().value == Settings::Gpu{.uuid = "egpu", .name = "AMD Radeon RX 7900 XTX"});
+    CHECK(choices.selected == 3);
+    CHECK_FALSE(choices.disabled);
+}
+
+TEST_CASE("GPU choices disable a single GPU and show CPU renderers only when nothing else exists",
+          "[core][compositor][settings-tab][gpu]") {
+    auto single = HybridLaptop();
+    single.erase(single.begin() + 1);
+    const auto choices = GpuLabels::Build(single, {});
+    CHECK(Labels(choices) == std::vector<std::string>{"Automatic (Intel(R) Graphics (PTL))", "Intel(R) Graphics (PTL)"});
+    CHECK(choices.disabled);
+    const auto pinned = GpuLabels::Build(single, {.uuid = "intel", .name = "Intel(R) Graphics (PTL)"});
+    CHECK(pinned.selected == 1);
+    CHECK_FALSE(pinned.disabled);
+
+    const std::vector<Backend::PhysicalDevice> software = {
+        {.index = 0, .name = "llvmpipe", .uuid = "cpu", .type = Backend::PhysicalDeviceType::CPU},
+    };
+    const auto cpu = GpuLabels::Build(software, {});
+    CHECK(Labels(cpu) == std::vector<std::string>{"Automatic (llvmpipe)", "llvmpipe"});
+    CHECK(Details(cpu) == std::vector<std::string>{"", "CPU"});
+    CHECK(cpu.disabled);
+
+    const std::vector<Backend::PhysicalDevice> softwareFirst = {
+        {.index = 0, .name = "llvmpipe", .uuid = "cpu", .type = Backend::PhysicalDeviceType::CPU},
+        {.index = 1, .name = "NVIDIA GeForce RTX 5060 Ti", .uuid = "nvidia", .type = Backend::PhysicalDeviceType::DISCRETE},
+    };
+    const auto reachable = GpuLabels::Build(softwareFirst, {});
+    CHECK(Labels(reachable) == std::vector<std::string>{"Automatic (llvmpipe)", "NVIDIA GeForce RTX 5060 Ti"});
+    CHECK_FALSE(reachable.disabled);
+
+    const auto none = GpuLabels::Build({}, {});
+    CHECK(Labels(none) == std::vector<std::string>{"Automatic"});
+    CHECK(none.disabled);
+
+    const auto offline = GpuLabels::Build({}, {.uuid = "nvidia", .name = "NVIDIA GeForce RTX 5060 Ti"});
+    CHECK(Labels(offline) == std::vector<std::string>{"Automatic", "NVIDIA GeForce RTX 5060 Ti (not connected)"});
+    CHECK(offline.selected == 1);
+    CHECK_FALSE(offline.disabled);
+}
+
+TEST_CASE("GPU names number duplicates by PCI slot", "[core][compositor][settings-tab][gpu]") {
+    const std::vector<Backend::PhysicalDevice> devices = {
+        {.index = 0, .name = "NVIDIA RTX A4000", .uuid = "b", .type = Backend::PhysicalDeviceType::DISCRETE,
+         .pciAddress = "0000:41:00.0"},
+        {.index = 1, .name = "NVIDIA RTX A4000", .uuid = "a", .type = Backend::PhysicalDeviceType::DISCRETE,
+         .pciAddress = "0000:01:00.0"},
+        {.index = 2, .name = "AMD Radeon RX 7900 XTX", .uuid = "c", .type = Backend::PhysicalDeviceType::EXTERNAL,
+         .pciAddress = "0000:0a:00.0"},
+    };
+    CHECK(GpuLabels::Names(devices) == std::vector<std::string>{
+        "NVIDIA RTX A4000 #2",
+        "NVIDIA RTX A4000 #1",
+        "AMD Radeon RX 7900 XTX",
+    });
+    const auto choices = GpuLabels::Build(devices, {});
+    CHECK(choices.options[0].label == "Automatic (NVIDIA RTX A4000 #2)");
+    CHECK(Details(choices) == std::vector<std::string>{"", "Discrete", "Discrete", "External"});
+    CHECK(GpuLabels::Type(Backend::PhysicalDeviceType::VIRTUAL) == "Virtual");
 }
 
 TEST_CASE("Adding a plugin path that fails validation leaves the settings tab and registry snapshot alone",

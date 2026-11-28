@@ -121,6 +121,7 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
     Instance::Config config = {
         .device = settings.graphics.device,
         .deviceId = settings.graphics.deviceId,
+        .deviceUuid = settings.graphics.gpu.uuid,
         .compositor = CompositorType::DEFAULT,
         .headless = settings.graphics.headless,
         .size = {settings.graphics.size.width, settings.graphics.size.height},
@@ -461,8 +462,10 @@ static void printUsage(const char* program,
                         settings.runtime.dependencyPolicy);
         jst::fmt::print("  {:<38}  Choices: prompt, allow, deny\n", "");
         jst::fmt::print("  --python-runtime <path>               Python executable or library\n");
-        jst::fmt::print("  --device-index <index>                Vulkan and CUDA device index (current: {})\n",
-                        settings.graphics.deviceId);
+        jst::fmt::print("  --device-index <index>                Vulkan device index for this run (current: {})\n",
+                        settings.graphics.deviceId.has_value()
+                            ? jst::fmt::format("{}", settings.graphics.deviceId.value())
+                            : std::string("auto"));
         jst::fmt::print("  --plugin <path>                       Load a .cep plugin for this run (repeatable)\n\n");
     }
 
@@ -1354,6 +1357,7 @@ int Run(int argc, char* argv[]) {
 
     const auto backendConfig = Backend::Config {
         .deviceId = settings.graphics.deviceId,
+        .deviceUuid = settings.graphics.gpu.uuid,
         .headless = settings.graphics.headless,
         .pythonRuntimePath = settings.runtime.python.path,
         .dependencyPolicy = settings.runtime.dependencyPolicy,

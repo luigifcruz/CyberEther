@@ -29,8 +29,8 @@ class Metal {
     U64 getThermalState() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
 
-    constexpr const U64& getDeviceId() const {
-        return config.deviceId;
+    constexpr U64 getDeviceId() const {
+        return config.deviceId.value_or(0);
     }
 
     constexpr MTL::Device* getDevice() {

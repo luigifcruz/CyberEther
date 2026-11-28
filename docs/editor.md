@@ -60,7 +60,7 @@ Detached plots, configuration panes, and workbench tools live in dockable tiles 
 
 Open **Settings** from the titlebar (or press **Cmd/Ctrl + Comma**) to configure CyberEther across its sidebar sections:
 
-- **General:** Appearance (Theme, Interface Scale, Background Particles, Show Tips), Input (Touchpad Scroll Speed), and Rendering (Graphics Renderer).
+- **General:** Appearance (Theme, Interface Scale, Background Particles, Show Tips), Input (Touchpad Scroll Speed), and Rendering (Graphics Renderer, Graphics Device).
 - **Remote:** Self-hosted WebRTC streaming settings, codec selection, and access controls. See [Remote Streaming](/docs/remote).
 - **Maps:** High-resolution map rendering options for blocks such as **ADS-B Decoder**.
 - **Runtime:** Choose which Python interpreter runs **Python** blocks and configure PEP 723 dependency installation policies. See [Python Runtime And Dependencies](/docs/python-runtime).
