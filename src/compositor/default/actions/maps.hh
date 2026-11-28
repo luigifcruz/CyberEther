@@ -12,14 +12,10 @@
 
 #include <chrono>
 #include <future>
-#include <tuple>
 
 namespace Jetstream {
 
 struct MapsActions {
-    using Filter = std::tuple<MailSetMapsHighResolution,
-                              MailSetMapsRendering,
-                              MailClearMapsCache>;
     using CacheResult = DefaultCompositorState::MapsState::CacheResult;
     using Tiles = Render::Components::GeoMapTiles;
 

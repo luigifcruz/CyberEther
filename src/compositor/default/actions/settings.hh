@@ -16,35 +16,11 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 
 namespace Jetstream {
 
 struct SettingsActions {
-    using Filter = std::tuple<MailSetBackgroundParticles,
-                              MailSetShowTips,
-                              MailSetTouchpadScrollSpeed,
-                              MailSetGraphicsScale,
-                              MailSetGraphicsDevice,
-                              MailSetGraphicsGpu,
-                              MailSetSettingsSection,
-                              MailSetRegistryPage,
-                              MailSetIntelligencePage,
-                              MailSetDebugTimingEnabled,
-                              MailSetDebugRenderStatsEnabled,
-                              MailSetDebugLogLevel,
-                              MailCheckForUpdates,
-                              MailDownloadUpdate,
-                              MailApplyUpdate,
-                              MailSetPythonRuntimePath,
-                              MailSetRuntimeDependencyPolicy,
-                              MailOpenPythonEnvironmentCache,
-                              MailInstallPlugin,
-                              MailRemovePlugin,
-                              MailReloadPlugin,
-                              MailReloadAllPlugins>;
-
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 

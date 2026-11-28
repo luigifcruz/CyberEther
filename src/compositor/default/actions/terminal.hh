@@ -18,7 +18,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -33,12 +32,6 @@ struct TerminalActions {
 
     static bool Openable(const std::string& uri);
 
-    using Filter = std::tuple<MailOpenTerminal,
-                              MailCloseTerminal,
-                              MailCloseTerminalTab,
-                              MailFocusTerminalTab,
-                              MailSetTerminalTabLayout,
-                              MailTerminalInput>;
     using Terminal = DefaultCompositorState::TerminalState::Item;
 
     struct Session {

@@ -9,27 +9,10 @@
 #include "jetstream/instance_remote.hh"
 #include "jetstream/settings.hh"
 
-#include <tuple>
 
 namespace Jetstream {
 
 struct RemoteActions {
-    using Filter = std::tuple<MailStartRemote,
-                              MailStopRemote,
-                              MailApproveRemoteClient,
-                              MailRemoveRemoteClient,
-                              MailSetRemoteBroker,
-                              MailSetRemoteCodec,
-                              MailSetRemoteFramerate,
-                              MailSetRemoteEncoder,
-                              MailSetRemoteMatchViewer,
-                              MailSetRemoteAudio,
-                              MailSetRemoteAutoApprove,
-                              MailSetRemoteToken,
-                              MailSetRemoteTransport,
-                              MailSetRemotePortRange,
-                              MailSetRemoteMediaAddress>;
-
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 

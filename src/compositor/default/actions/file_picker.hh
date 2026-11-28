@@ -12,20 +12,12 @@
 #include <cctype>
 #include <filesystem>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 namespace Jetstream {
 
 struct FilePickerActions {
-    using Filter = std::tuple<MailBrowseConfigPath,
-                              MailFilePickerNavigate,
-                              MailFilePickerSelect,
-                              MailFilePickerSetFilename,
-                              MailFilePickerConfirm,
-                              MailFilePickerCancel>;
-
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 

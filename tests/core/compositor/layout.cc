@@ -363,7 +363,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
     REQUIRE(result == Result::SUCCESS);
     REQUIRE(completion.has_value());
-    REQUIRE(layouts.handle(std::get<MailRenameLayoutBlock>(*completion)) == Result::SUCCESS);
+    REQUIRE(layouts.handle(completion->get<MailRenameLayoutBlock>()) == Result::SUCCESS);
 
     ConfigMeta after;
     REQUIRE(flowgraph->metadata().get("config", after, newName) == Result::SUCCESS);

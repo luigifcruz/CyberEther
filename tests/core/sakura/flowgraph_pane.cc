@@ -165,22 +165,22 @@ struct PaneRig : FlowgraphFixture {
         auto snapshots = std::exchange(state.flowgraph.blocks, {});
         LayoutActions actions(state.flowgraph);
         for (const auto& mail : mails) {
-            if (const auto* layout = std::get_if<MailSetFlowgraphLayout>(&mail)) {
+            if (const auto* layout = mail.getIf<MailSetFlowgraphLayout>()) {
                 CHECK(actions.handle(*layout) == Result::SUCCESS);
             }
-            if (const auto* open = std::get_if<MailOpenDocumentation>(&mail)) {
+            if (const auto* open = mail.getIf<MailOpenDocumentation>()) {
                 CHECK(actions.handle(*open) == Result::SUCCESS);
             }
-            if (const auto* close = std::get_if<MailCloseDocumentation>(&mail)) {
+            if (const auto* close = mail.getIf<MailCloseDocumentation>()) {
                 CHECK(actions.handle(*close) == Result::SUCCESS);
             }
-            if (const auto* environment = std::get_if<MailSetFlowgraphEnvironmentVisible>(&mail)) {
+            if (const auto* environment = mail.getIf<MailSetFlowgraphEnvironmentVisible>()) {
                 CHECK(actions.handle(*environment) == Result::SUCCESS);
             }
-            if (const auto* close = std::get_if<MailCloseFlowgraphDescription>(&mail)) {
+            if (const auto* close = mail.getIf<MailCloseFlowgraphDescription>()) {
                 CHECK(actions.handle(*close) == Result::SUCCESS);
             }
-            if (const auto* editor = std::get_if<MailSetEditorMeta>(&mail)) {
+            if (const auto* editor = mail.getIf<MailSetEditorMeta>()) {
                 CHECK(FlowgraphActions(state, callbacks).handle(*editor) == Result::SUCCESS);
             }
         }
@@ -309,7 +309,7 @@ struct PaneRig : FlowgraphFixture {
     U64 count() const {
         U64 total = 0;
         for (const auto& mail : mails) {
-            total += std::holds_alternative<T>(mail) ? 1 : 0;
+            total += mail.is<T>() ? 1 : 0;
         }
         return total;
     }
@@ -317,7 +317,7 @@ struct PaneRig : FlowgraphFixture {
     template<typename T>
     const T* last() const {
         for (auto it = mails.rbegin(); it != mails.rend(); ++it) {
-            if (const auto* mail = std::get_if<T>(&*it)) {
+            if (const auto* mail = it->getIf<T>()) {
                 return mail;
             }
         }
@@ -378,10 +378,10 @@ TEST_CASE("Each flowgraph contributes one main tab whose content is its layout d
     main.onClose();
     main.onFocus();
     REQUIRE(rig.mails.size() == 2);
-    REQUIRE(std::holds_alternative<MailCloseFlowgraph>(rig.mails[0]));
-    CHECK(std::get<MailCloseFlowgraph>(rig.mails[0]).flowgraph == kGraph);
-    REQUIRE(std::holds_alternative<MailFocusFlowgraph>(rig.mails[1]));
-    CHECK(std::get<MailFocusFlowgraph>(rig.mails[1]).flowgraph == kGraph);
+    REQUIRE(rig.mails[0].is<MailCloseFlowgraph>());
+    CHECK(rig.mails[0].get<MailCloseFlowgraph>().flowgraph == kGraph);
+    REQUIRE(rig.mails[1].is<MailFocusFlowgraph>());
+    CHECK(rig.mails[1].get<MailFocusFlowgraph>().flowgraph == kGraph);
 
     FlowgraphPane other;
     other.update({.id = "other", .layoutGroup = "layout:other", .editorPane = "editor:other"});
@@ -482,7 +482,7 @@ TEST_CASE("The collapsed file description closes from its strip", "[core][sakura
     rig.host.send(Mouse(MouseEventType::Release, frame.x + frame.width * 0.5f, frame.y + frame.height * 0.5f));
     rig.frame();
     const auto closed = std::find_if(rig.mails.begin(), rig.mails.end(), [](const Mail& mail) {
-        const auto* close = std::get_if<MailCloseFlowgraphDescription>(&mail);
+        const auto* close = mail.getIf<MailCloseFlowgraphDescription>();
         return close && close->flowgraph == kGraph;
     });
     CHECK(closed != rig.mails.end());
@@ -986,8 +986,8 @@ TEST_CASE("Rename completion and late dock reports preserve detached pane order 
         LayoutActions layouts(target.state.flowgraph);
         auto pending = std::exchange(target.mails, {});
         for (const auto& mail : pending) {
-            if (const auto* layout = std::get_if<MailSetFlowgraphLayout>(&mail)) REQUIRE(layouts.handle(*layout) == Result::SUCCESS);
-            if (const auto* rename = std::get_if<MailRenameLayoutBlock>(&mail)) REQUIRE(layouts.handle(*rename) == Result::SUCCESS);
+            if (const auto* layout = mail.getIf<MailSetFlowgraphLayout>()) REQUIRE(layouts.handle(*layout) == Result::SUCCESS);
+            if (const auto* rename = mail.getIf<MailRenameLayoutBlock>()) REQUIRE(layouts.handle(*rename) == Result::SUCCESS);
         }
     };
     surfaces(rig);

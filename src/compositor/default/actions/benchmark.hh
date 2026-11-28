@@ -8,13 +8,10 @@
 #include "jetstream/benchmark.hh"
 
 #include <future>
-#include <tuple>
 
 namespace Jetstream {
 
 struct BenchmarkActions {
-    using Filter = std::tuple<MailRunBenchmark, MailResetBenchmark, MailSetBenchmarkModule>;
-
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 

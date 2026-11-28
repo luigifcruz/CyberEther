@@ -350,6 +350,35 @@ foreach domain, sources : core_test_domains
     endforeach
 endforeach
 
+if not jst_is_windows
+    mail_hidden_producer = static_library(
+        'jetstream-core-mail-hidden-producer',
+        'compositor/mail_hidden_producer.cc',
+        dependencies: libjetstream_dep,
+        gnu_symbol_visibility: 'hidden',
+        build_by_default: test_build_by_default,
+    )
+    mail_tests = executable(
+        'jetstream-core-mail-tests',
+        [core_test_main, 'compositor/mail.cc'],
+        dependencies: core_test_dependencies,
+        include_directories: core_test_includes,
+        link_with: mail_hidden_producer,
+        link_args: test_link_args,
+        link_depends: browser_exe_link_depends,
+        build_by_default: test_build_by_default,
+    )
+    core_test_targets += [mail_hidden_producer, mail_tests]
+    if jst_is_browser
+        test('core-mail', node,
+             args: [files('../browser/run.cjs'), mail_tests.full_path(), '--'],
+             depends: mail_tests,
+             suite: ['core', 'wasm'], is_parallel: false, timeout: 180)
+    else
+        test('core-mail', mail_tests, suite: 'core', is_parallel: false, timeout: 180)
+    endif
+endif
+
 # TODO: Re-enable after CLI output capture supports separate Windows static CRTs.
 if not jst_is_ios and not jst_is_android and not jst_is_windows
     core_integration_tests = executable(

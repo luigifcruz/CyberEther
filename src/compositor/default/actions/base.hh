@@ -26,10 +26,6 @@
 
 #include <deque>
 #include <memory>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <variant>
 
 namespace Jetstream {
 
@@ -65,22 +61,7 @@ class DefaultActions {
     void shutdownTerminals();
 
  private:
-    template<class Action, class... Signals>
-    static bool Handle(Action& action, const Mail& mail, Result& result, std::tuple<Signals...>*) {
-        return std::visit([&](const auto& msg) {
-            using Signal = std::decay_t<decltype(msg)>;
-            if constexpr ((std::is_same_v<Signal, Signals> || ...)) {
-                result = action.handle(msg);
-                return true;
-            }
-            return false;
-        }, mail);
-    }
-
-    template<class Action>
-    static bool Handle(Action& action, const Mail& mail, Result& result) {
-        return Handle(action, mail, result, static_cast<typename Action::Filter*>(nullptr));
-    }
+    struct Dispatch;
 
     std::shared_ptr<BenchmarkActions> benchmark;
     std::shared_ptr<DependencyActions> dependencies;

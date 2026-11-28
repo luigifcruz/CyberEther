@@ -14,7 +14,6 @@
 #include <functional>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -22,17 +21,6 @@
 namespace Jetstream {
 
 struct LayoutActions {
-    using Filter = std::tuple<MailSetFlowgraphLayout,
-                              MailSetSurfaceDetached,
-                              MailSetSurfaceConfigCollapsed,
-                              MailSetConfigDetached,
-                              MailRemoveLayoutBlock,
-                              MailRenameLayoutBlock,
-                              MailOpenDocumentation,
-                              MailCloseDocumentation,
-                              MailCloseFlowgraphDescription,
-                              MailSetFlowgraphEnvironmentVisible,
-                              MailSetFlowgraphEnvironmentSearch>;
     using FlowgraphState = DefaultCompositorState::FlowgraphState;
 
     FlowgraphState& state;

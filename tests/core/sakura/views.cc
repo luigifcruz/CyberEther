@@ -158,7 +158,7 @@ struct Mailbox {
     template<typename T>
     const T* last() const {
         for (auto it = mails.rbegin(); it != mails.rend(); ++it) {
-            if (const auto* mail = std::get_if<T>(&*it)) {
+            if (const auto* mail = it->getIf<T>()) {
                 return mail;
             }
         }
@@ -169,7 +169,7 @@ struct Mailbox {
     U64 count() const {
         U64 total = 0;
         for (const auto& mail : mails) {
-            total += std::holds_alternative<T>(mail) ? 1 : 0;
+            total += mail.is<T>() ? 1 : 0;
         }
         return total;
     }
@@ -4417,13 +4417,13 @@ TEST_CASE("File picker entries select on click and navigate or open on double cl
     mailbox.mails.clear();
     DoublePress(rig.host, *entries[0]);
     REQUIRE(mailbox.mails.size() == 1);
-    CHECK(std::get<MailFilePickerNavigate>(mailbox.mails[0]).path == "/srv/flows/radio/sub");
+    CHECK(mailbox.mails[0].get<MailFilePickerNavigate>().path == "/srv/flows/radio/sub");
 
     mailbox.mails.clear();
     DoublePress(rig.host, *entries[1]);
     REQUIRE(mailbox.mails.size() == 2);
-    CHECK(std::get<MailFilePickerSelect>(mailbox.mails[0]).path == "/srv/flows/radio/a.yml");
-    CHECK(std::get<MailFilePickerConfirm>(mailbox.mails[1]).generation == 7);
+    CHECK(mailbox.mails[0].get<MailFilePickerSelect>().path == "/srv/flows/radio/a.yml");
+    CHECK(mailbox.mails[1].get<MailFilePickerConfirm>().generation == 7);
 }
 
 TEST_CASE("File picker open button needs a selected file and the close button cancels",
@@ -4469,8 +4469,8 @@ TEST_CASE("File picker breadcrumbs navigate to parent folders and collapse deep 
     CHECK(Press(rig.host, *buttons[1]));
     CHECK(Press(rig.host, *buttons[0]));
     REQUIRE(mailbox.mails.size() == 2);
-    CHECK(std::get<MailFilePickerNavigate>(mailbox.mails[0]).path == "/srv/flows/radio");
-    CHECK(std::get<MailFilePickerNavigate>(mailbox.mails[1]).path == "/srv/flows");
+    CHECK(mailbox.mails[0].get<MailFilePickerNavigate>().path == "/srv/flows/radio");
+    CHECK(mailbox.mails[1].get<MailFilePickerNavigate>().path == "/srv/flows");
 
     mailbox.mails.clear();
     view.update(PickerState(mailbox, FilePickerMode::Open, "/srv/flows/a/b/c/d"));
@@ -4480,8 +4480,8 @@ TEST_CASE("File picker breadcrumbs navigate to parent folders and collapse deep 
     CHECK(Press(rig.host, *buttons[1]));
     CHECK(Press(rig.host, *buttons[2]));
     REQUIRE(mailbox.mails.size() == 2);
-    CHECK(std::get<MailFilePickerNavigate>(mailbox.mails[0]).path == "/srv/flows/a/b");
-    CHECK(std::get<MailFilePickerNavigate>(mailbox.mails[1]).path == "/srv/flows/a/b/c");
+    CHECK(mailbox.mails[0].get<MailFilePickerNavigate>().path == "/srv/flows/a/b");
+    CHECK(mailbox.mails[1].get<MailFilePickerNavigate>().path == "/srv/flows/a/b/c");
 }
 
 TEST_CASE("File picker save button follows the filename and the overwrite prompt", "[core][sakura][views]") {
@@ -4596,11 +4596,11 @@ TEST_CASE("Remote section starts streaming or opens the remote settings", "[core
     CHECK(Press(rig.host, *buttons[0]));
     CHECK(Press(rig.host, *buttons[1]));
     REQUIRE(mailbox.mails.size() == 2);
-    const auto& start = std::get<MailStartRemote>(mailbox.mails[0]);
+    const auto& start = mailbox.mails[0].get<MailStartRemote>();
     CHECK(start.config.broker.address == "127.0.0.1");
     CHECK(start.config.broker.port == 9000);
     CHECK(start.config.video.framerate == 60);
-    CHECK(std::get<MailOpenSettings>(mailbox.mails[1]).section == SettingsSection::Remote);
+    CHECK(mailbox.mails[1].get<MailOpenSettings>().section == SettingsSection::Remote);
 }
 
 TEST_CASE("Remote section shares the invite and approves or removes viewers", "[core][sakura][views]") {
@@ -4623,17 +4623,17 @@ TEST_CASE("Remote section shares the invite and approves or removes viewers", "[
     }
     std::vector<std::string> calls;
     for (const auto& mail : mailbox.mails) {
-        if (std::holds_alternative<MailStopRemote>(mail)) {
+        if (mail.is<MailStopRemote>()) {
             calls.push_back("stop");
-        } else if (const auto* settings = std::get_if<MailOpenSettings>(&mail)) {
+        } else if (const auto* settings = mail.getIf<MailOpenSettings>()) {
             calls.push_back(settings->section == SettingsSection::Remote ? "settings" : "other");
-        } else if (const auto* modal = std::get_if<MailOpenModal>(&mail)) {
+        } else if (const auto* modal = mail.getIf<MailOpenModal>()) {
             calls.push_back(modal->content == ModalContent::RemoteQr ? "qr" : "other");
-        } else if (const auto* copy = std::get_if<MailCopyText>(&mail)) {
+        } else if (const auto* copy = mail.getIf<MailCopyText>()) {
             calls.push_back("copy:" + copy->value);
-        } else if (const auto* approve = std::get_if<MailApproveRemoteClient>(&mail)) {
+        } else if (const auto* approve = mail.getIf<MailApproveRemoteClient>()) {
             calls.push_back("approve:" + approve->sessionId);
-        } else if (const auto* remove = std::get_if<MailRemoveRemoteClient>(&mail)) {
+        } else if (const auto* remove = mail.getIf<MailRemoveRemoteClient>()) {
             calls.push_back("remove:" + remove->sessionId);
         }
     }
@@ -4678,10 +4678,10 @@ TEST_CASE("Remote viewers that share a display code stay distinct", "[core][saku
         CHECK(Press(rig.host, *removes[row]));
     }
     REQUIRE(mailbox.mails.size() == 4);
-    CHECK(std::get<MailApproveRemoteClient>(mailbox.mails[0]).sessionId == "first-abcdef");
-    CHECK(std::get<MailRemoveRemoteClient>(mailbox.mails[1]).sessionId == "first-abcdef");
-    CHECK(std::get<MailApproveRemoteClient>(mailbox.mails[2]).sessionId == "second-abcdef");
-    CHECK(std::get<MailRemoveRemoteClient>(mailbox.mails[3]).sessionId == "second-abcdef");
+    CHECK(mailbox.mails[0].get<MailApproveRemoteClient>().sessionId == "first-abcdef");
+    CHECK(mailbox.mails[1].get<MailRemoveRemoteClient>().sessionId == "first-abcdef");
+    CHECK(mailbox.mails[2].get<MailApproveRemoteClient>().sessionId == "second-abcdef");
+    CHECK(mailbox.mails[3].get<MailRemoveRemoteClient>().sessionId == "second-abcdef");
 }
 
 TEST_CASE("Remote viewer refresh during a press does not retarget the click", "[core][sakura][views]") {
@@ -5289,11 +5289,11 @@ TEST_CASE("File picker hover, selection, navigation, filename typing, and scroll
     FilePickerView view;
     rig.update = [&] {
         for (const auto& mail : mailbox.mails) {
-            if (const auto* select = std::get_if<MailFilePickerSelect>(&mail)) {
+            if (const auto* select = mail.getIf<MailFilePickerSelect>()) {
                 picker.selectedPath = select->path;
-            } else if (const auto* navigate = std::get_if<MailFilePickerNavigate>(&mail)) {
+            } else if (const auto* navigate = mail.getIf<MailFilePickerNavigate>()) {
                 list(navigate->path, 44);
-            } else if (const auto* filename = std::get_if<MailFilePickerSetFilename>(&mail)) {
+            } else if (const auto* filename = mail.getIf<MailFilePickerSetFilename>()) {
                 picker.filename = filename->value;
             }
         }
@@ -5442,15 +5442,15 @@ TEST_CASE("Terminal presenter builds one config per terminal and per tab and rou
     configs[1].terminal.onResize({.columns = 30, .rows = 5, .cellWidth = 9.0f, .cellHeight = 17.0f});
     configs[0].terminal.onScroll(-2, {4.0f, 8.0f}, {.control = true});
     REQUIRE(mailbox.count<MailTerminalInput>() == 3);
-    const auto& typed = std::get<MailTerminalInput>(mailbox.mails[0]);
+    const auto& typed = mailbox.mails[0].get<MailTerminalInput>();
     CHECK(typed.terminal == 3);
     REQUIRE(std::holds_alternative<MailTerminalInput::Text>(typed.input));
     CHECK(std::get<MailTerminalInput::Text>(typed.input).value == "l");
-    const auto& resized = std::get<MailTerminalInput>(mailbox.mails[1]);
+    const auto& resized = mailbox.mails[1].get<MailTerminalInput>();
     CHECK(resized.terminal == 3);
     REQUIRE(std::holds_alternative<Sakura::Terminal::Grid>(resized.input));
     CHECK(std::get<Sakura::Terminal::Grid>(resized.input).columns == 30);
-    const auto& scrolled = std::get<MailTerminalInput>(mailbox.mails[2]);
+    const auto& scrolled = mailbox.mails[2].get<MailTerminalInput>();
     CHECK(scrolled.terminal == 1);
     REQUIRE(std::holds_alternative<MailTerminalInput::Scroll>(scrolled.input));
     CHECK(std::get<MailTerminalInput::Scroll>(scrolled.input).rows == -2);
@@ -5460,14 +5460,14 @@ TEST_CASE("Terminal presenter builds one config per terminal and per tab and rou
     configs[0].onSplit(false);
     configs[2].onSplit(true);
     REQUIRE(mailbox.mails.size() == 3);
-    REQUIRE(std::holds_alternative<MailCloseTerminal>(mailbox.mails[0]));
-    CHECK(std::get<MailCloseTerminal>(mailbox.mails[0]).terminal == 3);
-    REQUIRE(std::holds_alternative<MailOpenTerminal>(mailbox.mails[1]));
-    CHECK(std::get<MailOpenTerminal>(mailbox.mails[1]).split == std::optional<U64>(1));
-    CHECK_FALSE(std::get<MailOpenTerminal>(mailbox.mails[1]).stacked);
-    REQUIRE(std::holds_alternative<MailOpenTerminal>(mailbox.mails[2]));
-    CHECK(std::get<MailOpenTerminal>(mailbox.mails[2]).split == std::optional<U64>(4));
-    CHECK(std::get<MailOpenTerminal>(mailbox.mails[2]).stacked);
+    REQUIRE(mailbox.mails[0].is<MailCloseTerminal>());
+    CHECK(mailbox.mails[0].get<MailCloseTerminal>().terminal == 3);
+    REQUIRE(mailbox.mails[1].is<MailOpenTerminal>());
+    CHECK(mailbox.mails[1].get<MailOpenTerminal>().split == std::optional<U64>(1));
+    CHECK_FALSE(mailbox.mails[1].get<MailOpenTerminal>().stacked);
+    REQUIRE(mailbox.mails[2].is<MailOpenTerminal>());
+    CHECK(mailbox.mails[2].get<MailOpenTerminal>().split == std::optional<U64>(4));
+    CHECK(mailbox.mails[2].get<MailOpenTerminal>().stacked);
 
     mailbox.mails.clear();
     const auto tabs = presenter.tabs();
@@ -5486,17 +5486,17 @@ TEST_CASE("Terminal presenter builds one config per terminal and per tab and rou
     tabs[0].onClose();
     tabs[1].onFocus();
     REQUIRE(mailbox.mails.size() == 4);
-    const auto& tiled = std::get<MailSetTerminalTabLayout>(mailbox.mails[0]);
+    const auto& tiled = mailbox.mails[0].get<MailSetTerminalTabLayout>();
     CHECK(tiled.tab == 1);
     REQUIRE(tiled.tiles.has_value());
     CHECK(tiled.tiles->split == std::optional<std::string>("row"));
     REQUIRE(tiled.tiles->children.has_value());
     CHECK(tiled.tiles->children->size() == 2);
-    const auto& cleared = std::get<MailSetTerminalTabLayout>(mailbox.mails[1]);
+    const auto& cleared = mailbox.mails[1].get<MailSetTerminalTabLayout>();
     CHECK(cleared.tab == 1);
     CHECK_FALSE(cleared.tiles.has_value());
-    CHECK(std::get<MailCloseTerminalTab>(mailbox.mails[2]).tab == 1);
-    CHECK(std::get<MailFocusTerminalTab>(mailbox.mails[3]).tab == 2);
+    CHECK(mailbox.mails[2].get<MailCloseTerminalTab>().tab == 1);
+    CHECK(mailbox.mails[3].get<MailFocusTerminalTab>().tab == 2);
 }
 
 TEST_CASE("Splitting a terminal asks its tab dock to place the new terminal in the terminal's own slot like a drag",
@@ -5538,7 +5538,7 @@ TEST_CASE("Splitting a terminal asks its tab dock to place the new terminal in t
     const auto layouts = [&] {
         std::vector<MailSetTerminalTabLayout> found;
         for (const auto& mail : mailbox.mails) {
-            if (const auto* layout = std::get_if<MailSetTerminalTabLayout>(&mail)) {
+            if (const auto* layout = mail.getIf<MailSetTerminalTabLayout>()) {
                 found.push_back(*layout);
             }
         }
@@ -5730,7 +5730,7 @@ TEST_CASE("Workbench shows a terminal tab as a main tab and a tiled terminal ins
     const auto grid = [&](U64 terminal) -> std::optional<Sakura::Terminal::Grid> {
         std::optional<Sakura::Terminal::Grid> found;
         for (const auto& mail : mailbox.mails) {
-            if (const auto* input = std::get_if<MailTerminalInput>(&mail); input && input->terminal == terminal) {
+            if (const auto* input = mail.getIf<MailTerminalInput>(); input && input->terminal == terminal) {
                 if (const auto* resized = std::get_if<Sakura::Terminal::Grid>(&input->input)) {
                     found = *resized;
                 }
@@ -6268,8 +6268,8 @@ TEST_CASE("Close prompt presenter only builds for an open closing flowgraph and 
 
     config->onSave();
     REQUIRE(mailbox.mails.size() == 2);
-    CHECK(std::holds_alternative<MailCancelCloseFlowgraph>(mailbox.mails[0]));
-    const auto& info = std::get<MailOpenModal>(mailbox.mails[1]);
+    CHECK(mailbox.mails[0].is<MailCancelCloseFlowgraph>());
+    const auto& info = mailbox.mails[1].get<MailOpenModal>();
     CHECK(info.content == ModalContent::FlowgraphInfo);
     CHECK(info.flowgraph == std::optional<std::string>("graph"));
 
@@ -6876,8 +6876,8 @@ TEST_CASE("Docs search presenters open the modal, store the query, and replace t
     mailbox.mails.clear();
     config.docsSearch.onOpen("plugins", "bundling");
     REQUIRE(mailbox.mails.size() == 2);
-    CHECK(std::holds_alternative<MailCloseModal>(mailbox.mails[0]));
-    const auto* open = std::get_if<MailOpenDocs>(&mailbox.mails[1]);
+    CHECK(mailbox.mails[0].is<MailCloseModal>());
+    const auto* open = mailbox.mails[1].getIf<MailOpenDocs>();
     REQUIRE(open != nullptr);
     CHECK(open->page == "plugins");
     CHECK(open->anchor == "bundling");

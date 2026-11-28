@@ -10,10 +10,8 @@
 #include <functional>
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <unordered_set>
 #include <utility>
-#include <variant>
 #include <vector>
 
 using namespace Jetstream;
@@ -76,13 +74,11 @@ struct ClipboardFixture : FlowgraphFixture {
                 continue;
             }
             const Mail message = mail[delivered++];
-            std::visit([this](const auto& forwarded) {
-                using Forwarded = std::decay_t<decltype(forwarded)>;
-                if constexpr (std::is_same_v<Forwarded, MailSelectBlocks> ||
-                              std::is_same_v<Forwarded, MailDeleteBlock>) {
-                    REQUIRE(flowgraphActions.handle(forwarded) == Result::SUCCESS);
-                }
-            }, message);
+            if (const auto* select = message.getIf<MailSelectBlocks>()) {
+                REQUIRE(flowgraphActions.handle(*select) == Result::SUCCESS);
+            } else if (const auto* remove = message.getIf<MailDeleteBlock>()) {
+                REQUIRE(flowgraphActions.handle(*remove) == Result::SUCCESS);
+            }
         }
     }
 
@@ -172,7 +168,7 @@ struct ClipboardFixture : FlowgraphFixture {
     std::vector<std::string> removedTiles() {
         std::vector<std::string> removed;
         for (const auto& message : mail) {
-            if (const auto* remove = std::get_if<MailRemoveLayoutBlock>(&message)) {
+            if (const auto* remove = message.getIf<MailRemoveLayoutBlock>()) {
                 removed.push_back(remove->block);
             }
         }

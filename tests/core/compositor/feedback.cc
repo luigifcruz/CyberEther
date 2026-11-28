@@ -30,7 +30,7 @@ struct Rig {
             notifications.push_back(message);
         };
         callbacks.enqueueMail = [this](Mail&& mail) {
-            if (std::holds_alternative<MailCloseModal>(mail)) {
+            if (mail.is<MailCloseModal>()) {
                 ++closedModals;
                 workbench.handle(MailCloseModal{});
             }

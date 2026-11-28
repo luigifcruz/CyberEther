@@ -340,7 +340,7 @@ TEST_CASE("A finished ChatGPT sign-in passes the connection test and saves its d
 
     std::vector<MailSaveAgentProvider> saves;
     for (auto& message : messages) {
-        if (auto* save = std::get_if<MailSaveAgentProvider>(&message)) {
+        if (auto* save = message.getIf<MailSaveAgentProvider>()) {
             saves.push_back(*save);
         }
     }
@@ -384,7 +384,7 @@ TEST_CASE("Removing a provider drops its pending ChatGPT sign-in", "[agent][comp
     result.set_value({.success = true, .message = "Signed in.", .record = "record", .email = "user@example.invalid"});
     actions.reconcile();
     for (const auto& message : messages) {
-        CHECK_FALSE(std::holds_alternative<MailSaveAgentProvider>(message));
+        CHECK_FALSE(message.is<MailSaveAgentProvider>());
     }
     CHECK(AgentProviders(state.agent).find(stored.name).name.empty());
 }
@@ -421,7 +421,7 @@ TEST_CASE("A finished ChatGPT sign-in saves under a free name instead of overwri
     CHECK(signIn.record == "record");
     std::vector<MailSaveAgentProvider> saves;
     for (auto& message : messages) {
-        if (auto* save = std::get_if<MailSaveAgentProvider>(&message)) {
+        if (auto* save = message.getIf<MailSaveAgentProvider>()) {
             saves.push_back(*save);
         }
     }
