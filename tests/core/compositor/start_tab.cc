@@ -429,6 +429,162 @@ TEST_CASE("Gallery page links open the matching example inside the app", "[core]
     CHECK(open->key == key);
 }
 
+TEST_CASE("App links open their gallery example once the catalog has it", "[core][compositor][start-tab]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<Mail> mails;
+    std::vector<std::string> notices;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+    callbacks.notify = [&](Sakura::ToastType, I32, const std::string& message) {
+        notices.push_back(message);
+    };
+    WorkbenchActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://flowgraph/first-steps"}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://flowgraph/first-steps"}) == Result::SUCCESS);
+    REQUIRE(state.registry.requests.size() == 1);
+
+    state.registry.fetch.loading = true;
+    actions.settleLinks();
+    CHECK(mails.empty());
+    CHECK(notices.empty());
+    REQUIRE(state.registry.requests.size() == 1);
+
+    state.registry.fetch.loading = false;
+    state.registry.sections = {{
+        .key = "Basics",
+        .title = "Basics",
+        .flowgraphs = {{.key = "first-steps", .title = "First Steps"}},
+    }};
+    actions.settleLinks();
+    CHECK(state.registry.requests.empty());
+    CHECK(notices.empty());
+    REQUIRE(mails.size() == 1);
+    const auto* open = mails.front().getIf<MailOpenFlowgraphExample>();
+    REQUIRE(open != nullptr);
+    CHECK(open->key == "first-steps");
+}
+
+TEST_CASE("App links refresh the catalog once before reporting a missing example", "[core][compositor][start-tab]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<Mail> mails;
+    std::vector<std::string> notices;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+    callbacks.notify = [&](Sakura::ToastType, I32, const std::string& message) {
+        notices.push_back(message);
+    };
+    WorkbenchActions actions(state, callbacks);
+    const auto later = std::chrono::steady_clock::now() + std::chrono::hours(1);
+    state.registry.fetch.next = later;
+
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://flowgraph/missing-example"}) == Result::SUCCESS);
+    actions.settleLinks();
+    CHECK(state.registry.fetch.next < later);
+    CHECK(notices.empty());
+    REQUIRE(state.registry.requests.size() == 1);
+
+    actions.settleLinks();
+    CHECK(state.registry.requests.empty());
+    CHECK(mails.empty());
+    REQUIRE(notices.size() == 1);
+    CHECK(notices.front().find("missing-example") != std::string::npos);
+}
+
+TEST_CASE("App links do not count a catalog fetch that was already running as their refresh",
+          "[core][compositor][start-tab]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<std::string> notices;
+    callbacks.notify = [&](Sakura::ToastType, I32, const std::string& message) {
+        notices.push_back(message);
+    };
+    WorkbenchActions actions(state, callbacks);
+    const auto later = std::chrono::steady_clock::now() + std::chrono::hours(1);
+    state.registry.fetch.loading = true;
+    state.registry.fetch.next = later;
+
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://flowgraph/new-example"}) == Result::SUCCESS);
+    actions.settleLinks();
+    state.registry.fetch.loading = false;
+    actions.settleLinks();
+    CHECK(state.registry.fetch.next < later);
+    CHECK(notices.empty());
+    REQUIRE(state.registry.requests.size() == 1);
+
+    actions.settleLinks();
+    CHECK(state.registry.requests.empty());
+    CHECK(notices.size() == 1);
+}
+
+TEST_CASE("App links to a plugin open its details without installing it", "[core][compositor][start-tab]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<Mail> mails;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+    WorkbenchActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://plugin/demo"}) == Result::SUCCESS);
+    CHECK(state.registry.requests.empty());
+    REQUIRE(mails.size() == 1);
+    const auto* open = mails.front().getIf<MailOpenPluginDetails>();
+    REQUIRE(open != nullptr);
+    CHECK(open->id == "demo");
+}
+
+TEST_CASE("App links that do not name a gallery flowgraph or plugin are rejected",
+          "[core][compositor][start-tab]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<std::string> notices;
+    callbacks.notify = [&](Sakura::ToastType, I32, const std::string& message) {
+        notices.push_back(message);
+    };
+    WorkbenchActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://flowgraph/../secret"}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailOpenLink{.url = "/home/user/flowgraph.yml"}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://plugin/../demo"}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://plugin/Demo"}) == Result::SUCCESS);
+    CHECK(state.registry.requests.empty());
+    CHECK(notices.size() == 4);
+}
+
+TEST_CASE("App links name an owner and only the official gallery opens", "[core][compositor][start-tab]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<Mail> mails;
+    std::vector<std::string> notices;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+    callbacks.notify = [&](Sakura::ToastType, I32, const std::string& message) {
+        notices.push_back(message);
+    };
+    WorkbenchActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://flowgraph/cyberether/first-steps"}) == Result::SUCCESS);
+    REQUIRE(state.registry.requests.size() == 1);
+    CHECK(state.registry.requests.front().key == "first-steps");
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://plugin/cyberether/demo"}) == Result::SUCCESS);
+    REQUIRE(mails.size() == 1);
+    CHECK(mails.front().getIf<MailOpenPluginDetails>() != nullptr);
+    CHECK(notices.empty());
+
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://flowgraph/some-user/first-steps"}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailOpenLink{.url = "cyberether://plugin/some-user/demo"}) == Result::SUCCESS);
+    CHECK(state.registry.requests.size() == 1);
+    CHECK(mails.size() == 1);
+    REQUIRE(notices.size() == 2);
+    CHECK(notices.front().find("some-user") != std::string::npos);
+}
+
 TEST_CASE("Docs page links open the bundled page inside the app", "[core][compositor][start-tab]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;

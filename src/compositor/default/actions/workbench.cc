@@ -325,6 +325,59 @@ Result WorkbenchActions::handle(const MailOpenUrl& msg) {
     return Result::SUCCESS;
 }
 
+Result WorkbenchActions::handle(const MailOpenLink& msg) {
+    const auto plugin = Plugin::Gallery::Link(msg.url);
+    const auto flowgraph = GalleryActions::Remote::Link(msg.url);
+    if (!plugin.has_value() && !flowgraph.has_value()) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         "This link is not supported. Update CyberEther and try again.");
+        return Result::SUCCESS;
+    }
+
+    const auto& owner = plugin.has_value() ? plugin->owner : flowgraph->owner;
+    if (owner != Home::Gallery::Origin) {
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         jst::fmt::format("The gallery of '{}' is not available in this version of CyberEther.", owner));
+        return Result::SUCCESS;
+    }
+
+    if (plugin.has_value()) {
+        callbacks.enqueueMail(MailOpenPluginDetails{.id = plugin->id});
+        return Result::SUCCESS;
+    }
+
+    auto& requests = state.registry.requests;
+    if (std::ranges::none_of(requests, [&](const auto& request) { return request.key == flowgraph->slug; })) {
+        requests.push_back({.key = flowgraph->slug});
+    }
+
+    return Result::SUCCESS;
+}
+
+void WorkbenchActions::settleLinks() {
+    auto& registry = state.registry;
+    std::erase_if(registry.requests, [&](auto& request) {
+        if (registry.flowgraph(request.key) != nullptr) {
+            callbacks.enqueueMail(MailOpenFlowgraphExample{.key = request.key});
+            return true;
+        }
+        if (registry.fetch.loading) {
+            return false;
+        }
+        if (!request.refreshed) {
+            registry.fetch.next = {};
+            request.refreshed = true;
+            return false;
+        }
+        callbacks.notify(Sakura::ToastType::Error,
+                         5000,
+                         jst::fmt::format("The flowgraph '{}' is not available in the gallery.", request.key));
+        return true;
+    });
+}
+
 Result WorkbenchActions::handle(const MailCopyText& msg) {
     callbacks.setClipboardText(msg.value);
     callbacks.notify(Sakura::ToastType::Info, 3000, jst::fmt::format("{} copied to clipboard.", msg.label));

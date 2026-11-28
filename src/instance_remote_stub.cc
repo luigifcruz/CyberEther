@@ -93,6 +93,10 @@ std::vector<std::string> Instance::Remote::waitlist() const {
     return impl->waitlist_;
 }
 
+Instance::Remote::Stats Instance::Remote::stats() const {
+    return {};
+}
+
 Result Instance::Remote::approveClient(const std::string& sessionId) {
     return impl->approveClient(sessionId);
 }

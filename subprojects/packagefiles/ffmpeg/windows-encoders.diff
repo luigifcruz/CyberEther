@@ -1,0 +1,39 @@
+diff --git a/meson.build b/meson.build
+index 0415c56..444f093 100644
+--- a/meson.build
++++ b/meson.build
+@@ -2900,8 +2900,16 @@ endif
+ 
+ # Manual check for amf
+ if conf.get('amf') == 1
+-  conf.set('amf', cc.links(cpp_cond.format('AMF/core/Version.h', 
+-  '(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x1000500020000'), name: 'AMF version'))
++  amf_dep = dependency('amf', required: false)
++  if amf_dep.found() and amf_dep.type_name() == 'internal'
++    common_deps += [amf_dep]
++  else
++    conf.set10('amf', cc.links(cpp_cond.format('AMF/core/Version.h', 
++    '(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x1000500020000'), dependencies: amf_dep, name: 'AMF version'))
++    if conf.get('amf') == 1
++      common_deps += [amf_dep]
++    endif
++  endif
+ endif
+ 
+ # Manual patch for d3d12_encoder_feature
+@@ -2926,7 +2934,14 @@ elif conf.get('libmfx') == 1
+   conf.set10('MFX_CODEC_VP9'.to_lower(), cc.has_header_symbol('mfxstructures.h', 'MFX_CODEC_VP9'))
+   warning('libmfx is deprecated. Please run meson setup with -Dlibmfx=disabled to use libvpl instead.')
+ elif conf.get('libvpl') == 1
+-  conf.set10('struct_mfxConfigInterface'.to_lower(), cc.has_header_symbol('vpl/mfxvideo.h', 'struct mfxConfigInterface', prefix: '#include <vpl/mfxdefs.h>'))
++  conf.set10('libmfx', true)
++  libmfx_extra_deps = libvpl_extra_deps
++  conf.set10('MFX_CODEC_VP9'.to_lower(), true)
++  libvpl_internal = false
++  foreach dep : libvpl_extra_deps
++    libvpl_internal = libvpl_internal or dep.type_name() == 'internal'
++  endforeach
++  conf.set10('struct_mfxConfigInterface'.to_lower(), libvpl_internal or cc.has_header_symbol('vpl/mfxvideo.h', 'struct mfxConfigInterface', prefix: '#include <vpl/mfxdefs.h>', dependencies: libvpl_extra_deps))
+ endif
+ 
+ # Manual check for libx264

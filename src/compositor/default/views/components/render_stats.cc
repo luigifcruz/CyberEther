@@ -1,5 +1,8 @@
 #include "render_stats.hh"
 
+#include <algorithm>
+#include <cctype>
+
 namespace Jetstream {
 
 namespace {
@@ -9,6 +12,27 @@ std::string Bytes(F64 bytes) {
         return jst::fmt::format("{:.1f} MB", bytes / (1024.0 * 1024.0));
     }
     return jst::fmt::format("{:.0f} KB", bytes / 1024.0);
+}
+
+std::string Input(const Instance::Remote::Stats& remote) {
+    if (remote.format == "videotoolbox_vld") {
+        return "VT BGRA";
+    }
+    if (remote.format == "cuda") {
+        return "CUDA BGRA";
+    }
+    std::string format = remote.format;
+    std::transform(format.begin(), format.end(), format.begin(), [](unsigned char c) {
+        return static_cast<char>(std::toupper(c));
+    });
+    return format;
+}
+
+std::string Bits(F64 bits) {
+    if (bits >= 1000.0 * 1000.0) {
+        return jst::fmt::format("{:.1f} Mbps", bits / (1000.0 * 1000.0));
+    }
+    return jst::fmt::format("{:.0f} kbps", bits / 1000.0);
 }
 
 }  // namespace
@@ -65,22 +89,54 @@ void RenderStatsView::update(Config config) {
         },
     });
 
+    std::vector<Sakura::Stack::Item> items = {
+        {.child = &rate},
+        {.child = &strip},
+        {.child = &tables},
+    };
+    if (this->config.remote) {
+        updateRemote(*this->config.remote);
+        items.push_back({.child = &remoteEncoder});
+        items.push_back({.child = &remoteTable});
+    }
+
     stack.update({
         .spacing = Sakura::Spacing::Small,
         .centerCross = false,
-        .items = {
-            {.child = &rate},
-            {.child = &strip},
-            {.child = &tables},
-        },
+        .items = std::move(items),
     });
 }
 
-void RenderStatsView::fill(Sakura::Table& table, std::array<Metric, Rows>& metrics,
-                           const std::array<std::pair<const char*, std::string>, Rows>& entries) {
+void RenderStatsView::updateRemote(const Instance::Remote::Stats& remote) {
+    const bool hardware = remote.encoder != Instance::Remote::EncoderType::Software;
+
+    remoteEncoder.update({
+        .str = jst::fmt::format("Remote {} {} ({})",
+                                GetRemoteEncoderPrettyName(remote.encoder),
+                                GetRemoteCodecPrettyName(remote.codec),
+                                hardware ? "Hardware" : "Software"),
+        .tone = Sakura::Text::Tone::Secondary,
+        .ellipsis = true,
+    });
+
+    fill(remoteTable, remoteMetrics, {{
+        {"Rate", jst::fmt::format("{:.0f} / {:.0f} FPS", remote.frameRate, remote.targetRate)},
+        {"Size", jst::fmt::format("{}x{}", remote.size.x, remote.size.y)},
+        {"Input", Input(remote)},
+        {"Encode", jst::fmt::format("{:.1f} ms", remote.encodeAverage)},
+        {"Bitrate", Bits(remote.bitrate)},
+        {"Keyframe", Bytes(static_cast<F64>(remote.keyframeBytes))},
+        {"RTT", remote.roundTrip ? jst::fmt::format("{:.0f} ms", *remote.roundTrip) : std::string("--")},
+    }}, RemoteLabelWidth);
+}
+
+template<std::size_t Count>
+void RenderStatsView::fill(Sakura::Table& table, std::array<Metric, Count>& metrics,
+                           const std::array<std::pair<const char*, std::string>, Count>& entries,
+                           F32 labelWidth) {
     std::vector<std::vector<Sakura::Component*>> rows;
-    rows.reserve(Rows);
-    for (U64 i = 0; i < Rows; ++i) {
+    rows.reserve(Count);
+    for (std::size_t i = 0; i < Count; ++i) {
         metrics[i].label.update({.str = entries[i].first});
         metrics[i].value.update({.str = entries[i].second, .align = Sakura::Text::Align::Right});
         rows.push_back({&metrics[i].label, &metrics[i].value});
@@ -88,7 +144,7 @@ void RenderStatsView::fill(Sakura::Table& table, std::array<Metric, Rows>& metri
     table.update({
         .columns = {"", ""},
         .cellRows = std::move(rows),
-        .fixedColumnWidths = {LabelWidth},
+        .fixedColumnWidths = {labelWidth},
         .showHeaders = false,
     });
 }

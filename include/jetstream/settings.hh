@@ -19,30 +19,48 @@ struct JETSTREAM_API Settings {
         JST_SERDES(width, height);
     };
 
+    struct Gpu {
+        std::string uuid;
+        std::string name;
+
+        bool operator==(const Gpu&) const = default;
+
+        JST_SERDES(uuid, name);
+    };
+
     struct Graphics {
         std::optional<DeviceType> device{};
-        U64 deviceId = 0;
+        std::optional<U64> deviceId{};
+        Gpu gpu;
         bool headless = false;
         Size size;
         F32 scale = 1.0f;
         U64 framerate = 60;
 
-        JST_SERDES(device, size, scale, framerate);
+        JST_SERDES(device, gpu, size, scale, framerate);
     };
 
     struct Remote {
         struct Access {
             bool autoApprove = false;
+            std::string token;
 
-            JST_SERDES(autoApprove);
+            JST_SERDES(autoApprove, token);
         };
 
         struct Video {
             U64 framerate = 30;
             std::string codec = "h264";
             std::string encoder = "auto";
+            bool matchViewer = true;
 
-            JST_SERDES(framerate, codec, encoder);
+            JST_SERDES(framerate, codec, encoder, matchViewer);
+        };
+
+        struct Audio {
+            bool enabled = true;
+
+            JST_SERDES(enabled);
         };
 
         struct Broker {
@@ -68,8 +86,9 @@ struct JETSTREAM_API Settings {
         Video video;
         Broker broker;
         Media media;
+        Audio audio;
 
-        JST_SERDES(access, video, broker, media);
+        JST_SERDES(access, video, broker, media, audio);
     };
 
     struct Interface {

@@ -1,0 +1,9 @@
+[wrap-file]
+directory = amf-headers-v1.5.3
+source_url = https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v1.5.3/AMF-headers-v1.5.3.tar.gz
+source_filename = AMF-headers-v1.5.3.tar.gz
+source_hash = 0f521ad98041f8001147cded4a660127f18b1c27a801a5cd691bda1fa48381be
+patch_directory = amf-headers
+
+[provide]
+amf = amf_dep

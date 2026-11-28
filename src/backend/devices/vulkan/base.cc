@@ -1,7 +1,11 @@
+#include <fstream>
+
 #include "jetstream/logger.hh"
 
 #include "jetstream/backend/devices/vulkan/base.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
+
+#include "../selection.hh"
 
 namespace Jetstream::Backend {
 
@@ -92,6 +96,16 @@ std::set<std::string> Vulkan::getOptionalDeviceExtensions() {
     extensions.insert(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
 #endif
 
+#if defined(JST_OS_LINUX)
+    extensions.insert(VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME);
+    extensions.insert(VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME);
+    extensions.insert(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
+#endif
+
+#if defined(JST_OS_WINDOWS)
+    extensions.insert(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+#endif
+
 #if defined(VK_KHR_portability_subset)
     extensions.insert(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
 #endif
@@ -148,6 +162,72 @@ std::set<std::string> Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice
     }
 
     return supportedExtensions;
+}
+
+PhysicalDevice Vulkan::describePhysicalDevice(const VkPhysicalDevice& device, const VkPhysicalDeviceProperties& properties) {
+    PhysicalDevice description;
+    description.name = properties.deviceName;
+
+    switch (properties.deviceType) {
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+            description.type = PhysicalDeviceType::INTEGRATED;
+            break;
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+            description.type = PhysicalDeviceType::DISCRETE;
+            break;
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+            description.type = PhysicalDeviceType::VIRTUAL;
+            break;
+        case VK_PHYSICAL_DEVICE_TYPE_CPU:
+            description.type = PhysicalDeviceType::CPU;
+            break;
+        case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+            description.type = PhysicalDeviceType::OTHER;
+            break;
+        default:
+            description.type = PhysicalDeviceType::UNKNOWN;
+            break;
+    }
+
+    if (properties.apiVersion < VK_API_VERSION_1_1) {
+        return description;
+    }
+
+    const bool hasPciBusInfo = !checkDeviceExtensionSupport(device, {VK_EXT_PCI_BUS_INFO_EXTENSION_NAME}).empty();
+
+    VkPhysicalDevicePCIBusInfoPropertiesEXT pciBusInfo{};
+    pciBusInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT;
+
+    VkPhysicalDeviceIDProperties idProperties{};
+    idProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+    idProperties.pNext = hasPciBusInfo ? &pciBusInfo : nullptr;
+
+    VkPhysicalDeviceProperties2 properties2{};
+    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties2.pNext = &idProperties;
+
+    vkGetPhysicalDeviceProperties2(device, &properties2);
+
+    description.uuid = FormatDeviceUuid(idProperties.deviceUUID);
+
+    if (hasPciBusInfo) {
+        description.pciAddress = jst::fmt::format("{:04x}:{:02x}:{:02x}.{:x}",
+                                                  pciBusInfo.pciDomain,
+                                                  pciBusInfo.pciBus,
+                                                  pciBusInfo.pciDevice,
+                                                  pciBusInfo.pciFunction);
+#if defined(JST_OS_LINUX)
+        if (description.type == PhysicalDeviceType::DISCRETE) {
+            std::ifstream removable(jst::fmt::format("/sys/bus/pci/devices/{}/removable", description.pciAddress));
+            std::string value;
+            if (removable && std::getline(removable, value) && value == "removable") {
+                description.type = PhysicalDeviceType::EXTERNAL;
+            }
+        }
+#endif
+    }
+
+    return description;
 }
 
 Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
@@ -285,10 +365,6 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             JST_FATAL("[VULKAN] No physical devices found.");
             JST_CHECK_THROW(Result::FATAL);
         }
-        if (physicalDeviceCount <= config.deviceId) {
-            JST_FATAL("[VULKAN] Can't find desired device ID ({}).", config.deviceId);
-            JST_CHECK_THROW(Result::FATAL);
-        }
 
         std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
         JST_VK_CHECK_THROW(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data()), [&]{
@@ -306,26 +382,55 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             const auto& queueFamilyIndices = FindQueueFamilies(candidatePhysicalDevice);
             const auto& queueFamilyCheck = queueFamilyIndices.isComplete();
 
-            JST_DEBUG("[VULKAN] Candidate device '{}' - Extension check: {}, Queue family check: {}",
-                      candidateProperties.deviceName,
-                      extensionCheck ? "OK" : "FAIL", queueFamilyCheck ? "OK" : "FAIL");
+            auto candidate = describePhysicalDevice(candidatePhysicalDevice, candidateProperties);
+
+            JST_INFO("[VULKAN] Candidate device '{}' ({}) - Extension check: {}, Queue family check: {}",
+                     candidate.name, candidate.type,
+                     extensionCheck ? "OK" : "FAIL", queueFamilyCheck ? "OK" : "FAIL");
 
             if (extensionCheck && queueFamilyCheck) {
-                JST_DEBUG("[VULKAN] Device ID {}: {}",
-                          validPhysicalDevices.size(),
-                          candidateProperties.deviceName);
+                candidate.index = validPhysicalDevices.size();
+                JST_INFO("[VULKAN] Device ID {}: {}", candidate.index, candidate.name);
                 validPhysicalDevices.push_back(candidatePhysicalDevice);
+                devices.push_back(std::move(candidate));
             }
         }
         if (validPhysicalDevices.size() == 0) {
             JST_FATAL("[VULKAN] No valid physical devices found.");
             JST_CHECK_THROW(Result::FATAL);
         }
-        if (validPhysicalDevices.size() <= config.deviceId) {
-            JST_FATAL("[VULKAN] Can't find desired device ID ({}).", config.deviceId);
+
+        const auto chosen = ChooseDevice(devices, config.deviceId, config.deviceUuid);
+        if (!chosen.has_value()) {
+            JST_FATAL("[VULKAN] Can't find desired device ID ({}).", config.deviceId.value_or(0));
             JST_CHECK_THROW(Result::FATAL);
         }
-        physicalDevice = validPhysicalDevices[config.deviceId];
+        deviceIndex = chosen->index;
+        selection = chosen->selection;
+        physicalDevice = validPhysicalDevices[deviceIndex];
+
+        const auto& selected = devices[deviceIndex];
+        switch (selection) {
+            case DeviceSelection::Override:
+                JST_INFO("[VULKAN] Using '{}' from the requested device index.", selected.name);
+                break;
+            case DeviceSelection::Saved:
+                JST_INFO("[VULKAN] Using the saved GPU '{}'.", selected.name);
+                break;
+            case DeviceSelection::Missing:
+                JST_WARN("[VULKAN] The saved GPU ({}) is not connected. Using '{}' for this run.",
+                         config.deviceUuid, selected.name);
+                break;
+            case DeviceSelection::Automatic:
+                JST_INFO("[VULKAN] Using '{}' (automatic).", selected.name);
+                break;
+        }
+
+        if (const auto discrete = UnusedDiscreteDevice(devices, chosen.value()); discrete.has_value()) {
+            JST_INFO("[VULKAN] The discrete GPU '{}' is available but not in use. "
+                     "Select it in Settings > General > Graphics Device and restart CyberEther.",
+                     devices[discrete.value()].name);
+        }
 
         vkGetPhysicalDeviceProperties(physicalDevice, &properties);
     }
@@ -373,27 +478,8 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         cache.apiVersion = jst::fmt::format("{}.{}.{}", major, minor, patch);
     }
 
-    {
-        switch (properties.deviceType) {
-            case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-                cache.physicalDeviceType = PhysicalDeviceType::INTEGRATED;
-                break;
-            case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-                cache.physicalDeviceType = PhysicalDeviceType::DISCRETE;
-                break;
-            case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
-            case VK_PHYSICAL_DEVICE_TYPE_CPU:
-            case VK_PHYSICAL_DEVICE_TYPE_OTHER:
-                cache.physicalDeviceType = PhysicalDeviceType::OTHER;
-                break;
-            case VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM:
-                cache.physicalDeviceType = PhysicalDeviceType::UNKNOWN;
-                break;
-            default:
-                cache.physicalDeviceType = PhysicalDeviceType::UNKNOWN;
-                break;
-        }
-    }
+    cache.deviceUuid = devices[deviceIndex].uuid;
+    cache.physicalDeviceType = devices[deviceIndex].type;
 
     {
         cache.hasUnifiedMemory = true;
@@ -418,6 +504,16 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     cache.canExportDeviceMemory = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
 #endif
     cache.canImportHostMemory = supportedDeviceExtensions.contains(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+#if defined(JST_OS_LINUX)
+    cache.canShareFrames = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME) &&
+                           supportedDeviceExtensions.contains(VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME) &&
+                           supportedDeviceExtensions.contains(VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME) &&
+                           supportedDeviceExtensions.contains(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
+#elif defined(JST_OS_WINDOWS)
+    cache.canShareFrames = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+#else
+    cache.canShareFrames = false;
+#endif
 
     // Create logical device.
 
@@ -614,6 +710,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     JST_INFO("  - Can Import Device Memory: {}", canImportDeviceMemory() ? "YES" : "NO");
     JST_INFO("  - Can Export Device Memory: {}", canExportDeviceMemory() ? "YES" : "NO");
     JST_INFO("  - Can Import Host Memory:   {}", canImportHostMemory() ? "YES" : "NO");
+    JST_INFO("  - Can Share Frames:         {}", canShareFrames() ? "YES" : "NO");
     JST_INFO("-----------------------------------------------------");
 }
 
@@ -654,6 +751,22 @@ bool Vulkan::isAvailable() const {
     return _isAvailable;
 }
 
+U64 Vulkan::getDeviceId() const {
+    return deviceIndex;
+}
+
+std::string Vulkan::getDeviceUuid() const {
+    return cache.deviceUuid;
+}
+
+DeviceSelection Vulkan::getDeviceSelection() const {
+    return selection;
+}
+
+const std::vector<PhysicalDevice>& Vulkan::getDevices() const {
+    return devices;
+}
+
 std::string Vulkan::getDeviceName() const {
     return cache.deviceName;
 }
@@ -688,6 +801,10 @@ bool Vulkan::canImportDeviceMemory() const {
 
 bool Vulkan::canImportHostMemory() const {
     return cache.canImportHostMemory;
+}
+
+bool Vulkan::canShareFrames() const {
+    return cache.canShareFrames;
 }
 
 U64 Vulkan::getPhysicalMemory() const {

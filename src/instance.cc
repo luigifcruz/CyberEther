@@ -77,6 +77,7 @@ Result Instance::create(const Config& config) {
     {
         auto backendConfig = Backend::Config {
             .deviceId = config.deviceId,
+            .deviceUuid = config.deviceUuid,
             .headless = config.headless,
             .pythonRuntimePath = config.pythonRuntimePath,
             .dependencyPolicy = config.dependencyPolicy,
@@ -96,9 +97,21 @@ Result Instance::create(const Config& config) {
         JST_CHECK(Backend::Configure<DeviceType::CUDA>(backendConfig));
 #endif
 
+        [[maybe_unused]] auto initializeBackend = [&]<DeviceType D>() -> Result {
+            JST_CHECK(Backend::Initialize<D>(backendConfig));
+#if defined(JETSTREAM_BACKEND_CUDA_AVAILABLE) && defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
+            if constexpr (D == DeviceType::Vulkan) {
+                auto cudaConfig = backendConfig;
+                cudaConfig.deviceUuid = Backend::State<D>()->getDeviceUuid();
+                JST_CHECK(Backend::Configure<DeviceType::CUDA>(cudaConfig));
+            }
+#endif
+            return Result::SUCCESS;
+        };
+
 #ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
         auto buildGlfw = [&]<DeviceType D>() -> Result {
-            JST_CHECK(Backend::Initialize<D>(backendConfig));
+            JST_CHECK(initializeBackend.template operator()<D>());
 
             auto viewport = std::make_shared<Viewport::GLFW<D>>(viewportConfig);
             JST_CHECK(viewport->create());
@@ -121,7 +134,7 @@ Result Instance::create(const Config& config) {
 
 #if defined(JETSTREAM_RENDER_VULKAN_AVAILABLE) || defined(JETSTREAM_RENDER_METAL_AVAILABLE)
         auto buildHeadless = [&]<DeviceType D>() -> Result {
-            JST_CHECK(Backend::Initialize<D>(backendConfig));
+            JST_CHECK(initializeBackend.template operator()<D>());
 
             auto viewport = std::make_shared<Viewport::Headless<D>>(viewportConfig);
             JST_CHECK(viewport->create());

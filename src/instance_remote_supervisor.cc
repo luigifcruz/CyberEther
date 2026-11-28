@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdio>
 #include <iostream>
+#include <string_view>
 #include <qrencode.h>
 
 namespace Jetstream {
@@ -90,7 +91,8 @@ void Instance::Remote::Supervisor::print() const {
     }
 
     const int qrWidth = qr->width;
-    const int border = 2;
+    const int minimumInner = static_cast<int>(std::string_view("Scan QR code or open link to connect").size()) + 2;
+    const int border = std::max(2, (minimumInner - 4 - qrWidth + 1) / 2);
     const int totalWidth = qrWidth + border * 2;
     const int boxInner = totalWidth + 4;
 

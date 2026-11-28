@@ -8,7 +8,10 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -23,8 +26,12 @@
 #include "jetstream/registry.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/benchmark.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 
+#include "home_gallery_remote.hh"
+#include "plugin_gallery.hh"
 #include "updater.hh"
+#include "tools/text.hh"
 
 #if defined(JST_OS_WINDOWS)
 #define WIN32_LEAN_AND_MEAN
@@ -55,6 +62,38 @@ void HandleInterrupt() noexcept {
     Platform::ForceTerminate(130);
 }
 
+constexpr const char* URL_SCHEME = "cyberether";
+constexpr std::string_view URL_PREFIX = "cyberether://";
+
+class LinkInbox {
+ public:
+    void deliver(std::string url) {
+        std::lock_guard lock(mutex);
+        if (viewport) {
+            viewport->addOpenRequest(std::move(url));
+            return;
+        }
+        pending.push_back(std::move(url));
+    }
+
+    void attach(std::shared_ptr<Viewport::Generic> next) {
+        std::lock_guard lock(mutex);
+        viewport = std::move(next);
+        if (!viewport) {
+            return;
+        }
+        for (auto& url : pending) {
+            viewport->addOpenRequest(std::move(url));
+        }
+        pending.clear();
+    }
+
+ private:
+    std::mutex mutex;
+    std::shared_ptr<Viewport::Generic> viewport;
+    std::vector<std::string> pending;
+};
+
 class InterruptHandlerGuard {
  public:
     InterruptHandlerGuard() {
@@ -82,6 +121,7 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
     Instance::Config config = {
         .device = settings.graphics.device,
         .deviceId = settings.graphics.deviceId,
+        .deviceUuid = settings.graphics.gpu.uuid,
         .compositor = CompositorType::DEFAULT,
         .headless = settings.graphics.headless,
         .size = {settings.graphics.size.width, settings.graphics.size.height},
@@ -94,15 +134,33 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
     return config;
 }
 
+std::string CurrentRemoteValue(const std::string& value) {
+    const std::string lower = Text::ToLower(value);
+
+    std::string current = value;
+    if (lower == "vp8" || lower == "vp9") {
+        current = "h264";
+    } else if (lower == "mediafoundation" || lower == "tcp") {
+        current = "auto";
+    }
+
+    if (current != value) {
+        JST_WARN("Saved remote option '{}' is no longer available. Using '{}'.", value, current);
+    }
+    return current;
+}
+
 Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
     Instance::Remote::Config config = {
         .access = {
             .autoApprove = settings.remote.access.autoApprove,
+            .token = settings.remote.access.token,
         },
         .video = {
             .framerate = static_cast<U32>(settings.remote.video.framerate),
-            .codec = StringToRemoteCodec(settings.remote.video.codec),
-            .encoder = StringToRemoteEncoder(settings.remote.video.encoder),
+            .codec = StringToRemoteCodec(CurrentRemoteValue(settings.remote.video.codec)),
+            .encoder = StringToRemoteEncoder(CurrentRemoteValue(settings.remote.video.encoder)),
+            .matchViewer = settings.remote.video.matchViewer,
         },
         .broker = {
             .address = settings.remote.broker.address,
@@ -112,10 +170,13 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
             .key = settings.remote.broker.key,
         },
         .media = {
-            .transport = StringToRemoteTransport(settings.remote.media.transport),
+            .transport = StringToRemoteTransport(CurrentRemoteValue(settings.remote.media.transport)),
             .minPort = static_cast<U16>(settings.remote.media.minPort),
             .maxPort = static_cast<U16>(settings.remote.media.maxPort),
             .address = settings.remote.media.address,
+        },
+        .audio = {
+            .enabled = settings.remote.audio.enabled,
         },
     };
 
@@ -126,6 +187,11 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
 
     if (!settings.remote.broker.publicUrl.empty() && !IsRemotePublicUrlValid(settings.remote.broker.publicUrl)) {
         throw Result::ERROR;
+    }
+
+    if (!config.access.token.empty() && !IsRemoteTokenValid(config.access.token)) {
+        JST_WARN("Saved remote access token is invalid. Using a random token.");
+        config.access.token.clear();
     }
 
     if (settings.remote.broker.port > 65535) {
@@ -396,8 +462,10 @@ static void printUsage(const char* program,
                         settings.runtime.dependencyPolicy);
         jst::fmt::print("  {:<38}  Choices: prompt, allow, deny\n", "");
         jst::fmt::print("  --python-runtime <path>               Python executable or library\n");
-        jst::fmt::print("  --device-index <index>                Vulkan and CUDA device index (current: {})\n",
-                        settings.graphics.deviceId);
+        jst::fmt::print("  --device-index <index>                Vulkan device index for this run (current: {})\n",
+                        settings.graphics.deviceId.has_value()
+                            ? jst::fmt::format("{}", settings.graphics.deviceId.value())
+                            : std::string("auto"));
         jst::fmt::print("  --plugin <path>                       Load a .cep plugin for this run (repeatable)\n\n");
     }
 
@@ -419,8 +487,14 @@ static void printUsage(const char* program,
         jst::fmt::print("  --remote                              Enable CyberEther Remote\n");
         jst::fmt::print("  --remote-auto-approve <on|off>        Approve viewers automatically (current: {})\n",
                         settings.remote.access.autoApprove ? "on" : "off");
+        jst::fmt::print("  --remote-token <token>                Fixed invite token (current: {})\n",
+                        settings.remote.access.token.empty() ? "random" : "set");
         jst::fmt::print("  --remote-framerate <fps>              Video framerate (current: {})\n",
                         settings.remote.video.framerate);
+        jst::fmt::print("  --remote-match-viewer <on|off>        Match the viewer resolution (current: {})\n",
+                        settings.remote.video.matchViewer ? "on" : "off");
+        jst::fmt::print("  --remote-audio <on|off>               Stream audio to viewers (current: {})\n",
+                        settings.remote.audio.enabled ? "on" : "off");
         jst::fmt::print("  --remote-codec <codec>                Video codec (current: {})\n",
                         settings.remote.video.codec);
         jst::fmt::print("  {:<38}  Choices: {}\n", "", codecOptions);
@@ -472,6 +546,7 @@ static void printUsage(const char* program,
     if (!command.has_value() || *command == CommandType::Run) {
         jst::fmt::print("  {} flowgraph.yaml\n", program);
         jst::fmt::print("  {} --remote flowgraph.yaml\n", program);
+        jst::fmt::print("  {} {}first-steps\n", program, Home::Gallery::Remote::LinkPrefix);
     }
     if (!command.has_value() || *command == CommandType::Benchmark) {
         jst::fmt::print("  {} benchmark fft --format json\n", program);
@@ -535,10 +610,39 @@ int Run(int argc, char* argv[]) {
     JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
 
     std::string flowgraphPath;
+    std::string link;
+
+    for (int i = 1; i < argc; i++) {
+        if (!std::string_view(argv[i]).starts_with(URL_PREFIX)) {
+            continue;
+        }
+        if (argc != 2) {
+            return PrintUsageError(argv[0], "A CyberEther link must be the only argument.");
+        }
+        link = argv[i];
+        if (!Home::Gallery::Remote::Link(link).has_value() && !Plugin::Gallery::Link(link).has_value()) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "Invalid CyberEther link: '{}'. Expected {}[owner/]<name> or {}[owner/]<id>.",
+                link,
+                Home::Gallery::Remote::LinkPrefix,
+                Plugin::Gallery::LinkPrefix));
+        }
+        if (Platform::UrlScheme::Forward(URL_SCHEME, link) == Result::SUCCESS) {
+            return 0;
+        }
+    }
 
     std::shared_ptr<Instance> instance;
     std::shared_ptr<Flowgraph> flowgraph;
     std::unique_ptr<Instance::Remote::Supervisor> supervisor;
+    LinkInbox inbox;
+    Platform::UrlScheme links;
+    Result listening = Result::ERROR;
+    const auto listen = [&] {
+        return links.listen(URL_SCHEME, [&inbox](std::string url) {
+            inbox.deliver(std::move(url));
+        });
+    };
 
     std::atomic<int> code{0};
 
@@ -558,6 +662,9 @@ int Run(int argc, char* argv[]) {
 
     for (int i = 1; i < argc; i++) {
         const std::string originalArg = argv[i];
+        if (!link.empty() && originalArg == link) {
+            continue;
+        }
         std::string arg = originalArg;
         std::optional<std::string> inlineValue;
 
@@ -1017,6 +1124,53 @@ int Run(int argc, char* argv[]) {
             continue;
         }
 
+        if (!positionalOnly && arg == "--remote-token") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-token. Expected a token.");
+            }
+            if (!IsRemoteTokenValid(value)) {
+                return PrintUsageError(argv[0],
+                    "Invalid value for --remote-token. Expected 16 to 128 letters, digits, or the characters - _ . ~, not starting with -");
+            }
+            settings.remote.access.token = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-match-viewer") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-match-viewer. Expected on or off.");
+            }
+            value = Lowercase(value);
+            if (value != "on" && value != "off") {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-match-viewer: '{}'. Expected on or off.", value));
+            }
+            settings.remote.video.matchViewer = value == "on";
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--remote-audio") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --remote-audio. Expected on or off.");
+            }
+            value = Lowercase(value);
+            if (value != "on" && value != "off") {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --remote-audio: '{}'. Expected on or off.", value));
+            }
+            settings.remote.audio.enabled = value == "on";
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
         // Handle Benchmark Options
 
         if (!positionalOnly && arg == "--format") {
@@ -1151,6 +1305,8 @@ int Run(int argc, char* argv[]) {
             shutdownRequested.test_and_set(std::memory_order_relaxed);
         }
         supervisor.reset();
+        links.close();
+        inbox.attach(nullptr);
 
         try {
             if (instanceCreated && (instance->computing() || instance->presenting())) {
@@ -1201,6 +1357,7 @@ int Run(int argc, char* argv[]) {
 
     const auto backendConfig = Backend::Config {
         .deviceId = settings.graphics.deviceId,
+        .deviceUuid = settings.graphics.gpu.uuid,
         .headless = settings.graphics.headless,
         .pythonRuntimePath = settings.runtime.python.path,
         .dependencyPolicy = settings.runtime.dependencyPolicy,
@@ -1256,6 +1413,25 @@ int Run(int argc, char* argv[]) {
             return -1;
         }
 
+        if (!settings.graphics.headless) {
+            if (Updater().snapshot().supported) {
+                (void)Platform::UrlScheme::Register(URL_SCHEME);
+            }
+            listening = listen();
+            if (listening == Result::ERROR) {
+                JST_WARN("[CYBERETHER] Links will open in a new window because the link listener is unavailable.");
+            }
+            for (int attempt = 0; listening == Result::SKIP && !link.empty() && attempt < 20; attempt++) {
+                if (Platform::UrlScheme::Forward(URL_SCHEME, link) == Result::SUCCESS) {
+                    return 0;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            if (!link.empty()) {
+                inbox.deliver(link);
+            }
+        }
+
         instance = std::make_shared<Instance>();
 
         const Result createResult = instance->create(config);
@@ -1282,6 +1458,11 @@ int Run(int argc, char* argv[]) {
 
         if (instance->start() != Result::SUCCESS) {
             return -1;
+        }
+
+        if (std::shared_ptr<Viewport::Generic> viewport;
+            instance->viewportGet(viewport) == Result::SUCCESS) {
+            inbox.attach(std::move(viewport));
         }
 
         if (remoteEnabled) {
@@ -1349,10 +1530,16 @@ int Run(int argc, char* argv[]) {
             supervisor->start();
         }
 
+        auto listenRetry = std::chrono::steady_clock::now();
         while (!shutdownRequested.test(std::memory_order_relaxed) && instance->polling()) {
             if (instance->poll() != Result::SUCCESS) {
                 code.store(-1);
                 break;
+            }
+            if (const auto now = std::chrono::steady_clock::now();
+                listening == Result::SKIP && now - listenRetry >= std::chrono::seconds(2)) {
+                listenRetry = now;
+                listening = listen();
             }
         }
 

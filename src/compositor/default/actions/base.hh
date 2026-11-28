@@ -38,6 +38,7 @@ class DefaultActions {
     void reconcileFilePicker();
     void settleStartTab();
     void refreshRegistry();
+    void settleLinks();
     void settlePendingFocus();
     void reconcileFlowgraphs();
     void reconcileModal();

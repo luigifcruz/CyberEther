@@ -30,7 +30,7 @@ class CUDA {
     bool canImportHostMemory() const;
 
     constexpr const U64& getDeviceId() const {
-        return config.deviceId;
+        return deviceId;
     }
 
     CUdevice getDevice() const {
@@ -43,6 +43,7 @@ class CUDA {
 
   private:
     Config config;
+    U64 deviceId = 0;
     CUdevice device;
     CUcontext context;
     bool _isAvailable = false;

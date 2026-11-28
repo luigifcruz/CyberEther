@@ -1,6 +1,8 @@
 #pragma once
 
+#include "instance_remote_audio.hh"
 #include "instance_remote_broker.hh"
+#include "instance_remote_encoder.hh"
 
 #include "jetstream/instance_remote.hh"
 #include "jetstream/viewport/capture.hh"
@@ -14,16 +16,12 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
-#define GST_USE_UNSTABLE_API
-#include <gst/webrtc/webrtc.h>
-
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-#include <gst/cuda/gstcuda.h>
-#endif
+#include <rtc/rtc.hpp>
 
 #include <httplib.h>
 #ifdef ERROR
@@ -42,6 +40,9 @@ struct Instance::Remote::Impl {
     Result rollbackCreate();
     Result processInput();
     void requestKeyframe();
+    bool acceptCapture(bool available, std::chrono::steady_clock::time_point now);
+    void scheduleCapture(std::chrono::steady_clock::time_point now);
+    void releaseCapture();
     Result captureFrame(bool presented,
                         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
     Result approveClient(const std::string& sessionId);
@@ -59,25 +60,19 @@ struct Instance::Remote::Impl {
     mutable std::mutex remoteStateMutex;
     std::map<CodecType, std::vector<EncoderType>> availableEncoderCache;
 
-    enum class EncodingStrategyType {
-        None,
-        Software,
-        HardwareNVENC,
-        HardwareV4L2,
-        HardwareVideoToolbox,
-        HardwareMediaFoundation,
-    };
-
     struct EncodingCombination {
         DeviceType device = DeviceType::None;
-        EncodingStrategyType strategy = EncodingStrategyType::None;
-        std::vector<std::string> plugins;
+        EncoderType encoder = EncoderType::Auto;
     };
 
-    Extent2D<U64> size;
+    Extent2D<U64> size = {};
+    mutable std::mutex sizeMutex;
+    Extent2D<U64> launchSize = {};
+    F32 launchScale = 1.0f;
 
     DeviceType inputMemoryDevice_ = DeviceType::None;
-    EncodingStrategyType encodingStrategy = EncodingStrategyType::None;
+    EncoderType encoderType = EncoderType::Auto;
+    std::vector<EncodingCombination> encoderFallbacks;
 
     // Broker state
     std::string clientDomain;
@@ -93,16 +88,9 @@ struct Instance::Remote::Impl {
     Result createRoom();
 
     // Stream
-    GstElement* pipeline = nullptr;
-    GstElement* source = nullptr;
-    GstElement* encoder = nullptr;
-    GstElement* tee = nullptr;
-    std::thread busThread;
-    std::atomic<bool> busRunning = false;
-
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    GstCudaContext* gstCudaContext = nullptr;
-#endif
+    std::unique_ptr<Encoder> encoder;
+    std::unique_ptr<Audio> audio;
+    std::vector<Encoder::Packet> packets;
 
     std::unique_ptr<Broker> broker;
     std::unique_ptr<httplib::ws::WebSocketClient> signallerClient;
@@ -112,52 +100,54 @@ struct Instance::Remote::Impl {
     std::mutex signallerMutex;
 
     struct WebRtcSession {
+        struct Keyframe {
+            std::mutex mutex;
+            Impl* impl = nullptr;
+        };
+
         std::string sessionId;
         std::string peerId;
-        GstElement* queue = nullptr;
-        GstElement* payloader = nullptr;
-        GstElement* rtpCaps = nullptr;
-        GstElement* webrtc = nullptr;
-        GstPad* teeSrcPad = nullptr;
-        GstPad* webrtcSinkPad = nullptr;
-        gulong iceHandler = 0;
-        gulong channelHandler = 0;
-        gulong negotiationHandler = 0;
-        gulong connectionHandler = 0;
-        bool negotiationReady = false;
-        bool offerPending = false;
-    };
+        std::shared_ptr<rtc::PeerConnection> peer;
+        std::shared_ptr<rtc::Track> track;
+        std::shared_ptr<rtc::Track> audio;
+        std::shared_ptr<rtc::RtpPacketizationConfig> audioConfig;
+        std::shared_ptr<rtc::DataChannel> control;
+        std::shared_ptr<Keyframe> keyframe;
 
-    struct WebRtcSignalContext {
-        Impl* impl = nullptr;
-        std::string sessionId;
-    };
-
-    struct ControlChannelContext {
-        Impl* impl = nullptr;
-        std::string sessionId;
+        std::mutex candidatesMutex;
+        bool described = false;
+        U64 received = 0;
+        std::vector<std::pair<std::string, std::string>> candidates;
     };
 
     std::mutex sessionsMutex;
-    std::unordered_map<std::string, std::unique_ptr<WebRtcSession>> sessions;
+    std::unordered_map<std::string, std::shared_ptr<WebRtcSession>> sessions;
 
     std::atomic<bool> streaming = false;
     std::mutex streamMutex;
+    std::mutex lifecycleMutex;
 
-    Result createStream();
+    Result createStream(DeviceType only = DeviceType::None);
+    Result createCapture();
+    Result startSubmission();
+    void stopSubmission();
+    Result openEncoder(std::unique_ptr<Encoder>& opened);
+    Result followViewport();
+    Result rebuildStream(const Extent2D<U64>& next);
+    Result reopenStream();
+    Extent2D<U64> viewportExtent() const;
+    Extent2D<U64> streamSize() const;
+    void setStreamSize(const Extent2D<U64>& next);
+    void restoreViewport();
     Result startStream();
     Result stopStream();
     Result destroyStream();
     std::vector<EncoderType> available(CodecType codec);
-    std::vector<EncodingCombination> encodingCombinations(CodecType codec);
-    static EncoderType EncoderFromEncodingStrategy(EncodingStrategyType strategy);
-    static bool EncoderMatchesStrategy(EncoderType encoder, EncodingStrategyType strategy);
+    std::vector<EncodingCombination> encodingCombinations(CodecType codec, DeviceType only = DeviceType::None);
     Result createWebRtcSession(const std::string& sessionId, const std::string& peerId);
     void destroyWebRtcSession(const std::string& sessionId);
     void destroyAllWebRtcSessions();
-    GstElement* refSessionWebrtc(const std::string& sessionId);
-    GstElement* createPayloader();
-    GstElement* createRtpCapsFilter();
+    std::shared_ptr<WebRtcSession> findSession(const std::string& sessionId);
     Result startSignaller();
     Result stopSignaller();
     httplib::ws::Result connectSignaller(const std::string& url);
@@ -166,23 +156,24 @@ struct Instance::Remote::Impl {
     void readSignaller();
     void handleSignallerMessage(const std::string& payload);
     void handleStartSession(const nlohmann::json& j);
-    void createOfferIfReady(const std::string& sessionId);
     void handlePeerMessage(const nlohmann::json& j);
     void handleEndSession(const nlohmann::json& j);
     bool sendSignallerMessage(const nlohmann::json& j);
-    void sendSessionDescription(const std::string& sessionId, const GstWebRTCSessionDescription* desc);
-    void sendIceCandidate(const std::string& sessionId, guint mlineIndex, const gchar* candidate);
+    void sendSessionDescription(const std::string& sessionId, const rtc::Description& description);
+    void sendIceCandidate(const std::string& sessionId, const rtc::Candidate& candidate);
+    void addRemoteCandidate(WebRtcSession& session, const std::string& candidate, const std::string& mid);
+    Result createVideoTrack(WebRtcSession& session);
+    Result createAudioTrack(WebRtcSession& session);
+    void pushAudio(const U8* data, U64 size, U64 sampleTime);
+    void closeWebRtcSession(WebRtcSession& session);
     Result applyRemoteDescription(const std::string& sessionId,
                                   const std::string& type,
                                   const std::string& sdp);
-
-    Result checkGstreamerPlugins(const std::vector<std::string>& plugins,
-                                 const bool& silent = false);
-    static const char* GetEncodingStrategyPrettyName(const EncodingStrategyType& strategy);
     struct QueuedInput {
         std::string sessionId;
         nlohmann::json payload;
         bool reset = false;
+        U64 epoch = 0;
     };
 
     struct RemoteInputState {
@@ -194,7 +185,32 @@ struct Instance::Remote::Impl {
         bool meta = false;
     };
 
+    struct ViewportRequest {
+        Extent2D<U64> size = {};
+        F32 scale = 1.0f;
+
+        bool operator==(const ViewportRequest&) const = default;
+    };
+
     std::mutex inputMutex;
+    std::unordered_map<std::string, ViewportRequest> viewportRequests;
+    ViewportRequest appliedViewport;
+    U64 sentClipboardRevision = 0;
+    std::optional<bool> sentAppearance;
+    std::mutex appearanceMutex;
+    U64 inputFrame = 0;
+    U64 lastInputFrame = 0;
+    U64 controlEpoch = 0;
+    std::mutex controlBroadcastMutex;
+
+    struct ClipboardTransfer {
+        U64 id = 0;
+        U64 count = 0;
+        U64 next = 0;
+        std::string text;
+    };
+
+    std::unordered_map<std::string, ClipboardTransfer> clipboardTransfers;
     std::deque<std::string> inputSessionOrder;
     std::deque<QueuedInput> inputQueue;
     std::unordered_map<std::string, RemoteInputState> remoteInputStates;
@@ -202,44 +218,53 @@ struct Instance::Remote::Impl {
 
     void enqueueInput(std::string sessionId, nlohmann::json payload);
     void enqueueInputReset(const std::string& sessionId);
-    void handleInput(const std::string& sessionId, const std::string& kind, const nlohmann::json& j);
+    void handleInput(const std::string& sessionId, U64 epoch, const std::string& kind, const nlohmann::json& j);
     void resetInput(const std::string& sessionId);
     void synchronizeKeyboardState();
     void pushInput(Render::InputQueue::Event event);
     Extent2D<F32> framebufferScale() const;
-    void createControlChannel(const std::string& sessionId);
-    static void onMessageCallback(GstWebRTCDataChannel* self, gchar* data, gpointer user_data);
-    static void onChannelClosedCallback(GstWebRTCDataChannel* self, gpointer user_data);
-    static void onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data);
-    static void onIceCandidateCallback(GstElement* self, guint mlineIndex, gchar* candidate, gpointer user_data);
-    static void onNegotiationNeededCallback(GstElement* self, gpointer user_data);
-    static void onConnectionStateCallback(GstElement* self, GParamSpec* pspec, gpointer user_data);
-    static void onOfferCreatedCallback(GstPromise* promise, gpointer user_data);
-    static void onAnswerCreatedCallback(GstPromise* promise, gpointer user_data);
-
-    struct WebRtcPromiseContext {
-        Impl* impl = nullptr;
-        std::string sessionId;
-    };
+    void bindControlChannel(const std::string& sessionId, const std::shared_ptr<rtc::DataChannel>& channel);
+    void handleControlMessage(const std::string& sessionId, std::string_view payload);
+    void recordViewport(const std::string& sessionId, const nlohmann::json& j);
+    void applyViewport();
+    void syncClipboard();
+    void syncAppearance();
+    void sendAppearance(const std::shared_ptr<rtc::DataChannel>& channel);
+    void receiveClipboard(const std::string& sessionId, const nlohmann::json& j);
+    void handleControlRequest(const std::string& sessionId, const nlohmann::json& j);
+    void broadcastControlState();
 
     std::unique_ptr<Viewport::FrameCapture> frameCapture;
     std::chrono::steady_clock::time_point nextCaptureTime{};
     bool capturePending = false;
     std::atomic<bool> captureRequested = false;
+    std::atomic<bool> captureBlocked = false;
     std::thread frameSubmissionThread;
     std::atomic<bool> frameSubmissionRunning = false;
 
     // Frame submission
-    std::mutex bufferMutex;
-    std::condition_variable bufferCond;
-    bool bufferProcessed = false;
-
     std::atomic<bool> forceKeyframe = false;
     std::chrono::time_point<std::chrono::steady_clock> initialFrameTime;
     std::chrono::time_point<std::chrono::steady_clock> lastKeyframeTime;
 
-    static void OnBufferReleaseCallback(gpointer user_data);
+    struct Telemetry {
+        struct Sample {
+            std::chrono::steady_clock::time_point time;
+            F32 encode = 0.0f;
+            U64 bytes = 0;
+        };
+
+        std::mutex mutex;
+        std::deque<Sample> samples;
+        U64 keyframeBytes = 0;
+        std::string format;
+    };
+
+    Telemetry telemetry;
+
     Result pushNewFrame(const void* data);
+    void record(std::chrono::steady_clock::time_point time, F32 encode, const std::vector<Encoder::Packet>& output);
+    Stats stats();
 };
 
 }  // namespace Jetstream

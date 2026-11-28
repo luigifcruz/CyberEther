@@ -4,6 +4,8 @@
 #include "jetstream/backend/devices/cuda/helpers.hh"
 #include "jetstream/logger.hh"
 
+#include "../selection.hh"
+
 namespace Jetstream::Backend {
 
 CUDA::CUDA(const Config& config) : config(config), cache({}) {
@@ -19,15 +21,34 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_CUDA_CHECK_THROW(cuDeviceGetCount(&deviceCount), [&]{
         JST_FATAL("[CUDA] Cannot get device count: {}", err);
     });
-    if (config.deviceId >= static_cast<U64>(deviceCount)) {
-        JST_FATAL("[CUDA] Cannot get desired device ID ({}).", config.deviceId);
+    if (deviceCount <= 0) {
+        JST_FATAL("[CUDA] No CUDA devices found.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
     // Setup device.
 
-    JST_CUDA_CHECK_THROW(cuDeviceGet(&device, config.deviceId), [&]{
-        JST_FATAL("[CUDA] Cannot get desired device ID ({}): {}", config.deviceId, err);
+    if (!config.deviceUuid.empty()) {
+        bool matched = false;
+        for (I32 ordinal = 0; ordinal < deviceCount && !matched; ++ordinal) {
+            CUdevice candidate;
+            CUuuid uuid;
+            if (cuDeviceGet(&candidate, ordinal) == CUDA_SUCCESS &&
+                cuDeviceGetUuid(&uuid, candidate) == CUDA_SUCCESS &&
+                FormatDeviceUuid(reinterpret_cast<const U8*>(uuid.bytes)) == config.deviceUuid) {
+                deviceId = static_cast<U64>(ordinal);
+                matched = true;
+            }
+        }
+        if (matched) {
+            JST_INFO("[CUDA] Using CUDA device {} to match the selected GPU.", deviceId);
+        } else {
+            JST_INFO("[CUDA] No CUDA device matches the selected GPU. Using CUDA device 0.");
+        }
+    }
+
+    JST_CUDA_CHECK_THROW(cuDeviceGet(&device, static_cast<I32>(deviceId)), [&]{
+        JST_FATAL("[CUDA] Cannot get desired device ID ({}): {}", deviceId, err);
     });
 
     {
@@ -43,7 +64,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         } else if (result != CUDA_ERROR_INVALID_VALUE &&
                    result != CUDA_ERROR_NOT_SUPPORTED) {
             JST_FATAL("[CUDA] RDMA VMM capability query failed for device ID ({}): {}.",
-                      config.deviceId, static_cast<int>(result));
+                      deviceId, static_cast<int>(result));
             JST_CHECK_THROW(Result::ERROR);
         }
     }
@@ -118,11 +139,11 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         cache.canImportHostMemory = query;
     }
 
-    JST_CUDA_CHECK_THROW(cudaSetDevice(config.deviceId), [&]{
-        JST_FATAL("[CUDA] Cannot get desired device ID ({}): {}", config.deviceId, err);
+    JST_CUDA_CHECK_THROW(cudaSetDevice(static_cast<I32>(deviceId)), [&]{
+        JST_FATAL("[CUDA] Cannot get desired device ID ({}): {}", deviceId, err);
     });
     JST_CUDA_CHECK_THROW(cuDevicePrimaryCtxRetain(&context, device), [&]{
-        JST_FATAL("[CUDA] Cannot retain primary context for device ID ({}): {}", config.deviceId, err);
+        JST_FATAL("[CUDA] Cannot retain primary context for device ID ({}): {}", deviceId, err);
     });
     _isAvailable = true;
 
@@ -153,11 +174,11 @@ CUDA::~CUDA() {
 }
 
 Result CUDA::activate() const {
-    JST_CUDA_CHECK(cudaSetDevice(config.deviceId), [&]{
-        JST_ERROR("[CUDA] Cannot activate device ID ({}): {}", config.deviceId, err);
+    JST_CUDA_CHECK(cudaSetDevice(static_cast<I32>(deviceId)), [&]{
+        JST_ERROR("[CUDA] Cannot activate device ID ({}): {}", deviceId, err);
     });
     JST_CUDA_CHECK(cuCtxSetCurrent(context), [&]{
-        JST_ERROR("[CUDA] Cannot activate context for device ID ({}): {}", config.deviceId, err);
+        JST_ERROR("[CUDA] Cannot activate context for device ID ({}): {}", deviceId, err);
     });
     return Result::SUCCESS;
 }

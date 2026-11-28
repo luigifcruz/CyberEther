@@ -258,7 +258,7 @@ if cfg_lst.get('JETSTREAM_LOADER_ZLIB_AVAILABLE', false) and not jst_is_windows 
 endif
 if not jst_is_browser
     core_test_domains += {
-        'platform': core_test_domains['platform'] + ['platform/socket.cc'],
+        'platform': core_test_domains['platform'] + ['platform/socket.cc', 'platform/url_scheme.cc'],
     }
 endif
 if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
@@ -266,7 +266,7 @@ if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
         'render': core_test_domains['render'] + ['render/metal_capture.cc'],
     }
 endif
-if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_windows
+if cfg_lst.get('JETSTREAM_INSTANCE_REMOTE_AVAILABLE', false) and not jst_is_windows
     core_test_domains += {
         'application': core_test_domains['application'] + ['application/remote_stream.cc'],
     }

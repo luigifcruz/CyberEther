@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_BACKEND_CONFIG_HH
 #define JETSTREAM_BACKEND_CONFIG_HH
 
+#include <optional>
 #include <string>
 
 #include "jetstream/logger.hh"
@@ -13,6 +14,9 @@ enum class PhysicalDeviceType : uint8_t {
     DISCRETE    = 1,
     INTEGRATED  = 2,
     OTHER       = 3,
+    EXTERNAL    = 4,
+    VIRTUAL     = 5,
+    CPU         = 6,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const PhysicalDeviceType& type) {
@@ -29,6 +33,15 @@ inline std::ostream& operator<<(std::ostream& os, const PhysicalDeviceType& type
         case PhysicalDeviceType::OTHER:
             os << "OTHER";
             break;
+        case PhysicalDeviceType::EXTERNAL:
+            os << "EXTERNAL";
+            break;
+        case PhysicalDeviceType::VIRTUAL:
+            os << "VIRTUAL";
+            break;
+        case PhysicalDeviceType::CPU:
+            os << "CPU";
+            break;
         default:
             os.setstate(std::ios_base::failbit);
             break;
@@ -36,8 +49,26 @@ inline std::ostream& operator<<(std::ostream& os, const PhysicalDeviceType& type
     return os;
 }
 
+struct PhysicalDevice {
+    U64 index = 0;
+    std::string name;
+    std::string uuid;
+    PhysicalDeviceType type = PhysicalDeviceType::UNKNOWN;
+    std::string pciAddress;
+
+    bool operator==(const PhysicalDevice&) const = default;
+};
+
+enum class DeviceSelection : uint8_t {
+    Automatic,
+    Saved,
+    Missing,
+    Override,
+};
+
 struct Config {
-    U64 deviceId = 0;
+    std::optional<U64> deviceId;
+    std::string deviceUuid;
 #ifdef JST_DEBUG_MODE
     bool validationEnabled = true;
 #else

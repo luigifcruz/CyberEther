@@ -95,13 +95,19 @@ Instance::Remote::Broker::~Broker() {
     (void)destroy();
 }
 
-Result Instance::Remote::Broker::create(const Config::Broker& config) {
+Result Instance::Remote::Broker::create(const Config::Broker& config, const std::string& token) {
     if (server) {
         JST_ERROR("[REMOTE] Broker is already running.");
         return Result::ERROR;
     }
 
+    if (!token.empty() && !IsRemoteTokenValid(token)) {
+        JST_ERROR("[REMOTE] The remote access token must be 16 to 128 letters, digits, or the characters - _ . ~, not starting with -");
+        return Result::ERROR;
+    }
+
     this->config = config;
+    this->token = token;
 
     if (config.certificate.empty() != config.key.empty()) {
         JST_ERROR("[REMOTE] Broker TLS needs both a certificate and a key.");
@@ -399,7 +405,7 @@ void Instance::Remote::Broker::createRoom(Peer& peer) {
     }
 
     const std::string roomId = NewId();
-    const std::string consumerToken = NewToken();
+    const std::string consumerToken = token.empty() ? NewToken() : token;
     if (roomId.empty() || consumerToken.empty()) {
         sendError(peer, "room_registration_failed", "failed to register room");
         return;

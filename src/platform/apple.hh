@@ -24,6 +24,10 @@ Result SaveFile(std::string& path,
                 const std::vector<std::string>& extensions,
                 std::function<void(std::string)> callback);
 
+#ifdef JST_OS_MAC
+void InstallUrlEventHandler(std::function<void(std::string)> handler);
+#endif
+
 }  // namespace Jetstream::Platform
 
 #endif

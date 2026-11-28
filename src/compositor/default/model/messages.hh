@@ -306,6 +306,10 @@ struct MailOpenUrl {
     bool notifyResult = false;
 };
 
+struct MailOpenLink {
+    std::string url;
+};
+
 struct MailRevealPath {
     std::string path;
 };
@@ -444,6 +448,10 @@ struct MailSetGraphicsDevice {
     DeviceType value = DeviceType::None;
 };
 
+struct MailSetGraphicsGpu {
+    Settings::Gpu value;
+};
+
 struct MailSetDebugTimingEnabled {
     bool value = false;
 };
@@ -478,8 +486,20 @@ struct MailSetRemoteEncoder {
     Instance::Remote::EncoderType value = Instance::Remote::EncoderType::Auto;
 };
 
+struct MailSetRemoteMatchViewer {
+    bool value = true;
+};
+
+struct MailSetRemoteAudio {
+    bool value = true;
+};
+
 struct MailSetRemoteAutoApprove {
     bool value = false;
+};
+
+struct MailSetRemoteToken {
+    std::string value;
 };
 
 struct MailSetRemoteTransport {
@@ -873,6 +893,7 @@ struct Mail final : TaggedBox<MailInlineBytes,
                           MailNotify,
                           MailNotifyResult,
                           MailOpenUrl,
+                          MailOpenLink,
                           MailCopyText,
                           MailRevealPath,
                           MailQuit,
@@ -892,6 +913,7 @@ struct Mail final : TaggedBox<MailInlineBytes,
                           MailTerminalInput,
                           MailSetGraphicsScale,
                           MailSetGraphicsDevice,
+                          MailSetGraphicsGpu,
                           MailSetAgentEnabled,
                           MailSetAgentChatVisible,
                           MailSetAgentVoiceVisible,
@@ -928,7 +950,10 @@ struct Mail final : TaggedBox<MailInlineBytes,
                           MailSetRemoteCodec,
                           MailSetRemoteFramerate,
                           MailSetRemoteEncoder,
+                          MailSetRemoteMatchViewer,
+                          MailSetRemoteAudio,
                           MailSetRemoteAutoApprove,
+                          MailSetRemoteToken,
                           MailSetRemoteTransport,
                           MailSetRemotePortRange,
                           MailSetRemoteMediaAddress,

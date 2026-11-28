@@ -1,4 +1,5 @@
 #include "jetstream/platform.hh"
+#include "tools/random.hh"
 
 #include <algorithm>
 #include <cerrno>
@@ -90,7 +91,7 @@ Result WriteFileAtomic(const std::string& destination, std::string_view bytes, b
     }
 
     auto temporary = path;
-    temporary += ".tmp";
+    temporary += "." + Random::HexToken().substr(0, 16) + ".tmp";
     const auto discard = [&]() {
         std::error_code ignored;
         std::filesystem::remove(temporary, ignored);

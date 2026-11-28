@@ -22,6 +22,8 @@ EM_JS_DEPS(jst_websocket_deps, "$UTF8ToString,$stringToNewUTF8,malloc,free");
 #ifdef ERROR
 #undef ERROR
 #endif
+
+#include "certificates.hh"
 #endif
 
 // TODO: Port src/instance_remote_socket.cc and src/instance_remote_impl.hh to Platform::WebSocket.
@@ -365,6 +367,7 @@ WebSocket::Client::Client(Config config) : impl(std::make_unique<Impl>()) {
     }
 
     auto& client = *impl->client;
+    Certificates::Trust(client);
     client.set_connection_timeout(static_cast<time_t>(config.connectTimeoutSeconds));
     if (config.readTimeoutSeconds > 0) {
         client.set_read_timeout(static_cast<time_t>(config.readTimeoutSeconds));

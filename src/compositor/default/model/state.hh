@@ -230,6 +230,7 @@ struct DefaultCompositorState {
 
     struct GraphicsState {
         std::optional<DeviceType> device;
+        Settings::Gpu gpu;
         F32 scale = 1.0f;
     };
 
@@ -386,6 +387,7 @@ struct DefaultCompositorState {
         std::string inviteUrl;
         std::vector<Instance::Remote::ClientInfo> clients;
         std::vector<std::string> waitlist;
+        Instance::Remote::Stats stats;
     };
 
     struct RegistryState {
@@ -412,11 +414,17 @@ struct DefaultCompositorState {
             bool failed = false;
         };
 
+        struct Request {
+            std::string key;
+            bool refreshed = false;
+        };
+
         bool stale = true;
         U64 revision = 0;
         std::vector<BlockEntry> blocks;
         std::vector<Home::Gallery::Section> sections;
         GalleryFetch fetch;
+        std::vector<Request> requests;
         std::vector<Plugin::Info> plugins;
 
         const Home::Gallery::Flowgraph* flowgraph(const std::string& key) const;

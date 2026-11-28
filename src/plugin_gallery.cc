@@ -57,7 +57,7 @@ std::optional<Plugin::Gallery::Entry> ReadEntry(const nlohmann::json& item) {
         !Catalog::ReadText(item, "author", entry.author) ||
         !Catalog::ReadText(item, "license", entry.license) || !Catalog::ReadText(item, "version", entry.version) ||
         !Catalog::ReadText(item, "url", entry.url) || !Catalog::ReadText(item, "cepSha256", entry.digest) ||
-        !Catalog::ReadSize(item, entry.size) || !ReadBlocks(item, entry.blocks) ||
+        !Catalog::ReadText(item, "diagram", entry.diagram) || !Catalog::ReadSize(item, entry.size) || !ReadBlocks(item, entry.blocks) ||
         !Plugin::Gallery::ValidId(entry.id)) {
         return std::nullopt;
     }
@@ -115,6 +115,29 @@ bool Plugin::Gallery::ValidId(std::string_view id) {
     return std::all_of(id.begin(), id.end(), [](unsigned char character) {
         return std::islower(character) || std::isdigit(character);
     });
+}
+
+std::optional<Plugin::Gallery::Reference> Plugin::Gallery::Link(const std::string& url) {
+    std::string_view rest = url;
+    if (!rest.starts_with(LinkPrefix)) {
+        return std::nullopt;
+    }
+    rest.remove_prefix(std::string_view(LinkPrefix).size());
+    rest = rest.substr(0, rest.find_first_of("?#"));
+    if (rest.ends_with('/')) {
+        rest.remove_suffix(1);
+    }
+
+    std::string_view owner = Home::Gallery::Origin;
+    if (const auto separator = rest.find('/'); separator != std::string_view::npos) {
+        owner = rest.substr(0, separator);
+        rest.remove_prefix(separator + 1);
+    }
+    if (!Home::Gallery::Remote::ValidOwner(owner) || !ValidId(rest)) {
+        return std::nullopt;
+    }
+
+    return Reference{.owner = std::string(owner), .id = std::string(rest)};
 }
 
 bool Plugin::Gallery::ReservedName(std::string_view name) {
@@ -192,7 +215,11 @@ Result Plugin::Gallery::Fetch(const Source& source,
 
     const auto response = source.send(request);
     if (response.error || response.status != 200) {
-        JST_ERROR("[PLUGIN] The CyberEther gallery is unreachable (status {}).", response.status);
+        if (response.error) {
+            JST_ERROR("[PLUGIN] The CyberEther gallery is unreachable: {}.", response.error.message);
+        } else {
+            JST_ERROR("[PLUGIN] The CyberEther gallery is unreachable (status {}).", response.status);
+        }
         return Result::ERROR;
     }
 

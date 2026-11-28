@@ -33,6 +33,7 @@ struct SettingsActions {
     Result handle(const MailSetTouchpadScrollSpeed& msg);
     Result handle(const MailSetGraphicsScale& msg);
     Result handle(const MailSetGraphicsDevice& msg);
+    Result handle(const MailSetGraphicsGpu& msg);
     Result handle(const MailSetSettingsSection& msg);
     Result handle(const MailSetIntelligencePage& msg);
     Result handle(const MailSetRegistryPage& msg);

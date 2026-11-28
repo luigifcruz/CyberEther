@@ -1,0 +1,10 @@
+[wrap-file]
+directory = libva-2.24.1
+source_url = https://github.com/intel/libva/archive/refs/tags/2.24.1.tar.gz
+source_filename = libva-2.24.1.tar.gz
+source_hash = 0b4a3649ee8d683b9cce2ef094df4fb039d276c0cef7e49337c43d3b297b9f42
+patch_directory = libva
+
+[provide]
+libva = libva_dep
+libva-drm = libva_drm_dep

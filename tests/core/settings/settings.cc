@@ -157,7 +157,9 @@ void RequireDefaults(const Settings& settings) {
     const Settings defaults;
 
     REQUIRE_FALSE(settings.graphics.device.has_value());
-    REQUIRE(settings.graphics.deviceId == 0);
+    REQUIRE_FALSE(settings.graphics.deviceId.has_value());
+    REQUIRE(settings.graphics.gpu.uuid.empty());
+    REQUIRE(settings.graphics.gpu.name.empty());
     REQUIRE_FALSE(settings.graphics.headless);
     REQUIRE(settings.graphics.size.width == 1920);
     REQUIRE(settings.graphics.size.height == 1080);
@@ -171,7 +173,10 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE(settings.remote.video.codec == "h264");
     REQUIRE(settings.remote.video.encoder == "auto");
     REQUIRE_FALSE(settings.remote.access.autoApprove);
+    REQUIRE(settings.remote.access.token.empty());
     REQUIRE(settings.remote.video.framerate == 30);
+    REQUIRE(settings.remote.video.matchViewer);
+    REQUIRE(settings.remote.audio.enabled);
     REQUIRE(settings.interface.themeKey == "Dark");
     REQUIRE(settings.interface.backgroundParticles);
     REQUIRE(settings.interface.touchpadScrollSpeed == Settings::Interface::DefaultTouchpadScrollSpeed);
@@ -221,6 +226,7 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     Settings settings;
     settings.benchmark.format = "json";
     settings.graphics.deviceId = 2;
+    settings.graphics.gpu = {.uuid = "4e564944-4941-2000-8000-000000000001", .name = "NVIDIA GeForce RTX 5060 Ti"};
     settings.graphics.headless = true;
     settings.graphics.size.width = 1280;
     settings.graphics.size.height = 720;
@@ -234,7 +240,10 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.remote.video.codec = "av1";
     settings.remote.video.encoder = "software";
     settings.remote.access.autoApprove = true;
+    settings.remote.access.token = "living-room-screen-2026";
     settings.remote.video.framerate = 24;
+    settings.remote.video.matchViewer = false;
+    settings.remote.audio.enabled = false;
     settings.developer.logLevel = 4;
     settings.developer.timingEnabled = true;
     settings.developer.renderStatsEnabled = true;
@@ -266,7 +275,9 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     Settings restored;
     REQUIRE(Settings::Get(restored) == Result::SUCCESS);
     REQUIRE_FALSE(restored.graphics.device.has_value());
-    REQUIRE(restored.graphics.deviceId == 0);
+    REQUIRE_FALSE(restored.graphics.deviceId.has_value());
+    REQUIRE(restored.graphics.gpu.uuid == "4e564944-4941-2000-8000-000000000001");
+    REQUIRE(restored.graphics.gpu.name == "NVIDIA GeForce RTX 5060 Ti");
     REQUIRE_FALSE(restored.graphics.headless);
     REQUIRE(restored.graphics.size.width == 1280);
     REQUIRE(restored.graphics.size.height == 720);
@@ -280,7 +291,10 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.remote.video.codec == "av1");
     REQUIRE(restored.remote.video.encoder == "software");
     REQUIRE(restored.remote.access.autoApprove);
+    REQUIRE(restored.remote.access.token == "living-room-screen-2026");
     REQUIRE(restored.remote.video.framerate == 24);
+    REQUIRE_FALSE(restored.remote.video.matchViewer);
+    REQUIRE_FALSE(restored.remote.audio.enabled);
     REQUIRE(restored.developer.logLevel == 4);
     REQUIRE(restored.developer.timingEnabled);
     REQUIRE(restored.developer.renderStatsEnabled);
@@ -295,6 +309,8 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
               "graphics:\n"
               "  headless: true\n"
               "  deviceId: 9\n"
+              "  gpu:\n"
+              "    uuid: saved-uuid\n"
               "  size:\n"
               "    width: 640\n"
               "  scale: 1.5\n"
@@ -326,7 +342,9 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
     REQUIRE(settings.graphics.scale == 1.5f);
     REQUIRE(settings.graphics.framerate == 60);
     REQUIRE_FALSE(settings.graphics.headless);
-    REQUIRE(settings.graphics.deviceId == 0);
+    REQUIRE_FALSE(settings.graphics.deviceId.has_value());
+    REQUIRE(settings.graphics.gpu.uuid == "saved-uuid");
+    REQUIRE(settings.graphics.gpu.name.empty());
     REQUIRE(settings.interface.themeKey == "Solarized");
     REQUIRE(settings.interface.backgroundParticles);
     REQUIRE(settings.remote.broker.publicUrl == "https://example.net");

@@ -448,3 +448,94 @@ TEST_CASE("Height constrained flowgraph cards clip their text to the card", "[co
     }
     CHECK(checked >= 3);
 }
+
+TEST_CASE("Plugin cards draw their diagram and fall back to the title wired to its blocks",
+          "[core][sakura][flowgraph-card]") {
+    using Fallback = Sakura::FlowgraphCard::Config::Fallback;
+    const Scene scene;
+    Sakura::FlowgraphCard card;
+    Host host(card);
+    const auto draw = [&](std::string diagram, std::vector<std::string> blocks) {
+        card.update({
+            .diagram = std::move(diagram),
+            .fallback = Fallback{.title = "Radio", .blocks = std::move(blocks)},
+            .title = "Radio",
+        });
+        host.place(scene.ctx, {0.0f, 0.0f, 320.0f, 400.0f});
+        std::vector<Sakura::Label::Instance> nodes;
+        for (const auto* label : Find<Sakura::Label>(card)) {
+            if (label->config().maxCharacters == 24) {
+                nodes = label->config().instances;
+            }
+        }
+        return nodes;
+    };
+    const auto wires = [&] {
+        U64 count = 0;
+        for (const auto* line : Find<Sakura::Polyline>(card)) {
+            count += line->config().instances.size();
+        }
+        return count;
+    };
+    const auto names = [](const std::vector<Sakura::Label::Instance>& nodes) {
+        std::vector<std::string> result;
+        for (const auto& node : nodes) {
+            result.push_back(node.str);
+        }
+        return result;
+    };
+
+    SECTION("a diagram that parses draws like a flowgraph card") {
+        const auto nodes = draw("rx[Rx] --> a[A]\nrx --> b[B]", {"One", "Two"});
+        REQUIRE(names(nodes) == std::vector<std::string>{"Rx", "A", "B"});
+        CHECK(wires() == 2);
+        for (const auto& node : nodes) {
+            CHECK(node.rect.width == Catch::Approx(64.0f));
+            CHECK(node.rect.height == Catch::Approx(28.0f));
+        }
+        CHECK(nodes[2].rect.y - nodes[1].rect.bottom() == Catch::Approx(40.0f));
+    }
+
+    SECTION("no blocks leaves the title node alone") {
+        const auto nodes = draw("", {});
+        REQUIRE(names(nodes) == std::vector<std::string>{"Radio"});
+        CHECK(wires() == 0);
+        CHECK(nodes[0].rect.width == Catch::Approx(64.0f));
+        CHECK(nodes[0].rect.x + nodes[0].rect.width * 0.5f == Catch::Approx(160.0f));
+        CHECK(nodes[0].rect.y + nodes[0].rect.height * 0.5f == Catch::Approx(90.0f));
+    }
+
+    SECTION("three blocks all show") {
+        const auto nodes = draw("", {"One", "Two", "Three"});
+        REQUIRE(names(nodes) == std::vector<std::string>{"Radio", "One", "Two", "Three"});
+        CHECK(wires() == 3);
+        CHECK(nodes[0].rect.width == Catch::Approx(64.0f));
+        for (U64 index = 1; index < nodes.size(); ++index) {
+            CHECK(nodes[index].rect.width == Catch::Approx(96.0f));
+            CHECK(nodes[index].rect.height == Catch::Approx(28.0f));
+            CHECK(nodes[index].rect.x == Catch::Approx(nodes[0].rect.right() + 40.0f));
+        }
+        CHECK(nodes[2].rect.y - nodes[1].rect.bottom() == Catch::Approx(10.0f));
+        CHECK(nodes[3].rect.y - nodes[2].rect.bottom() == Catch::Approx(10.0f));
+        CHECK(nodes[0].rect.y == Catch::Approx(nodes[2].rect.y));
+        CHECK((nodes[0].rect.x + nodes[1].rect.right()) * 0.5f == Catch::Approx(160.0f));
+    }
+
+    SECTION("more than three blocks collapse the rest into a count") {
+        const auto nodes = draw("", {"One", "Two", "Three", "Four", "Five"});
+        CHECK(names(nodes) == std::vector<std::string>{"Radio", "One", "Two", "+3 more"});
+        CHECK(wires() == 3);
+    }
+
+    SECTION("a diagram that fails to parse uses the fallback") {
+        CHECK(names(draw("--> \n%% nothing", {"One"})) == std::vector<std::string>{"Radio", "One"});
+        CHECK(names(draw("  \n", {})) == std::vector<std::string>{"Radio"});
+    }
+
+    SECTION("long block titles ellipsize to the wider node") {
+        const auto nodes = draw("", {"Polyphase Channelizer Bank"});
+        REQUIRE(nodes.size() == 2);
+        CHECK(nodes[1].str.ends_with("..."));
+        CHECK(nodes[1].str.size() > std::string("Polyp...").size());
+    }
+}

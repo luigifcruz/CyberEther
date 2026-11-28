@@ -19,24 +19,13 @@ env:
     libm.so.6
     libstdc++.so.6
     libgcc_s.so.1
-    libatomic.so.1
     libpthread.so.0
     libdl.so.2
     librt.so.1
     ld-linux-x86-64.so.2
     ld-linux-aarch64.so.1
     libvulkan.so.1
-    libX11.so.6
-    libXrandr.so.2
-    libXi.so.6
-    libXinerama.so.1
-    libXcursor.so.1
-    libxkbcommon.so.0
-    libwayland-client.so.0
-    libwayland-cursor.so.0
-    libwayland-egl.so.1
     libudev.so.1
-    libgudev-1.0.so.0
     libcuda.so.1
   BUNDLED_LINUX_LIBS: |
     libjetstream.so
@@ -102,7 +91,7 @@ jobs:
           apt-get update --fix-missing
           apt-get install -y --no-install-recommends \
             git build-essential pkg-config python3-pip python-is-python3 \
-            curl ca-certificates bison flex nasm patchelf binutils xz-utils \
+            curl ca-certificates nasm patchelf binutils xz-utils \
             glslang-tools \
             libudev-dev \
             libwayland-dev wayland-protocols libxkbcommon-dev \

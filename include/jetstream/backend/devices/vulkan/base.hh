@@ -55,10 +55,12 @@ class JETSTREAM_API Vulkan {
     bool canExportDeviceMemory() const;
     bool canImportDeviceMemory() const;
     bool canImportHostMemory() const;
+    bool canShareFrames() const;
 
-    constexpr const U64& getDeviceId() const {
-        return config.deviceId;
-    }
+    U64 getDeviceId() const;
+    std::string getDeviceUuid() const;
+    DeviceSelection getDeviceSelection() const;
+    const std::vector<PhysicalDevice>& getDevices() const;
 
     constexpr const bool& headless() const {
         return config.headless;
@@ -120,10 +122,14 @@ class JETSTREAM_API Vulkan {
     VkQueue presentQueue;
     std::set<std::string> supportedDeviceExtensions;
     std::set<std::string> supportedInstanceExtensions;
+    std::vector<PhysicalDevice> devices;
+    U64 deviceIndex = 0;
+    DeviceSelection selection = DeviceSelection::Automatic;
     bool _isAvailable = false;
 
     struct {
         std::string deviceName;
+        std::string deviceUuid;
         std::string apiVersion;
         PhysicalDeviceType physicalDeviceType;
         bool hasUnifiedMemory;
@@ -136,6 +142,7 @@ class JETSTREAM_API Vulkan {
         bool canImportDeviceMemory;
         bool canImportHostMemory;
         bool canExportDeviceMemory;
+        bool canShareFrames;
     } cache;
 
     VkDebugReportCallbackEXT debugReportCallback{};
@@ -151,6 +158,8 @@ class JETSTREAM_API Vulkan {
     std::set<std::string> getOptionalDeviceExtensions();
     std::set<std::string> checkDeviceExtensionSupport(const VkPhysicalDevice& device,
                                                       const std::set<std::string>& extensions);
+    PhysicalDevice describePhysicalDevice(const VkPhysicalDevice& device,
+                                          const VkPhysicalDeviceProperties& properties);
 };
 
 }  // namespace Jetstream::Backend

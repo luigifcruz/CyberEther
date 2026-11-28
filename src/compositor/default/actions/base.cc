@@ -148,6 +148,10 @@ void DefaultActions::refreshRegistry() {
     gallery->refreshRegistry();
 }
 
+void DefaultActions::settleLinks() {
+    workbench->settleLinks();
+}
+
 void DefaultActions::settlePendingFocus() {
     workbench->settlePendingFocus();
 }

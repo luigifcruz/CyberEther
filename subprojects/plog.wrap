@@ -1,0 +1,9 @@
+[wrap-file]
+directory = plog-1.1.10
+source_url = https://github.com/SergiusTheBest/plog/archive/refs/tags/1.1.10.tar.gz
+source_filename = plog-1.1.10.tar.gz
+source_hash = 55a090fc2b46ab44d0dde562a91fe5fc15445a3caedfaedda89fe3925da4705a
+patch_directory = plog
+
+[provide]
+plog = plog_dep

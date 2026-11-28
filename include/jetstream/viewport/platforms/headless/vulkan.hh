@@ -4,8 +4,10 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <mutex>
 #include <vector>
 
+#include "jetstream/platform.hh"
 #include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/viewport/platforms/headless/generic.hh"
 
@@ -36,6 +38,7 @@ class Headless<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     Result create();
     Result destroy();
 
+    Extent2D<F32> displaySize() const;
     Extent2D<F32> framebufferSize() const;
 
     Result createSwapchain();
@@ -44,6 +47,8 @@ class Headless<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
+    bool retainedPresent() const;
+    Result resize(const Extent2D<U64>& size, F32 scale);
     Result waitForPresent();
     Result nextDrawable(VkSemaphore& semaphore);
     Result commitDrawable(std::vector<VkSemaphore>& semaphores);
@@ -59,14 +64,20 @@ class Headless<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
 
     U32 _currentDrawableIndex = 0;
     VkFormat imageFormat;
-    VkExtent2D extent;
+    VkExtent2D extent = {};
+    F32 scale = 1.0f;
+    VkExtent2D requestedExtent = {};
+    F32 requestedScale = 1.0f;
+    std::atomic<bool> resizeRequested{false};
+    mutable std::mutex extentMutex;
 
-    std::array<VkImage, kImageCount> images;
-    std::array<VkDeviceMemory, kImageCount> imageMemory;
-    std::array<VkImageView, kImageCount> imageViews;
+    std::array<VkImage, kImageCount> images = {};
+    std::array<VkDeviceMemory, kImageCount> imageMemory = {};
+    std::array<VkImageView, kImageCount> imageViews = {};
 
     std::atomic<bool> running{true};
     std::chrono::steady_clock::time_point lastTime;
+    Jetstream::Platform::DeadlineWaiter waiter;
 };
 
 }  // namespace Jetstream::Viewport

@@ -22,12 +22,18 @@ struct GeneralSettingsView {
         std::string currentThemeKey;
         F32 interfaceScale = 1.0f;
         std::string renderer;
+        bool gpuVisible = false;
+        std::vector<std::string> gpuOptions;
+        std::vector<std::string> gpuDetails;
+        U64 gpuSelected = 0;
+        bool gpuDisabled = true;
         bool backgroundParticles = false;
         bool showTips = true;
         F32 touchpadScrollSpeed = Settings::Interface::DefaultTouchpadScrollSpeed;
         Sakura::Callback<void(const std::string&)> onThemeChange;
         Sakura::Callback<void(F32)> onInterfaceScaleChange;
         Sakura::Callback<void(DeviceType)> onRendererChange;
+        Sakura::Callback<void(U64)> onGpuSelect;
         Sakura::Callback<void(bool)> onBackgroundParticlesChange;
         Sakura::Callback<void(bool)> onShowTipsChange;
         Sakura::Callback<void(F32)> onTouchpadScrollSpeedChange;
@@ -50,6 +56,7 @@ struct GeneralSettingsView {
     OptionStepper scaleStepper;
     OptionStepper scrollSpeedStepper;
     Sakura::PillTabs rendererTabs;
+    Sakura::Combo gpuCombo;
     Sakura::Toggle particlesToggle;
     Sakura::Toggle tipsToggle;
     SectionGroup appearanceGroup;

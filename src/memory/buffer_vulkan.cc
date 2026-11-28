@@ -19,6 +19,10 @@ namespace Jetstream::detail {
 
 namespace {
 
+#if !defined(JST_OS_WINDOWS)
+constexpr U32 kNvidiaVendorId = 0x10DE;
+#endif
+
 class VulkanBackend final : public VulkanBufferBackend, public Backend {
  public:
     VulkanBackend() = default;
@@ -58,7 +62,9 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         auto& commandBuffer = state->getDefaultCommandBuffer();
         const auto& unified = state->hasUnifiedMemory();
 #if !defined(JST_OS_WINDOWS)
-        const auto& canExport = state->canExportDeviceMemory();
+        VkPhysicalDeviceProperties physicalDeviceProperties;
+        vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+        const bool canExport = state->canExportDeviceMemory() && physicalDeviceProperties.vendorID == kNvidiaVendorId;
 #endif
 
         U64 alignedSize = 0;
@@ -102,12 +108,22 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            if (Jetstream::Backend::HasMemoryType(physicalDevice,
+                                                 memoryRequirements.memoryTypeBits,
+                                                 memoryProperties | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+                memoryProperties |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+            }
             locationState = Location::Unified;
             hostAccessible = true;
             JST_TRACE("[MEMORY:BUFFER:VULKAN] Using unified memory (DL, HV, HC).");
         } else if (config.hostAccessible) {
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            if (Jetstream::Backend::HasMemoryType(physicalDevice,
+                                                 memoryRequirements.memoryTypeBits,
+                                                 memoryProperties | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+                memoryProperties |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+            }
             locationState = Location::Host;
             hostAccessible = true;
             JST_TRACE("[MEMORY:BUFFER:VULKAN] Using host accessible memory (HV, HC).");
@@ -133,6 +149,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
             memoryAllocateInfo.pNext = &exportInfo;
         }
+        exported = canExport;
 #endif
 
         JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &_memory), [&]{
@@ -354,6 +371,10 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         return _memory;
     }
 
+    bool exportable() const override {
+        return exported;
+    }
+
     void destroy() override {
         if (_memory != VK_NULL_HANDLE) {
             auto& device = Jetstream::Backend::State<DeviceType::Vulkan>()->getDevice();
@@ -384,6 +405,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         hostAccessible = false;
         locationState = Location::None;
         importedFromCuda = false;
+        exported = false;
     }
 
  private:
@@ -396,6 +418,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
     bool hostAccessible = false;
     Location locationState = Location::None;
     bool importedFromCuda = false;
+    bool exported = false;
 };
 
 }  // namespace

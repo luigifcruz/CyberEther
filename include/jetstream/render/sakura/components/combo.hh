@@ -16,6 +16,7 @@ struct Combo : public Component {
     struct Config {
         std::string id;
         std::vector<std::string> options;
+        std::vector<std::string> details;
         std::string value;
         F32 width = Fill;
         bool disabled = false;

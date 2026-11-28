@@ -8,7 +8,9 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
+#include "backend/devices/selection.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/instance.hh"
@@ -57,11 +59,10 @@ struct CodecNameCase {
     const char* mixedCaseName;
 };
 
-constexpr std::array<CodecNameCase, 4> CodecNameCases = {{
+constexpr std::array<CodecNameCase, 3> CodecNameCases = {{
     {Instance::Remote::CodecType::H264, "h264", "H264", "H264"},
+    {Instance::Remote::CodecType::H265, "h265", "H265", "h265"},
     {Instance::Remote::CodecType::AV1, "av1", "AV1", "Av1"},
-    {Instance::Remote::CodecType::VP8, "vp8", "VP8", "Vp8"},
-    {Instance::Remote::CodecType::VP9, "vp9", "VP9", "vP9"},
 }};
 
 struct EncoderNameCase {
@@ -71,19 +72,18 @@ struct EncoderNameCase {
     const char* mixedCaseName;
 };
 
-constexpr std::array<EncoderNameCase, 6> EncoderNameCases = {{
+constexpr std::array<EncoderNameCase, 8> EncoderNameCases = {{
     {Instance::Remote::EncoderType::Auto, "auto", "Auto", "AuTo"},
     {Instance::Remote::EncoderType::Software, "software", "Software", "SoFtWaRe"},
     {Instance::Remote::EncoderType::NVENC, "nvenc", "NVENC", "NvEnC"},
+    {Instance::Remote::EncoderType::AMF, "amf", "AMF", "AmF"},
+    {Instance::Remote::EncoderType::QSV, "qsv", "QSV", "QsV"},
+    {Instance::Remote::EncoderType::VAAPI, "vaapi", "VAAPI", "VaApI"},
     {Instance::Remote::EncoderType::V4L2, "v4l2", "V4L2", "V4l2"},
     {Instance::Remote::EncoderType::VideoToolbox,
      "videotoolbox",
      "VideoToolbox",
      "ViDeOtOoLbOx"},
-    {Instance::Remote::EncoderType::MediaFoundation,
-     "mediafoundation",
-     "MediaFoundation",
-     "MeDiAfOuNdAtIoN"},
 }};
 
 template<typename Callable>
@@ -103,7 +103,8 @@ TEST_CASE("Startup configuration defaults are stable",
           "[core][application][instance][backend]") {
     const Instance::Config instance;
     REQUIRE_FALSE(instance.device.has_value());
-    REQUIRE(instance.deviceId == 0);
+    REQUIRE_FALSE(instance.deviceId.has_value());
+    REQUIRE(instance.deviceUuid.empty());
     REQUIRE_FALSE(instance.compositor.has_value());
     REQUIRE_FALSE(instance.headless);
     REQUIRE(instance.size.x == 1920);
@@ -113,7 +114,8 @@ TEST_CASE("Startup configuration defaults are stable",
     REQUIRE(instance.pythonRuntimePath.empty());
 
     const Backend::Config backend;
-    REQUIRE(backend.deviceId == 0);
+    REQUIRE_FALSE(backend.deviceId.has_value());
+    REQUIRE(backend.deviceUuid.empty());
 #ifdef JST_DEBUG_MODE
     REQUIRE(backend.validationEnabled);
 #else
@@ -131,6 +133,7 @@ TEST_CASE("Startup configuration defaults are stable",
     REQUIRE(remote.broker.key.empty());
     REQUIRE_FALSE(remote.access.autoApprove);
     REQUIRE(remote.video.framerate == 30);
+    REQUIRE(remote.video.matchViewer);
     REQUIRE(remote.video.encoder == Instance::Remote::EncoderType::Auto);
     REQUIRE(remote.video.codec == Instance::Remote::CodecType::H264);
 }
@@ -140,6 +143,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
     Instance::Config instance = {
         .device = DeviceType::WebGPU,
         .deviceId = 42,
+        .deviceUuid = "instance-uuid",
         .compositor = CompositorType::DEFAULT,
         .headless = true,
         .size = {321, 654},
@@ -149,7 +153,8 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
     };
     const auto instanceSnapshot = instance;
     instance.device.reset();
-    instance.deviceId = 0;
+    instance.deviceId.reset();
+    instance.deviceUuid.clear();
     instance.compositor.reset();
     instance.headless = false;
     instance.size = {1, 1};
@@ -159,6 +164,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
 
     REQUIRE(instanceSnapshot.device == DeviceType::WebGPU);
     REQUIRE(instanceSnapshot.deviceId == 42);
+    REQUIRE(instanceSnapshot.deviceUuid == "instance-uuid");
     REQUIRE(instanceSnapshot.compositor == CompositorType::DEFAULT);
     REQUIRE(instanceSnapshot.headless);
     REQUIRE(instanceSnapshot.size.x == 321);
@@ -169,19 +175,22 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
 
     Backend::Config backend = {
         .deviceId = 17,
+        .deviceUuid = "backend-uuid",
         .validationEnabled = true,
         .multisampling = 8,
         .headless = true,
         .pythonRuntimePath = "backend-python",
     };
     const auto backendSnapshot = backend;
-    backend.deviceId = 0;
+    backend.deviceId.reset();
+    backend.deviceUuid.clear();
     backend.validationEnabled = false;
     backend.multisampling = 1;
     backend.headless = false;
     backend.pythonRuntimePath.clear();
 
     REQUIRE(backendSnapshot.deviceId == 17);
+    REQUIRE(backendSnapshot.deviceUuid == "backend-uuid");
     REQUIRE(backendSnapshot.validationEnabled);
     REQUIRE(backendSnapshot.multisampling == 8);
     REQUIRE(backendSnapshot.headless);
@@ -191,7 +200,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
         .access = {.autoApprove = true},
         .video = {
             .framerate = 24,
-            .codec = Instance::Remote::CodecType::VP9,
+            .codec = Instance::Remote::CodecType::H265,
             .encoder = Instance::Remote::EncoderType::Software,
         },
         .broker = {.publicUrl = "http://remote.invalid/root/"},
@@ -207,7 +216,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
     REQUIRE(remoteSnapshot.access.autoApprove);
     REQUIRE(remoteSnapshot.video.framerate == 24);
     REQUIRE(remoteSnapshot.video.encoder == Instance::Remote::EncoderType::Software);
-    REQUIRE(remoteSnapshot.video.codec == Instance::Remote::CodecType::VP9);
+    REQUIRE(remoteSnapshot.video.codec == Instance::Remote::CodecType::H265);
 }
 
 // TODO: Expose the native settings-to-Instance and settings-to-Remote builders
@@ -271,11 +280,14 @@ TEST_CASE("Device flags compose without selecting or initializing a backend",
 
 TEST_CASE("Physical device type formatting covers every public value",
           "[core][application][backend][conversion]") {
-    const std::array<std::pair<Backend::PhysicalDeviceType, const char*>, 4> cases = {{
+    const std::array<std::pair<Backend::PhysicalDeviceType, const char*>, 7> cases = {{
         {Backend::PhysicalDeviceType::UNKNOWN, "UNKNOWN"},
         {Backend::PhysicalDeviceType::DISCRETE, "DISCRETE"},
         {Backend::PhysicalDeviceType::INTEGRATED, "INTEGRATED"},
         {Backend::PhysicalDeviceType::OTHER, "OTHER"},
+        {Backend::PhysicalDeviceType::EXTERNAL, "EXTERNAL"},
+        {Backend::PhysicalDeviceType::VIRTUAL, "VIRTUAL"},
+        {Backend::PhysicalDeviceType::CPU, "CPU"},
     }};
 
     for (const auto& [type, expected] : cases) {
@@ -285,12 +297,67 @@ TEST_CASE("Physical device type formatting covers every public value",
         REQUIRE_FALSE(stream.fail());
     }
 
-    for (const auto value : {4, 255}) {
+    for (const auto value : {7, 255}) {
         std::ostringstream invalid;
         invalid << static_cast<Backend::PhysicalDeviceType>(value);
         REQUIRE(invalid.fail());
         REQUIRE(invalid.str().empty());
     }
+}
+
+TEST_CASE("Device choice honors the index override, then the saved UUID, then the OS order",
+          "[core][application][backend][device-choice]") {
+    const std::vector<Backend::PhysicalDevice> devices = {
+        {.index = 0, .name = "Intel(R) Graphics (PTL)", .uuid = "intel", .type = Backend::PhysicalDeviceType::INTEGRATED},
+        {.index = 1, .name = "NVIDIA GeForce RTX 5060 Ti", .uuid = "nvidia", .type = Backend::PhysicalDeviceType::DISCRETE},
+    };
+    using Backend::DeviceChoice;
+    using Backend::DeviceSelection;
+
+    REQUIRE_FALSE(Backend::ChooseDevice({}, std::nullopt, "").has_value());
+    REQUIRE(Backend::ChooseDevice(devices, std::nullopt, "") ==
+            DeviceChoice{.index = 0, .selection = DeviceSelection::Automatic});
+    REQUIRE(Backend::ChooseDevice(devices, std::nullopt, "nvidia") ==
+            DeviceChoice{.index = 1, .selection = DeviceSelection::Saved});
+    REQUIRE(Backend::ChooseDevice(devices, std::nullopt, "unplugged") ==
+            DeviceChoice{.index = 0, .selection = DeviceSelection::Missing});
+    REQUIRE(Backend::ChooseDevice(devices, 0, "nvidia") ==
+            DeviceChoice{.index = 0, .selection = DeviceSelection::Override});
+    REQUIRE(Backend::ChooseDevice(devices, 1, "") ==
+            DeviceChoice{.index = 1, .selection = DeviceSelection::Override});
+    REQUIRE_FALSE(Backend::ChooseDevice(devices, 2, "nvidia").has_value());
+}
+
+TEST_CASE("Unused discrete GPU hint only fires when the OS order skipped it",
+          "[core][application][backend][device-choice]") {
+    std::vector<Backend::PhysicalDevice> devices = {
+        {.index = 0, .name = "Intel", .uuid = "intel", .type = Backend::PhysicalDeviceType::INTEGRATED},
+        {.index = 1, .name = "llvmpipe", .uuid = "cpu", .type = Backend::PhysicalDeviceType::CPU},
+        {.index = 2, .name = "NVIDIA", .uuid = "nvidia", .type = Backend::PhysicalDeviceType::DISCRETE},
+    };
+    using Backend::DeviceSelection;
+
+    REQUIRE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Automatic}) == 2);
+    REQUIRE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Missing}) == 2);
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Saved}).has_value());
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Override}).has_value());
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 2, .selection = DeviceSelection::Automatic}).has_value());
+
+    devices[2].uuid.clear();
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Automatic}).has_value());
+    devices[2].uuid = "nvidia";
+
+    devices[2].type = Backend::PhysicalDeviceType::EXTERNAL;
+    REQUIRE(Backend::UnusedDiscreteDevice(devices, {.index = 1, .selection = DeviceSelection::Automatic}) == 2);
+
+    devices.pop_back();
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Automatic}).has_value());
+}
+
+TEST_CASE("Device UUIDs format as lowercase hyphenated hex", "[core][application][backend][device-choice]") {
+    const std::array<U8, 16> bytes = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                                      0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    REQUIRE(Backend::FormatDeviceUuid(bytes.data()) == "00112233-4455-6677-8899-aabbccddeeff");
 }
 
 TEST_CASE("Backend manager treats configuration as distinct from initialization",
@@ -525,7 +592,7 @@ TEST_CASE("Remote encoder names round-trip and reject unknown values",
     RequireResultError([] { (void)StringToRemoteEncoder(std::string{"auto\0suffix", 11}); });
     RequireResultError([] { (void)StringToRemoteEncoder("not-an-encoder"); });
 
-    for (const auto value : {6, 255}) {
+    for (const auto value : {8, 255}) {
         const auto invalid = static_cast<Instance::Remote::EncoderType>(value);
         RequireResultError([invalid] { (void)GetRemoteEncoderName(invalid); });
         REQUIRE(std::string(GetRemoteEncoderPrettyName(invalid)) == "Unknown");
@@ -580,6 +647,19 @@ TEST_CASE("Remote without a viewport is inert and reports unsupported operations
     requireInertState();
 }
 
+TEST_CASE("Remote access token accepts only long URL-safe values", "[core][application][instance][remote]") {
+    REQUIRE(IsRemoteTokenValid("living-room-screen-2026"));
+    REQUIRE(IsRemoteTokenValid("Abc123_.~-Abc123_.~-"));
+    REQUIRE(IsRemoteTokenValid(std::string(128, 'a')));
+    REQUIRE_FALSE(IsRemoteTokenValid(""));
+    REQUIRE_FALSE(IsRemoteTokenValid("short-token"));
+    REQUIRE_FALSE(IsRemoteTokenValid(std::string(129, 'a')));
+    REQUIRE_FALSE(IsRemoteTokenValid("living room screen 2026"));
+    REQUIRE_FALSE(IsRemoteTokenValid("living-room-screen#2026"));
+    REQUIRE_FALSE(IsRemoteTokenValid("living-room-screen/2026"));
+    REQUIRE_FALSE(IsRemoteTokenValid("-living-room-screen"));
+}
+
 TEST_CASE("Remote broker public URL accepts only HTTP and HTTPS origins",
           "[core][application][instance][remote]") {
     REQUIRE(IsRemotePublicUrlValid("https://example.com"));
@@ -615,7 +695,7 @@ TEST_CASE("Remote supervisor treats a null remote as a stopped transport",
 // TODO: Add injectable frame-capture, media-pipeline, and signaller transport
 // factories for supported Remote create/destroy and rollback at stream, broker,
 // room, capture, and submission-thread boundaries. The concrete path requires
-// Vulkan, GStreamer, threads, and network services.
+// Vulkan, FFmpeg, threads, and network services.
 // TODO: Give Supervisor an injectable remote transport and wait strategy so
 // waitlist deduplication, short IDs, authorization-code normalization, auto-join,
 // rejected approval, and stop races can be tested without sleeping or reading stdin.

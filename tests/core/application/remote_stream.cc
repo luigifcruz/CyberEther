@@ -9,24 +9,23 @@
 
 #include "../render/harness.hh"
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-#include "jetstream/backend/base.hh"
+#if defined(JETSTREAM_LOADER_FFMPEG_CUDA_AVAILABLE) && defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
+#include "jetstream/viewport/capture/vulkan.hh"
 #endif
 
-#include <gst/app/gstappsink.h>
-#include <gst/app/gstappsrc.h>
-#include <gst/rtp/gstrtcpbuffer.h>
-#include <gst/video/video-event.h>
-#include <gst/video/video-info.h>
+#include <rtc/rtc.hpp>
 
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/sha.h>
 #include <openssl/x509.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
+#include <sstream>
 
 #if defined(JST_OS_LINUX)
 #include "agent_provider.hh"
@@ -36,8 +35,6 @@
 
 using namespace Jetstream;
 using namespace std::chrono_literals;
-
-extern "C" void gst_init_static_plugins();
 
 namespace {
 
@@ -66,14 +63,18 @@ struct Stream {
         SkipRemoteEncodingOnCI();
     }
 
-    void start(bool produceFrames = true) {
-        gst_init(nullptr, nullptr);
-        gst_init_static_plugins();
+    void configure() {
+        remote.config.broker = {.address = "127.0.0.1", .port = 0};
         remote.size = {320, 240};
         remote.config.video.codec = Instance::Remote::CodecType::H264;
         remote.inputMemoryDevice_ = DeviceType::CPU;
-        remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
-        REQUIRE(remote.startStream() == Result::SUCCESS);
+        remote.encoderType = Instance::Remote::EncoderType::Software;
+    }
+
+    void start(bool produceFrames = true) {
+        configure();
+        REQUIRE(remote.createBroker() == Result::SUCCESS);
+        remote.started_ = true;
         if (produceFrames) startFrames();
     }
 
@@ -177,159 +178,6 @@ void WriteSelfSignedCertificate(const std::filesystem::path& certificate, const 
     EVP_PKEY_free(pkey);
 }
 
-void Loopback(GstElement* webrtc) {
-    GstWebRTCICE* ice = nullptr;
-    g_object_get(webrtc, "ice-agent", &ice, nullptr);
-    gboolean added = FALSE;
-    g_signal_emit_by_name(ice, "add-local-ip-address", "127.0.0.1", &added);
-    gst_object_unref(ice);
-    REQUIRE(added);
-}
-
-void SetDescription(GstElement* webrtc, const char* action, GstWebRTCSessionDescription* desc) {
-    GstPromise* promise = gst_promise_new();
-    g_signal_emit_by_name(webrtc, action, desc, promise);
-    const auto result = gst_promise_wait(promise);
-    gst_promise_unref(promise);
-    REQUIRE(result == GST_PROMISE_RESULT_REPLIED);
-}
-
-GstWebRTCSessionDescription* CreateDescription(GstElement* webrtc, bool offer) {
-    GstPromise* promise = gst_promise_new();
-    g_signal_emit_by_name(webrtc, offer ? "create-offer" : "create-answer", nullptr, promise);
-    REQUIRE(gst_promise_wait(promise) == GST_PROMISE_RESULT_REPLIED);
-    GstWebRTCSessionDescription* desc = nullptr;
-    gst_structure_get(gst_promise_get_reply(promise), offer ? "offer" : "answer",
-                      GST_TYPE_WEBRTC_SESSION_DESCRIPTION, &desc, nullptr);
-    gst_promise_unref(promise);
-    REQUIRE(desc);
-    return desc;
-}
-
-void Negotiate(GstElement* from, GstElement* to, bool offer) {
-    GstWebRTCSessionDescription* desc = CreateDescription(from, offer);
-    SetDescription(from, "set-local-description", desc);
-    SetDescription(to, "set-remote-description", desc);
-    gst_webrtc_session_description_free(desc);
-}
-
-struct Peer {
-    Instance::Remote::Impl& remote;
-    std::string id;
-    GstElement* pipeline = nullptr;
-    GstElement* receiver = nullptr;
-    GstElement* sender = nullptr;
-    GstElement* sink = nullptr;
-    gulong senderIce = 0;
-    gulong receiverIce = 0;
-    std::atomic<unsigned> packets = 0;
-    std::atomic<unsigned> senderReports = 0;
-    bool loopbackSender = true;
-
-    Peer(Stream& stream, std::string id) : remote(stream.remote), id(std::move(id)) {}
-
-    void prepare() {
-        REQUIRE(remote.createWebRtcSession(id, "loopback") == Result::SUCCESS);
-        auto& session = *remote.sessions.at(id);
-        sender = GST_ELEMENT(gst_object_ref(session.webrtc));
-        g_signal_handler_disconnect(sender, session.iceHandler);
-        session.iceHandler = 0;
-        if (loopbackSender) {
-            Loopback(sender);
-        }
-        pipeline = gst_pipeline_new(nullptr);
-        receiver = gst_element_factory_make("webrtcbin", nullptr);
-        sink = gst_element_factory_make("appsink", nullptr);
-        REQUIRE(pipeline);
-        REQUIRE(receiver);
-        REQUIRE(sink);
-        gst_bin_add_many(GST_BIN(pipeline), receiver, sink, nullptr);
-        g_object_set(receiver, "bundle-policy", GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE, nullptr);
-        Loopback(receiver);
-        g_object_set(sink, "sync", FALSE, "async", FALSE, "emit-signals", TRUE,
-                     "enable-last-sample", FALSE, "wait-on-eos", FALSE, nullptr);
-        g_signal_connect(receiver, "pad-added", G_CALLBACK(+[](GstElement*, GstPad* pad, gpointer data) {
-            if (GST_PAD_DIRECTION(pad) != GST_PAD_SRC) return;
-            auto* self = static_cast<Peer*>(data);
-            GstPad* target = gst_element_get_static_pad(self->sink, "sink");
-            gst_pad_link(pad, target);
-            gst_object_unref(target);
-        }), this);
-        g_signal_connect(sink, "new-sample", G_CALLBACK(+[](GstAppSink* sink, gpointer data) -> GstFlowReturn {
-            GstSample* sample = gst_app_sink_pull_sample(sink);
-            if (sample) {
-                ++static_cast<Peer*>(data)->packets;
-                gst_sample_unref(sample);
-            }
-            return GST_FLOW_OK;
-        }), this);
-        auto ice = +[](GstElement*, guint index, gchar* candidate, gpointer other) {
-            g_signal_emit_by_name(other, "add-ice-candidate", index, candidate);
-        };
-        senderIce = g_signal_connect(sender, "on-ice-candidate", G_CALLBACK(ice), receiver);
-        receiverIce = g_signal_connect(receiver, "on-ice-candidate", G_CALLBACK(ice), sender);
-        REQUIRE(gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE);
-    }
-
-    void connect() {
-        prepare();
-        negotiate();
-    }
-
-    void negotiate() {
-        remote.createControlChannel(id);
-        Negotiate(sender, receiver, true);
-        Negotiate(receiver, sender, false);
-
-        GstElement* rtpbin = gst_bin_get_by_name(GST_BIN(receiver), "rtpbin");
-        REQUIRE(rtpbin);
-        GstPad* rtcp = gst_element_get_static_pad(rtpbin, "recv_rtcp_sink_0");
-        gst_object_unref(rtpbin);
-        REQUIRE(rtcp);
-        gst_pad_add_probe(rtcp, GST_PAD_PROBE_TYPE_BUFFER, +[](GstPad*, GstPadProbeInfo* info, gpointer data) {
-            GstRTCPBuffer buffer = GST_RTCP_BUFFER_INIT;
-            if (gst_rtcp_buffer_map(GST_PAD_PROBE_INFO_BUFFER(info), GST_MAP_READ, &buffer)) {
-                GstRTCPPacket packet;
-                if (gst_rtcp_buffer_get_first_packet(&buffer, &packet)) {
-                    do {
-                        if (gst_rtcp_packet_get_type(&packet) == GST_RTCP_TYPE_SR)
-                            ++static_cast<Peer*>(data)->senderReports;
-                    } while (gst_rtcp_packet_move_to_next(&packet));
-                }
-                gst_rtcp_buffer_unmap(&buffer);
-            }
-            return GST_PAD_PROBE_OK;
-        }, this, nullptr);
-        gst_object_unref(rtcp);
-    }
-
-    ~Peer() {
-        if (senderIce) g_signal_handler_disconnect(sender, senderIce);
-        if (receiverIce) g_signal_handler_disconnect(receiver, receiverIce);
-        remote.destroyWebRtcSession(id);
-        if (pipeline) {
-            gst_element_set_state(pipeline, GST_STATE_NULL);
-            gst_object_unref(pipeline);
-        }
-        gst_clear_object(&sender);
-    }
-};
-
-struct PadProbe {
-    GstPad* pad = nullptr;
-    gulong id = 0;
-
-    void remove() {
-        if (id) gst_pad_remove_probe(pad, id);
-        id = 0;
-    }
-
-    ~PadProbe() {
-        remove();
-        gst_clear_object(&pad);
-    }
-};
-
 struct InputView {
     const Render::InputState& input;
     std::vector<Render::InputState::Event> collected;
@@ -391,10 +239,213 @@ F32 PointerX(const InputView& state) {
 }
 
 void SendInput(Instance::Remote::Impl& remote, const std::string& sessionId, const nlohmann::json& input) {
-    Instance::Remote::Impl::ControlChannelContext context{&remote, sessionId};
-    auto payload = input.dump();
-    Instance::Remote::Impl::onMessageCallback(nullptr, payload.data(), &context);
+    remote.handleControlMessage(sessionId, input.dump());
 }
+
+struct Viewer {
+    Instance::Remote::Impl& remote;
+    BrokerPeer signaller;
+    std::string sessionId;
+    std::shared_ptr<rtc::PeerConnection> connection;
+    std::shared_ptr<rtc::Track> track;
+    std::shared_ptr<rtc::RtcpReceivingSession> rtcp;
+    std::shared_ptr<rtc::Track> audio;
+    std::shared_ptr<rtc::RtcpReceivingSession> audioRtcp;
+    std::shared_ptr<rtc::DataChannel> control;
+    std::function<std::string(const std::string&)> editAnswer;
+    bool holdAnswer = false;
+    nlohmann::json heldAnswer;
+    std::atomic<unsigned> packets = 0;
+    std::atomic<unsigned> audioPackets = 0;
+    std::atomic<bool> ended = false;
+    std::atomic<bool> running = false;
+    std::thread reader;
+    std::mutex mutex;
+    std::string offer;
+    std::vector<std::string> candidates;
+
+    explicit Viewer(Stream& stream)
+        : remote(stream.remote),
+          signaller(stream.remote.broker->origin(), "?tokenHash=" + BrokerTokenHash(stream.remote.consumerToken)) {}
+
+    void join() {
+        REQUIRE(signaller.connect());
+        signaller.send({{"type", "setPeerStatus"}, {"roles", {"listener"}}, {"meta", {{"token", remote.consumerToken}}}});
+        sessionId = signaller.next("sessionRegistered")["sessionId"];
+        signaller.client->set_read_timeout(100ms);
+    }
+
+    void prepare() {
+        join();
+        connection = std::make_shared<rtc::PeerConnection>(rtc::Configuration{});
+        connection->onLocalDescription([this](rtc::Description description) {
+            std::string sdp(description);
+            if (editAnswer) {
+                sdp = editAnswer(sdp);
+            }
+            const nlohmann::json message = {{"type", "peer"}, {"sessionId", sessionId},
+                                            {"sdp", {{"type", description.typeString()}, {"sdp", sdp}}}};
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                if (holdAnswer) {
+                    heldAnswer = message;
+                    return;
+                }
+            }
+            send(message);
+        });
+        connection->onLocalCandidate([this](rtc::Candidate candidate) {
+            send({{"type", "peer"}, {"sessionId", sessionId},
+                  {"ice", {{"candidate", candidate.candidate()}, {"sdpMid", candidate.mid()}}}});
+        });
+        connection->onTrack([this](std::shared_ptr<rtc::Track> incoming) {
+            auto session = std::make_shared<rtc::RtcpReceivingSession>();
+            incoming->setMediaHandler(session);
+            const bool isAudio = incoming->mid() == "audio";
+            incoming->onMessage([this, isAudio](rtc::binary) {
+                ++(isAudio ? audioPackets : packets);
+            }, nullptr);
+            std::lock_guard<std::mutex> lock(mutex);
+            if (isAudio) {
+                audio = std::move(incoming);
+                audioRtcp = std::move(session);
+            } else {
+                track = std::move(incoming);
+                rtcp = std::move(session);
+            }
+        });
+        connection->onDataChannel([this](std::shared_ptr<rtc::DataChannel> channel) {
+            std::lock_guard<std::mutex> lock(mutex);
+            control = std::move(channel);
+        });
+
+        running = true;
+        reader = std::thread([this] { read(); });
+    }
+
+    void connect() {
+        prepare();
+        REQUIRE(WaitFor([&] {
+            std::lock_guard<std::mutex> lock(remote.remoteStateMutex);
+            return std::ranges::find(remote.waitlist_, sessionId) != remote.waitlist_.end();
+        }));
+        REQUIRE(remote.approveClient(sessionId) == Result::SUCCESS);
+    }
+
+    void send(const nlohmann::json& message) {
+        std::lock_guard<std::mutex> lock(mutex);
+        (void)signaller.client->send(message.dump());
+    }
+
+    void read() {
+        std::string payload;
+        while (running) {
+            const auto result = signaller.client->read(payload);
+            if (result == httplib::ws::Timeout) {
+                continue;
+            }
+            if (result != httplib::ws::Text) {
+                break;
+            }
+
+            const auto message = nlohmann::json::parse(payload, nullptr, false);
+            const std::string type = message.value("type", "");
+            if (type == "endSession") {
+                ended = true;
+                continue;
+            }
+            if (type != "peer") {
+                continue;
+            }
+
+            try {
+                if (message.contains("sdp")) {
+                    const std::string sdp = message["sdp"]["sdp"];
+                    {
+                        std::lock_guard<std::mutex> lock(mutex);
+                        offer = sdp;
+                    }
+                    connection->setRemoteDescription(rtc::Description(sdp, message["sdp"]["type"].get<std::string>()));
+                }
+                if (message.contains("ice")) {
+                    const std::string candidate = message["ice"]["candidate"];
+                    {
+                        std::lock_guard<std::mutex> lock(mutex);
+                        candidates.push_back(candidate);
+                    }
+                    connection->addRemoteCandidate(rtc::Candidate(candidate, message["ice"].value("sdpMid", "")));
+                }
+            } catch (const std::exception&) {
+            }
+        }
+    }
+
+    bool answered() {
+        std::lock_guard<std::mutex> lock(mutex);
+        return !heldAnswer.is_null();
+    }
+
+    void releaseAnswer() {
+        nlohmann::json message;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            holdAnswer = false;
+            message = std::move(heldAnswer);
+        }
+        send(message);
+    }
+
+    bool connected() const {
+        return connection && connection->state() == rtc::PeerConnection::State::Connected;
+    }
+
+    std::string description() {
+        std::lock_guard<std::mutex> lock(mutex);
+        return offer;
+    }
+
+    bool requestKeyframe() {
+        std::lock_guard<std::mutex> lock(mutex);
+        return track && track->requestKeyframe();
+    }
+
+    bool senderReport() {
+        std::lock_guard<std::mutex> lock(mutex);
+        return rtcp && rtcp->getSyncTimestamps().ntpTimestamp != 0;
+    }
+
+    void close() {
+        running = false;
+        if (reader.joinable()) reader.join();
+        if (connection) {
+            connection->resetCallbacks();
+        }
+        std::shared_ptr<rtc::Track> incoming;
+        std::shared_ptr<rtc::Track> incomingAudio;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            incoming = track;
+            incomingAudio = audio;
+        }
+        if (incoming) {
+            incoming->resetCallbacks();
+        }
+        if (incomingAudio) {
+            incomingAudio->resetCallbacks();
+        }
+        if (connection) {
+            connection->close();
+        }
+    }
+
+    ~Viewer() {
+        close();
+        if (!sessionId.empty()) {
+            send({{"type", "endSession"}, {"sessionId", sessionId}});
+        }
+        remote.destroyWebRtcSession(sessionId);
+    }
+};
 
 }  // namespace
 
@@ -426,8 +477,7 @@ TEST_CASE("Only the first remote consumer can control the interface",
         CHECK((PointerX(state) == 160.0f) == controls);
     });
 
-    Instance::Remote::Impl::ControlChannelContext context{&remote, sender};
-    Instance::Remote::Impl::onChannelClosedCallback(nullptr, &context);
+    remote.enqueueInputReset(sender);
     input.frame(remote, [](const InputView& state) {
         CHECK_FALSE(state.keyDown(KeyCode::A));
         CHECK_FALSE(state.modifiers().control);
@@ -551,8 +601,6 @@ TEST_CASE("Broker disconnect stops remote streaming and releases its room and in
     Stream stream;
     auto& remote = stream.remote;
     input.attach(remote);
-    gst_init(nullptr, nullptr);
-    gst_init_static_plugins();
     remote.config.broker = {.address = "127.0.0.1", .port = 0};
     remote.size = {320, 240};
     std::string previousRoom;
@@ -560,7 +608,7 @@ TEST_CASE("Broker disconnect stops remote streaming and releases its room and in
     for (unsigned i = 1; i <= 2; ++i) {
         CAPTURE(i);
         remote.inputMemoryDevice_ = DeviceType::CPU;
-        remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+        remote.encoderType = Instance::Remote::EncoderType::Software;
         REQUIRE(remote.createBroker() == Result::SUCCESS);
         remote.started_ = true;
         REQUIRE_FALSE(remote.roomId_.empty());
@@ -593,7 +641,7 @@ TEST_CASE("Broker disconnect stops remote streaming and releases its room and in
 
         CHECK_FALSE(remote.started_);
         CHECK_FALSE(remote.streaming);
-        CHECK_FALSE(remote.pipeline);
+        CHECK_FALSE(remote.encoder);
         CHECK_FALSE(remote.broker);
         CHECK_FALSE(remote.signallerClient);
         CHECK_FALSE(remote.signallerThread.joinable());
@@ -626,6 +674,7 @@ TEST_CASE("Remote capture honors the configured frame rate without catch-up burs
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     Instance::Remote::Impl remote;
     remote.config.video.framerate = captureFps;
@@ -634,7 +683,7 @@ TEST_CASE("Remote capture honors the configured frame rate without catch-up burs
     remote.frameCapture = std::move(capture);
     const auto start = std::chrono::steady_clock::time_point(1s);
     for (U32 frame = 0; frame < renderFps * 2; ++frame) {
-        const auto now = start + std::chrono::nanoseconds(frame * GST_SECOND / renderFps);
+        const auto now = start + std::chrono::nanoseconds(frame * 1'000'000'000ull / renderFps);
         REQUIRE(remote.captureFrame(true, now) == Result::SUCCESS);
     }
     CHECK(counter->frames == std::min(renderFps, captureFps) * 2);
@@ -646,7 +695,7 @@ TEST_CASE("Remote capture honors the configured frame rate without catch-up burs
         REQUIRE(remote.captureFrame(true, resumed + 1ms) == Result::SUCCESS);
     }
     CHECK(counter->frames == before + 1);
-    REQUIRE(remote.captureFrame(true, resumed + std::chrono::nanoseconds(GST_SECOND / captureFps)) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(true, resumed + std::chrono::nanoseconds(1'000'000'000ull / captureFps)) == Result::SUCCESS);
     CHECK(counter->frames == before + 2);
 }
 
@@ -659,6 +708,7 @@ TEST_CASE("Remote capture skips frames that presented nothing", "[core][applicat
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     Instance::Remote::Impl remote;
     remote.config.video.framerate = 60;
@@ -683,6 +733,7 @@ TEST_CASE("A redraw inside the capture interval is captured once the interval el
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     RenderTest::Viewport viewport;
     Instance::Remote::Impl remote;
@@ -722,6 +773,7 @@ TEST_CASE("A keyframe request on an idle window asks for a frame and captures it
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     RenderTest::Viewport viewport;
     Instance::Remote::Impl remote;
@@ -744,7 +796,7 @@ TEST_CASE("A keyframe request on an idle window asks for a frame and captures it
     CHECK_FALSE(viewport.consumeRedraw());
 }
 
-TEST_CASE("A busy capture slot keeps the frame pending until a capture is accepted",
+TEST_CASE("A busy capture slot keeps the frame pending until the encoder releases it",
           "[core][application][remote][capture]") {
     struct Capture final : Viewport::FrameCapture {
         unsigned attempts = 0;
@@ -761,6 +813,7 @@ TEST_CASE("A busy capture slot keeps the frame pending until a capture is accept
         }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     RenderTest::Viewport viewport;
     Instance::Remote::Impl remote;
@@ -775,14 +828,78 @@ TEST_CASE("A busy capture slot keeps the frame pending until a capture is accept
     REQUIRE(remote.captureFrame(true, start) == Result::SUCCESS);
     CHECK(counter->frames == 0);
     REQUIRE(remote.captureFrame(false, start + 1ms) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+    remote.releaseCapture();
     CHECK(viewport.consumeRedraw());
     REQUIRE(remote.captureFrame(true, start + 2ms) == Result::SUCCESS);
     CHECK(counter->frames == 1);
+    remote.releaseCapture();
+    CHECK_FALSE(viewport.consumeRedraw());
     REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
     CHECK_FALSE(viewport.consumeRedraw());
 }
 
-TEST_CASE("Upstream encoder keyframe requests wake idle capture across stream restarts",
+TEST_CASE("Metal capture is decided on the present it captures",
+          "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned released = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { return Result::ERROR; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { ++released; return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
+    };
+    RenderTest::Viewport viewport;
+    Instance::Remote::Impl remote;
+    remote.viewport = &viewport;
+    remote.viewportDevice = DeviceType::Metal;
+    remote.config.video.framerate = 60;
+    remote.frameCapture = std::make_unique<Capture>();
+    (void)viewport.consumeRedraw();
+
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    CHECK(remote.acceptCapture(true, start));
+    REQUIRE(remote.captureFrame(true, start) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    CHECK_FALSE(remote.acceptCapture(true, start + 1ms));
+    REQUIRE(remote.captureFrame(true, start + 1ms) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK(viewport.consumeRedraw());
+    CHECK(remote.acceptCapture(true, start + 1s + 1ms));
+    REQUIRE(remote.captureFrame(true, start + 1s + 1ms) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(false, start + 2s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    CHECK_FALSE(remote.acceptCapture(false, start + 3s));
+    REQUIRE(remote.captureFrame(false, start + 3s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+    remote.releaseCapture();
+    CHECK(viewport.consumeRedraw());
+    CHECK(remote.acceptCapture(true, start + 3s + 1ms));
+    REQUIRE(remote.captureFrame(false, start + 4s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    remote.requestKeyframe();
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(false, start + 5s) == Result::SUCCESS);
+    CHECK(viewport.consumeRedraw());
+    CHECK(remote.acceptCapture(true, start + 5s + 1ms));
+    REQUIRE(remote.captureFrame(false, start + 6s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    remote.requestKeyframe();
+    CHECK(viewport.consumeRedraw());
+    CHECK(remote.acceptCapture(true, start + 7s));
+    REQUIRE(remote.captureFrame(true, start + 7s) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(false, start + 8s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+}
+
+TEST_CASE("Viewer keyframe requests wake idle capture across stream restarts",
           "[core][application][remote][stream][capture][keyframe]") {
     RenderTest::Viewport viewport;
     Stream stream;
@@ -792,17 +909,25 @@ TEST_CASE("Upstream encoder keyframe requests wake idle capture across stream re
     for (unsigned i = 0; i < 2; ++i) {
         CAPTURE(i);
         stream.start(false);
-        remote.captureRequested = false;
-        remote.forceKeyframe = false;
-        (void)viewport.consumeRedraw();
-        GstPad* encoderSrc = gst_element_get_static_pad(remote.encoder, "src");
-        REQUIRE(encoderSrc);
-        const bool accepted = gst_pad_send_event(encoderSrc,
-            gst_video_event_new_upstream_force_key_unit(GST_CLOCK_TIME_NONE, TRUE, 0));
-        gst_object_unref(encoderSrc);
-        CHECK(accepted);
-        CHECK(remote.captureRequested.load());
-        CHECK(viewport.consumeRedraw());
+        {
+            Viewer viewer(stream);
+            viewer.connect();
+            REQUIRE(WaitFor([&] {
+                REQUIRE(remote.pushNewFrame(stream.frame.data()) == Result::SUCCESS);
+                return viewer.packets > 0;
+            }, 10s));
+            remote.captureRequested = false;
+            remote.forceKeyframe = false;
+            (void)viewport.consumeRedraw();
+            REQUIRE(viewer.requestKeyframe());
+            REQUIRE(WaitFor([&] { return remote.captureRequested.load(); }));
+            CHECK(remote.forceKeyframe.load());
+            bool redraw = false;
+            CHECK(WaitFor([&] {
+                redraw = redraw || viewport.consumeRedraw();
+                return redraw;
+            }));
+        }
         stream.stop();
     }
 }
@@ -817,46 +942,29 @@ TEST_CASE("An idle remote viewer requests a fresh frame after connecting",
         Result captureFrame() override { ++frames; return Result::SUCCESS; }
         Result getFrameData(Tensor&) override { return Result::ERROR; }
         Result releaseFrame() override { return Result::SUCCESS; }
+        Extent2D<U64> extent() const override { return {}; }
     };
     RenderTest::Viewport viewport;
-    std::atomic<bool> submitted = false;
     Stream stream;
     stream.start(false);
-    Peer viewer(stream, "viewer");
-    viewer.prepare();
     auto& remote = stream.remote;
     remote.viewport = &viewport;
     auto capture = std::make_unique<Capture>();
     auto* counter = capture.get();
     remote.frameCapture = std::move(capture);
-    remote.handleStartSession({{"sessionId", viewer.id}, {"peerId", "loopback"}});
+
+    Viewer viewer(stream);
+    viewer.holdAnswer = true;
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return viewer.answered(); }));
     REQUIRE(remote.captureFrame(true) == Result::SUCCESS);
     CHECK(counter->frames == 1);
-
-    stream.producer = std::thread([&] {
-        remote.pushNewFrame(stream.frame.data());
-        submitted = true;
-    });
-    std::unique_ptr<GstWebRTCSessionDescription, decltype(&gst_webrtc_session_description_free)>
-        offer(nullptr, gst_webrtc_session_description_free);
-    REQUIRE(WaitFor([&] {
-        GstWebRTCSessionDescription* desc = nullptr;
-        g_object_get(viewer.sender, "local-description", &desc, nullptr);
-        offer.reset(desc);
-        return offer != nullptr;
-    }));
-    REQUIRE(WaitFor([&] { return submitted.load(); }));
-    stream.producer.join();
+    REQUIRE(remote.pushNewFrame(stream.frame.data()) == Result::SUCCESS);
     remote.captureRequested = false;
     (void)viewport.consumeRedraw();
 
-    SetDescription(viewer.receiver, "set-remote-description", offer.get());
-    Negotiate(viewer.receiver, viewer.sender, false);
-    REQUIRE(WaitFor([&] {
-        GstWebRTCPeerConnectionState state;
-        g_object_get(viewer.sender, "connection-state", &state, nullptr);
-        return state == GST_WEBRTC_PEER_CONNECTION_STATE_CONNECTED;
-    }));
+    viewer.releaseAnswer();
+    REQUIRE(WaitFor([&] { return viewer.connected(); }, 10s));
     REQUIRE(WaitFor([&] { return remote.captureRequested.load(); }));
     bool redraw = false;
     REQUIRE(WaitFor([&] {
@@ -865,256 +973,259 @@ TEST_CASE("An idle remote viewer requests a fresh frame after connecting",
     }));
     REQUIRE(remote.captureFrame(true, remote.nextCaptureTime) == Result::SUCCESS);
     CHECK(counter->frames == 2);
-    submitted = false;
-    stream.producer = std::thread([&] {
-        remote.pushNewFrame(stream.frame.data());
-        submitted = true;
-    });
-    REQUIRE(WaitFor([&] { return viewer.packets > 0; }));
-    REQUIRE(WaitFor([&] { return submitted.load(); }));
-    stream.producer.join();
+    REQUIRE(WaitFor([&] {
+        REQUIRE(remote.pushNewFrame(stream.frame.data()) == Result::SUCCESS);
+        return viewer.packets > 0;
+    }));
 }
 
-TEST_CASE("Remote CPU encoding preserves the configured frame rate and source colorimetry",
-          "[core][application][remote][stream][caps]") {
+TEST_CASE("Remote encoder turns BGRA frames into keyframes on request",
+          "[core][application][remote][stream][encoder]") {
+    SkipRemoteEncodingOnCI();
     const U32 framerate = GENERATE(30u, 60u);
     CAPTURE(framerate);
-    Stream stream;
-    stream.remote.config.video.framerate = framerate;
-    stream.start();
-    Peer viewer(stream, "viewer");
-    viewer.connect();
-    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
 
-    const auto videoInfo = [&](const char* elementName, const char* padName) {
-        CAPTURE(elementName, padName);
-        GstElement* element = gst_bin_get_by_name(GST_BIN(stream.remote.pipeline), elementName);
-        REQUIRE(element);
-        GstPad* pad = gst_element_get_static_pad(element, padName);
-        gst_object_unref(element);
-        REQUIRE(pad);
-        GstCaps* caps = gst_pad_get_current_caps(pad);
-        gst_object_unref(pad);
-        REQUIRE(caps);
-        GstVideoInfo info;
-        const bool parsed = gst_video_info_from_caps(&info, caps);
-        gst_caps_unref(caps);
-        REQUIRE(parsed);
-        CHECK(GST_VIDEO_INFO_FPS_N(&info) == static_cast<gint>(framerate));
-        CHECK(GST_VIDEO_INFO_FPS_D(&info) == 1);
-        return info;
-    };
+    Instance::Remote::Encoder encoder;
+    REQUIRE(encoder.create({
+        .codec = Instance::Remote::CodecType::H264,
+        .encoder = Instance::Remote::EncoderType::Software,
+        .device = DeviceType::CPU,
+        .size = {320, 240},
+        .framerate = framerate,
+    }) == Result::SUCCESS);
 
-    const auto raw = videoInfo("rawparser", "src");
-    CHECK(GST_VIDEO_INFO_FORMAT(&raw) == GST_VIDEO_FORMAT_BGRA);
-    CHECK(GST_VIDEO_INFO_WIDTH(&raw) == static_cast<gint>(stream.remote.size.x));
-    CHECK(GST_VIDEO_INFO_HEIGHT(&raw) == static_cast<gint>(stream.remote.size.y));
-    CHECK(gst_video_colorimetry_matches(&raw.colorimetry, GST_VIDEO_COLORIMETRY_SRGB));
+    std::vector<unsigned char> frame(320 * 240 * 4, 0x7f);
+    std::vector<Instance::Remote::Encoder::Packet> packets;
+    for (U64 index = 0; index < 8; ++index) {
+        const auto timestamp = std::chrono::microseconds(index * 1'000'000 / framerate);
+        REQUIRE(encoder.encode(frame.data(), timestamp, index == 0 || index == 5, packets) == Result::SUCCESS);
+    }
 
-    const auto encodedInput = videoInfo("encoder", "sink");
-    CHECK(encodedInput.colorimetry.transfer == GST_VIDEO_TRANSFER_SRGB);
-    CHECK(encodedInput.colorimetry.primaries == GST_VIDEO_COLOR_PRIMARIES_BT709);
+    REQUIRE(packets.size() == 8);
+    for (U64 index = 0; index < packets.size(); ++index) {
+        CAPTURE(index);
+        CHECK(packets[index].timestamp == std::chrono::microseconds(index * 1'000'000 / framerate));
+        CHECK(packets[index].keyframe == (index == 0 || index == 5));
+        REQUIRE(packets[index].data.size() > 4);
+        CHECK(packets[index].data[0] == 0x00);
+        CHECK(packets[index].data[1] == 0x00);
+    }
 }
 
-TEST_CASE("Remote offers wait for encoded H264 caps and advertise the actual profile and level",
-          "[core][application][remote][stream][caps]") {
-    const bool capsFirst = GENERATE(false, true);
-    CAPTURE(capsFirst);
+TEST_CASE("Remote offers advertise the video codec and the control channel",
+          "[core][application][remote][stream][sdp]") {
     Stream stream;
     stream.start(false);
-    auto& remote = stream.remote;
 
-    // Disconnecting while waiting for the first frame must cancel that offer,
-    // including when a subsequent session reuses the same identifier.
-    remote.handleStartSession({{"sessionId", "viewer"}, {"peerId", "cancelled"}});
-    remote.destroyWebRtcSession("viewer");
+    // Disconnecting before negotiation must not leave a stale session behind,
+    // including when a later viewer reuses the same identifier.
+    stream.remote.handleStartSession({{"sessionId", "viewer"}, {"peerId", "cancelled"}});
+    stream.remote.destroyWebRtcSession("viewer");
+    CHECK(stream.remote.sessions.empty());
 
-    Peer viewer(stream, "viewer");
-    viewer.prepare();
-    auto& session = *remote.sessions.at(viewer.id);
-    std::unique_ptr<GstCaps, decltype(&gst_caps_unref)> caps(nullptr, gst_caps_unref);
-    const auto readCaps = [&] {
-        caps.reset(gst_pad_get_current_caps(session.webrtcSinkPad));
-        return caps != nullptr;
-    };
-    std::unique_ptr<GstWebRTCSessionDescription, decltype(&gst_webrtc_session_description_free)>
-        offer(nullptr, gst_webrtc_session_description_free);
-    const auto readOffer = [&] {
-        GstWebRTCSessionDescription* desc = nullptr;
-        g_object_get(viewer.sender, "local-description", &desc, nullptr);
-        offer.reset(desc);
-        return offer != nullptr;
-    };
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return !viewer.description().empty(); }));
 
-    if (capsFirst) {
-        stream.startFrames();
-        REQUIRE(WaitFor(readCaps));
-        CHECK_FALSE(WaitFor(readOffer, 100ms));
-    }
-    remote.handleStartSession({{"sessionId", viewer.id}, {"peerId", "loopback"}});
-    if (!capsFirst) {
-        CHECK_FALSE(WaitFor(readOffer, 100ms));
-        CHECK_FALSE(readCaps());
-        stream.startFrames();
-    }
+    const std::string offer = viewer.description();
+    CHECK(offer.find("m=video") != std::string::npos);
+    CHECK(offer.find("m=application") != std::string::npos);
+    CHECK(offer.find("H264/90000") != std::string::npos);
+    CHECK(offer.find("profile-level-id=42e029") != std::string::npos);
+    CHECK(offer.find("packetization-mode=1") != std::string::npos);
 
-    REQUIRE(WaitFor(readOffer));
-    REQUIRE(offer->type == GST_WEBRTC_SDP_TYPE_OFFER);
-    REQUIRE(WaitFor(readCaps));
-    const char* profile = gst_structure_get_string(gst_caps_get_structure(caps.get(), 0),
-                                                   "profile-level-id");
-    REQUIRE(profile);
-    bool video = false;
-    bool control = false;
-    for (guint i = 0; i < gst_sdp_message_medias_len(offer->sdp); ++i) {
-        const GstSDPMedia* media = gst_sdp_message_get_media(offer->sdp, i);
-        const std::string kind = gst_sdp_media_get_media(media);
-        if (kind == "video") {
-            video = true;
-            const char* fmtp = gst_sdp_media_get_attribute_val(media, "fmtp");
-            REQUIRE(fmtp);
-            CHECK(std::string(fmtp).find(std::string("profile-level-id=") + profile) != std::string::npos);
+    stream.startFrames();
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
+    REQUIRE(WaitFor([&] {
+        std::lock_guard<std::mutex> lock(viewer.mutex);
+        return viewer.control && viewer.control->label() == "control";
+    }));
+}
+
+TEST_CASE("Remote offers carry Opus audio that follows the Audio block tap",
+          "[core][application][remote][stream][audio]") {
+    Stream stream;
+    stream.start();
+    REQUIRE(Instance::Remote::Audio::Active());
+
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return !viewer.description().empty(); }));
+
+    const std::string offer = viewer.description();
+    CHECK(offer.find("m=audio") != std::string::npos);
+    CHECK(offer.find("opus/48000/2") != std::string::npos);
+    CHECK(offer.find("a=mid:audio") != std::string::npos);
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
+    CHECK(viewer.audioPackets == 0);
+
+    auto source = Instance::Remote::Audio::Attach();
+    std::atomic<bool> playing = true;
+    std::thread player([&] {
+        std::vector<F32> tone(Instance::Remote::Audio::FrameSize);
+        U64 phase = 0;
+        while (playing) {
+            for (auto& sample : tone) {
+                sample = 0.25f * std::sin(static_cast<F32>(phase++) * 0.0572f);
+            }
+            Instance::Remote::Audio::Push(*source, tone.data(), tone.size(), 1, 1.0f);
+            std::this_thread::sleep_for(Instance::Remote::Audio::FrameDuration);
         }
-        if (kind == "application") control = true;
-    }
-    CHECK(video);
-    CHECK(control);
+    });
 
-    SetDescription(viewer.receiver, "set-remote-description", offer.get());
-    Negotiate(viewer.receiver, viewer.sender, false);
-    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+    CHECK(WaitFor([&] { return viewer.audioPackets >= 20; }, 10s));
+    CHECK(WaitFor([&] {
+        std::lock_guard<std::mutex> lock(viewer.mutex);
+        return viewer.audioRtcp && viewer.audioRtcp->getSyncTimestamps().ntpTimestamp != 0;
+    }, 10s));
+
+    playing = false;
+    player.join();
+    source.reset();
+    viewer.close();
+    stream.stop();
+    CHECK_FALSE(Instance::Remote::Audio::Active());
+}
+
+TEST_CASE("Remote offers leave out audio when audio streaming is off",
+          "[core][application][remote][stream][audio]") {
+    Stream stream;
+    stream.remote.config.audio.enabled = false;
+    stream.start();
+    CHECK_FALSE(Instance::Remote::Audio::Active());
+
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return !viewer.description().empty(); }));
+    CHECK(viewer.description().find("m=audio") == std::string::npos);
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
+}
+
+TEST_CASE("Remote viewers follow the host theme", "[core][application][remote][stream][theme]") {
+    RenderTest::Viewport viewport;
+    Stream stream;
+    stream.remote.viewport = &viewport;
+    stream.start();
+
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] {
+        std::lock_guard<std::mutex> lock(viewer.mutex);
+        return viewer.control && viewer.control->isOpen();
+    }, 10s));
+
+    std::mutex mutex;
+    std::vector<std::string> themes;
+    {
+        std::lock_guard<std::mutex> lock(viewer.mutex);
+        viewer.control->onMessage([](rtc::binary) {}, [&](rtc::string text) {
+            const auto message = nlohmann::json::parse(text, nullptr, false);
+            if (message.is_object() && message.value("kind", "") == "theme") {
+                std::lock_guard<std::mutex> themeLock(mutex);
+                themes.push_back(message.value("appearance", ""));
+            }
+        });
+    }
+    const auto last = [&] {
+        std::lock_guard<std::mutex> lock(mutex);
+        return themes.empty() ? std::string() : themes.back();
+    };
+
+    stream.remote.syncAppearance();
+    (void)viewport.setDarkAppearance(false);
+    stream.remote.syncAppearance();
+    CHECK(WaitFor([&] { return last() == "light"; }, 5s));
+
+    (void)viewport.setDarkAppearance(true);
+    stream.remote.syncAppearance();
+    CHECK(WaitFor([&] { return last() == "dark"; }, 5s));
+
+    const auto count = [&] {
+        std::lock_guard<std::mutex> lock(mutex);
+        return themes.size();
+    }();
+    stream.remote.syncAppearance();
+    std::this_thread::sleep_for(100ms);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        CHECK(themes.size() == count);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(viewer.mutex);
+        viewer.control->resetCallbacks();
+    }
+    viewer.close();
+    stream.stop();
 }
 
 TEST_CASE("Remote SDP validation closes rejected sessions and permits valid negotiations",
           "[core][application][remote][stream][sdp]") {
-    const bool offer = GENERATE(false, true);
     const bool valid = GENERATE(false, true);
-    CAPTURE(offer, valid);
+    CAPTURE(valid);
     Stream stream;
     stream.start();
-    Peer observer(stream, "observer");
+    Viewer observer(stream);
     observer.connect();
-    REQUIRE(WaitFor([&] { return observer.packets >= 20; }));
-    Peer viewer(stream, "viewer");
-    viewer.prepare();
-    auto& remote = stream.remote;
+    REQUIRE(WaitFor([&] { return observer.packets >= 20; }, 10s));
 
-    if (offer) {
-        GstCaps* caps = gst_caps_from_string("application/x-rtp,media=video,encoding-name=H264,"
-                                             "payload=96,clock-rate=90000,packetization-mode=(string)1");
-        GstWebRTCRTPTransceiver* transceiver = nullptr;
-        g_signal_emit_by_name(viewer.receiver, "add-transceiver",
-                             GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_RECVONLY, caps, &transceiver);
-        gst_caps_unref(caps);
-        REQUIRE(transceiver);
-        gst_object_unref(transceiver);
-    } else {
-        remote.createControlChannel(viewer.id);
-        Negotiate(viewer.sender, viewer.receiver, true);
-    }
-
-    GstWebRTCSessionDescription* desc = CreateDescription(viewer.receiver, offer);
-    if (valid) {
-        SetDescription(viewer.receiver, "set-local-description", desc);
-    } else {
-        for (guint i = 0; i < gst_sdp_message_medias_len(desc->sdp); ++i) {
-            auto* media = const_cast<GstSDPMedia*>(gst_sdp_message_get_media(desc->sdp, i));
-            for (guint j = gst_sdp_media_attributes_len(media); j > 0; --j) {
-                if (std::string(gst_sdp_media_get_attribute(media, j - 1)->key) == "ice-pwd") {
-                    gst_sdp_media_remove_attribute(media, j - 1);
+    Viewer viewer(stream);
+    if (!valid) {
+        viewer.editAnswer = [](const std::string& sdp) {
+            std::string edited;
+            std::istringstream lines(sdp);
+            for (std::string line; std::getline(lines, line);) {
+                if (!line.starts_with("a=ice-pwd")) {
+                    edited += line + "\n";
                 }
             }
-        }
+            return edited;
+        };
     }
-    gchar* text = gst_sdp_message_as_text(desc->sdp);
-    const std::string sdp(text);
-    g_free(text);
-    gst_webrtc_session_description_free(desc);
-
-    if (!valid) {
-        CHECK(remote.applyRemoteDescription(viewer.id, offer ? "offer" : "answer", sdp) == Result::ERROR);
-    }
-    if (offer) {
-        remote.handleStartSession({{"sessionId", viewer.id}, {"peerId", "loopback"}, {"offer", sdp}});
-    } else {
-        remote.handlePeerMessage({{"sessionId", viewer.id}, {"sdp", {{"type", "answer"}, {"sdp", sdp}}}});
-    }
-    CHECK(remote.sessions.contains(viewer.id) == valid);
+    viewer.connect();
 
     if (valid) {
-        if (offer) {
-            std::unique_ptr<GstWebRTCSessionDescription, decltype(&gst_webrtc_session_description_free)>
-                answer(nullptr, gst_webrtc_session_description_free);
-            REQUIRE(WaitFor([&] {
-                GstWebRTCSessionDescription* local = nullptr;
-                g_object_get(viewer.sender, "local-description", &local, nullptr);
-                answer.reset(local);
-                return answer && answer->type == GST_WEBRTC_SDP_TYPE_ANSWER;
-            }));
-            SetDescription(viewer.receiver, "set-remote-description", answer.get());
-        }
-        REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+        REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
+    } else {
+        REQUIRE(WaitFor([&] { return viewer.ended.load(); }));
+        CHECK_FALSE(stream.remote.findSession(viewer.sessionId));
     }
+
+    CHECK(stream.remote.applyRemoteDescription(observer.sessionId, "rollback", "v=0") == Result::ERROR);
+    CHECK(stream.remote.applyRemoteDescription("unknown", "answer", "v=0") == Result::ERROR);
     const unsigned before = observer.packets;
     REQUIRE(WaitFor([&] { return observer.packets >= before + 20; }));
 }
 
-TEST_CASE("Remote sessions can disconnect with video blocked on SDP negotiation",
+TEST_CASE("Remote sessions can disconnect before negotiation completes",
           "[core][application][remote][stream]") {
     Stream stream;
     stream.start();
     auto& remote = stream.remote;
     REQUIRE(remote.createWebRtcSession("pending", "loopback") == Result::SUCCESS);
-    GstPad* pad = remote.sessions.at("pending")->webrtcSinkPad;
-    REQUIRE(WaitFor([&] { return gst_pad_is_blocking(pad); }));
     remote.destroyWebRtcSession("pending");
     CHECK(remote.sessions.empty());
 
-    Peer viewer(stream, "viewer");
+    Viewer viewer(stream);
     viewer.connect();
-    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
 }
 
-TEST_CASE("A stalled remote viewer does not interrupt other viewers",
-          "[core][application][remote][stream][queue]") {
-    const bool pending = GENERATE(false, true);
-    CAPTURE(pending);
-    std::atomic<unsigned> overruns = 0;
+TEST_CASE("A vanished remote viewer does not interrupt other viewers",
+          "[core][application][remote][stream]") {
     Stream stream;
-    stream.start(false);
-    Peer observer(stream, "observer");
-    Peer stalled(stream, "stalled");
-    observer.prepare();
-    stalled.prepare();
+    stream.start();
+    Viewer observer(stream);
+    Viewer vanished(stream);
+    observer.connect();
+    vanished.connect();
+    REQUIRE(WaitFor([&] { return observer.packets >= 20; }, 10s));
+    REQUIRE(WaitFor([&] { return vanished.packets >= 20; }, 10s));
 
-    auto& session = *stream.remote.sessions.at(stalled.id);
-    g_signal_connect(session.queue, "overrun", G_CALLBACK(+[](GstElement*, gpointer data) {
-        ++*static_cast<std::atomic<unsigned>*>(data);
-    }), &overruns);
-
-    stream.startFrames();
-    observer.negotiate();
-    PadProbe block{GST_PAD(gst_object_ref(session.webrtcSinkPad))};
-    if (!pending) {
-        stalled.negotiate();
-        REQUIRE(WaitFor([&] { return stalled.packets >= 20; }));
-        block.id = gst_pad_add_probe(block.pad,
-            GstPadProbeType(GST_PAD_PROBE_TYPE_BLOCK | GST_PAD_PROBE_TYPE_BUFFER),
-            +[](GstPad*, GstPadProbeInfo*, gpointer) { return GST_PAD_PROBE_OK; },
-            nullptr, nullptr);
-    }
-    REQUIRE(WaitFor([&] { return gst_pad_is_blocking(block.pad); }));
-    const unsigned receivedBefore = observer.packets;
-    REQUIRE(WaitFor([&] { return overruns >= 32; }));
-    REQUIRE(WaitFor([&] { return observer.packets >= receivedBefore + 20; }));
-    guint queued = 0;
-    g_object_get(session.queue, "current-level-buffers", &queued, nullptr);
-    CHECK(queued <= 32);
-
-    const unsigned stalledBefore = stalled.packets;
-    if (pending) stalled.negotiate();
-    else block.remove();
-    REQUIRE(WaitFor([&] { return stalled.packets >= stalledBefore + 40; }));
+    vanished.close();
+    const unsigned before = observer.packets;
+    REQUIRE(WaitFor([&] { return observer.packets >= before + 40; }));
+    CHECK(stream.remote.findSession(vanished.sessionId));
 }
 
 TEST_CASE("Remote RTP delivery survives reconnects while other viewers keep receiving",
@@ -1122,21 +1233,22 @@ TEST_CASE("Remote RTP delivery survives reconnects while other viewers keep rece
     const bool keepViewer = GENERATE(false, true);
     Stream stream;
     stream.start();
-    Peer observer(stream, "observer");
+    std::optional<Viewer> observer;
     if (keepViewer) {
-        observer.connect();
-        REQUIRE(WaitFor([&] { return observer.packets >= 20; }));
+        observer.emplace(stream);
+        observer->connect();
+        REQUIRE(WaitFor([&] { return observer->packets >= 20; }, 10s));
     }
     for (unsigned i = 0; i < 8; ++i) {
         CAPTURE(keepViewer, i);
         {
-            Peer viewer(stream, "viewer-" + std::to_string(i));
+            Viewer viewer(stream);
             viewer.connect();
-            REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+            REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
         }
         if (keepViewer) {
-            const unsigned before = observer.packets;
-            REQUIRE(WaitFor([&] { return observer.packets >= before + 20; }));
+            const unsigned before = observer->packets;
+            REQUIRE(WaitFor([&] { return observer->packets >= before + 20; }));
         }
     }
 }
@@ -1188,9 +1300,9 @@ TEST_CASE("Keyring credentials and authenticated discovery coexist with WebRTC r
         CHECK(models.front().id == "test-model");
         CHECK(authenticated.load() == connection + 1);
 
-        Peer viewer(stream, "keyring-viewer");
+        Viewer viewer(stream);
         viewer.connect();
-        REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+        REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
     }
 
     REQUIRE(AgentProviders::Erase(key.id).success);
@@ -1200,123 +1312,82 @@ TEST_CASE("Keyring credentials and authenticated discovery coexist with WebRTC r
 }
 #endif
 
-TEST_CASE("Remote pipeline services its bus and sends RTCP sender reports",
+TEST_CASE("Remote streams send RTCP sender reports",
           "[core][application][remote][stream]") {
     Stream stream;
     stream.start();
-    Peer viewer(stream, "viewer");
+    Viewer viewer(stream);
     viewer.connect();
-    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
-    REQUIRE(WaitFor([&] { return viewer.senderReports > 0; }, 10s));
-    GstBus* bus = gst_element_get_bus(stream.remote.pipeline);
-    for (unsigned i = 0; i < 512; ++i) {
-        gst_element_post_message(stream.remote.pipeline,
-            gst_message_new_application(GST_OBJECT(stream.remote.pipeline), gst_structure_new_empty("probe")));
-    }
-    const bool drained = WaitFor([&] { return !gst_bus_have_pending(bus); });
-    gst_object_unref(bus);
-    REQUIRE(drained);
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
+    REQUIRE(WaitFor([&] { return viewer.senderReport(); }, 10s));
 }
 
-TEST_CASE("Rejected remote submissions cannot release a later frame prematurely",
-          "[core][application][remote][stream][buffer]") {
-    const bool flushing = GENERATE(false, true);
-    CAPTURE(flushing);
-    std::atomic<bool> returned = false;
-    Result submitted = Result::ERROR;
+TEST_CASE("Remote stats describe the encoder and the outgoing stream",
+          "[core][application][remote][stream][stats]") {
     Stream stream;
-    stream.start(false);
     auto& remote = stream.remote;
-    REQUIRE(remote.createWebRtcSession("viewer", "loopback") == Result::SUCCESS);
-    if (flushing) {
-        REQUIRE(gst_element_set_state(remote.source, GST_STATE_READY) != GST_STATE_CHANGE_FAILURE);
-    } else {
-        REQUIRE(gst_app_src_end_of_stream(GST_APP_SRC(remote.source)) == GST_FLOW_OK);
-    }
-    REQUIRE(remote.pushNewFrame(stream.frame.data()) == Result::ERROR);
-    stream.stop();
-    stream.start(false);
-    REQUIRE(remote.createWebRtcSession("viewer", "loopback") == Result::SUCCESS);
+    CHECK(remote.stats().frameRate == 0.0f);
 
-    PadProbe block{gst_element_get_static_pad(remote.source, "src")};
-    block.id = gst_pad_add_probe(block.pad,
-        GstPadProbeType(GST_PAD_PROBE_TYPE_BLOCK | GST_PAD_PROBE_TYPE_BUFFER),
-        +[](GstPad*, GstPadProbeInfo*, gpointer) { return GST_PAD_PROBE_OK; },
-        nullptr, nullptr);
-    stream.producer = std::thread([&] {
-        submitted = remote.pushNewFrame(stream.frame.data());
-        returned = true;
-    });
-    const bool held = WaitFor([&] { return gst_pad_is_blocking(block.pad); });
-    const bool returnedEarly = WaitFor([&] { return returned.load(); }, 100ms);
-    block.remove();
-    const bool released = WaitFor([&] { return returned.load(); });
-    stream.stop();
-    CHECK(held);
-    CHECK_FALSE(returnedEarly);
-    CHECK(released);
-    CHECK(submitted == Result::SUCCESS);
+    stream.start();
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
+
+    const auto stats = remote.stats();
+    CHECK(stats.encoder == Instance::Remote::EncoderType::Software);
+    CHECK(stats.codec == Instance::Remote::CodecType::H264);
+    CHECK(stats.memory == DeviceType::CPU);
+    CHECK(stats.format == "yuv420p");
+    CHECK(stats.size.x == 320);
+    CHECK(stats.size.y == 240);
+    CHECK(stats.targetRate == static_cast<F32>(remote.config.video.framerate));
+    CHECK(stats.frameRate > 0.0f);
+    CHECK(stats.bitrate > 0.0f);
+    CHECK(stats.keyframeBytes > 0);
+    CHECK(stats.encodeAverage > 0.0f);
 }
 
-TEST_CASE("Remote pipeline can stop and restart on the same instance",
+TEST_CASE("Remote stream can stop and restart on the same instance",
           "[core][application][remote][stream]") {
     Stream stream;
     for (unsigned i = 0; i < 3; ++i) {
         CAPTURE(i);
         stream.start();
         {
-            Peer viewer(stream, "viewer");
+            Viewer viewer(stream);
             viewer.connect();
-            REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+            REQUIRE(WaitFor([&] { return viewer.packets >= 20; }, 10s));
         }
         stream.stop();
     }
 }
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-TEST_CASE("Remote NVENC shares the input CUDA context across stream restarts",
+#if defined(JETSTREAM_LOADER_FFMPEG_CUDA_AVAILABLE) && defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
+TEST_CASE("Remote NVENC opens on shared Vulkan frames across stream restarts",
           "[core][application][remote][stream][cuda]") {
     SkipRemoteEncodingOnCI();
-    gst_init(nullptr, nullptr);
-    gst_init_static_plugins();
-    GstElementFactory* factory = gst_element_factory_find("nvh264enc");
-    if (!factory) {
-        SKIP("NVENC is unavailable");
+    if (!Viewport::FrameCaptureVulkan::SupportsExport(Viewport::FrameCapture::Export::OpaqueFd)) {
+        SKIP("Vulkan can't export frames");
     }
-    gst_object_unref(factory);
-    if (!Backend::State<DeviceType::CUDA>()->isAvailable()) {
-        SKIP("CUDA is unavailable");
+    if (!Instance::Remote::Encoder::Available({
+            .codec = Instance::Remote::CodecType::H264,
+            .encoder = Instance::Remote::EncoderType::NVENC,
+            .device = DeviceType::Vulkan,
+            .adapter = Viewport::FrameCaptureVulkan::Device(),
+        })) {
+        SKIP("NVENC is unavailable");
     }
 
     Stream stream;
     auto& remote = stream.remote;
     remote.size = {320, 240};
     remote.config.video.codec = Instance::Remote::CodecType::H264;
-    remote.inputMemoryDevice_ = DeviceType::CUDA;
-    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::HardwareNVENC;
+    remote.inputMemoryDevice_ = DeviceType::Vulkan;
+    remote.encoderType = Instance::Remote::EncoderType::NVENC;
     for (unsigned i = 0; i < 2; ++i) {
         CAPTURE(i);
         REQUIRE(remote.startStream() == Result::SUCCESS);
-        GstPad* input = gst_element_get_static_pad(remote.encoder, "sink");
-        REQUIRE(input);
-        GstQuery* query = gst_query_new_context(GST_CUDA_CONTEXT_TYPE);
-        const bool queried = gst_pad_query(input, query);
-        GstCudaContext* encoderContext = nullptr;
-        if (queried) {
-            GstContext* context = nullptr;
-            gst_query_parse_context(query, &context);
-            if (context) {
-                gst_structure_get(gst_context_get_structure(context), GST_CUDA_CONTEXT_TYPE,
-                                  GST_TYPE_CUDA_CONTEXT, &encoderContext, nullptr);
-            }
-        }
-        // Query NVENC's active context, rather than just its stored element property.
-        const bool shared = encoderContext && encoderContext == remote.gstCudaContext;
-        gst_clear_object(&encoderContext);
-        gst_query_unref(query);
-        gst_object_unref(input);
-        CHECK(queried);
-        CHECK(shared);
+        CHECK(remote.encoder);
         REQUIRE(remote.stopStream() == Result::SUCCESS);
     }
 }
@@ -1366,7 +1437,7 @@ TEST_CASE("Headless Metal frames reach a remote WebRTC viewer after restart",
         CAPTURE(attempt, encoder);
         REQUIRE(remote.create(config) == Result::SUCCESS);
         {
-            Peer peer(stream, "metal-viewer");
+            Viewer peer(stream);
             peer.connect();
             const auto deadline = std::chrono::steady_clock::now() + 10s;
             while (peer.packets < 3 && std::chrono::steady_clock::now() < deadline) {
@@ -1389,6 +1460,121 @@ TEST_CASE("Headless Metal frames reach a remote WebRTC viewer after restart",
 }
 #endif
 
+#if defined(JETSTREAM_RENDER_METAL_AVAILABLE) || defined(JETSTREAM_RENDER_VULKAN_AVAILABLE)
+TEST_CASE("Headless stream follows the controlling viewer's viewport",
+          "[core][application][remote][stream]") {
+    SkipRemoteEncodingOnCI();
+    const auto device = GENERATE(DeviceType::Metal, DeviceType::Vulkan);
+    CAPTURE(device);
+#ifndef JETSTREAM_RENDER_METAL_AVAILABLE
+    if (device == DeviceType::Metal) {
+        SKIP("Metal is unavailable.");
+    }
+#endif
+#ifndef JETSTREAM_RENDER_VULKAN_AVAILABLE
+    if (device == DeviceType::Vulkan) {
+        SKIP("Vulkan is unavailable.");
+    }
+#endif
+
+    Instance instance;
+    REQUIRE(instance.create({.device = device, .headless = true, .size = {320, 240}, .framerate = 120}) ==
+            Result::SUCCESS);
+    REQUIRE(instance.start() == Result::SUCCESS);
+    std::shared_ptr<Viewport::Generic> viewport;
+    REQUIRE(instance.viewportGet(viewport) == Result::SUCCESS);
+    REQUIRE(viewport->device() == device);
+    std::shared_ptr<Render::Window> render;
+    REQUIRE(instance.renderGet(render) == Result::SUCCESS);
+    const auto present = [&] {
+        const U64 presented = render->stats().presentedFrames;
+        REQUIRE(instance.present() == Result::SUCCESS);
+        return render->stats().presentedFrames != presented;
+    };
+
+    Stream stream;
+    auto& remote = stream.remote;
+    remote.viewport = viewport.get();
+    remote.viewportDevice = viewport->device();
+    Instance::Remote::Config config;
+    config.video.encoder = Instance::Remote::EncoderType::Software;
+    config.broker = {.address = "127.0.0.1", .port = 0};
+    REQUIRE(remote.create(config) == Result::SUCCESS);
+
+    {
+        Viewer peer(stream);
+        peer.connect();
+        const auto pump = [&](const std::function<bool()>& done) {
+            const auto deadline = std::chrono::steady_clock::now() + 10s;
+            while (!done() && std::chrono::steady_clock::now() < deadline) {
+                REQUIRE(remote.captureFrame(present()) == Result::SUCCESS);
+            }
+            return done();
+        };
+
+        REQUIRE(pump([&] {
+            std::lock_guard<std::mutex> lock(peer.mutex);
+            return peer.packets >= 3 && peer.control && peer.control->isOpen();
+        }));
+
+        {
+            std::lock_guard<std::mutex> lock(peer.mutex);
+            REQUIRE(peer.control->send(nlohmann::json({{"kind", "viewport"},
+                                                       {"width", 200},
+                                                       {"height", 150},
+                                                       {"scale", 2.0}}).dump()));
+        }
+
+        REQUIRE(pump([&] { return remote.size.x == 400 && remote.size.y == 300; }));
+        CHECK(viewport->displaySize().x == 200.0f);
+        CHECK(viewport->displaySize().y == 150.0f);
+        CHECK(remote.stats().size.x == 400);
+
+        const unsigned before = peer.packets;
+        REQUIRE(pump([&] { return peer.packets >= before + 3; }));
+    }
+
+    REQUIRE(remote.destroy() == Result::SUCCESS);
+
+    config.video.matchViewer = false;
+    REQUIRE(remote.create(config) == Result::SUCCESS);
+    {
+        Viewer peer(stream);
+        peer.connect();
+        const auto pump = [&](const std::function<bool()>& done) {
+            const auto deadline = std::chrono::steady_clock::now() + 10s;
+            while (!done() && std::chrono::steady_clock::now() < deadline) {
+                REQUIRE(remote.captureFrame(present()) == Result::SUCCESS);
+            }
+            return done();
+        };
+
+        REQUIRE(pump([&] {
+            std::lock_guard<std::mutex> lock(peer.mutex);
+            return peer.packets >= 3 && peer.control && peer.control->isOpen();
+        }));
+
+        {
+            std::lock_guard<std::mutex> lock(peer.mutex);
+            REQUIRE(peer.control->send(nlohmann::json({{"kind", "viewport"},
+                                                       {"width", 320},
+                                                       {"height", 200},
+                                                       {"scale", 1.0}}).dump()));
+        }
+
+        for (unsigned i = 0; i < 30; ++i) {
+            REQUIRE(remote.captureFrame(present()) == Result::SUCCESS);
+        }
+        CHECK(remote.size.x == 320);
+        CHECK(remote.size.y == 240);
+        CHECK(viewport->displaySize().x == 320.0f);
+    }
+
+    REQUIRE(remote.destroy() == Result::SUCCESS);
+    REQUIRE(instance.destroy() == Result::SUCCESS);
+}
+#endif
+
 TEST_CASE("Remote broker rejects incomplete or unreadable TLS configuration",
           "[core][application][remote][broker]") {
     Instance::Remote::Broker server;
@@ -1397,7 +1583,31 @@ TEST_CASE("Remote broker rejects incomplete or unreadable TLS configuration",
     CHECK(server.create({.address = "127.0.0.1", .port = 0,
                             .certificate = "missing-cert.pem", .key = "missing-key.pem"}) == Result::ERROR);
     CHECK(server.create({.address = "127.0.0.1", .port = 0, .publicUrl = "ws://example.com"}) == Result::ERROR);
+    CHECK(server.create({.address = "127.0.0.1", .port = 0}, "too-short") == Result::ERROR);
     CHECK(server.origin().empty());
+}
+
+TEST_CASE("Remote broker reuses a fixed access token for every room",
+          "[core][application][remote][broker]") {
+    const std::string token = "living-room-screen-2026";
+    Instance::Remote::Broker server;
+    REQUIRE(server.create({.address = "127.0.0.1", .port = 0}, token) == Result::SUCCESS);
+
+    const httplib::Headers producerHeaders = {{"Authorization", "Bearer " + server.producerKey()}};
+    BrokerPeer producer(server.origin(), "", producerHeaders);
+    REQUIRE(producer.connect());
+    producer.next("welcome");
+    producer.send({{"type", "createRoom"}});
+    const auto room = producer.next("roomCreated");
+    CHECK(room["consumerToken"] == token);
+    CHECK(producer.next("roomState")["waiting"].empty());
+
+    BrokerPeer viewer(server.origin(), "?tokenHash=" + BrokerTokenHash(token));
+    REQUIRE(viewer.connect());
+    viewer.next("welcome");
+    viewer.send({{"type", "setPeerStatus"}, {"roles", {"listener"}}, {"meta", {{"token", token}}}});
+    const std::string sessionId = viewer.next("sessionRegistered")["sessionId"];
+    CHECK(producer.next("roomState")["waiting"] == nlohmann::json::array({sessionId}));
 }
 
 TEST_CASE("Remote broker admits, relays, and ends a viewer session",
@@ -1540,12 +1750,10 @@ TEST_CASE("Remote hosts approve and remove viewer sessions by their full id",
           "[core][application][remote][broker]") {
     Stream stream;
     auto& remote = stream.remote;
-    gst_init(nullptr, nullptr);
-    gst_init_static_plugins();
     remote.config.broker = {.address = "127.0.0.1", .port = 0};
     remote.size = {320, 240};
     remote.inputMemoryDevice_ = DeviceType::CPU;
-    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+    remote.encoderType = Instance::Remote::EncoderType::Software;
     REQUIRE(remote.createBroker() == Result::SUCCESS);
     remote.started_ = true;
 
@@ -1600,12 +1808,10 @@ TEST_CASE("Remote streaming hosts its own broker",
           "[core][application][remote][broker]") {
     Stream stream;
     auto& remote = stream.remote;
-    gst_init(nullptr, nullptr);
-    gst_init_static_plugins();
     remote.config.broker = {.address = "127.0.0.1", .port = 0};
     remote.size = {320, 240};
     remote.inputMemoryDevice_ = DeviceType::CPU;
-    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+    remote.encoderType = Instance::Remote::EncoderType::Software;
 
     REQUIRE(remote.createBroker() == Result::SUCCESS);
     REQUIRE(remote.broker);
@@ -1626,8 +1832,6 @@ TEST_CASE("Remote streaming reaches its TLS broker over loopback",
 
     Stream stream;
     auto& remote = stream.remote;
-    gst_init(nullptr, nullptr);
-    gst_init_static_plugins();
     remote.config.broker = {
         .address = "127.0.0.1",
         .port = 0,
@@ -1637,7 +1841,7 @@ TEST_CASE("Remote streaming reaches its TLS broker over loopback",
     };
     remote.size = {320, 240};
     remote.inputMemoryDevice_ = DeviceType::CPU;
-    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+    remote.encoderType = Instance::Remote::EncoderType::Software;
 
     REQUIRE(remote.createBroker() == Result::SUCCESS);
     REQUIRE(remote.broker);
@@ -1659,12 +1863,10 @@ TEST_CASE("Remote streaming starts with the broker bound to a network address",
 
     Stream stream;
     auto& remote = stream.remote;
-    gst_init(nullptr, nullptr);
-    gst_init_static_plugins();
     remote.config.broker = {.address = address, .port = 0};
     remote.size = {320, 240};
     remote.inputMemoryDevice_ = DeviceType::CPU;
-    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+    remote.encoderType = Instance::Remote::EncoderType::Software;
 
     REQUIRE(remote.createBroker() == Result::SUCCESS);
     CHECK(remote.broker->origin().starts_with("http://" + address + ":"));
@@ -1701,40 +1903,24 @@ TEST_CASE("Remote broker shutdown interrupts peers that keep the socket busy",
 
 TEST_CASE("Remote media address limits candidates to that address",
           "[core][application][remote][media]") {
-    struct Candidates {
-        std::mutex mutex;
-        std::vector<std::string> values;
-    } candidates;
-
     Stream stream;
     stream.remote.config.media.address = "127.0.0.1";
-    stream.remote.config.media.transport = Instance::Remote::TransportType::TCP;
     stream.start();
 
-    Peer peer(stream, "viewer");
-    peer.loopbackSender = false;
-    peer.prepare();
-    g_signal_connect(peer.sender, "on-ice-candidate", G_CALLBACK(+[](GstElement*, guint, gchar* candidate, gpointer data) {
-        auto* self = static_cast<Candidates*>(data);
-        std::lock_guard<std::mutex> lock(self->mutex);
-        if (candidate && *candidate) {
-            self->values.emplace_back(candidate);
-        }
-    }), &candidates);
-    peer.negotiate();
+    Viewer viewer(stream);
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return viewer.packets > 0; }, 10s));
 
-    REQUIRE(WaitFor([&] { return peer.packets > 0; }, 10s));
-
-    std::lock_guard<std::mutex> lock(candidates.mutex);
-    REQUIRE_FALSE(candidates.values.empty());
-    for (const auto& candidate : candidates.values) {
+    std::lock_guard<std::mutex> lock(viewer.mutex);
+    REQUIRE_FALSE(viewer.candidates.empty());
+    for (const auto& candidate : viewer.candidates) {
         CAPTURE(candidate);
         std::string lower = candidate;
         std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
             return static_cast<char>(std::tolower(c));
         });
         CHECK(lower.find(" 127.0.0.1 ") != std::string::npos);
-        CHECK(lower.find(" tcp ") != std::string::npos);
+        CHECK(lower.find(" udp ") != std::string::npos);
     }
 }
 

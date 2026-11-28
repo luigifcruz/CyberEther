@@ -51,6 +51,12 @@ class JETSTREAM_API Generic {
         virtual void setCursor(SurfaceCursor cursor) = 0;
         virtual std::string clipboardText() const = 0;
         virtual void setClipboardText(const std::string& text) = 0;
+        virtual void focus() = 0;
+    };
+
+    struct ClipboardChange {
+        U64 revision = 0;
+        std::string text;
     };
 
     explicit Generic(const Config& config);
@@ -79,16 +85,20 @@ class JETSTREAM_API Generic {
     bool integratedTitlebar() const;
     virtual void beginWindowDrag();
     virtual void zoomWindow();
-    virtual bool setDarkAppearance(bool dark);
+    bool setDarkAppearance(bool dark);
+    bool darkAppearance() const;
 
     virtual bool macOSBehaviors() const;
     virtual bool retainedPresent() const;
+    virtual Result resize(const Extent2D<U64>& size, F32 scale);
     virtual bool waitIdle(F64 seconds, bool surfaces);
 
     F64 inputTime() const;
     void setCursor(SurfaceCursor cursor);
     std::string clipboardText() const;
     void setClipboardText(const std::string& text);
+    U64 clipboardRevision() const;
+    ClipboardChange clipboardChange() const;
     void requestRedraw();
     void refreshSnapshot();
     bool consumeRedraw();
@@ -99,6 +109,9 @@ class JETSTREAM_API Generic {
 
     std::vector<std::string> takeDroppedFiles();
 
+    void addOpenRequest(std::string url);
+    std::vector<std::string> takeOpenRequests();
+
     void setInterceptClose(bool enabled);
     bool interceptClose() const;
     void addCloseRequest();
@@ -106,6 +119,8 @@ class JETSTREAM_API Generic {
 
  protected:
     Config config;
+
+    virtual bool applyDarkAppearance(bool dark);
 
     void attachPlatform(std::unique_ptr<Platform> next);
     void detachPlatform();
@@ -123,11 +138,16 @@ class JETSTREAM_API Generic {
     mutable std::mutex snapshotMutex;
     std::optional<Snapshot> snapshot;
     std::string clipboard;
+    mutable std::mutex clipboardMutex;
+    ClipboardChange copiedClipboard;
     Render::InputQueue inputQueue;
     std::atomic<bool> redrawRequested = true;
+    std::atomic<bool> dark = true;
     std::atomic<bool> platformAnimating = false;
     std::mutex droppedFilesMutex;
     std::vector<std::string> droppedFiles;
+    std::mutex openRequestsMutex;
+    std::vector<std::string> openRequests;
     std::atomic<bool> closeIntercepted = false;
     std::atomic<bool> closeRequested = false;
 };

@@ -138,6 +138,33 @@ TEST_CASE("Gallery remote page links resolve to their flowgraph slug and other l
     CHECK_FALSE(Remote::Slug("/gallery/flowgraphs/python-qpsk").has_value());
 }
 
+TEST_CASE("Gallery app links resolve to their owner and flowgraph slug and other links do not",
+          "[core][home][gallery]") {
+    const auto official = Remote::Link("cyberether://flowgraph/biq-python-roundtrip");
+    REQUIRE(official.has_value());
+    CHECK(official->owner == Home::Gallery::Origin);
+    CHECK(official->slug == "biq-python-roundtrip");
+
+    const auto owned = Remote::Link("cyberether://flowgraph/some-user/first_steps/?ref=page#top");
+    REQUIRE(owned.has_value());
+    CHECK(owned->owner == "some-user");
+    CHECK(owned->slug == "first_steps");
+
+    REQUIRE(Remote::Link("cyberether://flowgraph/python-qpsk/").has_value());
+    CHECK(Remote::Link("cyberether://flowgraph/python-qpsk/")->slug == "python-qpsk");
+    REQUIRE(Remote::Link("cyberether://flowgraph/python-qpsk/?ref=page").has_value());
+    CHECK(Remote::Link("cyberether://flowgraph/python-qpsk/?ref=page")->owner == Home::Gallery::Origin);
+    CHECK_FALSE(Remote::Link("cyberether://flowgraph/").has_value());
+    CHECK_FALSE(Remote::Link("cyberether://flowgraph//first-steps").has_value());
+    CHECK_FALSE(Remote::Link("cyberether://flowgraph/a/b/c").has_value());
+    CHECK_FALSE(Remote::Link("cyberether://flowgraph/../secret").has_value());
+    CHECK_FALSE(Remote::Link("cyberether://flowgraph/a%20b").has_value());
+    CHECK_FALSE(Remote::Link("cyberether://plugin/demo").has_value());
+    CHECK_FALSE(Remote::Link("cyberether://python-qpsk").has_value());
+    CHECK_FALSE(Remote::Link("https://cyberether.org/gallery/flowgraphs/python-qpsk").has_value());
+    CHECK_FALSE(Remote::Link("/home/user/flowgraph.yml").has_value());
+}
+
 TEST_CASE("Home gallery lists the CyberEther sections first and plugin sections in publish order",
           "[core][home][gallery]") {
     Home::Gallery gallery;

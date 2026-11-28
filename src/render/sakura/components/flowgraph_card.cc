@@ -13,11 +13,9 @@
 #include "tools/text.hh"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <deque>
 #include <limits>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -36,7 +34,9 @@ constexpr F32 kNodeHeight = 28.0f;
 constexpr F32 kNodeRounding = 8.0f;
 constexpr F32 kColumnGap = 40.0f;
 constexpr F32 kRowGap = 40.0f;
-constexpr F32 kRowPitch = kNodeHeight + kRowGap;
+constexpr F32 kFallbackBlockWidth = 96.0f;
+constexpr F32 kFallbackRowGap = 10.0f;
+constexpr U64 kFallbackBlocks = 3;
 constexpr F32 kLabelFont = 10.0f;
 constexpr F32 kLabelPadding = 5.0f;
 constexpr F32 kDotPitch = 16.0f;
@@ -57,18 +57,6 @@ constexpr F32 kTitleText = 24.0f;
 constexpr F32 kDescriptionText = 16.0f;
 constexpr F32 kSectionGap = 6.0f;
 constexpr F32 kCategoryGap = 2.0f;
-constexpr U64 kTileColumns = 8;
-constexpr U64 kTileRows = 4;
-constexpr U64 kTileMinSpan = 3;
-constexpr U64 kTileMaxSpan = 5;
-constexpr U64 kTileHighlights = 4;
-constexpr U64 kTileLabelColumns = 5;
-constexpr U64 kTileLabelPadding = 4;
-constexpr F32 kTilePad = 16.0f;
-constexpr F32 kTileGap = 8.0f;
-constexpr F32 kTileRounding = 6.0f;
-constexpr F32 kTileFill = 0.16f;
-constexpr F32 kTileLabelFont = 10.5f;
 constexpr U64 kMaxNodes = 16;
 constexpr U64 kMaxEdges = 2 * kMaxNodes;
 constexpr U64 kWireSegments = 16;
@@ -86,12 +74,14 @@ struct FlowgraphCard::Impl {
         struct Node {
             std::string id;
             std::string label;
+            F32 width = kNodeWidth;
         };
 
         struct Box {
             std::string label;
             F32 x = 0.0f;
             F32 y = 0.0f;
+            F32 width = kNodeWidth;
         };
 
         struct Slots {
@@ -102,16 +92,19 @@ struct FlowgraphCard::Impl {
             std::vector<std::optional<F32>> top;
             std::vector<F32> left;
             std::vector<F32> right;
+            std::vector<F32> widths;
+            F32 pitch = kNodeHeight + kRowGap;
             F32 minTop = 0.0f;
             F32 maxTop = 0.0f;
 
-            U64 add(I64 column) {
+            U64 add(I64 column, F32 width = 0.0f) {
                 const U64 slot = slotColumn.size();
                 if (columns.size() <= static_cast<U64>(column)) {
                     columns.resize(static_cast<U64>(column) + 1);
                 }
                 columns[static_cast<U64>(column)].push_back(slot);
                 slotColumn.push_back(column);
+                widths.push_back(width);
                 inputs.emplace_back();
                 outputs.emplace_back();
                 return slot;
@@ -140,8 +133,8 @@ struct FlowgraphCard::Impl {
             void placeColumn(const std::vector<U64>& column, const Desired& desired) {
                 F32 floor = -std::numeric_limits<F32>::infinity();
                 for (const U64 slot : column) {
-                    const F32 fallback = top[slot].value_or(floor + kRowPitch);
-                    const F32 y = std::max(desired(slot).value_or(fallback), floor + kRowPitch);
+                    const F32 fallback = top[slot].value_or(floor + pitch);
+                    const F32 y = std::max(desired(slot).value_or(fallback), floor + pitch);
                     top[slot] = std::isfinite(y) ? y : 0.0f;
                     floor = *top[slot];
                 }
@@ -167,7 +160,7 @@ struct FlowgraphCard::Impl {
                             for (U64 i = start; i < end; ++i) {
                                 const F32 offset =
                                     static_cast<F32>(i - start) - static_cast<F32>(end - start - 1) * 0.5f;
-                                wanted[column[i]] = *base + offset * kRowPitch;
+                                wanted[column[i]] = *base + offset * pitch;
                             }
                         }
                         start = end;
@@ -186,7 +179,7 @@ struct FlowgraphCard::Impl {
                 }
             }
 
-            F32 spread(U64 nodeCount) {
+            F32 spread() {
                 minTop = std::numeric_limits<F32>::infinity();
                 maxTop = -std::numeric_limits<F32>::infinity();
                 for (const auto& value : top) {
@@ -197,10 +190,10 @@ struct FlowgraphCard::Impl {
                 right.assign(columns.size(), 0.0f);
                 F32 x = 0.0f;
                 for (U64 index = 0; index < columns.size(); ++index) {
-                    const bool hasNode = std::any_of(columns[index].begin(), columns[index].end(), [&](U64 slot) {
-                        return slot < nodeCount;
-                    });
-                    const F32 columnWidth = hasNode ? kNodeWidth : 0.0f;
+                    F32 columnWidth = 0.0f;
+                    for (const U64 slot : columns[index]) {
+                        columnWidth = std::max(columnWidth, widths[slot]);
+                    }
                     left[index] = x;
                     right[index] = x + columnWidth;
                     x += columnWidth + kColumnGap;
@@ -217,6 +210,7 @@ struct FlowgraphCard::Impl {
         std::vector<std::pair<U64, U64>> edges;
         std::vector<Box> boxes;
         std::vector<std::vector<Extent2D<F32>>> wires;
+        F32 rowGap = kRowGap;
         F32 width = 0.0f;
         F32 height = 0.0f;
 
@@ -283,6 +277,30 @@ struct FlowgraphCard::Impl {
                 if (node.label.empty()) {
                     node.label = node.id;
                 }
+            }
+            diagram.place();
+            return diagram;
+        }
+
+        static Diagram Fallback(const Config::Fallback& fallback) {
+            Diagram diagram;
+            diagram.rowGap = kFallbackRowGap;
+            diagram.nodes.push_back({.id = "plugin", .label = fallback.title});
+            const U64 count = fallback.blocks.size();
+            const U64 named = count > kFallbackBlocks ? kFallbackBlocks - 1 : count;
+            const auto add = [&](std::string label) {
+                diagram.edges.push_back({0, diagram.nodes.size()});
+                diagram.nodes.push_back({
+                    .id = "block" + std::to_string(diagram.nodes.size()),
+                    .label = std::move(label),
+                    .width = kFallbackBlockWidth,
+                });
+            };
+            for (U64 index = 0; index < named; ++index) {
+                add(fallback.blocks[index]);
+            }
+            if (count > named) {
+                add("+" + std::to_string(count - named) + " more");
             }
             diagram.place();
             return diagram;
@@ -375,7 +393,7 @@ struct FlowgraphCard::Impl {
                 const U64 from = edges[index].first;
                 const U64 to = edges[index].second;
                 std::vector<Extent2D<F32>> points = {
-                    {slots.right[static_cast<U64>(columnOf[from])], slots.centerY(from)}};
+                    {slots.left[static_cast<U64>(columnOf[from])] + nodes[from].width, slots.centerY(from)}};
                 const auto curveTo = [&](Extent2D<F32> end) {
                     const Extent2D<F32> start = points.back();
                     const F32 bend = (end.x - start.x) * 0.5f;
@@ -402,15 +420,16 @@ struct FlowgraphCard::Impl {
             }
             const auto columnOf = assignColumns();
             Slots slots;
+            slots.pitch = kNodeHeight + rowGap;
             for (U64 index = 0; index < count; ++index) {
-                slots.add(columnOf[index]);
+                slots.add(columnOf[index], nodes[index].width);
             }
             const auto lanes = addLanes(slots, columnOf);
             slots.top.assign(slots.slotColumn.size(), std::nullopt);
             slots.sweepForward();
             slots.sweepBackward();
 
-            width = slots.spread(count);
+            width = slots.spread();
             height = slots.maxTop - slots.minTop + kNodeHeight;
             boxes.clear();
             for (U64 index = 0; index < count; ++index) {
@@ -418,76 +437,19 @@ struct FlowgraphCard::Impl {
                     .label = nodes[index].label,
                     .x = slots.left[static_cast<U64>(columnOf[index])],
                     .y = slots.top[index].value_or(0.0f) - slots.minTop,
+                    .width = nodes[index].width,
                 });
             }
             route(slots, columnOf, lanes);
         }
     };
 
-    struct Highlight {
-        std::string label;
-        U64 row = 0;
-        U64 column = 0;
-        U64 span = 0;
-    };
-
-    static std::vector<Highlight> Highlights(const std::vector<std::string>& blocks, const std::string& seed) {
-        static constexpr std::array<std::array<U64, kTileHighlights>, kTileHighlights + 1> kRows = {{
-            {},
-            {1},
-            {1, 2},
-            {0, 1, 2},
-            {0, 1, 2, 3},
-        }};
-        const U64 shown = std::min<U64>(blocks.size(), kTileHighlights);
-        std::vector<U64> spans;
-        for (U64 index = 0; index < shown; ++index) {
-            const U64 wanted = (blocks[index].size() + kTileLabelPadding + kTileLabelColumns - 1) / kTileLabelColumns;
-            spans.push_back(std::clamp(wanted, kTileMinSpan, kTileMaxSpan));
-        }
-
-        std::vector<I64> starts(shown, 0);
-        if (shown == 1) {
-            starts[0] = static_cast<I64>((kTileColumns - spans[0]) / 2);
-        } else if (shown > 1) {
-            const I64 pair = static_cast<I64>(spans[0] + spans[1]);
-            const I64 origin = std::max<I64>(0, (static_cast<I64>(kTileColumns) - pair) / 2);
-            starts[0] = origin;
-            starts[1] = origin + static_cast<I64>(spans[0]);
-            if (shown > 2) {
-                starts[2] = origin - 1;
-            }
-            if (shown > 3) {
-                starts[3] = origin - 1 + static_cast<I64>(spans[2]);
-            }
-        }
-
-        const bool mirrored = std::accumulate(seed.begin(), seed.end(), U64{0}) % 2 == 1;
-        std::vector<Highlight> highlights;
-        for (U64 index = 0; index < shown; ++index) {
-            const I64 limit = static_cast<I64>(kTileColumns - spans[index]);
-            U64 column = static_cast<U64>(std::clamp<I64>(starts[index], 0, limit));
-            if (mirrored) {
-                column = kTileColumns - spans[index] - column;
-            }
-            highlights.push_back({
-                .label = blocks[index],
-                .row = kRows[shown][index],
-                .column = column,
-                .span = spans[index],
-            });
-        }
-        return highlights;
-    }
-
     Config config;
     Diagram diagram;
-    std::vector<Highlight> highlights;
     Box card;
     Box preview;
     Box divider;
     Box dots;
-    Box tiles;
     Polyline wires;
     Box boxes;
     Label labels;
@@ -537,7 +499,7 @@ struct FlowgraphCard::Impl {
     };
 
     F32 previewHeight(F32 width) const {
-        return config.diagram.empty() && config.blocks.empty() ? 0.0f : std::round(width * kDesignHeight / kDesignWidth);
+        return config.diagram.empty() && !config.fallback ? 0.0f : std::round(width * kDesignHeight / kDesignWidth);
     }
 
     Metrics metrics(FlowgraphCard& self, const Context& ctx, F32 width) {
@@ -557,7 +519,7 @@ struct FlowgraphCard::Impl {
 
 FlowgraphCard::FlowgraphCard() {
     impl = std::make_unique<Impl>();
-    mountChildren({&impl->card, &impl->preview, &impl->dots, &impl->tiles, &impl->divider, &impl->wires, &impl->boxes,
+    mountChildren({&impl->card, &impl->preview, &impl->dots, &impl->divider, &impl->wires, &impl->boxes,
                    &impl->labels, &impl->category, &impl->title, &impl->accentTitle, &impl->description});
 }
 
@@ -566,11 +528,11 @@ FlowgraphCard::~FlowgraphCard() = default;
 void FlowgraphCard::update(Config config) {
     if (config != impl->config) {
         invalidate(Dirty::Layout);
-        if (config.diagram != impl->config.diagram) {
+        if (config.diagram != impl->config.diagram || config.fallback != impl->config.fallback) {
             impl->diagram = Impl::Diagram::Parse(config.diagram);
-        }
-        if (config.blocks != impl->config.blocks || config.id != impl->config.id) {
-            impl->highlights = Impl::Highlights(config.blocks, config.id);
+            if (impl->diagram.nodes.empty() && config.fallback) {
+                impl->diagram = Impl::Diagram::Fallback(*config.fallback);
+            }
         }
         if (config.id != impl->config.id) {
             impl->pressed = false;
@@ -658,14 +620,13 @@ void FlowgraphCard::layout(const Context& ctx) {
     };
 
     const F32 unit = preview.width / kDesignWidth;
-    const bool tiled = !s.config.blocks.empty();
     std::vector<Box::Instance> dots;
     const F32 dot = kDotSize * unit;
     for (U64 row = 0; row < kDotRows; ++row) {
         for (U64 column = 0; column < kDotColumns; ++column) {
             const F32 x = preview.x + (static_cast<F32>(column) * kDotPitch + 1.0f) * unit - dot * 0.5f;
             const F32 y = preview.y + (static_cast<F32>(row) * kDotPitch + 1.0f) * unit - dot * 0.5f;
-            const bool shown = !tiled && !preview.empty() && within({x, y}) && within({x + dot, y}) &&
+            const bool shown = !preview.empty() && within({x, y}) && within({x + dot, y}) &&
                                within({x, y + dot}) && within({x + dot, y + dot});
             dots.push_back({.rect = {x, y, dot, dot}, .visible = shown,
                             .backgroundColor = WithAlpha(ctx.color("border"), kDotAlpha)});
@@ -713,10 +674,10 @@ void FlowgraphCard::layout(const Context& ctx) {
     const auto fill = BlendOver(backdrop, WithAlpha(accent, kNodeFill + (kNodeFillHovered - kNodeFill) * hover));
     s.textMetrics.setWindow(ctx.render);
     const F32 labelFont = kLabelFont * scale;
-    const F32 labelWidth = std::max(0.0f, (kNodeWidth - 2.0f * kLabelPadding) * scale);
     for (const auto& box : diagram.boxes) {
         const auto corner = toScreen({box.x, box.y});
-        const Rect rect = {corner.x, corner.y, kNodeWidth * scale, kNodeHeight * scale};
+        const Rect rect = {corner.x, corner.y, box.width * scale, kNodeHeight * scale};
+        const F32 labelWidth = std::max(0.0f, (box.width - 2.0f * kLabelPadding) * scale);
         boxes.push_back({.rect = rect, .backgroundColor = fill});
         labels.push_back({
             .rect = rect,
@@ -727,57 +688,6 @@ void FlowgraphCard::layout(const Context& ctx) {
             .alignment = {1, 1},
         });
     }
-
-    const F32 tileWidth = (kDesignWidth - 2.0f * kTilePad - static_cast<F32>(kTileColumns - 1) * kTileGap) /
-                          static_cast<F32>(kTileColumns);
-    const F32 tileHeight = (kDesignHeight - 2.0f * kTilePad - static_cast<F32>(kTileRows - 1) * kTileGap) /
-                           static_cast<F32>(kTileRows);
-    const auto tileRect = [&](U64 row, U64 column, U64 span) {
-        return Rect{
-            preview.x + (kTilePad + static_cast<F32>(column) * (tileWidth + kTileGap)) * unit,
-            preview.y + (kTilePad + static_cast<F32>(row) * (tileHeight + kTileGap)) * unit,
-            (static_cast<F32>(span) * tileWidth + static_cast<F32>(span - 1) * kTileGap) * unit,
-            tileHeight * unit,
-        };
-    };
-    std::vector<Box::Instance> tiles;
-    if (tiled) {
-        for (U64 row = 0; row < kTileRows; ++row) {
-            for (U64 column = 0; column < kTileColumns; ++column) {
-                const bool covered = std::any_of(s.highlights.begin(), s.highlights.end(), [&](const auto& item) {
-                    return item.row == row && column >= item.column && column < item.column + item.span;
-                });
-                if (!covered) {
-                    tiles.push_back({.rect = tileRect(row, column, 1), .visible = !preview.empty(),
-                                     .backgroundColor = BlendOver(backdrop, WithAlpha(ctx.color("border"), kTileFill))});
-                }
-            }
-        }
-        const F32 tileFont = kTileLabelFont * unit;
-        for (const auto& highlight : s.highlights) {
-            const Rect rect = tileRect(highlight.row, highlight.column, highlight.span);
-            const F32 width = std::max(0.0f, rect.width - 2.0f * kLabelPadding * unit);
-            boxes.push_back({.rect = rect, .visible = !rect.empty(), .backgroundColor = fill});
-            labels.push_back({
-                .rect = rect,
-                .str = s.textMetrics.ellipsize(Typography::MonoFont, highlight.label, tileFont, width),
-                .visible = !rect.empty(),
-                .color = accent,
-                .fontSize = tileFont,
-                .alignment = {1, 1},
-            });
-        }
-    }
-    s.tiles.update({
-        .instances = std::move(tiles),
-        .clip = inside,
-        .cornerRadius = kTileRounding * unit,
-        .borderWidth = Px(ctx, 1.0f),
-        .borderColor = WithAlpha(ctx.color("border"), kStrokeAlpha),
-        .strokeFringe = true,
-        .capacity = kTileColumns * kTileRows,
-    });
-    layoutChild(ctx, s.tiles, bounds);
 
     s.boxes.update({
         .instances = std::move(boxes),

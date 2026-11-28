@@ -22,9 +22,9 @@ EM_JS_DEPS(jst_http_deps, "$UTF8ToString,$stringToNewUTF8,malloc,free");
 #ifdef ERROR
 #undef ERROR
 #endif
-#endif
 
-// TODO: Port src/compositor/default/support/feedback.cc to Platform::Http::Client.
+#include "certificates.hh"
+#endif
 
 namespace Jetstream::Platform {
 
@@ -203,6 +203,7 @@ Http::Client::Response Http::Client::Send(const Request& request) {
         init.method = UTF8ToString($1);
         init.headers = headers;
         init.signal = controller.signal;
+        init.redirect = $6 ? 'follow' : 'manual';
         if ($5 > 0) {
             init.body = HEAPU8.slice($4, $4 + $5);
         }
@@ -215,6 +216,10 @@ Http::Client::Response Http::Client::Send(const Request& request) {
         };
 
         fetch(UTF8ToString($2), init).then(async (response) => {
+            if (response.type === 'opaqueredirect') {
+                finish(1, 'Redirect not followed');
+                return;
+            }
             let text = "";
             response.headers.forEach((value, name) => {
                 text += name + ': ' + value + '\r\n';
@@ -241,7 +246,8 @@ Http::Client::Response Http::Client::Send(const Request& request) {
             const message = error && error.message ? error.message : String(error);
             finish(controller.signal.aborted ? 4 : 1, message);
         });
-    }, id, request.method.c_str(), url.c_str(), headers.c_str(), request.body.data(), request.body.size());
+    }, id, request.method.c_str(), url.c_str(), headers.c_str(), request.body.data(), request.body.size(),
+       request.followRedirects ? 1 : 0);
     // clang-format on
 
     const auto timeout = std::chrono::seconds(request.timeoutSeconds);
@@ -423,7 +429,8 @@ Http::Client::Response Http::Client::Send(const Request& request) {
     client.set_connection_timeout(static_cast<time_t>(std::min<U64>(request.timeoutSeconds, 15)), 0);
     client.set_read_timeout(static_cast<time_t>(request.timeoutSeconds), 0);
     client.set_write_timeout(static_cast<time_t>(request.timeoutSeconds), 0);
-    client.set_follow_location(true);
+    client.set_follow_location(request.followRedirects);
+    Certificates::Trust(client);
     client.set_socket_options([](const socket_t socket) {
         DisableSocketSigPipe(static_cast<std::uintptr_t>(socket));
     });

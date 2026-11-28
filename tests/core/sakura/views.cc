@@ -578,6 +578,9 @@ struct SettingsRig : ModalRig {
             },
             .onFramerateChange = [log](U32 value) { log("fps:" + std::to_string(value)); },
             .onEncoderChange = [log](Instance::Remote::EncoderType) { log("encoder"); },
+            .onMatchViewerChange = [log](bool value) { log("match:" + Flag(value)); },
+            .onAudioChange = [log](bool value) { log("audio:" + Flag(value)); },
+            .onTokenChange = [log](const std::string& value) { log("token:" + value); },
             .onAutoApproveChange = [log](bool value) { log("approve:" + Flag(value)); },
         };
         config.runtime = {
@@ -2489,7 +2492,8 @@ TEST_CASE("Start tab lists gallery plugins and opens their page", "[core][sakura
         {.id = "gamma", .version = "1.0.0", .status = Plugin::Status::Loaded},
     };
     mailbox.state.plugins.catalog.entries = {
-        {.id = "alpha", .title = "Alpha", .summary = "First.", .version = "1.0.0", .url = "https://files/alpha.cep"},
+        {.id = "alpha", .title = "Alpha", .summary = "First.", .version = "1.0.0", .url = "https://files/alpha.cep",
+         .diagram = "rx[Receiver] --> fft[FFT]", .blocks = {"alpha_receiver", "alpha_fft"}},
         {.id = "beta", .title = "Beta", .version = "1.0.0", .url = "https://files/beta.cep"},
         {.id = "gamma", .title = "Gamma", .version = "1.0.0", .url = "https://files/gamma.cep"},
         {.id = "delta", .title = "Delta"},
@@ -2499,9 +2503,12 @@ TEST_CASE("Start tab lists gallery plugins and opens their page", "[core][sakura
     REQUIRE(welcome.plugins.size() == 4);
     CHECK(welcome.plugins[0].category == "Installed");
     CHECK(welcome.plugins[1].category == "Update Available");
-    CHECK(welcome.plugins[2].category == "Plugin v1.0.0");
-    CHECK(welcome.plugins[3].category == "Waiting for a Build");
-    CHECK(welcome.plugins[3].blocks == std::vector<std::string>{"Delta"});
+    CHECK(welcome.plugins[2].category == "v1.0.0");
+    CHECK(welcome.plugins[3].category == "Not Supported");
+    CHECK(welcome.plugins[0].diagram == "rx[Receiver] --> fft[FFT]");
+    CHECK(welcome.plugins[0].blocks == std::vector<std::string>{"Receiver", "Fft"});
+    CHECK(welcome.plugins[3].diagram.empty());
+    CHECK(welcome.plugins[3].blocks.empty());
 
     mailbox.state.interface.welcomeCategory = "Basics";
     mailbox.state.interface.welcomeSection = WelcomeSection::Plugins;
@@ -3899,8 +3906,8 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(rig.combos().size() == 1);
     CHECK(Find<Sakura::PillTabs>(rig.view.component()).size() == 2);
     CHECK(Find<Sakura::PillStepper>(rig.view.component()).size() == 1);
-    CHECK(Find<Sakura::PillInput>(rig.view.component()).size() == 7);
-    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 1);
+    CHECK(Find<Sakura::PillInput>(rig.view.component()).size() == 8);
+    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 3);
 
     rig.show(SettingsSection::Registry);
     CHECK(rig.combos().size() == 1);
@@ -3926,6 +3933,50 @@ TEST_CASE("General settings report theme, scale, scroll speed, background partic
     CHECK(Press(rig.host, *toggles[1]));
     CHECK(rig.calls == std::vector<std::string>{"theme:Light", "scale:" + std::to_string(0.95f),
                                                  "scroll:" + std::to_string(0.8f), "particles:false", "tips:false"});
+}
+
+TEST_CASE("General settings list GPUs in a pill combo with a restart note and report the picked index",
+          "[core][sakura][views]") {
+    SettingsRig rig;
+    rig.config.general.gpuVisible = true;
+    rig.config.general.gpuOptions = {"Automatic (Intel(R) Graphics (PTL))", "Intel(R) Graphics (PTL)",
+                                     "NVIDIA GeForce RTX 5060 Ti"};
+    rig.config.general.gpuDetails = {"", "Integrated", "Discrete"};
+    rig.config.general.gpuSelected = 0;
+    rig.config.general.gpuDisabled = false;
+    rig.config.general.onGpuSelect = [&](U64 index) { rig.calls.push_back("gpu:" + std::to_string(index)); };
+    rig.show(SettingsSection::General, {1200.0f, 1400.0f});
+
+    const auto shows = [&](const std::string& str) {
+        for (auto* text : Find<Sakura::Text>(rig.view.component())) {
+            if (text->config().str == str) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const auto noted = [&] {
+        return shows("Changing the graphics device requires restarting CyberEther.");
+    };
+    REQUIRE(rig.combos().size() == 1);
+    CHECK(noted());
+    CHECK(shows("Graphics Device"));
+    rig.choose(0, 2);
+    CHECK(rig.calls == std::vector<std::string>{"gpu:2"});
+
+    rig.calls.clear();
+    rig.config.general.gpuOptions = {"Automatic (Intel(R) Graphics (PTL))", "Intel(R) Graphics (PTL)"};
+    rig.config.general.gpuDetails = {"", "Integrated"};
+    rig.config.general.gpuDisabled = true;
+    rig.show(SettingsSection::General, {1200.0f, 1400.0f});
+    REQUIRE(rig.combos().size() == 1);
+    rig.choose(0, 1);
+    CHECK(rig.calls.empty());
+
+    rig.config.general.gpuVisible = false;
+    rig.show(SettingsSection::General);
+    CHECK(rig.combos().empty());
+    CHECK_FALSE(noted());
 }
 
 TEST_CASE("Developer settings report toggles and the log level", "[core][sakura][views]") {
@@ -3968,13 +4019,13 @@ TEST_CASE("Developer settings presenter opens the benchmark modal and reloads ev
     CHECK(mailbox.count<MailReloadAllPlugins>() == 1);
 }
 
-TEST_CASE("Remote settings report codec, framerate, and approval while the encoder stays disabled",
+TEST_CASE("Remote settings report codec, framerate, approval, viewer matching, and audio while the encoder stays disabled",
           "[core][sakura][views]") {
     SettingsRig rig;
-    rig.show(SettingsSection::Remote);
+    rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
     REQUIRE(rig.combos().size() == 1);
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
-    REQUIRE(toggles.size() == 1);
+    REQUIRE(toggles.size() == 3);
     auto steppers = Find<Sakura::PillStepper>(rig.view.component());
     REQUIRE(steppers.size() == 1);
 
@@ -3982,7 +4033,33 @@ TEST_CASE("Remote settings report codec, framerate, and approval while the encod
     CHECK(Step(rig.host, *steppers[0], true));
     rig.choose(0, 0);
     CHECK(Press(rig.host, *toggles[0]));
-    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true"});
+    CHECK(Press(rig.host, *toggles[1]));
+    CHECK(Press(rig.host, *toggles[2]));
+    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true", "match:false", "audio:false"});
+}
+
+TEST_CASE("Remote settings forward only valid invite tokens", "[core][sakura][views]") {
+    SettingsRig rig;
+    rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
+    auto inputs = Find<Sakura::PillInput>(rig.view.component());
+    REQUIRE(inputs.size() == 8);
+
+    CHECK(Press(rig.host, *inputs[0]));
+    Type(rig.host, "living-room-screen-2026");
+    Tap(rig.host, KeyCode::Enter);
+    rig.show(SettingsSection::Remote, {1200.0f, 2400.0f});
+
+    std::vector<std::string> tokens;
+    for (const auto& call : rig.calls) {
+        if (call.starts_with("token:")) {
+            tokens.push_back(call.substr(6));
+        }
+    }
+    REQUIRE_FALSE(tokens.empty());
+    CHECK(tokens.back() == "living-room-screen-2026");
+    for (const auto& token : tokens) {
+        CHECK(IsRemoteTokenValid(token));
+    }
 }
 
 TEST_CASE("Runtime settings pick interpreters and browse for a custom path", "[core][sakura][views]") {
@@ -5149,11 +5226,15 @@ TEST_CASE("Settings navigation, toggles, tabs, and text fields repaint without r
     CHECK(RepaintOnly(rig.frame()));
     CHECK(rig.settles());
     auto inputs = Find<Sakura::TextInput>(view.component());
-    REQUIRE_FALSE(inputs.empty());
-    auto& broker = *inputs[0];
+    REQUIRE(inputs.size() > 1);
+    auto& broker = *inputs[1];
     const auto shown = [&] {
         const auto center = Center(broker);
-        return Peek::Clip(broker).contains(center.x, center.y);
+        const auto shift = Peek::Translation(broker);
+        auto clip = Peek::Clip(broker);
+        clip.x += shift.x;
+        clip.y += shift.y;
+        return clip.contains(center.x, center.y);
     };
     const auto areas = Find<Sakura::ScrollArea>(view.component());
     REQUIRE(areas.size() == 2);

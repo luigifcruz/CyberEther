@@ -64,6 +64,11 @@ Result FrameImplNativeCpu::presentSubmit() {
 
 Result FrameImplNativeCpu::computeSubmit() {
     updateFrameFlag = true;
+    stageBoxes();
+
+    if (input.size() > 0) {
+        std::copy_n(input.data<F32>(), pendingPixels.size(), pendingPixels.begin());
+    }
 
     if (!autoRange || input.size() == 0 || channels == 0) {
         return Result::SUCCESS;

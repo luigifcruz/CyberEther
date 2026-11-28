@@ -16,7 +16,10 @@ RemoteSettingsView::Config RemoteSettingsPresenter::build() const {
         .framerate = context.state.remote.config.video.framerate,
         .encoder = context.state.remote.config.video.encoder,
         .available = available,
+        .matchViewer = context.state.remote.config.video.matchViewer,
+        .audio = context.state.remote.config.audio.enabled,
         .autoApprove = context.state.remote.config.access.autoApprove,
+        .token = context.state.remote.config.access.token,
         .transport = context.state.remote.config.media.transport,
         .minPort = context.state.remote.config.media.minPort,
         .maxPort = context.state.remote.config.media.maxPort,
@@ -42,6 +45,15 @@ RemoteSettingsView::Config RemoteSettingsPresenter::build() const {
         },
         .onEncoderChange = [enqueue](Instance::Remote::EncoderType value) {
             enqueue(MailSetRemoteEncoder{.value = value});
+        },
+        .onMatchViewerChange = [enqueue](bool value) {
+            enqueue(MailSetRemoteMatchViewer{.value = value});
+        },
+        .onAudioChange = [enqueue](bool value) {
+            enqueue(MailSetRemoteAudio{.value = value});
+        },
+        .onTokenChange = [enqueue](const std::string& value) {
+            enqueue(MailSetRemoteToken{.value = value});
         },
         .onAutoApproveChange = [enqueue](bool value) {
             enqueue(MailSetRemoteAutoApprove{.value = value});

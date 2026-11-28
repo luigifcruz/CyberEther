@@ -5,6 +5,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -16,12 +17,13 @@ struct JETSTREAM_API Instance::Remote {
     struct Impl;
     struct Supervisor;
     struct Broker;
+    struct Encoder;
+    struct Audio;
 
     enum class CodecType : uint32_t {
         H264,
         AV1,
-        VP8,
-        VP9,
+        H265,
     };
 
     enum class EncoderType {
@@ -30,24 +32,31 @@ struct JETSTREAM_API Instance::Remote {
         NVENC,
         V4L2,
         VideoToolbox,
-        MediaFoundation,
+        AMF,
+        QSV,
+        VAAPI,
     };
 
     enum class TransportType {
         Auto,
         UDP,
-        TCP,
     };
 
     struct Config {
         struct Access {
             bool autoApprove = false;
+            std::string token;
         };
 
         struct Video {
             U32 framerate = 30;
             CodecType codec = CodecType::H264;
             EncoderType encoder = EncoderType::Auto;
+            bool matchViewer = true;
+        };
+
+        struct Audio {
+            bool enabled = true;
         };
 
         struct Broker {
@@ -69,10 +78,25 @@ struct JETSTREAM_API Instance::Remote {
         Video video;
         Broker broker;
         Media media;
+        Audio audio;
     };
 
     struct ClientInfo {
         std::string sessionId;
+    };
+
+    struct Stats {
+        EncoderType encoder = EncoderType::Auto;
+        CodecType codec = CodecType::H264;
+        DeviceType memory = DeviceType::None;
+        std::string format;
+        Extent2D<U64> size = {};
+        F32 targetRate = 0.0f;
+        F32 frameRate = 0.0f;
+        F32 encodeAverage = 0.0f;
+        F32 bitrate = 0.0f;
+        U64 keyframeBytes = 0;
+        std::optional<F32> roundTrip;
     };
 
     Remote(Viewport::Generic* viewport);
@@ -92,6 +116,7 @@ struct JETSTREAM_API Instance::Remote {
     const std::string& inviteUrl() const;
     std::vector<ClientInfo> clients() const;
     std::vector<std::string> waitlist() const;
+    Stats stats() const;
 
     Result approveClient(const std::string& sessionId);
     Result removeClient(const std::string& sessionId);
@@ -105,6 +130,7 @@ JETSTREAM_API Instance::Remote::CodecType StringToRemoteCodec(const std::string&
 JETSTREAM_API const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec);
 
 JETSTREAM_API bool IsRemotePublicUrlValid(const std::string& url);
+JETSTREAM_API bool IsRemoteTokenValid(const std::string& token);
 
 JETSTREAM_API std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder);
 JETSTREAM_API Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder);
@@ -118,26 +144,26 @@ JETSTREAM_API bool IsRemotePortRangeValid(U64 minPort, U64 maxPort);
 JETSTREAM_API bool ParseRemotePortRange(const std::string& value, U16& minPort, U16& maxPort);
 JETSTREAM_API std::string GetRemotePortRangeName(U64 minPort, U64 maxPort);
 
-static inline constexpr std::array<Instance::Remote::CodecType, 4> RemoteCodecTypes = {
+static inline constexpr std::array<Instance::Remote::CodecType, 3> RemoteCodecTypes = {
     Instance::Remote::CodecType::H264,
+    Instance::Remote::CodecType::H265,
     Instance::Remote::CodecType::AV1,
-    Instance::Remote::CodecType::VP8,
-    Instance::Remote::CodecType::VP9,
 };
 
-static inline constexpr std::array<Instance::Remote::EncoderType, 6> RemoteEncoderTypes = {
+static inline constexpr std::array<Instance::Remote::EncoderType, 8> RemoteEncoderTypes = {
     Instance::Remote::EncoderType::Auto,
     Instance::Remote::EncoderType::Software,
     Instance::Remote::EncoderType::NVENC,
+    Instance::Remote::EncoderType::AMF,
+    Instance::Remote::EncoderType::QSV,
+    Instance::Remote::EncoderType::VAAPI,
     Instance::Remote::EncoderType::V4L2,
     Instance::Remote::EncoderType::VideoToolbox,
-    Instance::Remote::EncoderType::MediaFoundation,
 };
 
-static inline constexpr std::array<Instance::Remote::TransportType, 3> RemoteTransportTypes = {
+static inline constexpr std::array<Instance::Remote::TransportType, 2> RemoteTransportTypes = {
     Instance::Remote::TransportType::Auto,
     Instance::Remote::TransportType::UDP,
-    Instance::Remote::TransportType::TCP,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Instance::Remote::EncoderType& encoder) {

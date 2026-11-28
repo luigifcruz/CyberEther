@@ -23,32 +23,24 @@ env:
     CoreFoundation.framework/CoreFoundation
     CoreAudio.framework/CoreAudio
     CoreGraphics.framework/CoreGraphics
-    IOSurface.framework/IOSurface
     CoreServices.framework/CoreServices
     CFNetwork.framework/CFNetwork
     IOKit.framework/IOKit
-    OpenGL.framework/OpenGL
-    QuartzCore.framework/QuartzCore
     Security.framework/Security
-    libz.1.dylib
     AppKit.framework/AppKit
-    AVFoundation.framework/AVFoundation
     CoreMedia.framework/CoreMedia
     CoreVideo.framework/CoreVideo
-    SystemConfiguration.framework/SystemConfiguration
     VideoToolbox.framework/VideoToolbox
     UniformTypeIdentifiers.framework/UniformTypeIdentifiers
     libc++.1.dylib
     libSystem.B.dylib
-    libiconv.2.dylib
     libobjc.A.dylib
-    libresolv.9.dylib
   BUNDLED_MACOS_DYLIBS: |
     libjetstream.dylib
 
 jobs:
   bin:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -56,8 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           brew untap aws/tap 2>/dev/null || true
-          brew install pkg-config spirv-cross glslang bison nasm
-          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          brew install pkg-config spirv-cross glslang
 
       - name: Install Python dependencies
         run: |
@@ -92,8 +83,7 @@ jobs:
             -Dbuildtype=release \
             -Dexamples=false \
             -Dremote=enabled \
-            -Dterminal=enabled \
-            -Dgstreamer-full:build-tools-source=system
+            -Dterminal=enabled
           meson compile -C build cyberether jetstream-core-tests jetstream-modules-tests
 
       - name: Validate binary
@@ -162,7 +152,7 @@ jobs:
   package:
     if: ${{ inputs.package_desktop }}
     needs: bin
-    runs-on: macos-15
+    runs-on: macos-26
     environment: macos-notarization
     env:
       CYBERETHER_BINARY: .dist/bin/cyberether

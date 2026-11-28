@@ -5,6 +5,7 @@
 
 #include "../../model/messages.hh"
 #include "../../views/settings/general.hh"
+#include "gpu_labels.hh"
 
 #include "render/sakura/themes.hh"
 

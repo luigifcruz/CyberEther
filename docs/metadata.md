@@ -172,10 +172,20 @@ Each role may appear at most once, omitted trailing dimensions carry no explicit
 
 Structural tensor blocks remain explicitly axis-configured because modifying dimensions is their job. Built-in structural blocks remap `sampleAxis`, `batchAxis`, and `channelAxis` to the output layout (or drop a role when its dimension disappears or becomes ambiguous). Custom structural blocks must do the same rather than copying stale axis indices.
 
+### Frame Boxes
+
+The `boxes` attribute lists regions for the **Frame** block to outline over the image. It is a sequence of maps, each with numeric `x`, `y`, `width`, and `height` in frame pixels (row 0 at the top), plus an optional `label` string and an optional `color` given as three or four numbers from 0 to 1 or as `"#RRGGBB[AA]"`. Frame draws up to 64 boxes, skips malformed entries with a warning, and clears the overlay when the attribute is an empty sequence or absent. Unlike stream properties, `boxes` describes the current frame, so producers update it with every frame they emit:
+
+```python
+ctx.output_attrs[0]["boxes"] = [
+    {"x": 120, "y": 40, "width": 30, "height": 12, "label": "pulse"},
+]
+```
+
 ### Attribute Best Practices
 
 - **Reuse established names.** Built-in blocks and UI pin tooltips expect standard names like `sampleRate` and `frequency`. Inventing alternate spellings silently breaks interoperability.
-- **Update only on stream changes.** Attributes describe the stream, not individual frames. Update them when a property actually changes (such as retuning a radio) so downstream change detection stays fast.
+- **Update only on stream changes.** Attributes describe the stream, not individual frames. Update them when a property actually changes (such as retuning a radio) so downstream change detection stays fast. The Frame `boxes` attribute is the exception, since it describes one frame.
 - **Guard against width mismatches.** Because `std::any_cast` throws if types differ, an `F32` attribute cannot be read as `F64`. Agree on widths for shared names and read defensively, as some blocks in the tree currently store `sampleRate` and `frequency` at different widths.
 - **Remember concrete Python types.** Assigning `np.float32` to `ctx.output_attrs` stores `F32`, while plain Python `float` stores `F64`, replacing the previous type rather than coercing to it (see [Tensor Attributes](/docs/python-context#tensor-attributes)).
 

@@ -32,6 +32,18 @@
     <key>CFBundleVersion</key>
     <string>@VERSION@</string>
 
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>@BUNDLE_ID@</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>cyberether</string>
+            </array>
+        </dict>
+    </array>
+
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.developer-tools</string>
 

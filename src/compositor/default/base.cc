@@ -114,6 +114,7 @@ Result DefaultCompositor::create() {
     // Restore graphics preferences.
 
     state.graphics.device = settings.graphics.device;
+    state.graphics.gpu = settings.graphics.gpu;
     state.graphics.scale = settings.graphics.scale;
 
     // Restore interface preferences.
@@ -168,7 +169,14 @@ Result DefaultCompositor::create() {
                  settings.remote.broker.port);
     }
     state.remote.config.access.autoApprove = settings.remote.access.autoApprove;
+    if (settings.remote.access.token.empty() || IsRemoteTokenValid(settings.remote.access.token)) {
+        state.remote.config.access.token = settings.remote.access.token;
+    } else {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote access token. Using a random token.");
+    }
     state.remote.config.video.framerate = static_cast<U32>(settings.remote.video.framerate);
+    state.remote.config.video.matchViewer = settings.remote.video.matchViewer;
+    state.remote.config.audio.enabled = settings.remote.audio.enabled;
 
     // Restore runtime preferences.
 
@@ -329,6 +337,7 @@ Result DefaultCompositor::poll() {
     actions.reconcileGallery();
     actions.reconcilePlugins();
     actions.refreshRegistry();
+    actions.settleLinks();
     actions.refreshLiveMarkdown();
     actions.refreshConfigDrafts();
     actions.refreshMetrics();
@@ -363,6 +372,9 @@ Result DefaultCompositor::present() {
     droppedFiles.clear();
     if (state.system.viewport) {
         droppedFiles = state.system.viewport->takeDroppedFiles();
+        for (auto& url : state.system.viewport->takeOpenRequests()) {
+            enqueue(MailOpenLink{.url = std::move(url)});
+        }
         if (state.system.viewport->takeCloseRequest()) {
             enqueue(MailQuit{});
         }
@@ -438,6 +450,7 @@ void DefaultCompositor::updateRemoteState() {
     state.remote.inviteUrl = remoteStarted ? remote->inviteUrl() : "";
     state.remote.clients = remoteStarted ? remote->clients() : std::vector<Instance::Remote::ClientInfo>{};
     state.remote.waitlist = remoteStarted ? remote->waitlist() : std::vector<std::string>{};
+    state.remote.stats = remoteStarted && state.debug.renderStatsEnabled ? remote->stats() : Instance::Remote::Stats{};
 }
 
 void DefaultCompositor::updateUpdaterState() {
