@@ -3935,6 +3935,50 @@ TEST_CASE("General settings report theme, scale, scroll speed, background partic
                                                  "scroll:" + std::to_string(0.8f), "particles:false", "tips:false"});
 }
 
+TEST_CASE("General settings list GPUs in a pill combo with a restart note and report the picked index",
+          "[core][sakura][views]") {
+    SettingsRig rig;
+    rig.config.general.gpuVisible = true;
+    rig.config.general.gpuOptions = {"Automatic (Intel(R) Graphics (PTL))", "Intel(R) Graphics (PTL)",
+                                     "NVIDIA GeForce RTX 5060 Ti"};
+    rig.config.general.gpuDetails = {"", "Integrated", "Discrete"};
+    rig.config.general.gpuSelected = 0;
+    rig.config.general.gpuDisabled = false;
+    rig.config.general.onGpuSelect = [&](U64 index) { rig.calls.push_back("gpu:" + std::to_string(index)); };
+    rig.show(SettingsSection::General, {1200.0f, 1400.0f});
+
+    const auto shows = [&](const std::string& str) {
+        for (auto* text : Find<Sakura::Text>(rig.view.component())) {
+            if (text->config().str == str) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const auto noted = [&] {
+        return shows("Changing the graphics device requires restarting CyberEther.");
+    };
+    REQUIRE(rig.combos().size() == 1);
+    CHECK(noted());
+    CHECK(shows("Graphics Device"));
+    rig.choose(0, 2);
+    CHECK(rig.calls == std::vector<std::string>{"gpu:2"});
+
+    rig.calls.clear();
+    rig.config.general.gpuOptions = {"Automatic (Intel(R) Graphics (PTL))", "Intel(R) Graphics (PTL)"};
+    rig.config.general.gpuDetails = {"", "Integrated"};
+    rig.config.general.gpuDisabled = true;
+    rig.show(SettingsSection::General, {1200.0f, 1400.0f});
+    REQUIRE(rig.combos().size() == 1);
+    rig.choose(0, 1);
+    CHECK(rig.calls.empty());
+
+    rig.config.general.gpuVisible = false;
+    rig.show(SettingsSection::General);
+    CHECK(rig.combos().empty());
+    CHECK_FALSE(noted());
+}
+
 TEST_CASE("Developer settings report toggles and the log level", "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::Developer);

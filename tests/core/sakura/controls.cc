@@ -1268,6 +1268,74 @@ TEST_CASE("Pill button padding and text size widen the measure and offset the co
     CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}).x > padded.x);
 }
 
+TEST_CASE("Combo dropdowns draw option details right aligned in the secondary color and widen to fit them",
+          "[core][sakura][controls]") {
+    const Scene scene;
+    const std::string detail = "Secondary detail that is much wider than the anchor";
+    Sakura::Combo combo;
+    combo.update({.id = "details", .options = {"alpha", "beta"}, .details = {"", detail}, .value = "alpha"});
+    LayerSlot mount;
+    mount.hold(combo, {100.0f, 100.0f, 200.0f, 34.0f});
+    LayerHost host({&mount});
+    host.place(scene.ctx, kScreen);
+
+    host.click(150.0f, 117.0f);
+    host.place(scene.ctx, kScreen);
+    U64 details = 0;
+    bool styled = false;
+    for (auto* label : Find<Sakura::Label>(host.popups)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.str == detail) {
+                ++details;
+                styled = instance.alignment == Extent2D<I32>{2, 1} &&
+                         instance.color == scene.ctx.color("text_secondary") &&
+                         label->config().fontName == Sakura::Typography::DisplayFont;
+            }
+        }
+    }
+    CHECK(details == 1);
+    CHECK(styled);
+    CHECK(host.popups.interactiveAt({320.0f, 150.0f}));
+}
+
+TEST_CASE("Combo dropdowns without details keep the anchor width", "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::Combo plain;
+    plain.update({.id = "plain", .options = {"alpha", "beta"}, .value = "alpha"});
+    LayerSlot plainMount;
+    plainMount.hold(plain, {100.0f, 100.0f, 200.0f, 34.0f});
+    LayerHost plainHost({&plainMount});
+    plainHost.place(scene.ctx, kScreen);
+    plainHost.click(150.0f, 117.0f);
+    plainHost.place(scene.ctx, kScreen);
+    CHECK(plainHost.popups.interactiveAt({150.0f, 150.0f}));
+    CHECK_FALSE(plainHost.popups.interactiveAt({320.0f, 150.0f}));
+}
+
+TEST_CASE("Combo dropdowns drop option details that do not fit beside the name", "[core][sakura][controls]") {
+    const Scene scene;
+    const std::string detail = "Secondary detail that is much wider than the anchor";
+    const Jetstream::Rect narrow = {0.0f, 0.0f, 320.0f, 600.0f};
+    Sakura::Combo tight;
+    tight.update({.id = "tight", .options = {"alpha", "beta"}, .details = {"", detail}, .value = "alpha"});
+    LayerSlot tightMount;
+    tightMount.hold(tight, {100.0f, 100.0f, 200.0f, 34.0f});
+    LayerHost tightHost({&tightMount});
+    tightHost.place(scene.ctx, narrow);
+    tightHost.click(150.0f, 117.0f);
+    tightHost.place(scene.ctx, narrow);
+    bool named = false;
+    bool crowded = false;
+    for (auto* label : Find<Sakura::Label>(tightHost.popups)) {
+        for (const auto& instance : label->config().instances) {
+            named = named || instance.str == "beta";
+            crowded = crowded || instance.str == detail;
+        }
+    }
+    CHECK(named);
+    CHECK_FALSE(crowded);
+}
+
 TEST_CASE("Combos draw a pill with a chevron and list their options in the display font",
           "[core][sakura][controls]") {
     const Scene scene;

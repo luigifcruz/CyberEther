@@ -114,6 +114,7 @@ Result DefaultCompositor::create() {
     // Restore graphics preferences.
 
     state.graphics.device = settings.graphics.device;
+    state.graphics.gpu = settings.graphics.gpu;
     state.graphics.scale = settings.graphics.scale;
 
     // Restore interface preferences.

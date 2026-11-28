@@ -230,6 +230,7 @@ struct DefaultCompositorState {
 
     struct GraphicsState {
         std::optional<DeviceType> device;
+        Settings::Gpu gpu;
         F32 scale = 1.0f;
     };
 

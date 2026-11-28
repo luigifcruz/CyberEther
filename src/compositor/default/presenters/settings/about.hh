@@ -6,6 +6,7 @@
 #include "../../model/messages.hh"
 #include "../../views/settings/about.hh"
 #include "../../views/settings/components/about_info_table.hh"
+#include "gpu_labels.hh"
 
 #include "jetstream/backend/base.hh"
 #include "jetstream/config.hh"
@@ -35,7 +36,6 @@ struct AboutPresenter {
     explicit AboutPresenter(const PresenterContext& context);
     AboutSettingsView::Config build() const;
     static std::string ThermalLabel(U64 state);
-    static std::string DeviceTypeLabel(Backend::PhysicalDeviceType type);
     static std::string MemoryLabel(U64 bytes);
     static std::string PolicyLabel(const std::string& policy);
     static std::vector<AboutInfoTable::Config> InfoTables(const Input& input);

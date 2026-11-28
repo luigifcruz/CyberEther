@@ -74,6 +74,16 @@ Result SettingsActions::handle(const MailSetGraphicsDevice& msg) {
     return Result::SUCCESS;
 }
 
+Result SettingsActions::handle(const MailSetGraphicsGpu& msg) {
+    state.graphics.gpu = msg.value;
+
+    JST_CHECK(PersistSettings([&](Settings& settings) {
+        settings.graphics.gpu = msg.value;
+    }));
+
+    return Result::SUCCESS;
+}
+
 Result SettingsActions::handle(const MailSetSettingsSection& msg) {
     state.settings.section = msg.section;
     ResetPages(state);

@@ -8,7 +8,9 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
+#include "backend/devices/selection.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/instance.hh"
@@ -101,7 +103,8 @@ TEST_CASE("Startup configuration defaults are stable",
           "[core][application][instance][backend]") {
     const Instance::Config instance;
     REQUIRE_FALSE(instance.device.has_value());
-    REQUIRE(instance.deviceId == 0);
+    REQUIRE_FALSE(instance.deviceId.has_value());
+    REQUIRE(instance.deviceUuid.empty());
     REQUIRE_FALSE(instance.compositor.has_value());
     REQUIRE_FALSE(instance.headless);
     REQUIRE(instance.size.x == 1920);
@@ -111,7 +114,8 @@ TEST_CASE("Startup configuration defaults are stable",
     REQUIRE(instance.pythonRuntimePath.empty());
 
     const Backend::Config backend;
-    REQUIRE(backend.deviceId == 0);
+    REQUIRE_FALSE(backend.deviceId.has_value());
+    REQUIRE(backend.deviceUuid.empty());
 #ifdef JST_DEBUG_MODE
     REQUIRE(backend.validationEnabled);
 #else
@@ -139,6 +143,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
     Instance::Config instance = {
         .device = DeviceType::WebGPU,
         .deviceId = 42,
+        .deviceUuid = "instance-uuid",
         .compositor = CompositorType::DEFAULT,
         .headless = true,
         .size = {321, 654},
@@ -148,7 +153,8 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
     };
     const auto instanceSnapshot = instance;
     instance.device.reset();
-    instance.deviceId = 0;
+    instance.deviceId.reset();
+    instance.deviceUuid.clear();
     instance.compositor.reset();
     instance.headless = false;
     instance.size = {1, 1};
@@ -158,6 +164,7 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
 
     REQUIRE(instanceSnapshot.device == DeviceType::WebGPU);
     REQUIRE(instanceSnapshot.deviceId == 42);
+    REQUIRE(instanceSnapshot.deviceUuid == "instance-uuid");
     REQUIRE(instanceSnapshot.compositor == CompositorType::DEFAULT);
     REQUIRE(instanceSnapshot.headless);
     REQUIRE(instanceSnapshot.size.x == 321);
@@ -168,19 +175,22 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
 
     Backend::Config backend = {
         .deviceId = 17,
+        .deviceUuid = "backend-uuid",
         .validationEnabled = true,
         .multisampling = 8,
         .headless = true,
         .pythonRuntimePath = "backend-python",
     };
     const auto backendSnapshot = backend;
-    backend.deviceId = 0;
+    backend.deviceId.reset();
+    backend.deviceUuid.clear();
     backend.validationEnabled = false;
     backend.multisampling = 1;
     backend.headless = false;
     backend.pythonRuntimePath.clear();
 
     REQUIRE(backendSnapshot.deviceId == 17);
+    REQUIRE(backendSnapshot.deviceUuid == "backend-uuid");
     REQUIRE(backendSnapshot.validationEnabled);
     REQUIRE(backendSnapshot.multisampling == 8);
     REQUIRE(backendSnapshot.headless);
@@ -270,11 +280,14 @@ TEST_CASE("Device flags compose without selecting or initializing a backend",
 
 TEST_CASE("Physical device type formatting covers every public value",
           "[core][application][backend][conversion]") {
-    const std::array<std::pair<Backend::PhysicalDeviceType, const char*>, 4> cases = {{
+    const std::array<std::pair<Backend::PhysicalDeviceType, const char*>, 7> cases = {{
         {Backend::PhysicalDeviceType::UNKNOWN, "UNKNOWN"},
         {Backend::PhysicalDeviceType::DISCRETE, "DISCRETE"},
         {Backend::PhysicalDeviceType::INTEGRATED, "INTEGRATED"},
         {Backend::PhysicalDeviceType::OTHER, "OTHER"},
+        {Backend::PhysicalDeviceType::EXTERNAL, "EXTERNAL"},
+        {Backend::PhysicalDeviceType::VIRTUAL, "VIRTUAL"},
+        {Backend::PhysicalDeviceType::CPU, "CPU"},
     }};
 
     for (const auto& [type, expected] : cases) {
@@ -284,12 +297,67 @@ TEST_CASE("Physical device type formatting covers every public value",
         REQUIRE_FALSE(stream.fail());
     }
 
-    for (const auto value : {4, 255}) {
+    for (const auto value : {7, 255}) {
         std::ostringstream invalid;
         invalid << static_cast<Backend::PhysicalDeviceType>(value);
         REQUIRE(invalid.fail());
         REQUIRE(invalid.str().empty());
     }
+}
+
+TEST_CASE("Device choice honors the index override, then the saved UUID, then the OS order",
+          "[core][application][backend][device-choice]") {
+    const std::vector<Backend::PhysicalDevice> devices = {
+        {.index = 0, .name = "Intel(R) Graphics (PTL)", .uuid = "intel", .type = Backend::PhysicalDeviceType::INTEGRATED},
+        {.index = 1, .name = "NVIDIA GeForce RTX 5060 Ti", .uuid = "nvidia", .type = Backend::PhysicalDeviceType::DISCRETE},
+    };
+    using Backend::DeviceChoice;
+    using Backend::DeviceSelection;
+
+    REQUIRE_FALSE(Backend::ChooseDevice({}, std::nullopt, "").has_value());
+    REQUIRE(Backend::ChooseDevice(devices, std::nullopt, "") ==
+            DeviceChoice{.index = 0, .selection = DeviceSelection::Automatic});
+    REQUIRE(Backend::ChooseDevice(devices, std::nullopt, "nvidia") ==
+            DeviceChoice{.index = 1, .selection = DeviceSelection::Saved});
+    REQUIRE(Backend::ChooseDevice(devices, std::nullopt, "unplugged") ==
+            DeviceChoice{.index = 0, .selection = DeviceSelection::Missing});
+    REQUIRE(Backend::ChooseDevice(devices, 0, "nvidia") ==
+            DeviceChoice{.index = 0, .selection = DeviceSelection::Override});
+    REQUIRE(Backend::ChooseDevice(devices, 1, "") ==
+            DeviceChoice{.index = 1, .selection = DeviceSelection::Override});
+    REQUIRE_FALSE(Backend::ChooseDevice(devices, 2, "nvidia").has_value());
+}
+
+TEST_CASE("Unused discrete GPU hint only fires when the OS order skipped it",
+          "[core][application][backend][device-choice]") {
+    std::vector<Backend::PhysicalDevice> devices = {
+        {.index = 0, .name = "Intel", .uuid = "intel", .type = Backend::PhysicalDeviceType::INTEGRATED},
+        {.index = 1, .name = "llvmpipe", .uuid = "cpu", .type = Backend::PhysicalDeviceType::CPU},
+        {.index = 2, .name = "NVIDIA", .uuid = "nvidia", .type = Backend::PhysicalDeviceType::DISCRETE},
+    };
+    using Backend::DeviceSelection;
+
+    REQUIRE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Automatic}) == 2);
+    REQUIRE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Missing}) == 2);
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Saved}).has_value());
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Override}).has_value());
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 2, .selection = DeviceSelection::Automatic}).has_value());
+
+    devices[2].uuid.clear();
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Automatic}).has_value());
+    devices[2].uuid = "nvidia";
+
+    devices[2].type = Backend::PhysicalDeviceType::EXTERNAL;
+    REQUIRE(Backend::UnusedDiscreteDevice(devices, {.index = 1, .selection = DeviceSelection::Automatic}) == 2);
+
+    devices.pop_back();
+    REQUIRE_FALSE(Backend::UnusedDiscreteDevice(devices, {.index = 0, .selection = DeviceSelection::Automatic}).has_value());
+}
+
+TEST_CASE("Device UUIDs format as lowercase hyphenated hex", "[core][application][backend][device-choice]") {
+    const std::array<U8, 16> bytes = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                                      0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    REQUIRE(Backend::FormatDeviceUuid(bytes.data()) == "00112233-4455-6677-8899-aabbccddeeff");
 }
 
 TEST_CASE("Backend manager treats configuration as distinct from initialization",
